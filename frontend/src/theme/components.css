@@ -1,0 +1,49 @@
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", sans-serif;
+  background:
+    radial-gradient(circle at top, rgba(183, 224, 255, 0.45), transparent 32%),
+    linear-gradient(180deg, #f6fbff 0%, var(--bg) 100%);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 32px 24px 48px;
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 18px 50px rgba(19, 44, 74, 0.08);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.eyebrow {
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.error {
+  color: var(--error);
+}

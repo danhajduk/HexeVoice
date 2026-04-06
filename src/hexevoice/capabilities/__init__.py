@@ -1,0 +1,1 @@
+"""Capability boundary for HexeVoice."""

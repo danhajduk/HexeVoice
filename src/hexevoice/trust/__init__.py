@@ -1,0 +1,1 @@
+"""Trust boundary for HexeVoice."""

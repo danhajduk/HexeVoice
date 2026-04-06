@@ -1,0 +1,1 @@
+"""Provider boundary for HexeVoice."""
