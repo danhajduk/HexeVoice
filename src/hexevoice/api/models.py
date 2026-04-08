@@ -26,7 +26,41 @@ class NodeStatusResponse(BaseModel):
     current_step_label: str
     trust_state: str
     operational_ready: bool
+    capability_status: str = "missing"
+    governance_sync_status: str = "pending_capability"
+    active_governance_version: str | None = None
+    governance_freshness_state: str | None = None
     blocking_reasons: list[str] = Field(default_factory=list)
+
+
+class CapabilitySetupReadinessFlags(BaseModel):
+    trust_state_valid: bool
+    node_identity_valid: bool
+    provider_selection_valid: bool
+    task_capability_selection_valid: bool
+    core_runtime_context_valid: bool
+
+
+class CapabilitySetupProviderSelectionResponse(BaseModel):
+    configured: bool
+    enabled_count: int
+    enabled: list[str] = Field(default_factory=list)
+    supported: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class CapabilitySetupTaskSelectionResponse(BaseModel):
+    configured: bool
+    selected_count: int
+    selected: list[str] = Field(default_factory=list)
+    available: list[str] = Field(default_factory=list)
+
+
+class CapabilitySetupResponse(BaseModel):
+    readiness_flags: CapabilitySetupReadinessFlags
+    provider_selection: CapabilitySetupProviderSelectionResponse
+    task_capability_selection: CapabilitySetupTaskSelectionResponse
+    blocking_reasons: list[str] = Field(default_factory=list)
+    declaration_allowed: bool = False
 
 
 class OnboardingStatusResponse(BaseModel):
@@ -46,6 +80,12 @@ class OnboardingStatusResponse(BaseModel):
     support_state: str | None = None
     trust_last_checked_at: str | None = None
     trust_message: str | None = None
+    capability_status: str = "missing"
+    governance_sync_status: str = "pending_capability"
+    operational_ready: bool = False
+    active_governance_version: str | None = None
+    governance_freshness_state: str | None = None
+    capability_setup: CapabilitySetupResponse | None = None
     last_error: str | None = None
     steps: list[OnboardingStepResponse] = Field(default_factory=list)
 

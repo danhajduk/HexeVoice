@@ -183,4 +183,24 @@ These routes now implement the Core Phase 2 progression:
 
 HexeVoice now treats Core's `operational_ready` projection as the source of truth for the final transition from `governance_sync` to `ready`.
 
+Current node-local status projection:
+
+- `GET /api/node/status`
+- `GET /api/onboarding/status`
+
+These local status payloads now include the richer operator-facing readiness data the frontend will need:
+
+- canonical current step and lifecycle projection
+- trust state plus explicit trust-support metadata
+- `capability_status` and `governance_sync_status`
+- `operational_ready` and governance freshness summary
+- `capability_setup` payload with:
+  - readiness flags
+  - provider selection state
+  - task capability selection state
+  - blocking reasons
+  - declaration allowance
+
+This keeps Core's `operational-status` route as the canonical readiness source while making the local node API the canonical source for setup gating detail.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

@@ -58,3 +58,9 @@ Chosen fix: Add Core client methods and local service boundaries for capability 
 What changed: Added capability declaration persistence and route, governance current/refresh services and routes, operational-status polling and persistence, expanded public models with capability/governance/readiness fields, updated runtime status/readiness projections, and added end-to-end Phase 2 tests covering declaration through operational readiness.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_phase2.py tests/test_provider_setup.py tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py tests/test_readiness.py` (31 passed).
 ###########
+Task #011
+Step objective: Expand the local status payloads so the frontend can render setup readiness and blocking detail directly from the node API instead of reconstructing it client-side.
+Chosen fix: Add richer status model fields plus a structured `capability_setup` object to the local onboarding/status payloads, projecting readiness flags, provider/task setup summaries, blocking reasons, and Phase 2 readiness state from persisted node-local data.
+What changed: Expanded node and onboarding status response models, added local capability-setup payload generation in the runtime service, surfaced capability/governance readiness details alongside the canonical step projection, and updated API/runtime tests to validate the richer payloads.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_onboarding.py tests/test_api.py tests/test_phase2.py tests/test_provider_setup.py tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_bootstrap_discovery.py tests/test_persistence.py tests/test_config.py tests/test_readiness.py` (31 passed).
+###########

@@ -19,6 +19,8 @@ def test_onboarding_payload_uses_canonical_first_step():
     assert payload.current_step_label == "Node Identity"
     assert payload.lifecycle_state == "unconfigured"
     assert payload.next_action == "configure_node_identity"
+    assert payload.capability_setup is not None
+    assert payload.capability_setup.readiness_flags.trust_state_valid is False
     assert len(payload.steps) == 10
     assert payload.steps[0].current is True
     assert payload.steps[0].step_id == "node_identity"
@@ -56,6 +58,8 @@ def test_runtime_service_resumes_from_persisted_onboarding_state(tmp_path):
     assert status.lifecycle_state == "capability_setup_pending"
     assert onboarding.onboarding_state == "trust_activated"
     assert onboarding.next_action == "configure_provider_setup"
+    assert onboarding.capability_setup is not None
+    assert onboarding.capability_setup.readiness_flags.trust_state_valid is True
 
 
 def test_setup_saves_move_resume_step_forward(tmp_path):

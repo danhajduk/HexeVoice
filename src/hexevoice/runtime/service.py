@@ -1,5 +1,9 @@
 from hexevoice.api.models import (
     ApiHealthResponse,
+    CapabilitySetupProviderSelectionResponse,
+    CapabilitySetupReadinessFlags,
+    CapabilitySetupResponse,
+    CapabilitySetupTaskSelectionResponse,
     CapabilitySummaryResponse,
     GovernanceReadinessResponse,
     NodeStatusResponse,
@@ -126,6 +130,50 @@ class NodeRuntimeService:
         }
         return labels.get(current_step_id, labels[initial_onboarding_step().step_id])
 
+    def _capability_setup_payload(self, state=None) -> CapabilitySetupResponse:
+        onboarding_state = state or self._state()
+        enabled_providers = onboarding_state.provider_setup.enabled_providers
+        supported_providers = onboarding_state.provider_setup.supported_providers or [self._settings.provider_id]
+        selected_task_families = onboarding_state.capability_declaration.declared_task_families
+        available_task_families = ["voice.inference"]
+        readiness_flags = CapabilitySetupReadinessFlags(
+            trust_state_valid=onboarding_state.trust_activation.trust_status == "trusted",
+            node_identity_valid=bool(onboarding_state.trust_activation.node_id),
+            provider_selection_valid=bool(enabled_providers),
+            task_capability_selection_valid=bool(selected_task_families) or onboarding_state.capability_declaration.capability_status != "missing",
+            core_runtime_context_valid=bool(onboarding_state.pre_trust.core_base_url),
+        )
+        blocking_reasons = list(dict.fromkeys(onboarding_state.provider_setup.blocking_reasons or self._blocking_reasons("provider_setup")))
+        declaration_allowed = (
+            onboarding_state.provider_setup.declaration_allowed
+            or (
+                readiness_flags.trust_state_valid
+                and readiness_flags.node_identity_valid
+                and readiness_flags.provider_selection_valid
+            )
+        )
+        return CapabilitySetupResponse(
+            readiness_flags=readiness_flags,
+            provider_selection=CapabilitySetupProviderSelectionResponse(
+                configured=bool(enabled_providers),
+                enabled_count=len(enabled_providers),
+                enabled=enabled_providers,
+                supported={
+                    "cloud": supported_providers,
+                    "local": [],
+                    "future": [],
+                },
+            ),
+            task_capability_selection=CapabilitySetupTaskSelectionResponse(
+                configured=bool(selected_task_families) or onboarding_state.capability_declaration.capability_status != "missing",
+                selected_count=len(selected_task_families),
+                selected=selected_task_families,
+                available=available_task_families,
+            ),
+            blocking_reasons=blocking_reasons,
+            declaration_allowed=declaration_allowed,
+        )
+
     def _step_payloads(self) -> list[OnboardingStepResponse]:
         onboarding_state = self._state()
         current_step = self._current_step(onboarding_state)
@@ -156,6 +204,10 @@ class NodeRuntimeService:
             current_step_id=current_step.step_id,
             current_step_label=current_step.label,
             trust_state=trust_state,
+            capability_status=onboarding_state.capability_declaration.capability_status,
+            governance_sync_status=onboarding_state.governance_sync.governance_sync_status,
+            active_governance_version=onboarding_state.operational_status.active_governance_version,
+            governance_freshness_state=onboarding_state.operational_status.governance_freshness_state,
             operational_ready=onboarding_state.operational_status.operational_ready,
             blocking_reasons=blockers,
         )
@@ -181,6 +233,12 @@ class NodeRuntimeService:
             support_state=persisted_state.trust_activation.support_state,
             trust_last_checked_at=persisted_state.trust_activation.trust_last_checked_at,
             trust_message=persisted_state.trust_activation.support_message,
+            capability_status=persisted_state.capability_declaration.capability_status,
+            governance_sync_status=persisted_state.governance_sync.governance_sync_status,
+            operational_ready=persisted_state.operational_status.operational_ready,
+            active_governance_version=persisted_state.operational_status.active_governance_version,
+            governance_freshness_state=persisted_state.operational_status.governance_freshness_state,
+            capability_setup=self._capability_setup_payload(persisted_state),
             last_error=persisted_state.onboarding_session.last_error,
             steps=self._step_payloads(),
         )

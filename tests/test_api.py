@@ -13,6 +13,8 @@ def test_status_endpoint():
     assert response.json()["trust_state"] == "untrusted"
     assert response.json()["lifecycle_state"] == "unconfigured"
     assert response.json()["current_step_id"] == "node_identity"
+    assert response.json()["capability_status"] == "missing"
+    assert response.json()["governance_sync_status"] == "pending_capability"
 
 
 def test_standard_route_groups_exist():
@@ -22,6 +24,7 @@ def test_standard_route_groups_exist():
     assert onboarding.status_code == 200
     assert onboarding.json()["current_step_id"] == "node_identity"
     assert len(onboarding.json()["steps"]) == 10
+    assert onboarding.json()["capability_setup"]["readiness_flags"]["trust_state_valid"] is False
     assert client.get("/api/onboarding/local-setup").status_code == 200
     assert client.get("/api/onboarding/bootstrap-discovery").status_code == 200
     assert client.post("/api/onboarding/session/start").status_code == 400
@@ -69,6 +72,7 @@ def test_status_endpoint_reads_persisted_onboarding_state(tmp_path):
     assert payload["trust_state"] == "trusted"
     assert payload["current_step_id"] == "provider_setup"
     assert payload["lifecycle_state"] == "capability_setup_pending"
+    assert payload["capability_status"] == "missing"
 
 
 def test_local_setup_endpoints_persist_node_identity_and_core_connection(tmp_path):
@@ -484,6 +488,8 @@ def test_provider_setup_enables_provider_and_advances_to_capability_declaration(
     onboarding_status = client.get("/api/onboarding/status")
     assert onboarding_status.status_code == 200
     assert onboarding_status.json()["current_step_id"] == "capability_declaration"
+    assert onboarding_status.json()["capability_setup"]["provider_selection"]["enabled"] == ["voice"]
+    assert onboarding_status.json()["capability_setup"]["declaration_allowed"] is True
 
     capability_status = client.get("/api/capabilities")
     assert capability_status.status_code == 200
@@ -620,3 +626,5 @@ def test_capability_declaration_governance_and_operational_status_flow(tmp_path,
     assert node_status.status_code == 200
     assert node_status.json()["current_step_id"] == "ready"
     assert node_status.json()["operational_ready"] is True
+    assert node_status.json()["capability_status"] == "accepted"
+    assert node_status.json()["governance_sync_status"] == "issued"
