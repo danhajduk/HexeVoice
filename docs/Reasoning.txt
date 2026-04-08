@@ -82,3 +82,9 @@ Chosen fix: Add frontend client methods for local-setup and bootstrap routes, ex
 What changed: Added local-setup/bootstrap API helpers, wired app refresh support into the onboarding shell, added interactive forms for node identity and Core connection, added bootstrap test and retained advertisement validation controls, and extended shared component CSS with form and action styles.
 Verification: `cd frontend && npm install && npm run build` (passed).
 ###########
+Task #015
+Step objective: Implement the registration, approval, and trust activation steps with real controls and operator-visible recovery context.
+Chosen fix: Add frontend client methods for session start, finalize polling, and trust activation finalize, then extend the onboarding stage-card renderer to expose those actions along with session metadata and terminal outcome messaging.
+What changed: Added Phase 1 action API helpers, wired registration/approval/trust-activation actions into the onboarding panel, surfaced approval/session metadata and recovery messaging for terminal outcomes, and added a neutral callout tone for status-first stage messaging.
+Verification: `cd frontend && npm install && npm run build` (passed).
+###########

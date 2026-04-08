@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import {
+  finalizeTrustActivation,
   getBootstrapDiscovery,
   getLocalSetup,
+  pollOnboardingSession,
   saveCoreConnection,
   saveNodeIdentity,
+  startOnboardingSession,
   testBootstrapConnection,
   validateBootstrapAdvertisement,
 } from "../../api/client";
@@ -86,6 +89,19 @@ function FormActions({ busyLabel, busy, label, onClick, secondaryLabel, onSecond
       ) : null}
     </div>
   );
+}
+
+function outcomeTone(sessionState) {
+  if (sessionState === "approved") {
+    return "success";
+  }
+  if (["rejected", "expired", "invalid", "consumed"].includes(sessionState)) {
+    return "danger";
+  }
+  if (sessionState === "pending") {
+    return "warning";
+  }
+  return "neutral";
 }
 
 function renderPreTrustStage({
@@ -267,6 +283,9 @@ function renderStageBody({
   onSaveConnection,
   onTestBootstrap,
   onValidateAdvertisement,
+  onStartSession,
+  onPollSession,
+  onFinalizeTrustActivation,
 }) {
   const stepId = onboarding?.current_step_id || "node_identity";
   const capabilitySetup = onboarding?.capability_setup;
@@ -314,7 +333,29 @@ function renderStageBody({
             <span className="fact-grid-label">Session State</span>
             <span className="fact-grid-value">{onboarding?.session_state || "pending"}</span>
           </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Expires At</span>
+            <span className="fact-grid-value">{onboarding?.expires_at || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Last Outcome</span>
+            <span className="fact-grid-value">{onboarding?.last_terminal_outcome || "none"}</span>
+          </div>
         </div>
+        <FormActions
+          busy={busyState === "approval-poll"}
+          busyLabel="Polling..."
+          label="Poll approval state"
+          onClick={onPollSession}
+          secondaryLabel="Start over"
+          onSecondaryClick={onStartSession}
+          secondaryDisabled={busyState !== ""}
+        />
+        {["rejected", "expired", "invalid", "consumed"].includes(onboarding?.session_state) ? (
+          <div className="callout callout-danger">
+            Finalize outcome: {onboarding.session_state}. Start a fresh onboarding session after reviewing the current approval state in Core.
+          </div>
+        ) : null}
       </>
     );
   }
@@ -335,7 +376,24 @@ function renderStageBody({
             <span className="fact-grid-label">Next Action</span>
             <span className="fact-grid-value">{onboarding?.next_action || "finalize_trust_activation"}</span>
           </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Session Outcome</span>
+            <span className="fact-grid-value">{onboarding?.session_state || "approved"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Node ID</span>
+            <span className="fact-grid-value">{status?.node_id || "Pending activation"}</span>
+          </div>
         </div>
+        <FormActions
+          busy={busyState === "trust-finalize"}
+          busyLabel="Finalizing..."
+          label="Finalize trust activation"
+          onClick={onFinalizeTrustActivation}
+          secondaryLabel="Poll approval again"
+          onSecondaryClick={onPollSession}
+          secondaryDisabled={busyState !== ""}
+        />
       </>
     );
   }
@@ -392,6 +450,29 @@ function renderStageBody({
           <span className="fact-grid-value">{onboarding?.next_action || "configure_node_identity"}</span>
         </div>
       </div>
+      {stepId === "registration" ? (
+        <>
+          <div className={`callout callout-${outcomeTone(onboarding?.session_state)}`}>
+            Registration creates the Core onboarding session and returns the approval URL the operator will use.
+          </div>
+          <div className="fact-grid">
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Session ID</span>
+              <span className="fact-grid-value">{onboarding?.session_id || "not started"}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Approval URL</span>
+              <span className="fact-grid-value stage-link">{onboarding?.approval_url || "will appear after start"}</span>
+            </div>
+          </div>
+          <FormActions
+            busy={busyState === "session-start"}
+            busyLabel="Starting..."
+            label="Start onboarding session"
+            onClick={onStartSession}
+          />
+        </>
+      ) : null}
     </>
   );
 }
@@ -546,11 +627,70 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     }
   }
 
+  async function handleSessionStart() {
+    setBusyState("session-start");
+    setStageError("");
+    setStageNotice("");
+    try {
+      await startOnboardingSession();
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice("Onboarding session started. Share the approval URL with the operator.");
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleSessionPoll() {
+    setBusyState("approval-poll");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await pollOnboardingSession();
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(`Finalize outcome: ${payload.session_state}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleTrustFinalize() {
+    setBusyState("trust-finalize");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await finalizeTrustActivation();
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(`Trust activation completed for ${payload.node_id}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
   const tone = toneForStep(onboarding?.current_step_id, status?.trust_state, status?.operational_ready);
-  const action = onboarding?.approval_url ? (
+  const action = onboarding?.current_step_id === "registration" ? (
+    <button className="btn btn-primary" type="button" onClick={handleSessionStart} disabled={busyState !== ""}>
+      {busyState === "session-start" ? "Starting..." : "Start session"}
+    </button>
+  ) : onboarding?.approval_url ? (
     <a className="status-pill status-pill-warning" href={onboarding.approval_url} target="_blank" rel="noreferrer">
       Open approval
     </a>
+  ) : onboarding?.current_step_id === "trust_activation" ? (
+    <button className="btn btn-primary" type="button" onClick={handleTrustFinalize} disabled={busyState !== ""}>
+      {busyState === "trust-finalize" ? "Finalizing..." : "Finalize trust"}
+    </button>
   ) : (
     <span className="status-pill status-pill-neutral">{onboarding?.next_action || "follow setup flow"}</span>
   );
@@ -577,6 +717,9 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         onSaveConnection: handleSaveConnection,
         onTestBootstrap: handleBootstrapTest,
         onValidateAdvertisement: handleAdvertisementValidation,
+        onStartSession: handleSessionStart,
+        onPollSession: handleSessionPoll,
+        onFinalizeTrustActivation: handleTrustFinalize,
       })}
     </StageCard>
   );

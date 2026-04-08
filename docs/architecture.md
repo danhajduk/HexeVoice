@@ -231,4 +231,12 @@ Frontend steps 1 through 3 now call the live node APIs for:
 
 The onboarding shell keeps local draft state in the browser, refreshes node/onboarding status after successful writes, and uses the persisted backend responses as the source of truth for progression into `registration`.
 
+Frontend steps 4 through 6 now expose the Phase 1 control actions in the onboarding shell:
+
+- registration session start
+- approval/finalize polling
+- trust activation finalize
+
+The current UI also surfaces session metadata and terminal finalize outcomes so operators can recover from duplicate, rejected, expired, invalid, or consumed approval sessions without losing context.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

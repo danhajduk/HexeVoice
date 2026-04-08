@@ -346,6 +346,12 @@
   color: #cbf5da;
 }
 
+.callout-neutral {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+}
+
 .error {
   color: var(--error);
 }

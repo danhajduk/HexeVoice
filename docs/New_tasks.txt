@@ -47,7 +47,6 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[WIP] Task 015: Implement frontend steps 4-6 for Registration, Approval, and Trust Activation
-[TODO] Task 016: Implement frontend steps 7-10 for Provider Setup, Capability Declaration, Governance Sync, and Ready
+[WIP] Task 016: Implement frontend steps 7-10 for Provider Setup, Capability Declaration, Governance Sync, and Ready
 [TODO] Task 017: Build the post-setup operational overview surfaces using the standard facts, state-grid, actions, and warning card patterns
 [TODO] Task 018: Add onboarding tests, UI validation, and operator docs aligned to the Core flow and visual source-of-truth standards

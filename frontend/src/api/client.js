@@ -58,3 +58,15 @@ export async function testBootstrapConnection() {
 export async function validateBootstrapAdvertisement(payload) {
   return sendJson("/api/onboarding/bootstrap-discovery/advertisement", { method: "PUT", body: payload });
 }
+
+export async function startOnboardingSession() {
+  return sendJson("/api/onboarding/session/start");
+}
+
+export async function pollOnboardingSession() {
+  return sendJson("/api/onboarding/session/poll");
+}
+
+export async function finalizeTrustActivation() {
+  return sendJson("/api/onboarding/trust-activation/finalize");
+}
