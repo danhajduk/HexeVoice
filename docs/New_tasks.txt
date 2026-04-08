@@ -1,0 +1,67 @@
+Workflow skill: implementation workflow
+
+## Codex Execution Directive
+
+You are acting as the Hexe development agent.
+
+Your job is to implement tasks listed in this file sequentially.
+
+Rules:
+
+1. Work through tasks in numerical order.
+2. Continue executing tasks until ALL tasks are completed.
+3. Do not stop after partial implementation.
+4. Do not return summaries unless every task is finished.
+5. If a task cannot be completed:
+   - document the blocker
+   - implement everything else that is possible
+   - continue to the next task.
+
+Execution behavior:
+
+- Read the repository before modifying code.
+- Follow existing architecture and coding conventions.
+- Update or create files as required.
+- Run tests or validation where possible.
+- Commit after each completed task.
+
+Completion criteria:
+
+A task is considered complete only when:
+- implementation exists in the codebase
+- it compiles or runs without breaking existing features
+- any required documentation is updated
+
+Persistence rule:
+
+Continue working autonomously until all tasks in this document are completed.
+Do not stop early.
+
+if there is missing data for the task check in the @Core-Documents folder.for core documentation
+if it is not present and should be core-owned create a ticket for the req. data in the core dodc
+if it is not present and should be node-owned create a file with the new data in the core docs
+
+Standards reference:
+- Main standard entrypoint: `/home/dan/Projects/Hexe/docs/standards/Node/README.md`
+- Detailed standards folder: `/home/dan/Projects/Hexe/docs/standards/Node/`
+
+Do not edit above this line:
+#######################################################################
+[TODO] Task 001: Define the HexeVoice Phase 0 onboarding model from the canonical Core lifecycle and node UI standards
+[TODO] Task 002: Implement backend persistence for pre-trust setup, onboarding sessions, trust activation, and resume state
+[TODO] Task 003: Add backend local setup APIs for Node Identity and Core Connection inputs
+[TODO] Task 004: Implement bootstrap MQTT discovery and Core advertisement validation for Bootstrap Discovery
+[TODO] Task 005: Implement onboarding session start for Registration using the Core node onboarding contract
+[TODO] Task 006: Implement Approval visibility, session polling, and operator-facing approval metadata
+[TODO] Task 007: Implement Trust Activation finalize flow and secure persistence of activation payload fields
+[TODO] Task 008: Add trusted resume and explicit trust-loss handling using the Core trust-status contract
+[TODO] Task 009: Implement backend Provider Setup state and capability-setup readiness gating
+[TODO] Task 010: Implement backend Capability Declaration, Governance Sync, and operational-status polling surfaces
+[TODO] Task 011: Expand node-local status APIs to project the canonical 10-step lifecycle, readiness flags, and blocking reasons
+[TODO] Task 012: Implement the shared Hexe node theme tokens, page shell, card system, and responsive layout for HexeVoice
+[TODO] Task 013: Build the frontend onboarding shell with hero, setup sidebar, stage cards, callouts, and status language aligned to the node UI standard
+[TODO] Task 014: Implement frontend steps 1-3 for Node Identity, Core Connection, and Bootstrap Discovery
+[TODO] Task 015: Implement frontend steps 4-6 for Registration, Approval, and Trust Activation
+[TODO] Task 016: Implement frontend steps 7-10 for Provider Setup, Capability Declaration, Governance Sync, and Ready
+[TODO] Task 017: Build the post-setup operational overview surfaces using the standard facts, state-grid, actions, and warning card patterns
+[TODO] Task 018: Add onboarding tests, UI validation, and operator docs aligned to the Core flow and visual source-of-truth standards

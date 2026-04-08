@@ -200,14 +200,18 @@ This should be treated as an optional later capability, not a required MVP depen
 
 ## Public Capabilities
 
-HexeVoice should expose client-usable capabilities such as:
+HexeVoice should expose client-usable capabilities using the format:
 
-- `voice.wake_stream`
-- `voice.transcribe`
-- `voice.synthesize`
-- `voice.command_interpret`
-- `voice.endpoint_session`
-- `voice.conversation_session`
+- `task.<capability>`
+
+Initial capability candidates:
+
+- `task.wake_stream`
+- `task.transcribe`
+- `task.synthesize`
+- `task.command_interpret`
+- `task.endpoint_session`
+- `task.conversation_session`
 
 These are external service capabilities.
 Internal implementation details like VAD, arbitration, and provider routing should not be treated as standalone public capabilities unless intentionally exposed later.
