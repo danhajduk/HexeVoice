@@ -19,5 +19,5 @@ sed "s|__ROOT_DIR__|$ROOT_DIR|g; s|__ENV_FILE__|$ENV_FILE|g; s|__FRONTEND_CMD__|
   "$ROOT_DIR/scripts/systemd/hexevoice-frontend.service.in" > "$SYSTEMD_DIR/$FRONTEND_SERVICE_NAME"
 
 systemctl --user daemon-reload
-systemctl --user enable --now "$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME"
+systemctl --user restart "$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME"
 echo "Installed and started: $BACKEND_SERVICE_NAME, $FRONTEND_SERVICE_NAME"
