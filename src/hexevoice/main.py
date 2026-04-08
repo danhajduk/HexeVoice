@@ -19,6 +19,7 @@ from hexevoice.api.models import (
     ProviderStatusResponse,
     ServiceStatusResponse,
     TrustActivationFinalizeResponse,
+    TrustStatusRefreshResponse,
 )
 from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
@@ -28,6 +29,7 @@ from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.onboarding.trust_activation import TrustActivationService
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.trust.status import TrustStatusService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -44,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         onboarding_state_store=onboarding_state_store,
     )
     trust_activation_service = TrustActivationService(onboarding_state_store=onboarding_state_store)
+    trust_status_service = TrustStatusService(onboarding_state_store=onboarding_state_store)
     service = NodeRuntimeService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     app = FastAPI(title="HexeVoice")
 
@@ -104,6 +107,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/onboarding/trust-activation/finalize", response_model=TrustActivationFinalizeResponse)
     async def onboarding_trust_activation_finalize() -> TrustActivationFinalizeResponse:
         return trust_activation_service.finalize_activation()
+
+    @app.post("/api/onboarding/trust-status/refresh", response_model=TrustStatusRefreshResponse)
+    async def onboarding_trust_status_refresh() -> TrustStatusRefreshResponse:
+        return trust_status_service.refresh_status()
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:

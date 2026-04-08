@@ -73,6 +73,15 @@ class TrustActivationState(BaseModel):
     source_session_id: str | None = None
     trusted_at: str | None = None
     activation_applied_at: str | None = None
+    supported: bool | None = None
+    support_state: str | None = None
+    registry_present: bool | None = None
+    registry_state: str | None = None
+    revoked_at: str | None = None
+    revocation_reason: str | None = None
+    revocation_action: str | None = None
+    support_message: str | None = None
+    trust_last_checked_at: str | None = None
 
 
 class ResumeState(BaseModel):

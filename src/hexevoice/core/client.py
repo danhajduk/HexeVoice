@@ -21,3 +21,12 @@ class CoreOnboardingClient:
         )
         response.raise_for_status()
         return response.json()
+
+    def get_trust_status(self, *, core_base_url: str, node_id: str, node_trust_token: str) -> dict:
+        response = httpx.get(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/trust-status/{node_id}",
+            headers={"X-Node-Trust-Token": node_trust_token},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()

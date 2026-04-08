@@ -40,3 +40,9 @@ Chosen fix: Add a local trust activation finalize service/route that promotes th
 What changed: Expanded persisted trust activation fields to cover the canonical Core payload, added `POST /api/onboarding/trust-activation/finalize`, kept secret-bearing fields out of public API responses, added tests for one-time activation consumption and API-level trusted-state projection, and documented the trust activation boundary.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (21 passed).
 ###########
+Task #008
+Step objective: Resume trusted state safely after restart and use Core's explicit trust-status contract to detect revocation or removal without guessing from generic failures.
+Chosen fix: Add a trust-status refresh service/route that calls Core with the last issued trust token, persists support metadata locally, preserves post-trust resume when still supported, and moves the node back to re-onboarding when Core reports revoked or removed trust.
+What changed: Added Core trust-status client support, persisted trust support/revocation metadata, exposed `POST /api/onboarding/trust-status/refresh`, projected trust-loss details through onboarding status, added runtime blockers for revoked/removed trust, and added tests for supported resume plus revoked/removed re-onboarding behavior.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (24 passed).
+###########

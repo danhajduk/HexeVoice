@@ -136,4 +136,20 @@ Persisted trust activation fields now include:
 - `issued_at`
 - `source_session_id`
 
+Current trust resume and trust-loss API:
+
+- `POST /api/onboarding/trust-status/refresh`
+
+This route uses the canonical Core trust-status contract:
+
+- `GET {core_base_url}/api/system/nodes/trust-status/{node_id}`
+
+with the last issued `X-Node-Trust-Token` to distinguish:
+
+- supported trusted resume
+- explicit Core-side revocation
+- explicit Core-side node removal
+
+When Core still reports the node as supported and trusted, HexeVoice preserves trusted resume and keeps the node in the post-trust lifecycle. When Core reports `revoked` or `removed`, HexeVoice clears stale onboarding-session state, invalidates local trusted operation by dropping the operational MQTT token, records the explicit trust-loss metadata, and moves the local lifecycle back to `registration` for re-onboarding.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

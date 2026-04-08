@@ -47,6 +47,14 @@ class NodeRuntimeService:
         return onboarding_state.pre_trust.node_name or self._settings.node_name
 
     def _blocking_reasons(self, current_step_id: str) -> list[str]:
+        onboarding_state = self._state()
+        support_state = onboarding_state.trust_activation.support_state
+        trust_state = onboarding_state.trust_activation.trust_status
+        if trust_state == "revoked":
+            if support_state == "removed":
+                return ["node_removed_by_core", "re_onboarding_required"]
+            return ["trust_revoked_by_core", "re_onboarding_required"]
+
         blockers_by_step = {
             "node_identity": [
                 "node_identity_not_configured",
@@ -167,6 +175,9 @@ class NodeRuntimeService:
             session_state=persisted_state.onboarding_session.session_state,
             last_polled_at=persisted_state.onboarding_session.last_polled_at,
             last_terminal_outcome=persisted_state.onboarding_session.last_terminal_outcome,
+            support_state=persisted_state.trust_activation.support_state,
+            trust_last_checked_at=persisted_state.trust_activation.trust_last_checked_at,
+            trust_message=persisted_state.trust_activation.support_message,
             last_error=persisted_state.onboarding_session.last_error,
             steps=self._step_payloads(),
         )

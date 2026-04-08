@@ -27,6 +27,7 @@ def test_standard_route_groups_exist():
     assert client.post("/api/onboarding/session/start").status_code == 400
     assert client.post("/api/onboarding/session/poll").status_code == 400
     assert client.post("/api/onboarding/trust-activation/finalize").status_code == 400
+    assert client.post("/api/onboarding/trust-status/refresh").status_code == 400
     assert client.get("/api/capabilities").status_code == 200
     assert client.get("/api/governance/readiness").status_code == 200
     assert client.get("/api/services/status").status_code == 200
@@ -371,3 +372,73 @@ def test_trust_activation_finalize_persists_trusted_state(tmp_path):
     assert node_status.json()["node_id"] == "node-voice-123"
     assert node_status.json()["trust_state"] == "trusted"
     assert node_status.json()["current_step_id"] == "provider_setup"
+
+
+def test_trust_status_refresh_surfaces_removed_state_and_reonboarding(tmp_path, monkeypatch):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "core_base_url": "http://10.0.0.100:9001",
+                },
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "node_trust_token": "trust-token-123",
+                    "trust_status": "trusted",
+                    "operational_mqtt_token": "mqtt-token-123",
+                },
+                "resume": {
+                    "current_step_id": "ready",
+                    "last_completed_step_id": "governance_sync",
+                },
+            }
+        )
+    )
+
+    class TrustStatusResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "ok": True,
+                "node_id": "node-voice-123",
+                "trust_status": "revoked",
+                "supported": False,
+                "support_state": "removed",
+                "registry_present": False,
+                "registry_state": None,
+                "revoked_at": "2026-04-08T02:00:00+00:00",
+                "revocation_reason": "node_removed_by_admin",
+                "revocation_action": "remove",
+                "message": "This node was removed by Core and is no longer trusted.",
+            }
+
+    def fake_get(url, headers, timeout):
+        assert url == "http://10.0.0.100:9001/api/system/nodes/trust-status/node-voice-123"
+        assert headers == {"X-Node-Trust-Token": "trust-token-123"}
+        return TrustStatusResponse()
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    response = client.post("/api/onboarding/trust-status/refresh")
+    assert response.status_code == 200
+    assert response.json()["support_state"] == "removed"
+    assert response.json()["trust_state"] == "revoked"
+
+    onboarding_status = client.get("/api/onboarding/status")
+    assert onboarding_status.status_code == 200
+    assert onboarding_status.json()["current_step_id"] == "registration"
+    assert onboarding_status.json()["trust_state"] == "revoked"
+    assert onboarding_status.json()["support_state"] == "removed"
+    assert "no longer trusted" in onboarding_status.json()["trust_message"]
+
+    node_status = client.get("/api/node/status")
+    assert node_status.status_code == 200
+    assert node_status.json()["current_step_id"] == "registration"
+    assert node_status.json()["blocking_reasons"] == ["node_removed_by_core", "re_onboarding_required"]

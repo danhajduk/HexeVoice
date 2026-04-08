@@ -43,6 +43,9 @@ class OnboardingStatusResponse(BaseModel):
     session_state: str | None = None
     last_polled_at: str | None = None
     last_terminal_outcome: str | None = None
+    support_state: str | None = None
+    trust_last_checked_at: str | None = None
+    trust_message: str | None = None
     last_error: str | None = None
     steps: list[OnboardingStepResponse] = Field(default_factory=list)
 
@@ -139,6 +142,20 @@ class TrustActivationFinalizeResponse(BaseModel):
     operational_mqtt_host: str | None = None
     operational_mqtt_port: int | None = None
     activation_applied_at: str | None = None
+
+
+class TrustStatusRefreshResponse(BaseModel):
+    node_id: str
+    trust_state: str
+    supported: bool | None = None
+    support_state: str | None = None
+    registry_present: bool | None = None
+    registry_state: str | None = None
+    revoked_at: str | None = None
+    revocation_reason: str | None = None
+    revocation_action: str | None = None
+    trust_message: str | None = None
+    trust_last_checked_at: str | None = None
 
 
 class CapabilitySummaryResponse(BaseModel):
