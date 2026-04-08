@@ -1,3 +1,7 @@
+from datetime import UTC, datetime
+import socket
+import asyncio
+
 from hexevoice.api.models import (
     ApiHealthResponse,
     CapabilitySetupProviderSelectionResponse,
@@ -15,14 +19,25 @@ from hexevoice.api.models import (
 from hexevoice.config.settings import Settings
 from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
 from hexevoice.persistence import OnboardingStateStore
+from hexevoice.supervisor.client import SupervisorApiClient
 
 
 class NodeRuntimeService:
-    def __init__(self, *, settings: Settings, onboarding_state_store: OnboardingStateStore | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        settings: Settings,
+        onboarding_state_store: OnboardingStateStore | None = None,
+        supervisor_client: SupervisorApiClient | None = None,
+    ) -> None:
         self._settings = settings
         self._onboarding_state_store = onboarding_state_store or OnboardingStateStore(
             path=settings.resolved_onboarding_state_path()
         )
+        self._supervisor_client = supervisor_client
+        self._supervisor_registered = False
+        self._supervisor_last_error: str | None = None
+        self._supervisor_last_seen: str | None = None
 
     def api_health_payload(self) -> ApiHealthResponse:
         return ApiHealthResponse(status="ok", version=self._settings.node_software_version)
@@ -267,6 +282,99 @@ class NodeRuntimeService:
             frontend="defined",
             scheduler="not_started",
         )
+
+    def _supervisor_runtime_payload(self) -> dict[str, object]:
+        onboarding_state = self._state()
+        node_id = onboarding_state.trust_activation.node_id
+        if not node_id:
+            return {}
+        node_name = onboarding_state.pre_trust.node_name or self._settings.node_name or node_id
+        host_id = socket.gethostname()
+        api_base_url = f"http://{self._settings.api_host}:{self._settings.api_port}"
+        runtime_state = "running" if self.readiness_payload().operational_ready else "unknown"
+        services = [
+            {
+                "service_id": "backend",
+                "service_name": "backend",
+                "state": runtime_state,
+                "boot_order": 10,
+            },
+            {
+                "service_id": "frontend",
+                "service_name": "frontend",
+                "state": runtime_state,
+                "boot_order": 20,
+            },
+        ]
+        runtime_metadata = {
+            "node_software_version": self._settings.node_software_version,
+            "boot_order": 30,
+            "node_dependencies": ["node_type:ai-node", "mqtt"],
+            "services": services,
+        }
+        return {
+            "node_id": node_id,
+            "node_name": node_name,
+            "node_type": self._settings.node_type,
+            "host_id": host_id,
+            "hostname": host_id,
+            "api_base_url": api_base_url,
+            "ui_base_url": None,
+            "desired_state": "running",
+            "runtime_state": runtime_state,
+            "lifecycle_state": runtime_state,
+            "health_status": "healthy" if runtime_state == "running" else "unknown",
+            "running": runtime_state == "running",
+            "resource_usage": {},
+            "runtime_metadata": runtime_metadata,
+        }
+
+    async def supervisor_heartbeat_once(self) -> dict | None:
+        client = self._supervisor_client
+        if client is None:
+            return {"status": "skipped", "reason": "supervisor_client_not_configured"}
+        payload = self._supervisor_runtime_payload()
+        node_id = str(payload.get("node_id") or "").strip()
+        if not node_id:
+            return {"status": "skipped", "reason": "missing_node_id"}
+        health = await asyncio.to_thread(client.health)
+        if not isinstance(health, dict):
+            self._supervisor_registered = False
+            self._supervisor_last_error = "supervisor_unreachable"
+            return {"status": "skipped", "reason": "supervisor_unreachable"}
+        status = str(health.get("status") or "").strip().lower()
+        ready = health.get("ready")
+        if status not in {"ok", "healthy"} or (ready is not None and not bool(ready)):
+            self._supervisor_registered = False
+            self._supervisor_last_error = "supervisor_not_ready"
+            return {"status": "skipped", "reason": "supervisor_not_ready"}
+        if not self._supervisor_registered:
+            registered = await asyncio.to_thread(client.register_runtime, payload)
+            if not isinstance(registered, dict):
+                self._supervisor_last_error = "supervisor_register_failed"
+                return {"status": "error", "reason": "supervisor_register_failed"}
+            self._supervisor_registered = True
+        heartbeat_payload = {
+            "node_id": payload.get("node_id"),
+            "host_id": payload.get("host_id"),
+            "hostname": payload.get("hostname"),
+            "api_base_url": payload.get("api_base_url"),
+            "ui_base_url": payload.get("ui_base_url"),
+            "runtime_state": payload.get("runtime_state"),
+            "lifecycle_state": payload.get("lifecycle_state"),
+            "health_status": payload.get("health_status"),
+            "running": payload.get("running"),
+            "resource_usage": payload.get("resource_usage", {}),
+            "runtime_metadata": payload.get("runtime_metadata", {}),
+        }
+        heartbeat = await asyncio.to_thread(client.heartbeat_runtime, heartbeat_payload)
+        if not isinstance(heartbeat, dict):
+            self._supervisor_registered = False
+            self._supervisor_last_error = "supervisor_heartbeat_failed"
+            return {"status": "error", "reason": "supervisor_heartbeat_failed"}
+        self._supervisor_last_error = None
+        self._supervisor_last_seen = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        return {"status": "ok", "supervisor": {"last_seen_at": self._supervisor_last_seen}}
 
     def provider_status_payload(self, *, provider_id: str) -> ProviderStatusResponse:
         state = self._state()

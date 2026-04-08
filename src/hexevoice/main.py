@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI
 import uvicorn
 
@@ -38,6 +40,7 @@ from hexevoice.onboarding.trust_activation import TrustActivationService
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.trust.status import TrustStatusService
 
 
@@ -62,8 +65,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         onboarding_state_store=onboarding_state_store,
     )
     governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
-    service = NodeRuntimeService(settings=app_settings, onboarding_state_store=onboarding_state_store)
+    supervisor_client = SupervisorApiClient()
+    service = NodeRuntimeService(
+        settings=app_settings,
+        onboarding_state_store=onboarding_state_store,
+        supervisor_client=supervisor_client,
+    )
     app = FastAPI(title="HexeVoice")
+
+    @app.on_event("startup")
+    async def start_supervisor_heartbeat():
+        async def loop():
+            while True:
+                await service.supervisor_heartbeat_once()
+                await asyncio.sleep(5)
+
+        asyncio.create_task(loop())
 
     @app.get("/health/live")
     async def health_live():
