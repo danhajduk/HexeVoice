@@ -70,3 +70,9 @@ Chosen fix: Port the shared dark `--sx-*` token family and shell grammar into th
 What changed: Added canonical design tokens and base theme CSS, rebuilt the page shell and responsive layout, upgraded cards/pills/callouts/facts grids, refreshed the current placeholder panels to use the new shared classes, added `frontend/index.html`, and updated `.gitignore` for frontend build artifacts and dependencies.
 Verification: `cd frontend && npm install`; `cd frontend && npm run build` (passed).
 ###########
+Task #013
+Step objective: Turn the themed frontend into a real onboarding shell that reflects the canonical setup flow and active stage instead of generic placeholder panels.
+Chosen fix: Fetch onboarding status alongside node status, drive the setup sidebar from the canonical steps array, and replace the onboarding placeholder with a stage-card renderer that uses operator callouts and stage-aware status language.
+What changed: Added onboarding-status fetch support, updated the app shell to use onboarding-derived step context, upgraded the status card to include onboarding metadata, replaced the onboarding placeholder with a stage-card shell for pre-trust, approval, trust activation, and post-trust states, and extended shared CSS for stage-card presentation and current/completed flow markers.
+Verification: `cd frontend && npm install && npm run build` (passed).
+###########

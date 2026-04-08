@@ -213,4 +213,13 @@ Frontend visual foundation now uses the shared Hexe node shell under `frontend/s
 
 The frontend also now has its missing Vite `index.html` entrypoint, so the app can be built locally with `npm install` followed by `npm run build` from `frontend/`.
 
+The onboarding frontend shell now consumes `GET /api/onboarding/status` alongside `GET /api/node/status` and renders:
+
+- current-stage hero context
+- setup-flow sidebar from the canonical 10-step list
+- stage-card presentation for the active onboarding step
+- operator callouts for approval, trust activation, post-trust setup, and blocked readiness
+
+This gives the frontend a real stage-aware setup surface before step-specific forms and actions are added in later tasks.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

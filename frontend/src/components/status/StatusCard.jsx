@@ -1,4 +1,4 @@
-export function StatusCard({ status, error }) {
+export function StatusCard({ status, onboarding, error }) {
   const blockers = status?.blocking_reasons || [];
 
   return (
@@ -14,7 +14,7 @@ export function StatusCard({ status, error }) {
       <div className="status-grid">
         <div className="status-item">
           <span className="status-label">Current Step</span>
-          <span className="status-value">{status?.current_step_label || "loading"}</span>
+          <span className="status-value">{onboarding?.current_step_label || status?.current_step_label || "loading"}</span>
         </div>
         <div className="status-item">
           <span className="status-label">Blocking Reasons</span>
@@ -26,7 +26,7 @@ export function StatusCard({ status, error }) {
         </div>
         <div className="status-item">
           <span className="status-label">Governance State</span>
-          <span className="status-value">{status?.governance_sync_status || "pending"}</span>
+          <span className="status-value">{onboarding?.governance_sync_status || status?.governance_sync_status || "pending"}</span>
         </div>
       </div>
       <div className="callout">

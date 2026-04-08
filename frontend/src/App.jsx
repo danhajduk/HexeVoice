@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getNodeStatus } from "./api/client";
+import { getNodeStatus, getOnboardingStatus } from "./api/client";
 import { StatusCard } from "./components/status/StatusCard";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
 import { OperationalPanel } from "./features/operational/OperationalPanel";
@@ -24,15 +24,18 @@ function statusTone(status) {
 
 export default function App() {
   const [status, setStatus] = useState(null);
+  const [onboarding, setOnboarding] = useState(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let mounted = true;
-    getNodeStatus()
-      .then((payload) => {
-        if (mounted) {
-          setStatus(payload);
+    Promise.all([getNodeStatus(), getOnboardingStatus()])
+      .then(([statusPayload, onboardingPayload]) => {
+        if (!mounted) {
+          return;
         }
+        setStatus(statusPayload);
+        setOnboarding(onboardingPayload);
       })
       .catch((err) => {
         if (mounted) {
@@ -52,7 +55,7 @@ export default function App() {
             <div className="eyebrow-row">
               <span className="eyebrow">Hexe Node Console</span>
               <span className={`status-pill status-pill-${statusTone(status)}`}>
-                {status?.current_step_label || "Loading status"}
+                {onboarding?.current_step_label || status?.current_step_label || "Loading status"}
               </span>
             </div>
             <h1 className="app-title">HexeVoice</h1>
@@ -63,7 +66,7 @@ export default function App() {
             <div className="hero-facts">
               <div className="fact-card">
                 <span className="fact-label">Lifecycle</span>
-                <span className="fact-value">{status?.lifecycle_state || "loading"}</span>
+                <span className="fact-value">{onboarding?.lifecycle_state || status?.lifecycle_state || "loading"}</span>
               </div>
               <div className="fact-card">
                 <span className="fact-label">Trust</span>
@@ -75,7 +78,7 @@ export default function App() {
               </div>
             </div>
           </div>
-          <StatusCard status={status} error={error} />
+          <StatusCard status={status} onboarding={onboarding} error={error} />
         </section>
 
         <section className="shell-grid">
@@ -87,8 +90,11 @@ export default function App() {
                 operation.
               </p>
               <div className="step-list">
-                {(status?.steps || []).map((step, index) => (
-                  <div key={step.step_id} className="step-item">
+                {(onboarding?.steps || []).map((step, index) => (
+                  <div
+                    key={step.step_id}
+                    className={`step-item ${step.current ? "step-item-current" : ""} ${step.complete ? "step-item-complete" : ""}`}
+                  >
                     <span className="step-index">{index + 1}</span>
                     <div>
                       <span className="step-label">{step.label}</span>
@@ -101,7 +107,7 @@ export default function App() {
           </aside>
 
           <div className="main-grid">
-            <OnboardingPanel status={status} />
+            <OnboardingPanel status={status} onboarding={onboarding} />
             <OperationalPanel status={status} />
             <ProviderPanel />
             <DiagnosticsPanel status={status} />

@@ -10,3 +10,4 @@ Task 009: Implement backend Provider Setup state and capability-setup readiness 
 Task 010: Implement backend Capability Declaration, Governance Sync, and operational-status polling surfaces - Completed on 04/07/2026 18:16
 Task 011: Expand node-local status APIs to project the canonical 10-step lifecycle, readiness flags, and blocking reasons - Completed on 04/07/2026 18:20
 Task 012: Implement the shared Hexe node theme tokens, page shell, card system, and responsive layout for HexeVoice - Completed on 04/07/2026 18:26
+Task 013: Build the frontend onboarding shell with hero, setup sidebar, stage cards, callouts, and status language aligned to the node UI standard - Completed on 04/07/2026 18:31

@@ -168,6 +168,15 @@
   border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+.step-item-current {
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+.step-item-complete {
+  border-color: color-mix(in oklab, var(--success) 36%, transparent);
+}
+
 .step-index {
   display: inline-flex;
   align-items: center;
@@ -199,17 +208,45 @@
   gap: 24px;
 }
 
-.panel {
+.panel,
+.stage-card {
   min-height: 220px;
 }
 
 .panel-header,
+.stage-card-header,
 .status-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.stage-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0)),
+    var(--panel-alt);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: var(--sx-radius-xl);
+  box-shadow: var(--sx-shadow-3);
+  padding: 22px;
+}
+
+.stage-tone-success {
+  border-color: color-mix(in oklab, var(--success) 34%, var(--panel-border));
+}
+
+.stage-tone-warning {
+  border-color: color-mix(in oklab, var(--warning) 32%, var(--panel-border));
+}
+
+.stage-tone-danger {
+  border-color: color-mix(in oklab, var(--error) 32%, var(--panel-border));
+}
+
+.stage-tone-neutral {
+  border-color: color-mix(in oklab, var(--accent) 18%, var(--panel-border));
 }
 
 .panel-title {
@@ -300,6 +337,10 @@
   color: var(--text);
 }
 
+.stage-link {
+  word-break: break-word;
+}
+
 .list-inline {
   margin: 0;
   padding-left: 18px;
@@ -334,6 +375,7 @@
   .hero-card,
   .status-card,
   .panel,
+  .stage-card,
   .rail-card {
     padding: 16px;
     border-radius: var(--sx-radius-lg);
