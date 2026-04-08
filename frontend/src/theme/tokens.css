@@ -1,9 +1,43 @@
 :root {
-  --panel-bg: rgba(255, 255, 255, 0.88);
-  --panel-border: #c7d8ea;
-  --bg: #edf4fb;
-  --text: #15212e;
-  --muted: #526477;
-  --error: #b42318;
-  --accent: #0c6ea8;
+  --sx-bg: 222 84% 5%;
+  --sx-panel: 222 50% 10%;
+  --sx-panel-alt: 222 42% 13%;
+  --sx-border: 217 20% 20%;
+  --sx-text: 210 40% 98%;
+  --sx-text-muted: 215 20% 65%;
+  --sx-accent: 262 83% 58%;
+  --sx-success: 142 71% 45%;
+  --sx-warning: 38 92% 50%;
+  --sx-danger: 0 84% 60%;
+
+  --sx-space-1: 4px;
+  --sx-space-2: 8px;
+  --sx-space-3: 12px;
+  --sx-space-4: 16px;
+  --sx-space-5: 24px;
+  --sx-space-6: 32px;
+  --sx-space-7: 40px;
+
+  --sx-radius-sm: 6px;
+  --sx-radius-md: 10px;
+  --sx-radius-lg: 14px;
+  --sx-radius-xl: 22px;
+  --sx-radius-pill: 999px;
+
+  --sx-shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --sx-shadow-2: 0 4px 10px rgba(0, 0, 0, 0.35);
+  --sx-shadow-3: 0 24px 80px rgba(0, 0, 0, 0.45);
+
+  --sx-font-sans: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+
+  --panel-bg: hsl(var(--sx-panel));
+  --panel-alt: hsl(var(--sx-panel-alt));
+  --panel-border: hsl(var(--sx-border));
+  --bg: hsl(var(--sx-bg));
+  --text: hsl(var(--sx-text));
+  --muted: hsl(var(--sx-text-muted));
+  --error: hsl(var(--sx-danger));
+  --accent: hsl(var(--sx-accent));
+  --success: hsl(var(--sx-success));
+  --warning: hsl(var(--sx-warning));
 }

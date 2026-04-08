@@ -1,0 +1,46 @@
+:root {
+  color-scheme: dark;
+  font-family: var(--sx-font-sans);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(124, 58, 237, 0.2) 0%, rgba(124, 58, 237, 0) 34%),
+    radial-gradient(circle at 88% 14%, rgba(34, 197, 94, 0.14) 0%, rgba(34, 197, 94, 0) 28%),
+    linear-gradient(180deg, #050913 0%, #070b17 38%, #04070f 100%);
+  color: var(--text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--sx-font-sans);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(124, 58, 237, 0.2) 0%, rgba(124, 58, 237, 0) 34%),
+    radial-gradient(circle at 88% 14%, rgba(34, 197, 94, 0.14) 0%, rgba(34, 197, 94, 0) 28%),
+    linear-gradient(180deg, #050913 0%, #070b17 38%, #04070f 100%);
+  color: var(--text);
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+code,
+pre {
+  font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}

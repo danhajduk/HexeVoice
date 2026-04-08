@@ -64,3 +64,9 @@ Chosen fix: Add richer status model fields plus a structured `capability_setup` 
 What changed: Expanded node and onboarding status response models, added local capability-setup payload generation in the runtime service, surfaced capability/governance readiness details alongside the canonical step projection, and updated API/runtime tests to validate the richer payloads.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_onboarding.py tests/test_api.py tests/test_phase2.py tests/test_provider_setup.py tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_bootstrap_discovery.py tests/test_persistence.py tests/test_config.py tests/test_readiness.py` (31 passed).
 ###########
+Task #012
+Step objective: Replace the starter frontend styling with the shared Hexe node visual foundation so later onboarding screens inherit the canonical shell and card system.
+Chosen fix: Port the shared dark `--sx-*` token family and shell grammar into the frontend theme, add the missing Vite entrypoint, and lightly restructure the current app panels so they render inside the new hero, rail, and card layout.
+What changed: Added canonical design tokens and base theme CSS, rebuilt the page shell and responsive layout, upgraded cards/pills/callouts/facts grids, refreshed the current placeholder panels to use the new shared classes, added `frontend/index.html`, and updated `.gitignore` for frontend build artifacts and dependencies.
+Verification: `cd frontend && npm install`; `cd frontend && npm run build` (passed).
+###########

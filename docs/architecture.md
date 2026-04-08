@@ -203,4 +203,14 @@ These local status payloads now include the richer operator-facing readiness dat
 
 This keeps Core's `operational-status` route as the canonical readiness source while making the local node API the canonical source for setup gating detail.
 
+Frontend visual foundation now uses the shared Hexe node shell under `frontend/src/theme/`:
+
+- canonical `--sx-*` dark design tokens
+- atmospheric dark page background
+- centered 90vw application frame
+- two-column shell layout with collapsible rail
+- shared card, pill, callout, and facts-grid styling
+
+The frontend also now has its missing Vite `index.html` entrypoint, so the app can be built locally with `npm install` followed by `npm run build` from `frontend/`.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

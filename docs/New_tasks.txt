@@ -47,8 +47,7 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[WIP] Task 012: Implement the shared Hexe node theme tokens, page shell, card system, and responsive layout for HexeVoice
-[TODO] Task 013: Build the frontend onboarding shell with hero, setup sidebar, stage cards, callouts, and status language aligned to the node UI standard
+[WIP] Task 013: Build the frontend onboarding shell with hero, setup sidebar, stage cards, callouts, and status language aligned to the node UI standard
 [TODO] Task 014: Implement frontend steps 1-3 for Node Identity, Core Connection, and Bootstrap Discovery
 [TODO] Task 015: Implement frontend steps 4-6 for Registration, Approval, and Trust Activation
 [TODO] Task 016: Implement frontend steps 7-10 for Provider Setup, Capability Declaration, Governance Sync, and Ready
