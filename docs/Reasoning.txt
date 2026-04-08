@@ -88,3 +88,9 @@ Chosen fix: Add frontend client methods for session start, finalize polling, and
 What changed: Added Phase 1 action API helpers, wired registration/approval/trust-activation actions into the onboarding panel, surfaced approval/session metadata and recovery messaging for terminal outcomes, and added a neutral callout tone for status-first stage messaging.
 Verification: `cd frontend && npm install && npm run build` (passed).
 ###########
+Task #016
+Step objective: Complete the onboarding UI by wiring the post-trust setup steps through provider setup, capability declaration, governance sync, and final readiness polling.
+Chosen fix: Add frontend client methods for the Phase 2 routes and extend the onboarding stage-card renderer with provider-selection controls, capability declaration actions, governance fetch/refresh actions, and operational-status polling.
+What changed: Added Phase 2 frontend API helpers, persisted provider-selection draft state in the onboarding panel, rendered step-aware controls for provider setup and capability declaration, surfaced governance bundle metadata and refresh actions, added ready-state operational polling, and extended shared CSS for selectable provider cards.
+Verification: `cd frontend && npm install && npm run build` (passed).
+###########

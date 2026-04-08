@@ -239,4 +239,13 @@ Frontend steps 4 through 6 now expose the Phase 1 control actions in the onboard
 
 The current UI also surfaces session metadata and terminal finalize outcomes so operators can recover from duplicate, rejected, expired, invalid, or consumed approval sessions without losing context.
 
+Frontend steps 7 through 10 now expose the remaining setup actions directly in the onboarding shell:
+
+- provider selection save
+- capability declaration
+- governance current/refresh
+- operational-status polling
+
+This means the full canonical 10-step flow is now present in the onboarding UI, with each step backed by the corresponding local or Core-facing API route.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

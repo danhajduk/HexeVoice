@@ -424,6 +424,47 @@
   margin-top: 16px;
 }
 
+.choice-list {
+  display: grid;
+  gap: 12px;
+}
+
+.choice-card {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--sx-radius-lg);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  text-align: left;
+}
+
+.choice-card-selected {
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+.choice-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.choice-copy {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+}
+
 .section-divider {
   height: 1px;
   margin: 22px 0;

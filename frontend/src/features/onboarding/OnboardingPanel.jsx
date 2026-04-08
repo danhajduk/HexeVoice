@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import {
+  declareCapabilities,
   finalizeTrustActivation,
   getBootstrapDiscovery,
+  getCapabilities,
   getLocalSetup,
+  getOperationalStatus,
+  getProviderSetup,
+  getGovernanceCurrent,
   pollOnboardingSession,
+  refreshGovernance,
   saveCoreConnection,
   saveNodeIdentity,
+  saveProviderSetup,
   startOnboardingSession,
   testBootstrapConnection,
   validateBootstrapAdvertisement,
@@ -286,6 +293,17 @@ function renderStageBody({
   onStartSession,
   onPollSession,
   onFinalizeTrustActivation,
+  providerSetup,
+  capabilities,
+  governanceCurrent,
+  operationalStatus,
+  providerForm,
+  onProviderToggle,
+  onProviderSave,
+  onDeclareCapabilities,
+  onGovernanceCurrent,
+  onGovernanceRefresh,
+  onOperationalPoll,
 }) {
   const stepId = onboarding?.current_step_id || "node_identity";
   const capabilitySetup = onboarding?.capability_setup;
@@ -399,6 +417,12 @@ function renderStageBody({
   }
 
   if (stepId === "provider_setup" || stepId === "capability_declaration" || stepId === "governance_sync" || stepId === "ready") {
+    const supportedProviders = providerSetup?.supported_providers || capabilitySetup?.provider_selection?.supported?.cloud || ["voice"];
+    const enabledProviders = providerSetup?.enabled_providers || providerForm?.enabled_providers || capabilitySetup?.provider_selection?.enabled || [];
+    const declarationStatus = capabilities?.capability_status || onboarding?.capability_status || "missing";
+    const governanceVersion = governanceCurrent?.governance_version || onboarding?.active_governance_version || "pending";
+    const readinessValue = operationalStatus?.operational_ready ?? onboarding?.operational_ready;
+
     return (
       <>
         <div className="callout">
@@ -408,7 +432,7 @@ function renderStageBody({
         <div className="fact-grid">
           <div className="fact-grid-item">
             <span className="fact-grid-label">Capability State</span>
-            <span className="fact-grid-value">{onboarding?.capability_status || "missing"}</span>
+            <span className="fact-grid-value">{declarationStatus}</span>
           </div>
           <div className="fact-grid-item">
             <span className="fact-grid-label">Governance State</span>
@@ -416,15 +440,127 @@ function renderStageBody({
           </div>
           <div className="fact-grid-item">
             <span className="fact-grid-label">Providers Enabled</span>
-            <span className="fact-grid-value">
-              {capabilitySetup?.provider_selection?.enabled?.join(", ") || "none"}
-            </span>
+            <span className="fact-grid-value">{enabledProviders.join(", ") || "none"}</span>
           </div>
           <div className="fact-grid-item">
             <span className="fact-grid-label">Readiness</span>
-            <span className="fact-grid-value">{onboarding?.operational_ready ? "operational" : "blocked"}</span>
+            <span className="fact-grid-value">{readinessValue ? "operational" : "blocked"}</span>
           </div>
         </div>
+        {stepId === "provider_setup" ? (
+          <>
+            <div className="section-divider" />
+            <div className="section-heading-inline">
+              <div>
+                <p className="panel-kicker">Provider Setup</p>
+                <h3 className="section-title">Select enabled providers</h3>
+              </div>
+            </div>
+            <div className="choice-list">
+              {supportedProviders.map((providerId) => {
+                const selected = enabledProviders.includes(providerId);
+                return (
+                  <button
+                    key={providerId}
+                    className={`choice-card ${selected ? "choice-card-selected" : ""}`}
+                    type="button"
+                    onClick={() => onProviderToggle(providerId)}
+                  >
+                    <span className="choice-check">{selected ? "✓" : ""}</span>
+                    <span className="choice-copy">
+                      <strong>{providerId}</strong>
+                      <span>Enable this provider for capability declaration.</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <FormActions
+              busy={busyState === "provider-save"}
+              busyLabel="Saving..."
+              label="Save provider setup"
+              onClick={onProviderSave}
+            />
+          </>
+        ) : null}
+        {stepId === "capability_declaration" ? (
+          <>
+            <div className="section-divider" />
+            <div className="callout">
+              Declare the node manifest to Core once provider selection is complete. The backend uses the canonical
+              task family and provider metadata already persisted locally.
+            </div>
+            <div className="fact-grid">
+              <div className="fact-grid-item">
+                <span className="fact-grid-label">Declared capabilities</span>
+                <span className="fact-grid-value">{capabilities?.declared?.join(", ") || "pending"}</span>
+              </div>
+              <div className="fact-grid-item">
+                <span className="fact-grid-label">Capability profile</span>
+                <span className="fact-grid-value">{capabilities?.capability_profile_id || "pending"}</span>
+              </div>
+            </div>
+            <FormActions
+              busy={busyState === "capability-declare"}
+              busyLabel="Declaring..."
+              label="Declare capabilities"
+              onClick={onDeclareCapabilities}
+            />
+          </>
+        ) : null}
+        {stepId === "governance_sync" ? (
+          <>
+            <div className="section-divider" />
+            <div className="fact-grid">
+              <div className="fact-grid-item">
+                <span className="fact-grid-label">Governance version</span>
+                <span className="fact-grid-value">{governanceVersion}</span>
+              </div>
+              <div className="fact-grid-item">
+                <span className="fact-grid-label">Refresh interval</span>
+                <span className="fact-grid-value">{governanceCurrent?.refresh_interval_s || "pending"}</span>
+              </div>
+            </div>
+            <FormActions
+              busy={busyState === "governance-refresh"}
+              busyLabel="Refreshing..."
+              label="Refresh governance"
+              onClick={onGovernanceRefresh}
+              secondaryLabel="Fetch current bundle"
+              onSecondaryClick={onGovernanceCurrent}
+              secondaryDisabled={busyState === "governance-current"}
+            />
+            {governanceCurrent?.governance_bundle ? (
+              <pre className="code-panel">{JSON.stringify(governanceCurrent.governance_bundle, null, 2)}</pre>
+            ) : null}
+          </>
+        ) : null}
+        {stepId === "ready" ? (
+          <>
+            <div className="section-divider" />
+            <div className="callout callout-success">
+              The node can now poll Core's operational-status projection to confirm end-to-end readiness and governance freshness.
+            </div>
+            <FormActions
+              busy={busyState === "operational-poll"}
+              busyLabel="Polling..."
+              label="Poll operational status"
+              onClick={onOperationalPoll}
+            />
+            {operationalStatus ? (
+              <div className="fact-grid">
+                <div className="fact-grid-item">
+                  <span className="fact-grid-label">Freshness</span>
+                  <span className="fact-grid-value">{operationalStatus.governance_freshness_state || "pending"}</span>
+                </div>
+                <div className="fact-grid-item">
+                  <span className="fact-grid-label">Governance version</span>
+                  <span className="fact-grid-value">{operationalStatus.active_governance_version || "pending"}</span>
+                </div>
+              </div>
+            ) : null}
+          </>
+        ) : null}
         {blockers.length > 0 ? (
           <div className="callout callout-warning">
             Blocking reasons: {blockers.join(", ")}
@@ -483,14 +619,24 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   const [identityForm, setIdentityForm] = useState(emptyIdentityForm);
   const [connectionForm, setConnectionForm] = useState(emptyConnectionForm);
   const [advertisementForm, setAdvertisementForm] = useState(emptyAdvertisementForm);
+  const [providerSetup, setProviderSetup] = useState(null);
+  const [capabilities, setCapabilities] = useState(null);
+  const [governanceCurrent, setGovernanceCurrent] = useState(null);
+  const [operationalStatus, setOperationalStatus] = useState(null);
+  const [providerForm, setProviderForm] = useState({ enabled_providers: [], default_provider: "voice" });
   const [busyState, setBusyState] = useState("");
   const [stageNotice, setStageNotice] = useState("");
   const [stageError, setStageError] = useState("");
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getLocalSetup(), getBootstrapDiscovery()])
-      .then(([setupPayload, bootstrapPayload]) => {
+    Promise.all([
+      getLocalSetup(),
+      getBootstrapDiscovery(),
+      getProviderSetup().catch(() => null),
+      getCapabilities().catch(() => null),
+    ])
+      .then(([setupPayload, bootstrapPayload, providerPayload, capabilityPayload]) => {
         if (!mounted) {
           return;
         }
@@ -518,6 +664,12 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           register_session: bootstrapPayload?.register_session_endpoint || "/api/system/nodes/onboarding/sessions",
           registrations: bootstrapPayload?.registrations_endpoint || "/api/system/nodes/registrations",
         });
+        setProviderSetup(providerPayload);
+        setCapabilities(capabilityPayload);
+        setProviderForm({
+          enabled_providers: providerPayload?.enabled_providers || [],
+          default_provider: providerPayload?.default_provider || providerPayload?.supported_providers?.[0] || "voice",
+        });
       })
       .catch((error) => {
         if (mounted) {
@@ -541,10 +693,29 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     setAdvertisementForm((current) => ({ ...current, [field]: value }));
   }
 
+  function updateProviderSelection(providerId) {
+    setProviderForm((current) => {
+      const enabled = current.enabled_providers.includes(providerId)
+        ? current.enabled_providers.filter((item) => item !== providerId)
+        : [...current.enabled_providers, providerId];
+      return {
+        enabled_providers: enabled,
+        default_provider: enabled.includes(current.default_provider) ? current.default_provider : enabled[0] || "",
+      };
+    });
+  }
+
   async function refreshSetupPanels() {
-    const [setupPayload, bootstrapPayload] = await Promise.all([getLocalSetup(), getBootstrapDiscovery()]);
+    const [setupPayload, bootstrapPayload, providerPayload, capabilityPayload] = await Promise.all([
+      getLocalSetup(),
+      getBootstrapDiscovery(),
+      getProviderSetup().catch(() => null),
+      getCapabilities().catch(() => null),
+    ]);
     setLocalSetup(setupPayload);
     setBootstrap(bootstrapPayload);
+    setProviderSetup(providerPayload);
+    setCapabilities(capabilityPayload);
     if (onRefresh) {
       await onRefresh();
     }
@@ -678,6 +849,108 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     }
   }
 
+  async function handleProviderSave() {
+    setBusyState("provider-save");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await saveProviderSetup(providerForm);
+      setProviderSetup(payload);
+      await refreshSetupPanels();
+      setStageNotice("Provider setup saved.");
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleDeclareCapabilities() {
+    setBusyState("capability-declare");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await declareCapabilities();
+      setCapabilities((current) => ({
+        ...(current || {}),
+        capability_status: payload.capability_status,
+        declared: payload.declared_capabilities,
+        capability_profile_id: payload.capability_profile_id,
+        accepted_at: payload.accepted_at,
+        governance_version: payload.governance_version,
+      }));
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(`Capability declaration ${payload.capability_status}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleGovernanceCurrent() {
+    setBusyState("governance-current");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await getGovernanceCurrent();
+      setGovernanceCurrent(payload);
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(`Loaded governance bundle ${payload.governance_version || "current"}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleGovernanceRefresh() {
+    setBusyState("governance-refresh");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await refreshGovernance();
+      if (payload?.governance_bundle || payload?.governance_version) {
+        setGovernanceCurrent((current) => ({
+          ...(current || {}),
+          governance_bundle: payload.governance_bundle || current?.governance_bundle || {},
+          governance_version: payload.governance_version || current?.governance_version || null,
+          refresh_interval_s: payload.refresh_interval_s || current?.refresh_interval_s || null,
+        }));
+      }
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(payload.updated ? "Governance bundle refreshed." : "Governance already current.");
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleOperationalPoll() {
+    setBusyState("operational-poll");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await getOperationalStatus();
+      setOperationalStatus(payload);
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(payload.operational_ready ? "Node is operationally ready." : "Operational readiness still blocked.");
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
   const tone = toneForStep(onboarding?.current_step_id, status?.trust_state, status?.operational_ready);
   const action = onboarding?.current_step_id === "registration" ? (
     <button className="btn btn-primary" type="button" onClick={handleSessionStart} disabled={busyState !== ""}>
@@ -720,6 +993,17 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         onStartSession: handleSessionStart,
         onPollSession: handleSessionPoll,
         onFinalizeTrustActivation: handleTrustFinalize,
+        providerSetup,
+        capabilities,
+        governanceCurrent,
+        operationalStatus,
+        providerForm,
+        onProviderToggle: updateProviderSelection,
+        onProviderSave: handleProviderSave,
+        onDeclareCapabilities: handleDeclareCapabilities,
+        onGovernanceCurrent: handleGovernanceCurrent,
+        onGovernanceRefresh: handleGovernanceRefresh,
+        onOperationalPoll: handleOperationalPoll,
       })}
     </StageCard>
   );

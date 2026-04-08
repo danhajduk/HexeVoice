@@ -70,3 +70,31 @@ export async function pollOnboardingSession() {
 export async function finalizeTrustActivation() {
   return sendJson("/api/onboarding/trust-activation/finalize");
 }
+
+export async function getProviderSetup() {
+  return fetchJson("/api/providers/setup");
+}
+
+export async function saveProviderSetup(payload) {
+  return sendJson("/api/providers/setup", { method: "PUT", body: payload });
+}
+
+export async function getCapabilities() {
+  return fetchJson("/api/capabilities");
+}
+
+export async function declareCapabilities() {
+  return sendJson("/api/capabilities/declaration");
+}
+
+export async function getGovernanceCurrent() {
+  return fetchJson("/api/governance/current");
+}
+
+export async function refreshGovernance() {
+  return sendJson("/api/governance/refresh");
+}
+
+export async function getOperationalStatus() {
+  return fetchJson("/api/node/operational-status");
+}
