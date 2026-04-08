@@ -5,7 +5,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore", case_sensitive=False)
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        case_sensitive=False,
+        populate_by_name=True,
+    )
 
     node_name: str = Field(default="hexevoice", alias="NODE_NAME")
     node_type: str = Field(default="voice-node", alias="NODE_TYPE")
@@ -13,4 +18,10 @@ class Settings(BaseSettings):
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=9000, alias="API_PORT")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
+    onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
     provider_id: str = Field(default="voice", alias="PROVIDER_ID")
+
+    def resolved_onboarding_state_path(self) -> Path:
+        if self.onboarding_state_path is not None:
+            return self.onboarding_state_path
+        return self.runtime_dir / "onboarding_state.json"

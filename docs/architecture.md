@@ -32,4 +32,14 @@ The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 
 The current runtime projects the first canonical state, `unconfigured`, while later Phase 0 tasks wire persistence, bootstrap discovery, trust activation, provider setup, and readiness progression into those steps.
 
+HexeVoice persists onboarding and trusted-resume state in a node-local onboarding store under `runtime/onboarding_state.json` by default.
+That store is the restart-safe boundary for:
+
+- pre-trust local setup inputs
+- onboarding session metadata
+- trust activation metadata
+- current-step and resume state
+
+Later Phase 0 tasks add the APIs and runtime transitions that mutate this store.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

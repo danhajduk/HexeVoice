@@ -4,3 +4,9 @@ Chosen fix: Add a dedicated onboarding model for the Core 10-step lifecycle, pro
 What changed: Added canonical onboarding step definitions, expanded API responses with current-step metadata and step lists, replaced placeholder lifecycle names with canonical Core states, and documented the lifecycle sequence.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_onboarding.py tests/test_api.py tests/test_readiness.py tests/test_scheduler.py` (6 passed); `PYTHONPATH=src .venv/bin/python` payload smoke check passed.
 ###########
+Task #002
+Step objective: Add restart-safe onboarding persistence for pre-trust setup, onboarding session metadata, trust activation metadata, and resume state.
+Chosen fix: Introduce a file-backed onboarding state store under `runtime/`, resolve its path from settings, and wire the runtime/API projections to read persisted trust and current-step state.
+What changed: Added onboarding persistence models and store, added settings support for the resolved onboarding-state path, wired persisted state into the runtime service and app factory, added round-trip and resume/API tests, and documented the persistence boundary.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_persistence.py tests/test_onboarding.py tests/test_api.py tests/test_config.py tests/test_readiness.py tests/test_scheduler.py` (11 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check passed for persisted `provider_setup` resume state.
+###########

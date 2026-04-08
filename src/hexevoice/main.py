@@ -11,12 +11,14 @@ from hexevoice.api.models import (
     ServiceStatusResponse,
 )
 from hexevoice.config.settings import Settings
+from hexevoice.persistence import OnboardingStateStore
 from hexevoice.runtime.service import NodeRuntimeService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
-    service = NodeRuntimeService(settings=app_settings)
+    onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
+    service = NodeRuntimeService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     app = FastAPI(title="HexeVoice")
 
     @app.get("/health/live")

@@ -10,43 +10,36 @@ from hexevoice.api.models import (
 )
 from hexevoice.config.settings import Settings
 from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
+from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 
 
 class NodeRuntimeService:
-    def __init__(self, *, settings: Settings) -> None:
+    def __init__(self, *, settings: Settings, onboarding_state_store: OnboardingStateStore | None = None) -> None:
         self._settings = settings
+        self._onboarding_state_store = onboarding_state_store or OnboardingStateStore(
+            path=settings.resolved_onboarding_state_path()
+        )
+        self._onboarding_state = self._onboarding_state_store.load()
 
     def api_health_payload(self) -> ApiHealthResponse:
         return ApiHealthResponse(status="ok", version=self._settings.node_software_version)
 
     def _current_step(self):
+        current_step_id = self._onboarding_state.normalized_current_step_id()
+        for step in CANONICAL_ONBOARDING_STEPS:
+            if step.step_id == current_step_id:
+                return step
         return initial_onboarding_step()
 
-    def _step_payloads(self) -> list[OnboardingStepResponse]:
-        current_step = self._current_step()
-        return [
-            OnboardingStepResponse(
-                step_id=step.step_id,
-                label=step.label,
-                lifecycle_state=step.lifecycle_state,
-                phase=step.phase,
-                current=step.step_id == current_step.step_id,
-            )
-            for step in CANONICAL_ONBOARDING_STEPS
-        ]
+    def _trust_state(self) -> str:
+        return self._onboarding_state.trust_activation.trust_status or "untrusted"
 
-    def status_payload(self) -> NodeStatusResponse:
-        current_step = self._current_step()
-        return NodeStatusResponse(
-            node_name=self._settings.node_name,
-            node_type=self._settings.node_type,
-            node_id=None,
-            lifecycle_state=current_step.lifecycle_state,
-            current_step_id=current_step.step_id,
-            current_step_label=current_step.label,
-            trust_state="untrusted",
-            operational_ready=False,
-            blocking_reasons=[
+    def _node_id(self) -> str | None:
+        return self._onboarding_state.trust_activation.node_id
+
+    def _blocking_reasons(self, current_step_id: str) -> list[str]:
+        blockers_by_step = {
+            "node_identity": [
                 "node_identity_not_configured",
                 "core_connection_not_configured",
                 "bootstrap_discovery_not_started",
@@ -54,17 +47,107 @@ class NodeRuntimeService:
                 "provider_setup_not_started",
                 "governance_sync_not_started",
             ],
+            "core_connection": [
+                "core_connection_not_configured",
+                "bootstrap_discovery_not_started",
+                "onboarding_session_not_started",
+                "provider_setup_not_started",
+                "governance_sync_not_started",
+            ],
+            "bootstrap_discovery": [
+                "bootstrap_discovery_not_started",
+                "onboarding_session_not_started",
+                "provider_setup_not_started",
+                "governance_sync_not_started",
+            ],
+            "registration": [
+                "onboarding_session_not_started",
+                "provider_setup_not_started",
+                "governance_sync_not_started",
+            ],
+            "approval": [
+                "approval_pending",
+                "provider_setup_not_started",
+                "governance_sync_not_started",
+            ],
+            "trust_activation": [
+                "trust_activation_pending",
+                "provider_setup_not_started",
+                "governance_sync_not_started",
+            ],
+            "provider_setup": [
+                "provider_setup_not_started",
+                "capability_declaration_not_started",
+                "governance_sync_not_started",
+            ],
+            "capability_declaration": [
+                "capability_declaration_not_started",
+                "governance_sync_not_started",
+            ],
+            "governance_sync": [
+                "governance_sync_not_started",
+            ],
+            "ready": [],
+        }
+        return blockers_by_step.get(current_step_id, blockers_by_step[initial_onboarding_step().step_id])
+
+    def _onboarding_state_label(self, current_step_id: str) -> tuple[str, str]:
+        labels = {
+            "node_identity": ("waiting_for_local_setup", "configure_node_identity"),
+            "core_connection": ("waiting_for_local_setup", "configure_core_connection"),
+            "bootstrap_discovery": ("bootstrap_pending", "run_bootstrap_discovery"),
+            "registration": ("ready_to_register", "start_onboarding_session"),
+            "approval": ("pending_approval", "review_approval_in_core"),
+            "trust_activation": ("approval_granted", "finalize_trust_activation"),
+            "provider_setup": ("trust_activated", "configure_provider_setup"),
+            "capability_declaration": ("capability_setup_pending", "declare_node_capabilities"),
+            "governance_sync": ("governance_pending", "refresh_governance"),
+            "ready": ("operational", "monitor_operational_state"),
+        }
+        return labels.get(current_step_id, labels[initial_onboarding_step().step_id])
+
+    def _step_payloads(self) -> list[OnboardingStepResponse]:
+        current_step = self._current_step()
+        step_ids = [step.step_id for step in CANONICAL_ONBOARDING_STEPS]
+        current_index = step_ids.index(current_step.step_id)
+        return [
+            OnboardingStepResponse(
+                step_id=step.step_id,
+                label=step.label,
+                lifecycle_state=step.lifecycle_state,
+                phase=step.phase,
+                complete=step_ids.index(step.step_id) < current_index,
+                current=step.step_id == current_step.step_id,
+            )
+            for step in CANONICAL_ONBOARDING_STEPS
+        ]
+
+    def status_payload(self) -> NodeStatusResponse:
+        current_step = self._current_step()
+        trust_state = self._trust_state()
+        blockers = self._blocking_reasons(current_step.step_id)
+        return NodeStatusResponse(
+            node_name=self._settings.node_name,
+            node_type=self._settings.node_type,
+            node_id=self._node_id(),
+            lifecycle_state=current_step.lifecycle_state,
+            current_step_id=current_step.step_id,
+            current_step_label=current_step.label,
+            trust_state=trust_state,
+            operational_ready=current_step.step_id == "ready" and trust_state == "trusted",
+            blocking_reasons=blockers,
         )
 
     def onboarding_payload(self) -> OnboardingStatusResponse:
         current_step = self._current_step()
+        onboarding_state, next_action = self._onboarding_state_label(current_step.step_id)
         return OnboardingStatusResponse(
-            onboarding_state="waiting_for_local_setup",
+            onboarding_state=onboarding_state,
             lifecycle_state=current_step.lifecycle_state,
-            trust_state="untrusted",
+            trust_state=self._trust_state(),
             current_step_id=current_step.step_id,
             current_step_label=current_step.label,
-            next_action="configure_node_identity",
+            next_action=next_action,
             steps=self._step_payloads(),
         )
 
