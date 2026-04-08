@@ -3,6 +3,8 @@ import uvicorn
 
 from hexevoice.api.models import (
     ApiHealthResponse,
+    BootstrapAdvertisementRequest,
+    BootstrapDiscoveryResponse,
     CapabilitySummaryResponse,
     CoreConnectionSetupRequest,
     CoreConnectionSetupResponse,
@@ -16,6 +18,7 @@ from hexevoice.api.models import (
     ServiceStatusResponse,
 )
 from hexevoice.config.settings import Settings
+from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
 from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.runtime.service import NodeRuntimeService
@@ -25,6 +28,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
+    bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     service = NodeRuntimeService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     app = FastAPI(title="HexeVoice")
 
@@ -59,6 +63,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.put("/api/onboarding/local-setup/core-connection", response_model=CoreConnectionSetupResponse)
     async def save_core_connection(payload: CoreConnectionSetupRequest) -> CoreConnectionSetupResponse:
         return onboarding_state_service.save_core_connection(payload)
+
+    @app.get("/api/onboarding/bootstrap-discovery", response_model=BootstrapDiscoveryResponse)
+    async def bootstrap_discovery_status() -> BootstrapDiscoveryResponse:
+        return bootstrap_service.status_payload()
+
+    @app.post("/api/onboarding/bootstrap-discovery/test-connection", response_model=BootstrapDiscoveryResponse)
+    async def bootstrap_discovery_test_connection() -> BootstrapDiscoveryResponse:
+        return bootstrap_service.test_connection()
+
+    @app.put("/api/onboarding/bootstrap-discovery/advertisement", response_model=BootstrapDiscoveryResponse)
+    async def bootstrap_discovery_validate_advertisement(
+        payload: BootstrapAdvertisementRequest,
+    ) -> BootstrapDiscoveryResponse:
+        return bootstrap_service.validate_advertisement(payload)
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:

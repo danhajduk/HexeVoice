@@ -36,3 +36,4 @@ def test_onboarding_state_store_roundtrip(tmp_path):
     assert loaded.onboarding_session.session_id == "session-123"
     assert loaded.trust_activation.node_id == "node-voice-123"
     assert loaded.normalized_current_step_id() == "provider_setup"
+    assert loaded.bootstrap_discovery.bootstrap_topic == "hexe/bootstrap/core"

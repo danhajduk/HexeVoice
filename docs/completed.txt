@@ -1,3 +1,4 @@
 Task 001: Define the HexeVoice Phase 0 onboarding model from the canonical Core lifecycle and node UI standards - Completed on 04/07/2026 17:36
 Task 002: Implement backend persistence for pre-trust setup, onboarding sessions, trust activation, and resume state - Completed on 04/07/2026 17:42
 Task 003: Add backend local setup APIs for Node Identity and Core Connection inputs - Completed on 04/07/2026 17:46
+Task 004: Implement bootstrap MQTT discovery and Core advertisement validation for Bootstrap Discovery - Completed on 04/07/2026 17:49

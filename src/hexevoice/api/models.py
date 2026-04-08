@@ -74,6 +74,36 @@ class LocalSetupStateResponse(BaseModel):
     core_connection: CoreConnectionSetupResponse
 
 
+class BootstrapAdvertisementRequest(BaseModel):
+    topic: str
+    api_base: str | None = None
+    mqtt_host: str | None = None
+    mqtt_port: int | None = None
+    onboarding_mode: str | None = None
+    onboarding_contract: str | None = None
+    onboarding_endpoints: dict[str, str] = Field(default_factory=dict)
+
+
+class BootstrapDiscoveryResponse(BaseModel):
+    configured: bool
+    bootstrap_topic: str
+    bootstrap_host: str | None = None
+    bootstrap_port: int
+    connection_status: str
+    advertisement_valid: bool
+    onboarding_mode: str | None = None
+    onboarding_contract: str | None = None
+    api_base: str | None = None
+    mqtt_host: str | None = None
+    mqtt_port: int | None = None
+    register_session_endpoint: str | None = None
+    registrations_endpoint: str | None = None
+    compatibility_register_endpoint: str | None = None
+    compatibility_ai_node_register_endpoint: str | None = None
+    last_checked_at: str | None = None
+    last_error: str | None = None
+
+
 class CapabilitySummaryResponse(BaseModel):
     configured: list[str] = Field(default_factory=list)
     declared: list[str] = Field(default_factory=list)

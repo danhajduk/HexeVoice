@@ -16,3 +16,9 @@ Chosen fix: Add a dedicated onboarding state service with GET/PUT local-setup AP
 What changed: Added local setup request/response models, implemented onboarding state service methods for node identity and core connection drafts, exposed new onboarding setup endpoints, advanced resume state into `core_connection` and `bootstrap_discovery`, and documented the new APIs.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_onboarding.py tests/test_api.py tests/test_persistence.py tests/test_config.py` (11 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check confirmed saved setup projects `node_name=kitchen-voice` and `current_step_id=bootstrap_discovery`.
 ###########
+Task #004
+Step objective: Implement bootstrap discovery validation and advance the lifecycle from `bootstrap_discovery` to `registration` after a valid Core bootstrap advertisement.
+Chosen fix: Add a bootstrap discovery service with connection-status persistence, contract validation for the retained Core bootstrap payload, and lifecycle advancement after a valid advertisement.
+What changed: Added bootstrap discovery persistence fields, bootstrap config defaults, bootstrap discovery request/response models, new bootstrap discovery endpoints, advertisement validation against the Core contract, and tests covering persistence and lifecycle advancement.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_bootstrap_discovery.py tests/test_api.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (13 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check confirmed valid bootstrap advertisement projects `current_step_id=registration`.
+###########

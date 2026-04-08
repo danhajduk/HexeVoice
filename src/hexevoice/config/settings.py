@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     api_port: int = Field(default=9000, alias="API_PORT")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
     onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
+    bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")
+    bootstrap_topic: str = Field(default="hexe/bootstrap/core", alias="BOOTSTRAP_TOPIC")
     provider_id: str = Field(default="voice", alias="PROVIDER_ID")
 
     def resolved_onboarding_state_path(self) -> Path:

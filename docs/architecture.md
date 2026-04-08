@@ -50,4 +50,21 @@ Current local setup APIs:
 
 These APIs own the pre-trust draft state for Node Identity and Core Connection and advance the local lifecycle projection into `core_connection` and `bootstrap_discovery` when the required data is present.
 
+Current bootstrap discovery APIs:
+
+- `GET /api/onboarding/bootstrap-discovery`
+- `POST /api/onboarding/bootstrap-discovery/test-connection`
+- `PUT /api/onboarding/bootstrap-discovery/advertisement`
+
+The bootstrap step currently validates:
+
+- bootstrap listener reachability on the configured bootstrap MQTT port
+- topic match for `hexe/bootstrap/core`
+- `onboarding_mode=api`
+- `onboarding_contract=global-node-v1`
+- `onboarding_endpoints.register_session=/api/system/nodes/onboarding/sessions`
+- `onboarding_endpoints.registrations=/api/system/nodes/registrations`
+
+When the bootstrap advertisement is accepted, the local lifecycle advances from `bootstrap_discovery` to `registration`.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

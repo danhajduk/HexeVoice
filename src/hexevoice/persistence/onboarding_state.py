@@ -32,6 +32,25 @@ class OnboardingSessionState(BaseModel):
     last_error: str | None = None
 
 
+class BootstrapDiscoveryState(BaseModel):
+    bootstrap_topic: str = "hexe/bootstrap/core"
+    bootstrap_host: str | None = None
+    bootstrap_port: int = 1884
+    connection_status: str = "pending"
+    last_checked_at: str | None = None
+    last_error: str | None = None
+    advertisement_valid: bool = False
+    onboarding_mode: str | None = None
+    onboarding_contract: str | None = None
+    api_base: str | None = None
+    mqtt_host: str | None = None
+    mqtt_port: int | None = None
+    register_session_endpoint: str | None = None
+    registrations_endpoint: str | None = None
+    compatibility_register_endpoint: str | None = None
+    compatibility_ai_node_register_endpoint: str | None = None
+
+
 class TrustActivationState(BaseModel):
     node_id: str | None = None
     paired_core_id: str | None = None
@@ -53,6 +72,7 @@ class ResumeState(BaseModel):
 class PersistedOnboardingState(BaseModel):
     schema_version: int = 1
     pre_trust: PreTrustSetupState = Field(default_factory=PreTrustSetupState)
+    bootstrap_discovery: BootstrapDiscoveryState = Field(default_factory=BootstrapDiscoveryState)
     onboarding_session: OnboardingSessionState = Field(default_factory=OnboardingSessionState)
     trust_activation: TrustActivationState = Field(default_factory=TrustActivationState)
     resume: ResumeState = Field(default_factory=ResumeState)

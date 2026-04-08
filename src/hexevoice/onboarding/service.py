@@ -77,6 +77,9 @@ class OnboardingStateService:
     def _core_connection_configured(self, state: PersistedOnboardingState) -> bool:
         return bool(state.pre_trust.core_base_url)
 
+    def _bootstrap_discovery_completed(self, state: PersistedOnboardingState) -> bool:
+        return bool(state.bootstrap_discovery.advertisement_valid)
+
     def _recompute_resume(self, state: PersistedOnboardingState) -> PersistedOnboardingState:
         current_step_id = initial_onboarding_step().step_id
         last_completed_step_id = None
@@ -88,6 +91,14 @@ class OnboardingStateService:
         if self._node_identity_configured(state) and self._core_connection_configured(state):
             current_step_id = "bootstrap_discovery"
             last_completed_step_id = "core_connection"
+
+        if (
+            self._node_identity_configured(state)
+            and self._core_connection_configured(state)
+            and self._bootstrap_discovery_completed(state)
+        ):
+            current_step_id = "registration"
+            last_completed_step_id = "bootstrap_discovery"
 
         if state.trust_activation.trust_status == "trusted" and state.resume.current_step_id != initial_onboarding_step().step_id:
             current_step_id = state.resume.current_step_id

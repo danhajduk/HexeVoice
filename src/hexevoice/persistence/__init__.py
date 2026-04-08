@@ -1,6 +1,7 @@
 """Persistence boundary for HexeVoice."""
 
 from hexevoice.persistence.onboarding_state import (
+    BootstrapDiscoveryState,
     OnboardingSessionState,
     OnboardingStateStore,
     PersistedOnboardingState,
@@ -10,6 +11,7 @@ from hexevoice.persistence.onboarding_state import (
 )
 
 __all__ = [
+    "BootstrapDiscoveryState",
     "OnboardingSessionState",
     "OnboardingStateStore",
     "PersistedOnboardingState",

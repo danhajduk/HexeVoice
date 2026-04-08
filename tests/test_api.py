@@ -22,6 +22,7 @@ def test_standard_route_groups_exist():
     assert onboarding.json()["current_step_id"] == "node_identity"
     assert len(onboarding.json()["steps"]) == 10
     assert client.get("/api/onboarding/local-setup").status_code == 200
+    assert client.get("/api/onboarding/bootstrap-discovery").status_code == 200
     assert client.get("/api/capabilities").status_code == 200
     assert client.get("/api/governance/readiness").status_code == 200
     assert client.get("/api/services/status").status_code == 200
@@ -94,3 +95,50 @@ def test_local_setup_endpoints_persist_node_identity_and_core_connection(tmp_pat
     assert status_response.json()["node_name"] == "kitchen-voice"
     assert status_response.json()["current_step_id"] == "bootstrap_discovery"
     assert status_response.json()["lifecycle_state"] == "core_discovered"
+
+
+def test_bootstrap_discovery_advertisement_validation_advances_to_registration(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    client.put(
+        "/api/onboarding/local-setup/node-identity",
+        json={
+            "node_name": "kitchen-voice",
+            "protocol_version": "global-node-v1",
+            "node_nonce": "voice-node-nonce",
+        },
+    )
+    client.put(
+        "/api/onboarding/local-setup/core-connection",
+        json={"core_base_url": "http://10.0.0.100:9001"},
+    )
+
+    response = client.put(
+        "/api/onboarding/bootstrap-discovery/advertisement",
+        json={
+            "topic": "hexe/bootstrap/core",
+            "api_base": "http://10.0.0.100:9001",
+            "mqtt_host": "10.0.0.100",
+            "mqtt_port": 1884,
+            "onboarding_mode": "api",
+            "onboarding_contract": "global-node-v1",
+            "onboarding_endpoints": {
+                "register_session": "/api/system/nodes/onboarding/sessions",
+                "registrations": "/api/system/nodes/registrations",
+                "register": "/api/system/nodes/onboarding/sessions",
+                "ai_node_register": "/api/system/ai-nodes/onboarding/sessions",
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["advertisement_valid"] is True
+    assert payload["onboarding_mode"] == "api"
+    assert payload["onboarding_contract"] == "global-node-v1"
+
+    status_response = client.get("/api/node/status")
+    assert status_response.status_code == 200
+    assert status_response.json()["current_step_id"] == "registration"
+    assert status_response.json()["lifecycle_state"] == "registration_pending"
