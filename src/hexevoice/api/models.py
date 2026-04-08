@@ -36,6 +36,11 @@ class OnboardingStatusResponse(BaseModel):
     current_step_id: str
     current_step_label: str
     next_action: str
+    session_id: str | None = None
+    approval_url: str | None = None
+    expires_at: str | None = None
+    finalize_url: str | None = None
+    last_error: str | None = None
     steps: list[OnboardingStepResponse] = Field(default_factory=list)
 
 
@@ -102,6 +107,16 @@ class BootstrapDiscoveryResponse(BaseModel):
     compatibility_ai_node_register_endpoint: str | None = None
     last_checked_at: str | None = None
     last_error: str | None = None
+
+
+class OnboardingSessionStartResponse(BaseModel):
+    session_id: str
+    approval_url: str
+    expires_at: str | None = None
+    finalize_url: str | None = None
+    node_name: str | None = None
+    node_type: str | None = None
+    node_software_version: str | None = None
 
 
 class CapabilitySummaryResponse(BaseModel):

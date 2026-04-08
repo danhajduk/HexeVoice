@@ -22,3 +22,9 @@ Chosen fix: Add a bootstrap discovery service with connection-status persistence
 What changed: Added bootstrap discovery persistence fields, bootstrap config defaults, bootstrap discovery request/response models, new bootstrap discovery endpoints, advertisement validation against the Core contract, and tests covering persistence and lifecycle advancement.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_bootstrap_discovery.py tests/test_api.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (13 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check confirmed valid bootstrap advertisement projects `current_step_id=registration`.
 ###########
+Task #005
+Step objective: Start onboarding sessions against Core from the saved local setup/bootstrap state and persist approval-session metadata.
+Chosen fix: Add a small Core onboarding client and session-start service, expose a local `session/start` route, persist Core session metadata, and guard the route when local setup or bootstrap discovery is incomplete.
+What changed: Added Core onboarding HTTP client, session-start service, persisted finalize/session metadata, extended onboarding status payload with approval/session fields, exposed the session-start endpoint, and added tests for guarded startup and successful session creation.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (15 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check confirmed successful session start projects `current_step_id=approval` and `lifecycle_state=pending_approval`.
+###########

@@ -47,7 +47,6 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 005: Implement onboarding session start for Registration using the Core node onboarding contract
 [TODO] Task 006: Implement Approval visibility, session polling, and operator-facing approval metadata
 [TODO] Task 007: Implement Trust Activation finalize flow and secure persistence of activation payload fields
 [TODO] Task 008: Add trusted resume and explicit trust-loss handling using the Core trust-status contract

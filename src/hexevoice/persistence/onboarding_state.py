@@ -28,6 +28,7 @@ class OnboardingSessionState(BaseModel):
     session_id: str | None = None
     approval_url: str | None = None
     expires_at: str | None = None
+    finalize_url: str | None = None
     session_state: str | None = None
     last_error: str | None = None
 

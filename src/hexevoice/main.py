@@ -13,12 +13,14 @@ from hexevoice.api.models import (
     NodeStatusResponse,
     NodeIdentitySetupRequest,
     NodeIdentitySetupResponse,
+    OnboardingSessionStartResponse,
     OnboardingStatusResponse,
     ProviderStatusResponse,
     ServiceStatusResponse,
 )
 from hexevoice.config.settings import Settings
 from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
+from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.runtime.service import NodeRuntimeService
@@ -29,6 +31,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
+    session_start_service = OnboardingSessionStartService(
+        settings=app_settings,
+        onboarding_state_store=onboarding_state_store,
+    )
     service = NodeRuntimeService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     app = FastAPI(title="HexeVoice")
 
@@ -77,6 +83,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         payload: BootstrapAdvertisementRequest,
     ) -> BootstrapDiscoveryResponse:
         return bootstrap_service.validate_advertisement(payload)
+
+    @app.post("/api/onboarding/session/start", response_model=OnboardingSessionStartResponse)
+    async def onboarding_session_start() -> OnboardingSessionStartResponse:
+        return session_start_service.start_session()
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:

@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+import httpx
 
 from hexevoice.main import create_app
 from hexevoice.config.settings import Settings
@@ -23,6 +24,7 @@ def test_standard_route_groups_exist():
     assert len(onboarding.json()["steps"]) == 10
     assert client.get("/api/onboarding/local-setup").status_code == 200
     assert client.get("/api/onboarding/bootstrap-discovery").status_code == 200
+    assert client.post("/api/onboarding/session/start").status_code == 400
     assert client.get("/api/capabilities").status_code == 200
     assert client.get("/api/governance/readiness").status_code == 200
     assert client.get("/api/services/status").status_code == 200
@@ -142,3 +144,77 @@ def test_bootstrap_discovery_advertisement_validation_advances_to_registration(t
     assert status_response.status_code == 200
     assert status_response.json()["current_step_id"] == "registration"
     assert status_response.json()["lifecycle_state"] == "registration_pending"
+
+
+def test_onboarding_session_start_persists_core_session_metadata(tmp_path, monkeypatch):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    client.put(
+        "/api/onboarding/local-setup/node-identity",
+        json={
+            "node_name": "kitchen-voice",
+            "protocol_version": "global-node-v1",
+            "node_nonce": "voice-node-nonce",
+            "hostname": "kitchen-voice.local",
+            "api_base_url": "http://10.0.0.22:9000",
+        },
+    )
+    client.put("/api/onboarding/local-setup/core-connection", json={"core_base_url": "http://10.0.0.100:9001"})
+    client.put(
+        "/api/onboarding/bootstrap-discovery/advertisement",
+        json={
+            "topic": "hexe/bootstrap/core",
+            "api_base": "http://10.0.0.100:9001",
+            "mqtt_host": "10.0.0.100",
+            "mqtt_port": 1884,
+            "onboarding_mode": "api",
+            "onboarding_contract": "global-node-v1",
+            "onboarding_endpoints": {
+                "register_session": "/api/system/nodes/onboarding/sessions",
+                "registrations": "/api/system/nodes/registrations",
+            },
+        },
+    )
+
+    class DummyResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "node_name": "kitchen-voice",
+                "node_type": "voice-node",
+                "node_software_version": "0.1.0",
+                "approval_url": "http://10.0.0.100/onboarding/nodes/approve?sid=session-123&state=abc",
+                "session_id": "session-123",
+                "expires_at": "2026-04-08T01:00:00+00:00",
+                "finalize": "/api/system/nodes/onboarding/sessions/session-123/finalize?node_nonce=voice-node-nonce",
+            }
+
+    def fake_post(url, json, timeout):
+        assert url == "http://10.0.0.100:9001/api/system/nodes/onboarding/sessions"
+        assert json["node_name"] == "kitchen-voice"
+        assert json["protocol_version"] == "global-node-v1"
+        assert json["node_nonce"] == "voice-node-nonce"
+        return DummyResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    response = client.post("/api/onboarding/session/start")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "session-123"
+    assert payload["approval_url"].startswith("http://10.0.0.100/onboarding/nodes/approve")
+
+    onboarding_status = client.get("/api/onboarding/status")
+    assert onboarding_status.status_code == 200
+    assert onboarding_status.json()["session_id"] == "session-123"
+    assert onboarding_status.json()["approval_url"].startswith("http://10.0.0.100/onboarding/nodes/approve")
+
+    node_status = client.get("/api/node/status")
+    assert node_status.status_code == 200
+    assert node_status.json()["current_step_id"] == "approval"
+    assert node_status.json()["lifecycle_state"] == "pending_approval"

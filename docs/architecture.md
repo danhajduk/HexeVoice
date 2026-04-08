@@ -67,4 +67,21 @@ The bootstrap step currently validates:
 
 When the bootstrap advertisement is accepted, the local lifecycle advances from `bootstrap_discovery` to `registration`.
 
+Current onboarding session start API:
+
+- `POST /api/onboarding/session/start`
+
+This route uses the saved Node Identity, Core Connection, and bootstrap discovery state to call Core's canonical onboarding session start route:
+
+- `POST {core_base_url}/api/system/nodes/onboarding/sessions`
+
+On success, HexeVoice persists:
+
+- `session_id`
+- `approval_url`
+- `expires_at`
+- `finalize_url`
+
+and advances the local lifecycle from `registration` to `approval`.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

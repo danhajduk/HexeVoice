@@ -160,6 +160,11 @@ class NodeRuntimeService:
             current_step_id=current_step.step_id,
             current_step_label=current_step.label,
             next_action=next_action,
+            session_id=persisted_state.onboarding_session.session_id,
+            approval_url=persisted_state.onboarding_session.approval_url,
+            expires_at=persisted_state.onboarding_session.expires_at,
+            finalize_url=persisted_state.onboarding_session.finalize_url,
+            last_error=persisted_state.onboarding_session.last_error,
             steps=self._step_payloads(),
         )
 
