@@ -1,0 +1,6 @@
+Task #001
+Step objective: Define the canonical Phase 0 lifecycle model and surface it through the starter backend contracts.
+Chosen fix: Add a dedicated onboarding model for the Core 10-step lifecycle, project the first canonical state through status/onboarding payloads, and update tests and architecture docs to match.
+What changed: Added canonical onboarding step definitions, expanded API responses with current-step metadata and step lists, replaced placeholder lifecycle names with canonical Core states, and documented the lifecycle sequence.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_onboarding.py tests/test_api.py tests/test_readiness.py tests/test_scheduler.py` (6 passed); `PYTHONPATH=src .venv/bin/python` payload smoke check passed.
+###########

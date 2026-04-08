@@ -3,11 +3,13 @@ from hexevoice.api.models import (
     CapabilitySummaryResponse,
     GovernanceReadinessResponse,
     NodeStatusResponse,
+    OnboardingStepResponse,
     OnboardingStatusResponse,
     ProviderStatusResponse,
     ServiceStatusResponse,
 )
 from hexevoice.config.settings import Settings
+from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
 
 
 class NodeRuntimeService:
@@ -17,26 +19,53 @@ class NodeRuntimeService:
     def api_health_payload(self) -> ApiHealthResponse:
         return ApiHealthResponse(status="ok", version=self._settings.node_software_version)
 
+    def _current_step(self):
+        return initial_onboarding_step()
+
+    def _step_payloads(self) -> list[OnboardingStepResponse]:
+        current_step = self._current_step()
+        return [
+            OnboardingStepResponse(
+                step_id=step.step_id,
+                label=step.label,
+                lifecycle_state=step.lifecycle_state,
+                phase=step.phase,
+                current=step.step_id == current_step.step_id,
+            )
+            for step in CANONICAL_ONBOARDING_STEPS
+        ]
+
     def status_payload(self) -> NodeStatusResponse:
+        current_step = self._current_step()
         return NodeStatusResponse(
             node_name=self._settings.node_name,
             node_type=self._settings.node_type,
             node_id=None,
-            lifecycle_state="bootstrap_required",
+            lifecycle_state=current_step.lifecycle_state,
+            current_step_id=current_step.step_id,
+            current_step_label=current_step.label,
             trust_state="untrusted",
             operational_ready=False,
             blocking_reasons=[
-                "onboarding_not_started",
-                "provider_not_configured",
-                "governance_not_synced",
+                "node_identity_not_configured",
+                "core_connection_not_configured",
+                "bootstrap_discovery_not_started",
+                "onboarding_session_not_started",
+                "provider_setup_not_started",
+                "governance_sync_not_started",
             ],
         )
 
     def onboarding_payload(self) -> OnboardingStatusResponse:
+        current_step = self._current_step()
         return OnboardingStatusResponse(
-            onboarding_state="pending_start",
+            onboarding_state="waiting_for_local_setup",
+            lifecycle_state=current_step.lifecycle_state,
             trust_state="untrusted",
-            next_action="start_local_onboarding",
+            current_step_id=current_step.step_id,
+            current_step_label=current_step.label,
+            next_action="configure_node_identity",
+            steps=self._step_payloads(),
         )
 
     def capabilities_payload(self) -> CapabilitySummaryResponse:
