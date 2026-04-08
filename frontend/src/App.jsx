@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getNodeStatus, getOnboardingStatus } from "./api/client";
 import { StatusCard } from "./components/status/StatusCard";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
@@ -26,6 +26,13 @@ export default function App() {
   const [status, setStatus] = useState(null);
   const [onboarding, setOnboarding] = useState(null);
   const [error, setError] = useState("");
+
+  const refresh = useCallback(async () => {
+    const [statusPayload, onboardingPayload] = await Promise.all([getNodeStatus(), getOnboardingStatus()]);
+    setStatus(statusPayload);
+    setOnboarding(onboardingPayload);
+    setError("");
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -107,7 +114,7 @@ export default function App() {
           </aside>
 
           <div className="main-grid">
-            <OnboardingPanel status={status} onboarding={onboarding} />
+            <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
             <OperationalPanel status={status} />
             <ProviderPanel />
             <DiagnosticsPanel status={status} />

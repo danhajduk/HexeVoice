@@ -222,4 +222,13 @@ The onboarding frontend shell now consumes `GET /api/onboarding/status` alongsid
 
 This gives the frontend a real stage-aware setup surface before step-specific forms and actions are added in later tasks.
 
+Frontend steps 1 through 3 now call the live node APIs for:
+
+- local node identity save/resume
+- Core base URL save/resume
+- bootstrap connection testing
+- bootstrap advertisement validation and inspection
+
+The onboarding shell keeps local draft state in the browser, refreshes node/onboarding status after successful writes, and uses the persisted backend responses as the source of truth for progression into `registration`.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

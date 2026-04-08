@@ -76,3 +76,9 @@ Chosen fix: Fetch onboarding status alongside node status, drive the setup sideb
 What changed: Added onboarding-status fetch support, updated the app shell to use onboarding-derived step context, upgraded the status card to include onboarding metadata, replaced the onboarding placeholder with a stage-card shell for pre-trust, approval, trust activation, and post-trust states, and extended shared CSS for stage-card presentation and current/completed flow markers.
 Verification: `cd frontend && npm install && npm run build` (passed).
 ###########
+Task #014
+Step objective: Implement the first three setup steps against real backend APIs so operators can save local setup state and validate bootstrap readiness from the frontend.
+Chosen fix: Add frontend client methods for local-setup and bootstrap routes, extend the onboarding stage card with real forms and actions for node identity, Core connection, bootstrap testing, and advertisement validation, and refresh persisted status after successful actions.
+What changed: Added local-setup/bootstrap API helpers, wired app refresh support into the onboarding shell, added interactive forms for node identity and Core connection, added bootstrap test and retained advertisement validation controls, and extended shared component CSS with form and action styles.
+Verification: `cd frontend && npm install && npm run build` (passed).
+###########
