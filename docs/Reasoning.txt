@@ -100,3 +100,9 @@ Chosen fix: Fetch provider, capability, governance, and operational status data 
 What changed: Expanded the app shell data loading to include the Phase 2 overview APIs, rebuilt the operational/provider/diagnostics panels around structured state presentation, added warning-card and state-grid CSS patterns, and added a global refresh action to diagnostics.
 Verification: `cd frontend && npm install && npm run build` (passed).
 ###########
+Task #018
+Step objective: Close Phase 0 with end-to-end validation evidence and operator-facing docs that match the implemented flow and UI standards.
+Chosen fix: Update the repo README/setup/operations docs to reflect the real 10-step onboarding and operator shell, then run the full backend test suite plus a fresh frontend install/build as final validation.
+What changed: Updated root and docs markdown to describe the implemented backend/frontend flow, documented the repo-local verification commands and operator progression, and re-ran the full backend and frontend validation commands.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q` (33 passed); `cd frontend && npm install && npm run build` (passed).
+###########

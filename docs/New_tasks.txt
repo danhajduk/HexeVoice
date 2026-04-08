@@ -47,4 +47,3 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[WIP] Task 018: Add onboarding tests, UI validation, and operator docs aligned to the Core flow and visual source-of-truth standards

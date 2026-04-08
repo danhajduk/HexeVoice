@@ -47,4 +47,23 @@ npm run dev -- --host 0.0.0.0 --port 8080
 ## Notes
 
 - This scaffold follows the Hexe node standards entrypoint at `/home/dan/Projects/Hexe/docs/standards/Node/README.md`.
-- Backend contracts are still starter-level placeholders and should be replaced with real onboarding, Core, provider, and governance logic as HexeVoice is implemented.
+- Phase 0 onboarding is now implemented end to end across the backend and frontend shell.
+- The operator UI follows the shared Hexe node visual standard and renders the full canonical 10-step flow plus post-setup operational overview surfaces.
+- Local Python workflow should always use the repo-local `.venv` binaries.
+
+## Implemented Flow
+
+HexeVoice now implements the canonical Core node setup progression:
+
+1. Node Identity
+2. Core Connection
+3. Bootstrap Discovery
+4. Registration
+5. Approval
+6. Trust Activation
+7. Provider Setup
+8. Capability Declaration
+9. Governance Sync
+10. Ready
+
+The backend persists onboarding, trust, provider, capability, governance, and operational-status state under `runtime/onboarding_state.json` by default. The frontend consumes those local APIs plus the Core-backed readiness projections to drive the setup and operational overview surfaces.
