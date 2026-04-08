@@ -47,7 +47,6 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 003: Add backend local setup APIs for Node Identity and Core Connection inputs
 [TODO] Task 004: Implement bootstrap MQTT discovery and Core advertisement validation for Bootstrap Discovery
 [TODO] Task 005: Implement onboarding session start for Registration using the Core node onboarding contract
 [TODO] Task 006: Implement Approval visibility, session polling, and operator-facing approval metadata

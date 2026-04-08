@@ -42,4 +42,12 @@ That store is the restart-safe boundary for:
 
 Later Phase 0 tasks add the APIs and runtime transitions that mutate this store.
 
+Current local setup APIs:
+
+- `GET /api/onboarding/local-setup`
+- `PUT /api/onboarding/local-setup/node-identity`
+- `PUT /api/onboarding/local-setup/core-connection`
+
+These APIs own the pre-trust draft state for Node Identity and Core Connection and advance the local lifecycle projection into `core_connection` and `bootstrap_discovery` when the required data is present.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

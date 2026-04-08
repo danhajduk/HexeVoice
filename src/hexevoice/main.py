@@ -4,13 +4,19 @@ import uvicorn
 from hexevoice.api.models import (
     ApiHealthResponse,
     CapabilitySummaryResponse,
+    CoreConnectionSetupRequest,
+    CoreConnectionSetupResponse,
     GovernanceReadinessResponse,
+    LocalSetupStateResponse,
     NodeStatusResponse,
+    NodeIdentitySetupRequest,
+    NodeIdentitySetupResponse,
     OnboardingStatusResponse,
     ProviderStatusResponse,
     ServiceStatusResponse,
 )
 from hexevoice.config.settings import Settings
+from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.runtime.service import NodeRuntimeService
 
@@ -18,6 +24,7 @@ from hexevoice.runtime.service import NodeRuntimeService
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
+    onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     service = NodeRuntimeService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     app = FastAPI(title="HexeVoice")
 
@@ -40,6 +47,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/onboarding/status", response_model=OnboardingStatusResponse)
     async def onboarding_status() -> OnboardingStatusResponse:
         return service.onboarding_payload()
+
+    @app.get("/api/onboarding/local-setup", response_model=LocalSetupStateResponse)
+    async def local_setup_state() -> LocalSetupStateResponse:
+        return onboarding_state_service.local_setup_payload()
+
+    @app.put("/api/onboarding/local-setup/node-identity", response_model=NodeIdentitySetupResponse)
+    async def save_node_identity(payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:
+        return onboarding_state_service.save_node_identity(payload)
+
+    @app.put("/api/onboarding/local-setup/core-connection", response_model=CoreConnectionSetupResponse)
+    async def save_core_connection(payload: CoreConnectionSetupRequest) -> CoreConnectionSetupResponse:
+        return onboarding_state_service.save_core_connection(payload)
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:

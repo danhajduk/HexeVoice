@@ -10,7 +10,7 @@ from hexevoice.api.models import (
 )
 from hexevoice.config.settings import Settings
 from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
-from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
+from hexevoice.persistence import OnboardingStateStore
 
 
 class NodeRuntimeService:
@@ -19,23 +19,32 @@ class NodeRuntimeService:
         self._onboarding_state_store = onboarding_state_store or OnboardingStateStore(
             path=settings.resolved_onboarding_state_path()
         )
-        self._onboarding_state = self._onboarding_state_store.load()
 
     def api_health_payload(self) -> ApiHealthResponse:
         return ApiHealthResponse(status="ok", version=self._settings.node_software_version)
 
-    def _current_step(self):
-        current_step_id = self._onboarding_state.normalized_current_step_id()
+    def _state(self):
+        return self._onboarding_state_store.load()
+
+    def _current_step(self, state=None):
+        onboarding_state = state or self._state()
+        current_step_id = onboarding_state.normalized_current_step_id()
         for step in CANONICAL_ONBOARDING_STEPS:
             if step.step_id == current_step_id:
                 return step
         return initial_onboarding_step()
 
-    def _trust_state(self) -> str:
-        return self._onboarding_state.trust_activation.trust_status or "untrusted"
+    def _trust_state(self, state=None) -> str:
+        onboarding_state = state or self._state()
+        return onboarding_state.trust_activation.trust_status or "untrusted"
 
-    def _node_id(self) -> str | None:
-        return self._onboarding_state.trust_activation.node_id
+    def _node_id(self, state=None) -> str | None:
+        onboarding_state = state or self._state()
+        return onboarding_state.trust_activation.node_id
+
+    def _node_name(self, state=None) -> str:
+        onboarding_state = state or self._state()
+        return onboarding_state.pre_trust.node_name or self._settings.node_name
 
     def _blocking_reasons(self, current_step_id: str) -> list[str]:
         blockers_by_step = {
@@ -107,7 +116,8 @@ class NodeRuntimeService:
         return labels.get(current_step_id, labels[initial_onboarding_step().step_id])
 
     def _step_payloads(self) -> list[OnboardingStepResponse]:
-        current_step = self._current_step()
+        onboarding_state = self._state()
+        current_step = self._current_step(onboarding_state)
         step_ids = [step.step_id for step in CANONICAL_ONBOARDING_STEPS]
         current_index = step_ids.index(current_step.step_id)
         return [
@@ -123,13 +133,14 @@ class NodeRuntimeService:
         ]
 
     def status_payload(self) -> NodeStatusResponse:
-        current_step = self._current_step()
-        trust_state = self._trust_state()
+        onboarding_state = self._state()
+        current_step = self._current_step(onboarding_state)
+        trust_state = self._trust_state(onboarding_state)
         blockers = self._blocking_reasons(current_step.step_id)
         return NodeStatusResponse(
-            node_name=self._settings.node_name,
+            node_name=self._node_name(onboarding_state),
             node_type=self._settings.node_type,
-            node_id=self._node_id(),
+            node_id=self._node_id(onboarding_state),
             lifecycle_state=current_step.lifecycle_state,
             current_step_id=current_step.step_id,
             current_step_label=current_step.label,
@@ -139,12 +150,13 @@ class NodeRuntimeService:
         )
 
     def onboarding_payload(self) -> OnboardingStatusResponse:
-        current_step = self._current_step()
-        onboarding_state, next_action = self._onboarding_state_label(current_step.step_id)
+        persisted_state = self._state()
+        current_step = self._current_step(persisted_state)
+        onboarding_state_label, next_action = self._onboarding_state_label(current_step.step_id)
         return OnboardingStatusResponse(
-            onboarding_state=onboarding_state,
+            onboarding_state=onboarding_state_label,
             lifecycle_state=current_step.lifecycle_state,
-            trust_state=self._trust_state(),
+            trust_state=self._trust_state(persisted_state),
             current_step_id=current_step.step_id,
             current_step_label=current_step.label,
             next_action=next_action,

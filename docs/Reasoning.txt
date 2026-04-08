@@ -10,3 +10,9 @@ Chosen fix: Introduce a file-backed onboarding state store under `runtime/`, res
 What changed: Added onboarding persistence models and store, added settings support for the resolved onboarding-state path, wired persisted state into the runtime service and app factory, added round-trip and resume/API tests, and documented the persistence boundary.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_persistence.py tests/test_onboarding.py tests/test_api.py tests/test_config.py tests/test_readiness.py tests/test_scheduler.py` (11 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check passed for persisted `provider_setup` resume state.
 ###########
+Task #003
+Step objective: Add backend local setup APIs for Node Identity and Core Connection and advance the local lifecycle from saved setup state.
+Chosen fix: Add a dedicated onboarding state service with GET/PUT local-setup APIs backed by the onboarding store and make runtime payloads reload persisted state on demand.
+What changed: Added local setup request/response models, implemented onboarding state service methods for node identity and core connection drafts, exposed new onboarding setup endpoints, advanced resume state into `core_connection` and `bootstrap_discovery`, and documented the new APIs.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_onboarding.py tests/test_api.py tests/test_persistence.py tests/test_config.py` (11 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check confirmed saved setup projects `node_name=kitchen-voice` and `current_step_id=bootstrap_discovery`.
+###########

@@ -1,4 +1,6 @@
+from hexevoice.api.models import CoreConnectionSetupRequest, NodeIdentitySetupRequest
 from hexevoice.config.settings import Settings
+from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
 
@@ -54,3 +56,24 @@ def test_runtime_service_resumes_from_persisted_onboarding_state(tmp_path):
     assert status.lifecycle_state == "capability_setup_pending"
     assert onboarding.onboarding_state == "trust_activated"
     assert onboarding.next_action == "configure_provider_setup"
+
+
+def test_setup_saves_move_resume_step_forward(tmp_path):
+    store = OnboardingStateStore(path=tmp_path / "onboarding-state.json")
+    service = OnboardingStateService(onboarding_state_store=store)
+
+    service.save_node_identity(
+        NodeIdentitySetupRequest(
+            node_name="kitchen-voice",
+            protocol_version="global-node-v1",
+            node_nonce="voice-node-nonce",
+        )
+    )
+
+    state_after_identity = store.load()
+    assert state_after_identity.resume.current_step_id == "core_connection"
+
+    service.save_core_connection(CoreConnectionSetupRequest(core_base_url="http://10.0.0.100:9001"))
+
+    state_after_connection = store.load()
+    assert state_after_connection.resume.current_step_id == "bootstrap_discovery"
