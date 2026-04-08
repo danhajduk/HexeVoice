@@ -2,8 +2,11 @@
 
 from hexevoice.persistence.onboarding_state import (
     BootstrapDiscoveryState,
+    CapabilityDeclarationState,
+    GovernanceSyncState,
     OnboardingSessionState,
     OnboardingStateStore,
+    OperationalStatusState,
     PersistedOnboardingState,
     PreTrustSetupState,
     ProviderSetupState,
@@ -13,8 +16,11 @@ from hexevoice.persistence.onboarding_state import (
 
 __all__ = [
     "BootstrapDiscoveryState",
+    "CapabilityDeclarationState",
+    "GovernanceSyncState",
     "OnboardingSessionState",
     "OnboardingStateStore",
+    "OperationalStatusState",
     "PersistedOnboardingState",
     "PreTrustSetupState",
     "ProviderSetupState",

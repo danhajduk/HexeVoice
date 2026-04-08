@@ -52,3 +52,9 @@ Chosen fix: Add provider setup persistence plus `/api/providers/setup` routes, t
 What changed: Added provider-setup state models, implemented provider setup service/routes under the provider namespace, projected enabled providers through the capabilities summary and provider status APIs, updated runtime blockers for `provider_setup`, and added tests for blocked and successful provider configuration paths.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_provider_setup.py tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (27 passed).
 ###########
+Task #010
+Step objective: Implement the Core Phase 2 capability declaration, governance sync, and operational-status polling surfaces and persist their readiness metadata locally.
+Chosen fix: Add Core client methods and local service boundaries for capability declaration and governance/operational polling, persist accepted capability and governance state, and let Core's `operational_ready` projection drive the final move into `ready`.
+What changed: Added capability declaration persistence and route, governance current/refresh services and routes, operational-status polling and persistence, expanded public models with capability/governance/readiness fields, updated runtime status/readiness projections, and added end-to-end Phase 2 tests covering declaration through operational readiness.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_phase2.py tests/test_provider_setup.py tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py tests/test_readiness.py` (31 passed).
+###########

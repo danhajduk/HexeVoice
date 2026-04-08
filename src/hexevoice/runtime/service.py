@@ -156,7 +156,7 @@ class NodeRuntimeService:
             current_step_id=current_step.step_id,
             current_step_label=current_step.label,
             trust_state=trust_state,
-            operational_ready=current_step.step_id == "ready" and trust_state == "trusted",
+            operational_ready=onboarding_state.operational_status.operational_ready,
             blocking_reasons=blockers,
         )
 
@@ -189,15 +189,18 @@ class NodeRuntimeService:
         state = self._state()
         return CapabilitySummaryResponse(
             configured=state.provider_setup.enabled_providers,
-            declared=[],
+            declared=state.capability_declaration.declared_capabilities,
+            capability_status=state.capability_declaration.capability_status,
+            capability_profile_id=state.capability_declaration.capability_profile_id,
+            accepted_at=state.capability_declaration.accepted_at,
+            governance_version=state.capability_declaration.governance_version,
         )
 
     def readiness_payload(self) -> GovernanceReadinessResponse:
-        status = self.status_payload()
         return GovernanceReadinessResponse(
-            operational_ready=status.operational_ready,
-            degraded=False,
-            blocking_reasons=status.blocking_reasons,
+            operational_ready=self._state().operational_status.operational_ready,
+            degraded=bool(self._state().operational_status.governance_outdated),
+            blocking_reasons=self._blocking_reasons(self._current_step(self._state()).step_id),
         )
 
     def service_status_payload(self) -> ServiceStatusResponse:

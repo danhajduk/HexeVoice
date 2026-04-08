@@ -175,6 +175,56 @@ class ProviderSetupResponse(BaseModel):
 class CapabilitySummaryResponse(BaseModel):
     configured: list[str] = Field(default_factory=list)
     declared: list[str] = Field(default_factory=list)
+    capability_status: str = "missing"
+    capability_profile_id: str | None = None
+    accepted_at: str | None = None
+    governance_version: str | None = None
+
+
+class CapabilityDeclarationResponse(BaseModel):
+    capability_status: str
+    node_id: str
+    manifest_version: str
+    accepted_at: str | None = None
+    declared_capabilities: list[str] = Field(default_factory=list)
+    enabled_providers: list[str] = Field(default_factory=list)
+    capability_profile_id: str | None = None
+    governance_version: str | None = None
+    governance_issued_at: str | None = None
+
+
+class GovernanceBundleResponse(BaseModel):
+    node_id: str
+    capability_profile_id: str | None = None
+    governance_version: str | None = None
+    issued_timestamp: str | None = None
+    refresh_interval_s: int | None = None
+    governance_bundle: dict = Field(default_factory=dict)
+
+
+class GovernanceRefreshResponse(BaseModel):
+    updated: bool
+    governance_version: str | None = None
+    refresh_interval_s: int | None = None
+    governance_bundle: dict | None = None
+
+
+class OperationalStatusResponse(BaseModel):
+    node_id: str
+    lifecycle_state: str
+    trust_status: str
+    capability_status: str
+    governance_status: str
+    operational_ready: bool
+    active_governance_version: str | None = None
+    last_governance_issued_at: str | None = None
+    last_governance_refresh_request_at: str | None = None
+    governance_freshness_state: str | None = None
+    governance_freshness_changed_at: str | None = None
+    governance_stale_for_s: int | None = None
+    governance_outdated: bool = False
+    last_telemetry_timestamp: str | None = None
+    updated_at: str | None = None
 
 
 class GovernanceReadinessResponse(BaseModel):

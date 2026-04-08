@@ -93,6 +93,49 @@ class ProviderSetupState(BaseModel):
     last_updated_at: str | None = None
 
 
+class CapabilityDeclarationState(BaseModel):
+    manifest_version: str | None = None
+    capability_status: str = "missing"
+    accepted_at: str | None = None
+    declared_task_families: list[str] = Field(default_factory=list)
+    declared_capabilities: list[str] = Field(default_factory=list)
+    capability_profile_id: str | None = None
+    governance_version: str | None = None
+    governance_issued_at: str | None = None
+    last_error: str | None = None
+
+
+class GovernanceSyncState(BaseModel):
+    governance_sync_status: str = "pending_capability"
+    governance_version: str | None = None
+    issued_timestamp: str | None = None
+    refresh_interval_s: int | None = None
+    governance_bundle: dict[str, Any] | None = None
+    last_refresh_request_at: str | None = None
+    governance_freshness_state: str = "pending"
+    governance_freshness_changed_at: str | None = None
+    governance_stale_for_s: int | None = None
+    governance_outdated: bool = False
+    last_error: str | None = None
+
+
+class OperationalStatusState(BaseModel):
+    lifecycle_state: str | None = None
+    trust_status: str | None = None
+    capability_status: str = "missing"
+    governance_status: str = "pending_capability"
+    operational_ready: bool = False
+    active_governance_version: str | None = None
+    last_governance_issued_at: str | None = None
+    last_governance_refresh_request_at: str | None = None
+    governance_freshness_state: str = "pending"
+    governance_freshness_changed_at: str | None = None
+    governance_stale_for_s: int | None = None
+    governance_outdated: bool = False
+    last_telemetry_timestamp: str | None = None
+    updated_at: str | None = None
+
+
 class ResumeState(BaseModel):
     current_step_id: str = Field(default_factory=lambda: initial_onboarding_step().step_id)
     last_completed_step_id: str | None = None
@@ -106,6 +149,9 @@ class PersistedOnboardingState(BaseModel):
     onboarding_session: OnboardingSessionState = Field(default_factory=OnboardingSessionState)
     trust_activation: TrustActivationState = Field(default_factory=TrustActivationState)
     provider_setup: ProviderSetupState = Field(default_factory=ProviderSetupState)
+    capability_declaration: CapabilityDeclarationState = Field(default_factory=CapabilityDeclarationState)
+    governance_sync: GovernanceSyncState = Field(default_factory=GovernanceSyncState)
+    operational_status: OperationalStatusState = Field(default_factory=OperationalStatusState)
     resume: ResumeState = Field(default_factory=ResumeState)
     updated_at: str = Field(default_factory=_utc_now)
 

@@ -30,7 +30,11 @@ def test_standard_route_groups_exist():
     assert client.post("/api/onboarding/trust-status/refresh").status_code == 400
     assert client.get("/api/providers/setup").status_code == 200
     assert client.get("/api/capabilities").status_code == 200
+    assert client.post("/api/capabilities/declaration").status_code == 400
+    assert client.get("/api/governance/current").status_code == 400
+    assert client.post("/api/governance/refresh").status_code == 400
     assert client.get("/api/governance/readiness").status_code == 200
+    assert client.get("/api/node/operational-status").status_code == 400
     assert client.get("/api/services/status").status_code == 200
     assert client.get("/api/providers/voice/status").status_code == 200
 
@@ -484,3 +488,135 @@ def test_provider_setup_enables_provider_and_advances_to_capability_declaration(
     capability_status = client.get("/api/capabilities")
     assert capability_status.status_code == 200
     assert capability_status.json()["configured"] == ["voice"]
+
+
+def test_capability_declaration_governance_and_operational_status_flow(tmp_path, monkeypatch):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "node_name": "kitchen-voice",
+                    "core_base_url": "http://10.0.0.100:9001",
+                },
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "node_type": "voice-node",
+                    "node_trust_token": "trust-token-123",
+                    "trust_status": "trusted",
+                },
+                "provider_setup": {
+                    "supported_providers": ["voice"],
+                    "enabled_providers": ["voice"],
+                    "default_provider": "voice",
+                    "declaration_allowed": True,
+                    "blocking_reasons": [],
+                },
+                "resume": {
+                    "current_step_id": "capability_declaration",
+                    "last_completed_step_id": "provider_setup",
+                },
+            }
+        )
+    )
+
+    class CapabilityResponse:
+        status_code = 200
+        def raise_for_status(self): return None
+        def json(self):
+            return {
+                "acceptance_status": "accepted",
+                "node_id": "node-voice-123",
+                "manifest_version": "1",
+                "accepted_at": "2026-04-08T03:00:00+00:00",
+                "declared_capabilities": ["voice.inference"],
+                "enabled_providers": ["voice"],
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "governance_issued_at": "2026-04-08T03:00:05+00:00",
+            }
+
+    class GovernanceCurrentResponse:
+        status_code = 200
+        def raise_for_status(self): return None
+        def json(self):
+            return {
+                "node_id": "node-voice-123",
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "issued_timestamp": "2026-04-08T03:00:05+00:00",
+                "refresh_interval_s": 3600,
+                "governance_bundle": {"telemetry_requirements": {"interval_s": 60}},
+            }
+
+    class GovernanceRefreshResponseObj:
+        status_code = 200
+        def raise_for_status(self): return None
+        def json(self):
+            return {
+                "updated": False,
+                "governance_version": "gov-2026.04",
+                "refresh_interval_s": 3600,
+            }
+
+    class OperationalStatusResponseObj:
+        status_code = 200
+        def raise_for_status(self): return None
+        def json(self):
+            return {
+                "node_id": "node-voice-123",
+                "lifecycle_state": "operational",
+                "trust_status": "trusted",
+                "capability_status": "accepted",
+                "governance_status": "issued",
+                "operational_ready": True,
+                "active_governance_version": "gov-2026.04",
+                "last_governance_issued_at": "2026-04-08T03:00:05+00:00",
+                "last_governance_refresh_request_at": "2026-04-08T03:10:00+00:00",
+                "governance_freshness_state": "fresh",
+                "governance_freshness_changed_at": "2026-04-08T03:10:00+00:00",
+                "governance_stale_for_s": 0,
+                "governance_outdated": False,
+                "last_telemetry_timestamp": "2026-04-08T03:11:00+00:00",
+                "updated_at": "2026-04-08T03:11:00+00:00",
+            }
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        if url.endswith("/api/system/nodes/capabilities/declaration"):
+            return CapabilityResponse()
+        if url.endswith("/api/system/nodes/governance/refresh"):
+            return GovernanceRefreshResponseObj()
+        raise AssertionError(url)
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        if url.endswith("/api/system/nodes/governance/current"):
+            return GovernanceCurrentResponse()
+        if url.endswith("/api/system/nodes/operational-status/node-voice-123"):
+            return OperationalStatusResponseObj()
+        raise AssertionError(url)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    declaration = client.post("/api/capabilities/declaration")
+    assert declaration.status_code == 200
+    assert declaration.json()["capability_status"] == "accepted"
+
+    governance_current = client.get("/api/governance/current")
+    assert governance_current.status_code == 200
+    assert governance_current.json()["governance_version"] == "gov-2026.04"
+
+    governance_refresh = client.post("/api/governance/refresh")
+    assert governance_refresh.status_code == 200
+    assert governance_refresh.json()["updated"] is False
+
+    operational = client.get("/api/node/operational-status")
+    assert operational.status_code == 200
+    assert operational.json()["operational_ready"] is True
+
+    node_status = client.get("/api/node/status")
+    assert node_status.status_code == 200
+    assert node_status.json()["current_step_id"] == "ready"
+    assert node_status.json()["operational_ready"] is True

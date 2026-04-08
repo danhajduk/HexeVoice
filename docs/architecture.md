@@ -168,4 +168,19 @@ Provider setup is now modeled as the node-local `capability_setup_pending` gate 
 
 Provider setup remains distinct from trust state. Trust must already be valid, and at least one enabled provider must be selected before the local lifecycle advances from `provider_setup` to `capability_declaration`.
 
+Current Phase 2 backend surfaces:
+
+- `POST /api/capabilities/declaration`
+- `GET /api/governance/current`
+- `POST /api/governance/refresh`
+- `GET /api/node/operational-status`
+
+These routes now implement the Core Phase 2 progression:
+
+- capability declaration submits the node manifest using the trusted node token and persists accepted capability profile metadata
+- governance fetch and refresh persist the active governance version, bundle, refresh interval, and freshness tracking metadata
+- operational-status polling persists the canonical Core readiness projection fields including `capability_status`, `governance_status`, `operational_ready`, governance freshness state, and timestamps
+
+HexeVoice now treats Core's `operational_ready` projection as the source of truth for the final transition from `governance_sync` to `ready`.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

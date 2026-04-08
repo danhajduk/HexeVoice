@@ -5,9 +5,12 @@ from hexevoice.api.models import (
     ApiHealthResponse,
     BootstrapAdvertisementRequest,
     BootstrapDiscoveryResponse,
+    CapabilityDeclarationResponse,
     CapabilitySummaryResponse,
     CoreConnectionSetupRequest,
     CoreConnectionSetupResponse,
+    GovernanceBundleResponse,
+    GovernanceRefreshResponse,
     GovernanceReadinessResponse,
     LocalSetupStateResponse,
     NodeStatusResponse,
@@ -22,9 +25,12 @@ from hexevoice.api.models import (
     ServiceStatusResponse,
     TrustActivationFinalizeResponse,
     TrustStatusRefreshResponse,
+    OperationalStatusResponse,
 )
+from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
+from hexevoice.governance.service import GovernanceService
 from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
@@ -51,6 +57,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     trust_activation_service = TrustActivationService(onboarding_state_store=onboarding_state_store)
     trust_status_service = TrustStatusService(onboarding_state_store=onboarding_state_store)
     provider_setup_service = ProviderSetupService(settings=app_settings, onboarding_state_store=onboarding_state_store)
+    capability_service = CapabilityDeclarationService(
+        settings=app_settings,
+        onboarding_state_store=onboarding_state_store,
+    )
+    governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
     service = NodeRuntimeService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     app = FastAPI(title="HexeVoice")
 
@@ -128,9 +139,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def capabilities_status() -> CapabilitySummaryResponse:
         return service.capabilities_payload()
 
+    @app.post("/api/capabilities/declaration", response_model=CapabilityDeclarationResponse)
+    async def capabilities_declaration() -> CapabilityDeclarationResponse:
+        return capability_service.declare()
+
+    @app.get("/api/governance/current", response_model=GovernanceBundleResponse)
+    async def governance_current() -> GovernanceBundleResponse:
+        return governance_service.current()
+
+    @app.post("/api/governance/refresh", response_model=GovernanceRefreshResponse)
+    async def governance_refresh() -> GovernanceRefreshResponse:
+        return governance_service.refresh()
+
     @app.get("/api/governance/readiness", response_model=GovernanceReadinessResponse)
     async def governance_readiness() -> GovernanceReadinessResponse:
         return service.readiness_payload()
+
+    @app.get("/api/node/operational-status", response_model=OperationalStatusResponse)
+    async def node_operational_status() -> OperationalStatusResponse:
+        return governance_service.operational_status()
 
     @app.get("/api/services/status", response_model=ServiceStatusResponse)
     async def services_status() -> ServiceStatusResponse:
