@@ -114,4 +114,26 @@ Current finalize handling supports the canonical outcome set:
 
 When finalize returns `approved`, HexeVoice persists the activation payload as pending protected state and advances the local lifecycle from `approval` to `trust_activation`.
 
+Current trust activation API:
+
+- `POST /api/onboarding/trust-activation/finalize`
+
+This route consumes the pending approved activation payload exactly once, persists the canonical trust activation fields into the protected trust state, clears the staged activation payload from the onboarding session, and advances the local lifecycle from `trust_activation` to `provider_setup`.
+
+Persisted trust activation fields now include:
+
+- `node_id`
+- `node_type`
+- `paired_core_id`
+- `node_trust_token`
+- `initial_baseline_policy`
+- `baseline_policy_version`
+- `activation_profile`
+- `operational_mqtt_identity`
+- `operational_mqtt_token`
+- `operational_mqtt_host`
+- `operational_mqtt_port`
+- `issued_at`
+- `source_session_id`
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

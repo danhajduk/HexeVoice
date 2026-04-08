@@ -26,6 +26,7 @@ def test_standard_route_groups_exist():
     assert client.get("/api/onboarding/bootstrap-discovery").status_code == 200
     assert client.post("/api/onboarding/session/start").status_code == 400
     assert client.post("/api/onboarding/session/poll").status_code == 400
+    assert client.post("/api/onboarding/trust-activation/finalize").status_code == 400
     assert client.get("/api/capabilities").status_code == 200
     assert client.get("/api/governance/readiness").status_code == 200
     assert client.get("/api/services/status").status_code == 200
@@ -315,3 +316,58 @@ def test_onboarding_session_poll_surfaces_approved_outcome(tmp_path, monkeypatch
     assert onboarding_status.json()["session_state"] == "approved"
     assert onboarding_status.json()["last_terminal_outcome"] == "approved"
     assert onboarding_status.json()["current_step_id"] == "trust_activation"
+
+
+def test_trust_activation_finalize_persists_trusted_state(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "onboarding_session": {
+                    "session_id": "session-123",
+                    "session_state": "approved",
+                    "pending_activation": {
+                        "node_id": "node-voice-123",
+                        "node_type": "voice-node",
+                        "paired_core_id": "core-main",
+                        "node_trust_token": "trust-token-123",
+                        "initial_baseline_policy": {"version": "2026.04"},
+                        "baseline_policy_version": "2026.04",
+                        "activation_profile": {"voice": {"default_provider": "mock"}},
+                        "operational_mqtt_identity": "node-voice-123",
+                        "operational_mqtt_token": "mqtt-token-123",
+                        "operational_mqtt_host": "10.0.0.100",
+                        "operational_mqtt_port": 1883,
+                        "issued_at": "2026-04-08T01:00:00+00:00",
+                        "source_session_id": "session-123",
+                        "trust_status": "trusted",
+                    },
+                },
+                "resume": {
+                    "current_step_id": "trust_activation",
+                    "last_completed_step_id": "approval",
+                },
+            }
+        )
+    )
+
+    response = client.post("/api/onboarding/trust-activation/finalize")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["node_id"] == "node-voice-123"
+    assert payload["trust_state"] == "trusted"
+    assert payload["operational_mqtt_host"] == "10.0.0.100"
+
+    onboarding_status = client.get("/api/onboarding/status")
+    assert onboarding_status.status_code == 200
+    assert onboarding_status.json()["current_step_id"] == "provider_setup"
+    assert onboarding_status.json()["trust_state"] == "trusted"
+
+    node_status = client.get("/api/node/status")
+    assert node_status.status_code == 200
+    assert node_status.json()["node_id"] == "node-voice-123"
+    assert node_status.json()["trust_state"] == "trusted"
+    assert node_status.json()["current_step_id"] == "provider_setup"

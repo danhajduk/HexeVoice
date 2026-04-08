@@ -58,14 +58,21 @@ class BootstrapDiscoveryState(BaseModel):
 
 class TrustActivationState(BaseModel):
     node_id: str | None = None
+    node_type: str | None = None
     paired_core_id: str | None = None
     node_trust_token: str | None = None
+    initial_baseline_policy: dict[str, Any] | None = None
     trust_status: str = "untrusted"
     baseline_policy_version: str | None = None
+    activation_profile: dict[str, Any] | None = None
     operational_mqtt_identity: str | None = None
+    operational_mqtt_token: str | None = None
     operational_mqtt_host: str | None = None
     operational_mqtt_port: int | None = None
+    issued_at: str | None = None
+    source_session_id: str | None = None
     trusted_at: str | None = None
+    activation_applied_at: str | None = None
 
 
 class ResumeState(BaseModel):

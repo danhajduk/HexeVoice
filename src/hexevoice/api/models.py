@@ -130,6 +130,17 @@ class OnboardingSessionPollResponse(BaseModel):
     activation_received: bool = False
 
 
+class TrustActivationFinalizeResponse(BaseModel):
+    node_id: str
+    paired_core_id: str | None = None
+    trust_state: str
+    baseline_policy_version: str | None = None
+    operational_mqtt_identity: str | None = None
+    operational_mqtt_host: str | None = None
+    operational_mqtt_port: int | None = None
+    activation_applied_at: str | None = None
+
+
 class CapabilitySummaryResponse(BaseModel):
     configured: list[str] = Field(default_factory=list)
     declared: list[str] = Field(default_factory=list)

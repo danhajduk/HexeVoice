@@ -34,3 +34,9 @@ Chosen fix: Add an approval polling service backed by the Core finalize contract
 What changed: Added Core finalize client support, persisted poll timestamps/terminal outcomes/pending activation payloads, exposed `POST /api/onboarding/session/poll`, expanded onboarding status fields with approval metadata, added approval polling tests, and documented the current approval visibility boundary.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (18 passed).
 ###########
+Task #007
+Step objective: Consume approved trust activation exactly once, persist the canonical protected trust fields, and advance the node into post-trust provider setup.
+Chosen fix: Add a local trust activation finalize service/route that promotes the staged approved activation payload into the trust state, clears the pending activation staging area, and moves resume state from `trust_activation` to `provider_setup`.
+What changed: Expanded persisted trust activation fields to cover the canonical Core payload, added `POST /api/onboarding/trust-activation/finalize`, kept secret-bearing fields out of public API responses, added tests for one-time activation consumption and API-level trusted-state projection, and documented the trust activation boundary.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (21 passed).
+###########
