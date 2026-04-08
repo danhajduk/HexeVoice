@@ -248,4 +248,13 @@ Frontend steps 7 through 10 now expose the remaining setup actions directly in t
 
 This means the full canonical 10-step flow is now present in the onboarding UI, with each step backed by the corresponding local or Core-facing API route.
 
+The post-setup operator overview now renders as a separate surface beside the onboarding card and uses the standard visual grammar:
+
+- facts grids for provider, readiness, and identity summaries
+- state-grid rows for operational and diagnostic detail
+- grouped action rows for refresh/runtime placeholders
+- warning-card treatment for stale governance or setup blockers
+
+This keeps setup and operational concerns visibly separated while still sharing one shell.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

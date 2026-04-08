@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
-import { getNodeStatus, getOnboardingStatus } from "./api/client";
+import {
+  getCapabilities,
+  getGovernanceCurrent,
+  getNodeStatus,
+  getOnboardingStatus,
+  getOperationalStatus,
+  getProviderSetup,
+} from "./api/client";
 import { StatusCard } from "./components/status/StatusCard";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
 import { OperationalPanel } from "./features/operational/OperationalPanel";
@@ -25,24 +32,57 @@ function statusTone(status) {
 export default function App() {
   const [status, setStatus] = useState(null);
   const [onboarding, setOnboarding] = useState(null);
+  const [providerSetup, setProviderSetup] = useState(null);
+  const [capabilities, setCapabilities] = useState(null);
+  const [governance, setGovernance] = useState(null);
+  const [operational, setOperational] = useState(null);
   const [error, setError] = useState("");
 
   const refresh = useCallback(async () => {
-    const [statusPayload, onboardingPayload] = await Promise.all([getNodeStatus(), getOnboardingStatus()]);
+    const [
+      statusPayload,
+      onboardingPayload,
+      providerPayload,
+      capabilityPayload,
+      governancePayload,
+      operationalPayload,
+    ] = await Promise.all([
+      getNodeStatus(),
+      getOnboardingStatus(),
+      getProviderSetup().catch(() => null),
+      getCapabilities().catch(() => null),
+      getGovernanceCurrent().catch(() => null),
+      getOperationalStatus().catch(() => null),
+    ]);
     setStatus(statusPayload);
     setOnboarding(onboardingPayload);
+    setProviderSetup(providerPayload);
+    setCapabilities(capabilityPayload);
+    setGovernance(governancePayload);
+    setOperational(operationalPayload);
     setError("");
   }, []);
 
   useEffect(() => {
     let mounted = true;
-    Promise.all([getNodeStatus(), getOnboardingStatus()])
-      .then(([statusPayload, onboardingPayload]) => {
+    Promise.all([
+      getNodeStatus(),
+      getOnboardingStatus(),
+      getProviderSetup().catch(() => null),
+      getCapabilities().catch(() => null),
+      getGovernanceCurrent().catch(() => null),
+      getOperationalStatus().catch(() => null),
+    ])
+      .then(([statusPayload, onboardingPayload, providerPayload, capabilityPayload, governancePayload, operationalPayload]) => {
         if (!mounted) {
           return;
         }
         setStatus(statusPayload);
         setOnboarding(onboardingPayload);
+        setProviderSetup(providerPayload);
+        setCapabilities(capabilityPayload);
+        setGovernance(governancePayload);
+        setOperational(operationalPayload);
       })
       .catch((err) => {
         if (mounted) {
@@ -115,9 +155,9 @@ export default function App() {
 
           <div className="main-grid">
             <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
-            <OperationalPanel status={status} />
-            <ProviderPanel />
-            <DiagnosticsPanel status={status} />
+            <OperationalPanel status={status} operational={operational} governance={governance} />
+            <ProviderPanel status={status} providerSetup={providerSetup} capabilities={capabilities} />
+            <DiagnosticsPanel status={status} onboarding={onboarding} operational={operational} onRefresh={refresh} />
           </div>
         </section>
       </div>

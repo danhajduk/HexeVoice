@@ -1,4 +1,4 @@
-export function DiagnosticsPanel({ status }) {
+export function DiagnosticsPanel({ status, onboarding, operational, onRefresh }) {
   return (
     <section className="panel">
       <div className="panel-header">
@@ -20,11 +20,33 @@ export function DiagnosticsPanel({ status }) {
             <code className="inline-code">voice</code>
           </span>
         </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Current step</span>
+          <span className="fact-grid-value">{onboarding?.current_step_label || status?.current_step_label || "pending"}</span>
+        </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Operational freshness</span>
+          <span className="fact-grid-value">{operational?.governance_freshness_state || status?.governance_freshness_state || "pending"}</span>
+        </div>
       </div>
-      <ul className="list-inline">
-        <li>API and runtime diagnostics stay visible during onboarding.</li>
-        <li>The same shell will carry the post-setup operational overview.</li>
-      </ul>
+      <div className="state-grid">
+        <div className="state-row">
+          <span className="state-label">Trust state</span>
+          <span className="state-value">{status?.trust_state || "pending"}</span>
+        </div>
+        <div className="state-row">
+          <span className="state-label">Readiness blockers</span>
+          <span className="state-value">{(status?.blocking_reasons || []).join(", ") || "none"}</span>
+        </div>
+      </div>
+      <div className="action-group">
+        <button className="btn btn-secondary" type="button" onClick={onRefresh}>
+          Refresh all panels
+        </button>
+        <button className="btn btn-secondary" type="button" disabled>
+          Export diagnostics next
+        </button>
+      </div>
     </section>
   );
 }

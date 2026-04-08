@@ -47,5 +47,4 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[WIP] Task 017: Build the post-setup operational overview surfaces using the standard facts, state-grid, actions, and warning card patterns
-[TODO] Task 018: Add onboarding tests, UI validation, and operator docs aligned to the Core flow and visual source-of-truth standards
+[WIP] Task 018: Add onboarding tests, UI validation, and operator docs aligned to the Core flow and visual source-of-truth standards

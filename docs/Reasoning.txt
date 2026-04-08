@@ -94,3 +94,9 @@ Chosen fix: Add frontend client methods for the Phase 2 routes and extend the on
 What changed: Added Phase 2 frontend API helpers, persisted provider-selection draft state in the onboarding panel, rendered step-aware controls for provider setup and capability declaration, surfaced governance bundle metadata and refresh actions, added ready-state operational polling, and extended shared CSS for selectable provider cards.
 Verification: `cd frontend && npm install && npm run build` (passed).
 ###########
+Task #017
+Step objective: Turn the placeholder right-side cards into a real post-setup operational overview that matches the node UI standard instead of generic status blocks.
+Chosen fix: Fetch provider, capability, governance, and operational status data in the app shell and project it through dedicated operational, provider, and diagnostics overview panels using facts grids, state-grid rows, grouped actions, and warning-card treatment.
+What changed: Expanded the app shell data loading to include the Phase 2 overview APIs, rebuilt the operational/provider/diagnostics panels around structured state presentation, added warning-card and state-grid CSS patterns, and added a global refresh action to diagnostics.
+Verification: `cd frontend && npm install && npm run build` (passed).
+###########
