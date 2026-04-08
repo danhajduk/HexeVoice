@@ -93,7 +93,10 @@ class NodeRuntimeService:
                 "governance_sync_not_started",
             ],
             "provider_setup": [
-                "provider_setup_not_started",
+                *(
+                    onboarding_state.provider_setup.blocking_reasons
+                    or ["provider_selection_required"]
+                ),
                 "capability_declaration_not_started",
                 "governance_sync_not_started",
             ],
@@ -183,7 +186,11 @@ class NodeRuntimeService:
         )
 
     def capabilities_payload(self) -> CapabilitySummaryResponse:
-        return CapabilitySummaryResponse(configured=[], declared=[])
+        state = self._state()
+        return CapabilitySummaryResponse(
+            configured=state.provider_setup.enabled_providers,
+            declared=[],
+        )
 
     def readiness_payload(self) -> GovernanceReadinessResponse:
         status = self.status_payload()
@@ -201,13 +208,24 @@ class NodeRuntimeService:
         )
 
     def provider_status_payload(self, *, provider_id: str) -> ProviderStatusResponse:
+        state = self._state()
+        supported_providers = state.provider_setup.supported_providers or [self._settings.provider_id]
         status = "pending_configuration"
-        if provider_id != self._settings.provider_id:
+        configured = provider_id in state.provider_setup.enabled_providers
+        healthy = configured and state.trust_activation.trust_status == "trusted"
+
+        if provider_id not in supported_providers:
             status = "unknown_provider"
+            configured = False
+            healthy = False
+        elif state.trust_activation.trust_status != "trusted":
+            status = "blocked_by_trust"
+        elif configured:
+            status = "ready_for_capability_declaration"
 
         return ProviderStatusResponse(
             provider_id=provider_id,
-            configured=False,
-            healthy=False,
+            configured=configured,
+            healthy=healthy,
             status=status,
         )

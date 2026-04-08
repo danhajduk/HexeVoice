@@ -152,4 +152,20 @@ with the last issued `X-Node-Trust-Token` to distinguish:
 
 When Core still reports the node as supported and trusted, HexeVoice preserves trusted resume and keeps the node in the post-trust lifecycle. When Core reports `revoked` or `removed`, HexeVoice clears stale onboarding-session state, invalidates local trusted operation by dropping the operational MQTT token, records the explicit trust-loss metadata, and moves the local lifecycle back to `registration` for re-onboarding.
 
+Current provider setup API boundary:
+
+- `GET /api/providers/setup`
+- `PUT /api/providers/setup`
+- `GET /api/providers/{provider_id}/status`
+
+Provider setup is now modeled as the node-local `capability_setup_pending` gate after trust activation. HexeVoice persists:
+
+- `supported_providers`
+- `enabled_providers`
+- `default_provider`
+- `declaration_allowed`
+- provider setup `blocking_reasons`
+
+Provider setup remains distinct from trust state. Trust must already be valid, and at least one enabled provider must be selected before the local lifecycle advances from `provider_setup` to `capability_declaration`.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

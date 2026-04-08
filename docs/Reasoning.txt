@@ -46,3 +46,9 @@ Chosen fix: Add a trust-status refresh service/route that calls Core with the la
 What changed: Added Core trust-status client support, persisted trust support/revocation metadata, exposed `POST /api/onboarding/trust-status/refresh`, projected trust-loss details through onboarding status, added runtime blockers for revoked/removed trust, and added tests for supported resume plus revoked/removed re-onboarding behavior.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (24 passed).
 ###########
+Task #009
+Step objective: Add an explicit provider setup boundary for the trusted-but-not-yet-operational state and use it to gate capability declaration.
+Chosen fix: Add provider setup persistence plus `/api/providers/setup` routes, track supported and enabled providers separately from trust state, and advance the local lifecycle into `capability_declaration` only when provider selection is valid.
+What changed: Added provider-setup state models, implemented provider setup service/routes under the provider namespace, projected enabled providers through the capabilities summary and provider status APIs, updated runtime blockers for `provider_setup`, and added tests for blocked and successful provider configuration paths.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_provider_setup.py tests/test_trust_status.py tests/test_trust_activation.py tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (27 passed).
+###########

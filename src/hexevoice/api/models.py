@@ -158,6 +158,20 @@ class TrustStatusRefreshResponse(BaseModel):
     trust_last_checked_at: str | None = None
 
 
+class ProviderSetupRequest(BaseModel):
+    enabled_providers: list[str] = Field(default_factory=list)
+    default_provider: str | None = None
+
+
+class ProviderSetupResponse(BaseModel):
+    configured: bool
+    supported_providers: list[str] = Field(default_factory=list)
+    enabled_providers: list[str] = Field(default_factory=list)
+    default_provider: str | None = None
+    declaration_allowed: bool = False
+    blocking_reasons: list[str] = Field(default_factory=list)
+
+
 class CapabilitySummaryResponse(BaseModel):
     configured: list[str] = Field(default_factory=list)
     declared: list[str] = Field(default_factory=list)

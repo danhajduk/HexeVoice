@@ -28,6 +28,7 @@ def test_standard_route_groups_exist():
     assert client.post("/api/onboarding/session/poll").status_code == 400
     assert client.post("/api/onboarding/trust-activation/finalize").status_code == 400
     assert client.post("/api/onboarding/trust-status/refresh").status_code == 400
+    assert client.get("/api/providers/setup").status_code == 200
     assert client.get("/api/capabilities").status_code == 200
     assert client.get("/api/governance/readiness").status_code == 200
     assert client.get("/api/services/status").status_code == 200
@@ -442,3 +443,44 @@ def test_trust_status_refresh_surfaces_removed_state_and_reonboarding(tmp_path, 
     assert node_status.status_code == 200
     assert node_status.json()["current_step_id"] == "registration"
     assert node_status.json()["blocking_reasons"] == ["node_removed_by_core", "re_onboarding_required"]
+
+
+def test_provider_setup_enables_provider_and_advances_to_capability_declaration(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "resume": {
+                    "current_step_id": "provider_setup",
+                    "last_completed_step_id": "trust_activation",
+                },
+            }
+        )
+    )
+
+    response = client.put(
+        "/api/providers/setup",
+        json={
+            "enabled_providers": ["voice"],
+            "default_provider": "voice",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["configured"] is True
+    assert payload["declaration_allowed"] is True
+    assert payload["enabled_providers"] == ["voice"]
+
+    onboarding_status = client.get("/api/onboarding/status")
+    assert onboarding_status.status_code == 200
+    assert onboarding_status.json()["current_step_id"] == "capability_declaration"
+
+    capability_status = client.get("/api/capabilities")
+    assert capability_status.status_code == 200
+    assert capability_status.json()["configured"] == ["voice"]

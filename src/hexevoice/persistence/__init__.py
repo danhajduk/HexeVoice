@@ -6,6 +6,7 @@ from hexevoice.persistence.onboarding_state import (
     OnboardingStateStore,
     PersistedOnboardingState,
     PreTrustSetupState,
+    ProviderSetupState,
     ResumeState,
     TrustActivationState,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "OnboardingStateStore",
     "PersistedOnboardingState",
     "PreTrustSetupState",
+    "ProviderSetupState",
     "ResumeState",
     "TrustActivationState",
 ]

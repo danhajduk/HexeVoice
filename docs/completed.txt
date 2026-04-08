@@ -6,3 +6,4 @@ Task 005: Implement onboarding session start for Registration using the Core nod
 Task 006: Implement Approval visibility, session polling, and operator-facing approval metadata - Completed on 04/07/2026 17:56
 Task 007: Implement Trust Activation finalize flow and secure persistence of activation payload fields - Completed on 04/07/2026 18:00
 Task 008: Add trusted resume and explicit trust-loss handling using the Core trust-status contract - Completed on 04/07/2026 18:05
+Task 009: Implement backend Provider Setup state and capability-setup readiness gating - Completed on 04/07/2026 18:10

@@ -84,6 +84,15 @@ class TrustActivationState(BaseModel):
     trust_last_checked_at: str | None = None
 
 
+class ProviderSetupState(BaseModel):
+    supported_providers: list[str] = Field(default_factory=list)
+    enabled_providers: list[str] = Field(default_factory=list)
+    default_provider: str | None = None
+    declaration_allowed: bool = False
+    blocking_reasons: list[str] = Field(default_factory=list)
+    last_updated_at: str | None = None
+
+
 class ResumeState(BaseModel):
     current_step_id: str = Field(default_factory=lambda: initial_onboarding_step().step_id)
     last_completed_step_id: str | None = None
@@ -96,6 +105,7 @@ class PersistedOnboardingState(BaseModel):
     bootstrap_discovery: BootstrapDiscoveryState = Field(default_factory=BootstrapDiscoveryState)
     onboarding_session: OnboardingSessionState = Field(default_factory=OnboardingSessionState)
     trust_activation: TrustActivationState = Field(default_factory=TrustActivationState)
+    provider_setup: ProviderSetupState = Field(default_factory=ProviderSetupState)
     resume: ResumeState = Field(default_factory=ResumeState)
     updated_at: str = Field(default_factory=_utc_now)
 
