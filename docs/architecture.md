@@ -84,4 +84,34 @@ On success, HexeVoice persists:
 
 and advances the local lifecycle from `registration` to `approval`.
 
+Current approval visibility APIs:
+
+- `GET /api/onboarding/status`
+- `POST /api/onboarding/session/poll`
+
+The onboarding status payload now surfaces operator-facing approval metadata, including:
+
+- `approval_url`
+- `session_id`
+- `expires_at`
+- `finalize_url`
+- `session_state`
+- `last_polled_at`
+- `last_terminal_outcome`
+
+The session poll route calls Core's canonical finalize endpoint:
+
+- `GET {core_base_url}/api/system/nodes/onboarding/sessions/{session_id}/finalize?node_nonce=...`
+
+Current finalize handling supports the canonical outcome set:
+
+- `pending`
+- `approved`
+- `rejected`
+- `expired`
+- `consumed`
+- `invalid`
+
+When finalize returns `approved`, HexeVoice persists the activation payload as pending protected state and advances the local lifecycle from `approval` to `trust_activation`.
+
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.

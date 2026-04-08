@@ -3,3 +3,4 @@ Task 002: Implement backend persistence for pre-trust setup, onboarding sessions
 Task 003: Add backend local setup APIs for Node Identity and Core Connection inputs - Completed on 04/07/2026 17:46
 Task 004: Implement bootstrap MQTT discovery and Core advertisement validation for Bootstrap Discovery - Completed on 04/07/2026 17:49
 Task 005: Implement onboarding session start for Registration using the Core node onboarding contract - Completed on 04/07/2026 17:52
+Task 006: Implement Approval visibility, session polling, and operator-facing approval metadata - Completed on 04/07/2026 17:56

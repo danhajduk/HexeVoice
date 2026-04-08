@@ -25,6 +25,7 @@ def test_standard_route_groups_exist():
     assert client.get("/api/onboarding/local-setup").status_code == 200
     assert client.get("/api/onboarding/bootstrap-discovery").status_code == 200
     assert client.post("/api/onboarding/session/start").status_code == 400
+    assert client.post("/api/onboarding/session/poll").status_code == 400
     assert client.get("/api/capabilities").status_code == 200
     assert client.get("/api/governance/readiness").status_code == 200
     assert client.get("/api/services/status").status_code == 200
@@ -213,8 +214,104 @@ def test_onboarding_session_start_persists_core_session_metadata(tmp_path, monke
     assert onboarding_status.status_code == 200
     assert onboarding_status.json()["session_id"] == "session-123"
     assert onboarding_status.json()["approval_url"].startswith("http://10.0.0.100/onboarding/nodes/approve")
+    assert onboarding_status.json()["session_state"] == "pending"
 
     node_status = client.get("/api/node/status")
     assert node_status.status_code == 200
     assert node_status.json()["current_step_id"] == "approval"
     assert node_status.json()["lifecycle_state"] == "pending_approval"
+
+
+def test_onboarding_session_poll_surfaces_approved_outcome(tmp_path, monkeypatch):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    client.put(
+        "/api/onboarding/local-setup/node-identity",
+        json={
+            "node_name": "kitchen-voice",
+            "protocol_version": "global-node-v1",
+            "node_nonce": "voice-node-nonce",
+            "hostname": "kitchen-voice.local",
+            "api_base_url": "http://10.0.0.22:9000",
+        },
+    )
+    client.put("/api/onboarding/local-setup/core-connection", json={"core_base_url": "http://10.0.0.100:9001"})
+    client.put(
+        "/api/onboarding/bootstrap-discovery/advertisement",
+        json={
+            "topic": "hexe/bootstrap/core",
+            "api_base": "http://10.0.0.100:9001",
+            "mqtt_host": "10.0.0.100",
+            "mqtt_port": 1884,
+            "onboarding_mode": "api",
+            "onboarding_contract": "global-node-v1",
+            "onboarding_endpoints": {
+                "register_session": "/api/system/nodes/onboarding/sessions",
+                "registrations": "/api/system/nodes/registrations",
+            },
+        },
+    )
+
+    class SessionStartResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "node_name": "kitchen-voice",
+                "node_type": "voice-node",
+                "node_software_version": "0.1.0",
+                "approval_url": "http://10.0.0.100/onboarding/nodes/approve?sid=session-123&state=abc",
+                "session_id": "session-123",
+                "expires_at": "2026-04-08T01:00:00+00:00",
+                "finalize": "/api/system/nodes/onboarding/sessions/session-123/finalize?node_nonce=voice-node-nonce",
+            }
+
+    class SessionPollResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "status": "approved",
+                "activation": {
+                    "node_id": "node-voice-123",
+                    "paired_core_id": "core-main",
+                    "node_trust_token": "trust-token-123",
+                    "baseline_policy_version": "2026.04",
+                    "operational_mqtt_identity": "node-voice-123",
+                    "operational_mqtt_host": "10.0.0.100",
+                    "operational_mqtt_port": 1883,
+                    "trust_status": "trusted",
+                },
+            }
+
+    def fake_post(url, json, timeout):
+        return SessionStartResponse()
+
+    def fake_get(url, params, timeout):
+        assert url == "http://10.0.0.100:9001/api/system/nodes/onboarding/sessions/session-123/finalize"
+        assert params == {"node_nonce": "voice-node-nonce"}
+        return SessionPollResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    start_response = client.post("/api/onboarding/session/start")
+    assert start_response.status_code == 200
+
+    poll_response = client.post("/api/onboarding/session/poll")
+    assert poll_response.status_code == 200
+    assert poll_response.json()["session_state"] == "approved"
+    assert poll_response.json()["activation_received"] is True
+
+    onboarding_status = client.get("/api/onboarding/status")
+    assert onboarding_status.status_code == 200
+    assert onboarding_status.json()["session_state"] == "approved"
+    assert onboarding_status.json()["last_terminal_outcome"] == "approved"
+    assert onboarding_status.json()["current_step_id"] == "trust_activation"

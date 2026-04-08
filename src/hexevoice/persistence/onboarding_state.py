@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -30,6 +31,9 @@ class OnboardingSessionState(BaseModel):
     expires_at: str | None = None
     finalize_url: str | None = None
     session_state: str | None = None
+    last_polled_at: str | None = None
+    last_terminal_outcome: str | None = None
+    pending_activation: dict[str, Any] | None = None
     last_error: str | None = None
 
 

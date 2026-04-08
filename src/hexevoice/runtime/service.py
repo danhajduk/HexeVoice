@@ -164,6 +164,9 @@ class NodeRuntimeService:
             approval_url=persisted_state.onboarding_session.approval_url,
             expires_at=persisted_state.onboarding_session.expires_at,
             finalize_url=persisted_state.onboarding_session.finalize_url,
+            session_state=persisted_state.onboarding_session.session_state,
+            last_polled_at=persisted_state.onboarding_session.last_polled_at,
+            last_terminal_outcome=persisted_state.onboarding_session.last_terminal_outcome,
             last_error=persisted_state.onboarding_session.last_error,
             steps=self._step_payloads(),
         )

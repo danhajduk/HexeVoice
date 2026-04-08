@@ -47,8 +47,7 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 006: Implement Approval visibility, session polling, and operator-facing approval metadata
-[TODO] Task 007: Implement Trust Activation finalize flow and secure persistence of activation payload fields
+[WIP] Task 007: Implement Trust Activation finalize flow and secure persistence of activation payload fields
 [TODO] Task 008: Add trusted resume and explicit trust-loss handling using the Core trust-status contract
 [TODO] Task 009: Implement backend Provider Setup state and capability-setup readiness gating
 [TODO] Task 010: Implement backend Capability Declaration, Governance Sync, and operational-status polling surfaces

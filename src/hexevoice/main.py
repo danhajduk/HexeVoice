@@ -13,11 +13,13 @@ from hexevoice.api.models import (
     NodeStatusResponse,
     NodeIdentitySetupRequest,
     NodeIdentitySetupResponse,
+    OnboardingSessionPollResponse,
     OnboardingSessionStartResponse,
     OnboardingStatusResponse,
     ProviderStatusResponse,
     ServiceStatusResponse,
 )
+from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
 from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
@@ -32,6 +34,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     session_start_service = OnboardingSessionStartService(
+        settings=app_settings,
+        onboarding_state_store=onboarding_state_store,
+    )
+    approval_service = ApprovalPollingService(
         settings=app_settings,
         onboarding_state_store=onboarding_state_store,
     )
@@ -87,6 +93,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/api/onboarding/session/start", response_model=OnboardingSessionStartResponse)
     async def onboarding_session_start() -> OnboardingSessionStartResponse:
         return session_start_service.start_session()
+
+    @app.post("/api/onboarding/session/poll", response_model=OnboardingSessionPollResponse)
+    async def onboarding_session_poll() -> OnboardingSessionPollResponse:
+        return approval_service.poll_session()
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:

@@ -28,3 +28,9 @@ Chosen fix: Add a small Core onboarding client and session-start service, expose
 What changed: Added Core onboarding HTTP client, session-start service, persisted finalize/session metadata, extended onboarding status payload with approval/session fields, exposed the session-start endpoint, and added tests for guarded startup and successful session creation.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (15 passed); `PYTHONPATH=src .venv/bin/python` TestClient smoke check confirmed successful session start projects `current_step_id=approval` and `lifecycle_state=pending_approval`.
 ###########
+Task #006
+Step objective: Surface operator approval state locally, poll the Core finalize route, and persist approved activation material without promoting trust yet.
+Chosen fix: Add an approval polling service backed by the Core finalize contract, extend onboarding session persistence/status metadata, expose a local `session/poll` route, and move the lifecycle to `trust_activation` only after an approved finalize outcome.
+What changed: Added Core finalize client support, persisted poll timestamps/terminal outcomes/pending activation payloads, exposed `POST /api/onboarding/session/poll`, expanded onboarding status fields with approval metadata, added approval polling tests, and documented the current approval visibility boundary.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_approval_polling.py tests/test_session_start.py tests/test_api.py tests/test_bootstrap_discovery.py tests/test_onboarding.py tests/test_persistence.py tests/test_config.py` (18 passed).
+###########

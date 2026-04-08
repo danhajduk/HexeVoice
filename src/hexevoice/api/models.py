@@ -40,6 +40,9 @@ class OnboardingStatusResponse(BaseModel):
     approval_url: str | None = None
     expires_at: str | None = None
     finalize_url: str | None = None
+    session_state: str | None = None
+    last_polled_at: str | None = None
+    last_terminal_outcome: str | None = None
     last_error: str | None = None
     steps: list[OnboardingStepResponse] = Field(default_factory=list)
 
@@ -117,6 +120,14 @@ class OnboardingSessionStartResponse(BaseModel):
     node_name: str | None = None
     node_type: str | None = None
     node_software_version: str | None = None
+
+
+class OnboardingSessionPollResponse(BaseModel):
+    session_id: str
+    session_state: str
+    last_polled_at: str | None = None
+    last_terminal_outcome: str | None = None
+    activation_received: bool = False
 
 
 class CapabilitySummaryResponse(BaseModel):
