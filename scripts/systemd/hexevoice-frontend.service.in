@@ -4,8 +4,3 @@ Description=HexeVoice Frontend
 [Service]
 WorkingDirectory=__ROOT_DIR__
 ExecStart=/bin/bash -lc 'source "__ENV_FILE__"; exec __FRONTEND_CMD__'
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=default.target
