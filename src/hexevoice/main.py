@@ -65,7 +65,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         onboarding_state_store=onboarding_state_store,
     )
     governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
-    supervisor_client = SupervisorApiClient()
+    supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
+    supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     service = NodeRuntimeService(
         settings=app_settings,
         onboarding_state_store=onboarding_state_store,
@@ -80,7 +81,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 await service.supervisor_heartbeat_once()
                 await asyncio.sleep(5)
 
-        asyncio.create_task(loop())
+        if supervisor_enabled:
+            asyncio.create_task(loop())
 
     @app.get("/health/live")
     async def health_live():
