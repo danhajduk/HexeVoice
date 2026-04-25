@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "voice/backend_client.h"
 
 namespace {
 constexpr char kTag[] = "hexe_audio";
@@ -76,6 +77,7 @@ void vad_task(void *arg) {
 
     const uint32_t level = estimate_level(samples, kFrameSamples);
     const bool frame_has_voice = level >= kVadEnergyThreshold;
+    hexe::voice::submit_audio_frame(samples, kFrameSamples, level, frame_has_voice);
 
     if (frame_has_voice) {
       silent_frames = 0;

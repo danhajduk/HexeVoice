@@ -124,3 +124,9 @@ Chosen fix: Add `WakeDetector` plus deterministic and openWakeWord adapter imple
 What changed: Added `src/hexevoice/voice/wake.py`, updated the WebSocket session lifecycle to start in `wake_armed`, added no-wake cancellation on `audio.end`, added deterministic wake tests, and updated docs to keep firmware VAD as optional while naming backend openWakeWord as the canonical wake authority.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_contracts.py tests/test_voice_websocket.py tests/test_voice_wake.py` (15 passed); `PYTHONPATH=src .venv/bin/pytest -q` (57 passed, 44 FastAPI deprecation warnings).
 ###########
+Task #031
+Step objective: Wire firmware endpoint configuration and transport so the ESP32 can send heartbeat metadata and bounded microphone chunks to the backend without hardcoding the node IP.
+Chosen fix: Generate firmware endpoint constants from `firmware/config/endpoint.yaml` or the committed example during the ESP-IDF build, add a native backend client with heartbeat and voice WebSocket tasks, and enqueue microphone frames from the existing VAD loop through a bounded queue.
+What changed: Added the endpoint config generator and test, added `firmware/main/voice/backend_client.*`, wired the client into boot and audio capture, extended CMake component requirements, and updated firmware docs/baseline notes. Firmware still does not consume backend events or play TTS.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_endpoint_config.py` (1 passed); `PYTHONPATH=src .venv/bin/pytest -q` (58 passed, 44 FastAPI deprecation warnings). `idf.py build` could not run because `idf.py` is not installed in this shell.
+###########

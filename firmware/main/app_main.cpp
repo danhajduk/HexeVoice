@@ -15,6 +15,7 @@
 #include "ui/animator.h"
 #include "ui/screens.h"
 #include "voice/assistant_client.h"
+#include "voice/backend_client.h"
 #include "voice/stt_stream.h"
 #include "voice/tts_player.h"
 #include "voice/wake_word.h"
@@ -49,6 +50,7 @@ extern "C" void app_main(void) {
   hexe::board::init_wifi();
 
   hexe::voice::init_wake_word();
+  hexe::voice::init_backend_client();
   hexe::voice::init_stt_stream();
   hexe::voice::init_tts_player();
   hexe::voice::init_assistant_client();

@@ -19,7 +19,7 @@ Status labels:
 | --- | --- | --- |
 | Node onboarding / trust / lifecycle | implemented | Backend routes are registered in `src/hexevoice/main.py`; models live in `src/hexevoice/api/models.py`; state persistence is in `src/hexevoice/persistence/onboarding_state.py`; onboarding, approval, trust activation, trust status, provider setup, capability declaration, governance, and operational status services live under `src/hexevoice/onboarding/`, `src/hexevoice/trust/`, `src/hexevoice/providers/`, `src/hexevoice/capabilities/`, and `src/hexevoice/governance/`. |
 | Dashboard shell | implemented | The app shell and routing are in `frontend/src/App.jsx`; dashboard cards live under `frontend/src/features/dashboard/`; shared visual tokens and components are in `frontend/src/theme/`. |
-| ESP32 microphone + VAD loop | partial | Firmware initializes BSP audio, opens a 16 kHz mono microphone stream, starts a VAD task, estimates energy, and moves local UI state between idle/listening in `firmware/main/board/audio.cpp`; app state is in `firmware/main/app_state.h`. |
+| ESP32 microphone + VAD loop | partial | Firmware initializes BSP audio, opens a 16 kHz mono microphone stream, starts a VAD task, estimates energy, moves local UI state between idle/listening, and queues bounded audio frames toward the backend client in `firmware/main/board/audio.cpp`; app state is in `firmware/main/app_state.h`. |
 | Text assistant endpoint | implemented | `POST /api/assistant/turn` is registered in `src/hexevoice/main.py`; request and response contracts are in `src/hexevoice/api/models.py`; deterministic local responses and simple commands are in `src/hexevoice/assistant/service.py`. |
 | Endpoint heartbeat/status | partial | `POST /api/endpoint/heartbeat` and `GET /api/endpoint/status/{endpoint_id}` are registered in `src/hexevoice/main.py`; in-memory heartbeat state is implemented in `src/hexevoice/endpoint/service.py`; there is no persistent endpoint registry yet. |
 | Voice pipeline | partial | The backend now has a voice protocol contract, in-memory single-endpoint WebSocket session manager, and wake detector adapter boundary under `src/hexevoice/voice/`; there is still no STT integration, TTS integration, or real assistant voice-loop routing. Firmware voice files under `firmware/main/voice/` only log scaffold readiness. |
@@ -77,12 +77,15 @@ Implemented:
 - Display, buttons, Wi-Fi, storage, power, telemetry, OTA, and audio initialization hooks are called from `firmware/main/app_main.cpp`.
 - Basic button state handling is present in `firmware/main/board/buttons.cpp`.
 - Wi-Fi station initialization and reconnect handling are present in `firmware/main/board/wifi.cpp`.
+- Endpoint config is generated from `firmware/config/endpoint.yaml` or `firmware/config/endpoint.example.yaml` by `firmware/tools/generate_endpoint_config.py`.
+- Firmware backend client initialization is wired from `firmware/main/app_main.cpp` through `firmware/main/voice/backend_client.cpp`.
 
 Partial:
 
 - Microphone initialization and simple energy-threshold VAD run in `firmware/main/board/audio.cpp`.
-- VAD affects local app state, but it does not stream audio, open a backend session, or interact with wake/STT/TTS.
+- VAD affects local app state and submits bounded microphone frames to the backend client, but firmware does not yet consume backend wake/session/playback events.
 - Display/UI state exists through `firmware/main/ui/` and app state, but the UI is still a lightweight scaffold.
+- The backend client sends heartbeat requests and voice WebSocket session/audio chunk envelopes using the generated endpoint config. Failure behavior is explicit through queue-full and disconnected-session drops, but backend responses are not handled yet.
 
 Scaffold:
 
@@ -93,9 +96,6 @@ Scaffold:
 
 Missing:
 
-- Backend connection client.
-- Endpoint heartbeat sender.
-- Audio upload or WebSocket transport.
 - TTS playback path.
 - Wake accepted/listening/thinking/speaking event handling from backend.
 
@@ -123,7 +123,7 @@ STT/TTS integration:
 
 Firmware transport:
 
-- Add backend connection configuration and a client that can send endpoint metadata, heartbeat, and audio chunks.
+- Expand the backend client beyond heartbeat/audio send into response handling, reconnect UX, and final utterance boundaries.
 - Support cancel/error/session state events from the backend.
 
 Firmware playback:

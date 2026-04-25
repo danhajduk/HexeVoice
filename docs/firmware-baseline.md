@@ -19,13 +19,15 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Button handling for mute/config interactions: `firmware/main/board/buttons.cpp`.
 - Microphone initialization and simple energy-threshold VAD task: `firmware/main/board/audio.cpp`.
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
+- Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
+- Backend heartbeat and voice WebSocket client scaffold: `firmware/main/voice/backend_client.cpp`.
 
 ## Partial
 
-- VAD updates local app state and display phase, but it does not stream audio to the HexeVoice backend yet.
+- VAD updates local app state and display phase, and microphone frames are queued for the backend voice WebSocket, but backend event handling and playback are not implemented yet.
 - Wi-Fi connects with compile-time local credentials, but provisioning is not implemented.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
-- Backend endpoint connection settings exist in YAML form, but firmware code does not consume the YAML or connect to the node yet.
+- Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.
 
 ## Scaffold
 
@@ -37,9 +39,6 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 
 ## Missing
 
-- Firmware backend client.
-- Endpoint heartbeat sender.
-- Voice WebSocket/audio chunk sender.
 - Backend event handling.
 - TTS receive/playback path.
 - Settings/provisioning UI.
@@ -57,11 +56,16 @@ The local `endpoint.yaml` is gitignored because it contains machine-specific hos
 
 Current expected HexeVoice node backend values:
 
+- `endpoint.id`: endpoint id sent in heartbeat and voice envelopes.
 - `node.host`: LAN host running HexeVoice.
 - `node.http_port`: `9004`.
 - `node.ws_port`: `9004`.
 - `node.heartbeat_path`: `/api/endpoint/heartbeat`.
 - `node.voice_ws_path`: `/api/voice/ws`.
+- `audio.encoding`: `pcm_s16le`.
+- `audio.sample_rate_hz`: `16000`.
+- `audio.channels`: `1`.
+- `audio.chunk_samples`: microphone chunk size sent to the backend.
 
 Automatic endpoint discovery is deferred until after the first single-endpoint voice loop works.
 
@@ -70,7 +74,5 @@ Automatic endpoint discovery is deferred until after the first single-endpoint v
 Firmware implementation should follow the task queue in `docs/New_tasks.txt`:
 
 1. Use the backend voice event/session contract.
-2. Connect to `/api/voice/ws`.
-3. Send heartbeat and audio chunks to the node.
-4. Receive backend events.
-5. Play TTS output and drive endpoint UI state from backend events.
+2. Receive backend events.
+3. Play TTS output and drive endpoint UI state from backend events.
