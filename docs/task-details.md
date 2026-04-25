@@ -360,3 +360,65 @@ Original task details:
 - Run targeted backend tests, frontend build, and the smallest practical firmware build or compile validation.
 - Update `docs/voice-node-phase-0-baseline.md`, `docs/voice-node-phase-1.md`, or a new Phase 1 handoff note to reflect what became real.
 - Do not mark the task complete unless the repo has a documented verification result for the integrated loop.
+
+## Task 044
+Original task details:
+- Existing container found on 04/25/2026:
+  - name: `openwakeword`
+  - image: `rhasspy/wyoming-openwakeword`
+  - port: `10400`
+  - restart policy before intervention: `unless-stopped`
+  - compose project: `homeassistant`
+  - compose file: `/home/dan/Projects/HomeAssistant/docker-compose.yml`
+  - custom model mount: `/home/dan/Projects/HomeAssistant/openwakeword/models:/custom`
+- Already performed manually:
+  - `docker update --restart=no openwakeword`
+  - `docker stop openwakeword`
+- Acceptance criteria:
+  - Document that Docker restart has been disabled for the old container.
+  - Add a note that HomeAssistant compose can still recreate/start it if that external stack is launched.
+  - Do not edit the HomeAssistant repository from this repo unless explicitly requested.
+
+## Task 045
+Original task details:
+- Add a HexeVoice-owned openWakeWord container definition.
+- Use the existing working image unless a better image is deliberately chosen: `rhasspy/wyoming-openwakeword`.
+- Preserve the custom model directory behavior and migrate/copy/reference the trained wake model from the old HomeAssistant path or the current local model path.
+- Choose a node-local model/config location that is committed as a template but keeps trained model binaries out of git.
+- Ensure restart behavior is controlled by the node/supervisor design, not by a standalone Docker `unless-stopped` policy.
+- Add scripts or configuration needed to start, stop, and inspect the service from this repository.
+
+## Task 046
+Original task details:
+- Register the HexeVoice-managed openWakeWord container/runtime with Core Supervisor.
+- Follow the node supervisor contract already used by the backend runtime:
+  - Unix socket: `/run/hexe/supervisor.sock`
+  - register route: `POST /api/supervisor/runtimes/register`
+  - heartbeat route: `POST /api/supervisor/runtimes/heartbeat`
+- Determine whether registration should be performed by the HexeVoice backend, a helper sidecar, or supervisor metadata/config.
+- The service must be supervisor-owned for lifecycle start/stop/restart behavior.
+- Add tests or a dry-run validation for the registration payload if code is introduced.
+
+## Task 047
+Original task details:
+- Add a backend wake provider mode that uses the supervised openWakeWord service instead of in-process openWakeWord.
+- Keep deterministic and in-process openWakeWord providers available for development/fallback unless removal is explicitly requested.
+- Add configuration for provider selection and service address/port.
+- Translate streamed firmware audio into the protocol expected by the openWakeWord service.
+- Emit the existing `wake.accepted` and session state events when the service detects the configured wake word.
+- Keep raw audio transient and bounded.
+- Expose provider health/status through `/api/voice/status`.
+
+## Task 048
+Original task details:
+- Validate the supervised openWakeWord wake-to-listening path end to end.
+- Expected path:
+  - firmware streams microphone audio to HexeVoice
+  - HexeVoice feeds wake audio to the supervised openWakeWord service
+  - openWakeWord detects the trained wake word
+  - backend emits `wake.accepted`
+  - firmware switches to Listening only after `wake.accepted`
+  - dashboard shows wake provider health and last detection metadata
+- Confirm the old HomeAssistant-owned container remains stopped and does not auto-restart.
+- Run targeted backend tests and the smallest practical runtime smoke test.
+- Update the relevant docs with the final operational flow and any remaining tuning notes.

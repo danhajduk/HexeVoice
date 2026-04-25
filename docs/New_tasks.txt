@@ -47,3 +47,8 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
+[TODO] Task 044: Archive the existing HomeAssistant openWakeWord container ownership
+[TODO] Task 045: Add a HexeVoice-managed openWakeWord container definition
+[TODO] Task 046: Register the openWakeWord runtime with Core Supervisor
+[TODO] Task 047: Add a backend wake provider that uses the supervised openWakeWord service
+[TODO] Task 048: Validate the supervised openWakeWord wake-to-listening path
