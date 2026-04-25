@@ -21,3 +21,4 @@ Task 029: Add /api/voice/ws with an in-memory single-endpoint session manager - 
 Task 030: Add backend openWakeWord audio intake path - Completed on 04/25/2026 11:27
 Task 031: Add firmware backend client and audio chunk sender - Completed on 04/25/2026 11:32
 Task 032: Add STT to assistant turn to TTS adapters - Completed on 04/25/2026 11:36
+Task 033: Add firmware playback and event-driven UI - Completed on 04/25/2026 11:40

@@ -3,5 +3,7 @@
 namespace hexe::voice {
 
 void init_tts_player();
+void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url);
+void stop_tts_playback();
 
 }  // namespace hexe::voice

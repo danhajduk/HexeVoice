@@ -21,10 +21,12 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
 - Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
 - Backend heartbeat and voice WebSocket client scaffold: `firmware/main/voice/backend_client.cpp`.
+- Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
+- TTS-ready playback scaffold and stop handling in `firmware/main/voice/tts_player.cpp`.
 
 ## Partial
 
-- VAD updates local app state and display phase, and microphone frames are queued for the backend voice WebSocket, but backend event handling and playback are not implemented yet.
+- VAD updates local app state and display phase, microphone frames are queued for the backend voice WebSocket, and VAD silence sends `audio.end`. Raw backend events drive UI phases, but real TTS audio playback is not implemented yet.
 - Wi-Fi connects with compile-time local credentials, but provisioning is not implemented.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
 - Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.
@@ -39,8 +41,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 
 ## Missing
 
-- Backend event handling.
-- TTS receive/playback path.
+- Real TTS audio download or stream playback path.
 - Settings/provisioning UI.
 - OTA implementation beyond scaffold initialization.
 
@@ -74,5 +75,5 @@ Automatic endpoint discovery is deferred until after the first single-endpoint v
 Firmware implementation should follow the task queue in `docs/New_tasks.txt`:
 
 1. Use the backend voice event/session contract.
-2. Receive backend events.
-3. Play TTS output and drive endpoint UI state from backend events.
+2. Replace TTS-ready scaffold logging with real audio download or stream playback.
+3. Harden reconnect/session-boundary behavior after device testing.

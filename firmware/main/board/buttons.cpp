@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "iot_button.h"
+#include "voice/backend_client.h"
 
 namespace {
 constexpr char kTag[] = "hexe_buttons";
@@ -72,6 +73,7 @@ void handle_press_up(void *button_handle, void *usr_data) {
 
     auto &app_state = hexe::state();
     app_state.muted = false;
+    hexe::voice::cancel_active_session("config_double_press");
     app_state.phase =
         app_state.phase == hexe::AppPhase::kListening ? hexe::AppPhase::kThinking : hexe::AppPhase::kListening;
     return;
@@ -93,12 +95,21 @@ void handle_single_click(void *button_handle, void *usr_data) {
   auto &app_state = hexe::state();
   if (index == BSP_BUTTON_MUTE) {
     app_state.muted = !app_state.muted;
+    if (app_state.muted) {
+      hexe::voice::cancel_active_session("mute_button");
+    }
     app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::AppPhase::kIdle;
     return;
   }
 
   if (index == BSP_BUTTON_CONFIG) {
-    app_state.phase = app_state.phase == hexe::AppPhase::kListening ? hexe::AppPhase::kIdle : hexe::AppPhase::kListening;
+    if (app_state.phase == hexe::AppPhase::kListening || app_state.phase == hexe::AppPhase::kThinking ||
+        app_state.phase == hexe::AppPhase::kReplying) {
+      hexe::voice::cancel_active_session("config_button");
+      app_state.phase = hexe::AppPhase::kIdle;
+    } else {
+      app_state.phase = hexe::AppPhase::kListening;
+    }
   }
 }
 }

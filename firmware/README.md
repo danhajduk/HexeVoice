@@ -66,18 +66,18 @@ Implemented today:
 - backend client configuration generated from endpoint YAML
 - endpoint heartbeat sender
 - voice WebSocket client with bounded audio frame queue
+- backend event handling for wake/session/transcript/response/TTS/error envelopes
+- scaffolded TTS playback state handling
 
 Scaffold-only today:
 
 - backend assistant client
 - wake-word module
 - STT stream module
-- TTS player module
 - OTA, telemetry, power, and settings runtime behavior
 
 Missing today:
 
-- backend event handling
-- TTS receive/playback
+- real TTS audio download/stream playback
 
 See [`docs/firmware-baseline.md`](/home/dan/Projects/HexeVoice/docs/firmware-baseline.md) for the detailed current-state record.

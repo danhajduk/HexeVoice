@@ -84,9 +84,10 @@ Implemented:
 Partial:
 
 - Microphone initialization and simple energy-threshold VAD run in `firmware/main/board/audio.cpp`.
-- VAD affects local app state and submits bounded microphone frames to the backend client, but firmware does not yet consume backend wake/session/playback events.
+- VAD affects local app state, submits bounded microphone frames to the backend client, and sends `audio.end` on VAD silence.
 - Display/UI state exists through `firmware/main/ui/` and app state, but the UI is still a lightweight scaffold.
-- The backend client sends heartbeat requests and voice WebSocket session/audio chunk envelopes using the generated endpoint config. Failure behavior is explicit through queue-full and disconnected-session drops, but backend responses are not handled yet.
+- The backend client sends heartbeat requests and voice WebSocket session/audio chunk envelopes using the generated endpoint config. Failure behavior is explicit through queue-full and disconnected-session drops.
+- Backend event handling now maps wake/session/transcript/response/TTS/error envelopes to endpoint UI phases and cancel/end session messages, but TTS playback is still metadata/scaffold-only.
 
 Scaffold:
 
@@ -97,8 +98,7 @@ Scaffold:
 
 Missing:
 
-- TTS playback path.
-- Wake accepted/listening/thinking/speaking event handling from backend.
+- Real TTS audio playback path.
 
 ## Phase 0 Gap List
 
@@ -129,8 +129,8 @@ Firmware transport:
 
 Firmware playback:
 
-- Add TTS audio receive and playback support.
-- Map backend events to display and button UX states.
+- Replace TTS metadata handling with real TTS audio receive and playback support.
+- Harden backend event handling against reconnects and fragmented WebSocket payloads after device testing.
 
 Frontend observability:
 

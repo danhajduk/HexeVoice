@@ -56,7 +56,11 @@ void apply_vad_state(bool speaking, uint32_t level) {
       ESP_LOGI(kTag, "VAD speech detected (level=%lu)", static_cast<unsigned long>(level));
     }
   } else if (app_state.phase == hexe::AppPhase::kListening) {
-    app_state.phase = hexe::AppPhase::kIdle;
+    if (hexe::voice::finish_audio_stream("vad_silence")) {
+      app_state.phase = hexe::AppPhase::kThinking;
+    } else {
+      app_state.phase = hexe::AppPhase::kIdle;
+    }
     ESP_LOGI(kTag, "VAD silence detected (level=%lu)", static_cast<unsigned long>(level));
   }
 }
