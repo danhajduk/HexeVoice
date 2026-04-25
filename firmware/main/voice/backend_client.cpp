@@ -69,7 +69,7 @@ void set_audio_streaming(bool streaming) {
 
 bool backend_ready_for_voice() {
   const auto &state = hexe::state();
-  return state.wifi_connected && state.backend_connected;
+  return state.wifi_connected && state.backend_connected && !state.ota_active;
 }
 
 void mark_voice_socket_disconnected() {
@@ -393,7 +393,8 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
 }
 
 bool send_ws_text(const std::string &message) {
-  if (g_ws_client == nullptr || !g_ws_connected || !esp_websocket_client_is_connected(g_ws_client)) {
+  if (hexe::state().ota_active || g_ws_client == nullptr || !g_ws_connected ||
+      !esp_websocket_client_is_connected(g_ws_client)) {
     mark_voice_socket_disconnected();
     return false;
   }
@@ -534,6 +535,18 @@ void websocket_task(void *arg) {
 
   AudioFrame frame = {};
   while (true) {
+    if (hexe::state().ota_active) {
+      if (g_ws_started) {
+        ESP_LOGI(kTag, "Stopping voice WebSocket while OTA update is active");
+        esp_websocket_client_stop(g_ws_client);
+        g_ws_started = false;
+      }
+      mark_voice_socket_disconnected();
+      xQueueReset(g_audio_queue);
+      vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+      continue;
+    }
+
     if (!backend_ready_for_voice()) {
       if (g_ws_started) {
         esp_websocket_client_stop(g_ws_client);
@@ -610,7 +623,7 @@ bool submit_audio_frame(const int16_t *samples, size_t sample_count, uint32_t le
 }
 
 bool finish_audio_stream(const char *reason) {
-  if (!g_session_started || g_audio_stream_finished) {
+  if (hexe::state().ota_active || !g_session_started || g_audio_stream_finished) {
     return false;
   }
   if (!flush_transport_samples(true)) {
@@ -635,7 +648,7 @@ bool finish_audio_stream(const char *reason) {
 }
 
 bool cancel_active_session(const char *reason) {
-  if (!g_session_started) {
+  if (hexe::state().ota_active || !g_session_started) {
     return false;
   }
   char payload[384];

@@ -127,6 +127,10 @@ bool start_ota_update(const char *url, const char *version, const char *sha256, 
   if (g_ota_queue == nullptr || url == nullptr || url[0] == '\0') {
     return false;
   }
+  if (hexe::state().ota_active) {
+    ESP_LOGW(kTag, "OTA update already active");
+    return false;
+  }
 
   OtaRequest request = {};
   std::snprintf(request.url, sizeof(request.url), "%s", url);
@@ -142,6 +146,13 @@ bool start_ota_update(const char *url, const char *version, const char *sha256, 
     ESP_LOGW(kTag, "OTA update already queued or running");
     return false;
   }
+
+  auto &app_state = hexe::state();
+  app_state.phase = hexe::AppPhase::kUpdating;
+  app_state.ota_active = true;
+  app_state.ota_progress_percent = 0;
+  app_state.ota_bytes_read = 0;
+  app_state.ota_size_bytes = size_bytes > 0 ? size_bytes : 0;
   return true;
 }
 

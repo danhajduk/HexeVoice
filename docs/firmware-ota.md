@@ -175,6 +175,7 @@ The native firmware now has:
 - Firmware version text drawn on the load screen as `FW <app version>`.
 - Firmware OTA client in `firmware/main/system/ota.cpp`.
 - Firmware OTA progress bar on the LCD while an update is downloading.
+- Firmware disables the voice WebSocket and audio upload path while OTA is active.
 - Backend `ota.update` WebSocket event handling in the endpoint firmware.
 - Backend artifact hosting from `runtime/firmware`.
 - Backend OTA push API:
