@@ -47,4 +47,3 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 043: Validate and document the Phase 1 wake-to-reply demo

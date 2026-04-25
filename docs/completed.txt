@@ -31,3 +31,4 @@ Task 039: Wire real STT provider adapter into completed wake sessions - Complete
 Task 040: Wire real TTS provider adapter and playable response audio - Completed on 04/25/2026 13:31
 Task 041: Complete firmware TTS playback for backend response audio - Completed on 04/25/2026 13:34
 Task 042: Add Phase 1 voice loop observability and operator errors - Completed on 04/25/2026 13:37
+Task 043: Validate and document the Phase 1 wake-to-reply demo - Completed on 04/25/2026 13:39
