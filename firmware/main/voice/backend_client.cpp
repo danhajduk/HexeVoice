@@ -27,8 +27,10 @@ constexpr size_t kAudioQueueDepth = 8;
 constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr int kMaxChunkSamples = hexe::config::kEndpointAudioChunkSamples;
+constexpr int kWakePredictionChunkSamples = 1280;
 constexpr size_t kMaxBackendEventBytes = 8192;
 constexpr uint32_t kBackendReadinessPollMs = 500;
+constexpr size_t kWakePrerollFrameCount = 15;
 
 struct AudioFrame {
   std::array<int16_t, kMaxChunkSamples> samples;
@@ -48,8 +50,17 @@ bool g_session_started = false;
 bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
 bool g_ws_started = false;
+bool g_preroll_drained = false;
+std::array<AudioFrame, kWakePrerollFrameCount> g_preroll_frames = {};
+size_t g_preroll_index = 0;
+size_t g_preroll_count = 0;
+std::array<int16_t, kWakePredictionChunkSamples> g_transport_samples = {};
+size_t g_transport_sample_count = 0;
 std::string g_session_id;
 std::string g_ws_rx_buffer;
+
+std::string base64_audio(const int16_t *samples, size_t sample_count);
+bool send_ws_text(const std::string &message);
 
 void set_audio_streaming(bool streaming) {
   hexe::state().audio_streaming = streaming;
@@ -64,7 +75,113 @@ void mark_voice_socket_disconnected() {
   g_ws_connected = false;
   g_session_started = false;
   g_audio_stream_finished = false;
+  g_preroll_drained = false;
+  g_transport_sample_count = 0;
   set_audio_streaming(false);
+}
+
+void remember_preroll_frame(const AudioFrame &frame) {
+  g_preroll_frames[g_preroll_index] = frame;
+  g_preroll_index = (g_preroll_index + 1) % g_preroll_frames.size();
+  if (g_preroll_count < g_preroll_frames.size()) {
+    ++g_preroll_count;
+  }
+}
+
+std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
+  const std::string encoded = base64_audio(samples, sample_count);
+  if (encoded.empty()) {
+    return std::string();
+  }
+
+  std::string payload;
+  payload.reserve(encoded.size() + 512);
+  char prefix[512];
+  std::snprintf(
+      prefix,
+      sizeof(prefix),
+      "{\"event_type\":\"audio.chunk\",\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\","
+      "\"session_id\":\"%s\",\"sequence\":%" PRIu32 ",\"payload\":{\"chunk_index\":%" PRIu32 ","
+      "\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d},\"payload_base64\":\"",
+      hexe::config::kEndpointId,
+      g_session_id.c_str(),
+      g_sequence++,
+      g_chunk_index++,
+      hexe::config::kEndpointAudioEncoding,
+      hexe::config::kEndpointAudioSampleRateHz,
+      hexe::config::kEndpointAudioChannels);
+  payload.append(prefix);
+  payload.append(encoded);
+  payload.append("\",\"is_final\":false}}");
+  return payload;
+}
+
+bool send_transport_chunk(const int16_t *samples, size_t sample_count) {
+  if (sample_count == 0) {
+    return true;
+  }
+  const std::string payload = audio_chunk_payload(samples, sample_count);
+  if (payload.empty()) {
+    return false;
+  }
+  if (send_ws_text(payload)) {
+    set_audio_streaming(true);
+    return true;
+  }
+
+  ESP_LOGW(kTag, "Failed to send audio chunk to voice WebSocket");
+  set_audio_streaming(false);
+  return false;
+}
+
+bool flush_transport_samples(bool force) {
+  if (g_transport_sample_count == 0) {
+    return true;
+  }
+  if (!force && g_transport_sample_count < g_transport_samples.size()) {
+    return true;
+  }
+
+  const bool sent = send_transport_chunk(g_transport_samples.data(), g_transport_sample_count);
+  if (sent) {
+    g_transport_sample_count = 0;
+  }
+  return sent;
+}
+
+bool append_transport_frame(const AudioFrame &frame) {
+  size_t offset = 0;
+  while (offset < frame.sample_count) {
+    const size_t available = g_transport_samples.size() - g_transport_sample_count;
+    const size_t to_copy = std::min(available, frame.sample_count - offset);
+    std::copy(
+        frame.samples.begin() + offset,
+        frame.samples.begin() + offset + to_copy,
+        g_transport_samples.begin() + g_transport_sample_count);
+    g_transport_sample_count += to_copy;
+    offset += to_copy;
+
+    if (g_transport_sample_count == g_transport_samples.size() && !flush_transport_samples(false)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool drain_preroll_frames() {
+  if (g_preroll_drained) {
+    return true;
+  }
+
+  const size_t first = (g_preroll_index + g_preroll_frames.size() - g_preroll_count) % g_preroll_frames.size();
+  for (size_t i = 0; i < g_preroll_count; ++i) {
+    const size_t index = (first + i) % g_preroll_frames.size();
+    if (!append_transport_frame(g_preroll_frames[index])) {
+      return false;
+    }
+  }
+  g_preroll_drained = true;
+  return true;
 }
 
 const char *scheme_http() {
@@ -173,6 +290,8 @@ void handle_backend_event_json(const std::string &message) {
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     g_session_started = false;
     g_audio_stream_finished = false;
+    g_preroll_drained = false;
+    g_transport_sample_count = 0;
     set_audio_streaming(false);
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kIdle;
@@ -181,6 +300,8 @@ void handle_backend_event_json(const std::string &message) {
     cJSON *recoverable = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "recoverable") : nullptr;
     g_session_started = false;
     g_audio_stream_finished = false;
+    g_preroll_drained = false;
+    g_transport_sample_count = 0;
     set_audio_streaming(false);
     if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
       if (!app_state.muted) {
@@ -234,6 +355,8 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_ws_connected = true;
     g_session_started = false;
     g_audio_stream_finished = false;
+    g_preroll_drained = false;
+    g_transport_sample_count = 0;
     set_audio_streaming(false);
     g_ws_rx_buffer.clear();
     ESP_LOGI(kTag, "Voice WebSocket connected");
@@ -241,6 +364,8 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_ws_connected = false;
     g_session_started = false;
     g_audio_stream_finished = false;
+    g_preroll_drained = false;
+    g_transport_sample_count = 0;
     set_audio_streaming(false);
     g_ws_rx_buffer.clear();
     ESP_LOGW(kTag, "Voice WebSocket disconnected");
@@ -275,6 +400,8 @@ void ensure_session_started() {
   ++g_session_counter;
   g_chunk_index = 0;
   g_audio_stream_finished = false;
+  g_preroll_drained = false;
+  g_transport_sample_count = 0;
   char session_buffer[96];
   std::snprintf(
       session_buffer,
@@ -308,6 +435,7 @@ void ensure_session_started() {
 
 void send_audio_frame(const AudioFrame &frame) {
   if (!g_session_started && !frame.vad_speaking) {
+    remember_preroll_frame(frame);
     return;
   }
   ensure_session_started();
@@ -318,36 +446,11 @@ void send_audio_frame(const AudioFrame &frame) {
     return;
   }
 
-  const std::string encoded = base64_audio(frame.samples.data(), frame.sample_count);
-  if (encoded.empty()) {
+  if (!drain_preroll_frames()) {
     return;
   }
-
-  std::string payload;
-  payload.reserve(encoded.size() + 512);
-  char prefix[512];
-  std::snprintf(
-      prefix,
-      sizeof(prefix),
-      "{\"event_type\":\"audio.chunk\",\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\","
-      "\"session_id\":\"%s\",\"sequence\":%" PRIu32 ",\"payload\":{\"chunk_index\":%" PRIu32 ","
-      "\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d},\"payload_base64\":\"",
-      hexe::config::kEndpointId,
-      g_session_id.c_str(),
-      g_sequence++,
-      g_chunk_index++,
-      hexe::config::kEndpointAudioEncoding,
-      hexe::config::kEndpointAudioSampleRateHz,
-      hexe::config::kEndpointAudioChannels);
-  payload.append(prefix);
-  payload.append(encoded);
-  payload.append("\",\"is_final\":false}}");
-
-  if (send_ws_text(payload)) {
-    set_audio_streaming(true);
-  } else {
-    ESP_LOGW(kTag, "Failed to send audio chunk to voice WebSocket");
-    set_audio_streaming(false);
+  if (!append_transport_frame(frame)) {
+    return;
   }
 }
 
@@ -496,6 +599,9 @@ bool finish_audio_stream(const char *reason) {
   if (!g_session_started || g_audio_stream_finished) {
     return false;
   }
+  if (!flush_transport_samples(true)) {
+    return false;
+  }
   char payload[384];
   std::snprintf(
       payload,
@@ -531,6 +637,8 @@ bool cancel_active_session(const char *reason) {
   const bool sent = send_ws_text(payload);
   g_session_started = false;
   g_audio_stream_finished = false;
+  g_preroll_drained = false;
+  g_transport_sample_count = 0;
   set_audio_streaming(false);
   hexe::voice::stop_tts_playback();
   return sent;
