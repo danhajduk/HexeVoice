@@ -51,11 +51,14 @@ TARGET="$(awk -F'"' '/"target"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
 PROJECT_NAME="$(awk -F'"' '/"project_name"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
 CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-sha256sum \
-  "${EXPORT_DIR}/bootloader.bin" \
-  "${EXPORT_DIR}/partition-table.bin" \
-  "${EXPORT_DIR}/ota_data_initial.bin" \
-  "${EXPORT_DIR}/hexe_firmware.bin" > "${EXPORT_DIR}/SHA256SUMS"
+(
+  cd "${EXPORT_DIR}"
+  sha256sum \
+    bootloader.bin \
+    partition-table.bin \
+    ota_data_initial.bin \
+    hexe_firmware.bin > SHA256SUMS
+)
 
 sha256sum "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
 
