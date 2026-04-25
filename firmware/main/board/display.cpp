@@ -156,6 +156,35 @@ void draw_wifi_icon(bool connected, int rssi) {
   set_pixel(kIconX + 18, kIconY + 6, c3);
 }
 
+void draw_audio_stream_icon(bool streaming) {
+  if (!streaming) {
+    return;
+  }
+
+  constexpr int kIconX = 286;
+  constexpr int kIconY = 8;
+  const uint16_t shadow = swap565(0x0000);
+  const uint16_t bg = swap565(0x18C3);
+  const uint16_t outline = swap565(0x7BEF);
+  const uint16_t fg = swap565(0x07FF);
+  const uint16_t pulse = (hexe::state().loading_frame % 24) < 12 ? swap565(0xFFFF) : fg;
+
+  fill_rect(kIconX + 1, kIconY + 1, 26, 18, shadow);
+  fill_rect(kIconX + 2, kIconY, 22, 1, bg);
+  fill_rect(kIconX + 1, kIconY + 1, 24, 16, bg);
+  fill_rect(kIconX + 2, kIconY + 17, 22, 1, bg);
+  draw_rect_outline(kIconX + 1, kIconY + 1, 24, 16, outline);
+
+  fill_rect(kIconX + 7, kIconY + 4, 6, 8, fg);
+  fill_rect(kIconX + 8, kIconY + 3, 4, 1, fg);
+  fill_rect(kIconX + 8, kIconY + 12, 4, 1, fg);
+  fill_rect(kIconX + 9, kIconY + 13, 2, 2, fg);
+  draw_hline(kIconX + 6, kIconY + 15, 8, fg);
+
+  fill_rect(kIconX + 17, kIconY + 5, 2, 8, pulse);
+  fill_rect(kIconX + 21, kIconY + 3, 2, 12, pulse);
+}
+
 struct ScreenAsset {
   const uint16_t *pixels;
   int width;
@@ -241,6 +270,7 @@ void render_boot_frame(int frame, const char *build_id) {
   }
 
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);
+  draw_audio_stream_icon(hexe::state().audio_streaming);
 
   ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(g_panel, 0, 0, kWidth, kHeight, g_framebuffer));
 }

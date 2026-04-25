@@ -74,8 +74,7 @@ void handle_press_up(void *button_handle, void *usr_data) {
     auto &app_state = hexe::state();
     app_state.muted = false;
     hexe::voice::cancel_active_session("config_double_press");
-    app_state.phase =
-        app_state.phase == hexe::AppPhase::kListening ? hexe::AppPhase::kThinking : hexe::AppPhase::kListening;
+    app_state.phase = hexe::AppPhase::kIdle;
     return;
   }
 
@@ -108,7 +107,7 @@ void handle_single_click(void *button_handle, void *usr_data) {
       hexe::voice::cancel_active_session("config_button");
       app_state.phase = hexe::AppPhase::kIdle;
     } else {
-      app_state.phase = hexe::AppPhase::kListening;
+      app_state.phase = hexe::AppPhase::kIdle;
     }
   }
 }

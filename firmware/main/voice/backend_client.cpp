@@ -49,6 +49,10 @@ bool g_ws_connected = false;
 std::string g_session_id;
 std::string g_ws_rx_buffer;
 
+void set_audio_streaming(bool streaming) {
+  hexe::state().audio_streaming = streaming;
+}
+
 const char *scheme_http() {
   return hexe::config::kEndpointUseTls ? "https" : "http";
 }
@@ -155,6 +159,7 @@ void handle_backend_event_json(const std::string &message) {
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     g_session_started = false;
     g_audio_stream_finished = false;
+    set_audio_streaming(false);
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kIdle;
     }
@@ -162,6 +167,7 @@ void handle_backend_event_json(const std::string &message) {
     cJSON *recoverable = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "recoverable") : nullptr;
     g_session_started = false;
     g_audio_stream_finished = false;
+    set_audio_streaming(false);
     if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
       if (!app_state.muted) {
         app_state.phase = hexe::AppPhase::kIdle;
@@ -214,6 +220,7 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_ws_connected = true;
     g_session_started = false;
     g_audio_stream_finished = false;
+    set_audio_streaming(false);
     g_ws_rx_buffer.clear();
     hexe::state().backend_connected = true;
     ESP_LOGI(kTag, "Voice WebSocket connected");
@@ -221,11 +228,13 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_ws_connected = false;
     g_session_started = false;
     g_audio_stream_finished = false;
+    set_audio_streaming(false);
     g_ws_rx_buffer.clear();
     hexe::state().backend_connected = false;
     ESP_LOGW(kTag, "Voice WebSocket disconnected");
   } else if (event_id == WEBSOCKET_EVENT_ERROR) {
     g_ws_connected = false;
+    set_audio_streaming(false);
     hexe::state().backend_connected = false;
     ESP_LOGW(kTag, "Voice WebSocket error");
   } else if (event_id == WEBSOCKET_EVENT_DATA) {
@@ -274,6 +283,7 @@ void ensure_session_started() {
 
   g_session_started = send_ws_text(payload);
   if (g_session_started) {
+    set_audio_streaming(true);
     ESP_LOGI(kTag, "Started voice session %s", g_session_id.c_str());
   }
 }
@@ -315,8 +325,11 @@ void send_audio_frame(const AudioFrame &frame) {
   payload.append(encoded);
   payload.append("\",\"is_final\":false}}");
 
-  if (!send_ws_text(payload)) {
+  if (send_ws_text(payload)) {
+    set_audio_streaming(true);
+  } else {
     ESP_LOGW(kTag, "Failed to send audio chunk to voice WebSocket");
+    set_audio_streaming(false);
   }
 }
 
@@ -437,6 +450,7 @@ bool finish_audio_stream(const char *reason) {
       reason == nullptr ? "audio_end" : reason);
   g_audio_stream_finished = send_ws_text(payload);
   if (g_audio_stream_finished) {
+    set_audio_streaming(false);
     hexe::state().phase = hexe::AppPhase::kThinking;
   }
   return g_audio_stream_finished;
@@ -459,6 +473,7 @@ bool cancel_active_session(const char *reason) {
   const bool sent = send_ws_text(payload);
   g_session_started = false;
   g_audio_stream_finished = false;
+  set_audio_streaming(false);
   hexe::voice::stop_tts_playback();
   return sent;
 }
