@@ -270,7 +270,6 @@ void send_audio_frame(const AudioFrame &frame) {
     return;
   }
   if (!g_session_started) {
-    ESP_LOGW(kTag, "Dropping audio frame because voice session is not connected");
     return;
   }
 
