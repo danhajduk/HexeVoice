@@ -8,7 +8,7 @@ from hexevoice.api.models import (
     NodeIdentitySetupResponse,
 )
 from hexevoice.onboarding import initial_onboarding_step
-from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
+from hexevoice.persistence import BootstrapDiscoveryState, OnboardingSessionState, OnboardingStateStore, PersistedOnboardingState
 
 
 class OnboardingStateService:
@@ -36,6 +36,11 @@ class OnboardingStateService:
                 core_base_url=state.pre_trust.core_base_url,
             ),
         )
+
+    def restart_setup(self) -> LocalSetupStateResponse:
+        reset_state = PersistedOnboardingState()
+        self._store.save(reset_state)
+        return self.local_setup_payload()
 
     def save_node_identity(self, payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:
         state = self.load_state()
@@ -65,7 +70,10 @@ class OnboardingStateService:
                     update={
                         "core_base_url": str(payload.core_base_url),
                     }
-                )
+                ),
+                # Changing Core connectivity invalidates prior bootstrap/session progress.
+                "bootstrap_discovery": BootstrapDiscoveryState(),
+                "onboarding_session": OnboardingSessionState(),
             }
         )
         self._store.save(self._recompute_resume(updated))
@@ -88,13 +96,18 @@ class OnboardingStateService:
             current_step_id = "core_connection"
             last_completed_step_id = "node_identity"
 
-        if self._node_identity_configured(state) and self._core_connection_configured(state):
+        if (
+            self._node_identity_configured(state)
+            and self._core_connection_configured(state)
+            and state.bootstrap_discovery.connection_status in {"bootstrap_connected", "core_discovered"}
+        ):
             current_step_id = "bootstrap_discovery"
             last_completed_step_id = "core_connection"
 
         if (
             self._node_identity_configured(state)
             and self._core_connection_configured(state)
+            and state.bootstrap_discovery.connection_status in {"bootstrap_connected", "core_discovered"}
             and self._bootstrap_discovery_completed(state)
         ):
             current_step_id = "registration"

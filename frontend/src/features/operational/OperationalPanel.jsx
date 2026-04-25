@@ -2,34 +2,34 @@ export function OperationalPanel({ status, operational, governance }) {
   const blockers = status?.blocking_reasons || [];
 
   return (
-    <section className="panel">
-      <div className="panel-header">
+    <section className="card stack panel">
+      <div className="section-heading">
         <div>
           <p className="panel-kicker">Readiness</p>
-          <h2 className="panel-title">Operational</h2>
+          <h2 className="panel-title">Operational Readiness</h2>
         </div>
         <span className={`status-pill ${status?.operational_ready ? "status-pill-success" : "status-pill-warning"}`}>
           {status?.operational_ready ? "Ready" : "Blocked"}
         </span>
       </div>
-      <div className="fact-grid">
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Readiness Flag</span>
-          <span className="fact-grid-value">{String(operational?.operational_ready ?? status?.operational_ready ?? false)}</span>
+      <dl className="facts">
+        <div>
+          <dt>Readiness flag</dt>
+          <dd>{String(operational?.operational_ready ?? status?.operational_ready ?? false)}</dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Governance Freshness</span>
-          <span className="fact-grid-value">{operational?.governance_freshness_state || status?.governance_freshness_state || "pending"}</span>
+        <div>
+          <dt>Governance freshness</dt>
+          <dd>{operational?.governance_freshness_state || status?.governance_freshness_state || "pending"}</dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Capability State</span>
-          <span className="fact-grid-value">{operational?.capability_status || status?.capability_status || "missing"}</span>
+        <div>
+          <dt>Capability state</dt>
+          <dd>{operational?.capability_status || status?.capability_status || "missing"}</dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Governance Version</span>
-          <span className="fact-grid-value">{operational?.active_governance_version || governance?.governance_version || "pending"}</span>
+        <div>
+          <dt>Governance version</dt>
+          <dd>{operational?.active_governance_version || governance?.governance_version || "pending"}</dd>
         </div>
-      </div>
+      </dl>
       <div className="state-grid">
         <div className="state-row">
           <span className="state-label">Operational lifecycle</span>
@@ -56,11 +56,11 @@ export function OperationalPanel({ status, operational, governance }) {
       ) : (
         <div className="callout callout-warning">Blocking reasons: {blockers.join(", ") || "none"}</div>
       )}
-      <div className="action-group">
-        <button className="btn btn-secondary" type="button" disabled>
+      <div className="actions">
+        <button className="btn btn-ghost" type="button" disabled>
           Runtime controls next
         </button>
-        <button className="btn btn-secondary" type="button" disabled>
+        <button className="btn btn-ghost" type="button" disabled>
           Telemetry actions next
         </button>
       </div>

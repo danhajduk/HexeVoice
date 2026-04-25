@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 from fastapi import HTTPException
 
 from hexevoice.api.models import CapabilityDeclarationResponse
@@ -31,18 +32,22 @@ class CapabilityDeclarationService:
         if not state.provider_setup.declaration_allowed or not state.provider_setup.enabled_providers:
             raise HTTPException(status_code=400, detail="provider_setup_incomplete")
 
+        declared_task_families = sorted({"voice.inference"})
+        supported_providers = sorted({provider_id.strip() for provider_id in (state.provider_setup.supported_providers or [self._settings.provider_id]) if provider_id and provider_id.strip()})
+        enabled_providers = sorted({provider_id.strip() for provider_id in state.provider_setup.enabled_providers if provider_id and provider_id.strip()})
+
         payload = {
             "manifest": {
-                "manifest_version": "1",
+                "manifest_version": "1.0",
                 "node": {
                     "node_id": state.trust_activation.node_id,
                     "node_type": state.trust_activation.node_type or self._settings.node_type,
                     "node_name": state.pre_trust.node_name or self._settings.node_name,
                     "node_software_version": self._settings.node_software_version,
                 },
-                "declared_task_families": ["voice.inference"],
-                "supported_providers": state.provider_setup.supported_providers or [self._settings.provider_id],
-                "enabled_providers": state.provider_setup.enabled_providers,
+                "declared_task_families": declared_task_families,
+                "supported_providers": supported_providers,
+                "enabled_providers": enabled_providers,
                 "node_features": {
                     "telemetry": True,
                     "governance_refresh": True,
@@ -50,27 +55,45 @@ class CapabilityDeclarationService:
                     "provider_failover": False,
                 },
                 "environment_hints": {
-                    "deployment_target": "edge",
-                    "acceleration": "cpu",
-                    "network_tier": "local_lan",
+                    "deployment_target": "node",
+                    "acceleration": "none",
+                    "network_tier": "lan",
                     "region": "local",
                 },
             }
         }
-        response = self._core_client.submit_capability_declaration(
-            core_base_url=state.pre_trust.core_base_url,
-            node_trust_token=state.trust_activation.node_trust_token,
-            payload=payload,
-        )
+        try:
+            response = self._core_client.submit_capability_declaration(
+                core_base_url=state.pre_trust.core_base_url,
+                node_trust_token=state.trust_activation.node_trust_token,
+                payload=payload,
+            )
+        except httpx.HTTPStatusError as exc:
+            detail = "capability_declaration_rejected"
+            try:
+                payload = exc.response.json()
+                if isinstance(payload, dict):
+                    raw_detail = payload.get("detail")
+                    if isinstance(raw_detail, str):
+                        detail = raw_detail
+                    elif isinstance(raw_detail, dict):
+                        detail = raw_detail.get("message") or raw_detail.get("error") or detail
+            except ValueError:
+                pass
+            raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="core_capability_declaration_timeout") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"capability_declaration_request_failed: {exc}") from exc
 
         updated = state.model_copy(
             update={
                 "capability_declaration": state.capability_declaration.model_copy(
                     update={
-                        "manifest_version": response.get("manifest_version", "1"),
+                        "manifest_version": response.get("manifest_version", "1.0"),
                         "capability_status": "accepted" if response.get("acceptance_status") == "accepted" else "declared",
                         "accepted_at": response.get("accepted_at"),
-                        "declared_task_families": payload["manifest"]["declared_task_families"],
+                        "declared_task_families": declared_task_families,
                         "declared_capabilities": response.get("declared_capabilities", []),
                         "capability_profile_id": response.get("capability_profile_id"),
                         "governance_version": response.get("governance_version"),
@@ -98,10 +121,10 @@ class CapabilityDeclarationService:
         return CapabilityDeclarationResponse(
             capability_status=updated.capability_declaration.capability_status,
             node_id=state.trust_activation.node_id,
-            manifest_version=updated.capability_declaration.manifest_version or "1",
+            manifest_version=updated.capability_declaration.manifest_version or "1.0",
             accepted_at=updated.capability_declaration.accepted_at,
             declared_capabilities=updated.capability_declaration.declared_capabilities,
-            enabled_providers=state.provider_setup.enabled_providers,
+            enabled_providers=enabled_providers,
             capability_profile_id=updated.capability_declaration.capability_profile_id,
             governance_version=updated.capability_declaration.governance_version,
             governance_issued_at=updated.capability_declaration.governance_issued_at,

@@ -1,0 +1,22 @@
+idf_component_register(
+  SRCS
+    "app_main.cpp"
+    "app_state.cpp"
+    "board/audio.cpp"
+    "board/buttons.cpp"
+    "board/display.cpp"
+    "board/storage.cpp"
+    "board/wifi.cpp"
+    "system/ota.cpp"
+    "system/power.cpp"
+    "system/settings.cpp"
+    "system/telemetry.cpp"
+    "ui/animator.cpp"
+    "ui/screens.cpp"
+    "voice/assistant_client.cpp"
+    "voice/stt_stream.cpp"
+    "voice/tts_player.cpp"
+    "voice/wake_word.cpp"
+  INCLUDE_DIRS
+    "."
+)

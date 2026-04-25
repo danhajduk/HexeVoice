@@ -40,6 +40,7 @@ def _trusted_phase2_store(tmp_path):
 
 def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch):
     store = _trusted_phase2_store(tmp_path)
+    captured = {}
 
     class DummyResponse:
         status_code = 200
@@ -48,7 +49,7 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
             return {
                 "acceptance_status": "accepted",
                 "node_id": "node-voice-123",
-                "manifest_version": "1",
+                "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
                 "declared_capabilities": ["voice.inference"],
                 "enabled_providers": ["voice"],
@@ -57,7 +58,11 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
                 "governance_issued_at": "2026-04-08T03:00:05+00:00",
             }
 
-    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: DummyResponse())
+    def fake_post(*args, **kwargs):
+        captured["json"] = kwargs.get("json")
+        return DummyResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
 
     service = CapabilityDeclarationService(
         settings=Settings(onboarding_state_path=tmp_path / "onboarding-state.json"),
@@ -67,6 +72,9 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     persisted = store.load()
 
     assert response.capability_status == "accepted"
+    assert captured["json"]["manifest"]["manifest_version"] == "1.0"
+    assert captured["json"]["manifest"]["declared_task_families"] == ["voice.inference"]
+    assert captured["json"]["manifest"]["enabled_providers"] == ["voice"]
     assert persisted.capability_declaration.capability_profile_id == "profile-123"
     assert persisted.capability_declaration.capability_status == "accepted"
     assert persisted.resume.current_step_id == "governance_sync"

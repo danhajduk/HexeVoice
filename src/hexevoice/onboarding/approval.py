@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import HTTPException
+import httpx
 
 from hexevoice.api.models import OnboardingSessionPollResponse
 from hexevoice.config.settings import Settings
@@ -36,12 +37,58 @@ class ApprovalPollingService:
         if not state.onboarding_session.session_id:
             raise HTTPException(status_code=400, detail="onboarding_session_not_started")
 
-        response = self._core_client.finalize_onboarding_session(
-            core_base_url=state.pre_trust.core_base_url,
-            session_id=state.onboarding_session.session_id,
-            node_nonce=state.pre_trust.node_nonce,
-        )
-        outcome = str(response.get("outcome") or response.get("status") or "invalid").strip().lower()
+        try:
+            response = self._core_client.finalize_onboarding_session(
+                core_base_url=state.pre_trust.core_base_url,
+                session_id=state.onboarding_session.session_id,
+                node_nonce=state.pre_trust.node_nonce,
+            )
+        except httpx.HTTPStatusError as exc:
+            message = exc.response.text.strip() or f"http_{exc.response.status_code}"
+            updated = state.model_copy(
+                update={
+                    "onboarding_session": state.onboarding_session.model_copy(
+                        update={
+                            "last_error": message,
+                        }
+                    )
+                }
+            )
+            self._store.save(updated)
+            raise HTTPException(status_code=exc.response.status_code, detail=message) from exc
+        except httpx.TimeoutException as exc:
+            message = "core_finalize_timeout"
+            updated = state.model_copy(
+                update={
+                    "onboarding_session": state.onboarding_session.model_copy(
+                        update={
+                            "last_error": message,
+                        }
+                    )
+                }
+            )
+            self._store.save(updated)
+            raise HTTPException(status_code=504, detail=message) from exc
+        except httpx.HTTPError as exc:
+            message = str(exc) or "core_finalize_failed"
+            updated = state.model_copy(
+                update={
+                    "onboarding_session": state.onboarding_session.model_copy(
+                        update={
+                            "last_error": message,
+                        }
+                    )
+                }
+            )
+            self._store.save(updated)
+            raise HTTPException(status_code=502, detail=message) from exc
+
+        outcome = str(
+            response.get("outcome")
+            or response.get("status")
+            or response.get("onboarding_status")
+            or "invalid"
+        ).strip().lower()
         last_polled_at = _utc_now()
         activation = response.get("activation")
         activation_received = outcome == "approved" and isinstance(activation, dict) and bool(activation)

@@ -3,8 +3,8 @@ export function ProviderPanel({ status, providerSetup, capabilities }) {
   const supportedProviders = providerSetup?.supported_providers || ["voice"];
 
   return (
-    <section className="panel">
-      <div className="panel-header">
+    <section className="card stack panel">
+      <div className="section-heading">
         <div>
           <p className="panel-kicker">Provider Boundary</p>
           <h2 className="panel-title">Providers</h2>
@@ -15,24 +15,24 @@ export function ProviderPanel({ status, providerSetup, capabilities }) {
         Voice provider setup, selection, health, and capability wiring live here under the explicit provider
         namespace.
       </p>
-      <div className="fact-grid">
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Supported providers</span>
-          <span className="fact-grid-value">{supportedProviders.join(", ")}</span>
+      <dl className="facts">
+        <div>
+          <dt>Supported providers</dt>
+          <dd>{supportedProviders.join(", ")}</dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Enabled providers</span>
-          <span className="fact-grid-value">{enabledProviders.join(", ") || "none"}</span>
+        <div>
+          <dt>Enabled providers</dt>
+          <dd>{enabledProviders.join(", ") || "none"}</dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Default provider</span>
-          <span className="fact-grid-value">{providerSetup?.default_provider || "pending"}</span>
+        <div>
+          <dt>Default provider</dt>
+          <dd>{providerSetup?.default_provider || "pending"}</dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Capability status</span>
-          <span className="fact-grid-value">{capabilities?.capability_status || status?.capability_status || "missing"}</span>
+        <div>
+          <dt>Capability status</dt>
+          <dd>{capabilities?.capability_status || status?.capability_status || "missing"}</dd>
         </div>
-      </div>
+      </dl>
       <div className="state-grid">
         <div className="state-row">
           <span className="state-label">Declaration allowed</span>
@@ -49,8 +49,8 @@ export function ProviderPanel({ status, providerSetup, capabilities }) {
           <span>{providerSetup.blocking_reasons.join(", ")}</span>
         </div>
       ) : null}
-      <div className="action-group">
-        <button className="btn btn-secondary" type="button" disabled>
+      <div className="actions">
+        <button className="btn btn-ghost" type="button" disabled>
           Manage provider credentials next
         </button>
       </div>

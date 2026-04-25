@@ -69,7 +69,7 @@ def test_setup_saves_move_resume_step_forward(tmp_path):
     service.save_node_identity(
         NodeIdentitySetupRequest(
             node_name="kitchen-voice",
-            protocol_version="global-node-v1",
+            protocol_version="1.0",
             node_nonce="voice-node-nonce",
         )
     )
@@ -80,4 +80,4 @@ def test_setup_saves_move_resume_step_forward(tmp_path):
     service.save_core_connection(CoreConnectionSetupRequest(core_base_url="http://10.0.0.100:9001"))
 
     state_after_connection = store.load()
-    assert state_after_connection.resume.current_step_id == "bootstrap_discovery"
+    assert state_after_connection.resume.current_step_id == "core_connection"

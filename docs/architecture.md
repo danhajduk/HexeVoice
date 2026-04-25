@@ -1,5 +1,7 @@
 # Architecture
 
+See also: [Firmware Migration Plan](/home/dan/Projects/HexeVoice/docs/firmware-migration-plan.md)
+
 HexeVoice is structured as a modular Hexe node starter:
 
 - `config/` for typed configuration
@@ -16,6 +18,16 @@ HexeVoice is structured as a modular Hexe node starter:
 - `api/` for typed response contracts used by the backend surface
 
 The initial backend exposes the standard starter route groups for health, node status, onboarding, capabilities, governance/readiness, service status, and provider status.
+
+For firmware bring-up, the backend also now exposes a minimal local assistant turn route:
+
+- `POST /api/assistant/turn`
+
+This route is intentionally lightweight. It gives endpoint firmware a stable request/response contract before the full wake, STT, upstream reasoning, and TTS pipeline is implemented. The current behavior supports:
+
+- simple local commands such as `status`, `repeat`, and `stop`
+- deterministic fallback replies for arbitrary text turns
+- endpoint-scoped session ids so device-side integration can start immediately
 
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 

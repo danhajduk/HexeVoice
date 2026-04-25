@@ -17,6 +17,51 @@ class ApiHealthResponse(BaseModel):
     version: str
 
 
+class AssistantTurnRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    session_id: str | None = None
+
+
+class AssistantTurnResponse(BaseModel):
+    endpoint_id: str
+    session_id: str
+    heard_text: str
+    reply_text: str
+    spoken_text: str
+    handled_locally: bool
+    command: str | None = None
+    device_state: Literal["idle", "listening", "thinking", "speaking"]
+
+
+class EndpointHeartbeatRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    device_state: Literal["idle", "listening", "thinking", "speaking", "offline"] = "idle"
+    session_id: str | None = None
+    firmware_version: str | None = None
+    ip_address: str | None = None
+    rssi_dbm: int | None = None
+
+
+class EndpointHeartbeatResponse(BaseModel):
+    accepted: bool = True
+    endpoint_id: str
+    device_state: Literal["idle", "listening", "thinking", "speaking", "offline"]
+    session_id: str | None = None
+    server_time: str
+    last_seen_at: str
+
+
+class EndpointStatusResponse(BaseModel):
+    endpoint_id: str
+    device_state: Literal["idle", "listening", "thinking", "speaking", "offline"]
+    session_id: str | None = None
+    firmware_version: str | None = None
+    ip_address: str | None = None
+    rssi_dbm: int | None = None
+    last_seen_at: str
+
+
 class NodeStatusResponse(BaseModel):
     node_name: str
     node_type: str

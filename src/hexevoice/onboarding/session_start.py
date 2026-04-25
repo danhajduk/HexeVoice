@@ -59,16 +59,33 @@ class OnboardingSessionStartService:
                 }
             )
             self._store.save(updated)
-            raise
+            raise HTTPException(status_code=exc.response.status_code, detail=message) from exc
+        except httpx.HTTPError as exc:
+            message = str(exc) or "core_connection_failed"
+            updated = state.model_copy(
+                update={
+                    "onboarding_session": state.onboarding_session.model_copy(
+                        update={
+                            "last_error": message,
+                        }
+                    )
+                }
+            )
+            self._store.save(updated)
+            raise HTTPException(status_code=502, detail=message) from exc
+
+        session_payload = self._extract_session_payload(response)
+
+        finalize_url = self._normalize_finalize_url(session_payload.get("finalize"))
 
         updated = state.model_copy(
             update={
                 "onboarding_session": state.onboarding_session.model_copy(
                     update={
-                        "session_id": response.get("session_id"),
-                        "approval_url": response.get("approval_url"),
-                        "expires_at": response.get("expires_at"),
-                        "finalize_url": response.get("finalize"),
+                        "session_id": session_payload.get("session_id"),
+                        "approval_url": session_payload.get("approval_url"),
+                        "expires_at": session_payload.get("expires_at"),
+                        "finalize_url": finalize_url,
                         "session_state": "pending",
                         "last_error": None,
                     }
@@ -84,11 +101,30 @@ class OnboardingSessionStartService:
         self._store.save(updated)
 
         return OnboardingSessionStartResponse(
-            session_id=response["session_id"],
-            approval_url=response["approval_url"],
-            expires_at=response.get("expires_at"),
-            finalize_url=response.get("finalize"),
-            node_name=response.get("node_name"),
-            node_type=response.get("node_type"),
-            node_software_version=response.get("node_software_version"),
+            session_id=session_payload["session_id"],
+            approval_url=session_payload["approval_url"],
+            expires_at=session_payload.get("expires_at"),
+            finalize_url=finalize_url,
+            node_name=response.get("node_name") or response.get("requested_node_name") or session_payload.get("node_name"),
+            node_type=response.get("node_type") or response.get("requested_node_type") or session_payload.get("node_type"),
+            node_software_version=response.get("node_software_version")
+            or response.get("requested_node_software_version")
+            or session_payload.get("node_software_version"),
         )
+
+    def _extract_session_payload(self, response: dict) -> dict:
+        session_payload = response.get("session") if isinstance(response.get("session"), dict) else response
+        session_id = session_payload.get("session_id")
+        approval_url = session_payload.get("approval_url")
+        if not session_id or not approval_url:
+            raise HTTPException(status_code=502, detail="core_onboarding_response_invalid")
+        return session_payload
+
+    def _normalize_finalize_url(self, finalize_value: object) -> str | None:
+        if isinstance(finalize_value, str):
+            return finalize_value
+        if isinstance(finalize_value, dict):
+            path = finalize_value.get("path")
+            if isinstance(path, str) and path.strip():
+                return path
+        return None

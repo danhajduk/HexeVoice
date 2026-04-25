@@ -61,6 +61,15 @@ class BootstrapDiscoveryService:
             except OSError as exc:
                 last_error = str(exc)
 
+        current_step_id = state.resume.current_step_id
+        last_completed_step_id = state.resume.last_completed_step_id
+        if connection_status == "bootstrap_connected":
+            current_step_id = "bootstrap_discovery"
+            last_completed_step_id = "core_connection"
+        elif state.pre_trust.core_base_url:
+            current_step_id = "core_connection"
+            last_completed_step_id = "node_identity"
+
         updated = state.model_copy(
             update={
                 "bootstrap_discovery": state.bootstrap_discovery.model_copy(
@@ -72,7 +81,13 @@ class BootstrapDiscoveryService:
                         "last_error": last_error,
                         "bootstrap_topic": self._settings.bootstrap_topic,
                     }
-                )
+                ),
+                "resume": state.resume.model_copy(
+                    update={
+                        "current_step_id": current_step_id,
+                        "last_completed_step_id": last_completed_step_id,
+                    }
+                ),
             }
         )
         self._store.save(updated)

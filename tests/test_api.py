@@ -6,8 +6,9 @@ from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 
 
-def test_status_endpoint():
-    client = TestClient(create_app())
+def test_status_endpoint(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
     response = client.get("/api/node/status")
     assert response.status_code == 200
     assert response.json()["trust_state"] == "untrusted"
@@ -17,8 +18,9 @@ def test_status_endpoint():
     assert response.json()["governance_sync_status"] == "pending_capability"
 
 
-def test_standard_route_groups_exist():
-    client = TestClient(create_app())
+def test_standard_route_groups_exist(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
 
     onboarding = client.get("/api/onboarding/status")
     assert onboarding.status_code == 200
@@ -32,6 +34,8 @@ def test_standard_route_groups_exist():
     assert client.post("/api/onboarding/trust-activation/finalize").status_code == 400
     assert client.post("/api/onboarding/trust-status/refresh").status_code == 400
     assert client.get("/api/providers/setup").status_code == 200
+    assert client.get("/api/endpoint/status/box-1").status_code == 404
+    assert client.post("/api/endpoint/heartbeat", json={"endpoint_id": "box-1"}).status_code == 200
     assert client.get("/api/capabilities").status_code == 200
     assert client.post("/api/capabilities/declaration").status_code == 400
     assert client.get("/api/governance/current").status_code == 400
@@ -40,6 +44,103 @@ def test_standard_route_groups_exist():
     assert client.get("/api/node/operational-status").status_code == 400
     assert client.get("/api/services/status").status_code == 200
     assert client.get("/api/providers/voice/status").status_code == 200
+    assistant_turn = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "hello"})
+    assert assistant_turn.status_code == 200
+    assert assistant_turn.json()["heard_text"] == "hello"
+
+
+def test_endpoint_heartbeat_records_latest_status(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    heartbeat = client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-box-1",
+            "device_state": "listening",
+            "session_id": "session-voice-1",
+            "firmware_version": "0.1.0",
+            "ip_address": "10.0.0.55",
+            "rssi_dbm": -58,
+        },
+    )
+
+    assert heartbeat.status_code == 200
+    heartbeat_payload = heartbeat.json()
+    assert heartbeat_payload["accepted"] is True
+    assert heartbeat_payload["endpoint_id"] == "esp-box-1"
+    assert heartbeat_payload["device_state"] == "listening"
+    assert heartbeat_payload["session_id"] == "session-voice-1"
+    assert heartbeat_payload["last_seen_at"]
+
+    status = client.get("/api/endpoint/status/esp-box-1")
+    assert status.status_code == 200
+    status_payload = status.json()
+    assert status_payload["endpoint_id"] == "esp-box-1"
+    assert status_payload["device_state"] == "listening"
+    assert status_payload["session_id"] == "session-voice-1"
+    assert status_payload["firmware_version"] == "0.1.0"
+    assert status_payload["ip_address"] == "10.0.0.55"
+    assert status_payload["rssi_dbm"] == -58
+
+
+def test_assistant_turn_handles_local_commands(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "resume": {
+                    "current_step_id": "ready",
+                },
+                "operational_status": {
+                    "operational_ready": True,
+                    "active_governance_version": "gov-1",
+                    "governance_freshness_state": "fresh",
+                },
+            }
+        )
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path, node_name="kitchen-voice")))
+
+    status_response = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "status"})
+    assert status_response.status_code == 200
+    assert status_response.json()["command"] == "status"
+    assert status_response.json()["handled_locally"] is True
+    assert "kitchen-voice is ready" in status_response.json()["reply_text"]
+
+    repeat_response = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "repeat"})
+    assert repeat_response.status_code == 200
+    assert repeat_response.json()["command"] == "repeat"
+    assert repeat_response.json()["reply_text"] == status_response.json()["reply_text"]
+
+    stop_response = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "stop"})
+    assert stop_response.status_code == 200
+    assert stop_response.json()["command"] == "stop"
+    assert stop_response.json()["device_state"] == "idle"
+
+
+def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
+    client = TestClient(create_app(Settings(node_name="lab-voice")))
+
+    response = client.post(
+        "/api/assistant/turn",
+        json={
+            "endpoint_id": "box-9",
+            "session_id": "session-abc",
+            "text": "turn on the lights",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "session-abc"
+    assert payload["handled_locally"] is False
+    assert payload["reply_text"].startswith('I heard "turn on the lights".')
 
 
 def test_status_endpoint_reads_persisted_onboarding_state(tmp_path):
@@ -83,7 +184,7 @@ def test_local_setup_endpoints_persist_node_identity_and_core_connection(tmp_pat
         "/api/onboarding/local-setup/node-identity",
         json={
             "node_name": "kitchen-voice",
-            "protocol_version": "global-node-v1",
+            "protocol_version": "1.0",
             "node_nonce": "voice-node-nonce",
             "hostname": "kitchen-voice.local",
             "api_base_url": "http://10.0.0.22:9000",
@@ -107,8 +208,36 @@ def test_local_setup_endpoints_persist_node_identity_and_core_connection(tmp_pat
     status_response = client.get("/api/node/status")
     assert status_response.status_code == 200
     assert status_response.json()["node_name"] == "kitchen-voice"
-    assert status_response.json()["current_step_id"] == "bootstrap_discovery"
-    assert status_response.json()["lifecycle_state"] == "core_discovered"
+    assert status_response.json()["current_step_id"] == "core_connection"
+    assert status_response.json()["lifecycle_state"] == "bootstrap_connecting"
+
+
+def test_restart_setup_clears_onboarding_state(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    client.put(
+        "/api/onboarding/local-setup/node-identity",
+        json={
+            "node_name": "kitchen-voice",
+            "protocol_version": "1.0",
+            "node_nonce": "voice-node-nonce",
+        },
+    )
+    client.put(
+        "/api/onboarding/local-setup/core-connection",
+        json={"core_base_url": "http://10.0.0.100:9001"},
+    )
+
+    restart_response = client.post("/api/onboarding/restart")
+    assert restart_response.status_code == 200
+    assert restart_response.json()["node_identity"]["configured"] is False
+    assert restart_response.json()["core_connection"]["configured"] is False
+
+    status_response = client.get("/api/node/status")
+    assert status_response.status_code == 200
+    assert status_response.json()["current_step_id"] == "node_identity"
+    assert status_response.json()["lifecycle_state"] == "unconfigured"
 
 
 def test_bootstrap_discovery_advertisement_validation_advances_to_registration(tmp_path):
@@ -119,7 +248,7 @@ def test_bootstrap_discovery_advertisement_validation_advances_to_registration(t
         "/api/onboarding/local-setup/node-identity",
         json={
             "node_name": "kitchen-voice",
-            "protocol_version": "global-node-v1",
+            "protocol_version": "1.0",
             "node_nonce": "voice-node-nonce",
         },
     )
@@ -166,7 +295,7 @@ def test_onboarding_session_start_persists_core_session_metadata(tmp_path, monke
         "/api/onboarding/local-setup/node-identity",
         json={
             "node_name": "kitchen-voice",
-            "protocol_version": "global-node-v1",
+            "protocol_version": "1.0",
             "node_nonce": "voice-node-nonce",
             "hostname": "kitchen-voice.local",
             "api_base_url": "http://10.0.0.22:9000",
@@ -209,7 +338,7 @@ def test_onboarding_session_start_persists_core_session_metadata(tmp_path, monke
     def fake_post(url, json, timeout):
         assert url == "http://10.0.0.100:9001/api/system/nodes/onboarding/sessions"
         assert json["node_name"] == "kitchen-voice"
-        assert json["protocol_version"] == "global-node-v1"
+        assert json["protocol_version"] == "1.0"
         assert json["node_nonce"] == "voice-node-nonce"
         return DummyResponse()
 
@@ -241,7 +370,7 @@ def test_onboarding_session_poll_surfaces_approved_outcome(tmp_path, monkeypatch
         "/api/onboarding/local-setup/node-identity",
         json={
             "node_name": "kitchen-voice",
-            "protocol_version": "global-node-v1",
+            "protocol_version": "1.0",
             "node_nonce": "voice-node-nonce",
             "hostname": "kitchen-voice.local",
             "api_base_url": "http://10.0.0.22:9000",
@@ -535,7 +664,7 @@ def test_capability_declaration_governance_and_operational_status_flow(tmp_path,
             return {
                 "acceptance_status": "accepted",
                 "node_id": "node-voice-123",
-                "manifest_version": "1",
+                "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
                 "declared_capabilities": ["voice.inference"],
                 "enabled_providers": ["voice"],

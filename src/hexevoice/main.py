@@ -1,10 +1,13 @@
 import asyncio
+import os
 
 from fastapi import FastAPI
 import uvicorn
 
 from hexevoice.api.models import (
     ApiHealthResponse,
+    AssistantTurnRequest,
+    AssistantTurnResponse,
     BootstrapAdvertisementRequest,
     BootstrapDiscoveryResponse,
     CapabilityDeclarationResponse,
@@ -18,6 +21,9 @@ from hexevoice.api.models import (
     NodeStatusResponse,
     NodeIdentitySetupRequest,
     NodeIdentitySetupResponse,
+    EndpointHeartbeatRequest,
+    EndpointHeartbeatResponse,
+    EndpointStatusResponse,
     OnboardingSessionPollResponse,
     OnboardingSessionStartResponse,
     OnboardingStatusResponse,
@@ -29,7 +35,9 @@ from hexevoice.api.models import (
     TrustStatusRefreshResponse,
     OperationalStatusResponse,
 )
+from hexevoice.assistant import AssistantTurnService
 from hexevoice.capabilities.service import CapabilityDeclarationService
+from hexevoice.endpoint.service import EndpointHeartbeatService
 from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
@@ -65,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         onboarding_state_store=onboarding_state_store,
     )
     governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
+    endpoint_service = EndpointHeartbeatService()
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     service = NodeRuntimeService(
@@ -72,6 +81,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         onboarding_state_store=onboarding_state_store,
         supervisor_client=supervisor_client,
     )
+    assistant_service = AssistantTurnService(settings=app_settings, runtime_service=service)
     app = FastAPI(title="HexeVoice")
 
     @app.on_event("startup")
@@ -96,6 +106,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def api_health() -> ApiHealthResponse:
         return service.api_health_payload()
 
+    @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
+    async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
+        return assistant_service.handle_turn(payload)
+
+    @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)
+    async def endpoint_heartbeat(payload: EndpointHeartbeatRequest) -> EndpointHeartbeatResponse:
+        return endpoint_service.record_heartbeat(payload)
+
+    @app.get("/api/endpoint/status/{endpoint_id}", response_model=EndpointStatusResponse)
+    async def endpoint_status(endpoint_id: str) -> EndpointStatusResponse:
+        return endpoint_service.status(endpoint_id)
+
     @app.get("/api/node/status", response_model=NodeStatusResponse)
     async def node_status() -> NodeStatusResponse:
         return service.status_payload()
@@ -107,6 +129,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/onboarding/local-setup", response_model=LocalSetupStateResponse)
     async def local_setup_state() -> LocalSetupStateResponse:
         return onboarding_state_service.local_setup_payload()
+
+    @app.post("/api/onboarding/restart", response_model=LocalSetupStateResponse)
+    async def restart_onboarding_setup() -> LocalSetupStateResponse:
+        return onboarding_state_service.restart_setup()
 
     @app.put("/api/onboarding/local-setup/node-identity", response_model=NodeIdentitySetupResponse)
     async def save_node_identity(payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:

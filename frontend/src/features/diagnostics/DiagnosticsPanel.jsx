@@ -1,34 +1,30 @@
 export function DiagnosticsPanel({ status, onboarding, operational, onRefresh }) {
   return (
-    <section className="panel">
-      <div className="panel-header">
+    <section className="card stack panel">
+      <div className="section-heading">
         <div>
           <p className="panel-kicker">Node Context</p>
           <h2 className="panel-title">Diagnostics</h2>
         </div>
       </div>
-      <div className="fact-grid">
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Node ID</span>
-          <span className="fact-grid-value">
-            <code className="inline-code">{status?.node_id || "pending"}</code>
-          </span>
+      <dl className="facts">
+        <div>
+          <dt>Node ID</dt>
+          <dd><code className="inline-code">{status?.node_id || "pending"}</code></dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Provider Namespace</span>
-          <span className="fact-grid-value">
-            <code className="inline-code">voice</code>
-          </span>
+        <div>
+          <dt>Provider namespace</dt>
+          <dd><code className="inline-code">voice</code></dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Current step</span>
-          <span className="fact-grid-value">{onboarding?.current_step_label || status?.current_step_label || "pending"}</span>
+        <div>
+          <dt>Current step</dt>
+          <dd>{onboarding?.current_step_label || status?.current_step_label || "pending"}</dd>
         </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Operational freshness</span>
-          <span className="fact-grid-value">{operational?.governance_freshness_state || status?.governance_freshness_state || "pending"}</span>
+        <div>
+          <dt>Operational freshness</dt>
+          <dd>{operational?.governance_freshness_state || status?.governance_freshness_state || "pending"}</dd>
         </div>
-      </div>
+      </dl>
       <div className="state-grid">
         <div className="state-row">
           <span className="state-label">Trust state</span>
@@ -39,11 +35,11 @@ export function DiagnosticsPanel({ status, onboarding, operational, onRefresh })
           <span className="state-value">{(status?.blocking_reasons || []).join(", ") || "none"}</span>
         </div>
       </div>
-      <div className="action-group">
-        <button className="btn btn-secondary" type="button" onClick={onRefresh}>
+      <div className="actions">
+        <button className="btn btn-ghost" type="button" onClick={onRefresh}>
           Refresh all panels
         </button>
-        <button className="btn btn-secondary" type="button" disabled>
+        <button className="btn btn-ghost" type="button" disabled>
           Export diagnostics next
         </button>
       </div>

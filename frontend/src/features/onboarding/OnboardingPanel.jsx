@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   declareCapabilities,
   finalizeTrustActivation,
@@ -17,6 +17,9 @@ import {
   testBootstrapConnection,
   validateBootstrapAdvertisement,
 } from "../../api/client";
+import { StageCard } from "../setup/cards/StageCard";
+import { NodeIdentityFormCard } from "../setup/cards/NodeIdentityFormCard";
+import { NodeSetupCard } from "../setup/cards/NodeSetupCard";
 
 function toneForStep(stepId, trustState, operationalReady) {
   if (operationalReady || stepId === "ready") {
@@ -31,25 +34,10 @@ function toneForStep(stepId, trustState, operationalReady) {
   return "neutral";
 }
 
-function StageCard({ title, tone, action, children }) {
-  return (
-    <article className={`stage-card stage-tone-${tone}`}>
-      <div className="stage-card-header">
-        <div>
-          <p className="panel-kicker">Current Stage</p>
-          <h2 className="panel-title">{title}</h2>
-        </div>
-        {action}
-      </div>
-      {children}
-    </article>
-  );
-}
-
 function emptyIdentityForm() {
   return {
     node_name: "",
-    protocol_version: "global-node-v1",
+    protocol_version: "1.0",
     node_nonce: "",
     requested_node_id: "",
     hostname: "",
@@ -64,6 +52,13 @@ function emptyConnectionForm() {
   };
 }
 
+function generateNodeNonce() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `voice-node-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function emptyAdvertisementForm() {
   return {
     topic: "hexe/bootstrap/core",
@@ -74,6 +69,34 @@ function emptyAdvertisementForm() {
     onboarding_contract: "global-node-v1",
     register_session: "/api/system/nodes/onboarding/sessions",
     registrations: "/api/system/nodes/registrations",
+  };
+}
+
+function automaticAdvertisementPayload(connectionForm, bootstrap, advertisementForm) {
+  let parsedHost = "";
+  let parsedApiBase = connectionForm.core_base_url || "";
+
+  try {
+    if (connectionForm.core_base_url) {
+      const parsed = new URL(connectionForm.core_base_url);
+      parsedHost = parsed.hostname;
+      parsedApiBase = parsed.toString();
+    }
+  } catch {
+    // Keep fallback values if the URL is temporarily invalid.
+  }
+
+  return {
+    topic: advertisementForm.topic || "hexe/bootstrap/core",
+    api_base: advertisementForm.api_base || bootstrap?.api_base || parsedApiBase || null,
+    mqtt_host: advertisementForm.mqtt_host || bootstrap?.mqtt_host || bootstrap?.bootstrap_host || parsedHost || null,
+    mqtt_port: Number(advertisementForm.mqtt_port || bootstrap?.mqtt_port || bootstrap?.bootstrap_port || 1884),
+    onboarding_mode: advertisementForm.onboarding_mode || bootstrap?.onboarding_mode || "api",
+    onboarding_contract: advertisementForm.onboarding_contract || bootstrap?.onboarding_contract || "global-node-v1",
+    onboarding_endpoints: {
+      register_session: advertisementForm.register_session || bootstrap?.register_session_endpoint || "/api/system/nodes/onboarding/sessions",
+      registrations: advertisementForm.registrations || bootstrap?.registrations_endpoint || "/api/system/nodes/registrations",
+    },
   };
 }
 
@@ -179,15 +202,38 @@ function renderPreTrustStage({
     return (
       <>
         <div className="callout">
-          Set the Core base URL that this node should use for bootstrap, session start, trust-state refresh, and post-trust readiness APIs.
+          The saved Core host is being used automatically to establish MQTT reachability. This stage advances as soon
+          as the node can connect to the Core bootstrap listener.
         </div>
-        <label className="field">
-          <span className="field-label">Core base URL</span>
-          <input className="field-input" value={connectionForm.core_base_url} onChange={(event) => onConnectionChange("core_base_url", event.target.value)} placeholder="http://10.0.0.100:9001" />
-        </label>
-        <FormActions busy={busyState === "connection"} busyLabel="Saving..." label="Save Core connection" onClick={onSaveConnection} />
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Core base URL</span>
+            <span className="fact-grid-value">{connectionForm.core_base_url || "not configured"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Connection status</span>
+            <span className="fact-grid-value">{bootstrap?.connection_status || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">MQTT target</span>
+            <span className="fact-grid-value">
+              {(bootstrap?.bootstrap_host || "pending")}:{bootstrap?.bootstrap_port || 1884}
+            </span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Bootstrap topic</span>
+            <span className="fact-grid-value">{bootstrap?.bootstrap_topic || "hexe/bootstrap/core"}</span>
+          </div>
+        </div>
+        <div className={`callout ${busyState === "bootstrap-test" ? "callout-warning" : "callout-neutral"}`}>
+          {busyState === "bootstrap-test"
+            ? "Connecting to the Core MQTT bootstrap listener..."
+            : "Waiting for automatic Core connectivity verification."}
+        </div>
         {localSetup?.core_connection?.configured ? (
-          <div className="callout callout-success">Core connection is configured and ready for bootstrap discovery.</div>
+          <div className="callout callout-success">
+            Core connection details were carried forward from the node identity card.
+          </div>
         ) : null}
       </>
     );
@@ -196,7 +242,8 @@ function renderPreTrustStage({
   return (
     <>
       <div className="callout">
-        Bootstrap discovery validates network reachability and the retained Core onboarding advertisement before session registration begins.
+        Bootstrap discovery is running automatically. The node is validating the retained advertisement payload before
+        registration can begin.
       </div>
       <div className="fact-grid">
         <div className="fact-grid-item">
@@ -216,58 +263,11 @@ function renderPreTrustStage({
           <span className="fact-grid-value">{bootstrap?.bootstrap_host || "pending"}:{bootstrap?.bootstrap_port || 1884}</span>
         </div>
       </div>
-      <FormActions
-        busy={busyState === "bootstrap-test"}
-        busyLabel="Testing..."
-        label="Test bootstrap connection"
-        onClick={onTestBootstrap}
-        secondaryLabel="Refresh validation"
-        onSecondaryClick={onValidateAdvertisement}
-        secondaryDisabled={busyState === "bootstrap-validate"}
-      />
-      <div className="section-divider" />
-      <div className="section-heading-inline">
-        <div>
-          <p className="panel-kicker">Advertisement Inspection</p>
-          <h3 className="section-title">Validate retained bootstrap payload</h3>
-        </div>
-        <span className="status-pill status-pill-neutral">{bootstrap?.onboarding_contract || "global-node-v1"}</span>
+      <div className={`callout ${busyState === "bootstrap-validate" ? "callout-warning" : "callout-neutral"}`}>
+        {busyState === "bootstrap-validate"
+          ? "Validating the retained bootstrap advertisement..."
+          : "Waiting for automatic bootstrap advertisement validation."}
       </div>
-      <div className="form-grid">
-        <label className="field">
-          <span className="field-label">Topic</span>
-          <input className="field-input" value={advertisementForm.topic} onChange={(event) => onAdvertisementChange("topic", event.target.value)} />
-        </label>
-        <label className="field">
-          <span className="field-label">API base</span>
-          <input className="field-input" value={advertisementForm.api_base} onChange={(event) => onAdvertisementChange("api_base", event.target.value)} />
-        </label>
-        <label className="field">
-          <span className="field-label">MQTT host</span>
-          <input className="field-input" value={advertisementForm.mqtt_host} onChange={(event) => onAdvertisementChange("mqtt_host", event.target.value)} />
-        </label>
-        <label className="field">
-          <span className="field-label">MQTT port</span>
-          <input className="field-input" type="number" value={advertisementForm.mqtt_port} onChange={(event) => onAdvertisementChange("mqtt_port", Number(event.target.value || 0))} />
-        </label>
-        <label className="field">
-          <span className="field-label">Onboarding mode</span>
-          <input className="field-input" value={advertisementForm.onboarding_mode} onChange={(event) => onAdvertisementChange("onboarding_mode", event.target.value)} />
-        </label>
-        <label className="field">
-          <span className="field-label">Onboarding contract</span>
-          <input className="field-input" value={advertisementForm.onboarding_contract} onChange={(event) => onAdvertisementChange("onboarding_contract", event.target.value)} />
-        </label>
-        <label className="field field-span-2">
-          <span className="field-label">Register-session endpoint</span>
-          <input className="field-input" value={advertisementForm.register_session} onChange={(event) => onAdvertisementChange("register_session", event.target.value)} />
-        </label>
-        <label className="field field-span-2">
-          <span className="field-label">Registrations endpoint</span>
-          <input className="field-input" value={advertisementForm.registrations} onChange={(event) => onAdvertisementChange("registrations", event.target.value)} />
-        </label>
-      </div>
-      <FormActions busy={busyState === "bootstrap-validate"} busyLabel="Validating..." label="Validate advertisement" onClick={onValidateAdvertisement} />
     </>
   );
 }
@@ -418,7 +418,10 @@ function renderStageBody({
 
   if (stepId === "provider_setup" || stepId === "capability_declaration" || stepId === "governance_sync" || stepId === "ready") {
     const supportedProviders = providerSetup?.supported_providers || capabilitySetup?.provider_selection?.supported?.cloud || ["voice"];
-    const enabledProviders = providerSetup?.enabled_providers || providerForm?.enabled_providers || capabilitySetup?.provider_selection?.enabled || [];
+    const enabledProviders =
+      stepId === "provider_setup"
+        ? providerForm?.enabled_providers || []
+        : providerSetup?.enabled_providers || capabilitySetup?.provider_selection?.enabled || [];
     const declarationStatus = capabilities?.capability_status || onboarding?.capability_status || "missing";
     const governanceVersion = governanceCurrent?.governance_version || onboarding?.active_governance_version || "pending";
     const readinessValue = operationalStatus?.operational_ready ?? onboarding?.operational_ready;
@@ -589,7 +592,8 @@ function renderStageBody({
       {stepId === "registration" ? (
         <>
           <div className={`callout callout-${outcomeTone(onboarding?.session_state)}`}>
-            Registration creates the Core onboarding session and returns the approval URL the operator will use.
+            Registration is being created automatically. Once the Core returns the registration link, you can open it
+            directly from this stage.
           </div>
           <div className="fact-grid">
             <div className="fact-grid-item">
@@ -597,16 +601,21 @@ function renderStageBody({
               <span className="fact-grid-value">{onboarding?.session_id || "not started"}</span>
             </div>
             <div className="fact-grid-item">
-              <span className="fact-grid-label">Approval URL</span>
-              <span className="fact-grid-value stage-link">{onboarding?.approval_url || "will appear after start"}</span>
+              <span className="fact-grid-label">Registration Link</span>
+              <span className="fact-grid-value stage-link">{onboarding?.approval_url || "will appear after link creation"}</span>
             </div>
           </div>
-          <FormActions
-            busy={busyState === "session-start"}
-            busyLabel="Starting..."
-            label="Start onboarding session"
-            onClick={onStartSession}
-          />
+          {busyState === "session-start" ? (
+            <div className="callout callout-warning">Creating registration link in Core...</div>
+          ) : null}
+          {onboarding?.approval_url ? (
+            <FormActions
+              busyLabel="Opening..."
+              busy={false}
+              label="Open Registration In Core"
+              onClick={() => window.open(onboarding.approval_url, "_blank", "noopener,noreferrer")}
+            />
+          ) : null}
         </>
       ) : null}
     </>
@@ -614,6 +623,8 @@ function renderStageBody({
 }
 
 export function OnboardingPanel({ status, onboarding, onRefresh }) {
+  const automaticStepRef = useRef("");
+  const openedApprovalUrlRef = useRef("");
   const [localSetup, setLocalSetup] = useState(null);
   const [bootstrap, setBootstrap] = useState(null);
   const [identityForm, setIdentityForm] = useState(emptyIdentityForm);
@@ -627,6 +638,16 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   const [busyState, setBusyState] = useState("");
   const [stageNotice, setStageNotice] = useState("");
   const [stageError, setStageError] = useState("");
+  const requiredInputs = [
+    !connectionForm.core_base_url ? "core_base_url" : null,
+    !identityForm.node_name ? "node_name" : null,
+  ].filter(Boolean);
+  const nodeSetupVisible = Boolean(
+    onboarding?.session_id ||
+    onboarding?.approval_url ||
+    (onboarding?.current_step_id && onboarding.current_step_id !== "node_identity") ||
+    (status?.trust_state && status.trust_state !== "untrusted")
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -644,7 +665,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         setBootstrap(bootstrapPayload);
         setIdentityForm({
           node_name: setupPayload?.node_identity?.node_name || "",
-          protocol_version: setupPayload?.node_identity?.protocol_version || "global-node-v1",
+          protocol_version: setupPayload?.node_identity?.protocol_version || "1.0",
           node_nonce: setupPayload?.node_identity?.node_nonce || "",
           requested_node_id: setupPayload?.node_identity?.requested_node_id || "",
           hostname: setupPayload?.node_identity?.hostname || "",
@@ -716,6 +737,12 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     setBootstrap(bootstrapPayload);
     setProviderSetup(providerPayload);
     setCapabilities(capabilityPayload);
+    if (providerPayload) {
+      setProviderForm({
+        enabled_providers: providerPayload.enabled_providers || [],
+        default_provider: providerPayload.default_provider || providerPayload.supported_providers?.[0] || "voice",
+      });
+    }
     if (onRefresh) {
       await onRefresh();
     }
@@ -729,6 +756,28 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
       await saveNodeIdentity(sanitizeOptionalFields(identityForm));
       await refreshSetupPanels();
       setStageNotice("Node identity saved.");
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleSaveInitialSetup() {
+    setBusyState("initial-save");
+    setStageError("");
+    setStageNotice("");
+    try {
+      await saveNodeIdentity(
+        sanitizeOptionalFields({
+          ...identityForm,
+          protocol_version: identityForm.protocol_version || "1.0",
+          node_nonce: identityForm.node_nonce || generateNodeNonce(),
+        })
+      );
+      await saveCoreConnection(connectionForm);
+      await refreshSetupPanels();
+      setStageNotice("Node identity and Core connection saved.");
     } catch (error) {
       setStageError(String(error.message || error));
     } finally {
@@ -769,23 +818,25 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     }
   }
 
-  async function handleAdvertisementValidation() {
+  async function handleAdvertisementValidation(payloadOverride = null) {
     setBusyState("bootstrap-validate");
     setStageError("");
     setStageNotice("");
     try {
-      const payload = await validateBootstrapAdvertisement({
-        topic: advertisementForm.topic,
-        api_base: advertisementForm.api_base || null,
-        mqtt_host: advertisementForm.mqtt_host || null,
-        mqtt_port: Number(advertisementForm.mqtt_port || 0) || null,
-        onboarding_mode: advertisementForm.onboarding_mode || null,
-        onboarding_contract: advertisementForm.onboarding_contract || null,
-        onboarding_endpoints: {
-          register_session: advertisementForm.register_session,
-          registrations: advertisementForm.registrations,
-        },
-      });
+      const payload = await validateBootstrapAdvertisement(
+        payloadOverride || {
+          topic: advertisementForm.topic,
+          api_base: advertisementForm.api_base || null,
+          mqtt_host: advertisementForm.mqtt_host || null,
+          mqtt_port: Number(advertisementForm.mqtt_port || 0) || null,
+          onboarding_mode: advertisementForm.onboarding_mode || null,
+          onboarding_contract: advertisementForm.onboarding_contract || null,
+          onboarding_endpoints: {
+            register_session: advertisementForm.register_session,
+            registrations: advertisementForm.registrations,
+          },
+        }
+      );
       setBootstrap(payload);
       if (onRefresh) {
         await onRefresh();
@@ -808,6 +859,28 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         await onRefresh();
       }
       setStageNotice("Onboarding session started. Share the approval URL with the operator.");
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleStartInitialOnboarding() {
+    setBusyState("initial-start");
+    setStageError("");
+    setStageNotice("");
+    try {
+      await saveNodeIdentity(
+        sanitizeOptionalFields({
+          ...identityForm,
+          protocol_version: identityForm.protocol_version || "1.0",
+          node_nonce: identityForm.node_nonce || generateNodeNonce(),
+        })
+      );
+      await saveCoreConnection(connectionForm);
+      await refreshSetupPanels();
+      setStageNotice("Initial setup saved. Core connection and bootstrap discovery will continue automatically.");
     } catch (error) {
       setStageError(String(error.message || error));
     } finally {
@@ -951,11 +1024,121 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     }
   }
 
+  useEffect(() => {
+    const stepId = onboarding?.current_step_id;
+
+    if (!stepId || busyState) {
+      return;
+    }
+
+    if (stepId === "core_connection" && connectionForm.core_base_url) {
+      const autoKey = `core_connection:${connectionForm.core_base_url}`;
+      if (automaticStepRef.current === autoKey) {
+        return;
+      }
+      automaticStepRef.current = autoKey;
+      setStageNotice("Automatically connecting to the Core bootstrap listener...");
+      handleBootstrapTest();
+      return;
+    }
+
+    if (
+      stepId === "bootstrap_discovery" &&
+      connectionForm.core_base_url &&
+      (bootstrap?.connection_status === "bootstrap_connected" || bootstrap?.connection_status === "core_discovered") &&
+      !bootstrap?.advertisement_valid
+    ) {
+      const autoKey = `bootstrap_discovery:${connectionForm.core_base_url}:${bootstrap?.connection_status}`;
+      if (automaticStepRef.current === autoKey) {
+        return;
+      }
+      automaticStepRef.current = autoKey;
+      setStageNotice("Automatically validating the Core bootstrap advertisement...");
+      handleAdvertisementValidation(automaticAdvertisementPayload(connectionForm, bootstrap, advertisementForm));
+      return;
+    }
+
+    if (stepId === "registration" && !onboarding?.approval_url) {
+      const autoKey = `registration:${connectionForm.core_base_url}:${identityForm.node_nonce}`;
+      if (automaticStepRef.current === autoKey) {
+        return;
+      }
+      automaticStepRef.current = autoKey;
+      setStageNotice("Automatically creating registration link in Core...");
+      handleSessionStart();
+      return;
+    }
+
+    if (stepId !== "core_connection" && stepId !== "bootstrap_discovery" && stepId !== "registration") {
+      automaticStepRef.current = "";
+    }
+  }, [onboarding?.current_step_id, onboarding?.approval_url, connectionForm.core_base_url, identityForm.node_nonce, bootstrap, advertisementForm, busyState]);
+
+  useEffect(() => {
+    if (onboarding?.current_step_id !== "approval") {
+      return;
+    }
+    if (!onboarding?.session_id || busyState) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setStageNotice("Checking Core for approval finalization...");
+      handleSessionPoll();
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [onboarding?.current_step_id, onboarding?.session_id, onboarding?.session_state, busyState]);
+
+  useEffect(() => {
+    if (onboarding?.current_step_id !== "trust_activation") {
+      return;
+    }
+    if (busyState) {
+      return;
+    }
+
+    const autoKey = `trust_activation:${onboarding?.session_id || ""}:${status?.node_id || ""}`;
+    if (automaticStepRef.current === autoKey) {
+      return;
+    }
+    automaticStepRef.current = autoKey;
+
+    const timer = window.setTimeout(() => {
+      setStageNotice("Applying trust activation automatically...");
+      handleTrustFinalize();
+    }, 500);
+
+    return () => window.clearTimeout(timer);
+  }, [onboarding?.current_step_id, onboarding?.session_id, status?.node_id, busyState]);
+
+  useEffect(() => {
+    const approvalUrl = onboarding?.approval_url;
+    if (!approvalUrl || typeof window === "undefined") {
+      return;
+    }
+    if (onboarding?.current_step_id !== "registration" && onboarding?.current_step_id !== "approval") {
+      return;
+    }
+    if (openedApprovalUrlRef.current === approvalUrl) {
+      return;
+    }
+    openedApprovalUrlRef.current = approvalUrl;
+    window.open(approvalUrl, "_blank", "noopener,noreferrer");
+    setStageNotice("Registration link created and opened in a new window. Continue approval in Core.");
+  }, [onboarding?.approval_url, onboarding?.current_step_id]);
+
   const tone = toneForStep(onboarding?.current_step_id, status?.trust_state, status?.operational_ready);
   const action = onboarding?.current_step_id === "registration" ? (
-    <button className="btn btn-primary" type="button" onClick={handleSessionStart} disabled={busyState !== ""}>
-      {busyState === "session-start" ? "Starting..." : "Start session"}
-    </button>
+    onboarding?.approval_url ? (
+      <a className="status-pill status-pill-warning" href={onboarding.approval_url} target="_blank" rel="noreferrer">
+        Open registration
+      </a>
+    ) : (
+      <span className="status-pill status-pill-neutral">
+        {busyState === "session-start" ? "creating_registration" : "waiting_for_registration"}
+      </span>
+    )
   ) : onboarding?.approval_url ? (
     <a className="status-pill status-pill-warning" href={onboarding.approval_url} target="_blank" rel="noreferrer">
       Open approval
@@ -968,43 +1151,68 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     <span className="status-pill status-pill-neutral">{onboarding?.next_action || "follow setup flow"}</span>
   );
 
+  if (!nodeSetupVisible) {
+    return (
+      <NodeIdentityFormCard
+        uiPort={8084}
+        form={{ core_base_url: connectionForm.core_base_url, node_name: identityForm.node_name }}
+        handleChange={(field, value) => {
+          if (field === "core_base_url") {
+            updateConnection("core_base_url", value);
+            return;
+          }
+          updateIdentity(field, value);
+        }}
+        saveConfiguration={handleSaveInitialSetup}
+        saving={busyState === "initial-save"}
+        startOnboarding={handleStartInitialOnboarding}
+        starting={busyState === "initial-start"}
+        requiredInputs={requiredInputs}
+        notice={stageNotice}
+        error={stageError}
+      />
+    );
+  }
+
   return (
-    <StageCard title={onboarding?.current_step_label || "Node Identity"} tone={tone} action={action}>
-      {stageNotice ? <div className="callout callout-success">{stageNotice}</div> : null}
-      {stageError ? <div className="callout callout-danger">{stageError}</div> : null}
-      {renderStageBody({
-        status,
-        onboarding,
-        localSetup,
-        bootstrap,
-        identityForm,
-        connectionForm,
-        advertisementForm,
-        busyState,
-        stageError,
-        stageNotice,
-        onIdentityChange: updateIdentity,
-        onConnectionChange: updateConnection,
-        onAdvertisementChange: updateAdvertisement,
-        onSaveIdentity: handleSaveIdentity,
-        onSaveConnection: handleSaveConnection,
-        onTestBootstrap: handleBootstrapTest,
-        onValidateAdvertisement: handleAdvertisementValidation,
-        onStartSession: handleSessionStart,
-        onPollSession: handleSessionPoll,
-        onFinalizeTrustActivation: handleTrustFinalize,
-        providerSetup,
-        capabilities,
-        governanceCurrent,
-        operationalStatus,
-        providerForm,
-        onProviderToggle: updateProviderSelection,
-        onProviderSave: handleProviderSave,
-        onDeclareCapabilities: handleDeclareCapabilities,
-        onGovernanceCurrent: handleGovernanceCurrent,
-        onGovernanceRefresh: handleGovernanceRefresh,
-        onOperationalPoll: handleOperationalPoll,
-      })}
-    </StageCard>
+    <NodeSetupCard apiPort={9004} onboarding={onboarding} status={status} statusTone={outcomeTone}>
+      <StageCard title={onboarding?.current_step_label || "Node Identity"} tone={tone} action={action}>
+        {stageNotice ? <div className="callout callout-success">{stageNotice}</div> : null}
+        {stageError ? <div className="callout callout-danger">{stageError}</div> : null}
+        {renderStageBody({
+          status,
+          onboarding,
+          localSetup,
+          bootstrap,
+          identityForm,
+          connectionForm,
+          advertisementForm,
+          busyState,
+          stageError,
+          stageNotice,
+          onIdentityChange: updateIdentity,
+          onConnectionChange: updateConnection,
+          onAdvertisementChange: updateAdvertisement,
+          onSaveIdentity: handleSaveIdentity,
+          onSaveConnection: handleSaveConnection,
+          onTestBootstrap: handleBootstrapTest,
+          onValidateAdvertisement: handleAdvertisementValidation,
+          onStartSession: handleSessionStart,
+          onPollSession: handleSessionPoll,
+          onFinalizeTrustActivation: handleTrustFinalize,
+          providerSetup,
+          capabilities,
+          governanceCurrent,
+          operationalStatus,
+          providerForm,
+          onProviderToggle: updateProviderSelection,
+          onProviderSave: handleProviderSave,
+          onDeclareCapabilities: handleDeclareCapabilities,
+          onGovernanceCurrent: handleGovernanceCurrent,
+          onGovernanceRefresh: handleGovernanceRefresh,
+          onOperationalPoll: handleOperationalPoll,
+        })}
+      </StageCard>
+    </NodeSetupCard>
   );
 }

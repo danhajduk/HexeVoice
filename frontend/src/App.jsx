@@ -6,12 +6,95 @@ import {
   getOnboardingStatus,
   getOperationalStatus,
   getProviderSetup,
+  restartOnboardingSetup,
 } from "./api/client";
-import { StatusCard } from "./components/status/StatusCard";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
-import { OperationalPanel } from "./features/operational/OperationalPanel";
-import { ProviderPanel } from "./features/providers/ProviderPanel";
-import { DiagnosticsPanel } from "./features/diagnostics/DiagnosticsPanel";
+import { SetupSidebar } from "./features/setup/SetupComponents";
+import { SetupHeroCard } from "./features/setup/cards/SetupHeroCard";
+import { LiveStatusCard } from "./features/setup/cards/LiveStatusCard";
+import { OperatorPromptsCard } from "./features/setup/cards/OperatorPromptsCard";
+import { DashboardSidebarCard } from "./features/dashboard/cards/DashboardSidebarCard";
+import { NodeHealthStripCard } from "./features/dashboard/cards/NodeHealthStripCard";
+import { OverviewDashboardSection } from "./features/dashboard/OverviewDashboardSection";
+import { VoiceEndpointDashboardSection } from "./features/dashboard/VoiceEndpointDashboardSection";
+import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDashboardSection";
+
+const CANONICAL_SETUP_STEPS = [
+  { id: "node_identity", label: "Node Identity" },
+  { id: "core_connection", label: "Core Connection" },
+  { id: "bootstrap_discovery", label: "Bootstrap Discovery" },
+  { id: "registration", label: "Registration" },
+  { id: "approval", label: "Approval" },
+  { id: "trust_activation", label: "Trust Activation" },
+  { id: "provider_setup", label: "Provider Setup" },
+  { id: "capability_declaration", label: "Capability Declaration" },
+  { id: "governance_sync", label: "Governance Sync" },
+  { id: "ready", label: "Ready" },
+];
+
+function isSetupStage(onboarding, status) {
+  const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
+  return stepId !== "ready";
+}
+
+function parseRouteView(hash) {
+  return typeof hash === "string" && hash.startsWith("#/dashboard") ? "dashboard" : "setup";
+}
+
+function parseDashboardSection(hash) {
+  if (typeof hash !== "string" || !hash.startsWith("#/dashboard")) {
+    return "overview";
+  }
+  const [, , section] = hash.split("/");
+  return section || "overview";
+}
+
+function setHashRoute(view) {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const hash = view === "dashboard" ? "#/dashboard" : "#/setup";
+  if (window.location.hash !== hash) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
+  }
+}
+
+function setDashboardHashRoute(section = "overview") {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const hash = `#/dashboard/${section}`;
+  if (window.location.hash !== hash) {
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hash}`);
+  }
+}
+
+function requiredSetupInputs(status) {
+  const missing = [];
+  if (!status?.node_name || status.node_name === "hexevoice") {
+    missing.push("node_name");
+  }
+  if (status?.current_step_id === "node_identity") {
+    missing.push("core_base_url");
+  }
+  return [...new Set(missing)];
+}
+
+function nodeStateFromStatus(status, onboarding) {
+  if (status?.operational_ready) {
+    return { tone: "success", label: "Ready" };
+  }
+  if (status?.trust_state === "trusted") {
+    return { tone: "success", label: "Trusted" };
+  }
+  if (status?.trust_state === "revoked") {
+    return { tone: "danger", label: "Revoked" };
+  }
+  if (onboarding?.current_step_label) {
+    return { tone: "warning", label: onboarding.current_step_label };
+  }
+  return { tone: "neutral", label: "Loading" };
+}
 
 function statusTone(status) {
   if (!status) {
@@ -29,6 +112,31 @@ function statusTone(status) {
   return "neutral";
 }
 
+function buildSetupFlow(onboarding, status) {
+  const stepMap = new Map((onboarding?.steps || []).map((step) => [step.step_id, step]));
+  const operationalReady = Boolean(status?.operational_ready || onboarding?.operational_ready);
+  const currentStepId = operationalReady
+    ? "ready"
+    : onboarding?.steps?.find((step) => step.current)?.step_id ||
+      onboarding?.current_step_id ||
+      "node_identity";
+
+  const current = CANONICAL_SETUP_STEPS.find((step) => step.id === currentStepId) || CANONICAL_SETUP_STEPS[0];
+
+  return {
+    current: current ? { id: current.id, label: current.label } : null,
+    steps: CANONICAL_SETUP_STEPS.map((step) => {
+      const payload = stepMap.get(step.id);
+      return {
+        id: step.id,
+        label: payload?.label || step.label,
+        current: payload?.current || step.id === currentStepId,
+        complete: payload?.complete || (operationalReady && step.id === "ready") || false,
+      };
+    }),
+  };
+}
+
 export default function App() {
   const [status, setStatus] = useState(null);
   const [onboarding, setOnboarding] = useState(null);
@@ -37,6 +145,19 @@ export default function App() {
   const [governance, setGovernance] = useState(null);
   const [operational, setOperational] = useState(null);
   const [error, setError] = useState("");
+  const [restartingSetup, setRestartingSetup] = useState(false);
+  const [routeView, setRouteView] = useState(() =>
+    parseRouteView(typeof window !== "undefined" ? window.location.hash : ""),
+  );
+  const [dashboardSection, setDashboardSection] = useState(() =>
+    parseDashboardSection(typeof window !== "undefined" ? window.location.hash : ""),
+  );
+  const setupComplete = !isSetupStage(onboarding, status);
+  const showSetupPage = !setupComplete || routeView === "setup";
+  const setupFlow = buildSetupFlow(onboarding, status);
+  const inSetup = showSetupPage;
+  const nodeState = nodeStateFromStatus(status, onboarding);
+  const requiredInputs = requiredSetupInputs(status);
 
   const refresh = useCallback(async () => {
     const [
@@ -94,73 +215,183 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    function syncRoute() {
+      setRouteView(parseRouteView(window.location.hash));
+      setDashboardSection(parseDashboardSection(window.location.hash));
+    }
+
+    window.addEventListener("hashchange", syncRoute);
+    syncRoute();
+    return () => window.removeEventListener("hashchange", syncRoute);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (setupComplete) {
+      return;
+    }
+    setHashRoute("setup");
+    if (routeView !== "setup") {
+      setRouteView("setup");
+    }
+  }, [setupComplete, routeView]);
+
+  useEffect(() => {
+    if (!setupComplete || routeView !== "setup") {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDashboardHashRoute("overview");
+      setRouteView("dashboard");
+      setDashboardSection("overview");
+    }, 800);
+
+    return () => window.clearTimeout(timer);
+  }, [setupComplete, routeView]);
+
+  async function handleRestartSetup() {
+    setRestartingSetup(true);
+    try {
+      await restartOnboardingSetup();
+      await refresh();
+      setHashRoute("setup");
+      setRouteView("setup");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setRestartingSetup(false);
+    }
+  }
+
+  function openDashboard() {
+    setDashboardHashRoute("overview");
+    setRouteView("dashboard");
+    setDashboardSection("overview");
+  }
+
+  function openSetup() {
+    setHashRoute("setup");
+    setRouteView("setup");
+  }
+
+  function openDashboardSection(section) {
+    setDashboardHashRoute(section);
+    setRouteView("dashboard");
+    setDashboardSection(section);
+  }
+
+  function renderDashboardSection() {
+    if (dashboardSection === "voice-endpoint") {
+      return (
+        <VoiceEndpointDashboardSection
+          status={status}
+          providerSetup={providerSetup}
+          capabilities={capabilities}
+          onRefresh={refresh}
+        />
+      );
+    }
+
+    if (dashboardSection === "providers") {
+      return (
+        <PlaceholderDashboardSection
+          title="Providers"
+          copy="Provider dashboards are still placeholder-only for now."
+        />
+      );
+    }
+
+    if (dashboardSection === "runtime") {
+      return (
+        <PlaceholderDashboardSection
+          title="Runtime"
+          copy="Runtime execution dashboards will land here next."
+        />
+      );
+    }
+
+    if (dashboardSection === "diagnostics") {
+      return (
+        <PlaceholderDashboardSection
+          title="Diagnostics"
+          copy="Diagnostics, export tools, and deep inspection will live here next."
+        />
+      );
+    }
+
+    return (
+      <OverviewDashboardSection
+        status={status}
+        onboarding={onboarding}
+        governance={governance}
+        operational={operational}
+        openSetup={openSetup}
+        openVoiceEndpoint={() => openDashboardSection("voice-endpoint")}
+        onRefresh={refresh}
+      />
+    );
+  }
+
   return (
-    <main className="app-page">
-      <div className="app-shell">
-        <section className="app-hero">
-          <div className="hero-card">
-            <div className="eyebrow-row">
-              <span className="eyebrow">Hexe Node Console</span>
-              <span className={`status-pill status-pill-${statusTone(status)}`}>
-                {onboarding?.current_step_label || status?.current_step_label || "Loading status"}
-              </span>
-            </div>
-            <h1 className="app-title">HexeVoice</h1>
-            <p className="hero-copy">
-              Voice-node onboarding, trust activation, provider setup, and operational readiness in the shared
-              Hexe operator shell.
-            </p>
-            <div className="hero-facts">
-              <div className="fact-card">
-                <span className="fact-label">Lifecycle</span>
-                <span className="fact-value">{onboarding?.lifecycle_state || status?.lifecycle_state || "loading"}</span>
-              </div>
-              <div className="fact-card">
-                <span className="fact-label">Trust</span>
-                <span className="fact-value">{status?.trust_state || "loading"}</span>
-              </div>
-              <div className="fact-card">
-                <span className="fact-label">Readiness</span>
-                <span className="fact-value">{status?.operational_ready ? "operational" : "blocked"}</span>
-              </div>
-            </div>
-          </div>
-          <StatusCard status={status} onboarding={onboarding} error={error} />
-        </section>
+    <div className="shell">
+      <main className="app-frame">
+        <SetupHeroCard
+          nodeState={nodeState}
+          onboarding={onboarding}
+          status={status}
+          restartSetup={handleRestartSetup}
+          restartingSetup={restartingSetup}
+          dashboardEnabled={setupComplete}
+          openDashboard={openDashboard}
+          openProvider={() => {}}
+        />
 
-        <section className="shell-grid">
-          <aside className="shell-rail">
-            <div className="rail-card">
-              <h2 className="rail-title">Setup Flow</h2>
-              <p className="rail-copy">
-                The canonical 10-step Core lifecycle drives this node from first launch to trusted, provider-ready
-                operation.
-              </p>
-              <div className="step-list">
-                {(onboarding?.steps || []).map((step, index) => (
-                  <div
-                    key={step.step_id}
-                    className={`step-item ${step.current ? "step-item-current" : ""} ${step.complete ? "step-item-complete" : ""}`}
-                  >
-                    <span className="step-index">{index + 1}</span>
-                    <div>
-                      <span className="step-label">{step.label}</span>
-                      <span className="step-meta">{step.lifecycle_state}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </aside>
+        <section className="app-shell">
+          {showSetupPage ? (
+            <SetupSidebar flow={setupFlow} />
+          ) : (
+            <DashboardSidebarCard dashboardSection={dashboardSection} openDashboard={openDashboardSection} />
+          )}
 
-          <div className="main-grid">
-            <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
-            <OperationalPanel status={status} operational={operational} governance={governance} />
-            <ProviderPanel status={status} providerSetup={providerSetup} capabilities={capabilities} />
-            <DiagnosticsPanel status={status} onboarding={onboarding} operational={operational} onRefresh={refresh} />
+          <div className="main-column">
+            <section className="content-stack">
+              {showSetupPage ? (
+                <>
+                  <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
+                  <section className="grid setup-secondary-grid">
+                    <LiveStatusCard status={status} />
+                    <OperatorPromptsCard
+                      requiredInputs={requiredInputs}
+                      onboarding={onboarding}
+                      status={status}
+                      setupFlow={setupFlow}
+                    />
+                  </section>
+                </>
+              ) : (
+                <>
+                  <NodeHealthStripCard
+                    status={status}
+                    onboarding={onboarding}
+                    providerSetup={providerSetup}
+                    governance={governance}
+                    operational={operational}
+                  />
+                  {renderDashboardSection()}
+                </>
+              )}
+            </section>
           </div>
         </section>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

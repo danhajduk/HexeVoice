@@ -11,7 +11,7 @@ def test_bootstrap_advertisement_validation_persists_discovery_state(tmp_path):
             {
                 "pre_trust": {
                     "node_name": "kitchen-voice",
-                    "protocol_version": "global-node-v1",
+                    "protocol_version": "1.0",
                     "node_nonce": "voice-node-nonce",
                     "core_base_url": "http://10.0.0.100:9001",
                 },

@@ -1,9 +1,53 @@
-const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:9000";
+const API_BASE = import.meta.env.VITE_API_BASE || "";
+
+function formatApiDetail(detail, fallback) {
+  if (!detail) {
+    return fallback;
+  }
+
+  if (typeof detail === "string") {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (typeof item === "string") {
+          return item;
+        }
+        if (item && typeof item === "object") {
+          const location = Array.isArray(item.loc) ? item.loc.join(".") : null;
+          const message = typeof item.msg === "string" ? item.msg : JSON.stringify(item);
+          return location ? `${location}: ${message}` : message;
+        }
+        return String(item);
+      })
+      .filter(Boolean);
+
+    return messages.join("; ") || fallback;
+  }
+
+  if (typeof detail === "object") {
+    if (typeof detail.message === "string") {
+      return detail.message;
+    }
+    return JSON.stringify(detail);
+  }
+
+  return String(detail);
+}
 
 async function fetchJson(path) {
   const response = await fetch(`${API_BASE}${path}`);
   if (!response.ok) {
-    throw new Error(`request failed (${response.status})`);
+    let detail = `request failed (${response.status})`;
+    try {
+      const payload = await response.json();
+      detail = formatApiDetail(payload?.detail, detail);
+    } catch {
+      // Ignore non-JSON error bodies.
+    }
+    throw new Error(detail);
   }
   return response.json();
 }
@@ -18,7 +62,7 @@ async function sendJson(path, { method = "POST", body } = {}) {
     let detail = `request failed (${response.status})`;
     try {
       const payload = await response.json();
-      detail = payload?.detail || detail;
+      detail = formatApiDetail(payload?.detail, detail);
     } catch {
       // Ignore non-JSON error bodies.
     }
@@ -37,6 +81,10 @@ export async function getOnboardingStatus() {
 
 export async function getLocalSetup() {
   return fetchJson("/api/onboarding/local-setup");
+}
+
+export async function restartOnboardingSetup() {
+  return sendJson("/api/onboarding/restart");
 }
 
 export async function saveNodeIdentity(payload) {

@@ -1,0 +1,12 @@
+dependencies:
+  idf: '>=5.2'
+  sensor_hub:
+    public: true
+    version: ^0.1.4
+description: I2C driver for ICM 42670 6-Axis MotionTracking
+repository: git://github.com/espressif/esp-bsp.git
+repository_info:
+  commit_sha: acc2fdfb2014eabc5c7096decd2e0495708d3501
+  path: components/sensors/icm42670
+url: https://github.com/espressif/esp-bsp/tree/master/components/sensors/icm42670
+version: 2.1.0
