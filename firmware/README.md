@@ -45,6 +45,17 @@ cd firmware
 ./build.sh
 ```
 
+To build and immediately push the new app binary by OTA:
+
+```bash
+cd firmware
+./build.sh push
+```
+
+`push` posts to `http://127.0.0.1:9004/api/firmware/ota/push` by default and reads
+the endpoint id from `config/endpoint.yaml`. Override with `OTA_API_BASE` or
+`ENDPOINT_ID` when needed.
+
 To copy the flashable artifacts into `firmware/export/` for another machine:
 
 ```bash
