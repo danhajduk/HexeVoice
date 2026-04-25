@@ -277,7 +277,29 @@ void handle_backend_event_json(const std::string &message) {
   const char *ux_state = cJSON_IsString(state_item) ? state_item->valuestring : "";
 
   auto &app_state = hexe::state();
-  if (std::strcmp(type, "wake.accepted") == 0 || std::strcmp(ux_state, "listening") == 0) {
+  const bool wake_accepted = std::strcmp(type, "wake.accepted") == 0;
+  if (wake_accepted) {
+    cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
+    cJSON *wake = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "wake") : nullptr;
+    cJSON *confidence = cJSON_IsObject(wake) ? cJSON_GetObjectItem(wake, "confidence") : nullptr;
+    cJSON *model = cJSON_IsObject(wake) ? cJSON_GetObjectItem(wake, "model") : nullptr;
+    if (cJSON_IsNumber(confidence)) {
+      ESP_LOGI(
+          kTag,
+          "Wake accepted by backend (session=%s, model=%s, confidence=%.3f)",
+          cJSON_IsString(session_id) ? session_id->valuestring : "unknown",
+          cJSON_IsString(model) ? model->valuestring : "unknown",
+          confidence->valuedouble);
+    } else {
+      ESP_LOGI(
+          kTag,
+          "Wake accepted by backend (session=%s, model=%s)",
+          cJSON_IsString(session_id) ? session_id->valuestring : "unknown",
+          cJSON_IsString(model) ? model->valuestring : "unknown");
+    }
+  }
+
+  if (wake_accepted || std::strcmp(ux_state, "listening") == 0) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kListening;
     }
