@@ -73,6 +73,12 @@ def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
     assert complete_response["payload"]["snapshot"]["session_state"] == "completed"
     assert complete_response["payload"]["completion_reason"] == "turn_completed"
 
+    status = client.get("/api/voice/status").json()
+    assert status["wake_history"][0]["outcome"] == "accepted"
+    assert status["wake_history"][0]["detected"] is True
+    assert status["wake_history"][0]["session_id"] == "voice-session-1"
+    assert status["wake_history"][0]["model"] == "deterministic"
+
 
 def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     client = TestClient(
@@ -319,6 +325,11 @@ def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):
     assert chunk_response["payload"]["wake"]["detected"] is False
     assert end_response["event_type"] == "session.cancelled"
     assert end_response["payload"]["snapshot"]["cancel_reason"] == "wake_not_detected"
+
+    status = client.get("/api/voice/status").json()
+    assert status["wake_history"][0]["outcome"] == "not_detected"
+    assert status["wake_history"][0]["detected"] is False
+    assert status["wake_history"][0]["reason"] == "wake_not_detected"
 
 
 def test_voice_websocket_cancel_returns_cancelled_event(tmp_path):

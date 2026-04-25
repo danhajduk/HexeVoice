@@ -52,6 +52,7 @@ class VoiceSessionManager:
         self._last_error: dict | None = None
         self._last_tts: dict | None = None
         self._last_event_type: str | None = None
+        self._wake_history: list[dict[str, object]] = []
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -270,6 +271,18 @@ class VoiceSessionManager:
             chunk=payload,
         )
         if detection.detected and session.session_state == "idle":
+            self._record_wake_history(
+                {
+                    "outcome": "accepted",
+                    "detected": True,
+                    "endpoint_id": event.endpoint_id,
+                    "session_id": session.session_id,
+                    "model": detection.model,
+                    "confidence": detection.confidence,
+                    "chunk_index": payload.chunk_index,
+                    "chunk_count": self._chunk_count,
+                }
+            )
             log.info(
                 "Wake accepted: endpoint_id=%s session_id=%s model=%s confidence=%s chunk_index=%s",
                 event.endpoint_id,
@@ -324,6 +337,19 @@ class VoiceSessionManager:
         if session.session_state == "idle":
             self._set_session_state("cancelled", ux_state="idle")
             session.cancel_reason = "wake_not_detected"
+            wake_status = self._wake_detector.status().get("last_detection") or {}
+            self._record_wake_history(
+                {
+                    "outcome": "not_detected",
+                    "detected": False,
+                    "endpoint_id": session.endpoint_id,
+                    "session_id": session.session_id,
+                    "model": wake_status.get("model"),
+                    "confidence": wake_status.get("confidence"),
+                    "reason": wake_status.get("reason") or "wake_not_detected",
+                    "chunk_count": self._chunk_count,
+                }
+            )
             log.info(
                 "Voice session cancelled before wake: endpoint_id=%s session_id=%s chunks=%s",
                 session.endpoint_id,
@@ -461,6 +487,7 @@ class VoiceSessionManager:
             "last_tts": self._last_tts,
             "last_error": self._last_error,
             "wake_provider": self._wake_detector.status(),
+            "wake_history": list(self._wake_history),
             "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
             "supported_actions": {
                 "refresh": True,
@@ -477,6 +504,11 @@ class VoiceSessionManager:
         if not callable(preload):
             return None
         return preload()
+
+    def _record_wake_history(self, entry: dict[str, object]) -> None:
+        event = {"timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"), **entry}
+        self._wake_history.insert(0, event)
+        del self._wake_history[10:]
 
     def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
         if self._active_session is None:

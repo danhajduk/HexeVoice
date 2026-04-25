@@ -102,4 +102,6 @@ VOICE_WAKE_MODELS=Hexa
 
 `VOICE_WAKE_MODELS` is interpreted as wake-word names for the Wyoming service in this mode. The older in-process provider remains available with `VOICE_WAKE_PROVIDER=openwakeword`, where `VOICE_WAKE_MODELS` continues to mean local model paths.
 
+`GET /api/voice/status` includes a `wake_history` array with the 10 most recent meaningful wake outcomes. Accepted entries include timestamp, endpoint id, session id, model, confidence, chunk index, and chunk count. No-detection entries include timestamp, endpoint id, session id, reason, and chunk count.
+
 Validation notes are captured in `docs/supervised-openwakeword-validation.md`.
