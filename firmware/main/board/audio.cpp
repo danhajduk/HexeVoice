@@ -18,8 +18,9 @@ constexpr int kBitsPerSample = 16;
 constexpr int kChannelCount = 1;
 constexpr size_t kFrameSamples = 320;
 constexpr size_t kFrameBytes = kFrameSamples * sizeof(int16_t);
-constexpr uint32_t kVadEnergyThreshold = 900;
-constexpr uint32_t kVadSilenceHoldFrames = 20;
+constexpr uint32_t kVadStartEnergyThreshold = 900;
+constexpr uint32_t kVadContinueEnergyThreshold = 500;
+constexpr uint32_t kVadSilenceHoldFrames = 60;
 
 esp_codec_dev_handle_t g_mic_codec = nullptr;
 TaskHandle_t g_vad_task = nullptr;
@@ -80,7 +81,9 @@ void vad_task(void *arg) {
     }
 
     const uint32_t level = estimate_level(samples, kFrameSamples);
-    const bool frame_has_voice = level >= kVadEnergyThreshold;
+    const bool was_speaking = hexe::state().vad_speaking;
+    const uint32_t threshold = was_speaking ? kVadContinueEnergyThreshold : kVadStartEnergyThreshold;
+    const bool frame_has_voice = level >= threshold;
     hexe::voice::submit_audio_frame(samples, kFrameSamples, level, frame_has_voice);
 
     if (frame_has_voice) {
