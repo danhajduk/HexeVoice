@@ -526,6 +526,14 @@ Accepted for the buffered wake provider:
 - `VOICE_WAKE_BUFFER_MS` controls the retained rolling audio window and `VOICE_WAKE_PREDICTION_FRAME_MS` controls the minimum frame sent to the wake model.
 - `/api/voice/status` includes `wake_provider` metadata with provider name, load state, load error, threshold, model configuration, buffer configuration, active buffer count, and last detection summary.
 
+Task 038 aligns firmware capture with backend wake authority.
+
+Accepted for firmware wake alignment:
+
+- Firmware VAD opens and closes the upstream audio turn but no longer moves the LCD into the listening state by itself.
+- Firmware enters the listening UX only after the backend emits `wake.accepted` or a listening session snapshot.
+- Firmware advertises `wake_source=openwakeword` in `session.start` because the backend is the canonical wake authority.
+
 Task 032 adds the first backend STT -> assistant -> TTS turn boundary in `src/hexevoice/voice/pipeline.py`.
 
 Accepted for the first provider-adapter implementation:

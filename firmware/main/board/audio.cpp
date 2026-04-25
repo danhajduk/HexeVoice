@@ -24,6 +24,7 @@ constexpr uint32_t kVadSilenceHoldFrames = 60;
 
 esp_codec_dev_handle_t g_mic_codec = nullptr;
 TaskHandle_t g_vad_task = nullptr;
+bool g_vad_turn_active = false;
 
 uint32_t estimate_level(const int16_t *samples, size_t count) {
   uint64_t total = 0;
@@ -52,14 +53,15 @@ void apply_vad_state(bool speaking, uint32_t level) {
   }
 
   if (speaking) {
-    if (app_state.phase == hexe::AppPhase::kIdle || app_state.phase == hexe::AppPhase::kWiFiConnecting) {
-      app_state.phase = hexe::AppPhase::kListening;
-      ESP_LOGI(kTag, "VAD speech detected (level=%lu)", static_cast<unsigned long>(level));
-    }
-  } else if (app_state.phase == hexe::AppPhase::kListening) {
+    g_vad_turn_active = true;
+    ESP_LOGI(kTag, "VAD speech detected (level=%lu)", static_cast<unsigned long>(level));
+  } else if (g_vad_turn_active) {
+    g_vad_turn_active = false;
     if (hexe::voice::finish_audio_stream("vad_silence")) {
-      app_state.phase = hexe::AppPhase::kThinking;
-    } else {
+      if (app_state.phase == hexe::AppPhase::kListening) {
+        app_state.phase = hexe::AppPhase::kThinking;
+      }
+    } else if (app_state.phase == hexe::AppPhase::kListening) {
       app_state.phase = hexe::AppPhase::kIdle;
     }
     ESP_LOGI(kTag, "VAD silence detected (level=%lu)", static_cast<unsigned long>(level));

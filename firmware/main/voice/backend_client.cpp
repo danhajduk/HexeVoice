@@ -263,7 +263,7 @@ void ensure_session_started() {
       sizeof(payload),
       "{\"event_type\":\"session.start\",\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\","
       "\"session_id\":\"%s\",\"sequence\":%" PRIu32 ",\"payload\":{\"firmware_version\":\"%s\","
-      "\"wake_source\":\"unknown\",\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d}}}",
+      "\"wake_source\":\"openwakeword\",\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d}}}",
       hexe::config::kEndpointId,
       g_session_id.c_str(),
       g_sequence++,
