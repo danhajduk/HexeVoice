@@ -101,3 +101,5 @@ VOICE_WAKE_MODELS=Hexa
 ```
 
 `VOICE_WAKE_MODELS` is interpreted as wake-word names for the Wyoming service in this mode. The older in-process provider remains available with `VOICE_WAKE_PROVIDER=openwakeword`, where `VOICE_WAKE_MODELS` continues to mean local model paths.
+
+Validation notes are captured in `docs/supervised-openwakeword-validation.md`.

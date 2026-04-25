@@ -47,4 +47,3 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 048: Validate the supervised openWakeWord wake-to-listening path
