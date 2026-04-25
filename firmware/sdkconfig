@@ -3896,6 +3896,15 @@ CONFIG_ADC_BUTTON_SAMPLE_TIMES=1
 # end of IoT Button
 
 #
+# cJSON
+#
+# default:
+CONFIG_CJSON_NESTING_LIMIT=1000
+# default:
+CONFIG_CJSON_CIRCULAR_LIMIT=10000
+# end of cJSON
+
+#
 # CMake Utilities
 #
 # default:
@@ -4005,6 +4014,15 @@ CONFIG_ESP_LCD_TOUCH_MAX_POINTS=5
 # default:
 CONFIG_ESP_LCD_TOUCH_MAX_BUTTONS=1
 # end of ESP LCD TOUCH
+
+#
+# ESP WebSocket client
+#
+# default:
+# CONFIG_ESP_WS_CLIENT_ENABLE_DYNAMIC_BUFFER is not set
+# default:
+# CONFIG_ESP_WS_CLIENT_SEPARATE_TX_LOCK is not set
+# end of ESP WebSocket client
 
 #
 # Bus Options
