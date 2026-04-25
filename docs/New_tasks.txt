@@ -47,5 +47,4 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 042: Add Phase 1 voice loop observability and operator errors
 [TODO] Task 043: Validate and document the Phase 1 wake-to-reply demo

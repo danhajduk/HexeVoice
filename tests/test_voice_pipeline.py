@@ -155,3 +155,17 @@ def test_build_voice_turn_pipeline_uses_openai_tts_when_configured(tmp_path):
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._tts_adapter, OpenAiTextToSpeechAdapter)
+
+
+def test_voice_turn_pipeline_status_reports_provider_health(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    status = pipeline.status()
+
+    assert status["stt"]["provider"] == "deterministic"
+    assert status["stt"]["healthy"] is True
+    assert status["tts"]["provider"] == "deterministic"
+    assert status["tts"]["healthy"] is True

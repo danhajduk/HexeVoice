@@ -30,3 +30,4 @@ Task 038: Align firmware audio capture with backend wake authority - Completed o
 Task 039: Wire real STT provider adapter into completed wake sessions - Completed on 04/25/2026 13:28
 Task 040: Wire real TTS provider adapter and playable response audio - Completed on 04/25/2026 13:31
 Task 041: Complete firmware TTS playback for backend response audio - Completed on 04/25/2026 13:34
+Task 042: Add Phase 1 voice loop observability and operator errors - Completed on 04/25/2026 13:37

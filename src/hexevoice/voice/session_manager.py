@@ -291,6 +291,20 @@ class VoiceSessionManager:
                     audio_bytes=b"".join(self._audio_chunks),
                 )
             )
+            if turn.transcript.error:
+                error = self._error_event(
+                    endpoint_id=session.endpoint_id,
+                    session_id=session.session_id,
+                    code="stt_failed",
+                    message=turn.transcript.error,
+                    recoverable=True,
+                )
+                self._set_session_state("failed", ux_state="error")
+                self._active_session = None
+                self._chunk_count = 0
+                self._audio_chunks = []
+                self._audio_format = None
+                return [error]
             events.append(
                 self._state_event(
                     "transcript.final",
@@ -322,7 +336,25 @@ class VoiceSessionManager:
                 "content_type": turn.tts.content_type,
                 "stream_id": turn.tts.stream_id,
                 "audio_url": turn.tts.audio_url,
+                "provider_id": turn.tts.provider_id,
+                "error": turn.tts.error,
             }
+            if turn.tts.error:
+                events.append(
+                    self._error_event(
+                        endpoint_id=session.endpoint_id,
+                        session_id=session.session_id,
+                        code="tts_failed",
+                        message=turn.tts.error,
+                        recoverable=True,
+                    )
+                )
+                self._set_session_state("failed", ux_state="error")
+                self._active_session = None
+                self._chunk_count = 0
+                self._audio_chunks = []
+                self._audio_format = None
+                return events
             events.append(
                 self._state_event(
                     "tts.ready",
@@ -366,6 +398,7 @@ class VoiceSessionManager:
             "last_tts": self._last_tts,
             "last_error": self._last_error,
             "wake_provider": self._wake_detector.status(),
+            "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
             "supported_actions": {
                 "refresh": True,
                 "test_assistant_turn": True,

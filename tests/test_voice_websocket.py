@@ -188,6 +188,8 @@ def test_voice_status_and_operator_cancel_surface_active_session(tmp_path):
         assert status.json()["active_session"]["session_state"] == "idle"
         assert status.json()["wake_provider"]["provider"] == "deterministic"
         assert status.json()["wake_provider"]["healthy"] is True
+        assert status.json()["turn_pipeline"]["stt"]["provider"] == "deterministic"
+        assert status.json()["turn_pipeline"]["tts"]["provider"] == "deterministic"
         assert status.json()["supported_actions"]["stop_session"] is True
 
         cancel = client.post("/api/voice/session/cancel")
@@ -207,6 +209,93 @@ def test_voice_tts_audio_route_serves_generated_stream(tmp_path):
 
     assert response.status_code == 200
     assert response.content == b"RIFFtest-wav"
+
+
+def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
+    class FailingSttPipeline:
+        def status(self):
+            return {"stt": {"provider": "test", "healthy": False}, "tts": {"provider": "test", "healthy": True}}
+
+        def complete_turn(self, audio):
+            return VoiceTurnResult(
+                transcript=SpeechTranscript(text="", provider_id="test", error="stt unavailable"),
+                assistant_response=AssistantTurnResponse(
+                    endpoint_id=audio.endpoint_id,
+                    session_id=audio.session_id,
+                    heard_text="",
+                    reply_text="",
+                    spoken_text="",
+                    handled_locally=False,
+                    command=None,
+                    device_state="idle",
+                ),
+                tts=TtsSynthesis(stream_id=None),
+            )
+
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        turn_pipeline=FailingSttPipeline(),
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.chunk", payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}}))
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        error = websocket.receive_json()
+
+    assert error["event_type"] == "session.error"
+    assert error["payload"]["code"] == "stt_failed"
+    assert error["payload"]["recoverable"] is True
+    assert client.get("/api/voice/status").json()["last_error"]["code"] == "stt_failed"
+
+
+def test_voice_websocket_surfaces_tts_provider_errors(tmp_path):
+    class FailingTtsPipeline:
+        def status(self):
+            return {"stt": {"provider": "test", "healthy": True}, "tts": {"provider": "test", "healthy": False}}
+
+        def complete_turn(self, audio):
+            return VoiceTurnResult(
+                transcript=SpeechTranscript(text="hello", confidence=1.0),
+                assistant_response=AssistantTurnResponse(
+                    endpoint_id=audio.endpoint_id,
+                    session_id=audio.session_id,
+                    heard_text="hello",
+                    reply_text="hi",
+                    spoken_text="hi",
+                    handled_locally=False,
+                    command=None,
+                    device_state="speaking",
+                ),
+                tts=TtsSynthesis(stream_id="tts-test", provider_id="test", error="tts unavailable"),
+            )
+
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        turn_pipeline=FailingTtsPipeline(),
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.chunk", payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}}))
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        transcript = websocket.receive_json()
+        response = websocket.receive_json()
+        error = websocket.receive_json()
+
+    assert transcript["event_type"] == "transcript.final"
+    assert response["event_type"] == "response.text"
+    assert error["event_type"] == "session.error"
+    assert error["payload"]["code"] == "tts_failed"
+    assert client.get("/api/voice/status").json()["last_tts"]["error"] == "tts unavailable"
 
 
 def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):

@@ -56,9 +56,15 @@ class SpeechToTextAdapter(Protocol):
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         ...
 
+    def status(self) -> dict:
+        ...
+
 
 class TextToSpeechAdapter(Protocol):
     def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+        ...
+
+    def status(self) -> dict:
         ...
 
 
@@ -70,6 +76,9 @@ class DeterministicSpeechToTextAdapter:
         if audio.chunk_count <= 0:
             return SpeechTranscript(text="", confidence=0.0)
         return SpeechTranscript(text=self._transcript, confidence=1.0)
+
+    def status(self) -> dict:
+        return {"provider": "deterministic", "healthy": True, "configured": True}
 
 
 class OpenAiSpeechToTextAdapter:
@@ -89,11 +98,14 @@ class OpenAiSpeechToTextAdapter:
         self._prompt = prompt
         self._timeout_s = timeout_s
         self._http_client = http_client
+        self._last_error: str | None = None
 
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         if not self._api_key:
+            self._last_error = "missing_api_key"
             return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error="missing_api_key")
         if not audio.audio_bytes:
+            self._last_error = "empty_audio"
             return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error="empty_audio")
 
         try:
@@ -115,9 +127,21 @@ class OpenAiSpeechToTextAdapter:
             response.raise_for_status()
             payload = response.json()
             text = str(payload.get("text") or "").strip()
+            self._last_error = None
             return SpeechTranscript(text=text, provider_id="openai")
         except Exception as exc:
-            return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error=str(exc))
+            self._last_error = str(exc)
+            return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error=self._last_error)
+
+    def status(self) -> dict:
+        return {
+            "provider": "openai",
+            "healthy": self._last_error is None,
+            "configured": bool(self._api_key),
+            "model": self._model,
+            "base_url": self._base_url,
+            "last_error": self._last_error,
+        }
 
     def _audio_file(self, audio: VoiceTurnAudioSummary) -> bytes:
         if audio.encoding == "wav":
@@ -137,6 +161,9 @@ class OpenAiSpeechToTextAdapter:
 class DeterministicTextToSpeechAdapter:
     def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
         return TtsSynthesis(stream_id=f"tts-{uuid4().hex[:12]}")
+
+    def status(self) -> dict:
+        return {"provider": "deterministic", "healthy": True, "configured": True}
 
 
 class OpenAiTextToSpeechAdapter:
@@ -160,11 +187,13 @@ class OpenAiTextToSpeechAdapter:
         self._response_format = response_format
         self._timeout_s = timeout_s
         self._http_client = http_client
+        self._last_error: str | None = None
 
     def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
         stream_id = f"tts-{uuid4().hex[:12]}"
         content_type = self._content_type()
         if not self._api_key:
+            self._last_error = "missing_api_key"
             return TtsSynthesis(
                 content_type=content_type,
                 stream_id=stream_id,
@@ -192,6 +221,7 @@ class OpenAiTextToSpeechAdapter:
             self._output_dir.mkdir(parents=True, exist_ok=True)
             output_path = self._output_dir / f"{stream_id}.{self._response_format}"
             output_path.write_bytes(response.content)
+            self._last_error = None
             return TtsSynthesis(
                 content_type=content_type,
                 stream_id=stream_id,
@@ -199,11 +229,12 @@ class OpenAiTextToSpeechAdapter:
                 provider_id="openai",
             )
         except Exception as exc:
+            self._last_error = str(exc)
             return TtsSynthesis(
                 content_type=content_type,
                 stream_id=stream_id,
                 provider_id="openai",
-                error=str(exc),
+                error=self._last_error,
             )
 
     def _content_type(self) -> str:
@@ -212,6 +243,18 @@ class OpenAiTextToSpeechAdapter:
         if self._response_format == "opus":
             return "audio/ogg"
         return f"audio/{self._response_format}"
+
+    def status(self) -> dict:
+        return {
+            "provider": "openai",
+            "healthy": self._last_error is None,
+            "configured": bool(self._api_key),
+            "model": self._model,
+            "voice": self._voice,
+            "base_url": self._base_url,
+            "response_format": self._response_format,
+            "last_error": self._last_error,
+        }
 
 
 class VoiceTurnPipeline:
@@ -241,6 +284,12 @@ class VoiceTurnPipeline:
             text=assistant_response.spoken_text,
         )
         return VoiceTurnResult(transcript=transcript, assistant_response=assistant_response, tts=tts)
+
+    def status(self) -> dict:
+        return {
+            "stt": self._stt_adapter.status(),
+            "tts": self._tts_adapter.status(),
+        }
 
 
 def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:

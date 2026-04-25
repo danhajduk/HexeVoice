@@ -571,6 +571,15 @@ Accepted for firmware playback:
 - Firmware downloads WAV audio, parses PCM WAV headers, opens the ESP-BOX speaker codec, and writes PCM frames to the speaker.
 - Playback returns the LCD to idle on success and enters error state on unsupported or failed playback.
 
+Task 042 adds Phase 1 provider observability and operator-facing errors.
+
+Accepted for observability:
+
+- `/api/voice/status` includes `turn_pipeline` health metadata for the configured STT and TTS adapters.
+- STT and TTS adapters report provider name, configured state, health, model configuration, and last provider error where applicable.
+- STT failures emit recoverable `session.error` events with code `stt_failed`.
+- TTS failures emit recoverable `session.error` events with code `tts_failed` and preserve the failed TTS metadata in voice status.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 has produced the first MVP wake-to-reply contract path. The current handoff is recorded in `docs/voice-loop-phase-1-handoff.md`.
