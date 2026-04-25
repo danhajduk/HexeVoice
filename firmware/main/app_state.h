@@ -10,6 +10,7 @@ enum class AppPhase {
   kListening,
   kThinking,
   kReplying,
+  kUpdating,
   kMuted,
   kTimerFinished,
   kError,

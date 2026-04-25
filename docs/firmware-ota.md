@@ -165,14 +165,60 @@ Implement in this order:
 
 That way OTA updates something real instead of becoming early plumbing for an incomplete firmware.
 
+## Implemented Local OTA Foundation
+
+Status: initial implementation added on 04/25/2026.
+
+The native firmware now has:
+
+- OTA-capable partition table with `ota_0`, `ota_1`, and `otadata`.
+- Firmware version text drawn on the load screen as `FW <app version>`.
+- Firmware OTA client in `firmware/main/system/ota.cpp`.
+- Backend `ota.update` WebSocket event handling in the endpoint firmware.
+- Backend artifact hosting from `runtime/firmware`.
+- Backend OTA push API:
+
+```text
+GET  /api/firmware/manifest
+GET  /api/firmware/artifacts/hexe_firmware.bin
+POST /api/firmware/ota/push
+```
+
+Push payload:
+
+```json
+{
+  "endpoint_id": "esp-box-1",
+  "filename": "hexe_firmware.bin",
+  "version": "0.1.1"
+}
+```
+
+The backend sends an `ota.update` event to the connected endpoint WebSocket with the firmware URL, version, size, and SHA-256. The endpoint downloads the image with ESP-IDF OTA and reboots on success.
+
+`firmware/export-artifacts.sh` copies the app binary to:
+
+```text
+runtime/firmware/hexe_firmware.bin
+```
+
+Runtime firmware binaries and generated manifests are intentionally ignored by git; `runtime/firmware/.gitkeep` keeps the directory present.
+
+Because the partition table changed from a factory-only layout to OTA slots, each device needs one full USB flash of bootloader, partition table, OTA data, and app before backend-pushed OTA updates can work:
+
+```bash
+cd firmware/export
+./flash-esptool.sh /dev/ttyACM0
+```
+
+Development OTA allows HTTP for local Voice Node hosting. Production OTA should move to HTTPS-only and signed manifests before wider deployment.
+
 ## Future Repo Work
 
 The firmware track should later gain:
 
-- OTA-capable partition table
-- firmware version constant
-- `system/ota.cpp` implementation
-- update manifest format doc
+- signed update manifest format
+- firmware checksum verification in firmware before reboot
 - release packaging script
 
 ## Practical Next Step

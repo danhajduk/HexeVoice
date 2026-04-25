@@ -54,6 +54,7 @@ VoiceEventType = Literal[
     "session.completed",
     "session.cancelled",
     "session.error",
+    "ota.update",
 ]
 
 ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
@@ -86,6 +87,7 @@ BACKEND_TO_ENDPOINT_EVENTS: frozenset[str] = frozenset(
         "session.completed",
         "session.cancelled",
         "session.error",
+        "ota.update",
     }
 )
 

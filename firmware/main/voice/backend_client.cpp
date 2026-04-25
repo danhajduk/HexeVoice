@@ -19,6 +19,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "mbedtls/base64.h"
+#include "system/ota.h"
 #include "voice/tts_player.h"
 
 namespace {
@@ -198,6 +199,7 @@ const char *device_state() {
     case hexe::AppPhase::kListening:
       return "listening";
     case hexe::AppPhase::kThinking:
+    case hexe::AppPhase::kUpdating:
       return "thinking";
     case hexe::AppPhase::kReplying:
       return "speaking";
@@ -287,6 +289,16 @@ void handle_backend_event_json(const std::string &message) {
         cJSON_IsString(stream_id) ? stream_id->valuestring : nullptr,
         cJSON_IsString(content_type) ? content_type->valuestring : nullptr,
         cJSON_IsString(audio_url) ? audio_url->valuestring : nullptr);
+  } else if (std::strcmp(type, "ota.update") == 0) {
+    cJSON *url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "url") : nullptr;
+    cJSON *version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "version") : nullptr;
+    cJSON *sha256 = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "sha256") : nullptr;
+    if (hexe::system::start_ota_update(
+            cJSON_IsString(url) ? url->valuestring : nullptr,
+            cJSON_IsString(version) ? version->valuestring : nullptr,
+            cJSON_IsString(sha256) ? sha256->valuestring : nullptr)) {
+      app_state.phase = hexe::AppPhase::kUpdating;
+    }
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     g_session_started = false;
     g_audio_stream_finished = false;

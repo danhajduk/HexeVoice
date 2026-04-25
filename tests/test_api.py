@@ -36,6 +36,7 @@ def test_standard_route_groups_exist(tmp_path):
     assert client.get("/api/providers/setup").status_code == 200
     assert client.get("/api/endpoint/status/box-1").status_code == 404
     assert client.post("/api/endpoint/heartbeat", json={"endpoint_id": "box-1"}).status_code == 200
+    assert client.get("/api/firmware/manifest").status_code in {200, 404}
     assert client.get("/api/capabilities").status_code == 200
     assert client.post("/api/capabilities/declaration").status_code == 400
     assert client.get("/api/governance/current").status_code == 400
@@ -82,6 +83,70 @@ def test_endpoint_heartbeat_records_latest_status(tmp_path):
     assert status_payload["firmware_version"] == "0.1.0"
     assert status_payload["ip_address"] == "10.0.0.55"
     assert status_payload["rssi_dbm"] == -58
+
+
+def test_firmware_manifest_serves_runtime_artifact(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    (firmware_dir / "hexe_firmware.bin").write_bytes(b"firmware-bin")
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    manifest = client.get("/api/firmware/manifest")
+    artifact = client.get("/api/firmware/artifacts/hexe_firmware.bin")
+
+    assert manifest.status_code == 200
+    assert manifest.json()["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware.bin"
+    assert manifest.json()["size_bytes"] == len(b"firmware-bin")
+    assert artifact.status_code == 200
+    assert artifact.content == b"firmware-bin"
+
+
+def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    (firmware_dir / "hexe_firmware.bin").write_bytes(b"firmware-bin")
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        response = client.post(
+            "/api/firmware/ota/push",
+            json={"endpoint_id": "esp-box-1", "version": "0.1.1"},
+        )
+        event = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert event["event_type"] == "ota.update"
+    assert event["endpoint_id"] == "esp-box-1"
+    assert event["payload"]["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware.bin"
+    assert event["payload"]["version"] == "0.1.1"
+    assert event["payload"]["size_bytes"] == len(b"firmware-bin")
 
 
 def test_assistant_turn_handles_local_commands(tmp_path):

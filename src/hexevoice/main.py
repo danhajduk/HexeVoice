@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse
@@ -25,6 +27,8 @@ from hexevoice.api.models import (
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
     EndpointStatusResponse,
+    FirmwareOtaPushRequest,
+    FirmwareOtaPushResponse,
     OnboardingSessionPollResponse,
     OnboardingSessionStartResponse,
     OnboardingStatusResponse,
@@ -135,6 +139,55 @@ def create_app(
     @app.get("/api/endpoint/status/{endpoint_id}", response_model=EndpointStatusResponse)
     async def endpoint_status(endpoint_id: str) -> EndpointStatusResponse:
         return endpoint_service.status(endpoint_id)
+
+    def firmware_artifact_path(filename: str) -> Path:
+        artifact_dir = app_settings.resolved_firmware_artifact_dir().resolve()
+        candidate = (artifact_dir / filename).resolve()
+        if candidate.parent != artifact_dir or candidate.suffix != ".bin":
+            raise HTTPException(status_code=400, detail="invalid_firmware_filename")
+        if not candidate.exists():
+            raise HTTPException(status_code=404, detail="firmware_artifact_not_found")
+        return candidate
+
+    def firmware_public_url(filename: str) -> str:
+        base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
+        return f"{base_url.rstrip('/')}/api/firmware/artifacts/{filename}"
+
+    @app.get("/api/firmware/artifacts/{filename}")
+    async def firmware_artifact(filename: str) -> FileResponse:
+        return FileResponse(firmware_artifact_path(filename), media_type="application/octet-stream")
+
+    @app.get("/api/firmware/manifest")
+    async def firmware_manifest(filename: str = "hexe_firmware.bin") -> dict:
+        path = firmware_artifact_path(filename)
+        return {
+            "filename": path.name,
+            "url": firmware_public_url(path.name),
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "size_bytes": path.stat().st_size,
+        }
+
+    @app.post("/api/firmware/ota/push", response_model=FirmwareOtaPushResponse)
+    async def firmware_ota_push(payload: FirmwareOtaPushRequest) -> FirmwareOtaPushResponse:
+        path = firmware_artifact_path(payload.filename)
+        sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        url = firmware_public_url(path.name)
+        result = await voice_session_manager.push_ota_update(
+            endpoint_id=payload.endpoint_id,
+            firmware_url=url,
+            version=payload.version,
+            sha256=sha256,
+            size_bytes=path.stat().st_size,
+        )
+        return FirmwareOtaPushResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            firmware_url=url,
+            version=payload.version,
+            sha256=sha256,
+            size_bytes=path.stat().st_size,
+            reason=result.get("reason"),
+        )
 
     @app.websocket("/api/voice/ws")
     async def voice_websocket(websocket: WebSocket) -> None:

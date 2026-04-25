@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
+    firmware_artifact_dir: Path | None = Field(default=None, alias="FIRMWARE_ARTIFACT_DIR")
     onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")
     bootstrap_topic: str = Field(default="hexe/bootstrap/core", alias="BOOTSTRAP_TOPIC")
@@ -74,3 +75,8 @@ class Settings(BaseSettings):
         if self.onboarding_state_path is not None:
             return self.onboarding_state_path
         return self.runtime_dir / "onboarding_state.json"
+
+    def resolved_firmware_artifact_dir(self) -> Path:
+        if self.firmware_artifact_dir is not None:
+            return self.firmware_artifact_dir
+        return self.runtime_dir / "firmware"

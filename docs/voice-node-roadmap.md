@@ -299,12 +299,12 @@ Make the ESP32 endpoint reliable, not smart.
 * state display
 * Voice Node-managed firmware OTA:
 
-  * track endpoint firmware version
-  * host or reference firmware artifacts
-  * expose update availability and update status
-  * send OTA/update commands to the endpoint
-  * endpoint downloads firmware from a Voice Node URL
-  * report update progress and result
+  * track endpoint firmware version: partial via endpoint heartbeat
+  * host or reference firmware artifacts: implemented locally from `runtime/firmware`
+  * expose update availability and update status: partial via `/api/firmware/manifest`
+  * send OTA/update commands to the endpoint: implemented via `/api/firmware/ota/push`
+  * endpoint downloads firmware from a Voice Node URL: implemented for backend-pushed `ota.update`
+  * report update progress and result: pending
   * keep failure and rollback behavior safe
 * button controls:
 

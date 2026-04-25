@@ -34,6 +34,7 @@ class VoiceSessionManager:
         turn_pipeline: VoiceTurnPipeline | None = None,
     ) -> None:
         self._connection_active = False
+        self._websocket: WebSocket | None = None
         self._connected_endpoint_id: str | None = None
         self._active_session: VoiceSessionSnapshot | None = None
         self._chunk_count = 0
@@ -64,6 +65,7 @@ class VoiceSessionManager:
             return
 
         self._connection_active = True
+        self._websocket = websocket
         try:
             while True:
                 raw_message = await websocket.receive_text()
@@ -72,12 +74,44 @@ class VoiceSessionManager:
         except WebSocketDisconnect:
             pass
         finally:
+            self._websocket = None
             self._connection_active = False
             self._connected_endpoint_id = None
             self._active_session = None
             self._chunk_count = 0
             self._audio_chunks = []
             self._audio_format = None
+
+    async def push_ota_update(
+        self,
+        *,
+        endpoint_id: str,
+        firmware_url: str,
+        version: str | None,
+        sha256: str | None,
+        size_bytes: int | None,
+    ) -> dict:
+        if not self._connection_active or self._websocket is None:
+            return {"accepted": False, "reason": "endpoint_not_connected"}
+        if self._connected_endpoint_id is not None and endpoint_id != self._connected_endpoint_id:
+            return {"accepted": False, "reason": "endpoint_mismatch"}
+
+        event = VoiceEventEnvelope(
+            event_type="ota.update",
+            endpoint_id=endpoint_id,
+            direction="backend_to_endpoint",
+            session_id=self._active_session.session_id if self._active_session else None,
+            sequence=self._next_sequence(),
+            payload={
+                "url": firmware_url,
+                "version": version,
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+            },
+        )
+        await self._websocket.send_json(event.model_dump(mode="json"))
+        self._last_event_type = "ota.update"
+        return {"accepted": True}
 
     def _handle_raw_message(self, raw_message: str) -> list[VoiceEventEnvelope]:
         try:

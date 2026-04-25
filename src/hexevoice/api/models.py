@@ -62,6 +62,22 @@ class EndpointStatusResponse(BaseModel):
     last_seen_at: str
 
 
+class FirmwareOtaPushRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    filename: str = "hexe_firmware.bin"
+    version: str | None = None
+
+
+class FirmwareOtaPushResponse(BaseModel):
+    accepted: bool
+    endpoint_id: str
+    firmware_url: str
+    version: str | None = None
+    sha256: str | None = None
+    size_bytes: int | None = None
+    reason: str | None = None
+
+
 class NodeStatusResponse(BaseModel):
     node_name: str
     node_type: str

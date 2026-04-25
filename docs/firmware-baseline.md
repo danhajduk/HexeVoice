@@ -37,13 +37,14 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - `firmware/main/voice/stt_stream.cpp` logs scaffold readiness only.
 - `firmware/main/voice/tts_player.cpp` logs scaffold readiness only.
 - `firmware/main/voice/assistant_client.cpp` logs scaffold readiness only.
-- `firmware/main/system/settings.cpp`, `firmware/main/system/telemetry.cpp`, `firmware/main/system/ota.cpp`, and `firmware/main/system/power.cpp` are initialization scaffolds.
+- `firmware/main/system/settings.cpp`, `firmware/main/system/telemetry.cpp`, and `firmware/main/system/power.cpp` are initialization scaffolds.
+- `firmware/main/system/ota.cpp` implements the first manual OTA path from backend-pushed `ota.update` events.
 
 ## Missing
 
 - Real TTS audio download or stream playback path.
 - Settings/provisioning UI.
-- OTA implementation beyond scaffold initialization.
+- Firmware-side SHA-256 enforcement and signed manifest validation for OTA.
 
 ## Current Endpoint Config Contract
 

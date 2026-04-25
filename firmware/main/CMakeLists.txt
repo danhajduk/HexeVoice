@@ -39,8 +39,10 @@ idf_component_register(
     "."
     "${HEXE_GENERATED_DIR}"
   REQUIRES
+    app_update
     esp_app_format
     esp_event
+    esp_https_ota
     esp_http_client
     esp_lcd
     esp_netif

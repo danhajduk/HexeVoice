@@ -14,5 +14,7 @@ runtime/voice_models/
 runtime/vioce_models/
 runtime/openwakeword/models/*
 !runtime/openwakeword/models/.gitkeep
+runtime/firmware/*
+!runtime/firmware/.gitkeep
 scripts/stack.env
 scripts/openwakeword.env
