@@ -88,3 +88,16 @@ POST /api/services/restart {"target":"openwakeword"}
 ```
 
 The node service action routes call `scripts/openwakeword-control.sh`, which keeps Docker restart policy set to `no`; lifecycle intent remains with Core Supervisor instead of Docker auto-restart.
+
+## Backend Wake Provider
+
+Use the supervised wake provider when the backend should stream firmware audio to the container over the Wyoming protocol:
+
+```bash
+VOICE_WAKE_PROVIDER=supervised_openwakeword
+VOICE_WAKE_SERVICE_HOST=127.0.0.1
+VOICE_WAKE_SERVICE_PORT=10400
+VOICE_WAKE_MODELS=Hexa
+```
+
+`VOICE_WAKE_MODELS` is interpreted as wake-word names for the Wyoming service in this mode. The older in-process provider remains available with `VOICE_WAKE_PROVIDER=openwakeword`, where `VOICE_WAKE_MODELS` continues to mean local model paths.

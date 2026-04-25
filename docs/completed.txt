@@ -35,3 +35,4 @@ Task 043: Validate and document the Phase 1 wake-to-reply demo - Completed on 04
 Task 044: Archive the existing HomeAssistant openWakeWord container ownership - Completed on 04/25/2026 14:22
 Task 045: Add a HexeVoice-managed openWakeWord container definition - Completed on 04/25/2026 14:28
 Task 046: Register the openWakeWord runtime with Core Supervisor - Completed on 04/25/2026 14:31
+Task 047: Add a backend wake provider that uses the supervised openWakeWord service - Completed on 04/25/2026 14:35

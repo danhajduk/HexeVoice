@@ -513,7 +513,8 @@ Task 036 makes the wake provider configurable from backend settings.
 
 Accepted for the configurable provider:
 
-- `VOICE_WAKE_PROVIDER=openwakeword` is the default runtime path and constructs `OpenWakeWordWakeDetector`.
+- `VOICE_WAKE_PROVIDER=supervised_openwakeword` streams audio to the Supervisor-managed Wyoming openWakeWord container.
+- `VOICE_WAKE_PROVIDER=openwakeword` keeps the in-process runtime path and constructs `OpenWakeWordWakeDetector`.
 - `VOICE_WAKE_PROVIDER=deterministic` keeps predictable local/test behavior without loading model packages.
 - `VOICE_WAKE_THRESHOLD`, `VOICE_WAKE_MODELS`, `VOICE_WAKE_AUTO_DOWNLOAD_MODELS`, `VOICE_WAKE_ENABLE_SPEEX_NOISE_SUPPRESSION`, and `VOICE_WAKE_VAD_THRESHOLD` configure the openWakeWord adapter.
 - The backend still fails closed if the openWakeWord runtime or selected model cannot be loaded.

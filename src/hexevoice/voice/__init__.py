@@ -40,6 +40,7 @@ from hexevoice.voice.wake import (
     OpenWakeWordWakeDetector,
     WakeDetectionResult,
     WakeDetector,
+    WyomingOpenWakeWordWakeDetector,
     build_wake_detector,
 )
 
@@ -76,6 +77,7 @@ __all__ = [
     "build_voice_turn_pipeline",
     "DeterministicWakeDetector",
     "OpenWakeWordWakeDetector",
+    "WyomingOpenWakeWordWakeDetector",
     "WakeDetectionResult",
     "WakeDetector",
     "build_wake_detector",

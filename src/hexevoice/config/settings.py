@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     bootstrap_topic: str = Field(default="hexe/bootstrap/core", alias="BOOTSTRAP_TOPIC")
     provider_id: str = Field(default="voice", alias="PROVIDER_ID")
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
-    voice_wake_provider: Literal["openwakeword", "deterministic"] = Field(
+    voice_wake_provider: Literal["openwakeword", "supervised_openwakeword", "deterministic"] = Field(
         default="openwakeword",
         alias="VOICE_WAKE_PROVIDER",
     )
@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     )
     voice_wake_buffer_ms: int = Field(default=1280, alias="VOICE_WAKE_BUFFER_MS", ge=80)
     voice_wake_prediction_frame_ms: int = Field(default=80, alias="VOICE_WAKE_PREDICTION_FRAME_MS", ge=80)
+    voice_wake_service_host: str = Field(default="127.0.0.1", alias="VOICE_WAKE_SERVICE_HOST")
+    voice_wake_service_port: int = Field(default=10400, alias="VOICE_WAKE_SERVICE_PORT")
+    voice_wake_service_timeout_s: float = Field(default=0.05, alias="VOICE_WAKE_SERVICE_TIMEOUT_S", gt=0)
     voice_stt_provider: Literal["deterministic", "openai"] = Field(default="deterministic", alias="VOICE_STT_PROVIDER")
     voice_stt_model: str = Field(default="gpt-4o-mini-transcribe", alias="VOICE_STT_MODEL")
     voice_stt_base_url: str = Field(default="https://api.openai.com/v1", alias="VOICE_STT_BASE_URL")
