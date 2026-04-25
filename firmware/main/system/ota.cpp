@@ -24,6 +24,7 @@ struct OtaRequest {
   char url[256];
   char version[32];
   char sha256[65];
+  int size_bytes;
 };
 
 QueueHandle_t g_ota_queue = nullptr;
@@ -38,7 +39,12 @@ void ota_task(void *arg) {
     }
 
     ESP_LOGI(kTag, "Starting OTA update version=%s url=%s", request.version, request.url);
-    hexe::state().phase = hexe::AppPhase::kUpdating;
+    auto &app_state = hexe::state();
+    app_state.phase = hexe::AppPhase::kUpdating;
+    app_state.ota_active = true;
+    app_state.ota_progress_percent = 0;
+    app_state.ota_bytes_read = 0;
+    app_state.ota_size_bytes = request.size_bytes > 0 ? request.size_bytes : 0;
 
     esp_http_client_config_t http_config = {};
     http_config.url = request.url;
@@ -48,14 +54,51 @@ void ota_task(void *arg) {
     esp_https_ota_config_t ota_config = {};
     ota_config.http_config = &http_config;
 
-    const esp_err_t result = esp_https_ota(&ota_config);
+    esp_https_ota_handle_t ota_handle = nullptr;
+    esp_err_t result = esp_https_ota_begin(&ota_config, &ota_handle);
     if (result == ESP_OK) {
+      const int image_size = esp_https_ota_get_image_size(ota_handle);
+      if (image_size > 0) {
+        app_state.ota_size_bytes = image_size;
+      }
+
+      do {
+        result = esp_https_ota_perform(ota_handle);
+        const int bytes_read = esp_https_ota_get_image_len_read(ota_handle);
+        if (bytes_read >= 0) {
+          app_state.ota_bytes_read = bytes_read;
+          if (app_state.ota_size_bytes > 0) {
+            int percent = (bytes_read * 100) / app_state.ota_size_bytes;
+            if (percent > 100) {
+              percent = 100;
+            }
+            app_state.ota_progress_percent = percent;
+          }
+        }
+      } while (result == ESP_ERR_HTTPS_OTA_IN_PROGRESS);
+
+      if (result == ESP_OK && !esp_https_ota_is_complete_data_received(ota_handle)) {
+        result = ESP_ERR_INVALID_SIZE;
+      }
+
+      if (result == ESP_OK) {
+        result = esp_https_ota_finish(ota_handle);
+        ota_handle = nullptr;
+      }
+    }
+
+    if (result == ESP_OK) {
+      app_state.ota_progress_percent = 100;
       ESP_LOGI(kTag, "OTA update installed; restarting into version=%s", request.version);
       esp_restart();
     }
 
+    if (ota_handle != nullptr) {
+      esp_https_ota_abort(ota_handle);
+    }
     ESP_LOGE(kTag, "OTA update failed: %s", esp_err_to_name(result));
-    hexe::state().phase = hexe::AppPhase::kError;
+    app_state.ota_active = false;
+    app_state.phase = hexe::AppPhase::kError;
   }
 }
 }
@@ -80,7 +123,7 @@ void init_ota() {
   ESP_LOGI(kTag, "OTA client initialized");
 }
 
-bool start_ota_update(const char *url, const char *version, const char *sha256) {
+bool start_ota_update(const char *url, const char *version, const char *sha256, int size_bytes) {
   if (g_ota_queue == nullptr || url == nullptr || url[0] == '\0') {
     return false;
   }
@@ -89,6 +132,7 @@ bool start_ota_update(const char *url, const char *version, const char *sha256) 
   std::snprintf(request.url, sizeof(request.url), "%s", url);
   std::snprintf(request.version, sizeof(request.version), "%s", version == nullptr ? "unknown" : version);
   std::snprintf(request.sha256, sizeof(request.sha256), "%s", sha256 == nullptr ? "" : sha256);
+  request.size_bytes = size_bytes;
 
   if (request.sha256[0] != '\0') {
     ESP_LOGI(kTag, "OTA manifest sha256=%s", request.sha256);

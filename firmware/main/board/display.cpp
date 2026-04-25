@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cstring>
 
 #include "app_state.h"
 #include "assets/error_rgb565.h"
@@ -101,6 +102,7 @@ uint8_t glyph_bits(char ch, int row) {
   static constexpr uint8_t kSpace[7] = {};
   static constexpr uint8_t kDot[7] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C};
   static constexpr uint8_t kDash[7] = {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00};
+  static constexpr uint8_t kPercent[7] = {0x19, 0x19, 0x02, 0x04, 0x08, 0x13, 0x13};
   static constexpr uint8_t kDigits[10][7] = {
       {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E},
       {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E},
@@ -124,6 +126,8 @@ uint8_t glyph_bits(char ch, int row) {
     glyph = kDot;
   } else if (ch == '-') {
     glyph = kDash;
+  } else if (ch == '%') {
+    glyph = kPercent;
   } else if (ch >= '0' && ch <= '9') {
     glyph = kDigits[ch - '0'];
   } else if (ch == 'F' || ch == 'f') {
@@ -161,6 +165,37 @@ void draw_firmware_version(const char *build_id) {
   const uint16_t text = swap565(0xFFFF);
   fill_rect(88, 216, 144, 15, shadow);
   draw_text(94, 219, label, text, 1);
+}
+
+void draw_ota_progress() {
+  const auto &app_state = hexe::state();
+  int percent = app_state.ota_progress_percent;
+  if (percent < 0) {
+    percent = 0;
+  } else if (percent > 100) {
+    percent = 100;
+  }
+
+  constexpr int kBarX = 54;
+  constexpr int kBarY = 205;
+  constexpr int kBarW = 212;
+  constexpr int kBarH = 16;
+  const int fill_width = ((kBarW - 4) * percent) / 100;
+  const uint16_t shadow = swap565(0x0000);
+  const uint16_t bg = swap565(0x18C3);
+  const uint16_t outline = swap565(0xFFFF);
+  const uint16_t fill = swap565(0x07FF);
+  const uint16_t text = swap565(0xFFFF);
+
+  fill_rect(kBarX - 4, kBarY - 18, kBarW + 8, kBarH + 25, shadow);
+  fill_rect(kBarX, kBarY, kBarW, kBarH, bg);
+  draw_rect_outline(kBarX, kBarY, kBarW, kBarH, outline);
+  fill_rect(kBarX + 2, kBarY + 2, fill_width, kBarH - 4, fill);
+
+  char label[8];
+  std::snprintf(label, sizeof(label), "%d%%", percent);
+  const int label_width = static_cast<int>(std::strlen(label)) * 12;
+  draw_text((kWidth - label_width) / 2, kBarY - 15, label, text, 2);
 }
 
 void blit_fullscreen_image(const uint16_t *pixels, int width, int height, uint16_t alpha) {
@@ -339,6 +374,9 @@ void render_boot_frame(int frame, const char *build_id) {
 
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);
   draw_audio_stream_icon(hexe::state().audio_streaming);
+  if (phase == hexe::AppPhase::kUpdating) {
+    draw_ota_progress();
+  }
   if (phase == hexe::AppPhase::kBooting || phase == hexe::AppPhase::kWiFiConnecting) {
     draw_firmware_version(build_id);
   }

@@ -174,6 +174,7 @@ The native firmware now has:
 - OTA-capable partition table with `ota_0`, `ota_1`, and `otadata`.
 - Firmware version text drawn on the load screen as `FW <app version>`.
 - Firmware OTA client in `firmware/main/system/ota.cpp`.
+- Firmware OTA progress bar on the LCD while an update is downloading.
 - Backend `ota.update` WebSocket event handling in the endpoint firmware.
 - Backend artifact hosting from `runtime/firmware`.
 - Backend OTA push API:

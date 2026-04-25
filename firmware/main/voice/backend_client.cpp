@@ -293,10 +293,12 @@ void handle_backend_event_json(const std::string &message) {
     cJSON *url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "url") : nullptr;
     cJSON *version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "version") : nullptr;
     cJSON *sha256 = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "sha256") : nullptr;
+    cJSON *size_bytes = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "size_bytes") : nullptr;
     if (hexe::system::start_ota_update(
             cJSON_IsString(url) ? url->valuestring : nullptr,
             cJSON_IsString(version) ? version->valuestring : nullptr,
-            cJSON_IsString(sha256) ? sha256->valuestring : nullptr)) {
+            cJSON_IsString(sha256) ? sha256->valuestring : nullptr,
+            cJSON_IsNumber(size_bytes) ? size_bytes->valueint : 0)) {
       app_state.phase = hexe::AppPhase::kUpdating;
     }
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
