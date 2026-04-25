@@ -25,3 +25,4 @@ Task 033: Add firmware playback and event-driven UI - Completed on 04/25/2026 11
 Task 034: Replace frontend placeholders with endpoint and session observability - Completed on 04/25/2026 11:44
 Task 035: Integrate and validate the first single-endpoint wake-to-reply voice loop - Completed on 04/25/2026 11:46
 Task 036: Add configurable real backend openWakeWord provider - Completed on 04/25/2026 13:20
+Task 037: Add rolling backend wake audio buffer and wake provider health status - Completed on 04/25/2026 13:22

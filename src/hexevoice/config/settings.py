@@ -42,6 +42,8 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
     )
+    voice_wake_buffer_ms: int = Field(default=1280, alias="VOICE_WAKE_BUFFER_MS", ge=80)
+    voice_wake_prediction_frame_ms: int = Field(default=80, alias="VOICE_WAKE_PREDICTION_FRAME_MS", ge=80)
 
     def resolved_onboarding_state_path(self) -> Path:
         if self.onboarding_state_path is not None:

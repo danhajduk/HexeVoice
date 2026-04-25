@@ -344,6 +344,7 @@ class VoiceSessionManager:
             "last_response": self._last_response,
             "last_tts": self._last_tts,
             "last_error": self._last_error,
+            "wake_provider": self._wake_detector.status(),
             "supported_actions": {
                 "refresh": True,
                 "test_assistant_turn": True,

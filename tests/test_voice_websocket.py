@@ -131,6 +131,8 @@ def test_voice_status_and_operator_cancel_surface_active_session(tmp_path):
         assert status.status_code == 200
         assert status.json()["connection_state"] == "connected"
         assert status.json()["active_session"]["session_state"] == "idle"
+        assert status.json()["wake_provider"]["provider"] == "deterministic"
+        assert status.json()["wake_provider"]["healthy"] is True
         assert status.json()["supported_actions"]["stop_session"] is True
 
         cancel = client.post("/api/voice/session/cancel")

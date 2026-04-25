@@ -1,4 +1,5 @@
 import base64
+import struct
 
 from hexevoice.config.settings import Settings
 from hexevoice.voice import DeterministicWakeDetector, OpenWakeWordWakeDetector, build_wake_detector
@@ -54,3 +55,50 @@ def test_build_wake_detector_configures_openwakeword_provider():
     assert detector._auto_download_models is True
     assert detector._enable_speex_noise_suppression is True
     assert detector._vad_threshold == 0.3
+    assert detector._buffer_ms == 1280
+    assert detector._prediction_frame_ms == 80
+
+
+def test_openwakeword_detector_buffers_short_audio_chunks_before_prediction():
+    class FakeModel:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def predict(self, samples):
+            self.calls.append(samples)
+            return {"hey_jarvis": 0.8}
+
+    model = FakeModel()
+    detector = OpenWakeWordWakeDetector(threshold=0.5, buffer_ms=160, prediction_frame_ms=80)
+    detector._model = model
+    frame_20ms = struct.pack("<320h", *([1] * 320))
+
+    for chunk_index in range(3):
+        result = detector.inspect_chunk(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk=VoiceAudioChunkPayload(
+                chunk_index=chunk_index,
+                audio_format={"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                payload_base64=base64.b64encode(frame_20ms).decode("ascii"),
+            ),
+        )
+        assert result.detected is False
+        assert result.reason == "insufficient_audio"
+
+    result = detector.inspect_chunk(
+        endpoint_id="esp-box-1",
+        session_id="voice-session-1",
+        chunk=VoiceAudioChunkPayload(
+            chunk_index=3,
+            audio_format={"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+            payload_base64=base64.b64encode(frame_20ms).decode("ascii"),
+        ),
+    )
+
+    assert result.detected is True
+    assert result.model == "hey_jarvis"
+    assert len(model.calls) == 1
+    assert len(model.calls[0]) == 1280
+    assert detector.status()["active_buffers"] == 1
+    assert detector.status()["last_detection"]["confidence"] == 0.8

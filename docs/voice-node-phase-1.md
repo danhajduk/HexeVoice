@@ -518,6 +518,14 @@ Accepted for the configurable provider:
 - `VOICE_WAKE_THRESHOLD`, `VOICE_WAKE_MODELS`, `VOICE_WAKE_AUTO_DOWNLOAD_MODELS`, `VOICE_WAKE_ENABLE_SPEEX_NOISE_SUPPRESSION`, and `VOICE_WAKE_VAD_THRESHOLD` configure the openWakeWord adapter.
 - The backend still fails closed if the openWakeWord runtime or selected model cannot be loaded.
 
+Task 037 adds backend wake buffering and provider health.
+
+Accepted for the buffered wake provider:
+
+- The openWakeWord adapter keeps a bounded per-session PCM buffer so short ESP audio chunks can be accumulated into the 80 ms prediction frames expected by openWakeWord.
+- `VOICE_WAKE_BUFFER_MS` controls the retained rolling audio window and `VOICE_WAKE_PREDICTION_FRAME_MS` controls the minimum frame sent to the wake model.
+- `/api/voice/status` includes `wake_provider` metadata with provider name, load state, load error, threshold, model configuration, buffer configuration, active buffer count, and last detection summary.
+
 Task 032 adds the first backend STT -> assistant -> TTS turn boundary in `src/hexevoice/voice/pipeline.py`.
 
 Accepted for the first provider-adapter implementation:

@@ -47,7 +47,6 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 037: Add rolling backend wake audio buffer and wake provider health status
 [TODO] Task 038: Align firmware audio capture with backend wake authority
 [TODO] Task 039: Wire real STT provider adapter into completed wake sessions
 [TODO] Task 040: Wire real TTS provider adapter and playable response audio
