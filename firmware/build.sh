@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${IDF_TARGET:-esp32s3}"
 EXPORT_AFTER_BUILD="${EXPORT_AFTER_BUILD:-1}"
 CONVERTER_PYTHON="python3"
+RUNTIME_FIRMWARE_DIR="${ROOT_DIR}/../runtime/firmware"
+RUNTIME_FIRMWARE_BIN="${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
 
 if [[ -z "${IDF_PATH:-}" ]]; then
   if [[ -f "${HOME}/esp-idf/export.sh" ]]; then
@@ -59,6 +61,11 @@ if [[ ! -f "${ROOT_DIR}/sdkconfig" ]]; then
 fi
 
 idf.py build
+
+mkdir -p "${RUNTIME_FIRMWARE_DIR}"
+cp "${ROOT_DIR}/build/hexe_firmware.bin" "${RUNTIME_FIRMWARE_BIN}"
+sha256sum "${RUNTIME_FIRMWARE_BIN}" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
+echo "Copied firmware app binary to ${RUNTIME_FIRMWARE_BIN}"
 
 if [[ "${EXPORT_AFTER_BUILD}" == "1" ]]; then
   "${ROOT_DIR}/export-artifacts.sh"
