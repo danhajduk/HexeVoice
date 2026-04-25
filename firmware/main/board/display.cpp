@@ -115,12 +115,7 @@ uint8_t glyph_bits(char ch, int row) {
       {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E},
       {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C},
   };
-  static constexpr uint8_t kA[7] = {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11};
-  static constexpr uint8_t kE[7] = {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F};
   static constexpr uint8_t kF[7] = {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10};
-  static constexpr uint8_t kO[7] = {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E};
-  static constexpr uint8_t kS[7] = {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E};
-  static constexpr uint8_t kT[7] = {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04};
   static constexpr uint8_t kW[7] = {0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11};
   static constexpr uint8_t kV[7] = {0x11, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04};
 
@@ -135,18 +130,8 @@ uint8_t glyph_bits(char ch, int row) {
     glyph = kPercent;
   } else if (ch >= '0' && ch <= '9') {
     glyph = kDigits[ch - '0'];
-  } else if (ch == 'A' || ch == 'a') {
-    glyph = kA;
-  } else if (ch == 'E' || ch == 'e') {
-    glyph = kE;
   } else if (ch == 'F' || ch == 'f') {
     glyph = kF;
-  } else if (ch == 'O' || ch == 'o') {
-    glyph = kO;
-  } else if (ch == 'S' || ch == 's') {
-    glyph = kS;
-  } else if (ch == 'T' || ch == 't') {
-    glyph = kT;
   } else if (ch == 'W' || ch == 'w') {
     glyph = kW;
   } else if (ch == 'V' || ch == 'v') {
@@ -180,14 +165,6 @@ void draw_firmware_version(const char *build_id) {
   const uint16_t text = swap565(0xFFFF);
   fill_rect(88, 216, 144, 15, shadow);
   draw_text(94, 219, label, text, 1);
-}
-
-void draw_ota_test_label() {
-  constexpr const char *kLabel = "OTA TEST";
-  const uint16_t shadow = swap565(0x0000);
-  const uint16_t text = swap565(0x07FF);
-  fill_rect(106, 190, 108, 22, shadow);
-  draw_text(112, 194, kLabel, text, 2);
 }
 
 void draw_ota_progress() {
@@ -401,7 +378,6 @@ void render_boot_frame(int frame, const char *build_id) {
     draw_ota_progress();
   }
   if (phase == hexe::AppPhase::kBooting || phase == hexe::AppPhase::kWiFiConnecting) {
-    draw_ota_test_label();
     draw_firmware_version(build_id);
   }
 
