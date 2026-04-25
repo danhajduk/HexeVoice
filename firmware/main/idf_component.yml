@@ -16,3 +16,4 @@ dependencies:
   #   public: true
   espressif/esp-box-3_noglib: ^3.1.0
   espressif/esp_websocket_client: ^1.6.1
+  espressif/cjson: ^1.7.19~2
