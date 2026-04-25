@@ -297,6 +297,15 @@ Make the ESP32 endpoint reliable, not smart.
 * bounded buffering
 * playback
 * state display
+* Voice Node-managed firmware OTA:
+
+  * track endpoint firmware version
+  * host or reference firmware artifacts
+  * expose update availability and update status
+  * send OTA/update commands to the endpoint
+  * endpoint downloads firmware from a Voice Node URL
+  * report update progress and result
+  * keep failure and rollback behavior safe
 * button controls:
 
   * stop

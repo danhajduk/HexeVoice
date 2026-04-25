@@ -10,4 +10,6 @@ firmware/managed_components
 firmware/config/endpoint.yaml
 firmware/main/secrets/wifi_secrets.h
 runtime/onboarding_state.json
+runtime/voice_models/
+runtime/vioce_models/
 scripts/stack.env
