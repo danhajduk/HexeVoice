@@ -51,6 +51,7 @@ from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.voice import VoiceSessionManager, VoiceTurnPipeline, WakeDetector
+from hexevoice.voice.wake import build_wake_detector
 
 
 def create_app(
@@ -89,7 +90,7 @@ def create_app(
     assistant_service = AssistantTurnService(settings=app_settings, runtime_service=service)
     voice_turn_pipeline = VoiceTurnPipeline(assistant_service=assistant_service)
     voice_session_manager = voice_session_manager or VoiceSessionManager(
-        wake_detector=voice_wake_detector,
+        wake_detector=voice_wake_detector or build_wake_detector(app_settings),
         turn_pipeline=voice_turn_pipeline,
     )
     app = FastAPI(title="HexeVoice")

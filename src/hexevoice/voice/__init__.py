@@ -32,7 +32,13 @@ from hexevoice.voice.pipeline import (
     VoiceTurnPipeline,
     VoiceTurnResult,
 )
-from hexevoice.voice.wake import DeterministicWakeDetector, OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
+from hexevoice.voice.wake import (
+    DeterministicWakeDetector,
+    OpenWakeWordWakeDetector,
+    WakeDetectionResult,
+    WakeDetector,
+    build_wake_detector,
+)
 
 __all__ = [
     "BACKEND_TO_ENDPOINT_EVENTS",
@@ -66,5 +72,6 @@ __all__ = [
     "OpenWakeWordWakeDetector",
     "WakeDetectionResult",
     "WakeDetector",
+    "build_wake_detector",
     "is_valid_voice_session_transition",
 ]

@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,6 +25,23 @@ class Settings(BaseSettings):
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")
     bootstrap_topic: str = Field(default="hexe/bootstrap/core", alias="BOOTSTRAP_TOPIC")
     provider_id: str = Field(default="voice", alias="PROVIDER_ID")
+    voice_wake_provider: Literal["openwakeword", "deterministic"] = Field(
+        default="openwakeword",
+        alias="VOICE_WAKE_PROVIDER",
+    )
+    voice_wake_threshold: float = Field(default=0.5, alias="VOICE_WAKE_THRESHOLD", ge=0.0, le=1.0)
+    voice_wake_models: str | None = Field(default=None, alias="VOICE_WAKE_MODELS")
+    voice_wake_auto_download_models: bool = Field(default=False, alias="VOICE_WAKE_AUTO_DOWNLOAD_MODELS")
+    voice_wake_enable_speex_noise_suppression: bool = Field(
+        default=False,
+        alias="VOICE_WAKE_ENABLE_SPEEX_NOISE_SUPPRESSION",
+    )
+    voice_wake_vad_threshold: float | None = Field(
+        default=None,
+        alias="VOICE_WAKE_VAD_THRESHOLD",
+        ge=0.0,
+        le=1.0,
+    )
 
     def resolved_onboarding_state_path(self) -> Path:
         if self.onboarding_state_path is not None:

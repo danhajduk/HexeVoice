@@ -1,6 +1,7 @@
 import base64
 
-from hexevoice.voice import DeterministicWakeDetector
+from hexevoice.config.settings import Settings
+from hexevoice.voice import DeterministicWakeDetector, OpenWakeWordWakeDetector, build_wake_detector
 from hexevoice.voice.contracts import VoiceAudioChunkPayload
 
 
@@ -27,3 +28,29 @@ def test_deterministic_wake_detector_can_trigger_by_audio_marker_without_persist
 
     assert result.detected is True
     assert result.model == "deterministic"
+
+
+def test_build_wake_detector_uses_deterministic_provider_for_development():
+    detector = build_wake_detector(Settings(voice_wake_provider="deterministic"))
+
+    assert isinstance(detector, DeterministicWakeDetector)
+
+
+def test_build_wake_detector_configures_openwakeword_provider():
+    detector = build_wake_detector(
+        Settings(
+            voice_wake_provider="openwakeword",
+            voice_wake_threshold=0.7,
+            voice_wake_models="hey_jarvis.onnx, /models/hexe.tflite",
+            voice_wake_auto_download_models=True,
+            voice_wake_enable_speex_noise_suppression=True,
+            voice_wake_vad_threshold=0.3,
+        )
+    )
+
+    assert isinstance(detector, OpenWakeWordWakeDetector)
+    assert detector._threshold == 0.7
+    assert detector._wakeword_models == ["hey_jarvis.onnx", "/models/hexe.tflite"]
+    assert detector._auto_download_models is True
+    assert detector._enable_speex_noise_suppression is True
+    assert detector._vad_threshold == 0.3

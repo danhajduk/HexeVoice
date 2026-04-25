@@ -509,6 +509,15 @@ Accepted for the first wake intake implementation:
 - Firmware VAD remains an optional early signal only; backend wake detection is the canonical wake authority.
 - STT, assistant routing, and TTS remain deferred to later tasks.
 
+Task 036 makes the wake provider configurable from backend settings.
+
+Accepted for the configurable provider:
+
+- `VOICE_WAKE_PROVIDER=openwakeword` is the default runtime path and constructs `OpenWakeWordWakeDetector`.
+- `VOICE_WAKE_PROVIDER=deterministic` keeps predictable local/test behavior without loading model packages.
+- `VOICE_WAKE_THRESHOLD`, `VOICE_WAKE_MODELS`, `VOICE_WAKE_AUTO_DOWNLOAD_MODELS`, `VOICE_WAKE_ENABLE_SPEEX_NOISE_SUPPRESSION`, and `VOICE_WAKE_VAD_THRESHOLD` configure the openWakeWord adapter.
+- The backend still fails closed if the openWakeWord runtime or selected model cannot be loaded.
+
 Task 032 adds the first backend STT -> assistant -> TTS turn boundary in `src/hexevoice/voice/pipeline.py`.
 
 Accepted for the first provider-adapter implementation:
