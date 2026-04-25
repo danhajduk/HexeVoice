@@ -60,6 +60,13 @@ bool backend_ready_for_voice() {
   return state.wifi_connected && state.backend_connected;
 }
 
+void mark_voice_socket_disconnected() {
+  g_ws_connected = false;
+  g_session_started = false;
+  g_audio_stream_finished = false;
+  set_audio_streaming(false);
+}
+
 const char *scheme_http() {
   return hexe::config::kEndpointUseTls ? "https" : "http";
 }
@@ -247,11 +254,18 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
 }
 
 bool send_ws_text(const std::string &message) {
-  if (g_ws_client == nullptr || !g_ws_connected) {
+  if (g_ws_client == nullptr || !g_ws_connected || !esp_websocket_client_is_connected(g_ws_client)) {
+    mark_voice_socket_disconnected();
     return false;
   }
   const int written = esp_websocket_client_send_text(g_ws_client, message.c_str(), message.size(), pdMS_TO_TICKS(1000));
-  return written >= 0;
+  if (written < 0) {
+    mark_voice_socket_disconnected();
+    esp_websocket_client_stop(g_ws_client);
+    g_ws_started = false;
+    return false;
+  }
+  return true;
 }
 
 void ensure_session_started() {
@@ -408,10 +422,17 @@ void websocket_task(void *arg) {
         esp_websocket_client_stop(g_ws_client);
         g_ws_started = false;
       }
-      g_ws_connected = false;
-      g_session_started = false;
-      g_audio_stream_finished = false;
-      set_audio_streaming(false);
+      mark_voice_socket_disconnected();
+      xQueueReset(g_audio_queue);
+      vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+      continue;
+    }
+
+    if (g_ws_started && g_ws_connected && !esp_websocket_client_is_connected(g_ws_client)) {
+      ESP_LOGW(kTag, "Voice WebSocket transport is stale, reconnecting");
+      mark_voice_socket_disconnected();
+      esp_websocket_client_stop(g_ws_client);
+      g_ws_started = false;
       xQueueReset(g_audio_queue);
       vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
       continue;
