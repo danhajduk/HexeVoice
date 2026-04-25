@@ -13,6 +13,7 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
+#include "esp_transport_ws.h"
 #include "esp_websocket_client.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -158,7 +159,16 @@ void handle_backend_event_json(const std::string &message) {
       app_state.phase = hexe::AppPhase::kIdle;
     }
   } else if (std::strcmp(type, "session.error") == 0) {
-    app_state.phase = hexe::AppPhase::kError;
+    cJSON *recoverable = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "recoverable") : nullptr;
+    g_session_started = false;
+    g_audio_stream_finished = false;
+    if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
+      if (!app_state.muted) {
+        app_state.phase = hexe::AppPhase::kIdle;
+      }
+    } else {
+      app_state.phase = hexe::AppPhase::kError;
+    }
   }
 
   cJSON_Delete(root);
@@ -166,6 +176,10 @@ void handle_backend_event_json(const std::string &message) {
 
 void handle_websocket_data(const esp_websocket_event_data_t *data) {
   if (data == nullptr || data->data_ptr == nullptr || data->data_len <= 0) {
+    return;
+  }
+  if (data->op_code != WS_TRANSPORT_OPCODES_TEXT && data->op_code != WS_TRANSPORT_OPCODES_CONT) {
+    g_ws_rx_buffer.clear();
     return;
   }
   if (data->payload_len <= 0 || data->payload_len > static_cast<int>(kMaxBackendEventBytes)) {
@@ -265,6 +279,9 @@ void ensure_session_started() {
 }
 
 void send_audio_frame(const AudioFrame &frame) {
+  if (!g_session_started && !frame.vad_speaking) {
+    return;
+  }
   ensure_session_started();
   if (g_audio_stream_finished) {
     return;
