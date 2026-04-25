@@ -1,0 +1,28 @@
+# HexeVoice endpoint connection config for local development.
+#
+# Copy this file to firmware/config/endpoint.yaml and set the node backend
+# address for the machine running the HexeVoice backend.
+
+endpoint:
+  id: esp-box-1
+  display_name: ESP Box 1
+  firmware_version: 0.1.0
+
+node:
+  host: 10.0.0.22
+  http_port: 9004
+  ws_port: 9004
+  heartbeat_path: /api/endpoint/heartbeat
+  voice_ws_path: /api/voice/ws
+  use_tls: false
+
+audio:
+  encoding: pcm_s16le
+  sample_rate_hz: 16000
+  channels: 1
+  chunk_samples: 320
+
+behavior:
+  heartbeat_interval_ms: 5000
+  reconnect_backoff_ms: 1000
+  discovery_enabled: false

@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     node_software_version: str = Field(default="0.1.0", alias="NODE_SOFTWARE_VERSION")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
     api_port: int = Field(default=9000, alias="API_PORT")
+    public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
+    public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
     onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")

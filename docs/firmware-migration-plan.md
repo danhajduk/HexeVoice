@@ -6,14 +6,14 @@ See also: [Firmware OTA Plan](/home/dan/Projects/HexeVoice/docs/firmware-ota.md)
 
 Move Hexe from a fast ESPHome prototype on the ESP32-S3 Box into a true standalone Espressif firmware while preserving the behavior we already proved out.
 
-ESPHome got the box working quickly, which was the right choice for prototyping. The next step is to treat the current ESPHome config as the reference behavior and migrate toward a native `ESP-IDF` firmware that is not shaped around Home Assistant concepts.
+ESPHome got the box working quickly, which was the right choice for prototyping. The active firmware track is now native `ESP-IDF`; the archived ESPHome config remains a behavior reference.
 
 ## Recommendation
 
 Use a two-track approach:
 
-1. Keep the current ESPHome configuration as the working prototype and behavior reference.
-2. Build a new native firmware branch in `ESP-IDF` for the real Hexe device experience.
+1. Keep the archived ESPHome configuration as a behavior reference.
+2. Continue the native `ESP-IDF` firmware as the real Hexe device experience.
 
 This avoids rewriting blindly. We can compare the native build against a device behavior that already works.
 
@@ -29,7 +29,7 @@ ESPHome was the fastest path to a working device, but it becomes limiting if Hex
 
 ## Why Keep ESPHome For Now
 
-The current ESPHome setup is still valuable:
+The archived ESPHome setup is still valuable:
 
 - it proves the hardware pinout and audio path
 - it proves the UI states and device behavior
@@ -62,7 +62,7 @@ Before rewriting, document and preserve:
 - error states
 - OpenWakeWord and on-device wake-word mode expectations
 
-The current `docs/Expressif box.yaml` should remain the working prototype source during this phase.
+The archived `docs/archive/esphome/Expressif box.yaml` remains the historical prototype reference during this phase.
 
 ## Phase 2: Create Native Firmware Skeleton
 
@@ -275,13 +275,13 @@ That will make the box feel like a standalone device rather than a dependent nod
 
 ## Practical Development Model
 
-Use the current ESPHome implementation as the reference track while native firmware matures:
+Use the archived ESPHome implementation as the reference track while native firmware matures:
 
-- ESPHome remains the working prototype
+- ESPHome remains the archived prototype reference
 - native firmware becomes the product track
 - behavior parity is validated screen-by-screen and flow-by-flow
 
-Do not delete the ESPHome config until the native firmware can:
+Do not delete the archived ESPHome config until the native firmware can:
 
 - boot reliably
 - render the same core states

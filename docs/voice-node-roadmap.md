@@ -1,309 +1,399 @@
-# Voice Node Roadmap
+# 🔮 HexeVoice Roadmap v3 (Wake-Driven Architecture)
 
-## Purpose
+## Core Shift (Important)
 
-This document is a working roadmap for turning HexeVoice from a strong onboarding scaffold into a real voice-runtime node.
+This roadmap assumes:
 
-It is intentionally written as a brainstorming artifact, not a locked implementation spec.
+> **Wake word detection = backend (openWakeWord)**
+> **Firmware = audio + UX + transport only**
 
-## Current State Snapshot
+That changes everything—in a good way.
 
-HexeVoice already has a solid foundation in three areas:
+---
 
-- backend onboarding, trust, provider setup, capability declaration, governance sync, and readiness projection
-- frontend setup and dashboard surfaces for the canonical 10-step node lifecycle
-- ESP32 firmware bring-up for display, buttons, Wi-Fi, microphone access, and simple VAD state changes
+# 🧭 Phase 0 — Baseline (Reality Check)
 
-The current gap is that the actual voice runtime is still mostly placeholder code.
+**Goal:** Confirm what is real vs scaffold.
 
-### What Exists Today
+Current baseline:
+
+* Node onboarding / trust / lifecycle: implemented
+* Core Supervisor runtime registration and heartbeat: implemented
+* Dashboard shell: implemented
+* ESP32 mic + VAD loop: partial
+* Text assistant endpoint: implemented
+* Voice pipeline: missing
+
+See `docs/voice-node-phase-0-baseline.md` and `docs/firmware-baseline.md` for the detailed current-state record.
+
+---
+
+# 🎯 Phase 1 — First Real Voice Loop (Wake → Speak → Reply)
+
+## Goal
+
+One complete, reliable, demoable voice interaction.
+
+---
+
+## 🧠 Architecture (Phase 1)
+
+### Backend (authority)
+
+* openWakeWord (wake detection)
+* session lifecycle
+* STT
+* assistant call (`/api/assistant/turn`)
+* TTS
+* event routing
+
+### Firmware (endpoint)
+
+* continuous mic capture (ring buffer or chunked stream)
+* simple VAD (optional assist only)
+* send audio upstream
+* play TTS audio
+* show state (idle/listening/thinking/speaking)
+* button fallback (stop/mute)
+
+---
+
+## 🔁 Flow (Canonical)
+
+```text
+ESP32 streams audio → backend
+
+backend:
+  openWakeWord detects "Hexe"
+  → session.start
+  → wake.accepted
+
+ESP32:
+  → enters listening state
+
+ESP32:
+  → sends utterance audio (full chunk)
+
+backend:
+  → STT
+  → assistant turn
+  → TTS
+
+backend:
+  → sends response
+
+ESP32:
+  → plays audio
+```
+
+---
+
+## 📦 Transport (Phase 1)
+
+Use **WebSocket**, but keep it simple:
+
+### Messages:
+
+```json
+session.start
+audio.stream (or audio.chunk)
+audio.end
+transcript.final
+response.text
+tts.ready
+session.complete
+session.error
+```
+
+👉 No true real-time streaming yet
+👉 No partial transcripts yet
+👉 No duplex complexity yet
+
+---
+
+## 🧾 Deliverables
 
 Backend:
 
-- `POST /api/assistant/turn` supports a minimal text-in/text-out conversation stub for device integration
-- endpoint heartbeat/status exists as a lightweight in-memory tracker
-- node readiness, onboarding, trust, and capability APIs are already much more mature than the voice pipeline itself
-
-Frontend:
-
-- the dashboard already reserves space for `Speech Pipeline` and `Device Sessions`
-- onboarding and operational UI are present, but voice-specific observability is still placeholder content
+* `/api/voice/ws`
+* basic session manager (single session per endpoint)
+* openWakeWord integration
+* STT + TTS wired
+* event envelope system
 
 Firmware:
 
-- audio input is initialized and a simple energy-based VAD loop is running in [`firmware/main/board/audio.cpp`](/home/dan/Projects/HexeVoice/firmware/main/board/audio.cpp:1)
-- wake word, STT, TTS, and assistant client modules are only scaffold logs today:
-  - [`firmware/main/voice/wake_word.cpp`](/home/dan/Projects/HexeVoice/firmware/main/voice/wake_word.cpp:1)
-  - [`firmware/main/voice/stt_stream.cpp`](/home/dan/Projects/HexeVoice/firmware/main/voice/stt_stream.cpp:1)
-  - [`firmware/main/voice/tts_player.cpp`](/home/dan/Projects/HexeVoice/firmware/main/voice/tts_player.cpp:1)
-  - [`firmware/main/voice/assistant_client.cpp`](/home/dan/Projects/HexeVoice/firmware/main/voice/assistant_client.cpp:1)
-
-### Main Reality Check
+* audio upload
+* playback path
+* simple UI state
 
-HexeVoice is currently better described as:
+UI:
 
-- a complete node setup and lifecycle shell
-- a partial endpoint/device integration scaffold
-- an incomplete speech pipeline
+* show:
 
-That is a good place to be, because the trust and operator surfaces are already ahead of the runtime.
+  * endpoint status
+  * last transcript
+  * last response
+  * last error
 
-## Product Goal
+---
 
-HexeVoice should become a trusted multi-endpoint voice transport and orchestration node that:
+## ✅ Phase 1 Success Criteria
 
-- receives audio from endpoint devices
-- detects wake events and active speech
-- captures utterances cleanly
-- resolves simple local commands without upstream dependency
-- forwards conversational turns upstream when needed
-- synthesizes replies
-- sends audio and state updates back to the originating endpoint
-- exposes enough runtime telemetry that operators can understand what the node is doing in real time
+You can say:
 
-## Target Architecture Direction
+> “Hexe, what time is it?”
 
-The cleanest direction appears to be:
+…and the box answers.
 
-1. Keep the Python backend as the authoritative voice session orchestrator.
-2. Treat firmware as a native endpoint runtime, not the primary intelligence host.
-3. Move from the current `text turn` contract to a real endpoint session contract with streaming or chunked audio transport.
-4. Keep simple local commands and local fail-safe behaviors available even when the full upstream path is degraded.
+---
 
-This fits the current codebase better than pushing the full assistant pipeline down into ESP32 firmware.
+# 🧩 Phase 2 — Endpoint + Session Contract
 
-## Roadmap
+Now that it works, formalize it.
 
-## Phase 1: Define The Real Endpoint Contract
+---
 
-Goal:
-Replace the current heartbeat + text-turn prototype with a proper endpoint session model.
+## 🎯 Goal
 
-Deliverables:
+Turn working behavior into a real protocol.
 
-- define endpoint registration and session lifecycle contracts
-- define device states beyond `idle/listening/thinking/speaking/offline`
-- define audio transport shape:
-  - push-to-server PCM chunks
-  - WebSocket stream
-  - HTTP chunk upload with response stream
-- define server responses for:
-  - wake accepted
-  - listening started
-  - transcript partial/final
-  - local command handled
-  - upstream turn pending
-  - TTS playback ready
-  - stop/cancel
-- persist endpoint metadata rather than keeping it only in memory
+---
 
-Suggested backend work:
+## 🔑 Key Decisions
 
-- expand [`src/hexevoice/api/models.py`](/home/dan/Projects/HexeVoice/src/hexevoice/api/models.py:1) with endpoint session and audio event models
-- grow [`src/hexevoice/endpoint/service.py`](/home/dan/Projects/HexeVoice/src/hexevoice/endpoint/service.py:1) into a real endpoint registry/session manager
-- add restart-safe persistence for endpoint registry and recent session state
+### 1. Endpoint Registration
 
-## Phase 2: Build The Server-Side Voice Pipeline
+Persist:
 
-Goal:
-Make the backend own the actual wake -> capture -> transcribe -> decide -> respond loop.
+* endpoint_id
+* zone_id
+* display_name
+* firmware_version
+* capabilities
 
-Deliverables:
+---
 
-- per-endpoint session state machine
-- wake detection boundary and cooldown handling
-- utterance capture windows driven by VAD
-- STT integration
-- deterministic local command interpreter
-- upstream assistant routing boundary
-- TTS generation boundary
-- per-session event log for diagnostics
+### 2. Session Lifecycle (Backend)
 
-Suggested module shape:
+Keep it expressive internally:
 
-- `voice/session_manager.py`
-- `voice/transport.py`
-- `voice/vad.py`
-- `voice/stt.py`
-- `voice/commands.py`
-- `voice/router.py`
-- `voice/tts.py`
+```text
+wake_detected
+→ listening
+→ capturing
+→ transcribing
+→ routing
+→ responding
+→ completed
+```
 
-Suggested MVP order:
+---
 
-1. session state machine
-2. recorded-audio-to-STT flow
-3. local command path
-4. upstream text routing
-5. TTS response generation
-6. live streaming improvements
+### 3. State Separation (Important)
 
-## Phase 3: Firmware As A Reliable Native Endpoint
+Split into:
 
-Goal:
-Turn the ESP32 firmware into a stable, operator-friendly endpoint runtime.
+```text
+connection_state
+ux_state
+session_state
+```
 
-Deliverables:
+You already identified this correctly:
 
-- stable Wi-Fi reconnect and backend reconnect behavior
-- endpoint identity and provisioning flow
-- microphone capture pipeline aligned with backend contract
-- speaker playback pipeline for TTS audio
-- button-driven fallback controls such as stop, retry, and mute
-- on-device state transitions and animations
-- bounded buffering, retry, and watchdog behavior
+> “do not force one enum to represent everything”
 
-Firmware focus areas:
+---
 
-- keep VAD on-device when it improves latency and transport cost
-- avoid placing heavyweight STT/LLM logic on-device for MVP
-- use firmware mainly for capture, playback, wake UX, and transport resilience
+### 4. Event Envelope
 
-Important note:
+Everything becomes:
 
-The current VAD in [`firmware/main/board/audio.cpp`](/home/dan/Projects/HexeVoice/firmware/main/board/audio.cpp:1) is useful as an early signal, but it is not yet a full utterance segmentation strategy. We should treat it as a starting point rather than the final design.
+```json
+{
+  "event_type": "...",
+  "session_id": "...",
+  "endpoint_id": "...",
+  "timestamp": "...",
+  "payload": {}
+}
+```
 
-## Phase 4: Multi-Endpoint Scheduling And Arbitration
+---
 
-Goal:
-Support more than one active voice endpoint cleanly.
+### 5. Persistence
 
-Deliverables:
+Store:
 
-- endpoint registry with `endpoint_type`, `zone_id`, `display_name`, and `priority`
-- collision window handling for near-simultaneous wake detections
-- same-zone arbitration rules
-- different-zone concurrent session policy
-- cooldown handling for losing endpoints
-- rate limits and fairness controls
+* endpoint registry
+* last_seen
+* last_session_summary
+* last_error
 
-This phase should follow the single-endpoint MVP, but the backend contract should be designed now so we do not paint ourselves into a corner.
+Do NOT store:
 
-## Phase 5: Operator Visibility And Controls
+* raw audio
+* full transcript history (yet)
 
-Goal:
-Make the voice node debuggable in production.
+---
 
-Deliverables:
+# ⚙️ Phase 3 — Voice Pipeline (Backend Modules)
 
-- live speech pipeline card replacing the current dashboard placeholder
-- per-endpoint health and last-seen views
-- recent session timeline with wake, transcript, routing, and playback stages
-- explicit failure states for STT, TTS, upstream routing, and endpoint transport
-- manual actions:
-  - stop current session
-  - replay latest response
-  - mute endpoint
-  - refresh endpoint connection
+Now clean up the mess into real structure.
 
-Suggested frontend targets:
+---
 
-- replace placeholders in [`frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx`](/home/dan/Projects/HexeVoice/frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx:1)
-- add dedicated cards for active sessions, transport health, and speech pipeline stages
+## 📦 Modules
 
-## Phase 6: Hardening, Privacy, And Operations
+```text
+voice/
+  session_manager.py
+  transport.py
+  wake.py        (openWakeWord wrapper)
+  vad.py         (optional refinement)
+  stt.py
+  commands.py
+  router.py
+  tts.py
+  events.py
+```
 
-Goal:
-Make the node safe to run continuously.
+---
 
-Deliverables:
+## 🎯 Capabilities
 
-- retention policy for transcripts and audio artifacts
-- redaction strategy for logs and diagnostics
-- crash-safe session cleanup
-- bounded queues and backpressure
-- service health probes for STT/TTS/upstream dependencies
-- degraded-mode behavior when one subsystem is unavailable
-- OTA-safe voice-session behavior for firmware
+* proper session state machine
+* local command handling:
 
-This phase is where the project moves from “works in the lab” to “safe to leave running.”
+  * stop
+  * repeat
+  * mute
+  * status
+* upstream routing boundary
+* per-session event log
 
-## Recommended MVP Cut
+---
 
-If we want the fastest path to a believable first Voice node, the MVP should be:
+## 🧠 Important Design Rule
 
-- one native ESP32 endpoint
-- backend-owned session orchestration
-- on-device VAD plus backend-managed utterance/session flow
-- local command handling for `status`, `repeat`, and `stop`
-- upstream text request/response path
-- backend-generated TTS returned to the endpoint
-- operator dashboard for active state, recent transcript, and last error
+Voice Node = orchestration, not intelligence.
 
-Avoid adding these too early:
+Keep it separate from AI Node responsibilities long-term.
 
-- multi-endpoint arbitration
-- speaker identification
-- advanced personalization
-- heavy on-device inference
-- broad provider matrix
+---
 
-## Backlog By Workstream
+# 📡 Phase 4 — Firmware Runtime (Make It Solid)
 
-### Backend
+Make the ESP32 endpoint reliable, not smart.
 
-- introduce a dedicated `voice/` package instead of keeping voice behavior inside the minimal assistant stub
-- replace in-memory endpoint records with persistence-backed endpoint registry state
-- define a session event model for observability and UI consumption
-- add integration tests for endpoint lifecycle, command handling, and degraded-path behavior
+---
 
-### Frontend
+## Responsibilities
 
-- replace dashboard placeholders with live voice cards
-- show endpoint roster and active session state
-- expose actionable error messages instead of generic readiness-only views
-- add operator controls for stop, retry, mute, and refresh
+* Wi-Fi reconnect
+* backend reconnect
+* continuous audio capture
+* bounded buffering
+* playback
+* state display
+* button controls:
 
-### Firmware
+  * stop
+  * retry
+  * mute
 
-- implement real backend transport in `assistant_client`
-- add speaker output path for synthesized replies
-- align microphone chunking with backend transport contract
-- make UI states reflect listening, thinking, speaking, muted, and fault conditions
+---
 
-### Documentation
+## Non-Responsibilities
 
-- create a formal endpoint protocol spec after Phase 1 decisions
-- document privacy and retention decisions before production audio logging exists
-- document local development workflows for backend + firmware loop testing
+* STT
+* wake word (for now)
+* LLM logic
+* policy
 
-## Risks And Decision Points
+---
 
-These are the biggest design choices still open:
+## ⚠️ Note on VAD
 
-1. Should wake-word detection live on-device, on the backend, or support both modes?
-2. What transport should carry audio between device and backend?
-3. Should transcripts and recent turns be persisted, and for how long?
-4. Do we want endpoint sessions to survive backend restarts, or only endpoint registration?
-5. Is HexeVoice expected to host STT/TTS directly, or broker to local provider services?
+Current VAD is useful:
 
-My current recommendation:
+> “useful as an early signal, not full segmentation”
 
-- backend hosts orchestration and likely STT/TTS boundaries
-- firmware handles capture, playback, local UX, and resilience
-- wake can start with on-device gating plus backend session control
-- persistence should start with endpoint registry + recent event metadata, not raw audio retention
+Keep it as helper only.
 
-## Brainstorm Prompts
+---
 
-These are good next questions for us to answer together:
+# 🖥️ Phase 5 — Operator Visibility
 
-- What is the first real endpoint we care about: ESP Box only, or ESP Box plus Home Assistant Voice from day one?
-- Do we want “push to talk” as an interim mode before full wake-word support?
-- Should the first transport be HTTP, WebSocket, or MQTT-based?
-- Do we want partial transcripts in the operator UI, or only final transcripts?
-- What counts as a successful MVP demo?
+Replace dashboard placeholders with real telemetry.
 
-## Suggested Immediate Next Steps
+---
 
-1. Write the Phase 1 endpoint/session protocol doc.
-2. Decide the first audio transport.
-3. Implement a persistence-backed endpoint registry.
-4. Replace `POST /api/assistant/turn` with a session-oriented API shape.
-5. Build a single-endpoint end-to-end happy path before expanding the dashboard and multi-endpoint logic.
+## UI Components
 
-## Working Conclusion
+* endpoint list
+* active session card
+* speech pipeline timeline:
 
-The project is already strong where many voice projects struggle first: onboarding, trust, lifecycle projection, and operator shell.
+  * wake
+  * capture
+  * transcript
+  * routing
+  * response
+* last transcript / response
+* errors
 
-The next stretch should focus less on adding more setup features and more on creating one thin but real voice loop that can be observed, debugged, and repeated reliably.
+---
+
+## Controls
+
+* stop session
+* replay response
+* mute endpoint
+* reconnect endpoint
+
+---
+
+# 🧠 Phase 6 — Multi-Endpoint
+
+Only after single endpoint is rock solid.
+
+---
+
+## Add
+
+* endpoint priority
+* zone_id
+* collision handling
+* cooldown rules
+* concurrency policy
+
+---
+
+# 🔒 Phase 7 — Hardening & Privacy
+
+Production safety.
+
+---
+
+## Add
+
+* transcript retention policy
+* no raw audio storage (default)
+* redaction in logs
+* queue limits
+* crash-safe sessions
+* degraded behavior
+
+---
+
+## Tie-in with Node Runtime
+
+Nodes can already enter degraded states:
+
+> failures can move node into “degraded”
+
+Now reflect that in voice UX.
+
+---

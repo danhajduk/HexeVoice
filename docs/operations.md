@@ -45,6 +45,15 @@ Use:
 - `scripts/stack-control.sh` for service control
 - `scripts/restart-stack.sh` to restart both services
 
+Systemd user units are intentionally not enabled for auto-start and do not declare a restart policy. Core Supervisor is the lifecycle authority for managed node runtime behavior.
+
+When supervisor integration is enabled, the backend registers and heartbeats through the local Unix socket:
+
+- socket: `/run/hexe/supervisor.sock`
+- register route: `POST /api/supervisor/runtimes/register`
+- heartbeat route: `POST /api/supervisor/runtimes/heartbeat`
+- expected public node API: `http://10.0.0.100:9004`
+
 Logs should be written under `runtime/logs/`.
 
 Systemd templates for this node live at:

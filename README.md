@@ -1,13 +1,13 @@
 # HexeVoice
 
-HexeVoice is a new modular Hexe node scaffolded from the shared Node standard starter.
+HexeVoice is a modular Hexe voice node built from the shared Node standard starter.
 
 It includes:
 
 - a typed FastAPI backend entrypoint
 - a modular backend package under `src/hexevoice/`
 - a React + Vite operator UI under `frontend/`
-- a native ESP-IDF firmware scaffold under `firmware/`
+- a native ESP-IDF firmware track under `firmware/`
 - operational scripts under `scripts/`
 - starter docs under `docs/`
 - runtime state and logs under `runtime/`
@@ -20,7 +20,7 @@ It includes:
 - `frontend/`
   Starter UI for onboarding, readiness, providers, and diagnostics
 - `firmware/`
-  Native Hexe standalone firmware scaffold for the ESP32-S3 Box migration track
+  Native Hexe standalone firmware for the ESP32-S3 Box track
 - `scripts/`
   Environment-driven run and service-control scripts
   including `scripts/systemd/hexevoice-backend.service.in` and `scripts/systemd/hexevoice-frontend.service.in`
@@ -65,7 +65,8 @@ You can override the defaults with `BACKEND_PORT`, `FRONTEND_PORT`, `BACKEND_HOS
 ## Notes
 
 - This scaffold follows the Hexe node standards entrypoint at `/home/dan/Projects/Hexe/docs/standards/Node/README.md`.
-- Phase 0 onboarding is now implemented end to end across the backend and frontend shell.
+- Node onboarding is implemented end to end across the backend and frontend shell.
+- HexeVoice registers and heartbeats to the Core Supervisor over `/run/hexe/supervisor.sock` when `HEXE_SUPERVISOR_ENABLED=true`.
 - The operator UI follows the shared Hexe node visual standard and renders the full canonical 10-step flow plus post-setup operational overview surfaces.
 - Local Python workflow should always use the repo-local `.venv` binaries.
 
@@ -102,3 +103,22 @@ Example request:
 ```
 
 The route currently supports simple local commands like `status`, `repeat`, and `stop`, and otherwise returns a deterministic fallback reply so the device can validate request/response flow end to end.
+
+## Current Voice Boundary
+
+Implemented today:
+
+- Core onboarding, trust activation, provider setup, capability declaration, governance sync, and operational readiness.
+- Supervisor runtime registration and heartbeat through the Unix socket.
+- Backend health/status/readiness APIs.
+- A text-only assistant turn route for firmware bring-up.
+- Native firmware boot/display/buttons/Wi-Fi/microphone VAD baseline.
+
+Not implemented yet:
+
+- `/api/voice/ws`.
+- Backend wake detection.
+- Audio streaming from firmware to backend.
+- STT/TTS adapters.
+- Firmware TTS playback.
+- Live endpoint/session dashboard telemetry.

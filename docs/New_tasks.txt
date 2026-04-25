@@ -47,3 +47,11 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
+[TODO] Task 028: Define the backend voice event envelope and single-endpoint session contract
+[TODO] Task 029: Add /api/voice/ws with an in-memory single-endpoint session manager
+[TODO] Task 030: Add backend openWakeWord audio intake path
+[TODO] Task 031: Add firmware backend client and audio chunk sender
+[TODO] Task 032: Add STT to assistant turn to TTS adapters
+[TODO] Task 033: Add firmware playback and event-driven UI
+[TODO] Task 034: Replace frontend placeholders with endpoint and session observability
+[TODO] Task 035: Integrate and validate the first single-endpoint wake-to-reply voice loop

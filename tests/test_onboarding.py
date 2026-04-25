@@ -5,13 +5,13 @@ from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
 
 
-def test_initial_state_is_unconfigured():
-    service = NodeRuntimeService(settings=Settings())
+def test_initial_state_is_unconfigured(tmp_path):
+    service = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json"))
     assert service.status_payload().lifecycle_state == "unconfigured"
 
 
-def test_onboarding_payload_uses_canonical_first_step():
-    service = NodeRuntimeService(settings=Settings())
+def test_onboarding_payload_uses_canonical_first_step(tmp_path):
+    service = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json"))
 
     payload = service.onboarding_payload()
 

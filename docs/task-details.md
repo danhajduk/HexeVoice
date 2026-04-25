@@ -152,3 +152,211 @@ Original task details:
 - Add targeted backend tests for bootstrap discovery, onboarding session start, approval/finalize handling, trust-status recovery, capability declaration, governance sync, and readiness projection.
 - Add frontend validation for themed shell rendering, setup progression, and key responsive/status patterns where practical.
 - Update operator documentation to describe both the Core-defined 10-step flow and the required Hexe visual/operator experience.
+
+## Task 019
+Original task details:
+- Review the current implementation and compare it against the new roadmap baseline assumptions.
+- Confirm what is real, partially implemented, placeholder-only, or missing.
+- Inspect backend voice-related modules under `src/hexevoice/`.
+- Inspect frontend voice/dashboard/setup surfaces under `frontend/src/`.
+- Inspect firmware voice/audio/UX modules under `firmware/main/`.
+- Produce a concise baseline inventory in a new doc under `docs/`.
+- The audit output must clearly label each area as `implemented`, `partial`, `scaffold`, or `missing`.
+- The audit must explicitly cover:
+  - onboarding / trust / lifecycle
+  - dashboard shell
+  - ESP32 microphone + VAD loop
+  - text assistant endpoint
+  - voice pipeline
+- Every claim in the audit must point to real files in the repo.
+
+## Task 020
+Original task details:
+- Convert the baseline audit into a clear architecture note that states what the backend owns today and what the firmware owns today.
+- Update `docs/architecture.md`.
+- Add a dedicated section for the wake-driven architecture direction from the roadmap.
+- Explicitly separate:
+  - current implementation
+  - intended target direction
+- Clarify:
+  - backend as orchestration authority
+  - firmware as transport/audio/UX endpoint
+  - what is not yet implemented
+- The document must no longer imply that the full voice pipeline already exists.
+- The document must explicitly mark wake/STT/TTS/session orchestration as incomplete where appropriate.
+
+## Task 021
+Original task details:
+- Establish a reliable Phase 0 record of the backend APIs that already support endpoint and voice-adjacent behavior.
+- Review `src/hexevoice/main.py`, `src/hexevoice/api/models.py`, `src/hexevoice/assistant/`, and `src/hexevoice/endpoint/`.
+- Document the currently available routes, request contracts, and response contracts in a new or existing doc.
+- Identify which routes are production candidates versus temporary scaffolds.
+- The API notes must cover:
+  - `POST /api/assistant/turn`
+  - endpoint heartbeat/status routes
+  - any related node-status routes useful to endpoint UX
+- The documentation must clearly distinguish:
+  - stable starter routes
+  - temporary stub routes
+  - routes that must be replaced in Phase 1
+
+## Task 022
+Original task details:
+- Confirm what the ESP32 firmware actually does today versus what the roadmap says Phase 1 needs.
+- Review the firmware entrypoint and relevant modules:
+  - `firmware/main/app_main.cpp`
+  - `firmware/main/board/audio.cpp`
+  - `firmware/main/ui/`
+  - `firmware/main/voice/`
+- Document:
+  - what boots successfully
+  - what hardware paths are initialized
+  - what is only stub/log output
+- Produce firmware baseline notes under `docs/`.
+- The notes must explicitly confirm:
+  - microphone/audio initialization status
+  - current VAD behavior
+  - display/UX state handling
+  - wake/STT/TTS/client scaffold status
+
+## Task 023
+Original task details:
+- Make the project docs truthful and Phase-0-safe.
+- Review `README.md`, `docs/architecture.md`, and any other relevant docs.
+- Remove or soften wording that suggests a real wake-to-reply pipeline already exists when it does not.
+- Keep the docs optimistic, but accurate.
+- A new contributor must be able to read the docs and correctly understand:
+  - what already works
+  - what is stubbed
+  - what belongs to Phase 1
+
+## Task 024
+Original task details:
+- Turn the audit into an actionable list of the concrete missing pieces required before or during Phase 1.
+- Create a gap-analysis section in a roadmap-adjacent doc.
+- Break the missing work into at least these categories:
+  - backend transport
+  - wake detection
+  - session lifecycle
+  - STT/TTS integration
+  - firmware transport
+  - firmware playback
+  - dashboard observability
+- Produce a clear Phase 0 gap list with short descriptions.
+- Each gap must be mapped to either:
+  - backend
+  - firmware
+  - frontend
+  - docs/testing
+
+## Task 025
+Original task details:
+- Record the smallest set of decisions needed to unblock Phase 1 implementation without pretending the whole protocol is finalized.
+- Update `docs/voice-node-phase-1.md`.
+- Add a short `Phase 1 provisional assumptions` section covering:
+  - single-endpoint MVP
+  - backend wake authority
+  - WebSocket-first transport direction
+  - firmware as audio/UX/transport endpoint
+  - no raw audio persistence in MVP
+- The assumptions section must be concise and clearly labeled provisional.
+- The assumptions must be consistent with `docs/voice-node-roadmap.md`.
+
+## Task 026
+Original task details:
+- Ensure the repo has enough automated validation to protect the current Phase 0 baseline before deeper voice work begins.
+- Run the relevant backend tests.
+- Run the frontend production build.
+- Add or adjust lightweight tests only if the audit reveals uncovered baseline behavior that is already implemented.
+- Existing test suite must pass.
+- Frontend build must pass.
+- Any new tests added must be narrowly scoped to current implemented behavior, not speculative future behavior.
+
+## Task 027
+Original task details:
+- Close the loop once the baseline audit and cleanup work are complete.
+- Add a short Phase 0 completion note to the relevant docs.
+- Ensure `docs/voice-node-roadmap.md` and `docs/voice-node-phase-1.md` point to the new baseline artifacts where helpful.
+- Produce a clean handoff from Phase 0 into Phase 1 planning/implementation.
+- The docs set must be internally consistent.
+- A future implementation pass must be able to start from the baseline audit without re-discovering the same context.
+
+## Task 028
+Original task details:
+- Use `docs/voice-node-phase-0-baseline.md` and `docs/voice-node-phase-1.md` as inputs.
+- Define a backend-owned voice event envelope for endpoint-to-backend and backend-to-endpoint messages.
+- Define the MVP single-endpoint session lifecycle and state transitions.
+- Keep endpoint connection state, endpoint UX state, and backend session state separate.
+- Do not implement audio processing in this task unless required for contract validation.
+- Add targeted tests or schema validation for the event/session models if code is introduced.
+
+## Task 029
+Original task details:
+- Add `/api/voice/ws` with an in-memory single-endpoint session manager.
+- Support one endpoint and one active session for MVP.
+- Accept session/control events and audio chunk metadata using the event envelope from Task 028.
+- Return session state, error, and completion events through the same envelope.
+- Keep endpoint persistence out of the critical path unless the existing code requires a tiny local store for correctness.
+- Add focused backend tests for connection, event validation, session start, audio chunk handling, cancel, and error cases.
+
+## Task 030
+Original task details:
+- Add the backend openWakeWord audio intake path.
+- Use backend openWakeWord as the canonical wake authority.
+- Accept audio from the Task 029 WebSocket path or the smallest compatible intake boundary from that implementation.
+- Keep firmware VAD as an optional early signal only.
+- Provide a testable adapter boundary so development can run with a deterministic fake wake detector.
+- Emit wake/session events through the Task 028 event envelope.
+- Do not persist raw audio.
+- Do not require final STT/TTS provider wiring in this task.
+
+## Task 031
+Original task details:
+- Implement firmware backend client configuration and connection behavior.
+- Use `firmware/config/endpoint.yaml` as the MVP source for the HexeVoice node backend address.
+- Keep `firmware/config/endpoint.example.yaml` as the committed template and keep machine-specific `endpoint.yaml` gitignored.
+- Load or generate firmware constants from YAML as part of the build/development workflow; do not hardcode the node IP address in source.
+- Include `endpoint_id`, HTTP host/port, WebSocket host/port, heartbeat path, voice WebSocket path, and audio format settings in the YAML contract.
+- Defer automatic discovery until after the first single-endpoint loop works.
+- Send endpoint heartbeat and metadata to the backend.
+- Add audio chunk transport from the existing microphone path toward the backend voice WebSocket or agreed MVP transport.
+- Keep buffering bounded and failure behavior explicit.
+- Do not move wake authority to firmware.
+
+## Task 032
+Original task details:
+- Add backend STT and TTS provider adapter boundaries for the first real voice loop.
+- Wire transcript finalization into the existing assistant turn service.
+- Wire assistant response text into TTS synthesis output metadata or audio handles.
+- Include deterministic fake adapters for tests/development if real providers are unavailable.
+- Preserve the privacy rule that raw audio is not persisted by default.
+
+## Task 033
+Original task details:
+- Implement firmware TTS receive/playback behavior for backend responses.
+- Map backend events to endpoint UX states such as idle, listening, thinking, speaking, muted, and error.
+- Support stop/mute button behavior against the backend session contract where practical.
+- Keep existing display and app state conventions unless a small local adjustment is required.
+
+## Task 034
+Original task details:
+- Replace placeholder-only voice endpoint dashboard cards with live backend data.
+- Show endpoint connection state, active session state, last transcript, last response, last error, and transport health.
+- Wire operator actions for refresh, test assistant turn, stop session, replay response, mute endpoint, and reconnect as supported by backend APIs.
+- Keep the dashboard aligned with the existing Hexe node visual shell.
+
+## Task 035
+Original task details:
+- Integrate the completed backend, firmware, and frontend pieces into the first single-endpoint wake-to-reply loop.
+- Validate the happy path:
+  - endpoint connects and reports heartbeat
+  - endpoint sends microphone audio
+  - backend wake authority accepts a wake event
+  - backend captures/transcribes/routes the turn
+  - assistant response is synthesized or represented by the configured TTS adapter
+  - firmware enters speaking state and plays or handles the response payload
+  - frontend shows endpoint state, session state, transcript, response, and errors
+- Validate cancel/error behavior across backend, firmware, and dashboard where supported.
+- Run targeted backend tests, frontend build, and the smallest practical firmware build or compile validation.
+- Update `docs/voice-node-phase-0-baseline.md`, `docs/voice-node-phase-1.md`, or a new Phase 1 handoff note to reflect what became real.
+- Do not mark the task complete unless the repo has a documented verification result for the integrated loop.

@@ -290,7 +290,7 @@ class NodeRuntimeService:
             return {}
         node_name = onboarding_state.pre_trust.node_name or self._settings.node_name or node_id
         host_id = socket.gethostname()
-        api_base_url = f"http://{self._settings.api_host}:{self._settings.api_port}"
+        api_base_url = self._settings.public_api_base_url or f"http://{self._settings.api_host}:{self._settings.api_port}"
         runtime_state = "running" if self.readiness_payload().operational_ready else "unknown"
         services = [
             {
@@ -319,7 +319,7 @@ class NodeRuntimeService:
             "host_id": host_id,
             "hostname": host_id,
             "api_base_url": api_base_url,
-            "ui_base_url": None,
+            "ui_base_url": self._settings.public_ui_base_url,
             "desired_state": "running",
             "runtime_state": runtime_state,
             "lifecycle_state": runtime_state,

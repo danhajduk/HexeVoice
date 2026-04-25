@@ -19,6 +19,8 @@ HexeVoice is structured as a modular Hexe node starter:
 
 The initial backend exposes the standard starter route groups for health, node status, onboarding, capabilities, governance/readiness, service status, and provider status.
 
+The backend also registers the trusted node runtime with Core Supervisor when supervisor integration is enabled. The current integration uses the local Unix socket at `/run/hexe/supervisor.sock`, calls `POST /api/supervisor/runtimes/register` once after a trusted `node_id` is available, and then calls `POST /api/supervisor/runtimes/heartbeat` on the backend heartbeat loop. Supervisor lifecycle ownership is separate from Core onboarding and trust.
+
 For firmware bring-up, the backend also now exposes a minimal local assistant turn route:
 
 - `POST /api/assistant/turn`
@@ -268,5 +270,7 @@ The post-setup operator overview now renders as a separate surface beside the on
 - warning-card treatment for stale governance or setup blockers
 
 This keeps setup and operational concerns visibly separated while still sharing one shell.
+
+The active firmware baseline is documented in `docs/firmware-baseline.md`.
 
 See `docs/feature-spec.md` for the intended HexeVoice runtime behavior and endpoint model.
