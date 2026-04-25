@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 import socket
 import asyncio
 from collections.abc import Callable
+import logging
 from pathlib import Path
 import subprocess
 
@@ -24,6 +25,9 @@ from hexevoice.config.settings import Settings
 from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.supervisor.client import SupervisorApiClient
+
+
+log = logging.getLogger(__name__)
 
 
 class NodeRuntimeService:
@@ -310,6 +314,11 @@ class NodeRuntimeService:
             ]
         )
         if result.returncode != 0:
+            log.debug(
+                "openWakeWord container inspect failed: container=%s stderr=%s",
+                self._settings.openwakeword_container_name,
+                (result.stderr or "").strip(),
+            )
             return "not_created"
         state = (result.stdout or "").strip().lower()
         return state or "unknown"
@@ -330,6 +339,11 @@ class NodeRuntimeService:
         normalized_target = str(target or "").strip()
         normalized_action = str(action or "").strip().lower()
         if normalized_target != self._settings.openwakeword_service_id:
+            log.warning(
+                "Rejected service action for unsupported target: target=%s action=%s",
+                normalized_target,
+                normalized_action,
+            )
             return ServiceActionResponse(
                 target=normalized_target,
                 action=normalized_action,
@@ -338,6 +352,11 @@ class NodeRuntimeService:
                 detail="Only the openwakeword service is controlled by this node API.",
             )
         if normalized_action not in {"start", "stop", "restart"}:
+            log.warning(
+                "Rejected service action for unsupported action: target=%s action=%s",
+                normalized_target,
+                normalized_action,
+            )
             return ServiceActionResponse(
                 target=normalized_target,
                 action=normalized_action,
@@ -347,6 +366,7 @@ class NodeRuntimeService:
             )
         script = self._openwakeword_control_script()
         if not script.exists():
+            log.error("openWakeWord control script missing: path=%s", script)
             return ServiceActionResponse(
                 target=normalized_target,
                 action=normalized_action,
@@ -354,8 +374,16 @@ class NodeRuntimeService:
                 status="control_script_missing",
                 detail=str(script),
             )
+        log.info("Running service action: target=%s action=%s script=%s", normalized_target, normalized_action, script)
         result = self._service_command_runner([str(script), normalized_action])
         if result.returncode != 0:
+            log.error(
+                "Service action failed: target=%s action=%s returncode=%s detail=%s",
+                normalized_target,
+                normalized_action,
+                result.returncode,
+                (result.stderr or result.stdout or "").strip(),
+            )
             return ServiceActionResponse(
                 target=normalized_target,
                 action=normalized_action,
@@ -363,11 +391,13 @@ class NodeRuntimeService:
                 status="action_failed",
                 detail=(result.stderr or result.stdout or "").strip() or None,
             )
+        status = self._openwakeword_state()
+        log.info("Service action completed: target=%s action=%s status=%s", normalized_target, normalized_action, status)
         return ServiceActionResponse(
             target=normalized_target,
             action=normalized_action,
             accepted=True,
-            status=self._openwakeword_state(),
+            status=status,
             detail=(result.stdout or "").strip() or None,
         )
 
@@ -421,28 +451,35 @@ class NodeRuntimeService:
     async def supervisor_heartbeat_once(self) -> dict | None:
         client = self._supervisor_client
         if client is None:
+            log.debug("Supervisor heartbeat skipped: supervisor_client_not_configured")
             return {"status": "skipped", "reason": "supervisor_client_not_configured"}
         payload = self._supervisor_runtime_payload()
         node_id = str(payload.get("node_id") or "").strip()
         if not node_id:
+            log.debug("Supervisor heartbeat skipped: missing_node_id")
             return {"status": "skipped", "reason": "missing_node_id"}
         health = await asyncio.to_thread(client.health)
         if not isinstance(health, dict):
             self._supervisor_registered = False
             self._supervisor_last_error = "supervisor_unreachable"
+            log.warning("Supervisor heartbeat skipped: supervisor_unreachable")
             return {"status": "skipped", "reason": "supervisor_unreachable"}
         status = str(health.get("status") or "").strip().lower()
         ready = health.get("ready")
         if status not in {"ok", "healthy"} or (ready is not None and not bool(ready)):
             self._supervisor_registered = False
             self._supervisor_last_error = "supervisor_not_ready"
+            log.warning("Supervisor heartbeat skipped: supervisor_not_ready status=%s ready=%s", status, ready)
             return {"status": "skipped", "reason": "supervisor_not_ready"}
         if not self._supervisor_registered:
+            log.info("Registering runtime with supervisor: node_id=%s", node_id)
             registered = await asyncio.to_thread(client.register_runtime, payload)
             if not isinstance(registered, dict):
                 self._supervisor_last_error = "supervisor_register_failed"
+                log.error("Supervisor runtime registration failed: node_id=%s", node_id)
                 return {"status": "error", "reason": "supervisor_register_failed"}
             self._supervisor_registered = True
+            log.info("Supervisor runtime registration completed: node_id=%s", node_id)
         heartbeat_payload = {
             "node_id": payload.get("node_id"),
             "host_id": payload.get("host_id"),
@@ -460,9 +497,11 @@ class NodeRuntimeService:
         if not isinstance(heartbeat, dict):
             self._supervisor_registered = False
             self._supervisor_last_error = "supervisor_heartbeat_failed"
+            log.error("Supervisor heartbeat failed: node_id=%s", node_id)
             return {"status": "error", "reason": "supervisor_heartbeat_failed"}
         self._supervisor_last_error = None
         self._supervisor_last_seen = datetime.now(UTC).replace(tzinfo=None).isoformat()
+        log.debug("Supervisor heartbeat completed: node_id=%s last_seen_at=%s", node_id, self._supervisor_last_seen)
         return {"status": "ok", "supervisor": {"last_seen_at": self._supervisor_last_seen}}
 
     def provider_status_payload(self, *, provider_id: str) -> ProviderStatusResponse:

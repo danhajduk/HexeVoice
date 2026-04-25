@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 import logging
-from logging.handlers import RotatingFileHandler
+from logging.handlers import TimedRotatingFileHandler
 import os
 from pathlib import Path
 
@@ -68,9 +68,10 @@ def configure_backend_logging(settings: Settings) -> Path:
     log_path = settings.resolved_backend_log_path()
     log_path.parent.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+    level = getattr(logging, settings.backend_log_level.upper(), logging.INFO)
 
     logger = logging.getLogger("hexevoice")
-    logger.setLevel(logging.INFO)
+    logger.setLevel(level)
     logger.propagate = False
 
     for handler in list(logger.handlers):
@@ -78,18 +79,29 @@ def configure_backend_logging(settings: Settings) -> Path:
             logger.removeHandler(handler)
             handler.close()
 
-    file_handler = RotatingFileHandler(log_path, maxBytes=2_000_000, backupCount=3)
+    file_handler = TimedRotatingFileHandler(
+        log_path,
+        when="midnight",
+        interval=1,
+        backupCount=settings.backend_log_backup_days,
+        encoding="utf-8",
+    )
     file_handler.setFormatter(formatter)
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(level)
     file_handler._hexevoice_backend_handler = True  # type: ignore[attr-defined]
     logger.addHandler(file_handler)
 
     stream_handler = logging.StreamHandler()
     stream_handler.setFormatter(formatter)
-    stream_handler.setLevel(logging.INFO)
+    stream_handler.setLevel(level)
     stream_handler._hexevoice_backend_handler = True  # type: ignore[attr-defined]
     logger.addHandler(stream_handler)
-    logger.info("Backend logging initialized: path=%s", log_path)
+    logger.info(
+        "Backend logging initialized: path=%s level=%s rotation=midnight backup_days=%s",
+        log_path,
+        settings.backend_log_level,
+        settings.backend_log_backup_days,
+    )
     return log_path
 
 
@@ -358,6 +370,14 @@ def create_app(
 def main() -> None:
     settings = Settings()
     configure_backend_logging(settings)
+    logging.getLogger("hexevoice").info(
+        "Starting HexeVoice backend: host=%s port=%s wake_provider=%s stt_provider=%s tts_provider=%s",
+        settings.api_host,
+        settings.api_port,
+        settings.voice_wake_provider,
+        settings.voice_stt_provider,
+        settings.voice_tts_provider,
+    )
     uvicorn.run(create_app(settings), host=settings.api_host, port=settings.api_port)
 
 

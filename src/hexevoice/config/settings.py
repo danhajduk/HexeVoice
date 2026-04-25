@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
     backend_log_path: Path | None = Field(default=None, alias="BACKEND_LOG_PATH")
+    backend_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO",
+        alias="BACKEND_LOG_LEVEL",
+    )
+    backend_log_backup_days: int = Field(default=14, alias="BACKEND_LOG_BACKUP_DAYS", ge=1)
     firmware_artifact_dir: Path | None = Field(default=None, alias="FIRMWARE_ARTIFACT_DIR")
     onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")

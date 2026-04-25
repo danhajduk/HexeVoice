@@ -1,4 +1,7 @@
+import logging
+
 from hexevoice.config.settings import Settings
+from hexevoice.main import configure_backend_logging
 
 
 def test_settings_defaults():
@@ -16,3 +19,20 @@ def test_onboarding_state_path_defaults_under_runtime_dir():
 def test_backend_log_path_defaults_under_runtime_logs():
     settings = Settings()
     assert settings.resolved_backend_log_path().as_posix() == "runtime/logs/hexevoice-backend.log"
+
+
+def test_backend_logging_uses_midnight_archive(tmp_path):
+    log_path = tmp_path / "logs" / "backend.log"
+    settings = Settings(backend_log_path=log_path, backend_log_level="DEBUG", backend_log_backup_days=5)
+
+    result = configure_backend_logging(settings)
+
+    assert result == log_path
+    handler = next(
+        handler
+        for handler in logging.getLogger("hexevoice").handlers
+        if getattr(handler, "_hexevoice_backend_handler", False) and hasattr(handler, "when")
+    )
+    assert handler.when == "MIDNIGHT"
+    assert handler.backupCount == 5
+    assert log_path.exists()

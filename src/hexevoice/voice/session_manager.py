@@ -75,7 +75,15 @@ class VoiceSessionManager:
         try:
             while True:
                 raw_message = await websocket.receive_text()
+                log.debug("Received voice WebSocket message bytes=%s", len(raw_message))
                 for event in self._handle_raw_message(raw_message):
+                    log.debug(
+                        "Sending voice event: event_type=%s endpoint_id=%s session_id=%s sequence=%s",
+                        event.event_type,
+                        event.endpoint_id,
+                        event.session_id,
+                        event.sequence,
+                    )
                     await websocket.send_json(event.model_dump(mode="json"))
         except WebSocketDisconnect:
             pass
@@ -99,10 +107,22 @@ class VoiceSessionManager:
         size_bytes: int | None,
     ) -> dict:
         if not self._connection_active or self._websocket is None:
+            log.warning("OTA push rejected: endpoint_id=%s reason=endpoint_not_connected", endpoint_id)
             return {"accepted": False, "reason": "endpoint_not_connected"}
         if self._connected_endpoint_id is not None and endpoint_id != self._connected_endpoint_id:
+            log.warning(
+                "OTA push rejected: endpoint_id=%s connected_endpoint_id=%s reason=endpoint_mismatch",
+                endpoint_id,
+                self._connected_endpoint_id,
+            )
             return {"accepted": False, "reason": "endpoint_mismatch"}
 
+        log.info(
+            "OTA push accepted for endpoint: endpoint_id=%s version=%s size_bytes=%s",
+            endpoint_id,
+            version,
+            size_bytes,
+        )
         event = VoiceEventEnvelope(
             event_type="ota.update",
             endpoint_id=endpoint_id,
@@ -124,6 +144,7 @@ class VoiceSessionManager:
         try:
             raw_payload = json.loads(raw_message)
         except json.JSONDecodeError:
+            log.warning("Invalid voice WebSocket JSON received bytes=%s", len(raw_message))
             return [
                 self._error_event(
                     endpoint_id="unknown",
@@ -137,6 +158,7 @@ class VoiceSessionManager:
         try:
             event = VoiceEventEnvelope.model_validate(raw_payload)
         except ValidationError as exc:
+            log.warning("Invalid voice event envelope: error=%s", str(exc.errors()[0]["msg"]))
             return [
                 self._error_event(
                     endpoint_id=self._safe_endpoint_id(raw_payload),
@@ -148,6 +170,12 @@ class VoiceSessionManager:
             ]
 
         if event.direction != "endpoint_to_backend":
+            log.warning(
+                "Rejected voice event with invalid direction: endpoint_id=%s session_id=%s direction=%s",
+                event.endpoint_id,
+                event.session_id,
+                event.direction,
+            )
             return [
                 self._error_event(
                     endpoint_id=event.endpoint_id,
@@ -159,6 +187,12 @@ class VoiceSessionManager:
             ]
 
         if event.event_type not in ENDPOINT_TO_BACKEND_EVENTS:
+            log.warning(
+                "Rejected unsupported endpoint voice event: endpoint_id=%s session_id=%s event_type=%s",
+                event.endpoint_id,
+                event.session_id,
+                event.event_type,
+            )
             return [
                 self._error_event(
                     endpoint_id=event.endpoint_id,
@@ -170,6 +204,12 @@ class VoiceSessionManager:
             ]
 
         if self._connected_endpoint_id is not None and event.endpoint_id != self._connected_endpoint_id:
+            log.error(
+                "Voice endpoint conflict: connected_endpoint_id=%s incoming_endpoint_id=%s event_type=%s",
+                self._connected_endpoint_id,
+                event.endpoint_id,
+                event.event_type,
+            )
             return [
                 self._error_event(
                     endpoint_id=event.endpoint_id,
@@ -195,6 +235,12 @@ class VoiceSessionManager:
 
     def _handle_session_start(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         if self._active_session is not None:
+            log.warning(
+                "Rejected session start because active session exists: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
+                event.endpoint_id,
+                self._active_session.session_id,
+                event.session_id,
+            )
             return [
                 self._error_event(
                     endpoint_id=event.endpoint_id,
@@ -208,6 +254,12 @@ class VoiceSessionManager:
         try:
             payload = VoiceSessionStartPayload.model_validate(event.payload)
         except ValidationError as exc:
+            log.warning(
+                "Invalid session.start payload: endpoint_id=%s session_id=%s error=%s",
+                event.endpoint_id,
+                event.session_id,
+                str(exc.errors()[0]["msg"]),
+            )
             return [
                 self._error_event(
                     endpoint_id=event.endpoint_id,
@@ -247,6 +299,12 @@ class VoiceSessionManager:
         try:
             payload = VoiceAudioChunkPayload.model_validate(event.payload)
         except ValidationError as exc:
+            log.warning(
+                "Invalid audio.chunk payload: endpoint_id=%s session_id=%s error=%s",
+                event.endpoint_id,
+                event.session_id,
+                str(exc.errors()[0]["msg"]),
+            )
             return [
                 self._error_event(
                     endpoint_id=event.endpoint_id,
@@ -259,6 +317,14 @@ class VoiceSessionManager:
 
         self._chunk_count += 1
         self._audio_format = payload.audio_format
+        log.debug(
+            "Voice audio chunk: endpoint_id=%s session_id=%s chunk_index=%s chunk_count=%s has_payload=%s",
+            event.endpoint_id,
+            session.session_id,
+            payload.chunk_index,
+            self._chunk_count,
+            bool(payload.payload_base64),
+        )
         if payload.payload_base64:
             try:
                 self._audio_chunks.append(base64.b64decode(payload.payload_base64, validate=True))
@@ -544,6 +610,12 @@ class VoiceSessionManager:
 
     def _require_active_session(self, event: VoiceEventEnvelope) -> VoiceSessionSnapshot | VoiceEventEnvelope:
         if self._active_session is None:
+            log.warning(
+                "Voice event rejected because no active session exists: endpoint_id=%s session_id=%s event_type=%s",
+                event.endpoint_id,
+                event.session_id,
+                event.event_type,
+            )
             return self._error_event(
                 endpoint_id=event.endpoint_id,
                 session_id=event.session_id,
@@ -553,6 +625,13 @@ class VoiceSessionManager:
             )
 
         if event.session_id is not None and event.session_id != self._active_session.session_id:
+            log.warning(
+                "Voice session conflict: endpoint_id=%s active_session_id=%s incoming_session_id=%s event_type=%s",
+                event.endpoint_id,
+                self._active_session.session_id,
+                event.session_id,
+                event.event_type,
+            )
             return self._error_event(
                 endpoint_id=event.endpoint_id,
                 session_id=event.session_id,
