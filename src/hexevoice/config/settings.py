@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     voice_tts_base_url: str = Field(default="https://api.openai.com/v1", alias="VOICE_TTS_BASE_URL")
     voice_tts_response_format: str = Field(default="wav", alias="VOICE_TTS_RESPONSE_FORMAT")
     voice_tts_timeout_s: float = Field(default=30.0, alias="VOICE_TTS_TIMEOUT_S", gt=0)
+    openwakeword_service_id: str = Field(default="openwakeword", alias="OPENWAKEWORD_SERVICE_ID")
+    openwakeword_container_name: str = Field(
+        default="hexevoice-openwakeword",
+        alias="OPENWAKEWORD_CONTAINER_NAME",
+    )
+    openwakeword_control_script: Path = Field(
+        default=Path("scripts/openwakeword-control.sh"),
+        alias="OPENWAKEWORD_CONTROL_SCRIPT",
+    )
 
     def resolved_onboarding_state_path(self) -> Path:
         if self.onboarding_state_path is not None:

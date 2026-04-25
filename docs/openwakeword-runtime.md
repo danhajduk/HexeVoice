@@ -65,4 +65,26 @@ To start, stop, or inspect the HexeVoice-owned container:
 ./scripts/openwakeword-control.sh stop
 ```
 
-Lifecycle ownership is still pending Core Supervisor registration. Until that is implemented, these scripts provide local operator control without enabling Docker auto-restart.
+The scripts provide local operator control without enabling Docker auto-restart, and they are the command surface used by the Supervisor service-action proxy.
+
+## Supervisor Registration and Lifecycle
+
+HexeVoice advertises the `openwakeword` service in the existing node runtime registration sent to Core Supervisor over `/run/hexe/supervisor.sock`.
+
+The backend includes the service in `runtime_metadata.services` with:
+
+- `service_id`: `openwakeword`
+- `container_name`: `hexevoice-openwakeword`
+- `control_script`: `scripts/openwakeword-control.sh`
+- `managed_by`: `core_supervisor_service_action_proxy`
+
+Supervisor service lifecycle actions use the standard node service proxy:
+
+```text
+GET  /api/services/status
+POST /api/services/start   {"target":"openwakeword"}
+POST /api/services/stop    {"target":"openwakeword"}
+POST /api/services/restart {"target":"openwakeword"}
+```
+
+The node service action routes call `scripts/openwakeword-control.sh`, which keeps Docker restart policy set to `no`; lifecycle intent remains with Core Supervisor instead of Docker auto-restart.

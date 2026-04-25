@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 import socket
 import asyncio
+from collections.abc import Callable
+from pathlib import Path
+import subprocess
 
 from hexevoice.api.models import (
     ApiHealthResponse,
@@ -14,6 +17,7 @@ from hexevoice.api.models import (
     OnboardingStepResponse,
     OnboardingStatusResponse,
     ProviderStatusResponse,
+    ServiceActionResponse,
     ServiceStatusResponse,
 )
 from hexevoice.config.settings import Settings
@@ -29,6 +33,7 @@ class NodeRuntimeService:
         settings: Settings,
         onboarding_state_store: OnboardingStateStore | None = None,
         supervisor_client: SupervisorApiClient | None = None,
+        service_command_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
     ) -> None:
         self._settings = settings
         self._onboarding_state_store = onboarding_state_store or OnboardingStateStore(
@@ -38,6 +43,7 @@ class NodeRuntimeService:
         self._supervisor_registered = False
         self._supervisor_last_error: str | None = None
         self._supervisor_last_seen: str | None = None
+        self._service_command_runner = service_command_runner or self._run_service_command
 
     def api_health_payload(self) -> ApiHealthResponse:
         return ApiHealthResponse(status="ok", version=self._settings.node_software_version)
@@ -281,6 +287,88 @@ class NodeRuntimeService:
             backend="defined",
             frontend="defined",
             scheduler="not_started",
+            openwakeword=self._openwakeword_state(),
+        )
+
+    def _run_service_command(self, command: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(command, capture_output=True, check=False, text=True, timeout=10)
+
+    def _openwakeword_control_script(self) -> Path:
+        script = self._settings.openwakeword_control_script
+        if script.is_absolute():
+            return script
+        return Path.cwd() / script
+
+    def _openwakeword_state(self) -> str:
+        result = self._service_command_runner(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{.State.Status}}",
+                self._settings.openwakeword_container_name,
+            ]
+        )
+        if result.returncode != 0:
+            return "not_created"
+        state = (result.stdout or "").strip().lower()
+        return state or "unknown"
+
+    def _openwakeword_service_summary(self) -> dict[str, object]:
+        state = self._openwakeword_state()
+        return {
+            "service_id": self._settings.openwakeword_service_id,
+            "service_name": "openWakeWord",
+            "state": state,
+            "boot_order": 15,
+            "managed_by": "core_supervisor_service_action_proxy",
+            "container_name": self._settings.openwakeword_container_name,
+            "control_script": str(self._settings.openwakeword_control_script),
+        }
+
+    def service_action(self, *, target: str, action: str) -> ServiceActionResponse:
+        normalized_target = str(target or "").strip()
+        normalized_action = str(action or "").strip().lower()
+        if normalized_target != self._settings.openwakeword_service_id:
+            return ServiceActionResponse(
+                target=normalized_target,
+                action=normalized_action,
+                accepted=False,
+                status="unsupported_service",
+                detail="Only the openwakeword service is controlled by this node API.",
+            )
+        if normalized_action not in {"start", "stop", "restart"}:
+            return ServiceActionResponse(
+                target=normalized_target,
+                action=normalized_action,
+                accepted=False,
+                status="unsupported_action",
+                detail="Supported actions are start, stop, and restart.",
+            )
+        script = self._openwakeword_control_script()
+        if not script.exists():
+            return ServiceActionResponse(
+                target=normalized_target,
+                action=normalized_action,
+                accepted=False,
+                status="control_script_missing",
+                detail=str(script),
+            )
+        result = self._service_command_runner([str(script), normalized_action])
+        if result.returncode != 0:
+            return ServiceActionResponse(
+                target=normalized_target,
+                action=normalized_action,
+                accepted=False,
+                status="action_failed",
+                detail=(result.stderr or result.stdout or "").strip() or None,
+            )
+        return ServiceActionResponse(
+            target=normalized_target,
+            action=normalized_action,
+            accepted=True,
+            status=self._openwakeword_state(),
+            detail=(result.stdout or "").strip() or None,
         )
 
     def _supervisor_runtime_payload(self) -> dict[str, object]:
@@ -299,6 +387,7 @@ class NodeRuntimeService:
                 "state": runtime_state,
                 "boot_order": 10,
             },
+            self._openwakeword_service_summary(),
             {
                 "service_id": "frontend",
                 "service_name": "frontend",

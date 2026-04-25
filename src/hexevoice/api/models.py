@@ -329,3 +329,16 @@ class ServiceStatusResponse(BaseModel):
     backend: str
     frontend: str
     scheduler: str
+    openwakeword: str = "unknown"
+
+
+class ServiceActionRequest(BaseModel):
+    target: str = Field(min_length=1)
+
+
+class ServiceActionResponse(BaseModel):
+    target: str
+    action: str
+    accepted: bool
+    status: str
+    detail: str | None = None

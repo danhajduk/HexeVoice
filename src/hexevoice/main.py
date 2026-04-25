@@ -29,6 +29,8 @@ from hexevoice.api.models import (
     OnboardingSessionStartResponse,
     OnboardingStatusResponse,
     ProviderStatusResponse,
+    ServiceActionRequest,
+    ServiceActionResponse,
     ProviderSetupRequest,
     ProviderSetupResponse,
     ServiceStatusResponse,
@@ -245,6 +247,18 @@ def create_app(
     @app.get("/api/services/status", response_model=ServiceStatusResponse)
     async def services_status() -> ServiceStatusResponse:
         return service.service_status_payload()
+
+    @app.post("/api/services/start", response_model=ServiceActionResponse)
+    async def service_start(payload: ServiceActionRequest) -> ServiceActionResponse:
+        return await asyncio.to_thread(service.service_action, target=payload.target, action="start")
+
+    @app.post("/api/services/stop", response_model=ServiceActionResponse)
+    async def service_stop(payload: ServiceActionRequest) -> ServiceActionResponse:
+        return await asyncio.to_thread(service.service_action, target=payload.target, action="stop")
+
+    @app.post("/api/services/restart", response_model=ServiceActionResponse)
+    async def service_restart(payload: ServiceActionRequest) -> ServiceActionResponse:
+        return await asyncio.to_thread(service.service_action, target=payload.target, action="restart")
 
     @app.get("/api/providers/{provider_id}/status", response_model=ProviderStatusResponse)
     async def provider_status(provider_id: str) -> ProviderStatusResponse:

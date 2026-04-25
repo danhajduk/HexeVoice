@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -21,6 +22,17 @@ class FakeSupervisorClient:
     def heartbeat_runtime(self, payload):
         self.heartbeat_payloads.append(payload)
         return {"runtime": payload}
+
+
+class FakeCommandRunner:
+    def __init__(self):
+        self.commands = []
+
+    def __call__(self, command):
+        self.commands.append(command)
+        if command[:3] == ["docker", "inspect", "--format"]:
+            return subprocess.CompletedProcess(command, 0, "running\n", "")
+        return subprocess.CompletedProcess(command, 0, "ok\n", "")
 
 
 def trusted_ready_store(path):
@@ -71,6 +83,7 @@ def test_supervisor_runtime_registration_is_skipped_without_node_id(tmp_path):
 
 def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields(tmp_path):
     client = FakeSupervisorClient()
+    command_runner = FakeCommandRunner()
     store = trusted_ready_store(tmp_path / "state.json")
     service = NodeRuntimeService(
         settings=Settings(
@@ -79,6 +92,7 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
         ),
         onboarding_state_store=store,
         supervisor_client=client,
+        service_command_runner=command_runner,
     )
 
     result = asyncio.run(service.supervisor_heartbeat_once())
@@ -99,6 +113,11 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert registration["health_status"] == "healthy"
     assert registration["running"] is True
     assert "runtime_metadata" in registration
+    services = registration["runtime_metadata"]["services"]
+    openwakeword = next(service for service in services if service["service_id"] == "openwakeword")
+    assert openwakeword["state"] == "running"
+    assert openwakeword["managed_by"] == "core_supervisor_service_action_proxy"
+    assert openwakeword["container_name"] == "hexevoice-openwakeword"
 
     heartbeat = client.heartbeat_payloads[0]
     assert heartbeat["node_id"] == "node-voice-123"
@@ -112,11 +131,13 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
 
 def test_supervisor_runtime_registration_is_not_repeated_after_success(tmp_path):
     client = FakeSupervisorClient()
+    command_runner = FakeCommandRunner()
     store = trusted_ready_store(tmp_path / "state.json")
     service = NodeRuntimeService(
         settings=Settings(public_api_base_url="http://10.0.0.100:9004"),
         onboarding_state_store=store,
         supervisor_client=client,
+        service_command_runner=command_runner,
     )
 
     assert asyncio.run(service.supervisor_heartbeat_once())["status"] == "ok"
@@ -124,3 +145,24 @@ def test_supervisor_runtime_registration_is_not_repeated_after_success(tmp_path)
 
     assert len(client.register_payloads) == 1
     assert len(client.heartbeat_payloads) == 2
+
+
+def test_openwakeword_service_status_and_action_use_control_script(tmp_path):
+    command_runner = FakeCommandRunner()
+    script = tmp_path / "openwakeword-control.sh"
+    script.write_text("#!/usr/bin/env bash\n")
+    service = NodeRuntimeService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "state.json",
+            openwakeword_control_script=script,
+        ),
+        service_command_runner=command_runner,
+    )
+
+    status = service.service_status_payload()
+    result = service.service_action(target="openwakeword", action="restart")
+
+    assert status.openwakeword == "running"
+    assert result.accepted is True
+    assert result.status == "running"
+    assert [str(script), "restart"] in command_runner.commands

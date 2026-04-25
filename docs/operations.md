@@ -52,6 +52,13 @@ When supervisor integration is enabled, the backend registers and heartbeats thr
 - socket: `/run/hexe/supervisor.sock`
 - register route: `POST /api/supervisor/runtimes/register`
 - heartbeat route: `POST /api/supervisor/runtimes/heartbeat`
+
+The registration metadata includes service entries for `backend`, `openwakeword`, and `frontend`. Core Supervisor can inspect and control the wake-word container through the node service proxy routes:
+
+- `GET /api/services/status`
+- `POST /api/services/start` with `{"target":"openwakeword"}`
+- `POST /api/services/stop` with `{"target":"openwakeword"}`
+- `POST /api/services/restart` with `{"target":"openwakeword"}`
 - expected public node API: `http://10.0.0.100:9004`
 
 Logs should be written under `runtime/logs/`.
