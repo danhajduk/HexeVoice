@@ -99,6 +99,9 @@ def create_app(
 
     @app.on_event("startup")
     async def start_supervisor_heartbeat():
+        if app_settings.voice_wake_preload:
+            voice_session_manager.preload_wake_detector()
+
         async def loop():
             while True:
                 await service.supervisor_heartbeat_once()

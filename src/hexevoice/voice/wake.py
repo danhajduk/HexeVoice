@@ -144,9 +144,10 @@ class OpenWakeWordWakeDetector:
             return self._last_detection
 
         model_name, confidence = max(prediction.items(), key=lambda item: item[1])
+        confidence = float(confidence)
         self._last_detection = WakeDetectionResult(
-            detected=confidence >= self._threshold,
-            confidence=float(confidence),
+            detected=bool(confidence >= self._threshold),
+            confidence=confidence,
             model=str(model_name),
             reason=None if confidence >= self._threshold else "below_threshold",
         )
@@ -169,6 +170,10 @@ class OpenWakeWordWakeDetector:
             "active_buffers": len(self._audio_buffers),
             "last_detection": _result_status(self._last_detection),
         }
+
+    def preload(self) -> dict[str, Any]:
+        self._load_model()
+        return self.status()
 
     def _load_model(self):
         if self._model is not None:

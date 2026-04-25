@@ -409,6 +409,12 @@ class VoiceSessionManager:
             },
         }
 
+    def preload_wake_detector(self) -> dict | None:
+        preload = getattr(self._wake_detector, "preload", None)
+        if not callable(preload):
+            return None
+        return preload()
+
     def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
         if self._active_session is None:
             return {"accepted": False, "reason": "no_active_session", "status": self.status()}

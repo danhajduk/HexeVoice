@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     voice_wake_threshold: float = Field(default=0.5, alias="VOICE_WAKE_THRESHOLD", ge=0.0, le=1.0)
     voice_wake_models: str | None = Field(default=None, alias="VOICE_WAKE_MODELS")
     voice_wake_auto_download_models: bool = Field(default=False, alias="VOICE_WAKE_AUTO_DOWNLOAD_MODELS")
+    voice_wake_preload: bool = Field(default=False, alias="VOICE_WAKE_PRELOAD")
     voice_wake_enable_speex_noise_suppression: bool = Field(
         default=False,
         alias="VOICE_WAKE_ENABLE_SPEEX_NOISE_SUPPRESSION",

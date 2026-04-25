@@ -1,5 +1,6 @@
 import base64
 import struct
+import numpy as np
 
 from hexevoice.config.settings import Settings
 from hexevoice.voice import DeterministicWakeDetector, OpenWakeWordWakeDetector, build_wake_detector
@@ -102,3 +103,28 @@ def test_openwakeword_detector_buffers_short_audio_chunks_before_prediction():
     assert len(model.calls[0]) == 1280
     assert detector.status()["active_buffers"] == 1
     assert detector.status()["last_detection"]["confidence"] == 0.8
+
+
+def test_openwakeword_detector_normalizes_numpy_prediction_scalars():
+    class FakeModel:
+        def predict(self, samples):
+            return {"Hexa": np.float32(0.8)}
+
+    detector = OpenWakeWordWakeDetector(threshold=0.5, buffer_ms=80, prediction_frame_ms=80)
+    detector._model = FakeModel()
+    frame_80ms = struct.pack("<1280h", *([1] * 1280))
+
+    result = detector.inspect_chunk(
+        endpoint_id="esp-box-1",
+        session_id="voice-session-1",
+        chunk=VoiceAudioChunkPayload(
+            chunk_index=0,
+            audio_format={"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+            payload_base64=base64.b64encode(frame_80ms).decode("ascii"),
+        ),
+    )
+
+    assert result.detected is True
+    assert isinstance(result.detected, bool)
+    assert result.confidence == float(np.float32(0.8))
+    assert isinstance(result.confidence, float)
