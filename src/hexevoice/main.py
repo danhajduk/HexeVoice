@@ -1,7 +1,8 @@
 import asyncio
 import os
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi.responses import FileResponse
 import uvicorn
 
 from hexevoice.api.models import (
@@ -137,6 +138,16 @@ def create_app(
     @app.get("/api/voice/status")
     async def voice_status() -> dict:
         return voice_session_manager.status()
+
+    @app.get("/api/voice/tts/{stream_id}")
+    async def voice_tts_audio(stream_id: str) -> FileResponse:
+        if not stream_id.startswith("tts-") or not stream_id.replace("-", "").isalnum():
+            raise HTTPException(status_code=404, detail="tts_stream_not_found")
+        tts_dir = app_settings.runtime_dir / "voice_tts"
+        candidates = list(tts_dir.glob(f"{stream_id}.*"))
+        if not candidates:
+            raise HTTPException(status_code=404, detail="tts_stream_not_found")
+        return FileResponse(candidates[0])
 
     @app.post("/api/voice/session/cancel")
     async def voice_session_cancel() -> dict:

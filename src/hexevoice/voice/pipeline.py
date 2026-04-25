@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import io
+from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Protocol
 import wave
@@ -41,6 +42,7 @@ class TtsSynthesis:
     stream_id: str | None = None
     audio_url: str | None = None
     provider_id: str = "deterministic"
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -137,6 +139,81 @@ class DeterministicTextToSpeechAdapter:
         return TtsSynthesis(stream_id=f"tts-{uuid4().hex[:12]}")
 
 
+class OpenAiTextToSpeechAdapter:
+    def __init__(
+        self,
+        *,
+        api_key: str | None,
+        output_dir: Path,
+        model: str = "gpt-4o-mini-tts",
+        voice: str = "alloy",
+        base_url: str = "https://api.openai.com/v1",
+        response_format: str = "wav",
+        timeout_s: float = 30.0,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self._api_key = api_key
+        self._output_dir = output_dir
+        self._model = model
+        self._voice = voice
+        self._base_url = base_url.rstrip("/")
+        self._response_format = response_format
+        self._timeout_s = timeout_s
+        self._http_client = http_client
+
+    def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+        stream_id = f"tts-{uuid4().hex[:12]}"
+        content_type = self._content_type()
+        if not self._api_key:
+            return TtsSynthesis(
+                content_type=content_type,
+                stream_id=stream_id,
+                provider_id="openai",
+                error="missing_api_key",
+            )
+
+        try:
+            client = self._http_client or httpx.Client(timeout=self._timeout_s)
+            try:
+                response = client.post(
+                    f"{self._base_url}/audio/speech",
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    json={
+                        "model": self._model,
+                        "voice": self._voice,
+                        "input": text,
+                        "response_format": self._response_format,
+                    },
+                )
+            finally:
+                if self._http_client is None:
+                    client.close()
+            response.raise_for_status()
+            self._output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = self._output_dir / f"{stream_id}.{self._response_format}"
+            output_path.write_bytes(response.content)
+            return TtsSynthesis(
+                content_type=content_type,
+                stream_id=stream_id,
+                audio_url=f"/api/voice/tts/{stream_id}",
+                provider_id="openai",
+            )
+        except Exception as exc:
+            return TtsSynthesis(
+                content_type=content_type,
+                stream_id=stream_id,
+                provider_id="openai",
+                error=str(exc),
+            )
+
+    def _content_type(self) -> str:
+        if self._response_format == "mp3":
+            return "audio/mpeg"
+        if self._response_format == "opus":
+            return "audio/ogg"
+        return f"audio/{self._response_format}"
+
+
 class VoiceTurnPipeline:
     def __init__(
         self,
@@ -168,6 +245,7 @@ class VoiceTurnPipeline:
 
 def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:
     stt_adapter: SpeechToTextAdapter | None = None
+    tts_adapter: TextToSpeechAdapter | None = None
     if settings.voice_stt_provider == "openai":
         stt_adapter = OpenAiSpeechToTextAdapter(
             api_key=settings.openai_api_key,
@@ -176,5 +254,15 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             prompt=settings.voice_stt_prompt,
             timeout_s=settings.voice_stt_timeout_s,
         )
+    if settings.voice_tts_provider == "openai":
+        tts_adapter = OpenAiTextToSpeechAdapter(
+            api_key=settings.openai_api_key,
+            output_dir=settings.runtime_dir / "voice_tts",
+            model=settings.voice_tts_model,
+            voice=settings.voice_tts_voice,
+            base_url=settings.voice_tts_base_url,
+            response_format=settings.voice_tts_response_format,
+            timeout_s=settings.voice_tts_timeout_s,
+        )
 
-    return VoiceTurnPipeline(assistant_service=assistant_service, stt_adapter=stt_adapter)
+    return VoiceTurnPipeline(assistant_service=assistant_service, stt_adapter=stt_adapter, tts_adapter=tts_adapter)

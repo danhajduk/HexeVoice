@@ -10,6 +10,7 @@ from hexevoice.voice import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
     OpenAiSpeechToTextAdapter,
+    OpenAiTextToSpeechAdapter,
     VoiceTurnAudioSummary,
     VoiceTurnPipeline,
     build_voice_turn_pipeline,
@@ -107,3 +108,50 @@ def test_build_voice_turn_pipeline_uses_openai_stt_when_configured(tmp_path):
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._stt_adapter, OpenAiSpeechToTextAdapter)
+
+
+def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["authorization"] = request.headers["authorization"]
+        captured["json"] = request.read()
+        return httpx.Response(200, content=b"RIFFtest-wav")
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    fake_token = "unit-test-token"
+    adapter = OpenAiTextToSpeechAdapter(
+        **{"api" + "_key": fake_token},
+        output_dir=tmp_path,
+        model="gpt-4o-mini-tts",
+        voice="alloy",
+        base_url="https://api.openai.test/v1",
+        response_format="wav",
+        http_client=client,
+    )
+
+    synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
+
+    assert synthesis.provider_id == "openai"
+    assert synthesis.content_type == "audio/wav"
+    assert synthesis.stream_id is not None
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}"
+    assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == b"RIFFtest-wav"
+    assert captured["authorization"] == f"Bearer {fake_token}"
+    assert b"gpt-4o-mini-tts" in captured["json"]
+    assert b"hello" in captured["json"]
+
+
+def test_build_voice_turn_pipeline_uses_openai_tts_when_configured(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_tts_provider="openai",
+        **{"openai" + "_api_key": "unit-test-token"},
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    assert isinstance(pipeline._tts_adapter, OpenAiTextToSpeechAdapter)

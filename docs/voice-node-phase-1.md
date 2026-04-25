@@ -553,6 +553,15 @@ Accepted for the STT provider implementation:
 - `VOICE_STT_PROVIDER=openai` wires `OpenAiSpeechToTextAdapter`, which posts a transient WAV file to the OpenAI-compatible `/audio/transcriptions` endpoint using `VOICE_STT_MODEL`, `VOICE_STT_BASE_URL`, `VOICE_STT_PROMPT`, `VOICE_STT_TIMEOUT_S`, and `OPENAI_API_KEY`.
 - Raw audio remains in memory only and is cleared when the session completes, cancels, or disconnects.
 
+Task 040 adds the first real TTS provider path.
+
+Accepted for the TTS provider implementation:
+
+- `VOICE_TTS_PROVIDER=deterministic` remains the default development path.
+- `VOICE_TTS_PROVIDER=openai` wires `OpenAiTextToSpeechAdapter`, which posts response text to the OpenAI-compatible `/audio/speech` endpoint using `VOICE_TTS_MODEL`, `VOICE_TTS_VOICE`, `VOICE_TTS_BASE_URL`, `VOICE_TTS_RESPONSE_FORMAT`, `VOICE_TTS_TIMEOUT_S`, and `OPENAI_API_KEY`.
+- Generated TTS audio is stored under `runtime/voice_tts` and exposed through `/api/voice/tts/{stream_id}` for endpoint playback.
+- The `tts.ready` event now carries a playable `audio_url` when the real TTS provider succeeds.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 has produced the first MVP wake-to-reply contract path. The current handoff is recorded in `docs/voice-loop-phase-1-handoff.md`.

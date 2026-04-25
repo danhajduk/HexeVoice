@@ -196,6 +196,19 @@ def test_voice_status_and_operator_cancel_surface_active_session(tmp_path):
         assert cancel.json()["status"]["active_session"] is None
 
 
+def test_voice_tts_audio_route_serves_generated_stream(tmp_path):
+    stream_id = "tts-teststream"
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    (tts_dir / f"{stream_id}.wav").write_bytes(b"RIFFtest-wav")
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)))
+
+    response = client.get(f"/api/voice/tts/{stream_id}")
+
+    assert response.status_code == 200
+    assert response.content == b"RIFFtest-wav"
+
+
 def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):
     manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None))
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
