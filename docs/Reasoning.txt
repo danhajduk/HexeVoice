@@ -148,3 +148,9 @@ Chosen fix: Add backend voice status and cancel APIs backed by the in-memory ses
 What changed: Added `/api/voice/status` and `/api/voice/session/cancel`, tracked recent voice metadata in `VoiceSessionManager`, added frontend API helpers, replaced placeholder voice cards with live observability cards, wired refresh/test assistant/stop session actions, and documented the remaining replay/mute/reconnect gaps.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_websocket.py` (9 passed); `PYTHONPATH=src .venv/bin/pytest -q` (61 passed, 48 FastAPI deprecation warnings); `cd frontend && npm run build` (passed).
 ###########
+Task #035
+Step objective: Validate and document the first integrated single-endpoint wake-to-reply loop across backend contracts, firmware paths, and frontend observability.
+Chosen fix: Add a named integration test for endpoint heartbeat, WebSocket session start, wake acceptance, transcript finalization, assistant response, TTS metadata, completion, dashboard status, and cancel behavior, then document the implementation and remaining provider/device gaps in a handoff note.
+What changed: Added `tests/test_voice_loop_integration.py`, created `docs/voice-loop-phase-1-handoff.md`, updated phase docs to reflect the tested MVP loop, and recorded that ESP-IDF build validation is blocked in this shell because `idf.py` is unavailable.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_loop_integration.py` (2 passed); `PYTHONPATH=src .venv/bin/pytest -q` (63 passed, 52 FastAPI deprecation warnings); `cd frontend && npm run build` (passed); `cd firmware && idf.py build` blocked because `idf.py` is not installed.
+###########

@@ -2,6 +2,8 @@
 
 Created: 04/25/2026
 
+Phase 1 handoff: `docs/voice-loop-phase-1-handoff.md`
+
 ## Purpose
 
 This file records the current HexeVoice baseline before the first real wake-to-reply voice loop. It separates implemented behavior from scaffolding so Phase 1 work can start from the actual repository state.
@@ -22,7 +24,7 @@ Status labels:
 | ESP32 microphone + VAD loop | partial | Firmware initializes BSP audio, opens a 16 kHz mono microphone stream, starts a VAD task, estimates energy, moves local UI state between idle/listening, and queues bounded audio frames toward the backend client in `firmware/main/board/audio.cpp`; app state is in `firmware/main/app_state.h`. |
 | Text assistant endpoint | implemented | `POST /api/assistant/turn` is registered in `src/hexevoice/main.py`; request and response contracts are in `src/hexevoice/api/models.py`; deterministic local responses and simple commands are in `src/hexevoice/assistant/service.py`. |
 | Endpoint heartbeat/status | partial | `POST /api/endpoint/heartbeat` and `GET /api/endpoint/status/{endpoint_id}` are registered in `src/hexevoice/main.py`; in-memory heartbeat state is implemented in `src/hexevoice/endpoint/service.py`; there is no persistent endpoint registry yet. |
-| Voice pipeline | partial | The backend now has a voice protocol contract, in-memory single-endpoint WebSocket session manager, wake detector adapter boundary, and deterministic STT -> assistant -> TTS pipeline boundary under `src/hexevoice/voice/`; real STT/TTS providers and firmware playback are still not implemented. |
+| Voice pipeline | partial | The backend now has a voice protocol contract, in-memory single-endpoint WebSocket session manager, wake detector adapter boundary, deterministic STT -> assistant -> TTS pipeline boundary, and integration tests under `src/hexevoice/voice/` and `tests/test_voice_loop_integration.py`; real STT/TTS providers and firmware audio playback are still not implemented. |
 
 ## Backend Inventory
 
@@ -143,11 +145,12 @@ Docs/testing:
 
 ## Phase 1 Starting Point
 
-The repo is ready for Phase 1 planning from this baseline if Phase 1 is treated as a first real voice-loop implementation, not a cleanup of an already-working speech pipeline. The safest implementation order is:
+The first MVP wake-to-reply loop is now implemented and documented in `docs/voice-loop-phase-1-handoff.md`. The next phase should treat this as a tested contract path that still needs production providers, device build validation, and real TTS playback.
 
-1. Backend voice event/session contract.
-2. Backend WebSocket endpoint and in-memory single-session manager.
-3. Firmware backend client and audio chunk sender.
-4. Backend wake/STT/assistant/TTS adapters.
-5. Firmware playback and event-driven UI.
-6. Frontend endpoint/session observability.
+Recommended next order:
+
+1. Run ESP-IDF build/device validation with `idf.py` available.
+2. Install and tune openWakeWord.
+3. Replace deterministic STT/TTS adapters with real providers.
+4. Add firmware TTS audio playback.
+5. Persist endpoint registry, recent sessions, and event history.

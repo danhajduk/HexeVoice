@@ -521,7 +521,9 @@ Accepted for the first provider-adapter implementation:
 
 ## Proposed Phase 1 Outcome
 
-Phase 1 is successful if, by the end of it, we have:
+Phase 1 has produced the first MVP wake-to-reply contract path. The current handoff is recorded in `docs/voice-loop-phase-1-handoff.md`.
+
+Phase 1 is successful if, by the end of the remaining provider/device pass, we have:
 
 - a written endpoint protocol spec
 - a defined state model for endpoints and sessions

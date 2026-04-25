@@ -47,4 +47,3 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 035: Integrate and validate the first single-endpoint wake-to-reply voice loop

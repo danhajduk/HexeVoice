@@ -23,3 +23,4 @@ Task 031: Add firmware backend client and audio chunk sender - Completed on 04/2
 Task 032: Add STT to assistant turn to TTS adapters - Completed on 04/25/2026 11:36
 Task 033: Add firmware playback and event-driven UI - Completed on 04/25/2026 11:40
 Task 034: Replace frontend placeholders with endpoint and session observability - Completed on 04/25/2026 11:44
+Task 035: Integrate and validate the first single-endpoint wake-to-reply voice loop - Completed on 04/25/2026 11:46
