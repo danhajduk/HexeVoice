@@ -27,3 +27,4 @@ Task 035: Integrate and validate the first single-endpoint wake-to-reply voice l
 Task 036: Add configurable real backend openWakeWord provider - Completed on 04/25/2026 13:20
 Task 037: Add rolling backend wake audio buffer and wake provider health status - Completed on 04/25/2026 13:22
 Task 038: Align firmware audio capture with backend wake authority - Completed on 04/25/2026 13:24
+Task 039: Wire real STT provider adapter into completed wake sessions - Completed on 04/25/2026 13:28

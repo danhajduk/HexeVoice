@@ -24,6 +24,7 @@ from hexevoice.voice.session_manager import VoiceSessionManager
 from hexevoice.voice.pipeline import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
+    OpenAiSpeechToTextAdapter,
     SpeechToTextAdapter,
     SpeechTranscript,
     TextToSpeechAdapter,
@@ -31,6 +32,7 @@ from hexevoice.voice.pipeline import (
     VoiceTurnAudioSummary,
     VoiceTurnPipeline,
     VoiceTurnResult,
+    build_voice_turn_pipeline,
 )
 from hexevoice.voice.wake import (
     DeterministicWakeDetector,
@@ -61,6 +63,7 @@ __all__ = [
     "VoiceSessionManager",
     "DeterministicSpeechToTextAdapter",
     "DeterministicTextToSpeechAdapter",
+    "OpenAiSpeechToTextAdapter",
     "SpeechToTextAdapter",
     "SpeechTranscript",
     "TextToSpeechAdapter",
@@ -68,6 +71,7 @@ __all__ = [
     "VoiceTurnAudioSummary",
     "VoiceTurnPipeline",
     "VoiceTurnResult",
+    "build_voice_turn_pipeline",
     "DeterministicWakeDetector",
     "OpenWakeWordWakeDetector",
     "WakeDetectionResult",

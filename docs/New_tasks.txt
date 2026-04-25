@@ -47,7 +47,6 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 039: Wire real STT provider adapter into completed wake sessions
 [TODO] Task 040: Wire real TTS provider adapter and playable response audio
 [TODO] Task 041: Complete firmware TTS playback for backend response audio
 [TODO] Task 042: Add Phase 1 voice loop observability and operator errors

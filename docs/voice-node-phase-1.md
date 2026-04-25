@@ -544,6 +544,15 @@ Accepted for the first provider-adapter implementation:
 - TTS output is metadata only for now (`stream_id`, content type, optional URL); firmware playback is handled later.
 - Raw audio is not persisted by the pipeline.
 
+Task 039 adds the first real STT provider path.
+
+Accepted for the STT provider implementation:
+
+- The WebSocket session manager aggregates decoded PCM chunks in memory for the active session and passes them to the turn pipeline on `audio.end`.
+- `VOICE_STT_PROVIDER=deterministic` remains the default development path.
+- `VOICE_STT_PROVIDER=openai` wires `OpenAiSpeechToTextAdapter`, which posts a transient WAV file to the OpenAI-compatible `/audio/transcriptions` endpoint using `VOICE_STT_MODEL`, `VOICE_STT_BASE_URL`, `VOICE_STT_PROMPT`, `VOICE_STT_TIMEOUT_S`, and `OPENAI_API_KEY`.
+- Raw audio remains in memory only and is cleared when the session completes, cancels, or disconnects.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 has produced the first MVP wake-to-reply contract path. The current handoff is recorded in `docs/voice-loop-phase-1-handoff.md`.

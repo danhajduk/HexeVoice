@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from datetime import UTC, datetime
 import json
 from uuid import uuid4
@@ -36,6 +37,8 @@ class VoiceSessionManager:
         self._connected_endpoint_id: str | None = None
         self._active_session: VoiceSessionSnapshot | None = None
         self._chunk_count = 0
+        self._audio_chunks: list[bytes] = []
+        self._audio_format = None
         self._sequence = 0
         self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
         self._turn_pipeline = turn_pipeline
@@ -73,6 +76,8 @@ class VoiceSessionManager:
             self._connected_endpoint_id = None
             self._active_session = None
             self._chunk_count = 0
+            self._audio_chunks = []
+            self._audio_format = None
 
     def _handle_raw_message(self, raw_message: str) -> list[VoiceEventEnvelope]:
         try:
@@ -180,6 +185,8 @@ class VoiceSessionManager:
             wake_source=payload.wake_source,
         )
         self._chunk_count = 0
+        self._audio_chunks = []
+        self._audio_format = payload.audio_format
         return [self._state_event("session.state", self._active_session)]
 
     def _handle_audio_chunk(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
@@ -201,6 +208,12 @@ class VoiceSessionManager:
             ]
 
         self._chunk_count += 1
+        self._audio_format = payload.audio_format
+        if payload.payload_base64:
+            try:
+                self._audio_chunks.append(base64.b64decode(payload.payload_base64, validate=True))
+            except ValueError:
+                pass
         events: list[VoiceEventEnvelope] = []
         detection = self._wake_detector.inspect_chunk(
             endpoint_id=event.endpoint_id,
@@ -257,6 +270,8 @@ class VoiceSessionManager:
             cancelled = self._state_event("session.cancelled", session)
             self._active_session = None
             self._chunk_count = 0
+            self._audio_chunks = []
+            self._audio_format = None
             return [cancelled]
 
         if session.session_state == "wake_detected":
@@ -270,6 +285,10 @@ class VoiceSessionManager:
                     endpoint_id=session.endpoint_id,
                     session_id=session.session_id,
                     chunk_count=self._chunk_count,
+                    sample_rate_hz=self._audio_format.sample_rate_hz if self._audio_format else None,
+                    encoding=self._audio_format.encoding if self._audio_format else None,
+                    channels=self._audio_format.channels if self._audio_format else 1,
+                    audio_bytes=b"".join(self._audio_chunks),
                 )
             )
             events.append(
@@ -329,6 +348,8 @@ class VoiceSessionManager:
         )
         self._active_session = None
         self._chunk_count = 0
+        self._audio_chunks = []
+        self._audio_format = None
         return events
 
     def status(self) -> dict:
@@ -363,6 +384,8 @@ class VoiceSessionManager:
         self._active_session.cancel_reason = reason
         self._active_session = None
         self._chunk_count = 0
+        self._audio_chunks = []
+        self._audio_format = None
         return {"accepted": True, "reason": reason, "status": self.status()}
 
     def _handle_session_cancel(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
@@ -375,6 +398,8 @@ class VoiceSessionManager:
         cancelled = self._state_event("session.cancelled", session)
         self._active_session = None
         self._chunk_count = 0
+        self._audio_chunks = []
+        self._audio_format = None
         return [cancelled]
 
     def _handle_session_ping(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:

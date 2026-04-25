@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")
     bootstrap_topic: str = Field(default="hexe/bootstrap/core", alias="BOOTSTRAP_TOPIC")
     provider_id: str = Field(default="voice", alias="PROVIDER_ID")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
     voice_wake_provider: Literal["openwakeword", "deterministic"] = Field(
         default="openwakeword",
         alias="VOICE_WAKE_PROVIDER",
@@ -44,6 +45,11 @@ class Settings(BaseSettings):
     )
     voice_wake_buffer_ms: int = Field(default=1280, alias="VOICE_WAKE_BUFFER_MS", ge=80)
     voice_wake_prediction_frame_ms: int = Field(default=80, alias="VOICE_WAKE_PREDICTION_FRAME_MS", ge=80)
+    voice_stt_provider: Literal["deterministic", "openai"] = Field(default="deterministic", alias="VOICE_STT_PROVIDER")
+    voice_stt_model: str = Field(default="gpt-4o-mini-transcribe", alias="VOICE_STT_MODEL")
+    voice_stt_base_url: str = Field(default="https://api.openai.com/v1", alias="VOICE_STT_BASE_URL")
+    voice_stt_prompt: str | None = Field(default=None, alias="VOICE_STT_PROMPT")
+    voice_stt_timeout_s: float = Field(default=30.0, alias="VOICE_STT_TIMEOUT_S", gt=0)
 
     def resolved_onboarding_state_path(self) -> Path:
         if self.onboarding_state_path is not None:

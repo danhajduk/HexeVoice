@@ -4,7 +4,8 @@ from starlette.websockets import WebSocketDisconnect
 
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
-from hexevoice.voice import DeterministicWakeDetector, VoiceSessionManager
+from hexevoice.api.models import AssistantTurnResponse
+from hexevoice.voice import DeterministicWakeDetector, SpeechTranscript, TtsSynthesis, VoiceSessionManager, VoiceTurnResult
 
 
 def voice_event(event_type, *, endpoint_id="esp-box-1", session_id="voice-session-1", payload=None):
@@ -113,6 +114,60 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     assert status.json()["last_transcript"] == "hello"
     assert "Hello from lab-voice" in status.json()["last_response"]
     assert status.json()["last_tts"]["stream_id"].startswith("tts-")
+
+
+def test_voice_websocket_passes_transient_audio_to_turn_pipeline(tmp_path):
+    class CapturingPipeline:
+        def __init__(self) -> None:
+            self.audio = None
+
+        def complete_turn(self, audio):
+            self.audio = audio
+            return VoiceTurnResult(
+                transcript=SpeechTranscript(text="hello", confidence=1.0),
+                assistant_response=AssistantTurnResponse(
+                    endpoint_id=audio.endpoint_id,
+                    session_id=audio.session_id,
+                    heard_text="hello",
+                    reply_text="hi",
+                    spoken_text="hi",
+                    handled_locally=False,
+                    command=None,
+                    device_state="speaking",
+                ),
+                tts=TtsSynthesis(stream_id="tts-test"),
+            )
+
+    pipeline = CapturingPipeline()
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        turn_pipeline=pipeline,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        websocket.receive_json()
+
+    assert pipeline.audio is not None
+    assert pipeline.audio.audio_bytes == b"\x00\x01\x02\x03"
+    assert pipeline.audio.sample_rate_hz == 16000
+    assert pipeline.audio.encoding == "pcm_s16le"
+    assert pipeline.audio.channels == 1
 
 
 def test_voice_status_and_operator_cancel_surface_active_session(tmp_path):

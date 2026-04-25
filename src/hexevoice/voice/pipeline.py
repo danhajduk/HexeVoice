@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import io
+from typing import TYPE_CHECKING
 from typing import Protocol
+import wave
 from uuid import uuid4
+
+import httpx
 
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
+
+if TYPE_CHECKING:
+    from hexevoice.config.settings import Settings
 
 
 @dataclass(frozen=True)
@@ -15,6 +23,8 @@ class VoiceTurnAudioSummary:
     chunk_count: int
     sample_rate_hz: int | None = None
     encoding: str | None = None
+    channels: int = 1
+    audio_bytes: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -22,6 +32,7 @@ class SpeechTranscript:
     text: str
     confidence: float | None = None
     provider_id: str = "deterministic"
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +70,68 @@ class DeterministicSpeechToTextAdapter:
         return SpeechTranscript(text=self._transcript, confidence=1.0)
 
 
+class OpenAiSpeechToTextAdapter:
+    def __init__(
+        self,
+        *,
+        api_key: str | None,
+        model: str = "gpt-4o-mini-transcribe",
+        base_url: str = "https://api.openai.com/v1",
+        prompt: str | None = None,
+        timeout_s: float = 30.0,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self._api_key = api_key
+        self._model = model
+        self._base_url = base_url.rstrip("/")
+        self._prompt = prompt
+        self._timeout_s = timeout_s
+        self._http_client = http_client
+
+    def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
+        if not self._api_key:
+            return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error="missing_api_key")
+        if not audio.audio_bytes:
+            return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error="empty_audio")
+
+        try:
+            audio_file = self._audio_file(audio)
+            data = {"model": self._model, "response_format": "json"}
+            if self._prompt:
+                data["prompt"] = self._prompt
+            client = self._http_client or httpx.Client(timeout=self._timeout_s)
+            try:
+                response = client.post(
+                    f"{self._base_url}/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {self._api_key}"},
+                    data=data,
+                    files={"file": ("audio.wav", audio_file, "audio/wav")},
+                )
+            finally:
+                if self._http_client is None:
+                    client.close()
+            response.raise_for_status()
+            payload = response.json()
+            text = str(payload.get("text") or "").strip()
+            return SpeechTranscript(text=text, provider_id="openai")
+        except Exception as exc:
+            return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error=str(exc))
+
+    def _audio_file(self, audio: VoiceTurnAudioSummary) -> bytes:
+        if audio.encoding == "wav":
+            return audio.audio_bytes or b""
+        if audio.encoding != "pcm_s16le":
+            return audio.audio_bytes or b""
+
+        buffer = io.BytesIO()
+        with wave.open(buffer, "wb") as wav_file:
+            wav_file.setnchannels(audio.channels)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(audio.sample_rate_hz or 16000)
+            wav_file.writeframes(audio.audio_bytes or b"")
+        return buffer.getvalue()
+
+
 class DeterministicTextToSpeechAdapter:
     def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
         return TtsSynthesis(stream_id=f"tts-{uuid4().hex[:12]}")
@@ -91,3 +164,17 @@ class VoiceTurnPipeline:
             text=assistant_response.spoken_text,
         )
         return VoiceTurnResult(transcript=transcript, assistant_response=assistant_response, tts=tts)
+
+
+def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:
+    stt_adapter: SpeechToTextAdapter | None = None
+    if settings.voice_stt_provider == "openai":
+        stt_adapter = OpenAiSpeechToTextAdapter(
+            api_key=settings.openai_api_key,
+            model=settings.voice_stt_model,
+            base_url=settings.voice_stt_base_url,
+            prompt=settings.voice_stt_prompt,
+            timeout_s=settings.voice_stt_timeout_s,
+        )
+
+    return VoiceTurnPipeline(assistant_service=assistant_service, stt_adapter=stt_adapter)
