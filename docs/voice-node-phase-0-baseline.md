@@ -41,6 +41,7 @@ Partial:
 - `/api/voice/ws` is registered in `src/hexevoice/main.py` and handled by `src/hexevoice/voice/session_manager.py`. It accepts one endpoint connection, one active session, `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping`, and returns state/completion/cancel/error envelopes. The manager is in-memory only and does not yet process audio.
 - `src/hexevoice/voice/wake.py` defines the backend wake authority boundary. The WebSocket manager inspects incoming audio chunks with a `WakeDetector`, emits `wake.accepted` on detection, and uses a deterministic fake detector in tests while runtime defaults to an optional openWakeWord adapter.
 - `src/hexevoice/voice/pipeline.py` defines STT and TTS adapter protocols plus deterministic fake adapters. The WebSocket manager can finalize a turn through transcript, assistant response, TTS metadata, and completion events without persisting raw audio.
+- `GET /api/voice/status` and `POST /api/voice/session/cancel` expose voice observability and the supported operator cancel action for the frontend dashboard.
 
 Missing:
 
@@ -60,15 +61,13 @@ Implemented:
 
 Partial:
 
-- The voice endpoint dashboard exists as an operator surface, but the microphone, STT, TTS, wake-word, audio-path, session-history, and transport-health cards are placeholder-only.
-- Dashboard actions such as refresh endpoint and test assistant turn are visually present, but real endpoint controls are not wired.
+- The voice endpoint dashboard now renders backend voice status, active session state, recent transcript, response, TTS metadata, last error, transport health, and supported actions from live APIs. Replay, mute, and reconnect are visible but disabled until backend support exists.
 
 Missing:
 
-- Live endpoint registration view.
-- Voice WebSocket/session telemetry view.
-- Last transcript, last response, last error, and active session timeline.
-- Operator controls for stop, replay, mute, and reconnect.
+- Persistent endpoint registration view.
+- Active session timeline/history beyond the latest in-memory snapshot.
+- Backend support for replay, mute, and reconnect operator actions.
 
 ## Firmware Inventory
 
@@ -134,8 +133,8 @@ Firmware playback:
 
 Frontend observability:
 
-- Replace voice endpoint placeholders with live endpoint state, active session, last transcript, last response, last error, and transport health.
-- Wire operator actions for stop, replay, mute, reconnect, and test assistant turn.
+- Persist or stream voice timeline history beyond the current latest snapshot.
+- Wire backend support for replay, mute, and reconnect.
 
 Docs/testing:
 

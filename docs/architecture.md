@@ -44,6 +44,13 @@ Backend wake authority now enters through `src/hexevoice/voice/wake.py`. The ses
 
 The first voice turn pipeline boundary lives in `src/hexevoice/voice/pipeline.py`. It defines STT and TTS adapter protocols plus deterministic development adapters. On `audio.end`, the WebSocket manager can run the turn through STT finalization, the existing `AssistantTurnService`, and TTS synthesis metadata, then emit `transcript.final`, `response.text`, `tts.ready`, and `session.completed` events. Real STT/TTS providers are not installed by default, and raw audio is still not persisted.
 
+Voice observability now has local backend APIs for the dashboard:
+
+- `GET /api/voice/status`
+- `POST /api/voice/session/cancel`
+
+The status route returns endpoint connection state, transport health, active session snapshot, recent transcript/response/TTS/error metadata, and supported operator actions. The frontend voice endpoint dashboard consumes this route instead of placeholder cards.
+
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 
 1. `node_identity`

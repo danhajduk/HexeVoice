@@ -1,4 +1,5 @@
-export function VoiceEndpointActionsCard({ onRefresh }) {
+export function VoiceEndpointActionsCard({ voiceStatus, onRefresh, onTestTurn, onStopSession, actionMessage }) {
+  const actions = voiceStatus?.supported_actions || {};
   return (
     <section className="card stack panel">
       <div className="section-heading">
@@ -11,16 +12,23 @@ export function VoiceEndpointActionsCard({ onRefresh }) {
         <button className="btn btn-ghost" type="button" onClick={onRefresh}>
           Refresh endpoint
         </button>
-        <button className="btn btn-ghost" type="button" disabled>
+        <button className="btn btn-ghost" type="button" onClick={onTestTurn}>
           Test assistant turn
         </button>
-        <button className="btn btn-ghost" type="button" disabled>
-          Open device console
+        <button className="btn btn-ghost" type="button" onClick={onStopSession} disabled={!actions.stop_session}>
+          Stop session
+        </button>
+        <button className="btn btn-ghost" type="button" disabled={!actions.replay_response}>
+          Replay response
+        </button>
+        <button className="btn btn-ghost" type="button" disabled={!actions.mute_endpoint}>
+          Mute endpoint
+        </button>
+        <button className="btn btn-ghost" type="button" disabled={!actions.reconnect}>
+          Reconnect
         </button>
       </div>
-      <div className="callout">
-        Placeholder for live endpoint actions. We can wire real device and assistant controls here next.
-      </div>
+      {actionMessage ? <div className="callout">{actionMessage}</div> : null}
     </section>
   );
 }

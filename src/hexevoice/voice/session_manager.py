@@ -39,6 +39,11 @@ class VoiceSessionManager:
         self._sequence = 0
         self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
         self._turn_pipeline = turn_pipeline
+        self._last_transcript: str | None = None
+        self._last_response: str | None = None
+        self._last_error: dict | None = None
+        self._last_tts: dict | None = None
+        self._last_event_type: str | None = None
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -277,6 +282,7 @@ class VoiceSessionManager:
                     ).model_dump(mode="json"),
                 )
             )
+            self._last_transcript = turn.transcript.text
             if turn.assistant_response.handled_locally:
                 self._set_session_state("local_command", ux_state="thinking")
             else:
@@ -291,7 +297,13 @@ class VoiceSessionManager:
                     ),
                 )
             )
+            self._last_response = turn.assistant_response.spoken_text
             self._set_session_state("synthesizing", ux_state="thinking")
+            self._last_tts = {
+                "content_type": turn.tts.content_type,
+                "stream_id": turn.tts.stream_id,
+                "audio_url": turn.tts.audio_url,
+            }
             events.append(
                 self._state_event(
                     "tts.ready",
@@ -318,6 +330,39 @@ class VoiceSessionManager:
         self._active_session = None
         self._chunk_count = 0
         return events
+
+    def status(self) -> dict:
+        active_snapshot = self._active_session.model_dump(mode="json") if self._active_session else None
+        return {
+            "endpoint_id": self._connected_endpoint_id,
+            "connection_state": "connected" if self._connection_active else "offline",
+            "transport_health": "online" if self._connection_active else "offline",
+            "active_session": active_snapshot,
+            "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
+            "last_event_type": self._last_event_type,
+            "last_transcript": self._last_transcript,
+            "last_response": self._last_response,
+            "last_tts": self._last_tts,
+            "last_error": self._last_error,
+            "supported_actions": {
+                "refresh": True,
+                "test_assistant_turn": True,
+                "stop_session": self._active_session is not None,
+                "replay_response": False,
+                "mute_endpoint": False,
+                "reconnect": False,
+            },
+        }
+
+    def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
+        if self._active_session is None:
+            return {"accepted": False, "reason": "no_active_session", "status": self.status()}
+
+        self._set_session_state("cancelled", ux_state="idle")
+        self._active_session.cancel_reason = reason
+        self._active_session = None
+        self._chunk_count = 0
+        return {"accepted": True, "reason": reason, "status": self.status()}
 
     def _handle_session_cancel(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         session = self._require_active_session(event)
@@ -385,6 +430,7 @@ class VoiceSessionManager:
         payload = {"snapshot": session.model_dump(mode="json")}
         if extra_payload:
             payload.update(extra_payload)
+        self._last_event_type = event_type
         return VoiceEventEnvelope(
             event_type=event_type,
             endpoint_id=session.endpoint_id,
@@ -403,13 +449,16 @@ class VoiceSessionManager:
         message: str,
         recoverable: bool,
     ) -> VoiceEventEnvelope:
+        payload = VoiceErrorPayload(code=code, message=message, recoverable=recoverable).model_dump(mode="json")
+        self._last_event_type = "session.error"
+        self._last_error = payload
         return VoiceEventEnvelope(
             event_type="session.error",
             endpoint_id=endpoint_id or "unknown",
             direction="backend_to_endpoint",
             session_id=session_id,
             sequence=self._next_sequence(),
-            payload=VoiceErrorPayload(code=code, message=message, recoverable=recoverable).model_dump(mode="json"),
+            payload=payload,
         )
 
     def _next_sequence(self) -> int:

@@ -108,6 +108,36 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     assert completed["event_type"] == "session.completed"
     assert completed["payload"]["snapshot"]["session_state"] == "completed"
 
+    status = client.get("/api/voice/status")
+    assert status.status_code == 200
+    assert status.json()["last_transcript"] == "hello"
+    assert "Hello from lab-voice" in status.json()["last_response"]
+    assert status.json()["last_tts"]["stream_id"].startswith("tts-")
+
+
+def test_voice_status_and_operator_cancel_surface_active_session(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(onboarding_state_path=tmp_path / "state.json"),
+            voice_wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+
+        status = client.get("/api/voice/status")
+        assert status.status_code == 200
+        assert status.json()["connection_state"] == "connected"
+        assert status.json()["active_session"]["session_state"] == "idle"
+        assert status.json()["supported_actions"]["stop_session"] is True
+
+        cancel = client.post("/api/voice/session/cancel")
+        assert cancel.status_code == 200
+        assert cancel.json()["accepted"] is True
+        assert cancel.json()["status"]["active_session"] is None
+
 
 def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):
     manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None))

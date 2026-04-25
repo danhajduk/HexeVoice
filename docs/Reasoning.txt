@@ -142,3 +142,9 @@ Chosen fix: Parse backend WebSocket event envelopes in the firmware backend clie
 What changed: Added backend event parsing with cJSON, fixed the speaking state mapping to use existing `kReplying`, added TTS-ready/stop hooks, wired VAD silence to finish the audio stream, wired mute/config buttons to cancel active sessions, and updated firmware docs. Real TTS audio download/playback remains pending.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_endpoint_config.py` (1 passed); `PYTHONPATH=src .venv/bin/pytest -q` (60 passed, 46 FastAPI deprecation warnings). `idf.py build` could not run because `idf.py` is not installed in this shell.
 ###########
+Task #034
+Step objective: Replace voice dashboard placeholders with live endpoint/session observability and supported operator actions.
+Chosen fix: Add backend voice status and cancel APIs backed by the in-memory session manager, fetch voice status in the app shell, and rebuild the voice endpoint dashboard around connection, transport, active session, latest transcript/response/TTS/error, and action support.
+What changed: Added `/api/voice/status` and `/api/voice/session/cancel`, tracked recent voice metadata in `VoiceSessionManager`, added frontend API helpers, replaced placeholder voice cards with live observability cards, wired refresh/test assistant/stop session actions, and documented the remaining replay/mute/reconnect gaps.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_websocket.py` (9 passed); `PYTHONPATH=src .venv/bin/pytest -q` (61 passed, 48 FastAPI deprecation warnings); `cd frontend && npm run build` (passed).
+###########

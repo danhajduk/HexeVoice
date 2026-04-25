@@ -132,6 +132,14 @@ def create_app(
     async def voice_websocket(websocket: WebSocket) -> None:
         await voice_session_manager.handle_websocket(websocket)
 
+    @app.get("/api/voice/status")
+    async def voice_status() -> dict:
+        return voice_session_manager.status()
+
+    @app.post("/api/voice/session/cancel")
+    async def voice_session_cancel() -> dict:
+        return voice_session_manager.cancel_from_operator()
+
     @app.get("/api/node/status", response_model=NodeStatusResponse)
     async def node_status() -> NodeStatusResponse:
         return service.status_payload()

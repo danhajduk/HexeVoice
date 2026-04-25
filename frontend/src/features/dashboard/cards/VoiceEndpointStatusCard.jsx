@@ -1,4 +1,4 @@
-export function VoiceEndpointStatusCard({ status, providerSetup, capabilities }) {
+export function VoiceEndpointStatusCard({ status, providerSetup, capabilities, voiceStatus }) {
   return (
     <section className="card stack panel">
       <div className="section-heading">
@@ -6,12 +6,16 @@ export function VoiceEndpointStatusCard({ status, providerSetup, capabilities })
           <p className="panel-kicker">Endpoint Status</p>
           <h2 className="panel-title">Voice Endpoint</h2>
         </div>
-        <span className="status-pill status-pill-neutral">local endpoint</span>
+        <span className="status-pill status-pill-neutral">{voiceStatus?.connection_state || "offline"}</span>
       </div>
       <dl className="facts">
         <div>
           <dt>Namespace</dt>
           <dd>voice</dd>
+        </div>
+        <div>
+          <dt>Endpoint</dt>
+          <dd>{voiceStatus?.endpoint_id || "not connected"}</dd>
         </div>
         <div>
           <dt>Enabled providers</dt>
@@ -26,9 +30,6 @@ export function VoiceEndpointStatusCard({ status, providerSetup, capabilities })
           <dd>{String(status?.operational_ready ?? false)}</dd>
         </div>
       </dl>
-      <div className="callout">
-        This section will become the operator home for device, speech, transport, and assistant-turn visibility.
-      </div>
     </section>
   );
 }

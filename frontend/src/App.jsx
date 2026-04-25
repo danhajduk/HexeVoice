@@ -6,6 +6,7 @@ import {
   getOnboardingStatus,
   getOperationalStatus,
   getProviderSetup,
+  getVoiceStatus,
   restartOnboardingSetup,
 } from "./api/client";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
@@ -144,6 +145,7 @@ export default function App() {
   const [capabilities, setCapabilities] = useState(null);
   const [governance, setGovernance] = useState(null);
   const [operational, setOperational] = useState(null);
+  const [voiceStatus, setVoiceStatus] = useState(null);
   const [error, setError] = useState("");
   const [restartingSetup, setRestartingSetup] = useState(false);
   const [routeView, setRouteView] = useState(() =>
@@ -167,6 +169,7 @@ export default function App() {
       capabilityPayload,
       governancePayload,
       operationalPayload,
+      voicePayload,
     ] = await Promise.all([
       getNodeStatus(),
       getOnboardingStatus(),
@@ -174,6 +177,7 @@ export default function App() {
       getCapabilities().catch(() => null),
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
+      getVoiceStatus().catch(() => null),
     ]);
     setStatus(statusPayload);
     setOnboarding(onboardingPayload);
@@ -181,6 +185,7 @@ export default function App() {
     setCapabilities(capabilityPayload);
     setGovernance(governancePayload);
     setOperational(operationalPayload);
+    setVoiceStatus(voicePayload);
     setError("");
   }, []);
 
@@ -193,8 +198,9 @@ export default function App() {
       getCapabilities().catch(() => null),
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
+      getVoiceStatus().catch(() => null),
     ])
-      .then(([statusPayload, onboardingPayload, providerPayload, capabilityPayload, governancePayload, operationalPayload]) => {
+      .then(([statusPayload, onboardingPayload, providerPayload, capabilityPayload, governancePayload, operationalPayload, voicePayload]) => {
         if (!mounted) {
           return;
         }
@@ -204,6 +210,7 @@ export default function App() {
         setCapabilities(capabilityPayload);
         setGovernance(governancePayload);
         setOperational(operationalPayload);
+        setVoiceStatus(voicePayload);
       })
       .catch((err) => {
         if (mounted) {
@@ -295,6 +302,7 @@ export default function App() {
           status={status}
           providerSetup={providerSetup}
           capabilities={capabilities}
+          voiceStatus={voiceStatus}
           onRefresh={refresh}
         />
       );

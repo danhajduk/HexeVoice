@@ -146,3 +146,20 @@ export async function refreshGovernance() {
 export async function getOperationalStatus() {
   return fetchJson("/api/node/operational-status");
 }
+
+export async function getVoiceStatus() {
+  return fetchJson("/api/voice/status");
+}
+
+export async function cancelVoiceSession() {
+  return sendJson("/api/voice/session/cancel");
+}
+
+export async function testAssistantTurn(endpointId = "dashboard-test") {
+  return sendJson("/api/assistant/turn", {
+    body: {
+      endpoint_id: endpointId,
+      text: "hello",
+    },
+  });
+}

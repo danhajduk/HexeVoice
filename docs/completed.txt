@@ -22,3 +22,4 @@ Task 030: Add backend openWakeWord audio intake path - Completed on 04/25/2026 1
 Task 031: Add firmware backend client and audio chunk sender - Completed on 04/25/2026 11:32
 Task 032: Add STT to assistant turn to TTS adapters - Completed on 04/25/2026 11:36
 Task 033: Add firmware playback and event-driven UI - Completed on 04/25/2026 11:40
+Task 034: Replace frontend placeholders with endpoint and session observability - Completed on 04/25/2026 11:44
