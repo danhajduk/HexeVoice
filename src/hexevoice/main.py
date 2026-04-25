@@ -53,7 +53,7 @@ from hexevoice.trust.status import TrustStatusService
 from hexevoice.voice import VoiceSessionManager
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, voice_session_manager: VoiceSessionManager | None = None) -> FastAPI:
     app_settings = settings or Settings()
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
@@ -75,7 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
     endpoint_service = EndpointHeartbeatService()
-    voice_session_manager = VoiceSessionManager()
+    voice_session_manager = voice_session_manager or VoiceSessionManager()
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     service = NodeRuntimeService(

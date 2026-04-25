@@ -21,6 +21,7 @@ from hexevoice.voice.contracts import (
     is_valid_voice_session_transition,
 )
 from hexevoice.voice.session_manager import VoiceSessionManager
+from hexevoice.voice.wake import DeterministicWakeDetector, OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
 
 __all__ = [
     "BACKEND_TO_ENDPOINT_EVENTS",
@@ -41,5 +42,9 @@ __all__ = [
     "VoiceTranscriptPayload",
     "VoiceTtsReadyPayload",
     "VoiceSessionManager",
+    "DeterministicWakeDetector",
+    "OpenWakeWordWakeDetector",
+    "WakeDetectionResult",
+    "WakeDetector",
     "is_valid_voice_session_transition",
 ]

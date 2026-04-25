@@ -38,7 +38,9 @@ Current voice WebSocket API:
 
 - `GET /api/voice/ws` as a WebSocket upgrade route
 
-The WebSocket is implemented by `src/hexevoice/voice/session_manager.py`. It supports one connected endpoint and one active session for the MVP, accepts `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping` events through `VoiceEventEnvelope`, and returns `session.state`, `session.completed`, `session.cancelled`, or `session.error` events through the same envelope. This is still an in-memory transport/session boundary: audio processing, wake detection, STT, TTS, and persistent endpoint/session history are pending Phase 1 implementation.
+The WebSocket is implemented by `src/hexevoice/voice/session_manager.py`. It supports one connected endpoint and one active session for the MVP, accepts `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping` events through `VoiceEventEnvelope`, and returns `wake.accepted`, `session.state`, `session.completed`, `session.cancelled`, or `session.error` events through the same envelope.
+
+Backend wake authority now enters through `src/hexevoice/voice/wake.py`. The session manager feeds audio chunk metadata and transient base64 audio payloads to a `WakeDetector` adapter. Tests use `DeterministicWakeDetector`; runtime defaults to `OpenWakeWordWakeDetector`, which attempts to load the optional `openwakeword` package and otherwise fails closed with no wake detection. Raw audio is not persisted by this path. STT, TTS, assistant routing, and persistent endpoint/session history are still pending Phase 1 implementation.
 
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 

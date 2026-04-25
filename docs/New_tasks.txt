@@ -47,7 +47,6 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 030: Add backend openWakeWord audio intake path
 [TODO] Task 031: Add firmware backend client and audio chunk sender
 [TODO] Task 032: Add STT to assistant turn to TTS adapters
 [TODO] Task 033: Add firmware playback and event-driven UI

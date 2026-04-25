@@ -18,3 +18,4 @@ Task 017: Build the post-setup operational overview surfaces using the standard 
 Task 018: Add onboarding tests, UI validation, and operator docs aligned to the Core flow and visual source-of-truth standards - Completed on 04/07/2026 18:53
 Task 028: Define the backend voice event envelope and single-endpoint session contract - Completed on 04/25/2026 11:20
 Task 029: Add /api/voice/ws with an in-memory single-endpoint session manager - Completed on 04/25/2026 11:24
+Task 030: Add backend openWakeWord audio intake path - Completed on 04/25/2026 11:27

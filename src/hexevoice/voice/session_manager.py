@@ -18,15 +18,17 @@ from hexevoice.voice.contracts import (
     VoiceSessionState,
     is_valid_voice_session_transition,
 )
+from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetector
 
 
 class VoiceSessionManager:
-    def __init__(self) -> None:
+    def __init__(self, *, wake_detector: WakeDetector | None = None) -> None:
         self._connection_active = False
         self._connected_endpoint_id: str | None = None
         self._active_session: VoiceSessionSnapshot | None = None
         self._chunk_count = 0
         self._sequence = 0
+        self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -157,9 +159,9 @@ class VoiceSessionManager:
         self._active_session = VoiceSessionSnapshot(
             session_id=session_id,
             endpoint_id=event.endpoint_id,
-            session_state="listening",
+            session_state="idle",
             connection_state="connected",
-            ux_state="listening",
+            ux_state="wake_armed",
             wake_source=payload.wake_source,
         )
         self._chunk_count = 0
@@ -183,9 +185,34 @@ class VoiceSessionManager:
                 )
             ]
 
-        self._set_session_state("capturing", ux_state="listening")
         self._chunk_count += 1
-        return [
+        events: list[VoiceEventEnvelope] = []
+        detection = self._wake_detector.inspect_chunk(
+            endpoint_id=event.endpoint_id,
+            session_id=session.session_id,
+            chunk=payload,
+        )
+        if detection.detected and session.session_state == "idle":
+            self._set_session_state("wake_detected", ux_state="wake_detected")
+            events.append(
+                self._state_event(
+                    "wake.accepted",
+                    session,
+                    extra_payload={
+                        "wake": {
+                            "confidence": detection.confidence,
+                            "model": detection.model,
+                            "source": "backend_openwakeword",
+                        }
+                    },
+                )
+            )
+            self._set_session_state("listening", ux_state="listening")
+
+        if session.session_state in {"listening", "capturing"}:
+            self._set_session_state("capturing", ux_state="listening")
+
+        events.append(
             self._state_event(
                 "session.state",
                 session,
@@ -193,14 +220,32 @@ class VoiceSessionManager:
                     "chunk_index": payload.chunk_index,
                     "chunk_count": self._chunk_count,
                     "audio_format": payload.audio_format.model_dump(mode="json"),
+                    "wake": {
+                        "detected": detection.detected,
+                        "confidence": detection.confidence,
+                        "model": detection.model,
+                        "reason": detection.reason,
+                    },
                 },
             )
-        ]
+        )
+        return events
 
     def _handle_audio_end(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         session = self._require_active_session(event)
         if isinstance(session, VoiceEventEnvelope):
             return [session]
+
+        if session.session_state == "idle":
+            self._set_session_state("cancelled", ux_state="idle")
+            session.cancel_reason = "wake_not_detected"
+            cancelled = self._state_event("session.cancelled", session)
+            self._active_session = None
+            self._chunk_count = 0
+            return [cancelled]
+
+        if session.session_state == "wake_detected":
+            self._set_session_state("listening", ux_state="listening")
 
         self._set_session_state("transcribing", ux_state="thinking")
         self._set_session_state("local_command", ux_state="thinking")

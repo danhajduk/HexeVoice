@@ -4,6 +4,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
+from hexevoice.voice import DeterministicWakeDetector, VoiceSessionManager
 
 
 def voice_event(event_type, *, endpoint_id="esp-box-1", session_id="voice-session-1", payload=None):
@@ -32,13 +33,14 @@ def test_voice_websocket_starts_single_endpoint_session(tmp_path):
     assert response["direction"] == "backend_to_endpoint"
     assert response["endpoint_id"] == "esp-box-1"
     assert response["session_id"] == "voice-session-1"
-    assert response["payload"]["snapshot"]["session_state"] == "listening"
+    assert response["payload"]["snapshot"]["session_state"] == "idle"
     assert response["payload"]["snapshot"]["connection_state"] == "connected"
-    assert response["payload"]["snapshot"]["ux_state"] == "listening"
+    assert response["payload"]["snapshot"]["ux_state"] == "wake_armed"
 
 
-def test_voice_websocket_accepts_audio_chunks_and_completion(tmp_path):
-    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
+    manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0))
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
 
     with client.websocket_connect("/api/voice/ws") as websocket:
         websocket.send_json(voice_event("session.start"))
@@ -54,17 +56,44 @@ def test_voice_websocket_accepts_audio_chunks_and_completion(tmp_path):
                 },
             )
         )
+        wake_response = websocket.receive_json()
         chunk_response = websocket.receive_json()
         websocket.send_json(voice_event("audio.end"))
         complete_response = websocket.receive_json()
 
-    assert chunk_response["event_type"] == "session.state"
+    assert wake_response["event_type"] == "wake.accepted"
+    assert wake_response["payload"]["snapshot"]["session_state"] == "wake_detected"
+    assert wake_response["payload"]["wake"]["source"] == "backend_openwakeword"
     assert chunk_response["payload"]["snapshot"]["session_state"] == "capturing"
     assert chunk_response["payload"]["chunk_index"] == 0
     assert chunk_response["payload"]["chunk_count"] == 1
+    assert chunk_response["payload"]["wake"]["detected"] is True
     assert complete_response["event_type"] == "session.completed"
     assert complete_response["payload"]["snapshot"]["session_state"] == "completed"
     assert complete_response["payload"]["completion_reason"] == "audio_received"
+
+
+def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):
+    manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None))
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        chunk_response = websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        end_response = websocket.receive_json()
+
+    assert chunk_response["payload"]["snapshot"]["session_state"] == "idle"
+    assert chunk_response["payload"]["wake"]["detected"] is False
+    assert end_response["event_type"] == "session.cancelled"
+    assert end_response["payload"]["snapshot"]["cancel_reason"] == "wake_not_detected"
 
 
 def test_voice_websocket_cancel_returns_cancelled_event(tmp_path):

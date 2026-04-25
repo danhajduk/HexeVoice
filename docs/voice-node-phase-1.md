@@ -498,6 +498,17 @@ Accepted for the first WebSocket implementation:
 - Session state is held in memory only; endpoint/session persistence and recent event history remain deferred.
 - `audio.end` completes the contract-only session after chunk intake, but it does not yet run wake detection, STT, assistant routing, or TTS.
 
+Task 030 adds the backend wake authority boundary in `src/hexevoice/voice/wake.py`.
+
+Accepted for the first wake intake implementation:
+
+- The WebSocket manager feeds each `audio.chunk` into a `WakeDetector` adapter and emits `wake.accepted` through the shared envelope when backend wake detection fires.
+- `DeterministicWakeDetector` is the test/development boundary for predictable wake behavior.
+- `OpenWakeWordWakeDetector` is the runtime adapter name and attempts to load the optional `openwakeword` package; if unavailable, it fails closed and reports no wake.
+- Raw audio chunks are inspected transiently and are not persisted.
+- Firmware VAD remains an optional early signal only; backend wake detection is the canonical wake authority.
+- STT, assistant routing, and TTS remain deferred to later tasks.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 is successful if, by the end of it, we have:
