@@ -41,7 +41,7 @@ void apply_vad_state(bool speaking, uint32_t level) {
   app_state.vad_enabled = true;
   app_state.vad_level = static_cast<int>(level);
 
-  if (app_state.muted) {
+  if (app_state.muted || app_state.ota_active) {
     app_state.vad_speaking = false;
     return;
   }
@@ -75,6 +75,18 @@ void vad_task(void *arg) {
   uint32_t silent_frames = 0;
 
   while (true) {
+    if (hexe::state().ota_active) {
+      auto &app_state = hexe::state();
+      app_state.vad_enabled = false;
+      app_state.vad_speaking = false;
+      app_state.vad_level = 0;
+      app_state.audio_streaming = false;
+      g_vad_turn_active = false;
+      silent_frames = kVadSilenceHoldFrames;
+      vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
     int read_result = esp_codec_dev_read(g_mic_codec, samples, static_cast<int>(kFrameBytes));
     if (read_result != 0) {
       ESP_LOGW(kTag, "Microphone read failed: %d", read_result);
