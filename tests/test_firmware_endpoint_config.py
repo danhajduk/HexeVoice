@@ -26,3 +26,6 @@ def test_endpoint_config_generator_uses_yaml_contract(tmp_path):
     assert 'constexpr const char *kEndpointVoiceWsPath = "/api/voice/ws";' in header
     assert "constexpr int kEndpointAudioSampleRateHz = 16000;" in header
     assert "constexpr int kEndpointAudioChunkSamples = 320;" in header
+    assert "constexpr bool kEndpointLogStreamEnabled = false;" in header
+    assert 'constexpr const char *kEndpointLogStreamHost = "10.0.0.22";' in header
+    assert "constexpr int kEndpointLogStreamUdpPort = 9010;" in header

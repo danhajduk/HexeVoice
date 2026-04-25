@@ -26,3 +26,8 @@ behavior:
   heartbeat_interval_ms: 5000
   reconnect_backoff_ms: 1000
   discovery_enabled: false
+
+debug_log:
+  enabled: false
+  host: 10.0.0.22
+  udp_port: 9010

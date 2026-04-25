@@ -52,6 +52,15 @@ cd firmware
 ./export-artifacts.sh
 ```
 
+## Wi-Fi Log Monitor
+
+The firmware can mirror ESP logs over UDP while keeping USB serial output enabled.
+Enable `debug_log` in `firmware/config/endpoint.yaml`, then listen on the configured host:
+
+```bash
+./scripts/monitor-firmware-udp.sh 9010
+```
+
 ## Current Firmware Status
 
 Implemented today:

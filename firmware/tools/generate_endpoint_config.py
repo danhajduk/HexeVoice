@@ -55,6 +55,10 @@ def required(data: dict[str, dict[str, object]], section: str, key: str):
     return value
 
 
+def optional(data: dict[str, dict[str, object]], section: str, key: str, default):
+    return data.get(section, {}).get(key, default)
+
+
 def bool_literal(value: object) -> str:
     return "true" if bool(value) else "false"
 
@@ -80,6 +84,9 @@ def render_header(data: dict[str, dict[str, object]]) -> str:
     heartbeat_interval_ms = required(data, "behavior", "heartbeat_interval_ms")
     reconnect_backoff_ms = required(data, "behavior", "reconnect_backoff_ms")
     discovery_enabled = required(data, "behavior", "discovery_enabled")
+    log_stream_enabled = optional(data, "debug_log", "enabled", False)
+    log_stream_host = optional(data, "debug_log", "host", host)
+    log_stream_port = optional(data, "debug_log", "udp_port", 9010)
 
     return f"""#pragma once
 
@@ -103,6 +110,9 @@ constexpr int kEndpointAudioChunkSamples = {int(chunk_samples)};
 constexpr int kEndpointHeartbeatIntervalMs = {int(heartbeat_interval_ms)};
 constexpr int kEndpointReconnectBackoffMs = {int(reconnect_backoff_ms)};
 constexpr bool kEndpointDiscoveryEnabled = {bool_literal(discovery_enabled)};
+constexpr bool kEndpointLogStreamEnabled = {bool_literal(log_stream_enabled)};
+constexpr const char *kEndpointLogStreamHost = {string_literal(log_stream_host)};
+constexpr int kEndpointLogStreamUdpPort = {int(log_stream_port)};
 
 }}  // namespace hexe::config
 """

@@ -25,6 +25,7 @@ idf_component_register(
     "board/storage.cpp"
     "board/wifi.cpp"
     "system/ota.cpp"
+    "system/log_stream.cpp"
     "system/power.cpp"
     "system/settings.cpp"
     "system/telemetry.cpp"
@@ -49,6 +50,7 @@ idf_component_register(
     esp_websocket_client
     esp_wifi
     cjson
+    lwip
     mbedtls
     nvs_flash
 )
