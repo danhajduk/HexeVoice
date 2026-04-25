@@ -70,7 +70,43 @@ def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
     assert chunk_response["payload"]["wake"]["detected"] is True
     assert complete_response["event_type"] == "session.completed"
     assert complete_response["payload"]["snapshot"]["session_state"] == "completed"
-    assert complete_response["payload"]["completion_reason"] == "audio_received"
+    assert complete_response["payload"]["completion_reason"] == "turn_completed"
+
+
+def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"),
+            voice_wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        transcript = websocket.receive_json()
+        response_text = websocket.receive_json()
+        tts_ready = websocket.receive_json()
+        completed = websocket.receive_json()
+
+    assert transcript["event_type"] == "transcript.final"
+    assert transcript["payload"]["text"] == "hello"
+    assert response_text["event_type"] == "response.text"
+    assert "Hello from lab-voice" in response_text["payload"]["text"]
+    assert tts_ready["event_type"] == "tts.ready"
+    assert tts_ready["payload"]["content_type"] == "audio/wav"
+    assert tts_ready["payload"]["stream_id"].startswith("tts-")
+    assert completed["event_type"] == "session.completed"
+    assert completed["payload"]["snapshot"]["session_state"] == "completed"
 
 
 def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):

@@ -22,7 +22,7 @@ Status labels:
 | ESP32 microphone + VAD loop | partial | Firmware initializes BSP audio, opens a 16 kHz mono microphone stream, starts a VAD task, estimates energy, moves local UI state between idle/listening, and queues bounded audio frames toward the backend client in `firmware/main/board/audio.cpp`; app state is in `firmware/main/app_state.h`. |
 | Text assistant endpoint | implemented | `POST /api/assistant/turn` is registered in `src/hexevoice/main.py`; request and response contracts are in `src/hexevoice/api/models.py`; deterministic local responses and simple commands are in `src/hexevoice/assistant/service.py`. |
 | Endpoint heartbeat/status | partial | `POST /api/endpoint/heartbeat` and `GET /api/endpoint/status/{endpoint_id}` are registered in `src/hexevoice/main.py`; in-memory heartbeat state is implemented in `src/hexevoice/endpoint/service.py`; there is no persistent endpoint registry yet. |
-| Voice pipeline | partial | The backend now has a voice protocol contract, in-memory single-endpoint WebSocket session manager, and wake detector adapter boundary under `src/hexevoice/voice/`; there is still no STT integration, TTS integration, or real assistant voice-loop routing. Firmware voice files under `firmware/main/voice/` only log scaffold readiness. |
+| Voice pipeline | partial | The backend now has a voice protocol contract, in-memory single-endpoint WebSocket session manager, wake detector adapter boundary, and deterministic STT -> assistant -> TTS pipeline boundary under `src/hexevoice/voice/`; real STT/TTS providers and firmware playback are still not implemented. |
 
 ## Backend Inventory
 
@@ -40,11 +40,12 @@ Partial:
 - Voice contract models in `src/hexevoice/voice/contracts.py` define the shared event envelope, event vocabulary, endpoint connection states, endpoint UX states, backend session states, audio chunk metadata, and allowed MVP session transitions. The models are validated by `tests/test_voice_contracts.py` and consumed by the WebSocket manager.
 - `/api/voice/ws` is registered in `src/hexevoice/main.py` and handled by `src/hexevoice/voice/session_manager.py`. It accepts one endpoint connection, one active session, `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping`, and returns state/completion/cancel/error envelopes. The manager is in-memory only and does not yet process audio.
 - `src/hexevoice/voice/wake.py` defines the backend wake authority boundary. The WebSocket manager inspects incoming audio chunks with a `WakeDetector`, emits `wake.accepted` on detection, and uses a deterministic fake detector in tests while runtime defaults to an optional openWakeWord adapter.
+- `src/hexevoice/voice/pipeline.py` defines STT and TTS adapter protocols plus deterministic fake adapters. The WebSocket manager can finalize a turn through transcript, assistant response, TTS metadata, and completion events without persisting raw audio.
 
 Missing:
 
 - Required openWakeWord package/model installation and tuning for production wake detection.
-- STT and TTS providers.
+- Real STT and TTS provider implementations.
 - Persistent voice session history beyond the in-memory MVP manager.
 - Endpoint metadata persistence.
 
@@ -118,8 +119,8 @@ Session lifecycle:
 
 STT/TTS integration:
 
-- Add provider boundaries for STT and TTS.
-- Wire the existing text assistant turn as the middle of the voice loop after transcript finalization and before speech synthesis.
+- Replace deterministic STT/TTS adapters with real provider implementations.
+- Keep the existing text assistant turn as the middle of the voice loop after transcript finalization and before speech synthesis.
 
 Firmware transport:
 

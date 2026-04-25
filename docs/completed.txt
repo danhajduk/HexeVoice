@@ -20,3 +20,4 @@ Task 028: Define the backend voice event envelope and single-endpoint session co
 Task 029: Add /api/voice/ws with an in-memory single-endpoint session manager - Completed on 04/25/2026 11:24
 Task 030: Add backend openWakeWord audio intake path - Completed on 04/25/2026 11:27
 Task 031: Add firmware backend client and audio chunk sender - Completed on 04/25/2026 11:32
+Task 032: Add STT to assistant turn to TTS adapters - Completed on 04/25/2026 11:36

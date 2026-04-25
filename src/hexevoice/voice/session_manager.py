@@ -13,22 +13,32 @@ from hexevoice.voice.contracts import (
     VoiceErrorPayload,
     VoiceEventEnvelope,
     VoiceEventType,
+    VoiceResponseTextPayload,
     VoiceSessionSnapshot,
     VoiceSessionStartPayload,
     VoiceSessionState,
+    VoiceTranscriptPayload,
+    VoiceTtsReadyPayload,
     is_valid_voice_session_transition,
 )
+from hexevoice.voice.pipeline import VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetector
 
 
 class VoiceSessionManager:
-    def __init__(self, *, wake_detector: WakeDetector | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        wake_detector: WakeDetector | None = None,
+        turn_pipeline: VoiceTurnPipeline | None = None,
+    ) -> None:
         self._connection_active = False
         self._connected_endpoint_id: str | None = None
         self._active_session: VoiceSessionSnapshot | None = None
         self._chunk_count = 0
         self._sequence = 0
         self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
+        self._turn_pipeline = turn_pipeline
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -248,16 +258,66 @@ class VoiceSessionManager:
             self._set_session_state("listening", ux_state="listening")
 
         self._set_session_state("transcribing", ux_state="thinking")
-        self._set_session_state("local_command", ux_state="thinking")
+        events: list[VoiceEventEnvelope] = []
+        if self._turn_pipeline is not None:
+            turn = self._turn_pipeline.complete_turn(
+                VoiceTurnAudioSummary(
+                    endpoint_id=session.endpoint_id,
+                    session_id=session.session_id,
+                    chunk_count=self._chunk_count,
+                )
+            )
+            events.append(
+                self._state_event(
+                    "transcript.final",
+                    session,
+                    extra_payload=VoiceTranscriptPayload(
+                        text=turn.transcript.text,
+                        confidence=turn.transcript.confidence,
+                    ).model_dump(mode="json"),
+                )
+            )
+            if turn.assistant_response.handled_locally:
+                self._set_session_state("local_command", ux_state="thinking")
+            else:
+                self._set_session_state("routing_upstream", ux_state="thinking")
+                self._set_session_state("waiting_response", ux_state="thinking")
+            events.append(
+                self._state_event(
+                    "response.text",
+                    session,
+                    extra_payload=VoiceResponseTextPayload(text=turn.assistant_response.spoken_text).model_dump(
+                        mode="json"
+                    ),
+                )
+            )
+            self._set_session_state("synthesizing", ux_state="thinking")
+            events.append(
+                self._state_event(
+                    "tts.ready",
+                    session,
+                    extra_payload=VoiceTtsReadyPayload(
+                        content_type=turn.tts.content_type,
+                        stream_id=turn.tts.stream_id,
+                        audio_url=turn.tts.audio_url,
+                    ).model_dump(mode="json"),
+                )
+            )
+        else:
+            self._set_session_state("local_command", ux_state="thinking")
+        if session.session_state == "synthesizing":
+            self._set_session_state("playing", ux_state="speaking")
         self._set_session_state("completed", ux_state="idle")
-        event = self._state_event(
-            "session.completed",
-            session,
-            extra_payload={"completion_reason": "audio_received", "chunk_count": self._chunk_count},
+        events.append(
+            self._state_event(
+                "session.completed",
+                session,
+                extra_payload={"completion_reason": "turn_completed", "chunk_count": self._chunk_count},
+            )
         )
         self._active_session = None
         self._chunk_count = 0
-        return [event]
+        return events
 
     def _handle_session_cancel(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         session = self._require_active_session(event)

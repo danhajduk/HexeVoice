@@ -130,3 +130,9 @@ Chosen fix: Generate firmware endpoint constants from `firmware/config/endpoint.
 What changed: Added the endpoint config generator and test, added `firmware/main/voice/backend_client.*`, wired the client into boot and audio capture, extended CMake component requirements, and updated firmware docs/baseline notes. Firmware still does not consume backend events or play TTS.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_endpoint_config.py` (1 passed); `PYTHONPATH=src .venv/bin/pytest -q` (58 passed, 44 FastAPI deprecation warnings). `idf.py build` could not run because `idf.py` is not installed in this shell.
 ###########
+Task #032
+Step objective: Add backend STT and TTS adapter boundaries and route completed wake sessions through the existing assistant turn service.
+Chosen fix: Add `VoiceTurnPipeline` with STT/TTS protocols and deterministic adapters, inject it into the WebSocket session manager, and emit transcript, assistant response, TTS metadata, and completion envelopes after `audio.end`.
+What changed: Added `src/hexevoice/voice/pipeline.py`, exported provider adapter boundaries, wired the pipeline into `create_app`, extended WebSocket turn completion events, added pipeline/WebSocket tests, and updated docs to distinguish deterministic provider adapters from real STT/TTS implementations.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_pipeline.py tests/test_voice_websocket.py tests/test_voice_contracts.py` (15 passed); `PYTHONPATH=src .venv/bin/pytest -q` (60 passed, 46 FastAPI deprecation warnings).
+###########

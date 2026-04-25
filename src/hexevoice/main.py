@@ -50,10 +50,14 @@ from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.trust.status import TrustStatusService
-from hexevoice.voice import VoiceSessionManager
+from hexevoice.voice import VoiceSessionManager, VoiceTurnPipeline, WakeDetector
 
 
-def create_app(settings: Settings | None = None, voice_session_manager: VoiceSessionManager | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    voice_session_manager: VoiceSessionManager | None = None,
+    voice_wake_detector: WakeDetector | None = None,
+) -> FastAPI:
     app_settings = settings or Settings()
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
@@ -75,7 +79,6 @@ def create_app(settings: Settings | None = None, voice_session_manager: VoiceSes
     )
     governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
     endpoint_service = EndpointHeartbeatService()
-    voice_session_manager = voice_session_manager or VoiceSessionManager()
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     service = NodeRuntimeService(
@@ -84,6 +87,11 @@ def create_app(settings: Settings | None = None, voice_session_manager: VoiceSes
         supervisor_client=supervisor_client,
     )
     assistant_service = AssistantTurnService(settings=app_settings, runtime_service=service)
+    voice_turn_pipeline = VoiceTurnPipeline(assistant_service=assistant_service)
+    voice_session_manager = voice_session_manager or VoiceSessionManager(
+        wake_detector=voice_wake_detector,
+        turn_pipeline=voice_turn_pipeline,
+    )
     app = FastAPI(title="HexeVoice")
 
     @app.on_event("startup")

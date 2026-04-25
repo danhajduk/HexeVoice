@@ -509,6 +509,16 @@ Accepted for the first wake intake implementation:
 - Firmware VAD remains an optional early signal only; backend wake detection is the canonical wake authority.
 - STT, assistant routing, and TTS remain deferred to later tasks.
 
+Task 032 adds the first backend STT -> assistant -> TTS turn boundary in `src/hexevoice/voice/pipeline.py`.
+
+Accepted for the first provider-adapter implementation:
+
+- STT and TTS are protocols with deterministic adapters for tests/development.
+- `audio.end` after backend wake detection can emit `transcript.final`, `response.text`, `tts.ready`, and `session.completed`.
+- The existing `AssistantTurnService` remains the text-turn middle of the voice loop.
+- TTS output is metadata only for now (`stream_id`, content type, optional URL); firmware playback is handled later.
+- Raw audio is not persisted by the pipeline.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 is successful if, by the end of it, we have:

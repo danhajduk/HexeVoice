@@ -21,6 +21,17 @@ from hexevoice.voice.contracts import (
     is_valid_voice_session_transition,
 )
 from hexevoice.voice.session_manager import VoiceSessionManager
+from hexevoice.voice.pipeline import (
+    DeterministicSpeechToTextAdapter,
+    DeterministicTextToSpeechAdapter,
+    SpeechToTextAdapter,
+    SpeechTranscript,
+    TextToSpeechAdapter,
+    TtsSynthesis,
+    VoiceTurnAudioSummary,
+    VoiceTurnPipeline,
+    VoiceTurnResult,
+)
 from hexevoice.voice.wake import DeterministicWakeDetector, OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
 
 __all__ = [
@@ -42,6 +53,15 @@ __all__ = [
     "VoiceTranscriptPayload",
     "VoiceTtsReadyPayload",
     "VoiceSessionManager",
+    "DeterministicSpeechToTextAdapter",
+    "DeterministicTextToSpeechAdapter",
+    "SpeechToTextAdapter",
+    "SpeechTranscript",
+    "TextToSpeechAdapter",
+    "TtsSynthesis",
+    "VoiceTurnAudioSummary",
+    "VoiceTurnPipeline",
+    "VoiceTurnResult",
     "DeterministicWakeDetector",
     "OpenWakeWordWakeDetector",
     "WakeDetectionResult",

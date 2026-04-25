@@ -47,7 +47,6 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-[TODO] Task 032: Add STT to assistant turn to TTS adapters
 [TODO] Task 033: Add firmware playback and event-driven UI
 [TODO] Task 034: Replace frontend placeholders with endpoint and session observability
 [TODO] Task 035: Integrate and validate the first single-endpoint wake-to-reply voice loop

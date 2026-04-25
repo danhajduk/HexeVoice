@@ -42,6 +42,8 @@ The WebSocket is implemented by `src/hexevoice/voice/session_manager.py`. It sup
 
 Backend wake authority now enters through `src/hexevoice/voice/wake.py`. The session manager feeds audio chunk metadata and transient base64 audio payloads to a `WakeDetector` adapter. Tests use `DeterministicWakeDetector`; runtime defaults to `OpenWakeWordWakeDetector`, which attempts to load the optional `openwakeword` package and otherwise fails closed with no wake detection. Raw audio is not persisted by this path. STT, TTS, assistant routing, and persistent endpoint/session history are still pending Phase 1 implementation.
 
+The first voice turn pipeline boundary lives in `src/hexevoice/voice/pipeline.py`. It defines STT and TTS adapter protocols plus deterministic development adapters. On `audio.end`, the WebSocket manager can run the turn through STT finalization, the existing `AssistantTurnService`, and TTS synthesis metadata, then emit `transcript.final`, `response.text`, `tts.ready`, and `session.completed` events. Real STT/TTS providers are not installed by default, and raw audio is still not persisted.
+
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 
 1. `node_identity`
