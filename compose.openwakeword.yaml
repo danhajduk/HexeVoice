@@ -1,0 +1,14 @@
+name: hexevoice-openwakeword
+
+services:
+  openwakeword:
+    image: ${OPENWAKEWORD_IMAGE:-rhasspy/wyoming-openwakeword}
+    container_name: ${OPENWAKEWORD_CONTAINER_NAME:-hexevoice-openwakeword}
+    command:
+      - --custom-model-dir
+      - /custom
+    ports:
+      - "${OPENWAKEWORD_PORT:-10400}:10400"
+    volumes:
+      - ${OPENWAKEWORD_MODEL_DIR:-./runtime/openwakeword/models}:/custom:ro
+    restart: "no"
