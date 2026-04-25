@@ -34,7 +34,6 @@ extern "C" void app_main(void) {
   const esp_app_desc_t *app = esp_app_get_description();
   ESP_LOGI(kTag, "Starting Hexe native firmware scaffold");
   ESP_LOGI(kTag, "Firmware project=%s version=%s", app->project_name, app->version);
-  hexe::system::init_log_stream();
 
   hexe::system::init_settings();
   hexe::board::init_storage();
@@ -50,6 +49,7 @@ extern "C" void app_main(void) {
   hexe::board::init_buttons();
   hexe::board::init_audio();
   hexe::board::init_wifi();
+  hexe::system::init_log_stream();
 
   hexe::voice::init_wake_word();
   hexe::voice::init_backend_client();
