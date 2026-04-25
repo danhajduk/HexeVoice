@@ -562,6 +562,15 @@ Accepted for the TTS provider implementation:
 - Generated TTS audio is stored under `runtime/voice_tts` and exposed through `/api/voice/tts/{stream_id}` for endpoint playback.
 - The `tts.ready` event now carries a playable `audio_url` when the real TTS provider succeeds.
 
+Task 041 completes the first firmware TTS playback path.
+
+Accepted for firmware playback:
+
+- Firmware queues `tts.ready` events that include an `audio_url`.
+- Relative backend audio URLs are resolved against the configured backend host and HTTP port.
+- Firmware downloads WAV audio, parses PCM WAV headers, opens the ESP-BOX speaker codec, and writes PCM frames to the speaker.
+- Playback returns the LCD to idle on success and enters error state on unsupported or failed playback.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 has produced the first MVP wake-to-reply contract path. The current handoff is recorded in `docs/voice-loop-phase-1-handoff.md`.
