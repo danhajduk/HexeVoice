@@ -10,6 +10,7 @@
 #include "app_state.h"
 #include "cJSON.h"
 #include "endpoint_config.h"
+#include "esp_app_desc.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -191,6 +192,11 @@ const char *scheme_http() {
 
 const char *scheme_ws() {
   return hexe::config::kEndpointUseTls ? "wss" : "ws";
+}
+
+const char *firmware_version() {
+  const esp_app_desc_t *app = esp_app_get_description();
+  return app == nullptr ? hexe::config::kEndpointFirmwareVersion : app->version;
 }
 
 const char *device_state() {
@@ -436,7 +442,7 @@ void ensure_session_started() {
       hexe::config::kEndpointId,
       g_session_id.c_str(),
       g_sequence++,
-      hexe::config::kEndpointFirmwareVersion,
+      firmware_version(),
       hexe::config::kEndpointAudioEncoding,
       hexe::config::kEndpointAudioSampleRateHz,
       hexe::config::kEndpointAudioChannels);
@@ -488,7 +494,7 @@ void heartbeat_task(void *arg) {
         hexe::config::kEndpointId,
         device_state(),
         g_session_started ? ("\"" + g_session_id + "\"").c_str() : "null",
-        hexe::config::kEndpointFirmwareVersion);
+        firmware_version());
 
     esp_http_client_config_t config = {};
     config.url = url.c_str();
