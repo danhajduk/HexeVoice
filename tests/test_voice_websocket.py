@@ -1,0 +1,121 @@
+import pytest
+from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
+
+from hexevoice.config.settings import Settings
+from hexevoice.main import create_app
+
+
+def voice_event(event_type, *, endpoint_id="esp-box-1", session_id="voice-session-1", payload=None):
+    return {
+        "event_type": event_type,
+        "endpoint_id": endpoint_id,
+        "direction": "endpoint_to_backend",
+        "session_id": session_id,
+        "payload": payload or {},
+    }
+
+
+def test_voice_websocket_starts_single_endpoint_session(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                payload={"wake_source": "openwakeword", "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        response = websocket.receive_json()
+
+    assert response["event_type"] == "session.state"
+    assert response["direction"] == "backend_to_endpoint"
+    assert response["endpoint_id"] == "esp-box-1"
+    assert response["session_id"] == "voice-session-1"
+    assert response["payload"]["snapshot"]["session_state"] == "listening"
+    assert response["payload"]["snapshot"]["connection_state"] == "connected"
+    assert response["payload"]["snapshot"]["ux_state"] == "listening"
+
+
+def test_voice_websocket_accepts_audio_chunks_and_completion(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        chunk_response = websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        complete_response = websocket.receive_json()
+
+    assert chunk_response["event_type"] == "session.state"
+    assert chunk_response["payload"]["snapshot"]["session_state"] == "capturing"
+    assert chunk_response["payload"]["chunk_index"] == 0
+    assert chunk_response["payload"]["chunk_count"] == 1
+    assert complete_response["event_type"] == "session.completed"
+    assert complete_response["payload"]["snapshot"]["session_state"] == "completed"
+    assert complete_response["payload"]["completion_reason"] == "audio_received"
+
+
+def test_voice_websocket_cancel_returns_cancelled_event(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(voice_event("session.cancel", payload={"reason": "button"}))
+        response = websocket.receive_json()
+
+    assert response["event_type"] == "session.cancelled"
+    assert response["payload"]["snapshot"]["session_state"] == "cancelled"
+    assert response["payload"]["snapshot"]["cancel_reason"] == "button"
+
+
+def test_voice_websocket_rejects_invalid_event_envelope(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json({"event_type": "audio.chunk", "endpoint_id": "esp-box-1"})
+        response = websocket.receive_json()
+
+    assert response["event_type"] == "session.error"
+    assert response["payload"]["code"] == "invalid_event_envelope"
+    assert response["payload"]["recoverable"] is True
+
+
+def test_voice_websocket_rejects_audio_without_active_session(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        response = websocket.receive_json()
+
+    assert response["event_type"] == "session.error"
+    assert response["payload"]["code"] == "no_active_session"
+
+
+def test_voice_websocket_allows_only_one_connected_endpoint(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws"):
+        with client.websocket_connect("/api/voice/ws") as second_socket:
+            response = second_socket.receive_json()
+            assert response["event_type"] == "session.error"
+            assert response["payload"]["code"] == "endpoint_busy"
+            with pytest.raises(WebSocketDisconnect):
+                second_socket.receive_json()

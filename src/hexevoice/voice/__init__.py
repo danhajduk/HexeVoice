@@ -20,6 +20,7 @@ from hexevoice.voice.contracts import (
     VoiceTtsReadyPayload,
     is_valid_voice_session_transition,
 )
+from hexevoice.voice.session_manager import VoiceSessionManager
 
 __all__ = [
     "BACKEND_TO_ENDPOINT_EVENTS",
@@ -39,5 +40,6 @@ __all__ = [
     "VoiceSessionState",
     "VoiceTranscriptPayload",
     "VoiceTtsReadyPayload",
+    "VoiceSessionManager",
     "is_valid_voice_session_transition",
 ]

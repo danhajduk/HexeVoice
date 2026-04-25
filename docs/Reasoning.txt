@@ -112,3 +112,9 @@ Chosen fix: Add a dedicated `hexevoice.voice` contract module with Pydantic even
 What changed: Added voice contract exports, payload models for session start/audio chunks/transcripts/responses/TTS/errors, a shared `VoiceEventEnvelope`, a `VoiceSessionSnapshot`, transition validation tests, and documentation updates that mark the contract as real while keeping `/api/voice/ws`, wake, STT, TTS, and runtime session management pending.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_contracts.py` (6 passed); `PYTHONPATH=src .venv/bin/pytest -q` (48 passed, 30 FastAPI deprecation warnings).
 ###########
+Task #029
+Step objective: Add the first `/api/voice/ws` runtime path using the Task 028 envelope while keeping the manager in memory and single-endpoint for the MVP.
+Chosen fix: Add `VoiceSessionManager`, register `/api/voice/ws`, bind one connected endpoint/session at a time, accept session/control/audio chunk metadata events, and respond with state, completion, cancellation, and error envelopes through the same contract.
+What changed: Added WebSocket session handling, JSON/envelope validation, active-session checks, audio chunk metadata validation, cancel and completion handling, focused WebSocket tests, and docs that mark the route as implemented but wake/STT/TTS/audio processing as pending.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_contracts.py tests/test_voice_websocket.py` (12 passed); `PYTHONPATH=src .venv/bin/pytest -q` (54 passed, 42 FastAPI deprecation warnings).
+###########

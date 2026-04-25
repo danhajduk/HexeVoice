@@ -1,7 +1,7 @@
 import asyncio
 import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 import uvicorn
 
 from hexevoice.api.models import (
@@ -50,6 +50,7 @@ from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.trust.status import TrustStatusService
+from hexevoice.voice import VoiceSessionManager
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -74,6 +75,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
     endpoint_service = EndpointHeartbeatService()
+    voice_session_manager = VoiceSessionManager()
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     service = NodeRuntimeService(
@@ -117,6 +119,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/endpoint/status/{endpoint_id}", response_model=EndpointStatusResponse)
     async def endpoint_status(endpoint_id: str) -> EndpointStatusResponse:
         return endpoint_service.status(endpoint_id)
+
+    @app.websocket("/api/voice/ws")
+    async def voice_websocket(websocket: WebSocket) -> None:
+        await voice_session_manager.handle_websocket(websocket)
 
     @app.get("/api/node/status", response_model=NodeStatusResponse)
     async def node_status() -> NodeStatusResponse:

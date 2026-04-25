@@ -488,6 +488,16 @@ Accepted for the MVP:
 - `audio.chunk` carries transport metadata and an optional base64 payload field only; wake detection, STT, TTS, and raw audio processing remain outside Task 028.
 - `/api/voice/ws` must consume this contract in the next implementation task instead of introducing a parallel ad hoc message shape.
 
+Task 029 implements that next transport step in `src/hexevoice/voice/session_manager.py` and registers `/api/voice/ws` from `src/hexevoice/main.py`.
+
+Accepted for the first WebSocket implementation:
+
+- The route is an MVP single-endpoint, single-active-session WebSocket manager.
+- The endpoint may send `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping`.
+- The backend responds with `session.state`, `session.completed`, `session.cancelled`, and `session.error` envelopes.
+- Session state is held in memory only; endpoint/session persistence and recent event history remain deferred.
+- `audio.end` completes the contract-only session after chunk intake, but it does not yet run wake detection, STT, assistant routing, or TTS.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 is successful if, by the end of it, we have:

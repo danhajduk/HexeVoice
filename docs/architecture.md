@@ -32,7 +32,13 @@ This route is intentionally lightweight. It gives endpoint firmware a stable req
 - deterministic fallback replies for arbitrary text turns
 - endpoint-scoped session ids so device-side integration can start immediately
 
-The backend voice protocol contract now lives in `src/hexevoice/voice/contracts.py`. It defines the shared event envelope, endpoint-to-backend and backend-to-endpoint event vocabulary, audio chunk metadata shape, endpoint connection states, endpoint UX states, backend-authored session states, and the allowed MVP session transitions. This is a contract-only boundary: `/api/voice/ws`, audio processing, wake detection, STT, TTS, and the runtime session manager are still pending Phase 1 implementation.
+The backend voice protocol contract lives in `src/hexevoice/voice/contracts.py`. It defines the shared event envelope, endpoint-to-backend and backend-to-endpoint event vocabulary, audio chunk metadata shape, endpoint connection states, endpoint UX states, backend-authored session states, and the allowed MVP session transitions.
+
+Current voice WebSocket API:
+
+- `GET /api/voice/ws` as a WebSocket upgrade route
+
+The WebSocket is implemented by `src/hexevoice/voice/session_manager.py`. It supports one connected endpoint and one active session for the MVP, accepts `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping` events through `VoiceEventEnvelope`, and returns `session.state`, `session.completed`, `session.cancelled`, or `session.error` events through the same envelope. This is still an in-memory transport/session boundary: audio processing, wake detection, STT, TTS, and persistent endpoint/session history are pending Phase 1 implementation.
 
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 
