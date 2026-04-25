@@ -1,4 +1,4 @@
-export function VoiceEndpointStatusCard({ status, providerSetup, capabilities, voiceStatus }) {
+export function VoiceEndpointStatusCard({ status, providerSetup, capabilities, voiceStatus, endpointStatus }) {
   return (
     <section className="card stack panel">
       <div className="section-heading">
@@ -15,7 +15,19 @@ export function VoiceEndpointStatusCard({ status, providerSetup, capabilities, v
         </div>
         <div>
           <dt>Endpoint</dt>
-          <dd>{voiceStatus?.endpoint_id || "not connected"}</dd>
+          <dd>{endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected"}</dd>
+        </div>
+        <div>
+          <dt>Endpoint FW</dt>
+          <dd>{endpointStatus?.firmware_version || "unknown"}</dd>
+        </div>
+        <div>
+          <dt>Device state</dt>
+          <dd>{endpointStatus?.device_state || "unknown"}</dd>
+        </div>
+        <div>
+          <dt>Last heartbeat</dt>
+          <dd>{endpointStatus?.last_seen_at || "none"}</dd>
         </div>
         <div>
           <dt>Enabled providers</dt>

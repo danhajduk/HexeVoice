@@ -47,10 +47,19 @@ class EndpointHeartbeatService:
             last_seen_at=now,
         )
 
+    def latest_status(self) -> EndpointStatusResponse:
+        if not self._records:
+            raise HTTPException(status_code=404, detail="endpoint_not_found")
+        record = max(self._records.values(), key=lambda item: item.last_seen_at)
+        return self._response_from_record(record)
+
     def status(self, endpoint_id: str) -> EndpointStatusResponse:
         record = self._records.get(endpoint_id)
         if record is None:
             raise HTTPException(status_code=404, detail="endpoint_not_found")
+        return self._response_from_record(record)
+
+    def _response_from_record(self, record: _EndpointRecord) -> EndpointStatusResponse:
         return EndpointStatusResponse(
             endpoint_id=record.endpoint_id,
             device_state=record.device_state,

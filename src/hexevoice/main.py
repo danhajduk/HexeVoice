@@ -136,6 +136,10 @@ def create_app(
     async def endpoint_heartbeat(payload: EndpointHeartbeatRequest) -> EndpointHeartbeatResponse:
         return endpoint_service.record_heartbeat(payload)
 
+    @app.get("/api/endpoint/status", response_model=EndpointStatusResponse)
+    async def latest_endpoint_status() -> EndpointStatusResponse:
+        return endpoint_service.latest_status()
+
     @app.get("/api/endpoint/status/{endpoint_id}", response_model=EndpointStatusResponse)
     async def endpoint_status(endpoint_id: str) -> EndpointStatusResponse:
         return endpoint_service.status(endpoint_id)

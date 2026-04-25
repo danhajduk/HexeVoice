@@ -151,6 +151,10 @@ export async function getVoiceStatus() {
   return fetchJson("/api/voice/status");
 }
 
+export async function getEndpointStatus() {
+  return fetchJson("/api/endpoint/status");
+}
+
 export async function cancelVoiceSession() {
   return sendJson("/api/voice/session/cancel");
 }

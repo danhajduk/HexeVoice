@@ -72,7 +72,14 @@ function VoiceSessionCard({ voiceStatus }) {
   );
 }
 
-export function VoiceEndpointDashboardSection({ status, providerSetup, capabilities, voiceStatus, onRefresh }) {
+export function VoiceEndpointDashboardSection({
+  status,
+  providerSetup,
+  capabilities,
+  voiceStatus,
+  endpointStatus,
+  onRefresh,
+}) {
   const [actionMessage, setActionMessage] = useState("");
 
   async function handleTestTurn() {
@@ -103,6 +110,7 @@ export function VoiceEndpointDashboardSection({ status, providerSetup, capabilit
         providerSetup={providerSetup}
         capabilities={capabilities}
         voiceStatus={voiceStatus}
+        endpointStatus={endpointStatus}
       />
       <VoiceEndpointActionsCard
         voiceStatus={voiceStatus}

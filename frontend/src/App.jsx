@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getCapabilities,
+  getEndpointStatus,
   getGovernanceCurrent,
   getNodeStatus,
   getOnboardingStatus,
@@ -146,6 +147,7 @@ export default function App() {
   const [governance, setGovernance] = useState(null);
   const [operational, setOperational] = useState(null);
   const [voiceStatus, setVoiceStatus] = useState(null);
+  const [endpointStatus, setEndpointStatus] = useState(null);
   const [error, setError] = useState("");
   const [restartingSetup, setRestartingSetup] = useState(false);
   const [routeView, setRouteView] = useState(() =>
@@ -170,6 +172,7 @@ export default function App() {
       governancePayload,
       operationalPayload,
       voicePayload,
+      endpointPayload,
     ] = await Promise.all([
       getNodeStatus(),
       getOnboardingStatus(),
@@ -178,6 +181,7 @@ export default function App() {
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
+      getEndpointStatus().catch(() => null),
     ]);
     setStatus(statusPayload);
     setOnboarding(onboardingPayload);
@@ -186,6 +190,7 @@ export default function App() {
     setGovernance(governancePayload);
     setOperational(operationalPayload);
     setVoiceStatus(voicePayload);
+    setEndpointStatus(endpointPayload);
     setError("");
   }, []);
 
@@ -199,8 +204,19 @@ export default function App() {
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
+      getEndpointStatus().catch(() => null),
     ])
-      .then(([statusPayload, onboardingPayload, providerPayload, capabilityPayload, governancePayload, operationalPayload, voicePayload]) => {
+      .then(
+        ([
+          statusPayload,
+          onboardingPayload,
+          providerPayload,
+          capabilityPayload,
+          governancePayload,
+          operationalPayload,
+          voicePayload,
+          endpointPayload,
+        ]) => {
         if (!mounted) {
           return;
         }
@@ -211,6 +227,7 @@ export default function App() {
         setGovernance(governancePayload);
         setOperational(operationalPayload);
         setVoiceStatus(voicePayload);
+        setEndpointStatus(endpointPayload);
       })
       .catch((err) => {
         if (mounted) {
@@ -303,6 +320,7 @@ export default function App() {
           providerSetup={providerSetup}
           capabilities={capabilities}
           voiceStatus={voiceStatus}
+          endpointStatus={endpointStatus}
           onRefresh={refresh}
         />
       );

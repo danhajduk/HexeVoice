@@ -92,6 +92,11 @@ def test_single_endpoint_wake_to_reply_loop_updates_backend_and_dashboard_status
     assert endpoint_status.status_code == 200
     assert endpoint_status.json()["firmware_version"] == "0.1.0"
 
+    latest_endpoint_status = client.get("/api/endpoint/status")
+    assert latest_endpoint_status.status_code == 200
+    assert latest_endpoint_status.json()["endpoint_id"] == "esp-box-1"
+    assert latest_endpoint_status.json()["firmware_version"] == "0.1.0"
+
 
 def test_single_endpoint_cancel_path_updates_voice_status(tmp_path):
     client = TestClient(
