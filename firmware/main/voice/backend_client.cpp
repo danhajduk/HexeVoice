@@ -26,6 +26,7 @@ constexpr size_t kAudioQueueDepth = 8;
 constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr int kMaxChunkSamples = hexe::config::kEndpointAudioChunkSamples;
+constexpr size_t kMaxBackendEventBytes = 8192;
 
 struct AudioFrame {
   std::array<int16_t, kMaxChunkSamples> samples;
@@ -45,6 +46,7 @@ bool g_session_started = false;
 bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
 std::string g_session_id;
+std::string g_ws_rx_buffer;
 
 const char *scheme_http() {
   return hexe::config::kEndpointUseTls ? "https" : "http";
@@ -116,6 +118,81 @@ std::string base64_audio(const int16_t *samples, size_t sample_count) {
   return encoded;
 }
 
+void handle_backend_event_json(const std::string &message) {
+  cJSON *root = cJSON_ParseWithLength(message.c_str(), message.size());
+  if (root == nullptr) {
+    ESP_LOGW(kTag, "Ignoring invalid backend event JSON (%u bytes)", static_cast<unsigned>(message.size()));
+    return;
+  }
+
+  cJSON *event_type = cJSON_GetObjectItem(root, "event_type");
+  const char *type = cJSON_IsString(event_type) ? event_type->valuestring : "";
+  cJSON *payload = cJSON_GetObjectItem(root, "payload");
+  cJSON *snapshot = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "snapshot") : nullptr;
+  cJSON *state_item = cJSON_IsObject(snapshot) ? cJSON_GetObjectItem(snapshot, "ux_state") : nullptr;
+  const char *ux_state = cJSON_IsString(state_item) ? state_item->valuestring : "";
+
+  auto &app_state = hexe::state();
+  if (std::strcmp(type, "wake.accepted") == 0 || std::strcmp(ux_state, "listening") == 0) {
+    if (!app_state.muted) {
+      app_state.phase = hexe::AppPhase::kListening;
+    }
+  } else if (
+      std::strcmp(type, "transcript.final") == 0 || std::strcmp(type, "response.text") == 0 ||
+      std::strcmp(ux_state, "thinking") == 0) {
+    if (!app_state.muted) {
+      app_state.phase = hexe::AppPhase::kThinking;
+    }
+  } else if (std::strcmp(type, "tts.ready") == 0) {
+    cJSON *stream_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stream_id") : nullptr;
+    cJSON *content_type = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "content_type") : nullptr;
+    cJSON *audio_url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "audio_url") : nullptr;
+    hexe::voice::handle_tts_ready(
+        cJSON_IsString(stream_id) ? stream_id->valuestring : nullptr,
+        cJSON_IsString(content_type) ? content_type->valuestring : nullptr,
+        cJSON_IsString(audio_url) ? audio_url->valuestring : nullptr);
+  } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
+    g_session_started = false;
+    g_audio_stream_finished = false;
+    if (!app_state.muted) {
+      app_state.phase = hexe::AppPhase::kIdle;
+    }
+  } else if (std::strcmp(type, "session.error") == 0) {
+    app_state.phase = hexe::AppPhase::kError;
+  }
+
+  cJSON_Delete(root);
+}
+
+void handle_websocket_data(const esp_websocket_event_data_t *data) {
+  if (data == nullptr || data->data_ptr == nullptr || data->data_len <= 0) {
+    return;
+  }
+  if (data->payload_len <= 0 || data->payload_len > static_cast<int>(kMaxBackendEventBytes)) {
+    g_ws_rx_buffer.clear();
+    ESP_LOGW(kTag, "Dropping oversized backend event (%d bytes)", data->payload_len);
+    return;
+  }
+  if (data->payload_offset == 0) {
+    g_ws_rx_buffer.clear();
+    g_ws_rx_buffer.reserve(data->payload_len);
+  }
+  if (data->payload_offset != static_cast<int>(g_ws_rx_buffer.size())) {
+    g_ws_rx_buffer.clear();
+    ESP_LOGW(kTag, "Dropping out-of-order backend event chunk");
+    return;
+  }
+
+  g_ws_rx_buffer.append(data->data_ptr, data->data_len);
+  const int received = data->payload_offset + data->data_len;
+  if (received < data->payload_len) {
+    return;
+  }
+
+  handle_backend_event_json(g_ws_rx_buffer);
+  g_ws_rx_buffer.clear();
+}
+
 void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
   (void)handler_args;
   (void)base;
@@ -123,12 +200,14 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_ws_connected = true;
     g_session_started = false;
     g_audio_stream_finished = false;
+    g_ws_rx_buffer.clear();
     hexe::state().backend_connected = true;
     ESP_LOGI(kTag, "Voice WebSocket connected");
   } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
     g_ws_connected = false;
     g_session_started = false;
     g_audio_stream_finished = false;
+    g_ws_rx_buffer.clear();
     hexe::state().backend_connected = false;
     ESP_LOGW(kTag, "Voice WebSocket disconnected");
   } else if (event_id == WEBSOCKET_EVENT_ERROR) {
@@ -136,54 +215,7 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     hexe::state().backend_connected = false;
     ESP_LOGW(kTag, "Voice WebSocket error");
   } else if (event_id == WEBSOCKET_EVENT_DATA) {
-    const auto *data = static_cast<esp_websocket_event_data_t *>(event_data);
-    if (data == nullptr || data->data_ptr == nullptr || data->data_len <= 0) {
-      return;
-    }
-    std::string message(data->data_ptr, data->data_len);
-    cJSON *root = cJSON_ParseWithLength(message.c_str(), message.size());
-    if (root == nullptr) {
-      ESP_LOGW(kTag, "Ignoring invalid backend event JSON");
-      return;
-    }
-
-    cJSON *event_type = cJSON_GetObjectItem(root, "event_type");
-    const char *type = cJSON_IsString(event_type) ? event_type->valuestring : "";
-    cJSON *payload = cJSON_GetObjectItem(root, "payload");
-    cJSON *snapshot = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "snapshot") : nullptr;
-    cJSON *state_item = cJSON_IsObject(snapshot) ? cJSON_GetObjectItem(snapshot, "ux_state") : nullptr;
-    const char *ux_state = cJSON_IsString(state_item) ? state_item->valuestring : "";
-
-    auto &app_state = hexe::state();
-    if (std::strcmp(type, "wake.accepted") == 0 || std::strcmp(ux_state, "listening") == 0) {
-      if (!app_state.muted) {
-        app_state.phase = hexe::AppPhase::kListening;
-      }
-    } else if (
-        std::strcmp(type, "transcript.final") == 0 || std::strcmp(type, "response.text") == 0 ||
-        std::strcmp(ux_state, "thinking") == 0) {
-      if (!app_state.muted) {
-        app_state.phase = hexe::AppPhase::kThinking;
-      }
-    } else if (std::strcmp(type, "tts.ready") == 0) {
-      cJSON *stream_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stream_id") : nullptr;
-      cJSON *content_type = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "content_type") : nullptr;
-      cJSON *audio_url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "audio_url") : nullptr;
-      hexe::voice::handle_tts_ready(
-          cJSON_IsString(stream_id) ? stream_id->valuestring : nullptr,
-          cJSON_IsString(content_type) ? content_type->valuestring : nullptr,
-          cJSON_IsString(audio_url) ? audio_url->valuestring : nullptr);
-    } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
-      g_session_started = false;
-      g_audio_stream_finished = false;
-      if (!app_state.muted) {
-        app_state.phase = hexe::AppPhase::kIdle;
-      }
-    } else if (std::strcmp(type, "session.error") == 0) {
-      app_state.phase = hexe::AppPhase::kError;
-    }
-
-    cJSON_Delete(root);
+    handle_websocket_data(static_cast<esp_websocket_event_data_t *>(event_data));
   }
 }
 
@@ -234,7 +266,10 @@ void ensure_session_started() {
 
 void send_audio_frame(const AudioFrame &frame) {
   ensure_session_started();
-  if (!g_session_started || g_audio_stream_finished) {
+  if (g_audio_stream_finished) {
+    return;
+  }
+  if (!g_session_started) {
     ESP_LOGW(kTag, "Dropping audio frame because voice session is not connected");
     return;
   }
