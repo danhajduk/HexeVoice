@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 from datetime import UTC, datetime
 import json
+import logging
 from uuid import uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -24,6 +25,9 @@ from hexevoice.voice.contracts import (
 )
 from hexevoice.voice.pipeline import VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetector
+
+
+log = logging.getLogger(__name__)
 
 
 class VoiceSessionManager:
@@ -66,6 +70,7 @@ class VoiceSessionManager:
 
         self._connection_active = True
         self._websocket = websocket
+        log.info("Voice WebSocket connected")
         try:
             while True:
                 raw_message = await websocket.receive_text()
@@ -81,6 +86,7 @@ class VoiceSessionManager:
             self._chunk_count = 0
             self._audio_chunks = []
             self._audio_format = None
+            log.info("Voice WebSocket disconnected")
 
     async def push_ota_update(
         self,
@@ -173,7 +179,9 @@ class VoiceSessionManager:
                 )
             ]
 
-        self._connected_endpoint_id = event.endpoint_id
+        if self._connected_endpoint_id is None:
+            self._connected_endpoint_id = event.endpoint_id
+            log.info("Voice endpoint bound to WebSocket: endpoint_id=%s", event.endpoint_id)
 
         handlers = {
             "session.start": self._handle_session_start,
@@ -221,6 +229,13 @@ class VoiceSessionManager:
         self._chunk_count = 0
         self._audio_chunks = []
         self._audio_format = payload.audio_format
+        log.info(
+            "Voice session started: endpoint_id=%s session_id=%s wake_source=%s sample_rate_hz=%s",
+            event.endpoint_id,
+            session_id,
+            payload.wake_source,
+            payload.audio_format.sample_rate_hz,
+        )
         return [self._state_event("session.state", self._active_session)]
 
     def _handle_audio_chunk(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
@@ -255,6 +270,14 @@ class VoiceSessionManager:
             chunk=payload,
         )
         if detection.detected and session.session_state == "idle":
+            log.info(
+                "Wake accepted: endpoint_id=%s session_id=%s model=%s confidence=%s chunk_index=%s",
+                event.endpoint_id,
+                session.session_id,
+                detection.model,
+                detection.confidence,
+                payload.chunk_index,
+            )
             self._set_session_state("wake_detected", ux_state="wake_detected")
             events.append(
                 self._state_event(
@@ -301,6 +324,12 @@ class VoiceSessionManager:
         if session.session_state == "idle":
             self._set_session_state("cancelled", ux_state="idle")
             session.cancel_reason = "wake_not_detected"
+            log.info(
+                "Voice session cancelled before wake: endpoint_id=%s session_id=%s chunks=%s",
+                session.endpoint_id,
+                session.session_id,
+                self._chunk_count,
+            )
             cancelled = self._state_event("session.cancelled", session)
             self._active_session = None
             self._chunk_count = 0

@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import logging
 import os
 from pathlib import Path
 
@@ -325,6 +326,7 @@ def create_app(
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     settings = Settings()
     uvicorn.run(create_app(settings), host=settings.api_host, port=settings.api_port)
 
