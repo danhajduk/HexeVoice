@@ -28,6 +28,7 @@ constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr int kMaxChunkSamples = hexe::config::kEndpointAudioChunkSamples;
 constexpr size_t kMaxBackendEventBytes = 8192;
+constexpr uint32_t kBackendReadinessPollMs = 500;
 
 struct AudioFrame {
   std::array<int16_t, kMaxChunkSamples> samples;
@@ -46,11 +47,17 @@ uint32_t g_sequence = 0;
 bool g_session_started = false;
 bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
+bool g_ws_started = false;
 std::string g_session_id;
 std::string g_ws_rx_buffer;
 
 void set_audio_streaming(bool streaming) {
   hexe::state().audio_streaming = streaming;
+}
+
+bool backend_ready_for_voice() {
+  const auto &state = hexe::state();
+  return state.wifi_connected && state.backend_connected;
 }
 
 const char *scheme_http() {
@@ -222,7 +229,6 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_audio_stream_finished = false;
     set_audio_streaming(false);
     g_ws_rx_buffer.clear();
-    hexe::state().backend_connected = true;
     ESP_LOGI(kTag, "Voice WebSocket connected");
   } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
     g_ws_connected = false;
@@ -230,12 +236,10 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_audio_stream_finished = false;
     set_audio_streaming(false);
     g_ws_rx_buffer.clear();
-    hexe::state().backend_connected = false;
     ESP_LOGW(kTag, "Voice WebSocket disconnected");
   } else if (event_id == WEBSOCKET_EVENT_ERROR) {
     g_ws_connected = false;
     set_audio_streaming(false);
-    hexe::state().backend_connected = false;
     ESP_LOGW(kTag, "Voice WebSocket error");
   } else if (event_id == WEBSOCKET_EVENT_DATA) {
     handle_websocket_data(static_cast<esp_websocket_event_data_t *>(event_data));
@@ -251,7 +255,7 @@ bool send_ws_text(const std::string &message) {
 }
 
 void ensure_session_started() {
-  if (g_session_started || !g_ws_connected) {
+  if (g_session_started || !g_ws_connected || !backend_ready_for_voice()) {
     return;
   }
   ++g_session_counter;
@@ -338,6 +342,12 @@ void heartbeat_task(void *arg) {
   const std::string url = heartbeat_url();
 
   while (true) {
+    if (!hexe::state().wifi_connected) {
+      hexe::state().backend_connected = false;
+      vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+      continue;
+    }
+
     char body[384];
     std::snprintf(
         body,
@@ -361,8 +371,16 @@ void heartbeat_task(void *arg) {
     esp_http_client_set_header(client, "Content-Type", "application/json");
     esp_http_client_set_post_field(client, body, std::strlen(body));
     esp_err_t err = esp_http_client_perform(client);
-    if (err != ESP_OK) {
-      ESP_LOGW(kTag, "Endpoint heartbeat failed: %s", esp_err_to_name(err));
+    const int status_code = esp_http_client_get_status_code(client);
+    if (err == ESP_OK && status_code >= 200 && status_code < 300) {
+      hexe::state().backend_connected = true;
+    } else {
+      hexe::state().backend_connected = false;
+      if (err != ESP_OK) {
+        ESP_LOGW(kTag, "Endpoint heartbeat failed: %s", esp_err_to_name(err));
+      } else {
+        ESP_LOGW(kTag, "Endpoint heartbeat failed: HTTP %d", status_code);
+      }
     }
     esp_http_client_cleanup(client);
     vTaskDelay(pdMS_TO_TICKS(hexe::config::kEndpointHeartbeatIntervalMs));
@@ -382,10 +400,29 @@ void websocket_task(void *arg) {
     return;
   }
   esp_websocket_register_events(g_ws_client, WEBSOCKET_EVENT_ANY, websocket_event_handler, nullptr);
-  esp_websocket_client_start(g_ws_client);
 
   AudioFrame frame = {};
   while (true) {
+    if (!backend_ready_for_voice()) {
+      if (g_ws_started) {
+        esp_websocket_client_stop(g_ws_client);
+        g_ws_started = false;
+      }
+      g_ws_connected = false;
+      g_session_started = false;
+      g_audio_stream_finished = false;
+      set_audio_streaming(false);
+      xQueueReset(g_audio_queue);
+      vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+      continue;
+    }
+
+    if (!g_ws_started) {
+      ESP_LOGI(kTag, "Starting voice WebSocket after Wi-Fi and backend heartbeat are ready");
+      esp_websocket_client_start(g_ws_client);
+      g_ws_started = true;
+    }
+
     if (xQueueReceive(g_audio_queue, &frame, pdMS_TO_TICKS(250)) == pdTRUE) {
       send_audio_frame(frame);
     }
@@ -417,7 +454,7 @@ void init_backend_client() {
 }
 
 bool submit_audio_frame(const int16_t *samples, size_t sample_count, uint32_t level, bool vad_speaking) {
-  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0) {
+  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !backend_ready_for_voice()) {
     return false;
   }
 

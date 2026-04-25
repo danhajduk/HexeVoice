@@ -25,7 +25,7 @@ The first single-endpoint wake-to-reply loop is implemented as a configurable Ph
 - Backend STT -> assistant -> TTS adapter boundary with deterministic and OpenAI-compatible STT/TTS adapters.
 - Transient in-memory audio aggregation for completed wake sessions.
 - Playable backend TTS audio route at `/api/voice/tts/{stream_id}`.
-- Firmware heartbeat, WebSocket session start, audio chunk send, `audio.end`, and cancel message paths.
+- Firmware heartbeat, readiness-gated WebSocket session start, audio chunk send, `audio.end`, and cancel message paths.
 - Firmware backend event-to-UX mapping.
 - Firmware backend-authority wake alignment: VAD opens/closes transport, the top bar shows when audio is being streamed, and backend `wake.accepted` owns listening UX.
 - Firmware WAV TTS download and speaker playback path.
