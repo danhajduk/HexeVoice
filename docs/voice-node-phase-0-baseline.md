@@ -22,7 +22,7 @@ Status labels:
 | ESP32 microphone + VAD loop | partial | Firmware initializes BSP audio, opens a 16 kHz mono microphone stream, starts a VAD task, estimates energy, and moves local UI state between idle/listening in `firmware/main/board/audio.cpp`; app state is in `firmware/main/app_state.h`. |
 | Text assistant endpoint | implemented | `POST /api/assistant/turn` is registered in `src/hexevoice/main.py`; request and response contracts are in `src/hexevoice/api/models.py`; deterministic local responses and simple commands are in `src/hexevoice/assistant/service.py`. |
 | Endpoint heartbeat/status | partial | `POST /api/endpoint/heartbeat` and `GET /api/endpoint/status/{endpoint_id}` are registered in `src/hexevoice/main.py`; in-memory heartbeat state is implemented in `src/hexevoice/endpoint/service.py`; there is no persistent endpoint registry yet. |
-| Voice pipeline | missing | There is no backend wake detector, STT integration, TTS integration, audio transport endpoint, session manager, or event protocol module under `src/hexevoice/voice/`; firmware voice files under `firmware/main/voice/` only log scaffold readiness. |
+| Voice pipeline | partial | The backend now has a contract-only voice protocol module under `src/hexevoice/voice/`; there is still no backend wake detector, STT integration, TTS integration, audio transport endpoint, or runtime session manager. Firmware voice files under `firmware/main/voice/` only log scaffold readiness. |
 
 ## Backend Inventory
 
@@ -37,13 +37,13 @@ Partial:
 
 - Endpoint heartbeat/status exists, but `src/hexevoice/endpoint/service.py` stores records only in memory and does not model endpoint registration, connection state, session state, or recent event history.
 - Assistant turns generate endpoint-scoped session ids, but they are local counters inside `src/hexevoice/assistant/service.py`, not a real session lifecycle.
+- Voice contract models in `src/hexevoice/voice/contracts.py` define the shared event envelope, event vocabulary, endpoint connection states, endpoint UX states, backend session states, audio chunk metadata, and allowed MVP session transitions. The models are validated by `tests/test_voice_contracts.py`, but no transport route consumes them yet.
 
 Missing:
 
 - `/api/voice/ws` or any other audio transport route.
 - Backend wake detection with openWakeWord.
 - STT and TTS providers.
-- Shared voice event envelope.
 - Voice session manager with explicit states and cancel/error handling.
 - Endpoint metadata persistence.
 
@@ -103,7 +103,7 @@ Missing:
 Backend transport:
 
 - Add a WebSocket-first voice transport endpoint, initially for one endpoint and one active session.
-- Define a shared event envelope for endpoint-to-backend and backend-to-endpoint messages.
+- Use the shared event envelope in `src/hexevoice/voice/contracts.py` for endpoint-to-backend and backend-to-endpoint messages.
 
 Wake detection:
 

@@ -106,3 +106,9 @@ Chosen fix: Update the repo README/setup/operations docs to reflect the real 10-
 What changed: Updated root and docs markdown to describe the implemented backend/frontend flow, documented the repo-local verification commands and operator progression, and re-ran the full backend and frontend validation commands.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q` (33 passed); `cd frontend && npm install && npm run build` (passed).
 ###########
+Task #028
+Step objective: Define the backend-owned voice event envelope and MVP single-endpoint session contract without introducing audio processing or a transport route.
+Chosen fix: Add a dedicated `hexevoice.voice` contract module with Pydantic event/session payload models, explicit event vocabularies, separate endpoint connection/UX/backend session states, and allowed session transition validation.
+What changed: Added voice contract exports, payload models for session start/audio chunks/transcripts/responses/TTS/errors, a shared `VoiceEventEnvelope`, a `VoiceSessionSnapshot`, transition validation tests, and documentation updates that mark the contract as real while keeping `/api/voice/ws`, wake, STT, TTS, and runtime session management pending.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_contracts.py` (6 passed); `PYTHONPATH=src .venv/bin/pytest -q` (48 passed, 30 FastAPI deprecation warnings).
+###########

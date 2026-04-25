@@ -476,6 +476,18 @@ If we want Phase 1 to stay manageable, the most important constraints should be:
 4. Shared event envelope for all server responses.
 5. Persistence for endpoint metadata and recent state only.
 
+## Accepted MVP Contract Decisions
+
+Task 028 establishes the first backend-owned voice contract in `src/hexevoice/voice/contracts.py`.
+
+Accepted for the MVP:
+
+- `VoiceEventEnvelope` is the shared JSON envelope for endpoint-to-backend, backend-to-endpoint, and internal observability events.
+- Endpoint connection state, endpoint UX state, and backend session state are separate fields on `VoiceSessionSnapshot`.
+- The first implementation targets one active endpoint/session at a time, with explicit transition validation in `VOICE_SESSION_ALLOWED_TRANSITIONS`.
+- `audio.chunk` carries transport metadata and an optional base64 payload field only; wake detection, STT, TTS, and raw audio processing remain outside Task 028.
+- `/api/voice/ws` must consume this contract in the next implementation task instead of introducing a parallel ad hoc message shape.
+
 ## Proposed Phase 1 Outcome
 
 Phase 1 is successful if, by the end of it, we have:

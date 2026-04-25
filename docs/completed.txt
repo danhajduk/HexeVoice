@@ -16,3 +16,4 @@ Task 015: Implement frontend steps 4-6 for Registration, Approval, and Trust Act
 Task 016: Implement frontend steps 7-10 for Provider Setup, Capability Declaration, Governance Sync, and Ready - Completed on 04/07/2026 18:45
 Task 017: Build the post-setup operational overview surfaces using the standard facts, state-grid, actions, and warning card patterns - Completed on 04/07/2026 18:49
 Task 018: Add onboarding tests, UI validation, and operator docs aligned to the Core flow and visual source-of-truth standards - Completed on 04/07/2026 18:53
+Task 028: Define the backend voice event envelope and single-endpoint session contract - Completed on 04/25/2026 11:20

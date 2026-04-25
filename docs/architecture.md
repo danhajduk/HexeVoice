@@ -16,6 +16,7 @@ HexeVoice is structured as a modular Hexe node starter:
 - `diagnostics/` for logging helpers
 - `security/` for masking and redaction
 - `api/` for typed response contracts used by the backend surface
+- `voice/` for the Phase 1 endpoint event envelope and session-state contract
 
 The initial backend exposes the standard starter route groups for health, node status, onboarding, capabilities, governance/readiness, service status, and provider status.
 
@@ -30,6 +31,8 @@ This route is intentionally lightweight. It gives endpoint firmware a stable req
 - simple local commands such as `status`, `repeat`, and `stop`
 - deterministic fallback replies for arbitrary text turns
 - endpoint-scoped session ids so device-side integration can start immediately
+
+The backend voice protocol contract now lives in `src/hexevoice/voice/contracts.py`. It defines the shared event envelope, endpoint-to-backend and backend-to-endpoint event vocabulary, audio chunk metadata shape, endpoint connection states, endpoint UX states, backend-authored session states, and the allowed MVP session transitions. This is a contract-only boundary: `/api/voice/ws`, audio processing, wake detection, STT, TTS, and the runtime session manager are still pending Phase 1 implementation.
 
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 
