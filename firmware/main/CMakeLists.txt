@@ -40,6 +40,7 @@ idf_component_register(
     "${HEXE_GENERATED_DIR}"
   REQUIRES
     esp_http_client
+    esp_lcd
     esp_websocket_client
     cjson
     mbedtls
