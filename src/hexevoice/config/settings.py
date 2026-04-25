@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
+    backend_log_path: Path | None = Field(default=None, alias="BACKEND_LOG_PATH")
     firmware_artifact_dir: Path | None = Field(default=None, alias="FIRMWARE_ARTIFACT_DIR")
     onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")
@@ -80,3 +81,8 @@ class Settings(BaseSettings):
         if self.firmware_artifact_dir is not None:
             return self.firmware_artifact_dir
         return self.runtime_dir / "firmware"
+
+    def resolved_backend_log_path(self) -> Path:
+        if self.backend_log_path is not None:
+            return self.backend_log_path
+        return self.runtime_dir / "logs" / "hexevoice-backend.log"

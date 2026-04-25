@@ -16,5 +16,7 @@ runtime/openwakeword/models/*
 !runtime/openwakeword/models/.gitkeep
 runtime/firmware/*
 !runtime/firmware/.gitkeep
+runtime/logs/*
+!runtime/logs/.gitkeep
 scripts/stack.env
 scripts/openwakeword.env

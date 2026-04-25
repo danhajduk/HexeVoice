@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 
@@ -61,6 +62,35 @@ from hexevoice.trust.status import TrustStatusService
 from hexevoice.voice import VoiceSessionManager, WakeDetector
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
 from hexevoice.voice.wake import build_wake_detector
+
+
+def configure_backend_logging(settings: Settings) -> Path:
+    log_path = settings.resolved_backend_log_path()
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    logger = logging.getLogger("hexevoice")
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+    for handler in list(logger.handlers):
+        if getattr(handler, "_hexevoice_backend_handler", False):
+            logger.removeHandler(handler)
+            handler.close()
+
+    file_handler = RotatingFileHandler(log_path, maxBytes=2_000_000, backupCount=3)
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+    file_handler._hexevoice_backend_handler = True  # type: ignore[attr-defined]
+    logger.addHandler(file_handler)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(logging.INFO)
+    stream_handler._hexevoice_backend_handler = True  # type: ignore[attr-defined]
+    logger.addHandler(stream_handler)
+    logger.info("Backend logging initialized: path=%s", log_path)
+    return log_path
 
 
 def create_app(
@@ -326,8 +356,8 @@ def create_app(
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
     settings = Settings()
+    configure_backend_logging(settings)
     uvicorn.run(create_app(settings), host=settings.api_host, port=settings.api_port)
 
 
