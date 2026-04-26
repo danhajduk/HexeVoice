@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/task-061-json-schemas/endpoint-command-ack-payload.schema.json",
+  "title": "HexeVoice Endpoint Command Acknowledgement Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "command_type",
+    "status"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "started",
+        "succeeded",
+        "unsupported"
+      ]
+    },
+    "message": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

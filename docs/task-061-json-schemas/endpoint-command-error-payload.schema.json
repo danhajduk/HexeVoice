@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/task-061-json-schemas/endpoint-command-error-payload.schema.json",
+  "title": "HexeVoice Endpoint Command Error Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "command_type",
+    "code",
+    "message"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "command_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "code": {
+      "type": "string",
+      "minLength": 1
+    },
+    "message": {
+      "type": "string"
+    },
+    "recoverable": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}

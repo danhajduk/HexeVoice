@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/task-061-json-schemas/voice-audio-chunk-payload.schema.json",
+  "title": "HexeVoice Audio Chunk Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chunk_index"
+  ],
+  "properties": {
+    "chunk_index": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "payload_base64": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "is_final": {
+      "type": "boolean",
+      "default": false
+    },
+    "audio_format": {
+      "$ref": "#/$defs/audio_format"
+    }
+  },
+  "$defs": {
+    "audio_format": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "encoding": {
+          "type": "string",
+          "enum": [
+            "pcm_s16le",
+            "opus",
+            "wav"
+          ],
+          "default": "pcm_s16le"
+        },
+        "sample_rate_hz": {
+          "type": "integer",
+          "minimum": 8000,
+          "default": 16000
+        },
+        "channels": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2,
+          "default": 1
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/task-061-json-schemas/endpoint-volume-command-payload.schema.json",
+  "title": "HexeVoice Endpoint Volume Command Payload",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "volume_percent"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "volume_percent": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    }
+  }
+}

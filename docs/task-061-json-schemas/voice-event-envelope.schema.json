@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/task-061-json-schemas/voice-event-envelope.schema.json",
+  "title": "HexeVoice Voice Event Envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_type",
+    "event_id",
+    "session_id",
+    "endpoint_id",
+    "direction",
+    "timestamp",
+    "schema_version",
+    "payload"
+  ],
+  "properties": {
+    "event_type": {
+      "type": "string"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "endpoint_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "direction": {
+      "type": "string",
+      "enum": [
+        "endpoint_to_backend",
+        "backend_to_endpoint",
+        "internal"
+      ]
+    },
+    "sequence": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "hexevoice.voice.event.v1"
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}

@@ -22,13 +22,14 @@ The current schema version is `hexevoice.voice.event.v1`. The backend still acce
 `event_id` or `schema_version`; missing values are filled server-side. Unknown schema versions are rejected by backend
 validation and surfaced through `session.error` plus `/api/voice/status` `event_diagnostics`.
 
-JSON artifacts for this contract are stored in `docs/voice-event-envelope/`:
+JSON examples for this contract are stored in `docs/voice-event-envelope/`:
 
-- `envelope.schema.json`
 - `endpoint-session-start.example.json`
 - `backend-volume-command.example.json`
 - `endpoint-command-ack.example.json`
 - `endpoint-command-error.example.json`
+
+The Task 061 schema set is stored in `docs/task-061-json-schemas/`.
 
 Endpoint command acknowledgements use `command.ack`. Endpoint-side command failures use `command.error`. Both are
 accepted endpoint-to-backend events and are exposed in `/api/voice/status` as `last_command_ack`,
