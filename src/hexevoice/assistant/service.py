@@ -49,7 +49,7 @@ class LocalEchoAssistantAdapter:
     ) -> AssistantTurnResponse:
         heard_text = payload.text.strip()
         heard_for_reply = heard_text or "nothing"
-        reply_text = f"I heard {heard_for_reply}, no AI added yet."
+        reply_text = f"I heard {heard_for_reply}"
         return AssistantTurnResponse(
             endpoint_id=payload.endpoint_id,
             session_id=session_id,

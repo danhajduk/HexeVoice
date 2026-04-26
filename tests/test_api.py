@@ -347,7 +347,7 @@ def test_assistant_turn_echoes_transcript_without_ai(tmp_path):
     assert response.json()["heard_text"] == "status"
     assert response.json()["command"] is None
     assert response.json()["handled_locally"] is False
-    assert response.json()["reply_text"] == "I heard status, no AI added yet."
+    assert response.json()["reply_text"] == "I heard status"
     assert response.json()["device_state"] == "speaking"
     assert response.json()["provider_id"] == "local_echo"
     assert response.json()["error"] is None
@@ -369,7 +369,7 @@ def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
     payload = response.json()
     assert payload["session_id"] == "session-abc"
     assert payload["handled_locally"] is False
-    assert payload["reply_text"] == "I heard turn on the lights, no AI added yet."
+    assert payload["reply_text"] == "I heard turn on the lights"
     assert payload["provider_id"] == "local_echo"
 
 
@@ -427,7 +427,7 @@ def test_assistant_ai_node_adapter_falls_back_to_local_echo_when_unconfigured():
         session_id="session-abc",
     )
 
-    assert response.reply_text == "I heard turn on the lights, no AI added yet."
+    assert response.reply_text == "I heard turn on the lights"
     assert adapter.status()["healthy"] is False
     assert adapter.status()["last_error"] == "missing_ai_node_base_url"
 
@@ -445,8 +445,8 @@ def test_assistant_turn_service_keeps_rolling_context(tmp_path):
 
     assert [turn.heard_text for turn in endpoint_context] == ["second", "third"]
     assert [turn.reply_text for turn in session_context] == [
-        "I heard second, no AI added yet.",
-        "I heard third, no AI added yet.",
+        "I heard second",
+        "I heard third",
     ]
     assert service.status()["context_turn_limit"] == 2
     assert service.status()["endpoint_contexts"]["box-9"] == 2
@@ -475,7 +475,7 @@ def test_assistant_ai_node_adapter_receives_context():
                 endpoint_id="box-9",
                 session_id="session-1",
                 heard_text="first",
-                reply_text="I heard first, no AI added yet.",
+                reply_text="I heard first",
             )
         ],
     )
