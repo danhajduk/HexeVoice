@@ -3,6 +3,7 @@
 #include "board/buttons.h"
 #include "board/display.h"
 #include "board/storage.h"
+#include "board/touch.h"
 #include "board/wifi.h"
 #include "esp_app_desc.h"
 #include "esp_log.h"
@@ -38,6 +39,7 @@ extern "C" void app_main(void) {
   hexe::system::init_settings();
   hexe::board::init_storage();
   hexe::board::init_display();
+  hexe::board::init_touch();
   vTaskDelay(pdMS_TO_TICKS(kPostDisplayInitDelayMs));
   hexe::board::show_black_frame();
   vTaskDelay(pdMS_TO_TICKS(kPanelSettleDelayMs));

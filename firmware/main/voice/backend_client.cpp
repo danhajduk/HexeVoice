@@ -337,6 +337,13 @@ void handle_backend_event_json(const std::string &message) {
             cJSON_IsNumber(size_bytes) ? size_bytes->valueint : 0)) {
       app_state.phase = hexe::AppPhase::kUpdating;
     }
+  } else if (std::strcmp(type, "endpoint.volume") == 0) {
+    cJSON *volume_percent = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "volume_percent") : nullptr;
+    if (cJSON_IsNumber(volume_percent)) {
+      hexe::voice::set_output_volume(volume_percent->valueint);
+    } else {
+      ESP_LOGW(kTag, "Ignoring volume command without numeric volume_percent");
+    }
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     g_session_started = false;
     g_audio_stream_finished = false;

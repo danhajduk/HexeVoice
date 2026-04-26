@@ -152,6 +152,50 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     assert event["payload"]["size_bytes"] == len(b"firmware-bin")
 
 
+def test_endpoint_volume_command_sends_event_to_connected_endpoint(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        response = client.post(
+            "/api/endpoint/volume",
+            json={"endpoint_id": "esp-box-1", "volume_percent": 42},
+        )
+        event = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "accepted": True,
+        "endpoint_id": "esp-box-1",
+        "volume_percent": 42,
+        "reason": None,
+    }
+    assert event["event_type"] == "endpoint.volume"
+    assert event["endpoint_id"] == "esp-box-1"
+    assert event["direction"] == "backend_to_endpoint"
+    assert event["payload"]["volume_percent"] == 42
+
+
+def test_endpoint_volume_command_requires_valid_percent(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/endpoint/volume",
+        json={"endpoint_id": "esp-box-1", "volume_percent": 101},
+    )
+
+    assert response.status_code == 422
+
+
 def test_assistant_turn_echoes_transcript_without_ai(tmp_path):
     state_path = tmp_path / "onboarding-state.json"
     store = OnboardingStateStore(path=state_path)

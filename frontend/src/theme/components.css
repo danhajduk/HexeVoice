@@ -607,6 +607,19 @@
   margin-top: 16px;
 }
 
+.endpoint-volume-control {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: end;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.endpoint-volume-control input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
 .prompt-list {
   margin: 0;
   padding-left: 18px;
@@ -862,6 +875,11 @@
 
   .state-row {
     grid-template-columns: 1fr;
+  }
+
+  .endpoint-volume-control {
+    grid-template-columns: 1fr;
+    align-items: stretch;
   }
 
   .field-span-2 {

@@ -36,6 +36,24 @@ Then edit `firmware/config/endpoint.yaml` so `node.host`, `node.http_port`, and 
 
 During the ESP-IDF build, `main/CMakeLists.txt` runs `tools/generate_endpoint_config.py` and generates `endpoint_config.h` from `config/endpoint.yaml` when present, otherwise from `config/endpoint.example.yaml`. Firmware source consumes that generated header instead of hardcoding a node IP address.
 
+## SPI microSD Media Storage
+
+On boot, firmware now tries to mount a FAT-formatted SPI microSD reader at `/sdcard`. Boot continues normally if no card is present. Wire the dock reader as:
+
+- `MISO` -> `G9`
+- `MOSI` -> `G14`
+- `SCK` -> `G11`
+- `CS` -> `G12`
+- `VCC` -> `3V3`
+- `GND` -> `GND`
+
+Use a 16 GB or 32 GB FAT32 card for the smoothest path. A 64 GB card should use a FAT32 partition, ideally as the first partition. When mounted, firmware creates:
+
+- `/sdcard/hexe/pictures`
+- `/sdcard/hexe/sounds`
+
+Those paths are the stable drop zones for future picture and sound loading.
+
 ## Next Build Step
 
 Once ESP-IDF is installed locally, the intended workflow is:

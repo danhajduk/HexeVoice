@@ -29,6 +29,8 @@ from hexevoice.api.models import (
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
     EndpointStatusResponse,
+    EndpointVolumeCommandRequest,
+    EndpointVolumeCommandResponse,
     FirmwareOtaPushRequest,
     FirmwareOtaPushResponse,
     OnboardingSessionPollResponse,
@@ -188,6 +190,19 @@ def create_app(
     @app.get("/api/endpoint/status/{endpoint_id}", response_model=EndpointStatusResponse)
     async def endpoint_status(endpoint_id: str) -> EndpointStatusResponse:
         return endpoint_service.status(endpoint_id)
+
+    @app.post("/api/endpoint/volume", response_model=EndpointVolumeCommandResponse)
+    async def endpoint_volume(payload: EndpointVolumeCommandRequest) -> EndpointVolumeCommandResponse:
+        result = await voice_session_manager.push_volume_command(
+            endpoint_id=payload.endpoint_id,
+            volume_percent=payload.volume_percent,
+        )
+        return EndpointVolumeCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            volume_percent=payload.volume_percent,
+            reason=result.get("reason"),
+        )
 
     def firmware_artifact_path(filename: str) -> Path:
         artifact_dir = app_settings.resolved_firmware_artifact_dir().resolve()

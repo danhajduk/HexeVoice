@@ -65,6 +65,18 @@ class EndpointStatusResponse(BaseModel):
     last_seen_at: str
 
 
+class EndpointVolumeCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    volume_percent: int = Field(ge=0, le=100)
+
+
+class EndpointVolumeCommandResponse(BaseModel):
+    accepted: bool
+    endpoint_id: str
+    volume_percent: int
+    reason: str | None = None
+
+
 class FirmwareOtaPushRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     filename: str = "hexe_firmware.bin"

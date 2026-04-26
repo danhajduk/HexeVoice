@@ -29,6 +29,7 @@ struct AppState {
   int wifi_rssi{-100};
   int vad_level{0};
   int loading_frame{0};
+  int output_volume_percent{70};
   bool ota_active{false};
   int ota_progress_percent{0};
   int ota_bytes_read{0};

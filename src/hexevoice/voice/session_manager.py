@@ -143,6 +143,31 @@ class VoiceSessionManager:
         self._last_event_type = "ota.update"
         return {"accepted": True}
 
+    async def push_volume_command(self, *, endpoint_id: str, volume_percent: int) -> dict:
+        if not self._connection_active or self._websocket is None:
+            log.warning("Volume command rejected: endpoint_id=%s reason=endpoint_not_connected", endpoint_id)
+            return {"accepted": False, "reason": "endpoint_not_connected"}
+        if self._connected_endpoint_id is not None and endpoint_id != self._connected_endpoint_id:
+            log.warning(
+                "Volume command rejected: endpoint_id=%s connected_endpoint_id=%s reason=endpoint_mismatch",
+                endpoint_id,
+                self._connected_endpoint_id,
+            )
+            return {"accepted": False, "reason": "endpoint_mismatch"}
+
+        event = VoiceEventEnvelope(
+            event_type="endpoint.volume",
+            endpoint_id=endpoint_id,
+            direction="backend_to_endpoint",
+            session_id=self._active_session.session_id if self._active_session else None,
+            sequence=self._next_sequence(),
+            payload={"volume_percent": volume_percent},
+        )
+        await self._websocket.send_json(event.model_dump(mode="json"))
+        self._last_event_type = "endpoint.volume"
+        log.info("Volume command sent to endpoint: endpoint_id=%s volume_percent=%s", endpoint_id, volume_percent)
+        return {"accepted": True}
+
     def _handle_raw_message(self, raw_message: str) -> list[VoiceEventEnvelope]:
         try:
             raw_payload = json.loads(raw_message)
@@ -604,6 +629,7 @@ class VoiceSessionManager:
                 "stop_session": self._active_session is not None,
                 "replay_response": False,
                 "mute_endpoint": False,
+                "set_volume": self._connection_active,
                 "reconnect": False,
             },
         }

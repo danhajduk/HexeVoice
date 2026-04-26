@@ -159,6 +159,15 @@ export async function cancelVoiceSession() {
   return sendJson("/api/voice/session/cancel");
 }
 
+export async function setEndpointVolume(endpointId, volumePercent) {
+  return sendJson("/api/endpoint/volume", {
+    body: {
+      endpoint_id: endpointId,
+      volume_percent: volumePercent,
+    },
+  });
+}
+
 export async function testAssistantTurn(endpointId = "dashboard-test") {
   return sendJson("/api/assistant/turn", {
     body: {

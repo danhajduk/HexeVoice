@@ -1,4 +1,13 @@
-export function VoiceEndpointActionsCard({ voiceStatus, onRefresh, onTestTurn, onStopSession, actionMessage }) {
+export function VoiceEndpointActionsCard({
+  voiceStatus,
+  onRefresh,
+  onTestTurn,
+  onStopSession,
+  onSetVolume,
+  volumePercent,
+  onVolumeChange,
+  actionMessage,
+}) {
   const actions = voiceStatus?.supported_actions || {};
   return (
     <section className="voice-endpoint-panel stack">
@@ -26,6 +35,24 @@ export function VoiceEndpointActionsCard({ voiceStatus, onRefresh, onTestTurn, o
         </button>
         <button className="btn btn-ghost" type="button" disabled={!actions.reconnect}>
           Reconnect
+        </button>
+      </div>
+      <div className="form-row endpoint-volume-control">
+        <label className="field">
+          <span className="field-label">Volume</span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={volumePercent}
+            onChange={(event) => onVolumeChange(Number(event.target.value))}
+            disabled={!actions.set_volume}
+          />
+        </label>
+        <span className="status-pill status-pill-neutral">{volumePercent}%</span>
+        <button className="btn btn-ghost" type="button" onClick={onSetVolume} disabled={!actions.set_volume}>
+          Set
         </button>
       </div>
       {actionMessage ? <div className="callout">{actionMessage}</div> : null}

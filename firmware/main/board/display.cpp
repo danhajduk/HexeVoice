@@ -153,6 +153,8 @@ void draw_wifi_icon(bool connected, int rssi) {
 
   constexpr int kIconX = 8;
   constexpr int kIconY = 8;
+  constexpr int kIconW = 24;
+  constexpr int kIconH = 18;
   const int bars = wifi_strength_bars(rssi);
   const uint16_t shadow = swap565(0x0000);
   const uint16_t bg = swap565(0x18C3);
@@ -160,29 +162,27 @@ void draw_wifi_icon(bool connected, int rssi) {
   const uint16_t fg = swap565(0xFFFF);
   const uint16_t dim = swap565(0x7BEF);
 
-  fill_rect(kIconX + 1, kIconY + 1, 22, 16, shadow);
-  fill_rect(kIconX + 2, kIconY, 18, 1, bg);
-  fill_rect(kIconX + 1, kIconY + 1, 20, 14, bg);
-  fill_rect(kIconX + 2, kIconY + 15, 18, 1, bg);
-  draw_rect_outline(kIconX + 1, kIconY + 1, 20, 14, outline);
+  fill_rect(kIconX + 1, kIconY + 1, kIconW, kIconH, shadow);
+  fill_rect(kIconX, kIconY, kIconW, kIconH, bg);
+  draw_rect_outline(kIconX, kIconY, kIconW, kIconH, outline);
 
   const uint16_t c1 = bars >= 1 ? fg : dim;
   const uint16_t c2 = bars >= 2 ? fg : dim;
   const uint16_t c3 = bars >= 3 ? fg : dim;
 
-  fill_rect(kIconX + 10, kIconY + 11, 2, 2, fg);
+  fill_rect(kIconX + 11, kIconY + 13, 2, 2, fg);
 
-  draw_hline(kIconX + 8, kIconY + 9, 6, c1);
-  set_pixel(kIconX + 7, kIconY + 10, c1);
-  set_pixel(kIconX + 14, kIconY + 10, c1);
+  draw_hline(kIconX + 9, kIconY + 11, 6, c1);
+  set_pixel(kIconX + 8, kIconY + 12, c1);
+  set_pixel(kIconX + 15, kIconY + 12, c1);
 
-  draw_hline(kIconX + 6, kIconY + 7, 10, c2);
-  set_pixel(kIconX + 5, kIconY + 8, c2);
-  set_pixel(kIconX + 16, kIconY + 8, c2);
+  draw_hline(kIconX + 7, kIconY + 9, 10, c2);
+  set_pixel(kIconX + 6, kIconY + 10, c2);
+  set_pixel(kIconX + 17, kIconY + 10, c2);
 
-  draw_hline(kIconX + 4, kIconY + 5, 14, c3);
-  set_pixel(kIconX + 3, kIconY + 6, c3);
-  set_pixel(kIconX + 18, kIconY + 6, c3);
+  draw_hline(kIconX + 5, kIconY + 7, 14, c3);
+  set_pixel(kIconX + 4, kIconY + 8, c3);
+  set_pixel(kIconX + 19, kIconY + 8, c3);
 }
 
 void draw_audio_stream_icon(bool streaming) {
@@ -190,28 +190,70 @@ void draw_audio_stream_icon(bool streaming) {
     return;
   }
 
-  constexpr int kIconX = 286;
+  constexpr int kIconX = 38;
   constexpr int kIconY = 8;
+  constexpr int kIconW = 24;
+  constexpr int kIconH = 18;
   const uint16_t shadow = swap565(0x0000);
   const uint16_t bg = swap565(0x18C3);
   const uint16_t outline = swap565(0x7BEF);
   const uint16_t fg = swap565(0x07FF);
   const uint16_t pulse = (hexe::state().loading_frame % 24) < 12 ? swap565(0xFFFF) : fg;
 
-  fill_rect(kIconX + 1, kIconY + 1, 26, 18, shadow);
-  fill_rect(kIconX + 2, kIconY, 22, 1, bg);
-  fill_rect(kIconX + 1, kIconY + 1, 24, 16, bg);
-  fill_rect(kIconX + 2, kIconY + 17, 22, 1, bg);
-  draw_rect_outline(kIconX + 1, kIconY + 1, 24, 16, outline);
+  fill_rect(kIconX + 1, kIconY + 1, kIconW, kIconH, shadow);
+  fill_rect(kIconX, kIconY, kIconW, kIconH, bg);
+  draw_rect_outline(kIconX, kIconY, kIconW, kIconH, outline);
 
-  fill_rect(kIconX + 7, kIconY + 4, 6, 8, fg);
-  fill_rect(kIconX + 8, kIconY + 3, 4, 1, fg);
-  fill_rect(kIconX + 8, kIconY + 12, 4, 1, fg);
-  fill_rect(kIconX + 9, kIconY + 13, 2, 2, fg);
-  draw_hline(kIconX + 6, kIconY + 15, 8, fg);
+  fill_rect(kIconX + 6, kIconY + 5, 6, 8, fg);
+  fill_rect(kIconX + 7, kIconY + 4, 4, 1, fg);
+  fill_rect(kIconX + 7, kIconY + 13, 4, 1, fg);
+  fill_rect(kIconX + 8, kIconY + 14, 2, 2, fg);
+  draw_hline(kIconX + 5, kIconY + 16, 8, fg);
 
-  fill_rect(kIconX + 17, kIconY + 5, 2, 8, pulse);
-  fill_rect(kIconX + 21, kIconY + 3, 2, 12, pulse);
+  fill_rect(kIconX + 16, kIconY + 6, 2, 7, pulse);
+  fill_rect(kIconX + 20, kIconY + 4, 2, 11, pulse);
+}
+
+void draw_volume_indicator() {
+  const auto &app_state = hexe::state();
+  int percent = app_state.output_volume_percent;
+  if (percent < 0) {
+    percent = 0;
+  } else if (percent > 100) {
+    percent = 100;
+  }
+
+  constexpr int kIconX = 240;
+  constexpr int kIconY = 8;
+  constexpr int kBarX = 262;
+  constexpr int kBarY = 13;
+  constexpr int kBarW = 48;
+  constexpr int kBarH = 6;
+  const int fill_width = ((kBarW - 4) * percent) / 100;
+  const uint16_t shadow = swap565(0x0000);
+  const uint16_t bg = swap565(0x18C3);
+  const uint16_t outline = swap565(0x7BEF);
+  const uint16_t fg = app_state.muted ? swap565(0xF800) : swap565(0xFFFF);
+  const uint16_t fill = app_state.muted ? swap565(0xF800) : swap565(0x07FF);
+
+  fill_rect(kIconX - 3, kIconY - 3, 76, 18, shadow);
+  fill_rect(kIconX - 2, kIconY - 4, 74, 1, bg);
+  fill_rect(kIconX - 3, kIconY - 3, 76, 16, bg);
+  fill_rect(kIconX - 2, kIconY + 13, 74, 1, bg);
+
+  fill_rect(kIconX, kIconY + 5, 5, 5, fg);
+  fill_rect(kIconX + 5, kIconY + 3, 3, 9, fg);
+  if (percent > 0 && !app_state.muted) {
+    draw_hline(kIconX + 10, kIconY + 5, 4, fg);
+    draw_hline(kIconX + 10, kIconY + 9, 4, fg);
+    draw_hline(kIconX + 15, kIconY + 3, 4, fg);
+    draw_hline(kIconX + 15, kIconY + 11, 4, fg);
+  }
+
+  draw_rect_outline(kBarX, kBarY, kBarW, kBarH, outline);
+  if (fill_width > 0) {
+    fill_rect(kBarX + 2, kBarY + 2, fill_width, kBarH - 4, fill);
+  }
 }
 
 struct ScreenAsset {
@@ -303,6 +345,9 @@ void render_boot_frame(int frame, const char *build_id) {
 
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);
   draw_audio_stream_icon(hexe::state().audio_streaming);
+  if (phase != hexe::AppPhase::kBooting) {
+    draw_volume_indicator();
+  }
   if (phase == hexe::AppPhase::kUpdating) {
     draw_ota_progress();
   }

@@ -130,31 +130,31 @@ if [[ -x "${HOME}/.espressif/python_env/idf6.1_py3.11_env/bin/python" ]]; then
 fi
 
 if [[ -f "${LOGO_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${LOGO_SOURCE}" "${LOGO_HEADER}" --width 320 --height 240
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${LOGO_SOURCE}" "${LOGO_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
 fi
 
 if [[ -f "${IDLE_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${IDLE_SOURCE}" "${IDLE_HEADER}" --width 320 --height 240
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${IDLE_SOURCE}" "${IDLE_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
 fi
 
 if [[ -f "${LISTENING_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${LISTENING_SOURCE}" "${LISTENING_HEADER}" --width 320 --height 240
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${LISTENING_SOURCE}" "${LISTENING_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
 fi
 
 if [[ -f "${THINKING_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${THINKING_SOURCE}" "${THINKING_HEADER}" --width 320 --height 240
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${THINKING_SOURCE}" "${THINKING_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
 fi
 
 if [[ -f "${TALK_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${TALK_SOURCE}" "${TALK_HEADER}" --width 320 --height 240
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${TALK_SOURCE}" "${TALK_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
 fi
 
 if [[ -f "${WORK_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${WORK_SOURCE}" "${WORK_HEADER}" --width 320 --height 240
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${WORK_SOURCE}" "${WORK_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
 fi
 
 if [[ -f "${ERROR_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${ERROR_SOURCE}" "${ERROR_HEADER}" --width 320 --height 240
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${ERROR_SOURCE}" "${ERROR_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
 fi
 
 if [[ ! -f "${ROOT_DIR}/sdkconfig" ]]; then

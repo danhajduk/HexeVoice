@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { cancelVoiceSession, testAssistantTurn } from "../../api/client";
+import { cancelVoiceSession, setEndpointVolume, testAssistantTurn } from "../../api/client";
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
 
 const LATEST_SPEECH_VISIBLE_MS = 20000;
@@ -195,6 +195,7 @@ export function VoiceEndpointDashboardSection({
   onRefresh,
 }) {
   const [actionMessage, setActionMessage] = useState("");
+  const [volumePercent, setVolumePercent] = useState(70);
 
   async function handleTestTurn() {
     try {
@@ -217,6 +218,21 @@ export function VoiceEndpointDashboardSection({
     }
   }
 
+  async function handleSetVolume() {
+    try {
+      const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id;
+      if (!endpointId) {
+        setActionMessage("Volume skipped: endpoint is not connected.");
+        return;
+      }
+      const result = await setEndpointVolume(endpointId, Number(volumePercent));
+      setActionMessage(result.accepted ? `Volume set to ${result.volume_percent}%.` : `Volume skipped: ${result.reason}`);
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
   return (
     <section className="card stack panel voice-endpoint-main-card">
       <div className="voice-endpoint-top">
@@ -226,6 +242,9 @@ export function VoiceEndpointDashboardSection({
           onRefresh={onRefresh}
           onTestTurn={handleTestTurn}
           onStopSession={handleStopSession}
+          onSetVolume={handleSetVolume}
+          volumePercent={volumePercent}
+          onVolumeChange={setVolumePercent}
           actionMessage={actionMessage}
         />
       </div>

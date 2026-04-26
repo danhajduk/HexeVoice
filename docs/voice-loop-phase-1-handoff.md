@@ -84,6 +84,8 @@ Firmware UX timing notes:
 
 `GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. It also exposes `last_assistant` with provider id, model, response text, latency, text length, and error state, plus `last_turn_timings` with STT, assistant, TTS, and total turn duration in milliseconds. The backend log records transcript finalization, local faster-whisper latency, and the full turn timing breakdown.
 
+Endpoint output volume can be changed through `POST /api/endpoint/volume` with `endpoint_id` and `volume_percent` from 0 to 100. The backend forwards this as an `endpoint.volume` WebSocket event, and firmware applies it to listening cues and TTS playback.
+
 For wake model setup:
 
 - `VOICE_WAKE_THRESHOLD=0.5`

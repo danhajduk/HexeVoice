@@ -23,6 +23,7 @@ idf_component_register(
     "board/buttons.cpp"
     "board/display.cpp"
     "board/storage.cpp"
+    "board/touch.cpp"
     "board/wifi.cpp"
     "system/ota.cpp"
     "system/log_stream.cpp"
@@ -49,8 +50,11 @@ idf_component_register(
     esp_netif
     esp_websocket_client
     esp_wifi
+    espressif__esp_lcd_touch
+    fatfs
     cjson
     lwip
     mbedtls
     nvs_flash
+    sdmmc
 )

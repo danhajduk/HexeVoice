@@ -28,8 +28,6 @@ constexpr int kTaskPriority = 4;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
 constexpr size_t kPlaybackWriteBytes = 4096;
 constexpr int kCueSampleRateHz = 16000;
-constexpr int kCueVolume = 90;
-constexpr int kTtsVolume = 70;
 constexpr float kPi = 3.14159265358979323846f;
 
 enum class PlaybackKind {
@@ -62,6 +60,10 @@ TaskHandle_t g_playback_task = nullptr;
 esp_codec_dev_handle_t g_speaker_codec = nullptr;
 volatile bool g_stop_requested = false;
 volatile bool g_playback_active = false;
+
+int current_output_volume() {
+  return std::clamp(hexe::state().output_volume_percent, 0, 100);
+}
 
 const char *scheme_http() {
   return hexe::config::kEndpointUseTls ? "https" : "http";
@@ -194,7 +196,7 @@ bool play_wav(const std::vector<uint8_t> &audio) {
   sample_info.bits_per_sample = wav.bits_per_sample;
   sample_info.channel = wav.channels;
   sample_info.sample_rate = wav.sample_rate;
-  esp_codec_dev_set_out_vol(g_speaker_codec, kTtsVolume);
+  esp_codec_dev_set_out_vol(g_speaker_codec, current_output_volume());
   int result = esp_codec_dev_open(g_speaker_codec, &sample_info);
   if (result != 0) {
     ESP_LOGW(kTag, "Failed to open speaker stream: %d", result);
@@ -294,7 +296,7 @@ bool write_tone(int frequency_hz, int duration_ms, int attack_ms, int release_ms
 }
 
 bool play_listening_cue_now() {
-  if (!open_speaker(kCueSampleRateHz, 1, 16, kCueVolume)) {
+  if (!open_speaker(kCueSampleRateHz, 1, 16, current_output_volume())) {
     return false;
   }
 
@@ -432,6 +434,15 @@ void stop_tts_playback() {
   if (!state.muted) {
     state.phase = hexe::idle_or_connecting_phase();
   }
+}
+
+void set_output_volume(int volume_percent) {
+  const int clamped = std::clamp(volume_percent, 0, 100);
+  hexe::state().output_volume_percent = clamped;
+  if (g_speaker_codec != nullptr) {
+    esp_codec_dev_set_out_vol(g_speaker_codec, clamped);
+  }
+  ESP_LOGI(kTag, "Output volume set to %d%%", clamped);
 }
 
 bool tts_playback_active() {
