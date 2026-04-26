@@ -48,5 +48,4 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 057: Add local Piper TTS provider with deterministic fallback
 [TODO] Task 058: Tune end-to-end voice UX timing, VAD handoff, and LCD state transitions

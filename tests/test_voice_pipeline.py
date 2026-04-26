@@ -14,6 +14,7 @@ from hexevoice.voice import (
     FasterWhisperSpeechToTextAdapter,
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
+    PiperTextToSpeechAdapter,
     VoiceTurnAudioSummary,
     VoiceTurnPipeline,
     build_voice_turn_pipeline,
@@ -323,6 +324,60 @@ def test_build_voice_turn_pipeline_uses_openai_tts_when_configured(tmp_path):
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._tts_adapter, OpenAiTextToSpeechAdapter)
+
+
+def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["json"] = request.read()
+        return httpx.Response(200, content=b"RIFFpiper-wav", headers={"content-type": "audio/wav"})
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://piper.test:10200",
+        synthesize_path="/api/tts",
+        voice="en_US-test",
+        output_dir=tmp_path,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
+
+    assert captured["url"] == "http://piper.test:10200/api/tts"
+    assert b"hello" in captured["json"]
+    assert b"en_US-test" in captured["json"]
+    assert synthesis.provider_id == "piper"
+    assert synthesis.content_type == "audio/wav"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}"
+    assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == b"RIFFpiper-wav"
+    assert adapter.status()["healthy"] is True
+
+
+def test_piper_tts_adapter_falls_back_when_unconfigured(tmp_path):
+    adapter = PiperTextToSpeechAdapter(base_url=None, output_dir=tmp_path)
+
+    synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
+
+    assert synthesis.provider_id == "deterministic"
+    assert synthesis.stream_id.startswith("tts-")
+    assert adapter.status()["healthy"] is False
+    assert adapter.status()["last_error"] == "missing_piper_base_url"
+
+
+def test_build_voice_turn_pipeline_uses_piper_tts_when_configured(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_tts_provider="piper",
+        voice_tts_piper_base_url="http://piper.test:10200",
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    assert isinstance(pipeline._tts_adapter, PiperTextToSpeechAdapter)
 
 
 def test_voice_turn_pipeline_status_reports_provider_health(tmp_path):

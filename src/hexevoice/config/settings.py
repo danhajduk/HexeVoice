@@ -86,12 +86,18 @@ class Settings(BaseSettings):
     )
     voice_assistant_timeout_s: float = Field(default=20.0, alias="VOICE_ASSISTANT_TIMEOUT_S", gt=0)
     voice_conversation_context_turns: int = Field(default=6, alias="VOICE_CONVERSATION_CONTEXT_TURNS", ge=0)
-    voice_tts_provider: Literal["deterministic", "openai"] = Field(default="deterministic", alias="VOICE_TTS_PROVIDER")
+    voice_tts_provider: Literal["deterministic", "openai", "piper"] = Field(
+        default="deterministic",
+        alias="VOICE_TTS_PROVIDER",
+    )
     voice_tts_model: str = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str = Field(default="alloy", alias="VOICE_TTS_VOICE")
     voice_tts_base_url: str = Field(default="https://api.openai.com/v1", alias="VOICE_TTS_BASE_URL")
     voice_tts_response_format: str = Field(default="wav", alias="VOICE_TTS_RESPONSE_FORMAT")
     voice_tts_timeout_s: float = Field(default=30.0, alias="VOICE_TTS_TIMEOUT_S", gt=0)
+    voice_tts_piper_base_url: str | None = Field(default=None, alias="VOICE_TTS_PIPER_BASE_URL")
+    voice_tts_piper_synthesize_path: str = Field(default="/api/tts", alias="VOICE_TTS_PIPER_SYNTHESIZE_PATH")
+    voice_tts_piper_voice: str | None = Field(default=None, alias="VOICE_TTS_PIPER_VOICE")
     openwakeword_service_id: str = Field(default="openwakeword", alias="OPENWAKEWORD_SERVICE_ID")
     openwakeword_container_name: str = Field(
         default="hexevoice-openwakeword",

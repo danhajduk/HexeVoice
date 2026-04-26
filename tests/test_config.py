@@ -42,6 +42,15 @@ def test_assistant_settings_default_to_local_echo():
     assert settings.voice_conversation_context_turns == 6
 
 
+def test_piper_tts_settings_defaults_to_unconfigured_fallback():
+    settings = Settings(voice_tts_provider="piper")
+
+    assert settings.voice_tts_provider == "piper"
+    assert settings.voice_tts_piper_base_url is None
+    assert settings.voice_tts_piper_synthesize_path == "/api/tts"
+    assert settings.voice_tts_piper_voice is None
+
+
 def test_backend_logging_uses_midnight_archive(tmp_path):
     log_path = tmp_path / "logs" / "backend.log"
     settings = Settings(backend_log_path=log_path, backend_log_level="DEBUG", backend_log_backup_days=5)

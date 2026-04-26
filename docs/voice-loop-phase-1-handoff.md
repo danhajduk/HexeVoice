@@ -65,6 +65,15 @@ If the AI Node adapter is selected but unavailable or unconfigured, the voice no
 
 The assistant service keeps a short in-memory rolling context by endpoint and by session. The current local echo adapter ignores the context so smoke-test replies remain unchanged, but the AI Node adapter includes the context list in its request payload.
 
+Local Piper TTS can be selected with:
+
+- `VOICE_TTS_PROVIDER=piper`
+- `VOICE_TTS_PIPER_BASE_URL`
+- `VOICE_TTS_PIPER_SYNTHESIZE_PATH=/api/tts`
+- optionally `VOICE_TTS_PIPER_VOICE`
+
+If Piper is selected but unavailable or unconfigured, the voice node falls back to deterministic TTS metadata so the full voice pipeline remains testable.
+
 `GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. It also exposes `last_assistant` with provider id, model, response text, latency, text length, and error state, plus `last_turn_timings` with STT, assistant, TTS, and total turn duration in milliseconds. The backend log records transcript finalization, local faster-whisper latency, and the full turn timing breakdown.
 
 For wake model setup:

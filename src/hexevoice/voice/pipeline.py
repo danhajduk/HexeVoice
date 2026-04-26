@@ -325,6 +325,71 @@ class DeterministicTextToSpeechAdapter:
         return {"provider": "deterministic", "healthy": True, "configured": True}
 
 
+class PiperTextToSpeechAdapter:
+    def __init__(
+        self,
+        *,
+        base_url: str | None,
+        synthesize_path: str = "/api/tts",
+        voice: str | None = None,
+        output_dir: Path,
+        timeout_s: float = 30.0,
+        fallback: TextToSpeechAdapter | None = None,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/") if base_url else None
+        self._synthesize_path = synthesize_path if synthesize_path.startswith("/") else f"/{synthesize_path}"
+        self._voice = voice
+        self._output_dir = output_dir
+        self._timeout_s = timeout_s
+        self._fallback = fallback or DeterministicTextToSpeechAdapter()
+        self._http_client = http_client
+        self._last_error: str | None = None
+
+    def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+        if not self._base_url:
+            self._last_error = "missing_piper_base_url"
+            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text)
+
+        stream_id = f"tts-{uuid4().hex[:12]}"
+        client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        try:
+            response = client.post(
+                f"{self._base_url}{self._synthesize_path}",
+                json={"text": text, "voice": self._voice},
+            )
+            response.raise_for_status()
+            self._output_dir.mkdir(parents=True, exist_ok=True)
+            output_path = self._output_dir / f"{stream_id}.wav"
+            output_path.write_bytes(response.content)
+            self._last_error = None
+            return TtsSynthesis(
+                content_type=response.headers.get("content-type", "audio/wav"),
+                stream_id=stream_id,
+                audio_url=f"/api/voice/tts/{stream_id}",
+                provider_id="piper",
+            )
+        except Exception as exc:
+            self._last_error = str(exc)
+            log.warning("Piper TTS failed; using deterministic fallback: error=%s", self._last_error)
+            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text)
+        finally:
+            if self._http_client is None:
+                client.close()
+
+    def status(self) -> dict:
+        return {
+            "provider": "piper",
+            "healthy": self._last_error is None,
+            "configured": bool(self._base_url),
+            "base_url": self._base_url,
+            "synthesize_path": self._synthesize_path,
+            "voice": self._voice,
+            "last_error": self._last_error,
+            "fallback": self._fallback.status(),
+        }
+
+
 class OpenAiTextToSpeechAdapter:
     def __init__(
         self,
@@ -529,6 +594,15 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             base_url=settings.voice_tts_base_url,
             response_format=settings.voice_tts_response_format,
             timeout_s=settings.voice_tts_timeout_s,
+        )
+    elif settings.voice_tts_provider == "piper":
+        tts_adapter = PiperTextToSpeechAdapter(
+            base_url=settings.voice_tts_piper_base_url,
+            synthesize_path=settings.voice_tts_piper_synthesize_path,
+            voice=settings.voice_tts_piper_voice,
+            output_dir=settings.runtime_dir / "voice_tts",
+            timeout_s=settings.voice_tts_timeout_s,
+            fallback=DeterministicTextToSpeechAdapter(),
         )
 
     return VoiceTurnPipeline(assistant_service=assistant_service, stt_adapter=stt_adapter, tts_adapter=tts_adapter)
