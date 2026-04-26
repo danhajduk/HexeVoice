@@ -56,11 +56,24 @@ class Settings(BaseSettings):
     voice_wake_service_host: str = Field(default="127.0.0.1", alias="VOICE_WAKE_SERVICE_HOST")
     voice_wake_service_port: int = Field(default=10400, alias="VOICE_WAKE_SERVICE_PORT")
     voice_wake_service_timeout_s: float = Field(default=0.05, alias="VOICE_WAKE_SERVICE_TIMEOUT_S", gt=0)
-    voice_stt_provider: Literal["deterministic", "openai"] = Field(default="deterministic", alias="VOICE_STT_PROVIDER")
+    voice_stt_provider: Literal["deterministic", "openai", "faster_whisper"] = Field(
+        default="deterministic",
+        alias="VOICE_STT_PROVIDER",
+    )
     voice_stt_model: str = Field(default="gpt-4o-mini-transcribe", alias="VOICE_STT_MODEL")
     voice_stt_base_url: str = Field(default="https://api.openai.com/v1", alias="VOICE_STT_BASE_URL")
     voice_stt_prompt: str | None = Field(default=None, alias="VOICE_STT_PROMPT")
     voice_stt_timeout_s: float = Field(default=30.0, alias="VOICE_STT_TIMEOUT_S", gt=0)
+    voice_stt_faster_whisper_model: str = Field(default="small.en", alias="VOICE_STT_FASTER_WHISPER_MODEL")
+    voice_stt_faster_whisper_device: str = Field(default="cpu", alias="VOICE_STT_FASTER_WHISPER_DEVICE")
+    voice_stt_faster_whisper_compute_type: str = Field(
+        default="int8",
+        alias="VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE",
+    )
+    voice_stt_faster_whisper_temp_dir: Path | None = Field(
+        default=None,
+        alias="VOICE_STT_FASTER_WHISPER_TEMP_DIR",
+    )
     voice_tts_provider: Literal["deterministic", "openai"] = Field(default="deterministic", alias="VOICE_TTS_PROVIDER")
     voice_tts_model: str = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str = Field(default="alloy", alias="VOICE_TTS_VOICE")
@@ -91,3 +104,8 @@ class Settings(BaseSettings):
         if self.backend_log_path is not None:
             return self.backend_log_path
         return self.runtime_dir / "logs" / "hexevoice-backend.log"
+
+    def resolved_faster_whisper_temp_dir(self) -> Path:
+        if self.voice_stt_faster_whisper_temp_dir is not None:
+            return self.voice_stt_faster_whisper_temp_dir
+        return self.runtime_dir / "stt" / "faster-whisper"

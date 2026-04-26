@@ -21,6 +21,16 @@ def test_backend_log_path_defaults_under_runtime_logs():
     assert settings.resolved_backend_log_path().as_posix() == "runtime/logs/hexevoice-backend.log"
 
 
+def test_faster_whisper_stt_settings_defaults():
+    settings = Settings(voice_stt_provider="faster_whisper")
+
+    assert settings.voice_stt_provider == "faster_whisper"
+    assert settings.voice_stt_faster_whisper_model == "small.en"
+    assert settings.voice_stt_faster_whisper_device == "cpu"
+    assert settings.voice_stt_faster_whisper_compute_type == "int8"
+    assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"
+
+
 def test_backend_logging_uses_midnight_archive(tmp_path):
     log_path = tmp_path / "logs" / "backend.log"
     settings = Settings(backend_log_path=log_path, backend_log_level="DEBUG", backend_log_backup_days=5)

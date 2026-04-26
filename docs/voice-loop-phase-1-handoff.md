@@ -49,6 +49,13 @@ For a real OpenAI-backed demo, configure:
 - `VOICE_TTS_MODEL=gpt-4o-mini-tts`
 - `VOICE_TTS_RESPONSE_FORMAT=wav`
 
+For Phase 2 local faster-whisper STT, configure:
+
+- `VOICE_STT_PROVIDER=faster_whisper`
+- `VOICE_STT_FASTER_WHISPER_MODEL=small.en`
+- `VOICE_STT_FASTER_WHISPER_DEVICE=cpu`
+- `VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE=int8`
+
 For wake model setup:
 
 - `VOICE_WAKE_THRESHOLD=0.5`
