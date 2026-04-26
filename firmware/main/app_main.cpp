@@ -36,8 +36,8 @@ extern "C" void app_main(void) {
   ESP_LOGI(kTag, "Starting Hexe native firmware scaffold");
   ESP_LOGI(kTag, "Firmware project=%s version=%s", app->project_name, app->version);
 
-  hexe::system::init_settings();
   hexe::board::init_storage();
+  hexe::system::init_settings();
   hexe::board::init_display();
   hexe::board::init_touch();
   vTaskDelay(pdMS_TO_TICKS(kPostDisplayInitDelayMs));

@@ -29,7 +29,16 @@ def test_endpoint_heartbeat_creates_persistent_registry_record(tmp_path):
             "firmware_version": "0.1.0",
             "ip_address": "10.0.0.55",
             "rssi_dbm": -58,
-            "capabilities": {"audio": {"input": True}, "display": {"resolution": "320x240"}},
+            "capabilities": {
+                "touchscreen": {"available": True},
+                "storage": {"sd_card_available": False},
+                "display": {"available": True, "resolution": "320x240", "pixel_format": "rgb565"},
+                "audio": {
+                    "input": {"available": True, "sample_rate_hz": 16000, "channels": 1},
+                    "output": {"available": True, "volume_percent": 42, "muted": False},
+                },
+                "firmware": {"version": "0.1.0", "build_date": "Apr 26 2026"},
+            },
         },
     )
 
@@ -41,12 +50,15 @@ def test_endpoint_heartbeat_creates_persistent_registry_record(tmp_path):
     assert persisted.ip_address == "10.0.0.55"
     assert persisted.rssi_dbm == -58
     assert persisted.capabilities["display"]["resolution"] == "320x240"
+    assert persisted.capabilities["audio"]["output"]["volume_percent"] == 42
+    assert persisted.capabilities["touchscreen"]["available"] is True
 
     restarted_client = client_for(tmp_path)
     status = restarted_client.get("/api/endpoint/status/esp-box-1")
     assert status.status_code == 200
     assert status.json()["firmware_version"] == "0.1.0"
-    assert status.json()["capabilities"]["audio"]["input"] is True
+    assert status.json()["capabilities"]["audio"]["input"]["sample_rate_hz"] == 16000
+    assert status.json()["capabilities"]["audio"]["output"]["muted"] is False
 
 
 def test_reconnect_updates_runtime_fields_without_erasing_operator_metadata(tmp_path):

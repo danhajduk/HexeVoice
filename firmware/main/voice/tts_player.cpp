@@ -19,6 +19,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "system/settings.h"
 
 namespace {
 constexpr char kTag[] = "hexe_tts";
@@ -438,7 +439,7 @@ void stop_tts_playback() {
 
 void set_output_volume(int volume_percent) {
   const int clamped = std::clamp(volume_percent, 0, 100);
-  hexe::state().output_volume_percent = clamped;
+  hexe::system::set_output_volume_percent(clamped);
   if (g_speaker_codec != nullptr) {
     esp_codec_dev_set_out_vol(g_speaker_codec, clamped);
   }

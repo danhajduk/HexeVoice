@@ -51,3 +51,4 @@ Task 059: Persist the endpoint registry and heartbeat-derived endpoint profile -
 Task 060: Formalize connection, UX, and session state separation - Completed on 04/26/2026 05:39
 Task 061: Version and validate the endpoint event envelope - Completed on 04/26/2026 05:49
 Task 062: Complete endpoint command APIs and dashboard controls - Completed on 04/26/2026 06:02
+Task 063: Add firmware persistent settings and capability reporting - Completed on 04/26/2026 06:11

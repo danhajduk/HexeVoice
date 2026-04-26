@@ -15,12 +15,14 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - ESP-BOX-3 BSP display initialization and framebuffer rendering: `firmware/main/board/display.cpp`.
 - Branded RGB565 assets for boot, idle, listening, thinking, and error states: `firmware/main/assets/`.
 - NVS initialization: `firmware/main/board/storage.cpp`.
+- Persisted endpoint settings for output volume and mute state: `firmware/main/system/settings.cpp`.
 - Wi-Fi station startup and reconnect handling using local firmware secrets: `firmware/main/board/wifi.cpp`.
 - Button handling for mute/config interactions: `firmware/main/board/buttons.cpp`.
 - Microphone initialization and simple energy-threshold VAD task: `firmware/main/board/audio.cpp`.
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
 - Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
 - Backend heartbeat and voice WebSocket client scaffold: `firmware/main/voice/backend_client.cpp`.
+- Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, command controls, and firmware build metadata.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
 - TTS-ready playback scaffold and stop handling in `firmware/main/voice/tts_player.cpp`.
 
@@ -37,7 +39,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - `firmware/main/voice/stt_stream.cpp` logs scaffold readiness only.
 - `firmware/main/voice/tts_player.cpp` logs scaffold readiness only.
 - `firmware/main/voice/assistant_client.cpp` logs scaffold readiness only.
-- `firmware/main/system/settings.cpp`, `firmware/main/system/telemetry.cpp`, and `firmware/main/system/power.cpp` are initialization scaffolds.
+- `firmware/main/system/telemetry.cpp` and `firmware/main/system/power.cpp` are initialization scaffolds.
 - `firmware/main/system/ota.cpp` implements the first manual OTA path from backend-pushed `ota.update` events.
 
 ## Missing

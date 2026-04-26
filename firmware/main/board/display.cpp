@@ -354,4 +354,20 @@ void render_boot_frame(int frame, const char *build_id) {
   ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(g_panel, 0, 0, kWidth, kHeight, g_framebuffer));
 }
 
+bool display_ready() {
+  return g_panel != nullptr && g_framebuffer != nullptr;
+}
+
+int display_width() {
+  return kWidth;
+}
+
+int display_height() {
+  return kHeight;
+}
+
+const char *display_pixel_format() {
+  return "rgb565";
+}
+
 }  // namespace hexe::board

@@ -43,6 +43,19 @@ function formatMs(value) {
   return `${Math.round(value)} ms`;
 }
 
+function formatYesNo(value) {
+  if (typeof value !== "boolean") {
+    return "unknown";
+  }
+  return value ? "yes" : "no";
+}
+
+function endpointCapabilities(endpointStatus) {
+  return endpointStatus?.capabilities && typeof endpointStatus.capabilities === "object"
+    ? endpointStatus.capabilities
+    : {};
+}
+
 function endpointHealth(voiceStatus) {
   const connected = voiceStatus?.connection_state === "connected";
   const online = voiceStatus?.transport_health === "online";
@@ -286,6 +299,78 @@ function EndpointMetadataPanel({ endpointStatus, voiceStatus, onRefresh, setActi
   );
 }
 
+function EndpointCapabilitiesPanel({ endpointStatus }) {
+  const capabilities = endpointCapabilities(endpointStatus);
+  const display = capabilities.display || {};
+  const audio = capabilities.audio || {};
+  const audioInput = audio.input || {};
+  const audioOutput = audio.output || {};
+  const firmware = capabilities.firmware || {};
+  const controls = capabilities.controls || {};
+  const storage = capabilities.storage || {};
+  const displayResolution = display.resolution || (
+    typeof display.width === "number" && typeof display.height === "number"
+      ? `${display.width}x${display.height}`
+      : "unknown"
+  );
+  const audioInputSummary = audioInput.sample_rate_hz
+    ? `${audioInput.sample_rate_hz} Hz, ${audioInput.channels || "?"} ch`
+    : "unknown";
+  const audioOutputSummary = typeof audioOutput.volume_percent === "number"
+    ? `${audioOutput.volume_percent}% ${audioOutput.muted ? "muted" : "active"}`
+    : "unknown";
+  const controlLabels = Object.entries(controls)
+    .filter(([, supported]) => supported === true)
+    .map(([name]) => name)
+    .join(", ");
+
+  return (
+    <section className="voice-endpoint-panel stack">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Endpoint Capabilities</p>
+          <h2 className="panel-title">Hardware & Firmware</h2>
+        </div>
+        <span className="status-pill status-pill-neutral">{endpointStatus?.firmware_version || "unknown FW"}</span>
+      </div>
+      <dl className="facts">
+        <div>
+          <dt>Firmware</dt>
+          <dd>{firmware.version || endpointStatus?.firmware_version || "unknown"}</dd>
+        </div>
+        <div>
+          <dt>Build</dt>
+          <dd>{firmware.build_date && firmware.build_time ? `${firmware.build_date} ${firmware.build_time}` : "unknown"}</dd>
+        </div>
+        <div>
+          <dt>Touchscreen</dt>
+          <dd>{formatYesNo(capabilities.touchscreen?.available)}</dd>
+        </div>
+        <div>
+          <dt>SD card</dt>
+          <dd>{formatYesNo(storage.sd_card_available)}</dd>
+        </div>
+        <div>
+          <dt>Display</dt>
+          <dd>{`${displayResolution}, ${display.pixel_format || "unknown"}`}</dd>
+        </div>
+        <div>
+          <dt>Audio input</dt>
+          <dd>{audioInputSummary}</dd>
+        </div>
+        <div>
+          <dt>Audio output</dt>
+          <dd>{audioOutputSummary}</dd>
+        </div>
+        <div>
+          <dt>Controls</dt>
+          <dd>{controlLabels || "unknown"}</dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
 export function VoiceEndpointDashboardSection({
   voiceStatus,
   endpointStatus,
@@ -296,6 +381,16 @@ export function VoiceEndpointDashboardSection({
   const [muted, setMuted] = useState(false);
   const projection = voiceStateProjection(voiceStatus);
   const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
+  const reportedOutput = endpointCapabilities(endpointStatus).audio?.output || {};
+
+  useEffect(() => {
+    if (typeof reportedOutput.volume_percent === "number") {
+      setVolumePercent(reportedOutput.volume_percent);
+    }
+    if (typeof reportedOutput.muted === "boolean") {
+      setMuted(reportedOutput.muted);
+    }
+  }, [reportedOutput.volume_percent, reportedOutput.muted]);
 
   useEffect(() => {
     if (!endpointId) {
@@ -446,6 +541,7 @@ export function VoiceEndpointDashboardSection({
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
       />
+      <EndpointCapabilitiesPanel endpointStatus={endpointStatus} />
       <EndpointMetadataPanel
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}

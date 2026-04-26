@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "iot_button.h"
+#include "system/settings.h"
 #include "voice/backend_client.h"
 
 namespace {
@@ -72,7 +73,7 @@ void handle_press_up(void *button_handle, void *usr_data) {
         static_cast<unsigned long>(g_last_press_duration_ms[index]));
 
     auto &app_state = hexe::state();
-    app_state.muted = false;
+    hexe::system::set_muted(false);
     hexe::voice::cancel_active_session("config_double_press");
     app_state.phase = hexe::idle_or_connecting_phase();
     return;
@@ -93,7 +94,7 @@ void handle_single_click(void *button_handle, void *usr_data) {
 
   auto &app_state = hexe::state();
   if (index == BSP_BUTTON_MUTE) {
-    app_state.muted = !app_state.muted;
+    hexe::system::set_muted(!app_state.muted);
     if (app_state.muted) {
       hexe::voice::cancel_active_session("mute_button");
     }

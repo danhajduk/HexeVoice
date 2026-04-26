@@ -1,4 +1,3 @@
-[TODO] Task 063: Add firmware persistent settings and capability reporting
 [TODO] Task 064: Build the first touchscreen interaction layer
 [TODO] Task 065: Load and display RGB565 pictures from the SPI SD card
 [TODO] Task 066: Load and play sound assets from the SPI SD card

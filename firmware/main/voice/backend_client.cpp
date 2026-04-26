@@ -8,6 +8,9 @@
 #include <string>
 
 #include "app_state.h"
+#include "board/display.h"
+#include "board/storage.h"
+#include "board/touch.h"
 #include "cJSON.h"
 #include "endpoint_config.h"
 #include "esp_app_desc.h"
@@ -21,6 +24,7 @@
 #include "freertos/task.h"
 #include "mbedtls/base64.h"
 #include "system/ota.h"
+#include "system/settings.h"
 #include "voice/tts_player.h"
 
 namespace {
@@ -63,6 +67,7 @@ std::string g_ws_rx_buffer;
 
 std::string base64_audio(const int16_t *samples, size_t sample_count);
 bool send_ws_text(const std::string &message);
+std::string endpoint_capabilities_json();
 
 void set_audio_streaming(bool streaming) {
   hexe::state().audio_streaming = streaming;
@@ -368,7 +373,7 @@ void handle_backend_event_json(const std::string &message) {
     const char *request_id = payload_request_id(payload);
     cJSON *muted = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "muted") : nullptr;
     if (cJSON_IsBool(muted)) {
-      app_state.muted = cJSON_IsTrue(muted);
+      hexe::system::set_muted(cJSON_IsTrue(muted));
       if (app_state.muted) {
         hexe::voice::stop_tts_playback();
         hexe::voice::cancel_active_session("backend_mute_command");
@@ -508,6 +513,44 @@ bool send_ws_text(const std::string &message) {
   return true;
 }
 
+std::string endpoint_capabilities_json() {
+  const auto &state = hexe::state();
+  const esp_app_desc_t *app = esp_app_get_description();
+  char buffer[1536];
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "{\"touchscreen\":{\"available\":%s},"
+      "\"storage\":{\"sd_card_available\":%s,\"mount_path\":\"%s\",\"pictures_path\":\"%s\",\"sounds_path\":\"%s\"},"
+      "\"display\":{\"available\":%s,\"width\":%d,\"height\":%d,\"pixel_format\":\"%s\",\"resolution\":\"%dx%d\"},"
+      "\"audio\":{\"input\":{\"available\":true,\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d},"
+      "\"output\":{\"available\":true,\"volume_percent\":%d,\"muted\":%s}},"
+      "\"controls\":{\"volume\":true,\"mute\":true,\"cancel\":true,\"replay\":true,\"restart\":false,\"reconnect\":false},"
+      "\"firmware\":{\"project_name\":\"%s\",\"version\":\"%s\",\"build_date\":\"%s\",\"build_time\":\"%s\",\"idf_version\":\"%s\"}}",
+      hexe::board::touch_ready() ? "true" : "false",
+      hexe::board::sd_card_mounted() ? "true" : "false",
+      hexe::board::sd_card_mount_path(),
+      hexe::board::sd_card_pictures_path(),
+      hexe::board::sd_card_sounds_path(),
+      hexe::board::display_ready() ? "true" : "false",
+      hexe::board::display_width(),
+      hexe::board::display_height(),
+      hexe::board::display_pixel_format(),
+      hexe::board::display_width(),
+      hexe::board::display_height(),
+      hexe::config::kEndpointAudioEncoding,
+      hexe::config::kEndpointAudioSampleRateHz,
+      hexe::config::kEndpointAudioChannels,
+      state.output_volume_percent,
+      state.muted ? "true" : "false",
+      app == nullptr ? "unknown" : app->project_name,
+      app == nullptr ? firmware_version() : app->version,
+      app == nullptr ? "unknown" : app->date,
+      app == nullptr ? "unknown" : app->time,
+      app == nullptr ? "unknown" : app->idf_ver);
+  return std::string(buffer);
+}
+
 const char *payload_request_id(cJSON *payload) {
   cJSON *request_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "request_id") : nullptr;
   return cJSON_IsString(request_id) ? request_id->valuestring : "";
@@ -632,15 +675,24 @@ void heartbeat_task(void *arg) {
       continue;
     }
 
-    char body[384];
-    std::snprintf(
-        body,
-        sizeof(body),
-        "{\"endpoint_id\":\"%s\",\"device_state\":\"%s\",\"session_id\":%s,\"firmware_version\":\"%s\"}",
-        hexe::config::kEndpointId,
-        device_state(),
-        g_session_started ? ("\"" + g_session_id + "\"").c_str() : "null",
-        firmware_version());
+    std::string session_json = "null";
+    if (g_session_started) {
+      session_json = "\"" + g_session_id + "\"";
+    }
+    const std::string capabilities = endpoint_capabilities_json();
+    std::string body;
+    body.reserve(capabilities.size() + 256);
+    body.append("{\"endpoint_id\":\"");
+    body.append(hexe::config::kEndpointId);
+    body.append("\",\"device_state\":\"");
+    body.append(device_state());
+    body.append("\",\"session_id\":");
+    body.append(session_json);
+    body.append(",\"firmware_version\":\"");
+    body.append(firmware_version());
+    body.append("\",\"capabilities\":");
+    body.append(capabilities);
+    body.append("}");
 
     esp_http_client_config_t config = {};
     config.url = url.c_str();
@@ -653,7 +705,7 @@ void heartbeat_task(void *arg) {
     }
 
     esp_http_client_set_header(client, "Content-Type", "application/json");
-    esp_http_client_set_post_field(client, body, std::strlen(body));
+    esp_http_client_set_post_field(client, body.c_str(), static_cast<int>(body.size()));
     esp_err_t err = esp_http_client_perform(client);
     const int status_code = esp_http_client_get_status_code(client);
     auto &state = hexe::state();

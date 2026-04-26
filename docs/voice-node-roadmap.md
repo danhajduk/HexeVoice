@@ -18,6 +18,7 @@ The current Voice Node is a backend-owned, single-endpoint MVP with:
 * `/api/voice/ws` event transport using `hexevoice.voice.event.v1`
 * backend wake detection, STT, assistant routing, TTS metadata, and session state projection
 * persistent endpoint registry records from heartbeat data
+* firmware-persisted endpoint volume/mute settings and hardware capability heartbeats
 * distinct `connection_state`, `ux_state`, and `session_state` surfaces
 * structured endpoint command acknowledgements and errors
 * dashboard controls for volume, mute/unmute, cancel, and replay
@@ -340,7 +341,7 @@ Make the ESP32 endpoint reliable, not smart.
 * state display
 * Voice Node-managed firmware OTA:
 
-  * track endpoint firmware version: partial via endpoint heartbeat
+  * track endpoint firmware version and build metadata: implemented via endpoint heartbeat capabilities
   * host or reference firmware artifacts: implemented locally from `runtime/firmware`
   * expose update availability and update status: partial via `/api/firmware/manifest`
   * send OTA/update commands to the endpoint: implemented via `/api/firmware/ota/push`
@@ -352,6 +353,7 @@ Make the ESP32 endpoint reliable, not smart.
   * stop/cancel: implemented through backend `endpoint.cancel`
   * replay: implemented through backend `endpoint.replay`
   * mute: implemented through backend `endpoint.mute`
+  * volume/mute persistence: implemented through firmware NVS settings
 
 ---
 
