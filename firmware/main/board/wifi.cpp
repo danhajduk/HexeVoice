@@ -1,5 +1,6 @@
 #include "board/wifi.h"
 
+#include <cstdio>
 #include <cstring>
 
 #include "app_state.h"
@@ -12,6 +13,7 @@
 namespace {
 constexpr char kTag[] = "hexe_wifi";
 bool g_wifi_initialized = false;
+char g_ip_address[16] = "0.0.0.0";
 
 bool has_wifi_credentials() {
   return hexe::secrets::kWifiSsid[0] != '\0';
@@ -42,6 +44,7 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     state.backend_connected = false;
     state.voice_ws_connected = false;
     state.wifi_rssi = -100;
+    std::strncpy(g_ip_address, "0.0.0.0", sizeof(g_ip_address));
     state.phase = hexe::AppPhase::kWiFiConnecting;
     ESP_LOGW(kTag, "Wi-Fi disconnected, retrying");
     ESP_ERROR_CHECK(esp_wifi_connect());
@@ -53,6 +56,7 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     state.wifi_connected = true;
     state.phase = hexe::AppPhase::kBackendConnecting;
     update_rssi_from_ap_info();
+    std::snprintf(g_ip_address, sizeof(g_ip_address), IPSTR, IP2STR(&event->ip_info.ip));
     ESP_LOGI(
         kTag, "Connected to Wi-Fi with IP " IPSTR, IP2STR(&event->ip_info.ip));
   }
@@ -113,6 +117,10 @@ void refresh_wifi_status() {
   }
 
   update_rssi_from_ap_info();
+}
+
+const char *current_ip_address() {
+  return g_ip_address;
 }
 
 }  // namespace hexe::board

@@ -6,11 +6,13 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <ctime>
 
 #include "app_state.h"
 #include "board/display.h"
 #include "board/storage.h"
 #include "board/touch.h"
+#include "board/wifi.h"
 #include "cJSON.h"
 #include "endpoint_config.h"
 #include "esp_app_desc.h"
@@ -37,6 +39,7 @@ constexpr int kWakePredictionChunkSamples = 1280;
 constexpr size_t kMaxBackendEventBytes = 8192;
 constexpr uint32_t kBackendReadinessPollMs = 500;
 constexpr size_t kWakePrerollFrameCount = 15;
+constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
 
 struct AudioFrame {
   std::array<int16_t, kMaxChunkSamples> samples;
@@ -68,6 +71,12 @@ std::string g_ws_rx_buffer;
 std::string base64_audio(const int16_t *samples, size_t sample_count);
 bool send_ws_text(const std::string &message);
 std::string endpoint_capabilities_json();
+void append_event_header(
+    std::string &message,
+    const char *event_type,
+    const char *session_id,
+    uint32_t sequence);
+std::string event_timestamp();
 
 void set_audio_streaming(bool streaming) {
   hexe::state().audio_streaming = streaming;
@@ -100,6 +109,63 @@ void remember_preroll_frame(const AudioFrame &frame) {
   }
 }
 
+std::string event_timestamp() {
+  std::time_t now = std::time(nullptr);
+  if (now < 1600000000) {
+    now = static_cast<std::time_t>(esp_timer_get_time() / 1000000);
+  }
+
+  std::tm utc = {};
+  gmtime_r(&now, &utc);
+  char buffer[32];
+  std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc);
+  return std::string(buffer);
+}
+
+void append_event_header(
+    std::string &message,
+    const char *event_type,
+    const char *session_id,
+    uint32_t sequence) {
+  char event_id[128];
+  std::snprintf(
+      event_id,
+      sizeof(event_id),
+      "evt_%s_%" PRIu32 "_%llu",
+      event_type,
+      sequence,
+      static_cast<unsigned long long>(esp_timer_get_time()));
+
+  char prefix[512];
+  std::snprintf(
+      prefix,
+      sizeof(prefix),
+      "{\"event_type\":\"%s\",\"event_id\":\"%s\",\"schema_version\":\"%s\","
+      "\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\",\"session_id\":",
+      event_type,
+      event_id,
+      kVoiceEventSchemaVersion,
+      hexe::config::kEndpointId);
+  message.append(prefix);
+  if (session_id == nullptr || session_id[0] == '\0') {
+    message.append("null");
+  } else {
+    message.append("\"");
+    message.append(session_id);
+    message.append("\"");
+  }
+
+  char suffix[128];
+  const std::string timestamp = event_timestamp();
+  std::snprintf(
+      suffix,
+      sizeof(suffix),
+      ",\"sequence\":%" PRIu32 ",\"timestamp\":\"%s\",\"payload\":",
+      sequence,
+      timestamp.c_str());
+  message.append(suffix);
+}
+
 std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
   const std::string encoded = base64_audio(samples, sample_count);
   if (encoded.empty()) {
@@ -107,17 +173,15 @@ std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
   }
 
   std::string payload;
-  payload.reserve(encoded.size() + 512);
+  payload.reserve(encoded.size() + 768);
+  const uint32_t sequence = g_sequence++;
+  append_event_header(payload, "audio.chunk", g_session_id.c_str(), sequence);
   char prefix[512];
   std::snprintf(
       prefix,
       sizeof(prefix),
-      "{\"event_type\":\"audio.chunk\",\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\","
-      "\"session_id\":\"%s\",\"sequence\":%" PRIu32 ",\"payload\":{\"chunk_index\":%" PRIu32 ","
+      "{\"chunk_index\":%" PRIu32 ","
       "\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d},\"payload_base64\":\"",
-      hexe::config::kEndpointId,
-      g_session_id.c_str(),
-      g_sequence++,
       g_chunk_index++,
       hexe::config::kEndpointAudioEncoding,
       hexe::config::kEndpointAudioSampleRateHz,
@@ -286,22 +350,32 @@ void handle_backend_event_json(const std::string &message) {
   cJSON *event_type = cJSON_GetObjectItem(root, "event_type");
   const char *type = cJSON_IsString(event_type) ? event_type->valuestring : "";
   cJSON *event_id = cJSON_GetObjectItem(root, "event_id");
-  const char *id = cJSON_IsString(event_id) ? event_id->valuestring : "legacy";
+  const char *id = cJSON_IsString(event_id) ? event_id->valuestring : "";
   cJSON *schema_version = cJSON_GetObjectItem(root, "schema_version");
-  const char *schema = cJSON_IsString(schema_version) ? schema_version->valuestring : "legacy";
-  if (type[0] == '\0') {
-    ESP_LOGW(kTag, "Ignoring malformed backend event without event_type (event_id=%s, schema=%s)", id, schema);
+  const char *schema = cJSON_IsString(schema_version) ? schema_version->valuestring : "";
+  cJSON *timestamp = cJSON_GetObjectItem(root, "timestamp");
+  if (type[0] == '\0' || id[0] == '\0' || schema[0] == '\0' || !cJSON_IsString(timestamp)) {
+    ESP_LOGW(
+        kTag,
+        "Ignoring malformed backend event envelope (event_id=%s, schema=%s, type=%s)",
+        id[0] == '\0' ? "missing" : id,
+        schema[0] == '\0' ? "missing" : schema,
+        type[0] == '\0' ? "missing" : type);
     cJSON_Delete(root);
     return;
   }
-  if (schema_version != nullptr && (!cJSON_IsString(schema_version) || std::strcmp(schema, "hexevoice.voice.event.v1") != 0)) {
+  if (std::strcmp(schema, kVoiceEventSchemaVersion) != 0) {
     ESP_LOGW(kTag, "Backend event uses unsupported schema_version (event_id=%s, type=%s, schema=%s)", id, type, schema);
+    cJSON_Delete(root);
+    return;
   }
   cJSON *payload = cJSON_GetObjectItem(root, "payload");
-  if (payload != nullptr && !cJSON_IsObject(payload)) {
+  if (!cJSON_IsObject(payload)) {
     ESP_LOGW(kTag, "Backend event payload is not an object (event_id=%s, type=%s)", id, type);
+    cJSON_Delete(root);
+    return;
   }
-  cJSON *snapshot = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "snapshot") : nullptr;
+  cJSON *snapshot = cJSON_GetObjectItem(payload, "snapshot");
   cJSON *state_item = cJSON_IsObject(snapshot) ? cJSON_GetObjectItem(snapshot, "ux_state") : nullptr;
   const char *ux_state = cJSON_IsString(state_item) ? state_item->valuestring : "";
 
@@ -560,42 +634,48 @@ void send_command_ack(const char *request_id, const char *command_type, const ch
   if (request_id == nullptr || request_id[0] == '\0') {
     return;
   }
-  char buffer[384];
+  std::string envelope;
+  envelope.reserve(512);
+  append_event_header(
+      envelope,
+      "command.ack",
+      g_session_started ? g_session_id.c_str() : nullptr,
+      g_sequence++);
+  char payload[256];
   std::snprintf(
-      buffer,
-      sizeof(buffer),
-      "{\"event_type\":\"command.ack\",\"event_id\":\"evt_%s_ack\",\"schema_version\":\"hexevoice.voice.event.v1\","
-      "\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\",\"session_id\":%s,\"payload\":{"
-      "\"request_id\":\"%s\",\"command_type\":\"%s\",\"status\":\"%s\",\"message\":\"%s\"}}",
-      request_id,
-      hexe::config::kEndpointId,
-      g_session_started ? "\"active\"" : "null",
+      payload,
+      sizeof(payload),
+      "{\"request_id\":\"%s\",\"command_type\":\"%s\",\"status\":\"%s\",\"message\":\"%s\"}}",
       request_id,
       command_type == nullptr ? "unknown" : command_type,
       status == nullptr ? "succeeded" : status,
       message == nullptr ? "" : message);
-  send_ws_text(buffer);
+  envelope.append(payload);
+  send_ws_text(envelope);
 }
 
 void send_command_error(const char *request_id, const char *command_type, const char *code, const char *message) {
   if (request_id == nullptr || request_id[0] == '\0') {
     return;
   }
-  char buffer[384];
+  std::string envelope;
+  envelope.reserve(512);
+  append_event_header(
+      envelope,
+      "command.error",
+      g_session_started ? g_session_id.c_str() : nullptr,
+      g_sequence++);
+  char payload[256];
   std::snprintf(
-      buffer,
-      sizeof(buffer),
-      "{\"event_type\":\"command.error\",\"event_id\":\"evt_%s_error\",\"schema_version\":\"hexevoice.voice.event.v1\","
-      "\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\",\"session_id\":%s,\"payload\":{"
-      "\"request_id\":\"%s\",\"command_type\":\"%s\",\"code\":\"%s\",\"message\":\"%s\",\"recoverable\":true}}",
-      request_id,
-      hexe::config::kEndpointId,
-      g_session_started ? "\"active\"" : "null",
+      payload,
+      sizeof(payload),
+      "{\"request_id\":\"%s\",\"command_type\":\"%s\",\"code\":\"%s\",\"message\":\"%s\",\"recoverable\":true}}",
       request_id,
       command_type == nullptr ? "unknown" : command_type,
       code == nullptr ? "command_failed" : code,
       message == nullptr ? "Command failed" : message);
-  send_ws_text(buffer);
+  envelope.append(payload);
+  send_ws_text(envelope);
 }
 
 void ensure_session_started() {
@@ -616,20 +696,20 @@ void ensure_session_started() {
       g_session_counter);
   g_session_id = session_buffer;
 
-  char payload[768];
+  std::string payload;
+  payload.reserve(768);
+  append_event_header(payload, "session.start", g_session_id.c_str(), g_sequence++);
+  char body[512];
   std::snprintf(
-      payload,
-      sizeof(payload),
-      "{\"event_type\":\"session.start\",\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\","
-      "\"session_id\":\"%s\",\"sequence\":%" PRIu32 ",\"payload\":{\"firmware_version\":\"%s\","
+      body,
+      sizeof(body),
+      "{\"firmware_version\":\"%s\","
       "\"wake_source\":\"openwakeword\",\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d}}}",
-      hexe::config::kEndpointId,
-      g_session_id.c_str(),
-      g_sequence++,
       firmware_version(),
       hexe::config::kEndpointAudioEncoding,
       hexe::config::kEndpointAudioSampleRateHz,
       hexe::config::kEndpointAudioChannels);
+  payload.append(body);
 
   g_session_started = send_ws_text(payload);
   if (g_session_started) {
@@ -690,7 +770,12 @@ void heartbeat_task(void *arg) {
     body.append(session_json);
     body.append(",\"firmware_version\":\"");
     body.append(firmware_version());
-    body.append("\",\"capabilities\":");
+    body.append("\",\"ip_address\":\"");
+    body.append(hexe::board::current_ip_address());
+    char rssi_field[32];
+    std::snprintf(rssi_field, sizeof(rssi_field), "\",\"rssi_dbm\":%d", hexe::state().wifi_rssi);
+    body.append(rssi_field);
+    body.append(",\"capabilities\":");
     body.append(capabilities);
     body.append("}");
 
@@ -841,16 +926,16 @@ bool finish_audio_stream(const char *reason) {
   if (!flush_transport_samples(true)) {
     return false;
   }
-  char payload[384];
+  std::string payload;
+  payload.reserve(384);
+  append_event_header(payload, "audio.end", g_session_id.c_str(), g_sequence++);
+  char body[128];
   std::snprintf(
-      payload,
-      sizeof(payload),
-      "{\"event_type\":\"audio.end\",\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\","
-      "\"session_id\":\"%s\",\"sequence\":%" PRIu32 ",\"payload\":{\"reason\":\"%s\"}}",
-      hexe::config::kEndpointId,
-      g_session_id.c_str(),
-      g_sequence++,
+      body,
+      sizeof(body),
+      "{\"reason\":\"%s\"}}",
       reason == nullptr ? "audio_end" : reason);
+  payload.append(body);
   g_audio_stream_finished = send_ws_text(payload);
   if (g_audio_stream_finished) {
     set_audio_streaming(false);
@@ -863,16 +948,16 @@ bool cancel_active_session(const char *reason) {
   if (hexe::state().ota_active || !g_session_started) {
     return false;
   }
-  char payload[384];
+  std::string payload;
+  payload.reserve(384);
+  append_event_header(payload, "session.cancel", g_session_id.c_str(), g_sequence++);
+  char body[128];
   std::snprintf(
-      payload,
-      sizeof(payload),
-      "{\"event_type\":\"session.cancel\",\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\","
-      "\"session_id\":\"%s\",\"sequence\":%" PRIu32 ",\"payload\":{\"reason\":\"%s\"}}",
-      hexe::config::kEndpointId,
-      g_session_id.c_str(),
-      g_sequence++,
+      body,
+      sizeof(body),
+      "{\"reason\":\"%s\"}}",
       reason == nullptr ? "endpoint_cancelled" : reason);
+  payload.append(body);
   const bool sent = send_ws_text(payload);
   g_session_started = false;
   g_audio_stream_finished = false;

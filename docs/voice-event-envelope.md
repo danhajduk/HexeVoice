@@ -18,9 +18,10 @@ Optional envelope fields:
 
 - `sequence`
 
-The current schema version is `hexevoice.voice.event.v1`. The backend still accepts legacy firmware messages that omit
-`event_id` or `schema_version`; missing values are filled server-side. Unknown schema versions are rejected by backend
-validation and surfaced through `session.error` plus `/api/voice/status` `event_diagnostics`.
+The current schema version is `hexevoice.voice.event.v1`. Firmware and backend messages are expected to emit the full
+versioned envelope directly, including `event_id`, `timestamp`, `schema_version`, and `payload`. Unknown schema versions
+are rejected by backend validation and surfaced through `session.error` plus `/api/voice/status` `event_diagnostics`;
+firmware ignores malformed backend-to-endpoint envelopes instead of applying them.
 
 JSON examples for this contract are stored in `docs/voice-event-envelope/`:
 
