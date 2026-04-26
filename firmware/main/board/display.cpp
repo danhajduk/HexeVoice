@@ -178,26 +178,20 @@ void draw_ota_progress() {
     percent = 100;
   }
 
-  constexpr int kBarX = 54;
-  constexpr int kBarY = 205;
-  constexpr int kBarW = 212;
-  constexpr int kBarH = 16;
-  const int fill_width = ((kBarW - 4) * percent) / 100;
+  constexpr int kBarX = 302;
+  constexpr int kBarY = 42;
+  constexpr int kBarW = 12;
+  constexpr int kBarH = 156;
+  const int fill_height = ((kBarH - 4) * percent) / 100;
   const uint16_t shadow = swap565(0x0000);
   const uint16_t bg = swap565(0x18C3);
   const uint16_t outline = swap565(0xFFFF);
   const uint16_t fill = swap565(0x07FF);
-  const uint16_t text = swap565(0xFFFF);
 
-  fill_rect(kBarX - 4, kBarY - 18, kBarW + 8, kBarH + 25, shadow);
+  fill_rect(kBarX - 3, kBarY - 3, kBarW + 6, kBarH + 6, shadow);
   fill_rect(kBarX, kBarY, kBarW, kBarH, bg);
   draw_rect_outline(kBarX, kBarY, kBarW, kBarH, outline);
-  fill_rect(kBarX + 2, kBarY + 2, fill_width, kBarH - 4, fill);
-
-  char label[8];
-  std::snprintf(label, sizeof(label), "%d%%", percent);
-  const int label_width = static_cast<int>(std::strlen(label)) * 12;
-  draw_text((kWidth - label_width) / 2, kBarY - 15, label, text, 2);
+  fill_rect(kBarX + 2, kBarY + kBarH - 2 - fill_height, kBarW - 4, fill_height, fill);
 }
 
 void blit_fullscreen_image(const uint16_t *pixels, int width, int height, uint16_t alpha) {
