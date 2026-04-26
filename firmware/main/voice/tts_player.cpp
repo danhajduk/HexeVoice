@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -29,6 +30,7 @@ constexpr size_t kPlaybackWriteBytes = 4096;
 constexpr int kCueSampleRateHz = 16000;
 constexpr int kCueVolume = 90;
 constexpr int kTtsVolume = 70;
+constexpr float kPi = 3.14159265358979323846f;
 
 enum class PlaybackKind {
   kTtsAudio,
@@ -254,18 +256,29 @@ bool write_silence(int duration_ms) {
   return !g_stop_requested;
 }
 
-bool write_square_tone(int frequency_hz, int duration_ms, int amplitude) {
+bool write_tone(int frequency_hz, int duration_ms, int attack_ms, int release_ms, float amplitude) {
   std::array<int16_t, 160> chunk = {};
-  int phase = 0;
+  int sample_index = 0;
   int samples_remaining = (kCueSampleRateHz * duration_ms) / 1000;
+  const int total_samples = samples_remaining;
+  const int attack_samples = (kCueSampleRateHz * attack_ms) / 1000;
+  const int release_samples = (kCueSampleRateHz * release_ms) / 1000;
+  const float angular_step = (2.0f * kPi * static_cast<float>(frequency_hz)) / static_cast<float>(kCueSampleRateHz);
+  const float max_sample = 32767.0f * amplitude;
+
   while (samples_remaining > 0 && !g_stop_requested) {
     const int samples_to_write = std::min(samples_remaining, static_cast<int>(chunk.size()));
     for (int i = 0; i < samples_to_write; ++i) {
-      chunk[i] = phase < (kCueSampleRateHz / 2) ? amplitude : -amplitude;
-      phase += frequency_hz;
-      if (phase >= kCueSampleRateHz) {
-        phase -= kCueSampleRateHz;
+      float envelope = 1.0f;
+      if (attack_samples > 0 && sample_index < attack_samples) {
+        envelope = static_cast<float>(sample_index) / static_cast<float>(attack_samples);
+      } else if (release_samples > 0 && sample_index >= total_samples - release_samples) {
+        const int release_index = total_samples - sample_index;
+        envelope = static_cast<float>(release_index) / static_cast<float>(release_samples);
       }
+      const float sample = std::sinf(static_cast<float>(sample_index) * angular_step) * max_sample * envelope;
+      chunk[i] = static_cast<int16_t>(sample);
+      ++sample_index;
     }
     const int result = esp_codec_dev_write(
         g_speaker_codec,
@@ -285,8 +298,7 @@ bool play_listening_cue_now() {
     return false;
   }
 
-  const bool ok = write_square_tone(784, 65, 9000) && write_silence(30) && write_square_tone(1175, 85, 8000) &&
-                  write_silence(20) && write_square_tone(1568, 55, 7000);
+  const bool ok = write_tone(880, 70, 6, 14, 0.28f) && write_silence(35) && write_tone(1320, 95, 6, 18, 0.24f);
   esp_codec_dev_close(g_speaker_codec);
   return ok;
 }
