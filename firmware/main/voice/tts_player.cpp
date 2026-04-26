@@ -48,6 +48,7 @@ QueueHandle_t g_playback_queue = nullptr;
 TaskHandle_t g_playback_task = nullptr;
 esp_codec_dev_handle_t g_speaker_codec = nullptr;
 volatile bool g_stop_requested = false;
+volatile bool g_playback_active = false;
 
 const char *scheme_http() {
   return hexe::config::kEndpointUseTls ? "https" : "http";
@@ -213,6 +214,7 @@ void playback_task(void *arg) {
     g_stop_requested = false;
     auto &state = hexe::state();
     if (state.muted) {
+      g_playback_active = false;
       continue;
     }
     state.phase = hexe::AppPhase::kReplying;
@@ -224,6 +226,7 @@ void playback_task(void *arg) {
     } else if (!state.muted && state.phase == hexe::AppPhase::kReplying) {
       state.phase = hexe::AppPhase::kError;
     }
+    g_playback_active = false;
   }
 }
 
@@ -265,15 +268,18 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
       audio_url == nullptr ? "none" : audio_url);
   if (audio_url == nullptr || audio_url[0] == '\0') {
     state.phase = hexe::AppPhase::kReplying;
+    g_playback_active = false;
     return;
   }
 
+  g_playback_active = true;
   PlaybackRequest request = {};
   copy_field(request.stream_id, sizeof(request.stream_id), stream_id);
   copy_field(request.content_type, sizeof(request.content_type), content_type);
   copy_field(request.audio_url, sizeof(request.audio_url), audio_url);
   if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping TTS playback request because queue is unavailable");
+    g_playback_active = false;
     state.phase = hexe::AppPhase::kError;
   }
 }
@@ -281,10 +287,15 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
 void stop_tts_playback() {
   ESP_LOGI(kTag, "Stopping TTS playback");
   g_stop_requested = true;
+  g_playback_active = false;
   auto &state = hexe::state();
   if (!state.muted) {
     state.phase = hexe::AppPhase::kIdle;
   }
+}
+
+bool tts_playback_active() {
+  return g_playback_active;
 }
 
 }  // namespace hexe::voice

@@ -74,6 +74,11 @@ Local Piper TTS can be selected with:
 
 If Piper is selected but unavailable or unconfigured, the voice node falls back to deterministic TTS metadata so the full voice pipeline remains testable.
 
+Firmware UX timing notes:
+
+- Endpoint VAD now uses an explicit 1000 ms silence hold before sending `audio.end`.
+- The LCD stays in Replying while real TTS audio playback is queued or active; `session.completed` no longer forces Idle until playback is done.
+
 `GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. It also exposes `last_assistant` with provider id, model, response text, latency, text length, and error state, plus `last_turn_timings` with STT, assistant, TTS, and total turn duration in milliseconds. The backend log records transcript finalization, local faster-whisper latency, and the full turn timing breakdown.
 
 For wake model setup:

@@ -335,7 +335,7 @@ void handle_backend_event_json(const std::string &message) {
     g_preroll_drained = false;
     g_transport_sample_count = 0;
     set_audio_streaming(false);
-    if (!app_state.muted) {
+    if (!app_state.muted && !hexe::voice::tts_playback_active()) {
       app_state.phase = hexe::AppPhase::kIdle;
     }
   } else if (std::strcmp(type, "session.error") == 0) {
