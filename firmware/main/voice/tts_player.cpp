@@ -1,8 +1,6 @@
 #include "voice/tts_player.h"
 
 #include <algorithm>
-#include <array>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -28,16 +26,8 @@ constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
 constexpr size_t kPlaybackWriteBytes = 4096;
-constexpr int kCueSampleRateHz = 16000;
-constexpr float kPi = 3.14159265358979323846f;
-
-enum class PlaybackKind {
-  kTtsAudio,
-  kListeningCue,
-};
 
 struct PlaybackRequest {
-  PlaybackKind kind{PlaybackKind::kTtsAudio};
   char stream_id[64];
   char content_type[32];
   char audio_url[192];
@@ -219,93 +209,6 @@ bool play_wav(const std::vector<uint8_t> &audio) {
   return result == 0 && !g_stop_requested;
 }
 
-bool open_speaker(int sample_rate, int channels, int bits_per_sample, int volume) {
-  if (g_speaker_codec == nullptr) {
-    g_speaker_codec = bsp_audio_codec_speaker_init();
-  }
-  if (g_speaker_codec == nullptr) {
-    ESP_LOGW(kTag, "Speaker codec is not available");
-    return false;
-  }
-
-  esp_codec_dev_sample_info_t sample_info = {};
-  sample_info.bits_per_sample = bits_per_sample;
-  sample_info.channel = channels;
-  sample_info.sample_rate = sample_rate;
-  esp_codec_dev_set_out_vol(g_speaker_codec, volume);
-  const int result = esp_codec_dev_open(g_speaker_codec, &sample_info);
-  if (result != 0) {
-    ESP_LOGW(kTag, "Failed to open speaker stream: %d", result);
-    return false;
-  }
-  return true;
-}
-
-bool write_silence(int duration_ms) {
-  std::array<int16_t, 160> chunk = {};
-  int samples_remaining = (kCueSampleRateHz * duration_ms) / 1000;
-  while (samples_remaining > 0 && !g_stop_requested) {
-    const int samples_to_write = std::min(samples_remaining, static_cast<int>(chunk.size()));
-    const int result = esp_codec_dev_write(
-        g_speaker_codec,
-        reinterpret_cast<uint8_t *>(chunk.data()),
-        samples_to_write * static_cast<int>(sizeof(int16_t)));
-    if (result != 0) {
-      ESP_LOGW(kTag, "Speaker silence write failed: %d", result);
-      return false;
-    }
-    samples_remaining -= samples_to_write;
-  }
-  return !g_stop_requested;
-}
-
-bool write_tone(int frequency_hz, int duration_ms, int attack_ms, int release_ms, float amplitude) {
-  std::array<int16_t, 160> chunk = {};
-  int sample_index = 0;
-  int samples_remaining = (kCueSampleRateHz * duration_ms) / 1000;
-  const int total_samples = samples_remaining;
-  const int attack_samples = (kCueSampleRateHz * attack_ms) / 1000;
-  const int release_samples = (kCueSampleRateHz * release_ms) / 1000;
-  const float angular_step = (2.0f * kPi * static_cast<float>(frequency_hz)) / static_cast<float>(kCueSampleRateHz);
-  const float max_sample = 32767.0f * amplitude;
-
-  while (samples_remaining > 0 && !g_stop_requested) {
-    const int samples_to_write = std::min(samples_remaining, static_cast<int>(chunk.size()));
-    for (int i = 0; i < samples_to_write; ++i) {
-      float envelope = 1.0f;
-      if (attack_samples > 0 && sample_index < attack_samples) {
-        envelope = static_cast<float>(sample_index) / static_cast<float>(attack_samples);
-      } else if (release_samples > 0 && sample_index >= total_samples - release_samples) {
-        const int release_index = total_samples - sample_index;
-        envelope = static_cast<float>(release_index) / static_cast<float>(release_samples);
-      }
-      const float sample = std::sinf(static_cast<float>(sample_index) * angular_step) * max_sample * envelope;
-      chunk[i] = static_cast<int16_t>(sample);
-      ++sample_index;
-    }
-    const int result = esp_codec_dev_write(
-        g_speaker_codec,
-        reinterpret_cast<uint8_t *>(chunk.data()),
-        samples_to_write * static_cast<int>(sizeof(int16_t)));
-    if (result != 0) {
-      ESP_LOGW(kTag, "Speaker cue write failed: %d", result);
-      return false;
-    }
-    samples_remaining -= samples_to_write;
-  }
-  return !g_stop_requested;
-}
-
-bool play_listening_cue_now() {
-  if (!open_speaker(kCueSampleRateHz, 1, 16, current_output_volume())) {
-    return false;
-  }
-
-  const bool ok = write_tone(880, 70, 6, 14, 0.28f) && write_silence(35) && write_tone(1320, 95, 6, 18, 0.24f);
-  esp_codec_dev_close(g_speaker_codec);
-  return ok;
-}
-
 void playback_task(void *arg) {
   (void)arg;
   PlaybackRequest request = {};
@@ -318,23 +221,7 @@ void playback_task(void *arg) {
     auto &state = hexe::state();
     if (state.muted) {
       ESP_LOGI(kTag, "Skipping playback request while muted");
-      if (request.kind == PlaybackKind::kTtsAudio) {
-        g_playback_active = false;
-      }
-      continue;
-    }
-
-    if (request.kind == PlaybackKind::kListeningCue) {
-      ESP_LOGI(kTag, "Playing listening cue");
-      const bool mic_paused = hexe::board::pause_microphone_for_playback();
-      if (play_listening_cue_now()) {
-        ESP_LOGI(kTag, "Listening cue played");
-      } else {
-        ESP_LOGW(kTag, "Listening cue failed");
-      }
-      if (mic_paused) {
-        hexe::board::resume_microphone_after_playback();
-      }
+      g_playback_active = false;
       continue;
     }
 
@@ -379,22 +266,6 @@ void init_tts_player() {
   ESP_LOGI(kTag, "TTS player initialized");
 }
 
-void play_listening_cue() {
-  auto &state = hexe::state();
-  if (state.muted) {
-    ESP_LOGI(kTag, "Skipping listening cue while muted");
-    return;
-  }
-
-  PlaybackRequest request = {};
-  request.kind = PlaybackKind::kListeningCue;
-  if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
-    ESP_LOGW(kTag, "Dropping listening cue because playback queue is unavailable");
-  } else {
-    ESP_LOGI(kTag, "Queued listening cue");
-  }
-}
-
 void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url) {
   auto &state = hexe::state();
   if (state.muted) {
@@ -416,7 +287,6 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
 
   g_playback_active = true;
   PlaybackRequest request = {};
-  request.kind = PlaybackKind::kTtsAudio;
   copy_field(request.stream_id, sizeof(request.stream_id), stream_id);
   copy_field(request.content_type, sizeof(request.content_type), content_type);
   copy_field(request.audio_url, sizeof(request.audio_url), audio_url);

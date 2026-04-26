@@ -108,6 +108,7 @@ Implemented today:
 - voice WebSocket client with bounded audio frame queue
 - backend event handling for wake/session/transcript/response/TTS/error envelopes
 - scaffolded TTS playback state handling
+- silent wake-to-listening transition so cue audio does not feed back into VAD/STT
 
 Scaffold-only today:
 
