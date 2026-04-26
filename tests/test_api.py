@@ -183,6 +183,8 @@ def test_assistant_turn_echoes_transcript_without_ai(tmp_path):
     assert response.json()["handled_locally"] is False
     assert response.json()["reply_text"] == "I heard status, no AI added yet."
     assert response.json()["device_state"] == "speaking"
+    assert response.json()["provider_id"] == "local_echo"
+    assert response.json()["error"] is None
 
 
 def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
@@ -202,6 +204,7 @@ def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
     assert payload["session_id"] == "session-abc"
     assert payload["handled_locally"] is False
     assert payload["reply_text"] == "I heard turn on the lights, no AI added yet."
+    assert payload["provider_id"] == "local_echo"
 
 
 def test_assistant_turn_can_route_to_configured_ai_node():
@@ -241,6 +244,7 @@ def test_assistant_turn_can_route_to_configured_ai_node():
     assert b"turn on the lights" in captured["json"]
     assert response.reply_text == "AI Node heard turn on the lights."
     assert response.heard_text == "turn on the lights"
+    assert response.provider_id == "ai_node"
     assert adapter.status()["healthy"] is True
 
 

@@ -59,6 +59,7 @@ class LocalEchoAssistantAdapter:
             handled_locally=False,
             command=None,
             device_state="speaking",
+            provider_id="local_echo",
         )
 
     def status(self) -> dict:
@@ -133,6 +134,9 @@ class AiNodeAssistantAdapter:
                 handled_locally=bool(data.get("handled_locally", False)),
                 command=data.get("command") if isinstance(data.get("command"), str) else None,
                 device_state=device_state,
+                provider_id="ai_node",
+                model=str(data.get("model")) if data.get("model") else None,
+                error=None,
             )
         except Exception as exc:
             self._last_error = str(exc)

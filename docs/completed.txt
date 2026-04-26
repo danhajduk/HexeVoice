@@ -44,3 +44,4 @@ Task 052: Expose local STT transcript latency, provider metadata, and errors in 
 Task 053: Validate wake-to-local-transcript flow end to end on the ESP-BOX endpoint - Completed on 04/25/2026 17:39
 Task 054: Add AI Node assistant provider adapter with deterministic fallback - Completed on 04/25/2026 18:11
 Task 055: Add short rolling conversation context per endpoint and session - Completed on 04/25/2026 18:14
+Task 056: Expose assistant response provider, latency, text, and error observability - Completed on 04/25/2026 18:17

@@ -52,6 +52,7 @@ class VoiceSessionManager:
         self._last_transcript_metadata: dict | None = None
         self._last_error: dict | None = None
         self._last_tts: dict | None = None
+        self._last_assistant: dict | None = None
         self._last_turn_timings: dict | None = None
         self._last_event_type: str | None = None
         self._wake_history: list[dict[str, object]] = []
@@ -516,6 +517,15 @@ class VoiceSessionManager:
                 )
             )
             self._last_response = turn.assistant_response.spoken_text
+            self._last_assistant = {
+                "provider_id": turn.assistant_response.provider_id,
+                "model": turn.assistant_response.model,
+                "duration_ms": turn.timings.assistant_ms,
+                "text": turn.assistant_response.spoken_text,
+                "text_chars": len(turn.assistant_response.spoken_text or ""),
+                "error": turn.assistant_response.error,
+                "handled_locally": turn.assistant_response.handled_locally,
+            }
             self._set_session_state("synthesizing", ux_state="thinking")
             self._last_tts = {
                 "content_type": turn.tts.content_type,
@@ -582,6 +592,7 @@ class VoiceSessionManager:
             "last_transcript_metadata": self._last_transcript_metadata,
             "last_turn_timings": self._last_turn_timings,
             "last_response": self._last_response,
+            "last_assistant": self._last_assistant,
             "last_tts": self._last_tts,
             "last_error": self._last_error,
             "wake_provider": self._wake_detector.status(),

@@ -66,6 +66,7 @@ function VoicePipelinePanel({ voiceStatus }) {
   }, [voiceStatus?.last_transcript]);
 
   const timings = voiceStatus?.last_turn_timings || {};
+  const assistant = voiceStatus?.last_assistant || {};
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -84,6 +85,10 @@ function VoicePipelinePanel({ voiceStatus }) {
         <div>
           <dt>Response</dt>
           <dd>{valueOrEmpty(voiceStatus?.last_response)}</dd>
+        </div>
+        <div>
+          <dt>Assistant</dt>
+          <dd>{valueOrEmpty(assistant.provider_id)}</dd>
         </div>
         <div>
           <dt>TTS stream</dt>
@@ -107,7 +112,7 @@ function VoicePipelinePanel({ voiceStatus }) {
         </div>
         <div>
           <dt>Last error</dt>
-          <dd>{valueOrEmpty(voiceStatus?.last_error?.code, "clear")}</dd>
+          <dd>{valueOrEmpty(assistant.error || voiceStatus?.last_error?.code, "clear")}</dd>
         </div>
       </dl>
     </section>

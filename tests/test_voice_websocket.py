@@ -133,6 +133,10 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     assert status.json()["last_turn_timings"]["tts_ms"] >= 0
     assert status.json()["last_turn_timings"]["total_ms"] >= 0
     assert status.json()["last_response"] == "I heard hello, no AI added yet."
+    assert status.json()["last_assistant"]["provider_id"] == "local_echo"
+    assert status.json()["last_assistant"]["text"] == "I heard hello, no AI added yet."
+    assert status.json()["last_assistant"]["duration_ms"] >= 0
+    assert status.json()["last_assistant"]["error"] is None
     assert status.json()["last_tts"]["stream_id"].startswith("tts-")
 
 

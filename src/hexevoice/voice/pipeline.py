@@ -490,6 +490,7 @@ class VoiceTurnPipeline:
 
     def status(self) -> dict:
         return {
+            "assistant": self._assistant_service.status(),
             "stt": self._stt_adapter.status(),
             "tts": self._tts_adapter.status(),
         }

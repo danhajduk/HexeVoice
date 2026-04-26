@@ -32,6 +32,9 @@ class AssistantTurnResponse(BaseModel):
     handled_locally: bool
     command: str | None = None
     device_state: Literal["idle", "listening", "thinking", "speaking"]
+    provider_id: str = "local_echo"
+    model: str | None = None
+    error: str | None = None
 
 
 class EndpointHeartbeatRequest(BaseModel):
