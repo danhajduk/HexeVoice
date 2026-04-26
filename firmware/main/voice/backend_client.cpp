@@ -302,6 +302,9 @@ void handle_backend_event_json(const std::string &message) {
   if (wake_accepted || std::strcmp(ux_state, "listening") == 0) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kListening;
+      if (wake_accepted) {
+        hexe::voice::play_listening_cue();
+      }
     }
   } else if (
       std::strcmp(type, "transcript.final") == 0 || std::strcmp(type, "response.text") == 0 ||

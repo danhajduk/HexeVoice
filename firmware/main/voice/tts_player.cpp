@@ -1,6 +1,7 @@
 #include "voice/tts_player.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -24,8 +25,17 @@ constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
 constexpr size_t kPlaybackWriteBytes = 4096;
+constexpr int kCueSampleRateHz = 16000;
+constexpr int kCueVolume = 45;
+constexpr int kTtsVolume = 70;
+
+enum class PlaybackKind {
+  kTtsAudio,
+  kListeningCue,
+};
 
 struct PlaybackRequest {
+  PlaybackKind kind{PlaybackKind::kTtsAudio};
   char stream_id[64];
   char content_type[32];
   char audio_url[192];
@@ -181,7 +191,7 @@ bool play_wav(const std::vector<uint8_t> &audio) {
   sample_info.bits_per_sample = wav.bits_per_sample;
   sample_info.channel = wav.channels;
   sample_info.sample_rate = wav.sample_rate;
-  esp_codec_dev_set_out_vol(g_speaker_codec, 70);
+  esp_codec_dev_set_out_vol(g_speaker_codec, kTtsVolume);
   int result = esp_codec_dev_open(g_speaker_codec, &sample_info);
   if (result != 0) {
     ESP_LOGW(kTag, "Failed to open speaker stream: %d", result);
@@ -203,6 +213,82 @@ bool play_wav(const std::vector<uint8_t> &audio) {
   return result == 0 && !g_stop_requested;
 }
 
+bool open_speaker(int sample_rate, int channels, int bits_per_sample, int volume) {
+  if (g_speaker_codec == nullptr) {
+    g_speaker_codec = bsp_audio_codec_speaker_init();
+  }
+  if (g_speaker_codec == nullptr) {
+    ESP_LOGW(kTag, "Speaker codec is not available");
+    return false;
+  }
+
+  esp_codec_dev_sample_info_t sample_info = {};
+  sample_info.bits_per_sample = bits_per_sample;
+  sample_info.channel = channels;
+  sample_info.sample_rate = sample_rate;
+  esp_codec_dev_set_out_vol(g_speaker_codec, volume);
+  const int result = esp_codec_dev_open(g_speaker_codec, &sample_info);
+  if (result != 0) {
+    ESP_LOGW(kTag, "Failed to open speaker stream: %d", result);
+    return false;
+  }
+  return true;
+}
+
+bool write_silence(int duration_ms) {
+  std::array<int16_t, 160> chunk = {};
+  int samples_remaining = (kCueSampleRateHz * duration_ms) / 1000;
+  while (samples_remaining > 0 && !g_stop_requested) {
+    const int samples_to_write = std::min(samples_remaining, static_cast<int>(chunk.size()));
+    const int result = esp_codec_dev_write(
+        g_speaker_codec,
+        reinterpret_cast<uint8_t *>(chunk.data()),
+        samples_to_write * static_cast<int>(sizeof(int16_t)));
+    if (result != 0) {
+      ESP_LOGW(kTag, "Speaker silence write failed: %d", result);
+      return false;
+    }
+    samples_remaining -= samples_to_write;
+  }
+  return !g_stop_requested;
+}
+
+bool write_square_tone(int frequency_hz, int duration_ms, int amplitude) {
+  std::array<int16_t, 160> chunk = {};
+  int phase = 0;
+  int samples_remaining = (kCueSampleRateHz * duration_ms) / 1000;
+  while (samples_remaining > 0 && !g_stop_requested) {
+    const int samples_to_write = std::min(samples_remaining, static_cast<int>(chunk.size()));
+    for (int i = 0; i < samples_to_write; ++i) {
+      chunk[i] = phase < (kCueSampleRateHz / 2) ? amplitude : -amplitude;
+      phase += frequency_hz;
+      if (phase >= kCueSampleRateHz) {
+        phase -= kCueSampleRateHz;
+      }
+    }
+    const int result = esp_codec_dev_write(
+        g_speaker_codec,
+        reinterpret_cast<uint8_t *>(chunk.data()),
+        samples_to_write * static_cast<int>(sizeof(int16_t)));
+    if (result != 0) {
+      ESP_LOGW(kTag, "Speaker cue write failed: %d", result);
+      return false;
+    }
+    samples_remaining -= samples_to_write;
+  }
+  return !g_stop_requested;
+}
+
+bool play_listening_cue_now() {
+  if (!open_speaker(kCueSampleRateHz, 1, 16, kCueVolume)) {
+    return false;
+  }
+
+  const bool ok = write_square_tone(880, 80, 1800) && write_silence(35) && write_square_tone(1175, 110, 1600);
+  esp_codec_dev_close(g_speaker_codec);
+  return ok;
+}
+
 void playback_task(void *arg) {
   (void)arg;
   PlaybackRequest request = {};
@@ -214,9 +300,18 @@ void playback_task(void *arg) {
     g_stop_requested = false;
     auto &state = hexe::state();
     if (state.muted) {
-      g_playback_active = false;
+      if (request.kind == PlaybackKind::kTtsAudio) {
+        g_playback_active = false;
+      }
       continue;
     }
+
+    if (request.kind == PlaybackKind::kListeningCue) {
+      ESP_LOGI(kTag, "Playing listening cue");
+      play_listening_cue_now();
+      continue;
+    }
+
     state.phase = hexe::AppPhase::kReplying;
 
     const std::string url = resolve_audio_url(request.audio_url);
@@ -253,6 +348,19 @@ void init_tts_player() {
   ESP_LOGI(kTag, "TTS player initialized");
 }
 
+void play_listening_cue() {
+  auto &state = hexe::state();
+  if (state.muted) {
+    return;
+  }
+
+  PlaybackRequest request = {};
+  request.kind = PlaybackKind::kListeningCue;
+  if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
+    ESP_LOGW(kTag, "Dropping listening cue because playback queue is unavailable");
+  }
+}
+
 void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url) {
   auto &state = hexe::state();
   if (state.muted) {
@@ -274,6 +382,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
 
   g_playback_active = true;
   PlaybackRequest request = {};
+  request.kind = PlaybackKind::kTtsAudio;
   copy_field(request.stream_id, sizeof(request.stream_id), stream_id);
   copy_field(request.content_type, sizeof(request.content_type), content_type);
   copy_field(request.audio_url, sizeof(request.audio_url), audio_url);
