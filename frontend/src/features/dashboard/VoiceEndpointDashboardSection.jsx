@@ -8,6 +8,26 @@ function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : value;
 }
 
+function formatLocalDateTime(value) {
+  if (!value) {
+    return "none";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function VoicePipelinePanel({ voiceStatus }) {
   const [visibleTranscript, setVisibleTranscript] = useState("");
 
@@ -64,7 +84,7 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
       endpointId: endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected",
       firmwareVersion: endpointStatus?.firmware_version || "unknown",
       deviceState: endpointStatus?.device_state || "unknown",
-      lastSeenAt: endpointStatus?.last_seen_at || "none",
+      lastSeenAt: formatLocalDateTime(endpointStatus?.last_seen_at),
       connectionState: voiceStatus?.connection_state || "offline",
       transportHealth: voiceStatus?.transport_health || "offline",
       sessionId: session?.session_id || "none",
