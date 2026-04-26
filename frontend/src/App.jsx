@@ -34,6 +34,8 @@ const CANONICAL_SETUP_STEPS = [
   { id: "ready", label: "Ready" },
 ];
 
+const VOICE_ENDPOINT_REFRESH_MS = 2000;
+
 function isSetupStage(onboarding, status) {
   const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
   return stepId !== "ready";
@@ -266,6 +268,40 @@ export default function App() {
       setRouteView("setup");
     }
   }, [setupComplete, routeView]);
+
+  useEffect(() => {
+    if (showSetupPage || dashboardSection !== "voice-endpoint") {
+      return undefined;
+    }
+
+    let mounted = true;
+
+    async function refreshVisibleEndpoint() {
+      try {
+        const [voicePayload, endpointPayload] = await Promise.all([
+          getVoiceStatus().catch(() => null),
+          getEndpointStatus().catch(() => null),
+        ]);
+        if (!mounted) {
+          return;
+        }
+        setVoiceStatus(voicePayload);
+        setEndpointStatus(endpointPayload);
+      } catch (err) {
+        if (mounted) {
+          setError(String(err.message || err));
+        }
+      }
+    }
+
+    refreshVisibleEndpoint();
+    const timer = window.setInterval(refreshVisibleEndpoint, VOICE_ENDPOINT_REFRESH_MS);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [dashboardSection, showSetupPage]);
 
   useEffect(() => {
     if (!setupComplete || routeView !== "setup") {
