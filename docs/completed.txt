@@ -49,3 +49,4 @@ Task 057: Add local Piper TTS provider with deterministic fallback - Completed o
 Task 058: Tune end-to-end voice UX timing, VAD handoff, and LCD state transitions - Completed on 04/25/2026 18:24
 Task 059: Persist the endpoint registry and heartbeat-derived endpoint profile - Completed on 04/26/2026 05:30
 Task 060: Formalize connection, UX, and session state separation - Completed on 04/26/2026 05:39
+Task 061: Version and validate the endpoint event envelope - Completed on 04/26/2026 05:49

@@ -276,7 +276,22 @@ void handle_backend_event_json(const std::string &message) {
 
   cJSON *event_type = cJSON_GetObjectItem(root, "event_type");
   const char *type = cJSON_IsString(event_type) ? event_type->valuestring : "";
+  cJSON *event_id = cJSON_GetObjectItem(root, "event_id");
+  const char *id = cJSON_IsString(event_id) ? event_id->valuestring : "legacy";
+  cJSON *schema_version = cJSON_GetObjectItem(root, "schema_version");
+  const char *schema = cJSON_IsString(schema_version) ? schema_version->valuestring : "legacy";
+  if (type[0] == '\0') {
+    ESP_LOGW(kTag, "Ignoring malformed backend event without event_type (event_id=%s, schema=%s)", id, schema);
+    cJSON_Delete(root);
+    return;
+  }
+  if (schema_version != nullptr && (!cJSON_IsString(schema_version) || std::strcmp(schema, "hexevoice.voice.event.v1") != 0)) {
+    ESP_LOGW(kTag, "Backend event uses unsupported schema_version (event_id=%s, type=%s, schema=%s)", id, type, schema);
+  }
   cJSON *payload = cJSON_GetObjectItem(root, "payload");
+  if (payload != nullptr && !cJSON_IsObject(payload)) {
+    ESP_LOGW(kTag, "Backend event payload is not an object (event_id=%s, type=%s)", id, type);
+  }
   cJSON *snapshot = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "snapshot") : nullptr;
   cJSON *state_item = cJSON_IsObject(snapshot) ? cJSON_GetObjectItem(snapshot, "ux_state") : nullptr;
   const char *ux_state = cJSON_IsString(state_item) ? state_item->valuestring : "";
@@ -365,6 +380,8 @@ void handle_backend_event_json(const std::string &message) {
     } else {
       app_state.phase = hexe::AppPhase::kError;
     }
+  } else {
+    ESP_LOGW(kTag, "Unhandled backend event type (event_id=%s, schema=%s, type=%s)", id, schema, type);
   }
 
   cJSON_Delete(root);

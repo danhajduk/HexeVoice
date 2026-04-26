@@ -1,0 +1,19 @@
+{
+  "event_type": "session.start",
+  "event_id": "evt_endpoint_session_start_example",
+  "endpoint_id": "esp-box-1",
+  "direction": "endpoint_to_backend",
+  "session_id": "voice-session-1",
+  "sequence": 0,
+  "timestamp": "2026-04-26T12:44:00Z",
+  "schema_version": "hexevoice.voice.event.v1",
+  "payload": {
+    "firmware_version": "0.1.0",
+    "wake_source": "openwakeword",
+    "audio_format": {
+      "encoding": "pcm_s16le",
+      "sample_rate_hz": 16000,
+      "channels": 1
+    }
+  }
+}

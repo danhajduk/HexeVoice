@@ -12,6 +12,8 @@ from pydantic import ValidationError
 from hexevoice.voice.contracts import (
     ENDPOINT_TO_BACKEND_EVENTS,
     VoiceAudioChunkPayload,
+    VoiceCommandAckPayload,
+    VoiceCommandErrorPayload,
     VoiceErrorPayload,
     VoiceEventEnvelope,
     VoiceEventType,
@@ -57,6 +59,9 @@ class VoiceSessionManager:
         self._last_assistant: dict | None = None
         self._last_turn_timings: dict | None = None
         self._last_event_type: str | None = None
+        self._last_command_ack: dict | None = None
+        self._last_command_error: dict | None = None
+        self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
@@ -128,6 +133,7 @@ class VoiceSessionManager:
             version,
             size_bytes,
         )
+        request_id = f"cmd_{uuid4().hex}"
         event = VoiceEventEnvelope(
             event_type="ota.update",
             endpoint_id=endpoint_id,
@@ -135,6 +141,7 @@ class VoiceSessionManager:
             session_id=self._active_session.session_id if self._active_session else None,
             sequence=self._next_sequence(),
             payload={
+                "request_id": request_id,
                 "url": firmware_url,
                 "version": version,
                 "sha256": sha256,
@@ -143,7 +150,7 @@ class VoiceSessionManager:
         )
         await self._websocket.send_json(event.model_dump(mode="json"))
         self._last_event_type = "ota.update"
-        return {"accepted": True}
+        return {"accepted": True, "request_id": request_id}
 
     async def push_volume_command(self, *, endpoint_id: str, volume_percent: int) -> dict:
         if not self._connection_active or self._websocket is None:
@@ -157,24 +164,32 @@ class VoiceSessionManager:
             )
             return {"accepted": False, "reason": "endpoint_mismatch"}
 
+        request_id = f"cmd_{uuid4().hex}"
         event = VoiceEventEnvelope(
             event_type="endpoint.volume",
             endpoint_id=endpoint_id,
             direction="backend_to_endpoint",
             session_id=self._active_session.session_id if self._active_session else None,
             sequence=self._next_sequence(),
-            payload={"volume_percent": volume_percent},
+            payload={"request_id": request_id, "volume_percent": volume_percent},
         )
         await self._websocket.send_json(event.model_dump(mode="json"))
         self._last_event_type = "endpoint.volume"
         log.info("Volume command sent to endpoint: endpoint_id=%s volume_percent=%s", endpoint_id, volume_percent)
-        return {"accepted": True}
+        return {"accepted": True, "request_id": request_id}
 
     def _handle_raw_message(self, raw_message: str) -> list[VoiceEventEnvelope]:
         try:
             raw_payload = json.loads(raw_message)
         except json.JSONDecodeError:
             log.warning("Invalid voice WebSocket JSON received bytes=%s", len(raw_message))
+            self._record_event_diagnostic(
+                code="invalid_json",
+                endpoint_id="unknown",
+                session_id=None,
+                event_type=None,
+                message="Voice WebSocket messages must be valid JSON envelopes.",
+            )
             return [
                 self._error_event(
                     endpoint_id="unknown",
@@ -188,13 +203,25 @@ class VoiceSessionManager:
         try:
             event = VoiceEventEnvelope.model_validate(raw_payload)
         except ValidationError as exc:
-            log.warning("Invalid voice event envelope: error=%s", str(exc.errors()[0]["msg"]))
+            first_error = exc.errors()[0]
+            location = ".".join(str(part) for part in first_error.get("loc", []))
+            message = str(first_error["msg"])
+            if location:
+                message = f"{location}: {message}"
+            log.warning("Invalid voice event envelope: error=%s", message)
+            self._record_event_diagnostic(
+                code="invalid_event_envelope",
+                endpoint_id=self._safe_endpoint_id(raw_payload),
+                session_id=self._safe_session_id(raw_payload),
+                event_type=self._safe_event_type(raw_payload),
+                message=message,
+            )
             return [
                 self._error_event(
                     endpoint_id=self._safe_endpoint_id(raw_payload),
                     session_id=self._safe_session_id(raw_payload),
                     code="invalid_event_envelope",
-                    message=str(exc.errors()[0]["msg"]),
+                    message=message,
                     recoverable=True,
                 )
             ]
@@ -260,6 +287,8 @@ class VoiceSessionManager:
             "audio.end": self._handle_audio_end,
             "session.cancel": self._handle_session_cancel,
             "session.ping": self._handle_session_ping,
+            "command.ack": self._handle_command_ack,
+            "command.error": self._handle_command_error,
         }
         return handlers[event.event_type](event)
 
@@ -627,6 +656,9 @@ class VoiceSessionManager:
             "last_assistant": self._last_assistant,
             "last_tts": self._last_tts,
             "last_error": self._last_error,
+            "last_command_ack": self._last_command_ack,
+            "last_command_error": self._last_command_error,
+            "event_diagnostics": list(self._event_diagnostics),
             "wake_provider": self._wake_detector.status(),
             "wake_history": list(self._wake_history),
             "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
@@ -691,6 +723,76 @@ class VoiceSessionManager:
         if isinstance(session, VoiceEventEnvelope):
             return [session]
         return [self._state_event("session.state", session)]
+
+    def _handle_command_ack(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        try:
+            payload = VoiceCommandAckPayload.model_validate(event.payload)
+        except ValidationError as exc:
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_command_ack",
+                    message=str(exc.errors()[0]["msg"]),
+                    recoverable=True,
+                )
+            ]
+
+        self._last_command_ack = {
+            "event_id": event.event_id,
+            "endpoint_id": event.endpoint_id,
+            "session_id": event.session_id,
+            **payload.model_dump(mode="json"),
+            "received_at": datetime.now(UTC).isoformat(),
+        }
+        self._last_event_type = "command.ack"
+        log.info(
+            "Endpoint command acknowledgement: endpoint_id=%s request_id=%s command_type=%s status=%s",
+            event.endpoint_id,
+            payload.request_id,
+            payload.command_type,
+            payload.status,
+        )
+        return [self._state_event("session.state", self._active_session)] if self._active_session else []
+
+    def _handle_command_error(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        try:
+            payload = VoiceCommandErrorPayload.model_validate(event.payload)
+        except ValidationError as exc:
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_command_error",
+                    message=str(exc.errors()[0]["msg"]),
+                    recoverable=True,
+                )
+            ]
+
+        self._last_command_error = {
+            "event_id": event.event_id,
+            "endpoint_id": event.endpoint_id,
+            "session_id": event.session_id,
+            **payload.model_dump(mode="json"),
+            "received_at": datetime.now(UTC).isoformat(),
+        }
+        self._last_event_type = "command.error"
+        self._record_event_diagnostic(
+            code=payload.code,
+            endpoint_id=event.endpoint_id,
+            session_id=event.session_id,
+            event_type=event.event_type,
+            message=payload.message,
+        )
+        log.warning(
+            "Endpoint command error: endpoint_id=%s request_id=%s command_type=%s code=%s message=%s",
+            event.endpoint_id,
+            payload.request_id,
+            payload.command_type,
+            payload.code,
+            payload.message,
+        )
+        return [self._state_event("session.state", self._active_session)] if self._active_session else []
 
     def _require_active_session(self, event: VoiceEventEnvelope) -> VoiceSessionSnapshot | VoiceEventEnvelope:
         if self._active_session is None:
@@ -775,6 +877,13 @@ class VoiceSessionManager:
         payload = VoiceErrorPayload(code=code, message=message, recoverable=recoverable).model_dump(mode="json")
         self._last_event_type = "session.error"
         self._last_error = payload
+        self._record_event_diagnostic(
+            code=code,
+            endpoint_id=endpoint_id or "unknown",
+            session_id=session_id,
+            event_type="session.error",
+            message=message,
+        )
         return VoiceEventEnvelope(
             event_type="session.error",
             endpoint_id=endpoint_id or "unknown",
@@ -788,6 +897,28 @@ class VoiceSessionManager:
         sequence = self._sequence
         self._sequence += 1
         return sequence
+
+    def _record_event_diagnostic(
+        self,
+        *,
+        code: str,
+        endpoint_id: str,
+        session_id: str | None,
+        event_type: str | None,
+        message: str,
+    ) -> None:
+        self._event_diagnostics.insert(
+            0,
+            {
+                "timestamp": datetime.now(UTC).isoformat(),
+                "code": code,
+                "endpoint_id": endpoint_id or "unknown",
+                "session_id": session_id,
+                "event_type": event_type,
+                "message": message,
+            },
+        )
+        del self._event_diagnostics[10:]
 
     @staticmethod
     def _safe_endpoint_id(payload: object) -> str:
@@ -803,4 +934,12 @@ class VoiceSessionManager:
             session_id = payload.get("session_id")
             if isinstance(session_id, str) and session_id:
                 return session_id
+        return None
+
+    @staticmethod
+    def _safe_event_type(payload: object) -> str | None:
+        if isinstance(payload, dict):
+            event_type = payload.get("event_type")
+            if isinstance(event_type, str) and event_type:
+                return event_type
         return None

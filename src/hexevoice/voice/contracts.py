@@ -1,7 +1,11 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
+
+
+VOICE_EVENT_SCHEMA_VERSION = "hexevoice.voice.event.v1"
 
 VoiceEndpointConnectionState = Literal["offline", "connecting", "connected", "degraded"]
 VoiceEndpointUxState = Literal[
@@ -54,6 +58,8 @@ VoiceEventType = Literal[
     "session.error",
     "ota.update",
     "endpoint.volume",
+    "command.ack",
+    "command.error",
 ]
 
 ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
@@ -63,6 +69,8 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
         "audio.end",
         "session.cancel",
         "session.ping",
+        "command.ack",
+        "command.error",
     }
 )
 
@@ -164,8 +172,29 @@ class VoiceErrorPayload(BaseModel):
     recoverable: bool = False
 
 
+class VoiceCommandAckPayload(BaseModel):
+    request_id: str = Field(min_length=1)
+    command_type: str = Field(min_length=1)
+    status: Literal["accepted", "started", "succeeded", "unsupported"]
+    message: str | None = None
+
+
+class VoiceCommandErrorPayload(BaseModel):
+    request_id: str = Field(min_length=1)
+    command_type: str = Field(min_length=1)
+    code: str = Field(min_length=1)
+    message: str
+    recoverable: bool = False
+
+
+def _event_id() -> str:
+    return f"evt_{uuid4().hex}"
+
+
 class VoiceEventEnvelope(BaseModel):
     event_type: VoiceEventType
+    event_id: str = Field(default_factory=_event_id, min_length=1)
+    schema_version: Literal["hexevoice.voice.event.v1"] = VOICE_EVENT_SCHEMA_VERSION
     endpoint_id: str = Field(min_length=1)
     direction: VoiceEventDirection
     session_id: str | None = None

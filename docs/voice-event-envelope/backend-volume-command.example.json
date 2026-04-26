@@ -1,0 +1,14 @@
+{
+  "event_type": "endpoint.volume",
+  "event_id": "evt_backend_volume_command_example",
+  "endpoint_id": "esp-box-1",
+  "direction": "backend_to_endpoint",
+  "session_id": "voice-session-1",
+  "sequence": 7,
+  "timestamp": "2026-04-26T12:44:05Z",
+  "schema_version": "hexevoice.voice.event.v1",
+  "payload": {
+    "request_id": "cmd-volume-1",
+    "volume_percent": 42
+  }
+}

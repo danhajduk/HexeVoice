@@ -1,0 +1,16 @@
+{
+  "event_type": "command.ack",
+  "event_id": "evt_endpoint_command_ack_example",
+  "endpoint_id": "esp-box-1",
+  "direction": "endpoint_to_backend",
+  "session_id": "voice-session-1",
+  "sequence": 8,
+  "timestamp": "2026-04-26T12:44:06Z",
+  "schema_version": "hexevoice.voice.event.v1",
+  "payload": {
+    "request_id": "cmd-volume-1",
+    "command_type": "endpoint.volume",
+    "status": "succeeded",
+    "message": "Volume set to 42 percent"
+  }
+}

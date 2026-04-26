@@ -1,0 +1,17 @@
+{
+  "event_type": "command.error",
+  "event_id": "evt_endpoint_command_error_example",
+  "endpoint_id": "esp-box-1",
+  "direction": "endpoint_to_backend",
+  "session_id": "voice-session-1",
+  "sequence": 9,
+  "timestamp": "2026-04-26T12:44:07Z",
+  "schema_version": "hexevoice.voice.event.v1",
+  "payload": {
+    "request_id": "cmd-restart-1",
+    "command_type": "endpoint.restart",
+    "code": "unsupported_command",
+    "message": "Restart is not supported by this endpoint",
+    "recoverable": true
+  }
+}

@@ -38,6 +38,8 @@ def test_voice_websocket_starts_single_endpoint_session(tmp_path):
         response = websocket.receive_json()
 
     assert response["event_type"] == "session.state"
+    assert response["event_id"].startswith("evt_")
+    assert response["schema_version"] == "hexevoice.voice.event.v1"
     assert response["direction"] == "backend_to_endpoint"
     assert response["endpoint_id"] == "esp-box-1"
     assert response["session_id"] == "voice-session-1"
@@ -416,7 +418,87 @@ def test_voice_websocket_rejects_invalid_event_envelope(tmp_path):
 
     assert response["event_type"] == "session.error"
     assert response["payload"]["code"] == "invalid_event_envelope"
+    assert response["payload"]["message"]
     assert response["payload"]["recoverable"] is True
+    diagnostics = client.get("/api/voice/status").json()["event_diagnostics"]
+    assert diagnostics[0]["code"] in {"session.error", "invalid_event_envelope"}
+    assert any(item["code"] == "invalid_event_envelope" for item in diagnostics)
+
+
+def test_voice_websocket_rejects_unknown_schema_version(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "schema_version": "hexevoice.voice.event.v2",
+                "payload": {},
+            }
+        )
+        response = websocket.receive_json()
+
+    assert response["event_type"] == "session.error"
+    assert response["payload"]["code"] == "invalid_event_envelope"
+    assert "schema_version" in response["payload"]["message"]
+
+
+def test_voice_websocket_records_command_acknowledgement_and_error(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "command.ack",
+                payload={
+                    "request_id": "cmd-volume-1",
+                    "command_type": "endpoint.volume",
+                    "status": "succeeded",
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "command.error",
+                payload={
+                    "request_id": "cmd-restart-1",
+                    "command_type": "endpoint.restart",
+                    "code": "unsupported_command",
+                    "message": "Restart is not supported by this endpoint",
+                    "recoverable": True,
+                },
+            )
+        )
+        websocket.receive_json()
+        status = client.get("/api/voice/status").json()
+
+    assert status["last_command_ack"]["request_id"] == "cmd-volume-1"
+    assert status["last_command_ack"]["status"] == "succeeded"
+    assert status["last_command_error"]["request_id"] == "cmd-restart-1"
+    assert status["last_command_error"]["code"] == "unsupported_command"
+    assert status["event_diagnostics"][0]["code"] == "unsupported_command"
+
+
+def test_voice_websocket_rejects_malformed_command_acknowledgement(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "command.ack",
+                session_id=None,
+                payload={"request_id": "cmd-volume-1", "status": "succeeded"},
+            )
+        )
+        response = websocket.receive_json()
+
+    assert response["event_type"] == "session.error"
+    assert response["payload"]["code"] == "invalid_command_ack"
 
 
 def test_voice_websocket_rejects_audio_without_active_session(tmp_path):

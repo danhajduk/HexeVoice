@@ -272,6 +272,8 @@ If we choose WebSocket, the message families should likely be:
 - `tts.ready`
 - `session.complete`
 - `session.error`
+- `command.ack`
+- `command.error`
 
 Audio chunks should likely carry:
 
@@ -485,7 +487,7 @@ Task 028 establishes the first backend-owned voice contract in `src/hexevoice/vo
 
 Accepted for the MVP:
 
-- `VoiceEventEnvelope` is the shared JSON envelope for endpoint-to-backend, backend-to-endpoint, and internal observability events.
+- `VoiceEventEnvelope` is the shared JSON envelope for endpoint-to-backend, backend-to-endpoint, and internal observability events. The versioned envelope includes `event_type`, `event_id`, `session_id`, `endpoint_id`, `timestamp`, `schema_version`, and `payload`.
 - Endpoint connection state, endpoint UX state, and backend session state are separate fields on `VoiceSessionSnapshot`, with `project_voice_state` providing the `/api/voice/status` projection.
 - The first implementation targets one active endpoint/session at a time, with explicit transition validation in `VOICE_SESSION_ALLOWED_TRANSITIONS` and UX mapping in `VOICE_SESSION_UX_PROJECTION`.
 - `audio.chunk` carries transport metadata and an optional base64 payload field only; wake detection, STT, TTS, and raw audio processing remain outside Task 028.
@@ -496,10 +498,11 @@ Task 029 implements that next transport step in `src/hexevoice/voice/session_man
 Accepted for the first WebSocket implementation:
 
 - The route is an MVP single-endpoint, single-active-session WebSocket manager.
-- The endpoint may send `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping`.
+- The endpoint may send `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, `session.ping`, `command.ack`, and `command.error`.
 - The backend responds with `session.state`, `session.completed`, `session.cancelled`, and `session.error` envelopes.
 - Session state is held in memory only; endpoint/session persistence and recent event history remain deferred.
 - `audio.end` completes the contract-only session after chunk intake, but it does not yet run wake detection, STT, assistant routing, or TTS.
+- Task 061 documents the JSON contract in `docs/voice-event-envelope.md` and stores the schema/examples under `docs/voice-event-envelope/`.
 
 Task 030 adds the backend wake authority boundary in `src/hexevoice/voice/wake.py`.
 

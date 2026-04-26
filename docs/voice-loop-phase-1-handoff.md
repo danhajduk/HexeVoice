@@ -86,6 +86,8 @@ Firmware UX timing notes:
 
 Endpoint output volume can be changed through `POST /api/endpoint/volume` with `endpoint_id` and `volume_percent` from 0 to 100. The backend forwards this as an `endpoint.volume` WebSocket event, and firmware applies it to listening cues and TTS playback.
 
+Voice WebSocket messages now use the versioned envelope documented in `docs/voice-event-envelope.md`. JSON schema and examples are stored under `docs/voice-event-envelope/`. The backend accepts legacy firmware messages that omit `event_id` and `schema_version`, rejects unknown schema versions with visible diagnostics, and records endpoint `command.ack` / `command.error` messages in `/api/voice/status`.
+
 Endpoint heartbeats now upsert durable records in `runtime/endpoint_registry.json`. `GET /api/endpoints` lists known endpoints, `GET /api/endpoint/status/{endpoint_id}` returns display name, zone, firmware, connection metadata, capabilities, and stale/online projection, and `PATCH /api/endpoints/{endpoint_id}` updates operator-owned display name and zone without heartbeat overwrites. The voice endpoint dashboard exposes those two editable fields.
 
 For wake model setup:
