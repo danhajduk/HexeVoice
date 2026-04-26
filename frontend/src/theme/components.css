@@ -152,8 +152,9 @@
 
 .voice-endpoint-status-table {
   width: 100%;
+  min-width: 1120px;
   border-collapse: collapse;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .voice-endpoint-status-table th,
@@ -169,11 +170,18 @@
   border-bottom: 0;
 }
 
+.voice-endpoint-status-table thead th {
+  background: hsl(var(--sx-text) / 0.04);
+}
+
 .voice-endpoint-status-table th {
-  width: 220px;
   color: hsl(var(--sx-text-muted));
   font-size: 13px;
   font-weight: 700;
+}
+
+.voice-endpoint-status-table tbody th {
+  color: hsl(var(--sx-text));
 }
 
 .voice-endpoint-status-table td {

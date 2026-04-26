@@ -57,22 +57,20 @@ function VoicePipelinePanel({ voiceStatus }) {
   );
 }
 
-function EndpointStatusTable({ status, providerSetup, capabilities, voiceStatus, endpointStatus }) {
+function EndpointStatusTable({ voiceStatus, endpointStatus }) {
   const session = voiceStatus?.active_session;
-  const rows = [
-    ["Namespace", "voice"],
-    ["Endpoint", endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected"],
-    ["Endpoint FW", endpointStatus?.firmware_version || "unknown"],
-    ["Device state", endpointStatus?.device_state || "unknown"],
-    ["Last heartbeat", endpointStatus?.last_seen_at || "none"],
-    ["Connection", voiceStatus?.connection_state || "offline"],
-    ["Transport", voiceStatus?.transport_health || "offline"],
-    ["Active session", session?.session_id || "none"],
-    ["Backend state", session?.session_state || "idle"],
-    ["Endpoint UX", session?.ux_state || "idle"],
-    ["Enabled providers", providerSetup?.enabled_providers?.join(", ") || "none"],
-    ["Declared capabilities", capabilities?.declared?.join(", ") || "pending"],
-    ["Operational readiness", String(status?.operational_ready ?? false)],
+  const endpointRows = [
+    {
+      endpointId: endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected",
+      firmwareVersion: endpointStatus?.firmware_version || "unknown",
+      deviceState: endpointStatus?.device_state || "unknown",
+      lastSeenAt: endpointStatus?.last_seen_at || "none",
+      connectionState: voiceStatus?.connection_state || "offline",
+      transportHealth: voiceStatus?.transport_health || "offline",
+      sessionId: session?.session_id || "none",
+      backendState: session?.session_state || "idle",
+      uxState: session?.ux_state || "idle",
+    },
   ];
 
   return (
@@ -86,11 +84,31 @@ function EndpointStatusTable({ status, providerSetup, capabilities, voiceStatus,
       </div>
       <div className="voice-endpoint-table-wrap">
         <table className="voice-endpoint-status-table">
+          <thead>
+            <tr>
+              <th scope="col">Endpoint</th>
+              <th scope="col">FW</th>
+              <th scope="col">Device</th>
+              <th scope="col">Last heartbeat</th>
+              <th scope="col">Connection</th>
+              <th scope="col">Transport</th>
+              <th scope="col">Session</th>
+              <th scope="col">Backend</th>
+              <th scope="col">UX</th>
+            </tr>
+          </thead>
           <tbody>
-            {rows.map(([label, value]) => (
-              <tr key={label}>
-                <th scope="row">{label}</th>
-                <td>{valueOrEmpty(value)}</td>
+            {endpointRows.map((row) => (
+              <tr key={row.endpointId}>
+                <th scope="row">{valueOrEmpty(row.endpointId)}</th>
+                <td>{valueOrEmpty(row.firmwareVersion)}</td>
+                <td>{valueOrEmpty(row.deviceState)}</td>
+                <td>{valueOrEmpty(row.lastSeenAt)}</td>
+                <td>{valueOrEmpty(row.connectionState)}</td>
+                <td>{valueOrEmpty(row.transportHealth)}</td>
+                <td>{valueOrEmpty(row.sessionId)}</td>
+                <td>{valueOrEmpty(row.backendState)}</td>
+                <td>{valueOrEmpty(row.uxState)}</td>
               </tr>
             ))}
           </tbody>
@@ -101,9 +119,6 @@ function EndpointStatusTable({ status, providerSetup, capabilities, voiceStatus,
 }
 
 export function VoiceEndpointDashboardSection({
-  status,
-  providerSetup,
-  capabilities,
   voiceStatus,
   endpointStatus,
   onRefresh,
@@ -144,9 +159,6 @@ export function VoiceEndpointDashboardSection({
         />
       </div>
       <EndpointStatusTable
-        status={status}
-        providerSetup={providerSetup}
-        capabilities={capabilities}
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
       />
