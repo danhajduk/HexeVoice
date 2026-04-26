@@ -47,5 +47,3 @@ Standards reference:
 
 Do not edit above this line:
 #######################################################################
-
-[TODO] Task 053: Validate wake-to-local-transcript flow end to end on the ESP-BOX endpoint
