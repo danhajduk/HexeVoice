@@ -28,7 +28,7 @@ from hexevoice.voice.contracts import (
     project_voice_state,
 )
 from hexevoice.voice.pipeline import VoiceTurnAudioSummary, VoiceTurnPipeline
-from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetector
+from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
 
 
 log = logging.getLogger(__name__)
@@ -482,18 +482,24 @@ class VoiceSessionManager:
             self._chunk_count,
             bool(payload.payload_base64),
         )
+        audio_bytes: bytes | None = None
         if payload.payload_base64:
             try:
-                self._audio_chunks.append(base64.b64decode(payload.payload_base64, validate=True))
+                audio_bytes = base64.b64decode(payload.payload_base64, validate=True)
             except ValueError:
                 pass
         events: list[VoiceEventEnvelope] = []
-        detection = self._wake_detector.inspect_chunk(
-            endpoint_id=event.endpoint_id,
-            session_id=session.session_id,
-            chunk=payload,
+        detection = (
+            self._wake_detector.inspect_chunk(
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                chunk=payload,
+            )
+            if session.session_state == "idle"
+            else WakeDetectionResult(detected=False, reason="wake_already_detected")
         )
-        if detection.detected and session.session_state == "idle":
+        wake_accepted = detection.detected and session.session_state == "idle"
+        if wake_accepted:
             self._record_wake_history(
                 {
                     "outcome": "accepted",
@@ -532,6 +538,8 @@ class VoiceSessionManager:
 
         if session.session_state in {"listening", "capturing"}:
             self._set_session_state("capturing")
+            if audio_bytes is not None and not wake_accepted:
+                self._audio_chunks.append(audio_bytes)
 
         events.append(
             self._state_event(

@@ -194,11 +194,22 @@ def test_voice_websocket_passes_transient_audio_to_turn_pipeline(tmp_path):
         )
         websocket.receive_json()
         websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 1,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "BAUGBw==",
+                },
+            )
+        )
+        websocket.receive_json()
         websocket.send_json(voice_event("audio.end"))
         websocket.receive_json()
 
     assert pipeline.audio is not None
-    assert pipeline.audio.audio_bytes == b"\x00\x01\x02\x03"
+    assert pipeline.audio.audio_bytes == b"\x04\x05\x06\x07"
     assert pipeline.audio.sample_rate_hz == 16000
     assert pipeline.audio.encoding == "pcm_s16le"
     assert pipeline.audio.channels == 1
