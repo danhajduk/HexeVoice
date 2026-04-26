@@ -152,7 +152,7 @@
 
 .voice-endpoint-status-table {
   width: 100%;
-  min-width: 1120px;
+  min-width: 1180px;
   border-collapse: collapse;
   table-layout: auto;
 }
@@ -188,6 +188,26 @@
   color: hsl(var(--sx-text));
   font-size: 15px;
   overflow-wrap: anywhere;
+}
+
+.endpoint-health-led {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px hsl(var(--sx-text) / 0.06);
+}
+
+.endpoint-health-led-green {
+  background: var(--success);
+}
+
+.endpoint-health-led-yellow {
+  background: var(--warning);
+}
+
+.endpoint-health-led-red {
+  background: var(--error);
 }
 
 .node-health-strip {

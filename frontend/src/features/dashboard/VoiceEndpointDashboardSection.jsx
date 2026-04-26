@@ -35,6 +35,18 @@ function formatMs(value) {
   return `${Math.round(value)} ms`;
 }
 
+function endpointHealth(voiceStatus) {
+  const connected = voiceStatus?.connection_state === "connected";
+  const online = voiceStatus?.transport_health === "online";
+  if (connected && online) {
+    return "green";
+  }
+  if (connected || online) {
+    return "yellow";
+  }
+  return "red";
+}
+
 function VoicePipelinePanel({ voiceStatus }) {
   const [visibleTranscript, setVisibleTranscript] = useState("");
 
@@ -104,17 +116,20 @@ function VoicePipelinePanel({ voiceStatus }) {
 
 function EndpointStatusTable({ voiceStatus, endpointStatus }) {
   const session = voiceStatus?.active_session;
+  const timings = voiceStatus?.last_turn_timings || {};
   const endpointRows = [
     {
+      health: endpointHealth(voiceStatus),
       endpointId: endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected",
       firmwareVersion: endpointStatus?.firmware_version || "unknown",
       deviceState: endpointStatus?.device_state || "unknown",
       lastSeenAt: formatLocalDateTime(endpointStatus?.last_seen_at),
-      connectionState: voiceStatus?.connection_state || "offline",
       transportHealth: voiceStatus?.transport_health || "offline",
       sessionId: session?.session_id || "none",
       backendState: session?.session_state || "idle",
       uxState: session?.ux_state || "idle",
+      sttLatency: formatMs(timings.stt_ms),
+      totalLatency: formatMs(timings.total_ms),
     },
   ];
 
@@ -131,12 +146,14 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
         <table className="voice-endpoint-status-table">
           <thead>
             <tr>
+              <th scope="col">Status</th>
               <th scope="col">Endpoint</th>
               <th scope="col">FW</th>
               <th scope="col">Device</th>
               <th scope="col">Last heartbeat</th>
-              <th scope="col">Connection</th>
               <th scope="col">Transport</th>
+              <th scope="col">STT</th>
+              <th scope="col">Total</th>
               <th scope="col">Session</th>
               <th scope="col">Backend</th>
               <th scope="col">UX</th>
@@ -145,12 +162,16 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
           <tbody>
             {endpointRows.map((row) => (
               <tr key={row.endpointId}>
+                <td>
+                  <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
+                </td>
                 <th scope="row">{valueOrEmpty(row.endpointId)}</th>
                 <td>{valueOrEmpty(row.firmwareVersion)}</td>
                 <td>{valueOrEmpty(row.deviceState)}</td>
                 <td>{valueOrEmpty(row.lastSeenAt)}</td>
-                <td>{valueOrEmpty(row.connectionState)}</td>
                 <td>{valueOrEmpty(row.transportHealth)}</td>
+                <td>{valueOrEmpty(row.sttLatency)}</td>
+                <td>{valueOrEmpty(row.totalLatency)}</td>
                 <td>{valueOrEmpty(row.sessionId)}</td>
                 <td>{valueOrEmpty(row.backendState)}</td>
                 <td>{valueOrEmpty(row.uxState)}</td>
