@@ -5,7 +5,6 @@ from dataclasses import replace
 import io
 import importlib.util
 import logging
-import math
 from pathlib import Path
 import tempfile
 import time
@@ -13,10 +12,15 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Protocol
+import warnings
 import wave
 from uuid import uuid4
 
 import httpx
+
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", DeprecationWarning)
+    import audioop
 
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
@@ -534,26 +538,8 @@ def resample_pcm16le(data: bytes, *, source_rate: int, target_rate: int, channel
     if frame_count <= 1 or source_rate <= 0 or target_rate <= 0 or source_rate == target_rate:
         return data
 
-    output_frame_count = max(1, int(round(frame_count * target_rate / source_rate)))
-    output = bytearray(output_frame_count * frame_size)
-    max_sample = 32767
-    min_sample = -32768
-
-    def sample_at(frame_index: int, channel: int) -> int:
-        offset = frame_index * frame_size + channel * 2
-        return int.from_bytes(data[offset : offset + 2], byteorder="little", signed=True)
-
-    for output_index in range(output_frame_count):
-        position = output_index * source_rate / target_rate
-        left = min(frame_count - 1, int(math.floor(position)))
-        right = min(frame_count - 1, left + 1)
-        fraction = position - left
-        for channel in range(channels):
-            value = round(sample_at(left, channel) * (1.0 - fraction) + sample_at(right, channel) * fraction)
-            value = max(min_sample, min(max_sample, value))
-            offset = output_index * frame_size + channel * 2
-            output[offset : offset + 2] = int(value).to_bytes(2, byteorder="little", signed=True)
-    return bytes(output)
+    converted, _state = audioop.ratecv(data, 2, channels, source_rate, target_rate, None)
+    return converted
 
 
 class VoiceTurnPipeline:
