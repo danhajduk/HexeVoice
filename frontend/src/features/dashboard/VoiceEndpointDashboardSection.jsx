@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { cancelVoiceSession, setEndpointVolume, testAssistantTurn } from "../../api/client";
+import { cancelVoiceSession, setEndpointVolume, testAssistantTurn, updateEndpointMetadata } from "../../api/client";
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
 
 const LATEST_SPEECH_VISIBLE_MS = 20000;
@@ -126,8 +126,11 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
     {
       health: endpointHealth(voiceStatus),
       endpointId: endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected",
+      displayName: endpointStatus?.display_name || "none",
+      zoneId: endpointStatus?.zone_id || "none",
       firmwareVersion: endpointStatus?.firmware_version || "unknown",
       deviceState: endpointStatus?.device_state || "unknown",
+      connectionState: endpointStatus?.connection_state || "unknown",
       lastSeenAt: formatLocalDateTime(endpointStatus?.last_seen_at),
       transportHealth: voiceStatus?.transport_health || "offline",
       sessionId: session?.session_id || "none",
@@ -153,8 +156,11 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
             <tr>
               <th className="endpoint-health-column" scope="col" aria-label="Endpoint health" />
               <th scope="col">Endpoint</th>
+              <th scope="col">Name</th>
+              <th scope="col">Zone</th>
               <th scope="col">FW</th>
               <th scope="col">Device</th>
+              <th scope="col">Registry</th>
               <th scope="col">Last heartbeat</th>
               <th scope="col">Transport</th>
               <th scope="col">STT</th>
@@ -171,8 +177,11 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
                   <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
                 </td>
                 <th scope="row">{valueOrEmpty(row.endpointId)}</th>
+                <td>{valueOrEmpty(row.displayName)}</td>
+                <td>{valueOrEmpty(row.zoneId)}</td>
                 <td>{valueOrEmpty(row.firmwareVersion)}</td>
                 <td>{valueOrEmpty(row.deviceState)}</td>
+                <td>{valueOrEmpty(row.connectionState)}</td>
                 <td>{valueOrEmpty(row.lastSeenAt)}</td>
                 <td>{valueOrEmpty(row.transportHealth)}</td>
                 <td>{valueOrEmpty(row.sttLatency)}</td>
@@ -185,6 +194,73 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function EndpointMetadataPanel({ endpointStatus, voiceStatus, onRefresh, setActionMessage }) {
+  const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
+  const [displayName, setDisplayName] = useState(endpointStatus?.display_name || "");
+  const [zoneId, setZoneId] = useState(endpointStatus?.zone_id || "");
+
+  useEffect(() => {
+    setDisplayName(endpointStatus?.display_name || "");
+    setZoneId(endpointStatus?.zone_id || "");
+  }, [endpointStatus?.display_name, endpointStatus?.zone_id, endpointStatus?.endpoint_id]);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!endpointId) {
+      setActionMessage("Metadata skipped: endpoint is not registered.");
+      return;
+    }
+
+    try {
+      const result = await updateEndpointMetadata(endpointId, {
+        display_name: displayName,
+        zone_id: zoneId,
+      });
+      setActionMessage(`Saved ${result.display_name || result.endpoint_id}.`);
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
+  return (
+    <section className="voice-endpoint-panel stack">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Endpoint Registry</p>
+          <h2 className="panel-title">Operator Metadata</h2>
+        </div>
+        <span className="status-pill status-pill-neutral">{valueOrEmpty(endpointStatus?.connection_state, "unregistered")}</span>
+      </div>
+      <form className="endpoint-metadata-form" onSubmit={handleSubmit}>
+        <label>
+          <span>Display name</span>
+          <input
+            type="text"
+            value={displayName}
+            maxLength={80}
+            onChange={(event) => setDisplayName(event.target.value)}
+            disabled={!endpointId}
+          />
+        </label>
+        <label>
+          <span>Zone</span>
+          <input
+            type="text"
+            value={zoneId}
+            maxLength={80}
+            onChange={(event) => setZoneId(event.target.value)}
+            disabled={!endpointId}
+          />
+        </label>
+        <button className="btn btn-secondary" type="submit" disabled={!endpointId}>
+          Save Metadata
+        </button>
+      </form>
     </section>
   );
 }
@@ -251,6 +327,12 @@ export function VoiceEndpointDashboardSection({
       <EndpointStatusTable
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
+      />
+      <EndpointMetadataPanel
+        voiceStatus={voiceStatus}
+        endpointStatus={endpointStatus}
+        onRefresh={onRefresh}
+        setActionMessage={setActionMessage}
       />
     </section>
   );

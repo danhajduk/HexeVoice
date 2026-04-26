@@ -155,6 +155,13 @@ export async function getEndpointStatus() {
   return fetchJson("/api/endpoint/status");
 }
 
+export async function updateEndpointMetadata(endpointId, metadata) {
+  return sendJson(`/api/endpoints/${encodeURIComponent(endpointId)}`, {
+    method: "PATCH",
+    body: metadata,
+  });
+}
+
 export async function cancelVoiceSession() {
   return sendJson("/api/voice/session/cancel");
 }

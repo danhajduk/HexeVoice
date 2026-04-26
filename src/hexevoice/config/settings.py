@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     backend_log_backup_days: int = Field(default=14, alias="BACKEND_LOG_BACKUP_DAYS", ge=1)
     firmware_artifact_dir: Path | None = Field(default=None, alias="FIRMWARE_ARTIFACT_DIR")
     onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
+    endpoint_registry_path: Path | None = Field(default=None, alias="ENDPOINT_REGISTRY_PATH")
+    endpoint_stale_after_seconds: int = Field(default=60, alias="ENDPOINT_STALE_AFTER_SECONDS", ge=1)
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")
     bootstrap_topic: str = Field(default="hexe/bootstrap/core", alias="BOOTSTRAP_TOPIC")
     provider_id: str = Field(default="voice", alias="PROVIDER_ID")
@@ -112,6 +114,13 @@ class Settings(BaseSettings):
         if self.onboarding_state_path is not None:
             return self.onboarding_state_path
         return self.runtime_dir / "onboarding_state.json"
+
+    def resolved_endpoint_registry_path(self) -> Path:
+        if self.endpoint_registry_path is not None:
+            return self.endpoint_registry_path
+        if self.onboarding_state_path is not None:
+            return self.onboarding_state_path.parent / "endpoint_registry.json"
+        return self.runtime_dir / "endpoint_registry.json"
 
     def resolved_firmware_artifact_dir(self) -> Path:
         if self.firmware_artifact_dir is not None:

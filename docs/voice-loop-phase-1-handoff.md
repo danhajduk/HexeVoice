@@ -86,6 +86,8 @@ Firmware UX timing notes:
 
 Endpoint output volume can be changed through `POST /api/endpoint/volume` with `endpoint_id` and `volume_percent` from 0 to 100. The backend forwards this as an `endpoint.volume` WebSocket event, and firmware applies it to listening cues and TTS playback.
 
+Endpoint heartbeats now upsert durable records in `runtime/endpoint_registry.json`. `GET /api/endpoints` lists known endpoints, `GET /api/endpoint/status/{endpoint_id}` returns display name, zone, firmware, connection metadata, capabilities, and stale/online projection, and `PATCH /api/endpoints/{endpoint_id}` updates operator-owned display name and zone without heartbeat overwrites. The voice endpoint dashboard exposes those two editable fields.
+
 For wake model setup:
 
 - `VOICE_WAKE_THRESHOLD=0.5`
@@ -98,7 +100,7 @@ For wake model setup:
 
 - openWakeWord wake phrase/model tuning on real ESP microphone audio.
 - AI Node assistant integration.
-- Persistent endpoint registry and voice session history.
+- Persistent voice session history.
 - Backend support for replay, mute, and reconnect operator actions.
 - Full on-device acoustic validation after flashing the latest firmware.
 

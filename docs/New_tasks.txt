@@ -1,4 +1,3 @@
-[TODO] Task 059: Persist the endpoint registry and heartbeat-derived endpoint profile
 [TODO] Task 060: Formalize connection, UX, and session state separation
 [TODO] Task 061: Version and validate the endpoint event envelope
 [TODO] Task 062: Complete endpoint command APIs and dashboard controls

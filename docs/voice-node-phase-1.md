@@ -383,14 +383,14 @@ This gives us a cleaner path for firmware, frontend diagnostics, testing, and re
 
 ### What This Means
 
-The current endpoint service keeps records in memory only.
+The endpoint service now persists a local registry under `runtime/endpoint_registry.json` by default.
 
-That is enough for a stub, but not enough for:
+That gives the backend:
 
-- restart-safe behavior
-- operator visibility
-- endpoint identity continuity
-- debugging recent failures
+- restart-safe endpoint identity
+- operator display name and zone metadata
+- heartbeat-derived firmware, connection, and capability snapshots
+- stale endpoint projection after heartbeat silence
 
 ### Brainstorm
 
@@ -417,10 +417,13 @@ I do not think raw audio should be part of Phase 1 persistence.
 
 ### Recommendation
 
-Persist:
+Implemented:
 
 - endpoint registry
 - last known health snapshot
+
+Still deferred:
+
 - recent session/event summary
 
 Do not persist in Phase 1:

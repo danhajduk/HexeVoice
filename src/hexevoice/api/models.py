@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, Field
 
@@ -44,6 +44,7 @@ class EndpointHeartbeatRequest(BaseModel):
     firmware_version: str | None = None
     ip_address: str | None = None
     rssi_dbm: int | None = None
+    capabilities: dict[str, Any] = Field(default_factory=dict)
 
 
 class EndpointHeartbeatResponse(BaseModel):
@@ -57,12 +58,27 @@ class EndpointHeartbeatResponse(BaseModel):
 
 class EndpointStatusResponse(BaseModel):
     endpoint_id: str
+    display_name: str | None = None
+    zone_id: str | None = None
     device_state: Literal["idle", "listening", "thinking", "speaking", "offline"]
     session_id: str | None = None
     firmware_version: str | None = None
     ip_address: str | None = None
     rssi_dbm: int | None = None
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    first_seen_at: str | None = None
     last_seen_at: str
+    connection_state: Literal["online", "stale", "offline"]
+    stale: bool = False
+
+
+class EndpointRegistryListResponse(BaseModel):
+    endpoints: list[EndpointStatusResponse] = Field(default_factory=list)
+
+
+class EndpointMetadataUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=80)
+    zone_id: str | None = Field(default=None, max_length=80)
 
 
 class EndpointVolumeCommandRequest(BaseModel):

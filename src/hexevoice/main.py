@@ -28,6 +28,8 @@ from hexevoice.api.models import (
     NodeIdentitySetupResponse,
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
+    EndpointMetadataUpdateRequest,
+    EndpointRegistryListResponse,
     EndpointStatusResponse,
     EndpointVolumeCommandRequest,
     EndpointVolumeCommandResponse,
@@ -56,7 +58,7 @@ from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.onboarding.trust_activation import TrustActivationService
-from hexevoice.persistence import OnboardingStateStore
+from hexevoice.persistence import EndpointRegistryStore, OnboardingStateStore
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.supervisor.client import SupervisorApiClient
@@ -114,6 +116,7 @@ def create_app(
 ) -> FastAPI:
     app_settings = settings or Settings()
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
+    endpoint_registry_store = EndpointRegistryStore(path=app_settings.resolved_endpoint_registry_path())
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     session_start_service = OnboardingSessionStartService(
@@ -132,7 +135,10 @@ def create_app(
         onboarding_state_store=onboarding_state_store,
     )
     governance_service = GovernanceService(onboarding_state_store=onboarding_state_store)
-    endpoint_service = EndpointHeartbeatService()
+    endpoint_service = EndpointHeartbeatService(
+        endpoint_registry_store=endpoint_registry_store,
+        stale_after_seconds=app_settings.endpoint_stale_after_seconds,
+    )
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     service = NodeRuntimeService(
@@ -190,6 +196,17 @@ def create_app(
     @app.get("/api/endpoint/status/{endpoint_id}", response_model=EndpointStatusResponse)
     async def endpoint_status(endpoint_id: str) -> EndpointStatusResponse:
         return endpoint_service.status(endpoint_id)
+
+    @app.get("/api/endpoints", response_model=EndpointRegistryListResponse)
+    async def endpoint_registry() -> EndpointRegistryListResponse:
+        return endpoint_service.list_statuses()
+
+    @app.patch("/api/endpoints/{endpoint_id}", response_model=EndpointStatusResponse)
+    async def endpoint_metadata_update(
+        endpoint_id: str,
+        payload: EndpointMetadataUpdateRequest,
+    ) -> EndpointStatusResponse:
+        return endpoint_service.update_metadata(endpoint_id, payload)
 
     @app.post("/api/endpoint/volume", response_model=EndpointVolumeCommandResponse)
     async def endpoint_volume(payload: EndpointVolumeCommandRequest) -> EndpointVolumeCommandResponse:

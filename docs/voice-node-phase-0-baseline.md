@@ -23,7 +23,7 @@ Status labels:
 | Dashboard shell | implemented | The app shell and routing are in `frontend/src/App.jsx`; dashboard cards live under `frontend/src/features/dashboard/`; shared visual tokens and components are in `frontend/src/theme/`. |
 | ESP32 microphone + VAD loop | partial | Firmware initializes BSP audio, opens a 16 kHz mono microphone stream, starts a VAD task, estimates energy, moves local UI state between idle/listening, and queues bounded audio frames toward the backend client in `firmware/main/board/audio.cpp`; app state is in `firmware/main/app_state.h`. |
 | Text assistant endpoint | implemented | `POST /api/assistant/turn` is registered in `src/hexevoice/main.py`; request and response contracts are in `src/hexevoice/api/models.py`; deterministic local responses and simple commands are in `src/hexevoice/assistant/service.py`. |
-| Endpoint heartbeat/status | partial | `POST /api/endpoint/heartbeat` and `GET /api/endpoint/status/{endpoint_id}` are registered in `src/hexevoice/main.py`; in-memory heartbeat state is implemented in `src/hexevoice/endpoint/service.py`; there is no persistent endpoint registry yet. |
+| Endpoint heartbeat/status | implemented | `POST /api/endpoint/heartbeat`, `GET /api/endpoint/status/{endpoint_id}`, `GET /api/endpoints`, and `PATCH /api/endpoints/{endpoint_id}` are registered in `src/hexevoice/main.py`; durable endpoint registry persistence is implemented in `src/hexevoice/persistence/endpoint_registry.py`; heartbeat and metadata merge behavior is implemented in `src/hexevoice/endpoint/service.py`. |
 | Voice pipeline | partial | The backend now has a voice protocol contract, in-memory single-endpoint WebSocket session manager, wake detector adapter boundary, deterministic STT -> assistant -> TTS pipeline boundary, and integration tests under `src/hexevoice/voice/` and `tests/test_voice_loop_integration.py`; real STT/TTS providers and firmware audio playback are still not implemented. |
 
 ## Backend Inventory
@@ -37,7 +37,7 @@ Implemented:
 
 Partial:
 
-- Endpoint heartbeat/status exists, but `src/hexevoice/endpoint/service.py` stores records only in memory and does not model endpoint registration, connection state, session state, or recent event history.
+- Endpoint heartbeat/status now upserts durable endpoint registry records through `src/hexevoice/persistence/endpoint_registry.py`, preserving operator-owned display name and zone while heartbeat updates runtime health, firmware, connection metadata, and capabilities. Voice session history and recent event history remain separate deferred work.
 - Assistant turns generate endpoint-scoped session ids, but they are local counters inside `src/hexevoice/assistant/service.py`, not a real session lifecycle.
 - Voice contract models in `src/hexevoice/voice/contracts.py` define the shared event envelope, event vocabulary, endpoint connection states, endpoint UX states, backend session states, audio chunk metadata, and allowed MVP session transitions. The models are validated by `tests/test_voice_contracts.py` and consumed by the WebSocket manager.
 - `/api/voice/ws` is registered in `src/hexevoice/main.py` and handled by `src/hexevoice/voice/session_manager.py`. It accepts one endpoint connection, one active session, `session.start`, `audio.chunk`, `audio.end`, `session.cancel`, and `session.ping`, and returns state/completion/cancel/error envelopes. The manager is in-memory only and does not yet process audio.
@@ -50,7 +50,6 @@ Missing:
 - Required openWakeWord package/model installation and tuning for production wake detection.
 - Real STT and TTS provider implementations.
 - Persistent voice session history beyond the in-memory MVP manager.
-- Endpoint metadata persistence.
 
 ## Frontend Inventory
 
@@ -63,11 +62,10 @@ Implemented:
 
 Partial:
 
-- The voice endpoint dashboard now renders backend voice status, active session state, recent transcript, response, TTS metadata, last error, transport health, and supported actions from live APIs. Replay, mute, and reconnect are visible but disabled until backend support exists.
+- The voice endpoint dashboard now renders backend voice status, endpoint registry metadata, active session state, recent transcript, response, TTS metadata, last error, transport health, and supported actions from live APIs. Operators can edit the endpoint display name and zone. Replay, mute, and reconnect are visible but disabled until backend support exists.
 
 Missing:
 
-- Persistent endpoint registration view.
 - Active session timeline/history beyond the latest in-memory snapshot.
 - Backend support for replay, mute, and reconnect operator actions.
 

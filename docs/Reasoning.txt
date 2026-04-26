@@ -154,3 +154,12 @@ Chosen fix: Add a named integration test for endpoint heartbeat, WebSocket sessi
 What changed: Added `tests/test_voice_loop_integration.py`, created `docs/voice-loop-phase-1-handoff.md`, updated phase docs to reflect the tested MVP loop, and recorded that ESP-IDF build validation is blocked in this shell because `idf.py` is unavailable.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_loop_integration.py` (2 passed); `PYTHONPATH=src .venv/bin/pytest -q` (63 passed, 52 FastAPI deprecation warnings); `cd frontend && npm run build` (passed); `cd firmware && idf.py build` blocked because `idf.py` is not installed.
 ###########
+Task #059
+Step objective: Persist endpoint heartbeat records and expose operator metadata editing.
+Chosen fix: Add a dedicated endpoint registry store under `runtime/endpoint_registry.json`, merge heartbeat runtime fields without overwriting operator display name or zone, and expose registry list/update APIs consumed by the voice endpoint dashboard.
+What changed: Added endpoint registry persistence, heartbeat upsert/status/list/update behavior, capability and stale-state projection, dashboard display-name/zone editing, focused backend tests, and updated Phase 1 docs.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_endpoint_registry.py tests/test_api.py tests/test_voice_loop_integration.py` (29 passed); `cd frontend && npm run build` (passed); `PYTHONPATH=src .venv/bin/pytest -q` (106 passed).
+###########
+#############
+All Tasks completed 04/26/2026 05:30:43
+#############

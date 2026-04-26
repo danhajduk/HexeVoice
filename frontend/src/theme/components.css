@@ -152,7 +152,7 @@
 
 .voice-endpoint-status-table {
   width: 100%;
-  min-width: 1180px;
+  min-width: 1360px;
   border-collapse: collapse;
   table-layout: auto;
 }
@@ -620,6 +620,33 @@
   accent-color: var(--accent);
 }
 
+.endpoint-metadata-form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.7fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.endpoint-metadata-form label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: hsl(var(--sx-text-muted));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.endpoint-metadata-form input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel));
+  color: hsl(var(--sx-text));
+  padding: 10px 12px;
+  font: inherit;
+}
+
 .prompt-list {
   margin: 0;
   padding-left: 18px;
@@ -878,6 +905,11 @@
   }
 
   .endpoint-volume-control {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .endpoint-metadata-form {
     grid-template-columns: 1fr;
     align-items: stretch;
   }
