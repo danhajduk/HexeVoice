@@ -34,8 +34,8 @@ def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     )
 
     assert result.transcript.text == "status"
-    assert result.assistant_response.command == "status"
-    assert "lab-voice is not ready" in result.assistant_response.spoken_text
+    assert result.assistant_response.command is None
+    assert result.assistant_response.spoken_text == "I heard status, no AI added yet."
     assert result.tts.content_type == "audio/wav"
     assert result.tts.stream_id.startswith("tts-")
     assert result.timings.stt_ms >= 0
@@ -57,6 +57,26 @@ def test_build_voice_turn_pipeline_keeps_deterministic_stt_as_default(tmp_path):
     assert isinstance(pipeline._stt_adapter, DeterministicSpeechToTextAdapter)
     assert result.transcript.provider_id == "deterministic"
     assert result.transcript.text == "hello"
+    assert result.assistant_response.spoken_text == "I heard hello, no AI added yet."
+
+
+def test_voice_turn_pipeline_strips_wake_word_from_final_transcript(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, what time is it?"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-box-1", session_id="voice-session-1", chunk_count=1)
+    )
+
+    assert result.transcript.text == "what time is it?"
+    assert result.assistant_response.heard_text == "what time is it?"
+    assert result.assistant_response.spoken_text == "I heard what time is it?, no AI added yet."
 
 
 def test_openai_stt_adapter_posts_wav_transcription_request():

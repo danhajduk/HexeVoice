@@ -115,7 +115,7 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     assert transcript["event_type"] == "transcript.final"
     assert transcript["payload"]["text"] == "hello"
     assert response_text["event_type"] == "response.text"
-    assert "Hello from lab-voice" in response_text["payload"]["text"]
+    assert response_text["payload"]["text"] == "I heard hello, no AI added yet."
     assert tts_ready["event_type"] == "tts.ready"
     assert tts_ready["payload"]["content_type"] == "audio/wav"
     assert tts_ready["payload"]["stream_id"].startswith("tts-")
@@ -132,7 +132,7 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     assert status.json()["last_turn_timings"]["assistant_ms"] >= 0
     assert status.json()["last_turn_timings"]["tts_ms"] >= 0
     assert status.json()["last_turn_timings"]["total_ms"] >= 0
-    assert "Hello from lab-voice" in status.json()["last_response"]
+    assert status.json()["last_response"] == "I heard hello, no AI added yet."
     assert status.json()["last_tts"]["stream_id"].startswith("tts-")
 
 

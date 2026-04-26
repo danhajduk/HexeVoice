@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 import io
 import importlib.util
 import logging
@@ -455,6 +456,8 @@ class VoiceTurnPipeline:
                 text=transcript.text or " ",
             )
         )
+        if assistant_response.heard_text != transcript.text:
+            transcript = replace(transcript, text=assistant_response.heard_text)
         assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
         tts_started_at = time.perf_counter()
         tts = self._tts_adapter.synthesize(

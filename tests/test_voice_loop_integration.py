@@ -74,7 +74,7 @@ def test_single_endpoint_wake_to_reply_loop_updates_backend_and_dashboard_status
     assert transcript["event_type"] == "transcript.final"
     assert transcript["payload"]["text"] == "hello"
     assert response["event_type"] == "response.text"
-    assert "Hello from lab-voice" in response["payload"]["text"]
+    assert response["payload"]["text"] == "I heard hello, no AI added yet."
     assert tts["event_type"] == "tts.ready"
     assert tts["payload"]["stream_id"].startswith("tts-")
     assert completed["event_type"] == "session.completed"
@@ -84,7 +84,7 @@ def test_single_endpoint_wake_to_reply_loop_updates_backend_and_dashboard_status
     assert voice_status.status_code == 200
     voice_payload = voice_status.json()
     assert voice_payload["last_transcript"] == "hello"
-    assert "Hello from lab-voice" in voice_payload["last_response"]
+    assert voice_payload["last_response"] == "I heard hello, no AI added yet."
     assert voice_payload["last_error"] is None
     assert voice_payload["supported_actions"]["test_assistant_turn"] is True
 

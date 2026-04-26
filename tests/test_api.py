@@ -149,7 +149,7 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     assert event["payload"]["size_bytes"] == len(b"firmware-bin")
 
 
-def test_assistant_turn_handles_local_commands(tmp_path):
+def test_assistant_turn_echoes_transcript_without_ai(tmp_path):
     state_path = tmp_path / "onboarding-state.json"
     store = OnboardingStateStore(path=state_path)
     store.save(
@@ -172,21 +172,14 @@ def test_assistant_turn_handles_local_commands(tmp_path):
     )
     client = TestClient(create_app(Settings(onboarding_state_path=state_path, node_name="kitchen-voice")))
 
-    status_response = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "status"})
-    assert status_response.status_code == 200
-    assert status_response.json()["command"] == "status"
-    assert status_response.json()["handled_locally"] is True
-    assert "kitchen-voice is ready" in status_response.json()["reply_text"]
+    response = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "Hexa, status"})
 
-    repeat_response = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "repeat"})
-    assert repeat_response.status_code == 200
-    assert repeat_response.json()["command"] == "repeat"
-    assert repeat_response.json()["reply_text"] == status_response.json()["reply_text"]
-
-    stop_response = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "stop"})
-    assert stop_response.status_code == 200
-    assert stop_response.json()["command"] == "stop"
-    assert stop_response.json()["device_state"] == "idle"
+    assert response.status_code == 200
+    assert response.json()["heard_text"] == "status"
+    assert response.json()["command"] is None
+    assert response.json()["handled_locally"] is False
+    assert response.json()["reply_text"] == "I heard status, no AI added yet."
+    assert response.json()["device_state"] == "speaking"
 
 
 def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
@@ -205,7 +198,7 @@ def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
     payload = response.json()
     assert payload["session_id"] == "session-abc"
     assert payload["handled_locally"] is False
-    assert payload["reply_text"].startswith('I heard "turn on the lights".')
+    assert payload["reply_text"] == "I heard turn on the lights, no AI added yet."
 
 
 def test_status_endpoint_reads_persisted_onboarding_state(tmp_path):

@@ -40,15 +40,6 @@ Development defaults keep the loop deterministic:
 - `VOICE_STT_PROVIDER=deterministic`
 - `VOICE_TTS_PROVIDER=deterministic`
 
-For a real OpenAI-backed demo, configure:
-
-- `OPENAI_API_KEY`
-- `VOICE_STT_PROVIDER=openai`
-- `VOICE_STT_MODEL=gpt-4o-mini-transcribe`
-- `VOICE_TTS_PROVIDER=openai`
-- `VOICE_TTS_MODEL=gpt-4o-mini-tts`
-- `VOICE_TTS_RESPONSE_FORMAT=wav`
-
 For Phase 2 local faster-whisper STT, configure:
 
 - `VOICE_STT_PROVIDER=faster_whisper`
@@ -58,6 +49,8 @@ For Phase 2 local faster-whisper STT, configure:
 - `VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE=int8`
 
 The faster-whisper provider writes each completed captured turn to a transient WAV file under `runtime/stt/faster-whisper`, runs the local faster-whisper model, returns the merged segment text, and removes the temporary audio file after the transcription attempt.
+
+The assistant path is intentionally local for the current full-pipeline smoke test. It strips the configured wake word from the final transcript and returns `I heard <transcript>, no AI added yet.`. The voice node must not call OpenAI directly; future assistant integration should go through the AI Node.
 
 `GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. It also exposes `last_turn_timings` with STT, assistant, TTS, and total turn duration in milliseconds. The backend log records transcript finalization, local faster-whisper latency, and the full turn timing breakdown.
 
@@ -72,7 +65,7 @@ For wake model setup:
 ## Still Deferred
 
 - openWakeWord wake phrase/model tuning on real ESP microphone audio.
-- Real STT/TTS credentials and live-provider smoke test.
+- AI Node assistant integration.
 - Persistent endpoint registry and voice session history.
 - Backend support for replay, mute, and reconnect operator actions.
 - Full on-device acoustic validation after flashing the latest firmware.
