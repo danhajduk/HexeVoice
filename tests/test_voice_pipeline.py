@@ -380,6 +380,29 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
         assert wav_file.getnchannels() == 1
 
 
+def test_piper_tts_adapter_keeps_native_wav_when_resampling_disabled(tmp_path):
+    source = io.BytesIO()
+    with wave.open(source, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(16000)
+        wav_file.writeframes((b"\x00\x00\xff\x7f" * 1600))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=source.getvalue(), headers={"content-type": "audio/wav"})
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://piper.test:10200",
+        output_dir=tmp_path,
+        output_sample_rate_hz=0,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
+
+    assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == source.getvalue()
+
+
 def test_piper_tts_adapter_falls_back_when_unconfigured(tmp_path):
     adapter = PiperTextToSpeechAdapter(base_url=None, output_dir=tmp_path)
 

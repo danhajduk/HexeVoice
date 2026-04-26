@@ -67,6 +67,12 @@ def test_piper_tts_explicit_base_url_overrides_service_host():
     assert settings.resolved_voice_tts_piper_base_url() == "http://piper.test:10200"
 
 
+def test_tts_output_sample_rate_can_be_disabled_for_native_voices():
+    settings = Settings(voice_tts_provider="piper", voice_tts_output_sample_rate_hz=0)
+
+    assert settings.voice_tts_output_sample_rate_hz == 0
+
+
 def test_backend_logging_uses_midnight_archive(tmp_path):
     log_path = tmp_path / "logs" / "backend.log"
     settings = Settings(backend_log_path=log_path, backend_log_level="DEBUG", backend_log_backup_days=5)
