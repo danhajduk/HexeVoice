@@ -39,3 +39,4 @@ Task 047: Add a backend wake provider that uses the supervised openWakeWord serv
 Task 048: Validate the supervised openWakeWord wake-to-listening path - Completed on 04/25/2026 14:37
 Task 049: Add Phase 2 local faster-whisper STT provider configuration - Completed on 04/25/2026 17:30
 Task 050: Implement faster-whisper STT backend adapter for captured voice turns - Completed on 04/25/2026 17:32
+Task 051: Keep deterministic STT fallback and add focused STT provider tests - Completed on 04/25/2026 17:34

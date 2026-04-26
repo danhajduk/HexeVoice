@@ -40,6 +40,21 @@ def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     assert result.tts.stream_id.startswith("tts-")
 
 
+def test_build_voice_turn_pipeline_keeps_deterministic_stt_as_default(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-box-1", session_id="voice-session-1", chunk_count=1)
+    )
+
+    assert isinstance(pipeline._stt_adapter, DeterministicSpeechToTextAdapter)
+    assert result.transcript.provider_id == "deterministic"
+    assert result.transcript.text == "hello"
+
+
 def test_openai_stt_adapter_posts_wav_transcription_request():
     captured = {}
 
@@ -173,6 +188,37 @@ def test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured(tmp_p
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._stt_adapter, FasterWhisperSpeechToTextAdapter)
+
+
+def test_faster_whisper_stt_adapter_returns_error_without_losing_fallback_modes(tmp_path):
+    class FailingModel:
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError("model unavailable")
+
+    adapter = FasterWhisperSpeechToTextAdapter(
+        model_name="small.en",
+        device="cpu",
+        compute_type="int8",
+        temp_dir=tmp_path,
+        model_factory=FailingModel,
+    )
+
+    transcript = adapter.transcribe(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 320,
+        )
+    )
+
+    assert transcript.provider_id == "faster_whisper"
+    assert transcript.text == ""
+    assert transcript.error == "model unavailable"
+    assert adapter.status()["healthy"] is False
 
 
 def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
