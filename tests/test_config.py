@@ -42,13 +42,28 @@ def test_assistant_settings_default_to_local_echo():
     assert settings.voice_conversation_context_turns == 6
 
 
-def test_piper_tts_settings_defaults_to_unconfigured_fallback():
+def test_piper_tts_settings_default_to_supervised_local_service():
     settings = Settings(voice_tts_provider="piper")
 
     assert settings.voice_tts_provider == "piper"
     assert settings.voice_tts_piper_base_url is None
+    assert settings.voice_tts_piper_service_host == "127.0.0.1"
+    assert settings.voice_tts_piper_service_port == 10200
     assert settings.voice_tts_piper_synthesize_path == "/api/tts"
     assert settings.voice_tts_piper_voice is None
+    assert settings.piper_tts_service_id == "piper_tts"
+    assert settings.piper_tts_container_name == "hexevoice-piper-tts"
+    assert settings.piper_tts_control_script.as_posix() == "scripts/piper-tts-control.sh"
+    assert settings.resolved_voice_tts_piper_base_url() == "http://127.0.0.1:10200"
+
+
+def test_piper_tts_explicit_base_url_overrides_service_host():
+    settings = Settings(
+        voice_tts_provider="piper",
+        voice_tts_piper_base_url="http://piper.test:10200/",
+    )
+
+    assert settings.resolved_voice_tts_piper_base_url() == "http://piper.test:10200"
 
 
 def test_backend_logging_uses_midnight_archive(tmp_path):

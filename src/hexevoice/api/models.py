@@ -403,6 +403,7 @@ class ServiceStatusResponse(BaseModel):
     frontend: str
     scheduler: str
     openwakeword: str = "unknown"
+    piper_tts: str = "unknown"
 
 
 class ServiceActionRequest(BaseModel):

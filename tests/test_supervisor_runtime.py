@@ -118,6 +118,7 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert openwakeword["state"] == "running"
     assert openwakeword["managed_by"] == "core_supervisor_service_action_proxy"
     assert openwakeword["container_name"] == "hexevoice-openwakeword"
+    assert not any(service["service_id"] == "piper_tts" for service in services)
 
     heartbeat = client.heartbeat_payloads[0]
     assert heartbeat["node_id"] == "node-voice-123"
@@ -163,6 +164,60 @@ def test_openwakeword_service_status_and_action_use_control_script(tmp_path):
     result = service.service_action(target="openwakeword", action="restart")
 
     assert status.openwakeword == "running"
+    assert status.piper_tts == "disabled"
+    assert result.accepted is True
+    assert result.status == "running"
+    assert [str(script), "restart"] in command_runner.commands
+
+
+def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_path):
+    client = FakeSupervisorClient()
+    command_runner = FakeCommandRunner()
+    store = trusted_ready_store(tmp_path / "state.json")
+    service = NodeRuntimeService(
+        settings=Settings(
+            public_api_base_url="http://10.0.0.100:9004",
+            voice_tts_provider="piper",
+            voice_tts_piper_voice="en_US-test",
+        ),
+        onboarding_state_store=store,
+        supervisor_client=client,
+        service_command_runner=command_runner,
+    )
+
+    result = asyncio.run(service.supervisor_heartbeat_once())
+
+    assert result["status"] == "ok"
+    registration = client.register_payloads[0]
+    services = registration["runtime_metadata"]["services"]
+    piper_tts = next(service for service in services if service["service_id"] == "piper_tts")
+    assert piper_tts["service_name"] == "Piper TTS"
+    assert piper_tts["state"] == "running"
+    assert piper_tts["boot_order"] == 18
+    assert piper_tts["managed_by"] == "core_supervisor_service_action_proxy"
+    assert piper_tts["container_name"] == "hexevoice-piper-tts"
+    assert piper_tts["control_script"] == "scripts/piper-tts-control.sh"
+    assert piper_tts["base_url"] == "http://127.0.0.1:10200"
+    assert piper_tts["synthesize_path"] == "/api/tts"
+    assert piper_tts["voice"] == "en_US-test"
+    assert service.service_status_payload().piper_tts == "running"
+
+
+def test_piper_tts_service_action_uses_control_script_when_enabled(tmp_path):
+    command_runner = FakeCommandRunner()
+    script = tmp_path / "piper-tts-control.sh"
+    script.write_text("#!/usr/bin/env bash\n")
+    service = NodeRuntimeService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "state.json",
+            voice_tts_provider="piper",
+            piper_tts_control_script=script,
+        ),
+        service_command_runner=command_runner,
+    )
+
+    result = service.service_action(target="piper_tts", action="restart")
+
     assert result.accepted is True
     assert result.status == "running"
     assert [str(script), "restart"] in command_runner.commands

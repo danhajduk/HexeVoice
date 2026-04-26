@@ -1,7 +1,7 @@
-[TODO] Task 064: Build the first touchscreen interaction layer
-[TODO] Task 065: Load and display RGB565 pictures from the SPI SD card
-[TODO] Task 066: Load and play sound assets from the SPI SD card
-[TODO] Task 067: Persist voice session history and replay metadata
-[TODO] Task 068: Integrate AI Node assistant routing as the primary assistant path
-[TODO] Task 069: Validate real-device audio providers end to end
-[TODO] Task 070: Update Phase 2 operator docs and release checklist
+[FUTURE UPDATE] Task 064: Build the first touchscreen interaction layer
+[FUTURE UPDATE] Task 065: Load and display RGB565 pictures from the SPI SD card
+[FUTURE UPDATE] Task 066: Load and play sound assets from the SPI SD card
+[FUTURE UPDATE] Task 067: Persist voice session history and replay metadata
+[FUTURE UPDATE] Task 068: Integrate AI Node assistant routing as the primary assistant path
+[FUTURE UPDATE] Task 069: Validate real-device audio providers end to end
+[FUTURE UPDATE] Task 070: Update Phase 2 operator docs and release checklist

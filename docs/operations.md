@@ -53,12 +53,15 @@ When supervisor integration is enabled, the backend registers and heartbeats thr
 - register route: `POST /api/supervisor/runtimes/register`
 - heartbeat route: `POST /api/supervisor/runtimes/heartbeat`
 
-The registration metadata includes service entries for `backend`, `openwakeword`, and `frontend`. Core Supervisor can inspect and control the wake-word container through the node service proxy routes:
+The registration metadata includes service entries for `backend`, `openwakeword`, and `frontend`. When `VOICE_TTS_PROVIDER=piper`, it also advertises a `piper_tts` service with its Docker container name, control-script path, and local synthesis URL. Core Supervisor can inspect and control managed containers through the node service proxy routes:
 
 - `GET /api/services/status`
 - `POST /api/services/start` with `{"target":"openwakeword"}`
 - `POST /api/services/stop` with `{"target":"openwakeword"}`
 - `POST /api/services/restart` with `{"target":"openwakeword"}`
+- `POST /api/services/start` with `{"target":"piper_tts"}` when Piper TTS is enabled
+- `POST /api/services/stop` with `{"target":"piper_tts"}` when Piper TTS is enabled
+- `POST /api/services/restart` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - expected public node API: `http://10.0.0.100:9004`
 
 Backend logs are written to `runtime/logs/hexevoice-backend.log`. The active file is archived at local midnight each day and retained for `BACKEND_LOG_BACKUP_DAYS` days, defaulting to 14. Set `BACKEND_LOG_LEVEL=DEBUG` in the backend environment when deeper voice transport, supervisor heartbeat, OTA, or service-control traces are needed.

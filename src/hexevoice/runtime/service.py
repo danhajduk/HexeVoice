@@ -292,31 +292,44 @@ class NodeRuntimeService:
             frontend="defined",
             scheduler="not_started",
             openwakeword=self._openwakeword_state(),
+            piper_tts=self._piper_tts_state() if self._piper_tts_enabled() else "disabled",
         )
 
     def _run_service_command(self, command: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(command, capture_output=True, check=False, text=True, timeout=10)
 
     def _openwakeword_control_script(self) -> Path:
-        script = self._settings.openwakeword_control_script
+        return self._resolve_control_script(self._settings.openwakeword_control_script)
+
+    def _piper_tts_control_script(self) -> Path:
+        return self._resolve_control_script(self._settings.piper_tts_control_script)
+
+    def _resolve_control_script(self, script: Path) -> Path:
         if script.is_absolute():
             return script
         return Path.cwd() / script
 
     def _openwakeword_state(self) -> str:
+        return self._docker_container_state(
+            container_name=self._settings.openwakeword_container_name,
+            service_label="openWakeWord",
+        )
+
+    def _docker_container_state(self, *, container_name: str, service_label: str) -> str:
         result = self._service_command_runner(
             [
                 "docker",
                 "inspect",
                 "--format",
                 "{{.State.Status}}",
-                self._settings.openwakeword_container_name,
+                container_name,
             ]
         )
         if result.returncode != 0:
             log.debug(
-                "openWakeWord container inspect failed: container=%s stderr=%s",
-                self._settings.openwakeword_container_name,
+                "%s container inspect failed: container=%s stderr=%s",
+                service_label,
+                container_name,
                 (result.stderr or "").strip(),
             )
             return "not_created"
@@ -335,10 +348,43 @@ class NodeRuntimeService:
             "control_script": str(self._settings.openwakeword_control_script),
         }
 
+    def _piper_tts_enabled(self) -> bool:
+        return self._settings.voice_tts_provider == "piper"
+
+    def _piper_tts_state(self) -> str:
+        return self._docker_container_state(
+            container_name=self._settings.piper_tts_container_name,
+            service_label="Piper TTS",
+        )
+
+    def _piper_tts_service_summary(self) -> dict[str, object]:
+        state = self._piper_tts_state()
+        return {
+            "service_id": self._settings.piper_tts_service_id,
+            "service_name": "Piper TTS",
+            "state": state,
+            "boot_order": 18,
+            "managed_by": "core_supervisor_service_action_proxy",
+            "container_name": self._settings.piper_tts_container_name,
+            "control_script": str(self._settings.piper_tts_control_script),
+            "base_url": self._settings.resolved_voice_tts_piper_base_url(),
+            "synthesize_path": self._settings.voice_tts_piper_synthesize_path,
+            "voice": self._settings.voice_tts_piper_voice,
+        }
+
     def service_action(self, *, target: str, action: str) -> ServiceActionResponse:
         normalized_target = str(target or "").strip()
         normalized_action = str(action or "").strip().lower()
-        if normalized_target != self._settings.openwakeword_service_id:
+        service_scripts = {
+            self._settings.openwakeword_service_id: self._openwakeword_control_script,
+        }
+        service_states = {
+            self._settings.openwakeword_service_id: self._openwakeword_state,
+        }
+        if self._piper_tts_enabled():
+            service_scripts[self._settings.piper_tts_service_id] = self._piper_tts_control_script
+            service_states[self._settings.piper_tts_service_id] = self._piper_tts_state
+        if normalized_target not in service_scripts:
             log.warning(
                 "Rejected service action for unsupported target: target=%s action=%s",
                 normalized_target,
@@ -349,7 +395,7 @@ class NodeRuntimeService:
                 action=normalized_action,
                 accepted=False,
                 status="unsupported_service",
-                detail="Only the openwakeword service is controlled by this node API.",
+                detail="Supported services are openwakeword and piper_tts when enabled.",
             )
         if normalized_action not in {"start", "stop", "restart"}:
             log.warning(
@@ -364,7 +410,7 @@ class NodeRuntimeService:
                 status="unsupported_action",
                 detail="Supported actions are start, stop, and restart.",
             )
-        script = self._openwakeword_control_script()
+        script = service_scripts[normalized_target]()
         if not script.exists():
             log.error("openWakeWord control script missing: path=%s", script)
             return ServiceActionResponse(
@@ -391,7 +437,7 @@ class NodeRuntimeService:
                 status="action_failed",
                 detail=(result.stderr or result.stdout or "").strip() or None,
             )
-        status = self._openwakeword_state()
+        status = service_states[normalized_target]()
         log.info("Service action completed: target=%s action=%s status=%s", normalized_target, normalized_action, status)
         return ServiceActionResponse(
             target=normalized_target,
@@ -418,13 +464,17 @@ class NodeRuntimeService:
                 "boot_order": 10,
             },
             self._openwakeword_service_summary(),
+        ]
+        if self._piper_tts_enabled():
+            services.append(self._piper_tts_service_summary())
+        services.append(
             {
                 "service_id": "frontend",
                 "service_name": "frontend",
                 "state": runtime_state,
                 "boot_order": 20,
-            },
-        ]
+            }
+        )
         runtime_metadata = {
             "node_software_version": self._settings.node_software_version,
             "boot_order": 30,

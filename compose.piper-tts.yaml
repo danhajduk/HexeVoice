@@ -1,0 +1,28 @@
+name: hexevoice-piper-tts
+
+services:
+  piper_tts:
+    build:
+      context: .
+      dockerfile: services/piper_tts/Dockerfile
+    image: ${PIPER_TTS_IMAGE:-hexevoice/piper-tts:local}
+    container_name: ${PIPER_TTS_CONTAINER_NAME:-hexevoice-piper-tts}
+    ports:
+      - "${PIPER_TTS_PORT:-10200}:10200"
+    environment:
+      PIPER_TTS_MODEL_PATH: ${PIPER_TTS_MODEL_PATH:-/models/en_US-lessac-medium.onnx}
+      PIPER_TTS_CONFIG_PATH: ${PIPER_TTS_CONFIG_PATH:-}
+      PIPER_TTS_TIMEOUT_S: ${PIPER_TTS_TIMEOUT_S:-30}
+    volumes:
+      - ${PIPER_TTS_MODEL_DIR:-./runtime/piper-tts/models}:/models:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:10200/health', timeout=2).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: "no"

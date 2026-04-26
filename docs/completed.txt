@@ -52,3 +52,9 @@ Task 060: Formalize connection, UX, and session state separation - Completed on 
 Task 061: Version and validate the endpoint event envelope - Completed on 04/26/2026 05:49
 Task 062: Complete endpoint command APIs and dashboard controls - Completed on 04/26/2026 06:02
 Task 063: Add firmware persistent settings and capability reporting - Completed on 04/26/2026 06:11
+Task 071: Define the local TTS provider contract, config, and supervisor registration shape - Completed on 04/26/2026 06:52
+Task 072: Add a Dockerized Piper local TTS runtime service - Completed on 04/26/2026 06:56
+Task 073: Register the Piper TTS container with the supervisor lifecycle - Completed on 04/26/2026 07:00
+Task 074: Add backend TTS provider selection, routing, and fallback policy - Completed on 04/26/2026 07:02
+Task 075: Generate and serve firmware-playable local TTS audio artifacts - Completed on 04/26/2026 07:05
+Task 076: Add local TTS health checks, tests, and operator docs - Completed on 04/26/2026 07:07

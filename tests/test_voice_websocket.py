@@ -7,6 +7,7 @@ from hexevoice.main import create_app
 from hexevoice.api.models import AssistantTurnResponse
 from hexevoice.voice import (
     DeterministicWakeDetector,
+    PiperTextToSpeechAdapter,
     SpeechTranscript,
     TtsSynthesis,
     VoiceSessionManager,
@@ -249,7 +250,35 @@ def test_voice_tts_audio_route_serves_generated_stream(tmp_path):
     response = client.get(f"/api/voice/tts/{stream_id}")
 
     assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/wav"
     assert response.content == b"RIFFtest-wav"
+
+
+def test_piper_tts_artifact_is_served_for_firmware_playback(tmp_path):
+    class FakeResponse:
+        headers = {"content-type": "audio/wav"}
+        content = b"RIFFpiper-wav"
+
+        def raise_for_status(self):
+            return None
+
+    class FakeHttpClient:
+        def post(self, url, json):
+            return FakeResponse()
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://127.0.0.1:10200",
+        output_dir=tmp_path / "voice_tts",
+        http_client=FakeHttpClient(),
+    )
+    synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)))
+
+    response = client.get(synthesis.audio_url)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/wav"
+    assert response.content == b"RIFFpiper-wav"
 
 
 def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):

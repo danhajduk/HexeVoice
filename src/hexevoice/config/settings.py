@@ -98,8 +98,16 @@ class Settings(BaseSettings):
     voice_tts_response_format: str = Field(default="wav", alias="VOICE_TTS_RESPONSE_FORMAT")
     voice_tts_timeout_s: float = Field(default=30.0, alias="VOICE_TTS_TIMEOUT_S", gt=0)
     voice_tts_piper_base_url: str | None = Field(default=None, alias="VOICE_TTS_PIPER_BASE_URL")
+    voice_tts_piper_service_host: str = Field(default="127.0.0.1", alias="VOICE_TTS_PIPER_SERVICE_HOST")
+    voice_tts_piper_service_port: int = Field(default=10200, alias="VOICE_TTS_PIPER_SERVICE_PORT")
     voice_tts_piper_synthesize_path: str = Field(default="/api/tts", alias="VOICE_TTS_PIPER_SYNTHESIZE_PATH")
     voice_tts_piper_voice: str | None = Field(default=None, alias="VOICE_TTS_PIPER_VOICE")
+    piper_tts_service_id: str = Field(default="piper_tts", alias="PIPER_TTS_SERVICE_ID")
+    piper_tts_container_name: str = Field(default="hexevoice-piper-tts", alias="PIPER_TTS_CONTAINER_NAME")
+    piper_tts_control_script: Path = Field(
+        default=Path("scripts/piper-tts-control.sh"),
+        alias="PIPER_TTS_CONTROL_SCRIPT",
+    )
     openwakeword_service_id: str = Field(default="openwakeword", alias="OPENWAKEWORD_SERVICE_ID")
     openwakeword_container_name: str = Field(
         default="hexevoice-openwakeword",
@@ -136,3 +144,10 @@ class Settings(BaseSettings):
         if self.voice_stt_faster_whisper_temp_dir is not None:
             return self.voice_stt_faster_whisper_temp_dir
         return self.runtime_dir / "stt" / "faster-whisper"
+
+    def resolved_voice_tts_piper_base_url(self) -> str | None:
+        if self.voice_tts_piper_base_url is not None:
+            return self.voice_tts_piper_base_url.rstrip("/")
+        if self.voice_tts_provider != "piper":
+            return None
+        return f"http://{self.voice_tts_piper_service_host}:{self.voice_tts_piper_service_port}"

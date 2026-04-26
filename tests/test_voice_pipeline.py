@@ -380,6 +380,25 @@ def test_build_voice_turn_pipeline_uses_piper_tts_when_configured(tmp_path):
     assert isinstance(pipeline._tts_adapter, PiperTextToSpeechAdapter)
 
 
+def test_build_voice_turn_pipeline_routes_piper_to_supervised_default(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_tts_provider="piper",
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    status = pipeline.status()["tts"]
+    assert status["provider"] == "piper"
+    assert status["configured"] is True
+    assert status["base_url"] == "http://127.0.0.1:10200"
+    assert status["synthesize_path"] == "/api/tts"
+    assert status["fallback"]["provider"] == "deterministic"
+
+
 def test_voice_turn_pipeline_status_reports_provider_health(tmp_path):
     settings = Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)
     runtime = NodeRuntimeService(settings=settings)

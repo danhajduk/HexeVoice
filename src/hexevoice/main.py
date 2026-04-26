@@ -334,10 +334,16 @@ def create_app(
         if not stream_id.startswith("tts-") or not stream_id.replace("-", "").isalnum():
             raise HTTPException(status_code=404, detail="tts_stream_not_found")
         tts_dir = app_settings.runtime_dir / "voice_tts"
-        candidates = list(tts_dir.glob(f"{stream_id}.*"))
+        candidates = sorted(tts_dir.glob(f"{stream_id}.*"))
         if not candidates:
             raise HTTPException(status_code=404, detail="tts_stream_not_found")
-        return FileResponse(candidates[0])
+        media_types = {
+            ".wav": "audio/wav",
+            ".mp3": "audio/mpeg",
+            ".opus": "audio/ogg",
+        }
+        candidate = candidates[0]
+        return FileResponse(candidate, media_type=media_types.get(candidate.suffix.lower(), "application/octet-stream"))
 
     @app.post("/api/voice/session/cancel")
     async def voice_session_cancel() -> dict:

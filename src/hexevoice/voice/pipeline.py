@@ -597,7 +597,7 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
         )
     elif settings.voice_tts_provider == "piper":
         tts_adapter = PiperTextToSpeechAdapter(
-            base_url=settings.voice_tts_piper_base_url,
+            base_url=settings.resolved_voice_tts_piper_base_url(),
             synthesize_path=settings.voice_tts_piper_synthesize_path,
             voice=settings.voice_tts_piper_voice,
             output_dir=settings.runtime_dir / "voice_tts",
