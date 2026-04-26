@@ -7,4 +7,14 @@ This directory is reserved for native firmware assets such as:
 - UI bitmaps
 - tones or small audio cues
 
-For now, the canonical source artwork remains under [`docs/Logo.png`](/home/dan/Projects/HexeVoice/docs/Logo.png) and the ESPHome prototype references under [`docs/Expressif box.yaml`](/home/dan/Projects/HexeVoice/docs/Expressif%20box.yaml).
+The canonical LCD source images are the 320x240 PNG files in this directory:
+
+- `Logo 320x240.png`
+- `Idle.png`
+- `Listen.png`
+- `Thinking.png`
+- `Talk.png`
+- `Work.png`
+- `Error.png`
+
+`firmware/build.sh` converts these PNG files into RGB565 headers under `firmware/main/assets/` before building the firmware.

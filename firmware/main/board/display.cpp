@@ -9,7 +9,9 @@
 #include "assets/idle_rgb565.h"
 #include "assets/listening_rgb565.h"
 #include "assets/logo_rgb565.h"
+#include "assets/talk_rgb565.h"
 #include "assets/thinking_rgb565.h"
+#include "assets/work_rgb565.h"
 #include "esp_err.h"
 #include "bsp/display.h"
 #include "bsp/esp-box-3.h"
@@ -306,10 +308,12 @@ ScreenAsset asset_for_phase(hexe::AppPhase phase) {
     case hexe::AppPhase::kListening:
       return {hexe::assets::kListeningRgb565, hexe::assets::kListeningWidth, hexe::assets::kListeningHeight};
     case hexe::AppPhase::kBackendConnecting:
-    case hexe::AppPhase::kThinking:
-    case hexe::AppPhase::kReplying:
     case hexe::AppPhase::kUpdating:
+      return {hexe::assets::kWorkRgb565, hexe::assets::kWorkWidth, hexe::assets::kWorkHeight};
+    case hexe::AppPhase::kThinking:
       return {hexe::assets::kThinkingRgb565, hexe::assets::kThinkingWidth, hexe::assets::kThinkingHeight};
+    case hexe::AppPhase::kReplying:
+      return {hexe::assets::kTalkRgb565, hexe::assets::kTalkWidth, hexe::assets::kTalkHeight};
     case hexe::AppPhase::kError:
       return {hexe::assets::kErrorRgb565, hexe::assets::kErrorWidth, hexe::assets::kErrorHeight};
   }

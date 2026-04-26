@@ -112,13 +112,17 @@ cd "${ROOT_DIR}"
 
 LOGO_SOURCE="${ROOT_DIR}/assets/Logo 320x240.png"
 LOGO_HEADER="${ROOT_DIR}/main/assets/logo_rgb565.h"
-IDLE_SOURCE="${ROOT_DIR}/assets/idle-320x240.png"
+IDLE_SOURCE="${ROOT_DIR}/assets/Idle.png"
 IDLE_HEADER="${ROOT_DIR}/main/assets/idle_rgb565.h"
-LISTENING_SOURCE="${ROOT_DIR}/assets/listening- 320x240.png"
+LISTENING_SOURCE="${ROOT_DIR}/assets/Listen.png"
 LISTENING_HEADER="${ROOT_DIR}/main/assets/listening_rgb565.h"
-THINKING_SOURCE="${ROOT_DIR}/assets/thinking-320x240.png"
+THINKING_SOURCE="${ROOT_DIR}/assets/Thinking.png"
 THINKING_HEADER="${ROOT_DIR}/main/assets/thinking_rgb565.h"
-ERROR_SOURCE="${ROOT_DIR}/assets/error-320x240.png"
+TALK_SOURCE="${ROOT_DIR}/assets/Talk.png"
+TALK_HEADER="${ROOT_DIR}/main/assets/talk_rgb565.h"
+WORK_SOURCE="${ROOT_DIR}/assets/Work.png"
+WORK_HEADER="${ROOT_DIR}/main/assets/work_rgb565.h"
+ERROR_SOURCE="${ROOT_DIR}/assets/Error.png"
 ERROR_HEADER="${ROOT_DIR}/main/assets/error_rgb565.h"
 
 if [[ -x "${HOME}/.espressif/python_env/idf6.1_py3.11_env/bin/python" ]]; then
@@ -139,6 +143,14 @@ fi
 
 if [[ -f "${THINKING_SOURCE}" ]]; then
   "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${THINKING_SOURCE}" "${THINKING_HEADER}" --width 320 --height 240
+fi
+
+if [[ -f "${TALK_SOURCE}" ]]; then
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${TALK_SOURCE}" "${TALK_HEADER}" --width 320 --height 240
+fi
+
+if [[ -f "${WORK_SOURCE}" ]]; then
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_logo.py" "${WORK_SOURCE}" "${WORK_HEADER}" --width 320 --height 240
 fi
 
 if [[ -f "${ERROR_SOURCE}" ]]; then
