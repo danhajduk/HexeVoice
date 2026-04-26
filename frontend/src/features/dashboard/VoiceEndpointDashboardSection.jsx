@@ -1,12 +1,31 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cancelVoiceSession, testAssistantTurn } from "../../api/client";
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
+
+const LATEST_SPEECH_VISIBLE_MS = 20000;
 
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : value;
 }
 
 function VoicePipelinePanel({ voiceStatus }) {
+  const [visibleTranscript, setVisibleTranscript] = useState("");
+
+  useEffect(() => {
+    const transcript = voiceStatus?.last_transcript || "";
+    setVisibleTranscript(transcript);
+
+    if (!transcript) {
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      setVisibleTranscript("");
+    }, LATEST_SPEECH_VISIBLE_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [voiceStatus?.last_transcript]);
+
   return (
     <section className="voice-endpoint-panel stack">
       <div className="section-heading">
@@ -19,7 +38,7 @@ function VoicePipelinePanel({ voiceStatus }) {
       <dl className="facts">
         <div>
           <dt>Transcript</dt>
-          <dd>{valueOrEmpty(voiceStatus?.last_transcript)}</dd>
+          <dd>{valueOrEmpty(visibleTranscript)}</dd>
         </div>
         <div>
           <dt>Response</dt>
