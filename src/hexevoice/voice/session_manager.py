@@ -49,6 +49,7 @@ class VoiceSessionManager:
         self._turn_pipeline = turn_pipeline
         self._last_transcript: str | None = None
         self._last_response: str | None = None
+        self._last_transcript_metadata: dict | None = None
         self._last_error: dict | None = None
         self._last_tts: dict | None = None
         self._last_event_type: str | None = None
@@ -446,6 +447,24 @@ class VoiceSessionManager:
                     audio_bytes=b"".join(self._audio_chunks),
                 )
             )
+            self._last_transcript_metadata = {
+                "provider_id": turn.transcript.provider_id,
+                "model": turn.transcript.model,
+                "confidence": turn.transcript.confidence,
+                "duration_ms": turn.transcript.duration_ms,
+                "text_chars": len(turn.transcript.text or ""),
+                "error": turn.transcript.error,
+            }
+            log.info(
+                "Voice transcript finalized: endpoint_id=%s session_id=%s provider=%s model=%s duration_ms=%s text_chars=%s error=%s",
+                session.endpoint_id,
+                session.session_id,
+                turn.transcript.provider_id,
+                turn.transcript.model,
+                turn.transcript.duration_ms,
+                len(turn.transcript.text or ""),
+                turn.transcript.error,
+            )
             if turn.transcript.error:
                 error = self._error_event(
                     endpoint_id=session.endpoint_id,
@@ -549,6 +568,7 @@ class VoiceSessionManager:
             "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
             "last_event_type": self._last_event_type,
             "last_transcript": self._last_transcript,
+            "last_transcript_metadata": self._last_transcript_metadata,
             "last_response": self._last_response,
             "last_tts": self._last_tts,
             "last_error": self._last_error,

@@ -118,6 +118,9 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     status = client.get("/api/voice/status")
     assert status.status_code == 200
     assert status.json()["last_transcript"] == "hello"
+    assert status.json()["last_transcript_metadata"]["provider_id"] == "deterministic"
+    assert status.json()["last_transcript_metadata"]["model"] == "deterministic"
+    assert status.json()["last_transcript_metadata"]["text_chars"] == 5
     assert "Hello from lab-voice" in status.json()["last_response"]
     assert status.json()["last_tts"]["stream_id"].startswith("tts-")
 

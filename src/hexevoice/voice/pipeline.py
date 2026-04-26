@@ -6,6 +6,7 @@ import importlib.util
 import logging
 from pathlib import Path
 import tempfile
+import time
 from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
@@ -41,6 +42,8 @@ class SpeechTranscript:
     text: str
     confidence: float | None = None
     provider_id: str = "deterministic"
+    model: str | None = None
+    duration_ms: float | None = None
     error: str | None = None
 
 
@@ -82,8 +85,8 @@ class DeterministicSpeechToTextAdapter:
 
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         if audio.chunk_count <= 0:
-            return SpeechTranscript(text="", confidence=0.0)
-        return SpeechTranscript(text=self._transcript, confidence=1.0)
+            return SpeechTranscript(text="", confidence=0.0, model="deterministic")
+        return SpeechTranscript(text=self._transcript, confidence=1.0, model="deterministic")
 
     def status(self) -> dict:
         return {"provider": "deterministic", "healthy": True, "configured": True}
@@ -117,6 +120,7 @@ class OpenAiSpeechToTextAdapter:
             return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error="empty_audio")
 
         try:
+            started_at = time.perf_counter()
             audio_file = self._audio_file(audio)
             data = {"model": self._model, "response_format": "json"}
             if self._prompt:
@@ -136,7 +140,12 @@ class OpenAiSpeechToTextAdapter:
             payload = response.json()
             text = str(payload.get("text") or "").strip()
             self._last_error = None
-            return SpeechTranscript(text=text, provider_id="openai")
+            return SpeechTranscript(
+                text=text,
+                provider_id="openai",
+                model=self._model,
+                duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            )
         except Exception as exc:
             self._last_error = str(exc)
             return SpeechTranscript(text="", confidence=0.0, provider_id="openai", error=self._last_error)
@@ -172,6 +181,8 @@ class FasterWhisperSpeechToTextAdapter:
         self._model_factory = model_factory
         self._model: Any | None = None
         self._last_error: str | None = None
+        self._last_duration_ms: float | None = None
+        self._last_text_chars: int | None = None
 
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         if not audio.audio_bytes:
@@ -180,6 +191,7 @@ class FasterWhisperSpeechToTextAdapter:
 
         temp_path: Path | None = None
         try:
+            started_at = time.perf_counter()
             model = self._load_model()
             self._temp_dir.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
@@ -193,15 +205,23 @@ class FasterWhisperSpeechToTextAdapter:
 
             segments, _info = model.transcribe(str(temp_path))
             text = " ".join(str(getattr(segment, "text", "")).strip() for segment in segments).strip()
+            self._last_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            self._last_text_chars = len(text)
             self._last_error = None
             log.info(
-                "Local STT completed: provider=faster_whisper endpoint_id=%s session_id=%s model=%s text_chars=%s",
+                "Local STT completed: provider=faster_whisper endpoint_id=%s session_id=%s model=%s duration_ms=%s text_chars=%s",
                 audio.endpoint_id,
                 audio.session_id,
                 self._model_name,
+                self._last_duration_ms,
                 len(text),
             )
-            return SpeechTranscript(text=text, provider_id="faster_whisper")
+            return SpeechTranscript(
+                text=text,
+                provider_id="faster_whisper",
+                model=self._model_name,
+                duration_ms=self._last_duration_ms,
+            )
         except Exception as exc:
             self._last_error = str(exc)
             log.error(
@@ -229,6 +249,8 @@ class FasterWhisperSpeechToTextAdapter:
             "compute_type": self._compute_type,
             "temp_dir": str(self._temp_dir),
             "loaded": self._model is not None,
+            "last_duration_ms": self._last_duration_ms,
+            "last_text_chars": self._last_text_chars,
             "last_error": self._last_error,
         }
 

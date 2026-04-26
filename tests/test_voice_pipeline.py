@@ -167,6 +167,8 @@ def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path
 
     assert transcript.text == "what time"
     assert transcript.provider_id == "faster_whisper"
+    assert transcript.model == "base.en"
+    assert transcript.duration_ms is not None
     assert captured["model_name"] == "base.en"
     assert captured["device"] == "cpu"
     assert captured["compute_type"] == "int8"
@@ -219,6 +221,7 @@ def test_faster_whisper_stt_adapter_returns_error_without_losing_fallback_modes(
     assert transcript.text == ""
     assert transcript.error == "model unavailable"
     assert adapter.status()["healthy"] is False
+    assert adapter.status()["last_error"] == "model unavailable"
 
 
 def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):

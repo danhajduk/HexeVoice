@@ -48,5 +48,4 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 052: Expose local STT transcript latency, provider metadata, and errors in status/logs
 [TODO] Task 053: Validate wake-to-local-transcript flow end to end on the ESP-BOX endpoint

@@ -58,6 +58,8 @@ For Phase 2 local faster-whisper STT, configure:
 
 The faster-whisper provider writes each completed captured turn to a transient WAV file under `runtime/stt/faster-whisper`, runs the local faster-whisper model, returns the merged segment text, and removes the temporary audio file after the transcription attempt.
 
+`GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. The backend log also records transcript finalization and local faster-whisper latency.
+
 For wake model setup:
 
 - `VOICE_WAKE_THRESHOLD=0.5`
