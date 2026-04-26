@@ -85,6 +85,7 @@ class Settings(BaseSettings):
         alias="VOICE_ASSISTANT_AI_NODE_TURN_PATH",
     )
     voice_assistant_timeout_s: float = Field(default=20.0, alias="VOICE_ASSISTANT_TIMEOUT_S", gt=0)
+    voice_conversation_context_turns: int = Field(default=6, alias="VOICE_CONVERSATION_CONTEXT_TURNS", ge=0)
     voice_tts_provider: Literal["deterministic", "openai"] = Field(default="deterministic", alias="VOICE_TTS_PROVIDER")
     voice_tts_model: str = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str = Field(default="alloy", alias="VOICE_TTS_VOICE")

@@ -2,10 +2,11 @@ from fastapi.testclient import TestClient
 import httpx
 
 from hexevoice.api.models import AssistantTurnRequest
-from hexevoice.assistant import AiNodeAssistantAdapter, LocalEchoAssistantAdapter
+from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
 from hexevoice.main import create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
+from hexevoice.runtime.service import NodeRuntimeService
 
 
 def test_status_endpoint(tmp_path):
@@ -259,6 +260,59 @@ def test_assistant_ai_node_adapter_falls_back_to_local_echo_when_unconfigured():
     assert response.reply_text == "I heard turn on the lights, no AI added yet."
     assert adapter.status()["healthy"] is False
     assert adapter.status()["last_error"] == "missing_ai_node_base_url"
+
+
+def test_assistant_turn_service_keeps_rolling_context(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_conversation_context_turns=2)
+    service = AssistantTurnService(settings=settings, runtime_service=NodeRuntimeService(settings=settings))
+
+    service.handle_turn(AssistantTurnRequest(endpoint_id="box-9", session_id="session-1", text="first"))
+    service.handle_turn(AssistantTurnRequest(endpoint_id="box-9", session_id="session-1", text="second"))
+    service.handle_turn(AssistantTurnRequest(endpoint_id="box-9", session_id="session-1", text="third"))
+
+    endpoint_context = service.context_for_endpoint("box-9")
+    session_context = service.context_for_session("session-1")
+
+    assert [turn.heard_text for turn in endpoint_context] == ["second", "third"]
+    assert [turn.reply_text for turn in session_context] == [
+        "I heard second, no AI added yet.",
+        "I heard third, no AI added yet.",
+    ]
+    assert service.status()["context_turn_limit"] == 2
+    assert service.status()["endpoint_contexts"]["box-9"] == 2
+
+
+def test_assistant_ai_node_adapter_receives_context():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = request.read()
+        return httpx.Response(200, json={"reply_text": "ok"})
+
+    adapter = AiNodeAssistantAdapter(
+        base_url="https://ai-node.test",
+        turn_path="/api/assistant/turn",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    adapter.handle_turn(
+        AssistantTurnRequest(endpoint_id="box-9", session_id="session-2", text="second"),
+        session_id="session-2",
+        context=[
+            ConversationTurn(
+                endpoint_id="box-9",
+                session_id="session-1",
+                heard_text="first",
+                reply_text="I heard first, no AI added yet.",
+            )
+        ],
+    )
+
+    body = captured["json"].replace(b" ", b"")
+    assert b'"context":[{' in body
+    assert b'"heard_text":"first"' in body
 
 
 def test_status_endpoint_reads_persisted_onboarding_state(tmp_path):

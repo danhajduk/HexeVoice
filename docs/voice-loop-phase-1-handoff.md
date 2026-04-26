@@ -59,8 +59,11 @@ Assistant adapter configuration:
 - `VOICE_ASSISTANT_AI_NODE_BASE_URL` points to the AI Node service when that integration is ready.
 - `VOICE_ASSISTANT_AI_NODE_TURN_PATH=/api/assistant/turn`
 - `VOICE_ASSISTANT_TIMEOUT_S=20`
+- `VOICE_CONVERSATION_CONTEXT_TURNS=6`
 
 If the AI Node adapter is selected but unavailable or unconfigured, the voice node falls back to the local echo response so the full voice pipeline can still be validated.
+
+The assistant service keeps a short in-memory rolling context by endpoint and by session. The current local echo adapter ignores the context so smoke-test replies remain unchanged, but the AI Node adapter includes the context list in its request payload.
 
 `GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. It also exposes `last_turn_timings` with STT, assistant, TTS, and total turn duration in milliseconds. The backend log records transcript finalization, local faster-whisper latency, and the full turn timing breakdown.
 

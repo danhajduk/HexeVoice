@@ -39,6 +39,7 @@ def test_assistant_settings_default_to_local_echo():
     assert settings.voice_assistant_ai_node_base_url is None
     assert settings.voice_assistant_ai_node_turn_path == "/api/assistant/turn"
     assert settings.voice_assistant_timeout_s == 20.0
+    assert settings.voice_conversation_context_turns == 6
 
 
 def test_backend_logging_uses_midnight_archive(tmp_path):

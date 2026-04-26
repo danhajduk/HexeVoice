@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections import deque
+from dataclasses import dataclass
 import logging
 import re
+from collections.abc import Sequence
 from typing import Protocol
 
 import httpx
@@ -14,8 +17,22 @@ from hexevoice.runtime.service import NodeRuntimeService
 log = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True)
+class ConversationTurn:
+    endpoint_id: str
+    session_id: str
+    heard_text: str
+    reply_text: str
+
+
 class AssistantAdapter(Protocol):
-    def handle_turn(self, payload: AssistantTurnRequest, *, session_id: str) -> AssistantTurnResponse:
+    def handle_turn(
+        self,
+        payload: AssistantTurnRequest,
+        *,
+        session_id: str,
+        context: Sequence[ConversationTurn] = (),
+    ) -> AssistantTurnResponse:
         ...
 
     def status(self) -> dict:
@@ -23,7 +40,13 @@ class AssistantAdapter(Protocol):
 
 
 class LocalEchoAssistantAdapter:
-    def handle_turn(self, payload: AssistantTurnRequest, *, session_id: str) -> AssistantTurnResponse:
+    def handle_turn(
+        self,
+        payload: AssistantTurnRequest,
+        *,
+        session_id: str,
+        context: Sequence[ConversationTurn] = (),
+    ) -> AssistantTurnResponse:
         heard_text = payload.text.strip()
         heard_for_reply = heard_text or "nothing"
         reply_text = f"I heard {heard_for_reply}, no AI added yet."
@@ -59,10 +82,16 @@ class AiNodeAssistantAdapter:
         self._http_client = http_client
         self._last_error: str | None = None
 
-    def handle_turn(self, payload: AssistantTurnRequest, *, session_id: str) -> AssistantTurnResponse:
+    def handle_turn(
+        self,
+        payload: AssistantTurnRequest,
+        *,
+        session_id: str,
+        context: Sequence[ConversationTurn] = (),
+    ) -> AssistantTurnResponse:
         if not self._base_url:
             self._last_error = "missing_ai_node_base_url"
-            return self._fallback.handle_turn(payload, session_id=session_id)
+            return self._fallback.handle_turn(payload, session_id=session_id, context=context)
 
         client = self._http_client or httpx.Client(timeout=self._timeout_s)
         try:
@@ -72,6 +101,15 @@ class AiNodeAssistantAdapter:
                     "endpoint_id": payload.endpoint_id,
                     "session_id": session_id,
                     "text": payload.text,
+                    "context": [
+                        {
+                            "endpoint_id": turn.endpoint_id,
+                            "session_id": turn.session_id,
+                            "heard_text": turn.heard_text,
+                            "reply_text": turn.reply_text,
+                        }
+                        for turn in context
+                    ],
                 },
             )
             response.raise_for_status()
@@ -99,7 +137,7 @@ class AiNodeAssistantAdapter:
         except Exception as exc:
             self._last_error = str(exc)
             log.warning("AI Node assistant turn failed; using local echo fallback: error=%s", self._last_error)
-            return self._fallback.handle_turn(payload, session_id=session_id)
+            return self._fallback.handle_turn(payload, session_id=session_id, context=context)
         finally:
             if self._http_client is None:
                 client.close()
@@ -128,21 +166,39 @@ class AssistantTurnService:
         self._runtime_service = runtime_service
         self._session_counter = 0
         self._adapter = adapter or self._build_adapter()
+        self._context_limit = settings.voice_conversation_context_turns
+        self._context_by_endpoint: dict[str, deque[ConversationTurn]] = {}
+        self._context_by_session: dict[str, deque[ConversationTurn]] = {}
 
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
         heard_text = self._strip_wake_words(payload.text)
         session_id = payload.session_id or self._next_session_id(payload.endpoint_id)
-        return self._adapter.handle_turn(
+        context = self._conversation_context(endpoint_id=payload.endpoint_id, session_id=session_id)
+        response = self._adapter.handle_turn(
             AssistantTurnRequest(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
                 text=heard_text or " ",
             ),
             session_id=session_id,
+            context=context,
         )
+        self._record_turn(response)
+        return response
 
     def status(self) -> dict:
-        return self._adapter.status()
+        return {
+            **self._adapter.status(),
+            "context_turn_limit": self._context_limit,
+            "endpoint_contexts": {endpoint_id: len(turns) for endpoint_id, turns in self._context_by_endpoint.items()},
+            "session_contexts": {session_id: len(turns) for session_id, turns in self._context_by_session.items()},
+        }
+
+    def context_for_endpoint(self, endpoint_id: str) -> list[ConversationTurn]:
+        return list(self._context_by_endpoint.get(endpoint_id, ()))
+
+    def context_for_session(self, session_id: str) -> list[ConversationTurn]:
+        return list(self._context_by_session.get(session_id, ()))
 
     def _next_session_id(self, endpoint_id: str) -> str:
         self._session_counter += 1
@@ -175,3 +231,37 @@ class AssistantTurnService:
                 fallback=fallback,
             )
         return fallback
+
+    def _conversation_context(self, *, endpoint_id: str, session_id: str) -> list[ConversationTurn]:
+        seen: set[tuple[str, str]] = set()
+        context: list[ConversationTurn] = []
+        for turn in [
+            *self._context_by_endpoint.get(endpoint_id, ()),
+            *self._context_by_session.get(session_id, ()),
+        ]:
+            key = (turn.session_id, turn.heard_text)
+            if key in seen:
+                continue
+            seen.add(key)
+            context.append(turn)
+        return context[-self._context_limit :] if self._context_limit else []
+
+    def _record_turn(self, response: AssistantTurnResponse) -> None:
+        if self._context_limit <= 0:
+            return
+        turn = ConversationTurn(
+            endpoint_id=response.endpoint_id,
+            session_id=response.session_id,
+            heard_text=response.heard_text,
+            reply_text=response.reply_text,
+        )
+        endpoint_context = self._context_by_endpoint.setdefault(
+            response.endpoint_id,
+            deque(maxlen=self._context_limit),
+        )
+        session_context = self._context_by_session.setdefault(
+            response.session_id,
+            deque(maxlen=self._context_limit),
+        )
+        endpoint_context.append(turn)
+        session_context.append(turn)
