@@ -354,6 +354,32 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert adapter.status()["healthy"] is True
 
 
+def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
+    source = io.BytesIO()
+    with wave.open(source, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(22050)
+        wav_file.writeframes((b"\x00\x00\xff\x7f" * 2205))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=source.getvalue(), headers={"content-type": "audio/wav"})
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://piper.test:10200",
+        output_dir=tmp_path,
+        output_sample_rate_hz=16000,
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
+
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 16000
+        assert wav_file.getsampwidth() == 2
+        assert wav_file.getnchannels() == 1
+
+
 def test_piper_tts_adapter_falls_back_when_unconfigured(tmp_path):
     adapter = PiperTextToSpeechAdapter(base_url=None, output_dir=tmp_path)
 
@@ -396,6 +422,7 @@ def test_build_voice_turn_pipeline_routes_piper_to_supervised_default(tmp_path):
     assert status["configured"] is True
     assert status["base_url"] == "http://127.0.0.1:10200"
     assert status["synthesize_path"] == "/api/tts"
+    assert status["output_sample_rate_hz"] == 16000
     assert status["fallback"]["provider"] == "deterministic"
 
 

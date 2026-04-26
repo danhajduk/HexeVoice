@@ -5,6 +5,7 @@ from dataclasses import replace
 import io
 import importlib.util
 import logging
+import math
 from pathlib import Path
 import tempfile
 import time
@@ -334,6 +335,7 @@ class PiperTextToSpeechAdapter:
         voice: str | None = None,
         output_dir: Path,
         timeout_s: float = 30.0,
+        output_sample_rate_hz: int | None = 16000,
         fallback: TextToSpeechAdapter | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
@@ -342,6 +344,7 @@ class PiperTextToSpeechAdapter:
         self._voice = voice
         self._output_dir = output_dir
         self._timeout_s = timeout_s
+        self._output_sample_rate_hz = output_sample_rate_hz
         self._fallback = fallback or DeterministicTextToSpeechAdapter()
         self._http_client = http_client
         self._last_error: str | None = None
@@ -361,7 +364,8 @@ class PiperTextToSpeechAdapter:
             response.raise_for_status()
             self._output_dir.mkdir(parents=True, exist_ok=True)
             output_path = self._output_dir / f"{stream_id}.wav"
-            output_path.write_bytes(response.content)
+            audio = normalize_wav_sample_rate(response.content, self._output_sample_rate_hz)
+            output_path.write_bytes(audio)
             self._last_error = None
             return TtsSynthesis(
                 content_type=response.headers.get("content-type", "audio/wav"),
@@ -385,6 +389,7 @@ class PiperTextToSpeechAdapter:
             "base_url": self._base_url,
             "synthesize_path": self._synthesize_path,
             "voice": self._voice,
+            "output_sample_rate_hz": self._output_sample_rate_hz,
             "last_error": self._last_error,
             "fallback": self._fallback.status(),
         }
@@ -496,6 +501,61 @@ def audio_file_bytes(audio: VoiceTurnAudioSummary) -> bytes:
     return buffer.getvalue()
 
 
+def normalize_wav_sample_rate(audio: bytes, target_sample_rate_hz: int | None) -> bytes:
+    if target_sample_rate_hz is None or target_sample_rate_hz <= 0:
+        return audio
+    try:
+        with wave.open(io.BytesIO(audio), "rb") as wav_file:
+            channels = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
+            sample_rate = wav_file.getframerate()
+            frames = wav_file.readframes(wav_file.getnframes())
+    except wave.Error:
+        return audio
+
+    if sample_rate == target_sample_rate_hz:
+        return audio
+    if sample_width != 2 or channels <= 0:
+        return audio
+
+    resampled = resample_pcm16le(frames, source_rate=sample_rate, target_rate=target_sample_rate_hz, channels=channels)
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(channels)
+        wav_file.setsampwidth(sample_width)
+        wav_file.setframerate(target_sample_rate_hz)
+        wav_file.writeframes(resampled)
+    return buffer.getvalue()
+
+
+def resample_pcm16le(data: bytes, *, source_rate: int, target_rate: int, channels: int) -> bytes:
+    frame_size = channels * 2
+    frame_count = len(data) // frame_size
+    if frame_count <= 1 or source_rate <= 0 or target_rate <= 0 or source_rate == target_rate:
+        return data
+
+    output_frame_count = max(1, int(round(frame_count * target_rate / source_rate)))
+    output = bytearray(output_frame_count * frame_size)
+    max_sample = 32767
+    min_sample = -32768
+
+    def sample_at(frame_index: int, channel: int) -> int:
+        offset = frame_index * frame_size + channel * 2
+        return int.from_bytes(data[offset : offset + 2], byteorder="little", signed=True)
+
+    for output_index in range(output_frame_count):
+        position = output_index * source_rate / target_rate
+        left = min(frame_count - 1, int(math.floor(position)))
+        right = min(frame_count - 1, left + 1)
+        fraction = position - left
+        for channel in range(channels):
+            value = round(sample_at(left, channel) * (1.0 - fraction) + sample_at(right, channel) * fraction)
+            value = max(min_sample, min(max_sample, value))
+            offset = output_index * frame_size + channel * 2
+            output[offset : offset + 2] = int(value).to_bytes(2, byteorder="little", signed=True)
+    return bytes(output)
+
+
 class VoiceTurnPipeline:
     def __init__(
         self,
@@ -605,6 +665,7 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             voice=settings.voice_tts_piper_voice,
             output_dir=settings.runtime_dir / "voice_tts",
             timeout_s=settings.voice_tts_timeout_s,
+            output_sample_rate_hz=settings.voice_tts_output_sample_rate_hz,
             fallback=DeterministicTextToSpeechAdapter(),
         )
 

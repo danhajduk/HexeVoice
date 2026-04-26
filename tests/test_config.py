@@ -51,6 +51,7 @@ def test_piper_tts_settings_default_to_supervised_local_service():
     assert settings.voice_tts_piper_service_port == 10200
     assert settings.voice_tts_piper_synthesize_path == "/api/tts"
     assert settings.voice_tts_piper_voice is None
+    assert settings.voice_tts_output_sample_rate_hz == 16000
     assert settings.piper_tts_service_id == "piper_tts"
     assert settings.piper_tts_container_name == "hexevoice-piper-tts"
     assert settings.piper_tts_control_script.as_posix() == "scripts/piper-tts-control.sh"

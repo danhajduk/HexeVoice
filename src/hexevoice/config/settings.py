@@ -96,6 +96,7 @@ class Settings(BaseSettings):
     voice_tts_voice: str = Field(default="alloy", alias="VOICE_TTS_VOICE")
     voice_tts_base_url: str = Field(default="https://api.openai.com/v1", alias="VOICE_TTS_BASE_URL")
     voice_tts_response_format: str = Field(default="wav", alias="VOICE_TTS_RESPONSE_FORMAT")
+    voice_tts_output_sample_rate_hz: int = Field(default=16000, alias="VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ", ge=8000)
     voice_tts_timeout_s: float = Field(default=30.0, alias="VOICE_TTS_TIMEOUT_S", gt=0)
     voice_tts_piper_base_url: str | None = Field(default=None, alias="VOICE_TTS_PIPER_BASE_URL")
     voice_tts_piper_service_host: str = Field(default="127.0.0.1", alias="VOICE_TTS_PIPER_SERVICE_HOST")
