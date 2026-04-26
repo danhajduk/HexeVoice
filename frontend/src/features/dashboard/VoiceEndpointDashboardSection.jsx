@@ -146,7 +146,7 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
         <table className="voice-endpoint-status-table">
           <thead>
             <tr>
-              <th scope="col">Status</th>
+              <th className="endpoint-health-column" scope="col" aria-label="Endpoint health" />
               <th scope="col">Endpoint</th>
               <th scope="col">FW</th>
               <th scope="col">Device</th>
@@ -162,7 +162,7 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
           <tbody>
             {endpointRows.map((row) => (
               <tr key={row.endpointId}>
-                <td>
+                <td className="endpoint-health-column">
                   <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
                 </td>
                 <th scope="row">{valueOrEmpty(row.endpointId)}</th>

@@ -190,6 +190,12 @@
   overflow-wrap: anywhere;
 }
 
+.voice-endpoint-status-table .endpoint-health-column {
+  width: 28px;
+  padding-right: 8px;
+  text-align: center;
+}
+
 .endpoint-health-led {
   display: inline-block;
   width: 12px;
