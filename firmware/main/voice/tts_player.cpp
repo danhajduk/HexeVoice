@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "app_state.h"
+#include "board/audio.h"
 #include "bsp/esp-box-3.h"
 #include "endpoint_config.h"
 #include "esp_codec_dev.h"
@@ -26,7 +27,7 @@ constexpr int kTaskPriority = 4;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
 constexpr size_t kPlaybackWriteBytes = 4096;
 constexpr int kCueSampleRateHz = 16000;
-constexpr int kCueVolume = 45;
+constexpr int kCueVolume = 90;
 constexpr int kTtsVolume = 70;
 
 enum class PlaybackKind {
@@ -284,7 +285,7 @@ bool play_listening_cue_now() {
     return false;
   }
 
-  const bool ok = write_square_tone(880, 80, 1800) && write_silence(35) && write_square_tone(1175, 110, 1600);
+  const bool ok = write_square_tone(880, 180, 9000) && write_silence(60) && write_square_tone(1175, 240, 8000);
   esp_codec_dev_close(g_speaker_codec);
   return ok;
 }
@@ -300,6 +301,7 @@ void playback_task(void *arg) {
     g_stop_requested = false;
     auto &state = hexe::state();
     if (state.muted) {
+      ESP_LOGI(kTag, "Skipping playback request while muted");
       if (request.kind == PlaybackKind::kTtsAudio) {
         g_playback_active = false;
       }
@@ -308,7 +310,15 @@ void playback_task(void *arg) {
 
     if (request.kind == PlaybackKind::kListeningCue) {
       ESP_LOGI(kTag, "Playing listening cue");
-      play_listening_cue_now();
+      const bool mic_paused = hexe::board::pause_microphone_for_playback();
+      if (play_listening_cue_now()) {
+        ESP_LOGI(kTag, "Listening cue played");
+      } else {
+        ESP_LOGW(kTag, "Listening cue failed");
+      }
+      if (mic_paused) {
+        hexe::board::resume_microphone_after_playback();
+      }
       continue;
     }
 
@@ -316,7 +326,12 @@ void playback_task(void *arg) {
 
     const std::string url = resolve_audio_url(request.audio_url);
     std::vector<uint8_t> audio;
-    if (fetch_audio(url, &audio) && play_wav(audio) && !state.muted) {
+    const bool mic_paused = hexe::board::pause_microphone_for_playback();
+    const bool played = fetch_audio(url, &audio) && play_wav(audio);
+    if (mic_paused) {
+      hexe::board::resume_microphone_after_playback();
+    }
+    if (played && !state.muted) {
       state.phase = hexe::AppPhase::kIdle;
     } else if (!state.muted && state.phase == hexe::AppPhase::kReplying) {
       state.phase = hexe::AppPhase::kError;
@@ -351,6 +366,7 @@ void init_tts_player() {
 void play_listening_cue() {
   auto &state = hexe::state();
   if (state.muted) {
+    ESP_LOGI(kTag, "Skipping listening cue while muted");
     return;
   }
 
@@ -358,6 +374,8 @@ void play_listening_cue() {
   request.kind = PlaybackKind::kListeningCue;
   if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping listening cue because playback queue is unavailable");
+  } else {
+    ESP_LOGI(kTag, "Queued listening cue");
   }
 }
 
