@@ -48,7 +48,6 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 054: Add AI Node assistant provider adapter with deterministic fallback
 [TODO] Task 055: Add short rolling conversation context per endpoint and session
 [TODO] Task 056: Expose assistant response provider, latency, text, and error observability
 [TODO] Task 057: Add local Piper TTS provider with deterministic fallback

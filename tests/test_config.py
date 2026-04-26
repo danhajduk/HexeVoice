@@ -32,6 +32,15 @@ def test_faster_whisper_stt_settings_defaults():
     assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"
 
 
+def test_assistant_settings_default_to_local_echo():
+    settings = Settings()
+
+    assert settings.voice_assistant_provider == "local_echo"
+    assert settings.voice_assistant_ai_node_base_url is None
+    assert settings.voice_assistant_ai_node_turn_path == "/api/assistant/turn"
+    assert settings.voice_assistant_timeout_s == 20.0
+
+
 def test_backend_logging_uses_midnight_archive(tmp_path):
     log_path = tmp_path / "logs" / "backend.log"
     settings = Settings(backend_log_path=log_path, backend_log_level="DEBUG", backend_log_backup_days=5)

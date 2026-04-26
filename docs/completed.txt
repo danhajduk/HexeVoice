@@ -42,3 +42,4 @@ Task 050: Implement faster-whisper STT backend adapter for captured voice turns 
 Task 051: Keep deterministic STT fallback and add focused STT provider tests - Completed on 04/25/2026 17:34
 Task 052: Expose local STT transcript latency, provider metadata, and errors in status/logs - Completed on 04/25/2026 17:35
 Task 053: Validate wake-to-local-transcript flow end to end on the ESP-BOX endpoint - Completed on 04/25/2026 17:39
+Task 054: Add AI Node assistant provider adapter with deterministic fallback - Completed on 04/25/2026 18:11

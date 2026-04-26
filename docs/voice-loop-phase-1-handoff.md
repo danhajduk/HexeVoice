@@ -52,6 +52,16 @@ The faster-whisper provider writes each completed captured turn to a transient W
 
 The assistant path is intentionally local for the current full-pipeline smoke test. It strips the configured wake word from the final transcript and returns `I heard <transcript>, no AI added yet.`. The voice node must not call OpenAI directly; future assistant integration should go through the AI Node.
 
+Assistant adapter configuration:
+
+- `VOICE_ASSISTANT_PROVIDER=local_echo` keeps the smoke-test response path active.
+- `VOICE_ASSISTANT_PROVIDER=ai_node` enables the AI Node adapter boundary.
+- `VOICE_ASSISTANT_AI_NODE_BASE_URL` points to the AI Node service when that integration is ready.
+- `VOICE_ASSISTANT_AI_NODE_TURN_PATH=/api/assistant/turn`
+- `VOICE_ASSISTANT_TIMEOUT_S=20`
+
+If the AI Node adapter is selected but unavailable or unconfigured, the voice node falls back to the local echo response so the full voice pipeline can still be validated.
+
 `GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. It also exposes `last_turn_timings` with STT, assistant, TTS, and total turn duration in milliseconds. The backend log records transcript finalization, local faster-whisper latency, and the full turn timing breakdown.
 
 For wake model setup:

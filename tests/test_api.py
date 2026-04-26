@@ -1,6 +1,8 @@
 from fastapi.testclient import TestClient
 import httpx
 
+from hexevoice.api.models import AssistantTurnRequest
+from hexevoice.assistant import AiNodeAssistantAdapter, LocalEchoAssistantAdapter
 from hexevoice.main import create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -199,6 +201,64 @@ def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
     assert payload["session_id"] == "session-abc"
     assert payload["handled_locally"] is False
     assert payload["reply_text"] == "I heard turn on the lights, no AI added yet."
+
+
+def test_assistant_turn_can_route_to_configured_ai_node():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["json"] = request.read()
+        return httpx.Response(
+            200,
+            json={
+                "endpoint_id": "box-9",
+                "session_id": "session-abc",
+                "heard_text": "turn on the lights",
+                "reply_text": "AI Node heard turn on the lights.",
+                "spoken_text": "AI Node heard turn on the lights.",
+                "handled_locally": False,
+                "command": None,
+                "device_state": "speaking",
+            },
+        )
+
+    adapter = AiNodeAssistantAdapter(
+        base_url="https://ai-node.test",
+        turn_path="/api/assistant/turn",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    response = adapter.handle_turn(
+        AssistantTurnRequest(endpoint_id="box-9", session_id="session-abc", text="turn on the lights"),
+        session_id="session-abc",
+    )
+
+    assert captured["url"] == "https://ai-node.test/api/assistant/turn"
+    assert b"turn on the lights" in captured["json"]
+    assert response.reply_text == "AI Node heard turn on the lights."
+    assert response.heard_text == "turn on the lights"
+    assert adapter.status()["healthy"] is True
+
+
+def test_assistant_ai_node_adapter_falls_back_to_local_echo_when_unconfigured():
+    adapter = AiNodeAssistantAdapter(
+        base_url=None,
+        turn_path="/api/assistant/turn",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+    )
+
+    response = adapter.handle_turn(
+        AssistantTurnRequest(endpoint_id="box-9", session_id="session-abc", text="turn on the lights"),
+        session_id="session-abc",
+    )
+
+    assert response.reply_text == "I heard turn on the lights, no AI added yet."
+    assert adapter.status()["healthy"] is False
+    assert adapter.status()["last_error"] == "missing_ai_node_base_url"
 
 
 def test_status_endpoint_reads_persisted_onboarding_state(tmp_path):

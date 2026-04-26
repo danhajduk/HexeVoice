@@ -1,3 +1,3 @@
-from hexevoice.assistant.service import AssistantTurnService
+from hexevoice.assistant.service import AiNodeAssistantAdapter, AssistantAdapter, AssistantTurnService, LocalEchoAssistantAdapter
 
-__all__ = ["AssistantTurnService"]
+__all__ = ["AiNodeAssistantAdapter", "AssistantAdapter", "AssistantTurnService", "LocalEchoAssistantAdapter"]

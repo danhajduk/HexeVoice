@@ -75,6 +75,16 @@ class Settings(BaseSettings):
         default=None,
         alias="VOICE_STT_FASTER_WHISPER_TEMP_DIR",
     )
+    voice_assistant_provider: Literal["local_echo", "ai_node"] = Field(
+        default="local_echo",
+        alias="VOICE_ASSISTANT_PROVIDER",
+    )
+    voice_assistant_ai_node_base_url: str | None = Field(default=None, alias="VOICE_ASSISTANT_AI_NODE_BASE_URL")
+    voice_assistant_ai_node_turn_path: str = Field(
+        default="/api/assistant/turn",
+        alias="VOICE_ASSISTANT_AI_NODE_TURN_PATH",
+    )
+    voice_assistant_timeout_s: float = Field(default=20.0, alias="VOICE_ASSISTANT_TIMEOUT_S", gt=0)
     voice_tts_provider: Literal["deterministic", "openai"] = Field(default="deterministic", alias="VOICE_TTS_PROVIDER")
     voice_tts_model: str = Field(default="gpt-4o-mini-tts", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str = Field(default="alloy", alias="VOICE_TTS_VOICE")
