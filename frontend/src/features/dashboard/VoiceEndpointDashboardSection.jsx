@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { cancelVoiceSession, testAssistantTurn } from "../../api/client";
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
-import { VoiceEndpointStatusCard } from "./cards/VoiceEndpointStatusCard";
 
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : value;
 }
 
-function VoicePipelineCard({ voiceStatus }) {
+function VoicePipelinePanel({ voiceStatus }) {
   return (
-    <section className="card stack panel">
+    <section className="voice-endpoint-panel stack">
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Speech Pipeline</p>
@@ -39,35 +38,45 @@ function VoicePipelineCard({ voiceStatus }) {
   );
 }
 
-function VoiceSessionCard({ voiceStatus }) {
+function EndpointStatusTable({ status, providerSetup, capabilities, voiceStatus, endpointStatus }) {
   const session = voiceStatus?.active_session;
+  const rows = [
+    ["Namespace", "voice"],
+    ["Endpoint", endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected"],
+    ["Endpoint FW", endpointStatus?.firmware_version || "unknown"],
+    ["Device state", endpointStatus?.device_state || "unknown"],
+    ["Last heartbeat", endpointStatus?.last_seen_at || "none"],
+    ["Connection", voiceStatus?.connection_state || "offline"],
+    ["Transport", voiceStatus?.transport_health || "offline"],
+    ["Active session", session?.session_id || "none"],
+    ["Backend state", session?.session_state || "idle"],
+    ["Endpoint UX", session?.ux_state || "idle"],
+    ["Enabled providers", providerSetup?.enabled_providers?.join(", ") || "none"],
+    ["Declared capabilities", capabilities?.declared?.join(", ") || "pending"],
+    ["Operational readiness", String(status?.operational_ready ?? false)],
+  ];
+
   return (
-    <section className="card stack panel">
+    <section className="voice-endpoint-panel stack">
       <div className="section-heading">
         <div>
-          <p className="panel-kicker">Device Sessions</p>
-          <h2 className="panel-title">Session Telemetry</h2>
+          <p className="panel-kicker">Endpoint Status</p>
+          <h2 className="panel-title">Device Data</h2>
         </div>
-        <span className="status-pill status-pill-neutral">{valueOrEmpty(voiceStatus?.transport_health, "offline")}</span>
+        <span className="status-pill status-pill-neutral">{valueOrEmpty(voiceStatus?.connection_state, "offline")}</span>
       </div>
-      <dl className="facts">
-        <div>
-          <dt>Active session</dt>
-          <dd>{valueOrEmpty(session?.session_id)}</dd>
-        </div>
-        <div>
-          <dt>Backend state</dt>
-          <dd>{valueOrEmpty(session?.session_state, "idle")}</dd>
-        </div>
-        <div>
-          <dt>Endpoint UX</dt>
-          <dd>{valueOrEmpty(session?.ux_state, "idle")}</dd>
-        </div>
-        <div>
-          <dt>Connection</dt>
-          <dd>{valueOrEmpty(voiceStatus?.connection_state, "offline")}</dd>
-        </div>
-      </dl>
+      <div className="voice-endpoint-table-wrap">
+        <table className="voice-endpoint-status-table">
+          <tbody>
+            {rows.map(([label, value]) => (
+              <tr key={label}>
+                <th scope="row">{label}</th>
+                <td>{valueOrEmpty(value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -104,23 +113,24 @@ export function VoiceEndpointDashboardSection({
   }
 
   return (
-    <section className="grid operational-dashboard-grid">
-      <VoiceEndpointStatusCard
+    <section className="card stack panel voice-endpoint-main-card">
+      <div className="voice-endpoint-top">
+        <VoicePipelinePanel voiceStatus={voiceStatus} />
+        <VoiceEndpointActionsCard
+          voiceStatus={voiceStatus}
+          onRefresh={onRefresh}
+          onTestTurn={handleTestTurn}
+          onStopSession={handleStopSession}
+          actionMessage={actionMessage}
+        />
+      </div>
+      <EndpointStatusTable
         status={status}
         providerSetup={providerSetup}
         capabilities={capabilities}
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
       />
-      <VoiceEndpointActionsCard
-        voiceStatus={voiceStatus}
-        onRefresh={onRefresh}
-        onTestTurn={handleTestTurn}
-        onStopSession={handleStopSession}
-        actionMessage={actionMessage}
-      />
-      <VoicePipelineCard voiceStatus={voiceStatus} />
-      <VoiceSessionCard voiceStatus={voiceStatus} />
     </section>
   );
 }

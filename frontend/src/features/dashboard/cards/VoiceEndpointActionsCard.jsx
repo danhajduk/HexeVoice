@@ -1,7 +1,7 @@
 export function VoiceEndpointActionsCard({ voiceStatus, onRefresh, onTestTurn, onStopSession, actionMessage }) {
   const actions = voiceStatus?.supported_actions || {};
   return (
-    <section className="card stack panel">
+    <section className="voice-endpoint-panel stack">
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Endpoint Actions</p>

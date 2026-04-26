@@ -129,6 +129,59 @@
   grid-column: 1 / -1;
 }
 
+.voice-endpoint-main-card {
+  gap: 24px;
+}
+
+.voice-endpoint-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.8fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.voice-endpoint-panel {
+  min-width: 0;
+}
+
+.voice-endpoint-table-wrap {
+  overflow-x: auto;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+}
+
+.voice-endpoint-status-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.voice-endpoint-status-table th,
+.voice-endpoint-status-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid hsl(var(--sx-border));
+  text-align: left;
+  vertical-align: top;
+}
+
+.voice-endpoint-status-table tr:last-child th,
+.voice-endpoint-status-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.voice-endpoint-status-table th {
+  width: 220px;
+  color: hsl(var(--sx-text-muted));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.voice-endpoint-status-table td {
+  color: hsl(var(--sx-text));
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
 .node-health-strip {
   padding: 14px 16px;
 }
@@ -766,6 +819,7 @@
   .app-shell,
   .setup-secondary-grid,
   .operational-dashboard-grid,
+  .voice-endpoint-top,
   .status-grid,
   .fact-grid,
   .form-grid {
