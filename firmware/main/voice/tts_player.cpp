@@ -285,7 +285,8 @@ bool play_listening_cue_now() {
     return false;
   }
 
-  const bool ok = write_square_tone(880, 180, 9000) && write_silence(60) && write_square_tone(1175, 240, 8000);
+  const bool ok = write_square_tone(784, 65, 9000) && write_silence(30) && write_square_tone(1175, 85, 8000) &&
+                  write_silence(20) && write_square_tone(1568, 55, 7000);
   esp_codec_dev_close(g_speaker_codec);
   return ok;
 }
