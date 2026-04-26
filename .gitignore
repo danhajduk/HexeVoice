@@ -16,6 +16,8 @@ runtime/openwakeword/models/*
 !runtime/openwakeword/models/.gitkeep
 runtime/piper-tts/models/*
 !runtime/piper-tts/models/.gitkeep
+runtime/voice_tts/*
+!runtime/voice_tts/.gitkeep
 runtime/firmware/*
 !runtime/firmware/.gitkeep
 runtime/logs/*

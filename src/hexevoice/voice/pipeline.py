@@ -560,6 +560,9 @@ class VoiceTurnPipeline:
             "tts": self._tts_adapter.status(),
         }
 
+    def synthesize_reply(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+        return self._tts_adapter.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text)
+
     def preload_stt(self) -> dict | None:
         preload = getattr(self._stt_adapter, "preload", None)
         if not callable(preload):

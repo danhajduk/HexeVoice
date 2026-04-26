@@ -198,6 +198,24 @@ class VoiceSessionManager:
         return result
 
     async def push_replay_command(self, *, endpoint_id: str) -> dict:
+        if self._last_transcript and self._turn_pipeline is not None:
+            replay_text = f"I heard {self._last_transcript}"
+            session_id = self._active_session.session_id if self._active_session else f"{endpoint_id}-replay"
+            tts = self._turn_pipeline.synthesize_reply(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                text=replay_text,
+            )
+            self._last_response = replay_text
+            self._last_tts = {
+                "content_type": tts.content_type,
+                "stream_id": tts.stream_id,
+                "audio_url": tts.audio_url,
+                "provider_id": tts.provider_id,
+                "error": tts.error,
+            }
+            if tts.error:
+                return {"accepted": False, "reason": tts.error, "status": "failed"}
         if not self._last_tts or not self._last_tts.get("stream_id"):
             return {"accepted": False, "reason": "no_replay_available", "status": "failed"}
         return await self._push_endpoint_command(

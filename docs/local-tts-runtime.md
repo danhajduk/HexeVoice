@@ -100,3 +100,13 @@ POST /api/services/restart {"target":"piper_tts"}
 ```
 
 Those routes call `scripts/piper-tts-control.sh`, matching the control surface advertised in Supervisor runtime metadata.
+
+## Endpoint Replay
+
+`POST /api/endpoint/replay` synthesizes a fresh short response from the last transcript when one is available:
+
+```text
+I heard <last transcript>
+```
+
+The synthesized replay uses the active TTS provider, so with Piper enabled it creates a new WAV artifact under `runtime/voice_tts/` and sends that artifact URL to the endpoint.

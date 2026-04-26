@@ -281,6 +281,64 @@ def test_piper_tts_artifact_is_served_for_firmware_playback(tmp_path):
     assert response.content == b"RIFFpiper-wav"
 
 
+def test_replay_synthesizes_i_heard_last_transcript(tmp_path):
+    class ReplayPipeline:
+        def __init__(self):
+            self.replay_text = None
+
+        def status(self):
+            return {"stt": {"provider": "test", "healthy": True}, "tts": {"provider": "test", "healthy": True}}
+
+        def complete_turn(self, audio):
+            return VoiceTurnResult(
+                transcript=SpeechTranscript(text="what is the time", confidence=1.0),
+                assistant_response=AssistantTurnResponse(
+                    endpoint_id=audio.endpoint_id,
+                    session_id=audio.session_id,
+                    heard_text="what is the time",
+                    reply_text="old response",
+                    spoken_text="old response",
+                    handled_locally=False,
+                    command=None,
+                    device_state="speaking",
+                ),
+                tts=TtsSynthesis(content_type="audio/wav", stream_id="tts-old", audio_url="/api/voice/tts/tts-old"),
+                timings=VoiceTurnTimings(stt_ms=1.0, assistant_ms=1.0, tts_ms=1.0, total_ms=3.0),
+            )
+
+        def synthesize_reply(self, *, endpoint_id, session_id, text):
+            self.replay_text = text
+            return TtsSynthesis(content_type="audio/wav", stream_id="tts-replay", audio_url="/api/voice/tts/tts-replay", provider_id="test")
+
+    pipeline = ReplayPipeline()
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        turn_pipeline=pipeline,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.chunk", payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}}))
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.receive_json()
+        replay_response = client.post("/api/endpoint/replay", json={"endpoint_id": "esp-box-1"})
+        replay_event = websocket.receive_json()
+
+    assert replay_response.status_code == 200
+    assert pipeline.replay_text == "I heard what is the time"
+    assert replay_event["event_type"] == "endpoint.replay"
+    assert replay_event["payload"]["stream_id"] == "tts-replay"
+    assert replay_event["payload"]["audio_url"] == "/api/voice/tts/tts-replay"
+    assert client.get("/api/voice/status").json()["last_response"] == "I heard what is the time"
+
+
 def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
     class FailingSttPipeline:
         def status(self):
