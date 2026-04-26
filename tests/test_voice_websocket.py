@@ -5,7 +5,14 @@ from starlette.websockets import WebSocketDisconnect
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
 from hexevoice.api.models import AssistantTurnResponse
-from hexevoice.voice import DeterministicWakeDetector, SpeechTranscript, TtsSynthesis, VoiceSessionManager, VoiceTurnResult
+from hexevoice.voice import (
+    DeterministicWakeDetector,
+    SpeechTranscript,
+    TtsSynthesis,
+    VoiceSessionManager,
+    VoiceTurnResult,
+    VoiceTurnTimings,
+)
 
 
 def voice_event(event_type, *, endpoint_id="esp-box-1", session_id="voice-session-1", payload=None):
@@ -121,6 +128,10 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     assert status.json()["last_transcript_metadata"]["provider_id"] == "deterministic"
     assert status.json()["last_transcript_metadata"]["model"] == "deterministic"
     assert status.json()["last_transcript_metadata"]["text_chars"] == 5
+    assert status.json()["last_turn_timings"]["stt_ms"] >= 0
+    assert status.json()["last_turn_timings"]["assistant_ms"] >= 0
+    assert status.json()["last_turn_timings"]["tts_ms"] >= 0
+    assert status.json()["last_turn_timings"]["total_ms"] >= 0
     assert "Hello from lab-voice" in status.json()["last_response"]
     assert status.json()["last_tts"]["stream_id"].startswith("tts-")
 
@@ -145,6 +156,7 @@ def test_voice_websocket_passes_transient_audio_to_turn_pipeline(tmp_path):
                     device_state="speaking",
                 ),
                 tts=TtsSynthesis(stream_id="tts-test"),
+                timings=VoiceTurnTimings(stt_ms=1.0, assistant_ms=2.0, tts_ms=3.0, total_ms=6.0),
             )
 
     pipeline = CapturingPipeline()
@@ -239,6 +251,7 @@ def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
                     device_state="idle",
                 ),
                 tts=TtsSynthesis(stream_id=None),
+                timings=VoiceTurnTimings(stt_ms=1.0, assistant_ms=2.0, tts_ms=3.0, total_ms=6.0),
             )
 
     manager = VoiceSessionManager(
@@ -281,6 +294,7 @@ def test_voice_websocket_surfaces_tts_provider_errors(tmp_path):
                     device_state="speaking",
                 ),
                 tts=TtsSynthesis(stream_id="tts-test", provider_id="test", error="tts unavailable"),
+                timings=VoiceTurnTimings(stt_ms=1.0, assistant_ms=2.0, tts_ms=3.0, total_ms=6.0),
             )
 
     manager = VoiceSessionManager(

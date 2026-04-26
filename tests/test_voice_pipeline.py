@@ -38,6 +38,10 @@ def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     assert "lab-voice is not ready" in result.assistant_response.spoken_text
     assert result.tts.content_type == "audio/wav"
     assert result.tts.stream_id.startswith("tts-")
+    assert result.timings.stt_ms >= 0
+    assert result.timings.assistant_ms >= 0
+    assert result.timings.tts_ms >= 0
+    assert result.timings.total_ms >= 0
 
 
 def test_build_voice_turn_pipeline_keeps_deterministic_stt_as_default(tmp_path):
@@ -176,6 +180,36 @@ def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path
     assert captured["channels"] == 1
     assert captured["frames"] == 320
     assert not Path(captured["path"]).exists()
+
+
+def test_faster_whisper_stt_adapter_preloads_model(tmp_path):
+    captured = {"loads": 0}
+
+    class FakeModel:
+        def __init__(self, model_name, *, device, compute_type):
+            captured["loads"] += 1
+            captured["model_name"] = model_name
+            captured["device"] = device
+            captured["compute_type"] = compute_type
+
+    adapter = FasterWhisperSpeechToTextAdapter(
+        model_name="base.en",
+        device="cpu",
+        compute_type="int8",
+        temp_dir=tmp_path,
+        model_factory=FakeModel,
+    )
+
+    preload = adapter.preload()
+    second_preload = adapter.preload()
+
+    assert preload["loaded"] is True
+    assert preload["model"] == "base.en"
+    assert preload["duration_ms"] is not None
+    assert second_preload["loaded"] is True
+    assert captured["loads"] == 1
+    assert adapter.status()["loaded"] is True
+    assert adapter.status()["last_load_duration_ms"] is not None
 
 
 def test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured(tmp_path):

@@ -25,7 +25,8 @@ def test_faster_whisper_stt_settings_defaults():
     settings = Settings(voice_stt_provider="faster_whisper")
 
     assert settings.voice_stt_provider == "faster_whisper"
-    assert settings.voice_stt_faster_whisper_model == "small.en"
+    assert settings.voice_stt_preload is True
+    assert settings.voice_stt_faster_whisper_model == "base.en"
     assert settings.voice_stt_faster_whisper_device == "cpu"
     assert settings.voice_stt_faster_whisper_compute_type == "int8"
     assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"

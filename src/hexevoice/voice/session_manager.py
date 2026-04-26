@@ -52,6 +52,7 @@ class VoiceSessionManager:
         self._last_transcript_metadata: dict | None = None
         self._last_error: dict | None = None
         self._last_tts: dict | None = None
+        self._last_turn_timings: dict | None = None
         self._last_event_type: str | None = None
         self._wake_history: list[dict[str, object]] = []
 
@@ -455,8 +456,14 @@ class VoiceSessionManager:
                 "text_chars": len(turn.transcript.text or ""),
                 "error": turn.transcript.error,
             }
+            self._last_turn_timings = {
+                "stt_ms": turn.timings.stt_ms,
+                "assistant_ms": turn.timings.assistant_ms,
+                "tts_ms": turn.timings.tts_ms,
+                "total_ms": turn.timings.total_ms,
+            }
             log.info(
-                "Voice transcript finalized: endpoint_id=%s session_id=%s provider=%s model=%s duration_ms=%s text_chars=%s error=%s",
+                "Voice transcript finalized: endpoint_id=%s session_id=%s provider=%s model=%s duration_ms=%s text_chars=%s error=%s stt_ms=%s assistant_ms=%s tts_ms=%s total_ms=%s",
                 session.endpoint_id,
                 session.session_id,
                 turn.transcript.provider_id,
@@ -464,6 +471,10 @@ class VoiceSessionManager:
                 turn.transcript.duration_ms,
                 len(turn.transcript.text or ""),
                 turn.transcript.error,
+                turn.timings.stt_ms,
+                turn.timings.assistant_ms,
+                turn.timings.tts_ms,
+                turn.timings.total_ms,
             )
             if turn.transcript.error:
                 error = self._error_event(
@@ -569,6 +580,7 @@ class VoiceSessionManager:
             "last_event_type": self._last_event_type,
             "last_transcript": self._last_transcript,
             "last_transcript_metadata": self._last_transcript_metadata,
+            "last_turn_timings": self._last_turn_timings,
             "last_response": self._last_response,
             "last_tts": self._last_tts,
             "last_error": self._last_error,
@@ -590,6 +602,14 @@ class VoiceSessionManager:
         if not callable(preload):
             return None
         return preload()
+
+    def preload_turn_pipeline(self) -> dict | None:
+        if self._turn_pipeline is None:
+            return None
+        preload_stt = getattr(self._turn_pipeline, "preload_stt", None)
+        if not callable(preload_stt):
+            return None
+        return preload_stt()
 
     def _record_wake_history(self, entry: dict[str, object]) -> None:
         event = {"timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"), **entry}

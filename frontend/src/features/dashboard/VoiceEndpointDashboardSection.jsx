@@ -28,6 +28,13 @@ function formatLocalDateTime(value) {
   });
 }
 
+function formatMs(value) {
+  if (typeof value !== "number") {
+    return "none";
+  }
+  return `${Math.round(value)} ms`;
+}
+
 function VoicePipelinePanel({ voiceStatus }) {
   const [visibleTranscript, setVisibleTranscript] = useState("");
 
@@ -45,6 +52,8 @@ function VoicePipelinePanel({ voiceStatus }) {
 
     return () => window.clearTimeout(timer);
   }, [voiceStatus?.last_transcript]);
+
+  const timings = voiceStatus?.last_turn_timings || {};
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -67,6 +76,22 @@ function VoicePipelinePanel({ voiceStatus }) {
         <div>
           <dt>TTS stream</dt>
           <dd>{valueOrEmpty(voiceStatus?.last_tts?.stream_id)}</dd>
+        </div>
+        <div>
+          <dt>STT latency</dt>
+          <dd>{formatMs(timings.stt_ms)}</dd>
+        </div>
+        <div>
+          <dt>Assistant latency</dt>
+          <dd>{formatMs(timings.assistant_ms)}</dd>
+        </div>
+        <div>
+          <dt>TTS latency</dt>
+          <dd>{formatMs(timings.tts_ms)}</dd>
+        </div>
+        <div>
+          <dt>Total latency</dt>
+          <dd>{formatMs(timings.total_ms)}</dd>
         </div>
         <div>
           <dt>Last error</dt>

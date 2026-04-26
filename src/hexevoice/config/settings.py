@@ -64,7 +64,8 @@ class Settings(BaseSettings):
     voice_stt_base_url: str = Field(default="https://api.openai.com/v1", alias="VOICE_STT_BASE_URL")
     voice_stt_prompt: str | None = Field(default=None, alias="VOICE_STT_PROMPT")
     voice_stt_timeout_s: float = Field(default=30.0, alias="VOICE_STT_TIMEOUT_S", gt=0)
-    voice_stt_faster_whisper_model: str = Field(default="small.en", alias="VOICE_STT_FASTER_WHISPER_MODEL")
+    voice_stt_preload: bool = Field(default=True, alias="VOICE_STT_PRELOAD")
+    voice_stt_faster_whisper_model: str = Field(default="base.en", alias="VOICE_STT_FASTER_WHISPER_MODEL")
     voice_stt_faster_whisper_device: str = Field(default="cpu", alias="VOICE_STT_FASTER_WHISPER_DEVICE")
     voice_stt_faster_whisper_compute_type: str = Field(
         default="int8",

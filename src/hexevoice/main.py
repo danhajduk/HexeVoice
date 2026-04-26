@@ -150,6 +150,8 @@ def create_app(
     async def start_supervisor_heartbeat():
         if app_settings.voice_wake_preload:
             voice_session_manager.preload_wake_detector()
+        if app_settings.voice_stt_preload:
+            asyncio.create_task(asyncio.to_thread(voice_session_manager.preload_turn_pipeline))
 
         async def loop():
             while True:

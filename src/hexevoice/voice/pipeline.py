@@ -57,10 +57,19 @@ class TtsSynthesis:
 
 
 @dataclass(frozen=True)
+class VoiceTurnTimings:
+    stt_ms: float
+    assistant_ms: float
+    tts_ms: float
+    total_ms: float
+
+
+@dataclass(frozen=True)
 class VoiceTurnResult:
     transcript: SpeechTranscript
     assistant_response: AssistantTurnResponse
     tts: TtsSynthesis
+    timings: VoiceTurnTimings
 
 
 class SpeechToTextAdapter(Protocol):
@@ -168,7 +177,7 @@ class FasterWhisperSpeechToTextAdapter:
     def __init__(
         self,
         *,
-        model_name: str = "small.en",
+        model_name: str = "base.en",
         device: str = "cpu",
         compute_type: str = "int8",
         temp_dir: Path,
@@ -183,6 +192,7 @@ class FasterWhisperSpeechToTextAdapter:
         self._last_error: str | None = None
         self._last_duration_ms: float | None = None
         self._last_text_chars: int | None = None
+        self._last_load_duration_ms: float | None = None
 
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         if not audio.audio_bytes:
@@ -239,6 +249,30 @@ class FasterWhisperSpeechToTextAdapter:
                 except OSError:
                     log.debug("Failed to remove temporary STT audio file: path=%s", temp_path)
 
+    def preload(self) -> dict:
+        try:
+            self._load_model()
+            self._last_error = None
+            return {
+                "provider": "faster_whisper",
+                "loaded": True,
+                "model": self._model_name,
+                "duration_ms": self._last_load_duration_ms,
+            }
+        except Exception as exc:
+            self._last_error = str(exc)
+            log.error(
+                "Local STT preload failed: provider=faster_whisper model=%s error=%s",
+                self._model_name,
+                self._last_error,
+            )
+            return {
+                "provider": "faster_whisper",
+                "loaded": False,
+                "model": self._model_name,
+                "error": self._last_error,
+            }
+
     def status(self) -> dict:
         return {
             "provider": "faster_whisper",
@@ -249,6 +283,7 @@ class FasterWhisperSpeechToTextAdapter:
             "compute_type": self._compute_type,
             "temp_dir": str(self._temp_dir),
             "loaded": self._model is not None,
+            "last_load_duration_ms": self._last_load_duration_ms,
             "last_duration_ms": self._last_duration_ms,
             "last_text_chars": self._last_text_chars,
             "last_error": self._last_error,
@@ -264,7 +299,16 @@ class FasterWhisperSpeechToTextAdapter:
                 from faster_whisper import WhisperModel
 
                 factory = WhisperModel
+            started_at = time.perf_counter()
             self._model = factory(self._model_name, device=self._device, compute_type=self._compute_type)
+            self._last_load_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            log.info(
+                "Local STT model loaded: provider=faster_whisper model=%s device=%s compute_type=%s duration_ms=%s",
+                self._model_name,
+                self._device,
+                self._compute_type,
+                self._last_load_duration_ms,
+            )
             return self._model
         except ModuleNotFoundError as exc:
             if exc.name == "faster_whisper":
@@ -399,7 +443,11 @@ class VoiceTurnPipeline:
         self._tts_adapter = tts_adapter or DeterministicTextToSpeechAdapter()
 
     def complete_turn(self, audio: VoiceTurnAudioSummary) -> VoiceTurnResult:
+        turn_started_at = time.perf_counter()
+        stt_started_at = time.perf_counter()
         transcript = self._stt_adapter.transcribe(audio)
+        stt_ms = round((time.perf_counter() - stt_started_at) * 1000, 2)
+        assistant_started_at = time.perf_counter()
         assistant_response = self._assistant_service.handle_turn(
             AssistantTurnRequest(
                 endpoint_id=audio.endpoint_id,
@@ -407,18 +455,47 @@ class VoiceTurnPipeline:
                 text=transcript.text or " ",
             )
         )
+        assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
+        tts_started_at = time.perf_counter()
         tts = self._tts_adapter.synthesize(
             endpoint_id=audio.endpoint_id,
             session_id=audio.session_id,
             text=assistant_response.spoken_text,
         )
-        return VoiceTurnResult(transcript=transcript, assistant_response=assistant_response, tts=tts)
+        tts_ms = round((time.perf_counter() - tts_started_at) * 1000, 2)
+        timings = VoiceTurnTimings(
+            stt_ms=stt_ms,
+            assistant_ms=assistant_ms,
+            tts_ms=tts_ms,
+            total_ms=round((time.perf_counter() - turn_started_at) * 1000, 2),
+        )
+        log.info(
+            "Voice turn pipeline completed: endpoint_id=%s session_id=%s stt_ms=%s assistant_ms=%s tts_ms=%s total_ms=%s",
+            audio.endpoint_id,
+            audio.session_id,
+            timings.stt_ms,
+            timings.assistant_ms,
+            timings.tts_ms,
+            timings.total_ms,
+        )
+        return VoiceTurnResult(
+            transcript=transcript,
+            assistant_response=assistant_response,
+            tts=tts,
+            timings=timings,
+        )
 
     def status(self) -> dict:
         return {
             "stt": self._stt_adapter.status(),
             "tts": self._tts_adapter.status(),
         }
+
+    def preload_stt(self) -> dict | None:
+        preload = getattr(self._stt_adapter, "preload", None)
+        if not callable(preload):
+            return None
+        return preload()
 
 
 def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:
