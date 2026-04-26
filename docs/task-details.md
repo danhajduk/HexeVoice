@@ -422,3 +422,206 @@ Original task details:
 - Confirm the old HomeAssistant-owned container remains stopped and does not auto-restart.
 - Run targeted backend tests and the smallest practical runtime smoke test.
 - Update the relevant docs with the final operational flow and any remaining tuning notes.
+
+## Task 059
+Original task details:
+- Title: Persist the endpoint registry and heartbeat-derived endpoint profile
+- Goal:
+  - Turn the current live endpoint heartbeat into a durable endpoint registration record.
+  - Persist `endpoint_id`, `zone_id`, `display_name`, `firmware_version`, `last_seen`, connection metadata, and declared endpoint capabilities.
+- Implementation notes:
+  - Keep node-owned endpoint identity separate from Core node identity.
+  - Heartbeat should upsert runtime health without erasing operator-owned labels or zone assignment.
+  - Expose endpoint registry read/update APIs for the frontend.
+  - Add backend tests for first heartbeat registration, reconnect update, stale endpoint projection, and operator metadata updates.
+- Completion criteria:
+  - Endpoint records survive backend restart.
+  - Frontend can display and edit endpoint display name/zone.
+  - Existing voice-loop heartbeat and WebSocket behavior still works.
+
+## Task 060
+Original task details:
+- Title: Formalize connection, UX, and session state separation
+- Goal:
+  - Replace remaining implicit state coupling with explicit `connection_state`, `ux_state`, and `session_state` projections.
+  - Preserve the expressive backend session lifecycle: `wake_detected -> listening -> capturing -> transcribing -> routing -> responding -> completed`.
+- Implementation notes:
+  - Keep firmware display phases mapped from UX state, not raw backend session internals.
+  - Add state transition helpers so backend and frontend use the same vocabulary.
+  - Update `/api/voice/status` and endpoint dashboard rendering to present the three state families clearly.
+- Completion criteria:
+  - Backend tests cover state transitions for wake, capture, transcription, response, cancel, error, and reconnect.
+  - UI no longer needs to infer connection health from session state.
+
+## Task 061
+Original task details:
+- Title: Version and validate the endpoint event envelope
+- Goal:
+  - Make every backend-to-endpoint and endpoint-to-backend event use a documented versioned envelope.
+  - Include `event_type`, `event_id`, `session_id`, `endpoint_id`, `timestamp`, `schema_version`, and `payload`.
+- Implementation notes:
+  - Keep backward compatibility with the current firmware until the endpoint update is pushed.
+  - Add structured command acknowledgements and endpoint-side command errors.
+  - Reject malformed inbound events with operator-visible diagnostics instead of silent drops.
+- Completion criteria:
+  - Contract docs exist for event envelope and payload types.
+  - Backend tests validate accepted and rejected event shapes.
+  - Firmware logs unknown or malformed events with enough detail to debug.
+
+## Task 062
+Original task details:
+- Title: Complete endpoint command APIs and dashboard controls
+- Goal:
+  - Expand the current volume command into a complete endpoint command surface.
+- Scope:
+  - Volume set/get.
+  - Mute/unmute.
+  - Cancel active session.
+  - Replay last response.
+  - Optional restart/reconnect command if safe.
+- Implementation notes:
+  - Commands should include request id, timeout, acknowledgement, and terminal status.
+  - Frontend should show pending/succeeded/failed command state.
+  - Firmware should handle commands idempotently where possible.
+- Completion criteria:
+  - Operator can control volume/mute/cancel/replay from the dashboard.
+  - Firmware applies supported commands and reports unsupported commands explicitly.
+  - Backend and frontend tests cover command lifecycle.
+
+## Task 063
+Original task details:
+- Title: Add firmware persistent settings and capability reporting
+- Goal:
+  - Persist local endpoint settings in NVS and report real hardware/software capabilities to the backend.
+- Scope:
+  - Output volume.
+  - Mute state.
+  - Touchscreen availability.
+  - SD card availability.
+  - Display resolution/pixel format.
+  - Audio input/output capabilities.
+  - Firmware version/build metadata.
+- Implementation notes:
+  - Use conservative defaults when NVS has no saved value.
+  - Keep runtime state and persisted settings synchronized after backend commands or local touch UI changes.
+- Completion criteria:
+  - Volume and mute survive reboot.
+  - Backend receives current endpoint capabilities on heartbeat or registration.
+  - Frontend displays capabilities and firmware version.
+
+## Task 064
+Original task details:
+- Title: Build the first touchscreen interaction layer
+- Goal:
+  - Move from touch initialization to actual on-device controls.
+- Scope:
+  - Touch read loop or polling task.
+  - Coordinate calibration/normalization.
+  - Tap regions for volume up/down or a compact volume overlay.
+  - Mute toggle.
+  - Basic visual feedback for touch actions.
+- Implementation notes:
+  - Avoid blocking audio capture/playback tasks.
+  - Keep touch UI optional when touch init fails.
+  - Preserve current LCD status overlays.
+- Completion criteria:
+  - Touch input can change endpoint volume locally.
+  - Local volume changes update the backend-visible status.
+  - Firmware build passes and behavior is safe when the touch controller is unavailable.
+
+## Task 065
+Original task details:
+- Title: Load and display RGB565 pictures from the SPI SD card
+- Goal:
+  - Use the new SPI SD mount and RGB565 conversion tool to display card-backed images.
+- Scope:
+  - Define file naming and manifest convention under `/sdcard/hexe/pictures`.
+  - Read full-screen `320x240` raw RGB565 files.
+  - Validate file size before display.
+  - Add fallback behavior if a file is missing, unreadable, or wrong size.
+- Implementation notes:
+  - Keep the built-in firmware assets as the safe fallback.
+  - Do not block the main UI loop on slow SD reads.
+  - Use the new converter output as the canonical SD image format.
+- Completion criteria:
+  - A converted `.rgb565` file copied to the SD card can be displayed on the endpoint.
+  - Bad or missing files are logged and do not crash the firmware.
+
+## Task 066
+Original task details:
+- Title: Load and play sound assets from the SPI SD card
+- Goal:
+  - Add card-backed local sounds for cues and future UI audio.
+- Scope:
+  - Define `/sdcard/hexe/sounds` file format expectations.
+  - Support at least WAV PCM files matching the current speaker output path.
+  - Add validation for sample rate, channels, bit depth, and size.
+- Implementation notes:
+  - Preserve existing built-in/local cue behavior as fallback.
+  - Avoid concurrent playback conflicts with TTS.
+- Completion criteria:
+  - Firmware can play a valid cue WAV from SD.
+  - Invalid files are rejected with clear logs.
+  - TTS playback remains stable.
+
+## Task 067
+Original task details:
+- Title: Persist voice session history and replay metadata
+- Goal:
+  - Make recent sessions inspectable and replayable beyond the current in-memory latest-status view.
+- Scope:
+  - Persist session id, endpoint id, timestamps, lifecycle timings, transcript metadata, assistant metadata, TTS stream metadata, error state, and replay eligibility.
+  - Add read APIs for recent sessions and session detail.
+  - Add dashboard history view or panel.
+- Implementation notes:
+  - Avoid persisting raw microphone audio unless a separate debug setting is explicitly enabled.
+  - TTS replay can reference cached generated audio when available.
+- Completion criteria:
+  - Recent voice turns survive backend restart.
+  - Dashboard can show recent turns and replay the last eligible response.
+
+## Task 068
+Original task details:
+- Title: Integrate AI Node assistant routing as the primary assistant path
+- Goal:
+  - Move Phase 2 from local echo fallback to real AI Node routing through the node contract.
+- Scope:
+  - Finalize request/response payload with AI Node.
+  - Send endpoint/session context and rolling conversation context.
+  - Surface AI Node latency, model/provider metadata, and structured errors.
+  - Keep local echo fallback for smoke tests and degraded mode.
+- Completion criteria:
+  - A real assistant turn can route through AI Node when configured.
+  - Failures degrade predictably and remain visible in logs/UI.
+  - Tests cover success, timeout, and fallback.
+
+## Task 069
+Original task details:
+- Title: Validate real-device audio providers end to end
+- Goal:
+  - Complete Phase 2 provider validation on the ESP-BOX endpoint with real microphone and speaker behavior.
+- Scope:
+  - openWakeWord tuning against ESP microphone audio.
+  - faster-whisper local STT latency and accuracy pass.
+  - Piper TTS latency and audio quality pass.
+  - Speaker/microphone contention regression checks.
+- Completion criteria:
+  - Documented real-device validation results.
+  - Tuned default thresholds/config values are committed.
+  - Known limitations are captured with follow-up tasks.
+
+## Task 070
+Original task details:
+- Title: Update Phase 2 operator docs and release checklist
+- Goal:
+  - Make Phase 2 reproducible by someone other than the current developer session.
+- Scope:
+  - Endpoint wiring and SPI SD setup.
+  - Image and sound asset conversion workflow.
+  - Firmware build and OTA push.
+  - Backend provider configuration.
+  - Dashboard endpoint controls.
+  - Troubleshooting for wake/STT/TTS/SD/touch.
+- Completion criteria:
+  - Docs describe the current Phase 2 setup from blank machine/card to working endpoint.
+  - Release checklist includes backend tests, frontend build, firmware build, OTA push, and real-device smoke test.
