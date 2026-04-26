@@ -48,7 +48,6 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 050: Implement faster-whisper STT backend adapter for captured voice turns
 [TODO] Task 051: Keep deterministic STT fallback and add focused STT provider tests
 [TODO] Task 052: Expose local STT transcript latency, provider metadata, and errors in status/logs
 [TODO] Task 053: Validate wake-to-local-transcript flow end to end on the ESP-BOX endpoint

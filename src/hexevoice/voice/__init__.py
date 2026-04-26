@@ -24,6 +24,7 @@ from hexevoice.voice.session_manager import VoiceSessionManager
 from hexevoice.voice.pipeline import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
+    FasterWhisperSpeechToTextAdapter,
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
     SpeechToTextAdapter,
@@ -65,6 +66,7 @@ __all__ = [
     "VoiceSessionManager",
     "DeterministicSpeechToTextAdapter",
     "DeterministicTextToSpeechAdapter",
+    "FasterWhisperSpeechToTextAdapter",
     "OpenAiSpeechToTextAdapter",
     "OpenAiTextToSpeechAdapter",
     "SpeechToTextAdapter",

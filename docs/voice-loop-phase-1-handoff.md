@@ -56,6 +56,8 @@ For Phase 2 local faster-whisper STT, configure:
 - `VOICE_STT_FASTER_WHISPER_DEVICE=cpu`
 - `VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE=int8`
 
+The faster-whisper provider writes each completed captured turn to a transient WAV file under `runtime/stt/faster-whisper`, runs the local faster-whisper model, returns the merged segment text, and removes the temporary audio file after the transcription attempt.
+
 For wake model setup:
 
 - `VOICE_WAKE_THRESHOLD=0.5`

@@ -1,4 +1,6 @@
 import io
+from pathlib import Path
+from types import SimpleNamespace
 import wave
 
 import httpx
@@ -9,6 +11,7 @@ from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.voice import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
+    FasterWhisperSpeechToTextAdapter,
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
     VoiceTurnAudioSummary,
@@ -108,6 +111,68 @@ def test_build_voice_turn_pipeline_uses_openai_stt_when_configured(tmp_path):
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._stt_adapter, OpenAiSpeechToTextAdapter)
+
+
+def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path):
+    captured = {}
+
+    class FakeModel:
+        def __init__(self, model_name, *, device, compute_type):
+            captured["model_name"] = model_name
+            captured["device"] = device
+            captured["compute_type"] = compute_type
+
+        def transcribe(self, path):
+            captured["path"] = path
+            with wave.open(path, "rb") as wav_file:
+                captured["sample_rate_hz"] = wav_file.getframerate()
+                captured["channels"] = wav_file.getnchannels()
+                captured["frames"] = wav_file.getnframes()
+            return [SimpleNamespace(text=" what "), SimpleNamespace(text=" time ")], object()
+
+    adapter = FasterWhisperSpeechToTextAdapter(
+        model_name="base.en",
+        device="cpu",
+        compute_type="int8",
+        temp_dir=tmp_path,
+        model_factory=FakeModel,
+    )
+
+    transcript = adapter.transcribe(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 320,
+        )
+    )
+
+    assert transcript.text == "what time"
+    assert transcript.provider_id == "faster_whisper"
+    assert captured["model_name"] == "base.en"
+    assert captured["device"] == "cpu"
+    assert captured["compute_type"] == "int8"
+    assert captured["sample_rate_hz"] == 16000
+    assert captured["channels"] == 1
+    assert captured["frames"] == 320
+    assert not Path(captured["path"]).exists()
+
+
+def test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_stt_provider="faster_whisper",
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    assert isinstance(pipeline._stt_adapter, FasterWhisperSpeechToTextAdapter)
 
 
 def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):

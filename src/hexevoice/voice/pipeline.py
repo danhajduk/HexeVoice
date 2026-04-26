@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import io
+import importlib.util
+import logging
 from pathlib import Path
+import tempfile
 from typing import TYPE_CHECKING
+from typing import Any
+from typing import Callable
 from typing import Protocol
 import wave
 from uuid import uuid4
@@ -15,6 +20,9 @@ from hexevoice.assistant import AssistantTurnService
 
 if TYPE_CHECKING:
     from hexevoice.config.settings import Settings
+
+
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -144,18 +152,102 @@ class OpenAiSpeechToTextAdapter:
         }
 
     def _audio_file(self, audio: VoiceTurnAudioSummary) -> bytes:
-        if audio.encoding == "wav":
-            return audio.audio_bytes or b""
-        if audio.encoding != "pcm_s16le":
-            return audio.audio_bytes or b""
+        return audio_file_bytes(audio)
 
-        buffer = io.BytesIO()
-        with wave.open(buffer, "wb") as wav_file:
-            wav_file.setnchannels(audio.channels)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(audio.sample_rate_hz or 16000)
-            wav_file.writeframes(audio.audio_bytes or b"")
-        return buffer.getvalue()
+
+class FasterWhisperSpeechToTextAdapter:
+    def __init__(
+        self,
+        *,
+        model_name: str = "small.en",
+        device: str = "cpu",
+        compute_type: str = "int8",
+        temp_dir: Path,
+        model_factory: Callable[..., Any] | None = None,
+    ) -> None:
+        self._model_name = model_name
+        self._device = device
+        self._compute_type = compute_type
+        self._temp_dir = temp_dir
+        self._model_factory = model_factory
+        self._model: Any | None = None
+        self._last_error: str | None = None
+
+    def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
+        if not audio.audio_bytes:
+            self._last_error = "empty_audio"
+            return SpeechTranscript(text="", confidence=0.0, provider_id="faster_whisper", error="empty_audio")
+
+        temp_path: Path | None = None
+        try:
+            model = self._load_model()
+            self._temp_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                suffix=".wav",
+                prefix=f"{audio.endpoint_id}-{audio.session_id}-",
+                dir=self._temp_dir,
+                delete=False,
+            ) as temp_file:
+                temp_file.write(audio_file_bytes(audio))
+                temp_path = Path(temp_file.name)
+
+            segments, _info = model.transcribe(str(temp_path))
+            text = " ".join(str(getattr(segment, "text", "")).strip() for segment in segments).strip()
+            self._last_error = None
+            log.info(
+                "Local STT completed: provider=faster_whisper endpoint_id=%s session_id=%s model=%s text_chars=%s",
+                audio.endpoint_id,
+                audio.session_id,
+                self._model_name,
+                len(text),
+            )
+            return SpeechTranscript(text=text, provider_id="faster_whisper")
+        except Exception as exc:
+            self._last_error = str(exc)
+            log.error(
+                "Local STT failed: provider=faster_whisper endpoint_id=%s session_id=%s model=%s error=%s",
+                audio.endpoint_id,
+                audio.session_id,
+                self._model_name,
+                self._last_error,
+            )
+            return SpeechTranscript(text="", confidence=0.0, provider_id="faster_whisper", error=self._last_error)
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    log.debug("Failed to remove temporary STT audio file: path=%s", temp_path)
+
+    def status(self) -> dict:
+        return {
+            "provider": "faster_whisper",
+            "healthy": self._last_error is None,
+            "configured": self._model_factory is not None or importlib.util.find_spec("faster_whisper") is not None,
+            "model": self._model_name,
+            "device": self._device,
+            "compute_type": self._compute_type,
+            "temp_dir": str(self._temp_dir),
+            "loaded": self._model is not None,
+            "last_error": self._last_error,
+        }
+
+    def _load_model(self):
+        if self._model is not None:
+            return self._model
+
+        try:
+            factory = self._model_factory
+            if factory is None:
+                from faster_whisper import WhisperModel
+
+                factory = WhisperModel
+            self._model = factory(self._model_name, device=self._device, compute_type=self._compute_type)
+            return self._model
+        except ModuleNotFoundError as exc:
+            if exc.name == "faster_whisper":
+                raise RuntimeError("missing_dependency:faster-whisper") from exc
+            raise
 
 
 class DeterministicTextToSpeechAdapter:
@@ -257,6 +349,21 @@ class OpenAiTextToSpeechAdapter:
         }
 
 
+def audio_file_bytes(audio: VoiceTurnAudioSummary) -> bytes:
+    if audio.encoding == "wav":
+        return audio.audio_bytes or b""
+    if audio.encoding != "pcm_s16le":
+        return audio.audio_bytes or b""
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(audio.channels)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(audio.sample_rate_hz or 16000)
+        wav_file.writeframes(audio.audio_bytes or b"")
+    return buffer.getvalue()
+
+
 class VoiceTurnPipeline:
     def __init__(
         self,
@@ -302,6 +409,13 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             base_url=settings.voice_stt_base_url,
             prompt=settings.voice_stt_prompt,
             timeout_s=settings.voice_stt_timeout_s,
+        )
+    elif settings.voice_stt_provider == "faster_whisper":
+        stt_adapter = FasterWhisperSpeechToTextAdapter(
+            model_name=settings.voice_stt_faster_whisper_model,
+            device=settings.voice_stt_faster_whisper_device,
+            compute_type=settings.voice_stt_faster_whisper_compute_type,
+            temp_dir=settings.resolved_faster_whisper_temp_dir(),
         )
     if settings.voice_tts_provider == "openai":
         tts_adapter = OpenAiTextToSpeechAdapter(
