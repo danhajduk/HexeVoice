@@ -2,11 +2,19 @@ set(HEXE_ENDPOINT_CONFIG "${CMAKE_CURRENT_LIST_DIR}/../config/endpoint.yaml")
 if(NOT EXISTS "${HEXE_ENDPOINT_CONFIG}")
   set(HEXE_ENDPOINT_CONFIG "${CMAKE_CURRENT_LIST_DIR}/../config/endpoint.example.yaml")
 endif()
+set(HEXE_ENDPOINT_CONFIG_GENERATOR "${CMAKE_CURRENT_LIST_DIR}/../tools/generate_endpoint_config.py")
+set_property(
+  DIRECTORY
+  APPEND
+  PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${HEXE_ENDPOINT_CONFIG}"
+    "${HEXE_ENDPOINT_CONFIG_GENERATOR}"
+)
 
 set(HEXE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 execute_process(
   COMMAND python3
-    "${CMAKE_CURRENT_LIST_DIR}/../tools/generate_endpoint_config.py"
+    "${HEXE_ENDPOINT_CONFIG_GENERATOR}"
     --input "${HEXE_ENDPOINT_CONFIG}"
     --output "${HEXE_GENERATED_DIR}/endpoint_config.h"
   RESULT_VARIABLE HEXE_ENDPOINT_CONFIG_RESULT

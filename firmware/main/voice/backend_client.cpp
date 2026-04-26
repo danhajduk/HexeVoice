@@ -270,7 +270,7 @@ const char *scheme_ws() {
 
 const char *firmware_version() {
   const esp_app_desc_t *app = esp_app_get_description();
-  return app == nullptr ? hexe::config::kEndpointFirmwareVersion : app->version;
+  return app == nullptr ? "unknown" : app->version;
 }
 
 const char *device_state() {

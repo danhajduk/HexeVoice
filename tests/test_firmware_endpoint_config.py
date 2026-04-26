@@ -21,6 +21,7 @@ def test_endpoint_config_generator_uses_yaml_contract(tmp_path):
 
     header = output.read_text(encoding="utf-8")
     assert 'constexpr const char *kEndpointId = "esp-box-1";' in header
+    assert "kEndpointFirmwareVersion" not in header
     assert 'constexpr const char *kEndpointBackendHost = "10.0.0.22";' in header
     assert 'constexpr const char *kEndpointHeartbeatPath = "/api/endpoint/heartbeat";' in header
     assert 'constexpr const char *kEndpointVoiceWsPath = "/api/voice/ws";' in header

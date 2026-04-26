@@ -58,6 +58,8 @@ cp firmware/config/endpoint.example.yaml firmware/config/endpoint.yaml
 
 The local `endpoint.yaml` is gitignored because it contains machine-specific host and port choices.
 
+Firmware version is intentionally not part of endpoint YAML. The firmware reports the ESP-IDF app/project version embedded in the build.
+
 Current expected HexeVoice node backend values:
 
 - `endpoint.id`: endpoint id sent in heartbeat and voice envelopes.

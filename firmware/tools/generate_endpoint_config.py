@@ -70,7 +70,6 @@ def string_literal(value: object) -> str:
 
 def render_header(data: dict[str, dict[str, object]]) -> str:
     endpoint_id = required(data, "endpoint", "id")
-    firmware_version = required(data, "endpoint", "firmware_version")
     host = required(data, "node", "host")
     http_port = required(data, "node", "http_port")
     ws_port = required(data, "node", "ws_port")
@@ -96,7 +95,6 @@ def render_header(data: dict[str, dict[str, object]]) -> str:
 namespace hexe::config {{
 
 constexpr const char *kEndpointId = {string_literal(endpoint_id)};
-constexpr const char *kEndpointFirmwareVersion = {string_literal(firmware_version)};
 constexpr const char *kEndpointBackendHost = {string_literal(host)};
 constexpr int kEndpointHttpPort = {int(http_port)};
 constexpr int kEndpointWsPort = {int(ws_port)};

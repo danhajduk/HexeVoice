@@ -36,6 +36,8 @@ Then edit `firmware/config/endpoint.yaml` so `node.host`, `node.http_port`, and 
 
 During the ESP-IDF build, `main/CMakeLists.txt` runs `tools/generate_endpoint_config.py` and generates `endpoint_config.h` from `config/endpoint.yaml` when present, otherwise from `config/endpoint.example.yaml`. Firmware source consumes that generated header instead of hardcoding a node IP address.
 
+The runtime firmware version is not read from endpoint YAML. Heartbeats, voice session starts, and firmware capabilities report the ESP-IDF app/project version embedded in the build.
+
 ## SPI microSD Media Storage
 
 On boot, firmware now tries to mount a FAT-formatted SPI microSD reader at `/sdcard`. Boot continues normally if no card is present. Wire the dock reader as:

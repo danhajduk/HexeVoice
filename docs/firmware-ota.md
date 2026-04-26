@@ -228,7 +228,7 @@ The firmware track should later gain:
 When we are ready to implement OTA in code, the first step should be:
 
 1. add an OTA partition table
-2. add a firmware version constant
+2. report the ESP-IDF app/project version embedded in the build
 3. implement manual OTA from a fixed HTTPS URL
 4. only after that add manifest-driven update checks
 
