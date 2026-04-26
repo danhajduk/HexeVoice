@@ -1,4 +1,3 @@
-[TODO] Task 062: Complete endpoint command APIs and dashboard controls
 [TODO] Task 063: Add firmware persistent settings and capability reporting
 [TODO] Task 064: Build the first touchscreen interaction layer
 [TODO] Task 065: Load and display RGB565 pictures from the SPI SD card

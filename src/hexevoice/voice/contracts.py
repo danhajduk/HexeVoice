@@ -58,6 +58,9 @@ VoiceEventType = Literal[
     "session.error",
     "ota.update",
     "endpoint.volume",
+    "endpoint.mute",
+    "endpoint.cancel",
+    "endpoint.replay",
     "command.ack",
     "command.error",
 ]
@@ -96,6 +99,9 @@ BACKEND_TO_ENDPOINT_EVENTS: frozenset[str] = frozenset(
         "session.error",
         "ota.update",
         "endpoint.volume",
+        "endpoint.mute",
+        "endpoint.cancel",
+        "endpoint.replay",
     }
 )
 

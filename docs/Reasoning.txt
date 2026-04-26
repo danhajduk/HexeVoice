@@ -172,6 +172,12 @@ Chosen fix: Add `event_id` and `schema_version` defaults to `VoiceEventEnvelope`
 What changed: Added command acknowledgement/error payload models, event diagnostics in `/api/voice/status`, command ack/error handlers, backend command request ids, firmware warnings for malformed or unknown backend events, envelope contract docs, JSON schema/examples, and tests for accepted/rejected shapes and documented JSON artifacts.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_contracts.py tests/test_voice_websocket.py tests/test_voice_loop_integration.py tests/test_api.py` (56 passed); `PYTHONPATH=src .venv/bin/pytest -q` (118 passed); `cd frontend && npm run build` (passed); JSON validation for 5 files under `docs/voice-event-envelope/` passed; `cd firmware && idf.py build` blocked because `idf.py` is not installed.
 ###########
+Task #062
+Step objective: Complete endpoint command APIs and dashboard controls.
+Chosen fix: Reuse the versioned voice envelope for backend-issued endpoint commands, track command request ids and terminal lifecycle state in the session manager, expose focused API models/routes, and wire the existing dashboard controls to those APIs.
+What changed: Added volume status, mute/unmute, cancel, and replay endpoint APIs; added command tracking with pending/succeeded/failed/timed_out/unsupported status; updated firmware command handling and explicit unsupported-command errors; wired dashboard controls and recent command status display; removed the standalone Phase n markdown files and made `docs/voice-node-roadmap.md` the current roadmap source.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py tests/test_voice_websocket.py tests/test_voice_contracts.py tests/test_voice_loop_integration.py` (58 passed); `PYTHONPATH=src .venv/bin/pytest -q` (120 passed); `cd frontend && npm run build` (passed); `cd firmware && idf.py build` blocked because `idf.py` is not installed.
+###########
 #############
-All Tasks completed 04/26/2026 05:49:29
+All Tasks completed 04/26/2026 06:02:38
 #############

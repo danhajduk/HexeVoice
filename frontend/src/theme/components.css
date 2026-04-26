@@ -620,6 +620,27 @@
   accent-color: var(--accent);
 }
 
+.command-status-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--sx-border));
+}
+
+.command-status-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  color: hsl(var(--sx-text));
+  font-size: 14px;
+}
+
+.command-status-row > span:first-child {
+  overflow-wrap: anywhere;
+}
+
 .endpoint-metadata-form {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.7fr) auto;

@@ -28,11 +28,15 @@ from hexevoice.api.models import (
     NodeIdentitySetupResponse,
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
+    EndpointCommandRequest,
+    EndpointCommandResponse,
     EndpointMetadataUpdateRequest,
+    EndpointMuteCommandRequest,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
     EndpointVolumeCommandRequest,
     EndpointVolumeCommandResponse,
+    EndpointVolumeStatusResponse,
     FirmwareOtaPushRequest,
     FirmwareOtaPushResponse,
     OnboardingSessionPollResponse,
@@ -218,6 +222,53 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             volume_percent=payload.volume_percent,
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.get("/api/endpoint/volume/{endpoint_id}", response_model=EndpointVolumeStatusResponse)
+    async def endpoint_volume_status(endpoint_id: str) -> EndpointVolumeStatusResponse:
+        result = voice_session_manager.volume_status(endpoint_id)
+        return EndpointVolumeStatusResponse(
+            endpoint_id=endpoint_id,
+            volume_percent=result.get("volume_percent"),
+            latest_command=result.get("latest_command"),
+        )
+
+    @app.post("/api/endpoint/mute", response_model=EndpointCommandResponse)
+    async def endpoint_mute(payload: EndpointMuteCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_mute_command(endpoint_id=payload.endpoint_id, muted=payload.muted)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.mute",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/session/cancel", response_model=EndpointCommandResponse)
+    async def endpoint_session_cancel(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_cancel_command(endpoint_id=payload.endpoint_id)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.cancel",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/replay", response_model=EndpointCommandResponse)
+    async def endpoint_replay(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_replay_command(endpoint_id=payload.endpoint_id)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.replay",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
             reason=result.get("reason"),
         )
 

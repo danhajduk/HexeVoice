@@ -267,6 +267,10 @@ std::string base64_audio(const int16_t *samples, size_t sample_count) {
   return encoded;
 }
 
+const char *payload_request_id(cJSON *payload);
+void send_command_ack(const char *request_id, const char *command_type, const char *status, const char *message);
+void send_command_error(const char *request_id, const char *command_type, const char *code, const char *message);
+
 void handle_backend_event_json(const std::string &message) {
   cJSON *root = cJSON_ParseWithLength(message.c_str(), message.size());
   if (root == nullptr) {
@@ -351,11 +355,47 @@ void handle_backend_event_json(const std::string &message) {
       app_state.phase = hexe::AppPhase::kUpdating;
     }
   } else if (std::strcmp(type, "endpoint.volume") == 0) {
+    const char *request_id = payload_request_id(payload);
     cJSON *volume_percent = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "volume_percent") : nullptr;
     if (cJSON_IsNumber(volume_percent)) {
       hexe::voice::set_output_volume(volume_percent->valueint);
+      send_command_ack(request_id, "endpoint.volume.set", "succeeded", "Volume updated");
     } else {
       ESP_LOGW(kTag, "Ignoring volume command without numeric volume_percent");
+      send_command_error(request_id, "endpoint.volume.set", "invalid_payload", "volume_percent must be numeric");
+    }
+  } else if (std::strcmp(type, "endpoint.mute") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *muted = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "muted") : nullptr;
+    if (cJSON_IsBool(muted)) {
+      app_state.muted = cJSON_IsTrue(muted);
+      if (app_state.muted) {
+        hexe::voice::stop_tts_playback();
+        hexe::voice::cancel_active_session("backend_mute_command");
+      }
+      app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
+      send_command_ack(request_id, "endpoint.mute", "succeeded", app_state.muted ? "Muted" : "Unmuted");
+    } else {
+      send_command_error(request_id, "endpoint.mute", "invalid_payload", "muted must be boolean");
+    }
+  } else if (std::strcmp(type, "endpoint.cancel") == 0) {
+    const char *request_id = payload_request_id(payload);
+    hexe::voice::cancel_active_session("backend_cancel_command");
+    app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
+    send_command_ack(request_id, "endpoint.cancel", "succeeded", "Active session cancelled");
+  } else if (std::strcmp(type, "endpoint.replay") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *stream_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stream_id") : nullptr;
+    cJSON *content_type = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "content_type") : nullptr;
+    cJSON *audio_url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "audio_url") : nullptr;
+    if (cJSON_IsString(stream_id) || cJSON_IsString(audio_url)) {
+      hexe::voice::handle_tts_ready(
+          cJSON_IsString(stream_id) ? stream_id->valuestring : nullptr,
+          cJSON_IsString(content_type) ? content_type->valuestring : nullptr,
+          cJSON_IsString(audio_url) ? audio_url->valuestring : nullptr);
+      send_command_ack(request_id, "endpoint.replay", "succeeded", "Replay queued");
+    } else {
+      send_command_error(request_id, "endpoint.replay", "invalid_payload", "Replay requires stream_id or audio_url");
     }
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     g_session_started = false;
@@ -382,6 +422,9 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else {
     ESP_LOGW(kTag, "Unhandled backend event type (event_id=%s, schema=%s, type=%s)", id, schema, type);
+    if (std::strncmp(type, "endpoint.", 9) == 0) {
+      send_command_error(payload_request_id(payload), type, "unsupported_command", "Endpoint command is not supported");
+    }
   }
 
   cJSON_Delete(root);
@@ -463,6 +506,53 @@ bool send_ws_text(const std::string &message) {
     return false;
   }
   return true;
+}
+
+const char *payload_request_id(cJSON *payload) {
+  cJSON *request_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "request_id") : nullptr;
+  return cJSON_IsString(request_id) ? request_id->valuestring : "";
+}
+
+void send_command_ack(const char *request_id, const char *command_type, const char *status, const char *message) {
+  if (request_id == nullptr || request_id[0] == '\0') {
+    return;
+  }
+  char buffer[384];
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "{\"event_type\":\"command.ack\",\"event_id\":\"evt_%s_ack\",\"schema_version\":\"hexevoice.voice.event.v1\","
+      "\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\",\"session_id\":%s,\"payload\":{"
+      "\"request_id\":\"%s\",\"command_type\":\"%s\",\"status\":\"%s\",\"message\":\"%s\"}}",
+      request_id,
+      hexe::config::kEndpointId,
+      g_session_started ? "\"active\"" : "null",
+      request_id,
+      command_type == nullptr ? "unknown" : command_type,
+      status == nullptr ? "succeeded" : status,
+      message == nullptr ? "" : message);
+  send_ws_text(buffer);
+}
+
+void send_command_error(const char *request_id, const char *command_type, const char *code, const char *message) {
+  if (request_id == nullptr || request_id[0] == '\0') {
+    return;
+  }
+  char buffer[384];
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "{\"event_type\":\"command.error\",\"event_id\":\"evt_%s_error\",\"schema_version\":\"hexevoice.voice.event.v1\","
+      "\"endpoint_id\":\"%s\",\"direction\":\"endpoint_to_backend\",\"session_id\":%s,\"payload\":{"
+      "\"request_id\":\"%s\",\"command_type\":\"%s\",\"code\":\"%s\",\"message\":\"%s\",\"recoverable\":true}}",
+      request_id,
+      hexe::config::kEndpointId,
+      g_session_started ? "\"active\"" : "null",
+      request_id,
+      command_type == nullptr ? "unknown" : command_type,
+      code == nullptr ? "command_failed" : code,
+      message == nullptr ? "Command failed" : message);
+  send_ws_text(buffer);
 }
 
 void ensure_session_started() {

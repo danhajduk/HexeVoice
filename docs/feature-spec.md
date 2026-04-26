@@ -4,7 +4,7 @@
 
 HexeVoice is a voice-runtime node for Hexe.
 
-This document describes the intended product/runtime behavior. For the implemented baseline, use `docs/voice-node-phase-0-baseline.md` and `docs/firmware-baseline.md`.
+This document describes the intended product/runtime behavior. For the implemented Voice Node baseline, use `docs/voice-node-roadmap.md` and `docs/firmware-baseline.md`.
 
 It is responsible for:
 

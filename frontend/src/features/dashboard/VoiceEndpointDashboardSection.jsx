@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
-import { cancelVoiceSession, setEndpointVolume, testAssistantTurn, updateEndpointMetadata } from "../../api/client";
+import {
+  cancelEndpointSession,
+  getEndpointVolume,
+  muteEndpoint,
+  replayEndpointResponse,
+  setEndpointVolume,
+  testAssistantTurn,
+  updateEndpointMetadata,
+} from "../../api/client";
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
 
 const LATEST_SPEECH_VISIBLE_MS = 20000;
@@ -285,7 +293,30 @@ export function VoiceEndpointDashboardSection({
 }) {
   const [actionMessage, setActionMessage] = useState("");
   const [volumePercent, setVolumePercent] = useState(70);
+  const [muted, setMuted] = useState(false);
   const projection = voiceStateProjection(voiceStatus);
+  const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
+
+  useEffect(() => {
+    if (!endpointId) {
+      return undefined;
+    }
+
+    let active = true;
+    getEndpointVolume(endpointId)
+      .then((result) => {
+        if (active && typeof result.volume_percent === "number") {
+          setVolumePercent(result.volume_percent);
+        }
+      })
+      .catch(() => {
+        // Dashboard refresh still works if the endpoint has not reported volume yet.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [endpointId]);
 
   async function handleTestTurn() {
     try {
@@ -300,8 +331,12 @@ export function VoiceEndpointDashboardSection({
 
   async function handleStopSession() {
     try {
-      const result = await cancelVoiceSession();
-      setActionMessage(result.accepted ? "Stop sent to active voice session." : `Stop skipped: ${result.reason}`);
+      if (!endpointId) {
+        setActionMessage("Stop skipped: endpoint is not connected.");
+        return;
+      }
+      const result = await cancelEndpointSession(endpointId);
+      setActionMessage(result.accepted ? `Stop sent (${result.status}, ${result.request_id}).` : `Stop skipped: ${result.reason}`);
       await onRefresh();
     } catch (err) {
       setActionMessage(String(err.message || err));
@@ -310,13 +345,52 @@ export function VoiceEndpointDashboardSection({
 
   async function handleSetVolume() {
     try {
-      const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id;
       if (!endpointId) {
         setActionMessage("Volume skipped: endpoint is not connected.");
         return;
       }
       const result = await setEndpointVolume(endpointId, Number(volumePercent));
-      setActionMessage(result.accepted ? `Volume set to ${result.volume_percent}%.` : `Volume skipped: ${result.reason}`);
+      setActionMessage(
+        result.accepted
+          ? `Volume ${result.volume_percent}% sent (${result.status}, ${result.request_id}).`
+          : `Volume skipped: ${result.reason}`,
+      );
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
+  async function handleMuteEndpoint() {
+    try {
+      if (!endpointId) {
+        setActionMessage("Mute skipped: endpoint is not connected.");
+        return;
+      }
+      const nextMuted = !muted;
+      const result = await muteEndpoint(endpointId, nextMuted);
+      if (result.accepted) {
+        setMuted(nextMuted);
+      }
+      setActionMessage(
+        result.accepted
+          ? `${nextMuted ? "Mute" : "Unmute"} sent (${result.status}, ${result.request_id}).`
+          : `Mute skipped: ${result.reason}`,
+      );
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
+  async function handleReplayResponse() {
+    try {
+      if (!endpointId) {
+        setActionMessage("Replay skipped: endpoint is not connected.");
+        return;
+      }
+      const result = await replayEndpointResponse(endpointId);
+      setActionMessage(result.accepted ? `Replay sent (${result.status}, ${result.request_id}).` : `Replay skipped: ${result.reason}`);
       await onRefresh();
     } catch (err) {
       setActionMessage(String(err.message || err));
@@ -332,9 +406,12 @@ export function VoiceEndpointDashboardSection({
           onRefresh={onRefresh}
           onTestTurn={handleTestTurn}
           onStopSession={handleStopSession}
+          onReplayResponse={handleReplayResponse}
+          onMuteEndpoint={handleMuteEndpoint}
           onSetVolume={handleSetVolume}
           volumePercent={volumePercent}
           onVolumeChange={setVolumePercent}
+          muted={muted}
           actionMessage={actionMessage}
         />
       </div>

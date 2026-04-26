@@ -166,11 +166,40 @@ export async function cancelVoiceSession() {
   return sendJson("/api/voice/session/cancel");
 }
 
+export async function getEndpointVolume(endpointId) {
+  return fetchJson(`/api/endpoint/volume/${encodeURIComponent(endpointId)}`);
+}
+
 export async function setEndpointVolume(endpointId, volumePercent) {
   return sendJson("/api/endpoint/volume", {
     body: {
       endpoint_id: endpointId,
       volume_percent: volumePercent,
+    },
+  });
+}
+
+export async function muteEndpoint(endpointId, muted) {
+  return sendJson("/api/endpoint/mute", {
+    body: {
+      endpoint_id: endpointId,
+      muted,
+    },
+  });
+}
+
+export async function cancelEndpointSession(endpointId) {
+  return sendJson("/api/endpoint/session/cancel", {
+    body: {
+      endpoint_id: endpointId,
+    },
+  });
+}
+
+export async function replayEndpointResponse(endpointId) {
+  return sendJson("/api/endpoint/replay", {
+    body: {
+      endpoint_id: endpointId,
     },
   });
 }

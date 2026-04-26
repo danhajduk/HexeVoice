@@ -7,6 +7,7 @@ from hexevoice.main import create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.voice import DeterministicWakeDetector
 
 
 def test_status_endpoint(tmp_path):
@@ -177,11 +178,14 @@ def test_endpoint_volume_command_sends_event_to_connected_endpoint(tmp_path):
         "accepted": True,
         "endpoint_id": "esp-box-1",
         "volume_percent": 42,
+        "request_id": response.json()["request_id"],
+        "status": "pending",
         "reason": None,
     }
     assert event["event_type"] == "endpoint.volume"
     assert event["endpoint_id"] == "esp-box-1"
     assert event["direction"] == "backend_to_endpoint"
+    assert event["payload"]["request_id"] == response.json()["request_id"]
     assert event["payload"]["volume_percent"] == 42
 
 
@@ -194,6 +198,124 @@ def test_endpoint_volume_command_requires_valid_percent(tmp_path):
     )
 
     assert response.status_code == 422
+
+
+def test_endpoint_volume_status_reports_latest_command(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        response = client.post(
+            "/api/endpoint/volume",
+            json={"endpoint_id": "esp-box-1", "volume_percent": 42},
+        )
+        volume_event = websocket.receive_json()
+        websocket.send_json(
+            {
+                "event_type": "command.ack",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {
+                    "request_id": volume_event["payload"]["request_id"],
+                    "command_type": "endpoint.volume.set",
+                    "status": "succeeded",
+                },
+            }
+        )
+        websocket.receive_json()
+        status = client.get("/api/endpoint/volume/esp-box-1")
+
+    assert status.status_code == 200
+    assert status.json()["volume_percent"] == 42
+    assert status.json()["latest_command"]["request_id"] == response.json()["request_id"]
+    assert status.json()["latest_command"]["status"] == "succeeded"
+    assert status.json()["latest_command"]["terminal"] is True
+
+
+def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(onboarding_state_path=tmp_path / "state.json"),
+            voice_wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        websocket.send_json(
+            {
+                "event_type": "audio.chunk",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}},
+            }
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(
+            {
+                "event_type": "audio.end",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {},
+            }
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.receive_json()
+
+        mute_response = client.post("/api/endpoint/mute", json={"endpoint_id": "esp-box-1", "muted": True})
+        mute_event = websocket.receive_json()
+        replay_response = client.post("/api/endpoint/replay", json={"endpoint_id": "esp-box-1"})
+        replay_event = websocket.receive_json()
+
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-2",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        cancel_response = client.post("/api/endpoint/session/cancel", json={"endpoint_id": "esp-box-1"})
+        cancel_event = websocket.receive_json()
+
+    assert mute_response.status_code == 200
+    assert mute_response.json()["status"] == "pending"
+    assert mute_event["event_type"] == "endpoint.mute"
+    assert mute_event["payload"]["muted"] is True
+    assert mute_event["payload"]["request_id"] == mute_response.json()["request_id"]
+    assert replay_response.status_code == 200
+    assert replay_event["event_type"] == "endpoint.replay"
+    assert replay_event["payload"]["request_id"] == replay_response.json()["request_id"]
+    assert replay_event["payload"]["stream_id"].startswith("tts-")
+    assert cancel_response.status_code == 200
+    assert cancel_event["event_type"] == "endpoint.cancel"
+    assert cancel_event["payload"]["request_id"] == cancel_response.json()["request_id"]
 
 
 def test_assistant_turn_echoes_transcript_without_ai(tmp_path):

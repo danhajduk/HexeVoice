@@ -3,12 +3,27 @@ export function VoiceEndpointActionsCard({
   onRefresh,
   onTestTurn,
   onStopSession,
+  onReplayResponse,
+  onMuteEndpoint,
   onSetVolume,
   volumePercent,
   onVolumeChange,
+  muted,
   actionMessage,
 }) {
   const actions = voiceStatus?.supported_actions || {};
+  const commands = Array.isArray(voiceStatus?.commands) ? voiceStatus.commands.slice(-5).reverse() : [];
+
+  function commandClass(status) {
+    if (status === "succeeded") {
+      return "status-pill-success";
+    }
+    if (status === "failed" || status === "timed_out" || status === "unsupported") {
+      return "status-pill-danger";
+    }
+    return "status-pill-warning";
+  }
+
   return (
     <section className="voice-endpoint-panel stack">
       <div className="section-heading">
@@ -27,11 +42,11 @@ export function VoiceEndpointActionsCard({
         <button className="btn btn-ghost" type="button" onClick={onStopSession} disabled={!actions.stop_session}>
           Stop session
         </button>
-        <button className="btn btn-ghost" type="button" disabled={!actions.replay_response}>
+        <button className="btn btn-ghost" type="button" onClick={onReplayResponse} disabled={!actions.replay_response}>
           Replay response
         </button>
-        <button className="btn btn-ghost" type="button" disabled={!actions.mute_endpoint}>
-          Mute endpoint
+        <button className="btn btn-ghost" type="button" onClick={onMuteEndpoint} disabled={!actions.mute_endpoint}>
+          {muted ? "Unmute endpoint" : "Mute endpoint"}
         </button>
         <button className="btn btn-ghost" type="button" disabled={!actions.reconnect}>
           Reconnect
@@ -55,6 +70,16 @@ export function VoiceEndpointActionsCard({
           Set
         </button>
       </div>
+      {commands.length ? (
+        <div className="command-status-list">
+          {commands.map((command) => (
+            <div className="command-status-row" key={command.request_id}>
+              <span>{command.command_type}</span>
+              <span className={`status-pill ${commandClass(command.status)}`}>{command.status}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {actionMessage ? <div className="callout">{actionMessage}</div> : null}
     </section>
   );

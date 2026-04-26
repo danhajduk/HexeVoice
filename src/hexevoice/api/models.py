@@ -90,6 +90,32 @@ class EndpointVolumeCommandResponse(BaseModel):
     accepted: bool
     endpoint_id: str
     volume_percent: int
+    request_id: str | None = None
+    status: str | None = None
+    reason: str | None = None
+
+
+class EndpointVolumeStatusResponse(BaseModel):
+    endpoint_id: str
+    volume_percent: int | None = None
+    latest_command: dict[str, Any] | None = None
+
+
+class EndpointMuteCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    muted: bool
+
+
+class EndpointCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+
+
+class EndpointCommandResponse(BaseModel):
+    accepted: bool
+    endpoint_id: str
+    command_type: str
+    request_id: str | None = None
+    status: str | None = None
     reason: str | None = None
 
 

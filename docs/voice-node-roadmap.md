@@ -11,6 +11,22 @@ That changes everything—in a good way.
 
 ---
 
+# Current Implementation Snapshot
+
+The current Voice Node is a backend-owned, single-endpoint MVP with:
+
+* `/api/voice/ws` event transport using `hexevoice.voice.event.v1`
+* backend wake detection, STT, assistant routing, TTS metadata, and session state projection
+* persistent endpoint registry records from heartbeat data
+* distinct `connection_state`, `ux_state`, and `session_state` surfaces
+* structured endpoint command acknowledgements and errors
+* dashboard controls for volume, mute/unmute, cancel, and replay
+* firmware handling for supported endpoint commands, with explicit unsupported-command errors
+
+Historical phase handoff files have been removed; this roadmap is now the single Voice Node roadmap source. Firmware baseline details remain in `docs/firmware-baseline.md`.
+
+---
+
 # 🧭 Phase 0 — Baseline (Reality Check)
 
 **Goal:** Confirm what is real vs scaffold.
@@ -22,9 +38,9 @@ Current baseline:
 * Dashboard shell: implemented
 * ESP32 mic + VAD loop: partial
 * Text assistant endpoint: implemented
-* Voice pipeline: missing
+* Voice pipeline: implemented with deterministic fallbacks and provider adapters
 
-See `docs/voice-node-phase-0-baseline.md` and `docs/firmware-baseline.md` for the detailed current-state record.
+See `docs/firmware-baseline.md` for the firmware-specific current-state record.
 
 ---
 
@@ -103,6 +119,12 @@ response.text
 tts.ready
 session.complete
 session.error
+command.ack
+command.error
+endpoint.volume
+endpoint.mute
+endpoint.cancel
+endpoint.replay
 ```
 
 👉 No true real-time streaming yet
@@ -236,6 +258,25 @@ Do NOT store:
 * raw audio
 * full transcript history (yet)
 
+### 6. Endpoint Command Lifecycle
+
+Implemented endpoint commands:
+
+* set/get volume
+* mute/unmute
+* cancel active session
+* replay last response
+
+Every backend-issued endpoint command carries:
+
+* request id
+* command type
+* pending status
+* timeout deadline
+* terminal success, failure, timeout, or unsupported status
+
+Firmware applies supported commands idempotently and sends `command.ack`; unsupported endpoint commands return `command.error` with `unsupported_command`.
+
 ---
 
 # ⚙️ Phase 3 — Voice Pipeline (Backend Modules)
@@ -308,9 +349,9 @@ Make the ESP32 endpoint reliable, not smart.
   * keep failure and rollback behavior safe
 * button controls:
 
-  * stop
-  * retry
-  * mute
+  * stop/cancel: implemented through backend `endpoint.cancel`
+  * replay: implemented through backend `endpoint.replay`
+  * mute: implemented through backend `endpoint.mute`
 
 ---
 
@@ -357,10 +398,11 @@ Replace dashboard placeholders with real telemetry.
 
 ## Controls
 
-* stop session
-* replay response
-* mute endpoint
-* reconnect endpoint
+* stop/cancel session: implemented
+* replay response: implemented
+* mute/unmute endpoint: implemented
+* volume set/get: implemented
+* reconnect endpoint: intentionally not implemented until a safe firmware reconnect contract exists
 
 ---
 

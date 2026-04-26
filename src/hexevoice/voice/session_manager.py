@@ -61,6 +61,9 @@ class VoiceSessionManager:
         self._last_event_type: str | None = None
         self._last_command_ack: dict | None = None
         self._last_command_error: dict | None = None
+        self._command_records: dict[str, dict[str, object]] = {}
+        self._last_volume_percent_by_endpoint: dict[str, int] = {}
+        self._command_timeout_s = 10.0
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
 
@@ -150,33 +153,110 @@ class VoiceSessionManager:
         )
         await self._websocket.send_json(event.model_dump(mode="json"))
         self._last_event_type = "ota.update"
-        return {"accepted": True, "request_id": request_id}
+        record = self._record_command(
+            request_id=request_id,
+            endpoint_id=endpoint_id,
+            command_type="ota.update",
+            event_type="ota.update",
+        )
+        return {"accepted": True, "request_id": request_id, "status": record["status"]}
 
     async def push_volume_command(self, *, endpoint_id: str, volume_percent: int) -> dict:
+        result = await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.volume",
+            command_type="endpoint.volume.set",
+            payload={"volume_percent": volume_percent},
+        )
+        if result.get("accepted"):
+            self._last_volume_percent_by_endpoint[endpoint_id] = volume_percent
+            log.info("Volume command sent to endpoint: endpoint_id=%s volume_percent=%s", endpoint_id, volume_percent)
+        return result
+
+    async def push_mute_command(self, *, endpoint_id: str, muted: bool) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.mute",
+            command_type="endpoint.mute",
+            payload={"muted": muted},
+        )
+
+    async def push_cancel_command(self, *, endpoint_id: str, reason: str = "operator_cancelled") -> dict:
+        result = await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.cancel",
+            command_type="endpoint.cancel",
+            payload={"reason": reason},
+        )
+        if result.get("accepted") and self._active_session is not None:
+            self._set_session_state("cancelled")
+            self._active_session.cancel_reason = reason
+            self._active_session = None
+            self._chunk_count = 0
+            self._audio_chunks = []
+            self._audio_format = None
+        return result
+
+    async def push_replay_command(self, *, endpoint_id: str) -> dict:
+        if not self._last_tts or not self._last_tts.get("stream_id"):
+            return {"accepted": False, "reason": "no_replay_available", "status": "failed"}
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.replay",
+            command_type="endpoint.replay",
+            payload={
+                "stream_id": self._last_tts.get("stream_id"),
+                "content_type": self._last_tts.get("content_type"),
+                "audio_url": self._last_tts.get("audio_url"),
+            },
+        )
+
+    def volume_status(self, endpoint_id: str) -> dict:
+        self._expire_commands()
+        latest = self._latest_command(endpoint_id=endpoint_id, command_type="endpoint.volume.set")
+        return {
+            "volume_percent": self._last_volume_percent_by_endpoint.get(endpoint_id),
+            "latest_command": latest,
+        }
+
+    async def _push_endpoint_command(
+        self,
+        *,
+        endpoint_id: str,
+        event_type: VoiceEventType,
+        command_type: str,
+        payload: dict[str, object],
+    ) -> dict:
         if not self._connection_active or self._websocket is None:
-            log.warning("Volume command rejected: endpoint_id=%s reason=endpoint_not_connected", endpoint_id)
-            return {"accepted": False, "reason": "endpoint_not_connected"}
+            log.warning("Endpoint command rejected: endpoint_id=%s command_type=%s reason=endpoint_not_connected", endpoint_id, command_type)
+            return {"accepted": False, "reason": "endpoint_not_connected", "status": "failed"}
         if self._connected_endpoint_id is not None and endpoint_id != self._connected_endpoint_id:
             log.warning(
-                "Volume command rejected: endpoint_id=%s connected_endpoint_id=%s reason=endpoint_mismatch",
+                "Endpoint command rejected: endpoint_id=%s connected_endpoint_id=%s command_type=%s reason=endpoint_mismatch",
                 endpoint_id,
                 self._connected_endpoint_id,
+                command_type,
             )
-            return {"accepted": False, "reason": "endpoint_mismatch"}
+            return {"accepted": False, "reason": "endpoint_mismatch", "status": "failed"}
 
         request_id = f"cmd_{uuid4().hex}"
         event = VoiceEventEnvelope(
-            event_type="endpoint.volume",
+            event_type=event_type,
             endpoint_id=endpoint_id,
             direction="backend_to_endpoint",
             session_id=self._active_session.session_id if self._active_session else None,
             sequence=self._next_sequence(),
-            payload={"request_id": request_id, "volume_percent": volume_percent},
+            payload={"request_id": request_id, **payload},
         )
         await self._websocket.send_json(event.model_dump(mode="json"))
-        self._last_event_type = "endpoint.volume"
-        log.info("Volume command sent to endpoint: endpoint_id=%s volume_percent=%s", endpoint_id, volume_percent)
-        return {"accepted": True, "request_id": request_id}
+        self._last_event_type = event_type
+        record = self._record_command(
+            request_id=request_id,
+            endpoint_id=endpoint_id,
+            command_type=command_type,
+            event_type=event_type,
+        )
+        return {"accepted": True, "request_id": request_id, "status": record["status"]}
 
     def _handle_raw_message(self, raw_message: str) -> list[VoiceEventEnvelope]:
         try:
@@ -634,6 +714,7 @@ class VoiceSessionManager:
         return events
 
     def status(self) -> dict:
+        self._expire_commands()
         active_snapshot = self._active_session.model_dump(mode="json") if self._active_session else None
         state_projection = project_voice_state(
             connection_active=self._connection_active,
@@ -658,6 +739,7 @@ class VoiceSessionManager:
             "last_error": self._last_error,
             "last_command_ack": self._last_command_ack,
             "last_command_error": self._last_command_error,
+            "commands": list(self._command_records.values()),
             "event_diagnostics": list(self._event_diagnostics),
             "wake_provider": self._wake_detector.status(),
             "wake_history": list(self._wake_history),
@@ -666,8 +748,8 @@ class VoiceSessionManager:
                 "refresh": True,
                 "test_assistant_turn": True,
                 "stop_session": self._active_session is not None,
-                "replay_response": False,
-                "mute_endpoint": False,
+                "replay_response": self._connection_active and self._last_tts is not None,
+                "mute_endpoint": self._connection_active,
                 "set_volume": self._connection_active,
                 "reconnect": False,
             },
@@ -745,6 +827,7 @@ class VoiceSessionManager:
             **payload.model_dump(mode="json"),
             "received_at": datetime.now(UTC).isoformat(),
         }
+        self._update_command_from_ack(payload)
         self._last_event_type = "command.ack"
         log.info(
             "Endpoint command acknowledgement: endpoint_id=%s request_id=%s command_type=%s status=%s",
@@ -776,6 +859,7 @@ class VoiceSessionManager:
             **payload.model_dump(mode="json"),
             "received_at": datetime.now(UTC).isoformat(),
         }
+        self._update_command_from_error(payload)
         self._last_event_type = "command.error"
         self._record_event_diagnostic(
             code=payload.code,
@@ -919,6 +1003,82 @@ class VoiceSessionManager:
             },
         )
         del self._event_diagnostics[10:]
+
+    def _record_command(
+        self,
+        *,
+        request_id: str,
+        endpoint_id: str,
+        command_type: str,
+        event_type: str,
+    ) -> dict[str, object]:
+        now = datetime.now(UTC)
+        record: dict[str, object] = {
+            "request_id": request_id,
+            "endpoint_id": endpoint_id,
+            "command_type": command_type,
+            "event_type": event_type,
+            "status": "pending",
+            "terminal": False,
+            "created_at": now.isoformat(),
+            "updated_at": now.isoformat(),
+            "timeout_at": (now.timestamp() + self._command_timeout_s),
+        }
+        self._command_records[request_id] = record
+        return record
+
+    def _update_command_from_ack(self, payload: VoiceCommandAckPayload) -> None:
+        record = self._command_records.get(payload.request_id)
+        if record is None:
+            return
+        status = "succeeded" if payload.status == "succeeded" else payload.status
+        record.update(
+            {
+                "status": status,
+                "terminal": payload.status in {"succeeded", "unsupported"},
+                "message": payload.message,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    def _update_command_from_error(self, payload: VoiceCommandErrorPayload) -> None:
+        record = self._command_records.get(payload.request_id)
+        if record is None:
+            return
+        record.update(
+            {
+                "status": "failed",
+                "terminal": True,
+                "error_code": payload.code,
+                "message": payload.message,
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+        )
+
+    def _expire_commands(self) -> None:
+        now_ts = datetime.now(UTC).timestamp()
+        for record in self._command_records.values():
+            if record.get("terminal"):
+                continue
+            timeout_at = record.get("timeout_at")
+            if isinstance(timeout_at, float) and now_ts > timeout_at:
+                record.update(
+                    {
+                        "status": "timed_out",
+                        "terminal": True,
+                        "updated_at": datetime.now(UTC).isoformat(),
+                    }
+                )
+
+    def _latest_command(self, *, endpoint_id: str, command_type: str) -> dict[str, object] | None:
+        records = [
+            record
+            for record in self._command_records.values()
+            if record.get("endpoint_id") == endpoint_id and record.get("command_type") == command_type
+        ]
+        if not records:
+            return None
+        return max(records, key=lambda record: str(record.get("created_at") or ""))
 
     @staticmethod
     def _safe_endpoint_id(payload: object) -> str:
