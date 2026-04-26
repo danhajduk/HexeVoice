@@ -21,10 +21,8 @@ VoiceSessionState = Literal[
     "capturing",
     "transcribing",
     "local_command",
-    "routing_upstream",
-    "waiting_response",
-    "synthesizing",
-    "playing",
+    "routing",
+    "responding",
     "completed",
     "cancelled",
     "failed",
@@ -98,15 +96,27 @@ VOICE_SESSION_ALLOWED_TRANSITIONS: dict[VoiceSessionState, frozenset[VoiceSessio
     "wake_detected": frozenset({"listening", "cancelled", "failed"}),
     "listening": frozenset({"capturing", "cancelled", "failed"}),
     "capturing": frozenset({"transcribing", "cancelled", "failed"}),
-    "transcribing": frozenset({"local_command", "routing_upstream", "cancelled", "failed"}),
-    "local_command": frozenset({"synthesizing", "completed", "cancelled", "failed"}),
-    "routing_upstream": frozenset({"waiting_response", "cancelled", "failed"}),
-    "waiting_response": frozenset({"synthesizing", "cancelled", "failed"}),
-    "synthesizing": frozenset({"playing", "cancelled", "failed"}),
-    "playing": frozenset({"completed", "cancelled", "failed"}),
+    "transcribing": frozenset({"local_command", "routing", "cancelled", "failed"}),
+    "local_command": frozenset({"responding", "completed", "cancelled", "failed"}),
+    "routing": frozenset({"responding", "cancelled", "failed"}),
+    "responding": frozenset({"completed", "cancelled", "failed"}),
     "completed": frozenset({"idle"}),
     "cancelled": frozenset({"idle"}),
     "failed": frozenset({"idle"}),
+}
+
+VOICE_SESSION_UX_PROJECTION: dict[VoiceSessionState, VoiceEndpointUxState] = {
+    "idle": "wake_armed",
+    "wake_detected": "wake_detected",
+    "listening": "listening",
+    "capturing": "listening",
+    "transcribing": "thinking",
+    "local_command": "thinking",
+    "routing": "thinking",
+    "responding": "speaking",
+    "completed": "idle",
+    "cancelled": "idle",
+    "failed": "error",
 }
 
 
@@ -176,6 +186,39 @@ class VoiceSessionSnapshot(BaseModel):
     cancel_reason: str | None = None
     completion_reason: str | None = None
     last_error: VoiceErrorPayload | None = None
+
+
+class VoiceStateProjection(BaseModel):
+    connection_state: VoiceEndpointConnectionState
+    ux_state: VoiceEndpointUxState
+    session_state: VoiceSessionState | None = None
+    transport_health: Literal["online", "offline", "degraded"]
+
+
+def project_ux_state(session_state: VoiceSessionState) -> VoiceEndpointUxState:
+    return VOICE_SESSION_UX_PROJECTION[session_state]
+
+
+def project_voice_state(
+    *,
+    connection_active: bool,
+    active_session: VoiceSessionSnapshot | None,
+) -> VoiceStateProjection:
+    connection_state: VoiceEndpointConnectionState = "connected" if connection_active else "offline"
+    transport_health: Literal["online", "offline", "degraded"] = "online" if connection_active else "offline"
+    if active_session is None:
+        return VoiceStateProjection(
+            connection_state=connection_state,
+            ux_state="idle",
+            session_state=None,
+            transport_health=transport_health,
+        )
+    return VoiceStateProjection(
+        connection_state=connection_state,
+        ux_state=active_session.ux_state,
+        session_state=active_session.session_state,
+        transport_health=transport_health,
+    )
 
 
 def is_valid_voice_session_transition(

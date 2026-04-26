@@ -26,6 +26,18 @@ export function VoiceEndpointStatusCard({ status, providerSetup, capabilities, v
           <dd>{endpointStatus?.device_state || "unknown"}</dd>
         </div>
         <div>
+          <dt>Connection</dt>
+          <dd>{voiceStatus?.state_projection?.connection_state || voiceStatus?.connection_state || "offline"}</dd>
+        </div>
+        <div>
+          <dt>UX</dt>
+          <dd>{voiceStatus?.state_projection?.ux_state || voiceStatus?.ux_state || "idle"}</dd>
+        </div>
+        <div>
+          <dt>Session state</dt>
+          <dd>{voiceStatus?.state_projection?.session_state || "none"}</dd>
+        </div>
+        <div>
           <dt>Last heartbeat</dt>
           <dd>{endpointStatus?.last_seen_at || "none"}</dd>
         </div>

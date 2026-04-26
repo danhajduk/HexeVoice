@@ -86,10 +86,8 @@ Proposed session states:
 - `capturing`
 - `transcribing`
 - `local_command`
-- `routing_upstream`
-- `waiting_response`
-- `synthesizing`
-- `playing`
+- `routing`
+- `responding`
 - `completed`
 - `cancelled`
 - `failed`
@@ -156,12 +154,14 @@ Device UX state:
 Backend session state:
 
 - `none`
+- `idle`
+- `wake_detected`
+- `listening`
 - `capturing`
 - `transcribing`
-- `handling_local`
-- `routing_upstream`
-- `synthesizing`
-- `playing`
+- `local_command`
+- `routing`
+- `responding`
 - `completed`
 - `cancelled`
 - `failed`
@@ -486,8 +486,8 @@ Task 028 establishes the first backend-owned voice contract in `src/hexevoice/vo
 Accepted for the MVP:
 
 - `VoiceEventEnvelope` is the shared JSON envelope for endpoint-to-backend, backend-to-endpoint, and internal observability events.
-- Endpoint connection state, endpoint UX state, and backend session state are separate fields on `VoiceSessionSnapshot`.
-- The first implementation targets one active endpoint/session at a time, with explicit transition validation in `VOICE_SESSION_ALLOWED_TRANSITIONS`.
+- Endpoint connection state, endpoint UX state, and backend session state are separate fields on `VoiceSessionSnapshot`, with `project_voice_state` providing the `/api/voice/status` projection.
+- The first implementation targets one active endpoint/session at a time, with explicit transition validation in `VOICE_SESSION_ALLOWED_TRANSITIONS` and UX mapping in `VOICE_SESSION_UX_PROJECTION`.
 - `audio.chunk` carries transport metadata and an optional base64 payload field only; wake detection, STT, TTS, and raw audio processing remain outside Task 028.
 - `/api/voice/ws` must consume this contract in the next implementation task instead of introducing a parallel ad hoc message shape.
 

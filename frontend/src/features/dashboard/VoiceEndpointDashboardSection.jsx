@@ -47,6 +47,15 @@ function endpointHealth(voiceStatus) {
   return "red";
 }
 
+function voiceStateProjection(voiceStatus) {
+  return voiceStatus?.state_projection || {
+    connection_state: voiceStatus?.connection_state || "offline",
+    ux_state: voiceStatus?.ux_state || voiceStatus?.active_session?.ux_state || "idle",
+    session_state: voiceStatus?.session_state || voiceStatus?.active_session?.session_state || "none",
+    transport_health: voiceStatus?.transport_health || "offline",
+  };
+}
+
 function VoicePipelinePanel({ voiceStatus }) {
   const [visibleTranscript, setVisibleTranscript] = useState("");
 
@@ -121,6 +130,7 @@ function VoicePipelinePanel({ voiceStatus }) {
 
 function EndpointStatusTable({ voiceStatus, endpointStatus }) {
   const session = voiceStatus?.active_session;
+  const projection = voiceStateProjection(voiceStatus);
   const timings = voiceStatus?.last_turn_timings || {};
   const endpointRows = [
     {
@@ -132,10 +142,11 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
       deviceState: endpointStatus?.device_state || "unknown",
       connectionState: endpointStatus?.connection_state || "unknown",
       lastSeenAt: formatLocalDateTime(endpointStatus?.last_seen_at),
-      transportHealth: voiceStatus?.transport_health || "offline",
+      voiceConnection: projection.connection_state,
+      uxState: projection.ux_state,
+      sessionState: projection.session_state || "none",
+      transportHealth: projection.transport_health,
       sessionId: session?.session_id || "none",
-      backendState: session?.session_state || "idle",
-      uxState: session?.ux_state || "idle",
       sttLatency: formatMs(timings.stt_ms),
       totalLatency: formatMs(timings.total_ms),
     },
@@ -162,12 +173,13 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
               <th scope="col">Device</th>
               <th scope="col">Registry</th>
               <th scope="col">Last heartbeat</th>
+              <th scope="col">Connection</th>
+              <th scope="col">UX</th>
+              <th scope="col">Session state</th>
               <th scope="col">Transport</th>
               <th scope="col">STT</th>
               <th scope="col">Total</th>
               <th scope="col">Session</th>
-              <th scope="col">Backend</th>
-              <th scope="col">UX</th>
             </tr>
           </thead>
           <tbody>
@@ -183,12 +195,13 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
                 <td>{valueOrEmpty(row.deviceState)}</td>
                 <td>{valueOrEmpty(row.connectionState)}</td>
                 <td>{valueOrEmpty(row.lastSeenAt)}</td>
+                <td>{valueOrEmpty(row.voiceConnection)}</td>
+                <td>{valueOrEmpty(row.uxState)}</td>
+                <td>{valueOrEmpty(row.sessionState)}</td>
                 <td>{valueOrEmpty(row.transportHealth)}</td>
                 <td>{valueOrEmpty(row.sttLatency)}</td>
                 <td>{valueOrEmpty(row.totalLatency)}</td>
                 <td>{valueOrEmpty(row.sessionId)}</td>
-                <td>{valueOrEmpty(row.backendState)}</td>
-                <td>{valueOrEmpty(row.uxState)}</td>
               </tr>
             ))}
           </tbody>
@@ -272,6 +285,7 @@ export function VoiceEndpointDashboardSection({
 }) {
   const [actionMessage, setActionMessage] = useState("");
   const [volumePercent, setVolumePercent] = useState(70);
+  const projection = voiceStateProjection(voiceStatus);
 
   async function handleTestTurn() {
     try {
@@ -324,6 +338,33 @@ export function VoiceEndpointDashboardSection({
           actionMessage={actionMessage}
         />
       </div>
+      <section className="voice-endpoint-panel stack">
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">State Families</p>
+            <h2 className="panel-title">Connection, UX, Session</h2>
+          </div>
+          <span className="status-pill status-pill-neutral">{valueOrEmpty(projection.transport_health, "offline")}</span>
+        </div>
+        <dl className="facts">
+          <div>
+            <dt>Connection</dt>
+            <dd>{valueOrEmpty(projection.connection_state, "offline")}</dd>
+          </div>
+          <div>
+            <dt>UX</dt>
+            <dd>{valueOrEmpty(projection.ux_state, "idle")}</dd>
+          </div>
+          <div>
+            <dt>Session</dt>
+            <dd>{valueOrEmpty(projection.session_state, "none")}</dd>
+          </div>
+          <div>
+            <dt>Transport</dt>
+            <dd>{valueOrEmpty(projection.transport_health, "offline")}</dd>
+          </div>
+        </dl>
+      </section>
       <EndpointStatusTable
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}

@@ -113,10 +113,16 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
         completed = websocket.receive_json()
 
     assert transcript["event_type"] == "transcript.final"
+    assert transcript["payload"]["snapshot"]["session_state"] == "transcribing"
+    assert transcript["payload"]["snapshot"]["ux_state"] == "thinking"
     assert transcript["payload"]["text"] == "hello"
     assert response_text["event_type"] == "response.text"
+    assert response_text["payload"]["snapshot"]["session_state"] == "routing"
+    assert response_text["payload"]["snapshot"]["ux_state"] == "thinking"
     assert response_text["payload"]["text"] == "I heard hello, no AI added yet."
     assert tts_ready["event_type"] == "tts.ready"
+    assert tts_ready["payload"]["snapshot"]["session_state"] == "responding"
+    assert tts_ready["payload"]["snapshot"]["ux_state"] == "speaking"
     assert tts_ready["payload"]["content_type"] == "audio/wav"
     assert tts_ready["payload"]["stream_id"].startswith("tts-")
     assert completed["event_type"] == "session.completed"
@@ -210,6 +216,14 @@ def test_voice_status_and_operator_cancel_surface_active_session(tmp_path):
         status = client.get("/api/voice/status")
         assert status.status_code == 200
         assert status.json()["connection_state"] == "connected"
+        assert status.json()["session_state"] == "idle"
+        assert status.json()["ux_state"] == "wake_armed"
+        assert status.json()["state_projection"] == {
+            "connection_state": "connected",
+            "ux_state": "wake_armed",
+            "session_state": "idle",
+            "transport_health": "online",
+        }
         assert status.json()["active_session"]["session_state"] == "idle"
         assert status.json()["wake_provider"]["provider"] == "deterministic"
         assert status.json()["wake_provider"]["healthy"] is True
@@ -364,7 +378,33 @@ def test_voice_websocket_cancel_returns_cancelled_event(tmp_path):
 
     assert response["event_type"] == "session.cancelled"
     assert response["payload"]["snapshot"]["session_state"] == "cancelled"
+    assert response["payload"]["snapshot"]["ux_state"] == "idle"
     assert response["payload"]["snapshot"]["cancel_reason"] == "button"
+
+
+def test_voice_status_projects_offline_state_after_reconnect_cycle(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        connected = client.get("/api/voice/status").json()
+        assert connected["state_projection"]["connection_state"] == "connected"
+        assert connected["state_projection"]["session_state"] == "idle"
+        assert connected["state_projection"]["ux_state"] == "wake_armed"
+
+    disconnected = client.get("/api/voice/status").json()
+    assert disconnected["state_projection"]["connection_state"] == "offline"
+    assert disconnected["state_projection"]["session_state"] is None
+    assert disconnected["state_projection"]["ux_state"] == "idle"
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start", session_id="voice-session-2"))
+        restarted = websocket.receive_json()
+
+    assert restarted["payload"]["snapshot"]["connection_state"] == "connected"
+    assert restarted["payload"]["snapshot"]["session_state"] == "idle"
+    assert restarted["payload"]["snapshot"]["ux_state"] == "wake_armed"
 
 
 def test_voice_websocket_rejects_invalid_event_envelope(tmp_path):

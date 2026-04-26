@@ -113,7 +113,7 @@ Wake detection:
 
 Session lifecycle:
 
-- Add a backend-authored voice session manager with states for wake detected, listening, capturing, transcribing, routing, synthesizing, playing, completed, cancelled, and failed.
+- Add a backend-authored voice session manager with states for wake detected, listening, capturing, transcribing, routing, responding, completed, cancelled, and failed.
 - Keep endpoint connection state, endpoint UX state, and backend session state separate.
 
 STT/TTS integration:

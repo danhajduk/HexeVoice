@@ -32,7 +32,7 @@ This route is intentionally lightweight. It gives endpoint firmware a stable req
 - deterministic fallback replies for arbitrary text turns
 - endpoint-scoped session ids so device-side integration can start immediately
 
-The backend voice protocol contract lives in `src/hexevoice/voice/contracts.py`. It defines the shared event envelope, endpoint-to-backend and backend-to-endpoint event vocabulary, audio chunk metadata shape, endpoint connection states, endpoint UX states, backend-authored session states, and the allowed MVP session transitions.
+The backend voice protocol contract lives in `src/hexevoice/voice/contracts.py`. It defines the shared event envelope, endpoint-to-backend and backend-to-endpoint event vocabulary, audio chunk metadata shape, endpoint connection states, endpoint UX states, backend-authored session states, UX projection helpers, and the allowed MVP session transitions. The backend session lifecycle is `wake_detected -> listening -> capturing -> transcribing -> routing -> responding -> completed` after the session leaves idle.
 
 Current voice WebSocket API:
 
@@ -49,7 +49,7 @@ Voice observability now has local backend APIs for the dashboard:
 - `GET /api/voice/status`
 - `POST /api/voice/session/cancel`
 
-The status route returns endpoint connection state, transport health, active session snapshot, recent transcript/response/TTS/error metadata, and supported operator actions. The frontend voice endpoint dashboard consumes this route instead of placeholder cards.
+The status route returns an explicit `state_projection` with `connection_state`, `ux_state`, `session_state`, and `transport_health`, plus the active session snapshot, recent transcript/response/TTS/error metadata, and supported operator actions. The frontend voice endpoint dashboard consumes this route instead of placeholder cards.
 
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 

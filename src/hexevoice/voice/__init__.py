@@ -4,6 +4,7 @@ from hexevoice.voice.contracts import (
     BACKEND_TO_ENDPOINT_EVENTS,
     ENDPOINT_TO_BACKEND_EVENTS,
     VOICE_SESSION_ALLOWED_TRANSITIONS,
+    VOICE_SESSION_UX_PROJECTION,
     VoiceAudioChunkPayload,
     VoiceAudioFormat,
     VoiceEndpointConnectionState,
@@ -16,9 +17,12 @@ from hexevoice.voice.contracts import (
     VoiceSessionSnapshot,
     VoiceSessionStartPayload,
     VoiceSessionState,
+    VoiceStateProjection,
     VoiceTranscriptPayload,
     VoiceTtsReadyPayload,
     is_valid_voice_session_transition,
+    project_ux_state,
+    project_voice_state,
 )
 from hexevoice.voice.session_manager import VoiceSessionManager
 from hexevoice.voice.pipeline import (
@@ -51,6 +55,7 @@ __all__ = [
     "BACKEND_TO_ENDPOINT_EVENTS",
     "ENDPOINT_TO_BACKEND_EVENTS",
     "VOICE_SESSION_ALLOWED_TRANSITIONS",
+    "VOICE_SESSION_UX_PROJECTION",
     "VoiceAudioChunkPayload",
     "VoiceAudioFormat",
     "VoiceEndpointConnectionState",
@@ -63,6 +68,7 @@ __all__ = [
     "VoiceSessionSnapshot",
     "VoiceSessionStartPayload",
     "VoiceSessionState",
+    "VoiceStateProjection",
     "VoiceTranscriptPayload",
     "VoiceTtsReadyPayload",
     "VoiceSessionManager",
@@ -88,4 +94,6 @@ __all__ = [
     "WakeDetector",
     "build_wake_detector",
     "is_valid_voice_session_transition",
+    "project_ux_state",
+    "project_voice_state",
 ]

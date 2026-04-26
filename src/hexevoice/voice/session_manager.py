@@ -22,6 +22,8 @@ from hexevoice.voice.contracts import (
     VoiceTranscriptPayload,
     VoiceTtsReadyPayload,
     is_valid_voice_session_transition,
+    project_ux_state,
+    project_voice_state,
 )
 from hexevoice.voice.pipeline import VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetector
@@ -385,7 +387,7 @@ class VoiceSessionManager:
                 detection.confidence,
                 payload.chunk_index,
             )
-            self._set_session_state("wake_detected", ux_state="wake_detected")
+            self._set_session_state("wake_detected")
             events.append(
                 self._state_event(
                     "wake.accepted",
@@ -399,10 +401,10 @@ class VoiceSessionManager:
                     },
                 )
             )
-            self._set_session_state("listening", ux_state="listening")
+            self._set_session_state("listening")
 
         if session.session_state in {"listening", "capturing"}:
-            self._set_session_state("capturing", ux_state="listening")
+            self._set_session_state("capturing")
 
         events.append(
             self._state_event(
@@ -429,7 +431,7 @@ class VoiceSessionManager:
             return [session]
 
         if session.session_state == "idle":
-            self._set_session_state("cancelled", ux_state="idle")
+            self._set_session_state("cancelled")
             session.cancel_reason = "wake_not_detected"
             wake_status = self._wake_detector.status().get("last_detection") or {}
             self._record_wake_history(
@@ -458,9 +460,9 @@ class VoiceSessionManager:
             return [cancelled]
 
         if session.session_state == "wake_detected":
-            self._set_session_state("listening", ux_state="listening")
+            self._set_session_state("listening")
 
-        self._set_session_state("transcribing", ux_state="thinking")
+        self._set_session_state("transcribing")
         events: list[VoiceEventEnvelope] = []
         if self._turn_pipeline is not None:
             turn = self._turn_pipeline.complete_turn(
@@ -510,7 +512,7 @@ class VoiceSessionManager:
                     message=turn.transcript.error,
                     recoverable=True,
                 )
-                self._set_session_state("failed", ux_state="error")
+                self._set_session_state("failed")
                 self._active_session = None
                 self._chunk_count = 0
                 self._audio_chunks = []
@@ -528,10 +530,9 @@ class VoiceSessionManager:
             )
             self._last_transcript = turn.transcript.text
             if turn.assistant_response.handled_locally:
-                self._set_session_state("local_command", ux_state="thinking")
+                self._set_session_state("local_command")
             else:
-                self._set_session_state("routing_upstream", ux_state="thinking")
-                self._set_session_state("waiting_response", ux_state="thinking")
+                self._set_session_state("routing")
             events.append(
                 self._state_event(
                     "response.text",
@@ -551,7 +552,7 @@ class VoiceSessionManager:
                 "error": turn.assistant_response.error,
                 "handled_locally": turn.assistant_response.handled_locally,
             }
-            self._set_session_state("synthesizing", ux_state="thinking")
+            self._set_session_state("responding")
             self._last_tts = {
                 "content_type": turn.tts.content_type,
                 "stream_id": turn.tts.stream_id,
@@ -569,7 +570,7 @@ class VoiceSessionManager:
                         recoverable=True,
                     )
                 )
-                self._set_session_state("failed", ux_state="error")
+                self._set_session_state("failed")
                 self._active_session = None
                 self._chunk_count = 0
                 self._audio_chunks = []
@@ -587,10 +588,9 @@ class VoiceSessionManager:
                 )
             )
         else:
-            self._set_session_state("local_command", ux_state="thinking")
-        if session.session_state == "synthesizing":
-            self._set_session_state("playing", ux_state="speaking")
-        self._set_session_state("completed", ux_state="idle")
+            self._set_session_state("local_command")
+            self._set_session_state("responding")
+        self._set_session_state("completed")
         events.append(
             self._state_event(
                 "session.completed",
@@ -606,10 +606,17 @@ class VoiceSessionManager:
 
     def status(self) -> dict:
         active_snapshot = self._active_session.model_dump(mode="json") if self._active_session else None
+        state_projection = project_voice_state(
+            connection_active=self._connection_active,
+            active_session=self._active_session,
+        ).model_dump(mode="json")
         return {
             "endpoint_id": self._connected_endpoint_id,
-            "connection_state": "connected" if self._connection_active else "offline",
-            "transport_health": "online" if self._connection_active else "offline",
+            "connection_state": state_projection["connection_state"],
+            "ux_state": state_projection["ux_state"],
+            "session_state": state_projection["session_state"],
+            "transport_health": state_projection["transport_health"],
+            "state_projection": state_projection,
             "active_session": active_snapshot,
             "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
             "last_event_type": self._last_event_type,
@@ -657,7 +664,7 @@ class VoiceSessionManager:
         if self._active_session is None:
             return {"accepted": False, "reason": "no_active_session", "status": self.status()}
 
-        self._set_session_state("cancelled", ux_state="idle")
+        self._set_session_state("cancelled")
         self._active_session.cancel_reason = reason
         self._active_session = None
         self._chunk_count = 0
@@ -670,7 +677,7 @@ class VoiceSessionManager:
         if isinstance(session, VoiceEventEnvelope):
             return [session]
 
-        self._set_session_state("cancelled", ux_state="idle")
+        self._set_session_state("cancelled")
         session.cancel_reason = str(event.payload.get("reason") or "endpoint_cancelled")
         cancelled = self._state_event("session.cancelled", session)
         self._active_session = None
@@ -719,7 +726,7 @@ class VoiceSessionManager:
 
         return self._active_session
 
-    def _set_session_state(self, session_state: VoiceSessionState, *, ux_state: str) -> None:
+    def _set_session_state(self, session_state: VoiceSessionState) -> None:
         if self._active_session is None:
             return
         current_state = self._active_session.session_state
@@ -733,7 +740,7 @@ class VoiceSessionManager:
             self._active_session.last_updated_at = datetime.now(UTC)
             return
         self._active_session.session_state = session_state
-        self._active_session.ux_state = ux_state
+        self._active_session.ux_state = project_ux_state(session_state)
         self._active_session.last_updated_at = datetime.now(UTC)
 
     def _state_event(

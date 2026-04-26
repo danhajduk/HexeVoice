@@ -311,9 +311,7 @@ void handle_backend_event_json(const std::string &message) {
         hexe::voice::play_listening_cue();
       }
     }
-  } else if (
-      std::strcmp(type, "transcript.final") == 0 || std::strcmp(type, "response.text") == 0 ||
-      std::strcmp(ux_state, "thinking") == 0) {
+  } else if (std::strcmp(ux_state, "thinking") == 0) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kThinking;
     }

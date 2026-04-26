@@ -12,8 +12,8 @@ The first single-endpoint wake-to-reply loop is implemented as a configurable Ph
 4. Backend wake authority inspects `audio.chunk` through a configurable `WakeDetector` adapter and emits `wake.accepted`.
 5. Backend finalizes the turn on `audio.end`, routes captured transient audio through the configured STT adapter, routes the transcript through `AssistantTurnService`, and sends response text to the configured TTS adapter.
 6. Backend exposes generated TTS audio at `/api/voice/tts/{stream_id}` when the real TTS provider succeeds.
-7. Firmware maps backend events to endpoint UX phases, fetches WAV TTS audio from backend URLs, and writes PCM frames to the ESP-BOX speaker codec.
-8. Frontend dashboard reads `/api/voice/status` and shows connection state, active session, latest transcript, latest response, TTS metadata, errors, supported actions, wake provider health, and STT/TTS provider health.
+7. Firmware maps backend `ux_state` values to endpoint display phases, fetches WAV TTS audio from backend URLs, and writes PCM frames to the ESP-BOX speaker codec.
+8. Frontend dashboard reads `/api/voice/status` and shows the separate connection, UX, and session state families, plus active session, latest transcript, latest response, TTS metadata, errors, supported actions, wake provider health, and STT/TTS provider health.
 
 ## What Is Real
 

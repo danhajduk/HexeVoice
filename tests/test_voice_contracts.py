@@ -11,6 +11,8 @@ from hexevoice.voice import (
     VoiceEventEnvelope,
     VoiceSessionSnapshot,
     VoiceSessionStartPayload,
+    project_ux_state,
+    project_voice_state,
     is_valid_voice_session_transition,
 )
 
@@ -75,13 +77,37 @@ def test_session_snapshot_keeps_backend_endpoint_and_ux_states_separate():
 def test_single_endpoint_session_transition_contract():
     assert is_valid_voice_session_transition("idle", "wake_detected")
     assert is_valid_voice_session_transition("wake_detected", "listening")
+    assert is_valid_voice_session_transition("listening", "capturing")
     assert is_valid_voice_session_transition("capturing", "transcribing")
-    assert is_valid_voice_session_transition("transcribing", "routing_upstream")
-    assert is_valid_voice_session_transition("waiting_response", "synthesizing")
-    assert is_valid_voice_session_transition("playing", "completed")
+    assert is_valid_voice_session_transition("transcribing", "routing")
+    assert is_valid_voice_session_transition("routing", "responding")
+    assert is_valid_voice_session_transition("responding", "completed")
 
-    assert not is_valid_voice_session_transition("idle", "playing")
+    assert not is_valid_voice_session_transition("idle", "responding")
     assert not is_valid_voice_session_transition("completed", "transcribing")
+
+
+def test_voice_state_projection_maps_session_connection_and_ux_families():
+    snapshot = VoiceSessionSnapshot(
+        session_id="voice-session-1",
+        endpoint_id="esp-box-1",
+        session_state="capturing",
+        connection_state="connected",
+        ux_state=project_ux_state("capturing"),
+    )
+
+    active_projection = project_voice_state(connection_active=True, active_session=snapshot)
+    idle_projection = project_voice_state(connection_active=True, active_session=None)
+    offline_projection = project_voice_state(connection_active=False, active_session=None)
+
+    assert active_projection.connection_state == "connected"
+    assert active_projection.transport_health == "online"
+    assert active_projection.session_state == "capturing"
+    assert active_projection.ux_state == "listening"
+    assert idle_projection.session_state is None
+    assert idle_projection.ux_state == "idle"
+    assert offline_projection.connection_state == "offline"
+    assert offline_projection.transport_health == "offline"
 
 
 def test_event_vocabularies_cover_endpoint_and_backend_message_families():

@@ -160,6 +160,12 @@ Chosen fix: Add a dedicated endpoint registry store under `runtime/endpoint_regi
 What changed: Added endpoint registry persistence, heartbeat upsert/status/list/update behavior, capability and stale-state projection, dashboard display-name/zone editing, focused backend tests, and updated Phase 1 docs.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_endpoint_registry.py tests/test_api.py tests/test_voice_loop_integration.py` (29 passed); `cd frontend && npm run build` (passed); `PYTHONPATH=src .venv/bin/pytest -q` (106 passed).
 ###########
+Task #060
+Step objective: Formalize connection, UX, and session state separation.
+Chosen fix: Centralize voice state projection in `src/hexevoice/voice/contracts.py`, map session states to UX states in one helper, expose the projection through `/api/voice/status`, and update frontend/firmware display paths to read explicit state families.
+What changed: Replaced old routing/waiting/synthesizing/playing states with `routing` and `responding`, added state projection tests, updated session manager transitions/status payloads, refreshed dashboard state-family rendering, mapped firmware thinking display from `ux_state`, and updated phase docs.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_contracts.py tests/test_voice_websocket.py tests/test_voice_loop_integration.py` (23 passed); `PYTHONPATH=src .venv/bin/pytest -q` (108 passed); `cd frontend && npm run build` (passed); `cd firmware && idf.py build` blocked because `idf.py` is not installed.
+###########
 #############
-All Tasks completed 04/26/2026 05:30:43
+All Tasks completed 04/26/2026 05:39:06
 #############
