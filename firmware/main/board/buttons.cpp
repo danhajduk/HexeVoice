@@ -74,7 +74,7 @@ void handle_press_up(void *button_handle, void *usr_data) {
     auto &app_state = hexe::state();
     app_state.muted = false;
     hexe::voice::cancel_active_session("config_double_press");
-    app_state.phase = hexe::AppPhase::kIdle;
+    app_state.phase = hexe::idle_or_connecting_phase();
     return;
   }
 
@@ -97,7 +97,7 @@ void handle_single_click(void *button_handle, void *usr_data) {
     if (app_state.muted) {
       hexe::voice::cancel_active_session("mute_button");
     }
-    app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::AppPhase::kIdle;
+    app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
     return;
   }
 
@@ -105,9 +105,9 @@ void handle_single_click(void *button_handle, void *usr_data) {
     if (app_state.phase == hexe::AppPhase::kListening || app_state.phase == hexe::AppPhase::kThinking ||
         app_state.phase == hexe::AppPhase::kReplying) {
       hexe::voice::cancel_active_session("config_button");
-      app_state.phase = hexe::AppPhase::kIdle;
+      app_state.phase = hexe::idle_or_connecting_phase();
     } else {
-      app_state.phase = hexe::AppPhase::kIdle;
+      app_state.phase = hexe::idle_or_connecting_phase();
     }
   }
 }

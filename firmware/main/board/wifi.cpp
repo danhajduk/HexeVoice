@@ -39,6 +39,8 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
 
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
     state.wifi_connected = false;
+    state.backend_connected = false;
+    state.voice_ws_connected = false;
     state.wifi_rssi = -100;
     state.phase = hexe::AppPhase::kWiFiConnecting;
     ESP_LOGW(kTag, "Wi-Fi disconnected, retrying");
@@ -49,7 +51,7 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
   if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
     const auto *event = static_cast<const ip_event_got_ip_t *>(event_data);
     state.wifi_connected = true;
-    state.phase = hexe::AppPhase::kIdle;
+    state.phase = hexe::AppPhase::kBackendConnecting;
     update_rssi_from_ap_info();
     ESP_LOGI(
         kTag, "Connected to Wi-Fi with IP " IPSTR, IP2STR(&event->ip_info.ip));

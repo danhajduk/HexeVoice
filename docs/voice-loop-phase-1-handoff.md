@@ -80,6 +80,7 @@ Firmware UX timing notes:
 - The LCD stays in Replying while real TTS audio playback is queued or active; `session.completed` no longer forces Idle until playback is done.
 - Firmware plays a short local listening cue when the backend emits `wake.accepted`, so the endpoint gives immediate audible feedback before the user speaks the command.
 - Speaker playback briefly pauses the microphone stream, then resumes it, to avoid the ESP-BOX I2S input path blocking local cue and TTS output.
+- The endpoint no longer shows the idle screen until Wi-Fi, backend heartbeat, and the voice WebSocket are all connected; the boot FW label was removed from the LCD.
 
 `GET /api/voice/status` exposes the latest transcript text plus `last_transcript_metadata` with provider id, model, confidence, duration in milliseconds, text length, and provider error. It also exposes `last_assistant` with provider id, model, response text, latency, text length, and error state, plus `last_turn_timings` with STT, assistant, TTS, and total turn duration in milliseconds. The backend log records transcript finalization, local faster-whisper latency, and the full turn timing breakdown.
 

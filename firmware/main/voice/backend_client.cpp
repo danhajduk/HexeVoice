@@ -75,11 +75,16 @@ bool backend_ready_for_voice() {
 
 void mark_voice_socket_disconnected() {
   g_ws_connected = false;
+  auto &state = hexe::state();
+  state.voice_ws_connected = false;
   g_session_started = false;
   g_audio_stream_finished = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
   set_audio_streaming(false);
+  if (!state.muted && !state.ota_active) {
+    state.phase = hexe::idle_or_connecting_phase();
+  }
 }
 
 void remember_preroll_frame(const AudioFrame &frame) {
@@ -339,7 +344,7 @@ void handle_backend_event_json(const std::string &message) {
     g_transport_sample_count = 0;
     set_audio_streaming(false);
     if (!app_state.muted && !hexe::voice::tts_playback_active()) {
-      app_state.phase = hexe::AppPhase::kIdle;
+      app_state.phase = hexe::idle_or_connecting_phase();
     }
   } else if (std::strcmp(type, "session.error") == 0) {
     cJSON *recoverable = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "recoverable") : nullptr;
@@ -350,7 +355,7 @@ void handle_backend_event_json(const std::string &message) {
     set_audio_streaming(false);
     if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
       if (!app_state.muted) {
-        app_state.phase = hexe::AppPhase::kIdle;
+        app_state.phase = hexe::idle_or_connecting_phase();
       }
     } else {
       app_state.phase = hexe::AppPhase::kError;
@@ -398,25 +403,24 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
   (void)base;
   if (event_id == WEBSOCKET_EVENT_CONNECTED) {
     g_ws_connected = true;
+    auto &state = hexe::state();
+    state.voice_ws_connected = true;
     g_session_started = false;
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
     set_audio_streaming(false);
     g_ws_rx_buffer.clear();
+    if (!state.muted && !state.ota_active) {
+      state.phase = hexe::idle_or_connecting_phase();
+    }
     ESP_LOGI(kTag, "Voice WebSocket connected");
   } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
-    g_ws_connected = false;
-    g_session_started = false;
-    g_audio_stream_finished = false;
-    g_preroll_drained = false;
-    g_transport_sample_count = 0;
-    set_audio_streaming(false);
+    mark_voice_socket_disconnected();
     g_ws_rx_buffer.clear();
     ESP_LOGW(kTag, "Voice WebSocket disconnected");
   } else if (event_id == WEBSOCKET_EVENT_ERROR) {
-    g_ws_connected = false;
-    set_audio_streaming(false);
+    mark_voice_socket_disconnected();
     ESP_LOGW(kTag, "Voice WebSocket error");
   } else if (event_id == WEBSOCKET_EVENT_DATA) {
     handle_websocket_data(static_cast<esp_websocket_event_data_t *>(event_data));
@@ -506,7 +510,12 @@ void heartbeat_task(void *arg) {
 
   while (true) {
     if (!hexe::state().wifi_connected) {
-      hexe::state().backend_connected = false;
+      auto &state = hexe::state();
+      state.backend_connected = false;
+      state.voice_ws_connected = false;
+      if (!state.muted && !state.ota_active) {
+        state.phase = hexe::idle_or_connecting_phase();
+      }
       vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
       continue;
     }
@@ -535,10 +544,18 @@ void heartbeat_task(void *arg) {
     esp_http_client_set_post_field(client, body, std::strlen(body));
     esp_err_t err = esp_http_client_perform(client);
     const int status_code = esp_http_client_get_status_code(client);
+    auto &state = hexe::state();
     if (err == ESP_OK && status_code >= 200 && status_code < 300) {
-      hexe::state().backend_connected = true;
+      state.backend_connected = true;
+      if (!state.muted && !state.ota_active && !state.voice_ws_connected) {
+        state.phase = hexe::AppPhase::kBackendConnecting;
+      }
     } else {
-      hexe::state().backend_connected = false;
+      state.backend_connected = false;
+      state.voice_ws_connected = false;
+      if (!state.muted && !state.ota_active) {
+        state.phase = hexe::idle_or_connecting_phase();
+      }
       if (err != ESP_OK) {
         ESP_LOGW(kTag, "Endpoint heartbeat failed: %s", esp_err_to_name(err));
       } else {

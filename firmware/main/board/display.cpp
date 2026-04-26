@@ -99,76 +99,6 @@ void draw_hline(int x, int y, int width, uint16_t color) {
   fill_rect(x, y, width, 1, color);
 }
 
-uint8_t glyph_bits(char ch, int row) {
-  static constexpr uint8_t kUnknown[7] = {0x0E, 0x11, 0x01, 0x06, 0x04, 0x00, 0x04};
-  static constexpr uint8_t kSpace[7] = {};
-  static constexpr uint8_t kDot[7] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C};
-  static constexpr uint8_t kDash[7] = {0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x00};
-  static constexpr uint8_t kPercent[7] = {0x19, 0x19, 0x02, 0x04, 0x08, 0x13, 0x13};
-  static constexpr uint8_t kDigits[10][7] = {
-      {0x0E, 0x11, 0x13, 0x15, 0x19, 0x11, 0x0E},
-      {0x04, 0x0C, 0x04, 0x04, 0x04, 0x04, 0x0E},
-      {0x0E, 0x11, 0x01, 0x02, 0x04, 0x08, 0x1F},
-      {0x1E, 0x01, 0x01, 0x0E, 0x01, 0x01, 0x1E},
-      {0x02, 0x06, 0x0A, 0x12, 0x1F, 0x02, 0x02},
-      {0x1F, 0x10, 0x10, 0x1E, 0x01, 0x01, 0x1E},
-      {0x06, 0x08, 0x10, 0x1E, 0x11, 0x11, 0x0E},
-      {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},
-      {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E},
-      {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x02, 0x0C},
-  };
-  static constexpr uint8_t kF[7] = {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10};
-  static constexpr uint8_t kW[7] = {0x11, 0x11, 0x11, 0x15, 0x15, 0x1B, 0x11};
-  static constexpr uint8_t kV[7] = {0x11, 0x11, 0x11, 0x11, 0x0A, 0x0A, 0x04};
-
-  const uint8_t *glyph = kUnknown;
-  if (ch == ' ') {
-    glyph = kSpace;
-  } else if (ch == '.') {
-    glyph = kDot;
-  } else if (ch == '-') {
-    glyph = kDash;
-  } else if (ch == '%') {
-    glyph = kPercent;
-  } else if (ch >= '0' && ch <= '9') {
-    glyph = kDigits[ch - '0'];
-  } else if (ch == 'F' || ch == 'f') {
-    glyph = kF;
-  } else if (ch == 'W' || ch == 'w') {
-    glyph = kW;
-  } else if (ch == 'V' || ch == 'v') {
-    glyph = kV;
-  }
-  return glyph[row];
-}
-
-void draw_text(int x, int y, const char *text, uint16_t color, int scale) {
-  if (text == nullptr) {
-    return;
-  }
-  int cursor = x;
-  for (const char *p = text; *p != '\0'; ++p) {
-    for (int row = 0; row < 7; ++row) {
-      const uint8_t bits = glyph_bits(*p, row);
-      for (int col = 0; col < 5; ++col) {
-        if ((bits & (1 << (4 - col))) != 0) {
-          fill_rect(cursor + (col * scale), y + (row * scale), scale, scale, color);
-        }
-      }
-    }
-    cursor += 6 * scale;
-  }
-}
-
-void draw_firmware_version(const char *build_id) {
-  char label[48];
-  std::snprintf(label, sizeof(label), "FW %s", build_id == nullptr ? "unknown" : build_id);
-  const uint16_t shadow = swap565(0x0000);
-  const uint16_t text = swap565(0xFFFF);
-  fill_rect(88, 216, 144, 15, shadow);
-  draw_text(94, 219, label, text, 1);
-}
-
 void draw_ota_progress() {
   const auto &app_state = hexe::state();
   int percent = app_state.ota_progress_percent;
@@ -356,6 +286,7 @@ void turn_on_backlight() {
 }
 
 void render_boot_frame(int frame, const char *build_id) {
+  (void)build_id;
   if (g_panel == nullptr || g_framebuffer == nullptr) {
     return;
   }
@@ -375,10 +306,6 @@ void render_boot_frame(int frame, const char *build_id) {
   if (phase == hexe::AppPhase::kUpdating) {
     draw_ota_progress();
   }
-  if (phase == hexe::AppPhase::kBooting || phase == hexe::AppPhase::kWiFiConnecting) {
-    draw_firmware_version(build_id);
-  }
-
   ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(g_panel, 0, 0, kWidth, kHeight, g_framebuffer));
 }
 

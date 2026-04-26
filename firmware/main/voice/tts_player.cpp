@@ -333,7 +333,7 @@ void playback_task(void *arg) {
       hexe::board::resume_microphone_after_playback();
     }
     if (played && !state.muted) {
-      state.phase = hexe::AppPhase::kIdle;
+      state.phase = hexe::idle_or_connecting_phase();
     } else if (!state.muted && state.phase == hexe::AppPhase::kReplying) {
       state.phase = hexe::AppPhase::kError;
     }
@@ -418,7 +418,7 @@ void stop_tts_playback() {
   g_playback_active = false;
   auto &state = hexe::state();
   if (!state.muted) {
-    state.phase = hexe::AppPhase::kIdle;
+    state.phase = hexe::idle_or_connecting_phase();
   }
 }
 

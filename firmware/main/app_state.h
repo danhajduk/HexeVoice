@@ -21,6 +21,7 @@ struct AppState {
   bool muted{false};
   bool wifi_connected{false};
   bool backend_connected{false};
+  bool voice_ws_connected{false};
   bool timer_active{false};
   bool vad_enabled{false};
   bool vad_speaking{false};
@@ -36,5 +37,7 @@ struct AppState {
 
 AppState &state();
 void advance_loading_frame();
+bool endpoint_ready();
+AppPhase idle_or_connecting_phase();
 
 }  // namespace hexe
