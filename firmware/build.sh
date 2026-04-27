@@ -11,25 +11,6 @@ RUNTIME_FIRMWARE_BIN="${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
 RUNTIME_FIRMWARE_MANIFEST="${RUNTIME_FIRMWARE_DIR}/manifest.json"
 OTA_API_BASE="${OTA_API_BASE:-http://127.0.0.1:${API_PORT:-9004}}"
 
-find_converter_python() {
-  if [[ -n "${PYTHON:-}" ]]; then
-    printf '%s\n' "${PYTHON}"
-    return
-  fi
-  if [[ -n "${IDF_PYTHON_ENV_PATH:-}" && -x "${IDF_PYTHON_ENV_PATH}/bin/python" ]]; then
-    printf '%s\n' "${IDF_PYTHON_ENV_PATH}/bin/python"
-    return
-  fi
-  local candidate
-  for candidate in "${HOME}"/.espressif/python_env/idf*_py*_env/bin/python; do
-    if [[ -x "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return
-    fi
-  done
-  printf '%s\n' "python3"
-}
-
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [build|push]
@@ -128,51 +109,6 @@ if [[ -z "${IDF_PATH:-}" ]]; then
 fi
 
 cd "${ROOT_DIR}"
-
-LOGO_SOURCE="${ROOT_DIR}/assets/Logo 320x240.png"
-LOGO_HEADER="${ROOT_DIR}/main/assets/logo_rgb565.h"
-IDLE_SOURCE="${ROOT_DIR}/assets/Idle.png"
-IDLE_HEADER="${ROOT_DIR}/main/assets/idle_rgb565.h"
-LISTENING_SOURCE="${ROOT_DIR}/assets/Listen.png"
-LISTENING_HEADER="${ROOT_DIR}/main/assets/listening_rgb565.h"
-THINKING_SOURCE="${ROOT_DIR}/assets/Thinking.png"
-THINKING_HEADER="${ROOT_DIR}/main/assets/thinking_rgb565.h"
-TALK_SOURCE="${ROOT_DIR}/assets/Talk.png"
-TALK_HEADER="${ROOT_DIR}/main/assets/talk_rgb565.h"
-WORK_SOURCE="${ROOT_DIR}/assets/Work.png"
-WORK_HEADER="${ROOT_DIR}/main/assets/work_rgb565.h"
-ERROR_SOURCE="${ROOT_DIR}/assets/Error.png"
-ERROR_HEADER="${ROOT_DIR}/main/assets/error_rgb565.h"
-
-CONVERTER_PYTHON="$(find_converter_python)"
-
-if [[ -f "${LOGO_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${LOGO_SOURCE}" "${LOGO_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
-fi
-
-if [[ -f "${IDLE_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${IDLE_SOURCE}" "${IDLE_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
-fi
-
-if [[ -f "${LISTENING_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${LISTENING_SOURCE}" "${LISTENING_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
-fi
-
-if [[ -f "${THINKING_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${THINKING_SOURCE}" "${THINKING_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
-fi
-
-if [[ -f "${TALK_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${TALK_SOURCE}" "${TALK_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
-fi
-
-if [[ -f "${WORK_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${WORK_SOURCE}" "${WORK_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
-fi
-
-if [[ -f "${ERROR_SOURCE}" ]]; then
-  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/convert_image.py" "${ERROR_SOURCE}" "${ERROR_HEADER}" --format cpp-header --width 320 --height 240 --alpha-mode discard
-fi
 
 if [[ ! -f "${ROOT_DIR}/sdkconfig" ]]; then
   idf.py set-target "${TARGET}"

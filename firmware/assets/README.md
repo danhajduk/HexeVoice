@@ -17,7 +17,7 @@ The canonical LCD source images are the 320x240 PNG files in this directory:
 - `Work.png`
 - `Error.png`
 
-`firmware/build.sh` converts these PNG files into RGB565 headers under `firmware/main/assets/` before building the firmware.
+These PNG files are source/reference assets only. The firmware does not compile UI pictures into the binary; endpoint UI pictures should be converted to RGB565 and loaded from the SD card.
 
 To convert an image for the SD card:
 
