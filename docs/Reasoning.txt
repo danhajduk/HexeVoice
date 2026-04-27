@@ -217,3 +217,9 @@ Step objective: Add sprite/item asset support under `/sdcard/hexe/sprites`.
 Chosen fix: Added a simple overlay manifest convention that can be produced by tooling and consumed by firmware without adding a UI framework dependency.
 What changed: Firmware now reads `/sdcard/hexe/sprites/overlay.json`, validates sprite geometry, loads the referenced RGB565 sprite, and draws it over non-boot UI screens; added `firmware/tools/convert-sprite.sh` to create sprite payloads and manifests.
 Verification: `bash -n firmware/tools/convert-sprite.sh` passed; `./firmware/build.sh` passed.
+###########
+Task #082
+Step objective: Add SD sound asset delivery and playback integration.
+Chosen fix: Reused the existing WAV PCM playback worker and added a local SD file source so delivered sound assets can be played without another audio path.
+What changed: Firmware can queue `/sdcard/hexe/sounds/*.wav` playback through `play_sd_sound`; completed sound transfers with `activate: true` trigger local playback after checksum verification and rename.
+Verification: `./firmware/build.sh` passed.

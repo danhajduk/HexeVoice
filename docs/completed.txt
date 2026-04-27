@@ -64,3 +64,4 @@ Task 078: Add backend media upload and endpoint delivery APIs - Completed on 04/
 Task 079: Add firmware media-transfer command handling - Completed on 04/27/2026 00:35
 Task 080: Add endpoint SD media inventory reporting - Completed on 04/27/2026 00:33
 Task 081: Add sprite/item asset support under /sdcard/hexe/sprites - Completed on 04/27/2026 00:36
+Task 082: Add SD sound asset delivery and playback integration - Completed on 04/27/2026 00:39

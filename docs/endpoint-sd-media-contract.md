@@ -39,6 +39,7 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 - Preferred endpoint format: WAV PCM compatible with the firmware speaker path.
 - Accepted upload extension: `.wav`.
 - Required metadata: sample rate, channel count, bits per sample, and duration when known.
+- Firmware can play an activated transferred sound directly from SD through the same WAV PCM speaker path used for TTS playback.
 
 ## Transfer Envelope
 

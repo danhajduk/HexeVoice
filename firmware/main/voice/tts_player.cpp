@@ -9,6 +9,7 @@
 
 #include "app_state.h"
 #include "board/audio.h"
+#include "board/storage.h"
 #include "bsp/esp-box-3.h"
 #include "endpoint_config.h"
 #include "esp_codec_dev.h"
@@ -31,6 +32,7 @@ struct PlaybackRequest {
   char stream_id[64];
   char content_type[32];
   char audio_url[192];
+  char file_path[256];
 };
 
 struct HttpBuffer {
@@ -136,6 +138,39 @@ bool fetch_audio(const std::string &url, std::vector<uint8_t> *audio) {
   return true;
 }
 
+bool read_audio_file(const char *path, std::vector<uint8_t> *audio) {
+  if (path == nullptr || path[0] == '\0' || audio == nullptr) {
+    return false;
+  }
+
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    ESP_LOGW(kTag, "Could not open SD sound: %s", path);
+    return false;
+  }
+  if (std::fseek(file, 0, SEEK_END) != 0) {
+    std::fclose(file);
+    return false;
+  }
+  const long file_size = std::ftell(file);
+  if (file_size <= 0 || static_cast<size_t>(file_size) > kMaxTtsBytes) {
+    ESP_LOGW(kTag, "Ignoring SD sound %s: size %ld is outside limit", path, file_size);
+    std::fclose(file);
+    return false;
+  }
+  std::rewind(file);
+
+  audio->assign(static_cast<size_t>(file_size), 0);
+  const size_t read_bytes = std::fread(audio->data(), 1, audio->size(), file);
+  std::fclose(file);
+  if (read_bytes != audio->size()) {
+    audio->clear();
+    ESP_LOGW(kTag, "Could not read SD sound %s", path);
+    return false;
+  }
+  return true;
+}
+
 bool parse_wav(const std::vector<uint8_t> &audio, WavView *wav) {
   if (wav == nullptr || audio.size() < 44 || std::memcmp(audio.data(), "RIFF", 4) != 0 ||
       std::memcmp(audio.data() + 8, "WAVE", 4) != 0) {
@@ -227,10 +262,11 @@ void playback_task(void *arg) {
 
     state.phase = hexe::AppPhase::kReplying;
 
-    const std::string url = resolve_audio_url(request.audio_url);
     std::vector<uint8_t> audio;
     const bool mic_paused = hexe::board::pause_microphone_for_playback();
-    const bool played = fetch_audio(url, &audio) && play_wav(audio);
+    const std::string url = resolve_audio_url(request.audio_url);
+    const bool loaded = request.file_path[0] == '\0' ? fetch_audio(url, &audio) : read_audio_file(request.file_path, &audio);
+    const bool played = loaded && play_wav(audio);
     if (mic_paused) {
       hexe::board::resume_microphone_after_playback();
     }
@@ -248,6 +284,21 @@ void copy_field(char *target, size_t target_size, const char *source) {
     return;
   }
   std::snprintf(target, target_size, "%s", source == nullptr ? "" : source);
+}
+
+bool is_safe_sound_filename(const char *filename) {
+  if (filename == nullptr || filename[0] == '\0' || filename[0] == '.' || std::strlen(filename) >= 120) {
+    return false;
+  }
+  for (const char *cursor = filename; *cursor != '\0'; ++cursor) {
+    if (*cursor == '/' || *cursor == '\\' || static_cast<unsigned char>(*cursor) < 32) {
+      return false;
+    }
+    if (*cursor == '.' && cursor[1] == '.') {
+      return false;
+    }
+  }
+  return true;
 }
 }
 
@@ -294,6 +345,38 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
     ESP_LOGW(kTag, "Dropping TTS playback request because queue is unavailable");
     g_playback_active = false;
     state.phase = hexe::AppPhase::kError;
+  }
+}
+
+void play_sd_sound(const char *filename) {
+  auto &state = hexe::state();
+  if (state.muted) {
+    ESP_LOGI(kTag, "Ignoring SD sound while muted");
+    return;
+  }
+  if (!hexe::board::sd_card_mounted() || !is_safe_sound_filename(filename)) {
+    ESP_LOGW(kTag, "Ignoring SD sound request for invalid or unavailable file");
+    return;
+  }
+
+  PlaybackRequest request = {};
+  copy_field(request.stream_id, sizeof(request.stream_id), filename);
+  copy_field(request.content_type, sizeof(request.content_type), "audio/wav");
+  const int written = std::snprintf(
+      request.file_path,
+      sizeof(request.file_path),
+      "%s/%s",
+      hexe::board::sd_card_sounds_path(),
+      filename);
+  if (written < 0 || written >= static_cast<int>(sizeof(request.file_path))) {
+    ESP_LOGW(kTag, "SD sound path is too long");
+    return;
+  }
+
+  g_playback_active = true;
+  if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
+    ESP_LOGW(kTag, "Dropping SD sound playback request because queue is unavailable");
+    g_playback_active = false;
   }
 }
 

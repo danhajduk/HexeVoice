@@ -990,6 +990,9 @@ bool write_media_transfer(const MediaTransferRequest &request) {
 
   ESP_LOGI(kTag, "Stored media transfer destination=%s filename=%s bytes=%d", request.destination, request.filename, total_read);
   send_command_ack(request.request_id, "endpoint.media.transfer", "succeeded", "Media stored on SD card");
+  if (request.activate && std::strcmp(request.destination, "sound") == 0) {
+    hexe::voice::play_sd_sound(request.filename);
+  }
   return true;
 }
 
