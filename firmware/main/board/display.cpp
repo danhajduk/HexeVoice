@@ -361,6 +361,10 @@ struct ClockSceneConfig {
   uint16_t color{0xFFFF};
   uint16_t second_color{0xF800};
   int idle_timeout_ms{kDefaultClockIdleTimeoutMs};
+  bool date_split{false};
+  int day_x{-1};
+  int day_y{202};
+  int day_scale{2};
   int date_x{-1};
   int date_y{202};
   int date_scale{2};
@@ -856,15 +860,16 @@ void draw_text5x7(int x, int y, const char *text, int scale, uint16_t color) {
   }
 }
 
-void format_clock_date(const std::tm &local, char *buffer, size_t buffer_size) {
-  static constexpr const char *kWeekdays[] = {"Sun.", "Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat."};
-  static constexpr const char *kMonths[] = {"Jan.", "Feb.", "Mar.", "Apr.", "May.", "Jun.", "Jul.", "Aug.", "Sep.", "Oct.", "Nov.", "Dec."};
-  if (buffer == nullptr || buffer_size == 0) {
+void format_clock_date_parts(const std::tm &local, char *day, size_t day_size, char *date, size_t date_size) {
+  static constexpr const char *kWeekdays[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  static constexpr const char *kMonths[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  if (day == nullptr || day_size == 0 || date == nullptr || date_size == 0) {
     return;
   }
   const int weekday = (local.tm_wday >= 0 && local.tm_wday < 7) ? local.tm_wday : 0;
   const int month = (local.tm_mon >= 0 && local.tm_mon < 12) ? local.tm_mon : 0;
-  std::snprintf(buffer, buffer_size, "%s - %s %d", kWeekdays[weekday], kMonths[month], local.tm_mday);
+  std::snprintf(day, day_size, "%s", kWeekdays[weekday]);
+  std::snprintf(date, date_size, "%s %d", kMonths[month], local.tm_mday);
 }
 
 void draw_clock_overlay() {
@@ -902,13 +907,29 @@ void draw_clock_overlay() {
   }
 
   if (g_scene.clock.date) {
-    char date[24] = {};
-    format_clock_date(local, date, sizeof(date));
-    int x = g_scene.clock.date_x;
-    if (x < 0) {
-      x = (kWidth - text5x7_width(date, g_scene.clock.date_scale)) / 2;
+    char day[8] = {};
+    char date[16] = {};
+    format_clock_date_parts(local, day, sizeof(day), date, sizeof(date));
+    if (g_scene.clock.date_split) {
+      int day_x = g_scene.clock.day_x;
+      if (day_x < 0) {
+        day_x = (kWidth - text5x7_width(day, g_scene.clock.day_scale)) / 2;
+      }
+      int date_x = g_scene.clock.date_x;
+      if (date_x < 0) {
+        date_x = (kWidth - text5x7_width(date, g_scene.clock.date_scale)) / 2;
+      }
+      draw_text5x7(day_x, g_scene.clock.day_y, day, g_scene.clock.day_scale, color);
+      draw_text5x7(date_x, g_scene.clock.date_y, date, g_scene.clock.date_scale, color);
+    } else {
+      char full_date[24] = {};
+      std::snprintf(full_date, sizeof(full_date), "%s %s", day, date);
+      int x = g_scene.clock.date_x;
+      if (x < 0) {
+        x = (kWidth - text5x7_width(full_date, g_scene.clock.date_scale)) / 2;
+      }
+      draw_text5x7(x, g_scene.clock.date_y, full_date, g_scene.clock.date_scale, color);
     }
-    draw_text5x7(x, g_scene.clock.date_y, date, g_scene.clock.date_scale, color);
   }
 }
 
@@ -1001,6 +1022,11 @@ bool load_composed_scene() {
       scene->clock.idle_timeout_ms = cJSON_IsNumber(idle_timeout_ms) && idle_timeout_ms->valueint >= 0 ? idle_timeout_ms->valueint : scene->clock.idle_timeout_ms;
       scene->clock.frame = cJSON_IsBool(cJSON_GetObjectItem(clock, "frame")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "frame"));
       scene->clock.date = cJSON_IsBool(cJSON_GetObjectItem(clock, "date")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "date"));
+      scene->clock.date_split = cJSON_IsBool(cJSON_GetObjectItem(clock, "date_split")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "date_split"));
+      scene->clock.day_x = cJSON_IsNumber(cJSON_GetObjectItem(clock, "day_x")) ? cJSON_GetObjectItem(clock, "day_x")->valueint : scene->clock.day_x;
+      scene->clock.day_y = cJSON_IsNumber(cJSON_GetObjectItem(clock, "day_y")) ? cJSON_GetObjectItem(clock, "day_y")->valueint : scene->clock.day_y;
+      cJSON *day_scale = cJSON_GetObjectItem(clock, "day_scale");
+      scene->clock.day_scale = cJSON_IsNumber(day_scale) && day_scale->valueint > 0 ? day_scale->valueint : scene->clock.day_scale;
       scene->clock.date_x = cJSON_IsNumber(cJSON_GetObjectItem(clock, "date_x")) ? cJSON_GetObjectItem(clock, "date_x")->valueint : scene->clock.date_x;
       scene->clock.date_y = cJSON_IsNumber(cJSON_GetObjectItem(clock, "date_y")) ? cJSON_GetObjectItem(clock, "date_y")->valueint : scene->clock.date_y;
       cJSON *date_scale = cJSON_GetObjectItem(clock, "date_scale");
