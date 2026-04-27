@@ -52,9 +52,10 @@ On boot, firmware now tries to mount a FAT-formatted SPI microSD reader at `/sdc
 Use a 16 GB or 32 GB FAT32 card for the smoothest path. A 64 GB card should use a FAT32 partition, ideally as the first partition. When mounted, firmware creates:
 
 - `/sdcard/hexe/pictures`
+- `/sdcard/hexe/sprites`
 - `/sdcard/hexe/sounds`
 
-Those paths are the stable drop zones for future picture and sound loading.
+Those paths are the stable drop zones for picture, sprite, scene manifest, and sound loading.
 
 ## Next Build Step
 

@@ -41,6 +41,7 @@ from hexevoice.api.models import (
     EndpointMediaUploadRequest,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
+    EndpointTimeResponse,
     EndpointVolumeCommandRequest,
     EndpointVolumeCommandResponse,
     EndpointVolumeStatusResponse,
@@ -166,6 +167,7 @@ def create_app(
         turn_pipeline=voice_turn_pipeline,
     )
     app = FastAPI(title="HexeVoice")
+    log = logging.getLogger("hexevoice")
 
     @app.on_event("startup")
     async def start_supervisor_heartbeat():
@@ -201,6 +203,10 @@ def create_app(
     @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)
     async def endpoint_heartbeat(payload: EndpointHeartbeatRequest) -> EndpointHeartbeatResponse:
         return endpoint_service.record_heartbeat(payload)
+
+    @app.get("/api/endpoint/time", response_model=EndpointTimeResponse)
+    async def endpoint_time() -> EndpointTimeResponse:
+        return endpoint_service.current_time()
 
     @app.get("/api/endpoint/status", response_model=EndpointStatusResponse)
     async def latest_endpoint_status() -> EndpointStatusResponse:
@@ -341,8 +347,15 @@ def create_app(
     @app.post("/api/endpoint/media", response_model=EndpointMediaAssetResponse)
     async def endpoint_media_upload(payload: EndpointMediaUploadRequest) -> EndpointMediaAssetResponse:
         rewrite = payload.rewrite if payload.rewrite is not None else payload.overwrite
+        log.info(
+            "Endpoint media upload started: media_type=%s filename=%s asset_id=%s",
+            payload.media_type,
+            payload.filename,
+            payload.asset_id or "<auto>",
+        )
         try:
-            asset = endpoint_media_service.store_upload(
+            asset = await asyncio.to_thread(
+                endpoint_media_service.store_upload,
                 media_type=payload.media_type,
                 filename=payload.filename,
                 content_base64=payload.content_base64,
@@ -352,7 +365,20 @@ def create_app(
                 overwrite=rewrite,
             )
         except EndpointMediaValidationError as exc:
+            log.warning(
+                "Endpoint media upload rejected: media_type=%s filename=%s code=%s",
+                payload.media_type,
+                payload.filename,
+                exc.code,
+            )
             raise media_error(exc) from exc
+        log.info(
+            "Endpoint media upload staged: asset_id=%s destination=%s filename=%s size_bytes=%s",
+            asset.asset_id,
+            asset.destination,
+            asset.filename,
+            asset.size_bytes,
+        )
         return endpoint_media_response(asset)
 
     @app.get("/api/endpoint/media/files/{asset_id}")
@@ -388,6 +414,15 @@ def create_app(
             raise media_error(exc) from exc
         request_id = f"media_{asset.asset_id}_{hashlib.sha256(asset.sha256.encode()).hexdigest()[:12]}"
         rewrite = payload.rewrite if payload.rewrite is not None else payload.overwrite
+        download_url = endpoint_media_public_url(asset.asset_id)
+        log.info(
+            "Endpoint media delivery requested: endpoint_id=%s asset_id=%s filename=%s size_bytes=%s url=%s",
+            payload.endpoint_id,
+            asset.asset_id,
+            asset.filename,
+            asset.size_bytes,
+            download_url,
+        )
         result = await voice_session_manager.push_media_transfer(
             endpoint_id=payload.endpoint_id,
             request_id=request_id,
@@ -395,13 +430,22 @@ def create_app(
             asset_id=asset.asset_id,
             filename=asset.filename,
             destination=asset.destination,
-            download_url=endpoint_media_public_url(asset.asset_id),
+            download_url=download_url,
             content_type=asset.content_type,
             size_bytes=asset.size_bytes,
             sha256=asset.sha256,
             overwrite=rewrite,
             activate=payload.activate,
             metadata=asset.metadata,
+        )
+        log.info(
+            "Endpoint media delivery dispatch: endpoint_id=%s asset_id=%s accepted=%s status=%s reason=%s request_id=%s",
+            payload.endpoint_id,
+            asset.asset_id,
+            bool(result.get("accepted")),
+            result.get("status"),
+            result.get("reason"),
+            result.get("request_id"),
         )
         return EndpointMediaDeliverResponse(
             accepted=bool(result.get("accepted")),

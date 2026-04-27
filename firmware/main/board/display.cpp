@@ -1,5 +1,6 @@
 #include "board/display.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -13,22 +14,33 @@
 #include "bsp/esp-box-3.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
+#include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+#include "system/clock.h"
 
 namespace {
 constexpr char kTag[] = "hexe_display";
 
 constexpr int kWidth = 320;
 constexpr int kHeight = 240;
-constexpr int kFadeFrameCount = 18;
+constexpr int kFlushRows = 16;
 constexpr uint16_t kBlack = 0x0000;
 constexpr size_t kFullscreenAssetBytes = kWidth * kHeight * sizeof(uint16_t);
+constexpr size_t kFlushBufferBytes = kWidth * kFlushRows * sizeof(uint16_t);
 constexpr size_t kMaxSpriteBytes = 512 * 1024;
 constexpr size_t kMaxSceneSprites = 8;
+constexpr size_t kSceneManifestBytes = 4096;
+constexpr int kDefaultClockIdleTimeoutMs = 120000;
 esp_lcd_panel_handle_t g_panel = nullptr;
 uint16_t *g_framebuffer = nullptr;
+uint16_t *g_lcd_flush_buffer = nullptr;
+SemaphoreHandle_t g_lcd_flush_done = nullptr;
 bool g_backlight_enabled = false;
+std::atomic<bool> g_display_assets_reload_requested{false};
 
 constexpr uint16_t swap565(uint16_t value) {
   return static_cast<uint16_t>((value >> 8) | (value << 8));
@@ -40,26 +52,6 @@ constexpr uint8_t expand5(uint16_t value) {
 
 constexpr uint8_t expand6(uint16_t value) {
   return static_cast<uint8_t>((value << 2) | (value >> 4));
-}
-
-uint16_t scale_rgb565(uint16_t color, uint16_t alpha) {
-  const uint16_t r5 = static_cast<uint16_t>((color >> 11) & 0x1F);
-  const uint16_t g6 = static_cast<uint16_t>((color >> 5) & 0x3F);
-  const uint16_t b5 = static_cast<uint16_t>(color & 0x1F);
-
-  const uint8_t r = static_cast<uint8_t>((expand5(r5) * alpha) / 256);
-  const uint8_t g = static_cast<uint8_t>((expand6(g6) * alpha) / 256);
-  const uint8_t b = static_cast<uint8_t>((expand5(b5) * alpha) / 256);
-
-  const uint16_t scaled = static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
-  return swap565(scaled);
-}
-
-uint16_t ease_in_out_alpha(int frame) {
-  const int clamped_frame = frame < 0 ? 0 : (frame > kFadeFrameCount ? kFadeFrameCount : frame);
-  const uint32_t t = static_cast<uint32_t>((clamped_frame * 256) / kFadeFrameCount);
-  const uint32_t eased = (t * t * ((3 * 256) - (2 * t))) / (256 * 256);
-  return static_cast<uint16_t>(eased);
 }
 
 void set_pixel(int x, int y, uint16_t color) {
@@ -117,6 +109,36 @@ void fill_rect(int x, int y, int width, int height, uint16_t color) {
   }
 }
 
+void flush_framebuffer() {
+  if (g_panel == nullptr || g_framebuffer == nullptr || g_lcd_flush_buffer == nullptr) {
+    return;
+  }
+
+  for (int y = 0; y < kHeight; y += kFlushRows) {
+    const int rows = (y + kFlushRows) <= kHeight ? kFlushRows : (kHeight - y);
+    const size_t bytes = static_cast<size_t>(kWidth) * static_cast<size_t>(rows) * sizeof(uint16_t);
+    std::memcpy(g_lcd_flush_buffer, g_framebuffer + (y * kWidth), bytes);
+    while (g_lcd_flush_done != nullptr && xSemaphoreTake(g_lcd_flush_done, 0) == pdTRUE) {
+    }
+    ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(g_panel, 0, y, kWidth, y + rows, g_lcd_flush_buffer));
+    if (g_lcd_flush_done != nullptr && xSemaphoreTake(g_lcd_flush_done, pdMS_TO_TICKS(1000)) != pdTRUE) {
+      ESP_LOGW(kTag, "Timed out waiting for LCD flush completion");
+    }
+  }
+}
+
+bool on_lcd_color_transfer_done(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
+  (void)panel_io;
+  (void)edata;
+  auto *done = static_cast<SemaphoreHandle_t *>(user_ctx);
+  if (done == nullptr || *done == nullptr) {
+    return false;
+  }
+  BaseType_t high_task_woken = pdFALSE;
+  xSemaphoreGiveFromISR(*done, &high_task_woken);
+  return high_task_woken == pdTRUE;
+}
+
 void draw_rect_outline(int x, int y, int width, int height, uint16_t color) {
   fill_rect(x, y, width, 1, color);
   fill_rect(x, y + height - 1, width, 1, color);
@@ -153,15 +175,6 @@ void draw_ota_progress() {
   fill_rect(kBarX + 2, kBarY + kBarH - 2 - fill_height, kBarW - 4, fill_height, fill);
 }
 
-void blit_fullscreen_image(const uint16_t *pixels, int width, int height, uint16_t alpha) {
-  for (int row = 0; row < height; ++row) {
-    for (int col = 0; col < width; ++col) {
-      const int index = row * width + col;
-      set_pixel(col, row, scale_rgb565(pixels[index], alpha));
-    }
-  }
-}
-
 int wifi_strength_bars(int rssi) {
   if (rssi >= -67) {
     return 3;
@@ -180,8 +193,8 @@ void draw_wifi_icon(bool connected, int rssi) {
     return;
   }
 
-  constexpr int kIconX = 8;
-  constexpr int kIconY = 8;
+  constexpr int kIconX = 15;
+  constexpr int kIconY = 11;
   constexpr int kIconW = 24;
   constexpr int kIconH = 18;
   const int bars = wifi_strength_bars(rssi);
@@ -219,15 +232,15 @@ void draw_audio_stream_icon(bool streaming) {
     return;
   }
 
-  constexpr int kIconX = 38;
-  constexpr int kIconY = 8;
+  constexpr int kIconX = 45;
+  constexpr int kIconY = 11;
   constexpr int kIconW = 24;
   constexpr int kIconH = 18;
   const uint16_t shadow = swap565(0x0000);
   const uint16_t bg = swap565(0x18C3);
   const uint16_t outline = swap565(0x7BEF);
   const uint16_t fg = swap565(0x07FF);
-  const uint16_t pulse = (hexe::state().loading_frame % 24) < 12 ? swap565(0xFFFF) : fg;
+  const uint16_t pulse = ((xTaskGetTickCount() / pdMS_TO_TICKS(500)) % 2) == 0 ? swap565(0xFFFF) : fg;
 
   fill_rect(kIconX + 1, kIconY + 1, kIconW, kIconH, shadow);
   fill_rect(kIconX, kIconY, kIconW, kIconH, bg);
@@ -252,12 +265,14 @@ void draw_volume_indicator() {
     percent = 100;
   }
 
-  constexpr int kIconX = 240;
-  constexpr int kIconY = 8;
-  constexpr int kBarX = 262;
-  constexpr int kBarY = 13;
-  constexpr int kBarW = 48;
-  constexpr int kBarH = 6;
+  constexpr int kIconX = 233;
+  constexpr int kIconY = 11;
+  constexpr int kBarX = 251;
+  constexpr int kBarY = 15;
+  constexpr int kBarW = 54;
+  constexpr int kBarH = 8;
+  constexpr int kPanelW = 75;
+  constexpr int kPanelH = 18;
   const int fill_width = ((kBarW - 4) * percent) / 100;
   const uint16_t shadow = swap565(0x0000);
   const uint16_t bg = swap565(0x18C3);
@@ -265,31 +280,18 @@ void draw_volume_indicator() {
   const uint16_t fg = app_state.muted ? swap565(0xF800) : swap565(0xFFFF);
   const uint16_t fill = app_state.muted ? swap565(0xF800) : swap565(0x07FF);
 
-  fill_rect(kIconX - 3, kIconY - 3, 76, 18, shadow);
-  fill_rect(kIconX - 2, kIconY - 4, 74, 1, bg);
-  fill_rect(kIconX - 3, kIconY - 3, 76, 16, bg);
-  fill_rect(kIconX - 2, kIconY + 13, 74, 1, bg);
+  fill_rect(kIconX - 2, kIconY + 1, kPanelW - 1, kPanelH, shadow);
+  fill_rect(kIconX - 3, kIconY, kPanelW, kPanelH, bg);
+  draw_rect_outline(kIconX - 3, kIconY, kPanelW, kPanelH, outline);
 
   fill_rect(kIconX, kIconY + 5, 5, 5, fg);
   fill_rect(kIconX + 5, kIconY + 3, 3, 9, fg);
-  if (percent > 0 && !app_state.muted) {
-    draw_hline(kIconX + 10, kIconY + 5, 4, fg);
-    draw_hline(kIconX + 10, kIconY + 9, 4, fg);
-    draw_hline(kIconX + 15, kIconY + 3, 4, fg);
-    draw_hline(kIconX + 15, kIconY + 11, 4, fg);
-  }
 
   draw_rect_outline(kBarX, kBarY, kBarW, kBarH, outline);
   if (fill_width > 0) {
     fill_rect(kBarX + 2, kBarY + 2, fill_width, kBarH - 4, fill);
   }
 }
-
-struct ScreenAsset {
-  const uint16_t *pixels;
-  int width;
-  int height;
-};
 
 enum class UiAssetId : uint8_t {
   kLogo = 0,
@@ -299,28 +301,27 @@ enum class UiAssetId : uint8_t {
   kThinking,
   kTalk,
   kError,
+  kClock,
   kCount,
 };
 
-struct SdUiAsset {
-  const char *label;
-  const char *filenames[3];
-  uint16_t *sd_pixels;
-  char sd_path[256];
+struct DisplayFrameSignature {
+  hexe::AppPhase phase{hexe::AppPhase::kBooting};
+  UiAssetId asset_id{UiAssetId::kLogo};
+  bool wifi_connected{false};
+  int wifi_bars{0};
+  bool audio_streaming{false};
+  int audio_pulse_phase{0};
+  bool muted{false};
+  int output_volume_percent{0};
+  bool ota_active{false};
+  int ota_progress_percent{0};
+  bool media_transfer_active{false};
+  int clock_minute{-1};
 };
 
-struct SpriteOverlay {
-  uint16_t *pixels;
-  int width;
-  int height;
-  int x;
-  int y;
-  bool transparent_enabled;
-  uint16_t transparent_color;
-  char path[256];
-};
-
-SpriteOverlay g_sprite_overlay = {};
+DisplayFrameSignature g_last_frame_signature = {};
+bool g_last_frame_signature_valid = false;
 
 enum class AlphaFormat : uint8_t {
   kNone = 0,
@@ -345,10 +346,19 @@ struct LayerAsset {
 struct ClockSceneConfig {
   bool enabled{false};
   bool date{false};
+  bool frame{false};
   int cx{160};
   int cy{110};
+  int hands_dx{0};
+  int hands_dy{0};
   int radius{62};
+  int hour_radius_percent{50};
+  int minute_radius_percent{75};
   uint16_t color{0xFFFF};
+  int idle_timeout_ms{kDefaultClockIdleTimeoutMs};
+  int date_x{-1};
+  int date_y{202};
+  int date_scale{2};
 };
 
 struct ComposedScene {
@@ -363,65 +373,67 @@ struct ComposedScene {
 
 ComposedScene g_scene = {};
 
-SdUiAsset g_ui_assets[] = {
-    {
-        "Logo",
-        {"Logo 320x240.rgb565", "Logo.rgb565", nullptr},
-        nullptr,
-        {},
-    },
-    {
-        "Idle",
-        {"Idle.rgb565", nullptr, nullptr},
-        nullptr,
-        {},
-    },
-    {
-        "Listening",
-        {"Listen.rgb565", "Listening.rgb565", nullptr},
-        nullptr,
-        {},
-    },
-    {
-        "Work",
-        {"Work.rgb565", nullptr, nullptr},
-        nullptr,
-        {},
-    },
-    {
-        "Thinking",
-        {"Thinking.rgb565", nullptr, nullptr},
-        nullptr,
-        {},
-    },
-    {
-        "Talk",
-        {"Talk.rgb565", nullptr, nullptr},
-        nullptr,
-        {},
-    },
-    {
-        "Error",
-        {"Error.rgb565", nullptr, nullptr},
-        nullptr,
-        {},
-    },
-};
-
-static_assert(
-    sizeof(g_ui_assets) / sizeof(g_ui_assets[0]) == static_cast<size_t>(UiAssetId::kCount),
-    "UI asset table must match UiAssetId");
-
-SdUiAsset &ui_asset(UiAssetId id) {
-  return g_ui_assets[static_cast<uint8_t>(id)];
+int clock_minute_signature(UiAssetId id) {
+  if (id != UiAssetId::kClock || !g_scene.clock.enabled) {
+    return -1;
+  }
+  return hexe::system::current_local_minute_signature();
 }
 
-ScreenAsset asset_for_id(UiAssetId id) {
-  auto &asset = ui_asset(id);
-  if (asset.sd_pixels != nullptr) {
-    return {asset.sd_pixels, kWidth, kHeight};
+DisplayFrameSignature make_frame_signature(hexe::AppPhase phase, UiAssetId asset_id) {
+  const auto &app_state = hexe::state();
+  int volume = app_state.output_volume_percent;
+  if (volume < 0) {
+    volume = 0;
+  } else if (volume > 100) {
+    volume = 100;
   }
-  return {nullptr, 0, 0};
+
+  int ota_progress = app_state.ota_progress_percent;
+  if (ota_progress < 0) {
+    ota_progress = 0;
+  } else if (ota_progress > 100) {
+    ota_progress = 100;
+  }
+
+  return {
+      .phase = phase,
+      .asset_id = asset_id,
+      .wifi_connected = app_state.wifi_connected,
+      .wifi_bars = wifi_strength_bars(app_state.wifi_rssi),
+      .audio_streaming = app_state.audio_streaming,
+      .audio_pulse_phase = app_state.audio_streaming ? static_cast<int>((xTaskGetTickCount() / pdMS_TO_TICKS(500)) % 2) : 0,
+      .muted = app_state.muted,
+      .output_volume_percent = volume,
+      .ota_active = app_state.ota_active,
+      .ota_progress_percent = ota_progress,
+      .media_transfer_active = app_state.media_transfer_active,
+      .clock_minute = clock_minute_signature(asset_id),
+  };
+}
+
+bool same_frame_signature(const DisplayFrameSignature &left, const DisplayFrameSignature &right) {
+  return left.phase == right.phase &&
+      left.asset_id == right.asset_id &&
+      left.wifi_connected == right.wifi_connected &&
+      left.wifi_bars == right.wifi_bars &&
+      left.audio_streaming == right.audio_streaming &&
+      left.audio_pulse_phase == right.audio_pulse_phase &&
+      left.muted == right.muted &&
+      left.output_volume_percent == right.output_volume_percent &&
+      left.ota_active == right.ota_active &&
+      left.ota_progress_percent == right.ota_progress_percent &&
+      left.media_transfer_active == right.media_transfer_active &&
+      left.clock_minute == right.clock_minute;
+}
+
+bool should_render_frame(const DisplayFrameSignature &signature) {
+  return !g_last_frame_signature_valid || !same_frame_signature(signature, g_last_frame_signature);
+}
+
+void remember_frame_signature(const DisplayFrameSignature &signature) {
+  g_last_frame_signature = signature;
+  g_last_frame_signature_valid = true;
 }
 
 UiAssetId asset_id_for_phase(hexe::AppPhase phase) {
@@ -449,76 +461,6 @@ UiAssetId asset_id_for_phase(hexe::AppPhase phase) {
   return UiAssetId::kIdle;
 }
 
-struct SimpleUiStyle {
-  uint16_t background;
-  uint16_t accent;
-  uint16_t secondary;
-};
-
-SimpleUiStyle simple_style_for_asset(UiAssetId id) {
-  switch (id) {
-    case UiAssetId::kLogo:
-      return {0x0002, 0x07FF, 0x8410};
-    case UiAssetId::kIdle:
-      return {0x0000, 0x07E0, 0x39E7};
-    case UiAssetId::kListening:
-      return {0x0010, 0x07FF, 0xFFFF};
-    case UiAssetId::kWork:
-      return {0x1082, 0xFFE0, 0x7BEF};
-    case UiAssetId::kThinking:
-      return {0x0808, 0xF81F, 0x7BEF};
-    case UiAssetId::kTalk:
-      return {0x1000, 0xF800, 0xFFFF};
-    case UiAssetId::kError:
-      return {0x2000, 0xF800, 0xFFE0};
-    case UiAssetId::kCount:
-      break;
-  }
-
-  return {0x0000, 0xFFFF, 0x7BEF};
-}
-
-void draw_simple_ui_asset(UiAssetId id, uint16_t alpha) {
-  const auto style = simple_style_for_asset(id);
-  const uint16_t bg = scale_rgb565(style.background, alpha);
-  const uint16_t accent = scale_rgb565(style.accent, alpha);
-  const uint16_t secondary = scale_rgb565(style.secondary, alpha);
-
-  fill_frame(bg);
-  fill_rect(0, 0, kWidth, 8, accent);
-  fill_rect(0, kHeight - 8, kWidth, 8, accent);
-  fill_rect(36, 56, 248, 4, secondary);
-  fill_rect(36, 180, 248, 4, secondary);
-  fill_rect(64, 80, 192, 80, secondary);
-  draw_rect_outline(64, 80, 192, 80, accent);
-
-  const int pulse = hexe::state().loading_frame % 48;
-  const int marker_x = 78 + ((pulse < 24 ? pulse : 47 - pulse) * 6);
-  fill_rect(marker_x, 110, 28, 20, accent);
-
-  if (id == UiAssetId::kListening || id == UiAssetId::kTalk) {
-    fill_rect(122, 94, 18, 52, accent);
-    fill_rect(150, 104, 18, 32, accent);
-    fill_rect(178, 90, 18, 60, accent);
-  } else if (id == UiAssetId::kError) {
-    fill_rect(148, 94, 24, 56, accent);
-    fill_rect(148, 160, 24, 12, accent);
-  } else {
-    fill_rect(92, 104, 136, 12, accent);
-    fill_rect(112, 128, 96, 12, accent);
-  }
-}
-
-void draw_ui_asset(UiAssetId id, uint16_t alpha) {
-  const auto asset = asset_for_id(id);
-  if (asset.pixels != nullptr) {
-    blit_fullscreen_image(asset.pixels, asset.width, asset.height, alpha);
-    return;
-  }
-
-  draw_simple_ui_asset(id, alpha);
-}
-
 bool is_safe_sprite_filename(const char *filename) {
   if (filename == nullptr || filename[0] == '\0' || filename[0] == '.' || std::strlen(filename) >= 120) {
     return false;
@@ -531,68 +473,6 @@ bool is_safe_sprite_filename(const char *filename) {
       return false;
     }
   }
-  return true;
-}
-
-void draw_sprite_overlay() {
-  if (g_sprite_overlay.pixels == nullptr) {
-    return;
-  }
-
-  for (int row = 0; row < g_sprite_overlay.height; ++row) {
-    for (int col = 0; col < g_sprite_overlay.width; ++col) {
-      const uint16_t color = g_sprite_overlay.pixels[row * g_sprite_overlay.width + col];
-      if (g_sprite_overlay.transparent_enabled && color == g_sprite_overlay.transparent_color) {
-        continue;
-      }
-      set_pixel(g_sprite_overlay.x + col, g_sprite_overlay.y + row, color);
-    }
-  }
-}
-
-bool try_load_sd_ui_asset_file(SdUiAsset &asset, const char *path) {
-  FILE *file = std::fopen(path, "rb");
-  if (file == nullptr) {
-    return false;
-  }
-
-  if (std::fseek(file, 0, SEEK_END) != 0) {
-    ESP_LOGW(kTag, "Could not inspect SD UI asset %s", path);
-    std::fclose(file);
-    return false;
-  }
-
-  const long file_size = std::ftell(file);
-  if (file_size != static_cast<long>(kFullscreenAssetBytes)) {
-    ESP_LOGW(kTag, "Ignoring SD UI asset %s: expected %u bytes, got %ld", path, static_cast<unsigned>(kFullscreenAssetBytes), file_size);
-    std::fclose(file);
-    return false;
-  }
-
-  std::rewind(file);
-
-  uint16_t *pixels = static_cast<uint16_t *>(heap_caps_malloc(kFullscreenAssetBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (pixels == nullptr) {
-    pixels = static_cast<uint16_t *>(heap_caps_malloc(kFullscreenAssetBytes, MALLOC_CAP_DEFAULT));
-  }
-  if (pixels == nullptr) {
-    ESP_LOGW(kTag, "Could not allocate %u bytes for SD UI asset %s", static_cast<unsigned>(kFullscreenAssetBytes), asset.label);
-    std::fclose(file);
-    return false;
-  }
-
-  const size_t read_bytes = std::fread(pixels, 1, kFullscreenAssetBytes, file);
-  std::fclose(file);
-
-  if (read_bytes != kFullscreenAssetBytes) {
-    ESP_LOGW(kTag, "Could not read SD UI asset %s: read %u of %u bytes", path, static_cast<unsigned>(read_bytes), static_cast<unsigned>(kFullscreenAssetBytes));
-    heap_caps_free(pixels);
-    return false;
-  }
-
-  asset.sd_pixels = pixels;
-  std::snprintf(asset.sd_path, sizeof(asset.sd_path), "%s", path);
-  ESP_LOGI(kTag, "Loaded SD UI asset %s from %s", asset.label, asset.sd_path);
   return true;
 }
 
@@ -612,6 +492,25 @@ bool read_small_text_file(const char *path, char *buffer, size_t buffer_size) {
   return true;
 }
 
+char *allocate_text_buffer(size_t bytes) {
+  char *buffer = static_cast<char *>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (buffer == nullptr) {
+    buffer = static_cast<char *>(heap_caps_malloc(bytes, MALLOC_CAP_DEFAULT));
+  }
+  if (buffer != nullptr) {
+    buffer[0] = '\0';
+  }
+  return buffer;
+}
+
+ComposedScene *allocate_scene_scratch() {
+  ComposedScene *scene = static_cast<ComposedScene *>(heap_caps_calloc(1, sizeof(ComposedScene), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (scene == nullptr) {
+    scene = static_cast<ComposedScene *>(heap_caps_calloc(1, sizeof(ComposedScene), MALLOC_CAP_DEFAULT));
+  }
+  return scene;
+}
+
 void free_layer_asset(LayerAsset &asset) {
   if (asset.pixels != nullptr) {
     heap_caps_free(asset.pixels);
@@ -620,6 +519,17 @@ void free_layer_asset(LayerAsset &asset) {
     heap_caps_free(asset.alpha);
   }
   asset = {};
+}
+
+void free_composed_scene(ComposedScene &scene) {
+  free_layer_asset(scene.background);
+  for (auto &avatar : scene.avatars) {
+    free_layer_asset(avatar);
+  }
+  for (auto &sprite : scene.sprites) {
+    free_layer_asset(sprite);
+  }
+  scene = {};
 }
 
 bool build_media_path(char *target, size_t target_size, const char *directory, const char *filename) {
@@ -784,6 +694,9 @@ UiAssetId avatar_id_for_key(const char *key) {
   if (std::strcmp(key, "error") == 0) {
     return UiAssetId::kError;
   }
+  if (std::strcmp(key, "clock") == 0) {
+    return UiAssetId::kClock;
+  }
   return UiAssetId::kIdle;
 }
 
@@ -820,51 +733,144 @@ void draw_clock_hand(int cx, int cy, int radius, int numerator, int denominator,
   draw_line(cx + 1, cy, x + 1, y, color);
 }
 
-void draw_digit_7seg(int x, int y, int digit, uint16_t color) {
-  constexpr uint8_t segments[] = {
-      0b0111111, 0b0000110, 0b1011011, 0b1001111, 0b1100110,
-      0b1101101, 0b1111101, 0b0000111, 0b1111111, 0b1101111,
+const uint8_t *font5x7_glyph(char ch) {
+  static constexpr uint8_t kDigits[][5] = {
+      {0x3E, 0x51, 0x49, 0x45, 0x3E}, {0x00, 0x42, 0x7F, 0x40, 0x00},
+      {0x42, 0x61, 0x51, 0x49, 0x46}, {0x21, 0x41, 0x45, 0x4B, 0x31},
+      {0x18, 0x14, 0x12, 0x7F, 0x10}, {0x27, 0x45, 0x45, 0x45, 0x39},
+      {0x3C, 0x4A, 0x49, 0x49, 0x30}, {0x01, 0x71, 0x09, 0x05, 0x03},
+      {0x36, 0x49, 0x49, 0x49, 0x36}, {0x06, 0x49, 0x49, 0x29, 0x1E},
   };
-  if (digit < 0 || digit > 9) {
+  static constexpr uint8_t kLetters[][5] = {
+      {0x7E, 0x11, 0x11, 0x11, 0x7E}, {0x7F, 0x49, 0x49, 0x49, 0x36},
+      {0x3E, 0x41, 0x41, 0x41, 0x22}, {0x7F, 0x41, 0x41, 0x22, 0x1C},
+      {0x7F, 0x49, 0x49, 0x49, 0x41}, {0x7F, 0x09, 0x09, 0x09, 0x01},
+      {0x3E, 0x41, 0x49, 0x49, 0x7A}, {0x7F, 0x08, 0x08, 0x08, 0x7F},
+      {0x00, 0x41, 0x7F, 0x41, 0x00}, {0x20, 0x40, 0x41, 0x3F, 0x01},
+      {0x7F, 0x08, 0x14, 0x22, 0x41}, {0x7F, 0x40, 0x40, 0x40, 0x40},
+      {0x7F, 0x02, 0x0C, 0x02, 0x7F}, {0x7F, 0x04, 0x08, 0x10, 0x7F},
+      {0x3E, 0x41, 0x41, 0x41, 0x3E}, {0x7F, 0x09, 0x09, 0x09, 0x06},
+      {0x3E, 0x41, 0x51, 0x21, 0x5E}, {0x7F, 0x09, 0x19, 0x29, 0x46},
+      {0x46, 0x49, 0x49, 0x49, 0x31}, {0x01, 0x01, 0x7F, 0x01, 0x01},
+      {0x3F, 0x40, 0x40, 0x40, 0x3F}, {0x1F, 0x20, 0x40, 0x20, 0x1F},
+      {0x3F, 0x40, 0x38, 0x40, 0x3F}, {0x63, 0x14, 0x08, 0x14, 0x63},
+      {0x07, 0x08, 0x70, 0x08, 0x07}, {0x61, 0x51, 0x49, 0x45, 0x43},
+  };
+  static constexpr uint8_t kLowercase[][5] = {
+      {0x20, 0x54, 0x54, 0x54, 0x78}, {0x7F, 0x48, 0x44, 0x44, 0x38},
+      {0x38, 0x44, 0x44, 0x44, 0x20}, {0x38, 0x44, 0x44, 0x48, 0x7F},
+      {0x38, 0x54, 0x54, 0x54, 0x18}, {0x08, 0x7E, 0x09, 0x01, 0x02},
+      {0x0C, 0x52, 0x52, 0x52, 0x3E}, {0x7F, 0x08, 0x04, 0x04, 0x78},
+      {0x00, 0x44, 0x7D, 0x40, 0x00}, {0x20, 0x40, 0x44, 0x3D, 0x00},
+      {0x7F, 0x10, 0x28, 0x44, 0x00}, {0x00, 0x41, 0x7F, 0x40, 0x00},
+      {0x7C, 0x04, 0x18, 0x04, 0x78}, {0x7C, 0x08, 0x04, 0x04, 0x78},
+      {0x38, 0x44, 0x44, 0x44, 0x38}, {0x7C, 0x14, 0x14, 0x14, 0x08},
+      {0x08, 0x14, 0x14, 0x18, 0x7C}, {0x7C, 0x08, 0x04, 0x04, 0x08},
+      {0x48, 0x54, 0x54, 0x54, 0x20}, {0x04, 0x3F, 0x44, 0x40, 0x20},
+      {0x3C, 0x40, 0x40, 0x20, 0x7C}, {0x1C, 0x20, 0x40, 0x20, 0x1C},
+      {0x3C, 0x40, 0x30, 0x40, 0x3C}, {0x44, 0x28, 0x10, 0x28, 0x44},
+      {0x0C, 0x50, 0x50, 0x50, 0x3C}, {0x44, 0x64, 0x54, 0x4C, 0x44},
+  };
+  static constexpr uint8_t kDot[5] = {0x00, 0x60, 0x60, 0x00, 0x00};
+  static constexpr uint8_t kDash[5] = {0x08, 0x08, 0x08, 0x08, 0x08};
+
+  if (ch >= '0' && ch <= '9') {
+    return kDigits[ch - '0'];
+  }
+  if (ch >= 'A' && ch <= 'Z') {
+    return kLetters[ch - 'A'];
+  }
+  if (ch >= 'a' && ch <= 'z') {
+    return kLowercase[ch - 'a'];
+  }
+  if (ch == '.') {
+    return kDot;
+  }
+  if (ch == '-') {
+    return kDash;
+  }
+  return nullptr;
+}
+
+int text5x7_width(const char *text, int scale) {
+  if (text == nullptr || text[0] == '\0') {
+    return 0;
+  }
+  int width = 0;
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    width += (*cursor == ' ' ? 3 : 6) * scale;
+  }
+  return width > 0 ? width - scale : 0;
+}
+
+void draw_char5x7(int x, int y, char ch, int scale, uint16_t color) {
+  const uint8_t *glyph = font5x7_glyph(ch);
+  if (glyph == nullptr) {
     return;
   }
-  const uint8_t mask = segments[digit];
-  if (mask & 0b0000001) fill_rect(x + 2, y, 8, 2, color);
-  if (mask & 0b0000010) fill_rect(x + 10, y + 2, 2, 8, color);
-  if (mask & 0b0000100) fill_rect(x + 10, y + 12, 2, 8, color);
-  if (mask & 0b0001000) fill_rect(x + 2, y + 20, 8, 2, color);
-  if (mask & 0b0010000) fill_rect(x, y + 12, 2, 8, color);
-  if (mask & 0b0100000) fill_rect(x, y + 2, 2, 8, color);
-  if (mask & 0b1000000) fill_rect(x + 2, y + 10, 8, 2, color);
+  for (int col = 0; col < 5; ++col) {
+    for (int row = 0; row < 7; ++row) {
+      if ((glyph[col] & (1 << row)) != 0) {
+        fill_rect(x + (col * scale), y + (row * scale), scale, scale, color);
+      }
+    }
+  }
+}
+
+void draw_text5x7(int x, int y, const char *text, int scale, uint16_t color) {
+  if (text == nullptr || scale <= 0) {
+    return;
+  }
+  int cursor_x = x;
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    if (*cursor != ' ') {
+      draw_char5x7(cursor_x, y, *cursor, scale, color);
+    }
+    cursor_x += (*cursor == ' ' ? 3 : 6) * scale;
+  }
+}
+
+void format_clock_date(const std::tm &local, char *buffer, size_t buffer_size) {
+  static constexpr const char *kWeekdays[] = {"Sun.", "Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat."};
+  static constexpr const char *kMonths[] = {"Jan.", "Feb.", "Mar.", "Apr.", "May.", "Jun.", "Jul.", "Aug.", "Sep.", "Oct.", "Nov.", "Dec."};
+  if (buffer == nullptr || buffer_size == 0) {
+    return;
+  }
+  const int weekday = (local.tm_wday >= 0 && local.tm_wday < 7) ? local.tm_wday : 0;
+  const int month = (local.tm_mon >= 0 && local.tm_mon < 12) ? local.tm_mon : 0;
+  std::snprintf(buffer, buffer_size, "%s - %s %d", kWeekdays[weekday], kMonths[month], local.tm_mday);
 }
 
 void draw_clock_overlay() {
   if (!g_scene.clock.enabled) {
     return;
   }
-  const std::time_t now = std::time(nullptr);
   std::tm local = {};
-  localtime_r(&now, &local);
+  if (!hexe::system::current_local_time(&local)) {
+    return;
+  }
   const uint16_t color = swap565(g_scene.clock.color);
-  draw_rect_outline(
-      g_scene.clock.cx - g_scene.clock.radius,
-      g_scene.clock.cy - g_scene.clock.radius,
-      g_scene.clock.radius * 2,
-      g_scene.clock.radius * 2,
-      color);
-  draw_clock_hand(g_scene.clock.cx, g_scene.clock.cy, (g_scene.clock.radius * 50) / 100, local.tm_hour % 12, 12, color);
-  draw_clock_hand(g_scene.clock.cx, g_scene.clock.cy, (g_scene.clock.radius * 75) / 100, local.tm_min, 60, color);
+  const int hand_cx = g_scene.clock.cx + g_scene.clock.hands_dx;
+  const int hand_cy = g_scene.clock.cy + g_scene.clock.hands_dy;
+  if (g_scene.clock.frame) {
+    draw_rect_outline(
+        g_scene.clock.cx - g_scene.clock.radius,
+        g_scene.clock.cy - g_scene.clock.radius,
+        g_scene.clock.radius * 2,
+        g_scene.clock.radius * 2,
+        color);
+  }
+  draw_clock_hand(hand_cx, hand_cy, (g_scene.clock.radius * g_scene.clock.hour_radius_percent) / 100, local.tm_hour % 12, 12, color);
+  draw_clock_hand(hand_cx, hand_cy, (g_scene.clock.radius * g_scene.clock.minute_radius_percent) / 100, local.tm_min, 60, color);
 
   if (g_scene.clock.date) {
-    const int month = local.tm_mon + 1;
-    const int day = local.tm_mday;
-    const int x = g_scene.clock.cx - 30;
-    const int y = g_scene.clock.cy + g_scene.clock.radius + 12;
-    draw_digit_7seg(x, y, month / 10, color);
-    draw_digit_7seg(x + 14, y, month % 10, color);
-    fill_rect(x + 28, y + 10, 4, 2, color);
-    draw_digit_7seg(x + 36, y, day / 10, color);
-    draw_digit_7seg(x + 50, y, day % 10, color);
+    char date[24] = {};
+    format_clock_date(local, date, sizeof(date));
+    int x = g_scene.clock.date_x;
+    if (x < 0) {
+      x = (kWidth - text5x7_width(date, g_scene.clock.date_scale)) / 2;
+    }
+    draw_text5x7(x, g_scene.clock.date_y, date, g_scene.clock.date_scale, color);
   }
 }
 
@@ -877,21 +883,31 @@ bool load_composed_scene() {
   if (written < 0 || written >= static_cast<int>(sizeof(manifest_path))) {
     return false;
   }
-  char manifest[4096] = {};
-  if (!read_small_text_file(manifest_path, manifest, sizeof(manifest))) {
-    ESP_LOGI(kTag, "No composited UI manifest at %s", manifest_path);
+  char *manifest = allocate_text_buffer(kSceneManifestBytes);
+  if (manifest == nullptr) {
+    ESP_LOGW(kTag, "Could not allocate composited UI manifest buffer");
+    return false;
+  }
+  if (!read_small_text_file(manifest_path, manifest, kSceneManifestBytes)) {
+    heap_caps_free(manifest);
     return false;
   }
 
   cJSON *root = cJSON_Parse(manifest);
+  heap_caps_free(manifest);
   if (root == nullptr) {
     ESP_LOGW(kTag, "Invalid composited UI manifest: %s", manifest_path);
     return false;
   }
 
-  ComposedScene scene = {};
+  ComposedScene *scene = allocate_scene_scratch();
+  if (scene == nullptr) {
+    ESP_LOGW(kTag, "Could not allocate composited UI scene scratch");
+    cJSON_Delete(root);
+    return false;
+  }
   cJSON *type_item = cJSON_GetObjectItem(root, "type");
-  std::snprintf(scene.type, sizeof(scene.type), "%s", cJSON_IsString(type_item) ? type_item->valuestring : "avatar");
+  std::snprintf(scene->type, sizeof(scene->type), "%s", cJSON_IsString(type_item) ? type_item->valuestring : "avatar");
 
   cJSON *background_item = cJSON_GetObjectItem(root, "background");
   cJSON *background_node = cJSON_CreateObject();
@@ -901,8 +917,8 @@ bool load_composed_scene() {
     cJSON_Delete(background_node);
     background_node = cJSON_Duplicate(background_item, true);
   }
-  if (background_node != nullptr && !load_layer_asset(background_node, hexe::board::sd_card_pictures_path(), scene.background, true)) {
-    free_layer_asset(scene.background);
+  if (background_node != nullptr && !load_layer_asset(background_node, hexe::board::sd_card_pictures_path(), scene->background, true)) {
+    free_layer_asset(scene->background);
   }
   cJSON_Delete(background_node);
 
@@ -911,7 +927,7 @@ bool load_composed_scene() {
     cJSON *avatar = nullptr;
     cJSON_ArrayForEach(avatar, avatars) {
       const UiAssetId id = avatar_id_for_key(avatar->string);
-      load_layer_asset(avatar, hexe::board::sd_card_sprites_path(), scene.avatars[static_cast<uint8_t>(id)], false);
+      load_layer_asset(avatar, hexe::board::sd_card_sprites_path(), scene->avatars[static_cast<uint8_t>(id)], false);
     }
   }
 
@@ -919,234 +935,94 @@ bool load_composed_scene() {
   if (cJSON_IsArray(sprites)) {
     cJSON *sprite = nullptr;
     cJSON_ArrayForEach(sprite, sprites) {
-      if (scene.sprite_count >= kMaxSceneSprites) {
+      if (scene->sprite_count >= kMaxSceneSprites) {
         break;
       }
-      if (load_layer_asset(sprite, hexe::board::sd_card_sprites_path(), scene.sprites[scene.sprite_count], false)) {
-        ++scene.sprite_count;
+      if (load_layer_asset(sprite, hexe::board::sd_card_sprites_path(), scene->sprites[scene->sprite_count], false)) {
+        ++scene->sprite_count;
       }
     }
   }
 
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
-  if (std::strcmp(scene.type, "clock") == 0 || cJSON_IsObject(clock)) {
-    scene.clock.enabled = true;
+  if (std::strcmp(scene->type, "clock") == 0 || cJSON_IsObject(clock)) {
+    scene->clock.enabled = true;
     if (cJSON_IsObject(clock)) {
-      scene.clock.cx = cJSON_IsNumber(cJSON_GetObjectItem(clock, "cx")) ? cJSON_GetObjectItem(clock, "cx")->valueint : scene.clock.cx;
-      scene.clock.cy = cJSON_IsNumber(cJSON_GetObjectItem(clock, "cy")) ? cJSON_GetObjectItem(clock, "cy")->valueint : scene.clock.cy;
-      scene.clock.radius = cJSON_IsNumber(cJSON_GetObjectItem(clock, "radius")) ? cJSON_GetObjectItem(clock, "radius")->valueint : scene.clock.radius;
-      scene.clock.color = cJSON_IsNumber(cJSON_GetObjectItem(clock, "color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(clock, "color_rgb565")->valueint & 0xFFFF) : scene.clock.color;
-      scene.clock.date = cJSON_IsBool(cJSON_GetObjectItem(clock, "date")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "date"));
+      scene->clock.cx = cJSON_IsNumber(cJSON_GetObjectItem(clock, "cx")) ? cJSON_GetObjectItem(clock, "cx")->valueint : scene->clock.cx;
+      scene->clock.cy = cJSON_IsNumber(cJSON_GetObjectItem(clock, "cy")) ? cJSON_GetObjectItem(clock, "cy")->valueint : scene->clock.cy;
+      scene->clock.hands_dx = cJSON_IsNumber(cJSON_GetObjectItem(clock, "hands_dx")) ? cJSON_GetObjectItem(clock, "hands_dx")->valueint : scene->clock.hands_dx;
+      scene->clock.hands_dy = cJSON_IsNumber(cJSON_GetObjectItem(clock, "hands_dy")) ? cJSON_GetObjectItem(clock, "hands_dy")->valueint : scene->clock.hands_dy;
+      scene->clock.radius = cJSON_IsNumber(cJSON_GetObjectItem(clock, "radius")) ? cJSON_GetObjectItem(clock, "radius")->valueint : scene->clock.radius;
+      scene->clock.hour_radius_percent = cJSON_IsNumber(cJSON_GetObjectItem(clock, "hour_radius_percent")) ? cJSON_GetObjectItem(clock, "hour_radius_percent")->valueint : scene->clock.hour_radius_percent;
+      scene->clock.minute_radius_percent = cJSON_IsNumber(cJSON_GetObjectItem(clock, "minute_radius_percent")) ? cJSON_GetObjectItem(clock, "minute_radius_percent")->valueint : scene->clock.minute_radius_percent;
+      scene->clock.color = cJSON_IsNumber(cJSON_GetObjectItem(clock, "color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(clock, "color_rgb565")->valueint & 0xFFFF) : scene->clock.color;
+      cJSON *idle_timeout_ms = cJSON_GetObjectItem(clock, "idle_timeout_ms");
+      scene->clock.idle_timeout_ms = cJSON_IsNumber(idle_timeout_ms) && idle_timeout_ms->valueint >= 0 ? idle_timeout_ms->valueint : scene->clock.idle_timeout_ms;
+      scene->clock.frame = cJSON_IsBool(cJSON_GetObjectItem(clock, "frame")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "frame"));
+      scene->clock.date = cJSON_IsBool(cJSON_GetObjectItem(clock, "date")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "date"));
+      scene->clock.date_x = cJSON_IsNumber(cJSON_GetObjectItem(clock, "date_x")) ? cJSON_GetObjectItem(clock, "date_x")->valueint : scene->clock.date_x;
+      scene->clock.date_y = cJSON_IsNumber(cJSON_GetObjectItem(clock, "date_y")) ? cJSON_GetObjectItem(clock, "date_y")->valueint : scene->clock.date_y;
+      cJSON *date_scale = cJSON_GetObjectItem(clock, "date_scale");
+      scene->clock.date_scale = cJSON_IsNumber(date_scale) && date_scale->valueint > 0 ? date_scale->valueint : scene->clock.date_scale;
     }
   }
 
   cJSON_Delete(root);
-  if (scene.background.pixels == nullptr) {
-    ESP_LOGW(kTag, "Composited UI manifest did not load a valid background");
-    for (auto &avatar : scene.avatars) {
-      free_layer_asset(avatar);
-    }
-    for (auto &sprite : scene.sprites) {
-      free_layer_asset(sprite);
-    }
-    return false;
-  }
-
-  g_scene = scene;
+  g_scene = *scene;
+  heap_caps_free(scene);
   g_scene.loaded = true;
-  ESP_LOGI(kTag, "Loaded composited UI scene type=%s sprites=%u", g_scene.type, static_cast<unsigned>(g_scene.sprite_count));
+  ESP_LOGI(
+      kTag,
+      "Loaded composited UI scene type=%s background=%s sprites=%u",
+      g_scene.type,
+      g_scene.background.pixels == nullptr ? "missing" : "loaded",
+      static_cast<unsigned>(g_scene.sprite_count));
   return true;
 }
 
 bool draw_composed_scene(UiAssetId id) {
-  if (!g_scene.loaded || g_scene.background.pixels == nullptr) {
+  if (!g_scene.loaded) {
     return false;
   }
+
   draw_layer_asset(g_scene.background);
-  LayerAsset &avatar = g_scene.avatars[static_cast<uint8_t>(id)].pixels != nullptr
-      ? g_scene.avatars[static_cast<uint8_t>(id)]
-      : g_scene.avatars[static_cast<uint8_t>(UiAssetId::kIdle)];
+  const LayerAsset &avatar = g_scene.avatars[static_cast<uint8_t>(id)];
   draw_layer_asset(avatar);
-  draw_clock_overlay();
+  if (id == UiAssetId::kClock) {
+    draw_clock_overlay();
+  }
   for (size_t index = 0; index < g_scene.sprite_count; ++index) {
     draw_layer_asset(g_scene.sprites[index]);
   }
   return true;
 }
 
-bool try_load_sprite_overlay_file(
-    const char *path,
-    int width,
-    int height,
-    int x,
-    int y,
-    bool transparent_enabled,
-    uint16_t transparent_color) {
-  if (width <= 0 || height <= 0 || x < 0 || y < 0 || x + width > kWidth || y + height > kHeight) {
-    ESP_LOGW(kTag, "Ignoring sprite overlay %s: invalid geometry %dx%d at %d,%d", path, width, height, x, y);
-    return false;
-  }
-
-  const size_t expected_bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * sizeof(uint16_t);
-  if (expected_bytes == 0 || expected_bytes > kMaxSpriteBytes) {
-    ESP_LOGW(kTag, "Ignoring sprite overlay %s: expected size %u is outside limit", path, static_cast<unsigned>(expected_bytes));
-    return false;
-  }
-
-  FILE *file = std::fopen(path, "rb");
-  if (file == nullptr) {
-    ESP_LOGW(kTag, "Sprite overlay file not found: %s", path);
-    return false;
-  }
-
-  if (std::fseek(file, 0, SEEK_END) != 0) {
-    std::fclose(file);
-    return false;
-  }
-  const long file_size = std::ftell(file);
-  if (file_size != static_cast<long>(expected_bytes)) {
-    ESP_LOGW(kTag, "Ignoring sprite overlay %s: expected %u bytes, got %ld", path, static_cast<unsigned>(expected_bytes), file_size);
-    std::fclose(file);
-    return false;
-  }
-  std::rewind(file);
-
-  uint16_t *pixels = static_cast<uint16_t *>(heap_caps_malloc(expected_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (pixels == nullptr) {
-    pixels = static_cast<uint16_t *>(heap_caps_malloc(expected_bytes, MALLOC_CAP_DEFAULT));
-  }
-  if (pixels == nullptr) {
-    ESP_LOGW(kTag, "Could not allocate %u bytes for sprite overlay", static_cast<unsigned>(expected_bytes));
-    std::fclose(file);
-    return false;
-  }
-
-  const size_t read_bytes = std::fread(pixels, 1, expected_bytes, file);
-  std::fclose(file);
-  if (read_bytes != expected_bytes) {
-    heap_caps_free(pixels);
-    ESP_LOGW(kTag, "Could not read sprite overlay %s", path);
-    return false;
-  }
-
-  if (g_sprite_overlay.pixels != nullptr) {
-    heap_caps_free(g_sprite_overlay.pixels);
-  }
-  g_sprite_overlay = {
-      .pixels = pixels,
-      .width = width,
-      .height = height,
-      .x = x,
-      .y = y,
-      .transparent_enabled = transparent_enabled,
-      .transparent_color = transparent_color,
-      .path = {},
-  };
-  std::snprintf(g_sprite_overlay.path, sizeof(g_sprite_overlay.path), "%s", path);
-  ESP_LOGI(kTag, "Loaded sprite overlay from %s (%dx%d at %d,%d)", path, width, height, x, y);
-  return true;
-}
-
-void load_sd_sprite_overlay() {
-  if (!hexe::board::sd_card_mounted()) {
-    return;
-  }
-
-  char manifest_path[256] = {};
-  const int manifest_written = std::snprintf(
-      manifest_path, sizeof(manifest_path), "%s/overlay.json", hexe::board::sd_card_sprites_path());
-  if (manifest_written < 0 || manifest_written >= static_cast<int>(sizeof(manifest_path))) {
-    ESP_LOGW(kTag, "Sprite overlay manifest path is too long");
-    return;
-  }
-
-  char manifest[2048] = {};
-  if (!read_small_text_file(manifest_path, manifest, sizeof(manifest))) {
-    ESP_LOGI(kTag, "No sprite overlay manifest at %s", manifest_path);
-    return;
-  }
-
-  cJSON *root = cJSON_Parse(manifest);
-  if (root == nullptr) {
-    ESP_LOGW(kTag, "Invalid sprite overlay manifest: %s", manifest_path);
-    return;
-  }
-
-  cJSON *filename_item = cJSON_GetObjectItem(root, "filename");
-  cJSON *width_item = cJSON_GetObjectItem(root, "width");
-  cJSON *height_item = cJSON_GetObjectItem(root, "height");
-  cJSON *x_item = cJSON_GetObjectItem(root, "x");
-  cJSON *y_item = cJSON_GetObjectItem(root, "y");
-  cJSON *transparent_item = cJSON_GetObjectItem(root, "transparent_rgb565");
-  const char *filename = cJSON_IsString(filename_item) ? filename_item->valuestring : nullptr;
-  if (!is_safe_sprite_filename(filename) || !cJSON_IsNumber(width_item) || !cJSON_IsNumber(height_item)) {
-    ESP_LOGW(kTag, "Sprite overlay manifest is missing filename, width, or height");
-    cJSON_Delete(root);
-    return;
-  }
-
-  char sprite_path[256] = {};
-  const int sprite_written = std::snprintf(
-      sprite_path, sizeof(sprite_path), "%s/%s", hexe::board::sd_card_sprites_path(), filename);
-  if (sprite_written < 0 || sprite_written >= static_cast<int>(sizeof(sprite_path))) {
-    ESP_LOGW(kTag, "Sprite overlay path is too long");
-    cJSON_Delete(root);
-    return;
-  }
-
-  const int width = width_item->valueint;
-  const int height = height_item->valueint;
-  const int x = cJSON_IsNumber(x_item) ? x_item->valueint : 0;
-  const int y = cJSON_IsNumber(y_item) ? y_item->valueint : 0;
-  const bool transparent_enabled = cJSON_IsNumber(transparent_item);
-  const uint16_t transparent_color = transparent_enabled ? static_cast<uint16_t>(transparent_item->valueint & 0xFFFF) : 0;
-  try_load_sprite_overlay_file(sprite_path, width, height, x, y, transparent_enabled, transparent_color);
-  cJSON_Delete(root);
-}
-
 void load_sd_ui_assets() {
+  free_composed_scene(g_scene);
   if (!hexe::board::sd_card_mounted()) {
-    ESP_LOGI(kTag, "SD card is not mounted; drawing simple UI screens");
     return;
   }
+  load_composed_scene();
+}
 
-  const bool composed_loaded = load_composed_scene();
-  int loaded_count = 0;
-  for (auto &asset : g_ui_assets) {
-    if (asset.sd_pixels != nullptr) {
-      ++loaded_count;
-      continue;
-    }
+bool idle_clock_due(hexe::AppPhase phase) {
+  static bool idle_tracking = false;
+  static TickType_t idle_started_tick = 0;
 
-    bool loaded = false;
-    for (const char *filename : asset.filenames) {
-      if (filename == nullptr) {
-        break;
-      }
-
-      char path[256] = {};
-      const int written = std::snprintf(path, sizeof(path), "%s/%s", hexe::board::sd_card_pictures_path(), filename);
-      if (written < 0 || written >= static_cast<int>(sizeof(path))) {
-        ESP_LOGW(kTag, "Skipping SD UI asset %s: path too long for %s", asset.label, filename);
-        continue;
-      }
-
-      if (try_load_sd_ui_asset_file(asset, path)) {
-        loaded = true;
-        ++loaded_count;
-        break;
-      }
-    }
-
-    if (!loaded) {
-      ESP_LOGW(kTag, "No valid SD UI asset for %s; drawing simple screen", asset.label);
-    }
+  if (phase != hexe::AppPhase::kIdle) {
+    idle_tracking = false;
+    idle_started_tick = 0;
+    return false;
   }
 
-  ESP_LOGI(kTag, "Loaded %d/%u UI assets from SD", loaded_count, static_cast<unsigned>(UiAssetId::kCount));
-  if (!composed_loaded) {
-    load_sd_sprite_overlay();
+  const TickType_t now = xTaskGetTickCount();
+  if (!idle_tracking) {
+    idle_tracking = true;
+    idle_started_tick = now;
+    return false;
   }
+
+  return (now - idle_started_tick) >= pdMS_TO_TICKS(g_scene.clock.idle_timeout_ms);
 }
 }
 
@@ -1159,17 +1035,29 @@ void init_display() {
 
   esp_lcd_panel_io_handle_t io_handle = nullptr;
   const bsp_display_config_t display_config = {
-      .max_transfer_sz = kWidth * kHeight * static_cast<int>(sizeof(uint16_t)),
+      .max_transfer_sz = static_cast<int>(kFlushBufferBytes),
   };
   ESP_ERROR_CHECK(bsp_display_new(&display_config, &g_panel, &io_handle));
+  g_lcd_flush_done = xSemaphoreCreateBinary();
+  ESP_RETURN_VOID_ON_FALSE(g_lcd_flush_done != nullptr, ESP_ERR_NO_MEM, kTag, "Failed to create LCD flush semaphore");
+  const esp_lcd_panel_io_callbacks_t io_callbacks = {
+      .on_color_trans_done = on_lcd_color_transfer_done,
+  };
+  ESP_ERROR_CHECK(esp_lcd_panel_io_register_event_callbacks(io_handle, &io_callbacks, &g_lcd_flush_done));
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(g_panel, true));
+  vTaskDelay(pdMS_TO_TICKS(1));
 
   g_framebuffer = static_cast<uint16_t *>(heap_caps_malloc(
-      kWidth * kHeight * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+      kWidth * kHeight * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (g_framebuffer == nullptr) {
+    g_framebuffer = static_cast<uint16_t *>(heap_caps_malloc(kWidth * kHeight * sizeof(uint16_t), MALLOC_CAP_DEFAULT));
+  }
   ESP_RETURN_VOID_ON_FALSE(g_framebuffer != nullptr, ESP_ERR_NO_MEM, kTag, "Failed to allocate display framebuffer");
 
+  g_lcd_flush_buffer = static_cast<uint16_t *>(heap_caps_malloc(kFlushBufferBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+  ESP_RETURN_VOID_ON_FALSE(g_lcd_flush_buffer != nullptr, ESP_ERR_NO_MEM, kTag, "Failed to allocate display flush buffer");
+
   load_sd_ui_assets();
-  ESP_LOGI(kTag, "Display initialized");
 }
 
 void show_black_frame() {
@@ -1178,7 +1066,7 @@ void show_black_frame() {
   }
 
   fill_frame(kBlack);
-  ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(g_panel, 0, 0, kWidth, kHeight, g_framebuffer));
+  flush_framebuffer();
 }
 
 void turn_on_backlight() {
@@ -1191,24 +1079,25 @@ void turn_on_backlight() {
 }
 
 void render_boot_frame(int frame, const char *build_id) {
+  (void)frame;
   (void)build_id;
   if (g_panel == nullptr || g_framebuffer == nullptr) {
     return;
   }
-
-  const auto phase = hexe::state().phase;
-
-  if (phase == hexe::AppPhase::kBooting && frame <= kFadeFrameCount) {
-    draw_ui_asset(UiAssetId::kLogo, ease_in_out_alpha(frame));
-  } else {
-    const UiAssetId asset_id = asset_id_for_phase(phase);
-    if (!draw_composed_scene(asset_id)) {
-      draw_ui_asset(asset_id, 255);
-    }
+  if (g_display_assets_reload_requested.exchange(false, std::memory_order_relaxed)) {
+    load_sd_ui_assets();
+    g_last_frame_signature_valid = false;
   }
 
-  if (phase != hexe::AppPhase::kBooting && !g_scene.loaded) {
-    draw_sprite_overlay();
+  const auto phase = hexe::state().phase;
+  const UiAssetId asset_id = idle_clock_due(phase) ? UiAssetId::kClock : asset_id_for_phase(phase);
+  const DisplayFrameSignature signature = make_frame_signature(phase, asset_id);
+  if (!should_render_frame(signature)) {
+    return;
+  }
+
+  if (!draw_composed_scene(asset_id)) {
+    return;
   }
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);
   draw_audio_stream_icon(hexe::state().audio_streaming);
@@ -1218,11 +1107,12 @@ void render_boot_frame(int frame, const char *build_id) {
   if (phase == hexe::AppPhase::kUpdating) {
     draw_ota_progress();
   }
-  ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(g_panel, 0, 0, kWidth, kHeight, g_framebuffer));
+  flush_framebuffer();
+  remember_frame_signature(signature);
 }
 
 bool display_ready() {
-  return g_panel != nullptr && g_framebuffer != nullptr;
+  return g_panel != nullptr && g_framebuffer != nullptr && g_lcd_flush_buffer != nullptr;
 }
 
 int display_width() {
@@ -1235,6 +1125,10 @@ int display_height() {
 
 const char *display_pixel_format() {
   return "rgb565";
+}
+
+void request_display_assets_reload() {
+  g_display_assets_reload_requested.store(true, std::memory_order_relaxed);
 }
 
 }  // namespace hexe::board

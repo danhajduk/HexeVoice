@@ -56,6 +56,14 @@ class EndpointHeartbeatResponse(BaseModel):
     last_seen_at: str
 
 
+class EndpointTimeResponse(BaseModel):
+    server_time: str
+    server_unix_ms: int
+    timezone: str
+    utc_offset_seconds: int
+    sync_interval_ms: int = 300_000
+
+
 class EndpointStatusResponse(BaseModel):
     endpoint_id: str
     display_name: str | None = None

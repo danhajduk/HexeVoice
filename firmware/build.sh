@@ -118,6 +118,7 @@ idf.py build
 
 mkdir -p "${RUNTIME_FIRMWARE_DIR}"
 cp "${ROOT_DIR}/build/hexe_firmware.bin" "${RUNTIME_FIRMWARE_BIN}"
+cp "${ROOT_DIR}/build/hexe_firmware.bin" "${ROOT_DIR}/export/hexe_firmware.bin"
 sha256sum "${RUNTIME_FIRMWARE_BIN}" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
 echo "Copied firmware app binary to ${RUNTIME_FIRMWARE_BIN}"
 

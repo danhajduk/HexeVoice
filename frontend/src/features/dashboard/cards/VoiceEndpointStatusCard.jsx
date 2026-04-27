@@ -1,4 +1,6 @@
 export function VoiceEndpointStatusCard({ status, providerSetup, capabilities, voiceStatus, endpointStatus }) {
+  const storage = endpointStatus?.capabilities?.storage || {};
+
   return (
     <section className="card stack panel">
       <div className="section-heading">
@@ -24,6 +26,10 @@ export function VoiceEndpointStatusCard({ status, providerSetup, capabilities, v
         <div>
           <dt>Device state</dt>
           <dd>{endpointStatus?.device_state || "unknown"}</dd>
+        </div>
+        <div>
+          <dt>File transfer</dt>
+          <dd>{storage.media_transfer_active ? "downloading file" : storage.media_transfer_status || "idle"}</dd>
         </div>
         <div>
           <dt>Connection</dt>

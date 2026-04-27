@@ -33,6 +33,7 @@ idf_component_register(
     "board/storage.cpp"
     "board/touch.cpp"
     "board/wifi.cpp"
+    "system/clock.cpp"
     "system/ota.cpp"
     "system/log_stream.cpp"
     "system/power.cpp"

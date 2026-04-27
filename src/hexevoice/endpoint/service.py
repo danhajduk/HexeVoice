@@ -10,6 +10,7 @@ from hexevoice.api.models import (
     EndpointMetadataUpdateRequest,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
+    EndpointTimeResponse,
 )
 from hexevoice.persistence import EndpointRegistryRecord, EndpointRegistryStore
 from hexevoice.persistence.endpoint_registry import utc_now_iso
@@ -52,6 +53,18 @@ class EndpointHeartbeatService:
             session_id=payload.session_id,
             server_time=now,
             last_seen_at=now,
+        )
+
+    def current_time(self) -> EndpointTimeResponse:
+        utc_now = datetime.now(timezone.utc)
+        local_now = datetime.now().astimezone()
+        offset = local_now.utcoffset()
+        return EndpointTimeResponse(
+            server_time=utc_now.isoformat(),
+            server_unix_ms=int(utc_now.timestamp() * 1000),
+            timezone=local_now.tzname() or "local",
+            utc_offset_seconds=int(offset.total_seconds()) if offset is not None else 0,
+            sync_interval_ms=300_000,
         )
 
     def latest_status(self) -> EndpointStatusResponse:

@@ -26,9 +26,11 @@
 #include "esp_websocket_client.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "mbedtls/base64.h"
 #include "psa/crypto.h"
+#include "system/clock.h"
 #include "system/ota.h"
 #include "system/settings.h"
 #include "voice/tts_player.h"
@@ -39,13 +41,19 @@ constexpr size_t kAudioQueueDepth = 8;
 constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr int kMediaTaskStackBytes = 8192;
+constexpr int kMediaTaskPriority = 3;
 constexpr int kMediaQueueDepth = 2;
 constexpr int kMediaHttpTimeoutMs = 30000;
+constexpr int kMediaReadIdleRetryDelayMs = 100;
+constexpr int kMediaReadMaxIdleRetries = 3;
 constexpr size_t kMediaInventoryLimit = 24;
 constexpr int kMaxChunkSamples = hexe::config::kEndpointAudioChunkSamples;
 constexpr int kWakePredictionChunkSamples = 1280;
 constexpr size_t kMaxBackendEventBytes = 8192;
 constexpr uint32_t kBackendReadinessPollMs = 500;
+constexpr int kClockSyncIntervalMs = 300000;
+constexpr int kClockSyncHttpTimeoutMs = 5000;
+constexpr size_t kMaxClockSyncBytes = 1024;
 constexpr size_t kWakePrerollFrameCount = 15;
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
 
@@ -62,6 +70,7 @@ TaskHandle_t g_heartbeat_task = nullptr;
 TaskHandle_t g_ws_task = nullptr;
 TaskHandle_t g_media_task = nullptr;
 QueueHandle_t g_media_queue = nullptr;
+SemaphoreHandle_t g_ws_send_lock = nullptr;
 uint32_t g_chunk_index = 0;
 uint32_t g_session_counter = 0;
 uint32_t g_sequence = 0;
@@ -70,6 +79,9 @@ bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
 bool g_ws_started = false;
 bool g_preroll_drained = false;
+bool g_media_transfer_active = false;
+int64_t g_last_clock_sync_us = 0;
+int g_clock_sync_interval_ms = kClockSyncIntervalMs;
 std::array<AudioFrame, kWakePrerollFrameCount> g_preroll_frames = {};
 size_t g_preroll_index = 0;
 size_t g_preroll_count = 0;
@@ -91,9 +103,28 @@ struct MediaTransferRequest {
   bool activate;
 };
 
+struct MediaTransferActivityGuard {
+  MediaTransferActivityGuard() {
+    g_media_transfer_active = true;
+    hexe::state().media_transfer_active = true;
+  }
+
+  ~MediaTransferActivityGuard() {
+    g_media_transfer_active = false;
+    hexe::state().media_transfer_active = false;
+  }
+};
+
+struct HttpTextBuffer {
+  std::string text;
+  size_t max_bytes{0};
+  bool overflow{false};
+};
+
 std::string base64_audio(const int16_t *samples, size_t sample_count);
 bool send_ws_text(const std::string &message);
 std::string endpoint_capabilities_json();
+bool sync_backend_time(const std::string &url);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 void append_event_header(
     std::string &message,
@@ -108,7 +139,7 @@ void set_audio_streaming(bool streaming) {
 
 bool backend_ready_for_voice() {
   const auto &state = hexe::state();
-  return state.wifi_connected && state.backend_connected && !state.ota_active;
+  return state.wifi_connected && (state.backend_connected || state.voice_ws_connected || g_ws_connected) && !state.ota_active;
 }
 
 void mark_voice_socket_disconnected() {
@@ -134,16 +165,7 @@ void remember_preroll_frame(const AudioFrame &frame) {
 }
 
 std::string event_timestamp() {
-  std::time_t now = std::time(nullptr);
-  if (now < 1600000000) {
-    now = static_cast<std::time_t>(esp_timer_get_time() / 1000000);
-  }
-
-  std::tm utc = {};
-  gmtime_r(&now, &utc);
-  char buffer[32];
-  std::strftime(buffer, sizeof(buffer), "%Y-%m-%dT%H:%M:%SZ", &utc);
-  return std::string(buffer);
+  return hexe::system::current_utc_timestamp();
 }
 
 void append_event_header(
@@ -327,6 +349,18 @@ std::string heartbeat_url() {
   return std::string(buffer);
 }
 
+std::string time_url() {
+  char buffer[192];
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "%s://%s:%d/api/endpoint/time",
+      scheme_http(),
+      hexe::config::kEndpointBackendHost,
+      hexe::config::kEndpointHttpPort);
+  return std::string(buffer);
+}
+
 std::string websocket_url() {
   char buffer[192];
   std::snprintf(
@@ -434,6 +468,16 @@ void handle_backend_event_json(const std::string &message) {
   } else if (std::strcmp(ux_state, "thinking") == 0) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kThinking;
+    }
+  } else if (std::strcmp(type, "session.state") == 0) {
+    if (!app_state.muted) {
+      if (std::strcmp(ux_state, "replying") == 0 || std::strcmp(ux_state, "speaking") == 0) {
+        app_state.phase = hexe::AppPhase::kReplying;
+      } else if (std::strcmp(ux_state, "error") == 0) {
+        app_state.phase = hexe::AppPhase::kError;
+      } else {
+        app_state.phase = hexe::idle_or_connecting_phase();
+      }
     }
   } else if (std::strcmp(type, "tts.ready") == 0) {
     cJSON *stream_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stream_id") : nullptr;
@@ -604,19 +648,28 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
 }
 
 bool send_ws_text(const std::string &message) {
+  if (g_ws_send_lock != nullptr && xSemaphoreTake(g_ws_send_lock, pdMS_TO_TICKS(2000)) != pdTRUE) {
+    ESP_LOGW(kTag, "Voice WebSocket send lock timed out");
+    return false;
+  }
+  bool sent = false;
   if (hexe::state().ota_active || g_ws_client == nullptr || !g_ws_connected ||
       !esp_websocket_client_is_connected(g_ws_client)) {
     mark_voice_socket_disconnected();
-    return false;
+  } else {
+    const int written = esp_websocket_client_send_text(g_ws_client, message.c_str(), message.size(), pdMS_TO_TICKS(1000));
+    if (written < 0) {
+      mark_voice_socket_disconnected();
+      esp_websocket_client_stop(g_ws_client);
+      g_ws_started = false;
+    } else {
+      sent = true;
+    }
   }
-  const int written = esp_websocket_client_send_text(g_ws_client, message.c_str(), message.size(), pdMS_TO_TICKS(1000));
-  if (written < 0) {
-    mark_voice_socket_disconnected();
-    esp_websocket_client_stop(g_ws_client);
-    g_ws_started = false;
-    return false;
+  if (g_ws_send_lock != nullptr) {
+    xSemaphoreGive(g_ws_send_lock);
   }
-  return true;
+  return sent;
 }
 
 std::string endpoint_capabilities_json() {
@@ -637,6 +690,8 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(storage, "sprites_path", hexe::board::sd_card_sprites_path());
   cJSON_AddStringToObject(storage, "sounds_path", hexe::board::sd_card_sounds_path());
   cJSON_AddBoolToObject(storage, "media_reformat", true);
+  cJSON_AddBoolToObject(storage, "media_transfer_active", state.media_transfer_active);
+  cJSON_AddStringToObject(storage, "media_transfer_status", state.media_transfer_active ? "downloading_file" : "idle");
   cJSON *inventory = cJSON_AddObjectToObject(storage, "media_inventory");
   bool inventory_truncated = false;
   add_media_inventory_files(inventory, "pictures", hexe::board::sd_card_pictures_path(), inventory_truncated);
@@ -863,6 +918,14 @@ bool queue_media_transfer(cJSON *payload) {
   cJSON *activate = cJSON_GetObjectItem(payload, "activate");
   request.overwrite = cJSON_IsBool(rewrite) ? cJSON_IsTrue(rewrite) : (!cJSON_IsBool(overwrite) || cJSON_IsTrue(overwrite));
   request.activate = !cJSON_IsBool(activate) || cJSON_IsTrue(activate);
+  ESP_LOGI(
+      kTag,
+      "Received media transfer command request_id=%s destination=%s filename=%s size=%d url=%s",
+      request.request_id,
+      request.destination,
+      request.filename,
+      request.size_bytes,
+      request.download_url);
 
   if (!hexe::board::sd_card_mounted()) {
     send_command_error(request.request_id, "endpoint.media.transfer", "sd_card_not_mounted", "SD card is not mounted");
@@ -882,17 +945,21 @@ bool queue_media_transfer(cJSON *payload) {
 }
 
 bool write_media_transfer(const MediaTransferRequest &request) {
+  MediaTransferActivityGuard media_activity;
   const char *directory = media_destination_dir(request.destination);
   if (directory == nullptr || !is_safe_media_filename(request.filename)) {
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "invalid_destination", "Media destination is invalid");
     return false;
   }
 
   if (!hexe::board::ensure_sd_media_directories()) {
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "mkdir_failed", "Could not create SD media directories");
     return false;
   }
   if (mkdir(directory, 0775) != 0 && errno != EEXIST) {
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "mkdir_failed", "Could not create media directory");
     return false;
   }
@@ -903,18 +970,21 @@ bool write_media_transfer(const MediaTransferRequest &request) {
   const int temp_written = std::snprintf(temp_path, sizeof(temp_path), "%s/.%s.tmp", directory, request.filename);
   if (final_written < 0 || final_written >= static_cast<int>(sizeof(final_path)) ||
       temp_written < 0 || temp_written >= static_cast<int>(sizeof(temp_path))) {
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "invalid_destination", "Media path is too long");
     return false;
   }
   if (!request.overwrite) {
     struct stat info = {};
     if (stat(final_path, &info) == 0) {
+      g_media_transfer_active = false;
       send_command_error(request.request_id, "endpoint.media.transfer", "target_exists", "Media file already exists");
       return false;
     }
   }
 
   send_command_ack(request.request_id, "endpoint.media.transfer", "started", "Downloading media");
+  ESP_LOGI(kTag, "Starting media transfer destination=%s filename=%s url=%s", request.destination, request.filename, request.download_url);
 
   esp_http_client_config_t config = {};
   config.url = request.download_url;
@@ -922,6 +992,7 @@ bool write_media_transfer(const MediaTransferRequest &request) {
   config.keep_alive_enable = true;
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (client == nullptr) {
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "http_client_failed", "Could not initialize HTTP client");
     return false;
   }
@@ -929,6 +1000,7 @@ bool write_media_transfer(const MediaTransferRequest &request) {
   FILE *file = std::fopen(temp_path, "wb");
   if (file == nullptr) {
     esp_http_client_cleanup(client);
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "file_open_failed", "Could not open temporary media file");
     return false;
   }
@@ -942,13 +1014,33 @@ bool write_media_transfer(const MediaTransferRequest &request) {
   int total_read = 0;
   char buffer[1024];
   if (err == ESP_OK) {
-    esp_http_client_fetch_headers(client);
+    const int content_length = esp_http_client_fetch_headers(client);
+    const int status_code = esp_http_client_get_status_code(client);
+    if (status_code < 200 || status_code >= 300) {
+      ESP_LOGW(kTag, "Media download HTTP %d for %s", status_code, request.download_url);
+      err = ESP_FAIL;
+    } else if (content_length >= 0 && content_length != request.size_bytes) {
+      ESP_LOGW(kTag, "Media download content length mismatch: expected=%d header=%d", request.size_bytes, content_length);
+    }
+  }
+  if (err == ESP_OK) {
+    int idle_retries = 0;
     while (true) {
       const int read = esp_http_client_read(client, buffer, sizeof(buffer));
+      if (read == -ESP_ERR_HTTP_EAGAIN) {
+        if (idle_retries++ < kMediaReadMaxIdleRetries) {
+          ESP_LOGW(kTag, "Media download stalled waiting for data; retry %d/%d", idle_retries, kMediaReadMaxIdleRetries);
+          vTaskDelay(pdMS_TO_TICKS(kMediaReadIdleRetryDelayMs));
+          continue;
+        }
+        err = ESP_ERR_HTTP_EAGAIN;
+        break;
+      }
       if (read < 0) {
         err = ESP_FAIL;
         break;
       }
+      idle_retries = 0;
       if (read == 0) {
         break;
       }
@@ -977,16 +1069,24 @@ bool write_media_transfer(const MediaTransferRequest &request) {
 
   if (err != ESP_OK) {
     std::remove(temp_path);
-    send_command_error(request.request_id, "endpoint.media.transfer", "download_failed", "Media download failed");
+    ESP_LOGW(kTag, "Media transfer download failed filename=%s err=%s bytes=%d", request.filename, esp_err_to_name(err), total_read);
+    g_media_transfer_active = false;
+    send_command_error(
+        request.request_id,
+        "endpoint.media.transfer",
+        err == ESP_ERR_HTTP_EAGAIN ? "download_timeout" : "download_failed",
+        err == ESP_ERR_HTTP_EAGAIN ? "Media download timed out waiting for data" : "Media download failed");
     return false;
   }
   if (total_read != request.size_bytes) {
     std::remove(temp_path);
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "size_mismatch", "Media size did not match manifest");
     return false;
   }
   if (hash_status != PSA_SUCCESS || digest_length != sizeof(digest)) {
     std::remove(temp_path);
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "checksum_failed", "Could not calculate media checksum");
     return false;
   }
@@ -995,6 +1095,7 @@ bool write_media_transfer(const MediaTransferRequest &request) {
   bytes_to_hex(digest, sizeof(digest), sha_hex, sizeof(sha_hex));
   if (std::strcmp(sha_hex, request.sha256) != 0) {
     std::remove(temp_path);
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "checksum_mismatch", "Media checksum did not match manifest");
     return false;
   }
@@ -1004,12 +1105,18 @@ bool write_media_transfer(const MediaTransferRequest &request) {
   }
   if (std::rename(temp_path, final_path) != 0) {
     std::remove(temp_path);
+    g_media_transfer_active = false;
     send_command_error(request.request_id, "endpoint.media.transfer", "rename_failed", "Could not activate media file");
     return false;
   }
 
   ESP_LOGI(kTag, "Stored media transfer destination=%s filename=%s bytes=%d", request.destination, request.filename, total_read);
+  g_media_transfer_active = false;
   send_command_ack(request.request_id, "endpoint.media.transfer", "succeeded", "Media stored on SD card");
+  if (request.activate && (std::strcmp(request.destination, "picture") == 0 || std::strcmp(request.destination, "sprite") == 0)) {
+    hexe::board::request_display_assets_reload();
+    ESP_LOGI(kTag, "Queued display asset reload after media transfer destination=%s filename=%s", request.destination, request.filename);
+  }
   if (request.activate && std::strcmp(request.destination, "sound") == 0) {
     hexe::voice::play_sd_sound(request.filename);
   }
@@ -1087,9 +1194,98 @@ void send_audio_frame(const AudioFrame &frame) {
   }
 }
 
+esp_err_t text_http_event_handler(esp_http_client_event_t *event) {
+  if (event == nullptr || event->user_data == nullptr || event->event_id != HTTP_EVENT_ON_DATA) {
+    return ESP_OK;
+  }
+  auto *buffer = static_cast<HttpTextBuffer *>(event->user_data);
+  if (event->data == nullptr || event->data_len <= 0 || buffer->overflow) {
+    return ESP_OK;
+  }
+  if (buffer->text.size() + static_cast<size_t>(event->data_len) > buffer->max_bytes) {
+    buffer->overflow = true;
+    return ESP_OK;
+  }
+  buffer->text.append(static_cast<const char *>(event->data), static_cast<size_t>(event->data_len));
+  return ESP_OK;
+}
+
+bool parse_clock_sync_payload(const std::string &payload, int64_t *server_unix_ms, int32_t *utc_offset_seconds, int *sync_interval_ms) {
+  if (server_unix_ms == nullptr || utc_offset_seconds == nullptr || sync_interval_ms == nullptr || payload.empty()) {
+    return false;
+  }
+
+  cJSON *root = cJSON_Parse(payload.c_str());
+  if (root == nullptr) {
+    return false;
+  }
+
+  cJSON *server_unix_ms_item = cJSON_GetObjectItem(root, "server_unix_ms");
+  cJSON *utc_offset_item = cJSON_GetObjectItem(root, "utc_offset_seconds");
+  cJSON *sync_interval_item = cJSON_GetObjectItem(root, "sync_interval_ms");
+  const bool ok = cJSON_IsNumber(server_unix_ms_item) && cJSON_IsNumber(utc_offset_item);
+  if (ok) {
+    *server_unix_ms = static_cast<int64_t>(server_unix_ms_item->valuedouble);
+    *utc_offset_seconds = static_cast<int32_t>(utc_offset_item->valueint);
+    if (cJSON_IsNumber(sync_interval_item) && sync_interval_item->valueint > 0) {
+      *sync_interval_ms = sync_interval_item->valueint;
+    }
+  }
+
+  cJSON_Delete(root);
+  return ok;
+}
+
+bool sync_backend_time(const std::string &url) {
+  HttpTextBuffer response;
+  response.max_bytes = kMaxClockSyncBytes;
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.method = HTTP_METHOD_GET;
+  config.timeout_ms = kClockSyncHttpTimeoutMs;
+  config.event_handler = text_http_event_handler;
+  config.user_data = &response;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    ESP_LOGW(kTag, "Failed to initialize clock sync HTTP client");
+    return false;
+  }
+
+  const int64_t started_us = esp_timer_get_time();
+  esp_err_t err = esp_http_client_perform(client);
+  const int64_t round_trip_us = esp_timer_get_time() - started_us;
+  const int status_code = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+
+  if (err != ESP_OK || status_code < 200 || status_code >= 300 || response.overflow || response.text.empty()) {
+    ESP_LOGW(
+        kTag,
+        "Clock sync failed: err=%s status=%d overflow=%d",
+        esp_err_to_name(err),
+        status_code,
+        response.overflow);
+    return false;
+  }
+
+  int64_t server_unix_ms = 0;
+  int32_t utc_offset_seconds = 0;
+  int sync_interval_ms = g_clock_sync_interval_ms;
+  if (!parse_clock_sync_payload(response.text, &server_unix_ms, &utc_offset_seconds, &sync_interval_ms)) {
+    ESP_LOGW(kTag, "Clock sync failed: invalid time payload");
+    return false;
+  }
+
+  hexe::system::sync_clock_from_server(server_unix_ms, utc_offset_seconds, round_trip_us);
+  g_last_clock_sync_us = esp_timer_get_time();
+  g_clock_sync_interval_ms = std::max(1000, sync_interval_ms);
+  return true;
+}
+
 void heartbeat_task(void *arg) {
   (void)arg;
   const std::string url = heartbeat_url();
+  const std::string clock_url = time_url();
 
   while (true) {
     if (!hexe::state().wifi_connected) {
@@ -1099,6 +1295,10 @@ void heartbeat_task(void *arg) {
       if (!state.muted && !state.ota_active) {
         state.phase = hexe::idle_or_connecting_phase();
       }
+      vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+      continue;
+    }
+    if (hexe::state().media_transfer_active) {
       vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
       continue;
     }
@@ -1130,6 +1330,7 @@ void heartbeat_task(void *arg) {
     esp_http_client_config_t config = {};
     config.url = url.c_str();
     config.method = HTTP_METHOD_POST;
+    config.timeout_ms = 10000;
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == nullptr) {
       ESP_LOGW(kTag, "Failed to initialize heartbeat HTTP client");
@@ -1141,16 +1342,25 @@ void heartbeat_task(void *arg) {
     esp_http_client_set_post_field(client, body.c_str(), static_cast<int>(body.size()));
     esp_err_t err = esp_http_client_perform(client);
     const int status_code = esp_http_client_get_status_code(client);
+    bool clock_sync_due = false;
     auto &state = hexe::state();
     if (err == ESP_OK && status_code >= 200 && status_code < 300) {
+      const bool was_backend_connected = state.backend_connected;
       state.backend_connected = true;
       if (!state.muted && !state.ota_active && !state.voice_ws_connected) {
         state.phase = hexe::AppPhase::kBackendConnecting;
       }
+      const int64_t now_us = esp_timer_get_time();
+      clock_sync_due =
+          g_last_clock_sync_us == 0 ||
+          !was_backend_connected ||
+          (now_us - g_last_clock_sync_us) >= (static_cast<int64_t>(g_clock_sync_interval_ms) * 1000);
     } else {
       state.backend_connected = false;
-      state.voice_ws_connected = false;
-      if (!state.muted && !state.ota_active) {
+      if (!g_ws_connected) {
+        state.voice_ws_connected = false;
+      }
+      if (!state.muted && !state.ota_active && !g_ws_connected) {
         state.phase = hexe::idle_or_connecting_phase();
       }
       if (err != ESP_OK) {
@@ -1160,6 +1370,9 @@ void heartbeat_task(void *arg) {
       }
     }
     esp_http_client_cleanup(client);
+    if (clock_sync_due) {
+      sync_backend_time(clock_url);
+    }
     vTaskDelay(pdMS_TO_TICKS(hexe::config::kEndpointHeartbeatIntervalMs));
   }
 }
@@ -1243,8 +1456,13 @@ void init_backend_client() {
     ESP_LOGE(kTag, "Failed to create media transfer queue");
     return;
   }
+  g_ws_send_lock = xSemaphoreCreateMutex();
+  if (g_ws_send_lock == nullptr) {
+    ESP_LOGE(kTag, "Failed to create WebSocket send lock");
+    return;
+  }
 
-  xTaskCreate(media_transfer_task, "hexe_media_xfer", kMediaTaskStackBytes, nullptr, kTaskPriority, &g_media_task);
+  xTaskCreate(media_transfer_task, "hexe_media_xfer", kMediaTaskStackBytes, nullptr, kMediaTaskPriority, &g_media_task);
   xTaskCreate(heartbeat_task, "hexe_backend_hb", kTaskStackBytes, nullptr, kTaskPriority, &g_heartbeat_task);
   xTaskCreate(websocket_task, "hexe_voice_ws", kTaskStackBytes, nullptr, kTaskPriority, &g_ws_task);
   ESP_LOGI(

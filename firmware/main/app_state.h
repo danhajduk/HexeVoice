@@ -26,6 +26,7 @@ struct AppState {
   bool vad_enabled{false};
   bool vad_speaking{false};
   bool audio_streaming{false};
+  bool media_transfer_active{false};
   int wifi_rssi{-100};
   int vad_level{0};
   int loading_frame{0};

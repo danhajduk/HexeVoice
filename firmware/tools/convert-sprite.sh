@@ -12,8 +12,9 @@ Y="${Y:-0}"
 FIT="${FIT:-contain}"
 BYTE_ORDER="${BYTE_ORDER:-little}"
 SPRITES_DIR="${HEXE_SPRITES_DIR:-${DEFAULT_SD_DIR}}"
-MANIFEST_NAME="${MANIFEST_NAME:-overlay.json}"
+LAYER_JSON_NAME="${LAYER_JSON_NAME:-${MANIFEST_NAME:-}}"
 ALPHA_MASK_FORMAT="${ALPHA_MASK_FORMAT:-alpha8}"
+ALPHA_COLOR="${ALPHA_COLOR:-#FF00FF}"
 
 find_converter_python() {
   if [[ -n "${PYTHON:-}" ]]; then
@@ -58,14 +59,14 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [OPTIONS] INPUT_IMAGE [OUTPUT_PATH_OR_DIR]
 
-Converts an image into an RGB565 sprite and writes an overlay manifest.
+Converts an image into an RGB565 sprite and writes a layer JSON snippet for ui_manifest.json.
 
 Defaults:
   output dir: ${SPRITES_DIR} when present, otherwise next to INPUT_IMAGE
   size:       ${WIDTH}x${HEIGHT}
   position:   ${X},${Y}
   fit:        ${FIT}
-  manifest:   ${MANIFEST_NAME}
+  layer json: ${LAYER_JSON_NAME:-<input-stem>.layer.json}
 
 Environment overrides:
   HEXE_SPRITES_DIR  Output directory when OUTPUT_PATH_OR_DIR is omitted
@@ -75,8 +76,9 @@ Environment overrides:
   Y                 Overlay y position, default 0
   FIT               stretch, contain, or cover; default contain
   BYTE_ORDER        little or big; default little
-  MANIFEST_NAME     Manifest filename, default overlay.json
+  LAYER_JSON_NAME   Layer JSON filename, default <input-stem>.layer.json
   ALPHA_MASK_FORMAT alpha8 or alpha1; default alpha8
+  ALPHA_COLOR       RGB color key treated as transparent, default #FF00FF; set empty to disable
   TRANSPARENT_RGB565 Optional decimal RGB565 color value to skip while drawing
   PYTHON            Python executable to use
 
@@ -222,25 +224,34 @@ fi
 mkdir -p "${output_dir}"
 alpha_ext="${ALPHA_MASK_FORMAT}"
 alpha_path="${output_path%.rgb565}.${alpha_ext}"
+if [[ -z "${LAYER_JSON_NAME}" ]]; then
+  LAYER_JSON_NAME="${input_stem}.layer.json"
+fi
 
-"${python_bin}" "${CONVERTER}" "${input_path}" "${output_path}" \
-  --format raw-rgb565 \
-  --width "${WIDTH}" \
-  --height "${HEIGHT}" \
-  --fit "${FIT}" \
-  --byte-order "${BYTE_ORDER}" \
-  --alpha-output "${alpha_path}" \
+converter_args=(
+  "${python_bin}" "${CONVERTER}" "${input_path}" "${output_path}"
+  --format raw-rgb565
+  --width "${WIDTH}"
+  --height "${HEIGHT}"
+  --fit "${FIT}"
+  --byte-order "${BYTE_ORDER}"
+  --alpha-output "${alpha_path}"
   --alpha-mask-format "${ALPHA_MASK_FORMAT}"
+)
+if [[ -n "${ALPHA_COLOR}" ]]; then
+  converter_args+=(--alpha-color "${ALPHA_COLOR}")
+fi
+"${converter_args[@]}"
 
-manifest_path="${output_dir}/${MANIFEST_NAME}"
-"${python_bin}" - "${output_path}" "${alpha_path}" "${manifest_path}" "${WIDTH}" "${HEIGHT}" "${X}" "${Y}" "${TRANSPARENT_RGB565:-}" "${ALPHA_MASK_FORMAT}" <<'PY'
+layer_json_path="${output_dir}/${LAYER_JSON_NAME}"
+"${python_bin}" - "${output_path}" "${alpha_path}" "${layer_json_path}" "${WIDTH}" "${HEIGHT}" "${X}" "${Y}" "${TRANSPARENT_RGB565:-}" "${ALPHA_MASK_FORMAT}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 output_path = Path(sys.argv[1])
 alpha_path = Path(sys.argv[2])
-manifest_path = Path(sys.argv[3])
+layer_json_path = Path(sys.argv[3])
 transparent = sys.argv[8].strip()
 payload = {
     "filename": output_path.name,
@@ -253,7 +264,7 @@ payload = {
 }
 if transparent:
     payload["transparent_rgb565"] = int(transparent, 0)
-manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+layer_json_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 PY
 
 actual_size="$(wc -c < "${output_path}")"
@@ -261,7 +272,7 @@ expected_size=$((WIDTH * HEIGHT * 2))
 
 echo "Created: ${output_path}"
 echo "Alpha: ${alpha_path}"
-echo "Manifest: ${manifest_path}"
+echo "Layer JSON: ${layer_json_path}"
 echo "Size: ${actual_size} bytes"
 
 if [[ "${actual_size}" -ne "${expected_size}" ]]; then
@@ -270,4 +281,4 @@ fi
 
 echo "Copy/use on endpoint path: /sdcard/hexe/sprites/$(basename "${output_path}")"
 echo "Alpha mask path: /sdcard/hexe/sprites/$(basename "${alpha_path}")"
-echo "Overlay manifest path: /sdcard/hexe/sprites/${MANIFEST_NAME}"
+echo "Add the layer JSON object to /sdcard/hexe/sprites/ui_manifest.json"

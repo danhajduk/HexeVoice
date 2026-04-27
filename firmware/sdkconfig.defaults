@@ -7,3 +7,9 @@ CONFIG_ESP_HTTPS_OTA_ALLOW_HTTP=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
+# Endpoint media uses names like ui_manifest.json and avatar_idle.rgb565.
+# Keep FAT long filename support enabled even when sdkconfig is regenerated.
+# CONFIG_FATFS_LFN_NONE is not set
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255
+CONFIG_FATFS_ALLOC_PREFER_EXTRAM=y

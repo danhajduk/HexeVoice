@@ -170,6 +170,7 @@ function VoicePipelinePanel({ voiceStatus }) {
 function EndpointStatusTable({ voiceStatus, endpointStatus }) {
   const session = voiceStatus?.active_session;
   const projection = voiceStateProjection(voiceStatus);
+  const storage = endpointCapabilities(endpointStatus).storage || {};
   const timings = voiceStatus?.last_turn_timings || {};
   const endpointRows = [
     {
@@ -180,6 +181,7 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
       firmwareVersion: endpointStatus?.firmware_version || "unknown",
       deviceState: endpointStatus?.device_state || "unknown",
       connectionState: endpointStatus?.connection_state || "unknown",
+      fileTransfer: storage.media_transfer_active ? "downloading file" : storage.media_transfer_status || "idle",
       lastSeenAt: formatLocalDateTime(endpointStatus?.last_seen_at),
       voiceConnection: projection.connection_state,
       uxState: projection.ux_state,
@@ -211,6 +213,7 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
               <th scope="col">FW</th>
               <th scope="col">Device</th>
               <th scope="col">Registry</th>
+              <th scope="col">File transfer</th>
               <th scope="col">Last heartbeat</th>
               <th scope="col">Connection</th>
               <th scope="col">UX</th>
@@ -233,6 +236,7 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
                 <td>{valueOrEmpty(row.firmwareVersion)}</td>
                 <td>{valueOrEmpty(row.deviceState)}</td>
                 <td>{valueOrEmpty(row.connectionState)}</td>
+                <td>{valueOrEmpty(row.fileTransfer)}</td>
                 <td>{valueOrEmpty(row.lastSeenAt)}</td>
                 <td>{valueOrEmpty(row.voiceConnection)}</td>
                 <td>{valueOrEmpty(row.uxState)}</td>
@@ -367,6 +371,10 @@ function EndpointCapabilitiesPanel({ endpointStatus }) {
         <div>
           <dt>SD card</dt>
           <dd>{formatYesNo(storage.sd_card_available)}</dd>
+        </div>
+        <div>
+          <dt>File transfer</dt>
+          <dd>{storage.media_transfer_active ? "downloading file" : storage.media_transfer_status || "idle"}</dd>
         </div>
         <div>
           <dt>Display</dt>

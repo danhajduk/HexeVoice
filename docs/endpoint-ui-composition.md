@@ -1,6 +1,6 @@
 # Endpoint UI Composition
 
-HexeVoice endpoint UI assets are SD-card driven. Firmware uses a layered scene manifest when present and falls back to the existing simple built-in screens when assets are missing or invalid.
+HexeVoice endpoint UI assets are SD-card driven. Firmware uses a layered scene manifest for pictures, avatars, and sprites. If the manifest is missing or invalid, firmware leaves the display unchanged instead of drawing a fallback. If a referenced background, logo, avatar, or sprite file is missing, firmware skips that layer and continues with the next one.
 
 ## Folders
 
@@ -10,7 +10,7 @@ The endpoint creates and repairs these folders:
 - `/sdcard/hexe/sprites`
 - `/sdcard/hexe/sounds`
 
-Backgrounds and legacy full-screen state images live in `pictures`. Avatars, alpha masks, buttons, icons, scene manifests, and other overlays live in `sprites`. Audio files live in `sounds`.
+Backgrounds live in `pictures`. Avatars, alpha masks, buttons, icons, scene manifests, and other overlays live in `sprites`. Audio files live in `sounds`.
 
 ## Manifest
 
@@ -44,6 +44,15 @@ Minimal voice-scene example:
       "x": 80,
       "y": 40
     },
+    "clock": {
+      "filename": "clock_face.rgb565",
+      "alpha": "clock_face.alpha8",
+      "alpha_format": "alpha8",
+      "width": 180,
+      "height": 180,
+      "x": 70,
+      "y": 20
+    },
     "error": {
       "filename": "avatar_error.rgb565",
       "transparent_rgb565": 63519,
@@ -52,6 +61,22 @@ Minimal voice-scene example:
       "x": 80,
       "y": 40
     }
+  },
+  "clock": {
+    "idle_timeout_ms": 120000,
+    "cx": 160,
+    "cy": 110,
+    "hands_dx": 0,
+    "hands_dy": 0,
+    "radius": 62,
+    "hour_radius_percent": 50,
+    "minute_radius_percent": 75,
+    "color_rgb565": 65535,
+    "frame": false,
+    "date": true,
+    "date_x": -1,
+    "date_y": 202,
+    "date_scale": 2
   },
   "sprites": [
     {
@@ -77,7 +102,7 @@ Clock-scene example:
   "type": "clock",
   "background": "ClockBg.rgb565",
   "avatars": {
-    "idle": {
+    "clock": {
       "filename": "clock_face.rgb565",
       "alpha": "clock_face.alpha8",
       "alpha_format": "alpha8",
@@ -88,11 +113,20 @@ Clock-scene example:
     }
   },
   "clock": {
+    "idle_timeout_ms": 120000,
     "cx": 160,
     "cy": 110,
+    "hands_dx": 0,
+    "hands_dy": 0,
     "radius": 62,
+    "hour_radius_percent": 50,
+    "minute_radius_percent": 75,
     "color_rgb565": 65535,
-    "date": true
+    "frame": false,
+    "date": true,
+    "date_x": -1,
+    "date_y": 202,
+    "date_scale": 2
   }
 }
 ```
@@ -118,8 +152,21 @@ The firmware maps endpoint phases to avatar keys:
 - thinking: `thinking`
 - replying: `talk`
 - error: `error`
+- idle longer than `clock.idle_timeout_ms`: `clock`; default is `120000`
 
-If a specific avatar key is missing, firmware falls back to `idle`. If no composited scene can be loaded, firmware falls back to the legacy full-screen SD UI assets and then to built-in simple drawings.
+If a specific avatar key is missing, that layer is skipped; firmware does not substitute `idle`. If no composited scene manifest can be loaded, the display is left unchanged.
+Clock hands and the optional date are drawn only when the selected avatar is `clock`.
+
+Clock overlay options:
+
+- `frame`: draw the old square clock frame when `true`; default is `false`.
+- `cx`, `cy`, and `radius`: clock face center and radius used for hand length.
+- `hands_dx` and `hands_dy`: pixel offsets applied only to the drawn hands, useful when the art center is slightly off.
+- `hour_radius_percent` and `minute_radius_percent`: hand lengths as a percentage of `radius`.
+- `date`: draws a full date such as `Mon. - Apr. 27` when `true`.
+- `date_x`: date text x position. Use `-1` to center it automatically.
+- `date_y`: date text y position.
+- `date_scale`: bitmap text scale; `1` is small, `2` is the current default.
 
 ## Alpha Formats
 
@@ -129,7 +176,7 @@ Sprites and avatars support:
 - `alpha_format: "alpha8"`: one byte per pixel, `0` transparent and `255` opaque.
 - `alpha_format: "alpha1"`: packed on/off transparency, eight pixels per byte.
 
-`firmware/tools/convert_image.py --alpha-output` and `firmware/tools/convert-sprite.sh` can create RGB565 plus alpha mask files from a PNG with alpha.
+`firmware/tools/convert_image.py --alpha-output` and `firmware/tools/convert-sprite.sh` can create RGB565 plus alpha mask files from a PNG with alpha. `convert-sprite.sh` also treats exact `#FF00FF` pixels as transparent by default; set `ALPHA_COLOR=` to disable that color key or set `ALPHA_COLOR=#RRGGBB` to use another key.
 
 ## SD Media Reformat
 

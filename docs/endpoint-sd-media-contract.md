@@ -28,10 +28,10 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 - Runtime destination: `/sdcard/hexe/sprites`.
 - Preferred endpoint format: raw RGB565 plus metadata describing width, height, and position.
 - Accepted upload extensions: `.rgb565`, `.alpha8`, `.alpha1`, `.png`, `.jpg`, `.jpeg`, `.json`.
-- Firmware reads `/sdcard/hexe/sprites/ui_manifest.json` for the composited UI scene model. The older `/sdcard/hexe/sprites/overlay.json` remains a compatibility path for a single overlay sprite.
-- Overlay manifest fields include `filename`, `width`, `height`, `x`, `y`, optional numeric `transparent_rgb565`, and optional alpha mask fields `alpha` and `alpha_format`.
+- Firmware reads `/sdcard/hexe/sprites/ui_manifest.json` for the composited UI scene model. If the manifest is missing or invalid, firmware leaves the display unchanged. If a referenced background, logo, avatar, or sprite file is missing, firmware skips that layer and continues with the next one.
+- Scene layer fields include `filename`, `width`, `height`, `x`, `y`, optional numeric `transparent_rgb565`, and optional alpha mask fields `alpha` and `alpha_format`.
 - `firmware/tools/convert_image.py --alpha-output avatar.alpha8` converts an alpha PNG into raw RGB565 plus a matching alpha mask.
-- `firmware/tools/convert-sprite.sh --size 160x160 avatar.png /path/to/sprites` converts an image, writes `*.rgb565`, writes an alpha mask, and writes the overlay manifest for this convention. Use `--width`, `--height`, `--x`, and `--y` when separate dimensions or placement are easier.
+- `firmware/tools/convert-sprite.sh --size 160x160 avatar.png /path/to/sprites` converts an image, writes `*.rgb565`, writes an alpha mask, and writes a layer JSON snippet that can be copied into `ui_manifest.json`. Use `--width`, `--height`, `--x`, and `--y` when separate dimensions or placement are easier. Exact `#FF00FF` pixels are treated as transparent by default.
 - Full composited UI schema details live in `docs/endpoint-ui-composition.md`.
 
 `sound`
@@ -58,8 +58,8 @@ Backend-to-endpoint media transfer commands use the existing versioned voice eve
   "payload": {
     "request_id": "media-...",
     "media_type": "picture",
-    "asset_id": "Logo 320x240",
-    "filename": "Logo 320x240.rgb565",
+    "asset_id": "scene-background",
+    "filename": "scene-background.rgb565",
     "destination": "picture",
     "download_url": "/api/endpoint/media/files/media-...",
     "content_type": "application/octet-stream",

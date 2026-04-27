@@ -99,8 +99,11 @@ def prepare_rgba_image(
     width: int,
     height: int,
     fit: str,
+    alpha_color: tuple[int, int, int] | None = None,
 ) -> Image.Image:
     image = Image.open(image_path).convert("RGBA")
+    if alpha_color is not None:
+        image = apply_color_key_alpha(image, alpha_color)
     target_size = (width, height)
 
     if fit == "stretch":
@@ -120,6 +123,17 @@ def prepare_rgba_image(
     offset = ((width - resized_size[0]) // 2, (height - resized_size[1]) // 2)
     canvas.alpha_composite(image, offset)
     return canvas
+
+
+def apply_color_key_alpha(image: Image.Image, alpha_color: tuple[int, int, int]) -> Image.Image:
+    keyed = image.copy()
+    keyed.putdata(
+        [
+            (r, g, b, 0 if (r, g, b) == alpha_color else a)
+            for r, g, b, a in keyed.getdata()
+        ]
+    )
+    return keyed
 
 
 def image_to_rgb565_pixels(image: Image.Image) -> list[int]:
@@ -257,6 +271,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional alpha mask output; when set, RGB565 is written from the PNG RGB plane and alpha is written separately",
     )
     parser.add_argument(
+        "--alpha-color",
+        type=parse_rgb,
+        help="optional #RRGGBB color key to make transparent in --alpha-output masks",
+    )
+    parser.add_argument(
         "--alpha-mask-format",
         choices=("alpha8", "alpha1"),
         default="alpha8",
@@ -278,7 +297,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.alpha_output is not None:
-        rgba_image = prepare_rgba_image(args.input, args.width, args.height, args.fit)
+        rgba_image = prepare_rgba_image(args.input, args.width, args.height, args.fit, args.alpha_color)
         write_alpha_mask(rgba_image, args.alpha_output, args.alpha_mask_format)
         image = rgba_image.convert("RGB")
     else:

@@ -44,6 +44,7 @@ def test_standard_route_groups_exist(tmp_path):
     assert client.get("/api/providers/setup").status_code == 200
     assert client.get("/api/endpoint/status/box-1").status_code == 404
     assert client.post("/api/endpoint/heartbeat", json={"endpoint_id": "box-1"}).status_code == 200
+    assert client.get("/api/endpoint/time").status_code == 200
     assert client.get("/api/endpoint/media").status_code == 200
     assert client.get("/api/firmware/manifest").status_code in {200, 404}
     assert client.get("/api/capabilities").status_code == 200
@@ -92,6 +93,21 @@ def test_endpoint_heartbeat_records_latest_status(tmp_path):
     assert status_payload["firmware_version"] == "0.1.0"
     assert status_payload["ip_address"] == "10.0.0.55"
     assert status_payload["rssi_dbm"] == -58
+
+
+def test_endpoint_time_returns_clock_sync_payload(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    response = client.get("/api/endpoint/time")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["server_time"]
+    assert payload["server_unix_ms"] > 1_600_000_000_000
+    assert isinstance(payload["timezone"], str)
+    assert isinstance(payload["utc_offset_seconds"], int)
+    assert payload["sync_interval_ms"] == 300_000
 
 
 def test_endpoint_media_inventory_projects_heartbeat_storage_inventory(tmp_path):

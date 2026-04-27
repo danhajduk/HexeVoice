@@ -6,6 +6,9 @@ BACKEND_PORT="${BACKEND_PORT:-9004}"
 FRONTEND_PORT="${FRONTEND_PORT:-8084}"
 BACKEND_HOST="${BACKEND_HOST:-0.0.0.0}"
 FRONTEND_HOST="${FRONTEND_HOST:-0.0.0.0}"
+BACKEND_PUBLIC_HOST="${BACKEND_PUBLIC_HOST:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+BACKEND_PUBLIC_HOST="${BACKEND_PUBLIC_HOST:-127.0.0.1}"
+PUBLIC_API_BASE_URL="${PUBLIC_API_BASE_URL:-http://${BACKEND_PUBLIC_HOST}:${BACKEND_PORT}}"
 
 BACKEND_PID=""
 FRONTEND_PID=""
@@ -42,7 +45,7 @@ fi
 echo "Starting HexeVoice backend on http://$BACKEND_HOST:$BACKEND_PORT"
 (
   cd "$ROOT_DIR"
-  API_HOST="$BACKEND_HOST" API_PORT="$BACKEND_PORT" PYTHONPATH=src .venv/bin/python -m hexevoice.main
+  API_HOST="$BACKEND_HOST" API_PORT="$BACKEND_PORT" PUBLIC_API_BASE_URL="$PUBLIC_API_BASE_URL" PYTHONPATH=src .venv/bin/python -m hexevoice.main
 ) &
 BACKEND_PID=$!
 
@@ -56,6 +59,7 @@ FRONTEND_PID=$!
 echo
 echo "HexeVoice dev stack is starting:"
 echo "  API: http://127.0.0.1:$BACKEND_PORT"
+echo "  Endpoint API: $PUBLIC_API_BASE_URL"
 echo "  UI:  http://127.0.0.1:$FRONTEND_PORT"
 echo
 echo "Press Ctrl+C to stop both processes."

@@ -101,3 +101,44 @@ def test_convert_image_writes_alpha1_mask(tmp_path):
 
     assert output.stat().st_size == 16
     assert alpha.read_bytes() == bytes([0b10101100])
+
+
+def test_convert_image_treats_alpha_color_as_transparent(tmp_path):
+    source = tmp_path / "sprite.png"
+    output = tmp_path / "sprite.rgb565"
+    alpha = tmp_path / "sprite.alpha8"
+    python = converter_python()
+    write_rgba_png(
+        python,
+        source,
+        (2, 1),
+        [
+            (255, 0, 255, 255),
+            (0, 255, 0, 255),
+        ],
+    )
+
+    subprocess.run(
+        [
+            python,
+            "firmware/tools/convert_image.py",
+            str(source),
+            str(output),
+            "--format",
+            "raw-rgb565",
+            "--width",
+            "2",
+            "--height",
+            "1",
+            "--fit",
+            "stretch",
+            "--alpha-output",
+            str(alpha),
+            "--alpha-color",
+            "#FF00FF",
+        ],
+        check=True,
+    )
+
+    assert output.read_bytes() == bytes.fromhex("1ff8e007")
+    assert alpha.read_bytes() == bytes([0, 255])
