@@ -235,3 +235,6 @@ Step objective: Add media transfer validation and recovery tests.
 Chosen fix: Added focused API tests for rejected uploads, duplicate protection, delete cleanup, and disconnected delivery, plus firmware source guards for temp-file/checksum recovery behavior.
 What changed: Expanded media API test coverage and firmware transfer recovery assertions.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py::test_endpoint_media_upload_validates_and_serves_picture_rgb565 tests/test_api.py::test_endpoint_media_upload_rejects_invalid_base64_and_duplicate_asset tests/test_api.py::test_endpoint_media_upload_rejects_sprite_without_dimensions tests/test_api.py::test_endpoint_media_delete_removes_staged_payload_and_listing tests/test_api.py::test_endpoint_media_deliver_reports_disconnected_endpoint tests/test_firmware_voice_envelope.py -q` passed.
+#############
+All Tasks completed 04/27/2026 00:45:18
+#############
