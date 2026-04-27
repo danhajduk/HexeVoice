@@ -6,6 +6,7 @@
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <string>
 #include <ctime>
@@ -40,6 +41,7 @@ constexpr int kTaskPriority = 4;
 constexpr int kMediaTaskStackBytes = 8192;
 constexpr int kMediaQueueDepth = 2;
 constexpr int kMediaHttpTimeoutMs = 30000;
+constexpr size_t kMediaInventoryLimit = 24;
 constexpr int kMaxChunkSamples = hexe::config::kEndpointAudioChunkSamples;
 constexpr int kWakePredictionChunkSamples = 1280;
 constexpr size_t kMaxBackendEventBytes = 8192;
@@ -92,6 +94,7 @@ struct MediaTransferRequest {
 std::string base64_audio(const int16_t *samples, size_t sample_count);
 bool send_ws_text(const std::string &message);
 std::string endpoint_capabilities_json();
+void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 void append_event_header(
     std::string &message,
     const char *event_type,
@@ -611,40 +614,112 @@ bool send_ws_text(const std::string &message) {
 std::string endpoint_capabilities_json() {
   const auto &state = hexe::state();
   const esp_app_desc_t *app = esp_app_get_description();
-  char buffer[1536];
-  std::snprintf(
-      buffer,
-      sizeof(buffer),
-      "{\"touchscreen\":{\"available\":%s},"
-      "\"storage\":{\"sd_card_available\":%s,\"mount_path\":\"%s\",\"pictures_path\":\"%s\",\"sprites_path\":\"%s\",\"sounds_path\":\"%s\"},"
-      "\"display\":{\"available\":%s,\"width\":%d,\"height\":%d,\"pixel_format\":\"%s\",\"resolution\":\"%dx%d\"},"
-      "\"audio\":{\"input\":{\"available\":true,\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d},"
-      "\"output\":{\"available\":true,\"volume_percent\":%d,\"muted\":%s}},"
-      "\"controls\":{\"volume\":true,\"mute\":true,\"cancel\":true,\"replay\":true,\"restart\":false,\"reconnect\":false},"
-      "\"firmware\":{\"project_name\":\"%s\",\"version\":\"%s\",\"build_date\":\"%s\",\"build_time\":\"%s\",\"idf_version\":\"%s\"}}",
-      hexe::board::touch_ready() ? "true" : "false",
-      hexe::board::sd_card_mounted() ? "true" : "false",
-      hexe::board::sd_card_mount_path(),
-      hexe::board::sd_card_pictures_path(),
-      hexe::board::sd_card_sprites_path(),
-      hexe::board::sd_card_sounds_path(),
-      hexe::board::display_ready() ? "true" : "false",
-      hexe::board::display_width(),
-      hexe::board::display_height(),
-      hexe::board::display_pixel_format(),
-      hexe::board::display_width(),
-      hexe::board::display_height(),
-      hexe::config::kEndpointAudioEncoding,
-      hexe::config::kEndpointAudioSampleRateHz,
-      hexe::config::kEndpointAudioChannels,
-      state.output_volume_percent,
-      state.muted ? "true" : "false",
-      app == nullptr ? "unknown" : app->project_name,
-      app == nullptr ? firmware_version() : app->version,
-      app == nullptr ? "unknown" : app->date,
-      app == nullptr ? "unknown" : app->time,
-      app == nullptr ? "unknown" : app->idf_ver);
-  return std::string(buffer);
+  cJSON *root = cJSON_CreateObject();
+  if (root == nullptr) {
+    return "{}";
+  }
+
+  cJSON *touchscreen = cJSON_AddObjectToObject(root, "touchscreen");
+  cJSON_AddBoolToObject(touchscreen, "available", hexe::board::touch_ready());
+
+  cJSON *storage = cJSON_AddObjectToObject(root, "storage");
+  cJSON_AddBoolToObject(storage, "sd_card_available", hexe::board::sd_card_mounted());
+  cJSON_AddStringToObject(storage, "mount_path", hexe::board::sd_card_mount_path());
+  cJSON_AddStringToObject(storage, "pictures_path", hexe::board::sd_card_pictures_path());
+  cJSON_AddStringToObject(storage, "sprites_path", hexe::board::sd_card_sprites_path());
+  cJSON_AddStringToObject(storage, "sounds_path", hexe::board::sd_card_sounds_path());
+  cJSON *inventory = cJSON_AddObjectToObject(storage, "media_inventory");
+  bool inventory_truncated = false;
+  add_media_inventory_files(inventory, "pictures", hexe::board::sd_card_pictures_path(), inventory_truncated);
+  add_media_inventory_files(inventory, "sprites", hexe::board::sd_card_sprites_path(), inventory_truncated);
+  add_media_inventory_files(inventory, "sounds", hexe::board::sd_card_sounds_path(), inventory_truncated);
+  cJSON_AddBoolToObject(inventory, "truncated", inventory_truncated);
+
+  cJSON *display = cJSON_AddObjectToObject(root, "display");
+  cJSON_AddBoolToObject(display, "available", hexe::board::display_ready());
+  cJSON_AddNumberToObject(display, "width", hexe::board::display_width());
+  cJSON_AddNumberToObject(display, "height", hexe::board::display_height());
+  cJSON_AddStringToObject(display, "pixel_format", hexe::board::display_pixel_format());
+  char resolution[24];
+  std::snprintf(resolution, sizeof(resolution), "%dx%d", hexe::board::display_width(), hexe::board::display_height());
+  cJSON_AddStringToObject(display, "resolution", resolution);
+
+  cJSON *audio = cJSON_AddObjectToObject(root, "audio");
+  cJSON *input = cJSON_AddObjectToObject(audio, "input");
+  cJSON_AddBoolToObject(input, "available", true);
+  cJSON_AddStringToObject(input, "encoding", hexe::config::kEndpointAudioEncoding);
+  cJSON_AddNumberToObject(input, "sample_rate_hz", hexe::config::kEndpointAudioSampleRateHz);
+  cJSON_AddNumberToObject(input, "channels", hexe::config::kEndpointAudioChannels);
+  cJSON *output = cJSON_AddObjectToObject(audio, "output");
+  cJSON_AddBoolToObject(output, "available", true);
+  cJSON_AddNumberToObject(output, "volume_percent", state.output_volume_percent);
+  cJSON_AddBoolToObject(output, "muted", state.muted);
+
+  cJSON *controls = cJSON_AddObjectToObject(root, "controls");
+  cJSON_AddBoolToObject(controls, "volume", true);
+  cJSON_AddBoolToObject(controls, "mute", true);
+  cJSON_AddBoolToObject(controls, "cancel", true);
+  cJSON_AddBoolToObject(controls, "replay", true);
+  cJSON_AddBoolToObject(controls, "restart", false);
+  cJSON_AddBoolToObject(controls, "reconnect", false);
+
+  cJSON *firmware = cJSON_AddObjectToObject(root, "firmware");
+  cJSON_AddStringToObject(firmware, "project_name", app == nullptr ? "unknown" : app->project_name);
+  cJSON_AddStringToObject(firmware, "version", app == nullptr ? firmware_version() : app->version);
+  cJSON_AddStringToObject(firmware, "build_date", app == nullptr ? "unknown" : app->date);
+  cJSON_AddStringToObject(firmware, "build_time", app == nullptr ? "unknown" : app->time);
+  cJSON_AddStringToObject(firmware, "idf_version", app == nullptr ? "unknown" : app->idf_ver);
+
+  char *rendered = cJSON_PrintUnformatted(root);
+  std::string result = rendered == nullptr ? "{}" : rendered;
+  cJSON_free(rendered);
+  cJSON_Delete(root);
+  return result;
+}
+
+void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated) {
+  cJSON *items = cJSON_AddArrayToObject(inventory, key);
+  if (items == nullptr || !hexe::board::sd_card_mounted()) {
+    return;
+  }
+
+  DIR *dir = opendir(directory);
+  if (dir == nullptr) {
+    return;
+  }
+
+  size_t count = 0;
+  while (dirent *entry = readdir(dir)) {
+    if (entry->d_name[0] == '.') {
+      continue;
+    }
+    if (count >= kMediaInventoryLimit) {
+      truncated = true;
+      break;
+    }
+
+    char path[384];
+    const int written = std::snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
+    if (written <= 0 || static_cast<size_t>(written) >= sizeof(path)) {
+      truncated = true;
+      continue;
+    }
+    struct stat info = {};
+    if (stat(path, &info) != 0 || S_ISDIR(info.st_mode)) {
+      continue;
+    }
+
+    cJSON *item = cJSON_CreateObject();
+    if (item == nullptr) {
+      truncated = true;
+      break;
+    }
+    cJSON_AddStringToObject(item, "filename", entry->d_name);
+    cJSON_AddNumberToObject(item, "size_bytes", static_cast<double>(info.st_size));
+    cJSON_AddItemToArray(items, item);
+    ++count;
+  }
+  closedir(dir);
 }
 
 const char *payload_request_id(cJSON *payload) {

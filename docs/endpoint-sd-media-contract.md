@@ -103,6 +103,12 @@ The firmware validates again before final rename:
 
 Firmware writes transfer downloads to a dot-prefixed temporary file in the target directory, verifies size and SHA-256, then renames into place. The worker acknowledges `accepted`, `started`, and `succeeded` states through `command.ack`; terminal failures are reported through `command.error`.
 
+## Endpoint Inventory
+
+Firmware includes a bounded SD inventory in its heartbeat capabilities under `storage.media_inventory`. Each media directory reports visible files with `filename` and `size_bytes`; hidden dotfiles and temporary transfer files are skipped. Inventory lists are capped per directory and set `truncated: true` when the endpoint sees more files than the heartbeat reports.
+
+The node persists the latest heartbeat inventory with the endpoint registry and exposes it through `GET /api/endpoint/media/inventory/{endpoint_id}`.
+
 ## Current Size Limits
 
 - picture: `153600` bytes after conversion
@@ -118,6 +124,7 @@ Current backend routes:
 - `GET /api/endpoint/media` lists node-staged media assets.
 - `POST /api/endpoint/media` accepts JSON/base64 media uploads and stores the endpoint-ready payload.
 - `GET /api/endpoint/media/{asset_id}` returns asset metadata.
+- `GET /api/endpoint/media/inventory/{endpoint_id}` returns the latest SD inventory reported by endpoint heartbeat.
 - `DELETE /api/endpoint/media/{asset_id}` removes a staged asset.
 - `GET /api/endpoint/media/files/{asset_id}` serves the endpoint-ready payload bytes.
 - `POST /api/endpoint/media/{asset_id}/deliver` sends an `endpoint.media.transfer` command to the connected endpoint.

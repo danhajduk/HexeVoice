@@ -205,3 +205,9 @@ Step objective: Add firmware media-transfer command handling.
 Chosen fix: Added a queued firmware worker for `endpoint.media.transfer` so downloads, SD writes, checksum verification, and final rename do not run in the WebSocket event handler.
 What changed: Firmware now accepts media transfer commands, validates destination/filename, downloads endpoint media payloads, writes temporary files, verifies SHA-256/size, renames into place, and reports command ack/error state.
 Verification: `./firmware/build.sh` passed.
+###########
+Task #080
+Step objective: Add endpoint SD media inventory reporting.
+Chosen fix: Reused heartbeat capabilities as the persistence path and added a focused read API for the latest endpoint SD inventory.
+What changed: Firmware now scans pictures, sprites, and sounds directories into bounded heartbeat inventory arrays; the backend exposes `GET /api/endpoint/media/inventory/{endpoint_id}` from persisted endpoint capabilities.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py::test_endpoint_media_inventory_projects_heartbeat_storage_inventory tests/test_api.py::test_standard_route_groups_exist -q` passed; `./firmware/build.sh` passed.

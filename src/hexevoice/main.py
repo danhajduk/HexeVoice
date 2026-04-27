@@ -35,6 +35,8 @@ from hexevoice.api.models import (
     EndpointMediaAssetResponse,
     EndpointMediaDeliverRequest,
     EndpointMediaDeliverResponse,
+    EndpointMediaInventoryItem,
+    EndpointMediaInventoryResponse,
     EndpointMediaListResponse,
     EndpointMediaUploadRequest,
     EndpointRegistryListResponse,
@@ -296,6 +298,32 @@ def create_app(
     async def endpoint_media_list() -> EndpointMediaListResponse:
         return EndpointMediaListResponse(
             assets=[endpoint_media_response(asset) for asset in endpoint_media_service.list_assets()]
+        )
+
+    def media_inventory_items(inventory: dict, key: str) -> list[EndpointMediaInventoryItem]:
+        values = inventory.get(key, [])
+        if not isinstance(values, list):
+            return []
+        items: list[EndpointMediaInventoryItem] = []
+        for value in values:
+            if isinstance(value, dict) and isinstance(value.get("filename"), str):
+                items.append(EndpointMediaInventoryItem.model_validate(value))
+        return items
+
+    @app.get("/api/endpoint/media/inventory/{endpoint_id}", response_model=EndpointMediaInventoryResponse)
+    async def endpoint_media_inventory(endpoint_id: str) -> EndpointMediaInventoryResponse:
+        status = endpoint_service.status(endpoint_id)
+        storage = status.capabilities.get("storage") if isinstance(status.capabilities, dict) else {}
+        inventory = storage.get("media_inventory", {}) if isinstance(storage, dict) else {}
+        if not isinstance(inventory, dict):
+            inventory = {}
+        return EndpointMediaInventoryResponse(
+            endpoint_id=endpoint_id,
+            pictures=media_inventory_items(inventory, "pictures"),
+            sprites=media_inventory_items(inventory, "sprites"),
+            sounds=media_inventory_items(inventory, "sounds"),
+            truncated=bool(inventory.get("truncated", False)),
+            last_seen_at=status.last_seen_at,
         )
 
     @app.post("/api/endpoint/media", response_model=EndpointMediaAssetResponse)

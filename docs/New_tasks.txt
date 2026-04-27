@@ -1,5 +1,4 @@
 [TODO] Task 064: Build the first touchscreen interaction layer
-[TODO] Task 080: Add endpoint SD media inventory reporting
 [TODO] Task 081: Add sprite/item asset support under /sdcard/hexe/sprites
 [TODO] Task 082: Add SD sound asset delivery and playback integration
 [TODO] Task 083: Add dashboard media manager for endpoint SD assets

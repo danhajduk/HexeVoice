@@ -150,6 +150,23 @@ class EndpointMediaListResponse(BaseModel):
     assets: list[EndpointMediaAssetResponse] = Field(default_factory=list)
 
 
+class EndpointMediaInventoryItem(BaseModel):
+    filename: str
+    size_bytes: int | None = None
+    sha256: str | None = None
+    content_type: str | None = None
+    updated_at: str | None = None
+
+
+class EndpointMediaInventoryResponse(BaseModel):
+    endpoint_id: str
+    pictures: list[EndpointMediaInventoryItem] = Field(default_factory=list)
+    sprites: list[EndpointMediaInventoryItem] = Field(default_factory=list)
+    sounds: list[EndpointMediaInventoryItem] = Field(default_factory=list)
+    truncated: bool = False
+    last_seen_at: str | None = None
+
+
 class EndpointMediaDeliverRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     overwrite: bool = True

@@ -94,6 +94,40 @@ def test_endpoint_heartbeat_records_latest_status(tmp_path):
     assert status_payload["rssi_dbm"] == -58
 
 
+def test_endpoint_media_inventory_projects_heartbeat_storage_inventory(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    heartbeat = client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-box-1",
+            "capabilities": {
+                "storage": {
+                    "sd_card_available": True,
+                    "media_inventory": {
+                        "pictures": [{"filename": "Idle.rgb565", "size_bytes": 153600}],
+                        "sprites": [{"filename": "badge.rgb565", "size_bytes": 2048}],
+                        "sounds": [{"filename": "ready.wav", "size_bytes": 8820}],
+                        "truncated": True,
+                    },
+                }
+            },
+        },
+    )
+
+    assert heartbeat.status_code == 200
+    inventory = client.get("/api/endpoint/media/inventory/esp-box-1")
+    assert inventory.status_code == 200
+    payload = inventory.json()
+    assert payload["endpoint_id"] == "esp-box-1"
+    assert payload["pictures"] == [{"filename": "Idle.rgb565", "size_bytes": 153600, "sha256": None, "content_type": None, "updated_at": None}]
+    assert payload["sprites"][0]["filename"] == "badge.rgb565"
+    assert payload["sounds"][0]["filename"] == "ready.wav"
+    assert payload["truncated"] is True
+    assert payload["last_seen_at"]
+
+
 def test_firmware_manifest_serves_runtime_artifact(tmp_path):
     firmware_dir = tmp_path / "firmware"
     firmware_dir.mkdir()
