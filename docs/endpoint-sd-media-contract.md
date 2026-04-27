@@ -108,3 +108,16 @@ The firmware validates again before final rename:
 - sound: up to `5242880` bytes
 
 These limits are intentionally conservative for the first endpoint media-transfer implementation.
+
+## Node API Surface
+
+Current backend routes:
+
+- `GET /api/endpoint/media` lists node-staged media assets.
+- `POST /api/endpoint/media` accepts JSON/base64 media uploads and stores the endpoint-ready payload.
+- `GET /api/endpoint/media/{asset_id}` returns asset metadata.
+- `DELETE /api/endpoint/media/{asset_id}` removes a staged asset.
+- `GET /api/endpoint/media/files/{asset_id}` serves the endpoint-ready payload bytes.
+- `POST /api/endpoint/media/{asset_id}/deliver` sends an `endpoint.media.transfer` command to the connected endpoint.
+
+The first upload API intentionally uses JSON/base64 payloads so it does not require a multipart parser dependency. Dashboard upload flows can wrap local file reads into this request shape.

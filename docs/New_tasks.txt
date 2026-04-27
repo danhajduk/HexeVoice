@@ -1,5 +1,4 @@
 [TODO] Task 064: Build the first touchscreen interaction layer
-[TODO] Task 078: Add backend media upload and endpoint delivery APIs
 [TODO] Task 079: Add firmware media-transfer command handling
 [TODO] Task 080: Add endpoint SD media inventory reporting
 [TODO] Task 081: Add sprite/item asset support under /sdcard/hexe/sprites

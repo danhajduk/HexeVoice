@@ -229,6 +229,43 @@ class VoiceSessionManager:
             },
         )
 
+    async def push_media_transfer(
+        self,
+        *,
+        endpoint_id: str,
+        request_id: str,
+        media_type: str,
+        asset_id: str,
+        filename: str,
+        destination: str,
+        download_url: str,
+        content_type: str,
+        size_bytes: int,
+        sha256: str,
+        overwrite: bool,
+        activate: bool,
+        metadata: dict,
+    ) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.media.transfer",
+            command_type="endpoint.media.transfer",
+            request_id=request_id,
+            payload={
+                "media_type": media_type,
+                "asset_id": asset_id,
+                "filename": filename,
+                "destination": destination,
+                "download_url": download_url,
+                "content_type": content_type,
+                "size_bytes": size_bytes,
+                "sha256": sha256,
+                "overwrite": overwrite,
+                "activate": activate,
+                "metadata": metadata,
+            },
+        )
+
     def volume_status(self, endpoint_id: str) -> dict:
         self._expire_commands()
         latest = self._latest_command(endpoint_id=endpoint_id, command_type="endpoint.volume.set")
@@ -244,6 +281,7 @@ class VoiceSessionManager:
         event_type: VoiceEventType,
         command_type: str,
         payload: dict[str, object],
+        request_id: str | None = None,
     ) -> dict:
         if not self._connection_active or self._websocket is None:
             log.warning("Endpoint command rejected: endpoint_id=%s command_type=%s reason=endpoint_not_connected", endpoint_id, command_type)
@@ -257,7 +295,7 @@ class VoiceSessionManager:
             )
             return {"accepted": False, "reason": "endpoint_mismatch", "status": "failed"}
 
-        request_id = f"cmd_{uuid4().hex}"
+        request_id = request_id or f"cmd_{uuid4().hex}"
         event = VoiceEventEnvelope(
             event_type=event_type,
             endpoint_id=endpoint_id,
@@ -777,6 +815,7 @@ class VoiceSessionManager:
                 "replay_response": self._connection_active and self._last_tts is not None,
                 "mute_endpoint": self._connection_active,
                 "set_volume": self._connection_active,
+                "send_media": self._connection_active,
                 "reconnect": False,
             },
         }

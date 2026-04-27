@@ -1,3 +1,7 @@
+import base64
+import io
+import wave
+
 from fastapi.testclient import TestClient
 import httpx
 
@@ -40,6 +44,7 @@ def test_standard_route_groups_exist(tmp_path):
     assert client.get("/api/providers/setup").status_code == 200
     assert client.get("/api/endpoint/status/box-1").status_code == 404
     assert client.post("/api/endpoint/heartbeat", json={"endpoint_id": "box-1"}).status_code == 200
+    assert client.get("/api/endpoint/media").status_code == 200
     assert client.get("/api/firmware/manifest").status_code in {200, 404}
     assert client.get("/api/capabilities").status_code == 200
     assert client.post("/api/capabilities/declaration").status_code == 400
@@ -316,6 +321,143 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
     assert cancel_response.status_code == 200
     assert cancel_event["event_type"] == "endpoint.cancel"
     assert cancel_event["payload"]["request_id"] == cancel_response.json()["request_id"]
+
+
+def test_endpoint_media_upload_validates_and_serves_picture_rgb565(tmp_path):
+    payload = bytes(320 * 240 * 2)
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    upload = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "idle",
+            "media_type": "picture",
+            "filename": "Idle.rgb565",
+            "content_base64": base64.b64encode(payload).decode("ascii"),
+            "overwrite": True,
+        },
+    )
+    listing = client.get("/api/endpoint/media")
+    served = client.get("/api/endpoint/media/files/idle")
+
+    assert upload.status_code == 200
+    asset = upload.json()
+    assert asset["asset_id"] == "idle"
+    assert asset["destination"] == "picture"
+    assert asset["endpoint_path"] == "/sdcard/hexe/pictures/Idle.rgb565"
+    assert asset["size_bytes"] == 153600
+    assert asset["metadata"]["pixel_format"] == "rgb565"
+    assert asset["download_url"] == "http://voice-node.local:9004/api/endpoint/media/files/idle"
+    assert listing.status_code == 200
+    assert listing.json()["assets"][0]["asset_id"] == "idle"
+    assert served.status_code == 200
+    assert served.content == payload
+
+
+def test_endpoint_media_upload_rejects_unsafe_filename(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=tmp_path / "media")))
+
+    response = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "bad",
+            "media_type": "picture",
+            "filename": "../Idle.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_filename"
+
+
+def test_endpoint_media_deliver_sends_transfer_command(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+    upload = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "logo",
+            "media_type": "picture",
+            "filename": "Logo.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+            "overwrite": True,
+        },
+    )
+    assert upload.status_code == 200
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        response = client.post(
+            "/api/endpoint/media/logo/deliver",
+            json={"endpoint_id": "esp-box-1", "overwrite": True, "activate": True},
+        )
+        event = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["status"] == "pending"
+    assert event["event_type"] == "endpoint.media.transfer"
+    assert event["payload"]["request_id"] == response.json()["request_id"]
+    assert event["payload"]["media_type"] == "picture"
+    assert event["payload"]["filename"] == "Logo.rgb565"
+    assert event["payload"]["destination"] == "picture"
+    assert event["payload"]["download_url"] == "http://voice-node.local:9004/api/endpoint/media/files/logo"
+    assert event["payload"]["size_bytes"] == 153600
+
+
+def _wav_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b"\x00\x00" * 160)
+    return buffer.getvalue()
+
+
+def test_endpoint_media_upload_validates_sound_wav(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=tmp_path / "media")))
+
+    response = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "wake",
+            "media_type": "sound",
+            "filename": "wake.wav",
+            "content_base64": base64.b64encode(_wav_bytes()).decode("ascii"),
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["destination"] == "sound"
+    assert response.json()["endpoint_path"] == "/sdcard/hexe/sounds/wake.wav"
+    assert response.json()["metadata"]["audio_format"] == "wav_pcm"
+    assert response.json()["metadata"]["sample_rate_hz"] == 16000
 
 
 def test_assistant_turn_echoes_transcript_without_ai(tmp_path):

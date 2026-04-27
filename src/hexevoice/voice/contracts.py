@@ -61,6 +61,7 @@ VoiceEventType = Literal[
     "endpoint.mute",
     "endpoint.cancel",
     "endpoint.replay",
+    "endpoint.media.transfer",
     "command.ack",
     "command.error",
 ]
@@ -102,6 +103,7 @@ BACKEND_TO_ENDPOINT_EVENTS: frozenset[str] = frozenset(
         "endpoint.mute",
         "endpoint.cancel",
         "endpoint.replay",
+        "endpoint.media.transfer",
     }
 )
 

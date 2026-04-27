@@ -32,6 +32,11 @@ from hexevoice.api.models import (
     EndpointCommandResponse,
     EndpointMetadataUpdateRequest,
     EndpointMuteCommandRequest,
+    EndpointMediaAssetResponse,
+    EndpointMediaDeliverRequest,
+    EndpointMediaDeliverResponse,
+    EndpointMediaListResponse,
+    EndpointMediaUploadRequest,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
     EndpointVolumeCommandRequest,
@@ -54,6 +59,7 @@ from hexevoice.api.models import (
 )
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.capabilities.service import CapabilityDeclarationService
+from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
 from hexevoice.endpoint.service import EndpointHeartbeatService
 from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
@@ -143,6 +149,7 @@ def create_app(
         endpoint_registry_store=endpoint_registry_store,
         stale_after_seconds=app_settings.endpoint_stale_after_seconds,
     )
+    endpoint_media_service = EndpointMediaService(media_dir=app_settings.resolved_endpoint_media_dir())
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     service = NodeRuntimeService(
@@ -267,6 +274,97 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             command_type="endpoint.replay",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    def endpoint_media_public_url(asset_id: str) -> str:
+        base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
+        return f"{base_url.rstrip('/')}/api/endpoint/media/files/{asset_id}"
+
+    def endpoint_media_response(asset: EndpointMediaAsset) -> EndpointMediaAssetResponse:
+        return EndpointMediaAssetResponse(
+            **asset.model_dump(mode="json"),
+            download_url=endpoint_media_public_url(asset.asset_id),
+        )
+
+    def media_error(exc: EndpointMediaValidationError) -> HTTPException:
+        return HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+
+    @app.get("/api/endpoint/media", response_model=EndpointMediaListResponse)
+    async def endpoint_media_list() -> EndpointMediaListResponse:
+        return EndpointMediaListResponse(
+            assets=[endpoint_media_response(asset) for asset in endpoint_media_service.list_assets()]
+        )
+
+    @app.post("/api/endpoint/media", response_model=EndpointMediaAssetResponse)
+    async def endpoint_media_upload(payload: EndpointMediaUploadRequest) -> EndpointMediaAssetResponse:
+        try:
+            asset = endpoint_media_service.store_upload(
+                media_type=payload.media_type,
+                filename=payload.filename,
+                content_base64=payload.content_base64,
+                asset_id=payload.asset_id,
+                content_type=payload.content_type,
+                metadata=payload.metadata,
+                overwrite=payload.overwrite,
+            )
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+        return endpoint_media_response(asset)
+
+    @app.get("/api/endpoint/media/files/{asset_id}")
+    async def endpoint_media_file(asset_id: str) -> FileResponse:
+        try:
+            asset = endpoint_media_service.get_asset(asset_id)
+            return FileResponse(endpoint_media_service.payload_path(asset), media_type=asset.content_type)
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+
+    @app.get("/api/endpoint/media/{asset_id}", response_model=EndpointMediaAssetResponse)
+    async def endpoint_media_get(asset_id: str) -> EndpointMediaAssetResponse:
+        try:
+            return endpoint_media_response(endpoint_media_service.get_asset(asset_id))
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+
+    @app.delete("/api/endpoint/media/{asset_id}", response_model=EndpointMediaAssetResponse)
+    async def endpoint_media_delete(asset_id: str) -> EndpointMediaAssetResponse:
+        try:
+            return endpoint_media_response(endpoint_media_service.delete_asset(asset_id))
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+
+    @app.post("/api/endpoint/media/{asset_id}/deliver", response_model=EndpointMediaDeliverResponse)
+    async def endpoint_media_deliver(
+        asset_id: str,
+        payload: EndpointMediaDeliverRequest,
+    ) -> EndpointMediaDeliverResponse:
+        try:
+            asset = endpoint_media_service.get_asset(asset_id)
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+        request_id = f"media_{asset.asset_id}_{hashlib.sha256(asset.sha256.encode()).hexdigest()[:12]}"
+        result = await voice_session_manager.push_media_transfer(
+            endpoint_id=payload.endpoint_id,
+            request_id=request_id,
+            media_type=asset.media_type,
+            asset_id=asset.asset_id,
+            filename=asset.filename,
+            destination=asset.destination,
+            download_url=endpoint_media_public_url(asset.asset_id),
+            content_type=asset.content_type,
+            size_bytes=asset.size_bytes,
+            sha256=asset.sha256,
+            overwrite=payload.overwrite,
+            activate=payload.activate,
+            metadata=asset.metadata,
+        )
+        return EndpointMediaDeliverResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            asset=endpoint_media_response(asset),
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),

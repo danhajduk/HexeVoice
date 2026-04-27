@@ -193,3 +193,9 @@ Step objective: Define endpoint SD media delivery contract.
 Chosen fix: Added a focused contract document covering destinations, transfer envelope, result events, validation rules, and initial size limits.
 What changed: Created `docs/endpoint-sd-media-contract.md` and completed Task 077 in the task queue.
 Verification: Contract formatting checked by direct file read; no runtime tests required for documentation-only contract.
+###########
+Task #078
+Step objective: Add backend media upload and endpoint delivery APIs.
+Chosen fix: Added a JSON/base64 endpoint media service so media can be staged, validated, served, and delivered without adding multipart runtime dependencies.
+What changed: Added endpoint media storage, validation, file serving, transfer command routing, API models, settings, and API tests.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py -q` passed.

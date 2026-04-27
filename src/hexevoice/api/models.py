@@ -119,6 +119,52 @@ class EndpointCommandResponse(BaseModel):
     reason: str | None = None
 
 
+class EndpointMediaUploadRequest(BaseModel):
+    media_type: Literal["picture", "sprite", "sound"]
+    filename: str = Field(min_length=1, max_length=120)
+    content_base64: str = Field(min_length=1)
+    asset_id: str | None = Field(default=None, max_length=80)
+    content_type: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    overwrite: bool = False
+    activate: bool = True
+
+
+class EndpointMediaAssetResponse(BaseModel):
+    asset_id: str
+    media_type: Literal["picture", "sprite", "sound"]
+    destination: str
+    endpoint_path: str
+    filename: str
+    source_filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+    download_url: str | None = None
+
+
+class EndpointMediaListResponse(BaseModel):
+    assets: list[EndpointMediaAssetResponse] = Field(default_factory=list)
+
+
+class EndpointMediaDeliverRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    overwrite: bool = True
+    activate: bool = True
+
+
+class EndpointMediaDeliverResponse(BaseModel):
+    accepted: bool
+    endpoint_id: str
+    asset: EndpointMediaAssetResponse
+    request_id: str | None = None
+    status: str | None = None
+    reason: str | None = None
+
+
 class FirmwareOtaPushRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     filename: str = "hexe_firmware.bin"
