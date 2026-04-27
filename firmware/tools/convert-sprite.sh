@@ -13,6 +13,7 @@ FIT="${FIT:-contain}"
 BYTE_ORDER="${BYTE_ORDER:-little}"
 SPRITES_DIR="${HEXE_SPRITES_DIR:-${DEFAULT_SD_DIR}}"
 MANIFEST_NAME="${MANIFEST_NAME:-overlay.json}"
+ALPHA_MASK_FORMAT="${ALPHA_MASK_FORMAT:-alpha8}"
 
 usage() {
   cat <<EOF
@@ -36,6 +37,7 @@ Environment overrides:
   FIT               stretch, contain, or cover; default contain
   BYTE_ORDER        little or big; default little
   MANIFEST_NAME     Manifest filename, default overlay.json
+  ALPHA_MASK_FORMAT alpha8 or alpha1; default alpha8
   TRANSPARENT_RGB565 Optional decimal RGB565 color value to skip while drawing
   PYTHON            Python executable to use
 
@@ -86,29 +88,36 @@ else
 fi
 
 mkdir -p "${output_dir}"
+alpha_ext="${ALPHA_MASK_FORMAT}"
+alpha_path="${output_path%.rgb565}.${alpha_ext}"
 
 "${python_bin}" "${CONVERTER}" "${input_path}" "${output_path}" \
   --format raw-rgb565 \
   --width "${WIDTH}" \
   --height "${HEIGHT}" \
   --fit "${FIT}" \
-  --byte-order "${BYTE_ORDER}"
+  --byte-order "${BYTE_ORDER}" \
+  --alpha-output "${alpha_path}" \
+  --alpha-mask-format "${ALPHA_MASK_FORMAT}"
 
 manifest_path="${output_dir}/${MANIFEST_NAME}"
-"${python_bin}" - "${output_path}" "${manifest_path}" "${WIDTH}" "${HEIGHT}" "${X}" "${Y}" "${TRANSPARENT_RGB565:-}" <<'PY'
+"${python_bin}" - "${output_path}" "${alpha_path}" "${manifest_path}" "${WIDTH}" "${HEIGHT}" "${X}" "${Y}" "${TRANSPARENT_RGB565:-}" "${ALPHA_MASK_FORMAT}" <<'PY'
 import json
 import sys
 from pathlib import Path
 
 output_path = Path(sys.argv[1])
-manifest_path = Path(sys.argv[2])
-transparent = sys.argv[7].strip()
+alpha_path = Path(sys.argv[2])
+manifest_path = Path(sys.argv[3])
+transparent = sys.argv[8].strip()
 payload = {
     "filename": output_path.name,
-    "width": int(sys.argv[3]),
-    "height": int(sys.argv[4]),
-    "x": int(sys.argv[5]),
-    "y": int(sys.argv[6]),
+    "alpha": alpha_path.name,
+    "alpha_format": sys.argv[9],
+    "width": int(sys.argv[4]),
+    "height": int(sys.argv[5]),
+    "x": int(sys.argv[6]),
+    "y": int(sys.argv[7]),
 }
 if transparent:
     payload["transparent_rgb565"] = int(transparent, 0)
@@ -119,6 +128,7 @@ actual_size="$(wc -c < "${output_path}")"
 expected_size=$((WIDTH * HEIGHT * 2))
 
 echo "Created: ${output_path}"
+echo "Alpha: ${alpha_path}"
 echo "Manifest: ${manifest_path}"
 echo "Size: ${actual_size} bytes"
 
@@ -127,4 +137,5 @@ if [[ "${actual_size}" -ne "${expected_size}" ]]; then
 fi
 
 echo "Copy/use on endpoint path: /sdcard/hexe/sprites/$(basename "${output_path}")"
+echo "Alpha mask path: /sdcard/hexe/sprites/$(basename "${alpha_path}")"
 echo "Overlay manifest path: /sdcard/hexe/sprites/${MANIFEST_NAME}"

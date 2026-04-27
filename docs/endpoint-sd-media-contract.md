@@ -29,8 +29,9 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 - Preferred endpoint format: raw RGB565 plus metadata describing width, height, and position.
 - Accepted upload extensions: `.rgb565`, `.png`, `.jpg`, `.jpeg`, `.json`.
 - The first firmware sprite hook reads `/sdcard/hexe/sprites/overlay.json` and draws the referenced sprite over non-boot full-screen UI images before status icons.
-- Overlay manifest fields: `filename`, `width`, `height`, `x`, `y`, and optional numeric `transparent_rgb565`.
-- `firmware/tools/convert-sprite.sh` converts an image and writes the overlay manifest for this convention.
+- Overlay manifest fields: `filename`, `width`, `height`, `x`, `y`, optional numeric `transparent_rgb565`, and optional alpha mask fields `alpha` and `alpha_format`.
+- `firmware/tools/convert_image.py --alpha-output avatar.alpha8` converts an alpha PNG into raw RGB565 plus a matching alpha mask.
+- `firmware/tools/convert-sprite.sh` converts an image, writes `*.rgb565`, writes an alpha mask, and writes the overlay manifest for this convention.
 
 `sound`
 

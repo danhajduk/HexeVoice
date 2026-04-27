@@ -94,6 +94,34 @@ def prepare_image(
     return background_image.convert("RGB")
 
 
+def prepare_rgba_image(
+    image_path: Path,
+    width: int,
+    height: int,
+    fit: str,
+) -> Image.Image:
+    image = Image.open(image_path).convert("RGBA")
+    target_size = (width, height)
+
+    if fit == "stretch":
+        return image.resize(target_size, Image.LANCZOS)
+
+    source_width, source_height = image.size
+    scale = max(width / source_width, height / source_height) if fit == "cover" else min(width / source_width, height / source_height)
+    resized_size = (max(1, round(source_width * scale)), max(1, round(source_height * scale)))
+    image = image.resize(resized_size, Image.LANCZOS)
+
+    if fit == "cover":
+        left = max(0, (resized_size[0] - width) // 2)
+        top = max(0, (resized_size[1] - height) // 2)
+        return image.crop((left, top, left + width, top + height))
+
+    canvas = Image.new("RGBA", target_size, (0, 0, 0, 0))
+    offset = ((width - resized_size[0]) // 2, (height - resized_size[1]) // 2)
+    canvas.alpha_composite(image, offset)
+    return canvas
+
+
 def image_to_rgb565_pixels(image: Image.Image) -> list[int]:
     width, height = image.size
     pixels: list[int] = []
@@ -109,6 +137,24 @@ def write_raw_rgb565(pixels: list[int], output_path: Path, byte_order: str) -> N
     with output_path.open("wb") as handle:
         for pixel in pixels:
             handle.write(rgb565_to_bytes(pixel, byte_order))
+
+
+def write_alpha_mask(image: Image.Image, output_path: Path, mask_format: str) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    alpha = image.getchannel("A")
+    if mask_format == "alpha8":
+        output_path.write_bytes(alpha.tobytes())
+        return
+
+    values = list(alpha.getdata())
+    packed = bytearray()
+    for index in range(0, len(values), 8):
+        byte = 0
+        for bit, value in enumerate(values[index : index + 8]):
+            if value >= 128:
+                byte |= 1 << bit
+        packed.append(byte)
+    output_path.write_bytes(bytes(packed))
 
 
 def write_cpp_header(pixels: list[int], output_path: Path, width: int, height: int, symbol: str | None) -> None:
@@ -206,6 +252,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="composite transparency over --background or discard alpha like the legacy firmware converter",
     )
     parser.add_argument(
+        "--alpha-output",
+        type=Path,
+        help="optional alpha mask output; when set, RGB565 is written from the PNG RGB plane and alpha is written separately",
+    )
+    parser.add_argument(
+        "--alpha-mask-format",
+        choices=("alpha8", "alpha1"),
+        default="alpha8",
+        help="alpha mask format for --alpha-output; alpha8 is one byte per pixel, alpha1 packs 8 pixels per byte",
+    )
+    parser.add_argument(
         "--byte-order",
         choices=("little", "big"),
         default="little",
@@ -220,7 +277,12 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    image = prepare_image(args.input, args.width, args.height, args.fit, args.background, args.alpha_mode)
+    if args.alpha_output is not None:
+        rgba_image = prepare_rgba_image(args.input, args.width, args.height, args.fit)
+        write_alpha_mask(rgba_image, args.alpha_output, args.alpha_mask_format)
+        image = rgba_image.convert("RGB")
+    else:
+        image = prepare_image(args.input, args.width, args.height, args.fit, args.background, args.alpha_mode)
     pixels = image_to_rgb565_pixels(image)
 
     if args.format == "cpp-header":
