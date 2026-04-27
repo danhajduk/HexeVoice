@@ -161,6 +161,17 @@ def test_firmware_display_skips_unchanged_frames():
     assert "g_last_frame_signature_valid = false" in source
 
 
+def test_firmware_display_layers_can_clip_offscreen():
+    source = FIRMWARE_DISPLAY.read_text()
+
+    assert 'cJSON_GetObjectItem(node, "clip")' in source
+    assert "requires clip=true" in source
+    assert "geometry %dx%d at %d,%d is outside the screen" in source
+    assert "asset.x + asset.width <= 0" in source
+    assert "asset.y + asset.height <= 0" in source
+    assert "blend_pixel(asset.x + col, asset.y + row" in source
+
+
 def test_firmware_storage_reformat_is_media_only():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     storage_source = FIRMWARE_STORAGE.read_text()

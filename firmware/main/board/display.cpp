@@ -338,6 +338,7 @@ struct LayerAsset {
   int height{0};
   int x{0};
   int y{0};
+  bool clip{false};
   bool transparent_enabled{false};
   uint16_t transparent_color{0};
   char path[256]{};
@@ -621,8 +622,17 @@ bool load_layer_asset(cJSON *node, const char *directory, LayerAsset &asset, boo
   asset.height = cJSON_IsNumber(height_item) ? height_item->valueint : (allow_fullscreen ? kHeight : 0);
   asset.x = cJSON_IsNumber(cJSON_GetObjectItem(node, "x")) ? cJSON_GetObjectItem(node, "x")->valueint : 0;
   asset.y = cJSON_IsNumber(cJSON_GetObjectItem(node, "y")) ? cJSON_GetObjectItem(node, "y")->valueint : 0;
-  if (asset.width <= 0 || asset.height <= 0 || asset.x < 0 || asset.y < 0 || asset.x + asset.width > kWidth || asset.y + asset.height > kHeight) {
-    ESP_LOGW(kTag, "Ignoring layer %s: invalid geometry %dx%d at %d,%d", asset.path, asset.width, asset.height, asset.x, asset.y);
+  asset.clip = cJSON_IsBool(cJSON_GetObjectItem(node, "clip")) && cJSON_IsTrue(cJSON_GetObjectItem(node, "clip"));
+  if (asset.width <= 0 || asset.height <= 0) {
+    ESP_LOGW(kTag, "Ignoring layer %s: invalid size %dx%d", asset.path, asset.width, asset.height);
+    return false;
+  }
+  if (asset.x >= kWidth || asset.y >= kHeight || asset.x + asset.width <= 0 || asset.y + asset.height <= 0) {
+    ESP_LOGW(kTag, "Ignoring layer %s: geometry %dx%d at %d,%d is outside the screen", asset.path, asset.width, asset.height, asset.x, asset.y);
+    return false;
+  }
+  if (!asset.clip && (asset.x < 0 || asset.y < 0 || asset.x + asset.width > kWidth || asset.y + asset.height > kHeight)) {
+    ESP_LOGW(kTag, "Ignoring layer %s: geometry %dx%d at %d,%d requires clip=true", asset.path, asset.width, asset.height, asset.x, asset.y);
     return false;
   }
 

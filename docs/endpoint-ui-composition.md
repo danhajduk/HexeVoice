@@ -12,6 +12,8 @@ The endpoint creates and repairs these folders:
 
 Backgrounds live in `pictures`. Avatars, alpha masks, buttons, icons, scene manifests, and other overlays live in `sprites`. Audio files live in `sounds`.
 
+Layer `width` and `height` describe the actual RGB565 and alpha-mask file dimensions. `x` and `y` place that layer on the LCD. Set `"clip": true` on a layer to allow it to be partially off-screen; firmware clips it while drawing. This lets a full `320x240` avatar use `"y": 5` to move the art down while the bottom 5 pixels are clipped. Without `clip`, off-screen geometry is ignored so accidental bad positions do not draw.
+
 ## Manifest
 
 The first composited UI manifest is:
