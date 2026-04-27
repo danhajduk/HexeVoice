@@ -81,6 +81,10 @@ def test_firmware_composited_ui_supports_manifest_alpha_and_clock_scene():
     assert '"day_scale_percent"' in source
     assert '"date_scale_percent"' in source
     assert "scaled_units" in source
+    assert "draw_ota_progress" in source
+    assert '"ota_progress"' in source
+    assert '"fill_color_rgb565"' in source
+    assert "kOta" in source
     assert "Wednesday" in source
 
 
@@ -92,8 +96,20 @@ def test_firmware_idle_switches_to_clock_avatar_after_two_minutes():
     assert "kDefaultClockIdleTimeoutMs = 120000" in source
     assert '"idle_timeout_ms"' in source
     assert "pdMS_TO_TICKS(g_scene.clock.idle_timeout_ms)" in source
-    assert "idle_clock_due(phase) ? UiAssetId::kClock : asset_id_for_phase(phase)" in source
+    assert "return idle_clock_due(phase) ? UiAssetId::kClock : asset_id_for_phase(phase)" in source
     assert "if (id == UiAssetId::kClock) {\n    draw_clock_overlay();" in source
+
+
+def test_firmware_ota_uses_ota_avatar_and_configurable_progress():
+    source = FIRMWARE_DISPLAY.read_text()
+
+    assert 'std::strcmp(key, "ota") == 0' in source
+    assert "hexe::state().ota_active" in source
+    assert "return UiAssetId::kOta" in source
+    assert "g_scene.ota_progress" in source
+    assert '"orientation"' in source
+    assert '"vertical"' in source
+    assert "draw_ota_progress();" in source
 
 
 def test_firmware_handles_backend_session_state_events():

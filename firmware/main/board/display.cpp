@@ -151,31 +151,6 @@ void draw_hline(int x, int y, int width, uint16_t color) {
   fill_rect(x, y, width, 1, color);
 }
 
-void draw_ota_progress() {
-  const auto &app_state = hexe::state();
-  int percent = app_state.ota_progress_percent;
-  if (percent < 0) {
-    percent = 0;
-  } else if (percent > 100) {
-    percent = 100;
-  }
-
-  constexpr int kBarX = 302;
-  constexpr int kBarY = 42;
-  constexpr int kBarW = 12;
-  constexpr int kBarH = 156;
-  const int fill_height = ((kBarH - 4) * percent) / 100;
-  const uint16_t shadow = swap565(0x0000);
-  const uint16_t bg = swap565(0x18C3);
-  const uint16_t outline = swap565(0xFFFF);
-  const uint16_t fill = swap565(0x07FF);
-
-  fill_rect(kBarX - 3, kBarY - 3, kBarW + 6, kBarH + 6, shadow);
-  fill_rect(kBarX, kBarY, kBarW, kBarH, bg);
-  draw_rect_outline(kBarX, kBarY, kBarW, kBarH, outline);
-  fill_rect(kBarX + 2, kBarY + kBarH - 2 - fill_height, kBarW - 4, fill_height, fill);
-}
-
 int wifi_strength_bars(int rssi) {
   if (rssi >= -67) {
     return 3;
@@ -303,6 +278,7 @@ enum class UiAssetId : uint8_t {
   kTalk,
   kError,
   kClock,
+  kOta,
   kCount,
 };
 
@@ -372,6 +348,21 @@ struct ClockSceneConfig {
   int date_scale_percent{200};
 };
 
+struct OtaProgressConfig {
+  bool enabled{true};
+  bool vertical{false};
+  int x{58};
+  int y{205};
+  int width{204};
+  int height{12};
+  int padding{2};
+  int shadow_margin{3};
+  uint16_t shadow_color{0x0000};
+  uint16_t background_color{0x18C3};
+  uint16_t outline_color{0xFFFF};
+  uint16_t fill_color{0x07FF};
+};
+
 struct ComposedScene {
   bool loaded{false};
   char type[16]{};
@@ -380,6 +371,7 @@ struct ComposedScene {
   LayerAsset sprites[kMaxSceneSprites];
   size_t sprite_count{0};
   ClockSceneConfig clock;
+  OtaProgressConfig ota_progress;
 };
 
 ComposedScene g_scene = {};
@@ -722,6 +714,9 @@ UiAssetId avatar_id_for_key(const char *key) {
   if (std::strcmp(key, "clock") == 0) {
     return UiAssetId::kClock;
   }
+  if (std::strcmp(key, "ota") == 0 || std::strcmp(key, "updating") == 0) {
+    return UiAssetId::kOta;
+  }
   return UiAssetId::kIdle;
 }
 
@@ -964,6 +959,44 @@ void draw_clock_overlay() {
   }
 }
 
+void draw_ota_progress() {
+  if (!g_scene.ota_progress.enabled) {
+    return;
+  }
+  const auto &app_state = hexe::state();
+  int percent = app_state.ota_progress_percent;
+  if (percent < 0) {
+    percent = 0;
+  } else if (percent > 100) {
+    percent = 100;
+  }
+
+  const auto &bar = g_scene.ota_progress;
+  const int padding = bar.padding < 0 ? 0 : bar.padding;
+  const int shadow_margin = bar.shadow_margin < 0 ? 0 : bar.shadow_margin;
+  const int inner_w = bar.width - (padding * 2);
+  const int inner_h = bar.height - (padding * 2);
+  if (bar.width <= 0 || bar.height <= 0 || inner_w <= 0 || inner_h <= 0) {
+    return;
+  }
+
+  fill_rect(
+      bar.x - shadow_margin,
+      bar.y - shadow_margin,
+      bar.width + (shadow_margin * 2),
+      bar.height + (shadow_margin * 2),
+      swap565(bar.shadow_color));
+  fill_rect(bar.x, bar.y, bar.width, bar.height, swap565(bar.background_color));
+  draw_rect_outline(bar.x, bar.y, bar.width, bar.height, swap565(bar.outline_color));
+  if (bar.vertical) {
+    const int fill_height = (inner_h * percent) / 100;
+    fill_rect(bar.x + padding, bar.y + bar.height - padding - fill_height, inner_w, fill_height, swap565(bar.fill_color));
+  } else {
+    const int fill_width = (inner_w * percent) / 100;
+    fill_rect(bar.x + padding, bar.y + padding, fill_width, inner_h, swap565(bar.fill_color));
+  }
+}
+
 bool load_composed_scene() {
   if (!hexe::board::sd_card_mounted()) {
     return false;
@@ -1071,6 +1104,23 @@ bool load_composed_scene() {
     }
   }
 
+  cJSON *ota_progress = cJSON_GetObjectItem(root, "ota_progress");
+  if (cJSON_IsObject(ota_progress)) {
+    scene->ota_progress.enabled = cJSON_IsBool(cJSON_GetObjectItem(ota_progress, "enabled")) ? cJSON_IsTrue(cJSON_GetObjectItem(ota_progress, "enabled")) : scene->ota_progress.enabled;
+    cJSON *orientation = cJSON_GetObjectItem(ota_progress, "orientation");
+    scene->ota_progress.vertical = cJSON_IsString(orientation) && orientation->valuestring != nullptr && std::strcmp(orientation->valuestring, "vertical") == 0;
+    scene->ota_progress.x = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "x")) ? cJSON_GetObjectItem(ota_progress, "x")->valueint : scene->ota_progress.x;
+    scene->ota_progress.y = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "y")) ? cJSON_GetObjectItem(ota_progress, "y")->valueint : scene->ota_progress.y;
+    scene->ota_progress.width = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "width")) ? cJSON_GetObjectItem(ota_progress, "width")->valueint : scene->ota_progress.width;
+    scene->ota_progress.height = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "height")) ? cJSON_GetObjectItem(ota_progress, "height")->valueint : scene->ota_progress.height;
+    scene->ota_progress.padding = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "padding")) ? cJSON_GetObjectItem(ota_progress, "padding")->valueint : scene->ota_progress.padding;
+    scene->ota_progress.shadow_margin = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "shadow_margin")) ? cJSON_GetObjectItem(ota_progress, "shadow_margin")->valueint : scene->ota_progress.shadow_margin;
+    scene->ota_progress.shadow_color = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "shadow_color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(ota_progress, "shadow_color_rgb565")->valueint & 0xFFFF) : scene->ota_progress.shadow_color;
+    scene->ota_progress.background_color = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "background_color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(ota_progress, "background_color_rgb565")->valueint & 0xFFFF) : scene->ota_progress.background_color;
+    scene->ota_progress.outline_color = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "outline_color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(ota_progress, "outline_color_rgb565")->valueint & 0xFFFF) : scene->ota_progress.outline_color;
+    scene->ota_progress.fill_color = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "fill_color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(ota_progress, "fill_color_rgb565")->valueint & 0xFFFF) : scene->ota_progress.fill_color;
+  }
+
   cJSON_Delete(root);
   g_scene = *scene;
   heap_caps_free(scene);
@@ -1127,6 +1177,13 @@ bool idle_clock_due(hexe::AppPhase phase) {
   }
 
   return (now - idle_started_tick) >= pdMS_TO_TICKS(g_scene.clock.idle_timeout_ms);
+}
+
+UiAssetId asset_id_for_display(hexe::AppPhase phase) {
+  if (hexe::state().ota_active) {
+    return UiAssetId::kOta;
+  }
+  return idle_clock_due(phase) ? UiAssetId::kClock : asset_id_for_phase(phase);
 }
 }
 
@@ -1194,7 +1251,7 @@ void render_boot_frame(int frame, const char *build_id) {
   }
 
   const auto phase = hexe::state().phase;
-  const UiAssetId asset_id = idle_clock_due(phase) ? UiAssetId::kClock : asset_id_for_phase(phase);
+  const UiAssetId asset_id = asset_id_for_display(phase);
   const DisplayFrameSignature signature = make_frame_signature(phase, asset_id);
   if (!should_render_frame(signature)) {
     return;
@@ -1208,7 +1265,7 @@ void render_boot_frame(int frame, const char *build_id) {
   if (phase != hexe::AppPhase::kBooting) {
     draw_volume_indicator();
   }
-  if (phase == hexe::AppPhase::kUpdating) {
+  if (hexe::state().ota_active) {
     draw_ota_progress();
   }
   flush_framebuffer();

@@ -55,6 +55,13 @@ Minimal voice-scene example:
       "x": 70,
       "y": 20
     },
+    "ota": {
+      "filename": "ota.rgb565",
+      "width": 320,
+      "height": 240,
+      "x": 0,
+      "y": 0
+    },
     "error": {
       "filename": "avatar_error.rgb565",
       "transparent_rgb565": 63519,
@@ -87,6 +94,20 @@ Minimal voice-scene example:
     "date_x": 136,
     "date_y": 202,
     "date_scale_percent": 200
+  },
+  "ota_progress": {
+    "enabled": true,
+    "orientation": "horizontal",
+    "x": 58,
+    "y": 205,
+    "width": 204,
+    "height": 12,
+    "padding": 2,
+    "shadow_margin": 3,
+    "shadow_color_rgb565": 0,
+    "background_color_rgb565": 6339,
+    "outline_color_rgb565": 65535,
+    "fill_color_rgb565": 2047
   },
   "sprites": [
     {
@@ -171,6 +192,7 @@ The firmware maps endpoint phases to avatar keys:
 - replying: `talk`
 - error: `error`
 - idle longer than `clock.idle_timeout_ms`: `clock`; default is `120000`
+- OTA update active: `ota`
 
 If a specific avatar key is missing, that layer is skipped; firmware does not substitute `idle`. If no composited scene manifest can be loaded, the display is left unchanged.
 Clock hands and the optional date are drawn only when the selected avatar is `clock`.
@@ -195,6 +217,15 @@ Clock overlay options:
 - `date_y`: date text y position.
 - `date_scale_percent`: date bitmap text scale; `100` is small, `150` is 1.5x, and `200` is the default.
 
+OTA progress options:
+
+- `enabled`: draws the OTA progress bar when `true`; default is `true`.
+- `orientation`: `horizontal` or `vertical`; default is `horizontal`.
+- `x`, `y`, `width`, and `height`: progress bar geometry.
+- `padding`: inset from the bar outline to the fill area.
+- `shadow_margin`: shadow rectangle margin around the bar.
+- `shadow_color_rgb565`, `background_color_rgb565`, `outline_color_rgb565`, and `fill_color_rgb565`: RGB565 colors.
+
 ## Alpha Formats
 
 Sprites and avatars support:
@@ -204,6 +235,8 @@ Sprites and avatars support:
 - `alpha_format: "alpha1"`: packed on/off transparency, eight pixels per byte.
 
 `firmware/tools/convert_image.py --alpha-output` and `firmware/tools/convert-sprite.sh` can create RGB565 plus alpha mask files from a PNG with alpha. `convert-sprite.sh` also treats exact `#FF00FF` pixels as transparent by default; set `ALPHA_COLOR=` to disable that color key or set `ALPHA_COLOR=#RRGGBB` to use another key.
+
+`firmware/assets/converted_files/hexe/sprites/push-sprite.sh SPRITE_NAME` uploads the named sprite from `ui_manifest.json`. It uploads the RGB565 file and, when declared or present beside it, the matching `alpha8` or `alpha1` mask.
 
 ## SD Media Reformat
 

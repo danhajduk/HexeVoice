@@ -75,6 +75,13 @@
       "x": 0,
       "y": 5,
       "clip": true
+    },
+    "ota": {
+      "filename": "ota.rgb565",
+      "width": 320,
+      "height": 240,
+      "x": 0,
+      "y": 0
     }
   },
   "clock": {
@@ -93,14 +100,28 @@
     "second_color_rgb565": 63488,
     "frame": false,
     "date_split": true,
-    "day_x": 75,
+    "day_x": 100,
     "day_y": 204,
-    "day_scale_percent": 180,
-    "day_format": "long",
-    "day_text": "Wednesday",
-    "date_x": 180,
+    "day_scale_percent": 200,
+    "day_format": "short",
+    "day_text": "",
+    "date_x": 170,
     "date_y": 204,
-    "date_scale_percent": 150
+    "date_scale_percent": 200
+  },
+  "ota_progress": {
+    "enabled": true,
+    "orientation": "horizontal",
+    "x": 58,
+    "y": 205,
+    "width": 204,
+    "height": 12,
+    "padding": 2,
+    "shadow_margin": 3,
+    "shadow_color_rgb565": 0,
+    "background_color_rgb565": 6339,
+    "outline_color_rgb565": 65535,
+    "fill_color_rgb565": 2047
   },
   "sprites": []
 }
