@@ -350,6 +350,7 @@ struct ClockSceneConfig {
 
 struct OtaProgressConfig {
   bool enabled{true};
+  bool frame{true};
   bool vertical{false};
   int x{58};
   int y{205};
@@ -980,14 +981,16 @@ void draw_ota_progress() {
     return;
   }
 
-  fill_rect(
-      bar.x - shadow_margin,
-      bar.y - shadow_margin,
-      bar.width + (shadow_margin * 2),
-      bar.height + (shadow_margin * 2),
-      swap565(bar.shadow_color));
-  fill_rect(bar.x, bar.y, bar.width, bar.height, swap565(bar.background_color));
-  draw_rect_outline(bar.x, bar.y, bar.width, bar.height, swap565(bar.outline_color));
+  if (bar.frame) {
+    fill_rect(
+        bar.x - shadow_margin,
+        bar.y - shadow_margin,
+        bar.width + (shadow_margin * 2),
+        bar.height + (shadow_margin * 2),
+        swap565(bar.shadow_color));
+    fill_rect(bar.x, bar.y, bar.width, bar.height, swap565(bar.background_color));
+    draw_rect_outline(bar.x, bar.y, bar.width, bar.height, swap565(bar.outline_color));
+  }
   if (bar.vertical) {
     const int fill_height = (inner_h * percent) / 100;
     fill_rect(bar.x + padding, bar.y + bar.height - padding - fill_height, inner_w, fill_height, swap565(bar.fill_color));
@@ -1107,6 +1110,7 @@ bool load_composed_scene() {
   cJSON *ota_progress = cJSON_GetObjectItem(root, "ota_progress");
   if (cJSON_IsObject(ota_progress)) {
     scene->ota_progress.enabled = cJSON_IsBool(cJSON_GetObjectItem(ota_progress, "enabled")) ? cJSON_IsTrue(cJSON_GetObjectItem(ota_progress, "enabled")) : scene->ota_progress.enabled;
+    scene->ota_progress.frame = cJSON_IsBool(cJSON_GetObjectItem(ota_progress, "frame")) ? cJSON_IsTrue(cJSON_GetObjectItem(ota_progress, "frame")) : scene->ota_progress.frame;
     cJSON *orientation = cJSON_GetObjectItem(ota_progress, "orientation");
     scene->ota_progress.vertical = cJSON_IsString(orientation) && orientation->valuestring != nullptr && std::strcmp(orientation->valuestring, "vertical") == 0;
     scene->ota_progress.x = cJSON_IsNumber(cJSON_GetObjectItem(ota_progress, "x")) ? cJSON_GetObjectItem(ota_progress, "x")->valueint : scene->ota_progress.x;

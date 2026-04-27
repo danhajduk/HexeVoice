@@ -97,6 +97,7 @@ Minimal voice-scene example:
   },
   "ota_progress": {
     "enabled": true,
+    "frame": true,
     "orientation": "horizontal",
     "x": 58,
     "y": 205,
@@ -220,6 +221,7 @@ Clock overlay options:
 OTA progress options:
 
 - `enabled`: draws the OTA progress bar when `true`; default is `true`.
+- `frame`: draws the shadow, background, and outline when `true`; when `false`, only the fill is drawn.
 - `orientation`: `horizontal` or `vertical`; default is `horizontal`.
 - `x`, `y`, `width`, and `height`: progress bar geometry.
 - `padding`: inset from the bar outline to the fill area.

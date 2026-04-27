@@ -111,6 +111,7 @@
   },
   "ota_progress": {
     "enabled": true,
+    "frame": true,
     "orientation": "horizontal",
     "x": 58,
     "y": 205,

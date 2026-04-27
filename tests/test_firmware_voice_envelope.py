@@ -107,6 +107,8 @@ def test_firmware_ota_uses_ota_avatar_and_configurable_progress():
     assert "hexe::state().ota_active" in source
     assert "return UiAssetId::kOta" in source
     assert "g_scene.ota_progress" in source
+    assert '"frame"' in source
+    assert "bar.frame" in source
     assert '"orientation"' in source
     assert '"vertical"' in source
     assert "draw_ota_progress();" in source
