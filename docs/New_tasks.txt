@@ -1,5 +1,4 @@
 [TODO] Task 064: Build the first touchscreen interaction layer
-[TODO] Task 084: Add media transfer validation and recovery tests
 
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card
 [FUTURE TODO] Task 067: Persist voice session history and replay metadata

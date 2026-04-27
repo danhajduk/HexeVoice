@@ -413,6 +413,86 @@ def test_endpoint_media_upload_rejects_unsafe_filename(tmp_path):
     assert response.json()["detail"]["code"] == "invalid_filename"
 
 
+def test_endpoint_media_upload_rejects_invalid_base64_and_duplicate_asset(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=tmp_path / "media")))
+
+    invalid = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "idle",
+            "media_type": "picture",
+            "filename": "Idle.rgb565",
+            "content_base64": "not base64!",
+        },
+    )
+    created = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "idle",
+            "media_type": "picture",
+            "filename": "Idle.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+        },
+    )
+    duplicate = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "idle",
+            "media_type": "picture",
+            "filename": "Idle.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+        },
+    )
+
+    assert invalid.status_code == 400
+    assert invalid.json()["detail"]["code"] == "invalid_content_base64"
+    assert created.status_code == 200
+    assert duplicate.status_code == 409
+    assert duplicate.json()["detail"]["code"] == "duplicate_media_asset"
+
+
+def test_endpoint_media_upload_rejects_sprite_without_dimensions(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=tmp_path / "media")))
+
+    response = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "badge",
+            "media_type": "sprite",
+            "filename": "badge.rgb565",
+            "content_base64": base64.b64encode(bytes(32 * 32 * 2)).decode("ascii"),
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "missing_sprite_dimensions"
+
+
+def test_endpoint_media_delete_removes_staged_payload_and_listing(tmp_path):
+    media_dir = tmp_path / "media"
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=media_dir)))
+    upload = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "idle",
+            "media_type": "picture",
+            "filename": "Idle.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+        },
+    )
+    assert upload.status_code == 200
+    payload_path = media_dir / "idle" / "Idle.rgb565"
+    assert payload_path.exists()
+
+    deleted = client.delete("/api/endpoint/media/idle")
+    listing = client.get("/api/endpoint/media")
+
+    assert deleted.status_code == 200
+    assert deleted.json()["asset_id"] == "idle"
+    assert not payload_path.exists()
+    assert listing.json()["assets"] == []
+
+
 def test_endpoint_media_deliver_sends_transfer_command(tmp_path):
     client = TestClient(
         create_app(
@@ -462,6 +542,39 @@ def test_endpoint_media_deliver_sends_transfer_command(tmp_path):
     assert event["payload"]["destination"] == "picture"
     assert event["payload"]["download_url"] == "http://voice-node.local:9004/api/endpoint/media/files/logo"
     assert event["payload"]["size_bytes"] == 153600
+
+
+def test_endpoint_media_deliver_reports_disconnected_endpoint(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+    upload = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "logo",
+            "media_type": "picture",
+            "filename": "Logo.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+            "overwrite": True,
+        },
+    )
+    assert upload.status_code == 200
+
+    response = client.post(
+        "/api/endpoint/media/logo/deliver",
+        json={"endpoint_id": "esp-box-1", "overwrite": True, "activate": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is False
+    assert response.json()["status"] == "failed"
+    assert response.json()["reason"] == "endpoint_not_connected"
 
 
 def _wav_bytes() -> bytes:
