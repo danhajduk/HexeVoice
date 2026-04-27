@@ -95,12 +95,12 @@
     "date_split": true,
     "day_x": 75,
     "day_y": 204,
-    "day_scale": 2,
+    "day_scale_percent": 180,
     "day_format": "long",
     "day_text": "Wednesday",
     "date_x": 180,
     "date_y": 204,
-    "date_scale": 2
+    "date_scale_percent": 150
   },
   "sprites": []
 }

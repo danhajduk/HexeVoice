@@ -364,12 +364,12 @@ struct ClockSceneConfig {
   bool date_split{false};
   int day_x{-1};
   int day_y{202};
-  int day_scale{2};
+  int day_scale_percent{200};
   bool day_long{false};
   char day_text[16]{};
   int date_x{-1};
   int date_y{202};
-  int date_scale{2};
+  int date_scale_percent{200};
 };
 
 struct ComposedScene {
@@ -824,41 +824,66 @@ const uint8_t *font5x7_glyph(char ch) {
   return nullptr;
 }
 
-int text5x7_width(const char *text, int scale) {
+int scaled_units(int units, int scale_percent) {
+  if (units <= 0 || scale_percent <= 0) {
+    return 0;
+  }
+  return (units * scale_percent + 99) / 100;
+}
+
+int scaled_pixel_start(int unit, int scale_percent) {
+  return (unit * scale_percent) / 100;
+}
+
+int scaled_pixel_end(int unit, int scale_percent) {
+  return (unit * scale_percent) / 100;
+}
+
+int text5x7_width(const char *text, int scale_percent) {
   if (text == nullptr || text[0] == '\0') {
     return 0;
   }
   int width = 0;
   for (const char *cursor = text; *cursor != '\0'; ++cursor) {
-    width += (*cursor == ' ' ? 3 : 6) * scale;
+    width += scaled_units(*cursor == ' ' ? 3 : 6, scale_percent);
   }
-  return width > 0 ? width - scale : 0;
+  return width > 0 ? width - scaled_units(1, scale_percent) : 0;
 }
 
-void draw_char5x7(int x, int y, char ch, int scale, uint16_t color) {
+void draw_char5x7(int x, int y, char ch, int scale_percent, uint16_t color) {
   const uint8_t *glyph = font5x7_glyph(ch);
-  if (glyph == nullptr) {
+  if (glyph == nullptr || scale_percent <= 0) {
     return;
   }
   for (int col = 0; col < 5; ++col) {
     for (int row = 0; row < 7; ++row) {
       if ((glyph[col] & (1 << row)) != 0) {
-        fill_rect(x + (col * scale), y + (row * scale), scale, scale, color);
+        const int x0 = scaled_pixel_start(col, scale_percent);
+        int x1 = scaled_pixel_end(col + 1, scale_percent);
+        const int y0 = scaled_pixel_start(row, scale_percent);
+        int y1 = scaled_pixel_end(row + 1, scale_percent);
+        if (x1 <= x0) {
+          x1 = x0 + 1;
+        }
+        if (y1 <= y0) {
+          y1 = y0 + 1;
+        }
+        fill_rect(x + x0, y + y0, x1 - x0, y1 - y0, color);
       }
     }
   }
 }
 
-void draw_text5x7(int x, int y, const char *text, int scale, uint16_t color) {
-  if (text == nullptr || scale <= 0) {
+void draw_text5x7(int x, int y, const char *text, int scale_percent, uint16_t color) {
+  if (text == nullptr || scale_percent <= 0) {
     return;
   }
   int cursor_x = x;
   for (const char *cursor = text; *cursor != '\0'; ++cursor) {
     if (*cursor != ' ') {
-      draw_char5x7(cursor_x, y, *cursor, scale, color);
+      draw_char5x7(cursor_x, y, *cursor, scale_percent, color);
     }
-    cursor_x += (*cursor == ' ' ? 3 : 6) * scale;
+    cursor_x += scaled_units(*cursor == ' ' ? 3 : 6, scale_percent);
   }
 }
 
@@ -919,22 +944,22 @@ void draw_clock_overlay() {
     if (g_scene.clock.date_split) {
       int day_x = g_scene.clock.day_x;
       if (day_x < 0) {
-        day_x = (kWidth - text5x7_width(day, g_scene.clock.day_scale)) / 2;
+        day_x = (kWidth - text5x7_width(day, g_scene.clock.day_scale_percent)) / 2;
       }
       int date_x = g_scene.clock.date_x;
       if (date_x < 0) {
-        date_x = (kWidth - text5x7_width(date, g_scene.clock.date_scale)) / 2;
+        date_x = (kWidth - text5x7_width(date, g_scene.clock.date_scale_percent)) / 2;
       }
-      draw_text5x7(day_x, g_scene.clock.day_y, day, g_scene.clock.day_scale, color);
-      draw_text5x7(date_x, g_scene.clock.date_y, date, g_scene.clock.date_scale, color);
+      draw_text5x7(day_x, g_scene.clock.day_y, day, g_scene.clock.day_scale_percent, color);
+      draw_text5x7(date_x, g_scene.clock.date_y, date, g_scene.clock.date_scale_percent, color);
     } else {
       char full_date[40] = {};
       std::snprintf(full_date, sizeof(full_date), "%s %s", day, date);
       int x = g_scene.clock.date_x;
       if (x < 0) {
-        x = (kWidth - text5x7_width(full_date, g_scene.clock.date_scale)) / 2;
+        x = (kWidth - text5x7_width(full_date, g_scene.clock.date_scale_percent)) / 2;
       }
-      draw_text5x7(x, g_scene.clock.date_y, full_date, g_scene.clock.date_scale, color);
+      draw_text5x7(x, g_scene.clock.date_y, full_date, g_scene.clock.date_scale_percent, color);
     }
   }
 }
@@ -1031,8 +1056,8 @@ bool load_composed_scene() {
       scene->clock.date_split = cJSON_IsBool(cJSON_GetObjectItem(clock, "date_split")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "date_split"));
       scene->clock.day_x = cJSON_IsNumber(cJSON_GetObjectItem(clock, "day_x")) ? cJSON_GetObjectItem(clock, "day_x")->valueint : scene->clock.day_x;
       scene->clock.day_y = cJSON_IsNumber(cJSON_GetObjectItem(clock, "day_y")) ? cJSON_GetObjectItem(clock, "day_y")->valueint : scene->clock.day_y;
-      cJSON *day_scale = cJSON_GetObjectItem(clock, "day_scale");
-      scene->clock.day_scale = cJSON_IsNumber(day_scale) && day_scale->valueint > 0 ? day_scale->valueint : scene->clock.day_scale;
+      cJSON *day_scale_percent = cJSON_GetObjectItem(clock, "day_scale_percent");
+      scene->clock.day_scale_percent = cJSON_IsNumber(day_scale_percent) && day_scale_percent->valueint > 0 ? day_scale_percent->valueint : scene->clock.day_scale_percent;
       cJSON *day_format = cJSON_GetObjectItem(clock, "day_format");
       scene->clock.day_long = cJSON_IsString(day_format) && day_format->valuestring != nullptr && std::strcmp(day_format->valuestring, "long") == 0;
       cJSON *day_text = cJSON_GetObjectItem(clock, "day_text");
@@ -1041,8 +1066,8 @@ bool load_composed_scene() {
       }
       scene->clock.date_x = cJSON_IsNumber(cJSON_GetObjectItem(clock, "date_x")) ? cJSON_GetObjectItem(clock, "date_x")->valueint : scene->clock.date_x;
       scene->clock.date_y = cJSON_IsNumber(cJSON_GetObjectItem(clock, "date_y")) ? cJSON_GetObjectItem(clock, "date_y")->valueint : scene->clock.date_y;
-      cJSON *date_scale = cJSON_GetObjectItem(clock, "date_scale");
-      scene->clock.date_scale = cJSON_IsNumber(date_scale) && date_scale->valueint > 0 ? date_scale->valueint : scene->clock.date_scale;
+      cJSON *date_scale_percent = cJSON_GetObjectItem(clock, "date_scale_percent");
+      scene->clock.date_scale_percent = cJSON_IsNumber(date_scale_percent) && date_scale_percent->valueint > 0 ? date_scale_percent->valueint : scene->clock.date_scale_percent;
     }
   }
 
