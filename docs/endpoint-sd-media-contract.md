@@ -101,6 +101,8 @@ The firmware validates again before final rename:
 - checksum matches `sha256`
 - final path is inside the expected destination directory
 
+Firmware writes transfer downloads to a dot-prefixed temporary file in the target directory, verifies size and SHA-256, then renames into place. The worker acknowledges `accepted`, `started`, and `succeeded` states through `command.ack`; terminal failures are reported through `command.error`.
+
 ## Current Size Limits
 
 - picture: `153600` bytes after conversion

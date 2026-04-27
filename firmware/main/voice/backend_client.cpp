@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
 #include <cinttypes>
 #include <cstdio>
 #include <cstring>
+#include <sys/stat.h>
 #include <string>
 #include <ctime>
 
@@ -25,6 +27,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "mbedtls/base64.h"
+#include "psa/crypto.h"
 #include "system/ota.h"
 #include "system/settings.h"
 #include "voice/tts_player.h"
@@ -34,6 +37,9 @@ constexpr char kTag[] = "hexe_backend";
 constexpr size_t kAudioQueueDepth = 8;
 constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
+constexpr int kMediaTaskStackBytes = 8192;
+constexpr int kMediaQueueDepth = 2;
+constexpr int kMediaHttpTimeoutMs = 30000;
 constexpr int kMaxChunkSamples = hexe::config::kEndpointAudioChunkSamples;
 constexpr int kWakePredictionChunkSamples = 1280;
 constexpr size_t kMaxBackendEventBytes = 8192;
@@ -52,6 +58,8 @@ QueueHandle_t g_audio_queue = nullptr;
 esp_websocket_client_handle_t g_ws_client = nullptr;
 TaskHandle_t g_heartbeat_task = nullptr;
 TaskHandle_t g_ws_task = nullptr;
+TaskHandle_t g_media_task = nullptr;
+QueueHandle_t g_media_queue = nullptr;
 uint32_t g_chunk_index = 0;
 uint32_t g_session_counter = 0;
 uint32_t g_sequence = 0;
@@ -67,6 +75,19 @@ std::array<int16_t, kWakePredictionChunkSamples> g_transport_samples = {};
 size_t g_transport_sample_count = 0;
 std::string g_session_id;
 std::string g_ws_rx_buffer;
+
+struct MediaTransferRequest {
+  char request_id[96];
+  char media_type[16];
+  char filename[128];
+  char destination[16];
+  char download_url[256];
+  char content_type[64];
+  char sha256[65];
+  int size_bytes;
+  bool overwrite;
+  bool activate;
+};
 
 std::string base64_audio(const int16_t *samples, size_t sample_count);
 bool send_ws_text(const std::string &message);
@@ -339,6 +360,7 @@ std::string base64_audio(const int16_t *samples, size_t sample_count) {
 const char *payload_request_id(cJSON *payload);
 void send_command_ack(const char *request_id, const char *command_type, const char *status, const char *message);
 void send_command_error(const char *request_id, const char *command_type, const char *code, const char *message);
+bool queue_media_transfer(cJSON *payload);
 
 void handle_backend_event_json(const std::string &message) {
   cJSON *root = cJSON_ParseWithLength(message.c_str(), message.size());
@@ -473,6 +495,8 @@ void handle_backend_event_json(const std::string &message) {
     } else {
       send_command_error(request_id, "endpoint.replay", "invalid_payload", "Replay requires stream_id or audio_url");
     }
+  } else if (std::strcmp(type, "endpoint.media.transfer") == 0) {
+    queue_media_transfer(payload);
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     g_session_started = false;
     g_audio_stream_finished = false;
@@ -592,7 +616,7 @@ std::string endpoint_capabilities_json() {
       buffer,
       sizeof(buffer),
       "{\"touchscreen\":{\"available\":%s},"
-      "\"storage\":{\"sd_card_available\":%s,\"mount_path\":\"%s\",\"pictures_path\":\"%s\",\"sounds_path\":\"%s\"},"
+      "\"storage\":{\"sd_card_available\":%s,\"mount_path\":\"%s\",\"pictures_path\":\"%s\",\"sprites_path\":\"%s\",\"sounds_path\":\"%s\"},"
       "\"display\":{\"available\":%s,\"width\":%d,\"height\":%d,\"pixel_format\":\"%s\",\"resolution\":\"%dx%d\"},"
       "\"audio\":{\"input\":{\"available\":true,\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d},"
       "\"output\":{\"available\":true,\"volume_percent\":%d,\"muted\":%s}},"
@@ -602,6 +626,7 @@ std::string endpoint_capabilities_json() {
       hexe::board::sd_card_mounted() ? "true" : "false",
       hexe::board::sd_card_mount_path(),
       hexe::board::sd_card_pictures_path(),
+      hexe::board::sd_card_sprites_path(),
       hexe::board::sd_card_sounds_path(),
       hexe::board::display_ready() ? "true" : "false",
       hexe::board::display_width(),
@@ -673,6 +698,234 @@ void send_command_error(const char *request_id, const char *command_type, const 
       message == nullptr ? "Command failed" : message);
   envelope.append(payload);
   send_ws_text(envelope);
+}
+
+bool is_safe_media_filename(const char *filename) {
+  if (filename == nullptr || filename[0] == '\0' || filename[0] == '.' || std::strlen(filename) >= 120) {
+    return false;
+  }
+  for (const char *cursor = filename; *cursor != '\0'; ++cursor) {
+    if (*cursor == '/' || *cursor == '\\' || static_cast<unsigned char>(*cursor) < 32) {
+      return false;
+    }
+    if (*cursor == '.' && cursor[1] == '.') {
+      return false;
+    }
+  }
+  return true;
+}
+
+const char *media_destination_dir(const char *destination) {
+  if (std::strcmp(destination, "picture") == 0) {
+    return hexe::board::sd_card_pictures_path();
+  }
+  if (std::strcmp(destination, "sprite") == 0) {
+    return hexe::board::sd_card_sprites_path();
+  }
+  if (std::strcmp(destination, "sound") == 0) {
+    return hexe::board::sd_card_sounds_path();
+  }
+  return nullptr;
+}
+
+void bytes_to_hex(const unsigned char *bytes, size_t byte_count, char *output, size_t output_size) {
+  if (output_size < (byte_count * 2) + 1) {
+    if (output_size > 0) {
+      output[0] = '\0';
+    }
+    return;
+  }
+  for (size_t i = 0; i < byte_count; ++i) {
+    std::snprintf(output + (i * 2), output_size - (i * 2), "%02x", bytes[i]);
+  }
+}
+
+bool copy_json_string(cJSON *payload, const char *key, char *target, size_t target_size) {
+  cJSON *item = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, key) : nullptr;
+  if (!cJSON_IsString(item) || item->valuestring == nullptr || item->valuestring[0] == '\0') {
+    return false;
+  }
+  std::snprintf(target, target_size, "%s", item->valuestring);
+  return target[0] != '\0';
+}
+
+bool queue_media_transfer(cJSON *payload) {
+  MediaTransferRequest request = {};
+  if (!copy_json_string(payload, "request_id", request.request_id, sizeof(request.request_id)) ||
+      !copy_json_string(payload, "media_type", request.media_type, sizeof(request.media_type)) ||
+      !copy_json_string(payload, "filename", request.filename, sizeof(request.filename)) ||
+      !copy_json_string(payload, "destination", request.destination, sizeof(request.destination)) ||
+      !copy_json_string(payload, "download_url", request.download_url, sizeof(request.download_url)) ||
+      !copy_json_string(payload, "sha256", request.sha256, sizeof(request.sha256))) {
+    send_command_error(payload_request_id(payload), "endpoint.media.transfer", "invalid_payload", "Media transfer is missing required fields");
+    return false;
+  }
+
+  cJSON *content_type = cJSON_GetObjectItem(payload, "content_type");
+  std::snprintf(
+      request.content_type,
+      sizeof(request.content_type),
+      "%s",
+      cJSON_IsString(content_type) ? content_type->valuestring : "application/octet-stream");
+  cJSON *size_bytes = cJSON_GetObjectItem(payload, "size_bytes");
+  if (!cJSON_IsNumber(size_bytes) || size_bytes->valueint <= 0) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "invalid_payload", "size_bytes must be positive");
+    return false;
+  }
+  request.size_bytes = size_bytes->valueint;
+  cJSON *overwrite = cJSON_GetObjectItem(payload, "overwrite");
+  cJSON *activate = cJSON_GetObjectItem(payload, "activate");
+  request.overwrite = !cJSON_IsBool(overwrite) || cJSON_IsTrue(overwrite);
+  request.activate = !cJSON_IsBool(activate) || cJSON_IsTrue(activate);
+
+  if (!hexe::board::sd_card_mounted()) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "sd_card_not_mounted", "SD card is not mounted");
+    return false;
+  }
+  if (!is_safe_media_filename(request.filename) || media_destination_dir(request.destination) == nullptr) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "invalid_destination", "Media filename or destination is invalid");
+    return false;
+  }
+  if (g_media_queue == nullptr || xQueueSend(g_media_queue, &request, 0) != pdTRUE) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "media_transfer_busy", "Media transfer queue is full");
+    return false;
+  }
+
+  send_command_ack(request.request_id, "endpoint.media.transfer", "accepted", "Media transfer queued");
+  return true;
+}
+
+bool write_media_transfer(const MediaTransferRequest &request) {
+  const char *directory = media_destination_dir(request.destination);
+  if (directory == nullptr || !is_safe_media_filename(request.filename)) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "invalid_destination", "Media destination is invalid");
+    return false;
+  }
+
+  if (mkdir(directory, 0775) != 0 && errno != EEXIST) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "mkdir_failed", "Could not create media directory");
+    return false;
+  }
+
+  char final_path[256] = {};
+  char temp_path[280] = {};
+  std::snprintf(final_path, sizeof(final_path), "%s/%s", directory, request.filename);
+  std::snprintf(temp_path, sizeof(temp_path), "%s/.%s.tmp", directory, request.filename);
+  if (!request.overwrite) {
+    struct stat info = {};
+    if (stat(final_path, &info) == 0) {
+      send_command_error(request.request_id, "endpoint.media.transfer", "target_exists", "Media file already exists");
+      return false;
+    }
+  }
+
+  send_command_ack(request.request_id, "endpoint.media.transfer", "started", "Downloading media");
+
+  esp_http_client_config_t config = {};
+  config.url = request.download_url;
+  config.timeout_ms = kMediaHttpTimeoutMs;
+  config.keep_alive_enable = true;
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "http_client_failed", "Could not initialize HTTP client");
+    return false;
+  }
+
+  FILE *file = std::fopen(temp_path, "wb");
+  if (file == nullptr) {
+    esp_http_client_cleanup(client);
+    send_command_error(request.request_id, "endpoint.media.transfer", "file_open_failed", "Could not open temporary media file");
+    return false;
+  }
+
+  psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
+  psa_status_t hash_status = psa_crypto_init();
+  if (hash_status == PSA_SUCCESS) {
+    hash_status = psa_hash_setup(&hash_op, PSA_ALG_SHA_256);
+  }
+  esp_err_t err = esp_http_client_open(client, 0);
+  int total_read = 0;
+  char buffer[1024];
+  if (err == ESP_OK) {
+    esp_http_client_fetch_headers(client);
+    while (true) {
+      const int read = esp_http_client_read(client, buffer, sizeof(buffer));
+      if (read < 0) {
+        err = ESP_FAIL;
+        break;
+      }
+      if (read == 0) {
+        break;
+      }
+      if (std::fwrite(buffer, 1, read, file) != static_cast<size_t>(read)) {
+        err = ESP_ERR_NO_MEM;
+        break;
+      }
+      if (hash_status == PSA_SUCCESS) {
+        hash_status = psa_hash_update(&hash_op, reinterpret_cast<const uint8_t *>(buffer), read);
+      }
+      total_read += read;
+    }
+  }
+
+  std::fclose(file);
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+
+  unsigned char digest[32] = {};
+  size_t digest_length = 0;
+  if (hash_status == PSA_SUCCESS) {
+    hash_status = psa_hash_finish(&hash_op, digest, sizeof(digest), &digest_length);
+  } else {
+    psa_hash_abort(&hash_op);
+  }
+
+  if (err != ESP_OK) {
+    std::remove(temp_path);
+    send_command_error(request.request_id, "endpoint.media.transfer", "download_failed", "Media download failed");
+    return false;
+  }
+  if (total_read != request.size_bytes) {
+    std::remove(temp_path);
+    send_command_error(request.request_id, "endpoint.media.transfer", "size_mismatch", "Media size did not match manifest");
+    return false;
+  }
+  if (hash_status != PSA_SUCCESS || digest_length != sizeof(digest)) {
+    std::remove(temp_path);
+    send_command_error(request.request_id, "endpoint.media.transfer", "checksum_failed", "Could not calculate media checksum");
+    return false;
+  }
+
+  char sha_hex[65] = {};
+  bytes_to_hex(digest, sizeof(digest), sha_hex, sizeof(sha_hex));
+  if (std::strcmp(sha_hex, request.sha256) != 0) {
+    std::remove(temp_path);
+    send_command_error(request.request_id, "endpoint.media.transfer", "checksum_mismatch", "Media checksum did not match manifest");
+    return false;
+  }
+
+  if (request.overwrite) {
+    std::remove(final_path);
+  }
+  if (std::rename(temp_path, final_path) != 0) {
+    std::remove(temp_path);
+    send_command_error(request.request_id, "endpoint.media.transfer", "rename_failed", "Could not activate media file");
+    return false;
+  }
+
+  ESP_LOGI(kTag, "Stored media transfer destination=%s filename=%s bytes=%d", request.destination, request.filename, total_read);
+  send_command_ack(request.request_id, "endpoint.media.transfer", "succeeded", "Media stored on SD card");
+  return true;
+}
+
+void media_transfer_task(void *arg) {
+  (void)arg;
+  MediaTransferRequest request = {};
+  while (true) {
+    if (xQueueReceive(g_media_queue, &request, portMAX_DELAY) == pdTRUE) {
+      write_media_transfer(request);
+    }
+  }
 }
 
 void ensure_session_started() {
@@ -887,7 +1140,13 @@ void init_backend_client() {
     ESP_LOGE(kTag, "Failed to create bounded audio transport queue");
     return;
   }
+  g_media_queue = xQueueCreate(kMediaQueueDepth, sizeof(MediaTransferRequest));
+  if (g_media_queue == nullptr) {
+    ESP_LOGE(kTag, "Failed to create media transfer queue");
+    return;
+  }
 
+  xTaskCreate(media_transfer_task, "hexe_media_xfer", kMediaTaskStackBytes, nullptr, kTaskPriority, &g_media_task);
   xTaskCreate(heartbeat_task, "hexe_backend_hb", kTaskStackBytes, nullptr, kTaskPriority, &g_heartbeat_task);
   xTaskCreate(websocket_task, "hexe_voice_ws", kTaskStackBytes, nullptr, kTaskPriority, &g_ws_task);
   ESP_LOGI(

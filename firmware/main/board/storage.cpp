@@ -16,6 +16,7 @@ namespace {
 constexpr char kTag[] = "hexe_storage";
 
 constexpr char kPicturesPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures";
+constexpr char kSpritesPath[] = BSP_SD_MOUNT_POINT "/hexe/sprites";
 constexpr char kSoundsPath[] = BSP_SD_MOUNT_POINT "/hexe/sounds";
 constexpr int kMaxLoggedDirectoryEntries = 64;
 
@@ -37,6 +38,7 @@ bool ensure_directory(const char *path) {
 void ensure_sd_media_directories() {
   ensure_directory(BSP_SD_MOUNT_POINT "/hexe");
   ensure_directory(kPicturesPath);
+  ensure_directory(kSpritesPath);
   ensure_directory(kSoundsPath);
 }
 
@@ -95,6 +97,7 @@ void log_sd_directory(const char *path) {
 void log_sd_media_directories() {
   log_sd_directory(BSP_SD_MOUNT_POINT);
   log_sd_directory(kPicturesPath);
+  log_sd_directory(kSpritesPath);
   log_sd_directory(kSoundsPath);
 }
 
@@ -148,6 +151,10 @@ const char *sd_card_mount_path() {
 
 const char *sd_card_pictures_path() {
   return kPicturesPath;
+}
+
+const char *sd_card_sprites_path() {
+  return kSpritesPath;
 }
 
 const char *sd_card_sounds_path() {

@@ -199,3 +199,9 @@ Step objective: Add backend media upload and endpoint delivery APIs.
 Chosen fix: Added a JSON/base64 endpoint media service so media can be staged, validated, served, and delivered without adding multipart runtime dependencies.
 What changed: Added endpoint media storage, validation, file serving, transfer command routing, API models, settings, and API tests.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py -q` passed.
+###########
+Task #079
+Step objective: Add firmware media-transfer command handling.
+Chosen fix: Added a queued firmware worker for `endpoint.media.transfer` so downloads, SD writes, checksum verification, and final rename do not run in the WebSocket event handler.
+What changed: Firmware now accepts media transfer commands, validates destination/filename, downloads endpoint media payloads, writes temporary files, verifies SHA-256/size, renames into place, and reports command ack/error state.
+Verification: `./firmware/build.sh` passed.
