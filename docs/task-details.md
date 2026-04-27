@@ -625,3 +625,122 @@ Original task details:
 - Completion criteria:
   - Docs describe the current Phase 2 setup from blank machine/card to working endpoint.
   - Release checklist includes backend tests, frontend build, firmware build, OTA push, and real-device smoke test.
+
+## Task 077
+Original task details:
+- Title: Define the endpoint SD media delivery contract
+- Goal:
+  - Define how the node sends files to the endpoint for persistent SD storage.
+- Scope:
+  - Add a versioned contract for media type, asset id, filename, destination, byte size, checksum, content type, pixel/audio metadata, overwrite policy, and activation behavior.
+- Destinations:
+  - Full-screen UI/background pictures go to `/sdcard/hexe/pictures`.
+  - Sprites/items go to `/sdcard/hexe/sprites`.
+  - Sound assets go to `/sdcard/hexe/sounds`.
+- Completion criteria:
+  - Contract docs exist.
+  - Allowed file extensions and size limits are documented.
+  - Unsafe paths/path traversal are explicitly rejected.
+
+## Task 078
+Original task details:
+- Title: Add backend media upload and endpoint delivery APIs
+- Goal:
+  - Let the node accept media files and deliver them to a selected endpoint.
+- Scope:
+  - Add backend APIs to upload/list/delete media assets.
+  - Convert pictures to raw RGB565 when needed.
+  - Validate sounds.
+  - Compute checksums.
+  - Queue endpoint media-transfer commands.
+- Completion criteria:
+  - Backend tests cover upload validation, destination selection, checksum metadata, duplicate/overwrite behavior, and unsupported asset rejection.
+
+## Task 079
+Original task details:
+- Title: Add firmware media-transfer command handling
+- Goal:
+  - Let firmware receive media-transfer commands and write files to the SD card.
+- Scope:
+  - Implement command acknowledgement.
+  - Support streamed or chunked download.
+  - Write to a temporary file first.
+  - Verify checksum.
+  - Atomically rename into `/sdcard/hexe/pictures`, `/sdcard/hexe/sprites`, or `/sdcard/hexe/sounds`.
+  - Report clear errors.
+- Completion criteria:
+  - Firmware can receive a file from the backend, persist it on SD, verify size/checksum, and report success/failure without blocking the voice loop.
+
+## Task 080
+Original task details:
+- Title: Add endpoint SD media inventory reporting
+- Goal:
+  - Let the node know what media files are currently stored on the endpoint SD card.
+- Scope:
+  - Firmware scans pictures, sprites, and sounds directories.
+  - Report filename, size, checksum when available, modified time if available, and recognized metadata.
+  - Backend persists the latest inventory per endpoint.
+- Completion criteria:
+  - Dashboard/API can show the endpoint-visible SD media inventory and stale/missing asset state.
+
+## Task 081
+Original task details:
+- Title: Add sprite/item asset support under `/sdcard/hexe/sprites`
+- Goal:
+  - Define and load smaller UI item assets separately from full-screen UI pictures.
+- Scope:
+  - Decide first sprite format, likely raw RGB565 plus metadata for width/height/transparent color or LVGL-compatible C/bin format if LVGL is adopted.
+  - Add conversion tooling.
+  - Add firmware loading/drawing hooks.
+- Completion criteria:
+  - A sprite asset can be delivered to `/sdcard/hexe/sprites`, loaded by firmware, and drawn over a full-screen UI image.
+
+## Task 082
+Original task details:
+- Title: Add SD sound asset delivery and playback integration
+- Goal:
+  - Let the node deliver sound files to `/sdcard/hexe/sounds` and let firmware use them for local cues.
+- Scope:
+  - Validate WAV PCM metadata.
+  - Deliver files to SD.
+  - Inventory sounds.
+  - Select cue names for wake/listen/error.
+  - Keep TTS playback conflict-safe.
+- Completion criteria:
+  - A delivered WAV cue can be played by firmware.
+  - Invalid audio is rejected with useful errors.
+  - Existing TTS playback remains stable.
+
+## Task 083
+Original task details:
+- Title: Add dashboard media manager for endpoint SD assets
+- Goal:
+  - Give the operator a UI to send pictures, sprites, and sounds to the endpoint.
+- Scope:
+  - Add upload controls.
+  - Add conversion options.
+  - Add destination selection.
+  - Add overwrite prompts.
+  - Add transfer progress.
+  - Add checksum/status display.
+  - Add endpoint inventory view.
+  - Add delete/replace actions.
+- Completion criteria:
+  - Operator can upload a full-screen UI picture, sprite/item, or sound from the dashboard and see it arrive in the endpoint SD inventory.
+
+## Task 084
+Original task details:
+- Title: Add media transfer validation and recovery tests
+- Goal:
+  - Make media delivery reliable enough for repeated endpoint customization.
+- Scope:
+  - Test interrupted transfer cleanup.
+  - Test checksum mismatch.
+  - Test full SD card.
+  - Test missing SD card.
+  - Test unsupported file type.
+  - Test oversized file.
+  - Test duplicate filenames.
+  - Test endpoint reconnect during transfer.
+- Completion criteria:
+  - Automated backend tests and firmware/manual validation notes cover the failure modes, with clear operator-facing errors.

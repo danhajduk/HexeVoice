@@ -187,3 +187,9 @@ Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_endpoint_registry.p
 #############
 All Tasks completed 04/26/2026 06:11:26
 #############
+###########
+Task #077
+Step objective: Define endpoint SD media delivery contract.
+Chosen fix: Added a focused contract document covering destinations, transfer envelope, result events, validation rules, and initial size limits.
+What changed: Created `docs/endpoint-sd-media-contract.md` and completed Task 077 in the task queue.
+Verification: Contract formatting checked by direct file read; no runtime tests required for documentation-only contract.

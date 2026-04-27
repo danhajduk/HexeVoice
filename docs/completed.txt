@@ -59,3 +59,4 @@ Task 073: Register the Piper TTS container with the supervisor lifecycle - Compl
 Task 074: Add backend TTS provider selection, routing, and fallback policy - Completed on 04/26/2026 07:02
 Task 075: Generate and serve firmware-playable local TTS audio artifacts - Completed on 04/26/2026 07:05
 Task 076: Add local TTS health checks, tests, and operator docs - Completed on 04/26/2026 07:07
+Task 077: Define the endpoint SD media delivery contract - Completed on 04/27/2026 00:18
