@@ -31,7 +31,7 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 - Firmware reads `/sdcard/hexe/sprites/ui_manifest.json` for the composited UI scene model. The older `/sdcard/hexe/sprites/overlay.json` remains a compatibility path for a single overlay sprite.
 - Overlay manifest fields include `filename`, `width`, `height`, `x`, `y`, optional numeric `transparent_rgb565`, and optional alpha mask fields `alpha` and `alpha_format`.
 - `firmware/tools/convert_image.py --alpha-output avatar.alpha8` converts an alpha PNG into raw RGB565 plus a matching alpha mask.
-- `firmware/tools/convert-sprite.sh` converts an image, writes `*.rgb565`, writes an alpha mask, and writes the overlay manifest for this convention.
+- `firmware/tools/convert-sprite.sh --size 160x160 avatar.png /path/to/sprites` converts an image, writes `*.rgb565`, writes an alpha mask, and writes the overlay manifest for this convention. Use `--width`, `--height`, `--x`, and `--y` when separate dimensions or placement are easier.
 - Full composited UI schema details live in `docs/endpoint-ui-composition.md`.
 
 `sound`

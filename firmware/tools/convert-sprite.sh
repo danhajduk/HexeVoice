@@ -34,9 +34,29 @@ find_converter_python() {
   printf '%s\n' "python3"
 }
 
+parse_size() {
+  local size="$1"
+  if [[ "${size}" =~ ^([0-9]+)x([0-9]+)$ ]]; then
+    WIDTH="${BASH_REMATCH[1]}"
+    HEIGHT="${BASH_REMATCH[2]}"
+    return
+  fi
+  echo "Invalid size '${size}'. Use WIDTHxHEIGHT, for example 160x160." >&2
+  exit 1
+}
+
+require_positive_int() {
+  local label="$1"
+  local value="$2"
+  if [[ ! "${value}" =~ ^[0-9]+$ || "${value}" -lt 1 ]]; then
+    echo "${label} must be a positive integer." >&2
+    exit 1
+  fi
+}
+
 usage() {
   cat <<EOF
-Usage: $(basename "$0") INPUT_IMAGE [OUTPUT_PATH_OR_DIR]
+Usage: $(basename "$0") [OPTIONS] INPUT_IMAGE [OUTPUT_PATH_OR_DIR]
 
 Converts an image into an RGB565 sprite and writes an overlay manifest.
 
@@ -60,18 +80,117 @@ Environment overrides:
   TRANSPARENT_RGB565 Optional decimal RGB565 color value to skip while drawing
   PYTHON            Python executable to use
 
+Options:
+  --size WxH        Sprite/avatar size, for example 160x160
+  --width N         Sprite/avatar width
+  --height N        Sprite/avatar height
+  --x N             Overlay x position
+  --y N             Overlay y position
+  --fit MODE        stretch, contain, or cover
+  -h, --help        Show this help
+
 Examples:
   $(basename "$0") ~/Downloads/badge.png
+  $(basename "$0") --size 160x160 ~/Downloads/avatar_idle.png
+  $(basename "$0") --width 48 --height 48 --x 260 --y 180 ~/Downloads/settings.png
   WIDTH=48 HEIGHT=48 X=260 Y=180 $(basename "$0") ~/Downloads/badge.png
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 1 || $# -gt 2 ]]; then
-  usage
-  exit $([[ $# -lt 1 || $# -gt 2 ]] && echo 1 || echo 0)
+positionals=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --size)
+      [[ $# -ge 2 ]] || { echo "--size requires WIDTHxHEIGHT." >&2; exit 1; }
+      parse_size "$2"
+      shift 2
+      ;;
+    --size=*)
+      parse_size "${1#*=}"
+      shift
+      ;;
+    --width)
+      [[ $# -ge 2 ]] || { echo "--width requires a value." >&2; exit 1; }
+      WIDTH="$2"
+      shift 2
+      ;;
+    --width=*)
+      WIDTH="${1#*=}"
+      shift
+      ;;
+    --height)
+      [[ $# -ge 2 ]] || { echo "--height requires a value." >&2; exit 1; }
+      HEIGHT="$2"
+      shift 2
+      ;;
+    --height=*)
+      HEIGHT="${1#*=}"
+      shift
+      ;;
+    --x)
+      [[ $# -ge 2 ]] || { echo "--x requires a value." >&2; exit 1; }
+      X="$2"
+      shift 2
+      ;;
+    --x=*)
+      X="${1#*=}"
+      shift
+      ;;
+    --y)
+      [[ $# -ge 2 ]] || { echo "--y requires a value." >&2; exit 1; }
+      Y="$2"
+      shift 2
+      ;;
+    --y=*)
+      Y="${1#*=}"
+      shift
+      ;;
+    --fit)
+      [[ $# -ge 2 ]] || { echo "--fit requires a mode." >&2; exit 1; }
+      FIT="$2"
+      shift 2
+      ;;
+    --fit=*)
+      FIT="${1#*=}"
+      shift
+      ;;
+    --)
+      shift
+      while [[ $# -gt 0 ]]; do
+        positionals+=("$1")
+        shift
+      done
+      ;;
+    -*)
+      echo "Unknown option: $1" >&2
+      usage
+      exit 1
+      ;;
+    *)
+      positionals+=("$1")
+      shift
+      ;;
+  esac
+done
+
+require_positive_int "WIDTH" "${WIDTH}"
+require_positive_int "HEIGHT" "${HEIGHT}"
+
+if [[ "${FIT}" != "stretch" && "${FIT}" != "contain" && "${FIT}" != "cover" ]]; then
+  echo "FIT must be stretch, contain, or cover." >&2
+  exit 1
 fi
 
-input_path="$1"
+if [[ ${#positionals[@]} -lt 1 || ${#positionals[@]} -gt 2 ]]; then
+  usage
+  exit 1
+fi
+
+input_path="${positionals[0]}"
 if [[ ! -f "${input_path}" ]]; then
   echo "Input image not found: ${input_path}" >&2
   exit 1
@@ -82,8 +201,8 @@ python_bin="$(find_converter_python)"
 input_name="$(basename "${input_path}")"
 input_stem="${input_name%.*}"
 
-if [[ $# -eq 2 ]]; then
-  output_arg="$2"
+if [[ ${#positionals[@]} -eq 2 ]]; then
+  output_arg="${positionals[1]}"
   if [[ -d "${output_arg}" || "${output_arg}" == */ || "${output_arg}" != *.rgb565 ]]; then
     output_dir="${output_arg%/}"
     output_path="${output_dir}/${input_stem}.rgb565"
