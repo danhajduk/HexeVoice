@@ -223,3 +223,9 @@ Step objective: Add SD sound asset delivery and playback integration.
 Chosen fix: Reused the existing WAV PCM playback worker and added a local SD file source so delivered sound assets can be played without another audio path.
 What changed: Firmware can queue `/sdcard/hexe/sounds/*.wav` playback through `play_sd_sound`; completed sound transfers with `activate: true` trigger local playback after checksum verification and rename.
 Verification: `./firmware/build.sh` passed.
+###########
+Task #083
+Step objective: Add dashboard media manager for endpoint SD assets.
+Chosen fix: Added media upload, staged asset actions, delivery, and latest endpoint inventory to the existing voice endpoint dashboard.
+What changed: Frontend API helpers now cover media list/upload/delete/deliver/inventory; the dashboard can stage files, deliver selected assets to the endpoint, and show reported SD pictures, sprites, and sounds.
+Verification: `cd frontend && npm run build` passed.

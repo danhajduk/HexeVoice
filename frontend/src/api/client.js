@@ -155,6 +155,32 @@ export async function getEndpointStatus() {
   return fetchJson("/api/endpoint/status");
 }
 
+export async function getEndpointMediaAssets() {
+  return fetchJson("/api/endpoint/media");
+}
+
+export async function uploadEndpointMedia(payload) {
+  return sendJson("/api/endpoint/media", { body: payload });
+}
+
+export async function deleteEndpointMedia(assetId) {
+  return sendJson(`/api/endpoint/media/${encodeURIComponent(assetId)}`, { method: "DELETE" });
+}
+
+export async function deliverEndpointMedia(assetId, endpointId, options = {}) {
+  return sendJson(`/api/endpoint/media/${encodeURIComponent(assetId)}/deliver`, {
+    body: {
+      endpoint_id: endpointId,
+      overwrite: options.overwrite !== false,
+      activate: options.activate !== false,
+    },
+  });
+}
+
+export async function getEndpointMediaInventory(endpointId) {
+  return fetchJson(`/api/endpoint/media/inventory/${encodeURIComponent(endpointId)}`);
+}
+
 export async function updateEndpointMetadata(endpointId, metadata) {
   return sendJson(`/api/endpoints/${encodeURIComponent(endpointId)}`, {
     method: "PATCH",

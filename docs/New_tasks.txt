@@ -1,5 +1,4 @@
 [TODO] Task 064: Build the first touchscreen interaction layer
-[TODO] Task 083: Add dashboard media manager for endpoint SD assets
 [TODO] Task 084: Add media transfer validation and recovery tests
 
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card

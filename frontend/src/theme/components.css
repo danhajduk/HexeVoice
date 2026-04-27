@@ -668,6 +668,100 @@
   font: inherit;
 }
 
+.endpoint-media-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.5fr) minmax(220px, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.endpoint-media-form label,
+.endpoint-media-actions {
+  min-width: 0;
+}
+
+.endpoint-media-form label {
+  display: grid;
+  gap: 8px;
+  color: hsl(var(--sx-text-muted));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.endpoint-media-form select,
+.endpoint-media-form input[type="file"],
+.endpoint-media-actions select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel));
+  color: hsl(var(--sx-text));
+  padding: 10px 12px;
+}
+
+.endpoint-media-check {
+  align-self: center;
+  grid-template-columns: auto auto;
+  align-items: center;
+  padding-bottom: 8px;
+}
+
+.endpoint-media-check input {
+  accent-color: var(--accent);
+}
+
+.endpoint-media-actions {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.endpoint-media-inventory {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.endpoint-media-inventory-group {
+  min-width: 0;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  padding: 14px;
+  background: hsl(var(--sx-text) / 0.03);
+}
+
+.endpoint-media-inventory-group h3 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.endpoint-media-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.endpoint-media-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.endpoint-media-list span {
+  overflow-wrap: anywhere;
+}
+
+.muted-text {
+  margin: 0;
+  color: hsl(var(--sx-text-muted));
+}
+
 .prompt-list {
   margin: 0;
   padding-left: 18px;
@@ -933,6 +1027,12 @@
   .endpoint-metadata-form {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  .endpoint-media-form,
+  .endpoint-media-actions,
+  .endpoint-media-inventory {
+    grid-template-columns: 1fr;
   }
 
   .field-span-2 {

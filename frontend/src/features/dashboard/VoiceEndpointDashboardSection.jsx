@@ -1,11 +1,16 @@
 import { useEffect, useState } from "react";
 import {
   cancelEndpointSession,
+  deleteEndpointMedia,
+  deliverEndpointMedia,
+  getEndpointMediaAssets,
+  getEndpointMediaInventory,
   getEndpointVolume,
   muteEndpoint,
   replayEndpointResponse,
   setEndpointVolume,
   testAssistantTurn,
+  uploadEndpointMedia,
   updateEndpointMetadata,
 } from "../../api/client";
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
@@ -54,6 +59,18 @@ function endpointCapabilities(endpointStatus) {
   return endpointStatus?.capabilities && typeof endpointStatus.capabilities === "object"
     ? endpointStatus.capabilities
     : {};
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = typeof reader.result === "string" ? reader.result : "";
+      resolve(result.includes(",") ? result.split(",").pop() : result);
+    };
+    reader.onerror = () => reject(reader.error || new Error("file read failed"));
+    reader.readAsDataURL(file);
+  });
 }
 
 function endpointHealth(voiceStatus) {
@@ -371,6 +388,189 @@ function EndpointCapabilitiesPanel({ endpointStatus }) {
   );
 }
 
+function MediaInventoryList({ title, items }) {
+  return (
+    <div className="endpoint-media-inventory-group">
+      <h3>{title}</h3>
+      {items.length === 0 ? (
+        <p className="muted-text">empty</p>
+      ) : (
+        <ul className="endpoint-media-list">
+          {items.map((item) => (
+            <li key={`${title}-${item.filename}`}>
+              <span>{item.filename}</span>
+              <code>{item.size_bytes ?? "?"} B</code>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) {
+  const [assets, setAssets] = useState([]);
+  const [inventory, setInventory] = useState(null);
+  const [mediaType, setMediaType] = useState("picture");
+  const [selectedAssetId, setSelectedAssetId] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [overwrite, setOverwrite] = useState(true);
+  const [activate, setActivate] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  async function refreshMedia() {
+    const [assetPayload, inventoryPayload] = await Promise.all([
+      getEndpointMediaAssets().catch(() => ({ assets: [] })),
+      endpointId ? getEndpointMediaInventory(endpointId).catch(() => null) : Promise.resolve(null),
+    ]);
+    setAssets(assetPayload.assets || []);
+    setInventory(inventoryPayload);
+    setSelectedAssetId((current) => current || assetPayload.assets?.[0]?.asset_id || "");
+  }
+
+  useEffect(() => {
+    refreshMedia().catch(() => {
+      // Main dashboard refresh remains useful when media APIs are not ready yet.
+    });
+  }, [endpointId]);
+
+  async function handleUpload(event) {
+    event.preventDefault();
+    if (!selectedFile) {
+      setActionMessage("Media upload skipped: choose a file first.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const contentBase64 = await readFileAsBase64(selectedFile);
+      const asset = await uploadEndpointMedia({
+        media_type: mediaType,
+        filename: selectedFile.name,
+        content_base64: contentBase64,
+        content_type: selectedFile.type || "application/octet-stream",
+        overwrite,
+        activate,
+      });
+      setSelectedAssetId(asset.asset_id);
+      setActionMessage(`Uploaded ${asset.filename}.`);
+      await refreshMedia();
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeliver() {
+    if (!endpointId) {
+      setActionMessage("Delivery skipped: endpoint is not connected.");
+      return;
+    }
+    if (!selectedAssetId) {
+      setActionMessage("Delivery skipped: choose a staged asset first.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await deliverEndpointMedia(selectedAssetId, endpointId, { overwrite, activate });
+      setActionMessage(result.accepted ? `Delivery sent (${result.status}, ${result.request_id}).` : `Delivery skipped: ${result.reason}`);
+      await refreshMedia();
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!selectedAssetId) {
+      setActionMessage("Delete skipped: choose a staged asset first.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const deleted = await deleteEndpointMedia(selectedAssetId);
+      setActionMessage(`Deleted staged asset ${deleted.filename}.`);
+      setSelectedAssetId("");
+      await refreshMedia();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pictures = inventory?.pictures || [];
+  const sprites = inventory?.sprites || [];
+  const sounds = inventory?.sounds || [];
+
+  return (
+    <section className="voice-endpoint-panel stack">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Endpoint Media</p>
+          <h2 className="panel-title">SD Asset Manager</h2>
+        </div>
+        <span className="status-pill status-pill-neutral">{inventory?.truncated ? "inventory truncated" : `${assets.length} staged`}</span>
+      </div>
+      <form className="endpoint-media-form" onSubmit={handleUpload}>
+        <label>
+          <span>Type</span>
+          <select value={mediaType} onChange={(event) => setMediaType(event.target.value)} disabled={busy}>
+            <option value="picture">Picture</option>
+            <option value="sprite">Sprite</option>
+            <option value="sound">Sound</option>
+          </select>
+        </label>
+        <label>
+          <span>File</span>
+          <input type="file" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} disabled={busy} />
+        </label>
+        <label className="endpoint-media-check">
+          <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} disabled={busy} />
+          <span>Overwrite</span>
+        </label>
+        <label className="endpoint-media-check">
+          <input type="checkbox" checked={activate} onChange={(event) => setActivate(event.target.checked)} disabled={busy} />
+          <span>Activate</span>
+        </label>
+        <button className="btn btn-secondary" type="submit" disabled={busy || !selectedFile}>
+          Upload
+        </button>
+      </form>
+      <div className="endpoint-media-actions">
+        <select value={selectedAssetId} onChange={(event) => setSelectedAssetId(event.target.value)} disabled={busy || assets.length === 0}>
+          <option value="">Select staged asset</option>
+          {assets.map((asset) => (
+            <option key={asset.asset_id} value={asset.asset_id}>
+              {asset.media_type}: {asset.filename}
+            </option>
+          ))}
+        </select>
+        <button className="btn btn-primary" type="button" onClick={handleDeliver} disabled={busy || !endpointId || !selectedAssetId}>
+          Deliver
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={handleDelete} disabled={busy || !selectedAssetId}>
+          Delete
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={refreshMedia} disabled={busy}>
+          Refresh Media
+        </button>
+      </div>
+      <div className="endpoint-media-inventory">
+        <MediaInventoryList title="Pictures" items={pictures} />
+        <MediaInventoryList title="Sprites" items={sprites} />
+        <MediaInventoryList title="Sounds" items={sounds} />
+      </div>
+    </section>
+  );
+}
+
 export function VoiceEndpointDashboardSection({
   voiceStatus,
   endpointStatus,
@@ -542,6 +742,11 @@ export function VoiceEndpointDashboardSection({
         endpointStatus={endpointStatus}
       />
       <EndpointCapabilitiesPanel endpointStatus={endpointStatus} />
+      <EndpointMediaManagerPanel
+        endpointId={endpointId}
+        onRefresh={onRefresh}
+        setActionMessage={setActionMessage}
+      />
       <EndpointMetadataPanel
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
