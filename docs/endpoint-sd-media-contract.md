@@ -28,10 +28,11 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 - Runtime destination: `/sdcard/hexe/sprites`.
 - Preferred endpoint format: raw RGB565 plus metadata describing width, height, and position.
 - Accepted upload extensions: `.rgb565`, `.png`, `.jpg`, `.jpeg`, `.json`.
-- The first firmware sprite hook reads `/sdcard/hexe/sprites/overlay.json` and draws the referenced sprite over non-boot full-screen UI images before status icons.
-- Overlay manifest fields: `filename`, `width`, `height`, `x`, `y`, optional numeric `transparent_rgb565`, and optional alpha mask fields `alpha` and `alpha_format`.
+- Firmware reads `/sdcard/hexe/sprites/ui_manifest.json` for the composited UI scene model. The older `/sdcard/hexe/sprites/overlay.json` remains a compatibility path for a single overlay sprite.
+- Overlay manifest fields include `filename`, `width`, `height`, `x`, `y`, optional numeric `transparent_rgb565`, and optional alpha mask fields `alpha` and `alpha_format`.
 - `firmware/tools/convert_image.py --alpha-output avatar.alpha8` converts an alpha PNG into raw RGB565 plus a matching alpha mask.
 - `firmware/tools/convert-sprite.sh` converts an image, writes `*.rgb565`, writes an alpha mask, and writes the overlay manifest for this convention.
+- Full composited UI schema details live in `docs/endpoint-ui-composition.md`.
 
 `sound`
 

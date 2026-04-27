@@ -238,3 +238,9 @@ Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py::test_endpoi
 #############
 All Tasks completed 04/27/2026 00:45:18
 #############
+###########
+Task #085
+Step objective: Define composited endpoint UI asset model and SD manifest.
+Chosen fix: Added a manifest-driven UI composition contract that keeps backgrounds in pictures and avatars/sprites/manifests in sprites.
+What changed: Created `docs/endpoint-ui-composition.md`, linked it from the SD media contract, and completed Task 085 in the task queue.
+Verification: Documentation reviewed by direct file read; no runtime verification required for the contract-only step.

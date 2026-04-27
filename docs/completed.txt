@@ -67,3 +67,4 @@ Task 081: Add sprite/item asset support under /sdcard/hexe/sprites - Completed o
 Task 082: Add SD sound asset delivery and playback integration - Completed on 04/27/2026 00:39
 Task 083: Add dashboard media manager for endpoint SD assets - Completed on 04/27/2026 00:42
 Task 084: Add media transfer validation and recovery tests - Completed on 04/27/2026 00:44
+Task 085: Define composited endpoint UI asset model and SD manifest - Completed on 04/27/2026 01:16
