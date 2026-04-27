@@ -219,6 +219,26 @@ Original task details:
   - display/UX state handling
   - wake/STT/TTS/client scaffold status
 
+## Tasks 085-092
+Original task details:
+- Change the endpoint UI to use composited assets instead of only full-screen state images.
+- There is a background layer, backed by one or more SD files.
+- There is an avatar layer with alpha support for states such as idle, thinking, error, listening, and talking.
+- There are general avatar scene types, for example a clock scene composed from background + avatar + clock hands + date.
+- There are sprites for buttons, icons, and similar UI elements.
+- Keep the existing SD folders as the first storage contract:
+  - `/sdcard/hexe/pictures` for backgrounds and full-screen images.
+  - `/sdcard/hexe/sprites` for avatars, alpha masks, buttons, icons, manifests, and smaller overlays.
+  - `/sdcard/hexe/sounds` for audio assets.
+- Prefer a manifest-driven scene model so UI behavior can change from SD assets without reflashing firmware.
+
+Implementation notes:
+- Task 085 should define the manifest schema and naming convention before renderer changes.
+- Task 086 should preserve the current simple fallback drawing when SD assets are missing.
+- Task 087 should choose an alpha representation appropriate for ESP32 memory, likely RGB565 plus an alpha mask for avatar/sprite assets rather than full RGBA framebuffers.
+- Task 089 should keep dynamic scene types data-driven enough for clock/date without hardcoding every future avatar type.
+- Task 090 should align button/icon sprites with the touchscreen interaction layer from Task 064.
+
 ## Task 023
 Original task details:
 - Make the project docs truthful and Phase-0-safe.
