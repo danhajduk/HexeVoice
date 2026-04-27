@@ -5,13 +5,7 @@
 #include <cstring>
 
 #include "app_state.h"
-#include "assets/error_rgb565.h"
-#include "assets/idle_rgb565.h"
-#include "assets/listening_rgb565.h"
-#include "assets/logo_rgb565.h"
-#include "assets/talk_rgb565.h"
-#include "assets/thinking_rgb565.h"
-#include "assets/work_rgb565.h"
+#include "board/storage.h"
 #include "esp_err.h"
 #include "bsp/display.h"
 #include "bsp/esp-box-3.h"
@@ -27,6 +21,7 @@ constexpr int kWidth = 320;
 constexpr int kHeight = 240;
 constexpr int kFadeFrameCount = 18;
 constexpr uint16_t kBlack = 0x0000;
+constexpr size_t kFullscreenAssetBytes = kWidth * kHeight * sizeof(uint16_t);
 esp_lcd_panel_handle_t g_panel = nullptr;
 uint16_t *g_framebuffer = nullptr;
 bool g_backlight_enabled = false;
@@ -262,29 +257,265 @@ struct ScreenAsset {
   int height;
 };
 
-ScreenAsset asset_for_phase(hexe::AppPhase phase) {
+enum class UiAssetId : uint8_t {
+  kLogo = 0,
+  kIdle,
+  kListening,
+  kWork,
+  kThinking,
+  kTalk,
+  kError,
+  kCount,
+};
+
+struct SdUiAsset {
+  const char *label;
+  const char *filenames[3];
+  uint16_t *sd_pixels;
+  char sd_path[256];
+};
+
+SdUiAsset g_ui_assets[] = {
+    {
+        "Logo",
+        {"Logo 320x240.rgb565", "Logo.rgb565", nullptr},
+        nullptr,
+        {},
+    },
+    {
+        "Idle",
+        {"Idle.rgb565", nullptr, nullptr},
+        nullptr,
+        {},
+    },
+    {
+        "Listening",
+        {"Listen.rgb565", "Listening.rgb565", nullptr},
+        nullptr,
+        {},
+    },
+    {
+        "Work",
+        {"Work.rgb565", nullptr, nullptr},
+        nullptr,
+        {},
+    },
+    {
+        "Thinking",
+        {"Thinking.rgb565", nullptr, nullptr},
+        nullptr,
+        {},
+    },
+    {
+        "Talk",
+        {"Talk.rgb565", nullptr, nullptr},
+        nullptr,
+        {},
+    },
+    {
+        "Error",
+        {"Error.rgb565", nullptr, nullptr},
+        nullptr,
+        {},
+    },
+};
+
+static_assert(
+    sizeof(g_ui_assets) / sizeof(g_ui_assets[0]) == static_cast<size_t>(UiAssetId::kCount),
+    "UI asset table must match UiAssetId");
+
+SdUiAsset &ui_asset(UiAssetId id) {
+  return g_ui_assets[static_cast<uint8_t>(id)];
+}
+
+ScreenAsset asset_for_id(UiAssetId id) {
+  auto &asset = ui_asset(id);
+  if (asset.sd_pixels != nullptr) {
+    return {asset.sd_pixels, kWidth, kHeight};
+  }
+  return {nullptr, 0, 0};
+}
+
+UiAssetId asset_id_for_phase(hexe::AppPhase phase) {
   switch (phase) {
     case hexe::AppPhase::kBooting:
     case hexe::AppPhase::kWiFiConnecting:
-      return {hexe::assets::kLogoRgb565, hexe::assets::kLogoWidth, hexe::assets::kLogoHeight};
+      return UiAssetId::kLogo;
     case hexe::AppPhase::kIdle:
     case hexe::AppPhase::kMuted:
     case hexe::AppPhase::kTimerFinished:
-      return {hexe::assets::kIdleRgb565, hexe::assets::kIdleWidth, hexe::assets::kIdleHeight};
+      return UiAssetId::kIdle;
     case hexe::AppPhase::kListening:
-      return {hexe::assets::kListeningRgb565, hexe::assets::kListeningWidth, hexe::assets::kListeningHeight};
+      return UiAssetId::kListening;
     case hexe::AppPhase::kBackendConnecting:
     case hexe::AppPhase::kUpdating:
-      return {hexe::assets::kWorkRgb565, hexe::assets::kWorkWidth, hexe::assets::kWorkHeight};
+      return UiAssetId::kWork;
     case hexe::AppPhase::kThinking:
-      return {hexe::assets::kThinkingRgb565, hexe::assets::kThinkingWidth, hexe::assets::kThinkingHeight};
+      return UiAssetId::kThinking;
     case hexe::AppPhase::kReplying:
-      return {hexe::assets::kTalkRgb565, hexe::assets::kTalkWidth, hexe::assets::kTalkHeight};
+      return UiAssetId::kTalk;
     case hexe::AppPhase::kError:
-      return {hexe::assets::kErrorRgb565, hexe::assets::kErrorWidth, hexe::assets::kErrorHeight};
+      return UiAssetId::kError;
   }
 
-  return {hexe::assets::kIdleRgb565, hexe::assets::kIdleWidth, hexe::assets::kIdleHeight};
+  return UiAssetId::kIdle;
+}
+
+struct SimpleUiStyle {
+  uint16_t background;
+  uint16_t accent;
+  uint16_t secondary;
+};
+
+SimpleUiStyle simple_style_for_asset(UiAssetId id) {
+  switch (id) {
+    case UiAssetId::kLogo:
+      return {0x0002, 0x07FF, 0x8410};
+    case UiAssetId::kIdle:
+      return {0x0000, 0x07E0, 0x39E7};
+    case UiAssetId::kListening:
+      return {0x0010, 0x07FF, 0xFFFF};
+    case UiAssetId::kWork:
+      return {0x1082, 0xFFE0, 0x7BEF};
+    case UiAssetId::kThinking:
+      return {0x0808, 0xF81F, 0x7BEF};
+    case UiAssetId::kTalk:
+      return {0x1000, 0xF800, 0xFFFF};
+    case UiAssetId::kError:
+      return {0x2000, 0xF800, 0xFFE0};
+    case UiAssetId::kCount:
+      break;
+  }
+
+  return {0x0000, 0xFFFF, 0x7BEF};
+}
+
+void draw_simple_ui_asset(UiAssetId id, uint16_t alpha) {
+  const auto style = simple_style_for_asset(id);
+  const uint16_t bg = scale_rgb565(style.background, alpha);
+  const uint16_t accent = scale_rgb565(style.accent, alpha);
+  const uint16_t secondary = scale_rgb565(style.secondary, alpha);
+
+  fill_frame(bg);
+  fill_rect(0, 0, kWidth, 8, accent);
+  fill_rect(0, kHeight - 8, kWidth, 8, accent);
+  fill_rect(36, 56, 248, 4, secondary);
+  fill_rect(36, 180, 248, 4, secondary);
+  fill_rect(64, 80, 192, 80, secondary);
+  draw_rect_outline(64, 80, 192, 80, accent);
+
+  const int pulse = hexe::state().loading_frame % 48;
+  const int marker_x = 78 + ((pulse < 24 ? pulse : 47 - pulse) * 6);
+  fill_rect(marker_x, 110, 28, 20, accent);
+
+  if (id == UiAssetId::kListening || id == UiAssetId::kTalk) {
+    fill_rect(122, 94, 18, 52, accent);
+    fill_rect(150, 104, 18, 32, accent);
+    fill_rect(178, 90, 18, 60, accent);
+  } else if (id == UiAssetId::kError) {
+    fill_rect(148, 94, 24, 56, accent);
+    fill_rect(148, 160, 24, 12, accent);
+  } else {
+    fill_rect(92, 104, 136, 12, accent);
+    fill_rect(112, 128, 96, 12, accent);
+  }
+}
+
+void draw_ui_asset(UiAssetId id, uint16_t alpha) {
+  const auto asset = asset_for_id(id);
+  if (asset.pixels != nullptr) {
+    blit_fullscreen_image(asset.pixels, asset.width, asset.height, alpha);
+    return;
+  }
+
+  draw_simple_ui_asset(id, alpha);
+}
+
+bool try_load_sd_ui_asset_file(SdUiAsset &asset, const char *path) {
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    return false;
+  }
+
+  if (std::fseek(file, 0, SEEK_END) != 0) {
+    ESP_LOGW(kTag, "Could not inspect SD UI asset %s", path);
+    std::fclose(file);
+    return false;
+  }
+
+  const long file_size = std::ftell(file);
+  if (file_size != static_cast<long>(kFullscreenAssetBytes)) {
+    ESP_LOGW(kTag, "Ignoring SD UI asset %s: expected %u bytes, got %ld", path, static_cast<unsigned>(kFullscreenAssetBytes), file_size);
+    std::fclose(file);
+    return false;
+  }
+
+  std::rewind(file);
+
+  uint16_t *pixels = static_cast<uint16_t *>(heap_caps_malloc(kFullscreenAssetBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (pixels == nullptr) {
+    pixels = static_cast<uint16_t *>(heap_caps_malloc(kFullscreenAssetBytes, MALLOC_CAP_DEFAULT));
+  }
+  if (pixels == nullptr) {
+    ESP_LOGW(kTag, "Could not allocate %u bytes for SD UI asset %s", static_cast<unsigned>(kFullscreenAssetBytes), asset.label);
+    std::fclose(file);
+    return false;
+  }
+
+  const size_t read_bytes = std::fread(pixels, 1, kFullscreenAssetBytes, file);
+  std::fclose(file);
+
+  if (read_bytes != kFullscreenAssetBytes) {
+    ESP_LOGW(kTag, "Could not read SD UI asset %s: read %u of %u bytes", path, static_cast<unsigned>(read_bytes), static_cast<unsigned>(kFullscreenAssetBytes));
+    heap_caps_free(pixels);
+    return false;
+  }
+
+  asset.sd_pixels = pixels;
+  std::snprintf(asset.sd_path, sizeof(asset.sd_path), "%s", path);
+  ESP_LOGI(kTag, "Loaded SD UI asset %s from %s", asset.label, asset.sd_path);
+  return true;
+}
+
+void load_sd_ui_assets() {
+  if (!hexe::board::sd_card_mounted()) {
+    ESP_LOGI(kTag, "SD card is not mounted; drawing simple UI screens");
+    return;
+  }
+
+  int loaded_count = 0;
+  for (auto &asset : g_ui_assets) {
+    if (asset.sd_pixels != nullptr) {
+      ++loaded_count;
+      continue;
+    }
+
+    bool loaded = false;
+    for (const char *filename : asset.filenames) {
+      if (filename == nullptr) {
+        break;
+      }
+
+      char path[256] = {};
+      const int written = std::snprintf(path, sizeof(path), "%s/%s", hexe::board::sd_card_pictures_path(), filename);
+      if (written < 0 || written >= static_cast<int>(sizeof(path))) {
+        ESP_LOGW(kTag, "Skipping SD UI asset %s: path too long for %s", asset.label, filename);
+        continue;
+      }
+
+      if (try_load_sd_ui_asset_file(asset, path)) {
+        loaded = true;
+        ++loaded_count;
+        break;
+      }
+    }
+
+    if (!loaded) {
+      ESP_LOGW(kTag, "No valid SD UI asset for %s; drawing simple screen", asset.label);
+    }
+  }
+
+  ESP_LOGI(kTag, "Loaded %d/%u UI assets from SD", loaded_count, static_cast<unsigned>(UiAssetId::kCount));
 }
 }
 
@@ -306,6 +537,7 @@ void init_display() {
       kWidth * kHeight * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
   ESP_RETURN_VOID_ON_FALSE(g_framebuffer != nullptr, ESP_ERR_NO_MEM, kTag, "Failed to allocate display framebuffer");
 
+  load_sd_ui_assets();
   ESP_LOGI(kTag, "Display initialized");
 }
 
@@ -336,11 +568,9 @@ void render_boot_frame(int frame, const char *build_id) {
   const auto phase = hexe::state().phase;
 
   if (phase == hexe::AppPhase::kBooting && frame <= kFadeFrameCount) {
-    blit_fullscreen_image(
-        hexe::assets::kLogoRgb565, hexe::assets::kLogoWidth, hexe::assets::kLogoHeight, ease_in_out_alpha(frame));
+    draw_ui_asset(UiAssetId::kLogo, ease_in_out_alpha(frame));
   } else {
-    const auto asset = asset_for_phase(phase);
-    blit_fullscreen_image(asset.pixels, asset.width, asset.height, 255);
+    draw_ui_asset(asset_id_for_phase(phase), 255);
   }
 
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);

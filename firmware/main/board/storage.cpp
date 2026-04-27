@@ -3,6 +3,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -16,6 +17,7 @@ constexpr char kTag[] = "hexe_storage";
 
 constexpr char kPicturesPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures";
 constexpr char kSoundsPath[] = BSP_SD_MOUNT_POINT "/hexe/sounds";
+constexpr int kMaxLoggedDirectoryEntries = 64;
 
 bool g_sd_card_mounted = false;
 
@@ -36,6 +38,64 @@ void ensure_sd_media_directories() {
   ensure_directory(BSP_SD_MOUNT_POINT "/hexe");
   ensure_directory(kPicturesPath);
   ensure_directory(kSoundsPath);
+}
+
+void log_sd_directory(const char *path) {
+  DIR *directory = opendir(path);
+  if (directory == nullptr) {
+    ESP_LOGW(kTag, "Unable to open SD directory %s: %s", path, std::strerror(errno));
+    return;
+  }
+
+  ESP_LOGI(kTag, "SD directory %s:", path);
+  int entry_count = 0;
+  int logged_count = 0;
+  while (dirent *entry = readdir(directory)) {
+    if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+
+    ++entry_count;
+    if (logged_count >= kMaxLoggedDirectoryEntries) {
+      continue;
+    }
+
+    char entry_path[256] = {};
+    const int written = std::snprintf(entry_path, sizeof(entry_path), "%s/%s", path, entry->d_name);
+    if (written < 0 || written >= static_cast<int>(sizeof(entry_path))) {
+      ESP_LOGW(kTag, "  %s (path too long)", entry->d_name);
+      ++logged_count;
+      continue;
+    }
+
+    struct stat info = {};
+    if (stat(entry_path, &info) != 0) {
+      ESP_LOGW(kTag, "  %s (stat failed: %s)", entry->d_name, std::strerror(errno));
+      ++logged_count;
+      continue;
+    }
+
+    if (S_ISDIR(info.st_mode)) {
+      ESP_LOGI(kTag, "  [dir]  %s", entry->d_name);
+    } else {
+      ESP_LOGI(kTag, "  [file] %s (%lld bytes)", entry->d_name, static_cast<long long>(info.st_size));
+    }
+    ++logged_count;
+  }
+
+  closedir(directory);
+
+  if (entry_count == 0) {
+    ESP_LOGI(kTag, "  (empty)");
+  } else if (entry_count > logged_count) {
+    ESP_LOGI(kTag, "  ... %d more entries not shown", entry_count - logged_count);
+  }
+}
+
+void log_sd_media_directories() {
+  log_sd_directory(BSP_SD_MOUNT_POINT);
+  log_sd_directory(kPicturesPath);
+  log_sd_directory(kSoundsPath);
 }
 
 void init_sd_card() {
@@ -61,6 +121,7 @@ void init_sd_card() {
   }
 
   ensure_sd_media_directories();
+  log_sd_media_directories();
 }
 }
 
