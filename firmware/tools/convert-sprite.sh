@@ -15,6 +15,25 @@ SPRITES_DIR="${HEXE_SPRITES_DIR:-${DEFAULT_SD_DIR}}"
 MANIFEST_NAME="${MANIFEST_NAME:-overlay.json}"
 ALPHA_MASK_FORMAT="${ALPHA_MASK_FORMAT:-alpha8}"
 
+find_converter_python() {
+  if [[ -n "${PYTHON:-}" ]]; then
+    printf '%s\n' "${PYTHON}"
+    return
+  fi
+  if [[ -n "${IDF_PYTHON_ENV_PATH:-}" && -x "${IDF_PYTHON_ENV_PATH}/bin/python" ]]; then
+    printf '%s\n' "${IDF_PYTHON_ENV_PATH}/bin/python"
+    return
+  fi
+  local candidate
+  for candidate in "${HOME}"/.espressif/python_env/idf*_py*_env/bin/python; do
+    if [[ -x "${candidate}" ]]; then
+      printf '%s\n' "${candidate}"
+      return
+    fi
+  done
+  printf '%s\n' "python3"
+}
+
 usage() {
   cat <<EOF
 Usage: $(basename "$0") INPUT_IMAGE [OUTPUT_PATH_OR_DIR]
@@ -58,13 +77,7 @@ if [[ ! -f "${input_path}" ]]; then
   exit 1
 fi
 
-if [[ -n "${PYTHON:-}" ]]; then
-  python_bin="${PYTHON}"
-elif [[ -x "${HOME}/.espressif/python_env/idf6.1_py3.11_env/bin/python" ]]; then
-  python_bin="${HOME}/.espressif/python_env/idf6.1_py3.11_env/bin/python"
-else
-  python_bin="python3"
-fi
+python_bin="$(find_converter_python)"
 
 input_name="$(basename "${input_path}")"
 input_stem="${input_name%.*}"
