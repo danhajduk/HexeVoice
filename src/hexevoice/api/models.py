@@ -127,6 +127,7 @@ class EndpointMediaUploadRequest(BaseModel):
     content_type: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     overwrite: bool = False
+    rewrite: bool | None = None
     activate: bool = True
 
 
@@ -170,6 +171,7 @@ class EndpointMediaInventoryResponse(BaseModel):
 class EndpointMediaDeliverRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     overwrite: bool = True
+    rewrite: bool | None = None
     activate: bool = True
 
 

@@ -35,11 +35,12 @@ bool ensure_directory(const char *path) {
   return false;
 }
 
-void ensure_sd_media_directories() {
-  ensure_directory(BSP_SD_MOUNT_POINT "/hexe");
-  ensure_directory(kPicturesPath);
-  ensure_directory(kSpritesPath);
-  ensure_directory(kSoundsPath);
+bool ensure_sd_media_directories_internal() {
+  const bool root_ready = ensure_directory(BSP_SD_MOUNT_POINT "/hexe");
+  const bool pictures_ready = ensure_directory(kPicturesPath);
+  const bool sprites_ready = ensure_directory(kSpritesPath);
+  const bool sounds_ready = ensure_directory(kSoundsPath);
+  return root_ready && pictures_ready && sprites_ready && sounds_ready;
 }
 
 void log_sd_directory(const char *path) {
@@ -123,7 +124,7 @@ void init_sd_card() {
     ESP_LOGI(kTag, "SPI SD card mounted at %s", BSP_SD_MOUNT_POINT);
   }
 
-  ensure_sd_media_directories();
+  ensure_sd_media_directories_internal();
   log_sd_media_directories();
 }
 }
@@ -143,6 +144,13 @@ void init_storage() {
 
 bool sd_card_mounted() {
   return g_sd_card_mounted;
+}
+
+bool ensure_sd_media_directories() {
+  if (!g_sd_card_mounted) {
+    return false;
+  }
+  return ensure_sd_media_directories_internal();
 }
 
 const char *sd_card_mount_path() {

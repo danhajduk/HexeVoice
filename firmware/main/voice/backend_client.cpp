@@ -848,9 +848,10 @@ bool queue_media_transfer(cJSON *payload) {
     return false;
   }
   request.size_bytes = size_bytes->valueint;
+  cJSON *rewrite = cJSON_GetObjectItem(payload, "rewrite");
   cJSON *overwrite = cJSON_GetObjectItem(payload, "overwrite");
   cJSON *activate = cJSON_GetObjectItem(payload, "activate");
-  request.overwrite = !cJSON_IsBool(overwrite) || cJSON_IsTrue(overwrite);
+  request.overwrite = cJSON_IsBool(rewrite) ? cJSON_IsTrue(rewrite) : (!cJSON_IsBool(overwrite) || cJSON_IsTrue(overwrite));
   request.activate = !cJSON_IsBool(activate) || cJSON_IsTrue(activate);
 
   if (!hexe::board::sd_card_mounted()) {
@@ -877,6 +878,10 @@ bool write_media_transfer(const MediaTransferRequest &request) {
     return false;
   }
 
+  if (!hexe::board::ensure_sd_media_directories()) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "mkdir_failed", "Could not create SD media directories");
+    return false;
+  }
   if (mkdir(directory, 0775) != 0 && errno != EEXIST) {
     send_command_error(request.request_id, "endpoint.media.transfer", "mkdir_failed", "Could not create media directory");
     return false;
@@ -884,8 +889,13 @@ bool write_media_transfer(const MediaTransferRequest &request) {
 
   char final_path[256] = {};
   char temp_path[280] = {};
-  std::snprintf(final_path, sizeof(final_path), "%s/%s", directory, request.filename);
-  std::snprintf(temp_path, sizeof(temp_path), "%s/.%s.tmp", directory, request.filename);
+  const int final_written = std::snprintf(final_path, sizeof(final_path), "%s/%s", directory, request.filename);
+  const int temp_written = std::snprintf(temp_path, sizeof(temp_path), "%s/.%s.tmp", directory, request.filename);
+  if (final_written < 0 || final_written >= static_cast<int>(sizeof(final_path)) ||
+      temp_written < 0 || temp_written >= static_cast<int>(sizeof(temp_path))) {
+    send_command_error(request.request_id, "endpoint.media.transfer", "invalid_destination", "Media path is too long");
+    return false;
+  }
   if (!request.overwrite) {
     struct stat info = {};
     if (stat(final_path, &info) == 0) {

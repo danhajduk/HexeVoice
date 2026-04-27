@@ -64,6 +64,7 @@ Backend-to-endpoint media transfer commands use the existing versioned voice eve
     "size_bytes": 153600,
     "sha256": "hex-encoded-sha256",
     "overwrite": true,
+    "rewrite": true,
     "activate": true,
     "metadata": {
       "pixel_format": "rgb565",
@@ -93,11 +94,12 @@ The node validates before queueing a transfer:
 - checksum is computed from the exact endpoint payload bytes
 - converted RGB565 pictures are exactly `320 * 240 * 2` bytes
 - sound files are WAV PCM and within cue size limits
-- overwrite policy is explicit
+- rewrite policy is explicit; `rewrite` is the preferred flag and `overwrite` remains accepted for compatibility
 
 The firmware validates again before final rename:
 
 - SD card is mounted
+- `/sdcard/hexe`, `/sdcard/hexe/pictures`, `/sdcard/hexe/sprites`, and `/sdcard/hexe/sounds` exist or can be created
 - target directory exists or can be created
 - temporary write succeeds
 - byte count matches `size_bytes`

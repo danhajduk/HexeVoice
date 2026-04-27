@@ -328,6 +328,7 @@ def create_app(
 
     @app.post("/api/endpoint/media", response_model=EndpointMediaAssetResponse)
     async def endpoint_media_upload(payload: EndpointMediaUploadRequest) -> EndpointMediaAssetResponse:
+        rewrite = payload.rewrite if payload.rewrite is not None else payload.overwrite
         try:
             asset = endpoint_media_service.store_upload(
                 media_type=payload.media_type,
@@ -336,7 +337,7 @@ def create_app(
                 asset_id=payload.asset_id,
                 content_type=payload.content_type,
                 metadata=payload.metadata,
-                overwrite=payload.overwrite,
+                overwrite=rewrite,
             )
         except EndpointMediaValidationError as exc:
             raise media_error(exc) from exc
@@ -374,6 +375,7 @@ def create_app(
         except EndpointMediaValidationError as exc:
             raise media_error(exc) from exc
         request_id = f"media_{asset.asset_id}_{hashlib.sha256(asset.sha256.encode()).hexdigest()[:12]}"
+        rewrite = payload.rewrite if payload.rewrite is not None else payload.overwrite
         result = await voice_session_manager.push_media_transfer(
             endpoint_id=payload.endpoint_id,
             request_id=request_id,
@@ -385,7 +387,7 @@ def create_app(
             content_type=asset.content_type,
             size_bytes=asset.size_bytes,
             sha256=asset.sha256,
-            overwrite=payload.overwrite,
+            overwrite=rewrite,
             activate=payload.activate,
             metadata=asset.metadata,
         )

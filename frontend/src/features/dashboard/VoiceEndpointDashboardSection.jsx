@@ -450,6 +450,7 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
         content_base64: contentBase64,
         content_type: selectedFile.type || "application/octet-stream",
         overwrite,
+        rewrite: overwrite,
         activate,
       });
       setSelectedAssetId(asset.asset_id);
@@ -475,7 +476,7 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
 
     setBusy(true);
     try {
-      const result = await deliverEndpointMedia(selectedAssetId, endpointId, { overwrite, activate });
+      const result = await deliverEndpointMedia(selectedAssetId, endpointId, { rewrite: overwrite, activate });
       setActionMessage(result.accepted ? `Delivery sent (${result.status}, ${result.request_id}).` : `Delivery skipped: ${result.reason}`);
       await refreshMedia();
       await onRefresh();
@@ -533,7 +534,7 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
         </label>
         <label className="endpoint-media-check">
           <input type="checkbox" checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} disabled={busy} />
-          <span>Overwrite</span>
+          <span>Rewrite</span>
         </label>
         <label className="endpoint-media-check">
           <input type="checkbox" checked={activate} onChange={(event) => setActivate(event.target.checked)} disabled={busy} />

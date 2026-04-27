@@ -443,12 +443,23 @@ def test_endpoint_media_upload_rejects_invalid_base64_and_duplicate_asset(tmp_pa
             "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
         },
     )
+    rewritten = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "idle",
+            "media_type": "picture",
+            "filename": "Idle.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+            "rewrite": True,
+        },
+    )
 
     assert invalid.status_code == 400
     assert invalid.json()["detail"]["code"] == "invalid_content_base64"
     assert created.status_code == 200
     assert duplicate.status_code == 409
     assert duplicate.json()["detail"]["code"] == "duplicate_media_asset"
+    assert rewritten.status_code == 200
 
 
 def test_endpoint_media_upload_rejects_sprite_without_dimensions(tmp_path):
@@ -542,6 +553,7 @@ def test_endpoint_media_deliver_sends_transfer_command(tmp_path):
     assert event["payload"]["destination"] == "picture"
     assert event["payload"]["download_url"] == "http://voice-node.local:9004/api/endpoint/media/files/logo"
     assert event["payload"]["size_bytes"] == 153600
+    assert event["payload"]["rewrite"] is True
 
 
 def test_endpoint_media_deliver_reports_disconnected_endpoint(tmp_path):

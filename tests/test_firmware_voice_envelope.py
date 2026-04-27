@@ -35,10 +35,13 @@ def test_firmware_media_transfer_uses_temp_file_checksum_and_cleanup():
 
     assert '"endpoint.media.transfer"' in source
     assert '"%s/.%s.tmp"' in source
+    assert "ensure_sd_media_directories()" in source
+    assert "mkdir_failed" in source
     assert "PSA_ALG_SHA_256" in source
     assert "checksum_mismatch" in source
     assert "std::remove(temp_path)" in source
     assert "std::rename(temp_path, final_path)" in source
+    assert 'cJSON_GetObjectItem(payload, "rewrite")' in source
 
 
 def test_firmware_sound_transfer_can_activate_sd_playback():

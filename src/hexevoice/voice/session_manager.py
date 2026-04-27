@@ -261,6 +261,7 @@ class VoiceSessionManager:
                 "size_bytes": size_bytes,
                 "sha256": sha256,
                 "overwrite": overwrite,
+                "rewrite": overwrite,
                 "activate": activate,
                 "metadata": metadata,
             },

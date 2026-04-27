@@ -168,10 +168,12 @@ export async function deleteEndpointMedia(assetId) {
 }
 
 export async function deliverEndpointMedia(assetId, endpointId, options = {}) {
+  const rewrite = options.rewrite ?? options.overwrite ?? true;
   return sendJson(`/api/endpoint/media/${encodeURIComponent(assetId)}/deliver`, {
     body: {
       endpoint_id: endpointId,
-      overwrite: options.overwrite !== false,
+      overwrite: rewrite,
+      rewrite,
       activate: options.activate !== false,
     },
   });
