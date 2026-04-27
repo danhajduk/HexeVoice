@@ -26,9 +26,11 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 
 - Smaller overlay/item image.
 - Runtime destination: `/sdcard/hexe/sprites`.
-- Preferred endpoint format: raw RGB565 plus metadata describing width and height.
+- Preferred endpoint format: raw RGB565 plus metadata describing width, height, and position.
 - Accepted upload extensions: `.rgb565`, `.png`, `.jpg`, `.jpeg`, `.json`.
-- Sprites must include `width` and `height` metadata before firmware activation.
+- The first firmware sprite hook reads `/sdcard/hexe/sprites/overlay.json` and draws the referenced sprite over non-boot full-screen UI images before status icons.
+- Overlay manifest fields: `filename`, `width`, `height`, `x`, `y`, and optional numeric `transparent_rgb565`.
+- `firmware/tools/convert-sprite.sh` converts an image and writes the overlay manifest for this convention.
 
 `sound`
 

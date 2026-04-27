@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONVERTER="${SCRIPT_DIR}/convert_image.py"
+DEFAULT_SD_DIR="/media/${USER}/Hexe Voice/hexe/sprites"
+
+WIDTH="${WIDTH:-64}"
+HEIGHT="${HEIGHT:-64}"
+X="${X:-0}"
+Y="${Y:-0}"
+FIT="${FIT:-contain}"
+BYTE_ORDER="${BYTE_ORDER:-little}"
+SPRITES_DIR="${HEXE_SPRITES_DIR:-${DEFAULT_SD_DIR}}"
+MANIFEST_NAME="${MANIFEST_NAME:-overlay.json}"
+
+usage() {
+  cat <<EOF
+Usage: $(basename "$0") INPUT_IMAGE [OUTPUT_PATH_OR_DIR]
+
+Converts an image into an RGB565 sprite and writes an overlay manifest.
+
+Defaults:
+  output dir: ${SPRITES_DIR} when present, otherwise next to INPUT_IMAGE
+  size:       ${WIDTH}x${HEIGHT}
+  position:   ${X},${Y}
+  fit:        ${FIT}
+  manifest:   ${MANIFEST_NAME}
+
+Environment overrides:
+  HEXE_SPRITES_DIR  Output directory when OUTPUT_PATH_OR_DIR is omitted
+  WIDTH             Sprite width, default 64
+  HEIGHT            Sprite height, default 64
+  X                 Overlay x position, default 0
+  Y                 Overlay y position, default 0
+  FIT               stretch, contain, or cover; default contain
+  BYTE_ORDER        little or big; default little
+  MANIFEST_NAME     Manifest filename, default overlay.json
+  TRANSPARENT_RGB565 Optional decimal RGB565 color value to skip while drawing
+  PYTHON            Python executable to use
+
+Examples:
+  $(basename "$0") ~/Downloads/badge.png
+  WIDTH=48 HEIGHT=48 X=260 Y=180 $(basename "$0") ~/Downloads/badge.png
+EOF
+}
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || $# -lt 1 || $# -gt 2 ]]; then
+  usage
+  exit $([[ $# -lt 1 || $# -gt 2 ]] && echo 1 || echo 0)
+fi
+
+input_path="$1"
+if [[ ! -f "${input_path}" ]]; then
+  echo "Input image not found: ${input_path}" >&2
+  exit 1
+fi
+
+if [[ -n "${PYTHON:-}" ]]; then
+  python_bin="${PYTHON}"
+elif [[ -x "${HOME}/.espressif/python_env/idf6.1_py3.11_env/bin/python" ]]; then
+  python_bin="${HOME}/.espressif/python_env/idf6.1_py3.11_env/bin/python"
+else
+  python_bin="python3"
+fi
+
+input_name="$(basename "${input_path}")"
+input_stem="${input_name%.*}"
+
+if [[ $# -eq 2 ]]; then
+  output_arg="$2"
+  if [[ -d "${output_arg}" || "${output_arg}" == */ || "${output_arg}" != *.rgb565 ]]; then
+    output_dir="${output_arg%/}"
+    output_path="${output_dir}/${input_stem}.rgb565"
+  else
+    output_path="${output_arg}"
+    output_dir="$(dirname "${output_path}")"
+  fi
+else
+  if [[ -d "${SPRITES_DIR}" ]]; then
+    output_dir="${SPRITES_DIR}"
+  else
+    output_dir="$(dirname "${input_path}")"
+  fi
+  output_path="${output_dir}/${input_stem}.rgb565"
+fi
+
+mkdir -p "${output_dir}"
+
+"${python_bin}" "${CONVERTER}" "${input_path}" "${output_path}" \
+  --format raw-rgb565 \
+  --width "${WIDTH}" \
+  --height "${HEIGHT}" \
+  --fit "${FIT}" \
+  --byte-order "${BYTE_ORDER}"
+
+manifest_path="${output_dir}/${MANIFEST_NAME}"
+"${python_bin}" - "${output_path}" "${manifest_path}" "${WIDTH}" "${HEIGHT}" "${X}" "${Y}" "${TRANSPARENT_RGB565:-}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+output_path = Path(sys.argv[1])
+manifest_path = Path(sys.argv[2])
+transparent = sys.argv[7].strip()
+payload = {
+    "filename": output_path.name,
+    "width": int(sys.argv[3]),
+    "height": int(sys.argv[4]),
+    "x": int(sys.argv[5]),
+    "y": int(sys.argv[6]),
+}
+if transparent:
+    payload["transparent_rgb565"] = int(transparent, 0)
+manifest_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+PY
+
+actual_size="$(wc -c < "${output_path}")"
+expected_size=$((WIDTH * HEIGHT * 2))
+
+echo "Created: ${output_path}"
+echo "Manifest: ${manifest_path}"
+echo "Size: ${actual_size} bytes"
+
+if [[ "${actual_size}" -ne "${expected_size}" ]]; then
+  echo "Warning: expected ${expected_size} bytes for ${WIDTH}x${HEIGHT} RGB565" >&2
+fi
+
+echo "Copy/use on endpoint path: /sdcard/hexe/sprites/$(basename "${output_path}")"
+echo "Overlay manifest path: /sdcard/hexe/sprites/${MANIFEST_NAME}"

@@ -6,6 +6,7 @@
 
 #include "app_state.h"
 #include "board/storage.h"
+#include "cJSON.h"
 #include "esp_err.h"
 #include "bsp/display.h"
 #include "bsp/esp-box-3.h"
@@ -22,6 +23,7 @@ constexpr int kHeight = 240;
 constexpr int kFadeFrameCount = 18;
 constexpr uint16_t kBlack = 0x0000;
 constexpr size_t kFullscreenAssetBytes = kWidth * kHeight * sizeof(uint16_t);
+constexpr size_t kMaxSpriteBytes = 512 * 1024;
 esp_lcd_panel_handle_t g_panel = nullptr;
 uint16_t *g_framebuffer = nullptr;
 bool g_backlight_enabled = false;
@@ -275,6 +277,19 @@ struct SdUiAsset {
   char sd_path[256];
 };
 
+struct SpriteOverlay {
+  uint16_t *pixels;
+  int width;
+  int height;
+  int x;
+  int y;
+  bool transparent_enabled;
+  uint16_t transparent_color;
+  char path[256];
+};
+
+SpriteOverlay g_sprite_overlay = {};
+
 SdUiAsset g_ui_assets[] = {
     {
         "Logo",
@@ -431,6 +446,37 @@ void draw_ui_asset(UiAssetId id, uint16_t alpha) {
   draw_simple_ui_asset(id, alpha);
 }
 
+bool is_safe_sprite_filename(const char *filename) {
+  if (filename == nullptr || filename[0] == '\0' || filename[0] == '.' || std::strlen(filename) >= 120) {
+    return false;
+  }
+  for (const char *cursor = filename; *cursor != '\0'; ++cursor) {
+    if (*cursor == '/' || *cursor == '\\' || *cursor < 32) {
+      return false;
+    }
+    if (*cursor == '.' && cursor[1] == '.') {
+      return false;
+    }
+  }
+  return true;
+}
+
+void draw_sprite_overlay() {
+  if (g_sprite_overlay.pixels == nullptr) {
+    return;
+  }
+
+  for (int row = 0; row < g_sprite_overlay.height; ++row) {
+    for (int col = 0; col < g_sprite_overlay.width; ++col) {
+      const uint16_t color = g_sprite_overlay.pixels[row * g_sprite_overlay.width + col];
+      if (g_sprite_overlay.transparent_enabled && color == g_sprite_overlay.transparent_color) {
+        continue;
+      }
+      set_pixel(g_sprite_overlay.x + col, g_sprite_overlay.y + row, color);
+    }
+  }
+}
+
 bool try_load_sd_ui_asset_file(SdUiAsset &asset, const char *path) {
   FILE *file = std::fopen(path, "rb");
   if (file == nullptr) {
@@ -477,6 +523,152 @@ bool try_load_sd_ui_asset_file(SdUiAsset &asset, const char *path) {
   return true;
 }
 
+bool read_small_text_file(const char *path, char *buffer, size_t buffer_size) {
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    return false;
+  }
+  const size_t read_bytes = std::fread(buffer, 1, buffer_size - 1, file);
+  const bool full = !std::feof(file);
+  std::fclose(file);
+  if (full || read_bytes == 0) {
+    buffer[0] = '\0';
+    return false;
+  }
+  buffer[read_bytes] = '\0';
+  return true;
+}
+
+bool try_load_sprite_overlay_file(
+    const char *path,
+    int width,
+    int height,
+    int x,
+    int y,
+    bool transparent_enabled,
+    uint16_t transparent_color) {
+  if (width <= 0 || height <= 0 || x < 0 || y < 0 || x + width > kWidth || y + height > kHeight) {
+    ESP_LOGW(kTag, "Ignoring sprite overlay %s: invalid geometry %dx%d at %d,%d", path, width, height, x, y);
+    return false;
+  }
+
+  const size_t expected_bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * sizeof(uint16_t);
+  if (expected_bytes == 0 || expected_bytes > kMaxSpriteBytes) {
+    ESP_LOGW(kTag, "Ignoring sprite overlay %s: expected size %u is outside limit", path, static_cast<unsigned>(expected_bytes));
+    return false;
+  }
+
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    ESP_LOGW(kTag, "Sprite overlay file not found: %s", path);
+    return false;
+  }
+
+  if (std::fseek(file, 0, SEEK_END) != 0) {
+    std::fclose(file);
+    return false;
+  }
+  const long file_size = std::ftell(file);
+  if (file_size != static_cast<long>(expected_bytes)) {
+    ESP_LOGW(kTag, "Ignoring sprite overlay %s: expected %u bytes, got %ld", path, static_cast<unsigned>(expected_bytes), file_size);
+    std::fclose(file);
+    return false;
+  }
+  std::rewind(file);
+
+  uint16_t *pixels = static_cast<uint16_t *>(heap_caps_malloc(expected_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (pixels == nullptr) {
+    pixels = static_cast<uint16_t *>(heap_caps_malloc(expected_bytes, MALLOC_CAP_DEFAULT));
+  }
+  if (pixels == nullptr) {
+    ESP_LOGW(kTag, "Could not allocate %u bytes for sprite overlay", static_cast<unsigned>(expected_bytes));
+    std::fclose(file);
+    return false;
+  }
+
+  const size_t read_bytes = std::fread(pixels, 1, expected_bytes, file);
+  std::fclose(file);
+  if (read_bytes != expected_bytes) {
+    heap_caps_free(pixels);
+    ESP_LOGW(kTag, "Could not read sprite overlay %s", path);
+    return false;
+  }
+
+  if (g_sprite_overlay.pixels != nullptr) {
+    heap_caps_free(g_sprite_overlay.pixels);
+  }
+  g_sprite_overlay = {
+      .pixels = pixels,
+      .width = width,
+      .height = height,
+      .x = x,
+      .y = y,
+      .transparent_enabled = transparent_enabled,
+      .transparent_color = transparent_color,
+      .path = {},
+  };
+  std::snprintf(g_sprite_overlay.path, sizeof(g_sprite_overlay.path), "%s", path);
+  ESP_LOGI(kTag, "Loaded sprite overlay from %s (%dx%d at %d,%d)", path, width, height, x, y);
+  return true;
+}
+
+void load_sd_sprite_overlay() {
+  if (!hexe::board::sd_card_mounted()) {
+    return;
+  }
+
+  char manifest_path[256] = {};
+  const int manifest_written = std::snprintf(
+      manifest_path, sizeof(manifest_path), "%s/overlay.json", hexe::board::sd_card_sprites_path());
+  if (manifest_written < 0 || manifest_written >= static_cast<int>(sizeof(manifest_path))) {
+    ESP_LOGW(kTag, "Sprite overlay manifest path is too long");
+    return;
+  }
+
+  char manifest[2048] = {};
+  if (!read_small_text_file(manifest_path, manifest, sizeof(manifest))) {
+    ESP_LOGI(kTag, "No sprite overlay manifest at %s", manifest_path);
+    return;
+  }
+
+  cJSON *root = cJSON_Parse(manifest);
+  if (root == nullptr) {
+    ESP_LOGW(kTag, "Invalid sprite overlay manifest: %s", manifest_path);
+    return;
+  }
+
+  cJSON *filename_item = cJSON_GetObjectItem(root, "filename");
+  cJSON *width_item = cJSON_GetObjectItem(root, "width");
+  cJSON *height_item = cJSON_GetObjectItem(root, "height");
+  cJSON *x_item = cJSON_GetObjectItem(root, "x");
+  cJSON *y_item = cJSON_GetObjectItem(root, "y");
+  cJSON *transparent_item = cJSON_GetObjectItem(root, "transparent_rgb565");
+  const char *filename = cJSON_IsString(filename_item) ? filename_item->valuestring : nullptr;
+  if (!is_safe_sprite_filename(filename) || !cJSON_IsNumber(width_item) || !cJSON_IsNumber(height_item)) {
+    ESP_LOGW(kTag, "Sprite overlay manifest is missing filename, width, or height");
+    cJSON_Delete(root);
+    return;
+  }
+
+  char sprite_path[256] = {};
+  const int sprite_written = std::snprintf(
+      sprite_path, sizeof(sprite_path), "%s/%s", hexe::board::sd_card_sprites_path(), filename);
+  if (sprite_written < 0 || sprite_written >= static_cast<int>(sizeof(sprite_path))) {
+    ESP_LOGW(kTag, "Sprite overlay path is too long");
+    cJSON_Delete(root);
+    return;
+  }
+
+  const int width = width_item->valueint;
+  const int height = height_item->valueint;
+  const int x = cJSON_IsNumber(x_item) ? x_item->valueint : 0;
+  const int y = cJSON_IsNumber(y_item) ? y_item->valueint : 0;
+  const bool transparent_enabled = cJSON_IsNumber(transparent_item);
+  const uint16_t transparent_color = transparent_enabled ? static_cast<uint16_t>(transparent_item->valueint & 0xFFFF) : 0;
+  try_load_sprite_overlay_file(sprite_path, width, height, x, y, transparent_enabled, transparent_color);
+  cJSON_Delete(root);
+}
+
 void load_sd_ui_assets() {
   if (!hexe::board::sd_card_mounted()) {
     ESP_LOGI(kTag, "SD card is not mounted; drawing simple UI screens");
@@ -516,6 +708,7 @@ void load_sd_ui_assets() {
   }
 
   ESP_LOGI(kTag, "Loaded %d/%u UI assets from SD", loaded_count, static_cast<unsigned>(UiAssetId::kCount));
+  load_sd_sprite_overlay();
 }
 }
 
@@ -573,6 +766,9 @@ void render_boot_frame(int frame, const char *build_id) {
     draw_ui_asset(asset_id_for_phase(phase), 255);
   }
 
+  if (phase != hexe::AppPhase::kBooting) {
+    draw_sprite_overlay();
+  }
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);
   draw_audio_stream_icon(hexe::state().audio_streaming);
   if (phase != hexe::AppPhase::kBooting) {
