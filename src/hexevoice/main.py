@@ -281,6 +281,18 @@ def create_app(
             reason=result.get("reason"),
         )
 
+    @app.post("/api/endpoint/storage/reformat", response_model=EndpointCommandResponse)
+    async def endpoint_storage_reformat(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_storage_reformat_command(endpoint_id=payload.endpoint_id)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.storage.reformat",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
     def endpoint_media_public_url(asset_id: str) -> str:
         base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
         return f"{base_url.rstrip('/')}/api/endpoint/media/files/{asset_id}"

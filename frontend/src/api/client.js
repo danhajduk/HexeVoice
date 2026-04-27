@@ -183,6 +183,14 @@ export async function getEndpointMediaInventory(endpointId) {
   return fetchJson(`/api/endpoint/media/inventory/${encodeURIComponent(endpointId)}`);
 }
 
+export async function reformatEndpointStorage(endpointId) {
+  return sendJson("/api/endpoint/storage/reformat", {
+    body: {
+      endpoint_id: endpointId,
+    },
+  });
+}
+
 export async function updateEndpointMetadata(endpointId, metadata) {
   return sendJson(`/api/endpoints/${encodeURIComponent(endpointId)}`, {
     method: "PATCH",

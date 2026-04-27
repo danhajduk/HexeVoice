@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 
 #include "app_state.h"
 #include "board/storage.h"
@@ -24,6 +25,7 @@ constexpr int kFadeFrameCount = 18;
 constexpr uint16_t kBlack = 0x0000;
 constexpr size_t kFullscreenAssetBytes = kWidth * kHeight * sizeof(uint16_t);
 constexpr size_t kMaxSpriteBytes = 512 * 1024;
+constexpr size_t kMaxSceneSprites = 8;
 esp_lcd_panel_handle_t g_panel = nullptr;
 uint16_t *g_framebuffer = nullptr;
 bool g_backlight_enabled = false;
@@ -65,6 +67,36 @@ void set_pixel(int x, int y, uint16_t color) {
     return;
   }
   g_framebuffer[y * kWidth + x] = color;
+}
+
+uint16_t blend_rgb565(uint16_t source_rgb565, uint16_t destination_panel_rgb565, uint8_t alpha) {
+  if (alpha == 0) {
+    return destination_panel_rgb565;
+  }
+  if (alpha == 255) {
+    return swap565(source_rgb565);
+  }
+
+  const uint16_t destination_rgb565 = swap565(destination_panel_rgb565);
+  const uint8_t sr = expand5(static_cast<uint16_t>((source_rgb565 >> 11) & 0x1F));
+  const uint8_t sg = expand6(static_cast<uint16_t>((source_rgb565 >> 5) & 0x3F));
+  const uint8_t sb = expand5(static_cast<uint16_t>(source_rgb565 & 0x1F));
+  const uint8_t dr = expand5(static_cast<uint16_t>((destination_rgb565 >> 11) & 0x1F));
+  const uint8_t dg = expand6(static_cast<uint16_t>((destination_rgb565 >> 5) & 0x3F));
+  const uint8_t db = expand5(static_cast<uint16_t>(destination_rgb565 & 0x1F));
+
+  const uint8_t r = static_cast<uint8_t>(((sr * alpha) + (dr * (255 - alpha))) / 255);
+  const uint8_t g = static_cast<uint8_t>(((sg * alpha) + (dg * (255 - alpha))) / 255);
+  const uint8_t b = static_cast<uint8_t>(((sb * alpha) + (db * (255 - alpha))) / 255);
+  return swap565(static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)));
+}
+
+void blend_pixel(int x, int y, uint16_t source_rgb565, uint8_t alpha) {
+  if (g_framebuffer == nullptr || x < 0 || y < 0 || x >= kWidth || y >= kHeight) {
+    return;
+  }
+  const int index = y * kWidth + x;
+  g_framebuffer[index] = blend_rgb565(source_rgb565, g_framebuffer[index], alpha);
 }
 
 void fill_frame(uint16_t color) {
@@ -289,6 +321,47 @@ struct SpriteOverlay {
 };
 
 SpriteOverlay g_sprite_overlay = {};
+
+enum class AlphaFormat : uint8_t {
+  kNone = 0,
+  kAlpha8,
+  kAlpha1,
+};
+
+struct LayerAsset {
+  uint16_t *pixels{nullptr};
+  uint8_t *alpha{nullptr};
+  AlphaFormat alpha_format{AlphaFormat::kNone};
+  int width{0};
+  int height{0};
+  int x{0};
+  int y{0};
+  bool transparent_enabled{false};
+  uint16_t transparent_color{0};
+  char path[256]{};
+  char alpha_path[256]{};
+};
+
+struct ClockSceneConfig {
+  bool enabled{false};
+  bool date{false};
+  int cx{160};
+  int cy{110};
+  int radius{62};
+  uint16_t color{0xFFFF};
+};
+
+struct ComposedScene {
+  bool loaded{false};
+  char type[16]{};
+  LayerAsset background;
+  LayerAsset avatars[static_cast<uint8_t>(UiAssetId::kCount)];
+  LayerAsset sprites[kMaxSceneSprites];
+  size_t sprite_count{0};
+  ClockSceneConfig clock;
+};
+
+ComposedScene g_scene = {};
 
 SdUiAsset g_ui_assets[] = {
     {
@@ -539,6 +612,368 @@ bool read_small_text_file(const char *path, char *buffer, size_t buffer_size) {
   return true;
 }
 
+void free_layer_asset(LayerAsset &asset) {
+  if (asset.pixels != nullptr) {
+    heap_caps_free(asset.pixels);
+  }
+  if (asset.alpha != nullptr) {
+    heap_caps_free(asset.alpha);
+  }
+  asset = {};
+}
+
+bool build_media_path(char *target, size_t target_size, const char *directory, const char *filename) {
+  if (!is_safe_sprite_filename(filename)) {
+    return false;
+  }
+  const int written = std::snprintf(target, target_size, "%s/%s", directory, filename);
+  return written >= 0 && written < static_cast<int>(target_size);
+}
+
+void *load_binary_asset(const char *path, size_t expected_bytes, size_t max_bytes) {
+  if (expected_bytes == 0 || expected_bytes > max_bytes) {
+    ESP_LOGW(kTag, "Ignoring asset %s: expected size %u is outside limit", path, static_cast<unsigned>(expected_bytes));
+    return nullptr;
+  }
+
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    ESP_LOGW(kTag, "Asset file not found: %s", path);
+    return nullptr;
+  }
+  if (std::fseek(file, 0, SEEK_END) != 0) {
+    std::fclose(file);
+    return nullptr;
+  }
+  const long file_size = std::ftell(file);
+  if (file_size != static_cast<long>(expected_bytes)) {
+    ESP_LOGW(kTag, "Ignoring asset %s: expected %u bytes, got %ld", path, static_cast<unsigned>(expected_bytes), file_size);
+    std::fclose(file);
+    return nullptr;
+  }
+  std::rewind(file);
+
+  void *data = heap_caps_malloc(expected_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (data == nullptr) {
+    data = heap_caps_malloc(expected_bytes, MALLOC_CAP_DEFAULT);
+  }
+  if (data == nullptr) {
+    ESP_LOGW(kTag, "Could not allocate %u bytes for %s", static_cast<unsigned>(expected_bytes), path);
+    std::fclose(file);
+    return nullptr;
+  }
+
+  const size_t read_bytes = std::fread(data, 1, expected_bytes, file);
+  std::fclose(file);
+  if (read_bytes != expected_bytes) {
+    heap_caps_free(data);
+    ESP_LOGW(kTag, "Could not read asset %s", path);
+    return nullptr;
+  }
+  return data;
+}
+
+AlphaFormat parse_alpha_format(cJSON *item) {
+  if (!cJSON_IsString(item) || item->valuestring == nullptr) {
+    return AlphaFormat::kNone;
+  }
+  if (std::strcmp(item->valuestring, "alpha8") == 0) {
+    return AlphaFormat::kAlpha8;
+  }
+  if (std::strcmp(item->valuestring, "alpha1") == 0) {
+    return AlphaFormat::kAlpha1;
+  }
+  return AlphaFormat::kNone;
+}
+
+bool load_layer_asset(cJSON *node, const char *directory, LayerAsset &asset, bool allow_fullscreen) {
+  if (!cJSON_IsObject(node)) {
+    return false;
+  }
+  cJSON *filename_item = cJSON_GetObjectItem(node, "filename");
+  const char *filename = cJSON_IsString(filename_item) ? filename_item->valuestring : nullptr;
+  if (!build_media_path(asset.path, sizeof(asset.path), directory, filename)) {
+    return false;
+  }
+
+  cJSON *width_item = cJSON_GetObjectItem(node, "width");
+  cJSON *height_item = cJSON_GetObjectItem(node, "height");
+  asset.width = cJSON_IsNumber(width_item) ? width_item->valueint : (allow_fullscreen ? kWidth : 0);
+  asset.height = cJSON_IsNumber(height_item) ? height_item->valueint : (allow_fullscreen ? kHeight : 0);
+  asset.x = cJSON_IsNumber(cJSON_GetObjectItem(node, "x")) ? cJSON_GetObjectItem(node, "x")->valueint : 0;
+  asset.y = cJSON_IsNumber(cJSON_GetObjectItem(node, "y")) ? cJSON_GetObjectItem(node, "y")->valueint : 0;
+  if (asset.width <= 0 || asset.height <= 0 || asset.x < 0 || asset.y < 0 || asset.x + asset.width > kWidth || asset.y + asset.height > kHeight) {
+    ESP_LOGW(kTag, "Ignoring layer %s: invalid geometry %dx%d at %d,%d", asset.path, asset.width, asset.height, asset.x, asset.y);
+    return false;
+  }
+
+  const size_t pixel_bytes = static_cast<size_t>(asset.width) * static_cast<size_t>(asset.height) * sizeof(uint16_t);
+  const size_t max_bytes = allow_fullscreen ? kFullscreenAssetBytes : kMaxSpriteBytes;
+  asset.pixels = static_cast<uint16_t *>(load_binary_asset(asset.path, pixel_bytes, max_bytes));
+  if (asset.pixels == nullptr) {
+    return false;
+  }
+
+  cJSON *transparent_item = cJSON_GetObjectItem(node, "transparent_rgb565");
+  asset.transparent_enabled = cJSON_IsNumber(transparent_item);
+  asset.transparent_color = asset.transparent_enabled ? static_cast<uint16_t>(transparent_item->valueint & 0xFFFF) : 0;
+
+  cJSON *alpha_item = cJSON_GetObjectItem(node, "alpha");
+  const char *alpha_name = cJSON_IsString(alpha_item) ? alpha_item->valuestring : nullptr;
+  if (alpha_name != nullptr && build_media_path(asset.alpha_path, sizeof(asset.alpha_path), directory, alpha_name)) {
+    asset.alpha_format = parse_alpha_format(cJSON_GetObjectItem(node, "alpha_format"));
+    const size_t pixel_count = static_cast<size_t>(asset.width) * static_cast<size_t>(asset.height);
+    const size_t alpha_bytes = asset.alpha_format == AlphaFormat::kAlpha1 ? (pixel_count + 7) / 8 : pixel_count;
+    if (asset.alpha_format != AlphaFormat::kNone) {
+      asset.alpha = static_cast<uint8_t *>(load_binary_asset(asset.alpha_path, alpha_bytes, kMaxSpriteBytes));
+      if (asset.alpha == nullptr) {
+        ESP_LOGW(kTag, "Layer %s will draw without alpha mask", asset.path);
+        asset.alpha_format = AlphaFormat::kNone;
+      }
+    }
+  }
+
+  return true;
+}
+
+uint8_t layer_alpha_at(const LayerAsset &asset, size_t pixel_index) {
+  if (asset.alpha == nullptr || asset.alpha_format == AlphaFormat::kNone) {
+    return 255;
+  }
+  if (asset.alpha_format == AlphaFormat::kAlpha1) {
+    return (asset.alpha[pixel_index / 8] & (1 << (pixel_index % 8))) ? 255 : 0;
+  }
+  return asset.alpha[pixel_index];
+}
+
+void draw_layer_asset(const LayerAsset &asset) {
+  if (asset.pixels == nullptr) {
+    return;
+  }
+  for (int row = 0; row < asset.height; ++row) {
+    for (int col = 0; col < asset.width; ++col) {
+      const size_t source_index = static_cast<size_t>(row) * static_cast<size_t>(asset.width) + static_cast<size_t>(col);
+      const uint16_t color = asset.pixels[source_index];
+      if (asset.transparent_enabled && color == asset.transparent_color) {
+        continue;
+      }
+      blend_pixel(asset.x + col, asset.y + row, color, layer_alpha_at(asset, source_index));
+    }
+  }
+}
+
+UiAssetId avatar_id_for_key(const char *key) {
+  if (key == nullptr) {
+    return UiAssetId::kIdle;
+  }
+  if (std::strcmp(key, "logo") == 0) {
+    return UiAssetId::kLogo;
+  }
+  if (std::strcmp(key, "listening") == 0 || std::strcmp(key, "listen") == 0) {
+    return UiAssetId::kListening;
+  }
+  if (std::strcmp(key, "work") == 0) {
+    return UiAssetId::kWork;
+  }
+  if (std::strcmp(key, "thinking") == 0) {
+    return UiAssetId::kThinking;
+  }
+  if (std::strcmp(key, "talk") == 0 || std::strcmp(key, "replying") == 0) {
+    return UiAssetId::kTalk;
+  }
+  if (std::strcmp(key, "error") == 0) {
+    return UiAssetId::kError;
+  }
+  return UiAssetId::kIdle;
+}
+
+void draw_line(int x0, int y0, int x1, int y1, uint16_t color) {
+  const int dx = x1 > x0 ? x1 - x0 : x0 - x1;
+  const int sx = x0 < x1 ? 1 : -1;
+  const int dy = y1 > y0 ? y0 - y1 : y1 - y0;
+  const int sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy;
+  while (true) {
+    set_pixel(x0, y0, color);
+    if (x0 == x1 && y0 == y1) {
+      break;
+    }
+    const int e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+}
+
+void draw_clock_hand(int cx, int cy, int radius, int numerator, int denominator, uint16_t color) {
+  constexpr int kSin[] = {0, 50, 87, 100, 87, 50, 0, -50, -87, -100, -87, -50};
+  constexpr int kCos[] = {100, 87, 50, 0, -50, -87, -100, -87, -50, 0, 50, 87};
+  const int index = ((numerator * 12) / denominator) % 12;
+  const int x = cx + (radius * kSin[index]) / 100;
+  const int y = cy - (radius * kCos[index]) / 100;
+  draw_line(cx, cy, x, y, color);
+  draw_line(cx + 1, cy, x + 1, y, color);
+}
+
+void draw_digit_7seg(int x, int y, int digit, uint16_t color) {
+  constexpr uint8_t segments[] = {
+      0b0111111, 0b0000110, 0b1011011, 0b1001111, 0b1100110,
+      0b1101101, 0b1111101, 0b0000111, 0b1111111, 0b1101111,
+  };
+  if (digit < 0 || digit > 9) {
+    return;
+  }
+  const uint8_t mask = segments[digit];
+  if (mask & 0b0000001) fill_rect(x + 2, y, 8, 2, color);
+  if (mask & 0b0000010) fill_rect(x + 10, y + 2, 2, 8, color);
+  if (mask & 0b0000100) fill_rect(x + 10, y + 12, 2, 8, color);
+  if (mask & 0b0001000) fill_rect(x + 2, y + 20, 8, 2, color);
+  if (mask & 0b0010000) fill_rect(x, y + 12, 2, 8, color);
+  if (mask & 0b0100000) fill_rect(x, y + 2, 2, 8, color);
+  if (mask & 0b1000000) fill_rect(x + 2, y + 10, 8, 2, color);
+}
+
+void draw_clock_overlay() {
+  if (!g_scene.clock.enabled) {
+    return;
+  }
+  const std::time_t now = std::time(nullptr);
+  std::tm local = {};
+  localtime_r(&now, &local);
+  const uint16_t color = swap565(g_scene.clock.color);
+  draw_rect_outline(
+      g_scene.clock.cx - g_scene.clock.radius,
+      g_scene.clock.cy - g_scene.clock.radius,
+      g_scene.clock.radius * 2,
+      g_scene.clock.radius * 2,
+      color);
+  draw_clock_hand(g_scene.clock.cx, g_scene.clock.cy, (g_scene.clock.radius * 50) / 100, local.tm_hour % 12, 12, color);
+  draw_clock_hand(g_scene.clock.cx, g_scene.clock.cy, (g_scene.clock.radius * 75) / 100, local.tm_min, 60, color);
+
+  if (g_scene.clock.date) {
+    const int month = local.tm_mon + 1;
+    const int day = local.tm_mday;
+    const int x = g_scene.clock.cx - 30;
+    const int y = g_scene.clock.cy + g_scene.clock.radius + 12;
+    draw_digit_7seg(x, y, month / 10, color);
+    draw_digit_7seg(x + 14, y, month % 10, color);
+    fill_rect(x + 28, y + 10, 4, 2, color);
+    draw_digit_7seg(x + 36, y, day / 10, color);
+    draw_digit_7seg(x + 50, y, day % 10, color);
+  }
+}
+
+bool load_composed_scene() {
+  if (!hexe::board::sd_card_mounted()) {
+    return false;
+  }
+  char manifest_path[256] = {};
+  const int written = std::snprintf(manifest_path, sizeof(manifest_path), "%s/ui_manifest.json", hexe::board::sd_card_sprites_path());
+  if (written < 0 || written >= static_cast<int>(sizeof(manifest_path))) {
+    return false;
+  }
+  char manifest[4096] = {};
+  if (!read_small_text_file(manifest_path, manifest, sizeof(manifest))) {
+    ESP_LOGI(kTag, "No composited UI manifest at %s", manifest_path);
+    return false;
+  }
+
+  cJSON *root = cJSON_Parse(manifest);
+  if (root == nullptr) {
+    ESP_LOGW(kTag, "Invalid composited UI manifest: %s", manifest_path);
+    return false;
+  }
+
+  ComposedScene scene = {};
+  cJSON *type_item = cJSON_GetObjectItem(root, "type");
+  std::snprintf(scene.type, sizeof(scene.type), "%s", cJSON_IsString(type_item) ? type_item->valuestring : "avatar");
+
+  cJSON *background_item = cJSON_GetObjectItem(root, "background");
+  cJSON *background_node = cJSON_CreateObject();
+  if (cJSON_IsString(background_item)) {
+    cJSON_AddStringToObject(background_node, "filename", background_item->valuestring);
+  } else if (cJSON_IsObject(background_item)) {
+    cJSON_Delete(background_node);
+    background_node = cJSON_Duplicate(background_item, true);
+  }
+  if (background_node != nullptr && !load_layer_asset(background_node, hexe::board::sd_card_pictures_path(), scene.background, true)) {
+    free_layer_asset(scene.background);
+  }
+  cJSON_Delete(background_node);
+
+  cJSON *avatars = cJSON_GetObjectItem(root, "avatars");
+  if (cJSON_IsObject(avatars)) {
+    cJSON *avatar = nullptr;
+    cJSON_ArrayForEach(avatar, avatars) {
+      const UiAssetId id = avatar_id_for_key(avatar->string);
+      load_layer_asset(avatar, hexe::board::sd_card_sprites_path(), scene.avatars[static_cast<uint8_t>(id)], false);
+    }
+  }
+
+  cJSON *sprites = cJSON_GetObjectItem(root, "sprites");
+  if (cJSON_IsArray(sprites)) {
+    cJSON *sprite = nullptr;
+    cJSON_ArrayForEach(sprite, sprites) {
+      if (scene.sprite_count >= kMaxSceneSprites) {
+        break;
+      }
+      if (load_layer_asset(sprite, hexe::board::sd_card_sprites_path(), scene.sprites[scene.sprite_count], false)) {
+        ++scene.sprite_count;
+      }
+    }
+  }
+
+  cJSON *clock = cJSON_GetObjectItem(root, "clock");
+  if (std::strcmp(scene.type, "clock") == 0 || cJSON_IsObject(clock)) {
+    scene.clock.enabled = true;
+    if (cJSON_IsObject(clock)) {
+      scene.clock.cx = cJSON_IsNumber(cJSON_GetObjectItem(clock, "cx")) ? cJSON_GetObjectItem(clock, "cx")->valueint : scene.clock.cx;
+      scene.clock.cy = cJSON_IsNumber(cJSON_GetObjectItem(clock, "cy")) ? cJSON_GetObjectItem(clock, "cy")->valueint : scene.clock.cy;
+      scene.clock.radius = cJSON_IsNumber(cJSON_GetObjectItem(clock, "radius")) ? cJSON_GetObjectItem(clock, "radius")->valueint : scene.clock.radius;
+      scene.clock.color = cJSON_IsNumber(cJSON_GetObjectItem(clock, "color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(clock, "color_rgb565")->valueint & 0xFFFF) : scene.clock.color;
+      scene.clock.date = cJSON_IsBool(cJSON_GetObjectItem(clock, "date")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "date"));
+    }
+  }
+
+  cJSON_Delete(root);
+  if (scene.background.pixels == nullptr) {
+    ESP_LOGW(kTag, "Composited UI manifest did not load a valid background");
+    for (auto &avatar : scene.avatars) {
+      free_layer_asset(avatar);
+    }
+    for (auto &sprite : scene.sprites) {
+      free_layer_asset(sprite);
+    }
+    return false;
+  }
+
+  g_scene = scene;
+  g_scene.loaded = true;
+  ESP_LOGI(kTag, "Loaded composited UI scene type=%s sprites=%u", g_scene.type, static_cast<unsigned>(g_scene.sprite_count));
+  return true;
+}
+
+bool draw_composed_scene(UiAssetId id) {
+  if (!g_scene.loaded || g_scene.background.pixels == nullptr) {
+    return false;
+  }
+  draw_layer_asset(g_scene.background);
+  LayerAsset &avatar = g_scene.avatars[static_cast<uint8_t>(id)].pixels != nullptr
+      ? g_scene.avatars[static_cast<uint8_t>(id)]
+      : g_scene.avatars[static_cast<uint8_t>(UiAssetId::kIdle)];
+  draw_layer_asset(avatar);
+  draw_clock_overlay();
+  for (size_t index = 0; index < g_scene.sprite_count; ++index) {
+    draw_layer_asset(g_scene.sprites[index]);
+  }
+  return true;
+}
+
 bool try_load_sprite_overlay_file(
     const char *path,
     int width,
@@ -675,6 +1110,7 @@ void load_sd_ui_assets() {
     return;
   }
 
+  const bool composed_loaded = load_composed_scene();
   int loaded_count = 0;
   for (auto &asset : g_ui_assets) {
     if (asset.sd_pixels != nullptr) {
@@ -708,7 +1144,9 @@ void load_sd_ui_assets() {
   }
 
   ESP_LOGI(kTag, "Loaded %d/%u UI assets from SD", loaded_count, static_cast<unsigned>(UiAssetId::kCount));
-  load_sd_sprite_overlay();
+  if (!composed_loaded) {
+    load_sd_sprite_overlay();
+  }
 }
 }
 
@@ -763,10 +1201,13 @@ void render_boot_frame(int frame, const char *build_id) {
   if (phase == hexe::AppPhase::kBooting && frame <= kFadeFrameCount) {
     draw_ui_asset(UiAssetId::kLogo, ease_in_out_alpha(frame));
   } else {
-    draw_ui_asset(asset_id_for_phase(phase), 255);
+    const UiAssetId asset_id = asset_id_for_phase(phase);
+    if (!draw_composed_scene(asset_id)) {
+      draw_ui_asset(asset_id, 255);
+    }
   }
 
-  if (phase != hexe::AppPhase::kBooting) {
+  if (phase != hexe::AppPhase::kBooting && !g_scene.loaded) {
     draw_sprite_overlay();
   }
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);

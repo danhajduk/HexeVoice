@@ -267,6 +267,14 @@ class VoiceSessionManager:
             },
         )
 
+    async def push_storage_reformat_command(self, *, endpoint_id: str) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.storage.reformat",
+            command_type="endpoint.storage.reformat",
+            payload={},
+        )
+
     def volume_status(self, endpoint_id: str) -> dict:
         self._expire_commands()
         latest = self._latest_command(endpoint_id=endpoint_id, command_type="endpoint.volume.set")

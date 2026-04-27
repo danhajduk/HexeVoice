@@ -500,6 +500,14 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else if (std::strcmp(type, "endpoint.media.transfer") == 0) {
     queue_media_transfer(payload);
+  } else if (std::strcmp(type, "endpoint.storage.reformat") == 0) {
+    const char *request_id = payload_request_id(payload);
+    send_command_ack(request_id, "endpoint.storage.reformat", "started", "Reformatting SD media folders");
+    if (hexe::board::reformat_sd_media()) {
+      send_command_ack(request_id, "endpoint.storage.reformat", "succeeded", "SD media folders recreated");
+    } else {
+      send_command_error(request_id, "endpoint.storage.reformat", "sd_reformat_failed", "Could not reformat SD media folders");
+    }
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     g_session_started = false;
     g_audio_stream_finished = false;
@@ -628,6 +636,7 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(storage, "pictures_path", hexe::board::sd_card_pictures_path());
   cJSON_AddStringToObject(storage, "sprites_path", hexe::board::sd_card_sprites_path());
   cJSON_AddStringToObject(storage, "sounds_path", hexe::board::sd_card_sounds_path());
+  cJSON_AddBoolToObject(storage, "media_reformat", true);
   cJSON *inventory = cJSON_AddObjectToObject(storage, "media_inventory");
   bool inventory_truncated = false;
   add_media_inventory_files(inventory, "pictures", hexe::board::sd_card_pictures_path(), inventory_truncated);
@@ -660,6 +669,7 @@ std::string endpoint_capabilities_json() {
   cJSON_AddBoolToObject(controls, "mute", true);
   cJSON_AddBoolToObject(controls, "cancel", true);
   cJSON_AddBoolToObject(controls, "replay", true);
+  cJSON_AddBoolToObject(controls, "storage_reformat", true);
   cJSON_AddBoolToObject(controls, "restart", false);
   cJSON_AddBoolToObject(controls, "reconnect", false);
 

@@ -670,7 +670,7 @@
 
 .endpoint-media-form {
   display: grid;
-  grid-template-columns: minmax(120px, 0.5fr) minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 12px;
   align-items: end;
 }
@@ -690,6 +690,7 @@
 
 .endpoint-media-form select,
 .endpoint-media-form input[type="file"],
+.endpoint-media-form input[type="number"],
 .endpoint-media-actions select {
   width: 100%;
   min-width: 0;
@@ -698,6 +699,12 @@
   background: hsl(var(--sx-panel));
   color: hsl(var(--sx-text));
   padding: 10px 12px;
+}
+
+.endpoint-media-size {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .endpoint-media-check {
@@ -713,7 +720,7 @@
 
 .endpoint-media-actions {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) repeat(4, auto);
   gap: 12px;
   align-items: center;
 }

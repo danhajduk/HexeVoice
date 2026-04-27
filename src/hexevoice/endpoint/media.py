@@ -34,7 +34,7 @@ DESTINATION_PATHS: dict[EndpointMediaType, str] = {
 
 ALLOWED_EXTENSIONS: dict[EndpointMediaType, set[str]] = {
     "picture": {".rgb565", ".png", ".jpg", ".jpeg"},
-    "sprite": {".rgb565", ".png", ".jpg", ".jpeg", ".json"},
+    "sprite": {".rgb565", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
     "sound": {".wav"},
 }
 
@@ -223,6 +223,13 @@ class EndpointMediaService:
                 if len(source_bytes) > SPRITE_MAX_BYTES:
                     raise EndpointMediaValidationError("sprite_too_large", "Sprite metadata is too large.")
                 return source_bytes, source_filename, content_type or "application/json", metadata
+            if suffix in {".alpha8", ".alpha1"}:
+                if len(source_bytes) > SPRITE_MAX_BYTES:
+                    raise EndpointMediaValidationError("sprite_too_large", "Alpha mask payload is too large.")
+                return source_bytes, source_filename, content_type or "application/octet-stream", {
+                    **metadata,
+                    "alpha_format": suffix.lstrip("."),
+                }
             if suffix == ".rgb565":
                 width = int(metadata.get("width") or 0)
                 height = int(metadata.get("height") or 0)

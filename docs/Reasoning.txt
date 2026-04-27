@@ -244,3 +244,48 @@ Step objective: Define composited endpoint UI asset model and SD manifest.
 Chosen fix: Added a manifest-driven UI composition contract that keeps backgrounds in pictures and avatars/sprites/manifests in sprites.
 What changed: Created `docs/endpoint-ui-composition.md`, linked it from the SD media contract, and completed Task 085 in the task queue.
 Verification: Documentation reviewed by direct file read; no runtime verification required for the contract-only step.
+###########
+Task #086
+Step objective: Refactor firmware display renderer around layered scene composition.
+Chosen fix: Load `/sdcard/hexe/sprites/ui_manifest.json` into a composited scene with background, avatar, dynamic overlay, and sprite layers while preserving the legacy fullscreen and simple-drawing fallback paths.
+What changed: Added layer asset loading, RGB565 alpha blending, manifest parsing, scene rendering, and compatibility behavior for the older full-screen SD images and overlay manifest.
+Verification: `./firmware/build.sh` passed.
+###########
+Task #087
+Step objective: Add alpha-capable avatar asset format and conversion support.
+Chosen fix: Support `alpha8`, `alpha1`, and color-key transparency in firmware scene layers, and allow staged `.alpha8`/`.alpha1` sprite payloads through the backend media manager.
+What changed: Firmware now blends alpha-mask avatars/sprites; backend upload validation accepts alpha masks; dashboard exposes alpha-mask asset class metadata.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py tests/test_image_converter.py tests/test_firmware_voice_envelope.py -q` passed.
+###########
+Task #088
+Step objective: Map endpoint states to avatar variants loaded from SD.
+Chosen fix: Reuse the existing app phase projection and map each phase to a manifest avatar key, falling back to `idle` if a specific variant is missing.
+What changed: Added manifest avatar keys for logo, idle, listening, work, thinking, talk, and error, and rendered them through the composed scene path.
+Verification: `./firmware/build.sh` passed; firmware source coverage in `tests/test_firmware_voice_envelope.py` passed.
+###########
+Task #089
+Step objective: Add general avatar scene type support such as clock scenes.
+Chosen fix: Treat `type: "clock"` or a `clock` object in the manifest as a dynamic scene overlay rendered between avatar and sprite layers.
+What changed: Added clock hand and date drawing support with configurable center, radius, color, and date visibility.
+Verification: `./firmware/build.sh` passed; firmware source coverage in `tests/test_firmware_voice_envelope.py` passed.
+###########
+Task #090
+Step objective: Expand sprite support for buttons, icons, and touch targets.
+Chosen fix: Add a bounded sprite array to the scene manifest so buttons/icons can be loaded and drawn now, with touch metadata preserved in the manifest contract for the future interaction layer.
+What changed: Firmware loads and renders up to eight manifest sprites after the avatar/dynamic layers; docs define sprite touch metadata without activating touch behavior yet.
+Verification: `./firmware/build.sh` passed.
+###########
+Task #091
+Step objective: Update backend and dashboard media manager for UI asset classes and media-only SD reformat.
+Chosen fix: Extend existing endpoint command/media APIs rather than adding a separate channel, using `endpoint.storage.reformat` for media-only folder cleanup and metadata-driven UI asset classes for staged media.
+What changed: Added backend route and session-manager command for SD media reformat, firmware command handling, alpha-mask staging, dashboard asset class and sprite geometry controls, and a reformat button.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py tests/test_image_converter.py tests/test_firmware_voice_envelope.py -q` passed; `cd frontend && npm run build` passed.
+###########
+Task #092
+Step objective: Add UI composition tests, docs, and migration path.
+Chosen fix: Document the manifest, alpha formats, layer order, state mapping, and media-only reformat behavior; add tests that pin the backend API and firmware source contracts.
+What changed: Updated SD media and UI composition docs, added API tests for alpha masks and reformat command delivery, and added firmware source checks for composition and reformat behavior.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py tests/test_image_converter.py tests/test_firmware_voice_envelope.py -q` passed.
+#############
+All Tasks completed 04/27/2026 01:25:00
+#############

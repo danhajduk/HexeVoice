@@ -2,6 +2,8 @@ from pathlib import Path
 
 
 FIRMWARE_BACKEND_CLIENT = Path("firmware/main/voice/backend_client.cpp")
+FIRMWARE_DISPLAY = Path("firmware/main/board/display.cpp")
+FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
 
 
@@ -52,3 +54,28 @@ def test_firmware_sound_transfer_can_activate_sd_playback():
     assert "read_audio_file" in player_source
     assert "sd_card_sounds_path()" in player_source
     assert "play_wav(audio)" in player_source
+
+
+def test_firmware_composited_ui_supports_manifest_alpha_and_clock_scene():
+    source = FIRMWARE_DISPLAY.read_text()
+
+    assert "ui_manifest.json" in source
+    assert "load_composed_scene()" in source
+    assert "draw_composed_scene" in source
+    assert '"alpha8"' in source
+    assert '"alpha1"' in source
+    assert "draw_clock_overlay" in source
+    assert "g_scene.avatars" in source
+    assert "g_scene.sprites" in source
+
+
+def test_firmware_storage_reformat_is_media_only():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    storage_source = FIRMWARE_STORAGE.read_text()
+
+    assert '"endpoint.storage.reformat"' in backend_source
+    assert "reformat_sd_media()" in backend_source
+    assert "remove_tree_contents(kPicturesPath)" in storage_source
+    assert "remove_tree_contents(kSpritesPath)" in storage_source
+    assert "remove_tree_contents(kSoundsPath)" in storage_source
+    assert "ensure_sd_media_directories_internal()" in storage_source

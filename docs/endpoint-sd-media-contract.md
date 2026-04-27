@@ -27,7 +27,7 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 - Smaller overlay/item image.
 - Runtime destination: `/sdcard/hexe/sprites`.
 - Preferred endpoint format: raw RGB565 plus metadata describing width, height, and position.
-- Accepted upload extensions: `.rgb565`, `.png`, `.jpg`, `.jpeg`, `.json`.
+- Accepted upload extensions: `.rgb565`, `.alpha8`, `.alpha1`, `.png`, `.jpg`, `.jpeg`, `.json`.
 - Firmware reads `/sdcard/hexe/sprites/ui_manifest.json` for the composited UI scene model. The older `/sdcard/hexe/sprites/overlay.json` remains a compatibility path for a single overlay sprite.
 - Overlay manifest fields include `filename`, `width`, `height`, `x`, `y`, optional numeric `transparent_rgb565`, and optional alpha mask fields `alpha` and `alpha_format`.
 - `firmware/tools/convert_image.py --alpha-output avatar.alpha8` converts an alpha PNG into raw RGB565 plus a matching alpha mask.
@@ -77,12 +77,16 @@ Backend-to-endpoint media transfer commands use the existing versioned voice eve
 }
 ```
 
+## Media-Only Reformat
+
+The node can send `POST /api/endpoint/storage/reformat` to issue an `endpoint.storage.reformat` command. Firmware treats this as a media-only reset: it deletes files and subdirectories under `/sdcard/hexe/pictures`, `/sdcard/hexe/sprites`, and `/sdcard/hexe/sounds`, then recreates those folders. It does not repartition or filesystem-format the SD card.
+
 ## Endpoint Result Events
 
-Firmware reports terminal transfer state with:
+Firmware reports command state with:
 
-- `endpoint.media.transfer_ack` for accepted, writing, verified, and activated state.
-- `endpoint.media.transfer_error` for rejected, download failed, write failed, checksum mismatch, unsupported media, missing SD card, full SD card, or activation failure.
+- `command.ack` for accepted, started, and succeeded states.
+- `command.error` for rejected, download failed, write failed, checksum mismatch, unsupported media, missing SD card, full SD card, activation failure, or SD media reformat failure.
 
 Result payloads include `request_id`, `filename`, `destination`, `status`, `message`, and `error_code` when applicable.
 

@@ -7,6 +7,7 @@ import {
   getEndpointMediaInventory,
   getEndpointVolume,
   muteEndpoint,
+  reformatEndpointStorage,
   replayEndpointResponse,
   setEndpointVolume,
   testAssistantTurn,
@@ -412,6 +413,9 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
   const [assets, setAssets] = useState([]);
   const [inventory, setInventory] = useState(null);
   const [mediaType, setMediaType] = useState("picture");
+  const [assetClass, setAssetClass] = useState("background");
+  const [spriteWidth, setSpriteWidth] = useState("");
+  const [spriteHeight, setSpriteHeight] = useState("");
   const [selectedAssetId, setSelectedAssetId] = useState("");
   const [selectedFile, setSelectedFile] = useState(null);
   const [overwrite, setOverwrite] = useState(true);
@@ -444,11 +448,19 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
     setBusy(true);
     try {
       const contentBase64 = await readFileAsBase64(selectedFile);
+      const metadata = {
+        asset_class: assetClass,
+      };
+      if (mediaType === "sprite" && spriteWidth && spriteHeight) {
+        metadata.width = Number(spriteWidth);
+        metadata.height = Number(spriteHeight);
+      }
       const asset = await uploadEndpointMedia({
         media_type: mediaType,
         filename: selectedFile.name,
         content_base64: contentBase64,
         content_type: selectedFile.type || "application/octet-stream",
+        metadata,
         overwrite,
         rewrite: overwrite,
         activate,
@@ -478,6 +490,25 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
     try {
       const result = await deliverEndpointMedia(selectedAssetId, endpointId, { rewrite: overwrite, activate });
       setActionMessage(result.accepted ? `Delivery sent (${result.status}, ${result.request_id}).` : `Delivery skipped: ${result.reason}`);
+      await refreshMedia();
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReformatStorage() {
+    if (!endpointId) {
+      setActionMessage("Reformat skipped: endpoint is not connected.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await reformatEndpointStorage(endpointId);
+      setActionMessage(result.accepted ? `Reformat sent (${result.status}, ${result.request_id}).` : `Reformat skipped: ${result.reason}`);
       await refreshMedia();
       await onRefresh();
     } catch (err) {
@@ -529,6 +560,42 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
           </select>
         </label>
         <label>
+          <span>Class</span>
+          <select value={assetClass} onChange={(event) => setAssetClass(event.target.value)} disabled={busy}>
+            <option value="background">Background</option>
+            <option value="avatar">Avatar</option>
+            <option value="sprite">Sprite</option>
+            <option value="manifest">Manifest</option>
+            <option value="alpha_mask">Alpha Mask</option>
+            <option value="sound">Sound</option>
+          </select>
+        </label>
+        {mediaType === "sprite" ? (
+          <label>
+            <span>Size</span>
+            <span className="endpoint-media-size">
+              <input
+                type="number"
+                min="1"
+                max="320"
+                placeholder="W"
+                value={spriteWidth}
+                onChange={(event) => setSpriteWidth(event.target.value)}
+                disabled={busy}
+              />
+              <input
+                type="number"
+                min="1"
+                max="240"
+                placeholder="H"
+                value={spriteHeight}
+                onChange={(event) => setSpriteHeight(event.target.value)}
+                disabled={busy}
+              />
+            </span>
+          </label>
+        ) : null}
+        <label>
           <span>File</span>
           <input type="file" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} disabled={busy} />
         </label>
@@ -561,6 +628,9 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
         </button>
         <button className="btn btn-ghost" type="button" onClick={refreshMedia} disabled={busy}>
           Refresh Media
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={handleReformatStorage} disabled={busy || !endpointId}>
+          Reformat SD Media
         </button>
       </div>
       <div className="endpoint-media-inventory">

@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #include "bsp/esp-box-3.h"
 #include "esp_log.h"
@@ -41,6 +42,48 @@ bool ensure_sd_media_directories_internal() {
   const bool sprites_ready = ensure_directory(kSpritesPath);
   const bool sounds_ready = ensure_directory(kSoundsPath);
   return root_ready && pictures_ready && sprites_ready && sounds_ready;
+}
+
+bool remove_tree_contents(const char *path) {
+  DIR *directory = opendir(path);
+  if (directory == nullptr) {
+    return errno == ENOENT;
+  }
+
+  bool ok = true;
+  while (dirent *entry = readdir(directory)) {
+    if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0) {
+      continue;
+    }
+
+    char entry_path[256] = {};
+    const int written = std::snprintf(entry_path, sizeof(entry_path), "%s/%s", path, entry->d_name);
+    if (written < 0 || written >= static_cast<int>(sizeof(entry_path))) {
+      ESP_LOGW(kTag, "Skipping media entry with long path: %s/%s", path, entry->d_name);
+      ok = false;
+      continue;
+    }
+
+    struct stat info = {};
+    if (stat(entry_path, &info) != 0) {
+      ESP_LOGW(kTag, "Could not inspect %s: %s", entry_path, std::strerror(errno));
+      ok = false;
+      continue;
+    }
+
+    if (S_ISDIR(info.st_mode)) {
+      if (!remove_tree_contents(entry_path) || rmdir(entry_path) != 0) {
+        ESP_LOGW(kTag, "Could not remove media directory %s: %s", entry_path, std::strerror(errno));
+        ok = false;
+      }
+    } else if (unlink(entry_path) != 0) {
+      ESP_LOGW(kTag, "Could not remove media file %s: %s", entry_path, std::strerror(errno));
+      ok = false;
+    }
+  }
+
+  closedir(directory);
+  return ok;
 }
 
 void log_sd_directory(const char *path) {
@@ -151,6 +194,22 @@ bool ensure_sd_media_directories() {
     return false;
   }
   return ensure_sd_media_directories_internal();
+}
+
+bool reformat_sd_media() {
+  if (!g_sd_card_mounted) {
+    return false;
+  }
+  if (!ensure_sd_media_directories_internal()) {
+    return false;
+  }
+
+  const bool pictures_removed = remove_tree_contents(kPicturesPath);
+  const bool sprites_removed = remove_tree_contents(kSpritesPath);
+  const bool sounds_removed = remove_tree_contents(kSoundsPath);
+  const bool directories_ready = ensure_sd_media_directories_internal();
+  log_sd_media_directories();
+  return pictures_removed && sprites_removed && sounds_removed && directories_ready;
 }
 
 const char *sd_card_mount_path() {

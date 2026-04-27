@@ -479,6 +479,30 @@ def test_endpoint_media_upload_rejects_sprite_without_dimensions(tmp_path):
     assert response.json()["detail"]["code"] == "missing_sprite_dimensions"
 
 
+def test_endpoint_media_upload_accepts_alpha_mask_sprite(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=tmp_path / "media")))
+    payload = bytes([0, 64, 128, 255])
+
+    response = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "idle-alpha",
+            "media_type": "sprite",
+            "filename": "idle.alpha8",
+            "content_base64": base64.b64encode(payload).decode("ascii"),
+            "metadata": {"asset_class": "alpha_mask"},
+        },
+    )
+
+    assert response.status_code == 200
+    asset = response.json()
+    assert asset["filename"] == "idle.alpha8"
+    assert asset["destination"] == "sprite"
+    assert asset["endpoint_path"] == "/sdcard/hexe/sprites/idle.alpha8"
+    assert asset["metadata"]["alpha_format"] == "alpha8"
+    assert asset["metadata"]["asset_class"] == "alpha_mask"
+
+
 def test_endpoint_media_delete_removes_staged_payload_and_listing(tmp_path):
     media_dir = tmp_path / "media"
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=media_dir)))
@@ -587,6 +611,30 @@ def test_endpoint_media_deliver_reports_disconnected_endpoint(tmp_path):
     assert response.json()["accepted"] is False
     assert response.json()["status"] == "failed"
     assert response.json()["reason"] == "endpoint_not_connected"
+
+
+def test_endpoint_storage_reformat_sends_command(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        response = client.post("/api/endpoint/storage/reformat", json={"endpoint_id": "esp-box-1"})
+        event = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["command_type"] == "endpoint.storage.reformat"
+    assert event["event_type"] == "endpoint.storage.reformat"
+    assert event["payload"]["request_id"] == response.json()["request_id"]
 
 
 def _wav_bytes() -> bytes:

@@ -1,11 +1,3 @@
-[TODO] Task 086: Refactor firmware display renderer around layered scene composition
-[TODO] Task 087: Add alpha-capable avatar asset format and conversion tooling
-[TODO] Task 088: Map endpoint states to avatar variants loaded from SD
-[TODO] Task 089: Add general avatar scene type support such as clock scenes
-[TODO] Task 090: Expand sprite support for buttons, icons, and touch targets
-[TODO] Task 091: Update backend and dashboard media manager for UI asset classes
-[TODO] Task 092: Add UI composition tests, docs, and migration path
-
 [FUTURE TODO] Task 064: Build the first touchscreen interaction layer
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card
 [FUTURE TODO] Task 067: Persist voice session history and replay metadata
