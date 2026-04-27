@@ -83,6 +83,7 @@ Minimal voice-scene example:
     "day_x": 92,
     "day_y": 202,
     "day_scale": 2,
+    "day_format": "short",
     "date_x": 136,
     "date_y": 202,
     "date_scale": 2
@@ -140,6 +141,7 @@ Clock-scene example:
     "day_x": 92,
     "day_y": 202,
     "day_scale": 2,
+    "day_format": "short",
     "date_x": 136,
     "date_y": 202,
     "date_scale": 2
@@ -187,6 +189,8 @@ Clock overlay options:
 - `day_x`: weekday text x position. Use `-1` to center it automatically.
 - `day_y`: weekday text y position.
 - `day_scale`: weekday bitmap text scale; `1` is small, `2` is the current default.
+- `day_format`: `short` draws `Mon`; `long` draws `Monday`.
+- `day_text`: optional weekday override for layout testing, for example `Wednesday`; remove it to use the real weekday.
 - `date_x`: date text x position. Use `-1` to center it automatically. In split mode this controls only the month/day text.
 - `date_y`: date text y position.
 - `date_scale`: date bitmap text scale; `1` is small, `2` is the current default.

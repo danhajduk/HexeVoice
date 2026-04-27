@@ -76,6 +76,9 @@ def test_firmware_composited_ui_supports_manifest_alpha_and_clock_scene():
     assert "format_clock_date_parts" in source
     assert '"date_split"' in source
     assert '"day_x"' in source
+    assert '"day_format"' in source
+    assert '"day_text"' in source
+    assert "Wednesday" in source
 
 
 def test_firmware_idle_switches_to_clock_avatar_after_two_minutes():
