@@ -156,7 +156,7 @@ def test_firmware_display_skips_unchanged_frames():
     assert "should_render_frame(signature)" in source
     assert "same_frame_signature" in source
     assert "remember_frame_signature(signature)" in source
-    assert "clock_minute_signature(asset_id)" in source
+    assert "clock_tick_signature(asset_id)" in source
     assert "audio_pulse_phase" in source
     assert "g_last_frame_signature_valid = false" in source
 

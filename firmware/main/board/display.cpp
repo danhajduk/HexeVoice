@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <cmath>
 
 #include "app_state.h"
 #include "board/storage.h"
@@ -317,7 +318,7 @@ struct DisplayFrameSignature {
   bool ota_active{false};
   int ota_progress_percent{0};
   bool media_transfer_active{false};
-  int clock_minute{-1};
+  int clock_tick{-1};
 };
 
 DisplayFrameSignature g_last_frame_signature = {};
@@ -354,7 +355,10 @@ struct ClockSceneConfig {
   int radius{62};
   int hour_radius_percent{50};
   int minute_radius_percent{75};
+  bool seconds{true};
+  int second_radius_percent{82};
   uint16_t color{0xFFFF};
+  uint16_t second_color{0xF800};
   int idle_timeout_ms{kDefaultClockIdleTimeoutMs};
   int date_x{-1};
   int date_y{202};
@@ -373,11 +377,16 @@ struct ComposedScene {
 
 ComposedScene g_scene = {};
 
-int clock_minute_signature(UiAssetId id) {
+int clock_tick_signature(UiAssetId id) {
   if (id != UiAssetId::kClock || !g_scene.clock.enabled) {
     return -1;
   }
-  return hexe::system::current_local_minute_signature();
+  std::tm local = {};
+  if (!hexe::system::current_local_time(&local)) {
+    return -1;
+  }
+  const int minute = (local.tm_yday * 24 * 60) + (local.tm_hour * 60) + local.tm_min;
+  return g_scene.clock.seconds ? (minute * 60) + local.tm_sec : minute;
 }
 
 DisplayFrameSignature make_frame_signature(hexe::AppPhase phase, UiAssetId asset_id) {
@@ -408,7 +417,7 @@ DisplayFrameSignature make_frame_signature(hexe::AppPhase phase, UiAssetId asset
       .ota_active = app_state.ota_active,
       .ota_progress_percent = ota_progress,
       .media_transfer_active = app_state.media_transfer_active,
-      .clock_minute = clock_minute_signature(asset_id),
+      .clock_tick = clock_tick_signature(asset_id),
   };
 }
 
@@ -424,7 +433,7 @@ bool same_frame_signature(const DisplayFrameSignature &left, const DisplayFrameS
       left.ota_active == right.ota_active &&
       left.ota_progress_percent == right.ota_progress_percent &&
       left.media_transfer_active == right.media_transfer_active &&
-      left.clock_minute == right.clock_minute;
+      left.clock_tick == right.clock_tick;
 }
 
 bool should_render_frame(const DisplayFrameSignature &signature) {
@@ -723,14 +732,21 @@ void draw_line(int x0, int y0, int x1, int y1, uint16_t color) {
   }
 }
 
-void draw_clock_hand(int cx, int cy, int radius, int numerator, int denominator, uint16_t color) {
-  constexpr int kSin[] = {0, 50, 87, 100, 87, 50, 0, -50, -87, -100, -87, -50};
-  constexpr int kCos[] = {100, 87, 50, 0, -50, -87, -100, -87, -50, 0, 50, 87};
-  const int index = ((numerator * 12) / denominator) % 12;
-  const int x = cx + (radius * kSin[index]) / 100;
-  const int y = cy - (radius * kCos[index]) / 100;
+void draw_clock_hand(int cx, int cy, int radius, int numerator, int denominator, uint16_t color, int thickness) {
+  if (denominator <= 0 || radius <= 0) {
+    return;
+  }
+  constexpr double kPi = 3.14159265358979323846;
+  const double angle = (static_cast<double>(numerator) * 2.0 * kPi) / static_cast<double>(denominator);
+  const int x = cx + static_cast<int>(std::lround(static_cast<double>(radius) * std::sin(angle)));
+  const int y = cy - static_cast<int>(std::lround(static_cast<double>(radius) * std::cos(angle)));
   draw_line(cx, cy, x, y, color);
-  draw_line(cx + 1, cy, x + 1, y, color);
+  if (thickness >= 2) {
+    draw_line(cx + 1, cy, x + 1, y, color);
+  }
+  if (thickness >= 3) {
+    draw_line(cx, cy + 1, x, y + 1, color);
+  }
 }
 
 const uint8_t *font5x7_glyph(char ch) {
@@ -860,8 +876,20 @@ void draw_clock_overlay() {
         g_scene.clock.radius * 2,
         color);
   }
-  draw_clock_hand(hand_cx, hand_cy, (g_scene.clock.radius * g_scene.clock.hour_radius_percent) / 100, local.tm_hour % 12, 12, color);
-  draw_clock_hand(hand_cx, hand_cy, (g_scene.clock.radius * g_scene.clock.minute_radius_percent) / 100, local.tm_min, 60, color);
+  const int hour_position = ((local.tm_hour % 12) * 3600) + (local.tm_min * 60) + local.tm_sec;
+  const int minute_position = (local.tm_min * 60) + local.tm_sec;
+  draw_clock_hand(hand_cx, hand_cy, (g_scene.clock.radius * g_scene.clock.hour_radius_percent) / 100, hour_position, 12 * 3600, color, 3);
+  draw_clock_hand(hand_cx, hand_cy, (g_scene.clock.radius * g_scene.clock.minute_radius_percent) / 100, minute_position, 3600, color, 2);
+  if (g_scene.clock.seconds) {
+    draw_clock_hand(
+        hand_cx,
+        hand_cy,
+        (g_scene.clock.radius * g_scene.clock.second_radius_percent) / 100,
+        local.tm_sec,
+        60,
+        swap565(g_scene.clock.second_color),
+        1);
+  }
 
   if (g_scene.clock.date) {
     char date[24] = {};
@@ -955,7 +983,10 @@ bool load_composed_scene() {
       scene->clock.radius = cJSON_IsNumber(cJSON_GetObjectItem(clock, "radius")) ? cJSON_GetObjectItem(clock, "radius")->valueint : scene->clock.radius;
       scene->clock.hour_radius_percent = cJSON_IsNumber(cJSON_GetObjectItem(clock, "hour_radius_percent")) ? cJSON_GetObjectItem(clock, "hour_radius_percent")->valueint : scene->clock.hour_radius_percent;
       scene->clock.minute_radius_percent = cJSON_IsNumber(cJSON_GetObjectItem(clock, "minute_radius_percent")) ? cJSON_GetObjectItem(clock, "minute_radius_percent")->valueint : scene->clock.minute_radius_percent;
+      scene->clock.seconds = cJSON_IsBool(cJSON_GetObjectItem(clock, "seconds")) ? cJSON_IsTrue(cJSON_GetObjectItem(clock, "seconds")) : scene->clock.seconds;
+      scene->clock.second_radius_percent = cJSON_IsNumber(cJSON_GetObjectItem(clock, "second_radius_percent")) ? cJSON_GetObjectItem(clock, "second_radius_percent")->valueint : scene->clock.second_radius_percent;
       scene->clock.color = cJSON_IsNumber(cJSON_GetObjectItem(clock, "color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(clock, "color_rgb565")->valueint & 0xFFFF) : scene->clock.color;
+      scene->clock.second_color = cJSON_IsNumber(cJSON_GetObjectItem(clock, "second_color_rgb565")) ? static_cast<uint16_t>(cJSON_GetObjectItem(clock, "second_color_rgb565")->valueint & 0xFFFF) : scene->clock.second_color;
       cJSON *idle_timeout_ms = cJSON_GetObjectItem(clock, "idle_timeout_ms");
       scene->clock.idle_timeout_ms = cJSON_IsNumber(idle_timeout_ms) && idle_timeout_ms->valueint >= 0 ? idle_timeout_ms->valueint : scene->clock.idle_timeout_ms;
       scene->clock.frame = cJSON_IsBool(cJSON_GetObjectItem(clock, "frame")) && cJSON_IsTrue(cJSON_GetObjectItem(clock, "frame"));

@@ -71,7 +71,10 @@ Minimal voice-scene example:
     "radius": 62,
     "hour_radius_percent": 50,
     "minute_radius_percent": 75,
+    "seconds": true,
+    "second_radius_percent": 82,
     "color_rgb565": 65535,
+    "second_color_rgb565": 63488,
     "frame": false,
     "date": true,
     "date_x": -1,
@@ -121,7 +124,10 @@ Clock-scene example:
     "radius": 62,
     "hour_radius_percent": 50,
     "minute_radius_percent": 75,
+    "seconds": true,
+    "second_radius_percent": 82,
     "color_rgb565": 65535,
+    "second_color_rgb565": 63488,
     "frame": false,
     "date": true,
     "date_x": -1,
@@ -163,6 +169,9 @@ Clock overlay options:
 - `cx`, `cy`, and `radius`: clock face center and radius used for hand length.
 - `hands_dx` and `hands_dy`: pixel offsets applied only to the drawn hands, useful when the art center is slightly off.
 - `hour_radius_percent` and `minute_radius_percent`: hand lengths as a percentage of `radius`.
+- `seconds`: draw a seconds hand when `true`; when enabled, the clock redraws once per second.
+- `second_radius_percent`: seconds hand length as a percentage of `radius`.
+- `second_color_rgb565`: RGB565 color for the seconds hand; default is red (`63488`).
 - `date`: draws a full date such as `Mon. - Apr. 27` when `true`.
 - `date_x`: date text x position. Use `-1` to center it automatically.
 - `date_y`: date text y position.
