@@ -57,6 +57,7 @@ def test_standard_route_groups_exist(tmp_path):
     assert client.get("/api/node/operational-status").status_code == 400
     assert client.get("/api/services/status").status_code == 200
     assert client.get("/api/providers/voice/status").status_code == 200
+    assert client.get("/api/voice/intents").status_code == 200
     assistant_turn = client.post("/api/assistant/turn", json={"endpoint_id": "box-1", "text": "hello"})
     assert assistant_turn.status_code == 200
     assert assistant_turn.json()["heard_text"] == "hello"
@@ -788,7 +789,7 @@ def test_assistant_turn_handles_timer_intent_locally(tmp_path):
     assert payload["handled_locally"] is True
     assert payload["reply_text"] == "Setting timer for 5 minutes."
     assert payload["spoken_text"] == "Setting timer for 5 minutes."
-    assert payload["provider_id"] == "local_pattern"
+    assert payload["provider_id"] == "registered_intent"
 
 
 def test_assistant_turn_fallback_reply_uses_session_id_if_provided():

@@ -28,9 +28,20 @@ For firmware bring-up, the backend also now exposes a minimal local assistant tu
 
 This route is intentionally lightweight. It gives endpoint firmware a stable request/response contract before the full wake, STT, upstream reasoning, and TTS pipeline is implemented. The current behavior supports:
 
-- simple local commands such as `status`, `repeat`, and `stop`
+- registered local intents from the Voice Node intent registry, seeded with `timer.create`
 - deterministic fallback replies for arbitrary text turns
 - endpoint-scoped session ids so device-side integration can start immediately
+
+Registered intent management lives under:
+
+- `GET /api/voice/intents`
+- `POST /api/voice/intents`
+- `PUT /api/voice/intents/{intent_id}`
+- `POST /api/voice/intents/{intent_id}/lifecycle`
+- `POST /api/voice/intents/{intent_id}/review`
+- `POST /api/voice/intents/dispatch`
+
+The registry contract and request examples are documented in `docs/voice-intent-registration.md`.
 
 The backend voice protocol contract lives in `src/hexevoice/voice/contracts.py`. It defines the shared event envelope, endpoint-to-backend and backend-to-endpoint event vocabulary, audio chunk metadata shape, endpoint connection states, endpoint UX states, backend-authored session states, UX projection helpers, and the allowed MVP session transitions. The backend session lifecycle is `wake_detected -> listening -> capturing -> transcribing -> routing -> responding -> completed` after the session leaves idle.
 

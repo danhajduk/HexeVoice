@@ -26,6 +26,8 @@ During setup, operators should use the onboarding card in this order:
 9. fetch or refresh Governance
 10. poll operational status until `operational_ready=true`
 
+The post-trust setup card remains available after setup completion. Operators can return to it to adjust provider selection, select/redeclare capabilities, and inspect or enable/disable registered Voice Node intents.
+
 ## Recovery Signals
 
 The frontend and local API surface the following important recovery conditions:

@@ -155,6 +155,22 @@ export async function getVoiceStatus() {
   return fetchJson("/api/voice/status");
 }
 
+export async function getVoiceIntents() {
+  return fetchJson("/api/voice/intents");
+}
+
+export async function registerVoiceIntent(payload) {
+  return sendJson("/api/voice/intents", { body: payload });
+}
+
+export async function updateVoiceIntentLifecycle(intentId, payload) {
+  return sendJson(`/api/voice/intents/${encodeURIComponent(intentId)}/lifecycle`, { body: payload });
+}
+
+export async function reviewVoiceIntent(intentId, payload) {
+  return sendJson(`/api/voice/intents/${encodeURIComponent(intentId)}/review`, { body: payload });
+}
+
 export async function getEndpointStatus() {
   return fetchJson("/api/endpoint/status");
 }

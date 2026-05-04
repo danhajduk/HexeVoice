@@ -6,6 +6,7 @@ from hexevoice.assistant.service import (
     LocalEchoAssistantAdapter,
 )
 from hexevoice.assistant.intents import LocalIntentFinder, LocalIntentMatch
+from hexevoice.assistant.intent_registry import VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.domain_events import DomainEventPublishDecision, TimerCreateEventPublisher
 
 __all__ = [
@@ -18,4 +19,6 @@ __all__ = [
     "LocalIntentMatch",
     "LocalEchoAssistantAdapter",
     "TimerCreateEventPublisher",
+    "VoiceIntentRegistry",
+    "VoiceIntentStateStore",
 ]

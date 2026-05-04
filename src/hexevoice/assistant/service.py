@@ -204,7 +204,7 @@ class AssistantTurnService:
                 handled_locally=True,
                 command=intent.command,
                 device_state="speaking",
-                provider_id="local_pattern",
+                provider_id=intent.provider_id,
             )
             self._record_turn(response)
             return response
@@ -231,6 +231,9 @@ class AssistantTurnService:
             "endpoint_contexts": {endpoint_id: len(turns) for endpoint_id, turns in self._context_by_endpoint.items()},
             "session_contexts": {session_id: len(turns) for session_id, turns in self._context_by_session.items()},
         }
+
+    def match_intent(self, text: str):
+        return self._intent_finder.find(self._strip_wake_words(text))
 
     def context_for_endpoint(self, endpoint_id: str) -> list[ConversationTurn]:
         return list(self._context_by_endpoint.get(endpoint_id, ()))

@@ -84,6 +84,8 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     assert endpoints["voice.tts.synthesize"]["method"] == "POST"
     assert endpoints["voice.tts.synthesize"]["path"] == "/api/tts/synthesize"
     assert endpoints["voice.tts.audio_url"]["path"] == "/api/tts/audio/{stream_id}"
+    assert endpoints["voice.intent.register"]["path"] == "/api/voice/intents"
+    assert endpoints["voice.intent.dispatch"]["path"] == "/api/voice/intents/dispatch"
     assert captured["capability_json"]["manifest"]["enabled_providers"] == ["voice"]
     assert captured["capability_json"]["manifest"]["provider_intelligence"] == []
     assert captured["budget_json"]["node_id"] == "node-voice-123"

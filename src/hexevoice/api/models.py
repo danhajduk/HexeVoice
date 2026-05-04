@@ -37,6 +37,73 @@ class AssistantTurnResponse(BaseModel):
     error: str | None = None
 
 
+class VoiceIntentRegisterRequest(BaseModel):
+    intent_id: str = Field(min_length=1, max_length=120)
+    service_id: str = Field(default="voice.local_intents", min_length=1, max_length=160)
+    intent_name: str | None = Field(default=None, max_length=160)
+    owner_service: str | None = Field(default=None, max_length=160)
+    owner_client_id: str | None = Field(default=None, max_length=160)
+    version: str | None = Field(default=None, max_length=80)
+    status: str = "active"
+    privacy_class: str = "internal"
+    access_scope: str = "service"
+    definition: dict[str, Any] = Field(default_factory=dict)
+    constraints: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class VoiceIntentUpdateRequest(BaseModel):
+    service_id: str | None = Field(default=None, max_length=160)
+    intent_name: str | None = Field(default=None, max_length=160)
+    owner_service: str | None = Field(default=None, max_length=160)
+    owner_client_id: str | None = Field(default=None, max_length=160)
+    version: str | None = Field(default=None, max_length=80)
+    privacy_class: str | None = None
+    access_scope: str | None = None
+    definition: dict[str, Any] | None = None
+    constraints: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class VoiceIntentLifecycleRequest(BaseModel):
+    status: str
+    reason: str | None = None
+
+
+class VoiceIntentReviewRequest(BaseModel):
+    reviewed_by: str | None = None
+    review_reason: str | None = None
+    status: str | None = "active"
+
+
+class VoiceIntentDispatchRequest(BaseModel):
+    endpoint_id: str = Field(default="intent-test", min_length=1)
+    text: str = Field(min_length=1)
+
+
+class VoiceIntentStateResponse(BaseModel):
+    configured: bool
+    schema_version: str
+    registered_count: int
+    active_count: int
+    updated_at: str | None = None
+    intents: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class VoiceIntentLookupResponse(BaseModel):
+    configured: bool = True
+    intent: dict[str, Any]
+
+
+class VoiceIntentDispatchResponse(BaseModel):
+    matched: bool
+    intent_id: str | None = None
+    command: str | None = None
+    slots: dict[str, Any] = Field(default_factory=dict)
+    reply_text: str | None = None
+    provider_id: str | None = None
+
+
 class TtsSynthesizeTarget(BaseModel):
     device_id: str | None = None
     location: str | None = None

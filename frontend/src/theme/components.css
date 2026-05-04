@@ -816,6 +816,17 @@
   color: var(--muted);
 }
 
+.choice-card .compact-actions {
+  grid-column: 2;
+  margin-top: 6px;
+  gap: 8px;
+}
+
+.choice-card .compact-actions .btn {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
 .section-divider {
   height: 1px;
   margin: 22px 0;

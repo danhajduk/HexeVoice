@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import re
 from typing import Any
 
+from hexevoice.assistant.intent_registry import VoiceIntentRegistry
 
 @dataclass(frozen=True)
 class LocalIntentMatch:
@@ -11,22 +12,113 @@ class LocalIntentMatch:
     command: str
     slots: dict[str, Any]
     reply_text: str
+    provider_id: str = "local_pattern"
 
 
 class LocalIntentFinder:
+    def __init__(self, *, registry: VoiceIntentRegistry | None = None) -> None:
+        self._registry = registry
+
     def find(self, text: str) -> LocalIntentMatch | None:
         normalized = _normalize_text(text)
         if not normalized:
             return None
-        return self._find_timer_create(normalized)
+        for intent in self._candidate_intents():
+            match = self._match_registered_intent(intent, normalized)
+            if match is not None:
+                return match
+        if self._registry is None:
+            return self._find_timer_create(normalized)
+        return None
 
     def status(self) -> dict[str, Any]:
+        if self._registry is not None:
+            snapshot = self._registry.snapshot()
+            return {
+                "provider": "registered_intent",
+                "healthy": True,
+                "configured": True,
+                "registered_count": snapshot["registered_count"],
+                "active_count": snapshot["active_count"],
+                "intents": [intent["intent_id"] for intent in snapshot["intents"] if intent.get("status") == "active"],
+            }
         return {
             "provider": "local_pattern",
             "healthy": True,
             "configured": True,
             "intents": ["timer.create"],
         }
+
+    def _candidate_intents(self) -> list[dict[str, Any]]:
+        if self._registry is None:
+            return []
+        return self._registry.active_intents()
+
+    def _match_registered_intent(self, intent: dict[str, Any], text: str) -> LocalIntentMatch | None:
+        definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
+        dispatch = definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else {}
+        matcher = definition.get("matcher") if isinstance(definition.get("matcher"), dict) else {}
+        command = str(dispatch.get("command") or intent.get("intent_id") or "").strip()
+        if not command:
+            return None
+
+        if matcher.get("type") == "builtin_timer" or command == "timer.create" or intent.get("intent_id") == "timer.create":
+            match = self._find_timer_create(text)
+            if match is not None:
+                self._record_match(intent.get("intent_id"), status="matched")
+                return LocalIntentMatch(
+                    intent=str(intent.get("intent_id") or match.intent),
+                    command=command,
+                    slots=match.slots,
+                    reply_text=match.reply_text,
+                    provider_id="registered_intent",
+                )
+            return None
+
+        slots: dict[str, Any] = {}
+        if _matches_examples(text, definition.get("utterance_examples")):
+            self._record_match(intent.get("intent_id"), status="matched")
+            return self._build_generic_match(intent=intent, command=command, slots=slots)
+
+        for pattern in definition.get("patterns") or []:
+            if not isinstance(pattern, str) or not pattern.strip():
+                continue
+            try:
+                matched = re.match(pattern, text)
+            except re.error:
+                self._record_match(intent.get("intent_id"), status="invalid_pattern", reason=pattern)
+                continue
+            if matched:
+                slots.update({key: value for key, value in matched.groupdict().items() if value is not None})
+                self._record_match(intent.get("intent_id"), status="matched")
+                return self._build_generic_match(intent=intent, command=command, slots=slots)
+
+        return None
+
+    def _build_generic_match(self, *, intent: dict[str, Any], command: str, slots: dict[str, Any]) -> LocalIntentMatch:
+        definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
+        response = definition.get("response") if isinstance(definition.get("response"), dict) else {}
+        reply_text = str(response.get("reply_text") or response.get("reply_template") or "").strip()
+        if reply_text:
+            try:
+                reply_text = reply_text.format(**slots)
+            except (KeyError, ValueError):
+                pass
+        if not reply_text:
+            name = str(intent.get("intent_name") or intent.get("intent_id") or command)
+            reply_text = f"{name} accepted."
+        return LocalIntentMatch(
+            intent=str(intent.get("intent_id") or command),
+            command=command,
+            slots=slots,
+            reply_text=reply_text,
+            provider_id="registered_intent",
+        )
+
+    def _record_match(self, intent_id: object, *, status: str, reason: str | None = None) -> None:
+        if self._registry is None or not isinstance(intent_id, str):
+            return
+        self._registry.record_usage(intent_id=intent_id, status=status, reason=reason)
 
     def _find_timer_create(self, text: str) -> LocalIntentMatch | None:
         duration_text = _extract_timer_duration_text(text)
@@ -54,6 +146,13 @@ def _normalize_text(text: str) -> str:
     normalized = normalized.replace("-", " ")
     normalized = re.sub(r"\s+", " ", normalized)
     return normalized.strip(" .!?")
+
+
+def _matches_examples(text: str, examples: object) -> bool:
+    if not isinstance(examples, list):
+        return False
+    normalized_examples = {_normalize_text(example) for example in examples if isinstance(example, str)}
+    return text in normalized_examples
 
 
 def _extract_timer_duration_text(text: str) -> str | None:

@@ -23,6 +23,14 @@ from hexevoice.api.models import (
     GovernanceBundleResponse,
     GovernanceRefreshResponse,
     GovernanceReadinessResponse,
+    VoiceIntentDispatchRequest,
+    VoiceIntentDispatchResponse,
+    VoiceIntentLifecycleRequest,
+    VoiceIntentLookupResponse,
+    VoiceIntentRegisterRequest,
+    VoiceIntentReviewRequest,
+    VoiceIntentStateResponse,
+    VoiceIntentUpdateRequest,
     LocalSetupStateResponse,
     NodeStatusResponse,
     NodeIdentitySetupRequest,
@@ -63,7 +71,7 @@ from hexevoice.api.models import (
     TtsSynthesizeResponse,
     OperationalStatusResponse,
 )
-from hexevoice.assistant import AssistantTurnService
+from hexevoice.assistant import AssistantTurnService, LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
 from hexevoice.endpoint.service import EndpointHeartbeatService
@@ -158,6 +166,8 @@ def create_app(
     app_settings = settings or Settings()
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
     endpoint_registry_store = EndpointRegistryStore(path=app_settings.resolved_endpoint_registry_path())
+    voice_intent_store = VoiceIntentStateStore(path=app_settings.resolved_voice_intent_registry_path())
+    voice_intent_registry = VoiceIntentRegistry(store=voice_intent_store)
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     session_start_service = OnboardingSessionStartService(
@@ -188,7 +198,11 @@ def create_app(
         onboarding_state_store=onboarding_state_store,
         supervisor_client=supervisor_client,
     )
-    assistant_service = AssistantTurnService(settings=app_settings, runtime_service=service)
+    assistant_service = AssistantTurnService(
+        settings=app_settings,
+        runtime_service=service,
+        intent_finder=LocalIntentFinder(registry=voice_intent_registry),
+    )
     voice_turn_pipeline = build_voice_turn_pipeline(settings=app_settings, assistant_service=assistant_service)
     tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
     voice_session_manager = voice_session_manager or VoiceSessionManager(
@@ -243,6 +257,75 @@ def create_app(
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
         return assistant_service.handle_turn(payload)
+
+    @app.get("/api/voice/intents", response_model=VoiceIntentStateResponse)
+    async def voice_intents_list() -> VoiceIntentStateResponse:
+        return VoiceIntentStateResponse.model_validate(voice_intent_registry.snapshot())
+
+    @app.post("/api/voice/intents", response_model=VoiceIntentStateResponse)
+    async def voice_intents_register(payload: VoiceIntentRegisterRequest) -> VoiceIntentStateResponse:
+        try:
+            state = voice_intent_registry.register_intent(**payload.model_dump(mode="python"))
+            return VoiceIntentStateResponse.model_validate(state)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/voice/intents/{intent_id}", response_model=VoiceIntentLookupResponse)
+    async def voice_intent_get(intent_id: str) -> VoiceIntentLookupResponse:
+        try:
+            return VoiceIntentLookupResponse(intent=voice_intent_registry.get_intent(intent_id=intent_id))
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    @app.put("/api/voice/intents/{intent_id}", response_model=VoiceIntentStateResponse)
+    async def voice_intent_update(intent_id: str, payload: VoiceIntentUpdateRequest) -> VoiceIntentStateResponse:
+        try:
+            state = voice_intent_registry.update_intent(
+                intent_id=intent_id,
+                **payload.model_dump(mode="python", exclude_unset=True),
+            )
+            return VoiceIntentStateResponse.model_validate(state)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/voice/intents/{intent_id}/lifecycle", response_model=VoiceIntentStateResponse)
+    async def voice_intent_lifecycle(intent_id: str, payload: VoiceIntentLifecycleRequest) -> VoiceIntentStateResponse:
+        try:
+            state = voice_intent_registry.transition_intent(
+                intent_id=intent_id,
+                status=payload.status,
+                reason=payload.reason,
+            )
+            return VoiceIntentStateResponse.model_validate(state)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/voice/intents/{intent_id}/review", response_model=VoiceIntentStateResponse)
+    async def voice_intent_review(intent_id: str, payload: VoiceIntentReviewRequest) -> VoiceIntentStateResponse:
+        try:
+            state = voice_intent_registry.review_intent(
+                intent_id=intent_id,
+                reviewed_by=payload.reviewed_by,
+                review_reason=payload.review_reason,
+                status=payload.status,
+            )
+            return VoiceIntentStateResponse.model_validate(state)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/voice/intents/dispatch", response_model=VoiceIntentDispatchResponse)
+    async def voice_intent_dispatch(payload: VoiceIntentDispatchRequest) -> VoiceIntentDispatchResponse:
+        match = assistant_service.match_intent(payload.text)
+        if match is None:
+            return VoiceIntentDispatchResponse(matched=False)
+        return VoiceIntentDispatchResponse(
+            matched=True,
+            intent_id=match.intent,
+            command=match.command,
+            slots=match.slots,
+            reply_text=match.reply_text,
+            provider_id=match.provider_id,
+        )
 
     @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)
     async def endpoint_heartbeat(payload: EndpointHeartbeatRequest) -> EndpointHeartbeatResponse:

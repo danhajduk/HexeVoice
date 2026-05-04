@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     firmware_artifact_dir: Path | None = Field(default=None, alias="FIRMWARE_ARTIFACT_DIR")
     onboarding_state_path: Path | None = Field(default=None, alias="ONBOARDING_STATE_PATH")
     endpoint_registry_path: Path | None = Field(default=None, alias="ENDPOINT_REGISTRY_PATH")
+    voice_intent_registry_path: Path | None = Field(default=None, alias="VOICE_INTENT_REGISTRY_PATH")
     endpoint_media_dir: Path | None = Field(default=None, alias="ENDPOINT_MEDIA_DIR")
     endpoint_stale_after_seconds: int = Field(default=60, alias="ENDPOINT_STALE_AFTER_SECONDS", ge=1)
     bootstrap_mqtt_port: int = Field(default=1884, alias="BOOTSTRAP_MQTT_PORT")
@@ -141,6 +142,13 @@ class Settings(BaseSettings):
         if self.onboarding_state_path is not None:
             return self.onboarding_state_path.parent / "endpoint_registry.json"
         return self.runtime_dir / "endpoint_registry.json"
+
+    def resolved_voice_intent_registry_path(self) -> Path:
+        if self.voice_intent_registry_path is not None:
+            return self.voice_intent_registry_path
+        if self.onboarding_state_path is not None:
+            return self.onboarding_state_path.parent / "voice_intents.json"
+        return self.runtime_dir / "voice_intents.json"
 
     def resolved_endpoint_media_dir(self) -> Path:
         if self.endpoint_media_dir is not None:

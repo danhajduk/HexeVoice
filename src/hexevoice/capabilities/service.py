@@ -14,6 +14,9 @@ VOICE_NODE_CAPABILITIES = [
     "voice.inference",
     "voice.tts.synthesize",
     "voice.tts.audio_url",
+    "voice.intent.register",
+    "voice.intent.list",
+    "voice.intent.dispatch",
 ]
 
 
@@ -297,6 +300,39 @@ class CapabilityDeclarationService:
                 "url_template": f"{base_url}/api/tts/audio/{{stream_id}}",
                 "response": "short_lived_audio_file",
                 "reachable_from": "lan",
+            },
+            "voice.intent.register": {
+                "transport": "http",
+                "method": "POST",
+                "path": "/api/voice/intents",
+                "url": f"{base_url}/api/voice/intents",
+                "request_schema": "VoiceIntentRegisterRequest",
+                "response_schema": "VoiceIntentStateResponse",
+                "lifecycle_paths": {
+                    "update": "/api/voice/intents/{intent_id}",
+                    "transition": "/api/voice/intents/{intent_id}/lifecycle",
+                    "review": "/api/voice/intents/{intent_id}/review",
+                },
+                "supports_versions": True,
+                "supports_lifecycle": True,
+                "supported_matcher_modes": ["builtin_timer", "exact_example", "regex"],
+            },
+            "voice.intent.list": {
+                "transport": "http",
+                "method": "GET",
+                "path": "/api/voice/intents",
+                "url": f"{base_url}/api/voice/intents",
+                "response_schema": "VoiceIntentStateResponse",
+                "lookup_path": "/api/voice/intents/{intent_id}",
+            },
+            "voice.intent.dispatch": {
+                "transport": "http",
+                "method": "POST",
+                "path": "/api/voice/intents/dispatch",
+                "url": f"{base_url}/api/voice/intents/dispatch",
+                "request_schema": "VoiceIntentDispatchRequest",
+                "response_schema": "VoiceIntentDispatchResponse",
+                "side_effects": "dry_run_match_only",
             },
         }
         return {

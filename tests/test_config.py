@@ -18,6 +18,11 @@ def test_onboarding_state_path_defaults_under_runtime_dir():
     assert settings.resolved_onboarding_state_path().name == "onboarding_state.json"
 
 
+def test_voice_intent_registry_path_follows_onboarding_state_dir(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    assert settings.resolved_voice_intent_registry_path() == tmp_path / "voice_intents.json"
+
+
 def test_backend_log_path_defaults_under_runtime_logs():
     settings = Settings()
     assert settings.resolved_backend_log_path().as_posix() == "runtime/logs/hexevoice-backend.log"

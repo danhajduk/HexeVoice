@@ -8,14 +8,18 @@ import {
   getOperationalStatus,
   getProviderSetup,
   getGovernanceCurrent,
+  getVoiceIntents,
   pollOnboardingSession,
+  registerVoiceIntent,
   refreshGovernance,
+  reviewVoiceIntent,
   saveCoreConnection,
   saveCapabilitySelection,
   saveNodeIdentity,
   saveProviderSetup,
   startOnboardingSession,
   testBootstrapConnection,
+  updateVoiceIntentLifecycle,
   validateBootstrapAdvertisement,
 } from "../../api/client";
 import { StageCard } from "../setup/cards/StageCard";
@@ -70,6 +74,16 @@ function emptyAdvertisementForm() {
     onboarding_contract: "global-node-v1",
     register_session: "/api/system/nodes/onboarding/sessions",
     registrations: "/api/system/nodes/registrations",
+  };
+}
+
+function emptyIntentForm() {
+  return {
+    intent_id: "",
+    intent_name: "",
+    command: "",
+    example: "",
+    reply_text: "",
   };
 }
 
@@ -308,6 +322,12 @@ function renderStageBody({
   onGovernanceCurrent,
   onGovernanceRefresh,
   onOperationalPoll,
+  voiceIntents,
+  intentForm,
+  onIntentFormChange,
+  onIntentRegister,
+  onIntentLifecycle,
+  onIntentReview,
 }) {
   const stepId = onboarding?.current_step_id || "node_identity";
   const capabilitySetup = onboarding?.capability_setup;
@@ -429,6 +449,7 @@ function renderStageBody({
     const availableCapabilities = capabilitySetup?.task_capability_selection?.available || [];
     const selectedCapabilities = capabilityForm?.selected_capabilities || capabilities?.selected || capabilitySetup?.task_capability_selection?.selected || [];
     const declaredCapabilities = capabilities?.declared || [];
+    const intents = voiceIntents?.intents || [];
 
     return (
       <>
@@ -532,6 +553,80 @@ function renderStageBody({
           busyLabel="Declaring..."
           label="Declare capabilities"
           onClick={onDeclareCapabilities}
+        />
+        <div className="section-divider" />
+        <div className="section-heading-inline">
+          <div>
+            <p className="panel-kicker">Voice Intents</p>
+            <h3 className="section-title">Registered intent controls</h3>
+          </div>
+          <span className="status-pill status-pill-neutral">
+            {voiceIntents?.active_count ?? 0}/{voiceIntents?.registered_count ?? 0} active
+          </span>
+        </div>
+        <div className="choice-list">
+          {intents.map((intent) => {
+            const active = intent.status === "active";
+            const builtin = Boolean(intent.metadata?.builtin);
+            return (
+              <div key={intent.intent_id} className={`choice-card ${active ? "choice-card-selected" : ""}`}>
+                <span className="choice-check">{active ? "✓" : ""}</span>
+                <span className="choice-copy">
+                  <strong>{intent.intent_id}</strong>
+                  <span>
+                    {(intent.intent_name || intent.service_id || "intent")} · {intent.version || "v1"} · {intent.status || "unknown"}
+                    {builtin ? " · built in" : ""}
+                  </span>
+                </span>
+                <div className="actions compact-actions">
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() => onIntentLifecycle(intent.intent_id, active ? "disabled" : "active")}
+                    disabled={busyState !== ""}
+                  >
+                    {active ? "Disable" : "Enable"}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    onClick={() => onIntentReview(intent.intent_id)}
+                    disabled={busyState !== ""}
+                  >
+                    Review
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="form-grid">
+          <label className="field">
+            <span className="field-label">Intent ID</span>
+            <input className="field-input" value={intentForm.intent_id} onChange={(event) => onIntentFormChange("intent_id", event.target.value)} placeholder="kitchen.status" />
+          </label>
+          <label className="field">
+            <span className="field-label">Intent name</span>
+            <input className="field-input" value={intentForm.intent_name} onChange={(event) => onIntentFormChange("intent_name", event.target.value)} placeholder="Kitchen status" />
+          </label>
+          <label className="field">
+            <span className="field-label">Command</span>
+            <input className="field-input" value={intentForm.command} onChange={(event) => onIntentFormChange("command", event.target.value)} placeholder="kitchen.status" />
+          </label>
+          <label className="field">
+            <span className="field-label">Example phrase</span>
+            <input className="field-input" value={intentForm.example} onChange={(event) => onIntentFormChange("example", event.target.value)} placeholder="kitchen status" />
+          </label>
+          <label className="field field-span-2">
+            <span className="field-label">Reply text</span>
+            <input className="field-input" value={intentForm.reply_text} onChange={(event) => onIntentFormChange("reply_text", event.target.value)} placeholder="Kitchen status accepted." />
+          </label>
+        </div>
+        <FormActions
+          busy={busyState === "intent-register"}
+          busyLabel="Registering..."
+          label="Register intent"
+          onClick={onIntentRegister}
         />
         <div className="section-divider" />
         <div className="fact-grid">
@@ -648,8 +743,10 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   const [capabilities, setCapabilities] = useState(null);
   const [governanceCurrent, setGovernanceCurrent] = useState(null);
   const [operationalStatus, setOperationalStatus] = useState(null);
+  const [voiceIntents, setVoiceIntents] = useState(null);
   const [providerForm, setProviderForm] = useState({ enabled_providers: [], default_provider: "voice" });
   const [capabilityForm, setCapabilityForm] = useState({ selected_capabilities: [] });
+  const [intentForm, setIntentForm] = useState(emptyIntentForm);
   const [busyState, setBusyState] = useState("");
   const [stageNotice, setStageNotice] = useState("");
   const [stageError, setStageError] = useState("");
@@ -671,8 +768,9 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
       getBootstrapDiscovery(),
       getProviderSetup().catch(() => null),
       getCapabilities().catch(() => null),
+      getVoiceIntents().catch(() => null),
     ])
-      .then(([setupPayload, bootstrapPayload, providerPayload, capabilityPayload]) => {
+      .then(([setupPayload, bootstrapPayload, providerPayload, capabilityPayload, intentPayload]) => {
         if (!mounted) {
           return;
         }
@@ -702,6 +800,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         });
         setProviderSetup(providerPayload);
         setCapabilities(capabilityPayload);
+        setVoiceIntents(intentPayload);
         setProviderForm({
           enabled_providers: providerPayload?.enabled_providers || [],
           default_provider: providerPayload?.default_provider || providerPayload?.supported_providers?.[0] || "voice",
@@ -753,17 +852,23 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     });
   }
 
+  function updateIntentForm(field, value) {
+    setIntentForm((current) => ({ ...current, [field]: value }));
+  }
+
   async function refreshSetupPanels() {
-    const [setupPayload, bootstrapPayload, providerPayload, capabilityPayload] = await Promise.all([
+    const [setupPayload, bootstrapPayload, providerPayload, capabilityPayload, intentPayload] = await Promise.all([
       getLocalSetup(),
       getBootstrapDiscovery(),
       getProviderSetup().catch(() => null),
       getCapabilities().catch(() => null),
+      getVoiceIntents().catch(() => null),
     ]);
     setLocalSetup(setupPayload);
     setBootstrap(bootstrapPayload);
     setProviderSetup(providerPayload);
     setCapabilities(capabilityPayload);
+    setVoiceIntents(intentPayload);
     if (providerPayload) {
       setProviderForm({
         enabled_providers: providerPayload.enabled_providers || [],
@@ -1013,6 +1118,95 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         await onRefresh();
       }
       setStageNotice(`Capability declaration ${payload.capability_status}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleIntentRegister() {
+    const intentId = intentForm.intent_id.trim();
+    const command = (intentForm.command || intentId).trim();
+    const example = intentForm.example.trim();
+    setBusyState("intent-register");
+    setStageError("");
+    setStageNotice("");
+    try {
+      if (!intentId || !command || !example) {
+        throw new Error("intent_id, command, and example phrase are required");
+      }
+      const payload = await registerVoiceIntent({
+        intent_id: intentId,
+        intent_name: intentForm.intent_name.trim() || intentId,
+        service_id: "voice.local_intents",
+        owner_service: "operator",
+        version: "v1",
+        status: "active",
+        definition: {
+          utterance_examples: [example],
+          dispatch: {
+            type: "local_response",
+            command,
+          },
+          response: {
+            reply_text: intentForm.reply_text.trim() || `${intentId} accepted.`,
+          },
+          matcher: {
+            type: "exact_example",
+          },
+        },
+        metadata: {
+          source: "setup_ui",
+        },
+      });
+      setVoiceIntents(payload);
+      setIntentForm(emptyIntentForm());
+      await refreshSetupPanels();
+      setStageNotice(`Intent ${intentId} registered.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleIntentLifecycle(intentId, statusValue) {
+    setBusyState(`intent-${statusValue}`);
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await updateVoiceIntentLifecycle(intentId, {
+        status: statusValue,
+        reason: "setup_ui",
+      });
+      setVoiceIntents(payload);
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(`Intent ${intentId} moved to ${statusValue}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
+  async function handleIntentReview(intentId) {
+    setBusyState("intent-review");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await reviewVoiceIntent(intentId, {
+        reviewed_by: "setup_ui",
+        review_reason: "operator_review",
+        status: "active",
+      });
+      setVoiceIntents(payload);
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(`Intent ${intentId} reviewed.`);
     } catch (error) {
       setStageError(String(error.message || error));
     } finally {
@@ -1271,6 +1465,12 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           onGovernanceCurrent: handleGovernanceCurrent,
           onGovernanceRefresh: handleGovernanceRefresh,
           onOperationalPoll: handleOperationalPoll,
+          voiceIntents,
+          intentForm,
+          onIntentFormChange: updateIntentForm,
+          onIntentRegister: handleIntentRegister,
+          onIntentLifecycle: handleIntentLifecycle,
+          onIntentReview: handleIntentReview,
         })}
       </StageCard>
     </NodeSetupCard>
