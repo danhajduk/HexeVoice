@@ -418,13 +418,12 @@ function renderStageBody({
 
   if (stepId === "provider_setup" || stepId === "capability_declaration" || stepId === "governance_sync" || stepId === "ready") {
     const supportedProviders = providerSetup?.supported_providers || capabilitySetup?.provider_selection?.supported?.cloud || ["voice"];
-    const enabledProviders =
-      stepId === "provider_setup"
-        ? providerForm?.enabled_providers || []
-        : providerSetup?.enabled_providers || capabilitySetup?.provider_selection?.enabled || [];
+    const enabledProviders = providerForm?.enabled_providers || providerSetup?.enabled_providers || capabilitySetup?.provider_selection?.enabled || [];
     const declarationStatus = capabilities?.capability_status || onboarding?.capability_status || "missing";
     const governanceVersion = governanceCurrent?.governance_version || onboarding?.active_governance_version || "pending";
     const readinessValue = operationalStatus?.operational_ready ?? onboarding?.operational_ready;
+    const availableCapabilities = capabilitySetup?.task_capability_selection?.available || [];
+    const declaredCapabilities = capabilities?.declared || capabilitySetup?.task_capability_selection?.selected || [];
 
     return (
       <>
@@ -450,119 +449,107 @@ function renderStageBody({
             <span className="fact-grid-value">{readinessValue ? "operational" : "blocked"}</span>
           </div>
         </div>
-        {stepId === "provider_setup" ? (
-          <>
-            <div className="section-divider" />
-            <div className="section-heading-inline">
-              <div>
-                <p className="panel-kicker">Provider Setup</p>
-                <h3 className="section-title">Select enabled providers</h3>
-              </div>
-            </div>
-            <div className="choice-list">
-              {supportedProviders.map((providerId) => {
-                const selected = enabledProviders.includes(providerId);
-                return (
-                  <button
-                    key={providerId}
-                    className={`choice-card ${selected ? "choice-card-selected" : ""}`}
-                    type="button"
-                    onClick={() => onProviderToggle(providerId)}
-                  >
-                    <span className="choice-check">{selected ? "✓" : ""}</span>
-                    <span className="choice-copy">
-                      <strong>{providerId}</strong>
-                      <span>Enable this provider for capability declaration.</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            <FormActions
-              busy={busyState === "provider-save"}
-              busyLabel="Saving..."
-              label="Save provider setup"
-              onClick={onProviderSave}
-            />
-          </>
+        <div className="section-divider" />
+        <div className="section-heading-inline">
+          <div>
+            <p className="panel-kicker">Provider Setup</p>
+            <h3 className="section-title">Select enabled providers</h3>
+          </div>
+        </div>
+        <div className="choice-list">
+          {supportedProviders.map((providerId) => {
+            const selected = enabledProviders.includes(providerId);
+            return (
+              <button
+                key={providerId}
+                className={`choice-card ${selected ? "choice-card-selected" : ""}`}
+                type="button"
+                onClick={() => onProviderToggle(providerId)}
+              >
+                <span className="choice-check">{selected ? "✓" : ""}</span>
+                <span className="choice-copy">
+                  <strong>{providerId}</strong>
+                  <span>Enable this provider for capability declaration.</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <FormActions
+          busy={busyState === "provider-save"}
+          busyLabel="Saving..."
+          label="Save provider setup"
+          onClick={onProviderSave}
+        />
+        <div className="section-divider" />
+        <div className="callout">
+          Declare the node manifest to Core once provider selection is complete. The backend uses the canonical
+          task family and provider metadata already persisted locally.
+        </div>
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Available capabilities</span>
+            <span className="fact-grid-value">{availableCapabilities.join(", ") || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Declared capabilities</span>
+            <span className="fact-grid-value">{declaredCapabilities.join(", ") || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Capability profile</span>
+            <span className="fact-grid-value">{capabilities?.capability_profile_id || "pending"}</span>
+          </div>
+        </div>
+        <FormActions
+          busy={busyState === "capability-declare"}
+          busyLabel="Declaring..."
+          label="Declare capabilities"
+          onClick={onDeclareCapabilities}
+        />
+        <div className="section-divider" />
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Governance version</span>
+            <span className="fact-grid-value">{governanceVersion}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Refresh interval</span>
+            <span className="fact-grid-value">{governanceCurrent?.refresh_interval_s || "pending"}</span>
+          </div>
+        </div>
+        <FormActions
+          busy={busyState === "governance-refresh"}
+          busyLabel="Refreshing..."
+          label="Refresh governance"
+          onClick={onGovernanceRefresh}
+          secondaryLabel="Fetch current bundle"
+          onSecondaryClick={onGovernanceCurrent}
+          secondaryDisabled={busyState === "governance-current"}
+        />
+        {governanceCurrent?.governance_bundle ? (
+          <pre className="code-panel">{JSON.stringify(governanceCurrent.governance_bundle, null, 2)}</pre>
         ) : null}
-        {stepId === "capability_declaration" ? (
-          <>
-            <div className="section-divider" />
-            <div className="callout">
-              Declare the node manifest to Core once provider selection is complete. The backend uses the canonical
-              task family and provider metadata already persisted locally.
+        <div className="section-divider" />
+        <div className="callout callout-success">
+          The node can now poll Core's operational-status projection to confirm end-to-end readiness and governance freshness.
+        </div>
+        <FormActions
+          busy={busyState === "operational-poll"}
+          busyLabel="Polling..."
+          label="Poll operational status"
+          onClick={onOperationalPoll}
+        />
+        {operationalStatus ? (
+          <div className="fact-grid">
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Freshness</span>
+              <span className="fact-grid-value">{operationalStatus.governance_freshness_state || "pending"}</span>
             </div>
-            <div className="fact-grid">
-              <div className="fact-grid-item">
-                <span className="fact-grid-label">Declared capabilities</span>
-                <span className="fact-grid-value">{capabilities?.declared?.join(", ") || "pending"}</span>
-              </div>
-              <div className="fact-grid-item">
-                <span className="fact-grid-label">Capability profile</span>
-                <span className="fact-grid-value">{capabilities?.capability_profile_id || "pending"}</span>
-              </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Governance version</span>
+              <span className="fact-grid-value">{operationalStatus.active_governance_version || "pending"}</span>
             </div>
-            <FormActions
-              busy={busyState === "capability-declare"}
-              busyLabel="Declaring..."
-              label="Declare capabilities"
-              onClick={onDeclareCapabilities}
-            />
-          </>
-        ) : null}
-        {stepId === "governance_sync" ? (
-          <>
-            <div className="section-divider" />
-            <div className="fact-grid">
-              <div className="fact-grid-item">
-                <span className="fact-grid-label">Governance version</span>
-                <span className="fact-grid-value">{governanceVersion}</span>
-              </div>
-              <div className="fact-grid-item">
-                <span className="fact-grid-label">Refresh interval</span>
-                <span className="fact-grid-value">{governanceCurrent?.refresh_interval_s || "pending"}</span>
-              </div>
-            </div>
-            <FormActions
-              busy={busyState === "governance-refresh"}
-              busyLabel="Refreshing..."
-              label="Refresh governance"
-              onClick={onGovernanceRefresh}
-              secondaryLabel="Fetch current bundle"
-              onSecondaryClick={onGovernanceCurrent}
-              secondaryDisabled={busyState === "governance-current"}
-            />
-            {governanceCurrent?.governance_bundle ? (
-              <pre className="code-panel">{JSON.stringify(governanceCurrent.governance_bundle, null, 2)}</pre>
-            ) : null}
-          </>
-        ) : null}
-        {stepId === "ready" ? (
-          <>
-            <div className="section-divider" />
-            <div className="callout callout-success">
-              The node can now poll Core's operational-status projection to confirm end-to-end readiness and governance freshness.
-            </div>
-            <FormActions
-              busy={busyState === "operational-poll"}
-              busyLabel="Polling..."
-              label="Poll operational status"
-              onClick={onOperationalPoll}
-            />
-            {operationalStatus ? (
-              <div className="fact-grid">
-                <div className="fact-grid-item">
-                  <span className="fact-grid-label">Freshness</span>
-                  <span className="fact-grid-value">{operationalStatus.governance_freshness_state || "pending"}</span>
-                </div>
-                <div className="fact-grid-item">
-                  <span className="fact-grid-label">Governance version</span>
-                  <span className="fact-grid-value">{operationalStatus.active_governance_version || "pending"}</span>
-                </div>
-              </div>
-            ) : null}
-          </>
+          </div>
         ) : null}
         {blockers.length > 0 ? (
           <div className="callout callout-warning">
