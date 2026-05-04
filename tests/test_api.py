@@ -12,6 +12,7 @@ from hexevoice.main import create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.tts.service import resolve_piper_voice_model_id
 from hexevoice.voice import DeterministicWakeDetector
 
 
@@ -761,6 +762,14 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert audio.status_code == 200
     assert audio.headers["content-type"] == "audio/wav"
     assert audio.content.startswith(b"RIFF")
+
+
+def test_core_normalized_piper_voice_ids_resolve_to_installed_model(tmp_path):
+    model_dir = tmp_path / "piper-tts" / "models"
+    model_dir.mkdir(parents=True)
+    (model_dir / "en_US-lessac-medium.onnx").write_bytes(b"model")
+
+    assert resolve_piper_voice_model_id("en_us-lessac-medium", model_dir) == "en_US-lessac-medium"
 
 
 def test_assistant_turn_handles_timer_intent_locally(tmp_path):

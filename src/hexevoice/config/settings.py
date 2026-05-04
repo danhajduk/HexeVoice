@@ -112,6 +112,7 @@ class Settings(BaseSettings):
     voice_tts_piper_service_port: int = Field(default=10200, alias="VOICE_TTS_PIPER_SERVICE_PORT")
     voice_tts_piper_synthesize_path: str = Field(default="/api/tts", alias="VOICE_TTS_PIPER_SYNTHESIZE_PATH")
     voice_tts_piper_voice: str | None = Field(default=None, alias="VOICE_TTS_PIPER_VOICE")
+    piper_tts_model_dir: Path | None = Field(default=None, alias="PIPER_TTS_MODEL_DIR")
     piper_tts_service_id: str = Field(default="piper_tts", alias="PIPER_TTS_SERVICE_ID")
     piper_tts_container_name: str = Field(default="hexevoice-piper-tts", alias="PIPER_TTS_CONTAINER_NAME")
     piper_tts_control_script: Path = Field(
@@ -171,3 +172,8 @@ class Settings(BaseSettings):
         if self.voice_tts_provider != "piper":
             return None
         return f"http://{self.voice_tts_piper_service_host}:{self.voice_tts_piper_service_port}"
+
+    def resolved_piper_tts_model_dir(self) -> Path:
+        if self.piper_tts_model_dir is not None:
+            return self.piper_tts_model_dir
+        return self.runtime_dir / "piper-tts" / "models"

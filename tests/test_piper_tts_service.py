@@ -48,3 +48,16 @@ def test_piper_tts_route_returns_wav(monkeypatch):
     assert response.headers["content-type"] == "audio/wav"
     assert response.content == b"RIFFtest-wav"
     assert captured == {"text": "hello", "voice": "en_US-test"}
+
+
+def test_piper_tts_voice_lookup_accepts_core_normalized_model_ids(tmp_path, monkeypatch):
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    fallback = model_dir / "fallback.onnx"
+    fallback.write_bytes(b"fallback")
+    requested = model_dir / "en_US-lessac-medium.onnx"
+    requested.write_bytes(b"model")
+    monkeypatch.setenv("PIPER_TTS_MODEL_DIR", str(model_dir))
+    monkeypatch.setenv("PIPER_TTS_MODEL_PATH", str(fallback))
+
+    assert piper_app._model_path_for_voice("en_us-lessac-medium") == requested

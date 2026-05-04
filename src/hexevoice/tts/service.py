@@ -24,7 +24,7 @@ class TtsAudioService:
             endpoint_id=endpoint_id,
             session_id=session_id,
             text=request.text,
-            voice=request.voice,
+            voice=self._resolve_voice_model(request.voice),
             audio_format=request.format,
         )
         if synthesis.error:
@@ -118,6 +118,11 @@ class TtsAudioService:
         base_url = self._settings.public_api_base_url or f"http://{self._settings.api_host}:{self._settings.api_port}"
         return base_url.rstrip("/")
 
+    def _resolve_voice_model(self, voice: str | None) -> str | None:
+        if self._settings.voice_tts_provider != "piper" or not voice:
+            return voice
+        return resolve_piper_voice_model_id(voice, self._settings.resolved_piper_tts_model_dir())
+
     def _metadata_path(self, stream_id: str) -> Path:
         self._audio_dir.mkdir(parents=True, exist_ok=True)
         return self._audio_dir / f"{stream_id}.json"
@@ -141,6 +146,20 @@ def safe_tts_stream_id(stream_id: str) -> str | None:
     if not cleaned or not cleaned.replace("-", "").replace("_", "").isalnum():
         return None
     return cleaned
+
+
+def resolve_piper_voice_model_id(voice: str, model_dir: Path) -> str:
+    requested = Path(str(voice or "").strip()).name
+    if not requested:
+        return requested
+    exact = model_dir / f"{requested}.onnx"
+    if exact.exists():
+        return exact.stem
+    requested_key = requested.casefold()
+    for model_path in sorted(model_dir.glob("*.onnx")) if model_dir.exists() else []:
+        if model_path.stem.casefold() == requested_key:
+            return model_path.stem
+    return requested
 
 
 def content_type_for_path(path: Path) -> str:

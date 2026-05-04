@@ -85,6 +85,7 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     assert endpoints["voice.tts.synthesize"]["path"] == "/api/tts/synthesize"
     assert endpoints["voice.tts.audio_url"]["path"] == "/api/tts/audio/{stream_id}"
     assert captured["capability_json"]["manifest"]["enabled_providers"] == ["voice"]
+    assert captured["capability_json"]["manifest"]["provider_intelligence"] == []
     assert captured["budget_json"]["node_id"] == "node-voice-123"
     assert captured["budget_json"]["supported_providers"] == ["voice"]
     assert captured["budget_json"]["suggested_money_limit"] is None
@@ -144,6 +145,79 @@ def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
     assert manifest["declared_capabilities"] == ["voice.inference", "voice.tts.synthesize"]
     assert sorted(manifest["capability_endpoints"]) == ["voice.tts.synthesize"]
     assert captured["budget_json"]["supported_providers"] == ["voice"]
+
+
+def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypatch):
+    store = _trusted_phase2_store(tmp_path)
+    model_dir = tmp_path / "runtime" / "piper-tts" / "models"
+    model_dir.mkdir(parents=True)
+    (model_dir / "en_US-kathleen-low.onnx").write_bytes(b"model")
+    (model_dir / "en_US-kathleen-low.onnx.json").write_text(
+        '{"audio":{"sample_rate":16000,"quality":"low"}}',
+        encoding="utf-8",
+    )
+    (model_dir / "en_US-lessac-medium.onnx").write_bytes(b"model")
+    (model_dir / "en_US-lessac-medium.onnx.json").write_text(
+        '{"audio":{"sample_rate":22050,"quality":"medium"}}',
+        encoding="utf-8",
+    )
+    state = store.load()
+    store.save(
+        state.model_copy(
+            update={
+                "provider_setup": state.provider_setup.model_copy(
+                    update={
+                        "supported_providers": ["voice", "piper"],
+                        "enabled_providers": ["voice", "piper"],
+                    }
+                )
+            }
+        )
+    )
+    captured = {}
+
+    class DummyResponse:
+        status_code = 200
+        def raise_for_status(self): return None
+        def json(self):
+            return {
+                "acceptance_status": "accepted",
+                "node_id": "node-voice-123",
+                "manifest_version": "1.0",
+                "accepted_at": "2026-04-08T03:00:00+00:00",
+                "declared_capabilities": VOICE_NODE_CAPABILITIES,
+                "enabled_providers": ["piper", "voice"],
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "governance_issued_at": "2026-04-08T03:00:05+00:00",
+            }
+
+    def fake_post(*args, **kwargs):
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/capabilities/declaration"):
+            captured["capability_json"] = kwargs.get("json")
+        elif url.endswith("/api/system/nodes/budgets/declaration"):
+            captured["budget_json"] = kwargs.get("json")
+        return DummyResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    service = CapabilityDeclarationService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "onboarding-state.json",
+            runtime_dir=tmp_path / "runtime",
+            voice_tts_provider="piper",
+        ),
+        onboarding_state_store=store,
+    )
+    response = service.declare()
+
+    assert response.enabled_providers == ["piper", "voice"]
+    piper = captured["capability_json"]["manifest"]["provider_intelligence"][0]
+    assert piper["provider"] == "piper"
+    models = {model["model_id"]: model for model in piper["available_models"]}
+    assert sorted(models) == ["en_US-kathleen-low", "en_US-lessac-medium"]
+    assert captured["budget_json"]["supported_providers"] == ["piper", "voice"]
 
 
 def test_governance_and_operational_status_persist_phase2_readiness(tmp_path, monkeypatch):

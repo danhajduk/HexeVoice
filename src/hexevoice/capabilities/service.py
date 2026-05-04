@@ -65,6 +65,7 @@ class CapabilityDeclarationService:
                 "capability_endpoints": capability_endpoints,
                 "supported_providers": supported_providers,
                 "enabled_providers": enabled_providers,
+                "provider_intelligence": self._provider_intelligence(enabled_providers),
                 "node_features": {
                     "telemetry": True,
                     "governance_refresh": True,
@@ -190,6 +191,37 @@ class CapabilityDeclarationService:
             "suggested_money_limit": None,
             "suggested_compute_limit": None,
         }
+
+    def _provider_intelligence(self, enabled_providers: list[str]) -> list[dict]:
+        providers = {provider.strip().lower() for provider in enabled_providers if provider and provider.strip()}
+        intelligence: list[dict] = []
+        if "piper" in providers:
+            intelligence.append(
+                {
+                    "provider": "piper",
+                    "available_models": self._piper_voice_models(),
+                }
+            )
+        return intelligence
+
+    def _piper_voice_models(self) -> list[dict]:
+        model_dir = self._settings.resolved_piper_tts_model_dir()
+        models: list[dict] = []
+        for model_path in sorted(model_dir.glob("*.onnx")) if model_dir.exists() else []:
+            model_id = model_path.stem
+            models.append(
+                {
+                    "model_id": model_id,
+                }
+            )
+        configured_voice = str(self._settings.voice_tts_piper_voice or "").strip()
+        if configured_voice and configured_voice not in {str(model.get("model_id")) for model in models}:
+            models.append(
+                {
+                    "model_id": configured_voice,
+                }
+            )
+        return sorted(models, key=lambda item: str(item.get("model_id") or "").lower())
 
     def save_selection(self, payload: CapabilitySelectionRequest) -> CapabilitySummaryResponse:
         state = self._store.load()

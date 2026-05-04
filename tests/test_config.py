@@ -67,6 +67,7 @@ def test_piper_tts_settings_default_to_supervised_local_service():
     assert settings.piper_tts_container_name == "hexevoice-piper-tts"
     assert settings.piper_tts_control_script.as_posix() == "scripts/piper-tts-control.sh"
     assert settings.resolved_voice_tts_piper_base_url() == "http://127.0.0.1:10200"
+    assert settings.resolved_piper_tts_model_dir().as_posix() == "runtime/piper-tts/models"
 
 
 def test_piper_tts_explicit_base_url_overrides_service_host():

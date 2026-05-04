@@ -25,13 +25,23 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _models_dir() -> Path:
+    return Path(os.getenv("PIPER_TTS_MODEL_DIR", "/models"))
+
+
 def _model_path_for_voice(voice: str | None) -> Path:
-    configured = Path(os.getenv("PIPER_TTS_MODEL_PATH", "/models/en_US-lessac-medium.onnx"))
+    configured = Path(os.getenv("PIPER_TTS_MODEL_PATH", str(_models_dir() / "en_US-lessac-medium.onnx")))
     if not voice:
         return configured
     safe_voice = Path(voice).name
-    candidate = Path("/models") / f"{safe_voice}.onnx"
-    return candidate if candidate.exists() else configured
+    candidate = _models_dir() / f"{safe_voice}.onnx"
+    if candidate.exists():
+        return candidate
+    requested = safe_voice.casefold()
+    for model_path in sorted(_models_dir().glob("*.onnx")):
+        if model_path.stem.casefold() == requested:
+            return model_path
+    return configured
 
 
 def _config_path_for_model(model_path: Path) -> Path | None:

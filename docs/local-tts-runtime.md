@@ -62,6 +62,8 @@ POST /api/tts {"text":"hello","voice":"optional-model-name"}
 
 `POST /api/tts` returns `audio/wav` bytes. If `voice` is provided and `/models/<voice>.onnx` exists, the service uses that model. Otherwise it uses `PIPER_TTS_MODEL_PATH`, which defaults to `/models/en_US-lessac-medium.onnx`.
 
+During capability declaration, HexeVoice advertises installed Piper `.onnx` files as Core provider models under provider `piper`. Core service resolution can therefore use `preferred_model` to select a voice model, and the caller should pass that same model id to `POST /api/tts/synthesize` as `voice`. The Piper service accepts Core-normalized lowercase model ids as well as the original filename casing.
+
 The compose service also has a Docker health check that calls `GET /health` inside the container.
 
 To configure local model assets:
