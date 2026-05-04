@@ -179,6 +179,7 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
             public_api_base_url="http://10.0.0.100:9004",
             voice_tts_provider="piper",
             voice_tts_piper_voice="en_US-test",
+            piper_tts_warm_voices="en_US-kathleen-low,en_US-hfc_female-medium",
         ),
         onboarding_state_store=store,
         supervisor_client=client,
@@ -200,6 +201,7 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
     assert piper_tts["base_url"] == "http://127.0.0.1:10200"
     assert piper_tts["synthesize_path"] == "/api/tts"
     assert piper_tts["voice"] == "en_US-test"
+    assert piper_tts["warm_voices"] == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
     assert service.service_status_payload().piper_tts == "running"
 
 

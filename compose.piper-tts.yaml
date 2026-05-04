@@ -11,8 +11,11 @@ services:
       - "${PIPER_TTS_PORT:-10200}:10200"
     environment:
       PIPER_TTS_MODEL_PATH: ${PIPER_TTS_MODEL_PATH:-/models/en_US-lessac-medium.onnx}
+      PIPER_TTS_WARM_VOICES: ${PIPER_TTS_WARM_VOICES:-}
       PIPER_TTS_CONFIG_PATH: ${PIPER_TTS_CONFIG_PATH:-}
       PIPER_TTS_TIMEOUT_S: ${PIPER_TTS_TIMEOUT_S:-30}
+      PIPER_TTS_WARM_TIMEOUT_S: ${PIPER_TTS_WARM_TIMEOUT_S:-10}
+      PIPER_TTS_WARM_IDLE_S: ${PIPER_TTS_WARM_IDLE_S:-0.25}
     volumes:
       - ${PIPER_TTS_MODEL_DIR:-./runtime/piper-tts/models}:/models:ro
     healthcheck:

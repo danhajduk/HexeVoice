@@ -366,6 +366,7 @@ class NodeRuntimeService:
             "base_url": self._settings.resolved_voice_tts_piper_base_url(),
             "synthesize_path": self._settings.voice_tts_piper_synthesize_path,
             "voice": self._settings.voice_tts_piper_voice,
+            "warm_voices": self._settings.resolved_piper_tts_warm_voices(),
         }
 
     def service_action(self, *, target: str, action: str) -> ServiceActionResponse:

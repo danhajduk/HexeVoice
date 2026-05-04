@@ -75,6 +75,15 @@ mkdir -p runtime/piper-tts/models
 
 Place Piper `.onnx` model files and optional `.onnx.json` config files in `runtime/piper-tts/models`, then set `PIPER_TTS_MODEL_PATH` in `scripts/piper-tts.env` if the default model name is not present.
 
+Set `PIPER_TTS_WARM_VOICES` to keep one or more Piper model processes loaded for low-latency synthesis. The local runtime currently keeps the Box default voice on Kathleen low while also warming HFC female medium:
+
+```env
+PIPER_TTS_MODEL_PATH=/models/en_US-kathleen-low.onnx
+PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-hfc_female-medium
+```
+
+Warm voices reuse persistent Piper `--output-raw` processes and are wrapped back into WAV responses, so `/api/tts` keeps the same response shape while avoiding model reload delay for those voices. Non-warm voices still use the cold per-request Piper process path.
+
 To build and run the service locally:
 
 ```bash
