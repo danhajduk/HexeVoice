@@ -9,7 +9,7 @@
       "session_id": null,
       "firmware_version": "c7528b6-dirty",
       "ip_address": "10.0.0.73",
-      "rssi_dbm": -43,
+      "rssi_dbm": -44,
       "capabilities": {
         "touchscreen": {
           "available": true
@@ -146,10 +146,10 @@
         }
       },
       "first_seen_at": "2026-04-26T13:25:52.058896+00:00",
-      "last_seen_at": "2026-05-04T07:01:09.129579+00:00",
+      "last_seen_at": "2026-05-04T07:01:44.711509+00:00",
       "operator_updated_at": null,
-      "updated_at": "2026-05-04T07:01:09.129579+00:00"
+      "updated_at": "2026-05-04T07:01:44.711509+00:00"
     }
   },
-  "updated_at": "2026-05-04T07:01:09.129756+00:00"
+  "updated_at": "2026-05-04T07:01:44.711713+00:00"
 }
