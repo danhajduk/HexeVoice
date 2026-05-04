@@ -7,6 +7,7 @@ from hexevoice.api.models import CapabilityDeclarationResponse, CapabilitySelect
 from hexevoice.config.settings import Settings
 from hexevoice.core.client import CoreOnboardingClient
 from hexevoice.persistence import OnboardingStateStore
+from hexevoice.providers.setup import voice_provider_ids
 
 
 VOICE_NODE_CAPABILITIES = [
@@ -40,7 +41,13 @@ class CapabilityDeclarationService:
             raise HTTPException(status_code=400, detail="provider_setup_incomplete")
 
         declared_task_families = self._selected_capabilities(state)
-        supported_providers = sorted({provider_id.strip() for provider_id in (state.provider_setup.supported_providers or [self._settings.provider_id]) if provider_id and provider_id.strip()})
+        supported_providers = sorted(
+            {
+                provider_id.strip()
+                for provider_id in [*state.provider_setup.supported_providers, *voice_provider_ids(self._settings)]
+                if provider_id and provider_id.strip()
+            }
+        )
         enabled_providers = sorted({provider_id.strip() for provider_id in state.provider_setup.enabled_providers if provider_id and provider_id.strip()})
         capability_endpoints = self._capability_endpoints(declared_task_families)
 
@@ -116,6 +123,7 @@ class CapabilityDeclarationService:
                         "governance_sync_status": "pending",
                         "governance_version": response.get("governance_version"),
                         "issued_timestamp": response.get("governance_issued_at"),
+                        "governance_bundle": None,
                     }
                 ),
                 "resume": state.resume.model_copy(

@@ -49,7 +49,11 @@ class GovernanceService:
             node_trust_token=state.trust_activation.node_trust_token,
             payload={
                 "node_id": state.trust_activation.node_id,
-                "current_governance_version": state.governance_sync.governance_version,
+                "current_governance_version": (
+                    state.governance_sync.governance_version
+                    if state.governance_sync.governance_bundle
+                    else None
+                ),
             },
         )
         updated = self._update_governance_state(state, response=response, updated=response.get("updated", False))

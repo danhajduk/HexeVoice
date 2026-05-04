@@ -13,6 +13,24 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def voice_provider_ids(settings: Settings) -> list[str]:
+    provider_ids = [settings.provider_id]
+    if settings.voice_stt_provider != "deterministic":
+        provider_ids.append(settings.voice_stt_provider)
+    if settings.voice_tts_provider != "deterministic":
+        provider_ids.append(settings.voice_tts_provider)
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for provider_id in provider_ids:
+        value = str(provider_id or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
 class ProviderSetupService:
     def __init__(self, *, settings: Settings, onboarding_state_store: OnboardingStateStore) -> None:
         self._settings = settings
@@ -78,9 +96,15 @@ class ProviderSetupService:
 
     def _supported_providers(self, state) -> list[str]:
         persisted = [provider_id for provider_id in state.provider_setup.supported_providers if provider_id]
-        if persisted:
-            return persisted
-        return [self._settings.provider_id]
+        runtime = voice_provider_ids(self._settings)
+        supported: list[str] = []
+        seen: set[str] = set()
+        for provider_id in [*persisted, *runtime]:
+            if provider_id in seen:
+                continue
+            seen.add(provider_id)
+            supported.append(provider_id)
+        return supported
 
     def _blocking_reasons(self, state, enabled_providers: list[str]) -> list[str]:
         blockers: list[str] = []
