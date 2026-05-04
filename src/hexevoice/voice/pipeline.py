@@ -24,6 +24,7 @@ with warnings.catch_warnings():
 
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
+from hexevoice.voice.records import record_voice_event
 
 if TYPE_CHECKING:
     from hexevoice.config.settings import Settings
@@ -324,7 +325,18 @@ class FasterWhisperSpeechToTextAdapter:
 
 class DeterministicTextToSpeechAdapter:
     def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
-        return TtsSynthesis(stream_id=f"tts-{uuid4().hex[:12]}")
+        synthesis = TtsSynthesis(stream_id=f"tts-{uuid4().hex[:12]}")
+        record_voice_event(
+            "tts.synthesized",
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            provider_id=synthesis.provider_id,
+            stream_id=synthesis.stream_id,
+            content_type=synthesis.content_type,
+            text_chars=len(text or ""),
+            error=synthesis.error,
+        )
+        return synthesis
 
     def status(self) -> dict:
         return {"provider": "deterministic", "healthy": True, "configured": True}
@@ -371,6 +383,17 @@ class PiperTextToSpeechAdapter:
             audio = normalize_wav_sample_rate(response.content, self._output_sample_rate_hz)
             output_path.write_bytes(audio)
             self._last_error = None
+            record_voice_event(
+                "tts.synthesized",
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                provider_id="piper",
+                stream_id=stream_id,
+                content_type=response.headers.get("content-type", "audio/wav"),
+                audio_url=f"/api/voice/tts/{stream_id}",
+                text_chars=len(text or ""),
+                error=None,
+            )
             return TtsSynthesis(
                 content_type=response.headers.get("content-type", "audio/wav"),
                 stream_id=stream_id,
@@ -380,6 +403,15 @@ class PiperTextToSpeechAdapter:
         except Exception as exc:
             self._last_error = str(exc)
             log.warning("Piper TTS failed; using deterministic fallback: error=%s", self._last_error)
+            record_voice_event(
+                "tts.failed",
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                provider_id="piper",
+                stream_id=stream_id,
+                text_chars=len(text or ""),
+                error=self._last_error,
+            )
             return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text)
         finally:
             if self._http_client is None:
@@ -427,6 +459,18 @@ class OpenAiTextToSpeechAdapter:
         content_type = self._content_type()
         if not self._api_key:
             self._last_error = "missing_api_key"
+            record_voice_event(
+                "tts.failed",
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                provider_id="openai",
+                model=self._model,
+                voice=self._voice,
+                stream_id=stream_id,
+                content_type=content_type,
+                text_chars=len(text or ""),
+                error="missing_api_key",
+            )
             return TtsSynthesis(
                 content_type=content_type,
                 stream_id=stream_id,
@@ -455,6 +499,19 @@ class OpenAiTextToSpeechAdapter:
             output_path = self._output_dir / f"{stream_id}.{self._response_format}"
             output_path.write_bytes(response.content)
             self._last_error = None
+            record_voice_event(
+                "tts.synthesized",
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                provider_id="openai",
+                model=self._model,
+                voice=self._voice,
+                stream_id=stream_id,
+                content_type=content_type,
+                audio_url=f"/api/voice/tts/{stream_id}",
+                text_chars=len(text or ""),
+                error=None,
+            )
             return TtsSynthesis(
                 content_type=content_type,
                 stream_id=stream_id,
@@ -463,6 +520,18 @@ class OpenAiTextToSpeechAdapter:
             )
         except Exception as exc:
             self._last_error = str(exc)
+            record_voice_event(
+                "tts.failed",
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                provider_id="openai",
+                model=self._model,
+                voice=self._voice,
+                stream_id=stream_id,
+                content_type=content_type,
+                text_chars=len(text or ""),
+                error=self._last_error,
+            )
             return TtsSynthesis(
                 content_type=content_type,
                 stream_id=stream_id,
@@ -559,6 +628,20 @@ class VoiceTurnPipeline:
         stt_started_at = time.perf_counter()
         transcript = self._stt_adapter.transcribe(audio)
         stt_ms = round((time.perf_counter() - stt_started_at) * 1000, 2)
+        record_voice_event(
+            "stt.failed" if transcript.error else "stt.completed",
+            endpoint_id=audio.endpoint_id,
+            session_id=audio.session_id,
+            provider_id=transcript.provider_id,
+            model=transcript.model,
+            confidence=transcript.confidence,
+            duration_ms=transcript.duration_ms,
+            text_chars=len(transcript.text or ""),
+            transcript_text=transcript.text,
+            error=transcript.error,
+            chunk_count=audio.chunk_count,
+            stt_ms=stt_ms,
+        )
         assistant_started_at = time.perf_counter()
         assistant_response = self._assistant_service.handle_turn(
             AssistantTurnRequest(

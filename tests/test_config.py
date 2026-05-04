@@ -1,7 +1,9 @@
 import logging
+import json
 
 from hexevoice.config.settings import Settings
 from hexevoice.main import configure_backend_logging
+from hexevoice.voice.records import record_voice_event
 
 
 def test_settings_defaults():
@@ -19,6 +21,11 @@ def test_onboarding_state_path_defaults_under_runtime_dir():
 def test_backend_log_path_defaults_under_runtime_logs():
     settings = Settings()
     assert settings.resolved_backend_log_path().as_posix() == "runtime/logs/hexevoice-backend.log"
+
+
+def test_voice_record_log_path_defaults_under_runtime_logs():
+    settings = Settings()
+    assert settings.resolved_voice_record_log_path().as_posix() == "runtime/logs/hexevoice-voice-records.log"
 
 
 def test_faster_whisper_stt_settings_defaults():
@@ -40,6 +47,10 @@ def test_assistant_settings_default_to_local_echo():
     assert settings.voice_assistant_ai_node_turn_path == "/api/assistant/turn"
     assert settings.voice_assistant_timeout_s == 20.0
     assert settings.voice_conversation_context_turns == 6
+    assert settings.voice_domain_events_enabled is True
+    assert settings.voice_domain_events_mqtt_timeout_s == 5.0
+    assert settings.voice_timer_announcements_enabled is True
+    assert settings.voice_timer_success_mqtt_topic == "hexe/events/timer/create_succeeded"
 
 
 def test_piper_tts_settings_default_to_supervised_local_service():
@@ -75,7 +86,13 @@ def test_tts_output_sample_rate_can_be_disabled_for_native_voices():
 
 def test_backend_logging_uses_midnight_archive(tmp_path):
     log_path = tmp_path / "logs" / "backend.log"
-    settings = Settings(backend_log_path=log_path, backend_log_level="DEBUG", backend_log_backup_days=5)
+    record_log_path = tmp_path / "logs" / "voice-records.log"
+    settings = Settings(
+        backend_log_path=log_path,
+        voice_record_log_path=record_log_path,
+        backend_log_level="DEBUG",
+        backend_log_backup_days=5,
+    )
 
     result = configure_backend_logging(settings)
 
@@ -88,3 +105,32 @@ def test_backend_logging_uses_midnight_archive(tmp_path):
     assert handler.when == "MIDNIGHT"
     assert handler.backupCount == 5
     assert log_path.exists()
+    record_handler = next(
+        handler
+        for handler in logging.getLogger("hexevoice.voice.records").handlers
+        if getattr(handler, "_hexevoice_voice_record_handler", False)
+    )
+    assert record_handler.when == "MIDNIGHT"
+    assert record_handler.backupCount == 5
+    assert record_log_path.exists()
+
+
+def test_voice_records_write_json_lines_to_dedicated_log(tmp_path):
+    record_log_path = tmp_path / "logs" / "voice-records.log"
+    settings = Settings(backend_log_path=tmp_path / "logs" / "backend.log", voice_record_log_path=record_log_path)
+    configure_backend_logging(settings)
+
+    record_voice_event(
+        "wake.accepted",
+        endpoint_id="esp-box-1",
+        session_id="voice-session-1",
+        model="Hexa",
+        confidence=1.0,
+    )
+
+    line = record_log_path.read_text().strip()
+    payload = json.loads(line.split(": ", 1)[1])
+    assert payload["event_type"] == "wake.accepted"
+    assert payload["endpoint_id"] == "esp-box-1"
+    assert payload["session_id"] == "voice-session-1"
+    assert payload["model"] == "Hexa"

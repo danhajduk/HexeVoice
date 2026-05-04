@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
+from datetime import datetime
 import logging
 import re
 from collections.abc import Sequence
@@ -10,7 +11,9 @@ from typing import Protocol
 import httpx
 
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
+from hexevoice.assistant.intents import LocalIntentFinder
 from hexevoice.config.settings import Settings
+from hexevoice.domain_events import HexeMqttTimerCreateEventPublisher, TimerCreateEventPublisher, utc_event_timestamp
 from hexevoice.runtime.service import NodeRuntimeService
 
 
@@ -165,11 +168,15 @@ class AssistantTurnService:
         settings: Settings,
         runtime_service: NodeRuntimeService,
         adapter: AssistantAdapter | None = None,
+        intent_finder: LocalIntentFinder | None = None,
+        timer_event_publisher: TimerCreateEventPublisher | None = None,
     ) -> None:
         self._settings = settings
         self._runtime_service = runtime_service
         self._session_counter = 0
         self._adapter = adapter or self._build_adapter()
+        self._intent_finder = intent_finder or LocalIntentFinder()
+        self._timer_event_publisher = timer_event_publisher or HexeMqttTimerCreateEventPublisher(settings=settings)
         self._context_limit = settings.voice_conversation_context_turns
         self._context_by_endpoint: dict[str, deque[ConversationTurn]] = {}
         self._context_by_session: dict[str, deque[ConversationTurn]] = {}
@@ -177,6 +184,31 @@ class AssistantTurnService:
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
         heard_text = self._strip_wake_words(payload.text)
         session_id = payload.session_id or self._next_session_id(payload.endpoint_id)
+        intent = self._intent_finder.find(heard_text)
+        if intent is not None:
+            requested_at = utc_event_timestamp()
+            if intent.command == "timer.create":
+                self._publish_timer_create_event(
+                    endpoint_id=payload.endpoint_id,
+                    session_id=session_id,
+                    heard_text=heard_text,
+                    slots=intent.slots,
+                    requested_at=requested_at,
+                )
+            response = AssistantTurnResponse(
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                reply_text=intent.reply_text,
+                spoken_text=intent.reply_text,
+                handled_locally=True,
+                command=intent.command,
+                device_state="speaking",
+                provider_id="local_pattern",
+            )
+            self._record_turn(response)
+            return response
+
         context = self._conversation_context(endpoint_id=payload.endpoint_id, session_id=session_id)
         response = self._adapter.handle_turn(
             AssistantTurnRequest(
@@ -193,6 +225,8 @@ class AssistantTurnService:
     def status(self) -> dict:
         return {
             **self._adapter.status(),
+            "local_intents": self._intent_finder.status(),
+            "domain_events": self._timer_event_publisher.status(),
             "context_turn_limit": self._context_limit,
             "endpoint_contexts": {endpoint_id: len(turns) for endpoint_id, turns in self._context_by_endpoint.items()},
             "session_contexts": {session_id: len(turns) for session_id, turns in self._context_by_session.items()},
@@ -235,6 +269,28 @@ class AssistantTurnService:
                 fallback=fallback,
             )
         return fallback
+
+    def _publish_timer_create_event(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        slots: dict,
+        requested_at: datetime,
+    ) -> None:
+        duration_seconds = slots.get("duration_seconds")
+        duration_text = slots.get("duration_text")
+        if not isinstance(duration_seconds, int) or not isinstance(duration_text, str):
+            return
+        self._timer_event_publisher.publish_timer_create(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text=heard_text,
+            duration_seconds=duration_seconds,
+            duration_text=duration_text,
+            requested_at=requested_at,
+        )
 
     def _conversation_context(self, *, endpoint_id: str, session_id: str) -> list[ConversationTurn]:
         seen: set[tuple[str, str]] = set()

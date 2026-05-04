@@ -22,7 +22,7 @@ constexpr size_t kFrameBytes = kFrameSamples * sizeof(int16_t);
 constexpr uint32_t kFrameDurationMs = static_cast<uint32_t>((kFrameSamples * 1000) / kSampleRate);
 constexpr uint32_t kVadStartEnergyThreshold = 900;
 constexpr uint32_t kVadContinueEnergyThreshold = 500;
-constexpr uint32_t kVadSilenceHoldMs = 1000;
+constexpr uint32_t kVadSilenceHoldMs = 2500;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
 
 esp_codec_dev_handle_t g_mic_codec = nullptr;

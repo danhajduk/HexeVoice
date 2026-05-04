@@ -28,6 +28,7 @@ from hexevoice.voice.contracts import (
     project_voice_state,
 )
 from hexevoice.voice.pipeline import VoiceTurnAudioSummary, VoiceTurnPipeline
+from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
 
 
@@ -226,6 +227,62 @@ class VoiceSessionManager:
                 "stream_id": self._last_tts.get("stream_id"),
                 "content_type": self._last_tts.get("content_type"),
                 "audio_url": self._last_tts.get("audio_url"),
+            },
+        )
+
+    async def push_timer_announcement(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        text: str,
+        source_event_id: str | None = None,
+    ) -> dict:
+        if self._turn_pipeline is None:
+            return {"accepted": False, "reason": "turn_pipeline_unavailable", "status": "failed"}
+        announcement_text = str(text or "").strip()
+        if not announcement_text:
+            return {"accepted": False, "reason": "announcement_text_required", "status": "failed"}
+        tts = self._turn_pipeline.synthesize_reply(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            text=announcement_text,
+        )
+        self._last_response = announcement_text
+        self._last_tts = {
+            "content_type": tts.content_type,
+            "stream_id": tts.stream_id,
+            "audio_url": tts.audio_url,
+            "provider_id": tts.provider_id,
+            "error": tts.error,
+        }
+        if tts.error:
+            return {"accepted": False, "reason": tts.error, "status": "failed"}
+        if not tts.stream_id:
+            return {"accepted": False, "reason": "tts_stream_unavailable", "status": "failed"}
+        record_voice_event(
+            "timer.announcement.ready",
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            provider_id=tts.provider_id,
+            content_type=tts.content_type,
+            stream_id=tts.stream_id,
+            audio_url=tts.audio_url,
+            spoken_text=announcement_text,
+            source_event_id=source_event_id,
+        )
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.replay",
+            command_type="endpoint.announcement.timer",
+            request_id=f"timer_announcement_{uuid4().hex}",
+            payload={
+                "stream_id": tts.stream_id,
+                "content_type": tts.content_type,
+                "audio_url": tts.audio_url,
+                "announcement_type": "timer.create_succeeded",
+                "text": announcement_text,
+                "source_event_id": source_event_id,
             },
         )
 
@@ -567,6 +624,15 @@ class VoiceSessionManager:
                 detection.confidence,
                 payload.chunk_index,
             )
+            record_voice_event(
+                "wake.accepted",
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                model=detection.model,
+                confidence=detection.confidence,
+                chunk_index=payload.chunk_index,
+                chunk_count=self._chunk_count,
+            )
             self._set_session_state("wake_detected")
             events.append(
                 self._state_event(
@@ -634,6 +700,15 @@ class VoiceSessionManager:
                 session.session_id,
                 self._chunk_count,
             )
+            record_voice_event(
+                "wake.not_detected",
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+                model=wake_status.get("model"),
+                confidence=wake_status.get("confidence"),
+                reason=wake_status.get("reason") or "wake_not_detected",
+                chunk_count=self._chunk_count,
+            )
             cancelled = self._state_event("session.cancelled", session)
             self._active_session = None
             self._chunk_count = 0
@@ -685,6 +760,22 @@ class VoiceSessionManager:
                 turn.timings.assistant_ms,
                 turn.timings.tts_ms,
                 turn.timings.total_ms,
+            )
+            record_voice_event(
+                "transcript.final",
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+                provider_id=turn.transcript.provider_id,
+                model=turn.transcript.model,
+                confidence=turn.transcript.confidence,
+                duration_ms=turn.transcript.duration_ms,
+                text_chars=len(turn.transcript.text or ""),
+                transcript_text=turn.transcript.text,
+                error=turn.transcript.error,
+                stt_ms=turn.timings.stt_ms,
+                assistant_ms=turn.timings.assistant_ms,
+                tts_ms=turn.timings.tts_ms,
+                total_ms=turn.timings.total_ms,
             )
             if turn.transcript.error:
                 error = self._error_event(
@@ -742,6 +833,19 @@ class VoiceSessionManager:
                 "provider_id": turn.tts.provider_id,
                 "error": turn.tts.error,
             }
+            record_voice_event(
+                "tts.ready",
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+                provider_id=turn.tts.provider_id,
+                content_type=turn.tts.content_type,
+                stream_id=turn.tts.stream_id,
+                audio_url=turn.tts.audio_url,
+                text_chars=len(turn.assistant_response.spoken_text or ""),
+                spoken_text=turn.assistant_response.spoken_text,
+                duration_ms=turn.timings.tts_ms,
+                error=turn.tts.error,
+            )
             if turn.tts.error:
                 events.append(
                     self._error_event(

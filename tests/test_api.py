@@ -718,6 +718,25 @@ def test_assistant_turn_echoes_transcript_without_ai(tmp_path):
     assert response.json()["error"] is None
 
 
+def test_assistant_turn_handles_timer_intent_locally(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", node_name="kitchen-voice")))
+
+    response = client.post(
+        "/api/assistant/turn",
+        json={"endpoint_id": "box-1", "session_id": "session-abc", "text": "Hexa, create a timer for 5 minutes"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_id"] == "session-abc"
+    assert payload["heard_text"] == "create a timer for 5 minutes"
+    assert payload["command"] == "timer.create"
+    assert payload["handled_locally"] is True
+    assert payload["reply_text"] == "Setting timer for 5 minutes."
+    assert payload["spoken_text"] == "Setting timer for 5 minutes."
+    assert payload["provider_id"] == "local_pattern"
+
+
 def test_assistant_turn_fallback_reply_uses_session_id_if_provided():
     client = TestClient(create_app(Settings(node_name="lab-voice")))
 

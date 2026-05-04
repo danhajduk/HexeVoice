@@ -5,3 +5,4 @@
 [FUTURE TODO] Task 069: Validate real-device audio providers end to end
 [FUTURE TODO] Task 070: Update Phase 2 operator docs and release checklist
 [FUTURE TODO] Task 071: Add touchscreen swipe navigation and a separate UI pages manifest for settings pages; use ~40px button art inside ~56px touch targets
+[FUTURE TODO] Task 072: Add a native ESP voice endpoint timer screen with active countdown, paused/finished states, and MQTT/request timestamp-aware due-time rendering

@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
     backend_log_path: Path | None = Field(default=None, alias="BACKEND_LOG_PATH")
+    voice_record_log_path: Path | None = Field(default=None, alias="VOICE_RECORD_LOG_PATH")
     backend_log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO",
         alias="BACKEND_LOG_LEVEL",
@@ -89,6 +90,13 @@ class Settings(BaseSettings):
     )
     voice_assistant_timeout_s: float = Field(default=20.0, alias="VOICE_ASSISTANT_TIMEOUT_S", gt=0)
     voice_conversation_context_turns: int = Field(default=6, alias="VOICE_CONVERSATION_CONTEXT_TURNS", ge=0)
+    voice_domain_events_enabled: bool = Field(default=True, alias="VOICE_DOMAIN_EVENTS_ENABLED")
+    voice_domain_events_mqtt_timeout_s: float = Field(default=5.0, alias="VOICE_DOMAIN_EVENTS_MQTT_TIMEOUT_S", gt=0)
+    voice_timer_announcements_enabled: bool = Field(default=True, alias="VOICE_TIMER_ANNOUNCEMENTS_ENABLED")
+    voice_timer_success_mqtt_topic: str = Field(
+        default="hexe/events/timer/create_succeeded",
+        alias="VOICE_TIMER_SUCCESS_MQTT_TOPIC",
+    )
     voice_tts_provider: Literal["deterministic", "openai", "piper"] = Field(
         default="deterministic",
         alias="VOICE_TTS_PROVIDER",
@@ -146,6 +154,11 @@ class Settings(BaseSettings):
         if self.backend_log_path is not None:
             return self.backend_log_path
         return self.runtime_dir / "logs" / "hexevoice-backend.log"
+
+    def resolved_voice_record_log_path(self) -> Path:
+        if self.voice_record_log_path is not None:
+            return self.voice_record_log_path
+        return self.runtime_dir / "logs" / "hexevoice-voice-records.log"
 
     def resolved_faster_whisper_temp_dir(self) -> Path:
         if self.voice_stt_faster_whisper_temp_dir is not None:

@@ -1,0 +1,155 @@
+{
+  "schema_version": 1,
+  "endpoints": {
+    "esp-box-1": {
+      "endpoint_id": "esp-box-1",
+      "display_name": null,
+      "zone_id": null,
+      "device_state": "idle",
+      "session_id": null,
+      "firmware_version": "c7528b6-dirty",
+      "ip_address": "10.0.0.73",
+      "rssi_dbm": -43,
+      "capabilities": {
+        "touchscreen": {
+          "available": true
+        },
+        "storage": {
+          "sd_card_available": true,
+          "mount_path": "/sdcard",
+          "pictures_path": "/sdcard/hexe/pictures",
+          "sprites_path": "/sdcard/hexe/sprites",
+          "sounds_path": "/sdcard/hexe/sounds",
+          "media_reformat": true,
+          "media_transfer_active": false,
+          "media_transfer_status": "idle",
+          "media_inventory": {
+            "pictures": [
+              {
+                "filename": "bg.rgb565",
+                "size_bytes": 153600
+              }
+            ],
+            "sprites": [
+              {
+                "filename": "clock.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "ui_manifest.json",
+                "size_bytes": 2650
+              },
+              {
+                "filename": "clock.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "error.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "error.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "idle.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "idle.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "listening.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "listening.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "logo.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "logo.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "talk.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "talk.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "thinking.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "thinking.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "work.alpha8",
+                "size_bytes": 76800
+              },
+              {
+                "filename": "work.rgb565",
+                "size_bytes": 153600
+              },
+              {
+                "filename": "ota.rgb565",
+                "size_bytes": 153600
+              }
+            ],
+            "sounds": [],
+            "truncated": false
+          }
+        },
+        "display": {
+          "available": true,
+          "width": 320,
+          "height": 240,
+          "pixel_format": "rgb565",
+          "resolution": "320x240"
+        },
+        "audio": {
+          "input": {
+            "available": true,
+            "encoding": "pcm_s16le",
+            "sample_rate_hz": 16000,
+            "channels": 1
+          },
+          "output": {
+            "available": true,
+            "volume_percent": 70,
+            "muted": false
+          }
+        },
+        "controls": {
+          "volume": true,
+          "mute": true,
+          "cancel": true,
+          "replay": true,
+          "storage_reformat": true,
+          "restart": false,
+          "reconnect": false
+        },
+        "firmware": {
+          "project_name": "hexe_firmware",
+          "version": "c7528b6-dirty",
+          "build_date": "May  3 2026",
+          "build_time": "18:30:55",
+          "idf_version": "v6.1-dev-3824-g484e56869c"
+        }
+      },
+      "first_seen_at": "2026-04-26T13:25:52.058896+00:00",
+      "last_seen_at": "2026-05-04T07:01:09.129579+00:00",
+      "operator_updated_at": null,
+      "updated_at": "2026-05-04T07:01:09.129579+00:00"
+    }
+  },
+  "updated_at": "2026-05-04T07:01:09.129756+00:00"
+}

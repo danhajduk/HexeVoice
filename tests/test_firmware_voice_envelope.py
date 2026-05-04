@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 FIRMWARE_BACKEND_CLIENT = Path("firmware/main/voice/backend_client.cpp")
+FIRMWARE_AUDIO = Path("firmware/main/board/audio.cpp")
 FIRMWARE_DISPLAY = Path("firmware/main/board/display.cpp")
 FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
@@ -22,6 +23,13 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "session.cancel" in source
     assert "command.ack" in source
     assert "command.error" in source
+
+
+def test_firmware_vad_keeps_listening_window_after_wake_word():
+    source = FIRMWARE_AUDIO.read_text()
+
+    assert "kVadSilenceHoldMs = 2500" in source
+    assert 'finish_audio_stream("vad_silence")' in source
 
 
 def test_firmware_heartbeat_reports_network_metadata():

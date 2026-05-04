@@ -7,6 +7,7 @@ import httpx
 
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.config.settings import Settings
+from hexevoice.domain_events import DomainEventPublishDecision
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.voice import (
     DeterministicSpeechToTextAdapter,
@@ -19,6 +20,18 @@ from hexevoice.voice import (
     VoiceTurnPipeline,
     build_voice_turn_pipeline,
 )
+
+
+class FakeTimerEventPublisher:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def publish_timer_create(self, **payload):
+        self.calls.append(payload)
+        return DomainEventPublishDecision(status="published", reason="published", topic="hexe/nodes/node-1/events/timer/create_requested")
+
+    def status(self):
+        return {"provider": "fake", "enabled": True, "last_decision": None}
 
 
 def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
@@ -78,6 +91,39 @@ def test_voice_turn_pipeline_strips_wake_word_from_final_transcript(tmp_path):
     assert result.transcript.text == "what time is it?"
     assert result.assistant_response.heard_text == "what time is it?"
     assert result.assistant_response.spoken_text == "I heard what time is it?"
+
+
+def test_voice_turn_pipeline_handles_timer_intent_locally(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    publisher = FakeTimerEventPublisher()
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime, timer_event_publisher=publisher)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, set a timer for 10 minutes"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-box-1", session_id="voice-session-1", chunk_count=1)
+    )
+
+    assert result.transcript.text == "set a timer for 10 minutes"
+    assert result.assistant_response.handled_locally is True
+    assert result.assistant_response.command == "timer.create"
+    assert result.assistant_response.provider_id == "local_pattern"
+    assert result.assistant_response.spoken_text == "Setting timer for 10 minutes."
+    assert publisher.calls == [
+        {
+            "endpoint_id": "esp-box-1",
+            "session_id": "voice-session-1",
+            "heard_text": "set a timer for 10 minutes",
+            "duration_seconds": 600,
+            "duration_text": "10 minutes",
+            "requested_at": publisher.calls[0]["requested_at"],
+        }
+    ]
+    assert publisher.calls[0]["requested_at"].tzinfo is not None
 
 
 def test_openai_stt_adapter_posts_wav_transcription_request():

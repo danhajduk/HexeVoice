@@ -187,7 +187,7 @@ function renderPreTrustStage({
           </label>
           <label className="field field-span-2">
             <span className="field-label">UI endpoint</span>
-            <input className="field-input" value={identityForm.ui_endpoint} onChange={(event) => onIdentityChange("ui_endpoint", event.target.value)} placeholder="http://10.0.0.22:8080" />
+            <input className="field-input" value={identityForm.ui_endpoint} onChange={(event) => onIdentityChange("ui_endpoint", event.target.value)} placeholder="http://10.0.0.22:8084" />
           </label>
         </div>
         <FormActions busy={busyState === "identity"} busyLabel="Saving..." label="Save node identity" onClick={onSaveIdentity} />

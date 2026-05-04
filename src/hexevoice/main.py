@@ -75,6 +75,7 @@ from hexevoice.persistence import EndpointRegistryStore, OnboardingStateStore
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.supervisor.client import SupervisorApiClient
+from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.voice import VoiceSessionManager, WakeDetector
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
@@ -83,7 +84,9 @@ from hexevoice.voice.wake import build_wake_detector
 
 def configure_backend_logging(settings: Settings) -> Path:
     log_path = settings.resolved_backend_log_path()
+    voice_record_log_path = settings.resolved_voice_record_log_path()
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    voice_record_log_path.parent.mkdir(parents=True, exist_ok=True)
     formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
     level = getattr(logging, settings.backend_log_level.upper(), logging.INFO)
 
@@ -113,9 +116,30 @@ def configure_backend_logging(settings: Settings) -> Path:
     stream_handler.setLevel(level)
     stream_handler._hexevoice_backend_handler = True  # type: ignore[attr-defined]
     logger.addHandler(stream_handler)
+
+    voice_record_logger = logging.getLogger("hexevoice.voice.records")
+    voice_record_logger.setLevel(logging.INFO)
+    voice_record_logger.propagate = False
+    for handler in list(voice_record_logger.handlers):
+        if getattr(handler, "_hexevoice_voice_record_handler", False):
+            voice_record_logger.removeHandler(handler)
+            handler.close()
+    voice_record_handler = TimedRotatingFileHandler(
+        voice_record_log_path,
+        when="midnight",
+        interval=1,
+        backupCount=settings.backend_log_backup_days,
+        encoding="utf-8",
+    )
+    voice_record_handler.setFormatter(formatter)
+    voice_record_handler.setLevel(logging.INFO)
+    voice_record_handler._hexevoice_voice_record_handler = True  # type: ignore[attr-defined]
+    voice_record_logger.addHandler(voice_record_handler)
+
     logger.info(
-        "Backend logging initialized: path=%s level=%s rotation=midnight backup_days=%s",
+        "Backend logging initialized: path=%s voice_record_path=%s level=%s rotation=midnight backup_days=%s",
         log_path,
+        voice_record_log_path,
         settings.backend_log_level,
         settings.backend_log_backup_days,
     )
@@ -166,7 +190,17 @@ def create_app(
         wake_detector=voice_wake_detector or build_wake_detector(app_settings),
         turn_pipeline=voice_turn_pipeline,
     )
+    timer_announcement_service = TimerSucceededAnnouncementService(
+        settings=app_settings,
+        announce=lambda announcement: voice_session_manager.push_timer_announcement(
+            endpoint_id=announcement.endpoint_id,
+            session_id=announcement.session_id,
+            text=announcement.text,
+            source_event_id=announcement.event_id,
+        ),
+    )
     app = FastAPI(title="HexeVoice")
+    app.state.timer_announcement_service = timer_announcement_service
     log = logging.getLogger("hexevoice")
 
     @app.on_event("startup")
@@ -175,6 +209,7 @@ def create_app(
             voice_session_manager.preload_wake_detector()
         if app_settings.voice_stt_preload:
             asyncio.create_task(asyncio.to_thread(voice_session_manager.preload_turn_pipeline))
+        timer_announcement_service.start(asyncio.get_running_loop())
 
         async def loop():
             while True:
@@ -183,6 +218,10 @@ def create_app(
 
         if supervisor_enabled:
             asyncio.create_task(loop())
+
+    @app.on_event("shutdown")
+    async def stop_background_services():
+        timer_announcement_service.stop()
 
     @app.get("/health/live")
     async def health_live():
@@ -511,7 +550,9 @@ def create_app(
 
     @app.get("/api/voice/status")
     async def voice_status() -> dict:
-        return voice_session_manager.status()
+        status = voice_session_manager.status()
+        status["timer_announcements"] = timer_announcement_service.status()
+        return status
 
     @app.get("/api/voice/tts/{stream_id}")
     async def voice_tts_audio(stream_id: str) -> FileResponse:

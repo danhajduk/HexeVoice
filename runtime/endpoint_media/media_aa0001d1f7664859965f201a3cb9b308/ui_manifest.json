@@ -73,56 +73,24 @@
       "width": 320,
       "height": 240,
       "x": 0,
-      "y": 5,
-      "clip": true
-    },
-    "ota": {
-      "filename": "ota.rgb565",
-      "width": 320,
-      "height": 240,
-      "x": 0,
       "y": 0
     }
   },
   "clock": {
-    "idle_timeout_ms": 10000,
+    "idle_timeout_ms": 120000,
     "cx": 160,
     "cy": 110,
-    "radius": 65,
+    "radius": 62,
     "color_rgb565": 65535,
     "date": true,
-    "hands_dx": -2,
-    "hands_dy": 3,
+    "hands_dx": 0,
+    "hands_dy": 0,
     "hour_radius_percent": 50,
     "minute_radius_percent": 75,
-    "seconds": true,
-    "second_radius_percent": 100,
-    "second_color_rgb565": 63488,
     "frame": false,
-    "date_split": true,
-    "day_x": 100,
-    "day_y": 204,
-    "day_scale_percent": 200,
-    "day_format": "short",
-    "day_text": "",
-    "date_x": 170,
-    "date_y": 204,
-    "date_scale_percent": 200
-  },
-  "ota_progress": {
-    "enabled": true,
-    "frame": false,
-    "orientation": "horizontal",
-    "x": 72,
-    "y": 179,
-    "width": 175,
-    "height": 12,
-    "padding": 2,
-    "shadow_margin": 3,
-    "shadow_color_rgb565": 0,
-    "background_color_rgb565": 6339,
-    "outline_color_rgb565": 65535,
-    "fill_color_rgb565": 2047
+    "date_x": -1,
+    "date_y": 202,
+    "date_scale": 2
   },
   "sprites": []
 }

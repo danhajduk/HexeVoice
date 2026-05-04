@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -348,6 +350,51 @@ def test_replay_synthesizes_i_heard_last_transcript(tmp_path):
     assert replay_event["payload"]["stream_id"] == "tts-replay"
     assert replay_event["payload"]["audio_url"] == "/api/voice/tts/tts-replay"
     assert client.get("/api/voice/status").json()["last_response"] == "I heard what is the time"
+
+
+def test_voice_session_manager_pushes_timer_announcement_to_endpoint():
+    class AnnouncementPipeline:
+        def __init__(self):
+            self.text = None
+
+        def synthesize_reply(self, *, endpoint_id, session_id, text):
+            self.text = text
+            return TtsSynthesis(
+                content_type="audio/wav",
+                stream_id="tts-timer",
+                audio_url="/api/voice/tts/tts-timer",
+                provider_id="test",
+            )
+
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    pipeline = AnnouncementPipeline()
+    websocket = FakeWebSocket()
+    manager = VoiceSessionManager(turn_pipeline=pipeline)
+    manager._connection_active = True
+    manager._websocket = websocket
+    manager._connected_endpoint_id = "esp-box-1"
+
+    result = asyncio.run(
+        manager.push_timer_announcement(
+            endpoint_id="esp-box-1",
+            session_id="session-1",
+            text="Timer is on for 1 hour and 30 minutes.",
+            source_event_id="interaction-timer-create-succeeded-session-1",
+        )
+    )
+
+    assert result["accepted"] is True
+    assert pipeline.text == "Timer is on for 1 hour and 30 minutes."
+    assert websocket.sent[0]["event_type"] == "endpoint.replay"
+    assert websocket.sent[0]["payload"]["stream_id"] == "tts-timer"
+    assert websocket.sent[0]["payload"]["announcement_type"] == "timer.create_succeeded"
+    assert websocket.sent[0]["payload"]["source_event_id"] == "interaction-timer-create-succeeded-session-1"
 
 
 def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
