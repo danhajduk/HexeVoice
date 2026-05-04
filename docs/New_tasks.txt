@@ -8,3 +8,9 @@
 [FUTURE TODO] Task 072: Add a native ESP voice endpoint timer screen with active countdown, paused/finished states, and MQTT/request timestamp-aware due-time rendering
 [FUTURE TODO] Task 076: Connect Interaction Node `ui.play_sound` audio_url playback to Voice Node generated TTS clips for kiosk speech
 [FUTURE TODO] Task 077: Later Voice Node TTS extensions: streaming URLs, voice/language listing, common-clip cache, and playback/fetch/expiry events
+[FUTURE TODO] Task 085: Define the Voice Node registered-intent contract, mirroring AI Node prompt registration for id, version, ownership, lifecycle, definition, constraints, and metadata
+[FUTURE TODO] Task 086: Add Voice Node local intent registry storage and APIs to register, update, list, inspect, retire, and review intents
+[FUTURE TODO] Task 087: Declare Voice Node intent-registration capabilities and endpoint metadata so Core can resolve intent registration services
+[FUTURE TODO] Task 088: Route local assistant command handling through registered intents, starting with the timer intent as the migration target
+[FUTURE TODO] Task 089: Add setup/dashboard controls for selecting, declaring, undeclaring, enabling, disabling, and inspecting Voice Node intents
+[FUTURE TODO] Task 090: Add tests and operator docs for Voice Node intent registration, capability declaration, service resolution, and dispatch behavior

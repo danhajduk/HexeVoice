@@ -764,3 +764,92 @@ Original task details:
   - Test endpoint reconnect during transfer.
 - Completion criteria:
   - Automated backend tests and firmware/manual validation notes cover the failure modes, with clear operator-facing errors.
+
+## Task 085
+Original task details:
+- Title: Define the Voice Node registered-intent contract
+- Goal:
+  - Let clients register voice intents with the Voice Node the same way AI Node registers prompt services.
+- AI Node pattern to mirror:
+  - Local registry/state store with a normalized JSON contract.
+  - Register, update, list, inspect, lifecycle, review, and status snapshot behavior.
+  - Id/version lifecycle so definitions can evolve without silently changing old behavior.
+- Scope:
+  - Define an intent record with `intent_id`, `intent_name`, `service_id`, `owner_service`, `owner_client_id`, `version`, `status`, `privacy_class`, `access_scope`, `definition`, `constraints`, `metadata`, `created_at`, and `updated_at`.
+  - Define the intent `definition` shape for utterance examples, slot schema, matching hints, dispatch target/action, response behavior, and safety/permission requirements.
+  - Decide allowed lifecycle states, including active, restricted, review_due, probation, retired, and expired if applicable.
+- Completion criteria:
+  - Contract docs and JSON schema exist.
+  - The contract is compatible with later Core service resolution and local Voice Node dispatch.
+
+## Task 086
+Original task details:
+- Title: Add Voice Node local intent registry storage and APIs
+- Goal:
+  - Persist and manage registered intents locally in the Voice Node.
+- Scope:
+  - Add an intent registry/store similar to AI Node `PromptRegistry` and prompt service state store.
+  - Add APIs to register, update, list, inspect, retire, transition lifecycle, and review intents.
+  - Deny duplicate active intent IDs and permit replacement only after retirement.
+  - Return a state snapshot that includes configured/registered counts and last update time.
+- Completion criteria:
+  - Registered intents survive restart.
+  - Invalid intent definitions are rejected with clear errors.
+  - Unit/API tests cover registration, update, lifecycle, duplicate handling, and persistence.
+
+## Task 087
+Original task details:
+- Title: Declare Voice Node intent-registration capabilities and endpoint metadata
+- Goal:
+  - Let Core resolve that Voice Node supports intent registration.
+- Scope:
+  - Add capability declarations for at least `voice.intent.register`, `voice.intent.list`, and `voice.intent.dispatch`.
+  - Include endpoint metadata for the registration/list/dispatch APIs in the declaration payload using the existing capability declaration schema.
+  - Include useful limits/constraints in metadata, such as supported matcher modes, max examples, slot schema support, and lifecycle support.
+  - Keep implementation node-side; do not require Core schema changes unless Core already supports the metadata field.
+- Completion criteria:
+  - Core service resolution can return Voice Node as a provider for intent-registration capability requests.
+  - The resolved service metadata is enough for a client to discover how to call the Voice Node intent APIs.
+
+## Task 088
+Original task details:
+- Title: Route local assistant command handling through registered intents
+- Goal:
+  - Make Voice Node use registered intents for local command handling instead of hardcoded-only behavior.
+- Scope:
+  - Use the timer command as the first migrated built-in registered intent.
+  - Match recognized text against active registered intents.
+  - Validate extracted slots against the registered intent definition before dispatch.
+  - Preserve existing timer behavior, MQTT timestamp handling, and response shape.
+  - Report useful failures for unregistered, disabled, ambiguous, invalid-slot, and unauthorized intents.
+- Completion criteria:
+  - Timer commands still work after migration.
+  - A newly registered intent can be matched and dispatched in a controlled test.
+
+## Task 089
+Original task details:
+- Title: Add setup/dashboard controls for Voice Node intents
+- Goal:
+  - Let operators inspect and control registered intent declarations after setup.
+- Scope:
+  - Add UI controls to show known built-in and custom intents.
+  - Allow selecting, declaring, undeclaring, enabling, disabling, and reviewing intents.
+  - Show intent id, version, status, owner, capability declaration state, and last update time.
+  - Keep provider setup accessible after initial setup completion.
+- Completion criteria:
+  - Operator can redeclare or undeclare Voice Node intent capabilities without editing files by hand.
+  - UI reflects current registry and declaration state after refresh/restart.
+
+## Task 090
+Original task details:
+- Title: Add tests and operator docs for Voice Node intent registration
+- Goal:
+  - Make the intent registration workflow repeatable and safe to operate.
+- Scope:
+  - Test registry persistence, API validation, capability declaration payloads, service resolution metadata, and dispatch behavior.
+  - Document request/response examples for registering, updating, listing, and dispatching intents.
+  - Document how the Voice Node intent workflow maps to the AI Node prompt registration pattern.
+  - Add troubleshooting notes for unresolved capability, undeclared intent, disabled intent, and invalid definition failures.
+- Completion criteria:
+  - Targeted tests pass.
+  - Docs include enough payload examples for another node to discover and call the service.
