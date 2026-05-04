@@ -58,6 +58,8 @@ from hexevoice.api.models import (
     ServiceStatusResponse,
     TrustActivationFinalizeResponse,
     TrustStatusRefreshResponse,
+    TtsSynthesizeRequest,
+    TtsSynthesizeResponse,
     OperationalStatusResponse,
 )
 from hexevoice.assistant import AssistantTurnService
@@ -77,6 +79,7 @@ from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
+from hexevoice.tts import TtsAudioService
 from hexevoice.voice import VoiceSessionManager, WakeDetector
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
 from hexevoice.voice.wake import build_wake_detector
@@ -186,6 +189,7 @@ def create_app(
     )
     assistant_service = AssistantTurnService(settings=app_settings, runtime_service=service)
     voice_turn_pipeline = build_voice_turn_pipeline(settings=app_settings, assistant_service=assistant_service)
+    tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
     voice_session_manager = voice_session_manager or VoiceSessionManager(
         wake_detector=voice_wake_detector or build_wake_detector(app_settings),
         turn_pipeline=voice_turn_pipeline,
@@ -553,6 +557,17 @@ def create_app(
         status = voice_session_manager.status()
         status["timer_announcements"] = timer_announcement_service.status()
         return status
+
+    @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
+    async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
+        return await asyncio.to_thread(tts_audio_service.synthesize, payload)
+
+    @app.get("/api/tts/audio/{stream_id}")
+    async def tts_audio(stream_id: str) -> FileResponse:
+        audio_path = tts_audio_service.audio_path(stream_id)
+        if audio_path is None:
+            raise HTTPException(status_code=404, detail="tts_audio_not_found")
+        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
 
     @app.get("/api/voice/tts/{stream_id}")
     async def voice_tts_audio(stream_id: str) -> FileResponse:

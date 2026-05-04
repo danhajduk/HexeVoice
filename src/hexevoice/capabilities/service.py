@@ -9,6 +9,13 @@ from hexevoice.core.client import CoreOnboardingClient
 from hexevoice.persistence import OnboardingStateStore
 
 
+VOICE_NODE_CAPABILITIES = [
+    "voice.inference",
+    "voice.tts.synthesize",
+    "voice.tts.audio_url",
+]
+
+
 class CapabilityDeclarationService:
     def __init__(
         self,
@@ -32,9 +39,10 @@ class CapabilityDeclarationService:
         if not state.provider_setup.declaration_allowed or not state.provider_setup.enabled_providers:
             raise HTTPException(status_code=400, detail="provider_setup_incomplete")
 
-        declared_task_families = sorted({"voice.inference"})
+        declared_task_families = VOICE_NODE_CAPABILITIES
         supported_providers = sorted({provider_id.strip() for provider_id in (state.provider_setup.supported_providers or [self._settings.provider_id]) if provider_id and provider_id.strip()})
         enabled_providers = sorted({provider_id.strip() for provider_id in state.provider_setup.enabled_providers if provider_id and provider_id.strip()})
+        capability_endpoints = self._capability_endpoints()
 
         payload = {
             "manifest": {
@@ -46,6 +54,8 @@ class CapabilityDeclarationService:
                     "node_software_version": self._settings.node_software_version,
                 },
                 "declared_task_families": declared_task_families,
+                "declared_capabilities": declared_task_families,
+                "capability_endpoints": capability_endpoints,
                 "supported_providers": supported_providers,
                 "enabled_providers": enabled_providers,
                 "node_features": {
@@ -94,7 +104,7 @@ class CapabilityDeclarationService:
                         "capability_status": "accepted" if response.get("acceptance_status") == "accepted" else "declared",
                         "accepted_at": response.get("accepted_at"),
                         "declared_task_families": declared_task_families,
-                        "declared_capabilities": response.get("declared_capabilities", []),
+                        "declared_capabilities": response.get("declared_capabilities", declared_task_families),
                         "capability_profile_id": response.get("capability_profile_id"),
                         "governance_version": response.get("governance_version"),
                         "governance_issued_at": response.get("governance_issued_at"),
@@ -129,3 +139,42 @@ class CapabilityDeclarationService:
             governance_version=updated.capability_declaration.governance_version,
             governance_issued_at=updated.capability_declaration.governance_issued_at,
         )
+
+    def _capability_endpoints(self) -> dict:
+        base_url = (
+            self._settings.public_api_base_url
+            or f"http://{self._settings.api_host}:{self._settings.api_port}"
+        ).rstrip("/")
+        supported_formats = ["wav", "mp3"] if self._settings.voice_tts_provider == "openai" else ["wav"]
+        default_format = (
+            self._settings.voice_tts_response_format
+            if self._settings.voice_tts_provider == "openai"
+            else "wav"
+        )
+        if default_format not in supported_formats:
+            default_format = "wav"
+        return {
+            "voice.tts.synthesize": {
+                "transport": "http",
+                "method": "POST",
+                "path": "/api/tts/synthesize",
+                "url": f"{base_url}/api/tts/synthesize",
+                "request_schema": "TtsSynthesizeRequest",
+                "response_schema": "TtsSynthesizeResponse",
+                "default_format": default_format,
+                "supported_formats": supported_formats,
+                "ttl_seconds": {
+                    "default": 60,
+                    "minimum": 5,
+                    "maximum": 3600,
+                },
+            },
+            "voice.tts.audio_url": {
+                "transport": "http",
+                "method": "GET",
+                "path": "/api/tts/audio/{stream_id}",
+                "url_template": f"{base_url}/api/tts/audio/{{stream_id}}",
+                "response": "short_lived_audio_file",
+                "reachable_from": "lan",
+            },
+        }

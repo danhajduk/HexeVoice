@@ -1,6 +1,6 @@
 import httpx
 
-from hexevoice.capabilities.service import CapabilityDeclarationService
+from hexevoice.capabilities.service import CapabilityDeclarationService, VOICE_NODE_CAPABILITIES
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -51,7 +51,7 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
                 "node_id": "node-voice-123",
                 "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
-                "declared_capabilities": ["voice.inference"],
+                "declared_capabilities": VOICE_NODE_CAPABILITIES,
                 "enabled_providers": ["voice"],
                 "capability_profile_id": "profile-123",
                 "governance_version": "gov-2026.04",
@@ -73,7 +73,12 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
 
     assert response.capability_status == "accepted"
     assert captured["json"]["manifest"]["manifest_version"] == "1.0"
-    assert captured["json"]["manifest"]["declared_task_families"] == ["voice.inference"]
+    assert captured["json"]["manifest"]["declared_task_families"] == VOICE_NODE_CAPABILITIES
+    assert captured["json"]["manifest"]["declared_capabilities"] == VOICE_NODE_CAPABILITIES
+    endpoints = captured["json"]["manifest"]["capability_endpoints"]
+    assert endpoints["voice.tts.synthesize"]["method"] == "POST"
+    assert endpoints["voice.tts.synthesize"]["path"] == "/api/tts/synthesize"
+    assert endpoints["voice.tts.audio_url"]["path"] == "/api/tts/audio/{stream_id}"
     assert captured["json"]["manifest"]["enabled_providers"] == ["voice"]
     assert persisted.capability_declaration.capability_profile_id == "profile-123"
     assert persisted.capability_declaration.capability_status == "accepted"

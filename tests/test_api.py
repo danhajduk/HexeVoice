@@ -7,6 +7,7 @@ import httpx
 
 from hexevoice.api.models import AssistantTurnRequest
 from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
+from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
 from hexevoice.main import create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -718,6 +719,50 @@ def test_assistant_turn_echoes_transcript_without_ai(tmp_path):
     assert response.json()["error"] is None
 
 
+def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
+    public_base_url = "http://voice-node.local:9004"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                public_api_base_url=public_base_url,
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/tts/synthesize",
+        json={
+            "intent": "tts.speak",
+            "target": {
+                "device_id": "kiosk_kitchen_1",
+                "location": "kitchen",
+                "client_ip": "10.0.0.137",
+                "playback": "browser_audio",
+            },
+            "text": "The kitchen timer is done.",
+            "voice": "default",
+            "format": "wav",
+            "ttl_seconds": 60,
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["audio_url"].startswith(f"{public_base_url}/api/tts/audio/")
+    assert payload["content_type"] == "audio/wav"
+    assert payload["duration_ms"] is not None
+    assert payload["expires_at"]
+    assert payload["stream_id"].startswith("tts-")
+
+    audio = client.get(payload["audio_url"].removeprefix(public_base_url))
+    assert audio.status_code == 200
+    assert audio.headers["content-type"] == "audio/wav"
+    assert audio.content.startswith(b"RIFF")
+
+
 def test_assistant_turn_handles_timer_intent_locally(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", node_name="kitchen-voice")))
 
@@ -1344,6 +1389,10 @@ def test_provider_setup_enables_provider_and_advances_to_capability_declaration(
     assert onboarding_status.status_code == 200
     assert onboarding_status.json()["current_step_id"] == "capability_declaration"
     assert onboarding_status.json()["capability_setup"]["provider_selection"]["enabled"] == ["voice"]
+    assert (
+        onboarding_status.json()["capability_setup"]["task_capability_selection"]["available"]
+        == VOICE_NODE_CAPABILITIES
+    )
     assert onboarding_status.json()["capability_setup"]["declaration_allowed"] is True
 
     capability_status = client.get("/api/capabilities")
@@ -1392,7 +1441,7 @@ def test_capability_declaration_governance_and_operational_status_flow(tmp_path,
                 "node_id": "node-voice-123",
                 "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
-                "declared_capabilities": ["voice.inference"],
+                "declared_capabilities": VOICE_NODE_CAPABILITIES,
                 "enabled_providers": ["voice"],
                 "capability_profile_id": "profile-123",
                 "governance_version": "gov-2026.04",

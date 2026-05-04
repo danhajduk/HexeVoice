@@ -37,6 +37,33 @@ class AssistantTurnResponse(BaseModel):
     error: str | None = None
 
 
+class TtsSynthesizeTarget(BaseModel):
+    device_id: str | None = None
+    location: str | None = None
+    client_ip: str | None = None
+    playback: str | None = None
+
+
+class TtsSynthesizeRequest(BaseModel):
+    intent: Literal["tts.speak"] = "tts.speak"
+    target: TtsSynthesizeTarget = Field(default_factory=TtsSynthesizeTarget)
+    text: str = Field(min_length=1, max_length=4000)
+    voice: str | None = Field(default=None, max_length=80)
+    format: Literal["wav", "mp3"] = "wav"
+    ttl_seconds: int = Field(default=60, ge=5, le=3600)
+
+
+class TtsSynthesizeResponse(BaseModel):
+    status: Literal["ready", "failed"]
+    audio_url: str | None = None
+    content_type: str | None = None
+    duration_ms: int | None = None
+    expires_at: str | None = None
+    stream_id: str | None = None
+    provider_id: str | None = None
+    error: str | None = None
+
+
 class EndpointHeartbeatRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     device_state: Literal["idle", "listening", "thinking", "speaking", "offline"] = "idle"

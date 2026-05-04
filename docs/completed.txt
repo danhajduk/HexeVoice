@@ -75,3 +75,6 @@ Task 089: Add general avatar scene type support such as clock scenes - Completed
 Task 090: Expand sprite support for buttons, icons, and touch targets - Completed on 04/27/2026 01:25
 Task 091: Update backend and dashboard media manager for UI asset classes - Completed on 04/27/2026 01:25
 Task 092: Add UI composition tests, docs, and migration path - Completed on 04/27/2026 01:25
+Task 073: Add Voice Node TTS capability declaration for voice.tts.synthesize and voice.tts.audio_url alongside voice.inference - Completed on 05/04/2026 00:30
+Task 074: Add a Voice Node TTS synthesize API accepting target device/location/client playback hints, text, voice, format, and TTL - Completed on 05/04/2026 00:30
+Task 075: Serve generated TTS audio through short-lived LAN-reachable URLs with content type, duration, expiry metadata, and cleanup - Completed on 05/04/2026 00:30

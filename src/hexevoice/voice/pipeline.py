@@ -88,7 +88,15 @@ class SpeechToTextAdapter(Protocol):
 
 
 class TextToSpeechAdapter(Protocol):
-    def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+    def synthesize(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        text: str,
+        voice: str | None = None,
+        audio_format: str | None = None,
+    ) -> TtsSynthesis:
         ...
 
     def status(self) -> dict:
@@ -324,7 +332,15 @@ class FasterWhisperSpeechToTextAdapter:
 
 
 class DeterministicTextToSpeechAdapter:
-    def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+    def synthesize(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        text: str,
+        voice: str | None = None,
+        audio_format: str | None = None,
+    ) -> TtsSynthesis:
         synthesis = TtsSynthesis(stream_id=f"tts-{uuid4().hex[:12]}")
         record_voice_event(
             "tts.synthesized",
@@ -365,17 +381,25 @@ class PiperTextToSpeechAdapter:
         self._http_client = http_client
         self._last_error: str | None = None
 
-    def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+    def synthesize(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        text: str,
+        voice: str | None = None,
+        audio_format: str | None = None,
+    ) -> TtsSynthesis:
         if not self._base_url:
             self._last_error = "missing_piper_base_url"
-            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text)
+            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text, voice=voice)
 
         stream_id = f"tts-{uuid4().hex[:12]}"
         client = self._http_client or httpx.Client(timeout=self._timeout_s)
         try:
             response = client.post(
                 f"{self._base_url}{self._synthesize_path}",
-                json={"text": text, "voice": self._voice},
+                json={"text": text, "voice": voice or self._voice},
             )
             response.raise_for_status()
             self._output_dir.mkdir(parents=True, exist_ok=True)
@@ -412,7 +436,7 @@ class PiperTextToSpeechAdapter:
                 text_chars=len(text or ""),
                 error=self._last_error,
             )
-            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text)
+            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text, voice=voice)
         finally:
             if self._http_client is None:
                 client.close()
@@ -454,9 +478,18 @@ class OpenAiTextToSpeechAdapter:
         self._http_client = http_client
         self._last_error: str | None = None
 
-    def synthesize(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
+    def synthesize(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        text: str,
+        voice: str | None = None,
+        audio_format: str | None = None,
+    ) -> TtsSynthesis:
         stream_id = f"tts-{uuid4().hex[:12]}"
-        content_type = self._content_type()
+        response_format = audio_format or self._response_format
+        content_type = self._content_type(response_format)
         if not self._api_key:
             self._last_error = "missing_api_key"
             record_voice_event(
@@ -486,9 +519,9 @@ class OpenAiTextToSpeechAdapter:
                     headers={"Authorization": f"Bearer {self._api_key}"},
                     json={
                         "model": self._model,
-                        "voice": self._voice,
+                        "voice": voice or self._voice,
                         "input": text,
-                        "response_format": self._response_format,
+                        "response_format": response_format,
                     },
                 )
             finally:
@@ -496,7 +529,7 @@ class OpenAiTextToSpeechAdapter:
                     client.close()
             response.raise_for_status()
             self._output_dir.mkdir(parents=True, exist_ok=True)
-            output_path = self._output_dir / f"{stream_id}.{self._response_format}"
+            output_path = self._output_dir / f"{stream_id}.{response_format}"
             output_path.write_bytes(response.content)
             self._last_error = None
             record_voice_event(
@@ -539,12 +572,13 @@ class OpenAiTextToSpeechAdapter:
                 error=self._last_error,
             )
 
-    def _content_type(self) -> str:
-        if self._response_format == "mp3":
+    def _content_type(self, response_format: str | None = None) -> str:
+        normalized_format = response_format or self._response_format
+        if normalized_format == "mp3":
             return "audio/mpeg"
-        if self._response_format == "opus":
+        if normalized_format == "opus":
             return "audio/ogg"
-        return f"audio/{self._response_format}"
+        return f"audio/{normalized_format}"
 
     def status(self) -> dict:
         return {
@@ -689,8 +723,22 @@ class VoiceTurnPipeline:
             "tts": self._tts_adapter.status(),
         }
 
-    def synthesize_reply(self, *, endpoint_id: str, session_id: str, text: str) -> TtsSynthesis:
-        return self._tts_adapter.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text)
+    def synthesize_reply(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        text: str,
+        voice: str | None = None,
+        audio_format: str | None = None,
+    ) -> TtsSynthesis:
+        return self._tts_adapter.synthesize(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            text=text,
+            voice=voice,
+            audio_format=audio_format,
+        )
 
     def preload_stt(self) -> dict | None:
         preload = getattr(self._stt_adapter, "preload", None)

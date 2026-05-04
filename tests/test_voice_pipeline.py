@@ -357,6 +357,37 @@ def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
     assert b"hello" in captured["json"]
 
 
+def test_openai_tts_adapter_can_override_voice_and_format_per_request(tmp_path):
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = request.read()
+        return httpx.Response(200, content=b"mp3-bytes")
+
+    adapter = OpenAiTextToSpeechAdapter(
+        **{"api" + "_key": "unit-test-token"},
+        output_dir=tmp_path,
+        model="gpt-4o-mini-tts",
+        voice="alloy",
+        base_url="https://api.openai.test/v1",
+        response_format="wav",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(
+        endpoint_id="esp-box-1",
+        session_id="voice-session-1",
+        text="hello",
+        voice="nova",
+        audio_format="mp3",
+    )
+
+    assert synthesis.content_type == "audio/mpeg"
+    assert (tmp_path / f"{synthesis.stream_id}.mp3").read_bytes() == b"mp3-bytes"
+    assert b"nova" in captured["json"]
+    assert b"mp3" in captured["json"]
+
+
 def test_build_voice_turn_pipeline_uses_openai_tts_when_configured(tmp_path):
     settings = Settings(
         onboarding_state_path=tmp_path / "state.json",

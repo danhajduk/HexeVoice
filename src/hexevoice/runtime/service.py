@@ -21,6 +21,7 @@ from hexevoice.api.models import (
     ServiceActionResponse,
     ServiceStatusResponse,
 )
+from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
 from hexevoice.config.settings import Settings
 from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
 from hexevoice.persistence import OnboardingStateStore
@@ -160,7 +161,7 @@ class NodeRuntimeService:
         enabled_providers = onboarding_state.provider_setup.enabled_providers
         supported_providers = onboarding_state.provider_setup.supported_providers or [self._settings.provider_id]
         selected_task_families = onboarding_state.capability_declaration.declared_task_families
-        available_task_families = ["voice.inference"]
+        available_task_families = VOICE_NODE_CAPABILITIES
         readiness_flags = CapabilitySetupReadinessFlags(
             trust_state_valid=onboarding_state.trust_activation.trust_status == "trusted",
             node_identity_valid=bool(onboarding_state.trust_activation.node_id),
