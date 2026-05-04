@@ -1506,6 +1506,8 @@ def test_capability_declaration_governance_and_operational_status_flow(tmp_path,
     def fake_post(url, headers=None, json=None, timeout=None):
         if url.endswith("/api/system/nodes/capabilities/declaration"):
             return CapabilityResponse()
+        if url.endswith("/api/system/nodes/budgets/declaration"):
+            return CapabilityResponse()
         if url.endswith("/api/system/nodes/governance/refresh"):
             return GovernanceRefreshResponseObj()
         raise AssertionError(url)

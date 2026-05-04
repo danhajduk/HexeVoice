@@ -60,7 +60,11 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
             }
 
     def fake_post(*args, **kwargs):
-        captured["json"] = kwargs.get("json")
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/capabilities/declaration"):
+            captured["capability_json"] = kwargs.get("json")
+        elif url.endswith("/api/system/nodes/budgets/declaration"):
+            captured["budget_json"] = kwargs.get("json")
         return DummyResponse()
 
     monkeypatch.setattr(httpx, "post", fake_post)
@@ -73,14 +77,18 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     persisted = store.load()
 
     assert response.capability_status == "accepted"
-    assert captured["json"]["manifest"]["manifest_version"] == "1.0"
-    assert captured["json"]["manifest"]["declared_task_families"] == VOICE_NODE_CAPABILITIES
-    assert captured["json"]["manifest"]["declared_capabilities"] == VOICE_NODE_CAPABILITIES
-    endpoints = captured["json"]["manifest"]["capability_endpoints"]
+    assert captured["capability_json"]["manifest"]["manifest_version"] == "1.0"
+    assert captured["capability_json"]["manifest"]["declared_task_families"] == VOICE_NODE_CAPABILITIES
+    assert captured["capability_json"]["manifest"]["declared_capabilities"] == VOICE_NODE_CAPABILITIES
+    endpoints = captured["capability_json"]["manifest"]["capability_endpoints"]
     assert endpoints["voice.tts.synthesize"]["method"] == "POST"
     assert endpoints["voice.tts.synthesize"]["path"] == "/api/tts/synthesize"
     assert endpoints["voice.tts.audio_url"]["path"] == "/api/tts/audio/{stream_id}"
-    assert captured["json"]["manifest"]["enabled_providers"] == ["voice"]
+    assert captured["capability_json"]["manifest"]["enabled_providers"] == ["voice"]
+    assert captured["budget_json"]["node_id"] == "node-voice-123"
+    assert captured["budget_json"]["supported_providers"] == ["voice"]
+    assert captured["budget_json"]["suggested_money_limit"] is None
+    assert captured["budget_json"]["suggested_compute_limit"] is None
     assert persisted.capability_declaration.capability_profile_id == "profile-123"
     assert persisted.capability_declaration.capability_status == "accepted"
     assert persisted.resume.current_step_id == "governance_sync"
@@ -120,17 +128,22 @@ def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
             }
 
     def fake_post(*args, **kwargs):
-        captured["json"] = kwargs.get("json")
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/capabilities/declaration"):
+            captured["capability_json"] = kwargs.get("json")
+        elif url.endswith("/api/system/nodes/budgets/declaration"):
+            captured["budget_json"] = kwargs.get("json")
         return DummyResponse()
 
     monkeypatch.setattr(httpx, "post", fake_post)
 
     response = service.declare()
 
-    manifest = captured["json"]["manifest"]
+    manifest = captured["capability_json"]["manifest"]
     assert response.declared_capabilities == ["voice.inference", "voice.tts.synthesize"]
     assert manifest["declared_capabilities"] == ["voice.inference", "voice.tts.synthesize"]
     assert sorted(manifest["capability_endpoints"]) == ["voice.tts.synthesize"]
+    assert captured["budget_json"]["supported_providers"] == ["voice"]
 
 
 def test_governance_and_operational_status_persist_phase2_readiness(tmp_path, monkeypatch):

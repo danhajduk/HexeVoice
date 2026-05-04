@@ -41,6 +41,16 @@ class CoreOnboardingClient:
         response.raise_for_status()
         return response.json()
 
+    def submit_budget_declaration(self, *, core_base_url: str, node_trust_token: str, payload: dict) -> dict:
+        response = httpx.post(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/budgets/declaration",
+            headers={"X-Node-Trust-Token": node_trust_token},
+            json=payload,
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def get_governance_current(self, *, core_base_url: str, node_id: str, node_trust_token: str) -> dict:
         response = httpx.get(
             f"{core_base_url.rstrip('/')}/api/system/nodes/governance/current",

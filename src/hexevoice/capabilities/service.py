@@ -103,6 +103,33 @@ class CapabilityDeclarationService:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"capability_declaration_request_failed: {exc}") from exc
 
+        try:
+            self._core_client.submit_budget_declaration(
+                core_base_url=state.pre_trust.core_base_url,
+                node_trust_token=state.trust_activation.node_trust_token,
+                payload=self._budget_declaration_payload(
+                    node_id=state.trust_activation.node_id,
+                    providers=enabled_providers,
+                ),
+            )
+        except httpx.HTTPStatusError as exc:
+            detail = "budget_declaration_rejected"
+            try:
+                payload = exc.response.json()
+                if isinstance(payload, dict):
+                    raw_detail = payload.get("detail")
+                    if isinstance(raw_detail, str):
+                        detail = raw_detail
+                    elif isinstance(raw_detail, dict):
+                        detail = raw_detail.get("message") or raw_detail.get("error") or detail
+            except ValueError:
+                pass
+            raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="core_budget_declaration_timeout") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"budget_declaration_request_failed: {exc}") from exc
+
         updated = state.model_copy(
             update={
                 "capability_declaration": state.capability_declaration.model_copy(
@@ -147,6 +174,22 @@ class CapabilityDeclarationService:
             governance_version=updated.capability_declaration.governance_version,
             governance_issued_at=updated.capability_declaration.governance_issued_at,
         )
+
+    def _budget_declaration_payload(self, *, node_id: str, providers: list[str]) -> dict:
+        return {
+            "node_id": node_id,
+            "currency": "USD",
+            "compute_unit": "cost_units",
+            "default_period": "monthly",
+            "supports_money_budget": True,
+            "supports_compute_budget": True,
+            "supports_customer_allocations": False,
+            "supports_provider_allocations": False,
+            "supported_providers": sorted({provider for provider in providers if provider}),
+            "setup_requirements": [],
+            "suggested_money_limit": None,
+            "suggested_compute_limit": None,
+        }
 
     def save_selection(self, payload: CapabilitySelectionRequest) -> CapabilitySummaryResponse:
         state = self._store.load()
