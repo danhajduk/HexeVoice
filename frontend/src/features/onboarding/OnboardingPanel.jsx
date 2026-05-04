@@ -11,6 +11,7 @@ import {
   pollOnboardingSession,
   refreshGovernance,
   saveCoreConnection,
+  saveCapabilitySelection,
   saveNodeIdentity,
   saveProviderSetup,
   startOnboardingSession,
@@ -298,8 +299,11 @@ function renderStageBody({
   governanceCurrent,
   operationalStatus,
   providerForm,
+  capabilityForm,
   onProviderToggle,
   onProviderSave,
+  onCapabilityToggle,
+  onCapabilitySave,
   onDeclareCapabilities,
   onGovernanceCurrent,
   onGovernanceRefresh,
@@ -423,7 +427,8 @@ function renderStageBody({
     const governanceVersion = governanceCurrent?.governance_version || onboarding?.active_governance_version || "pending";
     const readinessValue = operationalStatus?.operational_ready ?? onboarding?.operational_ready;
     const availableCapabilities = capabilitySetup?.task_capability_selection?.available || [];
-    const declaredCapabilities = capabilities?.declared || capabilitySetup?.task_capability_selection?.selected || [];
+    const selectedCapabilities = capabilityForm?.selected_capabilities || capabilities?.selected || capabilitySetup?.task_capability_selection?.selected || [];
+    const declaredCapabilities = capabilities?.declared || [];
 
     return (
       <>
@@ -486,11 +491,33 @@ function renderStageBody({
           Declare the node manifest to Core once provider selection is complete. The backend uses the canonical
           task family and provider metadata already persisted locally.
         </div>
+        <div className="choice-list">
+          {availableCapabilities.map((capabilityId) => {
+            const selected = selectedCapabilities.includes(capabilityId);
+            const declared = declaredCapabilities.includes(capabilityId);
+            return (
+              <button
+                key={capabilityId}
+                className={`choice-card ${selected ? "choice-card-selected" : ""}`}
+                type="button"
+                onClick={() => onCapabilityToggle(capabilityId)}
+              >
+                <span className="choice-check">{selected ? "✓" : ""}</span>
+                <span className="choice-copy">
+                  <strong>{capabilityId}</strong>
+                  <span>{declared ? "Currently declared in Core." : "Selected capabilities will be declared to Core."}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <FormActions
+          busy={busyState === "capability-save"}
+          busyLabel="Saving..."
+          label="Save capability selection"
+          onClick={onCapabilitySave}
+        />
         <div className="fact-grid">
-          <div className="fact-grid-item">
-            <span className="fact-grid-label">Available capabilities</span>
-            <span className="fact-grid-value">{availableCapabilities.join(", ") || "pending"}</span>
-          </div>
           <div className="fact-grid-item">
             <span className="fact-grid-label">Declared capabilities</span>
             <span className="fact-grid-value">{declaredCapabilities.join(", ") || "pending"}</span>
@@ -622,6 +649,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   const [governanceCurrent, setGovernanceCurrent] = useState(null);
   const [operationalStatus, setOperationalStatus] = useState(null);
   const [providerForm, setProviderForm] = useState({ enabled_providers: [], default_provider: "voice" });
+  const [capabilityForm, setCapabilityForm] = useState({ selected_capabilities: [] });
   const [busyState, setBusyState] = useState("");
   const [stageNotice, setStageNotice] = useState("");
   const [stageError, setStageError] = useState("");
@@ -678,6 +706,9 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           enabled_providers: providerPayload?.enabled_providers || [],
           default_provider: providerPayload?.default_provider || providerPayload?.supported_providers?.[0] || "voice",
         });
+        setCapabilityForm({
+          selected_capabilities: capabilityPayload?.selected || capabilityPayload?.available || [],
+        });
       })
       .catch((error) => {
         if (mounted) {
@@ -713,6 +744,15 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     });
   }
 
+  function updateCapabilitySelection(capabilityId) {
+    setCapabilityForm((current) => {
+      const selected = current.selected_capabilities.includes(capabilityId)
+        ? current.selected_capabilities.filter((item) => item !== capabilityId)
+        : [...current.selected_capabilities, capabilityId];
+      return { selected_capabilities: selected };
+    });
+  }
+
   async function refreshSetupPanels() {
     const [setupPayload, bootstrapPayload, providerPayload, capabilityPayload] = await Promise.all([
       getLocalSetup(),
@@ -728,6 +768,11 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
       setProviderForm({
         enabled_providers: providerPayload.enabled_providers || [],
         default_provider: providerPayload.default_provider || providerPayload.supported_providers?.[0] || "voice",
+      });
+    }
+    if (capabilityPayload) {
+      setCapabilityForm({
+        selected_capabilities: capabilityPayload.selected || capabilityPayload.available || [],
       });
     }
     if (onRefresh) {
@@ -925,6 +970,27 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     }
   }
 
+  async function handleCapabilitySave() {
+    setBusyState("capability-save");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await saveCapabilitySelection(capabilityForm);
+      setCapabilities(payload);
+      setCapabilityForm({
+        selected_capabilities: payload.selected || [],
+      });
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice("Capability selection saved. Re-declare capabilities to update Core.");
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
   async function handleDeclareCapabilities() {
     setBusyState("capability-declare");
     setStageError("");
@@ -938,7 +1004,11 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         capability_profile_id: payload.capability_profile_id,
         accepted_at: payload.accepted_at,
         governance_version: payload.governance_version,
+        selected: payload.declared_capabilities,
       }));
+      setCapabilityForm({
+        selected_capabilities: payload.declared_capabilities || [],
+      });
       if (onRefresh) {
         await onRefresh();
       }
@@ -1192,8 +1262,11 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           governanceCurrent,
           operationalStatus,
           providerForm,
+          capabilityForm,
           onProviderToggle: updateProviderSelection,
           onProviderSave: handleProviderSave,
+          onCapabilityToggle: updateCapabilitySelection,
+          onCapabilitySave: handleCapabilitySave,
           onDeclareCapabilities: handleDeclareCapabilities,
           onGovernanceCurrent: handleGovernanceCurrent,
           onGovernanceRefresh: handleGovernanceRefresh,

@@ -432,11 +432,17 @@ class ProviderSetupResponse(BaseModel):
 
 class CapabilitySummaryResponse(BaseModel):
     configured: list[str] = Field(default_factory=list)
+    available: list[str] = Field(default_factory=list)
+    selected: list[str] = Field(default_factory=list)
     declared: list[str] = Field(default_factory=list)
     capability_status: str = "missing"
     capability_profile_id: str | None = None
     accepted_at: str | None = None
     governance_version: str | None = None
+
+
+class CapabilitySelectionRequest(BaseModel):
+    selected_capabilities: list[str] = Field(default_factory=list)
 
 
 class CapabilityDeclarationResponse(BaseModel):

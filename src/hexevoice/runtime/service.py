@@ -21,7 +21,7 @@ from hexevoice.api.models import (
     ServiceActionResponse,
     ServiceStatusResponse,
 )
-from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
+from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES, capability_summary, normalize_capability_selection
 from hexevoice.config.settings import Settings
 from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
 from hexevoice.persistence import OnboardingStateStore
@@ -160,7 +160,10 @@ class NodeRuntimeService:
         onboarding_state = state or self._state()
         enabled_providers = onboarding_state.provider_setup.enabled_providers
         supported_providers = onboarding_state.provider_setup.supported_providers or [self._settings.provider_id]
-        selected_task_families = onboarding_state.capability_declaration.declared_task_families
+        selected_task_families = (
+            normalize_capability_selection(onboarding_state.capability_declaration.declared_task_families)
+            or VOICE_NODE_CAPABILITIES
+        )
         available_task_families = VOICE_NODE_CAPABILITIES
         readiness_flags = CapabilitySetupReadinessFlags(
             trust_state_valid=onboarding_state.trust_activation.trust_status == "trusted",
@@ -270,15 +273,7 @@ class NodeRuntimeService:
         )
 
     def capabilities_payload(self) -> CapabilitySummaryResponse:
-        state = self._state()
-        return CapabilitySummaryResponse(
-            configured=state.provider_setup.enabled_providers,
-            declared=state.capability_declaration.declared_capabilities,
-            capability_status=state.capability_declaration.capability_status,
-            capability_profile_id=state.capability_declaration.capability_profile_id,
-            accepted_at=state.capability_declaration.accepted_at,
-            governance_version=state.capability_declaration.governance_version,
-        )
+        return capability_summary(self._state())
 
     def readiness_payload(self) -> GovernanceReadinessResponse:
         return GovernanceReadinessResponse(

@@ -131,6 +131,10 @@ export async function getCapabilities() {
   return fetchJson("/api/capabilities");
 }
 
+export async function saveCapabilitySelection(payload) {
+  return sendJson("/api/capabilities/selection", { method: "PUT", body: payload });
+}
+
 export async function declareCapabilities() {
   return sendJson("/api/capabilities/declaration");
 }

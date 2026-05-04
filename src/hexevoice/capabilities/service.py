@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 from fastapi import HTTPException
 
-from hexevoice.api.models import CapabilityDeclarationResponse
+from hexevoice.api.models import CapabilityDeclarationResponse, CapabilitySelectionRequest, CapabilitySummaryResponse
 from hexevoice.config.settings import Settings
 from hexevoice.core.client import CoreOnboardingClient
 from hexevoice.persistence import OnboardingStateStore
@@ -39,10 +39,10 @@ class CapabilityDeclarationService:
         if not state.provider_setup.declaration_allowed or not state.provider_setup.enabled_providers:
             raise HTTPException(status_code=400, detail="provider_setup_incomplete")
 
-        declared_task_families = VOICE_NODE_CAPABILITIES
+        declared_task_families = self._selected_capabilities(state)
         supported_providers = sorted({provider_id.strip() for provider_id in (state.provider_setup.supported_providers or [self._settings.provider_id]) if provider_id and provider_id.strip()})
         enabled_providers = sorted({provider_id.strip() for provider_id in state.provider_setup.enabled_providers if provider_id and provider_id.strip()})
-        capability_endpoints = self._capability_endpoints()
+        capability_endpoints = self._capability_endpoints(declared_task_families)
 
         payload = {
             "manifest": {
@@ -140,7 +140,45 @@ class CapabilityDeclarationService:
             governance_issued_at=updated.capability_declaration.governance_issued_at,
         )
 
-    def _capability_endpoints(self) -> dict:
+    def save_selection(self, payload: CapabilitySelectionRequest) -> CapabilitySummaryResponse:
+        state = self._store.load()
+        if state.trust_activation.trust_status != "trusted":
+            raise HTTPException(status_code=400, detail="trust_not_ready_for_capability_selection")
+
+        selected = normalize_capability_selection(payload.selected_capabilities)
+        if not selected:
+            raise HTTPException(status_code=400, detail="capability_selection_required")
+
+        selection_changed = selected != self._selected_capabilities(state)
+        capability_status = state.capability_declaration.capability_status
+        if selection_changed:
+            capability_status = "selection_pending"
+
+        updated = state.model_copy(
+            update={
+                "capability_declaration": state.capability_declaration.model_copy(
+                    update={
+                        "declared_task_families": selected,
+                        "capability_status": capability_status,
+                        "last_error": None,
+                    }
+                ),
+                "governance_sync": state.governance_sync.model_copy(
+                    update={
+                        "governance_sync_status": "pending_capability"
+                        if selection_changed
+                        else state.governance_sync.governance_sync_status,
+                    }
+                ),
+            }
+        )
+        self._store.save(updated)
+        return capability_summary(updated)
+
+    def _selected_capabilities(self, state) -> list[str]:
+        return normalize_capability_selection(state.capability_declaration.declared_task_families) or VOICE_NODE_CAPABILITIES
+
+    def _capability_endpoints(self, selected_capabilities: list[str]) -> dict:
         base_url = (
             self._settings.public_api_base_url
             or f"http://{self._settings.api_host}:{self._settings.api_port}"
@@ -153,7 +191,7 @@ class CapabilityDeclarationService:
         )
         if default_format not in supported_formats:
             default_format = "wav"
-        return {
+        endpoints = {
             "voice.tts.synthesize": {
                 "transport": "http",
                 "method": "POST",
@@ -178,3 +216,29 @@ class CapabilityDeclarationService:
                 "reachable_from": "lan",
             },
         }
+        return {
+            capability: endpoint
+            for capability, endpoint in endpoints.items()
+            if capability in selected_capabilities
+        }
+
+
+def normalize_capability_selection(capabilities: list[str]) -> list[str]:
+    requested = {str(capability).strip() for capability in capabilities if str(capability).strip()}
+    unsupported = sorted(requested - set(VOICE_NODE_CAPABILITIES))
+    if unsupported:
+        raise HTTPException(status_code=400, detail=f"unsupported_capabilities: {', '.join(unsupported)}")
+    return [capability for capability in VOICE_NODE_CAPABILITIES if capability in requested]
+
+
+def capability_summary(state) -> CapabilitySummaryResponse:
+    return CapabilitySummaryResponse(
+        configured=state.provider_setup.enabled_providers,
+        available=VOICE_NODE_CAPABILITIES,
+        selected=normalize_capability_selection(state.capability_declaration.declared_task_families) or VOICE_NODE_CAPABILITIES,
+        declared=state.capability_declaration.declared_capabilities,
+        capability_status=state.capability_declaration.capability_status,
+        capability_profile_id=state.capability_declaration.capability_profile_id,
+        accepted_at=state.capability_declaration.accepted_at,
+        governance_version=state.capability_declaration.governance_version,
+    )

@@ -1398,6 +1398,16 @@ def test_provider_setup_enables_provider_and_advances_to_capability_declaration(
     capability_status = client.get("/api/capabilities")
     assert capability_status.status_code == 200
     assert capability_status.json()["configured"] == ["voice"]
+    assert capability_status.json()["available"] == VOICE_NODE_CAPABILITIES
+    assert capability_status.json()["selected"] == VOICE_NODE_CAPABILITIES
+
+    selection = client.put(
+        "/api/capabilities/selection",
+        json={"selected_capabilities": ["voice.inference", "voice.tts.audio_url"]},
+    )
+    assert selection.status_code == 200
+    assert selection.json()["selected"] == ["voice.inference", "voice.tts.audio_url"]
+    assert selection.json()["capability_status"] == "selection_pending"
 
 
 def test_capability_declaration_governance_and_operational_status_flow(tmp_path, monkeypatch):

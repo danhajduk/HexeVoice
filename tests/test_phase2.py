@@ -1,5 +1,6 @@
 import httpx
 
+from hexevoice.api.models import CapabilitySelectionRequest
 from hexevoice.capabilities.service import CapabilityDeclarationService, VOICE_NODE_CAPABILITIES
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
@@ -83,6 +84,53 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     assert persisted.capability_declaration.capability_profile_id == "profile-123"
     assert persisted.capability_declaration.capability_status == "accepted"
     assert persisted.resume.current_step_id == "governance_sync"
+
+
+def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
+    store = _trusted_phase2_store(tmp_path)
+    service = CapabilityDeclarationService(
+        settings=Settings(onboarding_state_path=tmp_path / "onboarding-state.json"),
+        onboarding_state_store=store,
+    )
+
+    selection = service.save_selection(
+        CapabilitySelectionRequest(selected_capabilities=["voice.inference", "voice.tts.synthesize"])
+    )
+
+    assert selection.selected == ["voice.inference", "voice.tts.synthesize"]
+    assert selection.available == VOICE_NODE_CAPABILITIES
+    assert store.load().capability_declaration.capability_status == "selection_pending"
+
+    captured = {}
+
+    class DummyResponse:
+        status_code = 200
+        def raise_for_status(self): return None
+        def json(self):
+            return {
+                "acceptance_status": "accepted",
+                "node_id": "node-voice-123",
+                "manifest_version": "1.0",
+                "accepted_at": "2026-04-08T03:00:00+00:00",
+                "declared_capabilities": ["voice.inference", "voice.tts.synthesize"],
+                "enabled_providers": ["voice"],
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "governance_issued_at": "2026-04-08T03:00:05+00:00",
+            }
+
+    def fake_post(*args, **kwargs):
+        captured["json"] = kwargs.get("json")
+        return DummyResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    response = service.declare()
+
+    manifest = captured["json"]["manifest"]
+    assert response.declared_capabilities == ["voice.inference", "voice.tts.synthesize"]
+    assert manifest["declared_capabilities"] == ["voice.inference", "voice.tts.synthesize"]
+    assert sorted(manifest["capability_endpoints"]) == ["voice.tts.synthesize"]
 
 
 def test_governance_and_operational_status_persist_phase2_readiness(tmp_path, monkeypatch):

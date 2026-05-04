@@ -16,6 +16,7 @@ from hexevoice.api.models import (
     BootstrapAdvertisementRequest,
     BootstrapDiscoveryResponse,
     CapabilityDeclarationResponse,
+    CapabilitySelectionRequest,
     CapabilitySummaryResponse,
     CoreConnectionSetupRequest,
     CoreConnectionSetupResponse,
@@ -654,6 +655,10 @@ def create_app(
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:
         return service.capabilities_payload()
+
+    @app.put("/api/capabilities/selection", response_model=CapabilitySummaryResponse)
+    async def capabilities_selection_save(payload: CapabilitySelectionRequest) -> CapabilitySummaryResponse:
+        return capability_service.save_selection(payload)
 
     @app.post("/api/capabilities/declaration", response_model=CapabilityDeclarationResponse)
     async def capabilities_declaration() -> CapabilityDeclarationResponse:
