@@ -303,20 +303,6 @@ export default function App() {
     };
   }, [dashboardSection, showSetupPage]);
 
-  useEffect(() => {
-    if (!setupComplete || routeView !== "setup") {
-      return undefined;
-    }
-
-    const timer = window.setTimeout(() => {
-      setDashboardHashRoute("overview");
-      setRouteView("dashboard");
-      setDashboardSection("overview");
-    }, 800);
-
-    return () => window.clearTimeout(timer);
-  }, [setupComplete, routeView]);
-
   async function handleRestartSetup() {
     setRestartingSetup(true);
     try {
