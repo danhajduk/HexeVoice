@@ -893,7 +893,8 @@ Original task details:
 - Goal:
   - Allow an intent definition to request that Voice Node synthesize the spoken reply and include a pullable audio URL in the response/event payload.
 - Scope:
-  - Extend intent definitions with reply behavior such as text template, whether TTS is required, voice/language/format hints, TTL, and cache policy.
+  - Extend intent definitions with reply behavior such as text template, whether TTS is required, provider/model/voice/language/format hints, TTL, and cache policy.
+  - Allow an intent to request a specific TTS provider or model when generating reply audio, while still supporting the node default when no model is specified.
   - Generate TTS only after an intent match passes required data validation.
   - Include audio metadata in assistant responses and reusable intent events when requested: `audio_url`, `content_type`, `stream_id`, `duration_ms`, and expiry.
   - Reuse existing local TTS and media URL behavior rather than adding a new storage mechanism unless necessary.
