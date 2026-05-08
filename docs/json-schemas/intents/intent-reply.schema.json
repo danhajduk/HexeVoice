@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/schemas/intents/intent-reply.schema.json",
+  "title": "Voice Intent Reply",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "Literal text to speak or return when the intent is invoked."
+    },
+    "text_template": {
+      "type": "string",
+      "description": "Template text formatted with extracted intent slots before speech generation."
+    },
+    "audio": { "$ref": "#/$defs/reply_audio_options" }
+  },
+  "$defs": {
+    "reply_audio_options": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["none", "best_effort", "required"],
+          "default": "none"
+        },
+        "provider_id": { "type": "string" },
+        "model_id": { "type": "string" },
+        "voice_id": { "type": "string" },
+        "language": { "type": "string" },
+        "format": {
+          "type": "string",
+          "enum": ["wav", "mp3"],
+          "default": "wav"
+        },
+        "lifetime": {
+          "type": "string",
+          "enum": ["short_lived", "long_lived"],
+          "default": "short_lived"
+        },
+        "long_lived": {
+          "type": "boolean",
+          "default": false
+        },
+        "ttl_seconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 3600,
+          "default": 300
+        },
+        "variants": {
+          "type": "array",
+          "description": "Optional extra voice/audio versions of the same reply. The primary audio keeps the event id as its stream id; variants can use the event id plus the variant id as a suffix.",
+          "items": { "$ref": "#/$defs/reply_audio_variant" }
+        }
+      }
+    },
+    "reply_audio_variant": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "text": { "type": "string" },
+        "text_template": { "type": "string" },
+        "provider_id": { "type": "string" },
+        "model_id": { "type": "string" },
+        "voice_id": { "type": "string" },
+        "language": { "type": "string" },
+        "format": {
+          "type": "string",
+          "enum": ["wav", "mp3"],
+          "default": "wav"
+        },
+        "lifetime": {
+          "type": "string",
+          "enum": ["short_lived", "long_lived"]
+        },
+        "long_lived": { "type": "boolean" },
+        "ttl_seconds": {
+          "type": "integer",
+          "minimum": 5,
+          "maximum": 3600
+        }
+      }
+    }
+  }
+}

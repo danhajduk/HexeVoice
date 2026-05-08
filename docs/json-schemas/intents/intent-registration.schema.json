@@ -74,15 +74,16 @@
           },
           "additionalProperties": true
         },
-        "reply": {
-          "type": "object",
-          "properties": {
-            "text": { "type": "string" },
-            "text_template": { "type": "string" },
-            "audio": { "$ref": "#/$defs/reply_audio_options" }
-          },
-          "additionalProperties": true
-        }
+        "reply": { "$ref": "#/$defs/reply_options" }
+      }
+    },
+    "reply_options": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "text": { "type": "string" },
+        "text_template": { "type": "string" },
+        "audio": { "$ref": "#/$defs/reply_audio_options" }
       }
     },
     "field_schema": {
@@ -111,7 +112,29 @@
         "format": { "type": "string", "enum": ["wav", "mp3"], "default": "wav" },
         "lifetime": { "type": "string", "enum": ["short_lived", "long_lived"], "default": "short_lived" },
         "long_lived": { "type": "boolean", "default": false },
-        "ttl_seconds": { "type": "integer", "minimum": 5, "maximum": 3600, "default": 300 }
+        "ttl_seconds": { "type": "integer", "minimum": 5, "maximum": 3600, "default": 300 },
+        "variants": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reply_audio_variant" }
+        }
+      }
+    },
+    "reply_audio_variant": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9_-]+$" },
+        "text": { "type": "string" },
+        "text_template": { "type": "string" },
+        "provider_id": { "type": "string" },
+        "model_id": { "type": "string" },
+        "voice_id": { "type": "string" },
+        "language": { "type": "string" },
+        "format": { "type": "string", "enum": ["wav", "mp3"], "default": "wav" },
+        "lifetime": { "type": "string", "enum": ["short_lived", "long_lived"] },
+        "long_lived": { "type": "boolean" },
+        "ttl_seconds": { "type": "integer", "minimum": 5, "maximum": 3600 }
       }
     }
   }
