@@ -897,6 +897,8 @@ Original task details:
   - Allow an intent to request a specific TTS provider or model when generating reply audio, while still supporting the node default when no model is specified.
   - Generate TTS only after an intent match passes required data validation.
   - Include audio metadata in assistant responses and reusable intent events when requested: `audio_url`, `content_type`, `stream_id`, `duration_ms`, and expiry.
+  - Use the event ID as the stable basename for generated reply audio files, with a matching JSON sidecar file that records the spoken text and readiness state.
+  - Include `voice_ready` in the sidecar JSON so endpoints and other nodes can confirm the audio file is ready to pull.
   - Reuse existing local TTS and media URL behavior rather than adding a new storage mechanism unless necessary.
   - Define failure behavior when TTS generation fails: fail the intent, return text-only, or mark audio unavailable based on intent policy.
 - Completion criteria:
