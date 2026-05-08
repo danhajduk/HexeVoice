@@ -28,6 +28,15 @@ def voice_event(event_type, *, endpoint_id="esp-box-1", session_id="voice-sessio
     }
 
 
+class CloseTrackingWakeDetector(DeterministicWakeDetector):
+    def __init__(self, *, detect_on_chunk_index: int | None = None) -> None:
+        super().__init__(detect_on_chunk_index=detect_on_chunk_index)
+        self.closed_sessions: list[tuple[str, str]] = []
+
+    def close_session(self, *, endpoint_id: str, session_id: str) -> None:
+        self.closed_sessions.append((endpoint_id, session_id))
+
+
 def test_voice_websocket_starts_single_endpoint_session(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
@@ -90,6 +99,32 @@ def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
     assert status["wake_history"][0]["detected"] is True
     assert status["wake_history"][0]["session_id"] == "voice-session-1"
     assert status["wake_history"][0]["model"] == "deterministic"
+
+
+def test_voice_websocket_closes_wake_stream_after_completed_session(tmp_path):
+    detector = CloseTrackingWakeDetector(detect_on_chunk_index=0)
+    manager = VoiceSessionManager(wake_detector=detector)
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        websocket.receive_json()
+
+    assert detector.closed_sessions == [("esp-box-1", "voice-session-1")]
 
 
 def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
@@ -487,7 +522,8 @@ def test_voice_websocket_surfaces_tts_provider_errors(tmp_path):
 
 
 def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):
-    manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None))
+    detector = CloseTrackingWakeDetector(detect_on_chunk_index=None)
+    manager = VoiceSessionManager(wake_detector=detector)
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
 
     with client.websocket_connect("/api/voice/ws") as websocket:
@@ -512,6 +548,7 @@ def test_voice_websocket_cancels_audio_end_when_wake_was_not_detected(tmp_path):
     assert status["wake_history"][0]["outcome"] == "not_detected"
     assert status["wake_history"][0]["detected"] is False
     assert status["wake_history"][0]["reason"] == "wake_not_detected"
+    assert detector.closed_sessions == [("esp-box-1", "voice-session-1")]
 
 
 def test_voice_websocket_cancel_returns_cancelled_event(tmp_path):

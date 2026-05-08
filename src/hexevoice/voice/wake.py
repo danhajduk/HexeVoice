@@ -370,6 +370,9 @@ class WyomingOpenWakeWordWakeDetector:
             "last_detection": _result_status(self._last_detection),
         }
 
+    def close_session(self, *, endpoint_id: str, session_id: str) -> None:
+        self._drop_connection((endpoint_id, session_id))
+
     def _connection(self, key: tuple[str, str]) -> socket.socket:
         connection = self._connections.get(key)
         if connection is not None:

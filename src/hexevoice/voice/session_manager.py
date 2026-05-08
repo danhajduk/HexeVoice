@@ -102,6 +102,7 @@ class VoiceSessionManager:
         except WebSocketDisconnect:
             pass
         finally:
+            self._release_active_session_wake_stream()
             self._websocket = None
             self._connection_active = False
             self._connected_endpoint_id = None
@@ -192,6 +193,7 @@ class VoiceSessionManager:
         if result.get("accepted") and self._active_session is not None:
             self._set_session_state("cancelled")
             self._active_session.cancel_reason = reason
+            self._release_active_session_wake_stream()
             self._active_session = None
             self._chunk_count = 0
             self._audio_chunks = []
@@ -710,6 +712,7 @@ class VoiceSessionManager:
                 chunk_count=self._chunk_count,
             )
             cancelled = self._state_event("session.cancelled", session)
+            self._release_active_session_wake_stream()
             self._active_session = None
             self._chunk_count = 0
             self._audio_chunks = []
@@ -786,6 +789,7 @@ class VoiceSessionManager:
                     recoverable=True,
                 )
                 self._set_session_state("failed")
+                self._release_active_session_wake_stream()
                 self._active_session = None
                 self._chunk_count = 0
                 self._audio_chunks = []
@@ -857,6 +861,7 @@ class VoiceSessionManager:
                     )
                 )
                 self._set_session_state("failed")
+                self._release_active_session_wake_stream()
                 self._active_session = None
                 self._chunk_count = 0
                 self._audio_chunks = []
@@ -884,6 +889,7 @@ class VoiceSessionManager:
                 extra_payload={"completion_reason": "turn_completed", "chunk_count": self._chunk_count},
             )
         )
+        self._release_active_session_wake_stream()
         self._active_session = None
         self._chunk_count = 0
         self._audio_chunks = []
@@ -958,6 +964,7 @@ class VoiceSessionManager:
 
         self._set_session_state("cancelled")
         self._active_session.cancel_reason = reason
+        self._release_active_session_wake_stream()
         self._active_session = None
         self._chunk_count = 0
         self._audio_chunks = []
@@ -972,6 +979,7 @@ class VoiceSessionManager:
         self._set_session_state("cancelled")
         session.cancel_reason = str(event.payload.get("reason") or "endpoint_cancelled")
         cancelled = self._state_event("session.cancelled", session)
+        self._release_active_session_wake_stream()
         self._active_session = None
         self._chunk_count = 0
         self._audio_chunks = []
@@ -1106,6 +1114,25 @@ class VoiceSessionManager:
         self._active_session.session_state = session_state
         self._active_session.ux_state = project_ux_state(session_state)
         self._active_session.last_updated_at = datetime.now(UTC)
+
+    def _release_active_session_wake_stream(self) -> None:
+        if self._active_session is None:
+            return
+        close_session = getattr(self._wake_detector, "close_session", None)
+        if not callable(close_session):
+            return
+        try:
+            close_session(
+                endpoint_id=self._active_session.endpoint_id,
+                session_id=self._active_session.session_id,
+            )
+        except Exception as exc:
+            log.debug(
+                "Wake detector session cleanup failed: endpoint_id=%s session_id=%s error=%s",
+                self._active_session.endpoint_id,
+                self._active_session.session_id,
+                exc,
+            )
 
     def _state_event(
         self,

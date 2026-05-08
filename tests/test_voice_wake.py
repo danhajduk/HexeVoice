@@ -138,6 +138,11 @@ def test_supervised_openwakeword_detector_streams_wyoming_audio_and_accepts_dete
     assert [event["type"] for event in received_events] == ["detect", "audio-start", "audio-chunk"]
     assert received_events[0]["data"]["names"] == ["Hexa"]
     assert received_events[2]["payload"] == b"\x01\x00\x02\x00"
+    assert detector.status()["active_streams"] == 1
+
+    detector.close_session(endpoint_id="esp-box-1", session_id="voice-session-1")
+
+    assert detector.status()["active_streams"] == 0
 
 
 def test_openwakeword_detector_buffers_short_audio_chunks_before_prediction():
