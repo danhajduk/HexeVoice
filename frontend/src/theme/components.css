@@ -190,6 +190,78 @@
   overflow-wrap: anywhere;
 }
 
+.intent-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.intent-table-wrap {
+  overflow-x: auto;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+}
+
+.intent-registry-table {
+  width: 100%;
+  min-width: 1320px;
+  border-collapse: collapse;
+  table-layout: auto;
+}
+
+.intent-registry-table th,
+.intent-registry-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid hsl(var(--sx-border));
+  text-align: left;
+  vertical-align: top;
+}
+
+.intent-registry-table tr:last-child th,
+.intent-registry-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.intent-registry-table thead th {
+  background: hsl(var(--sx-text) / 0.04);
+}
+
+.intent-registry-table th {
+  color: hsl(var(--sx-text-muted));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.intent-registry-table tbody th {
+  display: grid;
+  gap: 7px;
+  color: hsl(var(--sx-text));
+  min-width: 190px;
+}
+
+.intent-registry-table td {
+  color: hsl(var(--sx-text));
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.intent-registry-table td > span,
+.intent-registry-table td > code {
+  display: block;
+  width: fit-content;
+}
+
+.intent-title {
+  font-size: 15px;
+}
+
+.intent-example-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .voice-endpoint-status-table .endpoint-health-column {
   width: 28px;
   padding-right: 8px;
@@ -1029,6 +1101,7 @@
   .voice-endpoint-top,
   .status-grid,
   .fact-grid,
+  .intent-summary-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }

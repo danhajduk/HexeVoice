@@ -7,6 +7,7 @@ import {
   getOnboardingStatus,
   getOperationalStatus,
   getProviderSetup,
+  getVoiceIntents,
   getVoiceStatus,
   restartOnboardingSetup,
 } from "./api/client";
@@ -19,6 +20,7 @@ import { DashboardSidebarCard } from "./features/dashboard/cards/DashboardSideba
 import { NodeHealthStripCard } from "./features/dashboard/cards/NodeHealthStripCard";
 import { OverviewDashboardSection } from "./features/dashboard/OverviewDashboardSection";
 import { VoiceEndpointDashboardSection } from "./features/dashboard/VoiceEndpointDashboardSection";
+import { VoiceIntentsDashboardSection } from "./features/dashboard/VoiceIntentsDashboardSection";
 import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDashboardSection";
 
 const CANONICAL_SETUP_STEPS = [
@@ -35,6 +37,7 @@ const CANONICAL_SETUP_STEPS = [
 ];
 
 const VOICE_ENDPOINT_REFRESH_MS = 2000;
+const VOICE_INTENTS_REFRESH_MS = 5000;
 
 function isSetupStage(onboarding, status) {
   const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
@@ -149,6 +152,7 @@ export default function App() {
   const [governance, setGovernance] = useState(null);
   const [operational, setOperational] = useState(null);
   const [voiceStatus, setVoiceStatus] = useState(null);
+  const [voiceIntents, setVoiceIntents] = useState(null);
   const [endpointStatus, setEndpointStatus] = useState(null);
   const [error, setError] = useState("");
   const [restartingSetup, setRestartingSetup] = useState(false);
@@ -174,6 +178,7 @@ export default function App() {
       governancePayload,
       operationalPayload,
       voicePayload,
+      voiceIntentPayload,
       endpointPayload,
     ] = await Promise.all([
       getNodeStatus(),
@@ -183,6 +188,7 @@ export default function App() {
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
+      getVoiceIntents().catch(() => null),
       getEndpointStatus().catch(() => null),
     ]);
     setStatus(statusPayload);
@@ -192,6 +198,7 @@ export default function App() {
     setGovernance(governancePayload);
     setOperational(operationalPayload);
     setVoiceStatus(voicePayload);
+    setVoiceIntents(voiceIntentPayload);
     setEndpointStatus(endpointPayload);
     setError("");
   }, []);
@@ -206,6 +213,7 @@ export default function App() {
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
+      getVoiceIntents().catch(() => null),
       getEndpointStatus().catch(() => null),
     ])
       .then(
@@ -217,6 +225,7 @@ export default function App() {
           governancePayload,
           operationalPayload,
           voicePayload,
+          voiceIntentPayload,
           endpointPayload,
         ]) => {
         if (!mounted) {
@@ -229,6 +238,7 @@ export default function App() {
         setGovernance(governancePayload);
         setOperational(operationalPayload);
         setVoiceStatus(voicePayload);
+        setVoiceIntents(voiceIntentPayload);
         setEndpointStatus(endpointPayload);
       })
       .catch((err) => {
@@ -303,6 +313,36 @@ export default function App() {
     };
   }, [dashboardSection, showSetupPage]);
 
+  useEffect(() => {
+    if (showSetupPage || dashboardSection !== "intents") {
+      return undefined;
+    }
+
+    let mounted = true;
+
+    async function refreshVisibleIntents() {
+      try {
+        const intentPayload = await getVoiceIntents().catch(() => null);
+        if (!mounted) {
+          return;
+        }
+        setVoiceIntents(intentPayload);
+      } catch (err) {
+        if (mounted) {
+          setError(String(err.message || err));
+        }
+      }
+    }
+
+    refreshVisibleIntents();
+    const timer = window.setInterval(refreshVisibleIntents, VOICE_INTENTS_REFRESH_MS);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [dashboardSection, showSetupPage]);
+
   async function handleRestartSetup() {
     setRestartingSetup(true);
     try {
@@ -346,6 +386,10 @@ export default function App() {
           onRefresh={refresh}
         />
       );
+    }
+
+    if (dashboardSection === "intents") {
+      return <VoiceIntentsDashboardSection voiceIntents={voiceIntents} onRefresh={refresh} />;
     }
 
     if (dashboardSection === "providers") {

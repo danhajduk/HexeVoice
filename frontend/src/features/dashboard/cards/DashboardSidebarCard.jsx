@@ -18,6 +18,13 @@ export function DashboardSidebarCard({ dashboardSection, openDashboard }) {
         </button>
         <button
           type="button"
+          className={`btn operational-nav-btn ${dashboardSection === "intents" ? "btn-primary" : ""}`}
+          onClick={() => openDashboard("intents")}
+        >
+          Intents
+        </button>
+        <button
+          type="button"
           className={`btn operational-nav-btn ${dashboardSection === "providers" ? "btn-primary" : ""}`}
           onClick={() => openDashboard("providers")}
         >
