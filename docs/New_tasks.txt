@@ -8,3 +8,6 @@
 [FUTURE TODO] Task 072: Add a native ESP voice endpoint timer screen with active countdown, paused/finished states, and MQTT/request timestamp-aware due-time rendering
 [FUTURE TODO] Task 076: Connect Interaction Node `ui.play_sound` audio_url playback to Voice Node generated TTS clips for kiosk speech
 [FUTURE TODO] Task 077: Later Voice Node TTS extensions: streaming URLs, voice/language listing, common-clip cache, and playback/fetch/expiry events
+[FUTURE TODO] Task 091: Add declarative required data extraction to registered intents
+[FUTURE TODO] Task 092: Emit reusable voice intent recognized events from validated intent matches
+[FUTURE TODO] Task 093: Add optional registered-intent reply audio generation with pullable TTS asset links

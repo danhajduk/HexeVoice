@@ -853,3 +853,52 @@ Original task details:
 - Completion criteria:
   - Targeted tests pass.
   - Docs include enough payload examples for another node to discover and call the service.
+
+## Task 091
+Original task details:
+- Title: Add declarative required data extraction to registered intents
+- Goal:
+  - Let every registered intent declare which data must be extracted and normalized without adding intent-specific code.
+- Scope:
+  - Extend the intent definition contract with a required extraction schema.
+  - Support named slots extracted from regex groups, examples, and future resolver outputs.
+  - Support required/optional fields, type validation, enums, defaults, aliases, units, and normalized output names.
+  - Support derived fields where the platform can compute common values such as `requested_at`, `duration_hhmmss`, and request latency timestamps.
+  - Migrate the built-in `timer.create` intent to declare required extracted data such as `duration_seconds`, `duration_text`, and `requested_at`.
+  - Return clear errors for missing or invalid required extracted data.
+- Completion criteria:
+  - Intent registration rejects invalid extraction contracts.
+  - Generic intent dispatch validates required extracted data before returning a match or publishing follow-on events.
+  - Timer works through the declarative extraction contract with tests for duration parsing and required data validation.
+
+## Task 092
+Original task details:
+- Title: Emit reusable voice intent recognized events from validated intent matches
+- Goal:
+  - Publish a generic `voice.intent.recognized` event whenever an active registered intent is matched and required extracted data is valid.
+- Scope:
+  - Define the reusable event payload schema and docs.
+  - Include common fields such as endpoint/session, intent id/name/version, command, provider, recognized text, slots, normalized parameters, confidence, registry metadata, and dispatch intent.
+  - Keep domain-specific action events separate from recognition events.
+  - Add privacy controls for transcript inclusion and slot redaction.
+  - Ensure dry-run dispatch can report the event payload preview without publishing it.
+- Completion criteria:
+  - Recognized intent events can be consumed by other nodes without knowing the intent-specific code path.
+  - Timer recognition emits the generic event and still publishes the existing timer create event when configured.
+  - Tests cover recognized, not recognized, invalid extracted data, and disabled intent cases.
+
+## Task 093
+Original task details:
+- Title: Add optional registered-intent reply audio generation with pullable TTS asset links
+- Goal:
+  - Allow an intent definition to request that Voice Node synthesize the spoken reply and include a pullable audio URL in the response/event payload.
+- Scope:
+  - Extend intent definitions with reply behavior such as text template, whether TTS is required, voice/language/format hints, TTL, and cache policy.
+  - Generate TTS only after an intent match passes required data validation.
+  - Include audio metadata in assistant responses and reusable intent events when requested: `audio_url`, `content_type`, `stream_id`, `duration_ms`, and expiry.
+  - Reuse existing local TTS and media URL behavior rather than adding a new storage mechanism unless necessary.
+  - Define failure behavior when TTS generation fails: fail the intent, return text-only, or mark audio unavailable based on intent policy.
+- Completion criteria:
+  - A registered intent can opt into reply audio generation without code changes.
+  - The generated audio link can be pulled by an endpoint or another node before expiry.
+  - Tests cover text-only, audio-required, audio-best-effort, and TTS failure paths.
