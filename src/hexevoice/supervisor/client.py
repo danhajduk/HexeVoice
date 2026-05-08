@@ -56,7 +56,7 @@ def supervisor_client_config() -> SupervisorClientConfig:
         transport=transport,
         base_url=_normalize_base_url(_env_text("HEXE_SUPERVISOR_API_BASE_URL", "")),
         unix_socket=_env_text("HEXE_SUPERVISOR_API_SOCKET", "/run/hexe/supervisor.sock"),
-        timeout_s=_env_float("HEXE_SUPERVISOR_API_TIMEOUT_S", 2.0),
+        timeout_s=_env_float("HEXE_SUPERVISOR_API_TIMEOUT_S", 8.0),
     )
 
 
