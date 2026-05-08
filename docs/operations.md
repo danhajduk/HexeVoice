@@ -72,3 +72,5 @@ Systemd templates for this node live at:
 
 - `scripts/systemd/hexevoice-backend.service.in`
 - `scripts/systemd/hexevoice-frontend.service.in`
+
+The backend unit sets `LimitNOFILE=65536` so long-running voice WebSocket, endpoint heartbeat, and supervised wake-word socket activity does not inherit the low shell default of 1024 file descriptors.

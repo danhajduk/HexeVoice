@@ -3,4 +3,5 @@ Description=HexeVoice Backend
 
 [Service]
 WorkingDirectory=__ROOT_DIR__
+LimitNOFILE=65536
 ExecStart=/bin/bash -lc 'source "__ENV_FILE__"; cd "__ROOT_DIR__"; eval "$BACKEND_CMD"'
