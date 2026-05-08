@@ -905,3 +905,35 @@ Original task details:
   - A registered intent can opt into reply audio generation without code changes.
   - The generated audio link can be pulled by an endpoint or another node before expiry.
   - Tests cover text-only, audio-required, audio-best-effort, and TTS failure paths.
+
+## Task 094
+Original task details:
+- Title: Add background cleanup for expired generated voice artifacts every 5 minutes
+- Goal:
+  - Remove expired generated voice/audio artifacts without waiting for another synthesize or audio fetch request.
+- Scope:
+  - Add a backend background cleanup loop named/configured as `every_5_minutes`.
+  - Run generated voice artifact cleanup every 5 minutes while the backend is active.
+  - Clean up audio files and matching JSON sidecar metadata files together.
+  - Preserve existing opportunistic cleanup on synthesize and fetch.
+  - Log cleanup failures without crashing the backend.
+  - Add tests for expired artifact deletion, non-expired artifact preservation, sidecar/audio pair deletion, and cleanup error tolerance.
+- Completion criteria:
+  - Expired generated voice artifacts are deleted within one cleanup interval during normal backend runtime.
+  - The cleanup loop is observable in logs/status without producing noisy logs.
+
+## Task 095
+Original task details:
+- Title: Create JSON schemas for registered intent contracts under docs/json-chemas-intents
+- Goal:
+  - Document and validate the new registered-intent contract, reusable intent events, extraction schema, reply audio metadata, and sidecar JSON payloads.
+- Scope:
+  - Create `docs/json-chemas-intents/`.
+  - Add JSON schemas for intent registration/update payloads, intent definition/extraction contract, `voice.intent.recognized` event payloads, reply audio options, and generated voice sidecar JSON.
+  - Include examples for `timer.create`, a generic command intent, and an intent that requests reply audio generation.
+  - Align schema fields with the implementation tasks for required extracted data, optional intent-specific data, dispatch metadata, privacy/redaction controls, TTS provider/model selection, event-id-based filenames, and `voice_ready`.
+  - Add a README that explains schema purpose, versioning, and how clients should use the schemas before registering intents.
+- Completion criteria:
+  - The schemas are checked into `docs/json-chemas-intents/`.
+  - Schema examples validate against the documented contract.
+  - The docs are clear enough for another node to register an intent without reading backend code.
