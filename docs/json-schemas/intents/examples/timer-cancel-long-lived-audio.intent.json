@@ -1,0 +1,28 @@
+{
+  "intent_id": "timer.cancel",
+  "intent_name": "Cancel timer",
+  "service_id": "voice.local_intents",
+  "version": "v1",
+  "status": "active",
+  "definition": {
+    "utterance_examples": ["cancel timer", "stop the timer"],
+    "matcher": { "type": "exact_example" },
+    "dispatch": {
+      "type": "domain_event",
+      "command": "timer.cancel",
+      "event_type": "timer.cancel_requested"
+    },
+    "reply": {
+      "text_template": "Timer cancelled.",
+      "audio": {
+        "mode": "best_effort",
+        "format": "wav",
+        "lifetime": "long_lived"
+      }
+    }
+  },
+  "constraints": {},
+  "metadata": {
+    "source": "schema_example"
+  }
+}

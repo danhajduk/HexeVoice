@@ -17,9 +17,11 @@
     "model_id": { "type": ["string", "null"] },
     "voice_id": { "type": ["string", "null"] },
     "mode": { "type": "string", "enum": ["best_effort", "required", "none"] },
+    "lifetime": { "type": "string", "enum": ["short_lived", "long_lived"] },
+    "ttl_seconds": { "type": ["integer", "null"], "minimum": 5 },
     "status": { "type": "string", "enum": ["ready", "failed", "unavailable"] },
     "created_at": { "type": "string", "format": "date-time" },
-    "expires_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
     "error": { "type": ["string", "null"] }
   }
 }

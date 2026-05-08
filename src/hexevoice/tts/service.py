@@ -77,11 +77,8 @@ class TtsAudioService:
         mode = str(options.get("mode") or "best_effort").strip().lower()
         voice = options.get("voice_id") or options.get("model_id") or options.get("voice") or options.get("model")
         audio_format = str(options.get("format") or "wav")
-        try:
-            ttl_seconds = int(options.get("ttl_seconds") or 300)
-        except (TypeError, ValueError):
-            ttl_seconds = 300
-        ttl_seconds = max(5, min(ttl_seconds, 3600))
+        lifetime = intent_reply_audio_lifetime(options)
+        ttl_seconds = intent_reply_audio_ttl_seconds(options) if lifetime != "long_lived" else None
         stream_id = safe_tts_stream_id(event_id) or f"voice-intent-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
         synthesis = self._pipeline.synthesize_reply(
             endpoint_id=endpoint_id,
@@ -97,7 +94,8 @@ class TtsAudioService:
 
         content_type = synthesis.content_type or (content_type_for_path(audio_path) if audio_path else "audio/wav")
         duration_ms = wav_duration_ms(audio_path) if audio_path and content_type == "audio/wav" else None
-        expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
+        created_at = datetime.now(UTC)
+        expires_at = created_at + timedelta(seconds=ttl_seconds) if ttl_seconds is not None else None
         voice_ready = bool(audio_path and not synthesis.error)
         metadata = {
             "event_id": event_id,
@@ -111,8 +109,10 @@ class TtsAudioService:
             "model_id": options.get("model_id"),
             "voice_id": options.get("voice_id") or options.get("voice"),
             "mode": mode,
-            "created_at": datetime.now(UTC).isoformat(),
-            "expires_at": expires_at.isoformat(),
+            "lifetime": lifetime,
+            "ttl_seconds": ttl_seconds,
+            "created_at": created_at.isoformat(),
+            "expires_at": expires_at.isoformat() if expires_at else None,
             "error": synthesis.error,
         }
         if synthesis.error and mode == "required":
@@ -158,7 +158,12 @@ class TtsAudioService:
         for metadata_path in self._audio_dir.glob("*.json"):
             try:
                 metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-                expires_at = datetime.fromisoformat(str(metadata.get("expires_at")))
+                if str(metadata.get("lifetime") or "").strip().lower() == "long_lived":
+                    continue
+                expires_at_value = metadata.get("expires_at")
+                if not expires_at_value:
+                    continue
+                expires_at = datetime.fromisoformat(str(expires_at_value))
             except (OSError, ValueError, json.JSONDecodeError, TypeError):
                 continue
             if expires_at.tzinfo is None:
@@ -204,6 +209,27 @@ def safe_tts_stream_id(stream_id: str) -> str | None:
     if not cleaned or not cleaned.replace("-", "").replace("_", "").isalnum():
         return None
     return cleaned
+
+
+def intent_reply_audio_lifetime(options: dict | None) -> str:
+    if not isinstance(options, dict):
+        return "short_lived"
+    lifetime = str(options.get("lifetime") or options.get("retention") or "").strip().lower()
+    if lifetime in {"long_lived", "long-lived", "persistent", "permanent"}:
+        return "long_lived"
+    if options.get("long_lived") is True or options.get("persistent") is True:
+        return "long_lived"
+    return "short_lived"
+
+
+def intent_reply_audio_ttl_seconds(options: dict | None) -> int:
+    if not isinstance(options, dict):
+        return 300
+    try:
+        ttl_seconds = int(options.get("ttl_seconds") or 300)
+    except (TypeError, ValueError):
+        ttl_seconds = 300
+    return max(5, min(ttl_seconds, 3600))
 
 
 def resolve_piper_voice_model_id(voice: str, model_dir: Path) -> str:

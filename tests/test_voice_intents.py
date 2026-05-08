@@ -185,6 +185,48 @@ def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):
     assert metadata["expires_at"]
 
 
+def test_intent_reply_audio_can_be_long_lived(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/voice/intents",
+        json={
+            "intent_id": "timer.cancel",
+            "intent_name": "Cancel timer",
+            "definition": {
+                "utterance_examples": ["cancel timer"],
+                "dispatch": {"type": "local_response", "command": "timer.cancel"},
+                "reply": {
+                    "text_template": "Timer cancelled.",
+                    "audio": {"mode": "best_effort", "lifetime": "long_lived"},
+                },
+                "matcher": {"type": "exact_example"},
+            },
+        },
+    )
+
+    response = client.post(
+        "/api/voice/intents/invoke",
+        json={"endpoint_id": "box-1", "text": "cancel timer"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    event_id = payload["recognized_event_id"]
+    assert payload["reply_audio"]["lifetime"] == "long_lived"
+    assert payload["reply_audio"]["ttl_seconds"] is None
+    assert payload["reply_audio"]["expires_at"] is None
+
+    service = TtsAudioService(settings=settings, voice_turn_pipeline=None)  # type: ignore[arg-type]
+    service.cleanup_expired()
+
+    assert (tmp_path / "voice_tts" / f"{event_id}.wav").exists()
+    metadata = json.loads((tmp_path / "voice_tts" / f"{event_id}.json").read_text(encoding="utf-8"))
+    assert metadata["spoken_text"] == "Timer cancelled."
+    assert metadata["lifetime"] == "long_lived"
+    assert metadata["expires_at"] is None
+
+
 def test_tts_audio_cleanup_removes_expired_sidecar_and_audio(tmp_path):
     service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
     tts_dir = tmp_path / "voice_tts"

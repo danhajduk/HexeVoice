@@ -109,6 +109,8 @@
         "voice_id": { "type": "string" },
         "language": { "type": "string" },
         "format": { "type": "string", "enum": ["wav", "mp3"], "default": "wav" },
+        "lifetime": { "type": "string", "enum": ["short_lived", "long_lived"], "default": "short_lived" },
+        "long_lived": { "type": "boolean", "default": false },
         "ttl_seconds": { "type": "integer", "minimum": 5, "maximum": 3600, "default": 300 }
       }
     }

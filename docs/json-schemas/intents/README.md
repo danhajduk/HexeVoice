@@ -12,5 +12,6 @@ Examples:
 
 - `examples/timer-create.intent.json`
 - `examples/kitchen-status-audio.intent.json`
+- `examples/timer-cancel-long-lived-audio.intent.json`
 
-The directory name intentionally follows the task request spelling: `json-chemas-intents`.
+Intent reply audio defaults to short-lived artifacts. Set `definition.reply.audio.lifetime` to `long_lived` for canned replies that should survive the five-minute cleanup window.
