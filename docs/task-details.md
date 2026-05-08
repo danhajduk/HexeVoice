@@ -937,3 +937,20 @@ Original task details:
   - The schemas are checked into `docs/json-chemas-intents/`.
   - Schema examples validate against the documented contract.
   - The docs are clear enough for another node to register an intent without reading backend code.
+
+## Task 096
+Original task details:
+- Title: Add Invoke Intent action beside Test Intent in the dashboard UI
+- Goal:
+  - Let operators trigger the real intent execution path from the Intents dashboard after using the dry-run tester.
+- Scope:
+  - Add an `Invoke Intent` action next to the existing `Test Intent` dry-run control.
+  - Keep `Test Intent` as match/preview only.
+  - Make `Invoke Intent` call a backend path that performs real validated intent execution, including domain-event dispatch and optional reply audio generation when configured.
+  - Clearly show the invocation result, including matched intent, dispatch status, generated event id, reply text, audio link/sidecar readiness when available, and any failure reason.
+  - Add a confirmation or clear visual distinction for intents with side effects.
+  - Ensure disabled or invalid intents cannot be invoked.
+- Completion criteria:
+  - Operators can test an utterance without side effects, then intentionally invoke it from the same dashboard area.
+  - Timer invocation from the UI sends the real timer event and reports the publish decision.
+  - Tests cover dry-run-only behavior, successful invoke, disabled intent, invalid required data, and failed downstream dispatch.

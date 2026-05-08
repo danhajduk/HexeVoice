@@ -13,3 +13,4 @@
 [TODO] Task 093: Add optional registered-intent reply audio generation with pullable TTS asset links
 [TODO] Task 094: Add background cleanup for expired generated voice artifacts every 5 minutes
 [TODO] Task 095: Create JSON schemas for registered intent contracts under docs/json-chemas-intents
+[TODO] Task 096: Add Invoke Intent action beside Test Intent in the dashboard UI
