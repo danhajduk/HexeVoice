@@ -1,8 +1,10 @@
 from fastapi.testclient import TestClient
+import json
 
 from hexevoice.assistant import LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
+from hexevoice.tts.service import TtsAudioService
 
 
 def test_voice_intent_registry_seeds_timer_and_persists_lifecycle(tmp_path):
@@ -27,6 +29,7 @@ def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
     finder = LocalIntentFinder(registry=registry)
 
     assert finder.find("set a timer for 5 minutes").command == "timer.create"
+    assert finder.find("Five minutes timer.").slots["duration_seconds"] == 300
 
     registry.transition_intent(intent_id="timer.create", status="disabled", reason="unit_test")
 
@@ -87,6 +90,44 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     assert dispatch_after_disable.json()["matched"] is False
 
 
+def test_voice_intent_registration_rejects_invalid_extraction_contract(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/voice/intents",
+        json={
+            "intent_id": "bad.intent",
+            "definition": {
+                "extraction": {
+                    "required": ["not", "an", "object"],
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 400
+    assert "intent_extraction_required_must_be_object" in response.json()["detail"]
+
+
+def test_voice_intent_invoke_executes_real_path_and_reports_events(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/voice/intents/invoke",
+        json={"endpoint_id": "box-1", "text": "Five minutes timer."},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["matched"] is True
+    assert payload["intent_id"] == "timer.create"
+    assert payload["slots"]["duration_seconds"] == 300
+    assert payload["slots"]["duration_hhmmss"] == "00:05:00"
+    assert payload["recognized_event_id"].startswith("voice-intent-")
+    assert payload["recognition_event"]["event_type"] == "voice.intent.recognized"
+    assert payload["dispatch_event"]["event_type"] == "timer.create_requested"
+
+
 def test_assistant_turn_uses_registered_timer_intent_in_app(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")))
 
@@ -101,3 +142,67 @@ def test_assistant_turn_uses_registered_timer_intent_in_app(tmp_path):
     assert payload["command"] == "timer.create"
     assert payload["provider_id"] == "registered_intent"
     assert payload["spoken_text"] == "Setting timer for 2 minutes."
+
+
+def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)
+    client = TestClient(create_app(settings))
+    client.post(
+        "/api/voice/intents",
+        json={
+            "intent_id": "kitchen.status",
+            "intent_name": "Kitchen status",
+            "definition": {
+                "utterance_examples": ["kitchen status"],
+                "dispatch": {"type": "local_response", "command": "kitchen.status"},
+                "response": {"reply_text": "Kitchen status accepted."},
+                "reply": {
+                    "text_template": "Kitchen status accepted.",
+                    "audio": {"mode": "best_effort", "ttl_seconds": 300},
+                },
+                "matcher": {"type": "exact_example"},
+            },
+        },
+    )
+
+    response = client.post(
+        "/api/voice/intents/invoke",
+        json={"endpoint_id": "box-1", "text": "kitchen status"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    event_id = payload["recognized_event_id"]
+    assert payload["reply_audio"]["stream_id"] == event_id
+    assert payload["reply_audio"]["voice_ready"] is True
+    assert payload["reply_audio"]["spoken_text"] == "Kitchen status accepted."
+    sidecar = tmp_path / "voice_tts" / f"{event_id}.json"
+    audio = tmp_path / "voice_tts" / f"{event_id}.wav"
+    assert audio.exists()
+    metadata = json.loads(sidecar.read_text(encoding="utf-8"))
+    assert metadata["voice_ready"] is True
+    assert metadata["spoken_text"] == "Kitchen status accepted."
+    assert metadata["expires_at"]
+
+
+def test_tts_audio_cleanup_removes_expired_sidecar_and_audio(tmp_path):
+    service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    (tts_dir / "voice-intent-expired.wav").write_bytes(b"RIFFexpired")
+    (tts_dir / "voice-intent-expired.json").write_text(
+        json.dumps({"expires_at": "2026-01-01T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    (tts_dir / "voice-intent-live.wav").write_bytes(b"RIFFlive")
+    (tts_dir / "voice-intent-live.json").write_text(
+        json.dumps({"expires_at": "2999-01-01T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+
+    service.cleanup_expired()
+
+    assert not (tts_dir / "voice-intent-expired.wav").exists()
+    assert not (tts_dir / "voice-intent-expired.json").exists()
+    assert (tts_dir / "voice-intent-live.wav").exists()
+    assert (tts_dir / "voice-intent-live.json").exists()

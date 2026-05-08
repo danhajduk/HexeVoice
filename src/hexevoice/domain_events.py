@@ -89,6 +89,26 @@ class TimerCreateEventPublisher(Protocol):
     def status(self) -> dict[str, Any]:
         ...
 
+    def publish_voice_intent_recognized(
+        self,
+        *,
+        event_id: str,
+        endpoint_id: str,
+        session_id: str,
+        intent_id: str,
+        intent_name: str | None,
+        command: str,
+        provider_id: str,
+        recognized_text: str,
+        slots: dict[str, Any],
+        reply_text: str | None,
+        requested_at: datetime,
+        service_id: str | None = None,
+        version: str | None = None,
+        dispatch: dict[str, Any] | None = None,
+    ) -> DomainEventPublishDecision:
+        ...
+
 
 class NoopTimerCreateEventPublisher:
     def publish_timer_create(
@@ -106,12 +126,33 @@ class NoopTimerCreateEventPublisher:
     def status(self) -> dict[str, Any]:
         return {"provider": "noop", "enabled": False, "last_decision": None}
 
+    def publish_voice_intent_recognized(
+        self,
+        *,
+        event_id: str,
+        endpoint_id: str,
+        session_id: str,
+        intent_id: str,
+        intent_name: str | None,
+        command: str,
+        provider_id: str,
+        recognized_text: str,
+        slots: dict[str, Any],
+        reply_text: str | None,
+        requested_at: datetime,
+        service_id: str | None = None,
+        version: str | None = None,
+        dispatch: dict[str, Any] | None = None,
+    ) -> DomainEventPublishDecision:
+        return DomainEventPublishDecision(status="skipped", reason="domain_events_disabled", event_id=event_id, event_type="voice.intent.recognized")
+
 
 class HexeMqttTimerCreateEventPublisher:
     def __init__(self, *, settings: Settings, onboarding_state_store: OnboardingStateStore | None = None) -> None:
         self._settings = settings
         self._store = onboarding_state_store or OnboardingStateStore(path=settings.resolved_onboarding_state_path())
         self._last_decision: DomainEventPublishDecision | None = None
+        self._last_recognition_decision: DomainEventPublishDecision | None = None
 
     def publish_timer_create(
         self,
@@ -204,12 +245,122 @@ class HexeMqttTimerCreateEventPublisher:
             "enabled": self._settings.voice_domain_events_enabled,
             "event_type": "timer.create_requested",
             "last_decision": self._last_decision.as_dict() if self._last_decision else None,
+            "recognition_event_type": "voice.intent.recognized",
+            "last_recognition_decision": self._last_recognition_decision.as_dict() if self._last_recognition_decision else None,
         }
+
+    def publish_voice_intent_recognized(
+        self,
+        *,
+        event_id: str,
+        endpoint_id: str,
+        session_id: str,
+        intent_id: str,
+        intent_name: str | None,
+        command: str,
+        provider_id: str,
+        recognized_text: str,
+        slots: dict[str, Any],
+        reply_text: str | None,
+        requested_at: datetime,
+        service_id: str | None = None,
+        version: str | None = None,
+        dispatch: dict[str, Any] | None = None,
+    ) -> DomainEventPublishDecision:
+        event_type = "voice.intent.recognized"
+        state = self._store.load()
+        trust = state.trust_activation
+        node_id = str(trust.node_id or "").strip()
+        topic = domain_event_topic(node_id, event_type) if node_id else None
+
+        if not self._settings.voice_domain_events_enabled:
+            return self._record_recognition(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
+        if state.operational_status.operational_ready is not True:
+            return self._record_recognition(DomainEventPublishDecision("skipped", "operational_readiness_required", event_id, event_type, topic))
+        if trust.trust_status != "trusted":
+            return self._record_recognition(DomainEventPublishDecision("skipped", "trusted_node_required", event_id, event_type, topic))
+        if not node_id or not trust.operational_mqtt_identity or not trust.operational_mqtt_token:
+            return self._record_recognition(DomainEventPublishDecision("skipped", "missing_operational_mqtt_credentials", event_id, event_type, topic))
+        if not trust.operational_mqtt_host or not trust.operational_mqtt_port:
+            return self._record_recognition(DomainEventPublishDecision("skipped", "missing_operational_mqtt_endpoint", event_id, event_type, topic))
+
+        requested_at_text = format_event_timestamp(requested_at)
+        payload = {
+            "schema_version": 1,
+            "event_id": event_id,
+            "event_type": event_type,
+            "occurred_at": requested_at_text,
+            "source": {
+                "node_id": node_id,
+                "component": "hexevoice.assistant.local_intents",
+                "node_type": trust.node_type or self._settings.node_type,
+            },
+            "subject": {
+                "family": "voice_intent",
+                "record_id": session_id,
+            },
+            "data": {
+                "endpoint_id": endpoint_id,
+                "session_id": session_id,
+                "intent_id": intent_id,
+                "intent_name": intent_name,
+                "service_id": service_id,
+                "version": version,
+                "command": command,
+                "provider_id": provider_id,
+                "recognized_text": recognized_text,
+                "slots": slots,
+                "parameters": slots,
+                "reply_text": reply_text,
+                "dispatch": dispatch or {},
+                "recognized_at": requested_at_text,
+            },
+            "severity": "info",
+            "priority": "normal",
+            "safety_critical": False,
+        }
+        try:
+            self._publish(
+                host=trust.operational_mqtt_host,
+                port=int(trust.operational_mqtt_port),
+                identity=trust.operational_mqtt_identity,
+                token=trust.operational_mqtt_token,
+                topic=topic or "",
+                payload=payload,
+                request_timestamp=requested_at,
+            )
+        except ModuleNotFoundError:
+            return self._record_recognition(DomainEventPublishDecision("failed", "missing_paho_mqtt_dependency", event_id, event_type, topic))
+        except Exception as exc:
+            log.warning("Voice intent recognized event publish failed: error=%s", exc)
+            return self._record_recognition(DomainEventPublishDecision("failed", "mqtt_publish_failed", event_id, event_type, topic))
+
+        return self._record_recognition(
+            DomainEventPublishDecision(
+                status="published",
+                reason="published",
+                event_id=event_id,
+                event_type=event_type,
+                topic=topic,
+                published_at=datetime.now(UTC).isoformat(),
+            )
+        )
 
     def _record(self, decision: DomainEventPublishDecision) -> DomainEventPublishDecision:
         self._last_decision = decision
         log.info(
             "Timer create domain event publish decision: status=%s reason=%s event_type=%s topic=%s",
+            decision.status,
+            decision.reason,
+            decision.event_type,
+            decision.topic,
+        )
+        return decision
+
+    def _record_recognition(self, decision: DomainEventPublishDecision) -> DomainEventPublishDecision:
+        self._last_recognition_decision = decision
+        log.info(
+            "Voice intent recognized event publish decision: status=%s reason=%s event_type=%s topic=%s",
             decision.status,
             decision.reason,
             decision.event_type,

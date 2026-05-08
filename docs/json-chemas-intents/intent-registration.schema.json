@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/schemas/intents/intent-registration.schema.json",
+  "title": "Voice Intent Registration",
+  "type": "object",
+  "required": ["intent_id", "definition"],
+  "additionalProperties": false,
+  "properties": {
+    "intent_id": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "intent_name": { "type": ["string", "null"], "maxLength": 160 },
+    "service_id": { "type": "string", "minLength": 1, "maxLength": 160, "default": "voice.local_intents" },
+    "owner_service": { "type": ["string", "null"], "maxLength": 160 },
+    "owner_client_id": { "type": ["string", "null"], "maxLength": 160 },
+    "version": { "type": ["string", "null"], "maxLength": 80 },
+    "status": { "type": "string", "enum": ["active", "restricted", "review_due", "probation", "disabled", "retired", "expired"], "default": "active" },
+    "privacy_class": { "type": "string", "default": "internal" },
+    "access_scope": { "type": "string", "default": "service" },
+    "definition": { "$ref": "#/$defs/intent_definition" },
+    "constraints": { "type": "object" },
+    "metadata": { "type": "object" }
+  },
+  "$defs": {
+    "intent_definition": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "utterance_examples": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "patterns": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "matcher": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "slots": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/field_schema" }
+        },
+        "extraction": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/field_schema" }
+            },
+            "optional": {
+              "type": "object",
+              "additionalProperties": { "$ref": "#/$defs/field_schema" }
+            }
+          }
+        },
+        "dispatch": {
+          "type": "object",
+          "properties": {
+            "type": { "type": "string", "enum": ["domain_event", "local_response", "none"] },
+            "command": { "type": "string" },
+            "event_type": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "response": {
+          "type": "object",
+          "properties": {
+            "reply_text": { "type": "string" },
+            "reply_template": { "type": "string" }
+          },
+          "additionalProperties": true
+        },
+        "reply": {
+          "type": "object",
+          "properties": {
+            "text": { "type": "string" },
+            "text_template": { "type": "string" },
+            "audio": { "$ref": "#/$defs/reply_audio_options" }
+          },
+          "additionalProperties": true
+        }
+      }
+    },
+    "field_schema": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "type": { "type": "string", "enum": ["string", "integer", "number", "boolean", "datetime", "object", "array"] },
+        "source": { "type": "string" },
+        "required": { "type": "boolean" },
+        "minimum": { "type": "number" },
+        "min_length": { "type": "integer", "minimum": 0 },
+        "enum": { "type": "array" },
+        "default": {},
+        "value": {}
+      }
+    },
+    "reply_audio_options": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "mode": { "type": "string", "enum": ["none", "best_effort", "required"], "default": "none" },
+        "provider_id": { "type": "string" },
+        "model_id": { "type": "string" },
+        "voice_id": { "type": "string" },
+        "language": { "type": "string" },
+        "format": { "type": "string", "enum": ["wav", "mp3"], "default": "wav" },
+        "ttl_seconds": { "type": "integer", "minimum": 5, "maximum": 3600, "default": 300 }
+      }
+    }
+  }
+}

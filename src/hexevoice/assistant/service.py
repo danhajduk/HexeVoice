@@ -6,7 +6,8 @@ from datetime import datetime
 import logging
 import re
 from collections.abc import Sequence
-from typing import Protocol
+from typing import Any, Protocol
+from uuid import uuid4
 
 import httpx
 
@@ -26,6 +27,23 @@ class ConversationTurn:
     session_id: str
     heard_text: str
     reply_text: str
+
+
+@dataclass(frozen=True)
+class IntentInvocationResult:
+    matched: bool
+    endpoint_id: str
+    session_id: str
+    heard_text: str
+    intent_id: str | None = None
+    command: str | None = None
+    slots: dict[str, Any] | None = None
+    reply_text: str | None = None
+    provider_id: str | None = None
+    recognized_event_id: str | None = None
+    recognition_event: dict[str, Any] | None = None
+    dispatch_event: dict[str, Any] | None = None
+    reply: dict[str, Any] | None = None
 
 
 class AssistantAdapter(Protocol):
@@ -184,17 +202,23 @@ class AssistantTurnService:
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
         heard_text = self._strip_wake_words(payload.text)
         session_id = payload.session_id or self._next_session_id(payload.endpoint_id)
-        intent = self._intent_finder.find(heard_text)
+        requested_at = utc_event_timestamp()
+        intent = self._intent_finder.find(heard_text, requested_at=requested_at)
         if intent is not None:
-            requested_at = utc_event_timestamp()
-            if intent.command == "timer.create":
-                self._publish_timer_create_event(
-                    endpoint_id=payload.endpoint_id,
-                    session_id=session_id,
-                    heard_text=heard_text,
-                    slots=intent.slots,
-                    requested_at=requested_at,
-                )
+            self._publish_intent_recognized_event(
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                intent=intent,
+                requested_at=requested_at,
+            )
+            self._dispatch_intent(
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                intent=intent,
+                requested_at=requested_at,
+            )
             response = AssistantTurnResponse(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
@@ -233,7 +257,64 @@ class AssistantTurnService:
         }
 
     def match_intent(self, text: str):
-        return self._intent_finder.find(self._strip_wake_words(text))
+        return self._intent_finder.find(self._strip_wake_words(text), requested_at=utc_event_timestamp())
+
+    def invoke_intent(self, *, endpoint_id: str, text: str, session_id: str | None = None) -> IntentInvocationResult:
+        heard_text = self._strip_wake_words(text)
+        resolved_session_id = session_id or self._next_session_id(endpoint_id)
+        requested_at = utc_event_timestamp()
+        intent = self._intent_finder.find(heard_text, requested_at=requested_at)
+        if intent is None:
+            return IntentInvocationResult(
+                matched=False,
+                endpoint_id=endpoint_id,
+                session_id=resolved_session_id,
+                heard_text=heard_text,
+                slots={},
+            )
+        recognized_event_id = f"voice-intent-{uuid4().hex}"
+        recognition_decision = self._publish_intent_recognized_event(
+            endpoint_id=endpoint_id,
+            session_id=resolved_session_id,
+            heard_text=heard_text,
+            intent=intent,
+            requested_at=requested_at,
+            event_id=recognized_event_id,
+        )
+        dispatch_decision = self._dispatch_intent(
+            endpoint_id=endpoint_id,
+            session_id=resolved_session_id,
+            heard_text=heard_text,
+            intent=intent,
+            requested_at=requested_at,
+        )
+        response = AssistantTurnResponse(
+            endpoint_id=endpoint_id,
+            session_id=resolved_session_id,
+            heard_text=heard_text,
+            reply_text=intent.reply_text,
+            spoken_text=intent.reply_text,
+            handled_locally=True,
+            command=intent.command,
+            device_state="speaking",
+            provider_id=intent.provider_id,
+        )
+        self._record_turn(response)
+        return IntentInvocationResult(
+            matched=True,
+            endpoint_id=endpoint_id,
+            session_id=resolved_session_id,
+            heard_text=heard_text,
+            intent_id=intent.intent,
+            command=intent.command,
+            slots=dict(intent.slots),
+            reply_text=intent.reply_text,
+            provider_id=intent.provider_id,
+            recognized_event_id=recognized_event_id,
+            recognition_event=recognition_decision.as_dict(),
+            dispatch_event=dispatch_decision.as_dict() if dispatch_decision else None,
+            reply=intent.reply,
+        )
 
     def context_for_endpoint(self, endpoint_id: str) -> list[ConversationTurn]:
         return list(self._context_by_endpoint.get(endpoint_id, ()))
@@ -281,18 +362,68 @@ class AssistantTurnService:
         heard_text: str,
         slots: dict,
         requested_at: datetime,
-    ) -> None:
+    ):
         duration_seconds = slots.get("duration_seconds")
         duration_text = slots.get("duration_text")
         if not isinstance(duration_seconds, int) or not isinstance(duration_text, str):
-            return
-        self._timer_event_publisher.publish_timer_create(
+            return None
+        return self._timer_event_publisher.publish_timer_create(
             endpoint_id=endpoint_id,
             session_id=session_id,
             heard_text=heard_text,
             duration_seconds=duration_seconds,
             duration_text=duration_text,
             requested_at=requested_at,
+        )
+
+    def _dispatch_intent(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        intent,
+        requested_at: datetime,
+    ):
+        if intent.command == "timer.create":
+            return self._publish_timer_create_event(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                slots=intent.slots,
+                requested_at=requested_at,
+            )
+        return None
+
+    def _publish_intent_recognized_event(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        intent,
+        requested_at: datetime,
+        event_id: str | None = None,
+    ):
+        recognized_event_id = event_id or f"voice-intent-{uuid4().hex}"
+        publisher = getattr(self._timer_event_publisher, "publish_voice_intent_recognized", None)
+        if not callable(publisher):
+            return None
+        return publisher(
+            event_id=recognized_event_id,
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            intent_id=intent.intent,
+            intent_name=intent.intent_name,
+            service_id=intent.service_id,
+            version=intent.version,
+            command=intent.command,
+            provider_id=intent.provider_id,
+            recognized_text=heard_text,
+            slots=dict(intent.slots),
+            reply_text=intent.reply_text,
+            requested_at=requested_at,
+            dispatch=intent.dispatch,
         )
 
     def _conversation_context(self, *, endpoint_id: str, session_id: str) -> list[ConversationTurn]:

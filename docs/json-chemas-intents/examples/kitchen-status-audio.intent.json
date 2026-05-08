@@ -1,0 +1,29 @@
+{
+  "intent_id": "kitchen.status",
+  "intent_name": "Kitchen status",
+  "service_id": "voice.local_intents",
+  "version": "v1",
+  "status": "active",
+  "definition": {
+    "utterance_examples": ["kitchen status"],
+    "matcher": { "type": "exact_example" },
+    "dispatch": {
+      "type": "local_response",
+      "command": "kitchen.status"
+    },
+    "reply": {
+      "text_template": "Kitchen status accepted.",
+      "audio": {
+        "mode": "best_effort",
+        "provider_id": "piper",
+        "model_id": "en_US-lessac-medium",
+        "format": "wav",
+        "ttl_seconds": 300
+      }
+    }
+  },
+  "constraints": {},
+  "metadata": {
+    "source": "schema_example"
+  }
+}

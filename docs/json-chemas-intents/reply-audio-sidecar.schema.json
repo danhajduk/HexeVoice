@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/schemas/intents/reply-audio-sidecar.schema.json",
+  "title": "Intent Reply Audio Sidecar",
+  "type": "object",
+  "required": ["event_id", "stream_id", "voice_ready", "spoken_text", "created_at", "expires_at"],
+  "additionalProperties": true,
+  "properties": {
+    "event_id": { "type": "string", "pattern": "^voice-intent-[A-Za-z0-9_-]+$" },
+    "stream_id": { "type": "string" },
+    "voice_ready": { "type": "boolean" },
+    "spoken_text": { "type": "string" },
+    "audio_url": { "type": ["string", "null"] },
+    "content_type": { "type": ["string", "null"] },
+    "duration_ms": { "type": ["number", "null"], "minimum": 0 },
+    "provider_id": { "type": ["string", "null"] },
+    "model_id": { "type": ["string", "null"] },
+    "voice_id": { "type": ["string", "null"] },
+    "mode": { "type": "string", "enum": ["best_effort", "required", "none"] },
+    "status": { "type": "string", "enum": ["ready", "failed", "unavailable"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "error": { "type": ["string", "null"] }
+  }
+}

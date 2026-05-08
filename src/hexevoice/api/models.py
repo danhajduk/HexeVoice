@@ -79,6 +79,7 @@ class VoiceIntentReviewRequest(BaseModel):
 class VoiceIntentDispatchRequest(BaseModel):
     endpoint_id: str = Field(default="intent-test", min_length=1)
     text: str = Field(min_length=1)
+    session_id: str | None = None
 
 
 class VoiceIntentStateResponse(BaseModel):
@@ -102,6 +103,22 @@ class VoiceIntentDispatchResponse(BaseModel):
     slots: dict[str, Any] = Field(default_factory=dict)
     reply_text: str | None = None
     provider_id: str | None = None
+
+
+class VoiceIntentInvokeResponse(BaseModel):
+    matched: bool
+    endpoint_id: str
+    session_id: str
+    heard_text: str
+    intent_id: str | None = None
+    command: str | None = None
+    slots: dict[str, Any] = Field(default_factory=dict)
+    reply_text: str | None = None
+    provider_id: str | None = None
+    recognized_event_id: str | None = None
+    recognition_event: dict[str, Any] | None = None
+    dispatch_event: dict[str, Any] | None = None
+    reply_audio: dict[str, Any] | None = None
 
 
 class TtsSynthesizeTarget(BaseModel):

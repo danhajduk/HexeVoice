@@ -96,6 +96,7 @@ class TextToSpeechAdapter(Protocol):
         text: str,
         voice: str | None = None,
         audio_format: str | None = None,
+        stream_id: str | None = None,
     ) -> TtsSynthesis:
         ...
 
@@ -340,8 +341,9 @@ class DeterministicTextToSpeechAdapter:
         text: str,
         voice: str | None = None,
         audio_format: str | None = None,
+        stream_id: str | None = None,
     ) -> TtsSynthesis:
-        synthesis = TtsSynthesis(stream_id=f"tts-{uuid4().hex[:12]}")
+        synthesis = TtsSynthesis(stream_id=stream_id or f"tts-{uuid4().hex[:12]}")
         record_voice_event(
             "tts.synthesized",
             endpoint_id=endpoint_id,
@@ -389,12 +391,13 @@ class PiperTextToSpeechAdapter:
         text: str,
         voice: str | None = None,
         audio_format: str | None = None,
+        stream_id: str | None = None,
     ) -> TtsSynthesis:
         if not self._base_url:
             self._last_error = "missing_piper_base_url"
-            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text, voice=voice)
+            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text, voice=voice, stream_id=stream_id)
 
-        stream_id = f"tts-{uuid4().hex[:12]}"
+        stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
         client = self._http_client or httpx.Client(timeout=self._timeout_s)
         try:
             response = client.post(
@@ -436,7 +439,7 @@ class PiperTextToSpeechAdapter:
                 text_chars=len(text or ""),
                 error=self._last_error,
             )
-            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text, voice=voice)
+            return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text, voice=voice, stream_id=stream_id)
         finally:
             if self._http_client is None:
                 client.close()
@@ -486,8 +489,9 @@ class OpenAiTextToSpeechAdapter:
         text: str,
         voice: str | None = None,
         audio_format: str | None = None,
+        stream_id: str | None = None,
     ) -> TtsSynthesis:
-        stream_id = f"tts-{uuid4().hex[:12]}"
+        stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
         response_format = audio_format or self._response_format
         content_type = self._content_type(response_format)
         if not self._api_key:
@@ -731,6 +735,7 @@ class VoiceTurnPipeline:
         text: str,
         voice: str | None = None,
         audio_format: str | None = None,
+        stream_id: str | None = None,
     ) -> TtsSynthesis:
         return self._tts_adapter.synthesize(
             endpoint_id=endpoint_id,
@@ -738,6 +743,7 @@ class VoiceTurnPipeline:
             text=text,
             voice=voice,
             audio_format=audio_format,
+            stream_id=stream_id,
         )
 
     def preload_stt(self) -> dict | None:

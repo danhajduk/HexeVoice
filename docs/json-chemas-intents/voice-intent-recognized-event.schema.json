@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/schemas/intents/voice-intent-recognized-event.schema.json",
+  "title": "Voice Intent Recognized Event",
+  "type": "object",
+  "required": ["schema_version", "event_id", "event_type", "occurred_at", "source", "subject", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "event_id": { "type": "string", "pattern": "^voice-intent-[A-Za-z0-9_-]+$" },
+    "event_type": { "type": "string", "const": "voice.intent.recognized" },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "source": {
+      "type": "object",
+      "required": ["node_id", "component", "node_type"],
+      "properties": {
+        "node_id": { "type": "string" },
+        "component": { "type": "string" },
+        "node_type": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "subject": {
+      "type": "object",
+      "required": ["family", "record_id"],
+      "properties": {
+        "family": { "type": "string", "const": "voice_intent" },
+        "record_id": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "data": {
+      "type": "object",
+      "required": ["endpoint_id", "session_id", "intent_id", "command", "provider_id", "recognized_text", "slots"],
+      "properties": {
+        "endpoint_id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "intent_id": { "type": "string" },
+        "intent_name": { "type": ["string", "null"] },
+        "service_id": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "command": { "type": "string" },
+        "provider_id": { "type": "string" },
+        "recognized_text": { "type": "string" },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "slots": { "type": "object" },
+        "parameters": { "type": "object" },
+        "reply_text": { "type": ["string", "null"] },
+        "dispatch": { "type": "object" },
+        "reply_audio": { "type": ["object", "null"] },
+        "recognized_at": { "type": "string", "format": "date-time" },
+        "mqtt_sent_at": { "type": "string", "format": "date-time" },
+        "request_to_mqtt_latency_ms": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "severity": { "type": "string" },
+    "priority": { "type": "string" },
+    "safety_critical": { "type": "boolean" }
+  }
+}

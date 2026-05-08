@@ -1,0 +1,43 @@
+{
+  "intent_id": "timer.create",
+  "intent_name": "Create timer",
+  "service_id": "voice.local_intents",
+  "version": "v1",
+  "status": "active",
+  "definition": {
+    "utterance_examples": [
+      "set a timer for 5 minutes",
+      "timer for one hour",
+      "five minutes timer"
+    ],
+    "patterns": [
+      "^(?:please\\s+)?timer\\s+(?:for|of)\\s+(?P<duration>.+)$",
+      "^(?:please\\s+)?(?P<duration>.+?)\\s+timer$"
+    ],
+    "matcher": { "type": "builtin_timer" },
+    "extraction": {
+      "required": {
+        "duration_seconds": { "type": "integer", "source": "duration_seconds", "minimum": 1 },
+        "duration_text": { "type": "string", "source": "duration_text" },
+        "duration_hhmmss": { "type": "string", "source": "duration_hhmmss" },
+        "requested_at": { "type": "datetime", "source": "system_time" }
+      }
+    },
+    "dispatch": {
+      "type": "domain_event",
+      "command": "timer.create",
+      "event_type": "timer.create_requested"
+    },
+    "reply": {
+      "text_template": "Setting timer for {duration_text}.",
+      "audio": { "mode": "none", "ttl_seconds": 300 }
+    }
+  },
+  "constraints": {
+    "requires_operational_mqtt": true
+  },
+  "metadata": {
+    "builtin": true,
+    "family": "timer"
+  }
+}

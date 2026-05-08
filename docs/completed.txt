@@ -84,3 +84,9 @@ Task 087 (Voice intents): Declare Voice Node intent-registration capabilities an
 Task 088 (Voice intents): Route local assistant command handling through registered intents - Completed on 05/04/2026 04:52
 Task 089 (Voice intents): Add setup/dashboard controls for Voice Node intents - Completed on 05/04/2026 04:52
 Task 090 (Voice intents): Add tests and operator docs for Voice Node intent registration - Completed on 05/04/2026 04:52
+Task 091 (Voice intents): Add declarative required data extraction to registered intents - Completed on 05/07/2026 18:38
+Task 092 (Voice intents): Emit reusable voice intent recognized events from validated intent matches - Completed on 05/07/2026 18:38
+Task 093 (Voice intents): Add optional registered-intent reply audio generation with pullable TTS asset links - Completed on 05/07/2026 18:38
+Task 094 (Voice intents): Add background cleanup for expired generated voice artifacts every 5 minutes - Completed on 05/07/2026 18:38
+Task 095 (Voice intents): Create JSON schemas for registered intent contracts under docs/json-chemas-intents - Completed on 05/07/2026 18:38
+Task 096 (Voice intents): Add Invoke Intent action beside Test Intent in the dashboard UI - Completed on 05/07/2026 18:38

@@ -264,7 +264,7 @@
 
 .intent-test-form {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
   gap: 12px;
   align-items: end;
 }
@@ -277,6 +277,12 @@
 }
 
 .intent-test-result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.intent-audio-result {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
@@ -1124,6 +1130,7 @@
   .intent-summary-grid,
   .intent-test-form,
   .intent-test-result-grid,
+  .intent-audio-result,
   .form-grid {
     grid-template-columns: 1fr;
   }

@@ -24,15 +24,27 @@ def timer_intent_definition() -> dict[str, Any]:
             "set a timer for 5 minutes",
             "start a 10 minute timer",
             "timer for one hour",
+            "five minutes timer",
         ],
         "patterns": [
             r"^(?:please\s+)?(?:set|start|create|make)\s+(?:a\s+|an\s+)?timer\s+(?:for|of)\s+(?P<duration>.+)$",
             r"^(?:please\s+)?timer\s+(?:for|of)\s+(?P<duration>.+)$",
             r"^(?:please\s+)?(?:set|start|create|make)\s+(?:a\s+|an\s+)?(?P<duration>.+?)\s+timer$",
+            r"^(?:please\s+)?(?P<duration>.+?)\s+timer$",
         ],
         "slots": {
             "duration_seconds": {"type": "integer", "minimum": 1},
             "duration_text": {"type": "string"},
+            "duration_hhmmss": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "required": {
+                "duration_seconds": {"type": "integer", "source": "duration_seconds", "minimum": 1},
+                "duration_text": {"type": "string", "source": "duration_text"},
+                "duration_hhmmss": {"type": "string", "source": "duration_hhmmss"},
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
         },
         "dispatch": {
             "type": "domain_event",
@@ -41,6 +53,13 @@ def timer_intent_definition() -> dict[str, Any]:
         },
         "response": {
             "reply_template": "Setting timer for {duration_text}.",
+        },
+        "reply": {
+            "text_template": "Setting timer for {duration_text}.",
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 300,
+            },
         },
         "matcher": {
             "type": "builtin_timer",
@@ -124,6 +143,22 @@ class VoiceIntentRecord(BaseModel):
         examples = value.get("utterance_examples")
         if examples is not None and not isinstance(examples, list):
             raise ValueError("intent_utterance_examples_must_be_list")
+        extraction = value.get("extraction")
+        if extraction is not None:
+            if not isinstance(extraction, dict):
+                raise ValueError("intent_extraction_must_be_object")
+            for section_name in ("required", "optional"):
+                section = extraction.get(section_name)
+                if section is not None and not isinstance(section, dict):
+                    raise ValueError(f"intent_extraction_{section_name}_must_be_object")
+                for field_name, field_schema in (section or {}).items():
+                    if not isinstance(field_name, str) or not field_name.strip():
+                        raise ValueError("intent_extraction_field_name_required")
+                    if not isinstance(field_schema, dict):
+                        raise ValueError("intent_extraction_field_schema_must_be_object")
+        reply = value.get("reply")
+        if reply is not None and not isinstance(reply, dict):
+            raise ValueError("intent_reply_must_be_object")
         return value
 
 

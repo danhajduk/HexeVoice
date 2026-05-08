@@ -64,6 +64,64 @@ class TtsAudioService:
             provider_id=synthesis.provider_id,
         )
 
+    def synthesize_intent_reply(
+        self,
+        *,
+        event_id: str,
+        endpoint_id: str,
+        session_id: str,
+        text: str,
+        audio_options: dict | None = None,
+    ) -> dict:
+        options = audio_options or {}
+        mode = str(options.get("mode") or "best_effort").strip().lower()
+        voice = options.get("voice_id") or options.get("model_id") or options.get("voice") or options.get("model")
+        audio_format = str(options.get("format") or "wav")
+        try:
+            ttl_seconds = int(options.get("ttl_seconds") or 300)
+        except (TypeError, ValueError):
+            ttl_seconds = 300
+        ttl_seconds = max(5, min(ttl_seconds, 3600))
+        stream_id = safe_tts_stream_id(event_id) or f"voice-intent-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
+        synthesis = self._pipeline.synthesize_reply(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            text=text,
+            voice=self._resolve_voice_model(str(voice)) if voice else None,
+            audio_format=audio_format,
+            stream_id=stream_id,
+        )
+        audio_path = self.audio_path(stream_id)
+        if audio_path is None and not synthesis.error:
+            audio_path = self._write_deterministic_wav(stream_id)
+
+        content_type = synthesis.content_type or (content_type_for_path(audio_path) if audio_path else "audio/wav")
+        duration_ms = wav_duration_ms(audio_path) if audio_path and content_type == "audio/wav" else None
+        expires_at = datetime.now(UTC) + timedelta(seconds=ttl_seconds)
+        voice_ready = bool(audio_path and not synthesis.error)
+        metadata = {
+            "event_id": event_id,
+            "stream_id": stream_id,
+            "voice_ready": voice_ready,
+            "spoken_text": text,
+            "audio_url": f"{self.public_api_base_url()}/api/tts/audio/{stream_id}" if voice_ready else None,
+            "content_type": content_type if voice_ready else None,
+            "duration_ms": duration_ms,
+            "provider_id": synthesis.provider_id,
+            "model_id": options.get("model_id"),
+            "voice_id": options.get("voice_id") or options.get("voice"),
+            "mode": mode,
+            "created_at": datetime.now(UTC).isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "error": synthesis.error,
+        }
+        if synthesis.error and mode == "required":
+            metadata["status"] = "failed"
+        else:
+            metadata["status"] = "ready" if voice_ready else "unavailable"
+        self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+        return metadata
+
     def audio_path(self, stream_id: str) -> Path | None:
         safe_stream_id = safe_tts_stream_id(stream_id)
         if safe_stream_id is None:

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { dispatchVoiceIntent } from "../../api/client";
+import { dispatchVoiceIntent, invokeVoiceIntent } from "../../api/client";
 
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : value;
@@ -89,7 +89,14 @@ function IntentExamples({ intent }) {
   );
 }
 
-function IntentTestResult({ result, error }) {
+function decisionText(decision) {
+  if (!decision) {
+    return "none";
+  }
+  return [decision.status, decision.reason].filter(Boolean).join(" / ") || "none";
+}
+
+function IntentActionResult({ result, error, mode }) {
   if (error) {
     return <div className="callout callout-danger">{error}</div>;
   }
@@ -104,7 +111,7 @@ function IntentTestResult({ result, error }) {
     <div className="intent-test-result">
       <div className="section-heading">
         <div>
-          <p className="panel-kicker">Result</p>
+          <p className="panel-kicker">{mode === "invoke" ? "Invoke Result" : "Test Result"}</p>
           <h3 className="section-title">{matched ? valueOrEmpty(result.intent_id, "Matched") : "No Match"}</h3>
         </div>
         <span className={`status-pill status-pill-${matched ? "success" : "neutral"}`}>
@@ -124,7 +131,45 @@ function IntentTestResult({ result, error }) {
           <span className="fact-grid-label">Reply</span>
           <span className="fact-grid-value">{valueOrEmpty(result.reply_text)}</span>
         </div>
+        {mode === "invoke" ? (
+          <>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Event ID</span>
+              <span className="fact-grid-value">{valueOrEmpty(result.recognized_event_id)}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Recognition</span>
+              <span className="fact-grid-value">{decisionText(result.recognition_event)}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Dispatch</span>
+              <span className="fact-grid-value">{decisionText(result.dispatch_event)}</span>
+            </div>
+          </>
+        ) : null}
       </div>
+      {mode === "invoke" && result.reply_audio ? (
+        <div className="intent-audio-result">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Voice Ready</span>
+            <span className="fact-grid-value">{result.reply_audio.voice_ready ? "yes" : "no"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Audio</span>
+            <span className="fact-grid-value">
+              {result.reply_audio.audio_url ? (
+                <a href={result.reply_audio.audio_url}>{result.reply_audio.stream_id || "audio"}</a>
+              ) : (
+                "none"
+              )}
+            </span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Expires</span>
+            <span className="fact-grid-value">{formatLocalDateTime(result.reply_audio.expires_at)}</span>
+          </div>
+        </div>
+      ) : null}
       {matched ? <pre className="code-panel">{JSON.stringify(result.slots || {}, null, 2)}</pre> : null}
     </div>
   );
@@ -138,6 +183,7 @@ export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
   const [testResult, setTestResult] = useState(null);
   const [testError, setTestError] = useState("");
   const [testingIntent, setTestingIntent] = useState(false);
+  const [resultMode, setResultMode] = useState("test");
 
   async function handleIntentTest(event) {
     event.preventDefault();
@@ -148,8 +194,33 @@ export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
 
     setTestingIntent(true);
     setTestError("");
+    setResultMode("test");
     try {
       const result = await dispatchVoiceIntent({ endpoint_id: "dashboard-intent-test", text });
+      setTestResult(result);
+      await onRefresh?.();
+    } catch (err) {
+      setTestResult(null);
+      setTestError(String(err.message || err));
+    } finally {
+      setTestingIntent(false);
+    }
+  }
+
+  async function handleIntentInvoke() {
+    const text = testText.trim();
+    if (!text || testingIntent) {
+      return;
+    }
+    if (!window.confirm("Invoke this intent now?")) {
+      return;
+    }
+
+    setTestingIntent(true);
+    setTestError("");
+    setResultMode("invoke");
+    try {
+      const result = await invokeVoiceIntent({ endpoint_id: "dashboard-intent-invoke", text });
       setTestResult(result);
       await onRefresh?.();
     } catch (err) {
@@ -221,9 +292,12 @@ export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
           <button className="btn btn-primary" type="submit" disabled={testingIntent || !testText.trim()}>
             {testingIntent ? "Testing..." : "Test"}
           </button>
+          <button className="btn btn-secondary" type="button" onClick={handleIntentInvoke} disabled={testingIntent || !testText.trim()}>
+            {testingIntent && resultMode === "invoke" ? "Invoking..." : "Invoke Intent"}
+          </button>
         </form>
 
-        <IntentTestResult result={testResult} error={testError} />
+        <IntentActionResult result={testResult} error={testError} mode={resultMode} />
       </section>
 
       <section className="panel stack operational-content-header">

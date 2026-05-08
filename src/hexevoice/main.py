@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime
 import hashlib
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -25,6 +26,7 @@ from hexevoice.api.models import (
     GovernanceReadinessResponse,
     VoiceIntentDispatchRequest,
     VoiceIntentDispatchResponse,
+    VoiceIntentInvokeResponse,
     VoiceIntentLifecycleRequest,
     VoiceIntentLookupResponse,
     VoiceIntentRegisterRequest,
@@ -220,6 +222,12 @@ def create_app(
     )
     app = FastAPI(title="HexeVoice")
     app.state.timer_announcement_service = timer_announcement_service
+    app.state.voice_artifact_cleanup_status = {
+        "name": "every_5_minutes",
+        "interval_seconds": 300,
+        "last_run_at": None,
+        "last_error": None,
+    }
     log = logging.getLogger("hexevoice")
 
     @app.on_event("startup")
@@ -238,9 +246,29 @@ def create_app(
         if supervisor_enabled:
             asyncio.create_task(loop())
 
+        async def cleanup_generated_voice_artifacts_every_5_minutes():
+            while True:
+                try:
+                    await asyncio.to_thread(tts_audio_service.cleanup_expired)
+                    app.state.voice_artifact_cleanup_status["last_run_at"] = datetime.now(UTC).isoformat()
+                    app.state.voice_artifact_cleanup_status["last_error"] = None
+                except Exception:
+                    app.state.voice_artifact_cleanup_status["last_error"] = "cleanup_failed"
+                    log.exception("Generated voice artifact cleanup failed")
+                await asyncio.sleep(300)
+
+        app.state.voice_artifact_cleanup_task = asyncio.create_task(cleanup_generated_voice_artifacts_every_5_minutes())
+
     @app.on_event("shutdown")
     async def stop_background_services():
         timer_announcement_service.stop()
+        cleanup_task = getattr(app.state, "voice_artifact_cleanup_task", None)
+        if cleanup_task is not None:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
 
     @app.get("/health/live")
     async def health_live():
@@ -325,6 +353,43 @@ def create_app(
             slots=match.slots,
             reply_text=match.reply_text,
             provider_id=match.provider_id,
+        )
+
+    @app.post("/api/voice/intents/invoke", response_model=VoiceIntentInvokeResponse)
+    async def voice_intent_invoke(payload: VoiceIntentDispatchRequest) -> VoiceIntentInvokeResponse:
+        result = assistant_service.invoke_intent(
+            endpoint_id=payload.endpoint_id,
+            text=payload.text,
+            session_id=payload.session_id,
+        )
+        reply_audio = None
+        if result.matched and result.reply_text and result.recognized_event_id:
+            reply = result.reply or {}
+            audio_options = reply.get("audio") if isinstance(reply.get("audio"), dict) else {}
+            mode = str((audio_options or {}).get("mode") or "none").strip().lower()
+            if mode and mode != "none":
+                reply_audio = await asyncio.to_thread(
+                    tts_audio_service.synthesize_intent_reply,
+                    event_id=result.recognized_event_id,
+                    endpoint_id=result.endpoint_id,
+                    session_id=result.session_id,
+                    text=result.reply_text,
+                    audio_options=audio_options,
+                )
+        return VoiceIntentInvokeResponse(
+            matched=result.matched,
+            endpoint_id=result.endpoint_id,
+            session_id=result.session_id,
+            heard_text=result.heard_text,
+            intent_id=result.intent_id,
+            command=result.command,
+            slots=result.slots or {},
+            reply_text=result.reply_text,
+            provider_id=result.provider_id,
+            recognized_event_id=result.recognized_event_id,
+            recognition_event=result.recognition_event,
+            dispatch_event=result.dispatch_event,
+            reply_audio=reply_audio,
         )
 
     @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)
@@ -640,6 +705,7 @@ def create_app(
     async def voice_status() -> dict:
         status = voice_session_manager.status()
         status["timer_announcements"] = timer_announcement_service.status()
+        status["voice_artifact_cleanup"] = app.state.voice_artifact_cleanup_status
         return status
 
     @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
@@ -655,19 +721,10 @@ def create_app(
 
     @app.get("/api/voice/tts/{stream_id}")
     async def voice_tts_audio(stream_id: str) -> FileResponse:
-        if not stream_id.startswith("tts-") or not stream_id.replace("-", "").isalnum():
+        audio_path = tts_audio_service.audio_path(stream_id)
+        if audio_path is None:
             raise HTTPException(status_code=404, detail="tts_stream_not_found")
-        tts_dir = app_settings.runtime_dir / "voice_tts"
-        candidates = sorted(tts_dir.glob(f"{stream_id}.*"))
-        if not candidates:
-            raise HTTPException(status_code=404, detail="tts_stream_not_found")
-        media_types = {
-            ".wav": "audio/wav",
-            ".mp3": "audio/mpeg",
-            ".opus": "audio/ogg",
-        }
-        candidate = candidates[0]
-        return FileResponse(candidate, media_type=media_types.get(candidate.suffix.lower(), "application/octet-stream"))
+        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
 
     @app.post("/api/voice/session/cancel")
     async def voice_session_cancel() -> dict:
