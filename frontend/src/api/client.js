@@ -159,6 +159,10 @@ export async function getVoiceIntents() {
   return fetchJson("/api/voice/intents");
 }
 
+export async function dispatchVoiceIntent(payload) {
+  return sendJson("/api/voice/intents/dispatch", { body: payload });
+}
+
 export async function registerVoiceIntent(payload) {
   return sendJson("/api/voice/intents", { body: payload });
 }

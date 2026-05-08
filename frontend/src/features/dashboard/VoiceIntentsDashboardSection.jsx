@@ -1,3 +1,7 @@
+import { useState } from "react";
+
+import { dispatchVoiceIntent } from "../../api/client";
+
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : value;
 }
@@ -85,10 +89,76 @@ function IntentExamples({ intent }) {
   );
 }
 
+function IntentTestResult({ result, error }) {
+  if (error) {
+    return <div className="callout callout-danger">{error}</div>;
+  }
+
+  if (!result) {
+    return null;
+  }
+
+  const matched = Boolean(result.matched);
+
+  return (
+    <div className="intent-test-result">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Result</p>
+          <h3 className="section-title">{matched ? valueOrEmpty(result.intent_id, "Matched") : "No Match"}</h3>
+        </div>
+        <span className={`status-pill status-pill-${matched ? "success" : "neutral"}`}>
+          {matched ? "matched" : "unmatched"}
+        </span>
+      </div>
+      <div className="intent-test-result-grid">
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Command</span>
+          <span className="fact-grid-value">{valueOrEmpty(result.command)}</span>
+        </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Provider</span>
+          <span className="fact-grid-value">{valueOrEmpty(result.provider_id)}</span>
+        </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Reply</span>
+          <span className="fact-grid-value">{valueOrEmpty(result.reply_text)}</span>
+        </div>
+      </div>
+      {matched ? <pre className="code-panel">{JSON.stringify(result.slots || {}, null, 2)}</pre> : null}
+    </div>
+  );
+}
+
 export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
   const intents = Array.isArray(voiceIntents?.intents) ? voiceIntents.intents : [];
   const registeredCount = voiceIntents?.registered_count ?? intents.length;
   const activeCount = voiceIntents?.active_count ?? intents.filter((intent) => intent.status === "active").length;
+  const [testText, setTestText] = useState("set a timer for 5 minutes");
+  const [testResult, setTestResult] = useState(null);
+  const [testError, setTestError] = useState("");
+  const [testingIntent, setTestingIntent] = useState(false);
+
+  async function handleIntentTest(event) {
+    event.preventDefault();
+    const text = testText.trim();
+    if (!text || testingIntent) {
+      return;
+    }
+
+    setTestingIntent(true);
+    setTestError("");
+    try {
+      const result = await dispatchVoiceIntent({ endpoint_id: "dashboard-intent-test", text });
+      setTestResult(result);
+      await onRefresh?.();
+    } catch (err) {
+      setTestResult(null);
+      setTestError(String(err.message || err));
+    } finally {
+      setTestingIntent(false);
+    }
+  }
 
   return (
     <section className="grid operational-dashboard-grid">
@@ -128,6 +198,32 @@ export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
             <span className="fact-grid-value">{formatLocalDateTime(voiceIntents?.updated_at)}</span>
           </div>
         </div>
+      </section>
+
+      <section className="panel stack operational-content-header">
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Test Intent</p>
+            <h2 className="panel-title">Dispatch Dry Run</h2>
+          </div>
+        </div>
+
+        <form className="intent-test-form" onSubmit={handleIntentTest}>
+          <label className="field">
+            <span className="field-label">Utterance</span>
+            <input
+              className="field-input"
+              value={testText}
+              onChange={(event) => setTestText(event.target.value)}
+              placeholder="set a timer for 5 minutes"
+            />
+          </label>
+          <button className="btn btn-primary" type="submit" disabled={testingIntent || !testText.trim()}>
+            {testingIntent ? "Testing..." : "Test"}
+          </button>
+        </form>
+
+        <IntentTestResult result={testResult} error={testError} />
       </section>
 
       <section className="panel stack operational-content-header">

@@ -26,7 +26,7 @@ During setup, operators should use the onboarding card in this order:
 9. fetch or refresh Governance
 10. poll operational status until `operational_ready=true`
 
-The post-trust setup card remains available after setup completion. Operators can return to it to adjust provider selection, select/redeclare capabilities, and enable/disable registered Voice Node intents. The operational dashboard also exposes a read-only Intents section for inspecting the current registry.
+The post-trust setup card remains available after setup completion. Operators can return to it to adjust provider selection, select/redeclare capabilities, and enable/disable registered Voice Node intents. The operational dashboard also exposes an Intents section for inspecting the current registry and dry-running utterances against registered intent dispatch.
 
 ## Recovery Signals
 

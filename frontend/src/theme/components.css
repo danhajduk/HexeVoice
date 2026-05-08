@@ -262,6 +262,26 @@
   padding-left: 18px;
 }
 
+.intent-test-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.intent-test-result {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid hsl(var(--sx-border));
+}
+
+.intent-test-result-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .voice-endpoint-status-table .endpoint-health-column {
   width: 28px;
   padding-right: 8px;
@@ -1102,6 +1122,8 @@
   .status-grid,
   .fact-grid,
   .intent-summary-grid,
+  .intent-test-form,
+  .intent-test-result-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }
