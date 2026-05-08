@@ -8,7 +8,7 @@ import httpx
 from hexevoice.api.models import AssistantTurnRequest
 from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
 from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
-from hexevoice.main import create_app
+from hexevoice.main import _tts_warmup_voices, create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
@@ -763,6 +763,45 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert audio.status_code == 200
     assert audio.headers["content-type"] == "audio/wav"
     assert audio.content.startswith(b"RIFF")
+
+
+def test_tts_warmup_voice_selection_prefers_configured_warm_voices():
+    settings = Settings(
+        voice_tts_provider="piper",
+        voice_tts_piper_voice="en_US-kathleen-low",
+        piper_tts_warm_voices="en_US-kathleen-low,en_US-hfc_female-medium",
+    )
+
+    assert _tts_warmup_voices(settings) == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
+
+
+def test_tts_warmup_voice_selection_can_use_discovered_piper_voices():
+    settings = Settings(voice_tts_provider="piper")
+
+    assert _tts_warmup_voices(
+        settings,
+        discovered_warm_voices=["en_US-kathleen-low", "en_US-hfc_female-medium"],
+    ) == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
+
+
+def test_voice_status_reports_tts_warmup_background_task(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                voice_tts_provider="deterministic",
+            )
+        )
+    )
+
+    response = client.get("/api/voice/status")
+
+    assert response.status_code == 200
+    warmup = response.json()["voice_tts_warmup"]
+    assert warmup["name"] == "every_10_minutes"
+    assert warmup["interval_seconds"] == 600
+    assert warmup["enabled"] is False
+    assert warmup["text"] == "hello"
 
 
 def test_core_normalized_piper_voice_ids_resolve_to_installed_model(tmp_path):

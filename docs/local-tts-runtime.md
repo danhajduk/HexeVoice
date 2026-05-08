@@ -84,6 +84,8 @@ PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-hfc_female-medium
 
 Warm voices reuse persistent Piper `--output-raw` processes and are wrapped back into WAV responses, so `/api/tts` keeps the same response shape while avoiding model reload delay for those voices. Non-warm voices still use the cold per-request Piper process path.
 
+When `VOICE_TTS_PROVIDER=piper`, the backend also runs an `every_10_minutes` warmup task that synthesizes `hello` against the configured warm voices. The generated artifacts are short-lived and are removed by the normal generated-voice cleanup loop. The latest warmup status is visible in `/api/voice/status` as `voice_tts_warmup`.
+
 To build and run the service locally:
 
 ```bash

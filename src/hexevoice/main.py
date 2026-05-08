@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse
+import httpx
 import uvicorn
 
 from hexevoice.api.models import (
@@ -70,6 +71,7 @@ from hexevoice.api.models import (
     TrustActivationFinalizeResponse,
     TrustStatusRefreshResponse,
     TtsSynthesizeRequest,
+    TtsSynthesizeTarget,
     TtsSynthesizeResponse,
     OperationalStatusResponse,
 )
@@ -160,6 +162,42 @@ def configure_backend_logging(settings: Settings) -> Path:
     return log_path
 
 
+def _tts_warmup_voices(settings: Settings, *, discovered_warm_voices: list[str] | None = None) -> list[str | None]:
+    configured_warm_voices = settings.resolved_piper_tts_warm_voices() or (discovered_warm_voices or [])
+    voices: list[str | None] = list(configured_warm_voices)
+    if settings.voice_tts_piper_voice:
+        voices.insert(0, settings.voice_tts_piper_voice)
+    if not voices:
+        voices.append(None)
+
+    deduped: list[str | None] = []
+    seen: set[str] = set()
+    for voice in voices:
+        key = str(voice or "default").strip()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(voice)
+    return deduped
+
+
+async def _discover_piper_warm_voices(settings: Settings) -> list[str]:
+    base_url = settings.resolved_voice_tts_piper_base_url()
+    if not base_url:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(f"{base_url.rstrip('/')}/health")
+            response.raise_for_status()
+    except httpx.HTTPError:
+        return []
+    payload = response.json()
+    warm_voices = payload.get("warm_voices") if isinstance(payload, dict) else None
+    if not isinstance(warm_voices, list):
+        return []
+    return [str(voice).strip() for voice in warm_voices if str(voice).strip()]
+
+
 def create_app(
     settings: Settings | None = None,
     voice_session_manager: VoiceSessionManager | None = None,
@@ -228,6 +266,16 @@ def create_app(
         "last_run_at": None,
         "last_error": None,
     }
+    app.state.voice_tts_warmup_status = {
+        "name": "every_10_minutes",
+        "interval_seconds": 600,
+        "enabled": app_settings.voice_tts_provider == "piper",
+        "text": "hello",
+        "voices": _tts_warmup_voices(app_settings),
+        "last_run_at": None,
+        "last_error": None,
+        "last_results": [],
+    }
     log = logging.getLogger("hexevoice")
 
     @app.on_event("startup")
@@ -259,6 +307,49 @@ def create_app(
 
         app.state.voice_artifact_cleanup_task = asyncio.create_task(cleanup_generated_voice_artifacts_every_5_minutes())
 
+        async def refresh_piper_tts_warmup_voices() -> list[str | None]:
+            discovered_voices = await _discover_piper_warm_voices(app_settings)
+            voices = _tts_warmup_voices(app_settings, discovered_warm_voices=discovered_voices)
+            app.state.voice_tts_warmup_status["voices"] = voices
+            return voices
+
+        async def warm_piper_tts_every_10_minutes():
+            while True:
+                await asyncio.sleep(600)
+                voices = await refresh_piper_tts_warmup_voices()
+                results = []
+                try:
+                    for voice in voices:
+                        response = await asyncio.to_thread(
+                            tts_audio_service.synthesize,
+                            TtsSynthesizeRequest(
+                                target=TtsSynthesizeTarget(device_id="backend-tts-warmup"),
+                                text="hello",
+                                voice=voice,
+                                format="wav",
+                                ttl_seconds=60,
+                            ),
+                        )
+                        results.append(
+                            {
+                                "voice": voice or "default",
+                                "status": response.status,
+                                "stream_id": response.stream_id,
+                                "provider_id": response.provider_id,
+                                "error": response.error,
+                            }
+                        )
+                    app.state.voice_tts_warmup_status["last_run_at"] = datetime.now(UTC).isoformat()
+                    app.state.voice_tts_warmup_status["last_error"] = None
+                    app.state.voice_tts_warmup_status["last_results"] = results
+                except Exception:
+                    app.state.voice_tts_warmup_status["last_error"] = "warmup_failed"
+                    log.exception("Piper TTS warmup failed")
+
+        if app_settings.voice_tts_provider == "piper":
+            asyncio.create_task(refresh_piper_tts_warmup_voices())
+            app.state.voice_tts_warmup_task = asyncio.create_task(warm_piper_tts_every_10_minutes())
+
     @app.on_event("shutdown")
     async def stop_background_services():
         timer_announcement_service.stop()
@@ -267,6 +358,13 @@ def create_app(
             cleanup_task.cancel()
             try:
                 await cleanup_task
+            except asyncio.CancelledError:
+                pass
+        warmup_task = getattr(app.state, "voice_tts_warmup_task", None)
+        if warmup_task is not None:
+            warmup_task.cancel()
+            try:
+                await warmup_task
             except asyncio.CancelledError:
                 pass
 
@@ -706,6 +804,7 @@ def create_app(
         status = voice_session_manager.status()
         status["timer_announcements"] = timer_announcement_service.status()
         status["voice_artifact_cleanup"] = app.state.voice_artifact_cleanup_status
+        status["voice_tts_warmup"] = app.state.voice_tts_warmup_status
         return status
 
     @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
