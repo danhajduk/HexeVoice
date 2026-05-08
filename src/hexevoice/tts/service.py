@@ -10,6 +10,9 @@ from hexevoice.config.settings import Settings
 from hexevoice.voice.pipeline import VoiceTurnPipeline
 
 
+GENERATED_AUDIO_SUFFIXES = {".mp3", ".ogg", ".wav"}
+
+
 class TtsAudioService:
     def __init__(self, *, settings: Settings, voice_turn_pipeline: VoiceTurnPipeline) -> None:
         self._settings = settings
@@ -176,6 +179,31 @@ class TtsAudioService:
                     candidate.unlink()
                 except OSError:
                     pass
+
+    def cleanup_orphaned_audio(self, *, now: datetime | None = None, min_age_seconds: int = 600) -> int:
+        current = now or datetime.now(UTC)
+        cutoff = current - timedelta(seconds=max(0, min_age_seconds))
+        deleted_count = 0
+        if not self._audio_dir.exists():
+            return deleted_count
+
+        for candidate in sorted(self._audio_dir.iterdir()):
+            if not candidate.is_file() or candidate.suffix.lower() not in GENERATED_AUDIO_SUFFIXES:
+                continue
+            if candidate.with_suffix(".json").exists():
+                continue
+            try:
+                modified_at = datetime.fromtimestamp(candidate.stat().st_mtime, UTC)
+            except OSError:
+                continue
+            if modified_at > cutoff:
+                continue
+            try:
+                candidate.unlink()
+                deleted_count += 1
+            except OSError:
+                pass
+        return deleted_count
 
     def public_api_base_url(self) -> str:
         base_url = self._settings.public_api_base_url or f"http://{self._settings.api_host}:{self._settings.api_port}"

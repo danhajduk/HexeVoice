@@ -1,5 +1,8 @@
-from fastapi.testclient import TestClient
+from datetime import UTC, datetime, timedelta
 import json
+import os
+
+from fastapi.testclient import TestClient
 
 from hexevoice.assistant import LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.config.settings import Settings
@@ -248,3 +251,29 @@ def test_tts_audio_cleanup_removes_expired_sidecar_and_audio(tmp_path):
     assert not (tts_dir / "voice-intent-expired.json").exists()
     assert (tts_dir / "voice-intent-live.wav").exists()
     assert (tts_dir / "voice-intent-live.json").exists()
+
+
+def test_tts_orphan_cleanup_removes_old_audio_without_sidecar(tmp_path):
+    service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    orphan = tts_dir / "orphan.wav"
+    paired_audio = tts_dir / "paired.wav"
+    fresh_orphan = tts_dir / "fresh.wav"
+    orphan.write_bytes(b"RIFForphan")
+    paired_audio.write_bytes(b"RIFFpaired")
+    fresh_orphan.write_bytes(b"RIFFfresh")
+    (tts_dir / "paired.json").write_text(
+        json.dumps({"expires_at": "2999-01-01T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+    old_timestamp = (datetime.now(UTC) - timedelta(days=2)).timestamp()
+    os.utime(orphan, (old_timestamp, old_timestamp))
+    os.utime(paired_audio, (old_timestamp, old_timestamp))
+
+    deleted_count = service.cleanup_orphaned_audio(min_age_seconds=600)
+
+    assert deleted_count == 1
+    assert not orphan.exists()
+    assert paired_audio.exists()
+    assert fresh_orphan.exists()

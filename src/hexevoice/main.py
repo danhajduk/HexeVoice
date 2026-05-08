@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import hashlib
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -198,6 +198,12 @@ async def _discover_piper_warm_voices(settings: Settings) -> list[str]:
     return [str(voice).strip() for voice in warm_voices if str(voice).strip()]
 
 
+def _seconds_until_next_local_midnight(now: datetime | None = None) -> float:
+    current = now or datetime.now().astimezone()
+    next_midnight = (current + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(1.0, (next_midnight - current).total_seconds())
+
+
 def create_app(
     settings: Settings | None = None,
     voice_session_manager: VoiceSessionManager | None = None,
@@ -276,6 +282,14 @@ def create_app(
         "last_error": None,
         "last_results": [],
     }
+    app.state.voice_orphan_cleanup_status = {
+        "name": "daily_midnight",
+        "scheduled_time_local": "00:00",
+        "min_age_seconds": 600,
+        "last_run_at": None,
+        "last_error": None,
+        "last_deleted_count": 0,
+    }
     log = logging.getLogger("hexevoice")
 
     @app.on_event("startup")
@@ -306,6 +320,23 @@ def create_app(
                 await asyncio.sleep(300)
 
         app.state.voice_artifact_cleanup_task = asyncio.create_task(cleanup_generated_voice_artifacts_every_5_minutes())
+
+        async def cleanup_orphaned_voice_artifacts_daily_at_midnight():
+            while True:
+                await asyncio.sleep(_seconds_until_next_local_midnight())
+                try:
+                    deleted_count = await asyncio.to_thread(
+                        tts_audio_service.cleanup_orphaned_audio,
+                        min_age_seconds=600,
+                    )
+                    app.state.voice_orphan_cleanup_status["last_run_at"] = datetime.now(UTC).isoformat()
+                    app.state.voice_orphan_cleanup_status["last_error"] = None
+                    app.state.voice_orphan_cleanup_status["last_deleted_count"] = deleted_count
+                except Exception:
+                    app.state.voice_orphan_cleanup_status["last_error"] = "orphan_cleanup_failed"
+                    log.exception("Generated voice orphan cleanup failed")
+
+        app.state.voice_orphan_cleanup_task = asyncio.create_task(cleanup_orphaned_voice_artifacts_daily_at_midnight())
 
         async def refresh_piper_tts_warmup_voices() -> list[str | None]:
             discovered_voices = await _discover_piper_warm_voices(app_settings)
@@ -358,6 +389,13 @@ def create_app(
             cleanup_task.cancel()
             try:
                 await cleanup_task
+            except asyncio.CancelledError:
+                pass
+        orphan_cleanup_task = getattr(app.state, "voice_orphan_cleanup_task", None)
+        if orphan_cleanup_task is not None:
+            orphan_cleanup_task.cancel()
+            try:
+                await orphan_cleanup_task
             except asyncio.CancelledError:
                 pass
         warmup_task = getattr(app.state, "voice_tts_warmup_task", None)
@@ -804,6 +842,7 @@ def create_app(
         status = voice_session_manager.status()
         status["timer_announcements"] = timer_announcement_service.status()
         status["voice_artifact_cleanup"] = app.state.voice_artifact_cleanup_status
+        status["voice_orphan_cleanup"] = app.state.voice_orphan_cleanup_status
         status["voice_tts_warmup"] = app.state.voice_tts_warmup_status
         return status
 

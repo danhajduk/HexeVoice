@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime
 import io
 import wave
 
@@ -8,7 +9,7 @@ import httpx
 from hexevoice.api.models import AssistantTurnRequest
 from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
 from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
-from hexevoice.main import _tts_warmup_voices, create_app
+from hexevoice.main import _seconds_until_next_local_midnight, _tts_warmup_voices, create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
@@ -784,6 +785,12 @@ def test_tts_warmup_voice_selection_can_use_discovered_piper_voices():
     ) == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
 
 
+def test_daily_orphan_cleanup_schedule_targets_next_midnight():
+    seconds = _seconds_until_next_local_midnight(datetime(2026, 5, 7, 23, 30, 0).astimezone())
+
+    assert seconds == 1800
+
+
 def test_voice_status_reports_tts_warmup_background_task(tmp_path):
     client = TestClient(
         create_app(
@@ -802,6 +809,10 @@ def test_voice_status_reports_tts_warmup_background_task(tmp_path):
     assert warmup["interval_seconds"] == 600
     assert warmup["enabled"] is False
     assert warmup["text"] == "hello"
+    orphan_cleanup = response.json()["voice_orphan_cleanup"]
+    assert orphan_cleanup["name"] == "daily_midnight"
+    assert orphan_cleanup["scheduled_time_local"] == "00:00"
+    assert orphan_cleanup["min_age_seconds"] == 600
 
 
 def test_core_normalized_piper_voice_ids_resolve_to_installed_model(tmp_path):
