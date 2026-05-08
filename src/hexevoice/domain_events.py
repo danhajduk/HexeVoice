@@ -106,6 +106,7 @@ class TimerCreateEventPublisher(Protocol):
         service_id: str | None = None,
         version: str | None = None,
         dispatch: dict[str, Any] | None = None,
+        reply_audio: dict[str, Any] | None = None,
     ) -> DomainEventPublishDecision:
         ...
 
@@ -143,6 +144,7 @@ class NoopTimerCreateEventPublisher:
         service_id: str | None = None,
         version: str | None = None,
         dispatch: dict[str, Any] | None = None,
+        reply_audio: dict[str, Any] | None = None,
     ) -> DomainEventPublishDecision:
         return DomainEventPublishDecision(status="skipped", reason="domain_events_disabled", event_id=event_id, event_type="voice.intent.recognized")
 
@@ -266,6 +268,7 @@ class HexeMqttTimerCreateEventPublisher:
         service_id: str | None = None,
         version: str | None = None,
         dispatch: dict[str, Any] | None = None,
+        reply_audio: dict[str, Any] | None = None,
     ) -> DomainEventPublishDecision:
         event_type = "voice.intent.recognized"
         state = self._store.load()
@@ -313,6 +316,7 @@ class HexeMqttTimerCreateEventPublisher:
                 "parameters": slots,
                 "reply_text": reply_text,
                 "dispatch": dispatch or {},
+                "reply_audio": reply_audio,
                 "recognized_at": requested_at_text,
             },
             "severity": "info",

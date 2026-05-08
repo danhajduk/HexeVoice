@@ -493,25 +493,13 @@ def create_app(
 
     @app.post("/api/voice/intents/invoke", response_model=VoiceIntentInvokeResponse)
     async def voice_intent_invoke(payload: VoiceIntentDispatchRequest) -> VoiceIntentInvokeResponse:
-        result = assistant_service.invoke_intent(
+        result = await asyncio.to_thread(
+            assistant_service.invoke_intent,
             endpoint_id=payload.endpoint_id,
             text=payload.text,
             session_id=payload.session_id,
+            reply_audio_factory=tts_audio_service.synthesize_intent_reply,
         )
-        reply_audio = None
-        if result.matched and result.reply_text and result.recognized_event_id:
-            reply = result.reply or {}
-            audio_options = reply.get("audio") if isinstance(reply.get("audio"), dict) else {}
-            mode = str((audio_options or {}).get("mode") or "none").strip().lower()
-            if mode and mode != "none":
-                reply_audio = await asyncio.to_thread(
-                    tts_audio_service.synthesize_intent_reply,
-                    event_id=result.recognized_event_id,
-                    endpoint_id=result.endpoint_id,
-                    session_id=result.session_id,
-                    text=result.reply_text,
-                    audio_options=audio_options,
-                )
         return VoiceIntentInvokeResponse(
             matched=result.matched,
             endpoint_id=result.endpoint_id,
@@ -525,7 +513,7 @@ def create_app(
             recognized_event_id=result.recognized_event_id,
             recognition_event=result.recognition_event,
             dispatch_event=result.dispatch_event,
-            reply_audio=reply_audio,
+            reply_audio=result.reply_audio,
         )
 
     @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)

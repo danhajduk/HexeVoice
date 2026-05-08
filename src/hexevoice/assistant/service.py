@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 from uuid import uuid4
 
@@ -44,6 +44,7 @@ class IntentInvocationResult:
     recognition_event: dict[str, Any] | None = None
     dispatch_event: dict[str, Any] | None = None
     reply: dict[str, Any] | None = None
+    reply_audio: dict[str, Any] | None = None
 
 
 class AssistantAdapter(Protocol):
@@ -259,7 +260,14 @@ class AssistantTurnService:
     def match_intent(self, text: str):
         return self._intent_finder.find(self._strip_wake_words(text), requested_at=utc_event_timestamp())
 
-    def invoke_intent(self, *, endpoint_id: str, text: str, session_id: str | None = None) -> IntentInvocationResult:
+    def invoke_intent(
+        self,
+        *,
+        endpoint_id: str,
+        text: str,
+        session_id: str | None = None,
+        reply_audio_factory: Callable[..., dict[str, Any] | None] | None = None,
+    ) -> IntentInvocationResult:
         heard_text = self._strip_wake_words(text)
         resolved_session_id = session_id or self._next_session_id(endpoint_id)
         requested_at = utc_event_timestamp()
@@ -273,6 +281,13 @@ class AssistantTurnService:
                 slots={},
             )
         recognized_event_id = f"voice-intent-{uuid4().hex}"
+        reply_audio = self._synthesize_intent_reply_audio(
+            endpoint_id=endpoint_id,
+            session_id=resolved_session_id,
+            intent=intent,
+            event_id=recognized_event_id,
+            reply_audio_factory=reply_audio_factory,
+        )
         recognition_decision = self._publish_intent_recognized_event(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
@@ -280,6 +295,7 @@ class AssistantTurnService:
             intent=intent,
             requested_at=requested_at,
             event_id=recognized_event_id,
+            reply_audio=reply_audio,
         )
         dispatch_decision = self._dispatch_intent(
             endpoint_id=endpoint_id,
@@ -314,6 +330,7 @@ class AssistantTurnService:
             recognition_event=recognition_decision.as_dict(),
             dispatch_event=dispatch_decision.as_dict() if dispatch_decision else None,
             reply=intent.reply,
+            reply_audio=reply_audio,
         )
 
     def context_for_endpoint(self, endpoint_id: str) -> list[ConversationTurn]:
@@ -404,6 +421,7 @@ class AssistantTurnService:
         intent,
         requested_at: datetime,
         event_id: str | None = None,
+        reply_audio: dict[str, Any] | None = None,
     ):
         recognized_event_id = event_id or f"voice-intent-{uuid4().hex}"
         publisher = getattr(self._timer_event_publisher, "publish_voice_intent_recognized", None)
@@ -424,6 +442,31 @@ class AssistantTurnService:
             reply_text=intent.reply_text,
             requested_at=requested_at,
             dispatch=intent.dispatch,
+            reply_audio=reply_audio,
+        )
+
+    def _synthesize_intent_reply_audio(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        intent,
+        event_id: str,
+        reply_audio_factory: Callable[..., dict[str, Any] | None] | None,
+    ) -> dict[str, Any] | None:
+        if not reply_audio_factory or not intent.reply_text:
+            return None
+        reply = intent.reply or {}
+        audio_options = reply.get("audio") if isinstance(reply.get("audio"), dict) else {}
+        mode = str((audio_options or {}).get("mode") or "none").strip().lower()
+        if not mode or mode == "none":
+            return None
+        return reply_audio_factory(
+            event_id=event_id,
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            text=intent.reply_text,
+            audio_options=audio_options,
         )
 
     def _conversation_context(self, *, endpoint_id: str, session_id: str) -> list[ConversationTurn]:
