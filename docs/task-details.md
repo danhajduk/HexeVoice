@@ -899,6 +899,7 @@ Original task details:
   - Include audio metadata in assistant responses and reusable intent events when requested: `audio_url`, `content_type`, `stream_id`, `duration_ms`, and expiry.
   - Use the event ID as the stable basename for generated reply audio files, with a matching JSON sidecar file that records the spoken text and readiness state.
   - Include `voice_ready` in the sidecar JSON so endpoints and other nodes can confirm the audio file is ready to pull.
+  - Make intent-generated voice files valid for 5 minutes by default, with `expires_at` recorded in the response/event payload and sidecar JSON.
   - Reuse existing local TTS and media URL behavior rather than adding a new storage mechanism unless necessary.
   - Define failure behavior when TTS generation fails: fail the intent, return text-only, or mark audio unavailable based on intent policy.
 - Completion criteria:
