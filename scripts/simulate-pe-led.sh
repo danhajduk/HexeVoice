@@ -10,7 +10,7 @@ Usage: scripts/simulate-pe-led.sh <pattern> [duration_ms]
 
 Patterns:
   all boot wifi backend listening capturing thinking replying ota completed
-  cancelled muted speaker_silent volume color error disconnected off
+  muted speaker_silent volume color error disconnected off
 
 Environment:
   API_BASE_URL   Backend URL, default: http://127.0.0.1:9004
@@ -32,7 +32,7 @@ if [[ -z "$PATTERN" || "$PATTERN" == "-h" || "$PATTERN" == "--help" ]]; then
 fi
 
 case "$PATTERN" in
-  all|boot|wifi|backend|listening|capturing|thinking|replying|ota|completed|cancelled|muted|speaker_silent|volume|color|error|disconnected|off)
+  all|boot|wifi|backend|listening|capturing|thinking|replying|ota|completed|muted|speaker_silent|volume|color|error|disconnected|off)
     ;;
   *)
     echo "Unknown LED pattern: $PATTERN" >&2

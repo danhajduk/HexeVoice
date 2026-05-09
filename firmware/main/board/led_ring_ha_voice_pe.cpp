@@ -38,7 +38,6 @@ enum class LedPattern {
   kReplying,
   kOtaProgress,
   kCompleted,
-  kCancelled,
   kMuted,
   kSpeakerSilent,
   kVolumeDisplay,
@@ -77,7 +76,7 @@ struct NamedPattern {
   LedPattern pattern;
 };
 
-constexpr std::array<NamedPattern, 16> kSimulationPatterns = {{
+constexpr std::array<NamedPattern, 15> kSimulationPatterns = {{
     {"boot", LedPattern::kBoot},
     {"wifi", LedPattern::kWifiConnecting},
     {"backend", LedPattern::kBackendConnecting},
@@ -87,7 +86,6 @@ constexpr std::array<NamedPattern, 16> kSimulationPatterns = {{
     {"replying", LedPattern::kReplying},
     {"ota", LedPattern::kOtaProgress},
     {"completed", LedPattern::kCompleted},
-    {"cancelled", LedPattern::kCancelled},
     {"muted", LedPattern::kMuted},
     {"speaker_silent", LedPattern::kSpeakerSilent},
     {"volume", LedPattern::kVolumeDisplay},
@@ -441,13 +439,6 @@ void fill_voice_pattern(
       frame.fill(color(0, green, 80));
       break;
     }
-    case LedPattern::kCancelled:
-      brightness = hexe::board::kLedRingNormalBrightnessCap;
-      set_pixel(frame, 0, color(255, 120, 0));
-      set_pixel(frame, 3, color(255, 120, 0));
-      set_pixel(frame, 6, color(255, 120, 0));
-      set_pixel(frame, 9, color(255, 120, 0));
-      break;
     case LedPattern::kMuted:
       brightness = hexe::board::kLedRingNormalBrightnessCap;
       set_pixel(frame, 3, color(255, 0, 0));
@@ -710,10 +701,6 @@ void update_led_ring_patterns() {
 
 void led_ring_show_completed() {
   show_momentary_pattern(LedPattern::kCompleted);
-}
-
-void led_ring_show_cancelled() {
-  show_momentary_pattern(LedPattern::kCancelled);
 }
 
 void led_ring_show_volume(int volume_percent) {

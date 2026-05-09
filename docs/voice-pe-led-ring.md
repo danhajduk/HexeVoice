@@ -93,8 +93,9 @@ The firmware chooses one active LED pattern every frame. Priority order is:
 7. Voice turn state: wake/listening, capturing, thinking, replying, error.
 8. Idle/off when the endpoint is ready and no voice turn or diagnostic state is active.
 
-Completed and cancelled are momentary overlays. They temporarily override the
-steady state and then return to the normal priority order.
+Completed is a momentary overlay. It temporarily overrides the steady state and
+then returns to the normal priority order. Cancelled sessions return directly to
+the normal steady state without a dedicated LED pattern.
 
 ## Rotary Affordances
 
@@ -122,8 +123,8 @@ preview LED behavior without forcing real network, mute, OTA, or voice-session
 state changes. Payload fields:
 
 - `pattern`: one of `all`, `boot`, `wifi`, `backend`, `listening`, `capturing`,
-  `thinking`, `replying`, `ota`, `completed`, `cancelled`, `muted`,
-  `speaker_silent`, `volume`, `color`, `error`, `disconnected`, or `off`.
+  `thinking`, `replying`, `ota`, `completed`, `muted`, `speaker_silent`,
+  `volume`, `color`, `error`, `disconnected`, or `off`.
 - `duration_ms`: per-pattern duration from `300` to `5000` ms. `all` steps
   through every named pattern using this duration for each step.
 

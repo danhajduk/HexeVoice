@@ -375,12 +375,13 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert pattern_source.index("kSpeakerSilent") < pattern_source.index("kListening")
 
     assert "led_ring_show_completed()" in led_source
-    assert "led_ring_show_cancelled()" in led_source
     assert "led_ring_simulate_pattern(const char *pattern_name, int duration_ms)" in led_source
     assert '"capturing", LedPattern::kCapturing' in led_source
     assert '"speaker_silent", LedPattern::kSpeakerSilent' in led_source
-    assert "led_ring_show_cancelled();" in backend_source
     assert "led_ring_show_completed();" in backend_source
+    assert "kCancelled" not in led_source
+    assert "led_ring_show_cancelled" not in led_source
+    assert "led_ring_show_cancelled" not in backend_source
     assert 'std::strcmp(type, "endpoint.led.simulate") == 0' in backend_source
     assert "ESP_ERR_NOT_SUPPORTED" in noop_source
 
