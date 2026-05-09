@@ -20,6 +20,12 @@ class ProviderResult:
     provider: str
     duration_ms: float
     text: str
+    run_count: int = 1
+    duration_ms_runs: list[float] | None = None
+    duration_ms_mean: float | None = None
+    duration_ms_min: float | None = None
+    duration_ms_max: float | None = None
+    unique_texts: list[str] | None = None
 
 
 @dataclass
@@ -37,6 +43,9 @@ class FasterOnlyClipResult:
     path: str
     audio_duration_ms: int
     faster_whisper: ProviderResult
+    reference_text: str | None = None
+    word_error_rate: float | None = None
+    normalized_match: bool | None = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -53,6 +62,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cpu", help="Device for both providers.")
     parser.add_argument("--faster-compute-type", default="int8", help="faster-whisper compute type.")
     parser.add_argument("--faster-only", action="store_true", help="Benchmark only faster-whisper.")
+    parser.add_argument("--repeat", type=int, default=1, help="Transcribe each clip this many times after model load.")
+    parser.add_argument(
+        "--reference-manifest",
+        type=Path,
+        help="Optional JSON manifest with clips and reference transcripts for accuracy scoring.",
+    )
     parser.add_argument("--json-output", type=Path, help="Optional path for machine-readable benchmark output.")
     return parser.parse_args()
 
@@ -91,6 +106,47 @@ def normalize_transcript(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
+def transcript_words(text: str) -> list[str]:
+    normalized = normalize_transcript(text)
+    return normalized.split() if normalized else []
+
+
+def word_error_rate(reference: str, hypothesis: str) -> float:
+    reference_words = transcript_words(reference)
+    hypothesis_words = transcript_words(hypothesis)
+    if not reference_words:
+        return 0.0 if not hypothesis_words else 1.0
+
+    previous = list(range(len(hypothesis_words) + 1))
+    for row_index, reference_word in enumerate(reference_words, start=1):
+        current = [row_index]
+        for col_index, hypothesis_word in enumerate(hypothesis_words, start=1):
+            substitution = previous[col_index - 1] + (reference_word != hypothesis_word)
+            insertion = current[col_index - 1] + 1
+            deletion = previous[col_index] + 1
+            current.append(min(substitution, insertion, deletion))
+        previous = current
+    return round(previous[-1] / len(reference_words), 4)
+
+
+def load_reference_manifest(path: Path | None) -> tuple[list[Path], dict[str, str]]:
+    if path is None:
+        return [], {}
+    payload = json.loads(path.read_text())
+    clips = []
+    references = {}
+    for item in payload.get("clips", []):
+        clip_path = Path(str(item["path"]))
+        clips.append(clip_path)
+        references[clip_path.as_posix()] = str(item.get("transcript") or "")
+        references[clip_path.name] = str(item.get("transcript") or "")
+    return clips, references
+
+
+def reference_for(path: Path, references: dict[str, str]) -> str | None:
+    return references.get(path.as_posix()) or references.get(path.name)
+
+
 def time_call(fn) -> tuple[float, Any]:
     started_at = time.perf_counter()
     result = fn()
@@ -105,6 +161,27 @@ def transcribe_faster(model, path: Path) -> str:
 def transcribe_whisper(model, audio: np.ndarray) -> str:
     result = model.transcribe(audio, language="en", fp16=False, verbose=None)
     return str(result.get("text") or "").strip()
+
+
+def repeated_transcribe(provider: str, repeat: int, fn) -> ProviderResult:
+    durations = []
+    texts = []
+    for _index in range(max(1, repeat)):
+        duration_ms, text = time_call(fn)
+        durations.append(duration_ms)
+        texts.append(text)
+    unique_texts = list(dict.fromkeys(texts))
+    return ProviderResult(
+        provider=provider,
+        duration_ms=round(statistics.fmean(durations), 2),
+        text=texts[-1],
+        run_count=len(durations),
+        duration_ms_runs=durations,
+        duration_ms_mean=round(statistics.fmean(durations), 2),
+        duration_ms_min=round(min(durations), 2),
+        duration_ms_max=round(max(durations), 2),
+        unique_texts=unique_texts,
+    )
 
 
 def print_table(results: list[ClipResult]) -> None:
@@ -130,12 +207,17 @@ def print_table(results: list[ClipResult]) -> None:
 
 
 def print_faster_table(results: list[FasterOnlyClipResult]) -> None:
-    headers = ["clip", "audio_ms", "faster_ms", "faster_text"]
+    headers = ["clip", "audio_ms", "runs", "mean_ms", "min_ms", "max_ms", "wer", "match", "faster_text"]
     rows = [
         [
             Path(result.path).name,
             str(result.audio_duration_ms),
-            f"{result.faster_whisper.duration_ms:.2f}",
+            str(result.faster_whisper.run_count),
+            f"{result.faster_whisper.duration_ms_mean:.2f}",
+            f"{result.faster_whisper.duration_ms_min:.2f}",
+            f"{result.faster_whisper.duration_ms_max:.2f}",
+            "" if result.word_error_rate is None else f"{result.word_error_rate:.3f}",
+            "" if result.normalized_match is None else ("yes" if result.normalized_match else "no"),
             result.faster_whisper.text,
         ]
         for result in results
@@ -158,7 +240,8 @@ def summary(values: list[float]) -> dict[str, float]:
 
 def main() -> int:
     args = parse_args()
-    clips = args.clips or newest_wake_clips(args.recordings_dir, args.samples)
+    manifest_clips, references = load_reference_manifest(args.reference_manifest)
+    clips = args.clips or manifest_clips or newest_wake_clips(args.recordings_dir, args.samples)
     if not clips:
         raise SystemExit("No WAV clips found to benchmark.")
 
@@ -172,12 +255,16 @@ def main() -> int:
         results: list[FasterOnlyClipResult] = []
         for path in clips:
             _audio, audio_duration_ms = load_wav_mono_16k(path)
-            faster_ms, faster_text = time_call(lambda path=path: transcribe_faster(faster_model, path))
+            faster_result = repeated_transcribe("faster_whisper", args.repeat, lambda path=path: transcribe_faster(faster_model, path))
+            reference_text = reference_for(path, references)
             results.append(
                 FasterOnlyClipResult(
                     path=str(path),
                     audio_duration_ms=audio_duration_ms,
-                    faster_whisper=ProviderResult("faster_whisper", faster_ms, faster_text),
+                    faster_whisper=faster_result,
+                    reference_text=reference_text,
+                    word_error_rate=None if reference_text is None else word_error_rate(reference_text, faster_result.text),
+                    normalized_match=None if reference_text is None else normalize_transcript(reference_text) == normalize_transcript(faster_result.text),
                 )
             )
         print(f"model={args.model} device={args.device} provider=faster_whisper")
@@ -187,8 +274,16 @@ def main() -> int:
             "summary "
             + json.dumps(
                 {
-                    "faster_whisper": summary([result.faster_whisper.duration_ms for result in results]),
+                    "faster_whisper": summary([result.faster_whisper.duration_ms_mean or result.faster_whisper.duration_ms for result in results]),
                     "clip_count": len(results),
+                    "repeat": args.repeat,
+                    "mean_word_error_rate": None
+                    if not any(result.word_error_rate is not None for result in results)
+                    else round(
+                        statistics.fmean(result.word_error_rate for result in results if result.word_error_rate is not None),
+                        4,
+                    ),
+                    "normalized_matches": sum(1 for result in results if result.normalized_match is True),
                 },
                 sort_keys=True,
             )
