@@ -6,6 +6,23 @@ TARGET="${IDF_TARGET:-esp32s3}"
 EXPORT_AFTER_BUILD="${EXPORT_AFTER_BUILD:-1}"
 COMMAND="${1:-build}"
 CONVERTER_PYTHON="python3"
+BOARD_PROFILE="${HEXE_BOARD_PROFILE:-esp_box_3}"
+case "${BOARD_PROFILE}" in
+  esp_box_3)
+    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build}"
+    EXPORT_DIR="${EXPORT_DIR:-${ROOT_DIR}/export}"
+    UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-1}"
+    ;;
+  ha_voice_pe)
+    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build-ha-voice-pe}"
+    EXPORT_DIR="${EXPORT_DIR:-${ROOT_DIR}/export-ha-voice-pe}"
+    UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-0}"
+    ;;
+  *)
+    echo "Unsupported HEXE_BOARD_PROFILE: ${BOARD_PROFILE}" >&2
+    exit 1
+    ;;
+esac
 RUNTIME_FIRMWARE_DIR="${ROOT_DIR}/../runtime/firmware"
 RUNTIME_FIRMWARE_BIN="${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
 RUNTIME_FIRMWARE_MANIFEST="${RUNTIME_FIRMWARE_DIR}/manifest.json"
@@ -21,6 +38,8 @@ Commands:
 
 Environment:
   HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3 or ha_voice_pe. Default: esp_box_3.
+  BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
+  EXPORT_DIR    Firmware export directory. Defaults to export or export-ha-voice-pe by profile.
   OTA_API_BASE   Backend API base URL for push mode. Default: ${OTA_API_BASE}
   ENDPOINT_ID    Endpoint id for push mode. Default: endpoint.id from config YAML.
 EOF
@@ -98,6 +117,11 @@ case "${COMMAND}" in
     ;;
 esac
 
+if [[ "${COMMAND}" == "push" && "${BOARD_PROFILE}" != "esp_box_3" ]]; then
+  echo "push mode is only supported for the esp_box_3 OTA profile; flash ${BOARD_PROFILE} over USB from its export folder." >&2
+  exit 1
+fi
+
 if [[ -z "${IDF_PATH:-}" ]]; then
   if [[ -f "${HOME}/esp-idf/export.sh" ]]; then
     # shellcheck disable=SC1090
@@ -115,16 +139,23 @@ if [[ ! -f "${ROOT_DIR}/sdkconfig" ]]; then
   idf.py set-target "${TARGET}"
 fi
 
-idf.py -D "HEXE_BOARD_PROFILE=${HEXE_BOARD_PROFILE:-esp_box_3}" build
+idf.py -B "${BUILD_DIR}" -D "HEXE_BOARD_PROFILE=${BOARD_PROFILE}" build
 
-mkdir -p "${RUNTIME_FIRMWARE_DIR}"
-cp "${ROOT_DIR}/build/hexe_firmware.bin" "${RUNTIME_FIRMWARE_BIN}"
-cp "${ROOT_DIR}/build/hexe_firmware.bin" "${ROOT_DIR}/export/hexe_firmware.bin"
-sha256sum "${RUNTIME_FIRMWARE_BIN}" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
-echo "Copied firmware app binary to ${RUNTIME_FIRMWARE_BIN}"
+if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
+  mkdir -p "${RUNTIME_FIRMWARE_DIR}"
+  cp "${BUILD_DIR}/hexe_firmware.bin" "${RUNTIME_FIRMWARE_BIN}"
+  sha256sum "${RUNTIME_FIRMWARE_BIN}" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
+  echo "Copied firmware app binary to ${RUNTIME_FIRMWARE_BIN}"
+else
+  echo "Skipping runtime OTA firmware refresh for board profile ${BOARD_PROFILE}."
+fi
 
 if [[ "${EXPORT_AFTER_BUILD}" == "1" ]]; then
-  "${ROOT_DIR}/export-artifacts.sh"
+  HEXE_BOARD_PROFILE="${BOARD_PROFILE}" \
+    BUILD_DIR="${BUILD_DIR}" \
+    EXPORT_DIR="${EXPORT_DIR}" \
+    UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE}" \
+    "${ROOT_DIR}/export-artifacts.sh"
 fi
 
 if [[ "${COMMAND}" == "push" ]]; then

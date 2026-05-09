@@ -73,7 +73,15 @@ cd firmware
 HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
 ```
 
-The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input and the center/mute controls. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. Local speaker/TTS output is also disabled until the AIC3204/XMOS audio output path is added.
+This writes flashable artifacts to `firmware/export-ha-voice-pe`. The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input and the center/mute controls. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. Local speaker/TTS output is also disabled until the AIC3204/XMOS audio output path is added.
+
+To flash the Home Assistant Voice device from another PC, pull that profile-specific export folder:
+
+```bash
+NODE_HOST=dan@10.0.0.100 \
+REMOTE_EXPORT=/home/dan/Projects/HexeVoice/firmware/export-ha-voice-pe \
+./flash.sh /dev/ttyACM0
+```
 
 To build and immediately push the new app binary by OTA:
 

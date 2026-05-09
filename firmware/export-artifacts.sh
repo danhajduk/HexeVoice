@@ -2,9 +2,11 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="${ROOT_DIR}/build"
-EXPORT_DIR="${ROOT_DIR}/export"
+BOARD_PROFILE="${HEXE_BOARD_PROFILE:-esp_box_3}"
+BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build}"
+EXPORT_DIR="${EXPORT_DIR:-${ROOT_DIR}/export}"
 RUNTIME_FIRMWARE_DIR="${ROOT_DIR}/../runtime/firmware"
+UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-1}"
 
 BOOTLOADER_SRC="${BUILD_DIR}/bootloader/bootloader.bin"
 PARTITION_SRC="${BUILD_DIR}/partition_table/partition-table.bin"
@@ -30,13 +32,17 @@ require_file "${APP_SRC}"
 require_file "${PROJECT_DESC_SRC}"
 
 mkdir -p "${EXPORT_DIR}"
-mkdir -p "${RUNTIME_FIRMWARE_DIR}"
+if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
+  mkdir -p "${RUNTIME_FIRMWARE_DIR}"
+fi
 
 cp "${BOOTLOADER_SRC}" "${EXPORT_DIR}/bootloader.bin"
 cp "${PARTITION_SRC}" "${EXPORT_DIR}/partition-table.bin"
 cp "${OTA_DATA_SRC}" "${EXPORT_DIR}/ota_data_initial.bin"
 cp "${APP_SRC}" "${EXPORT_DIR}/hexe_firmware.bin"
-cp "${APP_SRC}" "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
+if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
+  cp "${APP_SRC}" "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
+fi
 
 if [[ -f "${ELF_SRC}" ]]; then
   cp "${ELF_SRC}" "${EXPORT_DIR}/hexe_firmware.elf"
@@ -60,12 +66,15 @@ CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     hexe_firmware.bin > SHA256SUMS
 )
 
-sha256sum "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
+if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
+  sha256sum "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
+fi
 
 cat > "${EXPORT_DIR}/manifest.txt" <<EOF
 project_name=${PROJECT_NAME}
 project_version=${VERSION}
 target=${TARGET}
+board_profile=${BOARD_PROFILE}
 created_at_utc=${CREATED_AT}
 bootloader=bootloader.bin
 bootloader_offset=0x0
@@ -77,16 +86,19 @@ app=hexe_firmware.bin
 app_offset=0x10000
 EOF
 
-cat > "${RUNTIME_FIRMWARE_DIR}/manifest.json" <<EOF
+if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
+  cat > "${RUNTIME_FIRMWARE_DIR}/manifest.json" <<EOF
 {
   "project_name": "${PROJECT_NAME}",
   "version": "${VERSION}",
   "target": "${TARGET}",
+  "board_profile": "${BOARD_PROFILE}",
   "created_at_utc": "${CREATED_AT}",
   "filename": "hexe_firmware.bin",
   "sha256": "$(sha256sum "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin" | awk '{print $1}')"
 }
 EOF
+fi
 
 cat > "${EXPORT_DIR}/flash-esptool.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -147,6 +159,7 @@ cd firmware/export
 - project: \`${PROJECT_NAME}\`
 - version: \`${VERSION}\`
 - target: \`${TARGET}\`
+- board profile: \`${BOARD_PROFILE}\`
 - created: \`${CREATED_AT}\`
 EOF
 
