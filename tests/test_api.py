@@ -10,7 +10,7 @@ import httpx
 from hexevoice.api.models import AssistantTurnRequest
 from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
 from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
-from hexevoice.main import _seconds_until_next_local_midnight, _tts_warmup_voices, create_app
+from hexevoice.main import _seconds_until_next_local_midnight, _tts_warmup_voices, cleanup_voice_artifacts_once, create_app
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
@@ -827,6 +827,33 @@ def test_voice_status_reports_tts_warmup_background_task(tmp_path):
     assert orphan_cleanup["name"] == "daily_midnight"
     assert orphan_cleanup["scheduled_time_local"] == "00:00"
     assert orphan_cleanup["min_age_seconds"] == 600
+
+
+def test_voice_artifact_cleanup_includes_wake_recordings():
+    class FakeTtsAudioService:
+        def __init__(self):
+            self.called = False
+
+        def cleanup_expired(self):
+            self.called = True
+
+    class FakeWakeRecorder:
+        def __init__(self):
+            self.called = False
+
+        def cleanup_expired(self):
+            self.called = True
+            return {"deleted_count": 2}
+
+    tts = FakeTtsAudioService()
+    wake = FakeWakeRecorder()
+
+    result = cleanup_voice_artifacts_once(tts_audio_service=tts, wake_recorder=wake)
+
+    assert tts.called is True
+    assert wake.called is True
+    assert result["tts"]["expired_cleanup"] == "completed"
+    assert result["wake_recordings"]["deleted_count"] == 2
 
 
 def test_tts_settings_list_models_and_save_runtime_config(tmp_path):

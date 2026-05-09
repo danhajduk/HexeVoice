@@ -1,4 +1,3 @@
-[TODO] Task 084: Run wake recording retention through the same cleanup task path as TTS artifacts
 [TODO] Task 085: Include the final transcript in wakeword recording sidecar JSON
 [TODO] Task 086: Add TTS timing breakdown metrics for Piper generation, raw save, 48k conversion, 16k conversion, sidecar write, and endpoint fetch latency
 [TODO] Task 087: Add a TTS artifact health/debug API that lists recent streams, model, variants, sample rates, expiry, file sizes, and playable URLs

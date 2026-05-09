@@ -211,6 +211,14 @@ def _seconds_until_next_local_midnight(now: datetime | None = None) -> float:
     return max(1.0, (next_midnight - current).total_seconds())
 
 
+def cleanup_voice_artifacts_once(*, tts_audio_service, wake_recorder) -> dict:
+    tts_audio_service.cleanup_expired()
+    result = {"tts": {"expired_cleanup": "completed"}}
+    if wake_recorder is not None:
+        result["wake_recordings"] = wake_recorder.cleanup_expired()
+    return result
+
+
 def create_app(
     settings: Settings | None = None,
     voice_session_manager: VoiceSessionManager | None = None,
@@ -294,6 +302,7 @@ def create_app(
         "interval_seconds": 300,
         "last_run_at": None,
         "last_error": None,
+        "last_result": None,
     }
     app.state.voice_tts_warmup_status = {
         "name": "every_10_minutes",
@@ -334,9 +343,14 @@ def create_app(
         async def cleanup_generated_voice_artifacts_every_5_minutes():
             while True:
                 try:
-                    await asyncio.to_thread(tts_audio_service.cleanup_expired)
+                    cleanup_result = await asyncio.to_thread(
+                        cleanup_voice_artifacts_once,
+                        tts_audio_service=tts_audio_service,
+                        wake_recorder=wake_recorder,
+                    )
                     app.state.voice_artifact_cleanup_status["last_run_at"] = datetime.now(UTC).isoformat()
                     app.state.voice_artifact_cleanup_status["last_error"] = None
+                    app.state.voice_artifact_cleanup_status["last_result"] = cleanup_result
                 except Exception:
                     app.state.voice_artifact_cleanup_status["last_error"] = "cleanup_failed"
                     log.exception("Generated voice artifact cleanup failed")

@@ -84,6 +84,7 @@ Task 080: Change TTS sidecar audio_variant metadata to include the raw model sam
 Task 081: Add UI controls for warm TTS models and conversion sample rates with backend raw sample rate discovery - Completed on 05/09/2026 11:32
 Task 082: Add a Voice Node owned time intent for "What is the time?" - Completed on 05/09/2026 11:36
 Task 083: Hide canceled UI history sessions and add wake recording replay controls - Completed on 05/09/2026 11:39
+Task 084: Run wake recording retention through the generated voice artifact cleanup loop - Completed on 05/09/2026 11:41
 Task 085 (Voice intents): Define the Voice Node registered-intent contract - Completed on 05/04/2026 04:52
 Task 086 (Voice intents): Add Voice Node local intent registry storage and APIs - Completed on 05/04/2026 04:52
 Task 087 (Voice intents): Declare Voice Node intent-registration capabilities and endpoint metadata - Completed on 05/04/2026 04:52
