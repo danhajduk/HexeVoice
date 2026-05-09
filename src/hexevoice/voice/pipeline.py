@@ -70,6 +70,8 @@ class TtsSynthesis:
     stream_id: str | None = None
     audio_url: str | None = None
     provider_id: str = "deterministic"
+    model_id: str | None = None
+    voice_id: str | None = None
     audio_variant: str | None = None
     audio_variants: dict[str, str] = field(default_factory=dict)
     raw_audio_path: str | None = None
@@ -362,12 +364,18 @@ class DeterministicTextToSpeechAdapter:
         audio_format: str | None = None,
         stream_id: str | None = None,
     ) -> TtsSynthesis:
-        synthesis = TtsSynthesis(stream_id=stream_id or f"tts-{uuid4().hex[:12]}")
+        synthesis = TtsSynthesis(
+            stream_id=stream_id or f"tts-{uuid4().hex[:12]}",
+            model_id="deterministic",
+            voice_id=voice,
+        )
         record_voice_event(
             "tts.synthesized",
             endpoint_id=endpoint_id,
             session_id=session_id,
             provider_id=synthesis.provider_id,
+            model_id=synthesis.model_id,
+            voice_id=synthesis.voice_id,
             stream_id=synthesis.stream_id,
             content_type=synthesis.content_type,
             text_chars=len(text or ""),
@@ -428,10 +436,11 @@ class PiperTextToSpeechAdapter:
 
         stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
         client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        selected_voice = voice or self._voice or "piper-default"
         try:
             response = client.post(
                 f"{self._base_url}{self._synthesize_path}",
-                json={"text": text, "voice": voice or self._voice},
+                json={"text": text, "voice": selected_voice},
             )
             response.raise_for_status()
             self._output_dir.mkdir(parents=True, exist_ok=True)
@@ -462,6 +471,8 @@ class PiperTextToSpeechAdapter:
                     "endpoint_id": endpoint_id,
                     "session_id": session_id,
                     "provider_id": "piper",
+                    "model_id": selected_voice,
+                    "voice_id": selected_voice,
                     "content_type": content_type,
                     "audio_url": audio_url,
                     "text_chars": len(text or ""),
@@ -472,7 +483,7 @@ class PiperTextToSpeechAdapter:
                     "target_sample_rate_hz": target_sample_rate_hz,
                     "output_sample_rate_hz": output_sample_rate_hz,
                     "variant_sample_rates_hz": variant_sample_rates_hz,
-                    "voice": voice or self._voice,
+                    "voice": selected_voice,
                 },
             )
             self._last_error = None
@@ -481,6 +492,8 @@ class PiperTextToSpeechAdapter:
                 endpoint_id=endpoint_id,
                 session_id=session_id,
                 provider_id="piper",
+                model_id=selected_voice,
+                voice_id=selected_voice,
                 stream_id=stream_id,
                 content_type=content_type,
                 audio_url=audio_url,
@@ -501,6 +514,8 @@ class PiperTextToSpeechAdapter:
                 stream_id=stream_id,
                 audio_url=audio_url,
                 provider_id="piper",
+                model_id=selected_voice,
+                voice_id=selected_voice,
                 audio_variant=audio_variant,
                 audio_variants=audio_variant_paths,
                 raw_audio_path=str(raw_path),
@@ -592,6 +607,7 @@ class OpenAiTextToSpeechAdapter:
         stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
         response_format = audio_format or self._response_format
         content_type = self._content_type(response_format)
+        selected_voice = voice or self._voice
         if not self._api_key:
             self._last_error = "missing_api_key"
             record_voice_event(
@@ -600,7 +616,9 @@ class OpenAiTextToSpeechAdapter:
                 session_id=session_id,
                 provider_id="openai",
                 model=self._model,
-                voice=self._voice,
+                voice=selected_voice,
+                model_id=self._model,
+                voice_id=selected_voice,
                 stream_id=stream_id,
                 content_type=content_type,
                 text_chars=len(text or ""),
@@ -610,6 +628,8 @@ class OpenAiTextToSpeechAdapter:
                 content_type=content_type,
                 stream_id=stream_id,
                 provider_id="openai",
+                model_id=self._model,
+                voice_id=selected_voice,
                 error="missing_api_key",
             )
 
@@ -621,7 +641,7 @@ class OpenAiTextToSpeechAdapter:
                     headers={"Authorization": f"Bearer {self._api_key}"},
                     json={
                         "model": self._model,
-                        "voice": voice or self._voice,
+                        "voice": selected_voice,
                         "input": text,
                         "response_format": response_format,
                     },
@@ -641,8 +661,10 @@ class OpenAiTextToSpeechAdapter:
                     "endpoint_id": endpoint_id,
                     "session_id": session_id,
                     "provider_id": "openai",
+                    "model_id": self._model,
+                    "voice_id": selected_voice,
                     "model": self._model,
-                    "voice": voice or self._voice,
+                    "voice": selected_voice,
                     "content_type": content_type,
                     "audio_url": audio_url,
                     "text_chars": len(text or ""),
@@ -656,7 +678,9 @@ class OpenAiTextToSpeechAdapter:
                 session_id=session_id,
                 provider_id="openai",
                 model=self._model,
-                voice=self._voice,
+                voice=selected_voice,
+                model_id=self._model,
+                voice_id=selected_voice,
                 stream_id=stream_id,
                 content_type=content_type,
                 audio_url=audio_url,
@@ -670,6 +694,8 @@ class OpenAiTextToSpeechAdapter:
                 stream_id=stream_id,
                 audio_url=audio_url,
                 provider_id="openai",
+                model_id=self._model,
+                voice_id=selected_voice,
                 metadata_path=str(metadata_path),
                 expires_at=expires_at,
                 ttl_seconds=DEFAULT_TTS_AUDIO_TTL_SECONDS,
@@ -682,7 +708,9 @@ class OpenAiTextToSpeechAdapter:
                 session_id=session_id,
                 provider_id="openai",
                 model=self._model,
-                voice=self._voice,
+                voice=selected_voice,
+                model_id=self._model,
+                voice_id=selected_voice,
                 stream_id=stream_id,
                 content_type=content_type,
                 text_chars=len(text or ""),
@@ -692,6 +720,8 @@ class OpenAiTextToSpeechAdapter:
                 content_type=content_type,
                 stream_id=stream_id,
                 provider_id="openai",
+                model_id=self._model,
+                voice_id=selected_voice,
                 error=self._last_error,
             )
 

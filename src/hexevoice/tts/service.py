@@ -54,6 +54,8 @@ class TtsAudioService:
             "stream_id": stream_id,
             "content_type": content_type,
             "duration_ms": duration_ms,
+            "model_id": synthesis.model_id or "deterministic",
+            "voice_id": synthesis.voice_id or request.voice,
             "audio_variant": synthesis.audio_variant,
             "audio_variants": synthesis.audio_variants,
             "raw_audio_path": synthesis.raw_audio_path,
@@ -91,6 +93,7 @@ class TtsAudioService:
         options = audio_options or {}
         mode = str(options.get("mode") or "best_effort").strip().lower()
         voice = options.get("voice_id") or options.get("model_id") or options.get("voice") or options.get("model")
+        resolved_voice = self._resolve_voice_model(str(voice)) if voice else None
         audio_format = str(options.get("format") or "wav")
         lifetime = intent_reply_audio_lifetime(options)
         ttl_seconds = intent_reply_audio_ttl_seconds(options) if lifetime != "long_lived" else None
@@ -99,7 +102,7 @@ class TtsAudioService:
             endpoint_id=endpoint_id,
             session_id=session_id,
             text=text,
-            voice=self._resolve_voice_model(str(voice)) if voice else None,
+            voice=resolved_voice,
             audio_format=audio_format,
             stream_id=stream_id,
         )
@@ -129,8 +132,8 @@ class TtsAudioService:
             "output_sample_rate_hz": synthesis.output_sample_rate_hz,
             "variant_sample_rates_hz": synthesis.variant_sample_rates_hz,
             "provider_id": synthesis.provider_id,
-            "model_id": options.get("model_id"),
-            "voice_id": options.get("voice_id") or options.get("voice"),
+            "model_id": synthesis.model_id or options.get("model_id") or resolved_voice or "deterministic",
+            "voice_id": synthesis.voice_id or options.get("voice_id") or options.get("voice") or resolved_voice,
             "mode": mode,
             "lifetime": lifetime,
             "ttl_seconds": ttl_seconds,

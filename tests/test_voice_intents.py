@@ -188,6 +188,7 @@ def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):
     metadata = json.loads(sidecar.read_text(encoding="utf-8"))
     assert metadata["voice_ready"] is True
     assert metadata["spoken_text"] == "Kitchen status accepted."
+    assert metadata["model_id"] == "deterministic"
     assert metadata["ttl_seconds"] == 120
     assert metadata["expires_at"]
 

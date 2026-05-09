@@ -408,8 +408,12 @@ def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
     assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == b"RIFFtest-wav"
     metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
     assert metadata["provider_id"] == "openai"
+    assert metadata["model_id"] == "gpt-4o-mini-tts"
+    assert metadata["voice_id"] == "alloy"
     assert metadata["ttl_seconds"] == 300
     assert metadata["expires_at"]
+    assert synthesis.model_id == "gpt-4o-mini-tts"
+    assert synthesis.voice_id == "alloy"
     assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
     assert synthesis.ttl_seconds == 300
     assert captured["authorization"] == f"Bearer {fake_token}"
@@ -493,10 +497,14 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert (tmp_path / f"{synthesis.stream_id}.48k.wav").read_bytes() == b"RIFFpiper-wav"
     metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
     assert metadata["provider_id"] == "piper"
+    assert metadata["model_id"] == "en_US-test"
+    assert metadata["voice_id"] == "en_US-test"
     assert metadata["audio_variant"] == "16k"
     assert metadata["ttl_seconds"] == 300
     assert metadata["expires_at"]
     assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
+    assert synthesis.model_id == "en_US-test"
+    assert synthesis.voice_id == "en_US-test"
     assert synthesis.ttl_seconds == 300
     assert adapter.status()["healthy"] is True
 

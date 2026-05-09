@@ -44,6 +44,8 @@ def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
         "stream_id": tts.stream_id,
         "audio_url": tts.audio_url,
         "provider_id": tts.provider_id,
+        "model_id": tts.model_id,
+        "voice_id": tts.voice_id,
         "audio_variant": tts.audio_variant,
         "audio_variants": tts.audio_variants,
         "raw_audio_path": tts.raw_audio_path,
