@@ -1,4 +1,3 @@
-[TODO] Task 105: Map Voice PE LED ring patterns to Hexe voice phases: idle, wake/listening, capturing, thinking, replying, completed, cancelled, muted, error, and disconnected
 [TODO] Task 106: Add Voice PE diagnostic LED patterns for boot, Wi-Fi/backend connection, OTA progress, fatal error, speaker silent volume, and hardware mute privacy states
 [TODO] Task 107: Add Voice PE rotary dial LED affordances for volume display and active color selection without interfering with center-button wake/cancel behavior
 [TODO] Task 108: Add backend/firmware tests and docs for Voice PE LED pattern priority, state transitions, and OTA-safe failure behavior

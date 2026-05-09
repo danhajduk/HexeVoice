@@ -31,5 +31,8 @@ esp_err_t led_ring_set_visual_frame(
     size_t visual_color_count,
     uint8_t brightness = kLedRingDefaultBrightness,
     bool diagnostic = false);
+void update_led_ring_patterns();
+void led_ring_show_completed();
+void led_ring_show_cancelled();
 
 }  // namespace hexe::board

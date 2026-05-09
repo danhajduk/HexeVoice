@@ -76,6 +76,7 @@ extern "C" void app_main(void) {
     hexe::board::update_audio();
     hexe::board::update_buttons();
     hexe::board::refresh_wifi_status();
+    hexe::board::update_led_ring_patterns();
 
     const int frame = state.loading_frame;
     hexe::board::render_boot_frame(frame, app->version);

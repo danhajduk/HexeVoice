@@ -14,6 +14,7 @@
 #include "app_state.h"
 #include "board/audio.h"
 #include "board/display.h"
+#include "board/led_ring.h"
 #include "board/storage.h"
 #include "board/touch.h"
 #include "board/wifi.h"
@@ -573,6 +574,11 @@ void handle_backend_event_json(const std::string &message) {
       send_command_error(request_id, "endpoint.storage.reformat", "sd_reformat_failed", "Could not reformat SD media folders");
     }
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
+    if (std::strcmp(type, "session.cancelled") == 0) {
+      hexe::board::led_ring_show_cancelled();
+    } else {
+      hexe::board::led_ring_show_completed();
+    }
     g_session_started = false;
     g_audio_stream_finished = false;
     g_preroll_drained = false;
@@ -1661,6 +1667,7 @@ bool cancel_active_session(const char *reason) {
   g_transport_sample_count = 0;
   set_audio_streaming(false);
   hexe::voice::stop_tts_playback();
+  hexe::board::led_ring_show_cancelled();
   return sent;
 }
 

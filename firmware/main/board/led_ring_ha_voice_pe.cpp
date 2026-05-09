@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "app_state.h"
 #include "driver/gpio.h"
 #include "driver/rmt_encoder.h"
 #include "driver/rmt_tx.h"
@@ -20,8 +21,23 @@ constexpr gpio_num_t kLedPowerGpio = GPIO_NUM_45;
 constexpr size_t kLedCount = 12;
 constexpr uint32_t kRmtResolutionHz = 10 * 1000 * 1000;
 constexpr uint32_t kRenderTimeoutMs = 100;
+constexpr uint32_t kPatternFrameMs = 50;
+constexpr uint32_t kMomentaryPatternMs = 750;
 constexpr std::array<uint8_t, kLedCount> kVisualToPhysical = {
     7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6};
+
+enum class LedPattern {
+  kOff,
+  kWakeListening,
+  kCapturing,
+  kThinking,
+  kReplying,
+  kCompleted,
+  kCancelled,
+  kMuted,
+  kError,
+  kDisconnected,
+};
 
 struct LedStripEncoder {
   rmt_encoder_t base;
@@ -36,6 +52,10 @@ rmt_encoder_handle_t g_led_encoder = nullptr;
 SemaphoreHandle_t g_led_mutex = nullptr;
 bool g_led_ready = false;
 std::array<uint8_t, kLedCount * 3> g_pixels = {};
+LedPattern g_last_pattern = LedPattern::kOff;
+LedPattern g_momentary_pattern = LedPattern::kOff;
+TickType_t g_last_pattern_tick = 0;
+TickType_t g_momentary_until_tick = 0;
 
 void set_led_power(bool enabled) {
   gpio_set_level(kLedPowerGpio, enabled ? 1 : 0);
@@ -245,6 +265,140 @@ void give_led_mutex() {
     xSemaphoreGive(g_led_mutex);
   }
 }
+
+hexe::board::LedRingColor color(uint8_t red, uint8_t green, uint8_t blue) {
+  return hexe::board::LedRingColor{red, green, blue};
+}
+
+uint8_t pulse_value(uint32_t frame, uint8_t low, uint8_t high) {
+  const uint32_t phase = frame % 24;
+  const uint32_t rising = phase < 12 ? phase : 23 - phase;
+  return static_cast<uint8_t>(low + ((high - low) * rising) / 11);
+}
+
+void set_pixel(
+    std::array<hexe::board::LedRingColor, kLedCount> &frame,
+    size_t index,
+    hexe::board::LedRingColor value) {
+  frame[index % kLedCount] = value;
+}
+
+void fill_voice_pattern(
+    LedPattern pattern,
+    uint32_t frame_index,
+    const hexe::AppState &state,
+    std::array<hexe::board::LedRingColor, kLedCount> &frame,
+    uint8_t &brightness,
+    bool &diagnostic) {
+  frame.fill(color(0, 0, 0));
+  brightness = hexe::board::kLedRingDefaultBrightness;
+  diagnostic = false;
+
+  const uint32_t cursor = frame_index % kLedCount;
+  switch (pattern) {
+    case LedPattern::kOff:
+      break;
+    case LedPattern::kWakeListening:
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      set_pixel(frame, cursor, color(0, 180, 255));
+      set_pixel(frame, cursor + 11, color(0, 80, 160));
+      set_pixel(frame, cursor + 6, color(0, 180, 255));
+      set_pixel(frame, cursor + 5, color(0, 80, 160));
+      break;
+    case LedPattern::kCapturing: {
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      const uint32_t level = static_cast<uint32_t>(std::max(state.vad_level, 0));
+      const size_t lit_count = std::clamp<size_t>(2 + (level / 250), 2, kLedCount);
+      for (size_t index = 0; index < lit_count; ++index) {
+        const uint8_t green = static_cast<uint8_t>(220 - std::min<size_t>(index * 8, 120));
+        set_pixel(frame, index, color(0, green, 120));
+      }
+      break;
+    }
+    case LedPattern::kThinking: {
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      const uint8_t blue = pulse_value(frame_index, 80, 255);
+      set_pixel(frame, cursor, color(120, 0, blue));
+      set_pixel(frame, cursor + 6, color(120, 0, blue));
+      break;
+    }
+    case LedPattern::kReplying:
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      set_pixel(frame, kLedCount - cursor, color(0, 140, 255));
+      set_pixel(frame, kLedCount - cursor + 1, color(0, 70, 160));
+      set_pixel(frame, kLedCount - cursor + 6, color(0, 140, 255));
+      set_pixel(frame, kLedCount - cursor + 7, color(0, 70, 160));
+      break;
+    case LedPattern::kCompleted: {
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      const uint8_t green = pulse_value(frame_index, 80, 255);
+      frame.fill(color(0, green, 80));
+      break;
+    }
+    case LedPattern::kCancelled:
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      set_pixel(frame, 0, color(255, 120, 0));
+      set_pixel(frame, 3, color(255, 120, 0));
+      set_pixel(frame, 6, color(255, 120, 0));
+      set_pixel(frame, 9, color(255, 120, 0));
+      break;
+    case LedPattern::kMuted:
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      set_pixel(frame, 3, color(255, 0, 0));
+      set_pixel(frame, 9, color(255, 0, 0));
+      break;
+    case LedPattern::kError: {
+      diagnostic = true;
+      brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
+      const uint8_t red = pulse_value(frame_index, 120, 255);
+      frame.fill(color(red, 0, 0));
+      break;
+    }
+    case LedPattern::kDisconnected:
+      diagnostic = true;
+      brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
+      set_pixel(frame, cursor / 2, color(255, 120, 0));
+      break;
+  }
+}
+
+LedPattern pattern_for_state(const hexe::AppState &state) {
+  if (state.ota_active || state.phase == hexe::AppPhase::kUpdating) {
+    return LedPattern::kThinking;
+  }
+  if (state.muted || state.phase == hexe::AppPhase::kMuted) {
+    return LedPattern::kMuted;
+  }
+  if (!state.wifi_connected || !state.backend_connected || !state.voice_ws_connected ||
+      state.phase == hexe::AppPhase::kWiFiConnecting || state.phase == hexe::AppPhase::kBackendConnecting) {
+    return LedPattern::kDisconnected;
+  }
+
+  switch (state.phase) {
+    case hexe::AppPhase::kListening:
+      return (state.vad_speaking || state.audio_streaming) ? LedPattern::kCapturing : LedPattern::kWakeListening;
+    case hexe::AppPhase::kThinking:
+      return LedPattern::kThinking;
+    case hexe::AppPhase::kReplying:
+      return LedPattern::kReplying;
+    case hexe::AppPhase::kError:
+      return LedPattern::kError;
+    case hexe::AppPhase::kIdle:
+    case hexe::AppPhase::kBooting:
+    case hexe::AppPhase::kTimerFinished:
+    case hexe::AppPhase::kWiFiConnecting:
+    case hexe::AppPhase::kBackendConnecting:
+    case hexe::AppPhase::kUpdating:
+    case hexe::AppPhase::kMuted:
+      return LedPattern::kOff;
+  }
+  return LedPattern::kOff;
+}
+
+void show_momentary_pattern(LedPattern pattern) {
+  g_momentary_pattern = pattern;
+  g_momentary_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kMomentaryPatternMs);
+}
 }  // namespace
 
 namespace hexe::board {
@@ -331,6 +485,54 @@ esp_err_t led_ring_set_visual_frame(
   const esp_err_t result = render_frame_locked(visual_colors, visual_color_count, brightness, diagnostic);
   give_led_mutex();
   return result;
+}
+
+void update_led_ring_patterns() {
+  if (!g_led_ready) {
+    return;
+  }
+
+  const TickType_t now = xTaskGetTickCount();
+  LedPattern pattern = pattern_for_state(hexe::state());
+  if (g_momentary_pattern != LedPattern::kOff) {
+    if (static_cast<int32_t>(g_momentary_until_tick - now) > 0) {
+      pattern = g_momentary_pattern;
+    } else {
+      g_momentary_pattern = LedPattern::kOff;
+    }
+  }
+
+  const bool pattern_changed = pattern != g_last_pattern;
+  const bool frame_due = (now - g_last_pattern_tick) >= pdMS_TO_TICKS(kPatternFrameMs);
+  if (!pattern_changed && !frame_due) {
+    return;
+  }
+
+  g_last_pattern_tick = now;
+  if (pattern == LedPattern::kOff) {
+    if (pattern_changed) {
+      led_ring_off();
+    }
+    g_last_pattern = pattern;
+    return;
+  }
+
+  std::array<LedRingColor, kLedCount> frame = {};
+  uint8_t brightness = kLedRingDefaultBrightness;
+  bool diagnostic = false;
+  const uint32_t frame_index = now / pdMS_TO_TICKS(kPatternFrameMs);
+  fill_voice_pattern(pattern, frame_index, hexe::state(), frame, brightness, diagnostic);
+  if (led_ring_set_visual_frame(frame.data(), frame.size(), brightness, diagnostic) == ESP_OK) {
+    g_last_pattern = pattern;
+  }
+}
+
+void led_ring_show_completed() {
+  show_momentary_pattern(LedPattern::kCompleted);
+}
+
+void led_ring_show_cancelled() {
+  show_momentary_pattern(LedPattern::kCancelled);
 }
 
 }  // namespace hexe::board
