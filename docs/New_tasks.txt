@@ -2,6 +2,12 @@
 [TODO] Task 090: Add regression tests for TTS sidecar compatibility, cleanup behavior, model metadata, and per-endpoint sample-rate selection
 [TODO] Task 091: Add migration/compat handling for older TTS and wake recording sidecars that do not include the new metadata fields
 [TODO] Task 092: Add a voice artifact privacy/export policy UI for deleting, downloading, and disabling retained wake recordings and TTS artifacts per endpoint
+[TODO] Task 103: Document the Home Assistant Voice PE LED ring hardware contract, including GPIO21 WS2812/GRB data, GPIO45 LED power, 12 LEDs, remapped ring order, and safe brightness defaults
+[TODO] Task 104: Add a Voice PE LED ring firmware driver using ESP-IDF RMT with GPIO45 power gating and a no-op fallback for non-PE board profiles
+[TODO] Task 105: Map Voice PE LED ring patterns to Hexe voice phases: idle, wake/listening, capturing, thinking, replying, completed, cancelled, muted, error, and disconnected
+[TODO] Task 106: Add Voice PE diagnostic LED patterns for boot, Wi-Fi/backend connection, OTA progress, fatal error, speaker silent volume, and hardware mute privacy states
+[TODO] Task 107: Add Voice PE rotary dial LED affordances for volume display and active color selection without interfering with center-button wake/cancel behavior
+[TODO] Task 108: Add backend/firmware tests and docs for Voice PE LED pattern priority, state transitions, and OTA-safe failure behavior
 
 [FUTURE TODO] Task 064: Build the first touchscreen interaction layer
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card
