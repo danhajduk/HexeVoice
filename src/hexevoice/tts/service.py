@@ -7,7 +7,7 @@ import wave
 
 from hexevoice.api.models import TtsSynthesizeRequest, TtsSynthesizeResponse
 from hexevoice.config.settings import Settings
-from hexevoice.voice.pipeline import VoiceTurnPipeline
+from hexevoice.voice.pipeline import DEFAULT_TTS_AUDIO_TTL_SECONDS, VoiceTurnPipeline
 
 
 GENERATED_AUDIO_SUFFIXES = (".wav", ".mp3", ".ogg")
@@ -48,7 +48,8 @@ class TtsAudioService:
         content_type = synthesis.content_type or content_type_for_path(audio_path)
         duration_ms = wav_duration_ms(audio_path) if content_type == "audio/wav" else None
         audio_url = self._public_tts_audio_url(stream_id, variant=served_variant)
-        expires_at = datetime.now(UTC) + timedelta(seconds=request.ttl_seconds)
+        created_at = datetime.now(UTC)
+        expires_at = created_at + timedelta(seconds=request.ttl_seconds)
         metadata = {
             "stream_id": stream_id,
             "content_type": content_type,
@@ -64,6 +65,8 @@ class TtsAudioService:
             "text_chars": len(request.text or ""),
             "target": request.target.model_dump(mode="json"),
             "requested_format": request.format,
+            "ttl_seconds": request.ttl_seconds,
+            "created_at": created_at.isoformat(),
         }
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         return TtsSynthesizeResponse(
@@ -314,11 +317,11 @@ def intent_reply_audio_lifetime(options: dict | None) -> str:
 
 def intent_reply_audio_ttl_seconds(options: dict | None) -> int:
     if not isinstance(options, dict):
-        return 300
+        return DEFAULT_TTS_AUDIO_TTL_SECONDS
     try:
-        ttl_seconds = int(options.get("ttl_seconds") or 300)
+        ttl_seconds = int(options.get("ttl_seconds") or DEFAULT_TTS_AUDIO_TTL_SECONDS)
     except (TypeError, ValueError):
-        ttl_seconds = 300
+        ttl_seconds = DEFAULT_TTS_AUDIO_TTL_SECONDS
     return max(5, min(ttl_seconds, 3600))
 
 

@@ -378,7 +378,6 @@ def create_app(
                                 text="hello",
                                 voice=voice,
                                 format="wav",
-                                ttl_seconds=60,
                             ),
                         )
                         results.append(

@@ -50,6 +50,9 @@ def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
         "raw_sample_rate_hz": tts.raw_sample_rate_hz,
         "output_sample_rate_hz": tts.output_sample_rate_hz,
         "variant_sample_rates_hz": tts.variant_sample_rates_hz,
+        "metadata_path": tts.metadata_path,
+        "expires_at": tts.expires_at,
+        "ttl_seconds": tts.ttl_seconds,
         "error": tts.error,
     }
 

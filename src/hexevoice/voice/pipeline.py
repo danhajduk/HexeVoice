@@ -3,8 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
+from datetime import UTC
+from datetime import datetime
+from datetime import timedelta
 import io
 import importlib.util
+import json
 import logging
 from pathlib import Path
 import tempfile
@@ -33,6 +37,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+DEFAULT_TTS_AUDIO_TTL_SECONDS = 300
 PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = {
     "16k": 16000,
     "48k": 48000,
@@ -72,6 +77,9 @@ class TtsSynthesis:
     raw_sample_rate_hz: int | None = None
     output_sample_rate_hz: int | None = None
     variant_sample_rates_hz: dict[str, int | None] = field(default_factory=dict)
+    metadata_path: str | None = None
+    expires_at: str | None = None
+    ttl_seconds: int | None = None
     error: str | None = None
 
 
@@ -444,6 +452,27 @@ class PiperTextToSpeechAdapter:
             audio_variant = self._variant_for_sample_rate(target_sample_rate_hz)
             output_sample_rate_hz = variant_sample_rates_hz.get(audio_variant) if audio_variant else raw_sample_rate_hz
             audio_url = f"/api/voice/tts/{stream_id}/{audio_variant}" if audio_variant else f"/api/voice/tts/{stream_id}"
+            content_type = response.headers.get("content-type", "audio/wav")
+            metadata_path, expires_at = write_default_tts_sidecar(
+                self._output_dir,
+                stream_id,
+                metadata={
+                    "endpoint_id": endpoint_id,
+                    "session_id": session_id,
+                    "provider_id": "piper",
+                    "content_type": content_type,
+                    "audio_url": audio_url,
+                    "text_chars": len(text or ""),
+                    "audio_variant": audio_variant,
+                    "audio_variants": audio_variant_paths,
+                    "raw_audio_path": str(raw_path),
+                    "raw_sample_rate_hz": raw_sample_rate_hz,
+                    "target_sample_rate_hz": target_sample_rate_hz,
+                    "output_sample_rate_hz": output_sample_rate_hz,
+                    "variant_sample_rates_hz": variant_sample_rates_hz,
+                    "voice": voice or self._voice,
+                },
+            )
             self._last_error = None
             record_voice_event(
                 "tts.synthesized",
@@ -451,7 +480,7 @@ class PiperTextToSpeechAdapter:
                 session_id=session_id,
                 provider_id="piper",
                 stream_id=stream_id,
-                content_type=response.headers.get("content-type", "audio/wav"),
+                content_type=content_type,
                 audio_url=audio_url,
                 text_chars=len(text or ""),
                 audio_variant=audio_variant,
@@ -461,10 +490,12 @@ class PiperTextToSpeechAdapter:
                 target_sample_rate_hz=target_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
                 variant_sample_rates_hz=variant_sample_rates_hz,
+                metadata_path=str(metadata_path),
+                expires_at=expires_at,
                 error=None,
             )
             return TtsSynthesis(
-                content_type=response.headers.get("content-type", "audio/wav"),
+                content_type=content_type,
                 stream_id=stream_id,
                 audio_url=audio_url,
                 provider_id="piper",
@@ -474,6 +505,9 @@ class PiperTextToSpeechAdapter:
                 raw_sample_rate_hz=raw_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
                 variant_sample_rates_hz=variant_sample_rates_hz,
+                metadata_path=str(metadata_path),
+                expires_at=expires_at,
+                ttl_seconds=DEFAULT_TTS_AUDIO_TTL_SECONDS,
             )
         except Exception as exc:
             self._last_error = str(exc)
@@ -597,6 +631,22 @@ class OpenAiTextToSpeechAdapter:
             self._output_dir.mkdir(parents=True, exist_ok=True)
             output_path = self._output_dir / f"{stream_id}.{response_format}"
             output_path.write_bytes(response.content)
+            audio_url = f"/api/voice/tts/{stream_id}"
+            metadata_path, expires_at = write_default_tts_sidecar(
+                self._output_dir,
+                stream_id,
+                metadata={
+                    "endpoint_id": endpoint_id,
+                    "session_id": session_id,
+                    "provider_id": "openai",
+                    "model": self._model,
+                    "voice": voice or self._voice,
+                    "content_type": content_type,
+                    "audio_url": audio_url,
+                    "text_chars": len(text or ""),
+                    "requested_format": response_format,
+                },
+            )
             self._last_error = None
             record_voice_event(
                 "tts.synthesized",
@@ -607,15 +657,20 @@ class OpenAiTextToSpeechAdapter:
                 voice=self._voice,
                 stream_id=stream_id,
                 content_type=content_type,
-                audio_url=f"/api/voice/tts/{stream_id}",
+                audio_url=audio_url,
                 text_chars=len(text or ""),
+                metadata_path=str(metadata_path),
+                expires_at=expires_at,
                 error=None,
             )
             return TtsSynthesis(
                 content_type=content_type,
                 stream_id=stream_id,
-                audio_url=f"/api/voice/tts/{stream_id}",
+                audio_url=audio_url,
                 provider_id="openai",
+                metadata_path=str(metadata_path),
+                expires_at=expires_at,
+                ttl_seconds=DEFAULT_TTS_AUDIO_TTL_SECONDS,
             )
         except Exception as exc:
             self._last_error = str(exc)
@@ -672,6 +727,23 @@ def audio_file_bytes(audio: VoiceTurnAudioSummary) -> bytes:
         wav_file.setframerate(audio.sample_rate_hz or 16000)
         wav_file.writeframes(audio.audio_bytes or b"")
     return buffer.getvalue()
+
+
+def write_default_tts_sidecar(output_dir: Path, stream_id: str, *, metadata: dict[str, Any]) -> tuple[Path, str]:
+    created_at = datetime.now(UTC)
+    expires_at = created_at + timedelta(seconds=DEFAULT_TTS_AUDIO_TTL_SECONDS)
+    payload = {
+        "stream_id": stream_id,
+        "created_at": created_at.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "ttl_seconds": DEFAULT_TTS_AUDIO_TTL_SECONDS,
+        "lifetime": "short_lived",
+        **metadata,
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    metadata_path = output_dir / f"{stream_id}.json"
+    metadata_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return metadata_path, expires_at.isoformat()
 
 
 def normalize_wav_sample_rate(audio: bytes, target_sample_rate_hz: int | None) -> bytes:

@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime
 import io
+import json
 import wave
 
 from fastapi.testclient import TestClient
@@ -755,7 +756,6 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
             "text": "The kitchen timer is done.",
             "voice": "default",
             "format": "wav",
-            "ttl_seconds": 60,
         },
     )
 
@@ -767,6 +767,9 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert payload["duration_ms"] is not None
     assert payload["expires_at"]
     assert payload["stream_id"].startswith("tts-")
+    metadata = json.loads((tmp_path / "voice_tts" / f"{payload['stream_id']}.json").read_text(encoding="utf-8"))
+    assert metadata["ttl_seconds"] == 300
+    assert metadata["expires_at"] == payload["expires_at"]
 
     audio = client.get(payload["audio_url"].removeprefix(public_base_url))
     assert audio.status_code == 200

@@ -163,7 +163,7 @@ def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):
                 "response": {"reply_text": "Kitchen status accepted."},
                 "reply": {
                     "text_template": "Kitchen status accepted.",
-                    "audio": {"mode": "best_effort", "ttl_seconds": 300},
+                    "audio": {"mode": "best_effort", "ttl_seconds": 120},
                 },
                 "matcher": {"type": "exact_example"},
             },
@@ -181,12 +181,14 @@ def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):
     assert payload["reply_audio"]["stream_id"] == event_id
     assert payload["reply_audio"]["voice_ready"] is True
     assert payload["reply_audio"]["spoken_text"] == "Kitchen status accepted."
+    assert payload["reply_audio"]["ttl_seconds"] == 120
     sidecar = tmp_path / "voice_tts" / f"{event_id}.json"
     audio = tmp_path / "voice_tts" / f"{event_id}.wav"
     assert audio.exists()
     metadata = json.loads(sidecar.read_text(encoding="utf-8"))
     assert metadata["voice_ready"] is True
     assert metadata["spoken_text"] == "Kitchen status accepted."
+    assert metadata["ttl_seconds"] == 120
     assert metadata["expires_at"]
 
 

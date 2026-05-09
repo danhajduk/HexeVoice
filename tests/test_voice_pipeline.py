@@ -1,4 +1,5 @@
 import io
+import json
 from pathlib import Path
 from types import SimpleNamespace
 import wave
@@ -405,6 +406,12 @@ def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
     assert synthesis.stream_id is not None
     assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}"
     assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == b"RIFFtest-wav"
+    metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["provider_id"] == "openai"
+    assert metadata["ttl_seconds"] == 300
+    assert metadata["expires_at"]
+    assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
+    assert synthesis.ttl_seconds == 300
     assert captured["authorization"] == f"Bearer {fake_token}"
     assert b"gpt-4o-mini-tts" in captured["json"]
     assert b"hello" in captured["json"]
@@ -484,6 +491,13 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert (tmp_path / f"{synthesis.stream_id}.raw.wav").read_bytes() == b"RIFFpiper-wav"
     assert (tmp_path / f"{synthesis.stream_id}.16k.wav").read_bytes() == b"RIFFpiper-wav"
     assert (tmp_path / f"{synthesis.stream_id}.48k.wav").read_bytes() == b"RIFFpiper-wav"
+    metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["provider_id"] == "piper"
+    assert metadata["audio_variant"] == "16k"
+    assert metadata["ttl_seconds"] == 300
+    assert metadata["expires_at"]
+    assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
+    assert synthesis.ttl_seconds == 300
     assert adapter.status()["healthy"] is True
 
 
@@ -520,6 +534,8 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
     assert synthesis.raw_sample_rate_hz == 22050
     assert synthesis.output_sample_rate_hz == 16000
     assert synthesis.variant_sample_rates_hz == {"raw": 22050, "16k": 16000, "48k": 48000}
+    metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["variant_sample_rates_hz"] == {"raw": 22050, "16k": 16000, "48k": 48000}
 
 
 def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):
