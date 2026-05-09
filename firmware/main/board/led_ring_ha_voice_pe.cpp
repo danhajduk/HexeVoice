@@ -40,6 +40,8 @@ enum class LedPattern {
   kCancelled,
   kMuted,
   kSpeakerSilent,
+  kVolumeDisplay,
+  kColorSelect,
   kError,
   kDisconnected,
 };
@@ -61,6 +63,8 @@ LedPattern g_last_pattern = LedPattern::kOff;
 LedPattern g_momentary_pattern = LedPattern::kOff;
 TickType_t g_last_pattern_tick = 0;
 TickType_t g_momentary_until_tick = 0;
+uint16_t g_accent_hue_degrees = 196;
+int g_affordance_percent = 0;
 
 void set_led_power(bool enabled) {
   gpio_set_level(kLedPowerGpio, enabled ? 1 : 0);
@@ -275,6 +279,44 @@ hexe::board::LedRingColor color(uint8_t red, uint8_t green, uint8_t blue) {
   return hexe::board::LedRingColor{red, green, blue};
 }
 
+hexe::board::LedRingColor hsv_to_rgb(uint16_t hue_degrees, uint8_t saturation_percent, uint8_t value_percent) {
+  const uint16_t hue = hue_degrees % 360;
+  const uint8_t region = hue / 60;
+  const uint16_t remainder = (hue % 60) * 255 / 60;
+  const uint16_t value = value_percent * 255 / 100;
+  const uint16_t saturation = saturation_percent * 255 / 100;
+  const uint8_t p = static_cast<uint8_t>(value * (255 - saturation) / 255);
+  const uint8_t q = static_cast<uint8_t>(value * (255 - (saturation * remainder / 255)) / 255);
+  const uint8_t t = static_cast<uint8_t>(value * (255 - (saturation * (255 - remainder) / 255)) / 255);
+  const uint8_t v = static_cast<uint8_t>(value);
+
+  switch (region) {
+    case 0:
+      return color(v, t, p);
+    case 1:
+      return color(q, v, p);
+    case 2:
+      return color(p, v, t);
+    case 3:
+      return color(p, q, v);
+    case 4:
+      return color(t, p, v);
+    default:
+      return color(v, p, q);
+  }
+}
+
+hexe::board::LedRingColor accent_color() {
+  return hsv_to_rgb(g_accent_hue_degrees, 100, 100);
+}
+
+hexe::board::LedRingColor dim_color(hexe::board::LedRingColor source, uint8_t percent) {
+  return color(
+      static_cast<uint8_t>(source.red * percent / 100),
+      static_cast<uint8_t>(source.green * percent / 100),
+      static_cast<uint8_t>(source.blue * percent / 100));
+}
+
 uint8_t pulse_value(uint32_t frame, uint8_t low, uint8_t high) {
   const uint32_t phase = frame % 24;
   const uint32_t rising = phase < 12 ? phase : 23 - phase;
@@ -300,6 +342,8 @@ void fill_voice_pattern(
   diagnostic = false;
 
   const uint32_t cursor = frame_index % kLedCount;
+  const hexe::board::LedRingColor accent = accent_color();
+  const hexe::board::LedRingColor accent_dim = dim_color(accent, 45);
   switch (pattern) {
     case LedPattern::kOff:
       break;
@@ -324,18 +368,18 @@ void fill_voice_pattern(
       break;
     case LedPattern::kWakeListening:
       brightness = hexe::board::kLedRingNormalBrightnessCap;
-      set_pixel(frame, cursor, color(0, 180, 255));
-      set_pixel(frame, cursor + 11, color(0, 80, 160));
-      set_pixel(frame, cursor + 6, color(0, 180, 255));
-      set_pixel(frame, cursor + 5, color(0, 80, 160));
+      set_pixel(frame, cursor, accent);
+      set_pixel(frame, cursor + 11, accent_dim);
+      set_pixel(frame, cursor + 6, accent);
+      set_pixel(frame, cursor + 5, accent_dim);
       break;
     case LedPattern::kCapturing: {
       brightness = hexe::board::kLedRingNormalBrightnessCap;
       const uint32_t level = static_cast<uint32_t>(std::max(state.vad_level, 0));
-      const size_t lit_count = std::clamp<size_t>(2 + (level / 250), 2, kLedCount);
+      const size_t lit_count = std::clamp<size_t>(2 + (level / 250), size_t{2}, kLedCount);
       for (size_t index = 0; index < lit_count; ++index) {
-        const uint8_t green = static_cast<uint8_t>(220 - std::min<size_t>(index * 8, 120));
-        set_pixel(frame, index, color(0, green, 120));
+        const uint8_t percent = static_cast<uint8_t>(100 - std::min<size_t>(index * 4, 55));
+        set_pixel(frame, index, dim_color(accent, percent));
       }
       break;
     }
@@ -348,15 +392,18 @@ void fill_voice_pattern(
     }
     case LedPattern::kReplying:
       brightness = hexe::board::kLedRingNormalBrightnessCap;
-      set_pixel(frame, kLedCount - cursor, color(0, 140, 255));
-      set_pixel(frame, kLedCount - cursor + 1, color(0, 70, 160));
-      set_pixel(frame, kLedCount - cursor + 6, color(0, 140, 255));
-      set_pixel(frame, kLedCount - cursor + 7, color(0, 70, 160));
+      set_pixel(frame, kLedCount - cursor, accent);
+      set_pixel(frame, kLedCount - cursor + 1, accent_dim);
+      set_pixel(frame, kLedCount - cursor + 6, accent);
+      set_pixel(frame, kLedCount - cursor + 7, accent_dim);
       break;
     case LedPattern::kOtaProgress: {
       diagnostic = true;
       brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
-      const size_t lit_count = std::clamp<size_t>((state.ota_progress_percent * kLedCount + 99) / 100, 1, kLedCount);
+      const size_t lit_count = std::clamp<size_t>(
+          (state.ota_progress_percent * kLedCount + 99) / 100,
+          size_t{1},
+          kLedCount);
       for (size_t index = 0; index < lit_count; ++index) {
         set_pixel(frame, index, color(0, 170, 255));
       }
@@ -386,6 +433,25 @@ void fill_voice_pattern(
       set_pixel(frame, 5, color(255, 0, 0));
       set_pixel(frame, 6, color(255, 90, 0));
       set_pixel(frame, 7, color(255, 0, 0));
+      break;
+    case LedPattern::kVolumeDisplay: {
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      const size_t lit_count = std::clamp<size_t>(
+          (g_affordance_percent * kLedCount + 99) / 100,
+          size_t{0},
+          kLedCount);
+      for (size_t index = 0; index < lit_count; ++index) {
+        set_pixel(frame, (6 + index) % kLedCount, accent);
+      }
+      if (g_affordance_percent <= 0) {
+        set_pixel(frame, 6, color(255, 0, 0));
+      }
+      break;
+    }
+    case LedPattern::kColorSelect:
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      frame.fill(accent);
+      set_pixel(frame, cursor, color(255, 255, 255));
       break;
     case LedPattern::kError: {
       diagnostic = true;
@@ -582,6 +648,20 @@ void led_ring_show_completed() {
 
 void led_ring_show_cancelled() {
   show_momentary_pattern(LedPattern::kCancelled);
+}
+
+void led_ring_show_volume(int volume_percent) {
+  g_affordance_percent = std::clamp(volume_percent, 0, 100);
+  show_momentary_pattern(LedPattern::kVolumeDisplay);
+}
+
+void led_ring_adjust_accent_hue(int delta_steps) {
+  int hue = static_cast<int>(g_accent_hue_degrees) + (delta_steps * 18);
+  while (hue < 0) {
+    hue += 360;
+  }
+  g_accent_hue_degrees = static_cast<uint16_t>(hue % 360);
+  show_momentary_pattern(LedPattern::kColorSelect);
 }
 
 }  // namespace hexe::board

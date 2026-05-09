@@ -34,5 +34,7 @@ esp_err_t led_ring_set_visual_frame(
 void update_led_ring_patterns();
 void led_ring_show_completed();
 void led_ring_show_cancelled();
+void led_ring_show_volume(int volume_percent);
+void led_ring_adjust_accent_hue(int delta_steps);
 
 }  // namespace hexe::board

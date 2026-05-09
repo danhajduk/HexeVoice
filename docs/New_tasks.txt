@@ -1,4 +1,3 @@
-[TODO] Task 107: Add Voice PE rotary dial LED affordances for volume display and active color selection without interfering with center-button wake/cancel behavior
 [TODO] Task 108: Add backend/firmware tests and docs for Voice PE LED pattern priority, state transitions, and OTA-safe failure behavior
 
 [FUTURE TODO] Task 064: Build the first touchscreen interaction layer

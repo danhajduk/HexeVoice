@@ -29,11 +29,12 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Home Assistant Voice PE LED ring hardware contract: `docs/voice-pe-led-ring.md`.
 - Firmware LED ring board API with a no-op non-PE fallback and an RMT-backed `ha_voice_pe` driver for `off`, `set_solid`, and visual-frame rendering.
 - Voice PE LED ring voice-state and diagnostic patterns for boot, Wi-Fi/backend connection, disconnected, idle/off, wake/listening, capturing, thinking, replying, completed, cancelled, muted/privacy, speaker-silent volume, OTA progress, and error states.
+- Voice PE rotary dial support: normal rotation adjusts endpoint volume and shows a temporary LED meter; center-held rotation changes the active LED accent color and suppresses the center-button wake/cancel action on release.
 
 ## Partial
 
 - VAD updates local app state and display phase, microphone frames are queued for the backend voice WebSocket, and VAD silence sends `audio.end`. Raw backend events drive UI phases, and TTS-ready events can download and play WAV output on supported board speaker paths.
-- The `ha_voice_pe` profile is headless and reports display, touchscreen, and SD media storage as unavailable. Local TTS playback is available through the onboard AIC3204 speaker path, but SD media playback remains unavailable because this profile has no mounted media storage. The LED ring now covers voice-state and diagnostic patterns; rotary dial affordances are still pending firmware work.
+- The `ha_voice_pe` profile is headless and reports display, touchscreen, and SD media storage as unavailable. Local TTS playback is available through the onboard AIC3204 speaker path, but SD media playback remains unavailable because this profile has no mounted media storage. The LED ring now covers voice-state, diagnostic, volume, and color-selection affordances.
 - Wi-Fi connects with compile-time local credentials, but provisioning is not implemented.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
 - Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.

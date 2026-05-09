@@ -55,4 +55,12 @@ void led_ring_show_completed() {
 void led_ring_show_cancelled() {
 }
 
+void led_ring_show_volume(int volume_percent) {
+  (void)volume_percent;
+}
+
+void led_ring_adjust_accent_hue(int delta_steps) {
+  (void)delta_steps;
+}
+
 }  // namespace hexe::board
