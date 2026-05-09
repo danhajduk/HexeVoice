@@ -106,3 +106,4 @@ Task 089: Add TTS playback acknowledgement events from firmware, including downl
 Task 090: Add regression tests for TTS sidecar compatibility, cleanup behavior, model metadata, and per-endpoint sample-rate selection - Completed on 05/09/2026 12:37
 Task 091: Add migration/compat handling for older TTS and wake recording sidecars that do not include the new metadata fields - Completed on 05/09/2026 12:40
 Task 092: Add a voice artifact privacy/export policy UI for deleting, downloading, and disabling retained wake recordings and TTS artifacts per endpoint - Completed on 05/09/2026 12:46
+Task 103: Document the Home Assistant Voice PE LED ring hardware contract, including GPIO21 WS2812/GRB data, GPIO45 LED power, 12 LEDs, remapped ring order, and safe brightness defaults - Completed on 05/09/2026 12:51
