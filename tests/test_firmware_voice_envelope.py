@@ -351,6 +351,8 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert "kLedDataGpio = GPIO_NUM_21" in led_source
     assert "kLedPowerGpio = GPIO_NUM_45" in led_source
     assert "kLedCount = 12" in led_source
+    assert "kPatternFrameMs = 100" in led_source
+    assert "kBottomLedIndex = 6" in led_source
     assert "kVisualToPhysical" in led_source
     assert "7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6" in led_source
     assert "g_pixels[physical_index * 3 + 0] = green" in led_source
@@ -359,6 +361,7 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert "set_led_power(false)" in led_source
     assert "transmit_pixels_locked(false)" in led_source
     assert "render_frame_locked" in led_source
+    assert "set_pixel(frame, kBottomLedIndex, color(255, 120, 0))" in led_source
 
     pattern_source = led_source[led_source.index("LedPattern pattern_for_state") :]
     assert pattern_source.index("kBooting") < pattern_source.index("kOtaProgress")
@@ -376,6 +379,8 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
 
     assert "Priority order" in doc_source
     assert "OTA-Safe Behavior" in doc_source
+    assert "100 ms" in doc_source
+    assert "bottom visual LED lit orange" in doc_source
     assert "center-held rotation" in doc_source
 
 

@@ -21,8 +21,9 @@ constexpr gpio_num_t kLedPowerGpio = GPIO_NUM_45;
 constexpr size_t kLedCount = 12;
 constexpr uint32_t kRmtResolutionHz = 10 * 1000 * 1000;
 constexpr uint32_t kRenderTimeoutMs = 100;
-constexpr uint32_t kPatternFrameMs = 50;
+constexpr uint32_t kPatternFrameMs = 100;
 constexpr uint32_t kMomentaryPatternMs = 750;
+constexpr size_t kBottomLedIndex = 6;
 constexpr std::array<uint8_t, kLedCount> kVisualToPhysical = {
     7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6};
 
@@ -381,6 +382,7 @@ void fill_voice_pattern(
         const uint8_t percent = static_cast<uint8_t>(100 - std::min<size_t>(index * 4, 55));
         set_pixel(frame, index, dim_color(accent, percent));
       }
+      set_pixel(frame, kBottomLedIndex, color(255, 120, 0));
       break;
     }
     case LedPattern::kThinking: {

@@ -67,11 +67,14 @@ visually harsh at high brightness and may be left on in bedrooms or quiet rooms.
 - Initialize `GPIO45` low before enabling the RMT channel.
 - Allocate one RMT LED encoder/channel for `GPIO21`.
 - Apply the visual-to-physical remap while writing frame buffers.
+- Advance animated patterns at a calm `100 ms` frame cadence.
 - Cache the last requested pattern/state so transient reconnects do not leave
   stale LEDs on.
 - Provide explicit `off`, `set_solid`, and `render_pattern` operations.
 - On render failure, clear the frame buffer and power-gate the ring.
 - Keep the LED update task independent of audio/VAD tasks.
+- During capture, keep the bottom visual LED lit orange as the fixed recording
+  marker while the rest of the ring follows the voice level.
 
 ## Pattern Priority
 
