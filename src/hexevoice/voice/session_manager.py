@@ -25,6 +25,7 @@ from hexevoice.voice.contracts import (
     VoiceSessionStartPayload,
     VoiceSessionState,
     VoiceTranscriptPayload,
+    VoiceTtsPlaybackPayload,
     VoiceTtsReadyPayload,
     is_valid_voice_session_transition,
     project_ux_state,
@@ -101,6 +102,8 @@ class VoiceSessionManager:
         self._last_transcript_metadata: dict | None = None
         self._last_error: dict | None = None
         self._last_tts: dict | None = None
+        self._last_tts_playback: dict | None = None
+        self._tts_playback_history: list[dict[str, object]] = []
         self._last_assistant: dict | None = None
         self._last_turn_timings: dict | None = None
         self._last_event_type: str | None = None
@@ -593,6 +596,10 @@ class VoiceSessionManager:
             "session.ping": self._handle_session_ping,
             "command.ack": self._handle_command_ack,
             "command.error": self._handle_command_error,
+            "tts.playback.download_started": self._handle_tts_playback_event,
+            "tts.playback.first_audio_frame": self._handle_tts_playback_event,
+            "tts.playback.completed": self._handle_tts_playback_event,
+            "tts.playback.failed": self._handle_tts_playback_event,
         }
         return handlers[event.event_type](event)
 
@@ -1172,6 +1179,8 @@ class VoiceSessionManager:
             "last_response": self._last_response,
             "last_assistant": self._last_assistant,
             "last_tts": self._last_tts,
+            "last_tts_playback": self._last_tts_playback,
+            "tts_playback_history": list(self._tts_playback_history),
             "last_error": self._last_error,
             "last_command_ack": self._last_command_ack,
             "last_command_error": self._last_command_error,
@@ -1581,6 +1590,62 @@ class VoiceSessionManager:
             payload.code,
             payload.message,
         )
+        return [self._state_event("session.state", self._active_session)] if self._active_session else []
+
+    def _handle_tts_playback_event(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        try:
+            payload = VoiceTtsPlaybackPayload.model_validate(event.payload)
+        except ValidationError as exc:
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_tts_playback_event",
+                    message=str(exc.errors()[0]["msg"]),
+                    recoverable=True,
+                )
+            ]
+
+        record = {
+            "event_id": event.event_id,
+            "event_type": event.event_type,
+            "endpoint_id": event.endpoint_id,
+            "session_id": event.session_id,
+            **payload.model_dump(mode="json", exclude_none=True),
+            "received_at": datetime.now(UTC).isoformat(),
+        }
+        self._last_tts_playback = record
+        self._tts_playback_history.insert(0, record)
+        del self._tts_playback_history[20:]
+        self._last_event_type = event.event_type
+        self._update_active_session_history(tts_playback=record)
+        record_voice_event(
+            event.event_type,
+            **{key: value for key, value in record.items() if key != "event_type"},
+        )
+        if event.event_type == "tts.playback.failed":
+            self._record_event_diagnostic(
+                code=payload.reason or "tts_playback_failed",
+                endpoint_id=event.endpoint_id,
+                session_id=event.session_id,
+                event_type=event.event_type,
+                message=payload.message or payload.reason or "Endpoint TTS playback failed",
+            )
+            log.warning(
+                "Endpoint TTS playback failed: endpoint_id=%s session_id=%s stream_id=%s reason=%s",
+                event.endpoint_id,
+                event.session_id,
+                payload.stream_id,
+                payload.reason,
+            )
+        else:
+            log.info(
+                "Endpoint TTS playback event: endpoint_id=%s session_id=%s stream_id=%s event_type=%s",
+                event.endpoint_id,
+                event.session_id,
+                payload.stream_id,
+                event.event_type,
+            )
         return [self._state_event("session.state", self._active_session)] if self._active_session else []
 
     def _require_active_session(self, event: VoiceEventEnvelope) -> VoiceSessionSnapshot | VoiceEventEnvelope:

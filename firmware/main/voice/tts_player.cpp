@@ -19,6 +19,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "system/settings.h"
+#include "voice/backend_client.h"
 
 namespace {
 constexpr char kTag[] = "hexe_tts";
@@ -56,6 +57,10 @@ volatile bool g_playback_active = false;
 
 int current_output_volume() {
   return std::clamp(hexe::state().output_volume_percent, 0, 100);
+}
+
+void send_playback_event(const char *event_type, const PlaybackRequest &request, const char *reason = nullptr, size_t byte_count = 0) {
+  hexe::voice::send_tts_playback_event(event_type, request.stream_id, request.audio_url, reason, byte_count);
 }
 
 const char *scheme_http() {
@@ -204,7 +209,7 @@ bool parse_wav(const std::vector<uint8_t> &audio, WavView *wav) {
   return false;
 }
 
-bool play_wav(const std::vector<uint8_t> &audio) {
+bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request) {
   WavView wav;
   if (!parse_wav(audio, &wav)) {
     ESP_LOGW(kTag, "TTS audio is not supported WAV PCM");
@@ -230,6 +235,7 @@ bool play_wav(const std::vector<uint8_t> &audio) {
   }
 
   size_t offset = 0;
+  bool first_frame_reported = false;
   while (offset < wav.pcm_size && !g_stop_requested) {
     const size_t remaining = wav.pcm_size - offset;
     const size_t write_size = std::min(remaining, kPlaybackWriteBytes);
@@ -239,6 +245,10 @@ bool play_wav(const std::vector<uint8_t> &audio) {
       break;
     }
     offset += write_size;
+    if (!first_frame_reported) {
+      send_playback_event("tts.playback.first_audio_frame", request, nullptr, offset);
+      first_frame_reported = true;
+    }
   }
   esp_codec_dev_close(g_speaker_codec);
   return result == 0 && !g_stop_requested;
@@ -256,6 +266,7 @@ void playback_task(void *arg) {
     auto &state = hexe::state();
     if (state.muted) {
       ESP_LOGI(kTag, "Skipping playback request while muted");
+      send_playback_event("tts.playback.failed", request, "muted");
       g_playback_active = false;
       continue;
     }
@@ -265,10 +276,23 @@ void playback_task(void *arg) {
     std::vector<uint8_t> audio;
     const bool mic_paused = hexe::board::pause_microphone_for_playback();
     const std::string url = resolve_audio_url(request.audio_url);
+    if (request.file_path[0] == '\0') {
+      send_playback_event("tts.playback.download_started", request);
+    }
     const bool loaded = request.file_path[0] == '\0' ? fetch_audio(url, &audio) : read_audio_file(request.file_path, &audio);
-    const bool played = loaded && play_wav(audio);
+    const bool played = loaded && play_wav(audio, request);
     if (mic_paused) {
       hexe::board::resume_microphone_after_playback();
+    }
+    if (!loaded) {
+      send_playback_event(
+          "tts.playback.failed",
+          request,
+          request.file_path[0] == '\0' ? "download_failed" : "file_read_failed");
+    } else if (played) {
+      send_playback_event("tts.playback.completed", request, nullptr, audio.size());
+    } else {
+      send_playback_event("tts.playback.failed", request, g_stop_requested ? "stopped" : "playback_failed", audio.size());
     }
     if (played && !state.muted) {
       state.phase = hexe::idle_or_connecting_phase();
@@ -321,6 +345,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   auto &state = hexe::state();
   if (state.muted) {
     ESP_LOGI(kTag, "Ignoring TTS while muted");
+    hexe::voice::send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "muted", 0);
     return;
   }
 
@@ -333,6 +358,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   if (audio_url == nullptr || audio_url[0] == '\0') {
     state.phase = hexe::AppPhase::kReplying;
     g_playback_active = false;
+    hexe::voice::send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "missing_audio_url", 0);
     return;
   }
 
@@ -343,6 +369,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   copy_field(request.audio_url, sizeof(request.audio_url), audio_url);
   if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping TTS playback request because queue is unavailable");
+    send_playback_event("tts.playback.failed", request, "queue_unavailable");
     g_playback_active = false;
     state.phase = hexe::AppPhase::kError;
   }

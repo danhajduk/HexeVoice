@@ -102,3 +102,4 @@ Task 067: Persist voice session history and replay metadata - Completed on 05/09
 Task 086: Add TTS timing breakdown metrics for Piper generation, raw save, 48k conversion, 16k conversion, sidecar write, and endpoint fetch latency - Completed on 05/09/2026 12:05
 Task 087: Add a TTS artifact health/debug API that lists recent streams, model, variants, sample rates, expiry, file sizes, and playable URLs - Completed on 05/09/2026 12:08
 Task 088: Add configurable TTS conversion policy so endpoints only block on their required variant while optional variants can be generated in the background - Completed on 05/09/2026 12:14
+Task 089: Add TTS playback acknowledgement events from firmware, including download started, first audio frame, playback completed, and playback failed - Completed on 05/09/2026 12:33

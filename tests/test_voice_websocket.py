@@ -1126,6 +1126,61 @@ def test_voice_websocket_records_command_acknowledgement_and_error(tmp_path):
     assert status["event_diagnostics"][0]["code"] == "unsupported_command"
 
 
+def test_voice_websocket_records_tts_playback_acknowledgements(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "tts.playback.download_started",
+                session_id=None,
+                payload={"stream_id": "tts-1", "audio_url": "/api/voice/tts/tts-1/48k"},
+            )
+        )
+        websocket.send_json(
+            voice_event(
+                "tts.playback.first_audio_frame",
+                session_id=None,
+                payload={"stream_id": "tts-1", "audio_url": "/api/voice/tts/tts-1/48k", "byte_count": 4096},
+            )
+        )
+        websocket.send_json(
+            voice_event(
+                "tts.playback.completed",
+                session_id=None,
+                payload={"stream_id": "tts-1", "audio_url": "/api/voice/tts/tts-1/48k", "byte_count": 22000},
+            )
+        )
+        status = client.get("/api/voice/status").json()
+
+    assert status["last_tts_playback"]["event_type"] == "tts.playback.completed"
+    assert status["last_tts_playback"]["stream_id"] == "tts-1"
+    assert status["last_tts_playback"]["byte_count"] == 22000
+    assert [event["event_type"] for event in status["tts_playback_history"]] == [
+        "tts.playback.completed",
+        "tts.playback.first_audio_frame",
+        "tts.playback.download_started",
+    ]
+
+
+def test_voice_websocket_records_tts_playback_failures_as_diagnostics(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "tts.playback.failed",
+                session_id=None,
+                payload={"stream_id": "tts-1", "reason": "download_failed", "message": "download_failed"},
+            )
+        )
+        status = client.get("/api/voice/status").json()
+
+    assert status["last_tts_playback"]["event_type"] == "tts.playback.failed"
+    assert status["last_tts_playback"]["reason"] == "download_failed"
+    assert status["event_diagnostics"][0]["code"] == "download_failed"
+
+
 def test_voice_websocket_rejects_malformed_command_acknowledgement(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 

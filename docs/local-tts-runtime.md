@@ -26,6 +26,8 @@ For `piper`, the backend writes returned WAV bytes into `runtime/voice_tts` and 
 Firmware playback expects RIFF/WAVE PCM audio. The local Piper path stores generated audio as `.wav` artifacts and the backend serves those artifacts with `audio/wav`.
 Piper voice models commonly emit 22.05 kHz audio. HexeVoice keeps that provider output as `{stream_id}.raw.wav`, then writes configured conversion variants with Python-SoXR streaming resamplers during the same artifact-generation pass. The default conversion set is `{stream_id}.48k.wav` and `{stream_id}.16k.wav`; `{stream_id}.22050.wav` can also be enabled. TTS sidecars expose `audio_url` as the stable base prefix, such as `/api/voice/tts/{stream_id}/`, plus explicit `audio_url_raw`, `audio_url_16k`, `audio_url_22050`, `audio_url_48k`, and `endpoint_audio_url` fields. Firmware uses `endpoint_audio_url`; kiosk and browser consumers can use the base URL and append the variant they need.
 
+Speaker-capable firmware reports TTS playback progress back over the voice WebSocket with `tts.playback.download_started`, `tts.playback.first_audio_frame`, `tts.playback.completed`, and `tts.playback.failed`. These acknowledgements let the backend distinguish synthesis readiness from endpoint download and actual speaker output.
+
 HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output for endpoints without an override. Endpoint-specific rates can be set with `VOICE_TTS_ENDPOINT_SAMPLE_RATES`; these values take precedence over the default output rate:
 
 ```env

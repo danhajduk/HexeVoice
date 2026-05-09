@@ -50,6 +50,10 @@ VoiceEventType = Literal[
     "upstream.response",
     "response.text",
     "tts.ready",
+    "tts.playback.download_started",
+    "tts.playback.first_audio_frame",
+    "tts.playback.completed",
+    "tts.playback.failed",
     "playback.start",
     "playback.stop",
     "session.complete",
@@ -76,6 +80,10 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
         "session.ping",
         "command.ack",
         "command.error",
+        "tts.playback.download_started",
+        "tts.playback.first_audio_frame",
+        "tts.playback.completed",
+        "tts.playback.failed",
     }
 )
 
@@ -174,6 +182,14 @@ class VoiceTtsReadyPayload(BaseModel):
     content_type: str = "audio/wav"
     stream_id: str | None = None
     audio_url: str | None = None
+
+
+class VoiceTtsPlaybackPayload(BaseModel):
+    stream_id: str | None = None
+    audio_url: str | None = None
+    byte_count: int | None = Field(default=None, ge=0)
+    reason: str | None = None
+    message: str | None = None
 
 
 class VoiceErrorPayload(BaseModel):

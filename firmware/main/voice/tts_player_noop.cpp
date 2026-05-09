@@ -5,6 +5,7 @@
 #include "app_state.h"
 #include "esp_log.h"
 #include "system/settings.h"
+#include "voice/backend_client.h"
 
 namespace {
 constexpr char kTag[] = "hexe_tts_none";
@@ -23,6 +24,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
       stream_id == nullptr ? "none" : stream_id,
       content_type == nullptr ? "unknown" : content_type,
       audio_url == nullptr ? "none" : audio_url);
+  send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "speaker_disabled", 0);
   auto &state = hexe::state();
   if (!state.muted) {
     state.phase = hexe::idle_or_connecting_phase();

@@ -29,6 +29,7 @@ JSON examples for this contract are stored in `docs/voice-event-envelope/`:
 - `backend-volume-command.example.json`
 - `endpoint-command-ack.example.json`
 - `endpoint-command-error.example.json`
+- `endpoint-tts-playback-completed.example.json`
 
 The Task 061 schema set is stored in `docs/task-061-json-schemas/`.
 
@@ -39,3 +40,8 @@ accepted endpoint-to-backend events and are exposed in `/api/voice/status` as `l
 For backend-to-endpoint commands that include a `request_id`, firmware first sends `command.ack` with
 `status: "accepted"` and `message: "OK"` once the command envelope is received. It then sends any command-specific
 progress, success, or error event needed to describe the actual work.
+
+Endpoint TTS playback acknowledgements use `tts.playback.download_started`, `tts.playback.first_audio_frame`,
+`tts.playback.completed`, and `tts.playback.failed`. The payload includes the `stream_id`, `audio_url`,
+optional `byte_count`, and failure `reason`/`message` when applicable. The backend exposes the latest event as
+`last_tts_playback` and a short `tts_playback_history` list in `/api/voice/status`.

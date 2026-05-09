@@ -1540,6 +1540,46 @@ void init_backend_client() {
       hexe::config::kEndpointVoiceWsPath);
 }
 
+bool send_tts_playback_event(
+    const char *event_type,
+    const char *stream_id,
+    const char *audio_url,
+    const char *reason,
+    size_t byte_count) {
+  if (event_type == nullptr || event_type[0] == '\0' || !g_ws_connected) {
+    return false;
+  }
+
+  std::string envelope;
+  envelope.reserve(640);
+  append_event_header(
+      envelope,
+      event_type,
+      g_session_started ? g_session_id.c_str() : nullptr,
+      g_sequence++);
+  char body[384];
+  std::snprintf(
+      body,
+      sizeof(body),
+      "{\"stream_id\":\"%s\",\"audio_url\":\"%s\",\"byte_count\":%zu",
+      stream_id == nullptr ? "" : stream_id,
+      audio_url == nullptr ? "" : audio_url,
+      byte_count);
+  envelope.append(body);
+  if (reason != nullptr && reason[0] != '\0') {
+    char failure[192];
+    std::snprintf(
+        failure,
+        sizeof(failure),
+        ",\"reason\":\"%s\",\"message\":\"%s\"",
+        reason,
+        reason);
+    envelope.append(failure);
+  }
+  envelope.append("}}");
+  return send_ws_text(envelope);
+}
+
 bool submit_audio_frame(const int16_t *samples, size_t sample_count, uint32_t level, bool vad_speaking) {
   if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !backend_ready_for_voice()) {
     return false;

@@ -20,6 +20,7 @@ FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
 
 def test_firmware_voice_events_emit_full_v1_envelope():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
+    tts_sources = FIRMWARE_TTS_PLAYER.read_text() + FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
 
     assert "kVoiceEventSchemaVersion" in source
     assert "append_event_header" in source
@@ -34,6 +35,11 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "session.cancel" in source
     assert "command.ack" in source
     assert "command.error" in source
+    assert "send_tts_playback_event" in source
+    assert "tts.playback.download_started" in tts_sources
+    assert "tts.playback.first_audio_frame" in tts_sources
+    assert "tts.playback.completed" in tts_sources
+    assert "tts.playback.failed" in tts_sources
     assert "kVoiceWsSendAttempts = 3" in source
     assert "Voice WebSocket send failed after %d attempts" in source
 
@@ -90,7 +96,10 @@ def test_firmware_sound_transfer_can_activate_sd_playback():
     assert "hexe::voice::play_sd_sound(request.filename)" in backend_source
     assert "read_audio_file" in player_source
     assert "sd_card_sounds_path()" in player_source
-    assert "play_wav(audio)" in player_source
+    assert "play_wav(audio, request)" in player_source
+    assert "tts.playback.first_audio_frame" in player_source
+    assert "tts.playback.completed" in player_source
+    assert "tts.playback.failed" in player_source
 
 
 def test_firmware_composited_ui_supports_manifest_alpha_and_clock_scene():
@@ -273,7 +282,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "GPIO_NUM_4" in audio_source
     assert "GPIO_NUM_5" in audio_source
     assert "GPIO_NUM_6" in audio_source
-    assert "GPIO_NUM_47" in audio_source
+    assert "GPIO_NUM_47" in tts_source
     assert "kVoiceKitI2cAddress = 0x42" in audio_source
     assert "kDfuGetVersionCommand = 88" in audio_source
     assert "gpio_set_level(kVoiceKitReset, 1)" in audio_source
@@ -314,7 +323,10 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "i2s_channel_write" in tts_source
     assert "ensure_codec_ready" in tts_source
     assert "set_codec_volume" in tts_source
-    assert "upsample_factor" in tts_source
+    assert "interpolate_pcm16" in tts_source
+    assert "tts.playback.first_audio_frame" in tts_source
+    assert "tts.playback.completed" in tts_source
+    assert "tts.playback.failed" in tts_source
     assert "Home Assistant Voice PE TTS player initialized" in tts_source
     assert "tts_playback_active()" in tts_source
 

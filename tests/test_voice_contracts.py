@@ -16,6 +16,7 @@ from hexevoice.voice import (
     VoiceEventEnvelope,
     VoiceSessionSnapshot,
     VoiceSessionStartPayload,
+    VoiceTtsPlaybackPayload,
     project_ux_state,
     project_voice_state,
     is_valid_voice_session_transition,
@@ -81,6 +82,17 @@ def test_command_acknowledgement_payload_is_structured():
 
     assert ack.status == "succeeded"
     assert error.code == "unsupported_command"
+
+
+def test_tts_playback_payload_is_structured():
+    payload = VoiceTtsPlaybackPayload(
+        stream_id="tts-1",
+        audio_url="/api/voice/tts/tts-1/48k",
+        byte_count=4096,
+    )
+
+    assert payload.stream_id == "tts-1"
+    assert payload.byte_count == 4096
 
 
 def test_audio_chunk_payload_keeps_transport_metadata_separate_from_audio_processing():
@@ -155,6 +167,10 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "session.ping",
         "command.ack",
         "command.error",
+        "tts.playback.download_started",
+        "tts.playback.first_audio_frame",
+        "tts.playback.completed",
+        "tts.playback.failed",
     }
     assert {
         "session.state",
@@ -173,6 +189,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "backend-volume-command.example.json",
         "endpoint-command-ack.example.json",
         "endpoint-command-error.example.json",
+        "endpoint-tts-playback-completed.example.json",
     ],
 )
 def test_documented_voice_event_json_examples_match_contract(filename):

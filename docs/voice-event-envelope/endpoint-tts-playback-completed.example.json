@@ -1,0 +1,15 @@
+{
+  "event_type": "tts.playback.completed",
+  "event_id": "evt_endpoint_tts_playback_completed_example",
+  "schema_version": "hexevoice.voice.event.v1",
+  "endpoint_id": "esp-pe-1",
+  "direction": "endpoint_to_backend",
+  "session_id": "esp-pe-1-42",
+  "sequence": 12,
+  "timestamp": "2026-05-09T19:25:00Z",
+  "payload": {
+    "stream_id": "tts-65e6237c2b4a",
+    "audio_url": "/api/voice/tts/tts-65e6237c2b4a/48k",
+    "byte_count": 48128
+  }
+}
