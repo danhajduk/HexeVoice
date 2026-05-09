@@ -396,10 +396,16 @@ void fill_voice_pattern(
       break;
     case LedPattern::kWakeListening:
       brightness = hexe::board::kLedRingNormalBrightnessCap;
-      set_pixel(frame, cursor, accent);
-      set_pixel(frame, cursor + 11, accent_dim);
-      set_pixel(frame, cursor + 6, accent);
-      set_pixel(frame, cursor + 5, accent_dim);
+      {
+        const bool listening_blink_on = (frame_index % 8) < 4;
+        const hexe::board::LedRingColor listening_color = listening_blink_on ? accent : color(0, 0, 0);
+        set_pixel(frame, 3, listening_color);
+        set_pixel(frame, 9, listening_color);
+        const bool capturing_active = state.vad_speaking || state.audio_streaming;
+        if (capturing_active) {
+          set_pixel(frame, kBottomLedIndex, color(255, 120, 0));
+        }
+      }
       break;
     case LedPattern::kCapturing: {
       brightness = hexe::board::kLedRingNormalBrightnessCap;
@@ -506,7 +512,7 @@ LedPattern pattern_for_state(const hexe::AppState &state) {
 
   switch (state.phase) {
     case hexe::AppPhase::kListening:
-      return (state.vad_speaking || state.audio_streaming) ? LedPattern::kCapturing : LedPattern::kWakeListening;
+      return LedPattern::kWakeListening;
     case hexe::AppPhase::kThinking:
       return LedPattern::kThinking;
     case hexe::AppPhase::kReplying:

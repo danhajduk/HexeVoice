@@ -371,6 +371,11 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert "transmit_pixels_locked(false)" in led_source
     assert "render_frame_locked" in led_source
     assert "set_pixel(frame, kBottomLedIndex, color(255, 120, 0))" in led_source
+    assert "const bool listening_blink_on = (frame_index % 8) < 4" in led_source
+    assert "set_pixel(frame, 3, listening_color)" in led_source
+    assert "set_pixel(frame, 9, listening_color)" in led_source
+    assert "const bool capturing_active = state.vad_speaking || state.audio_streaming" in led_source
+    assert "return LedPattern::kWakeListening" in led_source
     assert "cursor / 2" not in led_source
     assert "color(0, 55, 80)" in led_source
     assert "color(80, 255, 180)" in led_source
@@ -399,7 +404,8 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert "OTA-Safe Behavior" in doc_source
     assert "100 ms" in doc_source
     assert "visual slot `0` is the bottom LED" in doc_source
-    assert "only the bottom visual LED should be lit orange" in doc_source
+    assert "Listening should blink the two side LEDs at visual slots `3` and `9`" in doc_source
+    assert "overlay the bottom orange marker while the side listening LEDs continue" in doc_source
     assert "Wi-Fi and disconnected diagnostic patterns should traverse the full ring" in doc_source
     assert "dim completed-progress LEDs and a brighter moving" in doc_source
     assert "center-held rotation" in doc_source

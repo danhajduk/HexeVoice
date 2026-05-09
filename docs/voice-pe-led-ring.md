@@ -75,8 +75,11 @@ visually harsh at high brightness and may be left on in bedrooms or quiet rooms.
 - On render failure, clear the frame buffer and power-gate the ring.
 - Keep the LED update task independent of audio/VAD tasks.
 - Wi-Fi and disconnected diagnostic patterns should traverse the full ring.
-- During capture, only the bottom visual LED should be lit orange as the fixed
-  recording marker.
+- Listening should blink the two side LEDs at visual slots `3` and `9`.
+- During capture, the bottom visual LED should be lit orange as the fixed
+  recording marker. If the endpoint is still in the listening state, capture
+  should overlay the bottom orange marker while the side listening LEDs continue
+  blinking.
 - OTA progress should use dim completed-progress LEDs and a brighter moving
   chase LED so the current transfer activity is easy to see.
 
@@ -90,7 +93,8 @@ The firmware chooses one active LED pattern every frame. Priority order is:
 4. Wi-Fi connection state while Wi-Fi is unavailable.
 5. Backend connection state while heartbeat or voice WebSocket is unavailable.
 6. Speaker-silent idle state when volume is `0%`.
-7. Voice turn state: wake/listening, capturing, thinking, replying, error.
+7. Voice turn state: wake/listening with optional capture overlay, thinking,
+   replying, error.
 8. Idle/off when the endpoint is ready and no voice turn or diagnostic state is active.
 
 Completed is a momentary overlay. It temporarily overrides the steady state and
