@@ -7,6 +7,7 @@ import {
   getOnboardingStatus,
   getOperationalStatus,
   getProviderSetup,
+  getServicesStatus,
   getTtsSettings,
   getVoiceIntents,
   getVoiceStatus,
@@ -23,6 +24,7 @@ import { OverviewDashboardSection } from "./features/dashboard/OverviewDashboard
 import { VoiceEndpointDashboardSection } from "./features/dashboard/VoiceEndpointDashboardSection";
 import { VoiceIntentsDashboardSection } from "./features/dashboard/VoiceIntentsDashboardSection";
 import { TtsProviderDashboardSection } from "./features/dashboard/TtsProviderDashboardSection";
+import { RuntimeDashboardSection } from "./features/dashboard/RuntimeDashboardSection";
 import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDashboardSection";
 
 const CANONICAL_SETUP_STEPS = [
@@ -40,6 +42,7 @@ const CANONICAL_SETUP_STEPS = [
 
 const VOICE_ENDPOINT_REFRESH_MS = 2000;
 const VOICE_INTENTS_REFRESH_MS = 5000;
+const RUNTIME_REFRESH_MS = 2000;
 
 function isSetupStage(onboarding, status) {
   const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
@@ -154,6 +157,7 @@ export default function App() {
   const [governance, setGovernance] = useState(null);
   const [operational, setOperational] = useState(null);
   const [voiceStatus, setVoiceStatus] = useState(null);
+  const [servicesStatus, setServicesStatus] = useState(null);
   const [voiceIntents, setVoiceIntents] = useState(null);
   const [ttsSettings, setTtsSettings] = useState(null);
   const [endpointStatus, setEndpointStatus] = useState(null);
@@ -181,6 +185,7 @@ export default function App() {
       governancePayload,
       operationalPayload,
       voicePayload,
+      servicesPayload,
       voiceIntentPayload,
       ttsSettingsPayload,
       endpointPayload,
@@ -192,6 +197,7 @@ export default function App() {
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
+      getServicesStatus().catch(() => null),
       getVoiceIntents().catch(() => null),
       getTtsSettings().catch(() => null),
       getEndpointStatus().catch(() => null),
@@ -203,6 +209,7 @@ export default function App() {
     setGovernance(governancePayload);
     setOperational(operationalPayload);
     setVoiceStatus(voicePayload);
+    setServicesStatus(servicesPayload);
     setVoiceIntents(voiceIntentPayload);
     setTtsSettings(ttsSettingsPayload);
     setEndpointStatus(endpointPayload);
@@ -219,6 +226,7 @@ export default function App() {
       getGovernanceCurrent().catch(() => null),
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
+      getServicesStatus().catch(() => null),
       getVoiceIntents().catch(() => null),
       getTtsSettings().catch(() => null),
       getEndpointStatus().catch(() => null),
@@ -232,6 +240,7 @@ export default function App() {
           governancePayload,
           operationalPayload,
           voicePayload,
+          servicesPayload,
           voiceIntentPayload,
           ttsSettingsPayload,
           endpointPayload,
@@ -246,6 +255,7 @@ export default function App() {
         setGovernance(governancePayload);
         setOperational(operationalPayload);
         setVoiceStatus(voicePayload);
+        setServicesStatus(servicesPayload);
         setVoiceIntents(voiceIntentPayload);
         setTtsSettings(ttsSettingsPayload);
         setEndpointStatus(endpointPayload);
@@ -315,6 +325,40 @@ export default function App() {
 
     refreshVisibleEndpoint();
     const timer = window.setInterval(refreshVisibleEndpoint, VOICE_ENDPOINT_REFRESH_MS);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [dashboardSection, showSetupPage]);
+
+  useEffect(() => {
+    if (showSetupPage || dashboardSection !== "runtime") {
+      return undefined;
+    }
+
+    let mounted = true;
+
+    async function refreshVisibleRuntime() {
+      try {
+        const [voicePayload, servicesPayload] = await Promise.all([
+          getVoiceStatus().catch(() => null),
+          getServicesStatus().catch(() => null),
+        ]);
+        if (!mounted) {
+          return;
+        }
+        setVoiceStatus(voicePayload);
+        setServicesStatus(servicesPayload);
+      } catch (err) {
+        if (mounted) {
+          setError(String(err.message || err));
+        }
+      }
+    }
+
+    refreshVisibleRuntime();
+    const timer = window.setInterval(refreshVisibleRuntime, RUNTIME_REFRESH_MS);
 
     return () => {
       mounted = false;
@@ -414,9 +458,10 @@ export default function App() {
 
     if (dashboardSection === "runtime") {
       return (
-        <PlaceholderDashboardSection
-          title="Runtime"
-          copy="Runtime execution dashboards will land here next."
+        <RuntimeDashboardSection
+          servicesStatus={servicesStatus}
+          voiceStatus={voiceStatus}
+          onRefresh={refresh}
         />
       );
     }

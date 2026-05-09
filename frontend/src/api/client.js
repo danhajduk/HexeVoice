@@ -151,6 +151,14 @@ export async function getOperationalStatus() {
   return fetchJson("/api/node/operational-status");
 }
 
+export async function getServicesStatus() {
+  return fetchJson("/api/services/status");
+}
+
+export async function restartService(target) {
+  return sendJson("/api/services/restart", { body: { target } });
+}
+
 export async function getVoiceStatus() {
   return fetchJson("/api/voice/status");
 }

@@ -405,6 +405,16 @@
   gap: 12px;
 }
 
+.runtime-component-card {
+  min-width: 0;
+}
+
+.runtime-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .voice-endpoint-status-table .endpoint-health-column {
   width: 28px;
   padding-right: 8px;
@@ -1277,6 +1287,7 @@
   .intent-test-form,
   .intent-test-result-grid,
   .intent-audio-result,
+  .runtime-metric-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }
