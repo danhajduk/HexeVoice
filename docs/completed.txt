@@ -90,3 +90,4 @@ Task 093 (Voice intents): Add optional registered-intent reply audio generation 
 Task 094 (Voice intents): Add background cleanup for expired generated voice artifacts every 5 minutes - Completed on 05/07/2026 18:38
 Task 095 (Voice intents): Create JSON schemas for registered intent contracts under docs/json-chemas-intents - Completed on 05/07/2026 18:38
 Task 096 (Voice intents): Add Invoke Intent action beside Test Intent in the dashboard UI - Completed on 05/07/2026 18:38
+Task 067: Persist voice session history and replay metadata - Completed on 05/09/2026 09:19

@@ -1,6 +1,5 @@
 [FUTURE TODO] Task 064: Build the first touchscreen interaction layer
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card
-[WIP] Task 067: Persist voice session history and replay metadata
 [FUTURE TODO] Task 068: Integrate AI Node assistant routing as the primary assistant path
 [FUTURE TODO] Task 069: Validate real-device audio providers end to end
 [FUTURE TODO] Task 070: Update Phase 2 operator docs and release checklist
