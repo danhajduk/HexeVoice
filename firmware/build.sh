@@ -20,6 +20,7 @@ Commands:
   push   Build firmware, refresh artifacts, then push OTA to the endpoint.
 
 Environment:
+  HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3 or ha_voice_pe. Default: esp_box_3.
   OTA_API_BASE   Backend API base URL for push mode. Default: ${OTA_API_BASE}
   ENDPOINT_ID    Endpoint id for push mode. Default: endpoint.id from config YAML.
 EOF
@@ -114,7 +115,7 @@ if [[ ! -f "${ROOT_DIR}/sdkconfig" ]]; then
   idf.py set-target "${TARGET}"
 fi
 
-idf.py build
+idf.py -D "HEXE_BOARD_PROFILE=${HEXE_BOARD_PROFILE:-esp_box_3}" build
 
 mkdir -p "${RUNTIME_FIRMWARE_DIR}"
 cp "${ROOT_DIR}/build/hexe_firmware.bin" "${RUNTIME_FIRMWARE_BIN}"

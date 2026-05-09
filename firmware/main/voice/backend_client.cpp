@@ -12,6 +12,7 @@
 #include <ctime>
 
 #include "app_state.h"
+#include "board/audio.h"
 #include "board/display.h"
 #include "board/storage.h"
 #include "board/touch.h"
@@ -679,6 +680,7 @@ bool send_ws_text(const std::string &message) {
 std::string endpoint_capabilities_json() {
   const auto &state = hexe::state();
   const esp_app_desc_t *app = esp_app_get_description();
+  const bool sd_available = hexe::board::sd_card_mounted();
   cJSON *root = cJSON_CreateObject();
   if (root == nullptr) {
     return "{}";
@@ -688,12 +690,12 @@ std::string endpoint_capabilities_json() {
   cJSON_AddBoolToObject(touchscreen, "available", hexe::board::touch_ready());
 
   cJSON *storage = cJSON_AddObjectToObject(root, "storage");
-  cJSON_AddBoolToObject(storage, "sd_card_available", hexe::board::sd_card_mounted());
+  cJSON_AddBoolToObject(storage, "sd_card_available", sd_available);
   cJSON_AddStringToObject(storage, "mount_path", hexe::board::sd_card_mount_path());
   cJSON_AddStringToObject(storage, "pictures_path", hexe::board::sd_card_pictures_path());
   cJSON_AddStringToObject(storage, "sprites_path", hexe::board::sd_card_sprites_path());
   cJSON_AddStringToObject(storage, "sounds_path", hexe::board::sd_card_sounds_path());
-  cJSON_AddBoolToObject(storage, "media_reformat", true);
+  cJSON_AddBoolToObject(storage, "media_reformat", sd_available);
   cJSON_AddBoolToObject(storage, "media_transfer_active", state.media_transfer_active);
   cJSON_AddStringToObject(storage, "media_transfer_status", state.media_transfer_active ? "downloading_file" : "idle");
   cJSON *inventory = cJSON_AddObjectToObject(storage, "media_inventory");
@@ -714,12 +716,12 @@ std::string endpoint_capabilities_json() {
 
   cJSON *audio = cJSON_AddObjectToObject(root, "audio");
   cJSON *input = cJSON_AddObjectToObject(audio, "input");
-  cJSON_AddBoolToObject(input, "available", true);
+  cJSON_AddBoolToObject(input, "available", hexe::board::audio_input_ready());
   cJSON_AddStringToObject(input, "encoding", hexe::config::kEndpointAudioEncoding);
   cJSON_AddNumberToObject(input, "sample_rate_hz", hexe::config::kEndpointAudioSampleRateHz);
   cJSON_AddNumberToObject(input, "channels", hexe::config::kEndpointAudioChannels);
   cJSON *output = cJSON_AddObjectToObject(audio, "output");
-  cJSON_AddBoolToObject(output, "available", true);
+  cJSON_AddBoolToObject(output, "available", hexe::board::audio_output_ready());
   cJSON_AddNumberToObject(output, "volume_percent", state.output_volume_percent);
   cJSON_AddBoolToObject(output, "muted", state.muted);
 
@@ -728,7 +730,7 @@ std::string endpoint_capabilities_json() {
   cJSON_AddBoolToObject(controls, "mute", true);
   cJSON_AddBoolToObject(controls, "cancel", true);
   cJSON_AddBoolToObject(controls, "replay", true);
-  cJSON_AddBoolToObject(controls, "storage_reformat", true);
+  cJSON_AddBoolToObject(controls, "storage_reformat", sd_available);
   cJSON_AddBoolToObject(controls, "restart", false);
   cJSON_AddBoolToObject(controls, "reconnect", false);
 

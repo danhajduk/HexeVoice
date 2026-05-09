@@ -187,6 +187,14 @@ void init_audio() {
 void update_audio() {
 }
 
+bool audio_input_ready() {
+  return g_mic_codec != nullptr;
+}
+
+bool audio_output_ready() {
+  return true;
+}
+
 bool pause_microphone_for_playback() {
   if (g_mic_codec == nullptr || g_mic_mutex == nullptr) {
     return false;

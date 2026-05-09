@@ -25,10 +25,12 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, command controls, and firmware build metadata.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
 - TTS-ready playback scaffold and stop handling in `firmware/main/voice/tts_player.cpp`.
+- Selectable board profile support in `firmware/main/CMakeLists.txt`. `esp_box_3` remains the default profile, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input plus center-button and hardware-mute controls.
 
 ## Partial
 
 - VAD updates local app state and display phase, microphone frames are queued for the backend voice WebSocket, and VAD silence sends `audio.end`. Raw backend events drive UI phases, but real TTS audio playback is not implemented yet.
+- The `ha_voice_pe` profile is headless and reports display, touchscreen, SD media storage, and local audio output as unavailable. AIC3204/XMOS speaker output support is still deferred.
 - Wi-Fi connects with compile-time local credentials, but provisioning is not implemented.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
 - Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.

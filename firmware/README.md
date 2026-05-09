@@ -66,6 +66,15 @@ cd firmware
 ./build.sh
 ```
 
+The default board profile is `esp_box_3`. To build the experimental Home Assistant Voice Preview Edition profile:
+
+```bash
+cd firmware
+HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
+```
+
+The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input and the center/mute controls. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. Local speaker/TTS output is also disabled until the AIC3204/XMOS audio output path is added.
+
 To build and immediately push the new app binary by OTA:
 
 ```bash

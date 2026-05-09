@@ -2,10 +2,16 @@ from pathlib import Path
 
 
 FIRMWARE_BACKEND_CLIENT = Path("firmware/main/voice/backend_client.cpp")
+FIRMWARE_CMAKE = Path("firmware/main/CMakeLists.txt")
 FIRMWARE_AUDIO = Path("firmware/main/board/audio.cpp")
+FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/main/board/audio_ha_voice_pe.cpp")
+FIRMWARE_BUTTONS_HA_VOICE_PE = Path("firmware/main/board/buttons_ha_voice_pe.cpp")
 FIRMWARE_DISPLAY = Path("firmware/main/board/display.cpp")
+FIRMWARE_DISPLAY_NONE = Path("firmware/main/board/display_none.cpp")
 FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
+FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/main/board/storage_nvs_only.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
+FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
 
 
@@ -223,7 +229,47 @@ def test_firmware_storage_reformat_is_media_only():
 
     assert '"endpoint.storage.reformat"' in backend_source
     assert "reformat_sd_media()" in backend_source
+    assert 'cJSON_AddBoolToObject(storage, "media_reformat", sd_available)' in backend_source
+    assert 'cJSON_AddBoolToObject(controls, "storage_reformat", sd_available)' in backend_source
     assert "remove_tree_contents(kPicturesPath)" in storage_source
     assert "remove_tree_contents(kSpritesPath)" in storage_source
     assert "remove_tree_contents(kSoundsPath)" in storage_source
     assert "ensure_sd_media_directories_internal()" in storage_source
+
+
+def test_firmware_supports_home_assistant_voice_pe_profile():
+    cmake_source = FIRMWARE_CMAKE.read_text()
+    audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
+    buttons_source = FIRMWARE_BUTTONS_HA_VOICE_PE.read_text()
+    display_source = FIRMWARE_DISPLAY_NONE.read_text()
+    storage_source = FIRMWARE_STORAGE_NVS_ONLY.read_text()
+    tts_source = FIRMWARE_TTS_PLAYER_NOOP.read_text()
+
+    assert "HEXE_BOARD_PROFILE" in cmake_source
+    assert 'HEXE_BOARD_PROFILE STREQUAL "ha_voice_pe"' in cmake_source
+    assert '"board/audio_ha_voice_pe.cpp"' in cmake_source
+    assert '"board/buttons_ha_voice_pe.cpp"' in cmake_source
+    assert '"board/display_none.cpp"' in cmake_source
+    assert '"board/storage_nvs_only.cpp"' in cmake_source
+    assert '"voice/tts_player_noop.cpp"' in cmake_source
+    assert cmake_source.count('"voice/tts_player.cpp"') == 1
+
+    assert "I2S_ROLE_SLAVE" in audio_source
+    assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_source
+    assert "I2S_SLOT_MODE_STEREO" in audio_source
+    assert "GPIO_NUM_13" in audio_source
+    assert "GPIO_NUM_14" in audio_source
+    assert "GPIO_NUM_15" in audio_source
+    assert "GPIO_NUM_4" in audio_source
+    assert "GPIO_NUM_47" in audio_source
+    assert "return false;" in audio_source[audio_source.index("bool audio_output_ready()") :]
+
+    assert "GPIO_NUM_0" in buttons_source
+    assert "GPIO_NUM_3" in buttons_source
+    assert "hardware_mute_active" in buttons_source
+
+    assert "Display disabled for this board profile" in display_source
+    assert 'return "none";' in display_source
+    assert "NVS storage initialized; SD media storage disabled" in storage_source
+    assert "TTS output disabled for this board profile" in tts_source
+    assert "tts_playback_active()" in tts_source
