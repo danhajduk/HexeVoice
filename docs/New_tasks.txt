@@ -1,4 +1,3 @@
-[TODO] Task 091: Add migration/compat handling for older TTS and wake recording sidecars that do not include the new metadata fields
 [TODO] Task 092: Add a voice artifact privacy/export policy UI for deleting, downloading, and disabling retained wake recordings and TTS artifacts per endpoint
 [TODO] Task 103: Document the Home Assistant Voice PE LED ring hardware contract, including GPIO21 WS2812/GRB data, GPIO45 LED power, 12 LEDs, remapped ring order, and safe brightness defaults
 [TODO] Task 104: Add a Voice PE LED ring firmware driver using ESP-IDF RMT with GPIO45 power gating and a no-op fallback for non-PE board profiles

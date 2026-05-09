@@ -138,10 +138,7 @@ class WakeRecordingService:
         self._captures.pop((endpoint_id, session_id), None)
 
     def attach_transcript(self, recording: dict[str, Any], transcript: dict[str, Any]) -> dict[str, Any]:
-        metadata_path_value = recording.get("metadata_path")
-        if not metadata_path_value:
-            return recording
-        metadata_path = Path(str(metadata_path_value))
+        metadata_path = self._metadata_path_for_recording(recording)
         if not metadata_path.is_file():
             return recording
         try:
@@ -152,7 +149,15 @@ class WakeRecordingService:
             return recording
 
         updated_transcript = {key: value for key, value in transcript.items() if value is not None}
+        metadata = self._metadata_with_compat_defaults(recording, metadata, metadata_path)
         metadata["transcript"] = updated_transcript
+        recording.update(
+            {
+                key: metadata[key]
+                for key in ("recording_id", "metadata_path", "wav_path", "audio_url", "recording_type", "retention_days", "expires_at")
+                if key in metadata
+            }
+        )
         recording["transcript"] = updated_transcript
         metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if self._last_recording and self._last_recording.get("metadata_path") == str(metadata_path):
@@ -200,6 +205,51 @@ class WakeRecordingService:
             return None
         path = self._recording_dir / f"{safe_recording_id}.wav"
         return path if path.is_file() else None
+
+    def _metadata_path_for_recording(self, recording: dict[str, Any]) -> Path:
+        metadata_path_value = recording.get("metadata_path")
+        if metadata_path_value:
+            return Path(str(metadata_path_value))
+        recording_id = str(recording.get("recording_id") or "").strip()
+        if not recording_id and recording.get("wav_path"):
+            recording_id = Path(str(recording["wav_path"])).stem
+        safe_recording_id = _safe_component(recording_id)
+        return self._recording_dir / f"{safe_recording_id}.json"
+
+    def _metadata_with_compat_defaults(
+        self,
+        recording: dict[str, Any],
+        metadata: dict[str, Any],
+        metadata_path: Path,
+    ) -> dict[str, Any]:
+        normalized = dict(metadata)
+        recording_id = str(
+            normalized.get("recording_id")
+            or recording.get("recording_id")
+            or Path(str(recording.get("wav_path") or metadata_path.with_suffix(".wav"))).stem
+        )
+        recording_id = _safe_component(recording_id)
+        wav_path = Path(str(normalized.get("wav_path") or recording.get("wav_path") or self._recording_dir / f"{recording_id}.wav"))
+        normalized.setdefault("recording_id", recording_id)
+        normalized.setdefault("metadata_path", str(metadata_path))
+        normalized.setdefault("wav_path", str(wav_path))
+        normalized.setdefault("audio_url", f"/api/voice/wake-recordings/{recording_id}")
+        normalized.setdefault("recording_type", "accepted_wake_session")
+        normalized.setdefault("retention_days", self._retention_days)
+        if not normalized.get("recorded_at"):
+            try:
+                normalized["recorded_at"] = datetime.fromtimestamp(metadata_path.stat().st_mtime, UTC).isoformat()
+            except OSError:
+                normalized["recorded_at"] = datetime.now(UTC).isoformat()
+        if not normalized.get("expires_at"):
+            try:
+                recorded_at = datetime.fromisoformat(str(normalized["recorded_at"]))
+                if recorded_at.tzinfo is None:
+                    recorded_at = recorded_at.replace(tzinfo=UTC)
+                normalized["expires_at"] = (recorded_at + timedelta(days=self._retention_days)).isoformat()
+            except ValueError:
+                normalized["expires_at"] = (datetime.now(UTC) + timedelta(days=self._retention_days)).isoformat()
+        return normalized
 
     def _trim_capture(self, capture: _WakeCapture) -> None:
         max_bytes = self._max_preroll_bytes(capture.audio_format)

@@ -104,3 +104,4 @@ Task 087: Add a TTS artifact health/debug API that lists recent streams, model, 
 Task 088: Add configurable TTS conversion policy so endpoints only block on their required variant while optional variants can be generated in the background - Completed on 05/09/2026 12:14
 Task 089: Add TTS playback acknowledgement events from firmware, including download started, first audio frame, playback completed, and playback failed - Completed on 05/09/2026 12:33
 Task 090: Add regression tests for TTS sidecar compatibility, cleanup behavior, model metadata, and per-endpoint sample-rate selection - Completed on 05/09/2026 12:37
+Task 091: Add migration/compat handling for older TTS and wake recording sidecars that do not include the new metadata fields - Completed on 05/09/2026 12:40

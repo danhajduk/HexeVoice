@@ -218,7 +218,9 @@ class TtsAudioService:
             metadata = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return None
-        return metadata if isinstance(metadata, dict) else None
+        if not isinstance(metadata, dict):
+            return None
+        return self._metadata_with_compat_defaults(safe_stream_id, metadata)
 
     def content_type(self, stream_id: str, path: Path) -> str:
         metadata = self.metadata(stream_id) or {}
@@ -308,6 +310,47 @@ class TtsAudioService:
             if key in existing:
                 merged[key] = existing[key]
         return merged
+
+    def _metadata_with_compat_defaults(self, stream_id: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        normalized = dict(metadata)
+        normalized.setdefault("stream_id", stream_id)
+        audio_files = self._artifact_audio_files(stream_id)
+        if audio_files and not normalized.get("content_type"):
+            first_file = next(iter(audio_files.values()))
+            normalized["content_type"] = first_file.get("content_type")
+        if audio_files and not isinstance(normalized.get("audio_variants"), dict):
+            normalized["audio_variants"] = {
+                variant: file_metadata["path"]
+                for variant, file_metadata in audio_files.items()
+                if variant != "default" and file_metadata.get("path")
+            }
+        if audio_files and not isinstance(normalized.get("audio_urls"), dict):
+            normalized["audio_urls"] = {
+                variant: file_metadata["audio_url"]
+                for variant, file_metadata in audio_files.items()
+                if file_metadata.get("audio_url")
+            }
+        audio_urls = normalized.get("audio_urls") if isinstance(normalized.get("audio_urls"), dict) else {}
+        if not normalized.get("audio_url"):
+            default_url = (
+                normalized.get("endpoint_audio_url")
+                or audio_urls.get(str(normalized.get("audio_variant") or ""))
+                or audio_urls.get("default")
+                or audio_urls.get("raw")
+            )
+            if default_url:
+                normalized["audio_url"] = default_url
+        if not normalized.get("audio_variant") and audio_files:
+            for preferred_variant in GENERATED_WAV_VARIANTS + ("default",):
+                if preferred_variant in audio_files:
+                    normalized["audio_variant"] = preferred_variant
+                    break
+        if not normalized.get("endpoint_audio_url") and normalized.get("audio_variant"):
+            audio_urls = normalized.get("audio_urls") if isinstance(normalized.get("audio_urls"), dict) else {}
+            normalized["endpoint_audio_url"] = audio_urls.get(normalized["audio_variant"]) or normalized.get("audio_url")
+        if "voice_ready" not in normalized:
+            normalized["voice_ready"] = bool(audio_files)
+        return normalized
 
     def list_artifacts(self, *, limit: int = 50) -> dict[str, Any]:
         self.cleanup_expired()

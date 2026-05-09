@@ -328,6 +328,7 @@ def test_tts_artifact_listing_handles_legacy_sidecar_without_variant_metadata(tm
     )
 
     listing = service.list_artifacts()
+    metadata = service.metadata("legacy-tts")
 
     assert listing["count"] == 1
     artifact = listing["artifacts"][0]
@@ -335,6 +336,11 @@ def test_tts_artifact_listing_handles_legacy_sidecar_without_variant_metadata(tm
     assert artifact["audio_url"] == "/api/voice/tts/legacy-tts"
     assert artifact["playable_urls"]["default"].endswith("/api/tts/audio/legacy-tts/")
     assert artifact["file_sizes"]["default"] == len(b"RIFFlegacy")
+    assert metadata is not None
+    assert metadata["stream_id"] == "legacy-tts"
+    assert metadata["voice_ready"] is True
+    assert metadata["audio_variant"] == "default"
+    assert metadata["endpoint_audio_url"].endswith("/api/tts/audio/legacy-tts/")
 
 
 def test_tts_audio_path_prefers_variant_artifacts_over_raw_sidecar(tmp_path):
