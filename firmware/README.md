@@ -83,6 +83,16 @@ REMOTE_EXPORT=/home/dan/Projects/HexeVoice/firmware/export-ha-voice-pe \
 ./flash.sh /dev/ttyACM0
 ```
 
+Or use the maintained helper script with an explicit profile selector:
+
+```bash
+# Home Assistant Voice Preview Edition
+./tools/flash-remote-export.sh pe /dev/ttyACM0
+
+# ESP-BOX-3
+./tools/flash-remote-export.sh box /dev/ttyACM0
+```
+
 To build and immediately push the new app binary by OTA:
 
 ```bash
