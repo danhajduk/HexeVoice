@@ -50,4 +50,6 @@ optional `byte_count`, and failure `reason`/`message` when applicable. The backe
 Firmware VAD start uses `vad.speech_started`. The envelope timestamp is the device-side speech-start timestamp, and
 the payload carries the measured VAD `level` plus a `source` such as `firmware_vad`. Session history stores this under
 `vad` and derives latency fields such as `vad_to_audio_end_ms`, `vad_to_first_audio_frame_ms`, and
-`vad_to_playback_completed_ms` as later audio/TTS playback events arrive.
+`vad_to_playback_completed_ms` as later audio/TTS playback events arrive. Completed session records also include a
+`latency_points` timeline for VAD voice detected, wake word detected, STT start/end, intent processing done, TTS
+start/end, and session end.

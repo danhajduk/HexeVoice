@@ -288,7 +288,7 @@ class CapabilityDeclarationService:
                 "default_format": default_format,
                 "supported_formats": supported_formats,
                 "ttl_seconds": {
-                    "default": 300,
+                    "default": 3600,
                     "minimum": 5,
                     "maximum": 3600,
                 },

@@ -688,16 +688,16 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
         vad_start["timestamp"] = "2026-05-09T20:51:36.100000Z"
         websocket.send_json(vad_start)
         websocket.receive_json()
-        websocket.send_json(
-            voice_event(
-                "audio.chunk",
-                payload={
-                    "chunk_index": 0,
-                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
-                    "payload_base64": "AAECAw==",
-                },
-            )
+        audio_chunk = voice_event(
+            "audio.chunk",
+            payload={
+                "chunk_index": 0,
+                "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                "payload_base64": "AAECAw==",
+            },
         )
+        audio_chunk["timestamp"] = "2026-05-09T20:51:37.100000Z"
+        websocket.send_json(audio_chunk)
         websocket.receive_json()
         websocket.receive_json()
         audio_end = voice_event("audio.end")
@@ -735,6 +735,18 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert sessions[0]["latency"]["vad_to_audio_end_ms"] == 2000
     assert sessions[0]["latency"]["vad_to_first_audio_frame_ms"] == 3000
     assert sessions[0]["latency"]["vad_to_playback_completed_ms"] == 4250
+    assert [point["key"] for point in sessions[0]["latency_points"]] == [
+        "vad_voice_detected",
+        "wake_word_detected",
+        "stt_start",
+        "stt_end",
+        "intent_processing_done",
+        "tts_start",
+        "tts_end",
+        "session_end",
+    ]
+    assert sessions[0]["latency_points"][0]["offset_from_vad_ms"] == 0
+    assert sessions[0]["latency_points"][1]["offset_from_vad_ms"] == 1000
     assert sessions[0]["tts_playback"]["event_type"] == "tts.playback.completed"
     assert sessions[0]["tts"]["stream_id"] == "tts-history"
     assert sessions[0]["tts"]["spoken_text"] == "OK"
@@ -757,6 +769,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert detail["completion_reason"] == "turn_completed"
     assert detail["tts"]["audio_url"] == "/api/voice/tts/tts-history"
     assert detail["latency"]["vad_to_playback_completed_ms"] == 4250
+    assert detail["latency_points"][0]["label"] == "VAD voice detected"
 
     restarted_manager = VoiceSessionManager(session_history_store=history_store)
     restarted_client = TestClient(create_app(settings, voice_session_manager=restarted_manager))

@@ -9,6 +9,7 @@ import {
   getEndpointMediaAssets,
   getEndpointMediaInventory,
   getEndpointVolume,
+  getVoiceSession,
   getVoiceSessions,
   muteEndpoint,
   reformatEndpointStorage,
@@ -686,10 +687,102 @@ function visibleHistorySessions(sessions) {
   return sessions.filter((session) => session?.session_state !== "cancelled" && session?.completion_reason !== "cancelled");
 }
 
+function latencyTimeline(session) {
+  if (Array.isArray(session?.latency_points) && session.latency_points.length) {
+    return session.latency_points;
+  }
+  const points = [
+    ["vad_voice_detected", "VAD voice detected", session?.vad?.speech_started_at],
+    ["wake_word_detected", "Wake word detected", session?.wake?.detected_at],
+    ["stt_start", "STT start", session?.latency?.stt_started_at],
+    ["stt_end", "STT end", session?.transcript?.completed_at],
+    ["intent_processing_done", "Intent processing done", session?.assistant?.completed_at],
+    ["tts_start", "TTS start", session?.tts?.started_at],
+    ["tts_end", "TTS end", session?.tts?.completed_at],
+    ["session_end", "Session end", session?.completed_at],
+  ];
+  return points
+    .filter(([, , timestamp]) => timestamp)
+    .map(([key, label, timestamp]) => ({ key, label, timestamp }));
+}
+
+function VoiceSessionDetailPopout({ session, loading, error, onClose }) {
+  if (!session && !loading && !error) {
+    return null;
+  }
+  const points = latencyTimeline(session);
+  return (
+    <div className="voice-history-popout-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="voice-history-popout"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Voice session latency details"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Voice History</p>
+            <h2 className="panel-title">Latency Timeline</h2>
+          </div>
+          <button className="btn btn-ghost btn-compact" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        {loading ? <div className="callout callout-neutral">Loading session details...</div> : null}
+        {error ? <div className="callout callout-danger">{error}</div> : null}
+        {session ? (
+          <>
+            <dl className="facts voice-history-detail-facts">
+              <div>
+                <dt>Session</dt>
+                <dd>{valueOrEmpty(session.session_id)}</dd>
+              </div>
+              <div>
+                <dt>Endpoint</dt>
+                <dd>{valueOrEmpty(session.endpoint_id)}</dd>
+              </div>
+              <div>
+                <dt>Transcript</dt>
+                <dd>{valueOrEmpty(session.transcript?.text)}</dd>
+              </div>
+              <div>
+                <dt>Reply</dt>
+                <dd>{valueOrEmpty(session.assistant?.text || session.tts?.spoken_text)}</dd>
+              </div>
+            </dl>
+            <div className="voice-history-timeline">
+              {points.length ? (
+                points.map((point) => (
+                  <div className="voice-history-timeline-row" key={point.key}>
+                    <span className="voice-history-timeline-dot" />
+                    <span className="voice-history-timeline-label">{point.label}</span>
+                    <span className="voice-history-timeline-time">{formatLocalDateTime(point.timestamp)}</span>
+                    <span className="voice-history-timeline-offset">
+                      {typeof point.offset_from_vad_ms === "number" ? `+${Math.round(point.offset_from_vad_ms)} ms` : ""}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="callout callout-neutral">No latency timeline has been recorded for this session yet.</div>
+              )}
+            </div>
+          </>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
 function VoiceSessionHistoryPanel({
   sessions,
   historyStatus,
   endpointId,
+  detailSession,
+  detailLoading,
+  detailError,
+  onOpenSessionDetail,
+  onCloseSessionDetail,
   onReplaySession,
   onReplayWakeRecording,
   onDeleteWakeRecording,
@@ -734,7 +827,18 @@ function VoiceSessionHistoryPanel({
                 const streamId = ttsStreamId(session.tts);
                 const ttsUrl = session.tts?.endpoint_audio_url || session.tts?.audio_url || "";
                 return (
-                  <tr key={session.session_id}>
+                  <tr
+                    className="voice-history-row"
+                    key={session.session_id}
+                    tabIndex={0}
+                    onClick={() => onOpenSessionDetail(session)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onOpenSessionDetail(session);
+                      }
+                    }}
+                  >
                     <td>{formatLocalDateTime(session.completed_at || session.updated_at || session.started_at)}</td>
                     <td>{valueOrEmpty(session.endpoint_id)}</td>
                     <td>{valueOrEmpty(session.session_state)}</td>
@@ -742,7 +846,7 @@ function VoiceSessionHistoryPanel({
                     <td className="voice-history-text">{valueOrEmpty(session.transcript?.text)}</td>
                     <td className="voice-history-text">{valueOrEmpty(session.assistant?.text)}</td>
                     <td>{formatMs(session.turn_timings?.total_ms ?? session.duration_ms)}</td>
-                    <td>
+                    <td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                       <div className="compact-actions">
                         <button
                           className="btn btn-ghost btn-compact"
@@ -765,7 +869,7 @@ function VoiceSessionHistoryPanel({
                         </button>
                       </div>
                     </td>
-                    <td>
+                    <td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                       <div className="compact-actions">
                         <a className={`btn btn-ghost btn-compact${ttsUrl ? "" : " disabled-link"}`} href={ttsUrl || undefined}>
                           Download
@@ -780,7 +884,7 @@ function VoiceSessionHistoryPanel({
                         </button>
                       </div>
                     </td>
-                    <td>
+                    <td onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                       <button
                         className="btn btn-ghost btn-compact"
                         type="button"
@@ -809,6 +913,12 @@ function VoiceSessionHistoryPanel({
           Delete Endpoint Audio
         </button>
       </div>
+      <VoiceSessionDetailPopout
+        session={detailSession}
+        loading={detailLoading}
+        error={detailError}
+        onClose={onCloseSessionDetail}
+      />
     </section>
   );
 }
@@ -823,6 +933,9 @@ export function VoiceEndpointDashboardSection({
   const [muted, setMuted] = useState(false);
   const [voiceSessions, setVoiceSessions] = useState([]);
   const [historyStatus, setHistoryStatus] = useState(voiceStatus?.session_history || null);
+  const [historyDetailSession, setHistoryDetailSession] = useState(null);
+  const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
+  const [historyDetailError, setHistoryDetailError] = useState("");
   const projection = voiceStateProjection(voiceStatus);
   const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
   const reportedOutput = endpointCapabilities(endpointStatus).audio?.output || {};
@@ -860,9 +973,6 @@ export function VoiceEndpointDashboardSection({
   useEffect(() => {
     const status = voiceStatus?.session_history || null;
     setHistoryStatus(status);
-    if (Array.isArray(status?.recent_sessions) && status.recent_sessions.length) {
-      setVoiceSessions(status.recent_sessions);
-    }
   }, [voiceStatus?.session_history]);
 
   useEffect(() => {
@@ -874,7 +984,9 @@ export function VoiceEndpointDashboardSection({
         }
       })
       .catch(() => {
-        // The status payload still carries a short history snapshot.
+        if (active && Array.isArray(voiceStatus?.session_history?.recent_sessions)) {
+          setVoiceSessions((current) => (current.length ? current : voiceStatus.session_history.recent_sessions));
+        }
       });
 
     return () => {
@@ -892,6 +1004,29 @@ export function VoiceEndpointDashboardSection({
     } catch (err) {
       setActionMessage(String(err.message || err));
     }
+  }
+
+  async function handleOpenSessionDetail(session) {
+    if (!session?.session_id) {
+      return;
+    }
+    setHistoryDetailSession(session);
+    setHistoryDetailError("");
+    setHistoryDetailLoading(true);
+    try {
+      const payload = await getVoiceSession(session.session_id);
+      setHistoryDetailSession(payload.session || session);
+    } catch (err) {
+      setHistoryDetailError(String(err.message || err));
+    } finally {
+      setHistoryDetailLoading(false);
+    }
+  }
+
+  function handleCloseSessionDetail() {
+    setHistoryDetailSession(null);
+    setHistoryDetailError("");
+    setHistoryDetailLoading(false);
   }
 
   async function handleTestTurn() {
@@ -1113,6 +1248,11 @@ export function VoiceEndpointDashboardSection({
         sessions={voiceSessions}
         historyStatus={historyStatus}
         endpointId={endpointId}
+        detailSession={historyDetailSession}
+        detailLoading={historyDetailLoading}
+        detailError={historyDetailError}
+        onOpenSessionDetail={handleOpenSessionDetail}
+        onCloseSessionDetail={handleCloseSessionDetail}
         onReplaySession={handleReplaySession}
         onReplayWakeRecording={handleReplayWakeRecording}
         onDeleteWakeRecording={handleDeleteWakeRecording}

@@ -412,12 +412,12 @@ def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
     assert metadata["provider_id"] == "openai"
     assert metadata["model_id"] == "gpt-4o-mini-tts"
     assert metadata["voice_id"] == "alloy"
-    assert metadata["ttl_seconds"] == 300
+    assert metadata["ttl_seconds"] == 3600
     assert metadata["expires_at"]
     assert synthesis.model_id == "gpt-4o-mini-tts"
     assert synthesis.voice_id == "alloy"
     assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
-    assert synthesis.ttl_seconds == 300
+    assert synthesis.ttl_seconds == 3600
     assert captured["authorization"] == f"Bearer {fake_token}"
     assert b"gpt-4o-mini-tts" in captured["json"]
     assert b"hello" in captured["json"]
@@ -517,14 +517,14 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert metadata["tts_timing_breakdown_ms"]["conversion_48k_ms"] >= 0
     assert metadata["tts_timing_breakdown_ms"]["conversion_total_ms"] >= 0
     assert metadata["tts_timing_breakdown_ms"]["sidecar_write_ms"] >= 0
-    assert metadata["ttl_seconds"] == 300
+    assert metadata["ttl_seconds"] == 3600
     assert metadata["expires_at"]
     assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
     assert synthesis.model_id == "en_US-test"
     assert synthesis.voice_id == "en_US-test"
     assert synthesis.timing_breakdown_ms["piper_generation_ms"] >= 0
     assert synthesis.timing_breakdown_ms["sidecar_write_ms"] >= 0
-    assert synthesis.ttl_seconds == 300
+    assert synthesis.ttl_seconds == 3600
     assert adapter.status()["healthy"] is True
 
 

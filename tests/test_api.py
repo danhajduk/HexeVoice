@@ -787,7 +787,7 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert metadata["audio_url"] == payload["audio_url"]
     assert metadata["endpoint_audio_url"] == payload["endpoint_audio_url"]
     assert metadata["audio_url_raw"] == payload["audio_url"]
-    assert metadata["ttl_seconds"] == 300
+    assert metadata["ttl_seconds"] == 3600
     assert metadata["expires_at"] == payload["expires_at"]
 
     audio = client.get(payload["audio_url"].removeprefix(public_base_url))

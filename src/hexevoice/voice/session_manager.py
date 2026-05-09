@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 import logging
 from pathlib import Path
@@ -39,6 +39,17 @@ from hexevoice.voice.wake_recordings import WakeRecordingService
 
 
 log = logging.getLogger(__name__)
+
+LATENCY_POINT_ORDER = {
+    "vad_voice_detected": 0,
+    "wake_word_detected": 1,
+    "stt_start": 2,
+    "stt_end": 3,
+    "intent_processing_done": 4,
+    "tts_start": 5,
+    "tts_end": 6,
+    "session_end": 7,
+}
 
 
 def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
@@ -693,10 +704,12 @@ class VoiceSessionManager:
                     "detected": True,
                     "model": payload.wake_source,
                     "confidence": 1.0,
+                    "detected_at": event.timestamp.isoformat(),
                     "source": payload.wake_source,
                     "chunk_count": 0,
                 }
             )
+            self._append_latency_point("wake_word_detected", "Wake word detected", event.timestamp)
             self._record_wake_confidence(
                 endpoint_id=event.endpoint_id,
                 session_id=session_id,
@@ -821,6 +834,7 @@ class VoiceSessionManager:
                     "session_id": session.session_id,
                     "model": detection.model,
                     "confidence": detection.confidence,
+                    "detected_at": event.timestamp.isoformat(),
                     "chunk_index": payload.chunk_index,
                     "chunk_count": self._chunk_count,
                 }
@@ -831,11 +845,13 @@ class VoiceSessionManager:
                     "detected": True,
                     "model": detection.model,
                     "confidence": detection.confidence,
+                    "detected_at": event.timestamp.isoformat(),
                     "source": "backend_openwakeword",
                     "chunk_index": payload.chunk_index,
                     "chunk_count": self._chunk_count,
                 }
             )
+            self._append_latency_point("wake_word_detected", "Wake word detected", event.timestamp)
             log.info(
                 "Wake accepted: endpoint_id=%s session_id=%s model=%s confidence=%s chunk_index=%s",
                 event.endpoint_id,
@@ -956,6 +972,8 @@ class VoiceSessionManager:
         events: list[VoiceEventEnvelope] = []
         wake_recording = self._record_accepted_wake_session(session)
         if self._turn_pipeline is not None:
+            stt_started_at = datetime.now(UTC)
+            self._append_latency_point("stt_start", "STT start", stt_started_at)
             turn = self._turn_pipeline.complete_turn(
                 VoiceTurnAudioSummary(
                     endpoint_id=session.endpoint_id,
@@ -967,6 +985,14 @@ class VoiceSessionManager:
                     audio_bytes=b"".join(self._audio_chunks),
                 )
             )
+            stt_ended_at = stt_started_at + timedelta(milliseconds=turn.timings.stt_ms)
+            intent_done_at = stt_ended_at + timedelta(milliseconds=turn.timings.assistant_ms)
+            tts_started_at = intent_done_at
+            tts_ended_at = tts_started_at + timedelta(milliseconds=turn.timings.tts_ms)
+            self._append_latency_point("stt_end", "STT end", stt_ended_at)
+            self._append_latency_point("intent_processing_done", "Intent processing done", intent_done_at)
+            self._append_latency_point("tts_start", "TTS start", tts_started_at)
+            self._append_latency_point("tts_end", "TTS end", tts_ended_at)
             self._last_transcript_metadata = {
                 "provider_id": turn.transcript.provider_id,
                 "model": turn.transcript.model,
@@ -1403,6 +1429,33 @@ class VoiceSessionManager:
             if value is not None:
                 self._active_session_history[key] = value
 
+    def _append_latency_point(self, key: str, label: str, timestamp: datetime) -> None:
+        if self._active_session_history is None:
+            return
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=UTC)
+        points = [
+            dict(point)
+            for point in self._active_session_history.get("latency_points") or []
+            if isinstance(point, dict) and point.get("key") != key
+        ]
+        points.append({"key": key, "label": label, "timestamp": timestamp.isoformat()})
+        vad_started_at = next(
+            (
+                self._parse_datetime(point.get("timestamp"))
+                for point in points
+                if point.get("key") == "vad_voice_detected"
+            ),
+            None,
+        )
+        if vad_started_at is not None:
+            for point in points:
+                point_at = self._parse_datetime(point.get("timestamp"))
+                if point_at is not None:
+                    point["offset_from_vad_ms"] = max(0, int((point_at - vad_started_at).total_seconds() * 1000))
+        points.sort(key=lambda point: LATENCY_POINT_ORDER.get(str(point.get("key")), 100))
+        self._active_session_history["latency_points"] = points
+
     def _update_vad_latency(self, marker: str, ended_at: datetime) -> None:
         if self._active_session_history is None:
             return
@@ -1417,18 +1470,27 @@ class VoiceSessionManager:
         started_at_raw = vad.get("speech_started_at")
         if not started_at_raw:
             return None
-        try:
-            started_at = datetime.fromisoformat(str(started_at_raw).replace("Z", "+00:00"))
-        except ValueError:
+        started_at = self._parse_datetime(started_at_raw)
+        if started_at is None:
             return None
-        if started_at.tzinfo is None:
-            started_at = started_at.replace(tzinfo=UTC)
         if ended_at.tzinfo is None:
             ended_at = ended_at.replace(tzinfo=UTC)
         existing = dict(record.get("latency") or {})
         existing["vad_speech_started_at"] = started_at.isoformat()
         existing[f"vad_to_{marker}_ms"] = max(0, int((ended_at - started_at).total_seconds() * 1000))
         return existing
+
+    @staticmethod
+    def _parse_datetime(value: object) -> datetime | None:
+        if value is None:
+            return None
+        try:
+            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed
 
     def _upsert_persisted_session_history(self, session_id: str, **entries: Any) -> None:
         if self._session_history_store is None:
@@ -1455,6 +1517,7 @@ class VoiceSessionManager:
         if self._session_history_store is None or self._active_session_history is None:
             return
         completed_at = datetime.now(UTC)
+        self._append_latency_point("session_end", "Session end", completed_at)
         self._update_vad_latency("session_completed", completed_at)
         audio = dict(self._active_session_history.get("audio") or {})
         if self._audio_format is not None:
@@ -1610,6 +1673,7 @@ class VoiceSessionManager:
             "source": payload.source or "firmware_vad",
         }
         self._set_active_session_vad(record)
+        self._append_latency_point("vad_voice_detected", "VAD voice detected", event.timestamp)
         self._last_event_type = event.event_type
         record_voice_event(
             "vad.speech_started",

@@ -58,7 +58,7 @@ def timer_intent_definition() -> dict[str, Any]:
             "text_template": "Setting timer for {duration_text}.",
             "audio": {
                 "mode": "none",
-                "ttl_seconds": 300,
+                "ttl_seconds": 3600,
             },
         },
         "matcher": {
@@ -127,7 +127,7 @@ def time_query_intent_definition() -> dict[str, Any]:
             "text_template": "It is {time_text}.",
             "audio": {
                 "mode": "none",
-                "ttl_seconds": 300,
+                "ttl_seconds": 3600,
             },
         },
         "matcher": {

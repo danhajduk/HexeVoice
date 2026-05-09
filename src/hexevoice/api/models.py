@@ -136,7 +136,7 @@ class TtsSynthesizeRequest(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
     voice: str | None = Field(default=None, max_length=80)
     format: Literal["wav", "mp3"] = "wav"
-    ttl_seconds: int = Field(default=300, ge=5, le=3600)
+    ttl_seconds: int = Field(default=3600, ge=5, le=3600)
 
 
 class TtsSynthesizeResponse(BaseModel):

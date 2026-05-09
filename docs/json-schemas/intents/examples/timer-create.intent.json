@@ -30,7 +30,7 @@
     },
     "reply": {
       "text_template": "Setting timer for {duration_text}.",
-      "audio": { "mode": "none", "ttl_seconds": 300 }
+      "audio": { "mode": "none", "ttl_seconds": 3600 }
     }
   },
   "constraints": {

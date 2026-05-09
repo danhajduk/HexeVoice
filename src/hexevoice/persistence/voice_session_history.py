@@ -115,6 +115,7 @@ class VoiceSessionHistoryStore:
             "assistant": session.get("assistant"),
             "turn_timings": session.get("turn_timings"),
             "latency": session.get("latency"),
+            "latency_points": session.get("latency_points"),
             "tts": session.get("tts"),
             "tts_playback": session.get("tts_playback"),
             "replay": session.get("replay"),

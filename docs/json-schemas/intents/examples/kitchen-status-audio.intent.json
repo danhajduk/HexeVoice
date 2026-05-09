@@ -19,7 +19,7 @@
         "model_id": "en_US-lessac-medium",
         "format": "wav",
         "lifetime": "short_lived",
-        "ttl_seconds": 300
+        "ttl_seconds": 3600
       }
     }
   },
