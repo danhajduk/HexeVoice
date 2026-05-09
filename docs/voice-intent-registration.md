@@ -14,7 +14,12 @@ The capability declaration includes HTTP endpoint metadata for registration, lis
 
 ## Storage
 
-The registry is stored at `VOICE_INTENT_REGISTRY_PATH`, or `voice_intents.json` beside the onboarding state when `ONBOARDING_STATE_PATH` is configured. The built-in `timer.create` intent is seeded once and can be disabled, reviewed, or retired like any other intent.
+The registry is stored at `VOICE_INTENT_REGISTRY_PATH`, or `voice_intents.json` beside the onboarding state when `ONBOARDING_STATE_PATH` is configured. Built-in Voice Node intents are seeded once and can be disabled, reviewed, or retired like any other intent.
+
+Seeded built-ins:
+
+- `timer.create`: publishes the existing timer create domain event.
+- `voice.time.query`: Voice Node owned local response for "What is the time?" without an external dispatch side effect.
 
 ## Register
 
@@ -89,4 +94,4 @@ Response:
 }
 ```
 
-Assistant turns use the same registered-intent matcher. The timer intent still publishes the existing MQTT timer request, including request and sent timestamps.
+Assistant turns use the same registered-intent matcher. The timer intent still publishes the existing MQTT timer request, including request and sent timestamps. Voice Node owned local responses, such as `voice.time.query`, answer directly from the backend runtime.

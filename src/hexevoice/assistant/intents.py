@@ -87,6 +87,21 @@ class LocalIntentFinder:
                 )
             return None
 
+        if (
+            matcher.get("type") == "builtin_time_query"
+            or command == "voice.time.query"
+            or intent.get("intent_id") == "voice.time.query"
+        ):
+            match = self._find_time_query(text, requested_at=requested_at)
+            if match is not None:
+                return self._build_registered_match(
+                    intent=intent,
+                    command=command,
+                    slots=match.slots,
+                    requested_at=requested_at,
+                )
+            return None
+
         slots: dict[str, Any] = {}
         if _matches_examples(text, definition.get("utterance_examples")):
             return self._build_registered_match(intent=intent, command=command, slots=slots, requested_at=requested_at)
@@ -177,6 +192,23 @@ class LocalIntentFinder:
             reply_text=f"Setting timer for {formatted_duration}.",
         )
 
+    def _find_time_query(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        if not _is_time_query(text):
+            return None
+        extraction_time = requested_at or datetime.now(UTC)
+        local_time = extraction_time.astimezone()
+        time_text = _format_clock_time(local_time)
+        return LocalIntentMatch(
+            intent="voice.time.query",
+            command="voice.time.query",
+            slots={
+                "time_text": time_text,
+                "timezone": local_time.tzname() or "",
+                "requested_at": extraction_time.isoformat(),
+            },
+            reply_text=f"It is {time_text}.",
+        )
+
 
 def _normalize_text(text: str) -> str:
     normalized = text.strip().lower()
@@ -209,6 +241,20 @@ def _extract_timer_duration_text(text: str) -> str | None:
 def _trim_duration_tail(text: str) -> str:
     trimmed = re.split(r"\s+(?:called|named|labelled|labeled)\s+", text, maxsplit=1)[0]
     return trimmed.strip(" .!?")
+
+
+def _is_time_query(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:what\s+is\s+the\s+time|what\s+time\s+is\s+it|tell\s+me\s+the\s+time|current\s+time)$",
+            text,
+        )
+    )
+
+
+def _format_clock_time(value: datetime) -> str:
+    formatted = value.strftime("%I:%M %p").lstrip("0")
+    return formatted or value.strftime("%H:%M")
 
 
 _NUMBER_WORDS: dict[str, float] = {

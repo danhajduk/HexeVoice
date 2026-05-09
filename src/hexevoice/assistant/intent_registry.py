@@ -95,6 +95,76 @@ def built_in_timer_intent() -> dict[str, Any]:
     }
 
 
+def time_query_intent_definition() -> dict[str, Any]:
+    return {
+        "utterance_examples": [
+            "what is the time",
+            "what time is it",
+            "tell me the time",
+            "current time",
+        ],
+        "patterns": [
+            r"^(?:please\s+)?(?:what\s+is\s+the\s+time|what\s+time\s+is\s+it|tell\s+me\s+the\s+time|current\s+time)$",
+        ],
+        "slots": {
+            "time_text": {"type": "string"},
+            "timezone": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "optional": {
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "local_response",
+            "command": "voice.time.query",
+        },
+        "response": {
+            "reply_template": "It is {time_text}.",
+        },
+        "reply": {
+            "text_template": "It is {time_text}.",
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 300,
+            },
+        },
+        "matcher": {
+            "type": "builtin_time_query",
+        },
+    }
+
+
+def built_in_time_query_intent() -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": "voice.time.query",
+        "intent_name": "What is the time",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": time_query_intent_definition(),
+        "constraints": {
+            "requires_operational_mqtt": False,
+            "dispatch_side_effect": "none",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "voice_node",
+            "owned_by": "voice_node",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 class VoiceIntentRecord(BaseModel):
     intent_id: str = Field(min_length=1, max_length=120)
     intent_name: str | None = Field(default=None, max_length=160)
@@ -178,7 +248,13 @@ class VoiceIntentStateStore:
 
     def load_or_create(self) -> VoiceIntentState:
         if not self._path.exists():
-            state = VoiceIntentState(intents=[VoiceIntentRecord.model_validate(built_in_timer_intent())], updated_at=utc_now_iso())
+            state = VoiceIntentState(
+                intents=[
+                    VoiceIntentRecord.model_validate(built_in_timer_intent()),
+                    VoiceIntentRecord.model_validate(built_in_time_query_intent()),
+                ],
+                updated_at=utc_now_iso(),
+            )
             return self.save(state)
         payload = json.loads(self._path.read_text(encoding="utf-8"))
         state = VoiceIntentState.model_validate(payload)
@@ -197,10 +273,14 @@ class VoiceIntentStateStore:
 
     def _seed_builtin_intents(self, state: VoiceIntentState) -> bool:
         existing_ids = {intent.intent_id for intent in state.intents}
-        if "timer.create" in existing_ids:
-            return False
-        state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_intent()))
-        return True
+        seeded = False
+        if "timer.create" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_intent()))
+            seeded = True
+        if "voice.time.query" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))
+            seeded = True
+        return seeded
 
 
 class VoiceIntentRegistry:

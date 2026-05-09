@@ -315,7 +315,7 @@ class CapabilityDeclarationService:
                 },
                 "supports_versions": True,
                 "supports_lifecycle": True,
-                "supported_matcher_modes": ["builtin_timer", "exact_example", "regex"],
+                "supported_matcher_modes": ["builtin_timer", "builtin_time_query", "exact_example", "regex"],
             },
             "voice.intent.list": {
                 "transport": "http",

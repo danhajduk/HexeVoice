@@ -1,4 +1,3 @@
-[TODO] Task 082: Add a Voice Node owned intent option and implement an initial "What is the time?" intent
 [TODO] Task 083: Hide canceled sessions from UI voice history and add replay controls for wake recordings
 [TODO] Task 084: Run wake recording retention through the same cleanup task path as TTS artifacts
 [TODO] Task 085: Include the final transcript in wakeword recording sidecar JSON
