@@ -96,15 +96,15 @@ def test_firmware_composited_ui_supports_manifest_alpha_and_clock_scene():
     assert "Wednesday" in source
 
 
-def test_firmware_idle_switches_to_clock_avatar_after_two_minutes():
+def test_firmware_idle_uses_clock_avatar_immediately():
     source = FIRMWARE_DISPLAY.read_text()
 
     assert "kClock" in source
     assert '"clock"' in source
-    assert "kDefaultClockIdleTimeoutMs = 120000" in source
     assert '"idle_timeout_ms"' in source
-    assert "pdMS_TO_TICKS(g_scene.clock.idle_timeout_ms)" in source
-    assert "return idle_clock_due(phase) ? UiAssetId::kClock : asset_id_for_phase(phase)" in source
+    assert "case hexe::AppPhase::kIdle:\n      return UiAssetId::kClock;" in source
+    assert "idle_clock_due" not in source
+    assert "return asset_id_for_phase(phase);" in source
     assert "if (id == UiAssetId::kClock) {\n    draw_clock_overlay();" in source
 
 

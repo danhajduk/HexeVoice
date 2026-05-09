@@ -35,7 +35,6 @@ constexpr size_t kFlushBufferBytes = kWidth * kFlushRows * sizeof(uint16_t);
 constexpr size_t kMaxSpriteBytes = 512 * 1024;
 constexpr size_t kMaxSceneSprites = 8;
 constexpr size_t kSceneManifestBytes = 4096;
-constexpr int kDefaultClockIdleTimeoutMs = 120000;
 esp_lcd_panel_handle_t g_panel = nullptr;
 uint16_t *g_framebuffer = nullptr;
 uint16_t *g_lcd_flush_buffer = nullptr;
@@ -336,7 +335,7 @@ struct ClockSceneConfig {
   int second_radius_percent{82};
   uint16_t color{0xFFFF};
   uint16_t second_color{0xF800};
-  int idle_timeout_ms{kDefaultClockIdleTimeoutMs};
+  int idle_timeout_ms{0};
   bool date_split{false};
   int day_x{-1};
   int day_y{202};
@@ -451,6 +450,7 @@ UiAssetId asset_id_for_phase(hexe::AppPhase phase) {
     case hexe::AppPhase::kWiFiConnecting:
       return UiAssetId::kLogo;
     case hexe::AppPhase::kIdle:
+      return UiAssetId::kClock;
     case hexe::AppPhase::kMuted:
     case hexe::AppPhase::kTimerFinished:
       return UiAssetId::kIdle;
@@ -1163,31 +1163,11 @@ void load_sd_ui_assets() {
   load_composed_scene();
 }
 
-bool idle_clock_due(hexe::AppPhase phase) {
-  static bool idle_tracking = false;
-  static TickType_t idle_started_tick = 0;
-
-  if (phase != hexe::AppPhase::kIdle) {
-    idle_tracking = false;
-    idle_started_tick = 0;
-    return false;
-  }
-
-  const TickType_t now = xTaskGetTickCount();
-  if (!idle_tracking) {
-    idle_tracking = true;
-    idle_started_tick = now;
-    return false;
-  }
-
-  return (now - idle_started_tick) >= pdMS_TO_TICKS(g_scene.clock.idle_timeout_ms);
-}
-
 UiAssetId asset_id_for_display(hexe::AppPhase phase) {
   if (hexe::state().ota_active) {
     return UiAssetId::kOta;
   }
-  return idle_clock_due(phase) ? UiAssetId::kClock : asset_id_for_phase(phase);
+  return asset_id_for_phase(phase);
 }
 }
 

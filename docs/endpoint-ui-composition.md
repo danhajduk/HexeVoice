@@ -72,7 +72,6 @@ Minimal voice-scene example:
     }
   },
   "clock": {
-    "idle_timeout_ms": 120000,
     "cx": 160,
     "cy": 110,
     "hands_dx": 0,
@@ -145,7 +144,6 @@ Clock-scene example:
     }
   },
   "clock": {
-    "idle_timeout_ms": 120000,
     "cx": 160,
     "cy": 110,
     "hands_dx": 0,
@@ -186,17 +184,18 @@ Firmware renders layers in this order:
 The firmware maps endpoint phases to avatar keys:
 
 - booting or Wi-Fi connecting: `logo`
-- idle, muted, timer finished: `idle`
+- idle: `clock`
+- muted or timer finished: `idle`
 - listening: `listening`
 - backend connecting or updating: `work`
 - thinking: `thinking`
 - replying: `talk`
 - error: `error`
-- idle longer than `clock.idle_timeout_ms`: `clock`; default is `120000`
 - OTA update active: `ota`
 
 If a specific avatar key is missing, that layer is skipped; firmware does not substitute `idle`. If no composited scene manifest can be loaded, the display is left unchanged.
 Clock hands and the optional date are drawn only when the selected avatar is `clock`.
+The legacy `clock.idle_timeout_ms` manifest field is still accepted by firmware for older SD-card media, but idle now selects the clock immediately.
 
 Clock overlay options:
 
