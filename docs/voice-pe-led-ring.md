@@ -74,8 +74,11 @@ visually harsh at high brightness and may be left on in bedrooms or quiet rooms.
 - Provide explicit `off`, `set_solid`, and `render_pattern` operations.
 - On render failure, clear the frame buffer and power-gate the ring.
 - Keep the LED update task independent of audio/VAD tasks.
-- During capture, keep the bottom visual LED lit orange as the fixed recording
-  marker while the rest of the ring follows the voice level.
+- Wi-Fi and disconnected diagnostic patterns should traverse the full ring.
+- During capture, only the bottom visual LED should be lit orange as the fixed
+  recording marker.
+- OTA progress should use dim completed-progress LEDs and a brighter moving
+  chase LED so the current transfer activity is easy to see.
 
 ## Pattern Priority
 

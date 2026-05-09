@@ -388,7 +388,7 @@ void fill_voice_pattern(
     case LedPattern::kWifiConnecting:
       diagnostic = true;
       brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
-      set_pixel(frame, cursor / 2, color(255, 120, 0));
+      set_pixel(frame, cursor, color(255, 120, 0));
       break;
     case LedPattern::kBackendConnecting:
       diagnostic = true;
@@ -405,12 +405,6 @@ void fill_voice_pattern(
       break;
     case LedPattern::kCapturing: {
       brightness = hexe::board::kLedRingNormalBrightnessCap;
-      const uint32_t level = static_cast<uint32_t>(std::max(state.vad_level, 0));
-      const size_t lit_count = std::clamp<size_t>(2 + (level / 250), size_t{2}, kLedCount);
-      for (size_t index = 0; index < lit_count; ++index) {
-        const uint8_t percent = static_cast<uint8_t>(100 - std::min<size_t>(index * 4, 55));
-        set_pixel(frame, index, dim_color(accent, percent));
-      }
       set_pixel(frame, kBottomLedIndex, color(255, 120, 0));
       break;
     }
@@ -436,9 +430,9 @@ void fill_voice_pattern(
           size_t{1},
           kLedCount);
       for (size_t index = 0; index < lit_count; ++index) {
-        set_pixel(frame, index, color(0, 170, 255));
+        set_pixel(frame, index, color(0, 55, 80));
       }
-      set_pixel(frame, cursor, color(0, 255, 120));
+      set_pixel(frame, cursor, color(80, 255, 180));
       break;
     }
     case LedPattern::kCompleted: {
@@ -494,7 +488,7 @@ void fill_voice_pattern(
     case LedPattern::kDisconnected:
       diagnostic = true;
       brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
-      set_pixel(frame, cursor / 2, color(255, 120, 0));
+      set_pixel(frame, cursor, color(255, 120, 0));
       break;
   }
 }

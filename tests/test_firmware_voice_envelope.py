@@ -362,6 +362,9 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert "transmit_pixels_locked(false)" in led_source
     assert "render_frame_locked" in led_source
     assert "set_pixel(frame, kBottomLedIndex, color(255, 120, 0))" in led_source
+    assert "cursor / 2" not in led_source
+    assert "color(0, 55, 80)" in led_source
+    assert "color(80, 255, 180)" in led_source
 
     pattern_source = led_source[led_source.index("LedPattern pattern_for_state") :]
     assert pattern_source.index("kBooting") < pattern_source.index("kOtaProgress")
@@ -385,7 +388,9 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert "OTA-Safe Behavior" in doc_source
     assert "100 ms" in doc_source
     assert "visual slot `0` is the bottom LED" in doc_source
-    assert "bottom visual LED lit orange" in doc_source
+    assert "only the bottom visual LED should be lit orange" in doc_source
+    assert "Wi-Fi and disconnected diagnostic patterns should traverse the full ring" in doc_source
+    assert "dim completed-progress LEDs and a brighter moving" in doc_source
     assert "center-held rotation" in doc_source
 
 
