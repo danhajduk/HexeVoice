@@ -1942,6 +1942,7 @@ class VoiceSessionManager:
         payload = {"snapshot": session.model_dump(mode="json")}
         if extra_payload:
             payload.update(extra_payload)
+        self._last_error = None
         self._last_event_type = event_type
         return VoiceEventEnvelope(
             event_type=event_type,

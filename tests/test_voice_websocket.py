@@ -150,6 +150,22 @@ def test_voice_websocket_rejects_second_session_when_current_session_has_audio(t
     assert response["payload"]["code"] == "active_session_exists"
 
 
+def test_voice_websocket_clears_last_error_after_successful_session_state(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("audio.chunk", payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}}))
+        error = websocket.receive_json()
+        assert error["event_type"] == "session.error"
+
+        websocket.send_json(voice_event("session.start", session_id="recovered-session"))
+        recovered = websocket.receive_json()
+
+    assert recovered["event_type"] == "session.state"
+    assert recovered["session_id"] == "recovered-session"
+    assert client.get("/api/voice/status").json()["last_error"] is None
+
+
 def test_voice_websocket_treats_button_session_start_as_wake(tmp_path):
     detector = DeterministicWakeDetector(detect_on_chunk_index=None)
     manager = VoiceSessionManager(wake_detector=detector)
