@@ -5,6 +5,7 @@
 
 endpoint:
   id: esp-box-1
+  ha_voice_pe_id: esp-pe-1
   display_name: ESP Box 1
 
 node:

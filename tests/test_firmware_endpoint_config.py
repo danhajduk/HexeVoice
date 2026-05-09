@@ -30,3 +30,25 @@ def test_endpoint_config_generator_uses_yaml_contract(tmp_path):
     assert "constexpr bool kEndpointLogStreamEnabled = false;" in header
     assert 'constexpr const char *kEndpointLogStreamHost = "10.0.0.22";' in header
     assert "constexpr int kEndpointLogStreamUdpPort = 9010;" in header
+
+
+def test_endpoint_config_generator_uses_pe_profile_endpoint_id(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    output = tmp_path / "endpoint_config.h"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "firmware/tools/generate_endpoint_config.py"),
+            "--input",
+            str(repo_root / "firmware/config/endpoint.example.yaml"),
+            "--output",
+            str(output),
+            "--board-profile",
+            "ha_voice_pe",
+        ],
+        check=True,
+    )
+
+    header = output.read_text(encoding="utf-8")
+    assert 'constexpr const char *kEndpointId = "esp-pe-1";' in header

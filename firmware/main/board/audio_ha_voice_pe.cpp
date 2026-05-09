@@ -26,6 +26,7 @@ constexpr uint32_t kVadContinueEnergyThreshold = 500;
 constexpr uint32_t kVadSilenceHoldMs = 2500;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
 constexpr uint32_t kVadTaskStackBytes = 8192;
+constexpr uint32_t kMicReadTimeoutLogEvery = 200;
 
 constexpr gpio_num_t kMicBclk = GPIO_NUM_13;
 constexpr gpio_num_t kMicLrclk = GPIO_NUM_14;
@@ -56,6 +57,7 @@ SemaphoreHandle_t g_mic_mutex = nullptr;
 bool g_vad_turn_active = false;
 bool g_mic_paused_for_playback = false;
 bool g_voice_kit_ready = false;
+uint32_t g_mic_read_timeout_count = 0;
 std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
 std::array<int16_t, kFrameSamples> g_mono_samples = {};
 
@@ -299,7 +301,14 @@ void vad_task(void *arg) {
         pdMS_TO_TICKS(100));
     xSemaphoreGive(g_mic_mutex);
     if (result != ESP_OK || bytes_read == 0) {
-      ESP_LOGW(kTag, "Voice PE microphone read failed: %s bytes=%u", esp_err_to_name(result), static_cast<unsigned>(bytes_read));
+      if (result == ESP_ERR_TIMEOUT && bytes_read == 0) {
+        ++g_mic_read_timeout_count;
+        if ((g_mic_read_timeout_count % kMicReadTimeoutLogEvery) == 0) {
+          ESP_LOGD(kTag, "Voice PE microphone read timeout count=%lu", static_cast<unsigned long>(g_mic_read_timeout_count));
+        }
+      } else {
+        ESP_LOGW(kTag, "Voice PE microphone read failed: %s bytes=%u", esp_err_to_name(result), static_cast<unsigned>(bytes_read));
+      }
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
