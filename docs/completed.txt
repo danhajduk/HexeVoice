@@ -109,3 +109,4 @@ Task 092: Add a voice artifact privacy/export policy UI for deleting, downloadin
 Task 103: Document the Home Assistant Voice PE LED ring hardware contract, including GPIO21 WS2812/GRB data, GPIO45 LED power, 12 LEDs, remapped ring order, and safe brightness defaults - Completed on 05/09/2026 12:51
 Task 104: Add a Voice PE LED ring firmware driver using ESP-IDF RMT with GPIO45 power gating and a no-op fallback for non-PE board profiles - Completed on 05/09/2026 12:58
 Task 105: Map Voice PE LED ring patterns to Hexe voice phases: idle, wake/listening, capturing, thinking, replying, completed, cancelled, muted, error, and disconnected - Completed on 05/09/2026 13:03
+Task 106: Add Voice PE diagnostic LED patterns for boot, Wi-Fi/backend connection, OTA progress, fatal error, speaker silent volume, and hardware mute privacy states - Completed on 05/09/2026 13:05

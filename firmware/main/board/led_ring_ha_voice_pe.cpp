@@ -28,13 +28,18 @@ constexpr std::array<uint8_t, kLedCount> kVisualToPhysical = {
 
 enum class LedPattern {
   kOff,
+  kBoot,
+  kWifiConnecting,
+  kBackendConnecting,
   kWakeListening,
   kCapturing,
   kThinking,
   kReplying,
+  kOtaProgress,
   kCompleted,
   kCancelled,
   kMuted,
+  kSpeakerSilent,
   kError,
   kDisconnected,
 };
@@ -298,6 +303,25 @@ void fill_voice_pattern(
   switch (pattern) {
     case LedPattern::kOff:
       break;
+    case LedPattern::kBoot:
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      for (size_t index = 0; index < kLedCount; ++index) {
+        if ((index + cursor) % 3 == 0) {
+          set_pixel(frame, index, color(255, 190, 110));
+        }
+      }
+      break;
+    case LedPattern::kWifiConnecting:
+      diagnostic = true;
+      brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
+      set_pixel(frame, cursor / 2, color(255, 120, 0));
+      break;
+    case LedPattern::kBackendConnecting:
+      diagnostic = true;
+      brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
+      set_pixel(frame, cursor, color(0, 100, 255));
+      set_pixel(frame, cursor + 6, color(0, 100, 255));
+      break;
     case LedPattern::kWakeListening:
       brightness = hexe::board::kLedRingNormalBrightnessCap;
       set_pixel(frame, cursor, color(0, 180, 255));
@@ -329,6 +353,16 @@ void fill_voice_pattern(
       set_pixel(frame, kLedCount - cursor + 6, color(0, 140, 255));
       set_pixel(frame, kLedCount - cursor + 7, color(0, 70, 160));
       break;
+    case LedPattern::kOtaProgress: {
+      diagnostic = true;
+      brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
+      const size_t lit_count = std::clamp<size_t>((state.ota_progress_percent * kLedCount + 99) / 100, 1, kLedCount);
+      for (size_t index = 0; index < lit_count; ++index) {
+        set_pixel(frame, index, color(0, 170, 255));
+      }
+      set_pixel(frame, cursor, color(0, 255, 120));
+      break;
+    }
     case LedPattern::kCompleted: {
       brightness = hexe::board::kLedRingNormalBrightnessCap;
       const uint8_t green = pulse_value(frame_index, 80, 255);
@@ -347,6 +381,12 @@ void fill_voice_pattern(
       set_pixel(frame, 3, color(255, 0, 0));
       set_pixel(frame, 9, color(255, 0, 0));
       break;
+    case LedPattern::kSpeakerSilent:
+      brightness = hexe::board::kLedRingNormalBrightnessCap;
+      set_pixel(frame, 5, color(255, 0, 0));
+      set_pixel(frame, 6, color(255, 90, 0));
+      set_pixel(frame, 7, color(255, 0, 0));
+      break;
     case LedPattern::kError: {
       diagnostic = true;
       brightness = hexe::board::kLedRingDiagnosticBrightnessCap;
@@ -363,15 +403,23 @@ void fill_voice_pattern(
 }
 
 LedPattern pattern_for_state(const hexe::AppState &state) {
+  if (state.phase == hexe::AppPhase::kBooting) {
+    return LedPattern::kBoot;
+  }
   if (state.ota_active || state.phase == hexe::AppPhase::kUpdating) {
-    return LedPattern::kThinking;
+    return LedPattern::kOtaProgress;
   }
   if (state.muted || state.phase == hexe::AppPhase::kMuted) {
     return LedPattern::kMuted;
   }
-  if (!state.wifi_connected || !state.backend_connected || !state.voice_ws_connected ||
-      state.phase == hexe::AppPhase::kWiFiConnecting || state.phase == hexe::AppPhase::kBackendConnecting) {
-    return LedPattern::kDisconnected;
+  if (!state.wifi_connected || state.phase == hexe::AppPhase::kWiFiConnecting) {
+    return LedPattern::kWifiConnecting;
+  }
+  if (!state.backend_connected || !state.voice_ws_connected || state.phase == hexe::AppPhase::kBackendConnecting) {
+    return LedPattern::kBackendConnecting;
+  }
+  if (state.phase == hexe::AppPhase::kIdle && state.output_volume_percent <= 0) {
+    return LedPattern::kSpeakerSilent;
   }
 
   switch (state.phase) {
@@ -384,8 +432,9 @@ LedPattern pattern_for_state(const hexe::AppState &state) {
     case hexe::AppPhase::kError:
       return LedPattern::kError;
     case hexe::AppPhase::kIdle:
-    case hexe::AppPhase::kBooting:
     case hexe::AppPhase::kTimerFinished:
+      return LedPattern::kOff;
+    case hexe::AppPhase::kBooting:
     case hexe::AppPhase::kWiFiConnecting:
     case hexe::AppPhase::kBackendConnecting:
     case hexe::AppPhase::kUpdating:
