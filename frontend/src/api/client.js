@@ -155,6 +155,25 @@ export async function getVoiceStatus() {
   return fetchJson("/api/voice/status");
 }
 
+export async function getVoiceSessions({ limit = 12, endpointId } = {}) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (endpointId) {
+    params.set("endpoint_id", endpointId);
+  }
+  return fetchJson(`/api/voice/sessions?${params.toString()}`);
+}
+
+export async function getVoiceSession(sessionId) {
+  return fetchJson(`/api/voice/sessions/${encodeURIComponent(sessionId)}`);
+}
+
+export async function replayVoiceSession(sessionId, endpointId) {
+  return sendJson(`/api/voice/sessions/${encodeURIComponent(sessionId)}/replay`, {
+    body: endpointId ? { endpoint_id: endpointId } : {},
+  });
+}
+
 export async function getVoiceIntents() {
   return fetchJson("/api/voice/intents");
 }

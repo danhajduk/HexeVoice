@@ -6,9 +6,11 @@ import {
   getEndpointMediaAssets,
   getEndpointMediaInventory,
   getEndpointVolume,
+  getVoiceSessions,
   muteEndpoint,
   reformatEndpointStorage,
   replayEndpointResponse,
+  replayVoiceSession,
   setEndpointVolume,
   testAssistantTurn,
   uploadEndpointMedia,
@@ -47,6 +49,13 @@ function formatMs(value) {
     return "none";
   }
   return `${Math.round(value)} ms`;
+}
+
+function formatPercent(value) {
+  if (typeof value !== "number") {
+    return "none";
+  }
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatYesNo(value) {
@@ -650,6 +659,76 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
   );
 }
 
+function VoiceSessionHistoryPanel({ sessions, historyStatus, endpointId, onReplaySession, onRefreshHistory }) {
+  const storedCount = typeof historyStatus?.stored_count === "number" ? historyStatus.stored_count : sessions.length;
+
+  return (
+    <section className="voice-endpoint-panel stack">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Voice History</p>
+          <h2 className="panel-title">Recent Turns</h2>
+        </div>
+        <span className="status-pill status-pill-neutral">{`${storedCount} stored`}</span>
+      </div>
+      <div className="voice-history-table-wrap">
+        <table className="voice-history-table">
+          <thead>
+            <tr>
+              <th scope="col">Time</th>
+              <th scope="col">Endpoint</th>
+              <th scope="col">State</th>
+              <th scope="col">Wake</th>
+              <th scope="col">Transcript</th>
+              <th scope="col">Response</th>
+              <th scope="col">Total</th>
+              <th scope="col">Replay</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sessions.length ? (
+              sessions.map((session) => {
+                const replayEligible = session?.replay?.eligible === true;
+                const targetEndpointId = endpointId || session.endpoint_id || "";
+                return (
+                  <tr key={session.session_id}>
+                    <td>{formatLocalDateTime(session.completed_at || session.updated_at || session.started_at)}</td>
+                    <td>{valueOrEmpty(session.endpoint_id)}</td>
+                    <td>{valueOrEmpty(session.session_state)}</td>
+                    <td>{formatPercent(session.wake?.confidence)}</td>
+                    <td className="voice-history-text">{valueOrEmpty(session.transcript?.text)}</td>
+                    <td className="voice-history-text">{valueOrEmpty(session.assistant?.text)}</td>
+                    <td>{formatMs(session.turn_timings?.total_ms ?? session.duration_ms)}</td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-compact"
+                        type="button"
+                        onClick={() => onReplaySession(session.session_id, targetEndpointId)}
+                        disabled={!replayEligible || !targetEndpointId}
+                      >
+                        Replay
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan={8}>none</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="compact-actions">
+        <button className="btn btn-ghost" type="button" onClick={onRefreshHistory}>
+          Refresh History
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function VoiceEndpointDashboardSection({
   voiceStatus,
   endpointStatus,
@@ -658,6 +737,8 @@ export function VoiceEndpointDashboardSection({
   const [actionMessage, setActionMessage] = useState("");
   const [volumePercent, setVolumePercent] = useState(70);
   const [muted, setMuted] = useState(false);
+  const [voiceSessions, setVoiceSessions] = useState([]);
+  const [historyStatus, setHistoryStatus] = useState(voiceStatus?.session_history || null);
   const projection = voiceStateProjection(voiceStatus);
   const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
   const reportedOutput = endpointCapabilities(endpointStatus).audio?.output || {};
@@ -691,6 +772,43 @@ export function VoiceEndpointDashboardSection({
       active = false;
     };
   }, [endpointId]);
+
+  useEffect(() => {
+    const status = voiceStatus?.session_history || null;
+    setHistoryStatus(status);
+    if (Array.isArray(status?.recent_sessions) && status.recent_sessions.length) {
+      setVoiceSessions(status.recent_sessions);
+    }
+  }, [voiceStatus?.session_history]);
+
+  useEffect(() => {
+    let active = true;
+    getVoiceSessions({ limit: 12, endpointId: endpointId || undefined })
+      .then((payload) => {
+        if (active) {
+          setVoiceSessions(payload.sessions || []);
+        }
+      })
+      .catch(() => {
+        // The status payload still carries a short history snapshot.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [endpointId, voiceStatus?.session_history?.updated_at]);
+
+  async function refreshVoiceSessions({ showMessage = true } = {}) {
+    try {
+      const payload = await getVoiceSessions({ limit: 12, endpointId: endpointId || undefined });
+      setVoiceSessions(payload.sessions || []);
+      if (showMessage) {
+        setActionMessage("History refreshed.");
+      }
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
 
   async function handleTestTurn() {
     try {
@@ -771,6 +889,25 @@ export function VoiceEndpointDashboardSection({
     }
   }
 
+  async function handleReplaySession(sessionId, targetEndpointId) {
+    try {
+      if (!sessionId) {
+        setActionMessage("Replay skipped: session is missing.");
+        return;
+      }
+      if (!targetEndpointId) {
+        setActionMessage("Replay skipped: endpoint is not connected.");
+        return;
+      }
+      const result = await replayVoiceSession(sessionId, targetEndpointId);
+      setActionMessage(result.accepted ? `Replay sent (${result.status}, ${result.request_id}).` : `Replay skipped: ${result.reason}`);
+      await onRefresh();
+      await refreshVoiceSessions({ showMessage: false });
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
   return (
     <section className="card stack panel voice-endpoint-main-card">
       <div className="voice-endpoint-top">
@@ -825,6 +962,13 @@ export function VoiceEndpointDashboardSection({
         endpointId={endpointId}
         onRefresh={onRefresh}
         setActionMessage={setActionMessage}
+      />
+      <VoiceSessionHistoryPanel
+        sessions={voiceSessions}
+        historyStatus={historyStatus}
+        endpointId={endpointId}
+        onReplaySession={handleReplaySession}
+        onRefreshHistory={refreshVoiceSessions}
       />
       <EndpointMetadataPanel
         voiceStatus={voiceStatus}
