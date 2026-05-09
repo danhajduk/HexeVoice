@@ -523,6 +523,7 @@ void handle_backend_event_json(const std::string &message) {
   auto &app_state = hexe::state();
   const bool wake_accepted = std::strcmp(type, "wake.accepted") == 0;
   if (wake_accepted) {
+    hexe::voice::prewarm_tts_output();
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
     cJSON *wake = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "wake") : nullptr;
     cJSON *confidence = cJSON_IsObject(wake) ? cJSON_GetObjectItem(wake, "confidence") : nullptr;
@@ -561,6 +562,8 @@ void handle_backend_event_json(const std::string &message) {
         app_state.phase = hexe::idle_or_connecting_phase();
       }
     }
+  } else if (std::strcmp(type, "response.text") == 0) {
+    hexe::voice::prewarm_tts_output();
   } else if (std::strcmp(type, "tts.ready") == 0) {
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
     if (cJSON_IsString(session_id) && session_id->valuestring[0] != '\0') {

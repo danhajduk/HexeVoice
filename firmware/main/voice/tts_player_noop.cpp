@@ -17,6 +17,9 @@ void init_tts_player() {
   ESP_LOGW(kTag, "TTS output disabled for this board profile");
 }
 
+void prewarm_tts_output() {
+}
+
 void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url) {
   ESP_LOGW(
       kTag,

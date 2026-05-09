@@ -45,6 +45,9 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "tts.playback.first_audio_frame" in tts_sources
     assert "tts.playback.completed" in tts_sources
     assert "tts.playback.failed" in tts_sources
+    assert "prewarm_tts_output" in source
+    assert "stream_http_wav" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    assert "Streaming TTS WAV at %d Hz while downloading" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
     assert "kVoiceWsSendAttempts = 3" in source
     assert "Voice WebSocket send failed after %d attempts" in source
 

@@ -341,6 +341,9 @@ void init_tts_player() {
   ESP_LOGI(kTag, "TTS player initialized");
 }
 
+void prewarm_tts_output() {
+}
+
 void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url) {
   auto &state = hexe::state();
   if (state.muted) {

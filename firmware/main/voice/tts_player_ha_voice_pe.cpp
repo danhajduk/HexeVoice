@@ -20,6 +20,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "system/settings.h"
 #include "voice/backend_client.h"
@@ -31,7 +32,11 @@ constexpr int kTaskStackBytes = 8192;
 constexpr int kTaskPriority = 4;
 constexpr int kSpeakerSampleRate = 48000;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
+constexpr size_t kHttpReadBufferBytes = 4096;
 constexpr size_t kPlaybackFrameCapacity = 384;
+constexpr int kHttpReadIdleRetryDelayMs = 20;
+constexpr int kHttpReadMaxIdleRetries = 50;
+constexpr size_t kMaxWavHeaderBytes = 4096;
 constexpr uint32_t kI2cClockHz = 400000;
 constexpr uint32_t kI2cTimeoutMs = 1000;
 constexpr uint32_t kI2sWriteTimeoutMs = 1000;
@@ -95,11 +100,40 @@ struct WavView {
   int bits_per_sample{16};
 };
 
+struct WavStreamInfo {
+  size_t data_offset{0};
+  uint32_t data_size{0};
+  int sample_rate{16000};
+  int channels{1};
+  int bits_per_sample{16};
+};
+
+enum class WavHeaderParseResult {
+  kNeedMore,
+  kReady,
+  kUnsupported,
+};
+
+enum class StreamPlaybackResult {
+  kPlayed,
+  kFallback,
+  kFailed,
+};
+
+struct PcmStreamWriter {
+  std::array<int32_t, kPlaybackFrameCapacity * 2> output_frames{};
+  size_t queued_frames{0};
+  bool first_frame_reported{false};
+  size_t source_bytes_written{0};
+};
+
 QueueHandle_t g_playback_queue = nullptr;
 TaskHandle_t g_playback_task = nullptr;
+TaskHandle_t g_prewarm_task = nullptr;
 i2c_master_bus_handle_t g_i2c_bus = nullptr;
 i2c_master_dev_handle_t g_aic_device = nullptr;
 i2s_chan_handle_t g_tx_channel = nullptr;
+SemaphoreHandle_t g_codec_lock = nullptr;
 volatile bool g_stop_requested = false;
 volatile bool g_playback_active = false;
 bool g_aic_ready = false;
@@ -259,6 +293,63 @@ bool parse_wav(const std::vector<uint8_t> &audio, WavView *wav) {
   return false;
 }
 
+WavHeaderParseResult parse_wav_header_prefix(const std::vector<uint8_t> &audio, WavStreamInfo *info) {
+  if (info == nullptr) {
+    return WavHeaderParseResult::kUnsupported;
+  }
+  if (audio.size() < 12) {
+    return WavHeaderParseResult::kNeedMore;
+  }
+  if (std::memcmp(audio.data(), "RIFF", 4) != 0 || std::memcmp(audio.data() + 8, "WAVE", 4) != 0) {
+    return WavHeaderParseResult::kUnsupported;
+  }
+
+  size_t offset = 12;
+  bool saw_format = false;
+  while (offset + 8 <= audio.size()) {
+    const uint8_t *chunk = audio.data() + offset;
+    const uint32_t chunk_size = read_le32(chunk + 4);
+    const size_t chunk_data = offset + 8;
+    if (chunk_data > audio.size()) {
+      return WavHeaderParseResult::kNeedMore;
+    }
+
+    if (std::memcmp(chunk, "fmt ", 4) == 0) {
+      if (chunk_size < 16) {
+        return WavHeaderParseResult::kUnsupported;
+      }
+      if (chunk_data + chunk_size > audio.size()) {
+        return WavHeaderParseResult::kNeedMore;
+      }
+      const uint16_t audio_format = read_le16(audio.data() + chunk_data);
+      info->channels = read_le16(audio.data() + chunk_data + 2);
+      info->sample_rate = static_cast<int>(read_le32(audio.data() + chunk_data + 4));
+      info->bits_per_sample = read_le16(audio.data() + chunk_data + 14);
+      saw_format = audio_format == 1 && info->channels > 0 && info->channels <= 2 && info->bits_per_sample == 16;
+      if (!saw_format) {
+        return WavHeaderParseResult::kUnsupported;
+      }
+    } else if (std::memcmp(chunk, "data", 4) == 0) {
+      if (!saw_format) {
+        return WavHeaderParseResult::kUnsupported;
+      }
+      info->data_offset = chunk_data;
+      info->data_size = chunk_size;
+      return WavHeaderParseResult::kReady;
+    }
+
+    const size_t next_offset = chunk_data + chunk_size + (chunk_size % 2);
+    if (next_offset < offset) {
+      return WavHeaderParseResult::kUnsupported;
+    }
+    if (next_offset > audio.size()) {
+      return WavHeaderParseResult::kNeedMore;
+    }
+    offset = next_offset;
+  }
+  return audio.size() > kMaxWavHeaderBytes ? WavHeaderParseResult::kUnsupported : WavHeaderParseResult::kNeedMore;
+}
+
 bool ensure_i2c_bus() {
   if (g_i2c_bus != nullptr) {
     return true;
@@ -408,6 +499,31 @@ bool ensure_codec_ready() {
   return true;
 }
 
+bool ensure_codec_ready_locked() {
+  if (g_codec_lock == nullptr) {
+    return ensure_codec_ready();
+  }
+  if (xSemaphoreTake(g_codec_lock, pdMS_TO_TICKS(4000)) != pdTRUE) {
+    ESP_LOGW(kTag, "Timed out waiting for Voice PE codec lock");
+    return false;
+  }
+  const bool ready = ensure_codec_ready();
+  xSemaphoreGive(g_codec_lock);
+  return ready;
+}
+
+void prewarm_task(void *arg) {
+  (void)arg;
+  while (true) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    if (hexe::state().muted) {
+      continue;
+    }
+    ESP_LOGI(kTag, "Prewarming Voice PE speaker codec");
+    ensure_codec_ready_locked();
+  }
+}
+
 bool ensure_i2s_output() {
   if (g_tx_channel == nullptr) {
     i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_SLAVE);
@@ -521,7 +637,7 @@ bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request)
     return false;
   }
 
-  if (!ensure_codec_ready() || !ensure_i2s_output()) {
+  if (!ensure_codec_ready_locked() || !ensure_i2s_output()) {
     return false;
   }
 
@@ -581,6 +697,215 @@ bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request)
   return flushed && !g_stop_requested;
 }
 
+bool write_stream_pcm(
+    const WavStreamInfo &wav,
+    const uint8_t *pcm,
+    size_t pcm_size,
+    const PlaybackRequest &request,
+    PcmStreamWriter *writer) {
+  if (pcm == nullptr || writer == nullptr || pcm_size == 0) {
+    return true;
+  }
+  const size_t bytes_per_source_frame = static_cast<size_t>(wav.channels) * sizeof(int16_t);
+  if (bytes_per_source_frame == 0 || pcm_size % bytes_per_source_frame != 0) {
+    return false;
+  }
+
+  for (size_t offset = 0; offset < pcm_size && !g_stop_requested; offset += bytes_per_source_frame) {
+    const uint8_t *source = pcm + offset;
+    const int16_t left16 = pcm16_sample(source);
+    const int16_t right16 = wav.channels == 1 ? left16 : pcm16_sample(source + sizeof(int16_t));
+    writer->output_frames[writer->queued_frames * 2] = static_cast<int32_t>(left16) << 16;
+    writer->output_frames[(writer->queued_frames * 2) + 1] = static_cast<int32_t>(right16) << 16;
+    ++writer->queued_frames;
+    writer->source_bytes_written += bytes_per_source_frame;
+
+    if (writer->queued_frames == kPlaybackFrameCapacity) {
+      if (!flush_output_frames(&writer->output_frames, &writer->queued_frames)) {
+        return false;
+      }
+      if (!writer->first_frame_reported) {
+        send_playback_event("tts.playback.first_audio_frame", request, nullptr, writer->source_bytes_written);
+        writer->first_frame_reported = true;
+      }
+    }
+  }
+  return !g_stop_requested;
+}
+
+bool process_pending_stream_pcm(
+    const WavStreamInfo &wav,
+    std::vector<uint8_t> *pending,
+    const PlaybackRequest &request,
+    PcmStreamWriter *writer) {
+  if (pending == nullptr || writer == nullptr) {
+    return false;
+  }
+  const size_t bytes_per_source_frame = static_cast<size_t>(wav.channels) * sizeof(int16_t);
+  if (bytes_per_source_frame == 0) {
+    return false;
+  }
+  const size_t complete_bytes = (pending->size() / bytes_per_source_frame) * bytes_per_source_frame;
+  if (complete_bytes == 0) {
+    return true;
+  }
+  const bool written = write_stream_pcm(wav, pending->data(), complete_bytes, request, writer);
+  pending->erase(pending->begin(), pending->begin() + static_cast<std::vector<uint8_t>::difference_type>(complete_bytes));
+  return written;
+}
+
+StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackRequest &request, size_t *downloaded_bytes) {
+  if (downloaded_bytes != nullptr) {
+    *downloaded_bytes = 0;
+  }
+  if (url.empty()) {
+    return StreamPlaybackResult::kFailed;
+  }
+
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.method = HTTP_METHOD_GET;
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    ESP_LOGW(kTag, "Failed to initialize streaming TTS HTTP client");
+    return StreamPlaybackResult::kFailed;
+  }
+
+  esp_err_t err = esp_http_client_open(client, 0);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "Failed to open streaming TTS HTTP client: %s", esp_err_to_name(err));
+    esp_http_client_cleanup(client);
+    return StreamPlaybackResult::kFailed;
+  }
+  esp_http_client_fetch_headers(client);
+  const int status_code = esp_http_client_get_status_code(client);
+  if (status_code < 200 || status_code >= 300) {
+    ESP_LOGW(kTag, "Streaming TTS HTTP request failed: status=%d", status_code);
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return StreamPlaybackResult::kFailed;
+  }
+
+  std::array<char, kHttpReadBufferBytes> read_buffer = {};
+  std::vector<uint8_t> header;
+  std::vector<uint8_t> pending_pcm;
+  header.reserve(256);
+  pending_pcm.reserve(kHttpReadBufferBytes);
+  WavStreamInfo wav;
+  PcmStreamWriter writer;
+  bool header_ready = false;
+  bool output_ready = false;
+  uint32_t data_bytes_received = 0;
+  size_t total_bytes = 0;
+  int idle_retries = 0;
+  StreamPlaybackResult result = StreamPlaybackResult::kFailed;
+
+  while (!g_stop_requested) {
+    const int read_bytes = esp_http_client_read(client, read_buffer.data(), read_buffer.size());
+    if (read_bytes < 0) {
+      ESP_LOGW(kTag, "Streaming TTS HTTP read failed");
+      result = StreamPlaybackResult::kFailed;
+      break;
+    }
+    if (read_bytes == 0) {
+      if (esp_http_client_is_complete_data_received(client) || (header_ready && data_bytes_received >= wav.data_size)) {
+        result = header_ready ? StreamPlaybackResult::kPlayed : StreamPlaybackResult::kFailed;
+        break;
+      }
+      if (++idle_retries > kHttpReadMaxIdleRetries) {
+        ESP_LOGW(kTag, "Streaming TTS HTTP read timed out");
+        result = StreamPlaybackResult::kFailed;
+        break;
+      }
+      vTaskDelay(pdMS_TO_TICKS(kHttpReadIdleRetryDelayMs));
+      continue;
+    }
+    idle_retries = 0;
+    total_bytes += static_cast<size_t>(read_bytes);
+    if (downloaded_bytes != nullptr) {
+      *downloaded_bytes = total_bytes;
+    }
+    if (total_bytes > kMaxTtsBytes) {
+      ESP_LOGW(kTag, "Streaming TTS audio exceeded size limit");
+      result = StreamPlaybackResult::kFailed;
+      break;
+    }
+
+    const auto *chunk = reinterpret_cast<const uint8_t *>(read_buffer.data());
+    size_t chunk_size = static_cast<size_t>(read_bytes);
+    if (!header_ready) {
+      header.insert(header.end(), chunk, chunk + chunk_size);
+      WavHeaderParseResult parsed = parse_wav_header_prefix(header, &wav);
+      if (parsed == WavHeaderParseResult::kNeedMore) {
+        if (header.size() > kMaxWavHeaderBytes) {
+          result = StreamPlaybackResult::kFallback;
+          break;
+        }
+        continue;
+      }
+      if (parsed == WavHeaderParseResult::kUnsupported || wav.sample_rate != kSpeakerSampleRate) {
+        result = StreamPlaybackResult::kFallback;
+        break;
+      }
+      header_ready = true;
+      if (!ensure_codec_ready_locked() || !ensure_i2s_output()) {
+        result = StreamPlaybackResult::kFailed;
+        break;
+      }
+      output_ready = true;
+      ESP_LOGI(kTag, "Streaming TTS WAV at %d Hz while downloading", wav.sample_rate);
+      if (header.size() > wav.data_offset) {
+        const size_t available_pcm = std::min<size_t>(header.size() - wav.data_offset, wav.data_size);
+        pending_pcm.insert(pending_pcm.end(), header.data() + wav.data_offset, header.data() + wav.data_offset + available_pcm);
+        data_bytes_received += static_cast<uint32_t>(available_pcm);
+        if (!process_pending_stream_pcm(wav, &pending_pcm, request, &writer)) {
+          result = StreamPlaybackResult::kFailed;
+          break;
+        }
+      }
+      header.clear();
+    } else if (data_bytes_received < wav.data_size) {
+      const size_t remaining = static_cast<size_t>(wav.data_size - data_bytes_received);
+      const size_t pcm_bytes = std::min(chunk_size, remaining);
+      pending_pcm.insert(pending_pcm.end(), chunk, chunk + pcm_bytes);
+      data_bytes_received += static_cast<uint32_t>(pcm_bytes);
+      if (!process_pending_stream_pcm(wav, &pending_pcm, request, &writer)) {
+        result = StreamPlaybackResult::kFailed;
+        break;
+      }
+    }
+
+    if (header_ready && data_bytes_received >= wav.data_size) {
+      result = StreamPlaybackResult::kPlayed;
+      break;
+    }
+  }
+
+  if (result == StreamPlaybackResult::kPlayed && !pending_pcm.empty()) {
+    result = process_pending_stream_pcm(wav, &pending_pcm, request, &writer) && pending_pcm.empty()
+                 ? StreamPlaybackResult::kPlayed
+                 : StreamPlaybackResult::kFailed;
+  }
+  if (result == StreamPlaybackResult::kPlayed) {
+    if (!flush_output_frames(&writer.output_frames, &writer.queued_frames)) {
+      result = StreamPlaybackResult::kFailed;
+    } else if (!writer.first_frame_reported && writer.source_bytes_written > 0 && !g_stop_requested) {
+      send_playback_event("tts.playback.first_audio_frame", request, nullptr, writer.source_bytes_written);
+      writer.first_frame_reported = true;
+    }
+  }
+
+  if (output_ready) {
+    disable_i2s_output();
+  }
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+  if (g_stop_requested && result == StreamPlaybackResult::kPlayed) {
+    return StreamPlaybackResult::kFailed;
+  }
+  return result;
+}
+
 void playback_task(void *arg) {
   (void)arg;
   PlaybackRequest request = {};
@@ -603,11 +928,29 @@ void playback_task(void *arg) {
     std::vector<uint8_t> audio;
     const bool mic_paused = hexe::board::pause_microphone_for_playback();
     const std::string url = resolve_audio_url(request.audio_url);
+    bool loaded = false;
+    bool played = false;
+    size_t byte_count = 0;
     if (request.file_path[0] == '\0') {
       send_playback_event("tts.playback.download_started", request);
+      const StreamPlaybackResult streamed = stream_http_wav(url, request, &byte_count);
+      if (streamed == StreamPlaybackResult::kPlayed) {
+        loaded = true;
+        played = true;
+      } else if (streamed == StreamPlaybackResult::kFallback) {
+        ESP_LOGI(kTag, "Falling back to full-buffer TTS playback");
+        loaded = fetch_audio(url, &audio);
+        played = loaded && play_wav(audio, request);
+        byte_count = audio.size();
+      } else {
+        loaded = false;
+        played = false;
+      }
+    } else {
+      loaded = read_audio_file(request.file_path, &audio);
+      played = loaded && play_wav(audio, request);
+      byte_count = audio.size();
     }
-    const bool loaded = request.file_path[0] == '\0' ? fetch_audio(url, &audio) : read_audio_file(request.file_path, &audio);
-    const bool played = loaded && play_wav(audio, request);
     if (mic_paused) {
       hexe::board::resume_microphone_after_playback();
     }
@@ -617,9 +960,9 @@ void playback_task(void *arg) {
           request,
           request.file_path[0] == '\0' ? "download_failed" : "file_read_failed");
     } else if (played) {
-      send_playback_event("tts.playback.completed", request, nullptr, audio.size());
+      send_playback_event("tts.playback.completed", request, nullptr, byte_count);
     } else {
-      send_playback_event("tts.playback.failed", request, g_stop_requested ? "stopped" : "playback_failed", audio.size());
+      send_playback_event("tts.playback.failed", request, g_stop_requested ? "stopped" : "playback_failed", byte_count);
     }
     if (played && !state.muted) {
       state.phase = hexe::idle_or_connecting_phase();
@@ -664,8 +1007,21 @@ void init_tts_player() {
     ESP_LOGE(kTag, "Failed to create TTS playback queue");
     return;
   }
+  g_codec_lock = xSemaphoreCreateMutex();
+  if (g_codec_lock == nullptr) {
+    ESP_LOGE(kTag, "Failed to create Voice PE codec lock");
+    return;
+  }
   xTaskCreate(playback_task, "hexe_tts_vpe", kTaskStackBytes, nullptr, kTaskPriority, &g_playback_task);
+  xTaskCreate(prewarm_task, "hexe_tts_warm", kTaskStackBytes, nullptr, kTaskPriority - 1, &g_prewarm_task);
   ESP_LOGI(kTag, "Home Assistant Voice PE TTS player initialized");
+}
+
+void prewarm_tts_output() {
+  if (g_prewarm_task == nullptr || hexe::state().muted) {
+    return;
+  }
+  xTaskNotifyGive(g_prewarm_task);
 }
 
 void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url) {
