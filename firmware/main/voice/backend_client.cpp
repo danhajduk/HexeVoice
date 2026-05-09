@@ -656,10 +656,12 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     }
     ESP_LOGI(kTag, "Voice WebSocket connected");
   } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
+    g_ws_started = false;
     mark_voice_socket_disconnected();
     g_ws_rx_buffer.clear();
     ESP_LOGW(kTag, "Voice WebSocket disconnected");
   } else if (event_id == WEBSOCKET_EVENT_ERROR) {
+    g_ws_started = false;
     mark_voice_socket_disconnected();
     ESP_LOGW(kTag, "Voice WebSocket error");
   } else if (event_id == WEBSOCKET_EVENT_DATA) {
