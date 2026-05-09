@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 #include <string>
 #include <vector>
 
@@ -28,7 +30,8 @@
 namespace {
 constexpr char kTag[] = "hexe_tts_vpe";
 constexpr int kPlaybackQueueDepth = 2;
-constexpr int kTaskStackBytes = 8192;
+constexpr int kPlaybackTaskStackBytes = 12288;
+constexpr int kPrewarmTaskStackBytes = 4096;
 constexpr int kTaskPriority = 4;
 constexpr int kSpeakerSampleRate = 48000;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
@@ -786,13 +789,20 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
     return StreamPlaybackResult::kFailed;
   }
 
-  std::array<char, kHttpReadBufferBytes> read_buffer = {};
+  auto read_buffer = std::make_unique<std::array<char, kHttpReadBufferBytes>>();
+  auto writer = std::unique_ptr<PcmStreamWriter>(new (std::nothrow) PcmStreamWriter());
+  if (read_buffer == nullptr || writer == nullptr) {
+    ESP_LOGW(kTag, "Failed to allocate streaming TTS buffers");
+    esp_http_client_close(client);
+    esp_http_client_cleanup(client);
+    return StreamPlaybackResult::kFailed;
+  }
+
   std::vector<uint8_t> header;
   std::vector<uint8_t> pending_pcm;
   header.reserve(256);
   pending_pcm.reserve(kHttpReadBufferBytes);
   WavStreamInfo wav;
-  PcmStreamWriter writer;
   bool header_ready = false;
   bool output_ready = false;
   uint32_t data_bytes_received = 0;
@@ -801,7 +811,7 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
   StreamPlaybackResult result = StreamPlaybackResult::kFailed;
 
   while (!g_stop_requested) {
-    const int read_bytes = esp_http_client_read(client, read_buffer.data(), read_buffer.size());
+    const int read_bytes = esp_http_client_read(client, read_buffer->data(), read_buffer->size());
     if (read_bytes < 0) {
       ESP_LOGW(kTag, "Streaming TTS HTTP read failed");
       result = StreamPlaybackResult::kFailed;
@@ -831,7 +841,7 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
       break;
     }
 
-    const auto *chunk = reinterpret_cast<const uint8_t *>(read_buffer.data());
+    const auto *chunk = reinterpret_cast<const uint8_t *>(read_buffer->data());
     size_t chunk_size = static_cast<size_t>(read_bytes);
     if (!header_ready) {
       header.insert(header.end(), chunk, chunk + chunk_size);
@@ -858,7 +868,7 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
         const size_t available_pcm = std::min<size_t>(header.size() - wav.data_offset, wav.data_size);
         pending_pcm.insert(pending_pcm.end(), header.data() + wav.data_offset, header.data() + wav.data_offset + available_pcm);
         data_bytes_received += static_cast<uint32_t>(available_pcm);
-        if (!process_pending_stream_pcm(wav, &pending_pcm, request, &writer)) {
+        if (!process_pending_stream_pcm(wav, &pending_pcm, request, writer.get())) {
           result = StreamPlaybackResult::kFailed;
           break;
         }
@@ -869,7 +879,7 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
       const size_t pcm_bytes = std::min(chunk_size, remaining);
       pending_pcm.insert(pending_pcm.end(), chunk, chunk + pcm_bytes);
       data_bytes_received += static_cast<uint32_t>(pcm_bytes);
-      if (!process_pending_stream_pcm(wav, &pending_pcm, request, &writer)) {
+      if (!process_pending_stream_pcm(wav, &pending_pcm, request, writer.get())) {
         result = StreamPlaybackResult::kFailed;
         break;
       }
@@ -882,16 +892,16 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
   }
 
   if (result == StreamPlaybackResult::kPlayed && !pending_pcm.empty()) {
-    result = process_pending_stream_pcm(wav, &pending_pcm, request, &writer) && pending_pcm.empty()
+    result = process_pending_stream_pcm(wav, &pending_pcm, request, writer.get()) && pending_pcm.empty()
                  ? StreamPlaybackResult::kPlayed
                  : StreamPlaybackResult::kFailed;
   }
   if (result == StreamPlaybackResult::kPlayed) {
-    if (!flush_output_frames(&writer.output_frames, &writer.queued_frames)) {
+    if (!flush_output_frames(&writer->output_frames, &writer->queued_frames)) {
       result = StreamPlaybackResult::kFailed;
-    } else if (!writer.first_frame_reported && writer.source_bytes_written > 0 && !g_stop_requested) {
-      send_playback_event("tts.playback.first_audio_frame", request, nullptr, writer.source_bytes_written);
-      writer.first_frame_reported = true;
+    } else if (!writer->first_frame_reported && writer->source_bytes_written > 0 && !g_stop_requested) {
+      send_playback_event("tts.playback.first_audio_frame", request, nullptr, writer->source_bytes_written);
+      writer->first_frame_reported = true;
     }
   }
 
@@ -1012,8 +1022,8 @@ void init_tts_player() {
     ESP_LOGE(kTag, "Failed to create Voice PE codec lock");
     return;
   }
-  xTaskCreate(playback_task, "hexe_tts_vpe", kTaskStackBytes, nullptr, kTaskPriority, &g_playback_task);
-  xTaskCreate(prewarm_task, "hexe_tts_warm", kTaskStackBytes, nullptr, kTaskPriority - 1, &g_prewarm_task);
+  xTaskCreate(playback_task, "hexe_tts_vpe", kPlaybackTaskStackBytes, nullptr, kTaskPriority, &g_playback_task);
+  xTaskCreate(prewarm_task, "hexe_tts_warm", kPrewarmTaskStackBytes, nullptr, kTaskPriority - 1, &g_prewarm_task);
   ESP_LOGI(kTag, "Home Assistant Voice PE TTS player initialized");
 }
 
