@@ -437,6 +437,14 @@ class VoiceSessionManager:
             payload={},
         )
 
+    async def push_led_simulation_command(self, *, endpoint_id: str, pattern: str, duration_ms: int) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.led.simulate",
+            command_type="endpoint.led.simulate",
+            payload={"pattern": pattern, "duration_ms": duration_ms},
+        )
+
     def volume_status(self, endpoint_id: str) -> dict:
         self._expire_commands()
         latest = self._latest_command(endpoint_id=endpoint_id, command_type="endpoint.volume.set")

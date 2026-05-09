@@ -573,6 +573,17 @@ void handle_backend_event_json(const std::string &message) {
     } else {
       send_command_error(request_id, "endpoint.storage.reformat", "sd_reformat_failed", "Could not reformat SD media folders");
     }
+  } else if (std::strcmp(type, "endpoint.led.simulate") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *pattern = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "pattern") : nullptr;
+    cJSON *duration_ms = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "duration_ms") : nullptr;
+    const char *pattern_name = cJSON_IsString(pattern) ? pattern->valuestring : "all";
+    const int pattern_duration_ms = cJSON_IsNumber(duration_ms) ? duration_ms->valueint : 1200;
+    if (hexe::board::led_ring_simulate_pattern(pattern_name, pattern_duration_ms)) {
+      send_command_ack(request_id, "endpoint.led.simulate", "succeeded", "LED simulation started");
+    } else {
+      send_command_error(request_id, "endpoint.led.simulate", "invalid_payload", "Unknown LED simulation pattern");
+    }
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     if (std::strcmp(type, "session.cancelled") == 0) {
       hexe::board::led_ring_show_cancelled();

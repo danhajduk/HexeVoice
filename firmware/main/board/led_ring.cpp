@@ -63,4 +63,10 @@ void led_ring_adjust_accent_hue(int delta_steps) {
   (void)delta_steps;
 }
 
+bool led_ring_simulate_pattern(const char *pattern_name, int duration_ms) {
+  (void)pattern_name;
+  (void)duration_ms;
+  return false;
+}
+
 }  // namespace hexe::board

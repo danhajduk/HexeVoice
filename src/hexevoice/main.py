@@ -47,6 +47,7 @@ from hexevoice.api.models import (
     EndpointHeartbeatResponse,
     EndpointCommandRequest,
     EndpointCommandResponse,
+    EndpointLedSimulateCommandRequest,
     EndpointMetadataUpdateRequest,
     EndpointMuteCommandRequest,
     EndpointMediaAssetResponse,
@@ -664,6 +665,22 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             command_type="endpoint.storage.reformat",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/led/simulate", response_model=EndpointCommandResponse)
+    async def endpoint_led_simulate(payload: EndpointLedSimulateCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_led_simulation_command(
+            endpoint_id=payload.endpoint_id,
+            pattern=payload.pattern,
+            duration_ms=payload.duration_ms,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.led.simulate",
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),

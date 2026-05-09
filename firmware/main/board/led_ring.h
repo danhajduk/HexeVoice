@@ -36,5 +36,6 @@ void led_ring_show_completed();
 void led_ring_show_cancelled();
 void led_ring_show_volume(int volume_percent);
 void led_ring_adjust_accent_hue(int delta_steps);
+bool led_ring_simulate_pattern(const char *pattern_name, int duration_ms);
 
 }  // namespace hexe::board

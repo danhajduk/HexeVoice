@@ -112,6 +112,18 @@ turn.
 - LED updates are best-effort and must not block OTA writes, audio capture, TTS
   playback, backend heartbeat, or WebSocket transport.
 
+## Diagnostic Simulation
+
+The backend can send `endpoint.led.simulate` through the endpoint WebSocket to
+preview LED behavior without forcing real network, mute, OTA, or voice-session
+state changes. Payload fields:
+
+- `pattern`: one of `all`, `boot`, `wifi`, `backend`, `listening`, `capturing`,
+  `thinking`, `replying`, `ota`, `completed`, `cancelled`, `muted`,
+  `speaker_silent`, `volume`, `color`, `error`, `disconnected`, or `off`.
+- `duration_ms`: per-pattern duration from `300` to `5000` ms. `all` steps
+  through every named pattern using this duration for each step.
+
 ## References
 
 - Official ESPHome Voice PE firmware config:

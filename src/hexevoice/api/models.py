@@ -233,6 +233,12 @@ class EndpointCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
 
 
+class EndpointLedSimulateCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    pattern: str = Field(default="all", min_length=1, max_length=40)
+    duration_ms: int = Field(default=1200, ge=300, le=5000)
+
+
 class VoiceSessionReplayRequest(BaseModel):
     endpoint_id: str | None = Field(default=None, min_length=1)
 

@@ -66,6 +66,35 @@ TickType_t g_last_pattern_tick = 0;
 TickType_t g_momentary_until_tick = 0;
 uint16_t g_accent_hue_degrees = 196;
 int g_affordance_percent = 0;
+bool g_simulation_all = false;
+LedPattern g_simulation_pattern = LedPattern::kOff;
+TickType_t g_simulation_started_tick = 0;
+TickType_t g_simulation_until_tick = 0;
+TickType_t g_simulation_step_ticks = 0;
+
+struct NamedPattern {
+  const char *name;
+  LedPattern pattern;
+};
+
+constexpr std::array<NamedPattern, 16> kSimulationPatterns = {{
+    {"boot", LedPattern::kBoot},
+    {"wifi", LedPattern::kWifiConnecting},
+    {"backend", LedPattern::kBackendConnecting},
+    {"listening", LedPattern::kWakeListening},
+    {"capturing", LedPattern::kCapturing},
+    {"thinking", LedPattern::kThinking},
+    {"replying", LedPattern::kReplying},
+    {"ota", LedPattern::kOtaProgress},
+    {"completed", LedPattern::kCompleted},
+    {"cancelled", LedPattern::kCancelled},
+    {"muted", LedPattern::kMuted},
+    {"speaker_silent", LedPattern::kSpeakerSilent},
+    {"volume", LedPattern::kVolumeDisplay},
+    {"color", LedPattern::kColorSelect},
+    {"error", LedPattern::kError},
+    {"disconnected", LedPattern::kDisconnected},
+}};
 
 void set_led_power(bool enabled) {
   gpio_set_level(kLedPowerGpio, enabled ? 1 : 0);
@@ -516,6 +545,23 @@ void show_momentary_pattern(LedPattern pattern) {
   g_momentary_pattern = pattern;
   g_momentary_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kMomentaryPatternMs);
 }
+
+bool pattern_from_name(const char *name, LedPattern &pattern) {
+  if (name == nullptr) {
+    return false;
+  }
+  if (std::strcmp(name, "off") == 0) {
+    pattern = LedPattern::kOff;
+    return true;
+  }
+  for (const auto &candidate : kSimulationPatterns) {
+    if (std::strcmp(name, candidate.name) == 0) {
+      pattern = candidate.pattern;
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace
 
 namespace hexe::board {
@@ -610,8 +656,23 @@ void update_led_ring_patterns() {
   }
 
   const TickType_t now = xTaskGetTickCount();
+  bool simulation_active = static_cast<int32_t>(g_simulation_until_tick - now) > 0;
   LedPattern pattern = pattern_for_state(hexe::state());
-  if (g_momentary_pattern != LedPattern::kOff) {
+  if (simulation_active) {
+    if (g_simulation_all && g_simulation_step_ticks > 0) {
+      const TickType_t elapsed = now - g_simulation_started_tick;
+      const size_t index = (elapsed / g_simulation_step_ticks) % kSimulationPatterns.size();
+      pattern = kSimulationPatterns[index].pattern;
+    } else {
+      pattern = g_simulation_pattern;
+    }
+  } else if (g_simulation_until_tick != 0) {
+    g_simulation_all = false;
+    g_simulation_pattern = LedPattern::kOff;
+    g_simulation_until_tick = 0;
+  }
+
+  if (!simulation_active && g_momentary_pattern != LedPattern::kOff) {
     if (static_cast<int32_t>(g_momentary_until_tick - now) > 0) {
       pattern = g_momentary_pattern;
     } else {
@@ -638,7 +699,16 @@ void update_led_ring_patterns() {
   uint8_t brightness = kLedRingDefaultBrightness;
   bool diagnostic = false;
   const uint32_t frame_index = now / pdMS_TO_TICKS(kPatternFrameMs);
-  fill_voice_pattern(pattern, frame_index, hexe::state(), frame, brightness, diagnostic);
+  hexe::AppState render_state = hexe::state();
+  if (simulation_active) {
+    const TickType_t step_elapsed = g_simulation_step_ticks > 0 ? (now - g_simulation_started_tick) % g_simulation_step_ticks : 0;
+    render_state.vad_level = 1600;
+    render_state.ota_progress_percent = g_simulation_step_ticks > 0
+                                            ? static_cast<int>((step_elapsed * 100) / g_simulation_step_ticks)
+                                            : 60;
+    render_state.output_volume_percent = 65;
+  }
+  fill_voice_pattern(pattern, frame_index, render_state, frame, brightness, diagnostic);
   if (led_ring_set_visual_frame(frame.data(), frame.size(), brightness, diagnostic) == ESP_OK) {
     g_last_pattern = pattern;
   }
@@ -664,6 +734,24 @@ void led_ring_adjust_accent_hue(int delta_steps) {
   }
   g_accent_hue_degrees = static_cast<uint16_t>(hue % 360);
   show_momentary_pattern(LedPattern::kColorSelect);
+}
+
+bool led_ring_simulate_pattern(const char *pattern_name, int duration_ms) {
+  const char *name = pattern_name == nullptr || pattern_name[0] == '\0' ? "all" : pattern_name;
+  const int bounded_duration_ms = std::clamp(duration_ms, 300, 5000);
+  g_simulation_all = std::strcmp(name, "all") == 0;
+  if (!g_simulation_all && !pattern_from_name(name, g_simulation_pattern)) {
+    return false;
+  }
+  g_momentary_pattern = LedPattern::kOff;
+  g_affordance_percent = 65;
+  g_simulation_step_ticks = pdMS_TO_TICKS(bounded_duration_ms);
+  g_simulation_started_tick = xTaskGetTickCount();
+  g_simulation_until_tick =
+      g_simulation_started_tick + (g_simulation_all ? g_simulation_step_ticks * kSimulationPatterns.size()
+                                                    : g_simulation_step_ticks);
+  ESP_LOGI(kTag, "Simulating Voice PE LED pattern=%s duration_ms=%d", name, bounded_duration_ms);
+  return true;
 }
 
 }  // namespace hexe::board
