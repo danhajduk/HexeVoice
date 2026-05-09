@@ -78,6 +78,7 @@ Task 092: Add UI composition tests, docs, and migration path - Completed on 04/2
 Task 073: Add Voice Node TTS capability declaration for voice.tts.synthesize and voice.tts.audio_url alongside voice.inference - Completed on 05/04/2026 00:30
 Task 074: Add a Voice Node TTS synthesize API accepting target device/location/client playback hints, text, voice, format, and TTL - Completed on 05/04/2026 00:30
 Task 075: Serve generated TTS audio through short-lived LAN-reachable URLs with content type, duration, expiry metadata, and cleanup - Completed on 05/04/2026 00:30
+Task 078: Replace backend TTS resampling with SoXR streaming and document SoXR license attribution - Completed on 05/09/2026 10:56
 Task 085 (Voice intents): Define the Voice Node registered-intent contract - Completed on 05/04/2026 04:52
 Task 086 (Voice intents): Add Voice Node local intent registry storage and APIs - Completed on 05/04/2026 04:52
 Task 087 (Voice intents): Declare Voice Node intent-registration capabilities and endpoint metadata - Completed on 05/04/2026 04:52

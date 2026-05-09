@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
+from contextlib import ExitStack
 import io
 import importlib.util
 import json
@@ -17,15 +18,12 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Protocol
-import warnings
 import wave
 from uuid import uuid4
 
 import httpx
-
-with warnings.catch_warnings():
-    warnings.simplefilter("ignore", DeprecationWarning)
-    import audioop
+import numpy as np
+import soxr
 
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
@@ -38,6 +36,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 DEFAULT_TTS_AUDIO_TTL_SECONDS = 300
+PIPER_TTS_AUDIO_CHUNK_FRAMES = 4096
 PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = {
     "16k": 16000,
     "48k": 48000,
@@ -439,16 +438,19 @@ class PiperTextToSpeechAdapter:
             raw_audio = response.content
             raw_path = self._output_dir / f"{stream_id}.raw.wav"
             target_sample_rate_hz = self._sample_rate_for_endpoint(endpoint_id)
-            raw_path.write_bytes(raw_audio)
-            raw_sample_rate_hz = wav_sample_rate_hz(raw_audio)
+            variant_paths = {
+                variant: self._output_dir / f"{stream_id}.{variant}.wav"
+                for variant in PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES
+            }
+            variant_sample_rates_hz = write_wav_variants_with_soxr(
+                raw_audio,
+                raw_path=raw_path,
+                variant_paths=variant_paths,
+                variant_sample_rates=PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES,
+            )
+            raw_sample_rate_hz = variant_sample_rates_hz.get("raw")
             audio_variant_paths = {"raw": str(raw_path)}
-            variant_sample_rates_hz: dict[str, int | None] = {"raw": raw_sample_rate_hz}
-            for variant, sample_rate_hz in PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES.items():
-                variant_audio = normalize_wav_sample_rate(raw_audio, sample_rate_hz)
-                variant_path = self._output_dir / f"{stream_id}.{variant}.wav"
-                variant_path.write_bytes(variant_audio)
-                audio_variant_paths[variant] = str(variant_path)
-                variant_sample_rates_hz[variant] = wav_sample_rate_hz(variant_audio)
+            audio_variant_paths.update({variant: str(path) for variant, path in variant_paths.items()})
             audio_variant = self._variant_for_sample_rate(target_sample_rate_hz)
             output_sample_rate_hz = variant_sample_rates_hz.get(audio_variant) if audio_variant else raw_sample_rate_hz
             audio_url = f"/api/voice/tts/{stream_id}/{audio_variant}" if audio_variant else f"/api/voice/tts/{stream_id}"
@@ -773,6 +775,94 @@ def normalize_wav_sample_rate(audio: bytes, target_sample_rate_hz: int | None) -
     return buffer.getvalue()
 
 
+def write_wav_variants_with_soxr(
+    audio: bytes,
+    *,
+    raw_path: Path,
+    variant_paths: dict[str, Path],
+    variant_sample_rates: dict[str, int],
+) -> dict[str, int | None]:
+    raw_path.write_bytes(audio)
+    try:
+        with wave.open(io.BytesIO(audio), "rb") as wav_file:
+            channels = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
+            sample_rate = wav_file.getframerate()
+            if sample_width != 2 or channels <= 0 or sample_rate <= 0:
+                copy_audio_to_variant_paths(audio, variant_paths)
+                return {"raw": sample_rate if sample_rate > 0 else None} | {
+                    variant: sample_rate if sample_rate > 0 else None for variant in variant_paths
+                }
+            if all(sample_rate == target_rate for target_rate in variant_sample_rates.values()):
+                copy_audio_to_variant_paths(audio, variant_paths)
+                return {"raw": sample_rate} | {variant: sample_rate for variant in variant_paths}
+
+            with ExitStack() as stack:
+                writers: dict[str, wave.Wave_write] = {}
+                resamplers: dict[str, soxr.ResampleStream | None] = {}
+                for variant, target_rate in variant_sample_rates.items():
+                    path = variant_paths[variant]
+                    if target_rate == sample_rate:
+                        path.write_bytes(audio)
+                        continue
+                    writer = stack.enter_context(wave.open(str(path), "wb"))
+                    writer.setnchannels(channels)
+                    writer.setsampwidth(sample_width)
+                    writer.setframerate(target_rate)
+                    writers[variant] = writer
+                    resamplers[variant] = soxr.ResampleStream(sample_rate, target_rate, channels, dtype="int16")
+
+                while True:
+                    frame_bytes = wav_file.readframes(PIPER_TTS_AUDIO_CHUNK_FRAMES)
+                    if not frame_bytes:
+                        break
+                    samples = pcm16le_bytes_to_ndarray(frame_bytes, channels=channels)
+                    for variant, resampler in resamplers.items():
+                        if resampler is None:
+                            continue
+                        resampled = resampler.resample_chunk(samples, last=False)
+                        if resampled.size:
+                            writers[variant].writeframes(ndarray_to_pcm16le_bytes(resampled))
+
+                empty = empty_pcm16le_array(channels=channels)
+                for variant, resampler in resamplers.items():
+                    if resampler is None:
+                        continue
+                    resampled = resampler.resample_chunk(empty, last=True)
+                    if resampled.size:
+                        writers[variant].writeframes(ndarray_to_pcm16le_bytes(resampled))
+    except wave.Error:
+        copy_audio_to_variant_paths(audio, variant_paths)
+        return {"raw": None} | {variant: None for variant in variant_paths}
+
+    return {"raw": sample_rate} | dict(variant_sample_rates)
+
+
+def copy_audio_to_variant_paths(audio: bytes, variant_paths: dict[str, Path]) -> None:
+    for path in variant_paths.values():
+        path.write_bytes(audio)
+
+
+def pcm16le_bytes_to_ndarray(frame_bytes: bytes, *, channels: int) -> np.ndarray:
+    samples = np.frombuffer(frame_bytes, dtype="<i2")
+    if channels > 1:
+        frame_count = samples.size // channels
+        samples = samples[: frame_count * channels].reshape(frame_count, channels)
+    return samples
+
+
+def empty_pcm16le_array(*, channels: int) -> np.ndarray:
+    if channels > 1:
+        return np.empty((0, channels), dtype=np.int16)
+    return np.empty((0,), dtype=np.int16)
+
+
+def ndarray_to_pcm16le_bytes(samples: np.ndarray) -> bytes:
+    if samples.dtype != np.int16:
+        samples = samples.astype(np.int16)
+    return np.asarray(samples, dtype="<i2").tobytes()
+
+
 def wav_sample_rate_hz(audio: bytes) -> int | None:
     try:
         with wave.open(io.BytesIO(audio), "rb") as wav_file:
@@ -788,8 +878,9 @@ def resample_pcm16le(data: bytes, *, source_rate: int, target_rate: int, channel
     if frame_count <= 1 or source_rate <= 0 or target_rate <= 0 or source_rate == target_rate:
         return data
 
-    converted, _state = audioop.ratecv(data, 2, channels, source_rate, target_rate, None)
-    return converted
+    samples = pcm16le_bytes_to_ndarray(data, channels=channels)
+    converted = soxr.resample(samples, source_rate, target_rate, quality="HQ")
+    return ndarray_to_pcm16le_bytes(converted)
 
 
 class VoiceTurnPipeline:

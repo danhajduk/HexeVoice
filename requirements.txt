@@ -7,6 +7,7 @@ pytest==8.3.3
 httpx==0.27.2
 paho-mqtt>=2.1.0,<3
 numpy<2
+soxr>=0.5.0,<1
 Pillow>=10.0.0,<12
 openwakeword==0.6.0
 faster-whisper>=1.1.0,<2

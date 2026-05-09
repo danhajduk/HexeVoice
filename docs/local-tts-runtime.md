@@ -24,7 +24,7 @@ Backend TTS routing is selected with `VOICE_TTS_PROVIDER`:
 For `piper`, the backend writes returned WAV bytes into `runtime/voice_tts` and serves them through `/api/voice/tts/{stream_id}` for firmware playback. If the Piper request fails, the current fallback policy is deterministic synthesis so the voice session can still complete with observable provider status instead of hard failing the turn.
 
 Firmware playback expects RIFF/WAVE PCM audio. The local Piper path stores generated audio as `.wav` artifacts and the backend serves those artifacts with `audio/wav`.
-Piper voice models commonly emit 22.05 kHz audio. HexeVoice keeps that provider output as `{stream_id}.raw.wav`, then also writes `{stream_id}.48k.wav` and `{stream_id}.16k.wav` on every Piper generation. The endpoint-facing `audio_url` points at the required variant, while all three audio streams stay available on disk for debugging voice quality and endpoint playback behavior.
+Piper voice models commonly emit 22.05 kHz audio. HexeVoice keeps that provider output as `{stream_id}.raw.wav`, then writes `{stream_id}.48k.wav` and `{stream_id}.16k.wav` with Python-SoXR streaming resamplers during the same artifact-generation pass. The endpoint-facing `audio_url` points at the required variant, while all three audio streams stay available on disk for debugging voice quality and endpoint playback behavior.
 
 HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output for endpoints without an override. Endpoint-specific rates can be set with `VOICE_TTS_ENDPOINT_SAMPLE_RATES`; these values take precedence over the default output rate:
 
@@ -32,6 +32,8 @@ HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, d
 VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=48000
 VOICE_TTS_ENDPOINT_SAMPLE_RATES=esp-pe-1=48000,esp-box-1=16000
 ```
+
+Python-SoXR/libsoxr is documented in `docs/third-party-licenses.md`.
 
 Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to the official Lessac high voice, which emits 22.05 kHz audio:
 
