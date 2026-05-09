@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 import logging
+import queue
+import threading
 import uuid
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore
@@ -149,6 +151,157 @@ class NoopTimerCreateEventPublisher:
         intent_latency_ms: float | None = None,
     ) -> DomainEventPublishDecision:
         return DomainEventPublishDecision(status="skipped", reason="domain_events_disabled", event_id=event_id, event_type="voice.intent.recognized")
+
+
+class AsyncDomainEventPublisher:
+    def __init__(self, delegate: TimerCreateEventPublisher, *, queue_size: int = 200) -> None:
+        self._delegate = delegate
+        self._queue: queue.Queue[tuple[Callable[[], DomainEventPublishDecision], DomainEventPublishDecision]] = (
+            queue.Queue(maxsize=max(1, queue_size))
+        )
+        self._last_queued_decision: DomainEventPublishDecision | None = None
+        self._last_worker_decision: DomainEventPublishDecision | None = None
+        self._worker = threading.Thread(target=self._run, name="hexe-domain-events", daemon=True)
+        self._worker.start()
+
+    def publish_timer_create(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        duration_seconds: int,
+        duration_text: str,
+        requested_at: datetime,
+    ) -> DomainEventPublishDecision:
+        event_id = f"voice-timer-{uuid.uuid4().hex}"
+        decision = DomainEventPublishDecision(
+            status="queued",
+            reason="queued_for_async_publish",
+            event_id=event_id,
+            event_type="timer.create_requested",
+        )
+        return self._enqueue(
+            lambda: self._delegate.publish_timer_create(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                duration_seconds=duration_seconds,
+                duration_text=duration_text,
+                requested_at=requested_at,
+            ),
+            decision,
+        )
+
+    def publish_voice_intent_recognized(
+        self,
+        *,
+        event_id: str,
+        endpoint_id: str,
+        session_id: str,
+        intent_id: str,
+        intent_name: str | None,
+        command: str,
+        provider_id: str,
+        recognized_text: str,
+        slots: dict[str, Any],
+        reply_text: str | None,
+        requested_at: datetime,
+        service_id: str | None = None,
+        version: str | None = None,
+        dispatch: dict[str, Any] | None = None,
+        reply_audio: dict[str, Any] | None = None,
+        intent_latency_ms: float | None = None,
+    ) -> DomainEventPublishDecision:
+        decision = DomainEventPublishDecision(
+            status="queued",
+            reason="queued_for_async_publish",
+            event_id=event_id,
+            event_type="voice.intent.recognized",
+        )
+        return self._enqueue(
+            lambda: self._delegate.publish_voice_intent_recognized(
+                event_id=event_id,
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                intent_id=intent_id,
+                intent_name=intent_name,
+                service_id=service_id,
+                version=version,
+                command=command,
+                provider_id=provider_id,
+                recognized_text=recognized_text,
+                slots=slots,
+                reply_text=reply_text,
+                requested_at=requested_at,
+                dispatch=dispatch,
+                reply_audio=reply_audio,
+                intent_latency_ms=intent_latency_ms,
+            ),
+            decision,
+        )
+
+    def status(self) -> dict[str, Any]:
+        delegate_status = self._delegate.status()
+        return {
+            **delegate_status,
+            "async_publish": True,
+            "queue_depth": self._queue.qsize(),
+            "last_queued_decision": self._last_queued_decision.as_dict() if self._last_queued_decision else None,
+            "last_worker_decision": self._last_worker_decision.as_dict() if self._last_worker_decision else None,
+        }
+
+    def _enqueue(
+        self,
+        job: Callable[[], DomainEventPublishDecision],
+        queued_decision: DomainEventPublishDecision,
+    ) -> DomainEventPublishDecision:
+        try:
+            self._queue.put_nowait((job, queued_decision))
+        except queue.Full:
+            dropped = DomainEventPublishDecision(
+                status="failed",
+                reason="async_publish_queue_full",
+                event_id=queued_decision.event_id,
+                event_type=queued_decision.event_type,
+                topic=queued_decision.topic,
+            )
+            self._last_queued_decision = dropped
+            log.warning(
+                "Domain event async publish queue full: event_type=%s event_id=%s",
+                dropped.event_type,
+                dropped.event_id,
+            )
+            return dropped
+        self._last_queued_decision = queued_decision
+        log.info(
+            "Domain event queued for async publish: event_type=%s event_id=%s queue_depth=%s",
+            queued_decision.event_type,
+            queued_decision.event_id,
+            self._queue.qsize(),
+        )
+        return queued_decision
+
+    def _run(self) -> None:
+        while True:
+            job, queued_decision = self._queue.get()
+            try:
+                self._last_worker_decision = job()
+            except Exception:
+                log.exception(
+                    "Domain event async publish failed unexpectedly: event_type=%s event_id=%s",
+                    queued_decision.event_type,
+                    queued_decision.event_id,
+                )
+                self._last_worker_decision = DomainEventPublishDecision(
+                    status="failed",
+                    reason="async_publish_worker_exception",
+                    event_id=queued_decision.event_id,
+                    event_type=queued_decision.event_type,
+                    topic=queued_decision.topic,
+                )
+            finally:
+                self._queue.task_done()
 
 
 class HexeMqttTimerCreateEventPublisher:

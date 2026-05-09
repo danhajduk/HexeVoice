@@ -1,6 +1,7 @@
 import io
 import json
 from pathlib import Path
+import threading
 import time
 from types import SimpleNamespace
 import wave
@@ -9,7 +10,7 @@ import httpx
 
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.config.settings import Settings
-from hexevoice.domain_events import DomainEventPublishDecision
+from hexevoice.domain_events import AsyncDomainEventPublisher, DomainEventPublishDecision
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.voice import (
     DeterministicSpeechToTextAdapter,
@@ -34,6 +35,33 @@ class FakeTimerEventPublisher:
 
     def status(self):
         return {"provider": "fake", "enabled": True, "last_decision": None}
+
+
+class SlowRecognitionPublisher:
+    def __init__(self, delay_s: float = 0.3) -> None:
+        self.delay_s = delay_s
+        self.published = threading.Event()
+        self.calls = []
+
+    def publish_timer_create(self, **payload):
+        time.sleep(self.delay_s)
+        self.calls.append({"type": "timer", **payload})
+        self.published.set()
+        return DomainEventPublishDecision(status="published", reason="published", event_type="timer.create_requested")
+
+    def publish_voice_intent_recognized(self, **payload):
+        time.sleep(self.delay_s)
+        self.calls.append({"type": "recognition", **payload})
+        self.published.set()
+        return DomainEventPublishDecision(
+            status="published",
+            reason="published",
+            event_id=payload["event_id"],
+            event_type="voice.intent.recognized",
+        )
+
+    def status(self):
+        return {"provider": "slow", "enabled": True, "last_decision": None}
 
 
 class CaptureTextToSpeechAdapter:
@@ -179,6 +207,34 @@ def test_voice_turn_pipeline_handles_timer_intent_locally(tmp_path):
         }
     ]
     assert publisher.calls[0]["requested_at"].tzinfo is not None
+
+
+def test_voice_turn_pipeline_does_not_wait_for_domain_event_publish(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    slow_publisher = SlowRecognitionPublisher(delay_s=0.3)
+    assistant = AssistantTurnService(
+        settings=settings,
+        runtime_service=runtime,
+        timer_event_publisher=AsyncDomainEventPublisher(slow_publisher),
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, set a timer for 10 minutes"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-box-1", session_id="voice-session-1", chunk_count=1)
+    )
+
+    assert result.assistant_response.handled_locally is True
+    assert result.assistant_response.command == "timer.create"
+    assert result.timings.assistant_ms < 200
+    assert result.assistant_response.intent_latency_ms is not None
+    assert result.assistant_response.intent_latency_ms < 200
+    assert slow_publisher.published.wait(timeout=1)
+    assert slow_publisher.calls[0]["type"] == "recognition"
 
 
 def test_openai_stt_adapter_posts_wav_transcription_request():

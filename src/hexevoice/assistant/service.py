@@ -15,7 +15,12 @@ import httpx
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant.intents import LocalIntentFinder
 from hexevoice.config.settings import Settings
-from hexevoice.domain_events import HexeMqttTimerCreateEventPublisher, TimerCreateEventPublisher, utc_event_timestamp
+from hexevoice.domain_events import (
+    AsyncDomainEventPublisher,
+    HexeMqttTimerCreateEventPublisher,
+    TimerCreateEventPublisher,
+    utc_event_timestamp,
+)
 from hexevoice.runtime.service import NodeRuntimeService
 
 
@@ -197,7 +202,9 @@ class AssistantTurnService:
         self._session_counter = 0
         self._adapter = adapter or self._build_adapter()
         self._intent_finder = intent_finder or LocalIntentFinder()
-        self._timer_event_publisher = timer_event_publisher or HexeMqttTimerCreateEventPublisher(settings=settings)
+        self._timer_event_publisher = timer_event_publisher or AsyncDomainEventPublisher(
+            HexeMqttTimerCreateEventPublisher(settings=settings)
+        )
         self._context_limit = settings.voice_conversation_context_turns
         self._context_by_endpoint: dict[str, deque[ConversationTurn]] = {}
         self._context_by_session: dict[str, deque[ConversationTurn]] = {}

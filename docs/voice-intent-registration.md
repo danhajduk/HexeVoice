@@ -94,4 +94,4 @@ Response:
 }
 ```
 
-Assistant turns use the same registered-intent matcher. The timer intent still publishes the existing MQTT timer request, including request and sent timestamps. Voice Node owned local responses, such as `voice.time.query`, answer directly from the backend runtime.
+Assistant turns use the same registered-intent matcher. The timer intent still queues the existing MQTT timer request, including request and sent timestamps, but MQTT publication runs off the voice response path so it does not block STT, intent handling, or TTS. Voice Node owned local responses, such as `voice.time.query`, answer directly from the backend runtime.

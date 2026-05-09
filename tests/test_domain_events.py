@@ -2,9 +2,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
+import threading
+import time
 
 from hexevoice.config.settings import Settings
-from hexevoice.domain_events import HexeMqttTimerCreateEventPublisher, domain_event_topic, format_duration_hhmmss
+from hexevoice.domain_events import (
+    AsyncDomainEventPublisher,
+    DomainEventPublishDecision,
+    HexeMqttTimerCreateEventPublisher,
+    domain_event_topic,
+    format_duration_hhmmss,
+)
 
 
 def test_domain_event_topic_maps_voice_timer_event_to_node_scope():
@@ -148,3 +156,56 @@ def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, m
     assert payload["data"]["reply_audio"]["audio_url"].endswith("/voice-intent-audio-1")
     assert payload["data"]["intent_latency_ms"] == 12.5
     assert datetime.fromisoformat(payload["data"]["mqtt_sent_at"]) >= requested_at
+
+
+def test_async_domain_event_publisher_queues_without_blocking():
+    published = threading.Event()
+    calls: list[dict] = []
+
+    class SlowPublisher:
+        def publish_timer_create(self, **payload):
+            time.sleep(0.25)
+            calls.append({"type": "timer", **payload})
+            published.set()
+            return DomainEventPublishDecision(status="published", reason="published", event_type="timer.create_requested")
+
+        def publish_voice_intent_recognized(self, **payload):
+            time.sleep(0.25)
+            calls.append({"type": "recognition", **payload})
+            published.set()
+            return DomainEventPublishDecision(
+                status="published",
+                reason="published",
+                event_id=payload["event_id"],
+                event_type="voice.intent.recognized",
+            )
+
+        def status(self):
+            return {"provider": "slow", "enabled": True}
+
+    publisher = AsyncDomainEventPublisher(SlowPublisher())
+    started = time.perf_counter()
+    decision = publisher.publish_voice_intent_recognized(
+        event_id="voice-intent-1",
+        endpoint_id="box-1",
+        session_id="session-1",
+        intent_id="voice.time.query",
+        intent_name="What is the time",
+        command="voice.time.query",
+        provider_id="local_pattern",
+        recognized_text="what is the time",
+        slots={},
+        reply_text="It is 4:10 PM.",
+        requested_at=datetime(2026, 5, 9, 23, 10, 40, tzinfo=UTC),
+    )
+    elapsed_ms = (time.perf_counter() - started) * 1000
+
+    assert decision.status == "queued"
+    assert decision.reason == "queued_for_async_publish"
+    assert elapsed_ms < 100
+    assert published.wait(timeout=1)
+    assert calls[0]["type"] == "recognition"
+    status = publisher.status()
+    assert status["async_publish"] is True
+    assert status["last_queued_decision"]["status"] == "queued"
+    assert status["last_worker_decision"]["status"] == "published"
