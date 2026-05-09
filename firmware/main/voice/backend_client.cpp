@@ -397,6 +397,9 @@ std::string base64_audio(const int16_t *samples, size_t sample_count) {
 const char *payload_request_id(cJSON *payload);
 void send_command_ack(const char *request_id, const char *command_type, const char *status, const char *message);
 void send_command_error(const char *request_id, const char *command_type, const char *code, const char *message);
+const char *command_type_for_event(const char *event_type);
+bool is_backend_command_event(const char *event_type);
+void acknowledge_command_received(const char *event_type, cJSON *payload);
 bool queue_media_transfer(cJSON *payload);
 
 void handle_backend_event_json(const std::string &message) {
@@ -434,6 +437,7 @@ void handle_backend_event_json(const std::string &message) {
     cJSON_Delete(root);
     return;
   }
+  acknowledge_command_received(type, payload);
   cJSON *snapshot = cJSON_GetObjectItem(payload, "snapshot");
   cJSON *state_item = cJSON_IsObject(snapshot) ? cJSON_GetObjectItem(snapshot, "ux_state") : nullptr;
   const char *ux_state = cJSON_IsString(state_item) ? state_item->valuestring : "";
@@ -790,6 +794,30 @@ void add_media_inventory_files(cJSON *inventory, const char *key, const char *di
 const char *payload_request_id(cJSON *payload) {
   cJSON *request_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "request_id") : nullptr;
   return cJSON_IsString(request_id) ? request_id->valuestring : "";
+}
+
+const char *command_type_for_event(const char *event_type) {
+  if (event_type == nullptr) {
+    return "unknown";
+  }
+  if (std::strcmp(event_type, "endpoint.volume") == 0) {
+    return "endpoint.volume.set";
+  }
+  return event_type;
+}
+
+bool is_backend_command_event(const char *event_type) {
+  if (event_type == nullptr) {
+    return false;
+  }
+  return std::strcmp(event_type, "ota.update") == 0 || std::strncmp(event_type, "endpoint.", 9) == 0;
+}
+
+void acknowledge_command_received(const char *event_type, cJSON *payload) {
+  if (!is_backend_command_event(event_type)) {
+    return;
+  }
+  send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");
 }
 
 void send_command_ack(const char *request_id, const char *command_type, const char *status, const char *message) {

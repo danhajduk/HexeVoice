@@ -25,6 +25,16 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "command.error" in source
 
 
+def test_firmware_backend_commands_acknowledge_receipt_with_ok():
+    source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert "acknowledge_command_received(type, payload);" in source
+    assert 'std::strcmp(event_type, "ota.update") == 0' in source
+    assert 'std::strncmp(event_type, "endpoint.", 9) == 0' in source
+    assert 'send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");' in source
+    assert 'return "endpoint.volume.set";' in source
+
+
 def test_firmware_vad_keeps_listening_window_after_wake_word():
     source = FIRMWARE_AUDIO.read_text()
 

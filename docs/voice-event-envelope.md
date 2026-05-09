@@ -35,3 +35,7 @@ The Task 061 schema set is stored in `docs/task-061-json-schemas/`.
 Endpoint command acknowledgements use `command.ack`. Endpoint-side command failures use `command.error`. Both are
 accepted endpoint-to-backend events and are exposed in `/api/voice/status` as `last_command_ack`,
 `last_command_error`, and `event_diagnostics`.
+
+For backend-to-endpoint commands that include a `request_id`, firmware first sends `command.ack` with
+`status: "accepted"` and `message: "OK"` once the command envelope is received. It then sends any command-specific
+progress, success, or error event needed to describe the actual work.
