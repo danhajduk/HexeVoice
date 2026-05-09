@@ -60,6 +60,9 @@ class TtsSynthesis:
     stream_id: str | None = None
     audio_url: str | None = None
     provider_id: str = "deterministic"
+    raw_audio_path: str | None = None
+    raw_sample_rate_hz: int | None = None
+    output_sample_rate_hz: int | None = None
     error: str | None = None
 
 
@@ -370,6 +373,7 @@ class PiperTextToSpeechAdapter:
         output_dir: Path,
         timeout_s: float = 30.0,
         output_sample_rate_hz: int | None = 16000,
+        endpoint_sample_rates: dict[str, int] | None = None,
         fallback: TextToSpeechAdapter | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
@@ -379,6 +383,15 @@ class PiperTextToSpeechAdapter:
         self._output_dir = output_dir
         self._timeout_s = timeout_s
         self._output_sample_rate_hz = output_sample_rate_hz
+        self._endpoint_sample_rates: dict[str, int] = {}
+        for endpoint_id, sample_rate in (endpoint_sample_rates or {}).items():
+            endpoint_id = str(endpoint_id).strip()
+            try:
+                sample_rate_hz = int(sample_rate)
+            except (TypeError, ValueError):
+                continue
+            if endpoint_id and sample_rate_hz > 0:
+                self._endpoint_sample_rates[endpoint_id] = sample_rate_hz
         self._fallback = fallback or DeterministicTextToSpeechAdapter()
         self._http_client = http_client
         self._last_error: str | None = None
@@ -406,9 +419,15 @@ class PiperTextToSpeechAdapter:
             )
             response.raise_for_status()
             self._output_dir.mkdir(parents=True, exist_ok=True)
+            raw_audio = response.content
+            raw_path = self._output_dir / f"{stream_id}.raw.wav"
             output_path = self._output_dir / f"{stream_id}.wav"
-            audio = normalize_wav_sample_rate(response.content, self._output_sample_rate_hz)
+            target_sample_rate_hz = self._sample_rate_for_endpoint(endpoint_id)
+            audio = normalize_wav_sample_rate(raw_audio, target_sample_rate_hz)
+            raw_path.write_bytes(raw_audio)
             output_path.write_bytes(audio)
+            raw_sample_rate_hz = wav_sample_rate_hz(raw_audio)
+            output_sample_rate_hz = wav_sample_rate_hz(audio)
             self._last_error = None
             record_voice_event(
                 "tts.synthesized",
@@ -419,6 +438,10 @@ class PiperTextToSpeechAdapter:
                 content_type=response.headers.get("content-type", "audio/wav"),
                 audio_url=f"/api/voice/tts/{stream_id}",
                 text_chars=len(text or ""),
+                raw_audio_path=str(raw_path),
+                raw_sample_rate_hz=raw_sample_rate_hz,
+                target_sample_rate_hz=target_sample_rate_hz,
+                output_sample_rate_hz=output_sample_rate_hz,
                 error=None,
             )
             return TtsSynthesis(
@@ -426,6 +449,9 @@ class PiperTextToSpeechAdapter:
                 stream_id=stream_id,
                 audio_url=f"/api/voice/tts/{stream_id}",
                 provider_id="piper",
+                raw_audio_path=str(raw_path),
+                raw_sample_rate_hz=raw_sample_rate_hz,
+                output_sample_rate_hz=output_sample_rate_hz,
             )
         except Exception as exc:
             self._last_error = str(exc)
@@ -453,9 +479,15 @@ class PiperTextToSpeechAdapter:
             "synthesize_path": self._synthesize_path,
             "voice": self._voice,
             "output_sample_rate_hz": self._output_sample_rate_hz,
+            "endpoint_sample_rates": dict(self._endpoint_sample_rates),
             "last_error": self._last_error,
             "fallback": self._fallback.status(),
         }
+
+    def _sample_rate_for_endpoint(self, endpoint_id: str) -> int | None:
+        if endpoint_id in self._endpoint_sample_rates:
+            return self._endpoint_sample_rates[endpoint_id]
+        return self._output_sample_rate_hz
 
 
 class OpenAiTextToSpeechAdapter:
@@ -639,6 +671,15 @@ def normalize_wav_sample_rate(audio: bytes, target_sample_rate_hz: int | None) -
     return buffer.getvalue()
 
 
+def wav_sample_rate_hz(audio: bytes) -> int | None:
+    try:
+        with wave.open(io.BytesIO(audio), "rb") as wav_file:
+            sample_rate = wav_file.getframerate()
+    except wave.Error:
+        return None
+    return sample_rate if sample_rate > 0 else None
+
+
 def resample_pcm16le(data: bytes, *, source_rate: int, target_rate: int, channels: int) -> bytes:
     frame_size = channels * 2
     frame_count = len(data) // frame_size
@@ -796,6 +837,7 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             output_dir=settings.runtime_dir / "voice_tts",
             timeout_s=settings.voice_tts_timeout_s,
             output_sample_rate_hz=settings.voice_tts_output_sample_rate_hz,
+            endpoint_sample_rates=settings.resolved_voice_tts_endpoint_sample_rates(),
             fallback=DeterministicTextToSpeechAdapter(),
         )
 

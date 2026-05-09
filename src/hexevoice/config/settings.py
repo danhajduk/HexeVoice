@@ -121,6 +121,7 @@ class Settings(BaseSettings):
     voice_tts_piper_synthesize_path: str = Field(default="/api/tts", alias="VOICE_TTS_PIPER_SYNTHESIZE_PATH")
     voice_tts_piper_voice: str | None = Field(default=None, alias="VOICE_TTS_PIPER_VOICE")
     voice_tts_endpoint_voices: str = Field(default="", alias="VOICE_TTS_ENDPOINT_VOICES")
+    voice_tts_endpoint_sample_rates: str = Field(default="", alias="VOICE_TTS_ENDPOINT_SAMPLE_RATES")
     piper_tts_model_dir: Path | None = Field(default=None, alias="PIPER_TTS_MODEL_DIR")
     piper_tts_warm_voices: str = Field(default="", alias="PIPER_TTS_WARM_VOICES")
     piper_tts_service_id: str = Field(default="piper_tts", alias="PIPER_TTS_SERVICE_ID")
@@ -238,3 +239,38 @@ class Settings(BaseSettings):
             if endpoint_id and voice:
                 endpoint_voices[endpoint_id] = voice
         return endpoint_voices
+
+    def resolved_voice_tts_endpoint_sample_rates(self) -> dict[str, int]:
+        raw = self.voice_tts_endpoint_sample_rates.strip()
+        if not raw:
+            return {}
+        raw_values: dict[str, object]
+        if raw.startswith("{"):
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+            if not isinstance(payload, dict):
+                return {}
+            raw_values = payload
+        else:
+            raw_values = {}
+            for entry in raw.split(","):
+                if "=" in entry:
+                    endpoint_id, sample_rate = entry.split("=", 1)
+                elif ":" in entry:
+                    endpoint_id, sample_rate = entry.split(":", 1)
+                else:
+                    continue
+                raw_values[endpoint_id] = sample_rate
+
+        endpoint_sample_rates: dict[str, int] = {}
+        for endpoint_id, sample_rate in raw_values.items():
+            endpoint_id = str(endpoint_id).strip()
+            try:
+                parsed_sample_rate = int(str(sample_rate).strip())
+            except (TypeError, ValueError):
+                continue
+            if endpoint_id and parsed_sample_rate > 0:
+                endpoint_sample_rates[endpoint_id] = parsed_sample_rate
+        return endpoint_sample_rates

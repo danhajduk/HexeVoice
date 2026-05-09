@@ -10,7 +10,7 @@ from hexevoice.config.settings import Settings
 from hexevoice.voice.pipeline import VoiceTurnPipeline
 
 
-GENERATED_AUDIO_SUFFIXES = {".mp3", ".ogg", ".wav"}
+GENERATED_AUDIO_SUFFIXES = (".wav", ".mp3", ".ogg")
 
 
 class TtsAudioService:
@@ -50,6 +50,9 @@ class TtsAudioService:
             "stream_id": stream_id,
             "content_type": content_type,
             "duration_ms": duration_ms,
+            "raw_audio_path": synthesis.raw_audio_path,
+            "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
+            "output_sample_rate_hz": synthesis.output_sample_rate_hz,
             "expires_at": expires_at.isoformat(),
             "provider_id": synthesis.provider_id,
             "text_chars": len(request.text or ""),
@@ -108,6 +111,9 @@ class TtsAudioService:
             "audio_url": f"{self.public_api_base_url()}/api/tts/audio/{stream_id}" if voice_ready else None,
             "content_type": content_type if voice_ready else None,
             "duration_ms": duration_ms,
+            "raw_audio_path": synthesis.raw_audio_path,
+            "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
+            "output_sample_rate_hz": synthesis.output_sample_rate_hz,
             "provider_id": synthesis.provider_id,
             "model_id": options.get("model_id"),
             "voice_id": options.get("voice_id") or options.get("voice"),
@@ -130,9 +136,13 @@ class TtsAudioService:
         if safe_stream_id is None:
             return None
         self.cleanup_expired()
+        for suffix in GENERATED_AUDIO_SUFFIXES:
+            candidate = self._audio_dir / f"{safe_stream_id}{suffix}"
+            if candidate.is_file():
+                return candidate
         candidates = sorted(self._audio_dir.glob(f"{safe_stream_id}.*"))
         for candidate in candidates:
-            if candidate.suffix != ".json" and candidate.is_file():
+            if candidate.suffix != ".json" and ".raw." not in candidate.name and candidate.is_file():
                 return candidate
         return None
 
@@ -190,7 +200,8 @@ class TtsAudioService:
         for candidate in sorted(self._audio_dir.iterdir()):
             if not candidate.is_file() or candidate.suffix.lower() not in GENERATED_AUDIO_SUFFIXES:
                 continue
-            if candidate.with_suffix(".json").exists():
+            metadata_path = self._metadata_path_for_audio_candidate(candidate)
+            if metadata_path is not None and metadata_path.exists():
                 continue
             try:
                 modified_at = datetime.fromtimestamp(candidate.stat().st_mtime, UTC)
@@ -217,6 +228,16 @@ class TtsAudioService:
     def _metadata_path(self, stream_id: str) -> Path:
         self._audio_dir.mkdir(parents=True, exist_ok=True)
         return self._audio_dir / f"{stream_id}.json"
+
+    def _metadata_path_for_audio_candidate(self, path: Path) -> Path | None:
+        name = path.name
+        for suffix in GENERATED_AUDIO_SUFFIXES:
+            raw_suffix = f".raw{suffix}"
+            if name.endswith(raw_suffix):
+                return self._audio_dir / f"{name[:-len(raw_suffix)]}.json"
+            if name.endswith(suffix):
+                return self._audio_dir / f"{name[:-len(suffix)]}.json"
+        return None
 
     def _write_deterministic_wav(self, stream_id: str) -> Path:
         self._audio_dir.mkdir(parents=True, exist_ok=True)

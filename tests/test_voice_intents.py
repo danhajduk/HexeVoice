@@ -255,15 +255,29 @@ def test_tts_audio_cleanup_removes_expired_sidecar_and_audio(tmp_path):
     assert (tts_dir / "voice-intent-live.json").exists()
 
 
+def test_tts_audio_path_prefers_resampled_artifact_over_raw_sidecar(tmp_path):
+    service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    raw_audio = tts_dir / "voice-intent-1.raw.wav"
+    playback_audio = tts_dir / "voice-intent-1.wav"
+    raw_audio.write_bytes(b"RIFFraw")
+    playback_audio.write_bytes(b"RIFFplayback")
+
+    assert service.audio_path("voice-intent-1") == playback_audio
+
+
 def test_tts_orphan_cleanup_removes_old_audio_without_sidecar(tmp_path):
     service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
     tts_dir = tmp_path / "voice_tts"
     tts_dir.mkdir()
     orphan = tts_dir / "orphan.wav"
     paired_audio = tts_dir / "paired.wav"
+    paired_raw_audio = tts_dir / "paired.raw.wav"
     fresh_orphan = tts_dir / "fresh.wav"
     orphan.write_bytes(b"RIFForphan")
     paired_audio.write_bytes(b"RIFFpaired")
+    paired_raw_audio.write_bytes(b"RIFFpairedraw")
     fresh_orphan.write_bytes(b"RIFFfresh")
     (tts_dir / "paired.json").write_text(
         json.dumps({"expires_at": "2999-01-01T00:00:00+00:00"}),
@@ -272,10 +286,12 @@ def test_tts_orphan_cleanup_removes_old_audio_without_sidecar(tmp_path):
     old_timestamp = (datetime.now(UTC) - timedelta(days=2)).timestamp()
     os.utime(orphan, (old_timestamp, old_timestamp))
     os.utime(paired_audio, (old_timestamp, old_timestamp))
+    os.utime(paired_raw_audio, (old_timestamp, old_timestamp))
 
     deleted_count = service.cleanup_orphaned_audio(min_age_seconds=600)
 
     assert deleted_count == 1
     assert not orphan.exists()
     assert paired_audio.exists()
+    assert paired_raw_audio.exists()
     assert fresh_orphan.exists()

@@ -481,6 +481,7 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert synthesis.content_type == "audio/wav"
     assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}"
     assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == b"RIFFpiper-wav"
+    assert (tmp_path / f"{synthesis.stream_id}.raw.wav").read_bytes() == b"RIFFpiper-wav"
     assert adapter.status()["healthy"] is True
 
 
@@ -508,6 +509,37 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
         assert wav_file.getframerate() == 16000
         assert wav_file.getsampwidth() == 2
         assert wav_file.getnchannels() == 1
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.raw.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 22050
+    assert synthesis.raw_sample_rate_hz == 22050
+    assert synthesis.output_sample_rate_hz == 16000
+
+
+def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):
+    source = io.BytesIO()
+    with wave.open(source, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(22050)
+        wav_file.writeframes((b"\x00\x00\xff\x7f" * 2205))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=source.getvalue(), headers={"content-type": "audio/wav"})
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://piper.test:10200",
+        output_dir=tmp_path,
+        output_sample_rate_hz=16000,
+        endpoint_sample_rates={"esp-pe-1": 48000},
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(endpoint_id="esp-pe-1", session_id="voice-session-1", text="hello")
+
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 48000
+    assert synthesis.output_sample_rate_hz == 48000
+    assert adapter.status()["endpoint_sample_rates"] == {"esp-pe-1": 48000}
 
 
 def test_piper_tts_adapter_keeps_native_wav_when_resampling_disabled(tmp_path):
@@ -531,6 +563,7 @@ def test_piper_tts_adapter_keeps_native_wav_when_resampling_disabled(tmp_path):
     synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
 
     assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == source.getvalue()
+    assert (tmp_path / f"{synthesis.stream_id}.raw.wav").read_bytes() == source.getvalue()
 
 
 def test_piper_tts_adapter_falls_back_when_unconfigured(tmp_path):
@@ -591,6 +624,21 @@ def test_build_voice_turn_pipeline_applies_endpoint_voice_overrides(tmp_path):
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert pipeline.status()["endpoint_voices"] == {"esp-pe-1": "en_US-hfc_female-medium"}
+
+
+def test_build_voice_turn_pipeline_applies_endpoint_sample_rate_overrides(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_tts_provider="piper",
+        voice_tts_endpoint_sample_rates="esp-pe-1=48000,esp-box-1=16000",
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    assert pipeline.status()["tts"]["endpoint_sample_rates"] == {"esp-pe-1": 48000, "esp-box-1": 16000}
 
 
 def test_voice_turn_pipeline_status_reports_provider_health(tmp_path):

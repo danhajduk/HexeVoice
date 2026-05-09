@@ -29,13 +29,26 @@ from hexevoice.voice.contracts import (
     project_ux_state,
     project_voice_state,
 )
-from hexevoice.voice.pipeline import VoiceTurnAudioSummary, VoiceTurnPipeline
+from hexevoice.voice.pipeline import TtsSynthesis, VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
 from hexevoice.voice.wake_recordings import WakeRecordingService
 
 
 log = logging.getLogger(__name__)
+
+
+def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
+    return {
+        "content_type": tts.content_type,
+        "stream_id": tts.stream_id,
+        "audio_url": tts.audio_url,
+        "provider_id": tts.provider_id,
+        "raw_audio_path": tts.raw_audio_path,
+        "raw_sample_rate_hz": tts.raw_sample_rate_hz,
+        "output_sample_rate_hz": tts.output_sample_rate_hz,
+        "error": tts.error,
+    }
 
 
 class VoiceSessionManager:
@@ -224,13 +237,7 @@ class VoiceSessionManager:
                 text=replay_text,
             )
             self._last_response = replay_text
-            self._last_tts = {
-                "content_type": tts.content_type,
-                "stream_id": tts.stream_id,
-                "audio_url": tts.audio_url,
-                "provider_id": tts.provider_id,
-                "error": tts.error,
-            }
+            self._last_tts = tts_synthesis_metadata(tts)
             if tts.error:
                 return {"accepted": False, "reason": tts.error, "status": "failed"}
         if not self._last_tts or not self._last_tts.get("stream_id"):
@@ -274,13 +281,7 @@ class VoiceSessionManager:
             text=spoken_text,
         )
         self._last_response = spoken_text
-        self._last_tts = {
-            "content_type": tts.content_type,
-            "stream_id": tts.stream_id,
-            "audio_url": tts.audio_url,
-            "provider_id": tts.provider_id,
-            "error": tts.error,
-        }
+        self._last_tts = tts_synthesis_metadata(tts)
         if tts.error:
             return {"accepted": False, "reason": tts.error, "status": "failed"}
         if not tts.stream_id:
@@ -293,6 +294,8 @@ class VoiceSessionManager:
             content_type=tts.content_type,
             stream_id=tts.stream_id,
             audio_url=tts.audio_url,
+            raw_sample_rate_hz=tts.raw_sample_rate_hz,
+            output_sample_rate_hz=tts.output_sample_rate_hz,
             spoken_text=spoken_text,
         )
         return await self._push_endpoint_command(
@@ -327,13 +330,7 @@ class VoiceSessionManager:
             text=announcement_text,
         )
         self._last_response = announcement_text
-        self._last_tts = {
-            "content_type": tts.content_type,
-            "stream_id": tts.stream_id,
-            "audio_url": tts.audio_url,
-            "provider_id": tts.provider_id,
-            "error": tts.error,
-        }
+        self._last_tts = tts_synthesis_metadata(tts)
         if tts.error:
             return {"accepted": False, "reason": tts.error, "status": "failed"}
         if not tts.stream_id:
@@ -346,6 +343,8 @@ class VoiceSessionManager:
             content_type=tts.content_type,
             stream_id=tts.stream_id,
             audio_url=tts.audio_url,
+            raw_sample_rate_hz=tts.raw_sample_rate_hz,
+            output_sample_rate_hz=tts.output_sample_rate_hz,
             spoken_text=announcement_text,
             source_event_id=source_event_id,
         )
@@ -1028,13 +1027,7 @@ class VoiceSessionManager:
             }
             self._update_active_session_history(assistant=self._last_assistant)
             self._set_session_state("responding")
-            self._last_tts = {
-                "content_type": turn.tts.content_type,
-                "stream_id": turn.tts.stream_id,
-                "audio_url": turn.tts.audio_url,
-                "provider_id": turn.tts.provider_id,
-                "error": turn.tts.error,
-            }
+            self._last_tts = tts_synthesis_metadata(turn.tts)
             self._update_active_session_history(tts=self._last_tts)
             record_voice_event(
                 "tts.ready",
@@ -1044,6 +1037,8 @@ class VoiceSessionManager:
                 content_type=turn.tts.content_type,
                 stream_id=turn.tts.stream_id,
                 audio_url=turn.tts.audio_url,
+                raw_sample_rate_hz=turn.tts.raw_sample_rate_hz,
+                output_sample_rate_hz=turn.tts.output_sample_rate_hz,
                 text_chars=len(turn.assistant_response.spoken_text or ""),
                 spoken_text=turn.assistant_response.spoken_text,
                 duration_ms=turn.timings.tts_ms,
