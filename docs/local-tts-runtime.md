@@ -24,12 +24,12 @@ Backend TTS routing is selected with `VOICE_TTS_PROVIDER`:
 For `piper`, the backend writes returned WAV bytes into `runtime/voice_tts` and serves them through `/api/voice/tts/{stream_id}` for firmware playback. If the Piper request fails, the current fallback policy is deterministic synthesis so the voice session can still complete with observable provider status instead of hard failing the turn.
 
 Firmware playback expects RIFF/WAVE PCM audio. The local Piper path stores generated audio as `.wav` artifacts and the backend serves those artifacts with `audio/wav`.
-Piper voice models commonly emit 22.05 kHz audio; HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output. The Home Assistant Voice PE firmware resamples native-rate PCM16 WAV input locally for its 48 kHz speaker path.
+Piper voice models commonly emit 22.05 kHz audio; HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output. The Home Assistant Voice PE hardware speaker path is clocked at 48 kHz, so the PE firmware resamples native-rate PCM16 WAV input locally for playback.
 
-Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to the local Jarvis 48 kHz voice:
+Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to the official Lessac high voice, which emits 22.05 kHz audio:
 
 ```env
-VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_GB-jarvis-medium
+VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_US-lessac-high
 ```
 
 ## Supervisor Shape
