@@ -67,6 +67,7 @@ def test_piper_tts_settings_default_to_supervised_local_service():
     assert settings.voice_tts_piper_service_port == 10200
     assert settings.voice_tts_piper_synthesize_path == "/api/tts"
     assert settings.voice_tts_piper_voice is None
+    assert settings.voice_tts_endpoint_voices == ""
     assert settings.voice_tts_output_sample_rate_hz == 16000
     assert settings.piper_tts_warm_voices == ""
     assert settings.piper_tts_service_id == "piper_tts"
@@ -75,6 +76,22 @@ def test_piper_tts_settings_default_to_supervised_local_service():
     assert settings.resolved_voice_tts_piper_base_url() == "http://127.0.0.1:10200"
     assert settings.resolved_piper_tts_model_dir().as_posix() == "runtime/piper-tts/models"
     assert settings.resolved_piper_tts_warm_voices() == []
+    assert settings.resolved_voice_tts_endpoint_voices() == {}
+
+
+def test_tts_endpoint_voice_overrides_parse_env_mapping():
+    settings = Settings(voice_tts_endpoint_voices="esp-pe-1=en_US-hfc_female-medium, esp-box-1:en_US-lessac-medium")
+
+    assert settings.resolved_voice_tts_endpoint_voices() == {
+        "esp-pe-1": "en_US-hfc_female-medium",
+        "esp-box-1": "en_US-lessac-medium",
+    }
+
+
+def test_tts_endpoint_voice_overrides_parse_json_mapping():
+    settings = Settings(voice_tts_endpoint_voices='{"esp-pe-1": "en_US-hfc_female-medium"}')
+
+    assert settings.resolved_voice_tts_endpoint_voices() == {"esp-pe-1": "en_US-hfc_female-medium"}
 
 
 def test_piper_tts_explicit_base_url_overrides_service_host():

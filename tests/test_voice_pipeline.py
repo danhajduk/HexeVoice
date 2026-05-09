@@ -34,6 +34,34 @@ class FakeTimerEventPublisher:
         return {"provider": "fake", "enabled": True, "last_decision": None}
 
 
+class CaptureTextToSpeechAdapter:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def synthesize(self, *, endpoint_id, session_id, text, voice=None, audio_format=None, stream_id=None):
+        self.calls.append(
+            {
+                "endpoint_id": endpoint_id,
+                "session_id": session_id,
+                "text": text,
+                "voice": voice,
+                "audio_format": audio_format,
+                "stream_id": stream_id,
+            }
+        )
+        return DeterministicTextToSpeechAdapter().synthesize(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            text=text,
+            voice=voice,
+            audio_format=audio_format,
+            stream_id=stream_id,
+        )
+
+    def status(self):
+        return {"provider": "capture", "healthy": True, "configured": True}
+
+
 def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
     assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)
@@ -56,6 +84,30 @@ def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     assert result.timings.assistant_ms >= 0
     assert result.timings.tts_ms >= 0
     assert result.timings.total_ms >= 0
+
+
+def test_voice_turn_pipeline_can_select_voice_by_endpoint(tmp_path):
+    runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
+    assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)
+    tts_adapter = CaptureTextToSpeechAdapter()
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="status"),
+        tts_adapter=tts_adapter,
+        endpoint_voices={"esp-pe-1": "en_US-hfc_female-medium"},
+    )
+
+    pipeline.complete_turn(VoiceTurnAudioSummary(endpoint_id="esp-pe-1", session_id="voice-session-1", chunk_count=2))
+    pipeline.synthesize_reply(
+        endpoint_id="esp-pe-1",
+        session_id="voice-session-2",
+        text="hello",
+        voice="en_US-lessac-medium",
+    )
+
+    assert tts_adapter.calls[0]["voice"] == "en_US-hfc_female-medium"
+    assert tts_adapter.calls[1]["voice"] == "en_US-lessac-medium"
+    assert pipeline.status()["endpoint_voices"] == {"esp-pe-1": "en_US-hfc_female-medium"}
 
 
 def test_build_voice_turn_pipeline_keeps_deterministic_stt_as_default(tmp_path):
@@ -525,6 +577,20 @@ def test_build_voice_turn_pipeline_routes_piper_to_supervised_default(tmp_path):
     assert status["synthesize_path"] == "/api/tts"
     assert status["output_sample_rate_hz"] == 16000
     assert status["fallback"]["provider"] == "deterministic"
+
+
+def test_build_voice_turn_pipeline_applies_endpoint_voice_overrides(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_tts_endpoint_voices="esp-pe-1=en_US-hfc_female-medium",
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    assert pipeline.status()["endpoint_voices"] == {"esp-pe-1": "en_US-hfc_female-medium"}
 
 
 def test_voice_turn_pipeline_status_reports_provider_health(tmp_path):

@@ -656,10 +656,12 @@ class VoiceTurnPipeline:
         assistant_service: AssistantTurnService,
         stt_adapter: SpeechToTextAdapter | None = None,
         tts_adapter: TextToSpeechAdapter | None = None,
+        endpoint_voices: dict[str, str] | None = None,
     ) -> None:
         self._assistant_service = assistant_service
         self._stt_adapter = stt_adapter or DeterministicSpeechToTextAdapter()
         self._tts_adapter = tts_adapter or DeterministicTextToSpeechAdapter()
+        self._endpoint_voices = dict(endpoint_voices or {})
 
     def complete_turn(self, audio: VoiceTurnAudioSummary) -> VoiceTurnResult:
         turn_started_at = time.perf_counter()
@@ -696,6 +698,7 @@ class VoiceTurnPipeline:
             endpoint_id=audio.endpoint_id,
             session_id=audio.session_id,
             text=assistant_response.spoken_text,
+            voice=self._voice_for_endpoint(audio.endpoint_id),
         )
         tts_ms = round((time.perf_counter() - tts_started_at) * 1000, 2)
         timings = VoiceTurnTimings(
@@ -725,6 +728,7 @@ class VoiceTurnPipeline:
             "assistant": self._assistant_service.status(),
             "stt": self._stt_adapter.status(),
             "tts": self._tts_adapter.status(),
+            "endpoint_voices": dict(self._endpoint_voices),
         }
 
     def synthesize_reply(
@@ -741,10 +745,13 @@ class VoiceTurnPipeline:
             endpoint_id=endpoint_id,
             session_id=session_id,
             text=text,
-            voice=voice,
+            voice=voice or self._voice_for_endpoint(endpoint_id),
             audio_format=audio_format,
             stream_id=stream_id,
         )
+
+    def _voice_for_endpoint(self, endpoint_id: str) -> str | None:
+        return self._endpoint_voices.get(endpoint_id)
 
     def preload_stt(self) -> dict | None:
         preload = getattr(self._stt_adapter, "preload", None)
@@ -792,4 +799,9 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             fallback=DeterministicTextToSpeechAdapter(),
         )
 
-    return VoiceTurnPipeline(assistant_service=assistant_service, stt_adapter=stt_adapter, tts_adapter=tts_adapter)
+    return VoiceTurnPipeline(
+        assistant_service=assistant_service,
+        stt_adapter=stt_adapter,
+        tts_adapter=tts_adapter,
+        endpoint_voices=settings.resolved_voice_tts_endpoint_voices(),
+    )

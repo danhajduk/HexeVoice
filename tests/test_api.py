@@ -771,13 +771,14 @@ def test_tts_warmup_voice_selection_prefers_configured_warm_voices():
         voice_tts_provider="piper",
         voice_tts_piper_voice="en_US-kathleen-low",
         piper_tts_warm_voices="en_US-kathleen-low,en_US-hfc_female-medium",
+        voice_tts_endpoint_voices="esp-pe-1=en_US-amy-medium",
     )
 
-    assert _tts_warmup_voices(settings) == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
+    assert _tts_warmup_voices(settings) == ["en_US-kathleen-low", "en_US-hfc_female-medium", "en_US-amy-medium"]
 
 
 def test_tts_warmup_voice_selection_can_use_discovered_piper_voices():
-    settings = Settings(voice_tts_provider="piper")
+    settings = Settings(voice_tts_provider="piper", voice_tts_endpoint_voices="esp-pe-1=en_US-hfc_female-medium")
 
     assert _tts_warmup_voices(
         settings,

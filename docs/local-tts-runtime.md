@@ -26,6 +26,12 @@ For `piper`, the backend writes returned WAV bytes into `runtime/voice_tts` and 
 Firmware playback expects RIFF/WAVE PCM audio. The local Piper path stores generated audio as `.wav` artifacts and the backend serves those artifacts with `audio/wav`.
 Piper voice models commonly emit 22.05 kHz audio; HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output when the selected voice already emits endpoint-friendly 16 kHz audio.
 
+Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to HFC female medium:
+
+```env
+VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_US-hfc_female-medium
+```
+
 ## Supervisor Shape
 
 When Piper is selected as the TTS provider, HexeVoice advertises a `piper_tts` service in the node runtime metadata sent to Core Supervisor.
@@ -84,7 +90,7 @@ PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-hfc_female-medium
 
 Warm voices reuse persistent Piper `--output-raw` processes and are wrapped back into WAV responses, so `/api/tts` keeps the same response shape while avoiding model reload delay for those voices. Non-warm voices still use the cold per-request Piper process path.
 
-When `VOICE_TTS_PROVIDER=piper`, the backend also runs an `every_10_minutes` warmup task that synthesizes `hello` against the configured warm voices. The generated artifacts are short-lived and are removed by the normal generated-voice cleanup loop. The latest warmup status is visible in `/api/voice/status` as `voice_tts_warmup`.
+When `VOICE_TTS_PROVIDER=piper`, the backend also runs an `every_10_minutes` warmup task that synthesizes `hello` against the configured warm voices and endpoint-specific override voices. The generated artifacts are short-lived and are removed by the normal generated-voice cleanup loop. The latest warmup status is visible in `/api/voice/status` as `voice_tts_warmup`.
 
 Generated voice artifacts with metadata sidecars are checked every five minutes and removed when their `expires_at` passes. Audio files without a matching `.json` sidecar are treated as orphans and cleaned once per day at local `00:00`, after a ten-minute age guard. The latest orphan cleanup status is visible in `/api/voice/status` as `voice_orphan_cleanup`.
 

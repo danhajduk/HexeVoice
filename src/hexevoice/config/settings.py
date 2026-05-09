@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 from typing import Literal
 
 from pydantic import Field
@@ -113,6 +114,7 @@ class Settings(BaseSettings):
     voice_tts_piper_service_port: int = Field(default=10200, alias="VOICE_TTS_PIPER_SERVICE_PORT")
     voice_tts_piper_synthesize_path: str = Field(default="/api/tts", alias="VOICE_TTS_PIPER_SYNTHESIZE_PATH")
     voice_tts_piper_voice: str | None = Field(default=None, alias="VOICE_TTS_PIPER_VOICE")
+    voice_tts_endpoint_voices: str = Field(default="", alias="VOICE_TTS_ENDPOINT_VOICES")
     piper_tts_model_dir: Path | None = Field(default=None, alias="PIPER_TTS_MODEL_DIR")
     piper_tts_warm_voices: str = Field(default="", alias="PIPER_TTS_WARM_VOICES")
     piper_tts_service_id: str = Field(default="piper_tts", alias="PIPER_TTS_SERVICE_ID")
@@ -189,3 +191,34 @@ class Settings(BaseSettings):
 
     def resolved_piper_tts_warm_voices(self) -> list[str]:
         return [voice.strip() for voice in self.piper_tts_warm_voices.split(",") if voice.strip()]
+
+    def resolved_voice_tts_endpoint_voices(self) -> dict[str, str]:
+        raw = self.voice_tts_endpoint_voices.strip()
+        if not raw:
+            return {}
+        if raw.startswith("{"):
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+            if not isinstance(payload, dict):
+                return {}
+            return {
+                str(endpoint_id).strip(): str(voice).strip()
+                for endpoint_id, voice in payload.items()
+                if str(endpoint_id).strip() and str(voice).strip()
+            }
+
+        endpoint_voices: dict[str, str] = {}
+        for entry in raw.split(","):
+            if "=" in entry:
+                endpoint_id, voice = entry.split("=", 1)
+            elif ":" in entry:
+                endpoint_id, voice = entry.split(":", 1)
+            else:
+                continue
+            endpoint_id = endpoint_id.strip()
+            voice = voice.strip()
+            if endpoint_id and voice:
+                endpoint_voices[endpoint_id] = voice
+        return endpoint_voices

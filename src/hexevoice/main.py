@@ -165,6 +165,7 @@ def configure_backend_logging(settings: Settings) -> Path:
 def _tts_warmup_voices(settings: Settings, *, discovered_warm_voices: list[str] | None = None) -> list[str | None]:
     configured_warm_voices = settings.resolved_piper_tts_warm_voices() or (discovered_warm_voices or [])
     voices: list[str | None] = list(configured_warm_voices)
+    voices.extend(settings.resolved_voice_tts_endpoint_voices().values())
     if settings.voice_tts_piper_voice:
         voices.insert(0, settings.voice_tts_piper_voice)
     if not voices:
