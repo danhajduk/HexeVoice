@@ -955,6 +955,10 @@ class VoiceSessionManager:
                 transcript={**self._last_transcript_metadata, "text": turn.transcript.text},
                 turn_timings=self._last_turn_timings,
             )
+            wake_recording = self._attach_wake_recording_transcript(
+                wake_recording,
+                transcript={**self._last_transcript_metadata, "text": turn.transcript.text},
+            )
             log.info(
                 "Voice transcript finalized: endpoint_id=%s session_id=%s provider=%s model=%s duration_ms=%s text_chars=%s error=%s stt_ms=%s assistant_ms=%s tts_ms=%s total_ms=%s",
                 session.endpoint_id,
@@ -1262,6 +1266,16 @@ class VoiceSessionManager:
             expires_at=recording.get("expires_at"),
         )
         return recording
+
+    def _attach_wake_recording_transcript(
+        self,
+        wake_recording: dict[str, object] | None,
+        *,
+        transcript: dict[str, Any],
+    ) -> dict[str, object] | None:
+        if self._wake_recorder is None or wake_recording is None:
+            return wake_recording
+        return self._wake_recorder.attach_transcript(wake_recording, transcript)
 
     def _begin_active_session_history(
         self,

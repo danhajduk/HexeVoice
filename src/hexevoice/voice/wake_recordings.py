@@ -137,6 +137,28 @@ class WakeRecordingService:
     def close_session(self, *, endpoint_id: str, session_id: str) -> None:
         self._captures.pop((endpoint_id, session_id), None)
 
+    def attach_transcript(self, recording: dict[str, Any], transcript: dict[str, Any]) -> dict[str, Any]:
+        metadata_path_value = recording.get("metadata_path")
+        if not metadata_path_value:
+            return recording
+        metadata_path = Path(str(metadata_path_value))
+        if not metadata_path.is_file():
+            return recording
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return recording
+        if not isinstance(metadata, dict):
+            return recording
+
+        updated_transcript = {key: value for key, value in transcript.items() if value is not None}
+        metadata["transcript"] = updated_transcript
+        recording["transcript"] = updated_transcript
+        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if self._last_recording and self._last_recording.get("metadata_path") == str(metadata_path):
+            self._last_recording = dict(recording)
+        return recording
+
     def cleanup_expired(self, *, now: datetime | None = None) -> dict[str, Any]:
         current = now or datetime.now(UTC)
         cutoff = current - timedelta(days=self._retention_days)

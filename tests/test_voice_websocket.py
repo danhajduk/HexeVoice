@@ -654,9 +654,11 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
 
     history_path = tmp_path / "voice_session_history.json"
     history_store = VoiceSessionHistoryStore(path=history_path, max_records=20)
+    wake_recorder = WakeRecordingService(recording_dir=tmp_path / "wake-recordings", retention_days=7, preroll_ms=1000)
     manager = VoiceSessionManager(
         wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
         turn_pipeline=HistoryPipeline(),
+        wake_recorder=wake_recorder,
         session_history_store=history_store,
     )
     settings = Settings(onboarding_state_path=tmp_path / "state.json")
@@ -695,8 +697,14 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert sessions[0]["turn_timings"]["total_ms"] == 36.0
     assert sessions[0]["tts"]["stream_id"] == "tts-history"
     assert sessions[0]["replay"]["eligible"] is True
+    assert sessions[0]["wake_recording"]["transcript"]["text"] == "turn on the light"
     assert sessions[0]["audio"]["raw_audio_persisted"] is False
     assert "audio_bytes" not in sessions[0]["audio"]
+    wake_metadata = json.loads(
+        (tmp_path / "wake-recordings" / recorded_name(sessions[0]["wake_recording"]["metadata_path"])).read_text()
+    )
+    assert wake_metadata["transcript"]["text"] == "turn on the light"
+    assert wake_metadata["transcript"]["provider_id"] == "stt-test"
 
     detail = client.get("/api/voice/sessions/voice-session-1").json()["session"]
     assert detail["completion_reason"] == "turn_completed"
