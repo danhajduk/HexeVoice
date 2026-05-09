@@ -500,6 +500,8 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert metadata["model_id"] == "en_US-test"
     assert metadata["voice_id"] == "en_US-test"
     assert metadata["audio_variant"] == "16k"
+    assert metadata["audio_variant_sample_rate_hz"] is None
+    assert metadata["audio_variant_source_sample_rate_hz"] is None
     assert metadata["ttl_seconds"] == 300
     assert metadata["expires_at"]
     assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
@@ -540,9 +542,13 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.raw.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 22050
     assert synthesis.raw_sample_rate_hz == 22050
+    assert synthesis.audio_variant_sample_rate_hz == 16000
+    assert synthesis.audio_variant_source_sample_rate_hz == 22050
     assert synthesis.output_sample_rate_hz == 16000
     assert synthesis.variant_sample_rates_hz == {"raw": 22050, "16k": 16000, "48k": 48000}
     metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["audio_variant_sample_rate_hz"] == 16000
+    assert metadata["audio_variant_source_sample_rate_hz"] == 22050
     assert metadata["variant_sample_rates_hz"] == {"raw": 22050, "16k": 16000, "48k": 48000}
 
 
@@ -573,6 +579,8 @@ def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):
         assert wav_file.getframerate() == 48000
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.16k.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 16000
+    assert synthesis.audio_variant_sample_rate_hz == 48000
+    assert synthesis.audio_variant_source_sample_rate_hz == 22050
     assert synthesis.output_sample_rate_hz == 48000
     assert adapter.status()["endpoint_sample_rates"] == {"esp-pe-1": 48000}
 

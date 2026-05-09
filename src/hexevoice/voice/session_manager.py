@@ -47,6 +47,8 @@ def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
         "model_id": tts.model_id,
         "voice_id": tts.voice_id,
         "audio_variant": tts.audio_variant,
+        "audio_variant_sample_rate_hz": tts.audio_variant_sample_rate_hz,
+        "audio_variant_source_sample_rate_hz": tts.audio_variant_source_sample_rate_hz,
         "audio_variants": tts.audio_variants,
         "raw_audio_path": tts.raw_audio_path,
         "raw_sample_rate_hz": tts.raw_sample_rate_hz,

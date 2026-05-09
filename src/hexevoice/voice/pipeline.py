@@ -76,6 +76,8 @@ class TtsSynthesis:
     audio_variants: dict[str, str] = field(default_factory=dict)
     raw_audio_path: str | None = None
     raw_sample_rate_hz: int | None = None
+    audio_variant_sample_rate_hz: int | None = None
+    audio_variant_source_sample_rate_hz: int | None = None
     output_sample_rate_hz: int | None = None
     variant_sample_rates_hz: dict[str, int | None] = field(default_factory=dict)
     metadata_path: str | None = None
@@ -477,6 +479,8 @@ class PiperTextToSpeechAdapter:
                     "audio_url": audio_url,
                     "text_chars": len(text or ""),
                     "audio_variant": audio_variant,
+                    "audio_variant_sample_rate_hz": output_sample_rate_hz,
+                    "audio_variant_source_sample_rate_hz": raw_sample_rate_hz,
                     "audio_variants": audio_variant_paths,
                     "raw_audio_path": str(raw_path),
                     "raw_sample_rate_hz": raw_sample_rate_hz,
@@ -502,6 +506,8 @@ class PiperTextToSpeechAdapter:
                 audio_variants=audio_variant_paths,
                 raw_audio_path=str(raw_path),
                 raw_sample_rate_hz=raw_sample_rate_hz,
+                audio_variant_sample_rate_hz=output_sample_rate_hz,
+                audio_variant_source_sample_rate_hz=raw_sample_rate_hz,
                 target_sample_rate_hz=target_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
                 variant_sample_rates_hz=variant_sample_rates_hz,
@@ -520,6 +526,8 @@ class PiperTextToSpeechAdapter:
                 audio_variants=audio_variant_paths,
                 raw_audio_path=str(raw_path),
                 raw_sample_rate_hz=raw_sample_rate_hz,
+                audio_variant_sample_rate_hz=output_sample_rate_hz,
+                audio_variant_source_sample_rate_hz=raw_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
                 variant_sample_rates_hz=variant_sample_rates_hz,
                 metadata_path=str(metadata_path),
