@@ -27,6 +27,8 @@ class MicroVadChunkRecordingService:
         self._recording_dir = recording_dir
         self._retention_days = retention_days
         self._captures: dict[tuple[str, str, int], _MicroVadCapture] = {}
+        self._pending_captures: dict[tuple[str, str], list[tuple[int, _MicroVadCapture, datetime, bool]]] = {}
+        self._accepted_sessions: set[tuple[str, str]] = set()
         self._last_recording: dict[str, Any] | None = None
         self._last_cleanup: dict[str, Any] | None = None
         self.cleanup_expired()
@@ -59,7 +61,7 @@ class MicroVadChunkRecordingService:
         capture.final_pause_ms = payload.micro_vad_pause_ms
 
         if payload.micro_vad_chunk_final:
-            return self._write_capture(
+            return self._finish_capture(
                 endpoint_id=endpoint_id,
                 session_id=session_id,
                 micro_chunk_index=micro_chunk_index,
@@ -69,7 +71,18 @@ class MicroVadChunkRecordingService:
             )
         return None
 
+    def mark_session_accepted(self, *, endpoint_id: str, session_id: str) -> list[dict[str, Any]]:
+        session_key = (endpoint_id, session_id)
+        self._accepted_sessions.add(session_key)
+        return self._flush_pending_session(endpoint_id=endpoint_id, session_id=session_id)
+
     def close_session(self, *, endpoint_id: str, session_id: str) -> None:
+        session_key = (endpoint_id, session_id)
+        if session_key not in self._accepted_sessions:
+            self._discard_session(endpoint_id=endpoint_id, session_id=session_id)
+            return
+
+        self._flush_pending_session(endpoint_id=endpoint_id, session_id=session_id)
         keys = [key for key in self._captures if key[0] == endpoint_id and key[1] == session_id]
         now = datetime.now(UTC)
         for key in keys:
@@ -85,6 +98,7 @@ class MicroVadChunkRecordingService:
                 completed_at=now,
                 final=False,
             )
+        self._accepted_sessions.discard(session_key)
 
     def cleanup_expired(self, *, now: datetime | None = None) -> dict[str, Any]:
         current = now or datetime.now(UTC)
@@ -116,9 +130,60 @@ class MicroVadChunkRecordingService:
             "recording_dir": str(self._recording_dir),
             "retention_days": self._retention_days,
             "buffered_chunks": len(self._captures),
+            "pending_chunks": sum(len(captures) for captures in self._pending_captures.values()),
+            "accepted_sessions": len(self._accepted_sessions),
             "last_recording": self._last_recording,
             "last_cleanup": self._last_cleanup,
         }
+
+    def _finish_capture(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        micro_chunk_index: int,
+        capture: _MicroVadCapture,
+        completed_at: datetime,
+        final: bool,
+    ) -> dict[str, Any] | None:
+        self._captures.pop((endpoint_id, session_id, micro_chunk_index), None)
+        session_key = (endpoint_id, session_id)
+        if session_key in self._accepted_sessions:
+            return self._write_capture(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                micro_chunk_index=micro_chunk_index,
+                capture=capture,
+                completed_at=completed_at,
+                final=final,
+            )
+        self._pending_captures.setdefault(session_key, []).append((micro_chunk_index, capture, completed_at, final))
+        return None
+
+    def _flush_pending_session(self, *, endpoint_id: str, session_id: str) -> list[dict[str, Any]]:
+        session_key = (endpoint_id, session_id)
+        pending = self._pending_captures.pop(session_key, [])
+        recordings: list[dict[str, Any]] = []
+        for micro_chunk_index, capture, completed_at, final in pending:
+            if not capture.audio:
+                continue
+            recordings.append(
+                self._write_capture(
+                    endpoint_id=endpoint_id,
+                    session_id=session_id,
+                    micro_chunk_index=micro_chunk_index,
+                    capture=capture,
+                    completed_at=completed_at,
+                    final=final,
+                )
+            )
+        return recordings
+
+    def _discard_session(self, *, endpoint_id: str, session_id: str) -> None:
+        self._pending_captures.pop((endpoint_id, session_id), None)
+        for key in [key for key in self._captures if key[0] == endpoint_id and key[1] == session_id]:
+            self._captures.pop(key, None)
+        self._accepted_sessions.discard((endpoint_id, session_id))
 
     def _write_capture(
         self,

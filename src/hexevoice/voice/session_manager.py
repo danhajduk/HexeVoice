@@ -857,6 +857,11 @@ class VoiceSessionManager:
                     chunk_index=payload.chunk_index,
                     chunk_count=self._chunk_count,
                 )
+            if self._micro_vad_chunk_recorder is not None:
+                self._micro_vad_chunk_recorder.mark_session_accepted(
+                    endpoint_id=event.endpoint_id,
+                    session_id=session.session_id,
+                )
             self._record_wake_history(
                 {
                     "outcome": "accepted",

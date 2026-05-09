@@ -121,6 +121,6 @@ VOICE_MICRO_VAD_CHUNKS_ENABLED=true
 VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS=1
 ```
 
-When enabled, the backend writes firmware-marked micro-VAD chunks to `runtime/micro_vad_chunks` by default. Each chunk is saved as a PCM WAV with a JSON sidecar that includes endpoint, session, firmware micro-VAD chunk index, pause duration, audio format, duration, and expiration metadata. These files are debug artifacts only and are not exposed in the UI.
+When enabled, the backend buffers firmware-marked micro-VAD chunks and writes them to `runtime/micro_vad_chunks` only after the wake word is accepted for that session. Sessions without an accepted wake word are discarded. Each kept chunk is saved as a PCM WAV with a JSON sidecar that includes endpoint, session, firmware micro-VAD chunk index, pause duration, audio format, duration, and expiration metadata. These files are debug artifacts only and are not exposed in the UI.
 
 Validation notes are captured in `docs/supervised-openwakeword-validation.md`.
