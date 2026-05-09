@@ -70,6 +70,8 @@ class TtsSynthesis:
     content_type: str = "audio/wav"
     stream_id: str | None = None
     audio_url: str | None = None
+    endpoint_audio_url: str | None = None
+    audio_urls: dict[str, str] = field(default_factory=dict)
     provider_id: str = "deterministic"
     model_id: str | None = None
     voice_id: str | None = None
@@ -467,7 +469,9 @@ class PiperTextToSpeechAdapter:
             audio_variant_paths.update({variant: str(path) for variant, path in variant_paths.items()})
             audio_variant = self._variant_for_sample_rate(target_sample_rate_hz)
             output_sample_rate_hz = variant_sample_rates_hz.get(audio_variant) if audio_variant else raw_sample_rate_hz
-            audio_url = f"/api/voice/tts/{stream_id}/{audio_variant}" if audio_variant else f"/api/voice/tts/{stream_id}"
+            audio_url = tts_audio_base_url(stream_id)
+            audio_urls = tts_audio_variant_urls(stream_id, audio_variant_paths)
+            endpoint_audio_url = audio_urls.get(audio_variant or "") or audio_urls.get("raw") or audio_url
             content_type = response.headers.get("content-type", "audio/wav")
             metadata_path, expires_at = write_default_tts_sidecar(
                 self._output_dir,
@@ -479,7 +483,7 @@ class PiperTextToSpeechAdapter:
                     "model_id": selected_voice,
                     "voice_id": selected_voice,
                     "content_type": content_type,
-                    "audio_url": audio_url,
+                    **tts_audio_url_metadata(audio_urls, endpoint_audio_url=endpoint_audio_url),
                     "text_chars": len(text or ""),
                     "audio_variant": audio_variant,
                     "audio_variant_sample_rate_hz": output_sample_rate_hz,
@@ -522,6 +526,8 @@ class PiperTextToSpeechAdapter:
                 content_type=content_type,
                 stream_id=stream_id,
                 audio_url=audio_url,
+                endpoint_audio_url=endpoint_audio_url,
+                audio_urls=audio_urls,
                 provider_id="piper",
                 model_id=selected_voice,
                 voice_id=selected_voice,
@@ -665,7 +671,8 @@ class OpenAiTextToSpeechAdapter:
             self._output_dir.mkdir(parents=True, exist_ok=True)
             output_path = self._output_dir / f"{stream_id}.{response_format}"
             output_path.write_bytes(response.content)
-            audio_url = f"/api/voice/tts/{stream_id}"
+            audio_url = tts_audio_base_url(stream_id)
+            audio_urls = {"raw": audio_url}
             metadata_path, expires_at = write_default_tts_sidecar(
                 self._output_dir,
                 stream_id,
@@ -678,7 +685,7 @@ class OpenAiTextToSpeechAdapter:
                     "model": self._model,
                     "voice": selected_voice,
                     "content_type": content_type,
-                    "audio_url": audio_url,
+                    **tts_audio_url_metadata(audio_urls, endpoint_audio_url=audio_url),
                     "text_chars": len(text or ""),
                     "requested_format": response_format,
                 },
@@ -705,6 +712,8 @@ class OpenAiTextToSpeechAdapter:
                 content_type=content_type,
                 stream_id=stream_id,
                 audio_url=audio_url,
+                endpoint_audio_url=audio_url,
+                audio_urls=audio_urls,
                 provider_id="openai",
                 model_id=self._model,
                 voice_id=selected_voice,
@@ -785,6 +794,49 @@ def normalize_tts_conversion_sample_rates(sample_rates: dict[str, int] | None) -
         if variant:
             normalized[variant] = parsed_sample_rate
     return normalized or dict(DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES)
+
+
+def tts_audio_variant_urls(stream_id: str, variants: dict[str, Any]) -> dict[str, str]:
+    base_url = tts_audio_base_url(stream_id)
+    urls: dict[str, str] = {}
+    for variant in variants:
+        normalized_variant = str(variant or "").strip().lower()
+        if normalized_variant == "raw":
+            urls["raw"] = f"{base_url}raw"
+        elif normalized_variant:
+            urls[normalized_variant] = f"{base_url}{normalized_variant}"
+    return urls
+
+
+def tts_audio_url_metadata(audio_urls: dict[str, str], *, endpoint_audio_url: str | None) -> dict[str, Any]:
+    audio_url = _base_url_from_variant_urls(audio_urls) or endpoint_audio_url
+    metadata: dict[str, Any] = {
+        "audio_url": audio_url,
+        "audio_url_raw": audio_urls.get("raw"),
+        "audio_urls": dict(audio_urls),
+        "endpoint_audio_url": endpoint_audio_url,
+    }
+    for variant, url in audio_urls.items():
+        metadata[f"audio_url_{variant}"] = url
+        if variant == "48k":
+            metadata["audio_url_48K"] = url
+    return metadata
+
+
+def tts_audio_base_url(stream_id: str) -> str:
+    return f"/api/voice/tts/{stream_id}/"
+
+
+def _base_url_from_variant_urls(audio_urls: dict[str, str]) -> str | None:
+    for url in audio_urls.values():
+        if not url:
+            continue
+        if url.endswith("/"):
+            return url
+        head, separator, _tail = url.rstrip("/").rpartition("/")
+        if separator:
+            return f"{head}/"
+    return None
 
 
 def write_default_tts_sidecar(output_dir: Path, stream_id: str, *, metadata: dict[str, Any]) -> tuple[Path, str]:

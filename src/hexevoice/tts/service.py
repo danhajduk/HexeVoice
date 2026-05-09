@@ -8,6 +8,7 @@ import wave
 from hexevoice.api.models import TtsSynthesizeRequest, TtsSynthesizeResponse
 from hexevoice.config.settings import Settings
 from hexevoice.voice.pipeline import DEFAULT_TTS_AUDIO_TTL_SECONDS, VoiceTurnPipeline
+from hexevoice.voice.pipeline import tts_audio_url_metadata
 
 
 GENERATED_AUDIO_SUFFIXES = (".wav", ".mp3", ".ogg")
@@ -47,7 +48,11 @@ class TtsAudioService:
 
         content_type = synthesis.content_type or content_type_for_path(audio_path)
         duration_ms = wav_duration_ms(audio_path) if content_type == "audio/wav" else None
-        audio_url = self._public_tts_audio_url(stream_id, variant=served_variant)
+        endpoint_audio_url = self._public_tts_audio_url(stream_id, variant=served_variant)
+        audio_urls = self._public_tts_audio_variant_urls(stream_id, synthesis.audio_variants)
+        if not audio_urls:
+            audio_urls = {"raw": self._public_tts_audio_url(stream_id)}
+        audio_url_metadata = tts_audio_url_metadata(audio_urls, endpoint_audio_url=endpoint_audio_url)
         created_at = datetime.now(UTC)
         expires_at = created_at + timedelta(seconds=request.ttl_seconds)
         metadata = {
@@ -56,6 +61,7 @@ class TtsAudioService:
             "duration_ms": duration_ms,
             "model_id": synthesis.model_id or "deterministic",
             "voice_id": synthesis.voice_id or request.voice,
+            **audio_url_metadata,
             "audio_variant": synthesis.audio_variant,
             "audio_variant_sample_rate_hz": synthesis.audio_variant_sample_rate_hz,
             "audio_variant_source_sample_rate_hz": synthesis.audio_variant_source_sample_rate_hz,
@@ -75,7 +81,9 @@ class TtsAudioService:
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         return TtsSynthesizeResponse(
             status="ready",
-            audio_url=audio_url,
+            audio_url=audio_url_metadata.get("audio_url"),
+            endpoint_audio_url=endpoint_audio_url,
+            audio_urls=audio_urls,
             content_type=content_type,
             duration_ms=duration_ms,
             expires_at=expires_at.isoformat(),
@@ -118,13 +126,17 @@ class TtsAudioService:
         created_at = datetime.now(UTC)
         expires_at = created_at + timedelta(seconds=ttl_seconds) if ttl_seconds is not None else None
         voice_ready = bool(audio_path and not synthesis.error)
-        audio_url = self._public_tts_audio_url(stream_id, variant=served_variant) if voice_ready else None
+        endpoint_audio_url = self._public_tts_audio_url(stream_id, variant=served_variant) if voice_ready else None
+        audio_urls = self._public_tts_audio_variant_urls(stream_id, synthesis.audio_variants) if voice_ready else {}
+        if voice_ready and not audio_urls:
+            audio_urls = {"raw": self._public_tts_audio_url(stream_id)}
+        audio_url_metadata = tts_audio_url_metadata(audio_urls, endpoint_audio_url=endpoint_audio_url)
         metadata = {
             "event_id": event_id,
             "stream_id": stream_id,
             "voice_ready": voice_ready,
             "spoken_text": text,
-            "audio_url": audio_url,
+            **audio_url_metadata,
             "content_type": content_type if voice_ready else None,
             "duration_ms": duration_ms,
             "audio_variant": synthesis.audio_variant,
@@ -256,8 +268,18 @@ class TtsAudioService:
         return base_url.rstrip("/")
 
     def _public_tts_audio_url(self, stream_id: str, *, variant: str | None = None) -> str:
-        suffix = f"/{variant}" if safe_tts_audio_variant(variant) else ""
-        return f"{self.public_api_base_url()}/api/tts/audio/{stream_id}{suffix}"
+        base_url = f"{self.public_api_base_url()}/api/tts/audio/{stream_id}/"
+        safe_variant = safe_tts_audio_variant(variant)
+        return f"{base_url}{safe_variant}" if safe_variant else base_url
+
+    def _public_tts_audio_variant_urls(self, stream_id: str, audio_variants: dict[str, str]) -> dict[str, str]:
+        base_url = self._public_tts_audio_url(stream_id)
+        urls: dict[str, str] = {}
+        for variant in audio_variants:
+            safe_variant = safe_tts_audio_variant(variant)
+            if safe_variant:
+                urls[safe_variant] = f"{base_url}{safe_variant}"
+        return urls
 
     def _resolve_voice_model(self, voice: str | None) -> str | None:
         if self._settings.voice_tts_provider != "piper" or not voice:

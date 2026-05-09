@@ -404,7 +404,8 @@ def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
     assert synthesis.provider_id == "openai"
     assert synthesis.content_type == "audio/wav"
     assert synthesis.stream_id is not None
-    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert synthesis.endpoint_audio_url == f"/api/voice/tts/{synthesis.stream_id}/"
     assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == b"RIFFtest-wav"
     metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
     assert metadata["provider_id"] == "openai"
@@ -491,7 +492,8 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert synthesis.provider_id == "piper"
     assert synthesis.content_type == "audio/wav"
     assert synthesis.audio_variant == "16k"
-    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/16k"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert synthesis.endpoint_audio_url == f"/api/voice/tts/{synthesis.stream_id}/16k"
     assert (tmp_path / f"{synthesis.stream_id}.raw.wav").read_bytes() == b"RIFFpiper-wav"
     assert (tmp_path / f"{synthesis.stream_id}.16k.wav").read_bytes() == b"RIFFpiper-wav"
     assert (tmp_path / f"{synthesis.stream_id}.48k.wav").read_bytes() == b"RIFFpiper-wav"
@@ -499,6 +501,12 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert metadata["provider_id"] == "piper"
     assert metadata["model_id"] == "en_US-test"
     assert metadata["voice_id"] == "en_US-test"
+    assert metadata["audio_url"] == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert metadata["audio_url_raw"] == f"/api/voice/tts/{synthesis.stream_id}/raw"
+    assert metadata["audio_url_16k"] == f"/api/voice/tts/{synthesis.stream_id}/16k"
+    assert metadata["audio_url_48k"] == f"/api/voice/tts/{synthesis.stream_id}/48k"
+    assert metadata["audio_url_48K"] == f"/api/voice/tts/{synthesis.stream_id}/48k"
+    assert metadata["endpoint_audio_url"] == f"/api/voice/tts/{synthesis.stream_id}/16k"
     assert metadata["audio_variant"] == "16k"
     assert metadata["audio_variant_sample_rate_hz"] is None
     assert metadata["audio_variant_source_sample_rate_hz"] is None
@@ -532,7 +540,8 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
     synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
 
     assert synthesis.audio_variant == "16k"
-    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/16k"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert synthesis.endpoint_audio_url == f"/api/voice/tts/{synthesis.stream_id}/16k"
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.16k.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 16000
         assert wav_file.getsampwidth() == 2
@@ -547,6 +556,8 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
     assert synthesis.output_sample_rate_hz == 16000
     assert synthesis.variant_sample_rates_hz == {"raw": 22050, "16k": 16000, "48k": 48000}
     metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["audio_url"] == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert metadata["endpoint_audio_url"] == f"/api/voice/tts/{synthesis.stream_id}/16k"
     assert metadata["audio_variant_sample_rate_hz"] == 16000
     assert metadata["audio_variant_source_sample_rate_hz"] == 22050
     assert metadata["variant_sample_rates_hz"] == {"raw": 22050, "16k": 16000, "48k": 48000}
@@ -574,7 +585,8 @@ def test_piper_tts_adapter_can_generate_configured_22050_variant(tmp_path):
     synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
 
     assert synthesis.audio_variant == "22050"
-    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/22050"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert synthesis.endpoint_audio_url == f"/api/voice/tts/{synthesis.stream_id}/22050"
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.22050.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 22050
     assert synthesis.variant_sample_rates_hz == {"raw": 16000, "16k": 16000, "22050": 22050, "48k": 48000}
@@ -602,7 +614,8 @@ def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):
     synthesis = adapter.synthesize(endpoint_id="esp-pe-1", session_id="voice-session-1", text="hello")
 
     assert synthesis.audio_variant == "48k"
-    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/48k"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert synthesis.endpoint_audio_url == f"/api/voice/tts/{synthesis.stream_id}/48k"
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.48k.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 48000
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.16k.wav"), "rb") as wav_file:
@@ -634,7 +647,8 @@ def test_piper_tts_adapter_keeps_native_wav_when_resampling_disabled(tmp_path):
     synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
 
     assert synthesis.audio_variant == "raw"
-    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/raw"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/"
+    assert synthesis.endpoint_audio_url == f"/api/voice/tts/{synthesis.stream_id}/raw"
     assert (tmp_path / f"{synthesis.stream_id}.raw.wav").read_bytes() == source.getvalue()
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.16k.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 16000

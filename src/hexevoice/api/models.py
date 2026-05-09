@@ -142,6 +142,8 @@ class TtsSynthesizeRequest(BaseModel):
 class TtsSynthesizeResponse(BaseModel):
     status: Literal["ready", "failed"]
     audio_url: str | None = None
+    endpoint_audio_url: str | None = None
+    audio_urls: dict[str, str] = Field(default_factory=dict)
     content_type: str | None = None
     duration_ms: int | None = None
     expires_at: str | None = None

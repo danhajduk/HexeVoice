@@ -763,6 +763,9 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     payload = response.json()
     assert payload["status"] == "ready"
     assert payload["audio_url"].startswith(f"{public_base_url}/api/tts/audio/")
+    assert payload["audio_url"].endswith("/")
+    assert payload["endpoint_audio_url"] == payload["audio_url"]
+    assert payload["audio_urls"]["raw"] == payload["audio_url"]
     assert payload["content_type"] == "audio/wav"
     assert payload["duration_ms"] is not None
     assert payload["expires_at"]
@@ -770,6 +773,9 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     metadata = json.loads((tmp_path / "voice_tts" / f"{payload['stream_id']}.json").read_text(encoding="utf-8"))
     assert metadata["model_id"] == "deterministic"
     assert metadata["voice_id"] == "default"
+    assert metadata["audio_url"] == payload["audio_url"]
+    assert metadata["endpoint_audio_url"] == payload["endpoint_audio_url"]
+    assert metadata["audio_url_raw"] == payload["audio_url"]
     assert metadata["ttl_seconds"] == 300
     assert metadata["expires_at"] == payload["expires_at"]
 

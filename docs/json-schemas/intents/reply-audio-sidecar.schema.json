@@ -11,6 +11,16 @@
     "voice_ready": { "type": "boolean" },
     "spoken_text": { "type": "string" },
     "audio_url": { "type": ["string", "null"] },
+    "endpoint_audio_url": { "type": ["string", "null"] },
+    "audio_url_raw": { "type": ["string", "null"] },
+    "audio_url_16k": { "type": ["string", "null"] },
+    "audio_url_22050": { "type": ["string", "null"] },
+    "audio_url_48k": { "type": ["string", "null"] },
+    "audio_url_48K": { "type": ["string", "null"] },
+    "audio_urls": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
     "content_type": { "type": ["string", "null"] },
     "duration_ms": { "type": ["number", "null"], "minimum": 0 },
     "provider_id": { "type": ["string", "null"] },

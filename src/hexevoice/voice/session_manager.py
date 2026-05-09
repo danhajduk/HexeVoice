@@ -44,6 +44,8 @@ def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
         "content_type": tts.content_type,
         "stream_id": tts.stream_id,
         "audio_url": tts.audio_url,
+        "endpoint_audio_url": tts.endpoint_audio_url,
+        "audio_urls": tts.audio_urls,
         "provider_id": tts.provider_id,
         "model_id": tts.model_id,
         "voice_id": tts.voice_id,
@@ -60,6 +62,12 @@ def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
         "ttl_seconds": tts.ttl_seconds,
         "error": tts.error,
     }
+
+
+def endpoint_tts_audio_url(tts: TtsSynthesis | dict[str, Any]) -> str | None:
+    if isinstance(tts, TtsSynthesis):
+        return tts.endpoint_audio_url or tts.audio_url
+    return tts.get("endpoint_audio_url") or tts.get("audio_url")
 
 
 class VoiceSessionManager:
@@ -267,7 +275,7 @@ class VoiceSessionManager:
             payload={
                 "stream_id": self._last_tts.get("stream_id"),
                 "content_type": self._last_tts.get("content_type"),
-                "audio_url": self._last_tts.get("audio_url"),
+                "audio_url": endpoint_tts_audio_url(self._last_tts),
             },
         )
 
@@ -304,7 +312,7 @@ class VoiceSessionManager:
             provider_id=tts.provider_id,
             content_type=tts.content_type,
             stream_id=tts.stream_id,
-            audio_url=tts.audio_url,
+            audio_url=endpoint_tts_audio_url(tts),
             audio_variant=tts.audio_variant,
             raw_sample_rate_hz=tts.raw_sample_rate_hz,
             output_sample_rate_hz=tts.output_sample_rate_hz,
@@ -318,7 +326,7 @@ class VoiceSessionManager:
             payload={
                 "stream_id": tts.stream_id,
                 "content_type": tts.content_type,
-                "audio_url": tts.audio_url,
+                "audio_url": endpoint_tts_audio_url(tts),
                 "text": spoken_text,
             },
         )
@@ -354,7 +362,7 @@ class VoiceSessionManager:
             provider_id=tts.provider_id,
             content_type=tts.content_type,
             stream_id=tts.stream_id,
-            audio_url=tts.audio_url,
+            audio_url=endpoint_tts_audio_url(tts),
             audio_variant=tts.audio_variant,
             raw_sample_rate_hz=tts.raw_sample_rate_hz,
             output_sample_rate_hz=tts.output_sample_rate_hz,
@@ -369,7 +377,7 @@ class VoiceSessionManager:
             payload={
                 "stream_id": tts.stream_id,
                 "content_type": tts.content_type,
-                "audio_url": tts.audio_url,
+                "audio_url": endpoint_tts_audio_url(tts),
                 "announcement_type": "timer.create_succeeded",
                 "text": announcement_text,
                 "source_event_id": source_event_id,
@@ -1053,7 +1061,7 @@ class VoiceSessionManager:
                 provider_id=turn.tts.provider_id,
                 content_type=turn.tts.content_type,
                 stream_id=turn.tts.stream_id,
-                audio_url=turn.tts.audio_url,
+                audio_url=endpoint_tts_audio_url(turn.tts),
                 audio_variant=turn.tts.audio_variant,
                 raw_sample_rate_hz=turn.tts.raw_sample_rate_hz,
                 output_sample_rate_hz=turn.tts.output_sample_rate_hz,
@@ -1089,7 +1097,7 @@ class VoiceSessionManager:
                     extra_payload=VoiceTtsReadyPayload(
                         content_type=turn.tts.content_type,
                         stream_id=turn.tts.stream_id,
-                        audio_url=turn.tts.audio_url,
+                        audio_url=endpoint_tts_audio_url(turn.tts),
                     ).model_dump(mode="json"),
                 )
             )
@@ -1376,14 +1384,15 @@ class VoiceSessionManager:
             return {"eligible": False, "reason": tts.get("error")}
         if not tts.get("stream_id"):
             return {"eligible": False, "reason": "tts_stream_unavailable"}
-        if not tts.get("audio_url"):
+        endpoint_audio_url = endpoint_tts_audio_url(tts)
+        if not endpoint_audio_url:
             return {"eligible": False, "reason": "tts_audio_url_unavailable"}
         return {
             "eligible": True,
             "reason": "cached_tts_available",
             "stream_id": tts.get("stream_id"),
             "content_type": tts.get("content_type"),
-            "audio_url": tts.get("audio_url"),
+            "audio_url": endpoint_audio_url,
         }
 
     async def _push_session_replay(self, *, session: dict[str, Any], endpoint_id: str | None = None) -> dict:
@@ -1399,7 +1408,8 @@ class VoiceSessionManager:
                 "status": "failed",
                 "endpoint_id": target_endpoint_id,
             }
-        if not tts.get("stream_id") or not tts.get("audio_url"):
+        endpoint_audio_url = endpoint_tts_audio_url(tts)
+        if not tts.get("stream_id") or not endpoint_audio_url:
             return {
                 "accepted": False,
                 "reason": "tts_stream_unavailable",
@@ -1414,7 +1424,7 @@ class VoiceSessionManager:
             payload={
                 "stream_id": tts.get("stream_id"),
                 "content_type": tts.get("content_type"),
-                "audio_url": tts.get("audio_url"),
+                "audio_url": endpoint_audio_url,
                 "source_session_id": session.get("session_id"),
             },
         )
