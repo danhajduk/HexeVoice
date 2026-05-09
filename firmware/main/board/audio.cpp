@@ -25,7 +25,7 @@ constexpr uint32_t kVadStartEnergyThreshold = 900;
 constexpr uint32_t kVadContinueEnergyThreshold = 500;
 constexpr uint32_t kVadSilenceHoldMs = 2500;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
-constexpr uint32_t kMicroVadPauseMs = 180;
+constexpr uint32_t kMicroVadPauseMs = 200;
 constexpr uint32_t kMicroVadPauseFrames = kMicroVadPauseMs / kFrameDurationMs;
 
 esp_codec_dev_handle_t g_mic_codec = nullptr;
