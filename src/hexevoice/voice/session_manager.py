@@ -67,6 +67,7 @@ class VoiceSessionManager:
         self._command_timeout_s = 10.0
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
+        self._wake_confidence_history: list[dict[str, object]] = []
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -613,6 +614,16 @@ class VoiceSessionManager:
                     "chunk_count": 0,
                 }
             )
+            self._record_wake_confidence(
+                endpoint_id=event.endpoint_id,
+                session_id=session_id,
+                model=payload.wake_source,
+                confidence=1.0,
+                detected=True,
+                accepted=True,
+                source=payload.wake_source,
+                chunk_count=0,
+            )
             record_voice_event(
                 "wake.accepted",
                 endpoint_id=event.endpoint_id,
@@ -688,6 +699,18 @@ class VoiceSessionManager:
             else WakeDetectionResult(detected=False, reason="wake_already_detected")
         )
         wake_accepted = detection.detected and session.session_state == "idle"
+        self._record_wake_confidence(
+            endpoint_id=event.endpoint_id,
+            session_id=session.session_id,
+            model=detection.model,
+            confidence=detection.confidence,
+            detected=detection.detected,
+            accepted=wake_accepted,
+            reason=detection.reason,
+            source="backend_openwakeword",
+            chunk_index=payload.chunk_index,
+            chunk_count=self._chunk_count,
+        )
         if wake_accepted:
             self._record_wake_history(
                 {
@@ -1010,6 +1033,7 @@ class VoiceSessionManager:
             "event_diagnostics": list(self._event_diagnostics),
             "wake_provider": self._wake_detector.status(),
             "wake_history": list(self._wake_history),
+            "wake_confidence_history": list(self._wake_confidence_history),
             "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
             "supported_actions": {
                 "refresh": True,
@@ -1041,6 +1065,39 @@ class VoiceSessionManager:
         event = {"timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"), **entry}
         self._wake_history.insert(0, event)
         del self._wake_history[10:]
+
+    def _record_wake_confidence(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        model: str | None,
+        confidence: float | None,
+        detected: bool,
+        accepted: bool,
+        reason: str | None = None,
+        source: str | None = None,
+        chunk_index: int | None = None,
+        chunk_count: int | None = None,
+    ) -> None:
+        if confidence is None:
+            return
+        event = {
+            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            "endpoint_id": endpoint_id,
+            "session_id": session_id,
+            "model": model,
+            "confidence": confidence,
+            "detected": detected,
+            "accepted": accepted,
+            "reason": reason,
+            "source": source,
+            "chunk_index": chunk_index,
+            "chunk_count": chunk_count,
+        }
+        self._wake_confidence_history.insert(0, event)
+        del self._wake_confidence_history[50:]
+        record_voice_event("wake.confidence", **event)
 
     def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
         if self._active_session is None:

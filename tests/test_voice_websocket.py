@@ -12,6 +12,7 @@ from hexevoice.voice import (
     PiperTextToSpeechAdapter,
     SpeechTranscript,
     TtsSynthesis,
+    WakeDetectionResult,
     VoiceSessionManager,
     VoiceTurnResult,
     VoiceTurnTimings,
@@ -35,6 +36,35 @@ class CloseTrackingWakeDetector(DeterministicWakeDetector):
 
     def close_session(self, *, endpoint_id: str, session_id: str) -> None:
         self.closed_sessions.append((endpoint_id, session_id))
+
+
+class SequenceWakeDetector:
+    def __init__(self, results: list[WakeDetectionResult]) -> None:
+        self.results = list(results)
+        self.last_detection: WakeDetectionResult | None = None
+
+    def inspect_chunk(self, *, endpoint_id, session_id, chunk):
+        if self.results:
+            self.last_detection = self.results.pop(0)
+        else:
+            self.last_detection = WakeDetectionResult(detected=False, model="sequence", reason="no_detection")
+        return self.last_detection
+
+    def status(self):
+        return {
+            "provider": "sequence",
+            "healthy": True,
+            "configured": True,
+            "loaded": True,
+            "last_detection": None
+            if self.last_detection is None
+            else {
+                "detected": self.last_detection.detected,
+                "confidence": self.last_detection.confidence,
+                "model": self.last_detection.model,
+                "reason": self.last_detection.reason,
+            },
+        }
 
 
 def test_voice_websocket_starts_single_endpoint_session(tmp_path):
@@ -138,6 +168,58 @@ def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
     assert status["wake_history"][0]["detected"] is True
     assert status["wake_history"][0]["session_id"] == "voice-session-1"
     assert status["wake_history"][0]["model"] == "deterministic"
+
+
+def test_voice_status_records_wake_confidence_history_for_tuning(tmp_path):
+    detector = SequenceWakeDetector(
+        [
+            WakeDetectionResult(detected=False, confidence=0.42, model="Hexa", reason="below_threshold"),
+            WakeDetectionResult(detected=True, confidence=0.86, model="Hexa"),
+        ]
+    )
+    manager = VoiceSessionManager(wake_detector=detector)
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        below_threshold = websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 1,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        wake_response = websocket.receive_json()
+        capturing = websocket.receive_json()
+
+    assert below_threshold["payload"]["wake"]["confidence"] == 0.42
+    assert below_threshold["payload"]["wake"]["reason"] == "below_threshold"
+    assert wake_response["event_type"] == "wake.accepted"
+    assert capturing["payload"]["wake"]["confidence"] == 0.86
+
+    status = client.get("/api/voice/status").json()
+    confidence_history = status["wake_confidence_history"]
+    assert confidence_history[0]["confidence"] == 0.86
+    assert confidence_history[0]["accepted"] is True
+    assert confidence_history[0]["chunk_index"] == 1
+    assert confidence_history[1]["confidence"] == 0.42
+    assert confidence_history[1]["accepted"] is False
+    assert confidence_history[1]["reason"] == "below_threshold"
 
 
 def test_voice_websocket_closes_wake_stream_after_completed_session(tmp_path):
