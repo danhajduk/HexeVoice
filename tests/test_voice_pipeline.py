@@ -479,9 +479,11 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert b"en_US-test" in captured["json"]
     assert synthesis.provider_id == "piper"
     assert synthesis.content_type == "audio/wav"
-    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}"
-    assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == b"RIFFpiper-wav"
+    assert synthesis.audio_variant == "16k"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/16k"
     assert (tmp_path / f"{synthesis.stream_id}.raw.wav").read_bytes() == b"RIFFpiper-wav"
+    assert (tmp_path / f"{synthesis.stream_id}.16k.wav").read_bytes() == b"RIFFpiper-wav"
+    assert (tmp_path / f"{synthesis.stream_id}.48k.wav").read_bytes() == b"RIFFpiper-wav"
     assert adapter.status()["healthy"] is True
 
 
@@ -505,14 +507,19 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
 
     synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
 
-    with wave.open(str(tmp_path / f"{synthesis.stream_id}.wav"), "rb") as wav_file:
+    assert synthesis.audio_variant == "16k"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/16k"
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.16k.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 16000
         assert wav_file.getsampwidth() == 2
         assert wav_file.getnchannels() == 1
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.48k.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 48000
     with wave.open(str(tmp_path / f"{synthesis.stream_id}.raw.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 22050
     assert synthesis.raw_sample_rate_hz == 22050
     assert synthesis.output_sample_rate_hz == 16000
+    assert synthesis.variant_sample_rates_hz == {"raw": 22050, "16k": 16000, "48k": 48000}
 
 
 def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):
@@ -536,8 +543,12 @@ def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):
 
     synthesis = adapter.synthesize(endpoint_id="esp-pe-1", session_id="voice-session-1", text="hello")
 
-    with wave.open(str(tmp_path / f"{synthesis.stream_id}.wav"), "rb") as wav_file:
+    assert synthesis.audio_variant == "48k"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/48k"
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.48k.wav"), "rb") as wav_file:
         assert wav_file.getframerate() == 48000
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.16k.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 16000
     assert synthesis.output_sample_rate_hz == 48000
     assert adapter.status()["endpoint_sample_rates"] == {"esp-pe-1": 48000}
 
@@ -562,8 +573,13 @@ def test_piper_tts_adapter_keeps_native_wav_when_resampling_disabled(tmp_path):
 
     synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
 
-    assert (tmp_path / f"{synthesis.stream_id}.wav").read_bytes() == source.getvalue()
+    assert synthesis.audio_variant == "raw"
+    assert synthesis.audio_url == f"/api/voice/tts/{synthesis.stream_id}/raw"
     assert (tmp_path / f"{synthesis.stream_id}.raw.wav").read_bytes() == source.getvalue()
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.16k.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 16000
+    with wave.open(str(tmp_path / f"{synthesis.stream_id}.48k.wav"), "rb") as wav_file:
+        assert wav_file.getframerate() == 48000
 
 
 def test_piper_tts_adapter_falls_back_when_unconfigured(tmp_path):

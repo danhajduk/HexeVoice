@@ -11,6 +11,7 @@ from hexevoice.voice.pipeline import VoiceTurnPipeline
 
 
 GENERATED_AUDIO_SUFFIXES = (".wav", ".mp3", ".ogg")
+GENERATED_WAV_VARIANTS = ("48k", "16k", "raw")
 
 
 class TtsAudioService:
@@ -39,20 +40,25 @@ class TtsAudioService:
             )
 
         stream_id = synthesis.stream_id or session_id
-        audio_path = self.audio_path(stream_id)
+        audio_path = self.audio_path(stream_id, variant=synthesis.audio_variant)
+        served_variant = synthesis.audio_variant if audio_path is not None else None
         if audio_path is None:
             audio_path = self._write_deterministic_wav(stream_id)
 
         content_type = synthesis.content_type or content_type_for_path(audio_path)
         duration_ms = wav_duration_ms(audio_path) if content_type == "audio/wav" else None
+        audio_url = self._public_tts_audio_url(stream_id, variant=served_variant)
         expires_at = datetime.now(UTC) + timedelta(seconds=request.ttl_seconds)
         metadata = {
             "stream_id": stream_id,
             "content_type": content_type,
             "duration_ms": duration_ms,
+            "audio_variant": synthesis.audio_variant,
+            "audio_variants": synthesis.audio_variants,
             "raw_audio_path": synthesis.raw_audio_path,
             "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
             "output_sample_rate_hz": synthesis.output_sample_rate_hz,
+            "variant_sample_rates_hz": synthesis.variant_sample_rates_hz,
             "expires_at": expires_at.isoformat(),
             "provider_id": synthesis.provider_id,
             "text_chars": len(request.text or ""),
@@ -62,7 +68,7 @@ class TtsAudioService:
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         return TtsSynthesizeResponse(
             status="ready",
-            audio_url=f"{self.public_api_base_url()}/api/tts/audio/{stream_id}",
+            audio_url=audio_url,
             content_type=content_type,
             duration_ms=duration_ms,
             expires_at=expires_at.isoformat(),
@@ -94,7 +100,8 @@ class TtsAudioService:
             audio_format=audio_format,
             stream_id=stream_id,
         )
-        audio_path = self.audio_path(stream_id)
+        audio_path = self.audio_path(stream_id, variant=synthesis.audio_variant)
+        served_variant = synthesis.audio_variant if audio_path is not None else None
         if audio_path is None and not synthesis.error:
             audio_path = self._write_deterministic_wav(stream_id)
 
@@ -103,17 +110,21 @@ class TtsAudioService:
         created_at = datetime.now(UTC)
         expires_at = created_at + timedelta(seconds=ttl_seconds) if ttl_seconds is not None else None
         voice_ready = bool(audio_path and not synthesis.error)
+        audio_url = self._public_tts_audio_url(stream_id, variant=served_variant) if voice_ready else None
         metadata = {
             "event_id": event_id,
             "stream_id": stream_id,
             "voice_ready": voice_ready,
             "spoken_text": text,
-            "audio_url": f"{self.public_api_base_url()}/api/tts/audio/{stream_id}" if voice_ready else None,
+            "audio_url": audio_url,
             "content_type": content_type if voice_ready else None,
             "duration_ms": duration_ms,
+            "audio_variant": synthesis.audio_variant,
+            "audio_variants": synthesis.audio_variants,
             "raw_audio_path": synthesis.raw_audio_path,
             "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
             "output_sample_rate_hz": synthesis.output_sample_rate_hz,
+            "variant_sample_rates_hz": synthesis.variant_sample_rates_hz,
             "provider_id": synthesis.provider_id,
             "model_id": options.get("model_id"),
             "voice_id": options.get("voice_id") or options.get("voice"),
@@ -131,11 +142,25 @@ class TtsAudioService:
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         return metadata
 
-    def audio_path(self, stream_id: str) -> Path | None:
+    def audio_path(self, stream_id: str, *, variant: str | None = None) -> Path | None:
         safe_stream_id = safe_tts_stream_id(stream_id)
         if safe_stream_id is None:
             return None
         self.cleanup_expired()
+        safe_variant = safe_tts_audio_variant(variant)
+        if safe_variant:
+            candidate = self._audio_variant_path(safe_stream_id, safe_variant)
+            return candidate if candidate.is_file() else None
+        metadata = self.metadata(safe_stream_id) or {}
+        metadata_variant = safe_tts_audio_variant(metadata.get("audio_variant"))
+        if metadata_variant:
+            candidate = self._audio_variant_path(safe_stream_id, metadata_variant)
+            if candidate.is_file():
+                return candidate
+        for preferred_variant in GENERATED_WAV_VARIANTS:
+            candidate = self._audio_variant_path(safe_stream_id, preferred_variant)
+            if candidate.is_file():
+                return candidate
         for suffix in GENERATED_AUDIO_SUFFIXES:
             candidate = self._audio_dir / f"{safe_stream_id}{suffix}"
             if candidate.is_file():
@@ -220,6 +245,10 @@ class TtsAudioService:
         base_url = self._settings.public_api_base_url or f"http://{self._settings.api_host}:{self._settings.api_port}"
         return base_url.rstrip("/")
 
+    def _public_tts_audio_url(self, stream_id: str, *, variant: str | None = None) -> str:
+        suffix = f"/{variant}" if safe_tts_audio_variant(variant) else ""
+        return f"{self.public_api_base_url()}/api/tts/audio/{stream_id}{suffix}"
+
     def _resolve_voice_model(self, voice: str | None) -> str | None:
         if self._settings.voice_tts_provider != "piper" or not voice:
             return voice
@@ -229,8 +258,15 @@ class TtsAudioService:
         self._audio_dir.mkdir(parents=True, exist_ok=True)
         return self._audio_dir / f"{stream_id}.json"
 
+    def _audio_variant_path(self, stream_id: str, variant: str) -> Path:
+        return self._audio_dir / f"{stream_id}.{variant}.wav"
+
     def _metadata_path_for_audio_candidate(self, path: Path) -> Path | None:
         name = path.name
+        for variant in GENERATED_WAV_VARIANTS:
+            variant_suffix = f".{variant}.wav"
+            if name.endswith(variant_suffix):
+                return self._audio_dir / f"{name[:-len(variant_suffix)]}.json"
         for suffix in GENERATED_AUDIO_SUFFIXES:
             raw_suffix = f".raw{suffix}"
             if name.endswith(raw_suffix):
@@ -258,6 +294,11 @@ def safe_tts_stream_id(stream_id: str) -> str | None:
     if not cleaned or not cleaned.replace("-", "").replace("_", "").isalnum():
         return None
     return cleaned
+
+
+def safe_tts_audio_variant(variant: object) -> str | None:
+    cleaned = str(variant or "").strip().lower()
+    return cleaned if cleaned in GENERATED_WAV_VARIANTS else None
 
 
 def intent_reply_audio_lifetime(options: dict | None) -> str:

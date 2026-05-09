@@ -255,16 +255,20 @@ def test_tts_audio_cleanup_removes_expired_sidecar_and_audio(tmp_path):
     assert (tts_dir / "voice-intent-live.json").exists()
 
 
-def test_tts_audio_path_prefers_resampled_artifact_over_raw_sidecar(tmp_path):
+def test_tts_audio_path_prefers_variant_artifacts_over_raw_sidecar(tmp_path):
     service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
     tts_dir = tmp_path / "voice_tts"
     tts_dir.mkdir()
     raw_audio = tts_dir / "voice-intent-1.raw.wav"
-    playback_audio = tts_dir / "voice-intent-1.wav"
+    playback_48k = tts_dir / "voice-intent-1.48k.wav"
+    playback_16k = tts_dir / "voice-intent-1.16k.wav"
     raw_audio.write_bytes(b"RIFFraw")
-    playback_audio.write_bytes(b"RIFFplayback")
+    playback_48k.write_bytes(b"RIFF48k")
+    playback_16k.write_bytes(b"RIFF16k")
 
-    assert service.audio_path("voice-intent-1") == playback_audio
+    assert service.audio_path("voice-intent-1") == playback_48k
+    assert service.audio_path("voice-intent-1", variant="16k") == playback_16k
+    assert service.audio_path("voice-intent-1", variant="raw") == raw_audio
 
 
 def test_tts_orphan_cleanup_removes_old_audio_without_sidecar(tmp_path):
@@ -274,10 +278,14 @@ def test_tts_orphan_cleanup_removes_old_audio_without_sidecar(tmp_path):
     orphan = tts_dir / "orphan.wav"
     paired_audio = tts_dir / "paired.wav"
     paired_raw_audio = tts_dir / "paired.raw.wav"
+    paired_48k_audio = tts_dir / "paired.48k.wav"
+    paired_16k_audio = tts_dir / "paired.16k.wav"
     fresh_orphan = tts_dir / "fresh.wav"
     orphan.write_bytes(b"RIFForphan")
     paired_audio.write_bytes(b"RIFFpaired")
     paired_raw_audio.write_bytes(b"RIFFpairedraw")
+    paired_48k_audio.write_bytes(b"RIFFpaired48k")
+    paired_16k_audio.write_bytes(b"RIFFpaired16k")
     fresh_orphan.write_bytes(b"RIFFfresh")
     (tts_dir / "paired.json").write_text(
         json.dumps({"expires_at": "2999-01-01T00:00:00+00:00"}),
@@ -287,6 +295,8 @@ def test_tts_orphan_cleanup_removes_old_audio_without_sidecar(tmp_path):
     os.utime(orphan, (old_timestamp, old_timestamp))
     os.utime(paired_audio, (old_timestamp, old_timestamp))
     os.utime(paired_raw_audio, (old_timestamp, old_timestamp))
+    os.utime(paired_48k_audio, (old_timestamp, old_timestamp))
+    os.utime(paired_16k_audio, (old_timestamp, old_timestamp))
 
     deleted_count = service.cleanup_orphaned_audio(min_age_seconds=600)
 
@@ -294,4 +304,6 @@ def test_tts_orphan_cleanup_removes_old_audio_without_sidecar(tmp_path):
     assert not orphan.exists()
     assert paired_audio.exists()
     assert paired_raw_audio.exists()
+    assert paired_48k_audio.exists()
+    assert paired_16k_audio.exists()
     assert fresh_orphan.exists()

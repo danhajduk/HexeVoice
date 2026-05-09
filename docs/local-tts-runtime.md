@@ -24,7 +24,7 @@ Backend TTS routing is selected with `VOICE_TTS_PROVIDER`:
 For `piper`, the backend writes returned WAV bytes into `runtime/voice_tts` and serves them through `/api/voice/tts/{stream_id}` for firmware playback. If the Piper request fails, the current fallback policy is deterministic synthesis so the voice session can still complete with observable provider status instead of hard failing the turn.
 
 Firmware playback expects RIFF/WAVE PCM audio. The local Piper path stores generated audio as `.wav` artifacts and the backend serves those artifacts with `audio/wav`.
-Piper voice models commonly emit 22.05 kHz audio. HexeVoice now keeps that provider output as `{stream_id}.raw.wav`, then writes the endpoint-ready playback artifact as `{stream_id}.wav`. The served URL always points at the playback artifact, while the raw sidecar stays available on disk for debugging voice quality and model output.
+Piper voice models commonly emit 22.05 kHz audio. HexeVoice keeps that provider output as `{stream_id}.raw.wav`, then also writes `{stream_id}.48k.wav` and `{stream_id}.16k.wav` on every Piper generation. The endpoint-facing `audio_url` points at the required variant, while all three audio streams stay available on disk for debugging voice quality and endpoint playback behavior.
 
 HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output for endpoints without an override. Endpoint-specific rates can be set with `VOICE_TTS_ENDPOINT_SAMPLE_RATES`; these values take precedence over the default output rate:
 
@@ -88,14 +88,14 @@ mkdir -p runtime/piper-tts/models
 
 Place Piper `.onnx` model files and optional `.onnx.json` config files in `runtime/piper-tts/models`, then set `PIPER_TTS_MODEL_PATH` in `scripts/piper-tts.env` if the default model name is not present.
 
-Set `PIPER_TTS_WARM_VOICES` to keep one or more Piper model processes loaded for low-latency synthesis. The local runtime currently keeps the Box default voice on Kathleen low while also warming HFC female medium:
+Set `PIPER_TTS_WARM_VOICES` to keep one or more Piper model processes loaded for low-latency synthesis. The local runtime currently keeps the Box default voice on Kathleen low while also warming HFC female medium and Jenny:
 
 ```env
 PIPER_TTS_MODEL_PATH=/models/en_US-kathleen-low.onnx
-PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-hfc_female-medium
+PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-hfc_female-medium,en_GB-jenny_dioco-medium
 ```
 
-Warm voices reuse persistent Piper `--output-raw` processes and are wrapped back into WAV responses, so `/api/tts` keeps the same response shape while avoiding model reload delay for those voices. Non-warm voices still use the cold per-request Piper process path.
+Warm voices reuse persistent Piper `--output-raw` processes and are wrapped back into WAV responses, so `/api/tts` keeps the same response shape while avoiding model reload delay for those voices. The warm reader waits for a one-second idle window before closing the current utterance so Jenny and other voices are not truncated on natural output gaps. Non-warm voices still use the cold per-request Piper process path.
 
 When `VOICE_TTS_PROVIDER=piper`, the backend also runs an `every_10_minutes` warmup task that synthesizes `hello` against the configured warm voices and endpoint-specific override voices. The generated artifacts are short-lived and are removed by the normal generated-voice cleanup loop. The latest warmup status is visible in `/api/voice/status` as `voice_tts_warmup`.
 

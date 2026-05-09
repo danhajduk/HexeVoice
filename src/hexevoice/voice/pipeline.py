@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from dataclasses import replace
 import io
 import importlib.util
@@ -32,6 +33,11 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = {
+    "16k": 16000,
+    "48k": 48000,
+}
+
 
 @dataclass(frozen=True)
 class VoiceTurnAudioSummary:
@@ -60,9 +66,12 @@ class TtsSynthesis:
     stream_id: str | None = None
     audio_url: str | None = None
     provider_id: str = "deterministic"
+    audio_variant: str | None = None
+    audio_variants: dict[str, str] = field(default_factory=dict)
     raw_audio_path: str | None = None
     raw_sample_rate_hz: int | None = None
     output_sample_rate_hz: int | None = None
+    variant_sample_rates_hz: dict[str, int | None] = field(default_factory=dict)
     error: str | None = None
 
 
@@ -421,13 +430,20 @@ class PiperTextToSpeechAdapter:
             self._output_dir.mkdir(parents=True, exist_ok=True)
             raw_audio = response.content
             raw_path = self._output_dir / f"{stream_id}.raw.wav"
-            output_path = self._output_dir / f"{stream_id}.wav"
             target_sample_rate_hz = self._sample_rate_for_endpoint(endpoint_id)
-            audio = normalize_wav_sample_rate(raw_audio, target_sample_rate_hz)
             raw_path.write_bytes(raw_audio)
-            output_path.write_bytes(audio)
             raw_sample_rate_hz = wav_sample_rate_hz(raw_audio)
-            output_sample_rate_hz = wav_sample_rate_hz(audio)
+            audio_variant_paths = {"raw": str(raw_path)}
+            variant_sample_rates_hz: dict[str, int | None] = {"raw": raw_sample_rate_hz}
+            for variant, sample_rate_hz in PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES.items():
+                variant_audio = normalize_wav_sample_rate(raw_audio, sample_rate_hz)
+                variant_path = self._output_dir / f"{stream_id}.{variant}.wav"
+                variant_path.write_bytes(variant_audio)
+                audio_variant_paths[variant] = str(variant_path)
+                variant_sample_rates_hz[variant] = wav_sample_rate_hz(variant_audio)
+            audio_variant = self._variant_for_sample_rate(target_sample_rate_hz)
+            output_sample_rate_hz = variant_sample_rates_hz.get(audio_variant) if audio_variant else raw_sample_rate_hz
+            audio_url = f"/api/voice/tts/{stream_id}/{audio_variant}" if audio_variant else f"/api/voice/tts/{stream_id}"
             self._last_error = None
             record_voice_event(
                 "tts.synthesized",
@@ -436,22 +452,28 @@ class PiperTextToSpeechAdapter:
                 provider_id="piper",
                 stream_id=stream_id,
                 content_type=response.headers.get("content-type", "audio/wav"),
-                audio_url=f"/api/voice/tts/{stream_id}",
+                audio_url=audio_url,
                 text_chars=len(text or ""),
+                audio_variant=audio_variant,
+                audio_variants=audio_variant_paths,
                 raw_audio_path=str(raw_path),
                 raw_sample_rate_hz=raw_sample_rate_hz,
                 target_sample_rate_hz=target_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
+                variant_sample_rates_hz=variant_sample_rates_hz,
                 error=None,
             )
             return TtsSynthesis(
                 content_type=response.headers.get("content-type", "audio/wav"),
                 stream_id=stream_id,
-                audio_url=f"/api/voice/tts/{stream_id}",
+                audio_url=audio_url,
                 provider_id="piper",
+                audio_variant=audio_variant,
+                audio_variants=audio_variant_paths,
                 raw_audio_path=str(raw_path),
                 raw_sample_rate_hz=raw_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
+                variant_sample_rates_hz=variant_sample_rates_hz,
             )
         except Exception as exc:
             self._last_error = str(exc)
@@ -488,6 +510,14 @@ class PiperTextToSpeechAdapter:
         if endpoint_id in self._endpoint_sample_rates:
             return self._endpoint_sample_rates[endpoint_id]
         return self._output_sample_rate_hz
+
+    def _variant_for_sample_rate(self, sample_rate_hz: int | None) -> str:
+        if sample_rate_hz is None or sample_rate_hz <= 0:
+            return "raw"
+        for variant, variant_sample_rate_hz in PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES.items():
+            if sample_rate_hz == variant_sample_rate_hz:
+                return variant
+        return "raw"
 
 
 class OpenAiTextToSpeechAdapter:

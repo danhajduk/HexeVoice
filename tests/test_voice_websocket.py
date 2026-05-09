@@ -508,6 +508,22 @@ def test_voice_tts_audio_route_serves_generated_stream(tmp_path):
     assert response.content == b"RIFFtest-wav"
 
 
+def test_voice_tts_audio_route_serves_requested_variant(tmp_path):
+    stream_id = "tts-teststream"
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    (tts_dir / f"{stream_id}.raw.wav").write_bytes(b"RIFFraw")
+    (tts_dir / f"{stream_id}.16k.wav").write_bytes(b"RIFF16k")
+    (tts_dir / f"{stream_id}.48k.wav").write_bytes(b"RIFF48k")
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)))
+
+    response = client.get(f"/api/voice/tts/{stream_id}/16k")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "audio/wav"
+    assert response.content == b"RIFF16k"
+
+
 def test_piper_tts_artifact_is_served_for_firmware_playback(tmp_path):
     class FakeResponse:
         headers = {"content-type": "audio/wav"}

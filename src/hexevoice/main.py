@@ -903,11 +903,25 @@ def create_app(
     async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         return await asyncio.to_thread(tts_audio_service.synthesize, payload)
 
+    @app.get("/api/tts/audio/{stream_id}/{variant}")
+    async def tts_audio_variant(stream_id: str, variant: str) -> FileResponse:
+        audio_path = tts_audio_service.audio_path(stream_id, variant=variant)
+        if audio_path is None:
+            raise HTTPException(status_code=404, detail="tts_audio_not_found")
+        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+
     @app.get("/api/tts/audio/{stream_id}")
     async def tts_audio(stream_id: str) -> FileResponse:
         audio_path = tts_audio_service.audio_path(stream_id)
         if audio_path is None:
             raise HTTPException(status_code=404, detail="tts_audio_not_found")
+        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+
+    @app.get("/api/voice/tts/{stream_id}/{variant}")
+    async def voice_tts_audio_variant(stream_id: str, variant: str) -> FileResponse:
+        audio_path = tts_audio_service.audio_path(stream_id, variant=variant)
+        if audio_path is None:
+            raise HTTPException(status_code=404, detail="tts_stream_not_found")
         return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
 
     @app.get("/api/voice/tts/{stream_id}")

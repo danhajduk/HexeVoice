@@ -161,7 +161,7 @@ class WarmPiperWorker:
         process.stdin.flush()
 
         timeout_s = _env_float("PIPER_TTS_WARM_TIMEOUT_S", 10.0)
-        idle_s = _env_float("PIPER_TTS_WARM_IDLE_S", 0.25)
+        idle_s = _env_float("PIPER_TTS_WARM_IDLE_S", 1.0)
         started = threading.get_native_id()
         deadline = _monotonic() + timeout_s
         idle_deadline: float | None = None
