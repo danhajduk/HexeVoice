@@ -929,7 +929,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
         websocket.send_json(audio_chunk)
         websocket.receive_json()
         websocket.receive_json()
-        audio_end = voice_event("audio.end")
+        audio_end = voice_event("audio.end", payload={"reason": "vad_silence"})
         audio_end["timestamp"] = "2026-05-09T20:51:38.100000Z"
         websocket.send_json(audio_end)
         websocket.receive_json()
@@ -960,6 +960,8 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert sessions[0]["assistant"]["intent_latency_ms"] == 8.5
     assert sessions[0]["turn_timings"]["total_ms"] == 36.0
     assert sessions[0]["vad"]["speech_started_at"] == "2026-05-09T20:51:36.100000+00:00"
+    assert sessions[0]["vad"]["speech_ended_at"] == "2026-05-09T20:51:38.100000+00:00"
+    assert sessions[0]["vad"]["speech_end_reason"] == "vad_silence"
     assert sessions[0]["vad"]["level"] == 1247
     assert sessions[0]["latency"]["vad_to_audio_end_ms"] == 2000
     assert sessions[0]["latency"]["vad_to_first_audio_frame_ms"] == 3000
@@ -967,6 +969,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert [point["key"] for point in sessions[0]["latency_points"]] == [
         "vad_voice_detected",
         "wake_word_detected",
+        "vad_silence",
         "stt_start",
         "stt_end",
         "intent_processing_done",
@@ -976,6 +979,9 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     ]
     assert sessions[0]["latency_points"][0]["offset_from_vad_ms"] == 0
     assert sessions[0]["latency_points"][1]["offset_from_vad_ms"] == 1000
+    assert sessions[0]["latency_points"][1]["offset_from_previous_ms"] == 1000
+    assert sessions[0]["latency_points"][2]["offset_from_vad_ms"] == 2000
+    assert sessions[0]["latency_points"][2]["offset_from_previous_ms"] == 1000
     assert sessions[0]["tts_playback"]["event_type"] == "tts.playback.completed"
     assert sessions[0]["tts"]["stream_id"] == "tts-history"
     assert sessions[0]["tts"]["spoken_text"] == "OK"

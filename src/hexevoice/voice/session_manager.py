@@ -44,12 +44,13 @@ log = logging.getLogger(__name__)
 LATENCY_POINT_ORDER = {
     "vad_voice_detected": 0,
     "wake_word_detected": 1,
-    "stt_start": 2,
-    "stt_end": 3,
-    "intent_processing_done": 4,
-    "tts_start": 5,
-    "tts_end": 6,
-    "session_end": 7,
+    "vad_silence": 2,
+    "stt_start": 3,
+    "stt_end": 4,
+    "intent_processing_done": 5,
+    "tts_start": 6,
+    "tts_end": 7,
+    "session_end": 8,
 }
 
 
@@ -1011,6 +1012,15 @@ class VoiceSessionManager:
         if session.session_state == "wake_detected":
             self._set_session_state("listening")
 
+        audio_end_reason = event.payload.get("reason") if isinstance(event.payload, dict) else None
+        if audio_end_reason == "vad_silence":
+            self._set_active_session_vad(
+                {
+                    "speech_ended_at": event.timestamp.isoformat(),
+                    "speech_end_reason": "vad_silence",
+                }
+            )
+            self._append_latency_point("vad_silence", "VAD silence", event.timestamp)
         self._update_vad_latency("audio_end", event.timestamp)
         self._set_session_state("transcribing")
         events: list[VoiceEventEnvelope] = []
@@ -1492,12 +1502,18 @@ class VoiceSessionManager:
             ),
             None,
         )
+        points.sort(key=lambda point: LATENCY_POINT_ORDER.get(str(point.get("key")), 100))
+        previous_at: datetime | None = None
         if vad_started_at is not None:
             for point in points:
                 point_at = self._parse_datetime(point.get("timestamp"))
-                if point_at is not None:
-                    point["offset_from_vad_ms"] = max(0, int((point_at - vad_started_at).total_seconds() * 1000))
-        points.sort(key=lambda point: LATENCY_POINT_ORDER.get(str(point.get("key")), 100))
+                if point_at is None:
+                    continue
+                point["offset_from_vad_ms"] = max(0, int((point_at - vad_started_at).total_seconds() * 1000))
+                point["offset_from_previous_ms"] = (
+                    0 if previous_at is None else max(0, int((point_at - previous_at).total_seconds() * 1000))
+                )
+                previous_at = point_at
         self._active_session_history["latency_points"] = points
 
     def _update_vad_latency(self, marker: str, ended_at: datetime) -> None:

@@ -688,22 +688,38 @@ function visibleHistorySessions(sessions) {
 }
 
 function latencyTimeline(session) {
-  if (Array.isArray(session?.latency_points) && session.latency_points.length) {
-    return session.latency_points;
-  }
-  const points = [
+  const rawPoints = Array.isArray(session?.latency_points) && session.latency_points.length ? session.latency_points : [
     ["vad_voice_detected", "VAD voice detected", session?.vad?.speech_started_at],
     ["wake_word_detected", "Wake word detected", session?.wake?.detected_at],
+    ["vad_silence", "VAD silence", session?.vad?.speech_ended_at],
     ["stt_start", "STT start", session?.latency?.stt_started_at],
     ["stt_end", "STT end", session?.transcript?.completed_at],
     ["intent_processing_done", "Intent processing done", session?.assistant?.completed_at],
     ["tts_start", "TTS start", session?.tts?.started_at],
     ["tts_end", "TTS end", session?.tts?.completed_at],
     ["session_end", "Session end", session?.completed_at],
-  ];
-  return points
+  ]
     .filter(([, , timestamp]) => timestamp)
     .map(([key, label, timestamp]) => ({ key, label, timestamp }));
+  let previousAt = null;
+  return rawPoints.map((point) => {
+    const timestamp = typeof point.timestamp === "string" ? point.timestamp : "";
+    const currentAt = timestamp ? new Date(timestamp) : null;
+    const hasCurrentAt = currentAt && !Number.isNaN(currentAt.getTime());
+    const offsetFromPrevious =
+      typeof point.offset_from_previous_ms === "number"
+        ? point.offset_from_previous_ms
+        : hasCurrentAt && previousAt
+          ? Math.max(0, currentAt.getTime() - previousAt.getTime())
+          : null;
+    if (hasCurrentAt) {
+      previousAt = currentAt;
+    }
+    return {
+      ...point,
+      offset_from_previous_ms: offsetFromPrevious,
+    };
+  });
 }
 
 function VoiceSessionDetailPopout({ session, loading, error, onClose }) {
@@ -760,6 +776,11 @@ function VoiceSessionDetailPopout({ session, loading, error, onClose }) {
                     <span className="voice-history-timeline-time">{formatLocalDateTime(point.timestamp)}</span>
                     <span className="voice-history-timeline-offset">
                       {typeof point.offset_from_vad_ms === "number" ? `+${Math.round(point.offset_from_vad_ms)} ms` : ""}
+                    </span>
+                    <span className="voice-history-timeline-previous">
+                      {typeof point.offset_from_previous_ms === "number"
+                        ? `${Math.round(point.offset_from_previous_ms)} ms from last`
+                        : ""}
                     </span>
                   </div>
                 ))

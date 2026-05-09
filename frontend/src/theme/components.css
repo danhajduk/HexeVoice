@@ -278,7 +278,7 @@
 
 .voice-history-timeline-row {
   display: grid;
-  grid-template-columns: 18px minmax(150px, 0.9fr) minmax(210px, 1fr) minmax(80px, auto);
+  grid-template-columns: 18px minmax(150px, 0.9fr) minmax(210px, 1fr) minmax(80px, auto) minmax(120px, auto);
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
@@ -301,7 +301,8 @@
 }
 
 .voice-history-timeline-time,
-.voice-history-timeline-offset {
+.voice-history-timeline-offset,
+.voice-history-timeline-previous {
   color: hsl(var(--sx-text-muted));
   font-size: 13px;
 }
