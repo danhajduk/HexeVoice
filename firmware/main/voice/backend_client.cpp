@@ -130,6 +130,7 @@ bool send_ws_text(const std::string &message);
 std::string endpoint_capabilities_json();
 bool sync_backend_time(const std::string &url);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
+bool ensure_session_started(const char *wake_source);
 void append_event_header(
     std::string &message,
     const char *event_type,
@@ -321,6 +322,17 @@ const char *scheme_ws() {
 const char *firmware_version() {
   const esp_app_desc_t *app = esp_app_get_description();
   return app == nullptr ? "unknown" : app->version;
+}
+
+const char *normalized_wake_source(const char *wake_source) {
+  if (wake_source == nullptr) {
+    return "unknown";
+  }
+  if (std::strcmp(wake_source, "openwakeword") == 0 || std::strcmp(wake_source, "button") == 0 ||
+      std::strcmp(wake_source, "manual") == 0) {
+    return wake_source;
+  }
+  return "unknown";
 }
 
 const char *device_state() {
@@ -1181,9 +1193,12 @@ void media_transfer_task(void *arg) {
   }
 }
 
-void ensure_session_started() {
-  if (g_session_started || !g_ws_connected || !backend_ready_for_voice()) {
-    return;
+bool ensure_session_started(const char *wake_source) {
+  if (g_session_started) {
+    return true;
+  }
+  if (!g_ws_connected || !backend_ready_for_voice()) {
+    return false;
   }
   ++g_session_counter;
   g_chunk_index = 0;
@@ -1207,8 +1222,9 @@ void ensure_session_started() {
       body,
       sizeof(body),
       "{\"firmware_version\":\"%s\","
-      "\"wake_source\":\"openwakeword\",\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d}}}",
+      "\"wake_source\":\"%s\",\"audio_format\":{\"encoding\":\"%s\",\"sample_rate_hz\":%d,\"channels\":%d}}}",
       firmware_version(),
+      normalized_wake_source(wake_source),
       hexe::config::kEndpointAudioEncoding,
       hexe::config::kEndpointAudioSampleRateHz,
       hexe::config::kEndpointAudioChannels);
@@ -1217,8 +1233,9 @@ void ensure_session_started() {
   g_session_started = send_ws_text(payload);
   if (g_session_started) {
     set_audio_streaming(true);
-    ESP_LOGI(kTag, "Started voice session %s", g_session_id.c_str());
+    ESP_LOGI(kTag, "Started voice session %s wake_source=%s", g_session_id.c_str(), normalized_wake_source(wake_source));
   }
+  return g_session_started;
 }
 
 void send_audio_frame(const AudioFrame &frame) {
@@ -1226,7 +1243,7 @@ void send_audio_frame(const AudioFrame &frame) {
     remember_preroll_frame(frame);
     return;
   }
-  ensure_session_started();
+  ensure_session_started("openwakeword");
   if (g_audio_stream_finished) {
     return;
   }
@@ -1537,6 +1554,23 @@ bool submit_audio_frame(const int16_t *samples, size_t sample_count, uint32_t le
     return false;
   }
   return true;
+}
+
+bool start_voice_session(const char *wake_source) {
+  auto &app_state = hexe::state();
+  if (app_state.muted || app_state.ota_active) {
+    return false;
+  }
+  if (!backend_ready_for_voice() || !g_ws_connected) {
+    app_state.phase = hexe::idle_or_connecting_phase();
+    return false;
+  }
+
+  const bool started = ensure_session_started(wake_source);
+  if (started) {
+    app_state.phase = hexe::AppPhase::kListening;
+  }
+  return started;
 }
 
 bool finish_audio_stream(const char *reason) {

@@ -111,6 +111,7 @@ def test_session_snapshot_keeps_backend_endpoint_and_ux_states_separate():
 
 def test_single_endpoint_session_transition_contract():
     assert is_valid_voice_session_transition("idle", "wake_detected")
+    assert is_valid_voice_session_transition("idle", "listening")
     assert is_valid_voice_session_transition("wake_detected", "listening")
     assert is_valid_voice_session_transition("listening", "capturing")
     assert is_valid_voice_session_transition("capturing", "transcribing")

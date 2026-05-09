@@ -60,6 +60,45 @@ def test_voice_websocket_starts_single_endpoint_session(tmp_path):
     assert response["payload"]["snapshot"]["ux_state"] == "wake_armed"
 
 
+def test_voice_websocket_treats_button_session_start_as_wake(tmp_path):
+    detector = DeterministicWakeDetector(detect_on_chunk_index=None)
+    manager = VoiceSessionManager(wake_detector=detector)
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                payload={"wake_source": "button", "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        wake_response = websocket.receive_json()
+        state_response = websocket.receive_json()
+
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        chunk_response = websocket.receive_json()
+
+    assert wake_response["event_type"] == "wake.accepted"
+    assert wake_response["payload"]["snapshot"]["session_state"] == "wake_detected"
+    assert wake_response["payload"]["wake"]["source"] == "button"
+    assert state_response["payload"]["snapshot"]["session_state"] == "listening"
+    assert chunk_response["payload"]["snapshot"]["session_state"] == "capturing"
+
+    status = client.get("/api/voice/status").json()
+    assert status["wake_history"][0]["outcome"] == "accepted"
+    assert status["wake_history"][0]["source"] == "button"
+    assert status["wake_history"][0]["detected"] is True
+
+
 def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
     manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0))
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))

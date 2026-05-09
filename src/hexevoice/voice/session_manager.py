@@ -552,6 +552,42 @@ class VoiceSessionManager:
             payload.wake_source,
             payload.audio_format.sample_rate_hz,
         )
+        if payload.wake_source in {"button", "manual"}:
+            self._set_session_state("wake_detected")
+            self._record_wake_history(
+                {
+                    "outcome": "accepted",
+                    "detected": True,
+                    "endpoint_id": event.endpoint_id,
+                    "session_id": session_id,
+                    "model": payload.wake_source,
+                    "confidence": 1.0,
+                    "source": payload.wake_source,
+                    "chunk_count": 0,
+                }
+            )
+            record_voice_event(
+                "wake.accepted",
+                endpoint_id=event.endpoint_id,
+                session_id=session_id,
+                model=payload.wake_source,
+                confidence=1.0,
+                source=payload.wake_source,
+                chunk_count=0,
+            )
+            wake_event = self._state_event(
+                "wake.accepted",
+                self._active_session,
+                extra_payload={
+                    "wake": {
+                        "confidence": 1.0,
+                        "model": payload.wake_source,
+                        "source": payload.wake_source,
+                    }
+                },
+            )
+            self._set_session_state("listening")
+            return [wake_event, self._state_event("session.state", self._active_session)]
         return [self._state_event("session.state", self._active_session)]
 
     def _handle_audio_chunk(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:

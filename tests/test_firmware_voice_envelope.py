@@ -27,6 +27,8 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert '"schema_version"' in source
     assert '"timestamp"' in source
     assert "session.start" in source
+    assert 'start_voice_session(const char *wake_source)' in source
+    assert 'normalized_wake_source(wake_source)' in source
     assert "audio.chunk" in source
     assert "audio.end" in source
     assert "session.cancel" in source
@@ -295,6 +297,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "GPIO_NUM_0" in buttons_source
     assert "GPIO_NUM_3" in buttons_source
     assert "hardware_mute_active" in buttons_source
+    assert 'start_voice_session("button")' in buttons_source
 
     assert "Display disabled for this board profile" in display_source
     assert 'return "none";' in display_source

@@ -51,7 +51,9 @@ void handle_center_release(int64_t duration_us) {
     hexe::voice::cancel_active_session("voice_pe_center_button");
     state.phase = state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
   } else if (!state.muted) {
-    state.phase = hexe::idle_or_connecting_phase();
+    if (!hexe::voice::start_voice_session("button")) {
+      state.phase = hexe::idle_or_connecting_phase();
+    }
   }
   ESP_LOGI(kTag, "Center button press handled");
 }

@@ -25,7 +25,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, command controls, and firmware build metadata.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
 - TTS-ready playback scaffold and stop handling in `firmware/main/voice/tts_player.cpp`.
-- Selectable board profile support in `firmware/main/CMakeLists.txt`. `esp_box_3` remains the default profile, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input, AIC3204/I2S TTS output, center-button controls, and hardware-mute controls.
+- Selectable board profile support in `firmware/main/CMakeLists.txt`. `esp_box_3` remains the default profile, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input, AIC3204/I2S TTS output, center-button wake/cancel controls, and hardware-mute controls.
 
 ## Partial
 
