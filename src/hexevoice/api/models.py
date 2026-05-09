@@ -627,6 +627,9 @@ class ServiceStatusResponse(BaseModel):
     scheduler: str
     openwakeword: str = "unknown"
     piper_tts: str = "unknown"
+    components: list[dict[str, Any]] = Field(default_factory=list)
+    resource_usage: dict[str, Any] = Field(default_factory=dict)
+    supervisor: dict[str, Any] = Field(default_factory=dict)
 
 
 class ServiceActionRequest(BaseModel):

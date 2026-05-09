@@ -2,9 +2,12 @@ from datetime import UTC, datetime
 import socket
 import asyncio
 from collections.abc import Callable
+import json
 import logging
+import os
 from pathlib import Path
 import subprocess
+import time
 
 from hexevoice.api.models import (
     ApiHealthResponse,
@@ -49,6 +52,7 @@ class NodeRuntimeService:
         self._supervisor_last_error: str | None = None
         self._supervisor_last_seen: str | None = None
         self._service_command_runner = service_command_runner or self._run_service_command
+        self._started_at_monotonic = time.monotonic()
 
     def api_health_payload(self) -> ApiHealthResponse:
         return ApiHealthResponse(status="ok", version=self._settings.node_software_version)
@@ -283,13 +287,166 @@ class NodeRuntimeService:
         )
 
     def service_status_payload(self) -> ServiceStatusResponse:
+        openwakeword_state = self._openwakeword_state()
+        piper_tts_state = self._piper_tts_state() if self._piper_tts_enabled() else "disabled"
+        backend_usage = self._resource_usage_payload()
+        piper_usage = (
+            self._docker_resource_usage(self._settings.piper_tts_container_name)
+            if self._piper_tts_enabled()
+            else {}
+        )
         return ServiceStatusResponse(
-            backend="defined",
+            backend="running",
             frontend="defined",
             scheduler="not_started",
-            openwakeword=self._openwakeword_state(),
-            piper_tts=self._piper_tts_state() if self._piper_tts_enabled() else "disabled",
+            openwakeword=openwakeword_state,
+            piper_tts=piper_tts_state,
+            components=[
+                {
+                    "component_id": "backend",
+                    "label": "Backend",
+                    "status": "running",
+                    "healthy": True,
+                    "restart_target": "backend",
+                    "restart_supported": False,
+                    "restart_detail": "Backend restart requires supervisor-managed process control.",
+                    "resource_usage": backend_usage,
+                },
+                {
+                    "component_id": "stt",
+                    "label": "STT Engine",
+                    "status": self._settings.voice_stt_provider,
+                    "healthy": True,
+                    "provider": self._settings.voice_stt_provider,
+                    "model": self._settings.voice_stt_faster_whisper_model
+                    if self._settings.voice_stt_provider == "faster_whisper"
+                    else self._settings.voice_stt_model,
+                    "restart_target": "stt",
+                    "restart_supported": False,
+                    "restart_detail": "STT currently runs in the backend process.",
+                    "resource_scope": "backend_process",
+                    "resource_usage": backend_usage,
+                },
+                {
+                    "component_id": "tts",
+                    "label": "TTS Engine",
+                    "status": piper_tts_state if self._piper_tts_enabled() else self._settings.voice_tts_provider,
+                    "healthy": piper_tts_state == "running" if self._piper_tts_enabled() else True,
+                    "provider": self._settings.voice_tts_provider,
+                    "model": self._settings.voice_tts_piper_voice or self._settings.voice_tts_model,
+                    "restart_target": self._settings.piper_tts_service_id if self._piper_tts_enabled() else "tts",
+                    "restart_supported": self._piper_tts_enabled(),
+                    "restart_detail": "Piper TTS is supervisor-proxied."
+                    if self._piper_tts_enabled()
+                    else "TTS currently runs in the backend process.",
+                    "resource_scope": "docker_container" if self._piper_tts_enabled() else "backend_process",
+                    "resource_usage": piper_usage if self._piper_tts_enabled() else backend_usage,
+                },
+            ],
+            resource_usage=backend_usage,
+            supervisor={
+                "configured": self._supervisor_client is not None,
+                "registered": self._supervisor_registered,
+                "last_seen_at": self._supervisor_last_seen,
+                "last_error": self._supervisor_last_error,
+            },
         )
+
+    def _read_proc_status_value_kb(self, key: str) -> int | None:
+        try:
+            with Path("/proc/self/status").open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.startswith(f"{key}:"):
+                        parts = line.split()
+                        return int(parts[1]) if len(parts) >= 2 else None
+        except (OSError, ValueError):
+            return None
+        return None
+
+    def _read_meminfo_kb(self) -> dict[str, int]:
+        values: dict[str, int] = {}
+        try:
+            with Path("/proc/meminfo").open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    key, _, rest = line.partition(":")
+                    parts = rest.split()
+                    if parts:
+                        values[key] = int(parts[0])
+        except (OSError, ValueError):
+            return {}
+        return values
+
+    def _docker_resource_usage(self, container_name: str) -> dict[str, object]:
+        result = self._service_command_runner(
+            [
+                "docker",
+                "stats",
+                "--no-stream",
+                "--format",
+                "{{json .}}",
+                container_name,
+            ]
+        )
+        if result.returncode != 0:
+            return {"available": False, "error": (result.stderr or "").strip() or "docker_stats_failed"}
+        try:
+            payload = json.loads((result.stdout or "").strip())
+        except ValueError:
+            return {"available": False, "error": "invalid_docker_stats_payload"}
+        return {
+            "available": True,
+            "sampled_at": datetime.now(UTC).isoformat(),
+            "cpu_percent": self._parse_percent(payload.get("CPUPerc")),
+            "memory_percent": self._parse_percent(payload.get("MemPerc")),
+            "memory_usage": payload.get("MemUsage"),
+            "network_io": payload.get("NetIO"),
+            "block_io": payload.get("BlockIO"),
+            "pids": payload.get("PIDs"),
+        }
+
+    def _parse_percent(self, value: object) -> float | None:
+        try:
+            return round(float(str(value).strip().rstrip("%")), 2)
+        except (TypeError, ValueError):
+            return None
+
+    def _resource_usage_payload(self) -> dict[str, object]:
+        cpu_count = os.cpu_count() or 1
+        uptime_s = max(time.monotonic() - self._started_at_monotonic, 1.0)
+        process_cpu_percent = min(100.0, (time.process_time() / uptime_s) * 100.0 / cpu_count)
+        rss_kb = self._read_proc_status_value_kb("VmRSS")
+        meminfo = self._read_meminfo_kb()
+        total_kb = meminfo.get("MemTotal")
+        available_kb = meminfo.get("MemAvailable")
+        rss_bytes = rss_kb * 1024 if rss_kb is not None else None
+        total_bytes = total_kb * 1024 if total_kb is not None else None
+        available_bytes = available_kb * 1024 if available_kb is not None else None
+        process_memory_percent = (
+            round((rss_kb / total_kb) * 100.0, 2) if rss_kb is not None and total_kb else None
+        )
+        system_memory_percent = (
+            round(((total_kb - available_kb) / total_kb) * 100.0, 2)
+            if total_kb and available_kb is not None
+            else None
+        )
+        try:
+            load_1m, load_5m, load_15m = os.getloadavg()
+        except OSError:
+            load_1m = load_5m = load_15m = None
+
+        return {
+            "sampled_at": datetime.now(UTC).isoformat(),
+            "process_cpu_percent": round(process_cpu_percent, 2),
+            "system_load_1m": round(load_1m, 2) if load_1m is not None else None,
+            "system_load_5m": round(load_5m, 2) if load_5m is not None else None,
+            "system_load_15m": round(load_15m, 2) if load_15m is not None else None,
+            "system_cpu_count": cpu_count,
+            "process_memory_rss_bytes": rss_bytes,
+            "process_memory_percent": process_memory_percent,
+            "system_memory_total_bytes": total_bytes,
+            "system_memory_available_bytes": available_bytes,
+            "system_memory_percent": system_memory_percent,
+        }
 
     def _run_service_command(self, command: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(command, capture_output=True, check=False, text=True, timeout=10)
@@ -372,6 +529,8 @@ class NodeRuntimeService:
     def service_action(self, *, target: str, action: str) -> ServiceActionResponse:
         normalized_target = str(target or "").strip()
         normalized_action = str(action or "").strip().lower()
+        if normalized_target == "tts" and self._piper_tts_enabled():
+            normalized_target = self._settings.piper_tts_service_id
         service_scripts = {
             self._settings.openwakeword_service_id: self._openwakeword_control_script,
         }

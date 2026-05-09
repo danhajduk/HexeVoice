@@ -64,6 +64,13 @@ The registration metadata includes service entries for `backend`, `openwakeword`
 - `POST /api/services/start` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/stop` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/restart` with `{"target":"piper_tts"}` when Piper TTS is enabled
+
+`GET /api/services/status` also exposes runtime page metadata for the operator
+UI: Backend, STT, and TTS component health, per-component CPU/memory usage where
+the runtime can observe it, supervisor registration status, and whether a
+component has a supported restart target. Backend and faster-whisper STT are
+currently in-process and report backend-process resource usage; Piper TTS reports
+Docker container usage when enabled.
 - expected public node API: `http://10.0.0.100:9004`
 
 Backend logs are written to `runtime/logs/hexevoice-backend.log`. The active file is archived at local midnight each day and retained for `BACKEND_LOG_BACKUP_DAYS` days, defaulting to 14. Set `BACKEND_LOG_LEVEL=DEBUG` in the backend environment when deeper voice transport, supervisor heartbeat, OTA, or service-control traces are needed.

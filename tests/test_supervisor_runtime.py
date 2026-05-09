@@ -168,6 +168,10 @@ def test_openwakeword_service_status_and_action_use_control_script(tmp_path):
     assert result.accepted is True
     assert result.status == "running"
     assert [str(script), "restart"] in command_runner.commands
+    assert any(component["component_id"] == "backend" for component in status.components)
+    assert any(component["component_id"] == "stt" for component in status.components)
+    assert status.resource_usage["process_cpu_percent"] >= 0
+    assert status.supervisor["configured"] is False
 
 
 def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_path):
@@ -222,4 +226,27 @@ def test_piper_tts_service_action_uses_control_script_when_enabled(tmp_path):
 
     assert result.accepted is True
     assert result.status == "running"
+    assert [str(script), "restart"] in command_runner.commands
+
+
+def test_tts_service_action_alias_restarts_piper_when_enabled(tmp_path):
+    command_runner = FakeCommandRunner()
+    script = tmp_path / "piper-tts-control.sh"
+    script.write_text("#!/usr/bin/env bash\n")
+    service = NodeRuntimeService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "state.json",
+            voice_tts_provider="piper",
+            piper_tts_control_script=script,
+        ),
+        service_command_runner=command_runner,
+    )
+
+    status = service.service_status_payload()
+    result = service.service_action(target="tts", action="restart")
+
+    tts_component = next(component for component in status.components if component["component_id"] == "tts")
+    assert tts_component["restart_supported"] is True
+    assert tts_component["restart_target"] == "piper_tts"
+    assert result.accepted is True
     assert [str(script), "restart"] in command_runner.commands
