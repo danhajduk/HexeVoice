@@ -56,6 +56,9 @@ constexpr int kClockSyncIntervalMs = 300000;
 constexpr int kClockSyncHttpTimeoutMs = 5000;
 constexpr size_t kMaxClockSyncBytes = 1024;
 constexpr size_t kWakePrerollFrameCount = 15;
+constexpr int kVoiceWsSendTimeoutMs = 3000;
+constexpr int kVoiceWsSendRetryDelayMs = 50;
+constexpr int kVoiceWsSendAttempts = 3;
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
 
 struct AudioFrame {
@@ -662,13 +665,28 @@ bool send_ws_text(const std::string &message) {
       !esp_websocket_client_is_connected(g_ws_client)) {
     mark_voice_socket_disconnected();
   } else {
-    const int written = esp_websocket_client_send_text(g_ws_client, message.c_str(), message.size(), pdMS_TO_TICKS(1000));
-    if (written < 0) {
+    int written = -1;
+    for (int attempt = 1; attempt <= kVoiceWsSendAttempts; ++attempt) {
+      written = esp_websocket_client_send_text(
+          g_ws_client,
+          message.c_str(),
+          message.size(),
+          pdMS_TO_TICKS(kVoiceWsSendTimeoutMs));
+      if (written >= 0) {
+        sent = true;
+        break;
+      }
+      if (!g_ws_connected || !esp_websocket_client_is_connected(g_ws_client)) {
+        break;
+      }
+      ESP_LOGD(kTag, "Voice WebSocket send attempt %d failed for %u bytes", attempt, static_cast<unsigned>(message.size()));
+      vTaskDelay(pdMS_TO_TICKS(kVoiceWsSendRetryDelayMs));
+    }
+    if (!sent) {
+      ESP_LOGW(kTag, "Voice WebSocket send failed after %d attempts for %u bytes", kVoiceWsSendAttempts, static_cast<unsigned>(message.size()));
       mark_voice_socket_disconnected();
       esp_websocket_client_stop(g_ws_client);
       g_ws_started = false;
-    } else {
-      sent = true;
     }
   }
   if (g_ws_send_lock != nullptr) {

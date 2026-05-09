@@ -23,6 +23,10 @@ constexpr size_t kFrameSamples = 320;
 constexpr uint32_t kFrameDurationMs = static_cast<uint32_t>((kFrameSamples * 1000) / kSampleRate);
 constexpr uint32_t kVadStartEnergyThreshold = 900;
 constexpr uint32_t kVadContinueEnergyThreshold = 500;
+constexpr uint32_t kVadStartNoiseMultiplier = 3;
+constexpr uint32_t kVadContinueNoiseMultiplier = 2;
+constexpr uint32_t kVadNoiseMargin = 250;
+constexpr uint32_t kVadStartVoiceFrames = 3;
 constexpr uint32_t kVadSilenceHoldMs = 2500;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
 constexpr uint32_t kVadTaskStackBytes = 8192;
@@ -68,6 +72,13 @@ uint32_t estimate_level(const int16_t *samples, size_t count) {
     total += sample < 0 ? static_cast<uint32_t>(-sample) : static_cast<uint32_t>(sample);
   }
   return count == 0 ? 0 : static_cast<uint32_t>(total / count);
+}
+
+uint32_t update_noise_floor(uint32_t current_floor, uint32_t level) {
+  if (current_floor == 0) {
+    return level;
+  }
+  return ((current_floor * 15) + level) / 16;
 }
 
 int16_t fold_stereo_sample(int32_t left, int32_t right) {
@@ -267,6 +278,8 @@ void vad_task(void *arg) {
   (void)arg;
 
   uint32_t silent_frames = kVadSilenceHoldFrames;
+  uint32_t voice_candidate_frames = 0;
+  uint32_t noise_floor = 0;
 
   while (true) {
     if (hexe::state().ota_active) {
@@ -277,6 +290,7 @@ void vad_task(void *arg) {
       app_state.audio_streaming = false;
       g_vad_turn_active = false;
       silent_frames = kVadSilenceHoldFrames;
+      voice_candidate_frames = 0;
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
@@ -319,9 +333,27 @@ void vad_task(void *arg) {
     }
 
     const uint32_t level = estimate_level(g_mono_samples.data(), stereo_frames);
+    if (noise_floor == 0) {
+      noise_floor = level;
+    }
     const bool was_speaking = hexe::state().vad_speaking;
-    const uint32_t threshold = was_speaking ? kVadContinueEnergyThreshold : kVadStartEnergyThreshold;
-    const bool frame_has_voice = level >= threshold;
+    const uint32_t start_threshold =
+        std::max(kVadStartEnergyThreshold, (noise_floor * kVadStartNoiseMultiplier) + kVadNoiseMargin);
+    const uint32_t continue_threshold =
+        std::max(kVadContinueEnergyThreshold, (noise_floor * kVadContinueNoiseMultiplier) + kVadNoiseMargin);
+    const uint32_t threshold = was_speaking ? continue_threshold : start_threshold;
+    const bool frame_over_threshold = level >= threshold;
+    if (!was_speaking && !frame_over_threshold) {
+      noise_floor = update_noise_floor(noise_floor, level);
+    }
+    if (frame_over_threshold) {
+      if (voice_candidate_frames < kVadStartVoiceFrames) {
+        ++voice_candidate_frames;
+      }
+    } else {
+      voice_candidate_frames = 0;
+    }
+    const bool frame_has_voice = was_speaking ? frame_over_threshold : voice_candidate_frames >= kVadStartVoiceFrames;
     hexe::voice::submit_audio_frame(g_mono_samples.data(), stereo_frames, level, frame_has_voice);
 
     if (frame_has_voice) {

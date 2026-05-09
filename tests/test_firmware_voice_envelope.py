@@ -31,6 +31,8 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "session.cancel" in source
     assert "command.ack" in source
     assert "command.error" in source
+    assert "kVoiceWsSendAttempts = 3" in source
+    assert "Voice WebSocket send failed after %d attempts" in source
 
 
 def test_firmware_backend_commands_acknowledge_receipt_with_ok():
@@ -276,6 +278,9 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "kVadTaskStackBytes = 8192" in audio_source
     assert "kMicReadTimeoutLogEvery = 200" in audio_source
     assert "Voice PE microphone read timeout count=" in audio_source
+    assert "kVadStartVoiceFrames = 3" in audio_source
+    assert "kVadStartNoiseMultiplier = 3" in audio_source
+    assert "update_noise_floor" in audio_source
     assert "std::array<int32_t, kFrameSamples * 2> g_raw_samples" in audio_source
     assert "std::array<int16_t, kFrameSamples> g_mono_samples" in audio_source
     assert 'xTaskCreate(vad_task, "hexe_vpe_vad", kVadTaskStackBytes' in audio_source
