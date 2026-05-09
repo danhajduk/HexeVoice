@@ -34,6 +34,7 @@ set(HEXE_BOARD_SRCS
   "board/audio.cpp"
   "board/buttons.cpp"
   "board/display.cpp"
+  "board/led_ring.cpp"
   "board/storage.cpp"
   "board/touch.cpp"
   "voice/tts_player.cpp"
@@ -44,6 +45,7 @@ if(HEXE_BOARD_PROFILE STREQUAL "ha_voice_pe")
     "board/audio_ha_voice_pe.cpp"
     "board/buttons_ha_voice_pe.cpp"
     "board/display_none.cpp"
+    "board/led_ring_ha_voice_pe.cpp"
     "board/storage_nvs_only.cpp"
     "board/touch_none.cpp"
     "voice/tts_player_ha_voice_pe.cpp"
@@ -85,6 +87,7 @@ idf_component_register(
     esp_driver_gpio
     esp_driver_i2c
     esp_driver_i2s
+    esp_driver_rmt
     esp_https_ota
     esp_http_client
     esp_lcd

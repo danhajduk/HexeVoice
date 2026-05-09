@@ -27,11 +27,12 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - TTS-ready playback scaffold and stop handling in `firmware/main/voice/tts_player.cpp`.
 - Selectable board profile support in `firmware/main/CMakeLists.txt`. `esp_box_3` remains the default profile, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input, AIC3204/I2S TTS output, center-button wake/cancel controls, and hardware-mute controls.
 - Home Assistant Voice PE LED ring hardware contract: `docs/voice-pe-led-ring.md`.
+- Firmware LED ring board API with a no-op non-PE fallback and an RMT-backed `ha_voice_pe` driver for `off`, `set_solid`, and visual-frame rendering.
 
 ## Partial
 
 - VAD updates local app state and display phase, microphone frames are queued for the backend voice WebSocket, and VAD silence sends `audio.end`. Raw backend events drive UI phases, and TTS-ready events can download and play WAV output on supported board speaker paths.
-- The `ha_voice_pe` profile is headless and reports display, touchscreen, and SD media storage as unavailable. Local TTS playback is available through the onboard AIC3204 speaker path, but SD media playback remains unavailable because this profile has no mounted media storage. LED ring implementation is documented but still pending firmware driver work.
+- The `ha_voice_pe` profile is headless and reports display, touchscreen, and SD media storage as unavailable. Local TTS playback is available through the onboard AIC3204 speaker path, but SD media playback remains unavailable because this profile has no mounted media storage. The LED ring driver is initialized, but voice-phase pattern mapping is still pending firmware work.
 - Wi-Fi connects with compile-time local credentials, but provisioning is not implemented.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
 - Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.

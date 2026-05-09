@@ -2,6 +2,7 @@
 #include "board/audio.h"
 #include "board/buttons.h"
 #include "board/display.h"
+#include "board/led_ring.h"
 #include "board/storage.h"
 #include "board/touch.h"
 #include "board/wifi.h"
@@ -40,6 +41,7 @@ extern "C" void app_main(void) {
   hexe::system::init_settings();
   hexe::board::init_display();
   hexe::board::init_touch();
+  hexe::board::init_led_ring();
   vTaskDelay(pdMS_TO_TICKS(kPostDisplayInitDelayMs));
   hexe::board::show_black_frame();
   vTaskDelay(pdMS_TO_TICKS(kPanelSettleDelayMs));
