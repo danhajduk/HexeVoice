@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import {
   cancelEndpointSession,
   deleteEndpointMedia,
+  deleteEndpointVoiceArtifacts,
+  deleteVoiceTtsArtifact,
+  deleteWakeRecording,
   deliverEndpointMedia,
   getEndpointMediaAssets,
   getEndpointMediaInventory,
@@ -672,6 +675,13 @@ function wakeRecordingId(recording) {
   return filename.endsWith(".wav") ? filename.slice(0, -4) : "";
 }
 
+function ttsStreamId(tts) {
+  if (!tts || typeof tts !== "object") {
+    return "";
+  }
+  return tts.stream_id ? String(tts.stream_id) : "";
+}
+
 function visibleHistorySessions(sessions) {
   return sessions.filter((session) => session?.session_state !== "cancelled" && session?.completion_reason !== "cancelled");
 }
@@ -682,6 +692,9 @@ function VoiceSessionHistoryPanel({
   endpointId,
   onReplaySession,
   onReplayWakeRecording,
+  onDeleteWakeRecording,
+  onDeleteTtsArtifact,
+  onDeleteEndpointArtifacts,
   onRefreshHistory,
 }) {
   const visibleSessions = visibleHistorySessions(sessions);
@@ -708,6 +721,7 @@ function VoiceSessionHistoryPanel({
               <th scope="col">Response</th>
               <th scope="col">Total</th>
               <th scope="col">Wake Audio</th>
+              <th scope="col">TTS Audio</th>
               <th scope="col">Replay</th>
             </tr>
           </thead>
@@ -717,6 +731,8 @@ function VoiceSessionHistoryPanel({
                 const replayEligible = session?.replay?.eligible === true;
                 const targetEndpointId = endpointId || session.endpoint_id || "";
                 const recordingId = wakeRecordingId(session.wake_recording);
+                const streamId = ttsStreamId(session.tts);
+                const ttsUrl = session.tts?.endpoint_audio_url || session.tts?.audio_url || "";
                 return (
                   <tr key={session.session_id}>
                     <td>{formatLocalDateTime(session.completed_at || session.updated_at || session.started_at)}</td>
@@ -727,14 +743,42 @@ function VoiceSessionHistoryPanel({
                     <td className="voice-history-text">{valueOrEmpty(session.assistant?.text)}</td>
                     <td>{formatMs(session.turn_timings?.total_ms ?? session.duration_ms)}</td>
                     <td>
-                      <button
-                        className="btn btn-ghost btn-compact"
-                        type="button"
-                        onClick={() => onReplayWakeRecording(session.wake_recording)}
-                        disabled={!recordingId}
-                      >
-                        Play Wake
-                      </button>
+                      <div className="compact-actions">
+                        <button
+                          className="btn btn-ghost btn-compact"
+                          type="button"
+                          onClick={() => onReplayWakeRecording(session.wake_recording)}
+                          disabled={!recordingId}
+                        >
+                          Play
+                        </button>
+                        <a className={`btn btn-ghost btn-compact${recordingId ? "" : " disabled-link"}`} href={recordingId ? wakeRecordingAudioUrl(recordingId) : undefined}>
+                          Download
+                        </a>
+                        <button
+                          className="btn btn-ghost btn-compact"
+                          type="button"
+                          onClick={() => onDeleteWakeRecording(recordingId)}
+                          disabled={!recordingId}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="compact-actions">
+                        <a className={`btn btn-ghost btn-compact${ttsUrl ? "" : " disabled-link"}`} href={ttsUrl || undefined}>
+                          Download
+                        </a>
+                        <button
+                          className="btn btn-ghost btn-compact"
+                          type="button"
+                          onClick={() => onDeleteTtsArtifact(streamId)}
+                          disabled={!streamId}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <button
@@ -751,7 +795,7 @@ function VoiceSessionHistoryPanel({
               })
             ) : (
               <tr>
-                <td colSpan={9}>none</td>
+                <td colSpan={10}>none</td>
               </tr>
             )}
           </tbody>
@@ -760,6 +804,9 @@ function VoiceSessionHistoryPanel({
       <div className="compact-actions">
         <button className="btn btn-ghost" type="button" onClick={onRefreshHistory}>
           Refresh History
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={onDeleteEndpointArtifacts} disabled={!endpointId}>
+          Delete Endpoint Audio
         </button>
       </div>
     </section>
@@ -960,6 +1007,53 @@ export function VoiceEndpointDashboardSection({
     }
   }
 
+  async function handleDeleteWakeRecording(recordingId) {
+    if (!recordingId) {
+      setActionMessage("Wake delete skipped: recording is missing.");
+      return;
+    }
+    try {
+      const result = await deleteWakeRecording(recordingId);
+      setActionMessage(`Deleted wake recording ${recordingId} (${result.deleted_count || 0} files).`);
+      await refreshVoiceSessions({ showMessage: false });
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
+  async function handleDeleteTtsArtifact(streamId) {
+    if (!streamId) {
+      setActionMessage("TTS delete skipped: stream is missing.");
+      return;
+    }
+    try {
+      const result = await deleteVoiceTtsArtifact(streamId);
+      setActionMessage(`Deleted TTS artifact ${streamId} (${result.deleted_count || 0} files).`);
+      await refreshVoiceSessions({ showMessage: false });
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
+  async function handleDeleteEndpointArtifacts() {
+    if (!endpointId) {
+      setActionMessage("Endpoint audio delete skipped: endpoint is not connected.");
+      return;
+    }
+    try {
+      const result = await deleteEndpointVoiceArtifacts(endpointId);
+      setActionMessage(
+        `Deleted endpoint audio for ${endpointId}: ${result.wake_deleted_count || 0} wake files, ${result.tts_deleted_count || 0} TTS files.`,
+      );
+      await refreshVoiceSessions({ showMessage: false });
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
   return (
     <section className="card stack panel voice-endpoint-main-card">
       <div className="voice-endpoint-top">
@@ -1021,6 +1115,9 @@ export function VoiceEndpointDashboardSection({
         endpointId={endpointId}
         onReplaySession={handleReplaySession}
         onReplayWakeRecording={handleReplayWakeRecording}
+        onDeleteWakeRecording={handleDeleteWakeRecording}
+        onDeleteTtsArtifact={handleDeleteTtsArtifact}
+        onDeleteEndpointArtifacts={handleDeleteEndpointArtifacts}
         onRefreshHistory={refreshVoiceSessions}
       />
       <EndpointMetadataPanel

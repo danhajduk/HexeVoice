@@ -1219,6 +1219,11 @@ class VoiceSessionManager:
             return None
         return self._wake_recorder.recording_path(recording_id)
 
+    def delete_wake_recording(self, recording_id: str) -> dict[str, Any]:
+        if self._wake_recorder is None:
+            return {"recording_id": recording_id, "deleted_count": 0, "deleted_paths": [], "status": "disabled"}
+        return self._wake_recorder.delete_recording(recording_id)
+
     def preload_wake_detector(self) -> dict | None:
         preload = getattr(self._wake_detector, "preload", None)
         if not callable(preload):

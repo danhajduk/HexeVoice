@@ -206,6 +206,29 @@ class WakeRecordingService:
         path = self._recording_dir / f"{safe_recording_id}.wav"
         return path if path.is_file() else None
 
+    def delete_recording(self, recording_id: str) -> dict[str, Any]:
+        safe_recording_id = _safe_component(recording_id)
+        if safe_recording_id != recording_id or not safe_recording_id:
+            return {"recording_id": recording_id, "deleted_count": 0, "deleted_paths": [], "reason": "invalid_recording_id"}
+        deleted: list[str] = []
+        for suffix in (".wav", ".json"):
+            path = self._recording_dir / f"{safe_recording_id}{suffix}"
+            if not path.is_file():
+                continue
+            try:
+                path.unlink()
+                deleted.append(str(path))
+            except OSError:
+                pass
+        if self._last_recording and self._last_recording.get("recording_id") == safe_recording_id:
+            self._last_recording = None
+        return {
+            "recording_id": safe_recording_id,
+            "deleted_count": len(deleted),
+            "deleted_paths": deleted,
+            "status": "deleted" if deleted else "not_found",
+        }
+
     def _metadata_path_for_recording(self, recording: dict[str, Any]) -> Path:
         metadata_path_value = recording.get("metadata_path")
         if metadata_path_value:

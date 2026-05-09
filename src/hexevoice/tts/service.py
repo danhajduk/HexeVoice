@@ -374,6 +374,27 @@ class TtsAudioService:
             artifacts.append(self._artifact_summary(stream_id=stream_id, metadata=metadata, metadata_path=metadata_path))
         return {"artifacts": artifacts, "count": len(artifacts), "limit": limit}
 
+    def delete_artifact(self, stream_id: str) -> dict[str, Any]:
+        safe_stream_id = safe_tts_stream_id(stream_id)
+        if safe_stream_id is None:
+            return {"stream_id": stream_id, "deleted_count": 0, "deleted_paths": [], "reason": "invalid_stream_id"}
+        deleted: list[str] = []
+        if self._audio_dir.exists():
+            for candidate in sorted(self._audio_dir.glob(f"{safe_stream_id}.*")):
+                if not candidate.is_file():
+                    continue
+                try:
+                    candidate.unlink()
+                    deleted.append(str(candidate))
+                except OSError:
+                    pass
+        return {
+            "stream_id": safe_stream_id,
+            "deleted_count": len(deleted),
+            "deleted_paths": deleted,
+            "status": "deleted" if deleted else "not_found",
+        }
+
     def _artifact_summary(self, *, stream_id: str, metadata: dict[str, Any], metadata_path: Path) -> dict[str, Any]:
         audio_files = self._artifact_audio_files(stream_id)
         metadata_audio_urls = metadata.get("audio_urls") if isinstance(metadata.get("audio_urls"), dict) else {}

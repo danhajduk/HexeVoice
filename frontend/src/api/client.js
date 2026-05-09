@@ -186,6 +186,18 @@ export function wakeRecordingAudioUrl(recordingId) {
   return `${API_BASE}/api/voice/wake-recordings/${encodeURIComponent(recordingId)}`;
 }
 
+export async function deleteWakeRecording(recordingId) {
+  return sendJson(`/api/voice/wake-recordings/${encodeURIComponent(recordingId)}`, { method: "DELETE" });
+}
+
+export async function deleteVoiceTtsArtifact(streamId) {
+  return sendJson(`/api/voice/tts/artifacts/${encodeURIComponent(streamId)}`, { method: "DELETE" });
+}
+
+export async function deleteEndpointVoiceArtifacts(endpointId) {
+  return sendJson(`/api/voice/artifacts/endpoints/${encodeURIComponent(endpointId)}`, { method: "DELETE" });
+}
+
 export async function getVoiceIntents() {
   return fetchJson("/api/voice/intents");
 }

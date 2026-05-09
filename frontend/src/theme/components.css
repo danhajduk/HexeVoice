@@ -766,6 +766,16 @@
   margin-top: 12px;
 }
 
+.voice-history-table .compact-actions {
+  gap: 6px;
+  margin-top: 0;
+}
+
+.disabled-link {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .endpoint-volume-control {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) auto auto;

@@ -928,6 +928,13 @@ def create_app(
             raise HTTPException(status_code=404, detail="wake_recording_not_found")
         return FileResponse(audio_path, media_type="audio/wav")
 
+    @app.delete("/api/voice/wake-recordings/{recording_id}")
+    async def voice_wake_recording_delete(recording_id: str) -> dict:
+        result = voice_session_manager.delete_wake_recording(recording_id)
+        if result.get("reason") == "invalid_recording_id":
+            raise HTTPException(status_code=404, detail="wake_recording_not_found")
+        return result
+
     @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
     async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         return await asyncio.to_thread(tts_audio_service.synthesize, payload)
@@ -947,6 +954,36 @@ def create_app(
     @app.get("/api/voice/tts/artifacts")
     async def voice_tts_artifacts(limit: int = 50) -> dict:
         return await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
+
+    @app.delete("/api/voice/tts/artifacts/{stream_id}")
+    async def voice_tts_artifact_delete(stream_id: str) -> dict:
+        result = await asyncio.to_thread(tts_audio_service.delete_artifact, stream_id)
+        if result.get("reason") == "invalid_stream_id":
+            raise HTTPException(status_code=404, detail="tts_stream_not_found")
+        return result
+
+    @app.delete("/api/voice/artifacts/endpoints/{endpoint_id}")
+    async def voice_endpoint_artifacts_delete(endpoint_id: str) -> dict:
+        sessions = voice_session_manager.list_session_history(limit=200, endpoint_id=endpoint_id)
+        deleted_tts: list[dict] = []
+        deleted_wake: list[dict] = []
+        for session in sessions:
+            tts = session.get("tts") if isinstance(session.get("tts"), dict) else {}
+            stream_id = tts.get("stream_id")
+            if stream_id:
+                deleted_tts.append(await asyncio.to_thread(tts_audio_service.delete_artifact, str(stream_id)))
+            wake_recording = session.get("wake_recording") if isinstance(session.get("wake_recording"), dict) else {}
+            recording_id = wake_recording.get("recording_id")
+            if recording_id:
+                deleted_wake.append(voice_session_manager.delete_wake_recording(str(recording_id)))
+        return {
+            "endpoint_id": endpoint_id,
+            "session_count": len(sessions),
+            "tts_deleted_count": sum(int(item.get("deleted_count") or 0) for item in deleted_tts),
+            "wake_deleted_count": sum(int(item.get("deleted_count") or 0) for item in deleted_wake),
+            "tts": deleted_tts,
+            "wake_recordings": deleted_wake,
+        }
 
     def tts_file_response(stream_id: str, *, variant: str | None, route: str, not_found_detail: str) -> FileResponse:
         fetch_started_at = time.perf_counter()

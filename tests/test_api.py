@@ -847,6 +847,85 @@ def test_tts_artifacts_debug_api_lists_recent_streams(tmp_path):
     assert artifact["tts_timing_breakdown_ms"]["piper_generation_ms"] == 4.2
 
 
+def test_voice_artifact_delete_routes_remove_tts_and_wake_files(tmp_path):
+    tts_dir = tmp_path / "voice_tts"
+    wake_dir = tmp_path / "wake-recordings"
+    tts_dir.mkdir()
+    wake_dir.mkdir()
+    for suffix in (".json", ".raw.wav", ".48k.wav", ".16k.wav"):
+        (tts_dir / f"tts-delete{suffix}").write_bytes(b"delete")
+    (wake_dir / "wake-delete.wav").write_bytes(b"wake")
+    (wake_dir / "wake-delete.json").write_text('{"recording_id":"wake-delete"}\n', encoding="utf-8")
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_wake_recordings_enabled=True,
+                voice_wake_recording_dir=wake_dir,
+            )
+        )
+    )
+
+    tts_response = client.delete("/api/voice/tts/artifacts/tts-delete")
+    wake_response = client.delete("/api/voice/wake-recordings/wake-delete")
+
+    assert tts_response.status_code == 200
+    assert tts_response.json()["deleted_count"] == 4
+    assert wake_response.status_code == 200
+    assert wake_response.json()["deleted_count"] == 2
+    assert not list(tts_dir.glob("tts-delete*"))
+    assert not list(wake_dir.glob("wake-delete*"))
+
+
+def test_endpoint_voice_artifact_delete_route_removes_history_referenced_files(tmp_path):
+    tts_dir = tmp_path / "voice_tts"
+    wake_dir = tmp_path / "wake-recordings"
+    tts_dir.mkdir()
+    wake_dir.mkdir()
+    for suffix in (".json", ".raw.wav", ".48k.wav"):
+        (tts_dir / f"tts-endpoint{suffix}").write_bytes(b"delete")
+    (wake_dir / "wake-endpoint.wav").write_bytes(b"wake")
+    (wake_dir / "wake-endpoint.json").write_text('{"recording_id":"wake-endpoint"}\n', encoding="utf-8")
+    (tmp_path / "voice_session_history.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-05-09T19:00:00+00:00",
+                "sessions": [
+                    {
+                        "session_id": "voice-session-1",
+                        "endpoint_id": "esp-pe-1",
+                        "tts": {"stream_id": "tts-endpoint"},
+                        "wake_recording": {"recording_id": "wake-endpoint"},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_wake_recordings_enabled=True,
+                voice_wake_recording_dir=wake_dir,
+            )
+        )
+    )
+
+    response = client.delete("/api/voice/artifacts/endpoints/esp-pe-1")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["session_count"] == 1
+    assert payload["tts_deleted_count"] == 3
+    assert payload["wake_deleted_count"] == 2
+    assert not list(tts_dir.glob("tts-endpoint*"))
+    assert not list(wake_dir.glob("wake-endpoint*"))
+
+
 def test_tts_warmup_voice_selection_prefers_configured_warm_voices():
     settings = Settings(
         voice_tts_provider="piper",
