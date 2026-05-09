@@ -18,3 +18,4 @@
 [FUTURE TODO] Task 101: Add optional GPU/CUDA STT configuration and status reporting when hardware is available
 [FUTURE TODO] Task 102: Tune endpoint utterance capture duration and silence detection to reduce audio sent to STT
 [FUTURE TODO] Task 109: Refactor VoiceSessionManager for multiple simultaneous ESP endpoints with per-endpoint WebSockets, active sessions, status, command routing, OTA/media delivery, and replay controls
+[FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
