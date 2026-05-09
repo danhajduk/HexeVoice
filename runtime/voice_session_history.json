@@ -1,0 +1,3598 @@
+{
+  "schema_version": 1,
+  "sessions": [
+    {
+      "session_id": "esp-pe-1-3",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T20:14:38.433750+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "05697b3-dirty",
+      "audio": {
+        "chunk_count": 39,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 39
+      },
+      "completed_at": "2026-05-09T20:14:41.247877+00:00",
+      "duration_ms": 2814,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T20:14:41.247913+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-2",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T20:14:36.590034+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "05697b3-dirty",
+      "audio": {
+        "chunk_count": 24,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 24
+      },
+      "completed_at": "2026-05-09T20:14:38.237082+00:00",
+      "duration_ms": 1647,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T20:14:38.237116+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-1",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T20:14:34.877012+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "05697b3-dirty",
+      "audio": {
+        "chunk_count": 23,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 23
+      },
+      "completed_at": "2026-05-09T20:14:36.463138+00:00",
+      "duration_ms": 1586,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T20:14:36.463164+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6366",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T20:13:51.702211+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 61,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "completed_at": "2026-05-09T20:13:57.415879+00:00",
+      "duration_ms": 5713,
+      "completion_reason": "websocket_disconnected",
+      "cancel_reason": "websocket_disconnected",
+      "error_state": null,
+      "updated_at": "2026-05-09T20:13:57.415925+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6365",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T20:13:42.735802+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 44,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 44
+      },
+      "completed_at": "2026-05-09T20:13:45.962977+00:00",
+      "duration_ms": 3227,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T20:13:45.963011+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6364",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T20:00:40.984731+00:00",
+      "wake_source": "button",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 242,
+        "captured_chunk_count": 242,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "accepted",
+        "detected": true,
+        "model": "button",
+        "confidence": 1.0,
+        "source": "button",
+        "chunk_count": 0
+      },
+      "completed_at": "2026-05-09T20:01:00.048744+00:00",
+      "duration_ms": 19064,
+      "completion_reason": "voice_pe_center_button",
+      "cancel_reason": "voice_pe_center_button",
+      "error_state": null,
+      "updated_at": "2026-05-09T20:01:00.048775+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6363",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T20:00:13.184907+00:00",
+      "wake_source": "button",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 246,
+        "captured_chunk_count": 246,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "accepted",
+        "detected": true,
+        "model": "button",
+        "confidence": 1.0,
+        "source": "button",
+        "chunk_count": 0
+      },
+      "completed_at": "2026-05-09T20:00:32.595397+00:00",
+      "duration_ms": 19410,
+      "completion_reason": "voice_pe_center_button",
+      "cancel_reason": "voice_pe_center_button",
+      "error_state": null,
+      "updated_at": "2026-05-09T20:00:32.595425+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6362",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:59:44.205187+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 67,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 67
+      },
+      "completed_at": "2026-05-09T19:59:49.324091+00:00",
+      "duration_ms": 5118,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:59:49.324121+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6361",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:57:47.130817+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:57:48.444045+00:00",
+      "duration_ms": 1313,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:57:48.444080+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6360",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:57:43.637750+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 27,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 27
+      },
+      "completed_at": "2026-05-09T19:57:45.522230+00:00",
+      "duration_ms": 1884,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:57:45.522260+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6359",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:57:41.913757+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:57:43.247621+00:00",
+      "duration_ms": 1333,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:57:43.247651+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6358",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:57:28.882823+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 22,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 22
+      },
+      "completed_at": "2026-05-09T19:57:30.361093+00:00",
+      "duration_ms": 1478,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:57:30.361128+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6357",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:55:44.282284+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 25,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 25
+      },
+      "completed_at": "2026-05-09T19:55:46.036839+00:00",
+      "duration_ms": 1754,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:55:46.036884+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6356",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:51:31.403900+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:51:32.740073+00:00",
+      "duration_ms": 1336,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:51:32.740103+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6355",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:48:48.948065+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 22,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 22
+      },
+      "completed_at": "2026-05-09T19:48:50.474347+00:00",
+      "duration_ms": 1526,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:48:50.474381+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6354",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:41:23.756242+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:41:25.077188+00:00",
+      "duration_ms": 1320,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:41:25.077209+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6353",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:41:05.665295+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:41:06.963682+00:00",
+      "duration_ms": 1298,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:41:06.963702+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6352",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:41:03.238535+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:41:04.561300+00:00",
+      "duration_ms": 1322,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:41:04.561325+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6351",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:40:59.579397+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:41:00.888469+00:00",
+      "duration_ms": 1309,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:41:00.888495+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6350",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:40:38.198440+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 21,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 21
+      },
+      "completed_at": "2026-05-09T19:40:39.593171+00:00",
+      "duration_ms": 1394,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:40:39.593201+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6349",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:40:29.267675+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 24,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 24
+      },
+      "completed_at": "2026-05-09T19:40:30.887640+00:00",
+      "duration_ms": 1619,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:40:30.887673+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6348",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:40:08.546881+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:40:09.871689+00:00",
+      "duration_ms": 1324,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:40:09.871716+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6347",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:40:03.740997+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 27,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 27
+      },
+      "completed_at": "2026-05-09T19:40:05.664812+00:00",
+      "duration_ms": 1923,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:40:05.664840+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6346",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:39:58.709731+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 22,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 22
+      },
+      "completed_at": "2026-05-09T19:40:00.280713+00:00",
+      "duration_ms": 1570,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:40:00.280738+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6345",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:39:50.030628+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:39:51.381717+00:00",
+      "duration_ms": 1351,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:39:51.381744+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6344",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:39:02.868856+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 21,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 21
+      },
+      "completed_at": "2026-05-09T19:39:04.334304+00:00",
+      "duration_ms": 1465,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:39:04.334332+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6343",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:38:43.793299+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 29,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 29
+      },
+      "completed_at": "2026-05-09T19:38:45.848097+00:00",
+      "duration_ms": 2054,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:38:45.848129+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6342",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:38:41.894062+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:38:43.222826+00:00",
+      "duration_ms": 1328,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:38:43.222853+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6341",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:38:39.590856+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:38:40.895915+00:00",
+      "duration_ms": 1305,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:38:40.895949+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6340",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:38:15.403418+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 21,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 21
+      },
+      "completed_at": "2026-05-09T19:38:16.852462+00:00",
+      "duration_ms": 1449,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:38:16.852489+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6339",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:37:24.441344+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 21,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 21
+      },
+      "completed_at": "2026-05-09T19:37:25.897804+00:00",
+      "duration_ms": 1456,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:37:25.897829+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6338",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:37:20.545604+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:37:21.912443+00:00",
+      "duration_ms": 1366,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:37:21.912473+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6337",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:37:14.352269+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:37:15.707013+00:00",
+      "duration_ms": 1354,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:37:15.707035+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6336",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:37:08.187338+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:37:09.468116+00:00",
+      "duration_ms": 1280,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:37:09.468145+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6335",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:57.501431+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 25,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 25
+      },
+      "completed_at": "2026-05-09T19:36:59.204298+00:00",
+      "duration_ms": 1702,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:59.204321+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6334",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:52.028888+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:36:53.348897+00:00",
+      "duration_ms": 1320,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:53.348923+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6333",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:40.279027+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:36:41.594079+00:00",
+      "duration_ms": 1315,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:41.594108+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6332",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:35.158040+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:36:36.415883+00:00",
+      "duration_ms": 1257,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:36.415906+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6331",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:28.012690+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 26,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 26
+      },
+      "completed_at": "2026-05-09T19:36:29.843552+00:00",
+      "duration_ms": 1830,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:29.843575+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6330",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:22.189843+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 27,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 27
+      },
+      "completed_at": "2026-05-09T19:36:24.079814+00:00",
+      "duration_ms": 1889,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:24.079843+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6329",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:13.453823+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:36:14.721389+00:00",
+      "duration_ms": 1267,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:14.721419+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6328",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:05.131312+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:36:06.392012+00:00",
+      "duration_ms": 1260,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:06.392053+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6327",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:36:00.855287+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:36:02.183257+00:00",
+      "duration_ms": 1327,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:36:02.183284+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6326",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:35:55.341036+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 27,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 27
+      },
+      "completed_at": "2026-05-09T19:35:57.213421+00:00",
+      "duration_ms": 1872,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:35:57.213479+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6325",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:35:51.814980+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:35:53.134405+00:00",
+      "duration_ms": 1319,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:35:53.134432+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6324",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:35:19.857279+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 41,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 41
+      },
+      "completed_at": "2026-05-09T19:35:22.846175+00:00",
+      "duration_ms": 2988,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:35:22.846201+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6323",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:35:16.838418+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:35:18.149144+00:00",
+      "duration_ms": 1310,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:35:18.149172+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6322",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:35:13.028269+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:35:14.339825+00:00",
+      "duration_ms": 1311,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:35:14.339860+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6321",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:58.615430+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:34:59.932978+00:00",
+      "duration_ms": 1317,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:59.933003+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6320",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:57.109498+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:34:58.460735+00:00",
+      "duration_ms": 1351,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:58.460760+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6319",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:55.305622+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:34:56.622657+00:00",
+      "duration_ms": 1317,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:56.622692+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6318",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:41.261670+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 33,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 33
+      },
+      "completed_at": "2026-05-09T19:34:43.626278+00:00",
+      "duration_ms": 2364,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:43.626300+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6317",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:37.704035+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:34:38.970390+00:00",
+      "duration_ms": 1266,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:38.970426+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6316",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:31.627659+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:34:32.943795+00:00",
+      "duration_ms": 1316,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:32.943824+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6315",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:30.107342+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:34:31.341325+00:00",
+      "duration_ms": 1233,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:31.341347+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6314",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:28.153160+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:34:29.421764+00:00",
+      "duration_ms": 1268,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:29.421792+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6313",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:09.146214+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 21,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 21
+      },
+      "completed_at": "2026-05-09T19:34:10.548821+00:00",
+      "duration_ms": 1402,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:10.548847+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6312",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:07.779100+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:34:09.101274+00:00",
+      "duration_ms": 1322,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:09.101301+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6311",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:34:04.754702+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 27,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 27
+      },
+      "completed_at": "2026-05-09T19:34:06.657912+00:00",
+      "duration_ms": 1903,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:06.657933+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6310",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:33:59.347078+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:34:00.614623+00:00",
+      "duration_ms": 1267,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:34:00.614648+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6309",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:33:52.486446+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 29,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 29
+      },
+      "completed_at": "2026-05-09T19:33:54.503158+00:00",
+      "duration_ms": 2016,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:33:54.503195+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6308",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:33:23.104639+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 27,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 27
+      },
+      "completed_at": "2026-05-09T19:33:24.974232+00:00",
+      "duration_ms": 1869,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:33:24.974274+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6307",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:32:01.240869+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 23,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 23
+      },
+      "completed_at": "2026-05-09T19:32:02.807707+00:00",
+      "duration_ms": 1566,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:32:02.807733+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6306",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:31:44.589635+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:31:45.939220+00:00",
+      "duration_ms": 1349,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:31:45.939287+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6305",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:31:41.519206+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:31:42.823065+00:00",
+      "duration_ms": 1303,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:31:42.823090+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6304",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:31:39.294950+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:31:40.562457+00:00",
+      "duration_ms": 1267,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:31:40.562494+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6303",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:31:37.869286+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:31:39.147091+00:00",
+      "duration_ms": 1277,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:31:39.147150+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6302",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:31:31.137648+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:31:32.437185+00:00",
+      "duration_ms": 1299,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:31:32.437208+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6301",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:31:04.722028+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:31:05.990527+00:00",
+      "duration_ms": 1268,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:31:05.990559+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6300",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:31:00.753294+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:31:02.108055+00:00",
+      "duration_ms": 1354,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:31:02.108077+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6299",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:30:57.146605+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 23,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 23
+      },
+      "completed_at": "2026-05-09T19:30:58.714301+00:00",
+      "duration_ms": 1567,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:30:58.714328+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6298",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:30:54.144351+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:30:55.501879+00:00",
+      "duration_ms": 1357,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:30:55.501906+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6297",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:30:51.048979+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:30:52.369389+00:00",
+      "duration_ms": 1320,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:30:52.369415+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6296",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:30:44.624276+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:30:45.885619+00:00",
+      "duration_ms": 1261,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:30:45.885654+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6295",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:30:31.584601+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:30:32.881509+00:00",
+      "duration_ms": 1296,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:30:32.881537+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6294",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:30:28.072665+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 26,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 26
+      },
+      "completed_at": "2026-05-09T19:30:29.860089+00:00",
+      "duration_ms": 1787,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:30:29.860113+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6293",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:29:45.110169+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 25,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 25
+      },
+      "completed_at": "2026-05-09T19:29:46.857106+00:00",
+      "duration_ms": 1746,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:29:46.857143+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6292",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:29:21.700761+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:29:23.012895+00:00",
+      "duration_ms": 1312,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:29:23.012922+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6291",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:29:19.976601+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:29:21.297541+00:00",
+      "duration_ms": 1320,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:29:21.297563+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6290",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:57.408187+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 21,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 21
+      },
+      "completed_at": "2026-05-09T19:28:58.854668+00:00",
+      "duration_ms": 1446,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:58.854696+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6289",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:55.508660+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:28:56.777567+00:00",
+      "duration_ms": 1268,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:56.777590+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6288",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:49.940578+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:28:51.288687+00:00",
+      "duration_ms": 1348,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:51.288711+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6287",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:32.152753+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:28:33.429151+00:00",
+      "duration_ms": 1276,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:33.429176+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6286",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:29.821436+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:28:31.147300+00:00",
+      "duration_ms": 1325,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:31.147333+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6285",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:27.979756+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:28:29.338684+00:00",
+      "duration_ms": 1358,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:29.338710+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6284",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:20.013925+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:28:21.340009+00:00",
+      "duration_ms": 1326,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:21.340063+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6283",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:12.310596+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:28:13.653248+00:00",
+      "duration_ms": 1342,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:13.653275+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6282",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:07.407164+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 32,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 32
+      },
+      "completed_at": "2026-05-09T19:28:09.688672+00:00",
+      "duration_ms": 2281,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:09.688699+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6281",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:28:00.730179+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:28:02.076253+00:00",
+      "duration_ms": 1346,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:28:02.076279+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6280",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:27:52.008989+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 38,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 38
+      },
+      "completed_at": "2026-05-09T19:27:54.811335+00:00",
+      "duration_ms": 2802,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:27:54.811359+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6279",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:27:34.530626+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 24,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 24
+      },
+      "completed_at": "2026-05-09T19:27:36.228046+00:00",
+      "duration_ms": 1697,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:27:36.228074+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6278",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:27:29.350241+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:27:30.595659+00:00",
+      "duration_ms": 1245,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:27:30.595703+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6277",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:27:21.300727+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 33,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 33
+      },
+      "completed_at": "2026-05-09T19:27:23.627464+00:00",
+      "duration_ms": 2326,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:27:23.627486+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6276",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:27:19.786471+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:27:21.175179+00:00",
+      "duration_ms": 1388,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:27:21.175210+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6275",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:27:14.050329+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 21,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 21
+      },
+      "completed_at": "2026-05-09T19:27:15.508791+00:00",
+      "duration_ms": 1458,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:27:15.508820+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6274",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:26:39.128172+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 49,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 49
+      },
+      "completed_at": "2026-05-09T19:26:42.814735+00:00",
+      "duration_ms": 3686,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:26:42.814762+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6273",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:26:36.435433+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:26:37.738777+00:00",
+      "duration_ms": 1303,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:26:37.738802+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6272",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:26:29.080833+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:26:30.427230+00:00",
+      "duration_ms": 1346,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:26:30.427257+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6271",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:26:27.730966+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 19,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 19
+      },
+      "completed_at": "2026-05-09T19:26:29.012860+00:00",
+      "duration_ms": 1281,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:26:29.012887+00:00"
+    },
+    {
+      "session_id": "esp-pe-1-6270",
+      "endpoint_id": "esp-pe-1",
+      "session_state": "cancelled",
+      "started_at": "2026-05-09T19:26:17.254060+00:00",
+      "wake_source": "openwakeword",
+      "firmware_version": "b538894-dirty",
+      "audio": {
+        "chunk_count": 20,
+        "captured_chunk_count": 0,
+        "format": {
+          "encoding": "pcm_s16le",
+          "sample_rate_hz": 16000,
+          "channels": 1
+        },
+        "raw_audio_persisted": false
+      },
+      "replay": {
+        "eligible": false,
+        "reason": "tts_unavailable"
+      },
+      "wake": {
+        "outcome": "not_detected",
+        "detected": false,
+        "model": "supervised_openwakeword",
+        "confidence": null,
+        "reason": "no_detection",
+        "chunk_count": 20
+      },
+      "completed_at": "2026-05-09T19:26:18.514772+00:00",
+      "duration_ms": 1260,
+      "completion_reason": "wake_not_detected",
+      "cancel_reason": "wake_not_detected",
+      "error_state": null,
+      "updated_at": "2026-05-09T19:26:18.514815+00:00"
+    }
+  ],
+  "updated_at": "2026-05-09T20:14:41.248876+00:00"
+}

@@ -1,0 +1,27 @@
+{
+  "accepted_at": "2026-05-09T17:01:20.142038+00:00",
+  "accepted_chunk_count": 15,
+  "accepted_chunk_index": 14,
+  "audio_format": {
+    "channels": 1,
+    "encoding": "pcm_s16le",
+    "sample_rate_hz": 16000
+  },
+  "byte_count": 98560,
+  "chunk_count": 39,
+  "confidence": 1.0,
+  "duration_ms": 3080.0,
+  "endpoint_id": "esp-pe-1",
+  "expires_at": "2026-05-16T17:01:22.052211+00:00",
+  "frame_count": 49280,
+  "metadata_path": "runtime/wake_recordings/20260509T170122052211Z_esp-pe-1_esp-pe-1-5880_accepted_wake.json",
+  "model": "Hexa",
+  "recorded_at": "2026-05-09T17:01:22.052211+00:00",
+  "recording_type": "accepted_wake_session",
+  "retention_days": 7,
+  "session_id": "esp-pe-1-5880",
+  "source": "backend_openwakeword",
+  "stt_byte_count": 60160,
+  "wake_preroll_byte_count": 38400,
+  "wav_path": "runtime/wake_recordings/20260509T170122052211Z_esp-pe-1_esp-pe-1-5880_accepted_wake.wav"
+}

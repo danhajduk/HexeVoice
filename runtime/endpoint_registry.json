@@ -7,113 +7,106 @@
       "zone_id": null,
       "device_state": "idle",
       "session_id": null,
-      "firmware_version": "c7528b6-dirty",
-      "ip_address": "10.0.0.73",
-      "rssi_dbm": -44,
+      "firmware_version": "fcaf50a-dirty",
+      "ip_address": "10.0.0.171",
+      "rssi_dbm": -37,
       "capabilities": {
         "touchscreen": {
-          "available": true
+          "available": false
         },
         "storage": {
-          "sd_card_available": true,
-          "mount_path": "/sdcard",
-          "pictures_path": "/sdcard/hexe/pictures",
-          "sprites_path": "/sdcard/hexe/sprites",
-          "sounds_path": "/sdcard/hexe/sounds",
-          "media_reformat": true,
+          "sd_card_available": false,
+          "mount_path": "",
+          "pictures_path": "",
+          "sprites_path": "",
+          "sounds_path": "",
+          "media_reformat": false,
           "media_transfer_active": false,
           "media_transfer_status": "idle",
           "media_inventory": {
-            "pictures": [
-              {
-                "filename": "bg.rgb565",
-                "size_bytes": 153600
-              }
-            ],
-            "sprites": [
-              {
-                "filename": "clock.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "ui_manifest.json",
-                "size_bytes": 2650
-              },
-              {
-                "filename": "clock.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "error.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "error.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "idle.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "idle.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "listening.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "listening.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "logo.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "logo.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "talk.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "talk.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "thinking.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "thinking.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "work.alpha8",
-                "size_bytes": 76800
-              },
-              {
-                "filename": "work.rgb565",
-                "size_bytes": 153600
-              },
-              {
-                "filename": "ota.rgb565",
-                "size_bytes": 153600
-              }
-            ],
+            "pictures": [],
+            "sprites": [],
             "sounds": [],
             "truncated": false
           }
         },
         "display": {
-          "available": true,
-          "width": 320,
-          "height": 240,
-          "pixel_format": "rgb565",
-          "resolution": "320x240"
+          "available": false,
+          "width": 0,
+          "height": 0,
+          "pixel_format": "none",
+          "resolution": "0x0"
+        },
+        "audio": {
+          "input": {
+            "available": true,
+            "encoding": "pcm_s16le",
+            "sample_rate_hz": 16000,
+            "channels": 1
+          },
+          "output": {
+            "available": false,
+            "volume_percent": 70,
+            "muted": false
+          }
+        },
+        "controls": {
+          "volume": true,
+          "mute": true,
+          "cancel": true,
+          "replay": true,
+          "storage_reformat": false,
+          "restart": false,
+          "reconnect": false
+        },
+        "firmware": {
+          "project_name": "hexe_firmware",
+          "version": "fcaf50a-dirty",
+          "build_date": "May  8 2026",
+          "build_time": "20:04:07",
+          "idf_version": "v6.1-dev-3824-g484e56869c"
+        }
+      },
+      "first_seen_at": "2026-04-26T13:25:52.058896+00:00",
+      "last_seen_at": "2026-05-09T03:19:42.804903+00:00",
+      "operator_updated_at": null,
+      "updated_at": "2026-05-09T03:19:42.804903+00:00"
+    },
+    "esp-pe-1": {
+      "endpoint_id": "esp-pe-1",
+      "display_name": null,
+      "zone_id": null,
+      "device_state": "idle",
+      "session_id": "esp-pe-1-3",
+      "firmware_version": "05697b3-dirty",
+      "ip_address": "10.0.0.171",
+      "rssi_dbm": -34,
+      "capabilities": {
+        "touchscreen": {
+          "available": false
+        },
+        "storage": {
+          "sd_card_available": false,
+          "mount_path": "",
+          "pictures_path": "",
+          "sprites_path": "",
+          "sounds_path": "",
+          "media_reformat": false,
+          "media_transfer_active": false,
+          "media_transfer_status": "idle",
+          "media_inventory": {
+            "pictures": [],
+            "sprites": [],
+            "sounds": [],
+            "truncated": false
+          }
+        },
+        "display": {
+          "available": false,
+          "width": 0,
+          "height": 0,
+          "pixel_format": "none",
+          "resolution": "0x0"
         },
         "audio": {
           "input": {
@@ -133,23 +126,23 @@
           "mute": true,
           "cancel": true,
           "replay": true,
-          "storage_reformat": true,
+          "storage_reformat": false,
           "restart": false,
           "reconnect": false
         },
         "firmware": {
           "project_name": "hexe_firmware",
-          "version": "c7528b6-dirty",
-          "build_date": "May  3 2026",
-          "build_time": "18:30:55",
+          "version": "05697b3-dirty",
+          "build_date": "May  9 2026",
+          "build_time": "13:13:34",
           "idf_version": "v6.1-dev-3824-g484e56869c"
         }
       },
-      "first_seen_at": "2026-04-26T13:25:52.058896+00:00",
-      "last_seen_at": "2026-05-04T07:01:44.711509+00:00",
+      "first_seen_at": "2026-05-09T03:20:08.592837+00:00",
+      "last_seen_at": "2026-05-09T20:14:39.272351+00:00",
       "operator_updated_at": null,
-      "updated_at": "2026-05-04T07:01:44.711509+00:00"
+      "updated_at": "2026-05-09T20:14:39.272351+00:00"
     }
   },
-  "updated_at": "2026-05-04T07:01:44.711713+00:00"
+  "updated_at": "2026-05-09T20:14:39.272541+00:00"
 }
