@@ -26,8 +26,9 @@ low when the ring is off or power-gated.
 
 ## Ring Order
 
-Pattern code addresses visual slots, not raw strip indices. Visual slot `0` is
-the top LED with the device upright, and slots increase clockwise.
+Pattern code addresses visual slots, not raw strip indices. Real-device
+validation showed visual slot `0` is the bottom LED with the device upright,
+and slots increase clockwise.
 
 The physical strip order is remapped before patterns are rendered:
 

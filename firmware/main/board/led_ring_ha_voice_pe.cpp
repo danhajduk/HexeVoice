@@ -23,7 +23,7 @@ constexpr uint32_t kRmtResolutionHz = 10 * 1000 * 1000;
 constexpr uint32_t kRenderTimeoutMs = 100;
 constexpr uint32_t kPatternFrameMs = 100;
 constexpr uint32_t kMomentaryPatternMs = 750;
-constexpr size_t kBottomLedIndex = 6;
+constexpr size_t kBottomLedIndex = 0;
 constexpr std::array<uint8_t, kLedCount> kVisualToPhysical = {
     7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6};
 
