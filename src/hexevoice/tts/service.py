@@ -8,6 +8,7 @@ import wave
 
 from hexevoice.api.models import TtsSynthesizeRequest, TtsSynthesizeResponse
 from hexevoice.config.settings import Settings
+from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.pipeline import DEFAULT_TTS_AUDIO_TTL_SECONDS, VoiceTurnPipeline
 from hexevoice.voice.pipeline import tts_audio_url_metadata
 
@@ -71,6 +72,7 @@ class TtsAudioService:
             "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
             "output_sample_rate_hz": synthesis.output_sample_rate_hz,
             "variant_sample_rates_hz": synthesis.variant_sample_rates_hz,
+            "tts_timing_breakdown_ms": synthesis.timing_breakdown_ms,
             "expires_at": expires_at.isoformat(),
             "provider_id": synthesis.provider_id,
             "text_chars": len(request.text or ""),
@@ -150,6 +152,7 @@ class TtsAudioService:
             "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
             "output_sample_rate_hz": synthesis.output_sample_rate_hz,
             "variant_sample_rates_hz": synthesis.variant_sample_rates_hz,
+            "tts_timing_breakdown_ms": synthesis.timing_breakdown_ms,
             "provider_id": synthesis.provider_id,
             "model_id": synthesis.model_id or options.get("model_id") or resolved_voice or "deterministic",
             "voice_id": synthesis.voice_id or options.get("voice_id") or options.get("voice") or resolved_voice,
@@ -213,6 +216,59 @@ class TtsAudioService:
         metadata = self.metadata(stream_id) or {}
         content_type = metadata.get("content_type")
         return str(content_type) if content_type else content_type_for_path(path)
+
+    def record_fetch_latency(
+        self,
+        stream_id: str,
+        *,
+        variant: str | None,
+        latency_ms: float,
+        audio_path: Path,
+        route: str,
+    ) -> None:
+        safe_stream_id = safe_tts_stream_id(stream_id)
+        if safe_stream_id is None:
+            return
+        metadata_path = self._metadata_path(safe_stream_id)
+        metadata = self.metadata(safe_stream_id) or {}
+        timings = metadata.get("tts_timing_breakdown_ms") if isinstance(metadata, dict) else {}
+        if not isinstance(timings, dict):
+            timings = {}
+        timings["last_endpoint_fetch_ms"] = latency_ms
+        fetch = metadata.get("endpoint_fetch") if isinstance(metadata, dict) else {}
+        if not isinstance(fetch, dict):
+            fetch = {}
+        try:
+            count = int(fetch.get("count") or 0) + 1
+        except (TypeError, ValueError):
+            count = 1
+        now = datetime.now(UTC).isoformat()
+        fetch.update(
+            {
+                "count": count,
+                "last_latency_ms": latency_ms,
+                "last_variant": safe_tts_audio_variant(variant) or "default",
+                "last_path": str(audio_path),
+                "last_route": route,
+                "last_fetched_at": now,
+            }
+        )
+        if metadata_path.exists() and isinstance(metadata, dict):
+            metadata["tts_timing_breakdown_ms"] = timings
+            metadata["endpoint_fetch"] = fetch
+            try:
+                metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+            except OSError:
+                pass
+        record_voice_event(
+            "tts.fetch",
+            stream_id=safe_stream_id,
+            audio_variant=safe_tts_audio_variant(variant) or "default",
+            latency_ms=latency_ms,
+            audio_path=str(audio_path),
+            route=route,
+            fetch_count=count,
+        )
 
     def cleanup_expired(self, *, now: datetime | None = None) -> None:
         current = now or datetime.now(UTC)

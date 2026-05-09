@@ -83,6 +83,7 @@ class TtsSynthesis:
     audio_variant_source_sample_rate_hz: int | None = None
     output_sample_rate_hz: int | None = None
     variant_sample_rates_hz: dict[str, int | None] = field(default_factory=dict)
+    timing_breakdown_ms: dict[str, float] = field(default_factory=dict)
     metadata_path: str | None = None
     expires_at: str | None = None
     ttl_seconds: int | None = None
@@ -444,12 +445,15 @@ class PiperTextToSpeechAdapter:
         stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
         client = self._http_client or httpx.Client(timeout=self._timeout_s)
         selected_voice = voice or self._voice or "piper-default"
+        timing_breakdown_ms: dict[str, float] = {}
         try:
+            piper_started_at = time.perf_counter()
             response = client.post(
                 f"{self._base_url}{self._synthesize_path}",
                 json={"text": text, "voice": selected_voice},
             )
             response.raise_for_status()
+            timing_breakdown_ms["piper_generation_ms"] = elapsed_ms(piper_started_at)
             self._output_dir.mkdir(parents=True, exist_ok=True)
             raw_audio = response.content
             raw_path = self._output_dir / f"{stream_id}.raw.wav"
@@ -463,6 +467,7 @@ class PiperTextToSpeechAdapter:
                 raw_path=raw_path,
                 variant_paths=variant_paths,
                 variant_sample_rates=self._conversion_sample_rates,
+                timing_breakdown_ms=timing_breakdown_ms,
             )
             raw_sample_rate_hz = variant_sample_rates_hz.get("raw")
             audio_variant_paths = {"raw": str(raw_path)}
@@ -473,6 +478,7 @@ class PiperTextToSpeechAdapter:
             audio_urls = tts_audio_variant_urls(stream_id, audio_variant_paths)
             endpoint_audio_url = audio_urls.get(audio_variant or "") or audio_urls.get("raw") or audio_url
             content_type = response.headers.get("content-type", "audio/wav")
+            sidecar_started_at = time.perf_counter()
             metadata_path, expires_at = write_default_tts_sidecar(
                 self._output_dir,
                 stream_id,
@@ -495,8 +501,11 @@ class PiperTextToSpeechAdapter:
                     "output_sample_rate_hz": output_sample_rate_hz,
                     "variant_sample_rates_hz": variant_sample_rates_hz,
                     "voice": selected_voice,
+                    "tts_timing_breakdown_ms": dict(timing_breakdown_ms),
                 },
             )
+            timing_breakdown_ms["sidecar_write_ms"] = elapsed_ms(sidecar_started_at)
+            update_tts_sidecar_timing(metadata_path, timing_breakdown_ms)
             self._last_error = None
             record_voice_event(
                 "tts.synthesized",
@@ -518,6 +527,7 @@ class PiperTextToSpeechAdapter:
                 target_sample_rate_hz=target_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
                 variant_sample_rates_hz=variant_sample_rates_hz,
+                tts_timing_breakdown_ms=timing_breakdown_ms,
                 metadata_path=str(metadata_path),
                 expires_at=expires_at,
                 error=None,
@@ -539,6 +549,7 @@ class PiperTextToSpeechAdapter:
                 audio_variant_source_sample_rate_hz=raw_sample_rate_hz,
                 output_sample_rate_hz=output_sample_rate_hz,
                 variant_sample_rates_hz=variant_sample_rates_hz,
+                timing_breakdown_ms=timing_breakdown_ms,
                 metadata_path=str(metadata_path),
                 expires_at=expires_at,
                 ttl_seconds=DEFAULT_TTS_AUDIO_TTL_SECONDS,
@@ -889,20 +900,26 @@ def write_wav_variants_with_soxr(
     raw_path: Path,
     variant_paths: dict[str, Path],
     variant_sample_rates: dict[str, int],
+    timing_breakdown_ms: dict[str, float] | None = None,
 ) -> dict[str, int | None]:
+    raw_started_at = time.perf_counter()
     raw_path.write_bytes(audio)
+    record_elapsed_ms(timing_breakdown_ms, "raw_save_ms", raw_started_at)
+    conversion_started_at = time.perf_counter()
     try:
         with wave.open(io.BytesIO(audio), "rb") as wav_file:
             channels = wav_file.getnchannels()
             sample_width = wav_file.getsampwidth()
             sample_rate = wav_file.getframerate()
             if sample_width != 2 or channels <= 0 or sample_rate <= 0:
-                copy_audio_to_variant_paths(audio, variant_paths)
+                copy_audio_to_variant_paths(audio, variant_paths, timing_breakdown_ms=timing_breakdown_ms)
+                record_elapsed_ms(timing_breakdown_ms, "conversion_total_ms", conversion_started_at)
                 return {"raw": sample_rate if sample_rate > 0 else None} | {
                     variant: sample_rate if sample_rate > 0 else None for variant in variant_paths
                 }
             if all(sample_rate == target_rate for target_rate in variant_sample_rates.values()):
-                copy_audio_to_variant_paths(audio, variant_paths)
+                copy_audio_to_variant_paths(audio, variant_paths, timing_breakdown_ms=timing_breakdown_ms)
+                record_elapsed_ms(timing_breakdown_ms, "conversion_total_ms", conversion_started_at)
                 return {"raw": sample_rate} | {variant: sample_rate for variant in variant_paths}
 
             with ExitStack() as stack:
@@ -911,7 +928,9 @@ def write_wav_variants_with_soxr(
                 for variant, target_rate in variant_sample_rates.items():
                     path = variant_paths[variant]
                     if target_rate == sample_rate:
+                        variant_started_at = time.perf_counter()
                         path.write_bytes(audio)
+                        record_elapsed_ms(timing_breakdown_ms, f"conversion_{variant}_ms", variant_started_at)
                         continue
                     writer = stack.enter_context(wave.open(str(path), "wb"))
                     writer.setnchannels(channels)
@@ -928,27 +947,68 @@ def write_wav_variants_with_soxr(
                     for variant, resampler in resamplers.items():
                         if resampler is None:
                             continue
+                        variant_started_at = time.perf_counter()
                         resampled = resampler.resample_chunk(samples, last=False)
                         if resampled.size:
                             writers[variant].writeframes(ndarray_to_pcm16le_bytes(resampled))
+                        add_elapsed_ms(timing_breakdown_ms, f"conversion_{variant}_ms", variant_started_at)
 
                 empty = empty_pcm16le_array(channels=channels)
                 for variant, resampler in resamplers.items():
                     if resampler is None:
                         continue
+                    variant_started_at = time.perf_counter()
                     resampled = resampler.resample_chunk(empty, last=True)
                     if resampled.size:
                         writers[variant].writeframes(ndarray_to_pcm16le_bytes(resampled))
+                    add_elapsed_ms(timing_breakdown_ms, f"conversion_{variant}_ms", variant_started_at)
     except wave.Error:
-        copy_audio_to_variant_paths(audio, variant_paths)
+        copy_audio_to_variant_paths(audio, variant_paths, timing_breakdown_ms=timing_breakdown_ms)
+        record_elapsed_ms(timing_breakdown_ms, "conversion_total_ms", conversion_started_at)
         return {"raw": None} | {variant: None for variant in variant_paths}
 
+    record_elapsed_ms(timing_breakdown_ms, "conversion_total_ms", conversion_started_at)
     return {"raw": sample_rate} | dict(variant_sample_rates)
 
 
-def copy_audio_to_variant_paths(audio: bytes, variant_paths: dict[str, Path]) -> None:
-    for path in variant_paths.values():
+def copy_audio_to_variant_paths(
+    audio: bytes,
+    variant_paths: dict[str, Path],
+    *,
+    timing_breakdown_ms: dict[str, float] | None = None,
+) -> None:
+    for variant, path in variant_paths.items():
+        variant_started_at = time.perf_counter()
         path.write_bytes(audio)
+        record_elapsed_ms(timing_breakdown_ms, f"conversion_{variant}_ms", variant_started_at)
+
+
+def elapsed_ms(started_at: float) -> float:
+    return round((time.perf_counter() - started_at) * 1000, 2)
+
+
+def record_elapsed_ms(timings: dict[str, float] | None, key: str, started_at: float) -> None:
+    if timings is not None:
+        timings[key] = elapsed_ms(started_at)
+
+
+def add_elapsed_ms(timings: dict[str, float] | None, key: str, started_at: float) -> None:
+    if timings is not None:
+        timings[key] = round(timings.get(key, 0.0) + ((time.perf_counter() - started_at) * 1000), 2)
+
+
+def update_tts_sidecar_timing(metadata_path: Path, timing_breakdown_ms: dict[str, float]) -> None:
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(metadata, dict):
+        return
+    metadata["tts_timing_breakdown_ms"] = dict(timing_breakdown_ms)
+    try:
+        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+    except OSError:
+        return
 
 
 def pcm16le_bytes_to_ndarray(frame_bytes: bytes, *, channels: int) -> np.ndarray:

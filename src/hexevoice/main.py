@@ -6,6 +6,7 @@ from logging.handlers import TimedRotatingFileHandler
 import os
 from pathlib import Path
 import re
+import time
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse
@@ -939,47 +940,79 @@ def create_app(
     async def tts_settings_update(payload: dict) -> dict:
         return await asyncio.to_thread(tts_runtime_settings_service.update, payload)
 
-    @app.get("/api/tts/audio/{stream_id}/{variant}")
-    async def tts_audio_variant(stream_id: str, variant: str) -> FileResponse:
+    def tts_file_response(stream_id: str, *, variant: str | None, route: str, not_found_detail: str) -> FileResponse:
+        fetch_started_at = time.perf_counter()
         audio_path = tts_audio_service.audio_path(stream_id, variant=variant)
         if audio_path is None:
-            raise HTTPException(status_code=404, detail="tts_audio_not_found")
-        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+            raise HTTPException(status_code=404, detail=not_found_detail)
+        content_type = tts_audio_service.content_type(stream_id, audio_path)
+        fetch_latency_ms = round((time.perf_counter() - fetch_started_at) * 1000, 2)
+        tts_audio_service.record_fetch_latency(
+            stream_id,
+            variant=variant,
+            latency_ms=fetch_latency_ms,
+            audio_path=audio_path,
+            route=route,
+        )
+        return FileResponse(
+            audio_path,
+            media_type=content_type,
+            headers={"X-Hexe-TTS-Fetch-Latency-Ms": str(fetch_latency_ms)},
+        )
+
+    @app.get("/api/tts/audio/{stream_id}/{variant}")
+    async def tts_audio_variant(stream_id: str, variant: str) -> FileResponse:
+        return tts_file_response(
+            stream_id,
+            variant=variant,
+            route="/api/tts/audio/{stream_id}/{variant}",
+            not_found_detail="tts_audio_not_found",
+        )
 
     @app.get("/api/tts/audio/{stream_id}")
     async def tts_audio(stream_id: str) -> FileResponse:
-        audio_path = tts_audio_service.audio_path(stream_id)
-        if audio_path is None:
-            raise HTTPException(status_code=404, detail="tts_audio_not_found")
-        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+        return tts_file_response(
+            stream_id,
+            variant=None,
+            route="/api/tts/audio/{stream_id}",
+            not_found_detail="tts_audio_not_found",
+        )
 
     @app.get("/api/tts/audio/{stream_id}/")
     async def tts_audio_base(stream_id: str) -> FileResponse:
-        audio_path = tts_audio_service.audio_path(stream_id)
-        if audio_path is None:
-            raise HTTPException(status_code=404, detail="tts_audio_not_found")
-        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+        return tts_file_response(
+            stream_id,
+            variant=None,
+            route="/api/tts/audio/{stream_id}/",
+            not_found_detail="tts_audio_not_found",
+        )
 
     @app.get("/api/voice/tts/{stream_id}/{variant}")
     async def voice_tts_audio_variant(stream_id: str, variant: str) -> FileResponse:
-        audio_path = tts_audio_service.audio_path(stream_id, variant=variant)
-        if audio_path is None:
-            raise HTTPException(status_code=404, detail="tts_stream_not_found")
-        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+        return tts_file_response(
+            stream_id,
+            variant=variant,
+            route="/api/voice/tts/{stream_id}/{variant}",
+            not_found_detail="tts_stream_not_found",
+        )
 
     @app.get("/api/voice/tts/{stream_id}")
     async def voice_tts_audio(stream_id: str) -> FileResponse:
-        audio_path = tts_audio_service.audio_path(stream_id)
-        if audio_path is None:
-            raise HTTPException(status_code=404, detail="tts_stream_not_found")
-        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+        return tts_file_response(
+            stream_id,
+            variant=None,
+            route="/api/voice/tts/{stream_id}",
+            not_found_detail="tts_stream_not_found",
+        )
 
     @app.get("/api/voice/tts/{stream_id}/")
     async def voice_tts_audio_base(stream_id: str) -> FileResponse:
-        audio_path = tts_audio_service.audio_path(stream_id)
-        if audio_path is None:
-            raise HTTPException(status_code=404, detail="tts_stream_not_found")
-        return FileResponse(audio_path, media_type=tts_audio_service.content_type(stream_id, audio_path))
+        return tts_file_response(
+            stream_id,
+            variant=None,
+            route="/api/voice/tts/{stream_id}/",
+            not_found_detail="tts_stream_not_found",
+        )
 
     @app.post("/api/voice/session/cancel")
     async def voice_session_cancel() -> dict:

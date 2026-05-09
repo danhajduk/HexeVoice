@@ -510,11 +510,19 @@ def test_piper_tts_adapter_posts_synthesis_request_and_stores_audio(tmp_path):
     assert metadata["audio_variant"] == "16k"
     assert metadata["audio_variant_sample_rate_hz"] is None
     assert metadata["audio_variant_source_sample_rate_hz"] is None
+    assert metadata["tts_timing_breakdown_ms"]["piper_generation_ms"] >= 0
+    assert metadata["tts_timing_breakdown_ms"]["raw_save_ms"] >= 0
+    assert metadata["tts_timing_breakdown_ms"]["conversion_16k_ms"] >= 0
+    assert metadata["tts_timing_breakdown_ms"]["conversion_48k_ms"] >= 0
+    assert metadata["tts_timing_breakdown_ms"]["conversion_total_ms"] >= 0
+    assert metadata["tts_timing_breakdown_ms"]["sidecar_write_ms"] >= 0
     assert metadata["ttl_seconds"] == 300
     assert metadata["expires_at"]
     assert synthesis.metadata_path == str(tmp_path / f"{synthesis.stream_id}.json")
     assert synthesis.model_id == "en_US-test"
     assert synthesis.voice_id == "en_US-test"
+    assert synthesis.timing_breakdown_ms["piper_generation_ms"] >= 0
+    assert synthesis.timing_breakdown_ms["sidecar_write_ms"] >= 0
     assert synthesis.ttl_seconds == 300
     assert adapter.status()["healthy"] is True
 
@@ -561,6 +569,9 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
     assert metadata["audio_variant_sample_rate_hz"] == 16000
     assert metadata["audio_variant_source_sample_rate_hz"] == 22050
     assert metadata["variant_sample_rates_hz"] == {"raw": 22050, "16k": 16000, "48k": 48000}
+    assert metadata["tts_timing_breakdown_ms"]["conversion_16k_ms"] >= 0
+    assert metadata["tts_timing_breakdown_ms"]["conversion_48k_ms"] >= 0
+    assert metadata["tts_timing_breakdown_ms"]["conversion_total_ms"] >= 0
 
 
 def test_piper_tts_adapter_can_generate_configured_22050_variant(tmp_path):

@@ -506,13 +506,19 @@ def test_voice_tts_audio_route_serves_generated_stream(tmp_path):
     tts_dir = tmp_path / "voice_tts"
     tts_dir.mkdir()
     (tts_dir / f"{stream_id}.wav").write_bytes(b"RIFFtest-wav")
+    (tts_dir / f"{stream_id}.json").write_text(json.dumps({"stream_id": stream_id}), encoding="utf-8")
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)))
 
     response = client.get(f"/api/voice/tts/{stream_id}")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/wav"
+    assert float(response.headers["x-hexe-tts-fetch-latency-ms"]) >= 0
     assert response.content == b"RIFFtest-wav"
+    metadata = json.loads((tts_dir / f"{stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["tts_timing_breakdown_ms"]["last_endpoint_fetch_ms"] >= 0
+    assert metadata["endpoint_fetch"]["count"] == 1
+    assert metadata["endpoint_fetch"]["last_variant"] == "default"
 
 
 def test_voice_tts_audio_route_serves_requested_variant(tmp_path):
@@ -522,13 +528,17 @@ def test_voice_tts_audio_route_serves_requested_variant(tmp_path):
     (tts_dir / f"{stream_id}.raw.wav").write_bytes(b"RIFFraw")
     (tts_dir / f"{stream_id}.16k.wav").write_bytes(b"RIFF16k")
     (tts_dir / f"{stream_id}.48k.wav").write_bytes(b"RIFF48k")
+    (tts_dir / f"{stream_id}.json").write_text(json.dumps({"stream_id": stream_id}), encoding="utf-8")
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)))
 
     response = client.get(f"/api/voice/tts/{stream_id}/16k")
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "audio/wav"
+    assert float(response.headers["x-hexe-tts-fetch-latency-ms"]) >= 0
     assert response.content == b"RIFF16k"
+    metadata = json.loads((tts_dir / f"{stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["endpoint_fetch"]["last_variant"] == "16k"
 
 
 def test_piper_tts_artifact_is_served_for_firmware_playback(tmp_path):
