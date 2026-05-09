@@ -1054,9 +1054,11 @@ class VoiceSessionManager:
             self._update_active_session_history(assistant=self._last_assistant)
             self._set_session_state("responding")
             self._last_tts = tts_synthesis_metadata(turn.tts)
-            self._last_tts["transcript"] = self._attach_tts_sidecar_transcript(
+            self._last_tts["spoken_text"] = turn.assistant_response.spoken_text
+            self._last_tts["transcript"] = self._attach_tts_sidecar_turn_text(
                 turn.tts,
                 transcript=transcript_metadata,
+                spoken_text=turn.assistant_response.spoken_text,
             )
             self._update_active_session_history(tts=self._last_tts)
             record_voice_event(
@@ -1290,7 +1292,13 @@ class VoiceSessionManager:
             return wake_recording
         return self._wake_recorder.attach_transcript(wake_recording, transcript)
 
-    def _attach_tts_sidecar_transcript(self, tts: TtsSynthesis, *, transcript: dict[str, Any]) -> dict[str, Any]:
+    def _attach_tts_sidecar_turn_text(
+        self,
+        tts: TtsSynthesis,
+        *,
+        transcript: dict[str, Any],
+        spoken_text: str,
+    ) -> dict[str, Any]:
         cleaned_transcript = {key: value for key, value in transcript.items() if value is not None}
         if not tts.metadata_path:
             return cleaned_transcript
@@ -1304,6 +1312,7 @@ class VoiceSessionManager:
         if not isinstance(metadata, dict):
             return cleaned_transcript
         metadata["transcript"] = cleaned_transcript
+        metadata["spoken_text"] = spoken_text
         try:
             metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         except OSError:

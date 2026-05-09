@@ -700,6 +700,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert sessions[0]["assistant"]["intent_latency_ms"] == 8.5
     assert sessions[0]["turn_timings"]["total_ms"] == 36.0
     assert sessions[0]["tts"]["stream_id"] == "tts-history"
+    assert sessions[0]["tts"]["spoken_text"] == "OK"
     assert sessions[0]["tts"]["transcript"]["text"] == "turn on the light"
     assert sessions[0]["replay"]["eligible"] is True
     assert sessions[0]["wake_recording"]["transcript"]["text"] == "turn on the light"
@@ -711,6 +712,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert wake_metadata["transcript"]["text"] == "turn on the light"
     assert wake_metadata["transcript"]["provider_id"] == "stt-test"
     tts_metadata = json.loads((tmp_path / "voice_tts" / "tts-history.json").read_text(encoding="utf-8"))
+    assert tts_metadata["spoken_text"] == "OK"
     assert tts_metadata["transcript"]["text"] == "turn on the light"
     assert tts_metadata["transcript"]["provider_id"] == "stt-test"
 
