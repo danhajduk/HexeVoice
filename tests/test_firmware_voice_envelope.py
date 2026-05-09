@@ -13,6 +13,7 @@ FIRMWARE_DISPLAY_NONE = Path("firmware/main/board/display_none.cpp")
 FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
 FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/main/board/storage_nvs_only.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
+FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/main/voice/tts_player_ha_voice_pe.cpp")
 FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
 
@@ -247,7 +248,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     buttons_source = FIRMWARE_BUTTONS_HA_VOICE_PE.read_text()
     display_source = FIRMWARE_DISPLAY_NONE.read_text()
     storage_source = FIRMWARE_STORAGE_NVS_ONLY.read_text()
-    tts_source = FIRMWARE_TTS_PLAYER_NOOP.read_text()
+    tts_source = FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
 
     assert "HEXE_BOARD_PROFILE" in cmake_source
     assert 'HEXE_BOARD_PROFILE STREQUAL "ha_voice_pe"' in cmake_source
@@ -255,9 +256,10 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert '"board/buttons_ha_voice_pe.cpp"' in cmake_source
     assert '"board/display_none.cpp"' in cmake_source
     assert '"board/storage_nvs_only.cpp"' in cmake_source
-    assert '"voice/tts_player_noop.cpp"' in cmake_source
+    assert '"voice/tts_player_ha_voice_pe.cpp"' in cmake_source
     assert cmake_source.count('"voice/tts_player.cpp"') == 1
     assert "esp_driver_i2c" in cmake_source
+    assert "esp_driver_i2s" in cmake_source
 
     assert "I2S_ROLE_SLAVE" in audio_source
     assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_source
@@ -288,7 +290,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "std::array<int32_t, kFrameSamples * 2> g_raw_samples" in audio_source
     assert "std::array<int16_t, kFrameSamples> g_mono_samples" in audio_source
     assert 'xTaskCreate(vad_task, "hexe_vpe_vad", kVadTaskStackBytes' in audio_source
-    assert "return false;" in audio_source[audio_source.index("bool audio_output_ready()") :]
+    assert "return g_voice_kit_ready;" in audio_source[audio_source.index("bool audio_output_ready()") :]
 
     assert "GPIO_NUM_0" in buttons_source
     assert "GPIO_NUM_3" in buttons_source
@@ -297,7 +299,20 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "Display disabled for this board profile" in display_source
     assert 'return "none";' in display_source
     assert "NVS storage initialized; SD media storage disabled" in storage_source
-    assert "TTS output disabled for this board profile" in tts_source
+    assert "kAic3204I2cAddress = 0x18" in tts_source
+    assert "GPIO_NUM_7" in tts_source
+    assert "GPIO_NUM_8" in tts_source
+    assert "GPIO_NUM_10" in tts_source
+    assert "kSpeakerSampleRate = 48000" in tts_source
+    assert "I2S_ROLE_SLAVE" in tts_source
+    assert "I2S_DATA_BIT_WIDTH_32BIT" in tts_source
+    assert "I2S_SLOT_MODE_STEREO" in tts_source
+    assert "i2c_master_get_bus_handle" in tts_source
+    assert "i2s_channel_write" in tts_source
+    assert "ensure_codec_ready" in tts_source
+    assert "set_codec_volume" in tts_source
+    assert "upsample_factor" in tts_source
+    assert "Home Assistant Voice PE TTS player initialized" in tts_source
     assert "tts_playback_active()" in tts_source
 
 

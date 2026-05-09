@@ -46,7 +46,7 @@ if(HEXE_BOARD_PROFILE STREQUAL "ha_voice_pe")
     "board/display_none.cpp"
     "board/storage_nvs_only.cpp"
     "board/touch_none.cpp"
-    "voice/tts_player_noop.cpp"
+    "voice/tts_player_ha_voice_pe.cpp"
   )
   set(HEXE_BOARD_DEFINITIONS HEXE_BOARD_PROFILE_HA_VOICE_PE=1)
 elseif(HEXE_BOARD_PROFILE STREQUAL "esp_box_3")

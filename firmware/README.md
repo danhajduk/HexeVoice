@@ -79,7 +79,7 @@ HEXE_BOARD_PROFILE=esp_box_3 ./build.sh
 HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
 ```
 
-This writes flashable artifacts to `firmware/export-ha-voice-pe`. The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input and the center/mute controls. It reports endpoint id `esp-pe-1` by default, and brings up the onboard Voice Kit/XMOS device over I2C before enabling the secondary I2S microphone stream. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. Local speaker/TTS output is also disabled until the AIC3204/XMOS audio output path is added.
+This writes flashable artifacts to `firmware/export-ha-voice-pe`. The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input, speaker output, and the center/mute controls. It reports endpoint id `esp-pe-1` by default, and brings up the onboard Voice Kit/XMOS device over I2C before enabling the secondary I2S microphone stream. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. TTS playback uses the onboard AIC3204 codec and the 48 kHz secondary I2S speaker path.
 
 To flash the Home Assistant Voice device from another PC, pull that profile-specific export folder:
 

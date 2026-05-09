@@ -415,7 +415,7 @@ bool audio_input_ready() {
 }
 
 bool audio_output_ready() {
-  return false;
+  return g_voice_kit_ready;
 }
 
 bool pause_microphone_for_playback() {
