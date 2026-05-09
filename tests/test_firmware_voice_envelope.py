@@ -10,12 +10,15 @@ FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/main/board/audio_ha_voice_pe.cpp")
 FIRMWARE_BUTTONS_HA_VOICE_PE = Path("firmware/main/board/buttons_ha_voice_pe.cpp")
 FIRMWARE_DISPLAY = Path("firmware/main/board/display.cpp")
 FIRMWARE_DISPLAY_NONE = Path("firmware/main/board/display_none.cpp")
+FIRMWARE_LED_RING = Path("firmware/main/board/led_ring.cpp")
+FIRMWARE_LED_RING_HA_VOICE_PE = Path("firmware/main/board/led_ring_ha_voice_pe.cpp")
 FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
 FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/main/board/storage_nvs_only.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
 FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/main/voice/tts_player_ha_voice_pe.cpp")
 FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
+FIRMWARE_APP_MAIN = Path("firmware/main/app_main.cpp")
 
 
 def test_firmware_voice_events_emit_full_v1_envelope():
@@ -329,6 +332,76 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "tts.playback.failed" in tts_source
     assert "Home Assistant Voice PE TTS player initialized" in tts_source
     assert "tts_playback_active()" in tts_source
+
+
+def test_voice_pe_led_ring_driver_contract_and_priority():
+    app_source = FIRMWARE_APP_MAIN.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    cmake_source = FIRMWARE_CMAKE.read_text()
+    noop_source = FIRMWARE_LED_RING.read_text()
+    led_source = FIRMWARE_LED_RING_HA_VOICE_PE.read_text()
+    doc_source = Path("docs/voice-pe-led-ring.md").read_text()
+
+    assert '"board/led_ring.cpp"' in cmake_source
+    assert '"board/led_ring_ha_voice_pe.cpp"' in cmake_source
+    assert "esp_driver_rmt" in cmake_source
+    assert "init_led_ring();" in app_source
+    assert "update_led_ring_patterns();" in app_source
+
+    assert "kLedDataGpio = GPIO_NUM_21" in led_source
+    assert "kLedPowerGpio = GPIO_NUM_45" in led_source
+    assert "kLedCount = 12" in led_source
+    assert "kVisualToPhysical" in led_source
+    assert "7, 8, 9, 10, 11, 0, 1, 2, 3, 4, 5, 6" in led_source
+    assert "g_pixels[physical_index * 3 + 0] = green" in led_source
+    assert "g_pixels[physical_index * 3 + 1] = red" in led_source
+    assert "g_pixels[physical_index * 3 + 2] = blue" in led_source
+    assert "set_led_power(false)" in led_source
+    assert "transmit_pixels_locked(false)" in led_source
+    assert "render_frame_locked" in led_source
+
+    pattern_source = led_source[led_source.index("LedPattern pattern_for_state") :]
+    assert pattern_source.index("kBooting") < pattern_source.index("kOtaProgress")
+    assert pattern_source.index("kOtaProgress") < pattern_source.index("kMuted")
+    assert pattern_source.index("kMuted") < pattern_source.index("kWifiConnecting")
+    assert pattern_source.index("kWifiConnecting") < pattern_source.index("kBackendConnecting")
+    assert pattern_source.index("kBackendConnecting") < pattern_source.index("kSpeakerSilent")
+    assert pattern_source.index("kSpeakerSilent") < pattern_source.index("kListening")
+
+    assert "led_ring_show_completed()" in led_source
+    assert "led_ring_show_cancelled()" in led_source
+    assert "led_ring_show_cancelled();" in backend_source
+    assert "led_ring_show_completed();" in backend_source
+    assert "ESP_ERR_NOT_SUPPORTED" in noop_source
+
+    assert "Priority order" in doc_source
+    assert "OTA-Safe Behavior" in doc_source
+    assert "center-held rotation" in doc_source
+
+
+def test_voice_pe_rotary_dial_led_affordances_do_not_trigger_center_action():
+    buttons_source = FIRMWARE_BUTTONS_HA_VOICE_PE.read_text()
+    led_source = FIRMWARE_LED_RING_HA_VOICE_PE.read_text()
+    noop_source = FIRMWARE_LED_RING.read_text()
+
+    assert "kDialA = GPIO_NUM_16" in buttons_source
+    assert "kDialB = GPIO_NUM_18" in buttons_source
+    assert "kQuadratureStepsPerDetent = 2" in buttons_source
+    assert "kVolumeStepPercent = 5" in buttons_source
+    assert "hexe::voice::set_output_volume(new_volume)" in buttons_source
+    assert "hexe::board::led_ring_show_volume(new_volume)" in buttons_source
+    assert "hexe::board::led_ring_adjust_accent_hue(direction)" in buttons_source
+    assert "g_center_rotary_consumed = true" in buttons_source
+    assert "Center button release consumed by rotary color selection" in buttons_source
+    assert 'start_voice_session("button")' in buttons_source
+
+    assert "LedPattern::kVolumeDisplay" in led_source
+    assert "LedPattern::kColorSelect" in led_source
+    assert "g_accent_hue_degrees" in led_source
+    assert "show_momentary_pattern(LedPattern::kVolumeDisplay)" in led_source
+    assert "show_momentary_pattern(LedPattern::kColorSelect)" in led_source
+    assert "led_ring_show_volume(int volume_percent)" in noop_source
+    assert "led_ring_adjust_accent_hue(int delta_steps)" in noop_source
 
 
 def test_firmware_build_exports_profile_specific_ota_artifacts():

@@ -73,6 +73,41 @@ visually harsh at high brightness and may be left on in bedrooms or quiet rooms.
 - On render failure, clear the frame buffer and power-gate the ring.
 - Keep the LED update task independent of audio/VAD tasks.
 
+## Pattern Priority
+
+The firmware chooses one active LED pattern every frame. Priority order is:
+
+1. Boot while the app phase is `kBooting`.
+2. OTA progress while `ota_active` is true or the app phase is `kUpdating`.
+3. Muted/privacy while the hardware or software mute state is active.
+4. Wi-Fi connection state while Wi-Fi is unavailable.
+5. Backend connection state while heartbeat or voice WebSocket is unavailable.
+6. Speaker-silent idle state when volume is `0%`.
+7. Voice turn state: wake/listening, capturing, thinking, replying, error.
+8. Idle/off when the endpoint is ready and no voice turn or diagnostic state is active.
+
+Completed and cancelled are momentary overlays. They temporarily override the
+steady state and then return to the normal priority order.
+
+## Rotary Affordances
+
+Voice PE rotary pins are `GPIO16` and `GPIO18`. Normal rotation changes the
+endpoint output volume in small steps and shows a temporary LED volume meter.
+Center-held rotation changes the active LED accent color and shows a temporary
+full-ring color preview. A center-held rotation consumes the center-button
+release so the same gesture does not wake, cancel, or long-press-cancel a voice
+turn.
+
+## OTA-Safe Behavior
+
+- OTA progress has higher priority than voice, volume, and color affordances.
+- LED render failures clear the frame buffer and power-gate the ring through
+  `GPIO45`.
+- Non-PE board profiles use the no-op LED ring implementation, so shared voice
+  state code can call LED helpers safely on ESP-BOX builds.
+- LED updates are best-effort and must not block OTA writes, audio capture, TTS
+  playback, backend heartbeat, or WebSocket transport.
+
 ## References
 
 - Official ESPHome Voice PE firmware config:
