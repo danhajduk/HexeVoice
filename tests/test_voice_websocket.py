@@ -471,6 +471,57 @@ def test_voice_session_manager_pushes_timer_announcement_to_endpoint():
     assert websocket.sent[0]["payload"]["source_event_id"] == "interaction-timer-create-succeeded-session-1"
 
 
+def test_voice_session_manager_pushes_speak_command_to_endpoint():
+    class SpeakPipeline:
+        def __init__(self):
+            self.endpoint_id = None
+            self.session_id = None
+            self.text = None
+
+        def synthesize_reply(self, *, endpoint_id, session_id, text):
+            self.endpoint_id = endpoint_id
+            self.session_id = session_id
+            self.text = text
+            return TtsSynthesis(
+                content_type="audio/wav",
+                stream_id="tts-speak",
+                audio_url="/api/voice/tts/tts-speak",
+                provider_id="test",
+            )
+
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    pipeline = SpeakPipeline()
+    websocket = FakeWebSocket()
+    manager = VoiceSessionManager(turn_pipeline=pipeline)
+    manager._connection_active = True
+    manager._websocket = websocket
+    manager._connected_endpoint_id = "esp-pe-1"
+
+    result = asyncio.run(
+        manager.push_speak_command(
+            endpoint_id="esp-pe-1",
+            session_id="manual-speak",
+            text="Vioce test",
+        )
+    )
+
+    assert result["accepted"] is True
+    assert pipeline.endpoint_id == "esp-pe-1"
+    assert pipeline.session_id == "manual-speak"
+    assert pipeline.text == "Vioce test"
+    assert websocket.sent[0]["event_type"] == "endpoint.replay"
+    assert websocket.sent[0]["payload"]["request_id"] == result["request_id"]
+    assert websocket.sent[0]["payload"]["stream_id"] == "tts-speak"
+    assert websocket.sent[0]["payload"]["audio_url"] == "/api/voice/tts/tts-speak"
+    assert websocket.sent[0]["payload"]["text"] == "Vioce test"
+
+
 def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
     class FailingSttPipeline:
         def status(self):

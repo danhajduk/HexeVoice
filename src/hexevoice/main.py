@@ -53,6 +53,7 @@ from hexevoice.api.models import (
     EndpointMediaUploadRequest,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
+    EndpointSpeakCommandRequest,
     EndpointTimeResponse,
     EndpointVolumeCommandRequest,
     EndpointVolumeCommandResponse,
@@ -600,6 +601,22 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             command_type="endpoint.replay",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/speak", response_model=EndpointCommandResponse)
+    async def endpoint_speak(payload: EndpointSpeakCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_speak_command(
+            endpoint_id=payload.endpoint_id,
+            text=payload.text,
+            session_id=payload.session_id,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.speak",
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),

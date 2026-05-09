@@ -132,3 +132,5 @@ I heard <last transcript>
 ```
 
 The synthesized replay uses the active TTS provider, so with Piper enabled it creates a new WAV artifact under `runtime/voice_tts/` and sends that artifact URL to the endpoint.
+
+`POST /api/endpoint/speak` accepts `{ "endpoint_id": "...", "text": "..." }` and synthesizes the supplied text for immediate endpoint playback through the same endpoint audio delivery path.

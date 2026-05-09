@@ -232,6 +232,53 @@ class VoiceSessionManager:
             },
         )
 
+    async def push_speak_command(self, *, endpoint_id: str, text: str, session_id: str | None = None) -> dict:
+        if self._turn_pipeline is None:
+            return {"accepted": False, "reason": "turn_pipeline_unavailable", "status": "failed"}
+        spoken_text = str(text or "").strip()
+        if not spoken_text:
+            return {"accepted": False, "reason": "speak_text_required", "status": "failed"}
+        command_session_id = session_id or f"{endpoint_id}-speak"
+        tts = self._turn_pipeline.synthesize_reply(
+            endpoint_id=endpoint_id,
+            session_id=command_session_id,
+            text=spoken_text,
+        )
+        self._last_response = spoken_text
+        self._last_tts = {
+            "content_type": tts.content_type,
+            "stream_id": tts.stream_id,
+            "audio_url": tts.audio_url,
+            "provider_id": tts.provider_id,
+            "error": tts.error,
+        }
+        if tts.error:
+            return {"accepted": False, "reason": tts.error, "status": "failed"}
+        if not tts.stream_id:
+            return {"accepted": False, "reason": "tts_stream_unavailable", "status": "failed"}
+        record_voice_event(
+            "endpoint.speak.ready",
+            endpoint_id=endpoint_id,
+            session_id=command_session_id,
+            provider_id=tts.provider_id,
+            content_type=tts.content_type,
+            stream_id=tts.stream_id,
+            audio_url=tts.audio_url,
+            spoken_text=spoken_text,
+        )
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.replay",
+            command_type="endpoint.speak",
+            request_id=f"endpoint_speak_{uuid4().hex}",
+            payload={
+                "stream_id": tts.stream_id,
+                "content_type": tts.content_type,
+                "audio_url": tts.audio_url,
+                "text": spoken_text,
+            },
+        )
+
     async def push_timer_announcement(
         self,
         *,

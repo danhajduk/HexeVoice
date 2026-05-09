@@ -349,6 +349,8 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
         mute_event = websocket.receive_json()
         replay_response = client.post("/api/endpoint/replay", json={"endpoint_id": "esp-box-1"})
         replay_event = websocket.receive_json()
+        speak_response = client.post("/api/endpoint/speak", json={"endpoint_id": "esp-box-1", "text": "Vioce test"})
+        speak_event = websocket.receive_json()
 
         websocket.send_json(
             {
@@ -372,6 +374,12 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
     assert replay_event["event_type"] == "endpoint.replay"
     assert replay_event["payload"]["request_id"] == replay_response.json()["request_id"]
     assert replay_event["payload"]["stream_id"].startswith("tts-")
+    assert speak_response.status_code == 200
+    assert speak_response.json()["command_type"] == "endpoint.speak"
+    assert speak_event["event_type"] == "endpoint.replay"
+    assert speak_event["payload"]["request_id"] == speak_response.json()["request_id"]
+    assert speak_event["payload"]["stream_id"].startswith("tts-")
+    assert speak_event["payload"]["text"] == "Vioce test"
     assert cancel_response.status_code == 200
     assert cancel_event["event_type"] == "endpoint.cancel"
     assert cancel_event["payload"]["request_id"] == cancel_response.json()["request_id"]
