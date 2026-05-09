@@ -270,6 +270,112 @@ class TtsAudioService:
             fetch_count=count,
         )
 
+    def list_artifacts(self, *, limit: int = 50) -> dict[str, Any]:
+        self.cleanup_expired()
+        limit = max(1, min(int(limit or 50), 200))
+        if not self._audio_dir.exists():
+            return {"artifacts": [], "count": 0, "limit": limit}
+        artifacts: list[dict[str, Any]] = []
+        metadata_paths = sorted(
+            self._audio_dir.glob("*.json"),
+            key=lambda path: path.stat().st_mtime if path.exists() else 0,
+            reverse=True,
+        )
+        for metadata_path in metadata_paths[:limit]:
+            try:
+                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                metadata = {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            stream_id = str(metadata.get("stream_id") or metadata_path.stem)
+            artifacts.append(self._artifact_summary(stream_id=stream_id, metadata=metadata, metadata_path=metadata_path))
+        return {"artifacts": artifacts, "count": len(artifacts), "limit": limit}
+
+    def _artifact_summary(self, *, stream_id: str, metadata: dict[str, Any], metadata_path: Path) -> dict[str, Any]:
+        audio_files = self._artifact_audio_files(stream_id)
+        metadata_audio_urls = metadata.get("audio_urls") if isinstance(metadata.get("audio_urls"), dict) else {}
+        playable_urls = dict(metadata_audio_urls)
+        for variant in audio_files:
+            safe_variant = None if variant == "default" else safe_tts_audio_variant(variant)
+            key = safe_variant or "default"
+            playable_urls.setdefault(key, self._public_tts_audio_url(stream_id, variant=safe_variant))
+        file_sizes = {
+            variant: file_metadata.get("bytes")
+            for variant, file_metadata in audio_files.items()
+            if file_metadata.get("bytes") is not None
+        }
+        sample_rates = metadata.get("variant_sample_rates_hz") if isinstance(metadata.get("variant_sample_rates_hz"), dict) else {}
+        return {
+            "stream_id": stream_id,
+            "created_at": metadata.get("created_at"),
+            "expires_at": metadata.get("expires_at"),
+            "lifetime": metadata.get("lifetime"),
+            "status": metadata.get("status"),
+            "voice_ready": metadata.get("voice_ready", bool(audio_files)),
+            "provider_id": metadata.get("provider_id"),
+            "model_id": metadata.get("model_id"),
+            "voice_id": metadata.get("voice_id"),
+            "content_type": metadata.get("content_type"),
+            "audio_url": metadata.get("audio_url"),
+            "endpoint_audio_url": metadata.get("endpoint_audio_url"),
+            "playable_urls": playable_urls,
+            "audio_variant": metadata.get("audio_variant"),
+            "audio_variants": metadata.get("audio_variants") if isinstance(metadata.get("audio_variants"), dict) else {},
+            "raw_sample_rate_hz": metadata.get("raw_sample_rate_hz"),
+            "output_sample_rate_hz": metadata.get("output_sample_rate_hz"),
+            "variant_sample_rates_hz": sample_rates,
+            "audio_variant_sample_rate_hz": metadata.get("audio_variant_sample_rate_hz"),
+            "audio_variant_source_sample_rate_hz": metadata.get("audio_variant_source_sample_rate_hz"),
+            "file_sizes": file_sizes,
+            "audio_files": audio_files,
+            "metadata_path": str(metadata_path),
+            "metadata_bytes": self._file_size(metadata_path),
+            "tts_timing_breakdown_ms": metadata.get("tts_timing_breakdown_ms")
+            if isinstance(metadata.get("tts_timing_breakdown_ms"), dict)
+            else {},
+            "endpoint_fetch": metadata.get("endpoint_fetch") if isinstance(metadata.get("endpoint_fetch"), dict) else {},
+        }
+
+    def _artifact_audio_files(self, stream_id: str) -> dict[str, dict[str, Any]]:
+        files: dict[str, dict[str, Any]] = {}
+        for candidate in sorted(self._audio_dir.glob(f"{stream_id}.*")):
+            if not candidate.is_file() or candidate.suffix.lower() == ".json":
+                continue
+            variant = self._audio_candidate_variant(stream_id, candidate)
+            files[variant] = {
+                "path": str(candidate),
+                "bytes": self._file_size(candidate),
+                "content_type": content_type_for_path(candidate),
+                "audio_url": self._public_tts_audio_url(
+                    stream_id,
+                    variant=None if variant == "default" else variant,
+                ),
+            }
+        return files
+
+    def _audio_candidate_variant(self, stream_id: str, path: Path) -> str:
+        name = path.name
+        default_names = {f"{stream_id}{suffix}" for suffix in GENERATED_AUDIO_SUFFIXES}
+        if name in default_names:
+            return "default"
+        for variant in GENERATED_WAV_VARIANTS:
+            if name == f"{stream_id}.{variant}.wav":
+                return variant
+        for suffix in GENERATED_AUDIO_SUFFIXES:
+            raw_suffix = f".raw{suffix}"
+            if name == f"{stream_id}{raw_suffix}":
+                return "raw"
+            if name.startswith(f"{stream_id}.") and name.endswith(suffix):
+                return name[len(stream_id) + 1 : -len(suffix)]
+        return "unknown"
+
+    def _file_size(self, path: Path) -> int | None:
+        try:
+            return path.stat().st_size
+        except OSError:
+            return None
+
     def cleanup_expired(self, *, now: datetime | None = None) -> None:
         current = now or datetime.now(UTC)
         if not self._audio_dir.exists():

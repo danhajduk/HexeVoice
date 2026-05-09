@@ -785,6 +785,68 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert audio.content.startswith(b"RIFF")
 
 
+def test_tts_artifacts_debug_api_lists_recent_streams(tmp_path):
+    public_base_url = "http://voice-node.local:9004"
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    (tts_dir / "tts-debug.raw.wav").write_bytes(b"RIFFraw")
+    (tts_dir / "tts-debug.48k.wav").write_bytes(b"RIFF48k")
+    (tts_dir / "tts-debug.16k.wav").write_bytes(b"RIFF16k")
+    (tts_dir / "tts-debug.json").write_text(
+        json.dumps(
+            {
+                "stream_id": "tts-debug",
+                "created_at": "2026-05-09T19:00:00+00:00",
+                "expires_at": "2999-01-01T00:00:00+00:00",
+                "provider_id": "piper",
+                "model_id": "en_US-jenny-high",
+                "voice_id": "en_US-jenny-high",
+                "audio_url": "/api/voice/tts/tts-debug/",
+                "endpoint_audio_url": "/api/voice/tts/tts-debug/48k",
+                "audio_urls": {
+                    "raw": "/api/voice/tts/tts-debug/raw",
+                    "48k": "/api/voice/tts/tts-debug/48k",
+                    "16k": "/api/voice/tts/tts-debug/16k",
+                },
+                "audio_variant": "48k",
+                "raw_sample_rate_hz": 22050,
+                "output_sample_rate_hz": 48000,
+                "variant_sample_rates_hz": {"raw": 22050, "48k": 48000, "16k": 16000},
+                "tts_timing_breakdown_ms": {"piper_generation_ms": 4.2},
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                public_api_base_url=public_base_url,
+            )
+        )
+    )
+
+    response = client.get("/api/tts/artifacts")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    artifact = payload["artifacts"][0]
+    assert artifact["stream_id"] == "tts-debug"
+    assert artifact["provider_id"] == "piper"
+    assert artifact["model_id"] == "en_US-jenny-high"
+    assert artifact["audio_variant"] == "48k"
+    assert artifact["raw_sample_rate_hz"] == 22050
+    assert artifact["output_sample_rate_hz"] == 48000
+    assert artifact["variant_sample_rates_hz"]["16k"] == 16000
+    assert artifact["file_sizes"]["raw"] == len(b"RIFFraw")
+    assert artifact["file_sizes"]["48k"] == len(b"RIFF48k")
+    assert artifact["playable_urls"]["16k"] == "/api/voice/tts/tts-debug/16k"
+    assert artifact["audio_files"]["16k"]["audio_url"] == f"{public_base_url}/api/tts/audio/tts-debug/16k"
+    assert artifact["tts_timing_breakdown_ms"]["piper_generation_ms"] == 4.2
+
+
 def test_tts_warmup_voice_selection_prefers_configured_warm_voices():
     settings = Settings(
         voice_tts_provider="piper",

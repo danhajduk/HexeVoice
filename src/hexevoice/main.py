@@ -940,6 +940,14 @@ def create_app(
     async def tts_settings_update(payload: dict) -> dict:
         return await asyncio.to_thread(tts_runtime_settings_service.update, payload)
 
+    @app.get("/api/tts/artifacts")
+    async def tts_artifacts(limit: int = 50) -> dict:
+        return await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
+
+    @app.get("/api/voice/tts/artifacts")
+    async def voice_tts_artifacts(limit: int = 50) -> dict:
+        return await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
+
     def tts_file_response(stream_id: str, *, variant: str | None, route: str, not_found_detail: str) -> FileResponse:
         fetch_started_at = time.perf_counter()
         audio_path = tts_audio_service.audio_path(stream_id, variant=variant)
