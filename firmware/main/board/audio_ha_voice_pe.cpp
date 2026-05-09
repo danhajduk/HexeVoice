@@ -7,6 +7,7 @@
 
 #include "app_state.h"
 #include "driver/gpio.h"
+#include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -31,12 +32,30 @@ constexpr gpio_num_t kMicLrclk = GPIO_NUM_14;
 constexpr gpio_num_t kMicDin = GPIO_NUM_15;
 constexpr gpio_num_t kSpeakerAmp = GPIO_NUM_47;
 constexpr gpio_num_t kVoiceKitReset = GPIO_NUM_4;
+constexpr gpio_num_t kVoiceKitI2cSda = GPIO_NUM_5;
+constexpr gpio_num_t kVoiceKitI2cScl = GPIO_NUM_6;
+constexpr uint8_t kVoiceKitI2cAddress = 0x42;
+constexpr uint32_t kVoiceKitI2cClockHz = 400000;
+constexpr uint32_t kVoiceKitBootDelayMs = 3000;
+constexpr uint32_t kVoiceKitI2cTimeoutMs = 1000;
+constexpr uint8_t kVoiceKitCtrlDone = 0;
+constexpr uint8_t kDfuServicerResid = 240;
+constexpr uint8_t kConfigurationServicerResid = 241;
+constexpr uint8_t kReadCommandBit = 0x80;
+constexpr uint8_t kDfuGetVersionCommand = 88;
+constexpr uint8_t kChannel0PipelineStage = 0x30;
+constexpr uint8_t kChannel1PipelineStage = 0x40;
+constexpr uint8_t kPipelineAgc = 4;
+constexpr uint8_t kPipelineNs = 3;
 
 i2s_chan_handle_t g_rx_channel = nullptr;
+i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
+i2c_master_dev_handle_t g_voice_kit_i2c_device = nullptr;
 TaskHandle_t g_vad_task = nullptr;
 SemaphoreHandle_t g_mic_mutex = nullptr;
 bool g_vad_turn_active = false;
 bool g_mic_paused_for_playback = false;
+bool g_voice_kit_ready = false;
 std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
 std::array<int16_t, kFrameSamples> g_mono_samples = {};
 
@@ -52,6 +71,121 @@ uint32_t estimate_level(const int16_t *samples, size_t count) {
 int16_t fold_stereo_sample(int32_t left, int32_t right) {
   const int32_t mono = ((left >> 16) + (right >> 16)) / 2;
   return static_cast<int16_t>(std::clamp<int32_t>(mono, -32768, 32767));
+}
+
+bool init_voice_kit_i2c() {
+  if (g_voice_kit_i2c_device != nullptr) {
+    return true;
+  }
+
+  if (g_voice_kit_i2c_bus == nullptr) {
+    i2c_master_bus_config_t bus_config = {};
+    bus_config.i2c_port = I2C_NUM_0;
+    bus_config.sda_io_num = kVoiceKitI2cSda;
+    bus_config.scl_io_num = kVoiceKitI2cScl;
+    bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+    bus_config.glitch_ignore_cnt = 7;
+    bus_config.flags.enable_internal_pullup = true;
+
+    const esp_err_t result = i2c_new_master_bus(&bus_config, &g_voice_kit_i2c_bus);
+    if (result != ESP_OK) {
+      ESP_LOGE(kTag, "Failed to create Voice Kit I2C bus: %s", esp_err_to_name(result));
+      return false;
+    }
+  }
+
+  i2c_device_config_t device_config = {};
+  device_config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  device_config.device_address = kVoiceKitI2cAddress;
+  device_config.scl_speed_hz = kVoiceKitI2cClockHz;
+
+  const esp_err_t result = i2c_master_bus_add_device(g_voice_kit_i2c_bus, &device_config, &g_voice_kit_i2c_device);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to add Voice Kit I2C device: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool voice_kit_write(const uint8_t *data, size_t size) {
+  const esp_err_t result = i2c_master_transmit(
+      g_voice_kit_i2c_device,
+      data,
+      size,
+      pdMS_TO_TICKS(kVoiceKitI2cTimeoutMs));
+  if (result != ESP_OK) {
+    ESP_LOGW(kTag, "Voice Kit I2C write failed: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool voice_kit_read(uint8_t *data, size_t size) {
+  const esp_err_t result = i2c_master_receive(
+      g_voice_kit_i2c_device,
+      data,
+      size,
+      pdMS_TO_TICKS(kVoiceKitI2cTimeoutMs));
+  if (result != ESP_OK) {
+    ESP_LOGW(kTag, "Voice Kit I2C read failed: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool read_voice_kit_version() {
+  const uint8_t request[] = {
+      kDfuServicerResid,
+      static_cast<uint8_t>(kDfuGetVersionCommand | kReadCommandBit),
+      4,
+  };
+  uint8_t response[4] = {};
+
+  if (!voice_kit_write(request, sizeof(request)) || !voice_kit_read(response, sizeof(response))) {
+    return false;
+  }
+  if (response[0] != kVoiceKitCtrlDone) {
+    ESP_LOGW(kTag, "Voice Kit version response not ready: status=%u", response[0]);
+    return false;
+  }
+
+  ESP_LOGI(kTag, "Voice Kit XMOS firmware version %u.%u.%u", response[1], response[2], response[3]);
+  return true;
+}
+
+bool write_voice_kit_pipeline_stage(uint8_t channel_register, uint8_t stage) {
+  const uint8_t request[] = {
+      kConfigurationServicerResid,
+      channel_register,
+      1,
+      stage,
+  };
+  return voice_kit_write(request, sizeof(request));
+}
+
+bool init_voice_kit() {
+  if (!init_voice_kit_i2c()) {
+    return false;
+  }
+
+  gpio_set_level(kVoiceKitReset, 1);
+  vTaskDelay(pdMS_TO_TICKS(1));
+  gpio_set_level(kVoiceKitReset, 0);
+  vTaskDelay(pdMS_TO_TICKS(kVoiceKitBootDelayMs));
+
+  if (!read_voice_kit_version()) {
+    ESP_LOGE(kTag, "Voice Kit did not respond after reset; microphone I2S clocks are unavailable");
+    return false;
+  }
+
+  if (!write_voice_kit_pipeline_stage(kChannel0PipelineStage, kPipelineAgc) ||
+      !write_voice_kit_pipeline_stage(kChannel1PipelineStage, kPipelineNs)) {
+    ESP_LOGE(kTag, "Failed to configure Voice Kit microphone pipeline");
+    return false;
+  }
+
+  g_voice_kit_ready = true;
+  return true;
 }
 
 void apply_vad_state(bool speaking, uint32_t level) {
@@ -201,11 +335,11 @@ void init_audio() {
   output_config.pin_bit_mask = (1ULL << kSpeakerAmp) | (1ULL << kVoiceKitReset);
   output_config.mode = GPIO_MODE_OUTPUT;
   gpio_config(&output_config);
-  gpio_set_level(kVoiceKitReset, 0);
-  vTaskDelay(pdMS_TO_TICKS(20));
-  gpio_set_level(kVoiceKitReset, 1);
-  vTaskDelay(pdMS_TO_TICKS(100));
   gpio_set_level(kSpeakerAmp, 1);
+
+  if (!init_voice_kit()) {
+    return;
+  }
 
   g_mic_mutex = xSemaphoreCreateMutex();
   if (g_mic_mutex == nullptr) {
@@ -226,7 +360,7 @@ void update_audio() {
 }
 
 bool audio_input_ready() {
-  return g_rx_channel != nullptr && !g_mic_paused_for_playback;
+  return g_voice_kit_ready && g_rx_channel != nullptr && !g_mic_paused_for_playback;
 }
 
 bool audio_output_ready() {

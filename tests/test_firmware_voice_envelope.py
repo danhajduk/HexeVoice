@@ -255,6 +255,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert '"board/storage_nvs_only.cpp"' in cmake_source
     assert '"voice/tts_player_noop.cpp"' in cmake_source
     assert cmake_source.count('"voice/tts_player.cpp"') == 1
+    assert "esp_driver_i2c" in cmake_source
 
     assert "I2S_ROLE_SLAVE" in audio_source
     assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_source
@@ -263,7 +264,15 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "GPIO_NUM_14" in audio_source
     assert "GPIO_NUM_15" in audio_source
     assert "GPIO_NUM_4" in audio_source
+    assert "GPIO_NUM_5" in audio_source
+    assert "GPIO_NUM_6" in audio_source
     assert "GPIO_NUM_47" in audio_source
+    assert "kVoiceKitI2cAddress = 0x42" in audio_source
+    assert "kDfuGetVersionCommand = 88" in audio_source
+    assert "gpio_set_level(kVoiceKitReset, 1)" in audio_source
+    assert "gpio_set_level(kVoiceKitReset, 0)" in audio_source
+    assert "Voice Kit XMOS firmware version" in audio_source
+    assert "Voice Kit did not respond after reset" in audio_source
     assert "kVadTaskStackBytes = 8192" in audio_source
     assert "std::array<int32_t, kFrameSamples * 2> g_raw_samples" in audio_source
     assert "std::array<int16_t, kFrameSamples> g_mono_samples" in audio_source
