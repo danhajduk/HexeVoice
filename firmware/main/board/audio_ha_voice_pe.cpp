@@ -36,7 +36,6 @@ constexpr uint32_t kMicReadTimeoutLogEvery = 200;
 constexpr gpio_num_t kMicBclk = GPIO_NUM_13;
 constexpr gpio_num_t kMicLrclk = GPIO_NUM_14;
 constexpr gpio_num_t kMicDin = GPIO_NUM_15;
-constexpr gpio_num_t kSpeakerAmp = GPIO_NUM_47;
 constexpr gpio_num_t kVoiceKitReset = GPIO_NUM_4;
 constexpr gpio_num_t kVoiceKitI2cSda = GPIO_NUM_5;
 constexpr gpio_num_t kVoiceKitI2cScl = GPIO_NUM_6;
@@ -383,10 +382,9 @@ namespace hexe::board {
 
 void init_audio() {
   gpio_config_t output_config = {};
-  output_config.pin_bit_mask = (1ULL << kSpeakerAmp) | (1ULL << kVoiceKitReset);
+  output_config.pin_bit_mask = 1ULL << kVoiceKitReset;
   output_config.mode = GPIO_MODE_OUTPUT;
   gpio_config(&output_config);
-  gpio_set_level(kSpeakerAmp, 1);
 
   if (!init_voice_kit()) {
     return;
