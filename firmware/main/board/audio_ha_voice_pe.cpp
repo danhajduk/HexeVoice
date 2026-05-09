@@ -27,7 +27,8 @@ constexpr uint32_t kVadStartNoiseMultiplier = 3;
 constexpr uint32_t kVadContinueNoiseMultiplier = 2;
 constexpr uint32_t kVadNoiseMargin = 250;
 constexpr uint32_t kVadStartVoiceFrames = 3;
-constexpr uint32_t kVadSilenceHoldMs = 2500;
+constexpr uint32_t kVadReleasePeakPercent = 60;
+constexpr uint32_t kVadSilenceHoldMs = 1200;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
 constexpr uint32_t kVadTaskStackBytes = 8192;
 constexpr uint32_t kMicReadTimeoutLogEvery = 200;
@@ -81,9 +82,9 @@ uint32_t update_noise_floor(uint32_t current_floor, uint32_t level) {
   return ((current_floor * 15) + level) / 16;
 }
 
-int16_t fold_stereo_sample(int32_t left, int32_t right) {
-  const int32_t mono = ((left >> 16) + (right >> 16)) / 2;
-  return static_cast<int16_t>(std::clamp<int32_t>(mono, -32768, 32767));
+int16_t voice_channel_sample(int32_t left, int32_t right) {
+  (void)right;
+  return static_cast<int16_t>(std::clamp<int32_t>(left >> 16, -32768, 32767));
 }
 
 bool init_voice_kit_i2c() {
@@ -280,6 +281,7 @@ void vad_task(void *arg) {
   uint32_t silent_frames = kVadSilenceHoldFrames;
   uint32_t voice_candidate_frames = 0;
   uint32_t noise_floor = 0;
+  uint32_t speech_peak_level = 0;
 
   while (true) {
     if (hexe::state().ota_active) {
@@ -291,6 +293,7 @@ void vad_task(void *arg) {
       g_vad_turn_active = false;
       silent_frames = kVadSilenceHoldFrames;
       voice_candidate_frames = 0;
+      speech_peak_level = 0;
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
@@ -329,7 +332,7 @@ void vad_task(void *arg) {
 
     const size_t stereo_frames = std::min(bytes_read / (sizeof(int32_t) * 2), kFrameSamples);
     for (size_t index = 0; index < stereo_frames; ++index) {
-      g_mono_samples[index] = fold_stereo_sample(g_raw_samples[index * 2], g_raw_samples[(index * 2) + 1]);
+      g_mono_samples[index] = voice_channel_sample(g_raw_samples[index * 2], g_raw_samples[(index * 2) + 1]);
     }
 
     const uint32_t level = estimate_level(g_mono_samples.data(), stereo_frames);
@@ -341,7 +344,10 @@ void vad_task(void *arg) {
         std::max(kVadStartEnergyThreshold, (noise_floor * kVadStartNoiseMultiplier) + kVadNoiseMargin);
     const uint32_t continue_threshold =
         std::max(kVadContinueEnergyThreshold, (noise_floor * kVadContinueNoiseMultiplier) + kVadNoiseMargin);
-    const uint32_t threshold = was_speaking ? continue_threshold : start_threshold;
+    const uint32_t release_threshold = speech_peak_level == 0
+        ? continue_threshold
+        : std::max(continue_threshold, (speech_peak_level * kVadReleasePeakPercent) / 100);
+    const uint32_t threshold = was_speaking ? release_threshold : start_threshold;
     const bool frame_over_threshold = level >= threshold;
     if (!was_speaking && !frame_over_threshold) {
       noise_floor = update_noise_floor(noise_floor, level);
@@ -357,9 +363,13 @@ void vad_task(void *arg) {
     hexe::voice::submit_audio_frame(g_mono_samples.data(), stereo_frames, level, frame_has_voice);
 
     if (frame_has_voice) {
+      speech_peak_level = std::max(speech_peak_level, level);
       silent_frames = 0;
       apply_vad_state(true, level);
     } else {
+      if (!was_speaking) {
+        speech_peak_level = 0;
+      }
       if (silent_frames < kVadSilenceHoldFrames) {
         ++silent_frames;
       }

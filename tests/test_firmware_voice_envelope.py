@@ -262,6 +262,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "I2S_ROLE_SLAVE" in audio_source
     assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_source
     assert "I2S_SLOT_MODE_STEREO" in audio_source
+    assert "voice_channel_sample" in audio_source
     assert "GPIO_NUM_13" in audio_source
     assert "GPIO_NUM_14" in audio_source
     assert "GPIO_NUM_15" in audio_source
@@ -280,6 +281,9 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "Voice PE microphone read timeout count=" in audio_source
     assert "kVadStartVoiceFrames = 3" in audio_source
     assert "kVadStartNoiseMultiplier = 3" in audio_source
+    assert "kVadReleasePeakPercent = 60" in audio_source
+    assert "kVadSilenceHoldMs = 1200" in audio_source
+    assert "speech_peak_level" in audio_source
     assert "update_noise_floor" in audio_source
     assert "std::array<int32_t, kFrameSamples * 2> g_raw_samples" in audio_source
     assert "std::array<int16_t, kFrameSamples> g_mono_samples" in audio_source
