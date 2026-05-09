@@ -52,6 +52,9 @@ def test_wake_recording_settings_default_to_disabled_weekly_retention():
     assert settings.voice_wake_recording_retention_days == 7
     assert settings.voice_wake_recording_preroll_ms == 2000
     assert settings.resolved_voice_wake_recording_dir().as_posix() == "runtime/wake_recordings"
+    assert settings.voice_micro_vad_chunks_enabled is False
+    assert settings.voice_micro_vad_chunk_retention_days == 1
+    assert settings.resolved_voice_micro_vad_chunk_dir().as_posix() == "runtime/micro_vad_chunks"
     assert settings.voice_session_history_limit == 100
     assert settings.resolved_voice_session_history_path().as_posix() == "runtime/voice_session_history.json"
 

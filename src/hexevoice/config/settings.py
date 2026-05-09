@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     voice_wake_recording_dir: Path | None = Field(default=None, alias="VOICE_WAKE_RECORDING_DIR")
     voice_wake_recording_retention_days: int = Field(default=7, alias="VOICE_WAKE_RECORDING_RETENTION_DAYS", ge=1)
     voice_wake_recording_preroll_ms: int = Field(default=2000, alias="VOICE_WAKE_RECORDING_PREROLL_MS", ge=0)
+    voice_micro_vad_chunks_enabled: bool = Field(default=False, alias="VOICE_MICRO_VAD_CHUNKS_ENABLED")
+    voice_micro_vad_chunk_dir: Path | None = Field(default=None, alias="VOICE_MICRO_VAD_CHUNK_DIR")
+    voice_micro_vad_chunk_retention_days: int = Field(default=1, alias="VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS", ge=1)
     voice_session_history_path: Path | None = Field(default=None, alias="VOICE_SESSION_HISTORY_PATH")
     voice_session_history_limit: int = Field(default=100, alias="VOICE_SESSION_HISTORY_LIMIT", ge=1)
     voice_stt_provider: Literal["deterministic", "openai", "faster_whisper"] = Field(
@@ -195,6 +198,11 @@ class Settings(BaseSettings):
         if self.voice_wake_recording_dir is not None:
             return self.voice_wake_recording_dir
         return self.runtime_dir / "wake_recordings"
+
+    def resolved_voice_micro_vad_chunk_dir(self) -> Path:
+        if self.voice_micro_vad_chunk_dir is not None:
+            return self.voice_micro_vad_chunk_dir
+        return self.runtime_dir / "micro_vad_chunks"
 
     def resolved_voice_session_history_path(self) -> Path:
         if self.voice_session_history_path is not None:

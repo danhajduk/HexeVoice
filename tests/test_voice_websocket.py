@@ -13,6 +13,7 @@ from hexevoice.api.models import AssistantTurnResponse
 from hexevoice.persistence import VoiceSessionHistoryStore
 from hexevoice.voice import (
     DeterministicWakeDetector,
+    MicroVadChunkRecordingService,
     PiperTextToSpeechAdapter,
     SpeechTranscript,
     TtsSynthesis,
@@ -378,7 +379,68 @@ def test_voice_websocket_records_accepted_wake_session_audio(tmp_path):
     playback = client.get(recording["audio_url"])
     assert playback.status_code == 200
     assert playback.headers["content-type"] == "audio/wav"
-    assert playback.content.startswith(b"RIFF")
+
+
+def test_voice_websocket_records_firmware_micro_vad_chunks(tmp_path):
+    detector = DeterministicWakeDetector(detect_on_chunk_index=None)
+    recorder = MicroVadChunkRecordingService(recording_dir=tmp_path / "micro-vad", retention_days=1)
+    manager = VoiceSessionManager(wake_detector=detector, micro_vad_chunk_recorder=recorder)
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    def encoded(samples: bytes) -> str:
+        return base64.b64encode(samples).decode("ascii")
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": encoded(b"\x01\x00\x02\x00"),
+                    "micro_vad_chunk_index": 0,
+                    "micro_vad_chunk_started": True,
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 1,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": encoded(b"\x03\x00\x04\x00"),
+                    "micro_vad_chunk_index": 0,
+                    "micro_vad_chunk_final": True,
+                    "micro_vad_pause_ms": 180,
+                },
+            )
+        )
+        websocket.receive_json()
+
+    metadata_paths = list((tmp_path / "micro-vad").glob("*.json"))
+    wav_paths = list((tmp_path / "micro-vad").glob("*.wav"))
+    assert len(metadata_paths) == 1
+    assert len(wav_paths) == 1
+
+    metadata = json.loads(metadata_paths[0].read_text(encoding="utf-8"))
+    assert metadata["recording_type"] == "firmware_micro_vad_chunk"
+    assert metadata["micro_vad_chunk_index"] == 0
+    assert metadata["micro_vad_chunk_final"] is True
+    assert metadata["micro_vad_pause_ms"] == 180
+    assert metadata["byte_count"] == 8
+    assert metadata["audio_chunk_count"] == 2
+    assert metadata["first_audio_chunk_index"] == 0
+    assert metadata["last_audio_chunk_index"] == 1
+
+    with wave.open(str(wav_paths[0]), "rb") as wav_file:
+        assert wav_file.getframerate() == 16000
+        assert wav_file.getnchannels() == 1
+        assert wav_file.getnframes() == 4
+    assert wav_paths[0].read_bytes().startswith(b"RIFF")
 
 
 def test_voice_websocket_closes_wake_stream_after_completed_session(tmp_path):

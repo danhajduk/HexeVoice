@@ -34,6 +34,7 @@ from hexevoice.voice.contracts import (
 )
 from hexevoice.voice.pipeline import TtsSynthesis, VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.records import record_voice_event
+from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
 from hexevoice.voice.wake_recordings import WakeRecordingService
 
@@ -94,6 +95,7 @@ class VoiceSessionManager:
         wake_detector: WakeDetector | None = None,
         turn_pipeline: VoiceTurnPipeline | None = None,
         wake_recorder: WakeRecordingService | None = None,
+        micro_vad_chunk_recorder: MicroVadChunkRecordingService | None = None,
         session_history_store: VoiceSessionHistoryStore | None = None,
     ) -> None:
         self._connection_active = False
@@ -107,6 +109,7 @@ class VoiceSessionManager:
         self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
         self._turn_pipeline = turn_pipeline
         self._wake_recorder = wake_recorder
+        self._micro_vad_chunk_recorder = micro_vad_chunk_recorder
         self._session_history_store = session_history_store
         self._active_session_history: dict[str, Any] | None = None
         self._last_transcript: str | None = None
@@ -806,6 +809,14 @@ class VoiceSessionManager:
             except ValueError:
                 pass
         events: list[VoiceEventEnvelope] = []
+        if audio_bytes is not None and self._micro_vad_chunk_recorder is not None:
+            self._micro_vad_chunk_recorder.capture_audio_chunk(
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                payload=payload,
+                audio_bytes=audio_bytes,
+                received_at=event.timestamp,
+            )
         if audio_bytes is not None and session.session_state == "idle" and self._wake_recorder is not None:
             self._wake_recorder.capture_wake_chunk(
                 endpoint_id=event.endpoint_id,
@@ -1627,6 +1638,11 @@ class VoiceSessionManager:
         return {"endpoint_id": target_endpoint_id, **result}
 
     def _clear_active_session_runtime(self) -> None:
+        if self._active_session is not None and self._micro_vad_chunk_recorder is not None:
+            self._micro_vad_chunk_recorder.close_session(
+                endpoint_id=self._active_session.endpoint_id,
+                session_id=self._active_session.session_id,
+            )
         self._active_session = None
         self._chunk_count = 0
         self._audio_chunks = []

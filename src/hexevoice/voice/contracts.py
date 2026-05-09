@@ -171,6 +171,10 @@ class VoiceAudioChunkPayload(BaseModel):
     audio_format: VoiceAudioFormat = Field(default_factory=VoiceAudioFormat)
     payload_base64: str | None = None
     is_final: bool = False
+    micro_vad_chunk_index: int | None = Field(default=None, ge=0)
+    micro_vad_chunk_started: bool = False
+    micro_vad_chunk_final: bool = False
+    micro_vad_pause_ms: int | None = Field(default=None, ge=0)
 
 
 class VoiceTranscriptPayload(BaseModel):

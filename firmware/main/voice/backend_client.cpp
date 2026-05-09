@@ -67,6 +67,11 @@ struct AudioFrame {
   size_t sample_count;
   uint32_t level;
   bool vad_speaking;
+  bool micro_vad_active;
+  bool micro_vad_started;
+  bool micro_vad_ended;
+  uint32_t micro_vad_chunk_index;
+  uint32_t micro_vad_pause_ms;
 };
 
 QueueHandle_t g_audio_queue = nullptr;
@@ -93,6 +98,11 @@ size_t g_preroll_index = 0;
 size_t g_preroll_count = 0;
 std::array<int16_t, kWakePredictionChunkSamples> g_transport_samples = {};
 size_t g_transport_sample_count = 0;
+bool g_transport_micro_vad_active = false;
+bool g_transport_micro_vad_started = false;
+bool g_transport_micro_vad_ended = false;
+uint32_t g_transport_micro_vad_chunk_index = 0;
+uint32_t g_transport_micro_vad_pause_ms = 0;
 std::string g_session_id;
 std::string g_tts_playback_session_id;
 std::string g_ws_rx_buffer;
@@ -135,6 +145,7 @@ bool sync_backend_time(const std::string &url);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
+void reset_transport_micro_vad();
 void append_event_header(
     std::string &message,
     const char *event_type,
@@ -160,6 +171,7 @@ void mark_voice_socket_disconnected() {
   g_audio_stream_finished = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  reset_transport_micro_vad();
   g_tts_playback_session_id.clear();
   set_audio_streaming(false);
   if (!state.muted && !state.ota_active) {
@@ -223,6 +235,14 @@ void append_event_header(
   message.append(suffix);
 }
 
+void reset_transport_micro_vad() {
+  g_transport_micro_vad_active = false;
+  g_transport_micro_vad_started = false;
+  g_transport_micro_vad_ended = false;
+  g_transport_micro_vad_chunk_index = 0;
+  g_transport_micro_vad_pause_ms = 0;
+}
+
 std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
   const std::string encoded = base64_audio(samples, sample_count);
   if (encoded.empty()) {
@@ -245,7 +265,23 @@ std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
       hexe::config::kEndpointAudioChannels);
   payload.append(prefix);
   payload.append(encoded);
-  payload.append("\",\"is_final\":false}}");
+  payload.append("\",\"is_final\":false");
+  if (g_transport_micro_vad_active || g_transport_micro_vad_started || g_transport_micro_vad_ended) {
+    char micro_vad[256];
+    std::snprintf(
+        micro_vad,
+        sizeof(micro_vad),
+        ",\"micro_vad_chunk_index\":%" PRIu32
+        ",\"micro_vad_chunk_started\":%s"
+        ",\"micro_vad_chunk_final\":%s"
+        ",\"micro_vad_pause_ms\":%" PRIu32,
+        g_transport_micro_vad_chunk_index,
+        g_transport_micro_vad_started ? "true" : "false",
+        g_transport_micro_vad_ended ? "true" : "false",
+        g_transport_micro_vad_pause_ms);
+    payload.append(micro_vad);
+  }
+  payload.append("}}");
   return payload;
 }
 
@@ -259,6 +295,7 @@ bool send_transport_chunk(const int16_t *samples, size_t sample_count) {
   }
   if (send_ws_text(payload)) {
     set_audio_streaming(true);
+    reset_transport_micro_vad();
     return true;
   }
 
@@ -282,7 +319,20 @@ bool flush_transport_samples(bool force) {
   return sent;
 }
 
+void merge_transport_micro_vad(const AudioFrame &frame) {
+  if (frame.micro_vad_active || frame.micro_vad_started || frame.micro_vad_ended) {
+    if (!g_transport_micro_vad_active || frame.micro_vad_started) {
+      g_transport_micro_vad_chunk_index = frame.micro_vad_chunk_index;
+    }
+    g_transport_micro_vad_active = true;
+    g_transport_micro_vad_started = g_transport_micro_vad_started || frame.micro_vad_started;
+    g_transport_micro_vad_ended = g_transport_micro_vad_ended || frame.micro_vad_ended;
+    g_transport_micro_vad_pause_ms = std::max(g_transport_micro_vad_pause_ms, frame.micro_vad_pause_ms);
+  }
+}
+
 bool append_transport_frame(const AudioFrame &frame) {
+  merge_transport_micro_vad(frame);
   size_t offset = 0;
   while (offset < frame.sample_count) {
     const size_t available = g_transport_samples.size() - g_transport_sample_count;
@@ -297,6 +347,12 @@ bool append_transport_frame(const AudioFrame &frame) {
     if (g_transport_sample_count == g_transport_samples.size() && !flush_transport_samples(false)) {
       return false;
     }
+    if (g_transport_sample_count == 0 && offset < frame.sample_count) {
+      merge_transport_micro_vad(frame);
+    }
+  }
+  if (frame.micro_vad_ended && !flush_transport_samples(true)) {
+    return false;
   }
   return true;
 }
@@ -606,6 +662,7 @@ void handle_backend_event_json(const std::string &message) {
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
+    reset_transport_micro_vad();
     set_audio_streaming(false);
     if (!app_state.muted && !hexe::voice::tts_playback_active()) {
       app_state.phase = hexe::idle_or_connecting_phase();
@@ -617,6 +674,7 @@ void handle_backend_event_json(const std::string &message) {
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
+    reset_transport_micro_vad();
     g_tts_playback_session_id.clear();
     set_audio_streaming(false);
     if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
@@ -680,6 +738,7 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
+    reset_transport_micro_vad();
     set_audio_streaming(false);
     g_ws_rx_buffer.clear();
     if (!state.muted && !state.ota_active) {
@@ -1239,6 +1298,7 @@ bool ensure_session_started(const char *wake_source) {
   g_vad_speech_started_reported = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  reset_transport_micro_vad();
   g_tts_playback_session_id.clear();
   char session_buffer[96];
   std::snprintf(
@@ -1645,7 +1705,12 @@ bool send_tts_playback_event(
   return sent;
 }
 
-bool submit_audio_frame(const int16_t *samples, size_t sample_count, uint32_t level, bool vad_speaking) {
+bool submit_audio_frame(
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    bool vad_speaking,
+    const MicroVadFrameState *micro_vad) {
   if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !backend_ready_for_voice()) {
     return false;
   }
@@ -1655,6 +1720,13 @@ bool submit_audio_frame(const int16_t *samples, size_t sample_count, uint32_t le
   std::copy(samples, samples + frame.sample_count, frame.samples.begin());
   frame.level = level;
   frame.vad_speaking = vad_speaking;
+  if (micro_vad != nullptr) {
+    frame.micro_vad_active = micro_vad->active;
+    frame.micro_vad_started = micro_vad->started;
+    frame.micro_vad_ended = micro_vad->ended;
+    frame.micro_vad_chunk_index = micro_vad->chunk_index;
+    frame.micro_vad_pause_ms = micro_vad->pause_ms;
+  }
 
   if (xQueueSend(g_audio_queue, &frame, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping audio frame because transport queue is full");
@@ -1729,6 +1801,7 @@ bool cancel_active_session(const char *reason) {
   g_audio_stream_finished = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  reset_transport_micro_vad();
   g_tts_playback_session_id.clear();
   set_audio_streaming(false);
   hexe::voice::stop_tts_playback();

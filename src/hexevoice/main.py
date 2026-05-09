@@ -101,7 +101,7 @@ from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.tts import TtsAudioService
 from hexevoice.tts.runtime_settings import TtsRuntimeSettingsService
-from hexevoice.voice import VoiceSessionManager, WakeDetector, WakeRecordingService
+from hexevoice.voice import MicroVadChunkRecordingService, VoiceSessionManager, WakeDetector, WakeRecordingService
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
 from hexevoice.voice.wake import build_wake_detector
 
@@ -213,11 +213,13 @@ def _seconds_until_next_local_midnight(now: datetime | None = None) -> float:
     return max(1.0, (next_midnight - current).total_seconds())
 
 
-def cleanup_voice_artifacts_once(*, tts_audio_service, wake_recorder) -> dict:
+def cleanup_voice_artifacts_once(*, tts_audio_service, wake_recorder, micro_vad_chunk_recorder=None) -> dict:
     tts_audio_service.cleanup_expired()
     result = {"tts": {"expired_cleanup": "completed"}}
     if wake_recorder is not None:
         result["wake_recordings"] = wake_recorder.cleanup_expired()
+    if micro_vad_chunk_recorder is not None:
+        result["micro_vad_chunks"] = micro_vad_chunk_recorder.cleanup_expired()
     return result
 
 
@@ -282,10 +284,19 @@ def create_app(
         if app_settings.voice_wake_recordings_enabled
         else None
     )
+    micro_vad_chunk_recorder = (
+        MicroVadChunkRecordingService(
+            recording_dir=app_settings.resolved_voice_micro_vad_chunk_dir(),
+            retention_days=app_settings.voice_micro_vad_chunk_retention_days,
+        )
+        if app_settings.voice_micro_vad_chunks_enabled
+        else None
+    )
     voice_session_manager = voice_session_manager or VoiceSessionManager(
         wake_detector=voice_wake_detector or build_wake_detector(app_settings),
         turn_pipeline=voice_turn_pipeline,
         wake_recorder=wake_recorder,
+        micro_vad_chunk_recorder=micro_vad_chunk_recorder,
         session_history_store=voice_session_history_store,
     )
     timer_announcement_service = TimerSucceededAnnouncementService(
@@ -349,6 +360,7 @@ def create_app(
                         cleanup_voice_artifacts_once,
                         tts_audio_service=tts_audio_service,
                         wake_recorder=wake_recorder,
+                        micro_vad_chunk_recorder=micro_vad_chunk_recorder,
                     )
                     app.state.voice_artifact_cleanup_status["last_run_at"] = datetime.now(UTC).isoformat()
                     app.state.voice_artifact_cleanup_status["last_error"] = None

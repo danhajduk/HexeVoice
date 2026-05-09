@@ -100,11 +100,19 @@ def test_audio_chunk_payload_keeps_transport_metadata_separate_from_audio_proces
         chunk_index=4,
         audio_format={"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
         payload_base64="AAECAw==",
+        micro_vad_chunk_index=2,
+        micro_vad_chunk_started=True,
+        micro_vad_chunk_final=True,
+        micro_vad_pause_ms=180,
     )
 
     assert chunk.chunk_index == 4
     assert chunk.audio_format.sample_rate_hz == 16000
     assert chunk.payload_base64 == "AAECAw=="
+    assert chunk.micro_vad_chunk_index == 2
+    assert chunk.micro_vad_chunk_started is True
+    assert chunk.micro_vad_chunk_final is True
+    assert chunk.micro_vad_pause_ms == 180
 
 
 def test_session_snapshot_keeps_backend_endpoint_and_ux_states_separate():

@@ -30,6 +30,7 @@ from hexevoice.voice.contracts import (
     project_voice_state,
 )
 from hexevoice.voice.session_manager import VoiceSessionManager
+from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.pipeline import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
@@ -83,6 +84,7 @@ __all__ = [
     "VoiceTtsReadyPayload",
     "VoiceVadSpeechStartedPayload",
     "VoiceSessionManager",
+    "MicroVadChunkRecordingService",
     "DeterministicSpeechToTextAdapter",
     "DeterministicTextToSpeechAdapter",
     "FasterWhisperSpeechToTextAdapter",

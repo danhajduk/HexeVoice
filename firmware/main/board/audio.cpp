@@ -1,5 +1,6 @@
 #include "board/audio.h"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
@@ -24,6 +25,8 @@ constexpr uint32_t kVadStartEnergyThreshold = 900;
 constexpr uint32_t kVadContinueEnergyThreshold = 500;
 constexpr uint32_t kVadSilenceHoldMs = 2500;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
+constexpr uint32_t kMicroVadPauseMs = 180;
+constexpr uint32_t kMicroVadPauseFrames = kMicroVadPauseMs / kFrameDurationMs;
 
 esp_codec_dev_handle_t g_mic_codec = nullptr;
 TaskHandle_t g_vad_task = nullptr;
@@ -39,6 +42,40 @@ uint32_t estimate_level(const int16_t *samples, size_t count) {
   }
 
   return count == 0 ? 0 : static_cast<uint32_t>(total / count);
+}
+
+hexe::voice::MicroVadFrameState micro_vad_frame_state(
+    bool frame_has_voice,
+    uint32_t &chunk_index,
+    bool &chunk_active,
+    uint32_t &silent_frames) {
+  hexe::voice::MicroVadFrameState state = {};
+  state.chunk_index = chunk_index;
+
+  if (frame_has_voice) {
+    state.active = true;
+    state.started = !chunk_active;
+    chunk_active = true;
+    silent_frames = 0;
+    return state;
+  }
+
+  if (!chunk_active) {
+    return state;
+  }
+
+  if (silent_frames < kMicroVadPauseFrames) {
+    ++silent_frames;
+  }
+  state.active = true;
+  state.pause_ms = silent_frames * kFrameDurationMs;
+  if (silent_frames >= kMicroVadPauseFrames) {
+    state.ended = true;
+    chunk_active = false;
+    silent_frames = 0;
+    ++chunk_index;
+  }
+  return state;
 }
 
 void apply_vad_state(bool speaking, uint32_t level) {
@@ -79,6 +116,9 @@ void vad_task(void *arg) {
 
   int16_t samples[kFrameSamples];
   uint32_t silent_frames = 0;
+  uint32_t micro_vad_chunk_index = 0;
+  uint32_t micro_vad_silent_frames = 0;
+  bool micro_vad_chunk_active = false;
 
   while (true) {
     if (hexe::state().ota_active) {
@@ -89,6 +129,8 @@ void vad_task(void *arg) {
       app_state.audio_streaming = false;
       g_vad_turn_active = false;
       silent_frames = kVadSilenceHoldFrames;
+      micro_vad_chunk_active = false;
+      micro_vad_silent_frames = 0;
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
@@ -99,6 +141,11 @@ void vad_task(void *arg) {
     }
 
     if (g_mic_paused_for_playback) {
+      if (micro_vad_chunk_active) {
+        ++micro_vad_chunk_index;
+      }
+      micro_vad_chunk_active = false;
+      micro_vad_silent_frames = 0;
       xSemaphoreGive(g_mic_mutex);
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
@@ -116,7 +163,12 @@ void vad_task(void *arg) {
     const bool was_speaking = hexe::state().vad_speaking;
     const uint32_t threshold = was_speaking ? kVadContinueEnergyThreshold : kVadStartEnergyThreshold;
     const bool frame_has_voice = level >= threshold;
-    hexe::voice::submit_audio_frame(samples, kFrameSamples, level, frame_has_voice);
+    const hexe::voice::MicroVadFrameState micro_vad = micro_vad_frame_state(
+        frame_has_voice,
+        micro_vad_chunk_index,
+        micro_vad_chunk_active,
+        micro_vad_silent_frames);
+    hexe::voice::submit_audio_frame(samples, kFrameSamples, level, frame_has_voice, &micro_vad);
 
     if (frame_has_voice) {
       silent_frames = 0;

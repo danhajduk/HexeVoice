@@ -114,4 +114,13 @@ VOICE_WAKE_RECORDING_PREROLL_MS=2000
 
 When enabled, HexeVoice writes accepted wake sessions to `runtime/wake_recordings` by default. Each recording is a PCM WAV containing the wake pre-roll/wake chunk plus the post-wake audio sent to STT, with a JSON sidecar containing endpoint, session, model, confidence, format, duration, and expiration metadata. Cleanup removes `.wav` and `.json` recordings older than the configured retention window.
 
+Firmware micro-VAD chunk recording can be enabled separately for live-ish STT/debug tuning:
+
+```env
+VOICE_MICRO_VAD_CHUNKS_ENABLED=true
+VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS=1
+```
+
+When enabled, the backend writes firmware-marked micro-VAD chunks to `runtime/micro_vad_chunks` by default. Each chunk is saved as a PCM WAV with a JSON sidecar that includes endpoint, session, firmware micro-VAD chunk index, pause duration, audio format, duration, and expiration metadata. These files are debug artifacts only and are not exposed in the UI.
+
 Validation notes are captured in `docs/supervised-openwakeword-validation.md`.
