@@ -480,19 +480,31 @@ int16_t pcm16_sample(const uint8_t *bytes) {
   return static_cast<int16_t>(read_le16(bytes));
 }
 
+int16_t pcm16_frame_sample(const WavView &wav, size_t frame, int channel, size_t bytes_per_source_frame) {
+  const uint8_t *source = wav.pcm + (frame * bytes_per_source_frame);
+  if (wav.channels == 1 || channel == 0) {
+    return pcm16_sample(source);
+  }
+  return pcm16_sample(source + sizeof(int16_t));
+}
+
+int16_t interpolate_pcm16(int16_t first, int16_t second, uint64_t numerator, uint64_t denominator) {
+  if (denominator == 0 || numerator == 0 || first == second) {
+    return first;
+  }
+  const int64_t delta = static_cast<int64_t>(second) - static_cast<int64_t>(first);
+  const int64_t scaled = static_cast<int64_t>(first) + ((delta * static_cast<int64_t>(numerator)) / static_cast<int64_t>(denominator));
+  return static_cast<int16_t>(std::clamp<int64_t>(scaled, -32768, 32767));
+}
+
 bool play_wav(const std::vector<uint8_t> &audio) {
   WavView wav;
   if (!parse_wav(audio, &wav)) {
     ESP_LOGW(kTag, "TTS audio is not supported WAV PCM");
     return false;
   }
-  if (wav.sample_rate <= 0 || kSpeakerSampleRate % wav.sample_rate != 0) {
+  if (wav.sample_rate <= 0) {
     ESP_LOGW(kTag, "Unsupported TTS sample rate %d for Voice PE speaker", wav.sample_rate);
-    return false;
-  }
-  const int upsample_factor = kSpeakerSampleRate / wav.sample_rate;
-  if (upsample_factor <= 0 || upsample_factor > 3) {
-    ESP_LOGW(kTag, "Unsupported TTS upsample factor %d for Voice PE speaker", upsample_factor);
     return false;
   }
   if (wav.channels <= 0 || wav.channels > 2) {
@@ -511,21 +523,41 @@ bool play_wav(const std::vector<uint8_t> &audio) {
   std::array<int32_t, kPlaybackFrameCapacity * 2> output_frames = {};
   size_t queued_frames = 0;
   const size_t source_frames = wav.pcm_size / bytes_per_source_frame;
-  for (size_t frame = 0; frame < source_frames && !g_stop_requested; ++frame) {
-    const uint8_t *source = wav.pcm + (frame * bytes_per_source_frame);
-    const int16_t left16 = pcm16_sample(source);
-    const int16_t right16 = wav.channels == 1 ? left16 : pcm16_sample(source + sizeof(int16_t));
+  const uint64_t output_frame_count =
+      (static_cast<uint64_t>(source_frames) * static_cast<uint64_t>(kSpeakerSampleRate) +
+       static_cast<uint64_t>(wav.sample_rate) - 1) /
+      static_cast<uint64_t>(wav.sample_rate);
+  if (wav.sample_rate != kSpeakerSampleRate) {
+    ESP_LOGI(kTag, "Resampling TTS WAV from %d Hz to %d Hz for Voice PE speaker", wav.sample_rate, kSpeakerSampleRate);
+  }
+
+  for (uint64_t frame = 0; frame < output_frame_count && !g_stop_requested; ++frame) {
+    const uint64_t source_position = frame * static_cast<uint64_t>(wav.sample_rate);
+    const size_t source_index = std::min<size_t>(
+        static_cast<size_t>(source_position / static_cast<uint64_t>(kSpeakerSampleRate)),
+        source_frames - 1);
+    const size_t next_source_index = std::min(source_index + 1, source_frames - 1);
+    const uint64_t fractional = source_position % static_cast<uint64_t>(kSpeakerSampleRate);
+
+    const int16_t left16 = interpolate_pcm16(
+        pcm16_frame_sample(wav, source_index, 0, bytes_per_source_frame),
+        pcm16_frame_sample(wav, next_source_index, 0, bytes_per_source_frame),
+        fractional,
+        kSpeakerSampleRate);
+    const int16_t right16 = interpolate_pcm16(
+        pcm16_frame_sample(wav, source_index, 1, bytes_per_source_frame),
+        pcm16_frame_sample(wav, next_source_index, 1, bytes_per_source_frame),
+        fractional,
+        kSpeakerSampleRate);
     const int32_t left32 = static_cast<int32_t>(left16) << 16;
     const int32_t right32 = static_cast<int32_t>(right16) << 16;
 
-    for (int repeat = 0; repeat < upsample_factor && !g_stop_requested; ++repeat) {
-      output_frames[queued_frames * 2] = left32;
-      output_frames[(queued_frames * 2) + 1] = right32;
-      ++queued_frames;
-      if (queued_frames == kPlaybackFrameCapacity && !flush_output_frames(&output_frames, &queued_frames)) {
-        disable_i2s_output();
-        return false;
-      }
+    output_frames[queued_frames * 2] = left32;
+    output_frames[(queued_frames * 2) + 1] = right32;
+    ++queued_frames;
+    if (queued_frames == kPlaybackFrameCapacity && !flush_output_frames(&output_frames, &queued_frames)) {
+      disable_i2s_output();
+      return false;
     }
   }
 
