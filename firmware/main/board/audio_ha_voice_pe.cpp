@@ -24,6 +24,7 @@ constexpr uint32_t kVadStartEnergyThreshold = 900;
 constexpr uint32_t kVadContinueEnergyThreshold = 500;
 constexpr uint32_t kVadSilenceHoldMs = 2500;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
+constexpr uint32_t kVadTaskStackBytes = 8192;
 
 constexpr gpio_num_t kMicBclk = GPIO_NUM_13;
 constexpr gpio_num_t kMicLrclk = GPIO_NUM_14;
@@ -36,6 +37,8 @@ TaskHandle_t g_vad_task = nullptr;
 SemaphoreHandle_t g_mic_mutex = nullptr;
 bool g_vad_turn_active = false;
 bool g_mic_paused_for_playback = false;
+std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
+std::array<int16_t, kFrameSamples> g_mono_samples = {};
 
 uint32_t estimate_level(const int16_t *samples, size_t count) {
   uint64_t total = 0;
@@ -127,8 +130,6 @@ bool start_microphone_stream() {
 void vad_task(void *arg) {
   (void)arg;
 
-  std::array<int32_t, kFrameSamples * 2> raw_samples = {};
-  std::array<int16_t, kFrameSamples> mono_samples = {};
   uint32_t silent_frames = kVadSilenceHoldFrames;
 
   while (true) {
@@ -158,8 +159,8 @@ void vad_task(void *arg) {
     size_t bytes_read = 0;
     const esp_err_t result = i2s_channel_read(
         g_rx_channel,
-        raw_samples.data(),
-        raw_samples.size() * sizeof(raw_samples[0]),
+        g_raw_samples.data(),
+        g_raw_samples.size() * sizeof(g_raw_samples[0]),
         &bytes_read,
         pdMS_TO_TICKS(100));
     xSemaphoreGive(g_mic_mutex);
@@ -171,14 +172,14 @@ void vad_task(void *arg) {
 
     const size_t stereo_frames = std::min(bytes_read / (sizeof(int32_t) * 2), kFrameSamples);
     for (size_t index = 0; index < stereo_frames; ++index) {
-      mono_samples[index] = fold_stereo_sample(raw_samples[index * 2], raw_samples[(index * 2) + 1]);
+      g_mono_samples[index] = fold_stereo_sample(g_raw_samples[index * 2], g_raw_samples[(index * 2) + 1]);
     }
 
-    const uint32_t level = estimate_level(mono_samples.data(), stereo_frames);
+    const uint32_t level = estimate_level(g_mono_samples.data(), stereo_frames);
     const bool was_speaking = hexe::state().vad_speaking;
     const uint32_t threshold = was_speaking ? kVadContinueEnergyThreshold : kVadStartEnergyThreshold;
     const bool frame_has_voice = level >= threshold;
-    hexe::voice::submit_audio_frame(mono_samples.data(), stereo_frames, level, frame_has_voice);
+    hexe::voice::submit_audio_frame(g_mono_samples.data(), stereo_frames, level, frame_has_voice);
 
     if (frame_has_voice) {
       silent_frames = 0;
@@ -214,7 +215,7 @@ void init_audio() {
   if (!start_microphone_stream()) {
     return;
   }
-  if (xTaskCreate(vad_task, "hexe_vpe_vad", 4096, nullptr, 5, &g_vad_task) != pdPASS) {
+  if (xTaskCreate(vad_task, "hexe_vpe_vad", kVadTaskStackBytes, nullptr, 5, &g_vad_task) != pdPASS) {
     ESP_LOGE(kTag, "Failed to create Voice PE VAD task");
     return;
   }
