@@ -11,7 +11,7 @@ from hexevoice.voice.pipeline import DEFAULT_TTS_AUDIO_TTL_SECONDS, VoiceTurnPip
 
 
 GENERATED_AUDIO_SUFFIXES = (".wav", ".mp3", ".ogg")
-GENERATED_WAV_VARIANTS = ("48k", "16k", "raw")
+GENERATED_WAV_VARIANTS = ("48k", "22050", "16k", "raw")
 
 
 class TtsAudioService:

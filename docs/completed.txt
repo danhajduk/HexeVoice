@@ -81,6 +81,7 @@ Task 075: Serve generated TTS audio through short-lived LAN-reachable URLs with 
 Task 078: Replace backend TTS resampling with SoXR streaming and document SoXR license attribution - Completed on 05/09/2026 10:56
 Task 079: Include the selected TTS model in every TTS sidecar JSON - Completed on 05/09/2026 11:20
 Task 080: Change TTS sidecar audio_variant metadata to include the raw model sample rate - Completed on 05/09/2026 11:22
+Task 081: Add UI controls for warm TTS models and conversion sample rates with backend raw sample rate discovery - Completed on 05/09/2026 11:32
 Task 085 (Voice intents): Define the Voice Node registered-intent contract - Completed on 05/04/2026 04:52
 Task 086 (Voice intents): Add Voice Node local intent registry storage and APIs - Completed on 05/04/2026 04:52
 Task 087 (Voice intents): Declare Voice Node intent-registration capabilities and endpoint metadata - Completed on 05/04/2026 04:52

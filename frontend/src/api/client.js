@@ -155,6 +155,14 @@ export async function getVoiceStatus() {
   return fetchJson("/api/voice/status");
 }
 
+export async function getTtsSettings() {
+  return fetchJson("/api/tts/settings");
+}
+
+export async function saveTtsSettings(payload) {
+  return sendJson("/api/tts/settings", { method: "PUT", body: payload });
+}
+
 export async function getVoiceSessions({ limit = 12, endpointId } = {}) {
   const params = new URLSearchParams();
   params.set("limit", String(limit));

@@ -2,6 +2,7 @@ import logging
 import json
 
 from hexevoice.config.settings import Settings
+from hexevoice.config.settings import parse_tts_conversion_sample_rates
 from hexevoice.main import configure_backend_logging
 from hexevoice.voice.records import record_voice_event
 
@@ -84,12 +85,15 @@ def test_piper_tts_settings_default_to_supervised_local_service():
     assert settings.piper_tts_warm_voices == ""
     assert settings.piper_tts_service_id == "piper_tts"
     assert settings.piper_tts_container_name == "hexevoice-piper-tts"
+    assert settings.piper_tts_env_path.as_posix() == "scripts/piper-tts.env"
     assert settings.piper_tts_control_script.as_posix() == "scripts/piper-tts-control.sh"
     assert settings.resolved_voice_tts_piper_base_url() == "http://127.0.0.1:10200"
     assert settings.resolved_piper_tts_model_dir().as_posix() == "runtime/piper-tts/models"
     assert settings.resolved_piper_tts_warm_voices() == []
     assert settings.resolved_voice_tts_endpoint_voices() == {}
     assert settings.resolved_voice_tts_endpoint_sample_rates() == {}
+    assert settings.resolved_voice_tts_runtime_config_path().as_posix() == "runtime/voice_tts_settings.json"
+    assert settings.resolved_voice_tts_conversion_sample_rates() == {"48k": 48000, "16k": 16000}
 
 
 def test_tts_endpoint_voice_overrides_parse_env_mapping():
@@ -138,6 +142,27 @@ def test_tts_output_sample_rate_can_be_disabled_for_native_voices():
     settings = Settings(voice_tts_provider="piper", voice_tts_output_sample_rate_hz=0)
 
     assert settings.voice_tts_output_sample_rate_hz == 0
+
+
+def test_tts_conversion_sample_rates_are_limited_to_supported_values():
+    assert parse_tts_conversion_sample_rates("48000,22050,16000,44100,bad") == {
+        "48k": 48000,
+        "22050": 22050,
+        "16k": 16000,
+    }
+    assert parse_tts_conversion_sample_rates([]) == {"48k": 48000, "16k": 16000}
+
+
+def test_tts_conversion_sample_rates_can_load_runtime_config(tmp_path):
+    config_path = tmp_path / "voice_tts_settings.json"
+    config_path.write_text('{"conversion_sample_rates_hz":[22050]}', encoding="utf-8")
+    settings = Settings(
+        voice_tts_provider="piper",
+        voice_tts_conversion_sample_rates="16000",
+        voice_tts_runtime_config_path=config_path,
+    )
+
+    assert settings.resolved_voice_tts_conversion_sample_rates() == {"22050": 22050}
 
 
 def test_backend_logging_uses_midnight_archive(tmp_path):

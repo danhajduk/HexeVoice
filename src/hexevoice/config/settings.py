@@ -122,10 +122,13 @@ class Settings(BaseSettings):
     voice_tts_piper_voice: str | None = Field(default=None, alias="VOICE_TTS_PIPER_VOICE")
     voice_tts_endpoint_voices: str = Field(default="", alias="VOICE_TTS_ENDPOINT_VOICES")
     voice_tts_endpoint_sample_rates: str = Field(default="", alias="VOICE_TTS_ENDPOINT_SAMPLE_RATES")
+    voice_tts_conversion_sample_rates: str = Field(default="48000,16000", alias="VOICE_TTS_CONVERSION_SAMPLE_RATES")
+    voice_tts_runtime_config_path: Path | None = Field(default=None, alias="VOICE_TTS_RUNTIME_CONFIG_PATH")
     piper_tts_model_dir: Path | None = Field(default=None, alias="PIPER_TTS_MODEL_DIR")
     piper_tts_warm_voices: str = Field(default="", alias="PIPER_TTS_WARM_VOICES")
     piper_tts_service_id: str = Field(default="piper_tts", alias="PIPER_TTS_SERVICE_ID")
     piper_tts_container_name: str = Field(default="hexevoice-piper-tts", alias="PIPER_TTS_CONTAINER_NAME")
+    piper_tts_env_path: Path = Field(default=Path("scripts/piper-tts.env"), alias="PIPER_TTS_ENV_PATH")
     piper_tts_control_script: Path = Field(
         default=Path("scripts/piper-tts-control.sh"),
         alias="PIPER_TTS_CONTROL_SCRIPT",
@@ -193,6 +196,11 @@ class Settings(BaseSettings):
         if self.voice_session_history_path is not None:
             return self.voice_session_history_path
         return self.runtime_dir / "voice_session_history.json"
+
+    def resolved_voice_tts_runtime_config_path(self) -> Path:
+        if self.voice_tts_runtime_config_path is not None:
+            return self.voice_tts_runtime_config_path
+        return self.runtime_dir / "voice_tts_settings.json"
 
     def resolved_voice_tts_piper_base_url(self) -> str | None:
         if self.voice_tts_piper_base_url is not None:
@@ -274,3 +282,44 @@ class Settings(BaseSettings):
             if endpoint_id and parsed_sample_rate > 0:
                 endpoint_sample_rates[endpoint_id] = parsed_sample_rate
         return endpoint_sample_rates
+
+    def resolved_voice_tts_conversion_sample_rates(self) -> dict[str, int]:
+        config_rates = self._voice_tts_runtime_config_sample_rates()
+        if config_rates:
+            return config_rates
+        return parse_tts_conversion_sample_rates(self.voice_tts_conversion_sample_rates)
+
+    def _voice_tts_runtime_config_sample_rates(self) -> dict[str, int]:
+        path = self.resolved_voice_tts_runtime_config_path()
+        if not path.exists():
+            return {}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        if not isinstance(payload, dict):
+            return {}
+        return parse_tts_conversion_sample_rates(payload.get("conversion_sample_rates_hz"))
+
+
+def parse_tts_conversion_sample_rates(raw: object) -> dict[str, int]:
+    allowed = {16000: "16k", 22050: "22050", 48000: "48k"}
+    if raw is None:
+        values: list[object] = []
+    elif isinstance(raw, str):
+        values = [item.strip() for item in raw.split(",") if item.strip()]
+    elif isinstance(raw, list):
+        values = list(raw)
+    else:
+        values = []
+
+    sample_rates: dict[str, int] = {}
+    for value in values:
+        try:
+            sample_rate = int(str(value).strip())
+        except (TypeError, ValueError):
+            continue
+        variant = allowed.get(sample_rate)
+        if variant:
+            sample_rates[variant] = sample_rate
+    return sample_rates or {"48k": 48000, "16k": 16000}

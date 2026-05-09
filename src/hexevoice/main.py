@@ -97,6 +97,7 @@ from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.tts import TtsAudioService
+from hexevoice.tts.runtime_settings import TtsRuntimeSettingsService
 from hexevoice.voice import VoiceSessionManager, WakeDetector, WakeRecordingService
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
 from hexevoice.voice.wake import build_wake_detector
@@ -260,6 +261,7 @@ def create_app(
     )
     voice_turn_pipeline = build_voice_turn_pipeline(settings=app_settings, assistant_service=assistant_service)
     tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
+    tts_runtime_settings_service = TtsRuntimeSettingsService(settings=app_settings)
     wake_recorder = (
         WakeRecordingService(
             recording_dir=app_settings.resolved_voice_wake_recording_dir(),
@@ -901,6 +903,14 @@ def create_app(
     @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
     async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         return await asyncio.to_thread(tts_audio_service.synthesize, payload)
+
+    @app.get("/api/tts/settings")
+    async def tts_settings() -> dict:
+        return await asyncio.to_thread(tts_runtime_settings_service.status)
+
+    @app.put("/api/tts/settings")
+    async def tts_settings_update(payload: dict) -> dict:
+        return await asyncio.to_thread(tts_runtime_settings_service.update, payload)
 
     @app.get("/api/tts/audio/{stream_id}/{variant}")
     async def tts_audio_variant(stream_id: str, variant: str) -> FileResponse:

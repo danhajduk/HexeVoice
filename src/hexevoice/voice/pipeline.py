@@ -37,10 +37,11 @@ log = logging.getLogger(__name__)
 
 DEFAULT_TTS_AUDIO_TTL_SECONDS = 300
 PIPER_TTS_AUDIO_CHUNK_FRAMES = 4096
-PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = {
+DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = {
     "16k": 16000,
     "48k": 48000,
 }
+PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES
 
 
 @dataclass(frozen=True)
@@ -400,6 +401,7 @@ class PiperTextToSpeechAdapter:
         timeout_s: float = 30.0,
         output_sample_rate_hz: int | None = 16000,
         endpoint_sample_rates: dict[str, int] | None = None,
+        conversion_sample_rates: dict[str, int] | None = None,
         fallback: TextToSpeechAdapter | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
@@ -409,6 +411,7 @@ class PiperTextToSpeechAdapter:
         self._output_dir = output_dir
         self._timeout_s = timeout_s
         self._output_sample_rate_hz = output_sample_rate_hz
+        self._conversion_sample_rates = normalize_tts_conversion_sample_rates(conversion_sample_rates)
         self._endpoint_sample_rates: dict[str, int] = {}
         for endpoint_id, sample_rate in (endpoint_sample_rates or {}).items():
             endpoint_id = str(endpoint_id).strip()
@@ -451,13 +454,13 @@ class PiperTextToSpeechAdapter:
             target_sample_rate_hz = self._sample_rate_for_endpoint(endpoint_id)
             variant_paths = {
                 variant: self._output_dir / f"{stream_id}.{variant}.wav"
-                for variant in PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES
+                for variant in self._conversion_sample_rates
             }
             variant_sample_rates_hz = write_wav_variants_with_soxr(
                 raw_audio,
                 raw_path=raw_path,
                 variant_paths=variant_paths,
-                variant_sample_rates=PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES,
+                variant_sample_rates=self._conversion_sample_rates,
             )
             raw_sample_rate_hz = variant_sample_rates_hz.get("raw")
             audio_variant_paths = {"raw": str(raw_path)}
@@ -561,6 +564,7 @@ class PiperTextToSpeechAdapter:
             "voice": self._voice,
             "output_sample_rate_hz": self._output_sample_rate_hz,
             "endpoint_sample_rates": dict(self._endpoint_sample_rates),
+            "conversion_sample_rates": dict(self._conversion_sample_rates),
             "last_error": self._last_error,
             "fallback": self._fallback.status(),
         }
@@ -573,7 +577,7 @@ class PiperTextToSpeechAdapter:
     def _variant_for_sample_rate(self, sample_rate_hz: int | None) -> str:
         if sample_rate_hz is None or sample_rate_hz <= 0:
             return "raw"
-        for variant, variant_sample_rate_hz in PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES.items():
+        for variant, variant_sample_rate_hz in self._conversion_sample_rates.items():
             if sample_rate_hz == variant_sample_rate_hz:
                 return variant
         return "raw"
@@ -767,6 +771,20 @@ def audio_file_bytes(audio: VoiceTurnAudioSummary) -> bytes:
         wav_file.setframerate(audio.sample_rate_hz or 16000)
         wav_file.writeframes(audio.audio_bytes or b"")
     return buffer.getvalue()
+
+
+def normalize_tts_conversion_sample_rates(sample_rates: dict[str, int] | None) -> dict[str, int]:
+    normalized: dict[str, int] = {}
+    allowed = {16000: "16k", 22050: "22050", 48000: "48k"}
+    for _variant, sample_rate in (sample_rates or DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES).items():
+        try:
+            parsed_sample_rate = int(sample_rate)
+        except (TypeError, ValueError):
+            continue
+        variant = allowed.get(parsed_sample_rate)
+        if variant:
+            normalized[variant] = parsed_sample_rate
+    return normalized or dict(DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES)
 
 
 def write_default_tts_sidecar(output_dir: Path, stream_id: str, *, metadata: dict[str, Any]) -> tuple[Path, str]:
@@ -1069,6 +1087,7 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             timeout_s=settings.voice_tts_timeout_s,
             output_sample_rate_hz=settings.voice_tts_output_sample_rate_hz,
             endpoint_sample_rates=settings.resolved_voice_tts_endpoint_sample_rates(),
+            conversion_sample_rates=settings.resolved_voice_tts_conversion_sample_rates(),
             fallback=DeterministicTextToSpeechAdapter(),
         )
 

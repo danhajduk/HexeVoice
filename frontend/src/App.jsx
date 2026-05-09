@@ -7,6 +7,7 @@ import {
   getOnboardingStatus,
   getOperationalStatus,
   getProviderSetup,
+  getTtsSettings,
   getVoiceIntents,
   getVoiceStatus,
   restartOnboardingSetup,
@@ -21,6 +22,7 @@ import { NodeHealthStripCard } from "./features/dashboard/cards/NodeHealthStripC
 import { OverviewDashboardSection } from "./features/dashboard/OverviewDashboardSection";
 import { VoiceEndpointDashboardSection } from "./features/dashboard/VoiceEndpointDashboardSection";
 import { VoiceIntentsDashboardSection } from "./features/dashboard/VoiceIntentsDashboardSection";
+import { TtsProviderDashboardSection } from "./features/dashboard/TtsProviderDashboardSection";
 import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDashboardSection";
 
 const CANONICAL_SETUP_STEPS = [
@@ -153,6 +155,7 @@ export default function App() {
   const [operational, setOperational] = useState(null);
   const [voiceStatus, setVoiceStatus] = useState(null);
   const [voiceIntents, setVoiceIntents] = useState(null);
+  const [ttsSettings, setTtsSettings] = useState(null);
   const [endpointStatus, setEndpointStatus] = useState(null);
   const [error, setError] = useState("");
   const [restartingSetup, setRestartingSetup] = useState(false);
@@ -179,6 +182,7 @@ export default function App() {
       operationalPayload,
       voicePayload,
       voiceIntentPayload,
+      ttsSettingsPayload,
       endpointPayload,
     ] = await Promise.all([
       getNodeStatus(),
@@ -189,6 +193,7 @@ export default function App() {
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
       getVoiceIntents().catch(() => null),
+      getTtsSettings().catch(() => null),
       getEndpointStatus().catch(() => null),
     ]);
     setStatus(statusPayload);
@@ -199,6 +204,7 @@ export default function App() {
     setOperational(operationalPayload);
     setVoiceStatus(voicePayload);
     setVoiceIntents(voiceIntentPayload);
+    setTtsSettings(ttsSettingsPayload);
     setEndpointStatus(endpointPayload);
     setError("");
   }, []);
@@ -214,6 +220,7 @@ export default function App() {
       getOperationalStatus().catch(() => null),
       getVoiceStatus().catch(() => null),
       getVoiceIntents().catch(() => null),
+      getTtsSettings().catch(() => null),
       getEndpointStatus().catch(() => null),
     ])
       .then(
@@ -226,6 +233,7 @@ export default function App() {
           operationalPayload,
           voicePayload,
           voiceIntentPayload,
+          ttsSettingsPayload,
           endpointPayload,
         ]) => {
         if (!mounted) {
@@ -239,6 +247,7 @@ export default function App() {
         setOperational(operationalPayload);
         setVoiceStatus(voicePayload);
         setVoiceIntents(voiceIntentPayload);
+        setTtsSettings(ttsSettingsPayload);
         setEndpointStatus(endpointPayload);
       })
       .catch((err) => {
@@ -394,9 +403,11 @@ export default function App() {
 
     if (dashboardSection === "providers") {
       return (
-        <PlaceholderDashboardSection
-          title="Providers"
-          copy="Provider dashboards are still placeholder-only for now."
+        <TtsProviderDashboardSection
+          providerSetup={providerSetup}
+          capabilities={capabilities}
+          ttsSettings={ttsSettings}
+          onRefresh={refresh}
         />
       );
     }

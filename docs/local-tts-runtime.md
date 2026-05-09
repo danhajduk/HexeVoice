@@ -24,7 +24,7 @@ Backend TTS routing is selected with `VOICE_TTS_PROVIDER`:
 For `piper`, the backend writes returned WAV bytes into `runtime/voice_tts` and serves them through `/api/voice/tts/{stream_id}` for firmware playback. If the Piper request fails, the current fallback policy is deterministic synthesis so the voice session can still complete with observable provider status instead of hard failing the turn.
 
 Firmware playback expects RIFF/WAVE PCM audio. The local Piper path stores generated audio as `.wav` artifacts and the backend serves those artifacts with `audio/wav`.
-Piper voice models commonly emit 22.05 kHz audio. HexeVoice keeps that provider output as `{stream_id}.raw.wav`, then writes `{stream_id}.48k.wav` and `{stream_id}.16k.wav` with Python-SoXR streaming resamplers during the same artifact-generation pass. The endpoint-facing `audio_url` points at the required variant, while all three audio streams stay available on disk for debugging voice quality and endpoint playback behavior.
+Piper voice models commonly emit 22.05 kHz audio. HexeVoice keeps that provider output as `{stream_id}.raw.wav`, then writes configured conversion variants with Python-SoXR streaming resamplers during the same artifact-generation pass. The default conversion set is `{stream_id}.48k.wav` and `{stream_id}.16k.wav`; `{stream_id}.22050.wav` can also be enabled. The endpoint-facing `audio_url` points at the required variant, while all generated audio streams stay available on disk for debugging voice quality and endpoint playback behavior.
 
 HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output for endpoints without an override. Endpoint-specific rates can be set with `VOICE_TTS_ENDPOINT_SAMPLE_RATES`; these values take precedence over the default output rate:
 
@@ -32,6 +32,21 @@ HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, d
 VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=48000
 VOICE_TTS_ENDPOINT_SAMPLE_RATES=esp-pe-1=48000,esp-box-1=16000
 ```
+
+The conversion variant set is limited to 48 kHz, 22.05 kHz, and 16 kHz for now:
+
+```env
+VOICE_TTS_CONVERSION_SAMPLE_RATES=48000,22050,16000
+```
+
+At runtime, the Providers dashboard exposes the installed Piper models, each model's raw sample rate discovered from its `.onnx.json` file, the models kept warm, and the enabled conversion sample rates. The same data is available through:
+
+```text
+GET /api/tts/settings
+PUT /api/tts/settings
+```
+
+`PUT /api/tts/settings` writes `runtime/voice_tts_settings.json` and updates `PIPER_TTS_WARM_VOICES` in `scripts/piper-tts.env`. The backend reports `restart_required=true` after saving because warm voice process changes and conversion policy changes are applied when the Piper/backend runtime is restarted.
 
 Python-SoXR/libsoxr is documented in `docs/third-party-licenses.md`.
 

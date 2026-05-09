@@ -829,6 +829,62 @@ def test_voice_status_reports_tts_warmup_background_task(tmp_path):
     assert orphan_cleanup["min_age_seconds"] == 600
 
 
+def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
+    model_dir = tmp_path / "piper-tts" / "models"
+    model_dir.mkdir(parents=True)
+    (model_dir / "en_US-jenny-high.onnx").write_bytes(b"model")
+    (model_dir / "en_US-jenny-high.onnx.json").write_text(
+        json.dumps(
+            {
+                "audio": {"sample_rate": 22050, "quality": "high"},
+                "language": {"code": "en_US"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    piper_env_path = tmp_path / "piper-tts.env"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_tts_provider="piper",
+                piper_tts_model_dir=model_dir,
+                piper_tts_warm_voices="en_US-jenny-high",
+                voice_tts_conversion_sample_rates="48000,16000",
+                piper_tts_env_path=piper_env_path,
+            )
+        )
+    )
+
+    response = client.get("/api/tts/settings")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "piper"
+    assert payload["warm_voices"] == ["en_US-jenny-high"]
+    assert payload["conversion_sample_rates_hz"] == [48000, 16000]
+    assert payload["allowed_conversion_sample_rates_hz"] == [48000, 22050, 16000]
+    assert payload["models"][0]["model_id"] == "en_US-jenny-high"
+    assert payload["models"][0]["raw_sample_rate_hz"] == 22050
+    assert payload["models"][0]["quality"] == "high"
+
+    update = client.put(
+        "/api/tts/settings",
+        json={"warm_voices": ["en_US-jenny-high", "missing"], "conversion_sample_rates_hz": [48000, 22050]},
+    )
+
+    assert update.status_code == 200
+    updated = update.json()
+    assert updated["warm_voices"] == ["en_US-jenny-high"]
+    assert updated["conversion_sample_rates_hz"] == [48000, 22050]
+    assert updated["restart_required"] is True
+    runtime_config = json.loads((tmp_path / "voice_tts_settings.json").read_text(encoding="utf-8"))
+    assert runtime_config["warm_voices"] == ["en_US-jenny-high"]
+    assert runtime_config["conversion_sample_rates_hz"] == [48000, 22050]
+    assert piper_env_path.read_text(encoding="utf-8").strip() == "PIPER_TTS_WARM_VOICES=en_US-jenny-high"
+
+
 def test_core_normalized_piper_voice_ids_resolve_to_installed_model(tmp_path):
     model_dir = tmp_path / "piper-tts" / "models"
     model_dir.mkdir(parents=True)
