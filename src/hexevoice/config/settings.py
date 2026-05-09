@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     voice_tts_endpoint_voices: str = Field(default="", alias="VOICE_TTS_ENDPOINT_VOICES")
     voice_tts_endpoint_sample_rates: str = Field(default="", alias="VOICE_TTS_ENDPOINT_SAMPLE_RATES")
     voice_tts_conversion_sample_rates: str = Field(default="48000,16000", alias="VOICE_TTS_CONVERSION_SAMPLE_RATES")
+    voice_tts_conversion_policy: Literal["blocking_all", "endpoint_required_sync"] = Field(
+        default="blocking_all",
+        alias="VOICE_TTS_CONVERSION_POLICY",
+    )
     voice_tts_runtime_config_path: Path | None = Field(default=None, alias="VOICE_TTS_RUNTIME_CONFIG_PATH")
     piper_tts_model_dir: Path | None = Field(default=None, alias="PIPER_TTS_MODEL_DIR")
     piper_tts_warm_voices: str = Field(default="", alias="PIPER_TTS_WARM_VOICES")
@@ -289,7 +293,17 @@ class Settings(BaseSettings):
             return config_rates
         return parse_tts_conversion_sample_rates(self.voice_tts_conversion_sample_rates)
 
+    def resolved_voice_tts_conversion_policy(self) -> str:
+        config = self._voice_tts_runtime_config()
+        policy = str(config.get("conversion_policy") or self.voice_tts_conversion_policy).strip().lower()
+        if policy in {"blocking_all", "endpoint_required_sync"}:
+            return policy
+        return "blocking_all"
+
     def _voice_tts_runtime_config_sample_rates(self) -> dict[str, int]:
+        return parse_tts_conversion_sample_rates(self._voice_tts_runtime_config().get("conversion_sample_rates_hz"))
+
+    def _voice_tts_runtime_config(self) -> dict:
         path = self.resolved_voice_tts_runtime_config_path()
         if not path.exists():
             return {}
@@ -297,9 +311,7 @@ class Settings(BaseSettings):
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return {}
-        if not isinstance(payload, dict):
-            return {}
-        return parse_tts_conversion_sample_rates(payload.get("conversion_sample_rates_hz"))
+        return payload if isinstance(payload, dict) else {}
 
 
 def parse_tts_conversion_sample_rates(raw: object) -> dict[str, int]:

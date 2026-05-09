@@ -1,6 +1,7 @@
 import io
 import json
 from pathlib import Path
+import time
 from types import SimpleNamespace
 import wave
 
@@ -572,6 +573,50 @@ def test_piper_tts_adapter_resamples_wav_for_endpoint(tmp_path):
     assert metadata["tts_timing_breakdown_ms"]["conversion_16k_ms"] >= 0
     assert metadata["tts_timing_breakdown_ms"]["conversion_48k_ms"] >= 0
     assert metadata["tts_timing_breakdown_ms"]["conversion_total_ms"] >= 0
+
+
+def test_piper_tts_endpoint_required_policy_defers_optional_variants(tmp_path):
+    source = io.BytesIO()
+    with wave.open(source, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(22050)
+        wav_file.writeframes((b"\x00\x00\xff\x7f" * 2205))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=source.getvalue(), headers={"content-type": "audio/wav"})
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://piper.test:10200",
+        output_dir=tmp_path,
+        output_sample_rate_hz=16000,
+        conversion_policy="endpoint_required_sync",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(endpoint_id="esp-box-1", session_id="voice-session-1", text="hello")
+
+    assert synthesis.conversion_policy == "endpoint_required_sync"
+    assert synthesis.audio_variant == "16k"
+    assert synthesis.pending_audio_variants == {"48k": str(tmp_path / f"{synthesis.stream_id}.48k.wav")}
+    assert (tmp_path / f"{synthesis.stream_id}.raw.wav").exists()
+    assert (tmp_path / f"{synthesis.stream_id}.16k.wav").exists()
+    metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["conversion_policy"] == "endpoint_required_sync"
+    assert "raw" in metadata["ready_audio_variants"]
+    assert "16k" in metadata["ready_audio_variants"]
+
+    deadline = time.time() + 2
+    while time.time() < deadline and metadata.get("optional_conversion_status") != "completed":
+        time.sleep(0.02)
+        metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+
+    assert metadata["optional_conversion_status"] == "completed"
+    assert metadata["pending_audio_variants"] == {}
+    assert set(metadata["ready_audio_variants"]) == {"raw", "16k", "48k"}
+    assert metadata["variant_sample_rates_hz"]["48k"] == 48000
+    assert metadata["audio_url_48k"] == f"/api/voice/tts/{synthesis.stream_id}/48k"
+    assert metadata["tts_timing_breakdown_ms"]["background_conversion_48k_ms"] >= 0
 
 
 def test_piper_tts_adapter_can_generate_configured_22050_variant(tmp_path):

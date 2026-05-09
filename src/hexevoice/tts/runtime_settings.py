@@ -11,6 +11,7 @@ from hexevoice.config.settings import parse_tts_conversion_sample_rates
 
 
 ALLOWED_TTS_CONVERSION_SAMPLE_RATES = (48000, 22050, 16000)
+ALLOWED_TTS_CONVERSION_POLICIES = ("blocking_all", "endpoint_required_sync")
 
 
 class TtsRuntimeSettingsService:
@@ -37,6 +38,10 @@ class TtsRuntimeSettingsService:
             "warm_voices": warm_voices,
             "conversion_sample_rates_hz": conversion_rates,
             "allowed_conversion_sample_rates_hz": list(ALLOWED_TTS_CONVERSION_SAMPLE_RATES),
+            "conversion_policy": normalize_conversion_policy(
+                config.get("conversion_policy") or self._settings.voice_tts_conversion_policy
+            ),
+            "allowed_conversion_policies": list(ALLOWED_TTS_CONVERSION_POLICIES),
             "restart_required": bool(config.get("restart_required")),
             "updated_at": config.get("updated_at"),
         }
@@ -55,6 +60,7 @@ class TtsRuntimeSettingsService:
         config = {
             "warm_voices": warm_voices,
             "conversion_sample_rates_hz": conversion_rates,
+            "conversion_policy": normalize_conversion_policy(payload.get("conversion_policy")),
             "restart_required": True,
             "updated_at": datetime.now(UTC).isoformat(),
         }
@@ -139,6 +145,11 @@ def read_piper_model_config(model_path: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def normalize_conversion_policy(raw: object) -> str:
+    policy = str(raw or "").strip().lower()
+    return policy if policy in ALLOWED_TTS_CONVERSION_POLICIES else "blocking_all"
 
 
 def parse_positive_int(value: object) -> int | None:

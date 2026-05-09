@@ -155,7 +155,10 @@ def test_tts_conversion_sample_rates_are_limited_to_supported_values():
 
 def test_tts_conversion_sample_rates_can_load_runtime_config(tmp_path):
     config_path = tmp_path / "voice_tts_settings.json"
-    config_path.write_text('{"conversion_sample_rates_hz":[22050]}', encoding="utf-8")
+    config_path.write_text(
+        '{"conversion_sample_rates_hz":[22050],"conversion_policy":"endpoint_required_sync"}',
+        encoding="utf-8",
+    )
     settings = Settings(
         voice_tts_provider="piper",
         voice_tts_conversion_sample_rates="16000",
@@ -163,6 +166,7 @@ def test_tts_conversion_sample_rates_can_load_runtime_config(tmp_path):
     )
 
     assert settings.resolved_voice_tts_conversion_sample_rates() == {"22050": 22050}
+    assert settings.resolved_voice_tts_conversion_policy() == "endpoint_required_sync"
 
 
 def test_backend_logging_uses_midnight_archive(tmp_path):

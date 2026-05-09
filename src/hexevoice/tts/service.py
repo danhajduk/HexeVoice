@@ -68,6 +68,9 @@ class TtsAudioService:
             "audio_variant_sample_rate_hz": synthesis.audio_variant_sample_rate_hz,
             "audio_variant_source_sample_rate_hz": synthesis.audio_variant_source_sample_rate_hz,
             "audio_variants": synthesis.audio_variants,
+            "planned_audio_variants": synthesis.planned_audio_variants,
+            "pending_audio_variants": synthesis.pending_audio_variants,
+            "conversion_policy": synthesis.conversion_policy,
             "raw_audio_path": synthesis.raw_audio_path,
             "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
             "output_sample_rate_hz": synthesis.output_sample_rate_hz,
@@ -81,6 +84,7 @@ class TtsAudioService:
             "ttl_seconds": request.ttl_seconds,
             "created_at": created_at.isoformat(),
         }
+        metadata = self._merge_existing_generated_metadata(stream_id, metadata)
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         return TtsSynthesizeResponse(
             status="ready",
@@ -148,6 +152,9 @@ class TtsAudioService:
             "audio_variant_sample_rate_hz": synthesis.audio_variant_sample_rate_hz,
             "audio_variant_source_sample_rate_hz": synthesis.audio_variant_source_sample_rate_hz,
             "audio_variants": synthesis.audio_variants,
+            "planned_audio_variants": synthesis.planned_audio_variants,
+            "pending_audio_variants": synthesis.pending_audio_variants,
+            "conversion_policy": synthesis.conversion_policy,
             "raw_audio_path": synthesis.raw_audio_path,
             "raw_sample_rate_hz": synthesis.raw_sample_rate_hz,
             "output_sample_rate_hz": synthesis.output_sample_rate_hz,
@@ -167,6 +174,7 @@ class TtsAudioService:
             metadata["status"] = "failed"
         else:
             metadata["status"] = "ready" if voice_ready else "unavailable"
+        metadata = self._merge_existing_generated_metadata(stream_id, metadata)
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
         return metadata
 
@@ -270,6 +278,37 @@ class TtsAudioService:
             fetch_count=count,
         )
 
+    def _merge_existing_generated_metadata(self, stream_id: str, metadata: dict[str, Any]) -> dict[str, Any]:
+        existing = self.metadata(stream_id) or {}
+        if not existing:
+            return metadata
+        merged = dict(metadata)
+        for key in (
+            "audio_variants",
+            "audio_urls",
+            "planned_audio_variants",
+            "pending_audio_variants",
+            "variant_sample_rates_hz",
+            "tts_timing_breakdown_ms",
+        ):
+            existing_value = existing.get(key)
+            if isinstance(existing_value, dict):
+                merged_value = merged.get(key) if isinstance(merged.get(key), dict) else {}
+                merged[key] = {**merged_value, **existing_value}
+        for key in (
+            "audio_url_16k",
+            "audio_url_22050",
+            "audio_url_48k",
+            "audio_url_48K",
+            "ready_audio_variants",
+            "optional_conversion_status",
+            "optional_conversion_completed_at",
+            "optional_conversion_error",
+        ):
+            if key in existing:
+                merged[key] = existing[key]
+        return merged
+
     def list_artifacts(self, *, limit: int = 50) -> dict[str, Any]:
         self.cleanup_expired()
         limit = max(1, min(int(limit or 50), 200))
@@ -322,6 +361,14 @@ class TtsAudioService:
             "playable_urls": playable_urls,
             "audio_variant": metadata.get("audio_variant"),
             "audio_variants": metadata.get("audio_variants") if isinstance(metadata.get("audio_variants"), dict) else {},
+            "planned_audio_variants": metadata.get("planned_audio_variants")
+            if isinstance(metadata.get("planned_audio_variants"), dict)
+            else {},
+            "pending_audio_variants": metadata.get("pending_audio_variants")
+            if isinstance(metadata.get("pending_audio_variants"), dict)
+            else {},
+            "conversion_policy": metadata.get("conversion_policy"),
+            "optional_conversion_status": metadata.get("optional_conversion_status"),
             "raw_sample_rate_hz": metadata.get("raw_sample_rate_hz"),
             "output_sample_rate_hz": metadata.get("output_sample_rate_hz"),
             "variant_sample_rates_hz": sample_rates,

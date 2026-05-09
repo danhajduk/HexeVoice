@@ -960,23 +960,31 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
     assert payload["warm_voices"] == ["en_US-jenny-high"]
     assert payload["conversion_sample_rates_hz"] == [48000, 16000]
     assert payload["allowed_conversion_sample_rates_hz"] == [48000, 22050, 16000]
+    assert payload["conversion_policy"] == "blocking_all"
+    assert payload["allowed_conversion_policies"] == ["blocking_all", "endpoint_required_sync"]
     assert payload["models"][0]["model_id"] == "en_US-jenny-high"
     assert payload["models"][0]["raw_sample_rate_hz"] == 22050
     assert payload["models"][0]["quality"] == "high"
 
     update = client.put(
         "/api/tts/settings",
-        json={"warm_voices": ["en_US-jenny-high", "missing"], "conversion_sample_rates_hz": [48000, 22050]},
+        json={
+            "warm_voices": ["en_US-jenny-high", "missing"],
+            "conversion_sample_rates_hz": [48000, 22050],
+            "conversion_policy": "endpoint_required_sync",
+        },
     )
 
     assert update.status_code == 200
     updated = update.json()
     assert updated["warm_voices"] == ["en_US-jenny-high"]
     assert updated["conversion_sample_rates_hz"] == [48000, 22050]
+    assert updated["conversion_policy"] == "endpoint_required_sync"
     assert updated["restart_required"] is True
     runtime_config = json.loads((tmp_path / "voice_tts_settings.json").read_text(encoding="utf-8"))
     assert runtime_config["warm_voices"] == ["en_US-jenny-high"]
     assert runtime_config["conversion_sample_rates_hz"] == [48000, 22050]
+    assert runtime_config["conversion_policy"] == "endpoint_required_sync"
     assert piper_env_path.read_text(encoding="utf-8").strip() == "PIPER_TTS_WARM_VOICES=en_US-jenny-high"
 
 

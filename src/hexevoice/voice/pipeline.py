@@ -13,6 +13,7 @@ import json
 import logging
 from pathlib import Path
 import tempfile
+import threading
 import time
 from typing import TYPE_CHECKING
 from typing import Any
@@ -77,6 +78,9 @@ class TtsSynthesis:
     voice_id: str | None = None
     audio_variant: str | None = None
     audio_variants: dict[str, str] = field(default_factory=dict)
+    planned_audio_variants: dict[str, str] = field(default_factory=dict)
+    pending_audio_variants: dict[str, str] = field(default_factory=dict)
+    conversion_policy: str | None = None
     raw_audio_path: str | None = None
     raw_sample_rate_hz: int | None = None
     audio_variant_sample_rate_hz: int | None = None
@@ -405,6 +409,7 @@ class PiperTextToSpeechAdapter:
         output_sample_rate_hz: int | None = 16000,
         endpoint_sample_rates: dict[str, int] | None = None,
         conversion_sample_rates: dict[str, int] | None = None,
+        conversion_policy: str = "blocking_all",
         fallback: TextToSpeechAdapter | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
@@ -415,6 +420,7 @@ class PiperTextToSpeechAdapter:
         self._timeout_s = timeout_s
         self._output_sample_rate_hz = output_sample_rate_hz
         self._conversion_sample_rates = normalize_tts_conversion_sample_rates(conversion_sample_rates)
+        self._conversion_policy = normalize_tts_conversion_policy(conversion_policy)
         self._endpoint_sample_rates: dict[str, int] = {}
         for endpoint_id, sample_rate in (endpoint_sample_rates or {}).items():
             endpoint_id = str(endpoint_id).strip()
@@ -458,21 +464,31 @@ class PiperTextToSpeechAdapter:
             raw_audio = response.content
             raw_path = self._output_dir / f"{stream_id}.raw.wav"
             target_sample_rate_hz = self._sample_rate_for_endpoint(endpoint_id)
-            variant_paths = {
+            audio_variant = self._variant_for_sample_rate(target_sample_rate_hz)
+            all_variant_paths = {
                 variant: self._output_dir / f"{stream_id}.{variant}.wav"
                 for variant in self._conversion_sample_rates
             }
+            blocking_sample_rates = self._blocking_conversion_sample_rates(audio_variant)
+            optional_sample_rates = {
+                variant: sample_rate
+                for variant, sample_rate in self._conversion_sample_rates.items()
+                if variant not in blocking_sample_rates
+            }
+            blocking_variant_paths = {variant: all_variant_paths[variant] for variant in blocking_sample_rates}
+            optional_variant_paths = {variant: all_variant_paths[variant] for variant in optional_sample_rates}
             variant_sample_rates_hz = write_wav_variants_with_soxr(
                 raw_audio,
                 raw_path=raw_path,
-                variant_paths=variant_paths,
-                variant_sample_rates=self._conversion_sample_rates,
+                variant_paths=blocking_variant_paths,
+                variant_sample_rates=blocking_sample_rates,
                 timing_breakdown_ms=timing_breakdown_ms,
             )
             raw_sample_rate_hz = variant_sample_rates_hz.get("raw")
             audio_variant_paths = {"raw": str(raw_path)}
-            audio_variant_paths.update({variant: str(path) for variant, path in variant_paths.items()})
-            audio_variant = self._variant_for_sample_rate(target_sample_rate_hz)
+            audio_variant_paths.update({variant: str(path) for variant, path in blocking_variant_paths.items()})
+            planned_audio_variant_paths = {"raw": str(raw_path)}
+            planned_audio_variant_paths.update({variant: str(path) for variant, path in all_variant_paths.items()})
             output_sample_rate_hz = variant_sample_rates_hz.get(audio_variant) if audio_variant else raw_sample_rate_hz
             audio_url = tts_audio_base_url(stream_id)
             audio_urls = tts_audio_variant_urls(stream_id, audio_variant_paths)
@@ -495,6 +511,13 @@ class PiperTextToSpeechAdapter:
                     "audio_variant_sample_rate_hz": output_sample_rate_hz,
                     "audio_variant_source_sample_rate_hz": raw_sample_rate_hz,
                     "audio_variants": audio_variant_paths,
+                    "planned_audio_variants": planned_audio_variant_paths,
+                    "pending_audio_variants": {
+                        variant: str(path) for variant, path in optional_variant_paths.items()
+                    },
+                    "ready_audio_variants": list(audio_variant_paths),
+                    "conversion_policy": self._conversion_policy,
+                    "optional_conversion_status": "pending" if optional_sample_rates else "not_needed",
                     "raw_audio_path": str(raw_path),
                     "raw_sample_rate_hz": raw_sample_rate_hz,
                     "target_sample_rate_hz": target_sample_rate_hz,
@@ -506,6 +529,15 @@ class PiperTextToSpeechAdapter:
             )
             timing_breakdown_ms["sidecar_write_ms"] = elapsed_ms(sidecar_started_at)
             update_tts_sidecar_timing(metadata_path, timing_breakdown_ms)
+            if optional_sample_rates:
+                self._start_optional_conversions(
+                    raw_audio=raw_audio,
+                    stream_id=stream_id,
+                    metadata_path=metadata_path,
+                    endpoint_audio_url=endpoint_audio_url,
+                    variant_paths=optional_variant_paths,
+                    variant_sample_rates=optional_sample_rates,
+                )
             self._last_error = None
             record_voice_event(
                 "tts.synthesized",
@@ -520,6 +552,9 @@ class PiperTextToSpeechAdapter:
                 text_chars=len(text or ""),
                 audio_variant=audio_variant,
                 audio_variants=audio_variant_paths,
+                planned_audio_variants=planned_audio_variant_paths,
+                pending_audio_variants={variant: str(path) for variant, path in optional_variant_paths.items()},
+                conversion_policy=self._conversion_policy,
                 raw_audio_path=str(raw_path),
                 raw_sample_rate_hz=raw_sample_rate_hz,
                 audio_variant_sample_rate_hz=output_sample_rate_hz,
@@ -543,6 +578,9 @@ class PiperTextToSpeechAdapter:
                 voice_id=selected_voice,
                 audio_variant=audio_variant,
                 audio_variants=audio_variant_paths,
+                planned_audio_variants=planned_audio_variant_paths,
+                pending_audio_variants={variant: str(path) for variant, path in optional_variant_paths.items()},
+                conversion_policy=self._conversion_policy,
                 raw_audio_path=str(raw_path),
                 raw_sample_rate_hz=raw_sample_rate_hz,
                 audio_variant_sample_rate_hz=output_sample_rate_hz,
@@ -582,6 +620,7 @@ class PiperTextToSpeechAdapter:
             "output_sample_rate_hz": self._output_sample_rate_hz,
             "endpoint_sample_rates": dict(self._endpoint_sample_rates),
             "conversion_sample_rates": dict(self._conversion_sample_rates),
+            "conversion_policy": self._conversion_policy,
             "last_error": self._last_error,
             "fallback": self._fallback.status(),
         }
@@ -598,6 +637,38 @@ class PiperTextToSpeechAdapter:
             if sample_rate_hz == variant_sample_rate_hz:
                 return variant
         return "raw"
+
+    def _blocking_conversion_sample_rates(self, audio_variant: str | None) -> dict[str, int]:
+        if self._conversion_policy == "endpoint_required_sync":
+            if audio_variant and audio_variant in self._conversion_sample_rates:
+                return {audio_variant: self._conversion_sample_rates[audio_variant]}
+            return {}
+        return dict(self._conversion_sample_rates)
+
+    def _start_optional_conversions(
+        self,
+        *,
+        raw_audio: bytes,
+        stream_id: str,
+        metadata_path: Path,
+        endpoint_audio_url: str,
+        variant_paths: dict[str, Path],
+        variant_sample_rates: dict[str, int],
+    ) -> None:
+        thread = threading.Thread(
+            target=complete_optional_tts_conversions,
+            kwargs={
+                "raw_audio": raw_audio,
+                "stream_id": stream_id,
+                "metadata_path": metadata_path,
+                "endpoint_audio_url": endpoint_audio_url,
+                "variant_paths": variant_paths,
+                "variant_sample_rates": variant_sample_rates,
+            },
+            name=f"tts-convert-{stream_id}",
+            daemon=True,
+        )
+        thread.start()
 
 
 class OpenAiTextToSpeechAdapter:
@@ -807,6 +878,11 @@ def normalize_tts_conversion_sample_rates(sample_rates: dict[str, int] | None) -
     return normalized or dict(DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES)
 
 
+def normalize_tts_conversion_policy(policy: str | None) -> str:
+    normalized = str(policy or "").strip().lower()
+    return normalized if normalized in {"blocking_all", "endpoint_required_sync"} else "blocking_all"
+
+
 def tts_audio_variant_urls(stream_id: str, variants: dict[str, Any]) -> dict[str, str]:
     base_url = tts_audio_base_url(stream_id)
     urls: dict[str, str] = {}
@@ -1011,6 +1087,104 @@ def update_tts_sidecar_timing(metadata_path: Path, timing_breakdown_ms: dict[str
         return
 
 
+def complete_optional_tts_conversions(
+    *,
+    raw_audio: bytes,
+    stream_id: str,
+    metadata_path: Path,
+    endpoint_audio_url: str,
+    variant_paths: dict[str, Path],
+    variant_sample_rates: dict[str, int],
+) -> None:
+    timing_breakdown_ms: dict[str, float] = {}
+    variant_sample_rates_hz: dict[str, int | None] = {}
+    try:
+        for variant, target_sample_rate_hz in variant_sample_rates.items():
+            started_at = time.perf_counter()
+            converted_audio = normalize_wav_sample_rate(raw_audio, target_sample_rate_hz)
+            variant_paths[variant].write_bytes(converted_audio)
+            timing_breakdown_ms[f"background_conversion_{variant}_ms"] = elapsed_ms(started_at)
+            variant_sample_rates_hz[variant] = wav_sample_rate_hz(converted_audio) or target_sample_rate_hz
+    except Exception as exc:
+        update_tts_sidecar_optional_conversion(
+            stream_id=stream_id,
+            metadata_path=metadata_path,
+            endpoint_audio_url=endpoint_audio_url,
+            variant_paths=variant_paths,
+            variant_sample_rates_hz=variant_sample_rates_hz,
+            timing_breakdown_ms=timing_breakdown_ms,
+            status="failed",
+            error=str(exc),
+        )
+        record_voice_event(
+            "tts.optional_conversion_failed",
+            stream_id=stream_id,
+            error=str(exc),
+            pending_audio_variants={variant: str(path) for variant, path in variant_paths.items()},
+        )
+        return
+    update_tts_sidecar_optional_conversion(
+        stream_id=stream_id,
+        metadata_path=metadata_path,
+        endpoint_audio_url=endpoint_audio_url,
+        variant_paths=variant_paths,
+        variant_sample_rates_hz=variant_sample_rates_hz,
+        timing_breakdown_ms=timing_breakdown_ms,
+        status="completed",
+        error=None,
+    )
+    record_voice_event(
+        "tts.optional_conversion_completed",
+        stream_id=stream_id,
+        audio_variants={variant: str(path) for variant, path in variant_paths.items()},
+        variant_sample_rates_hz=variant_sample_rates_hz,
+        tts_timing_breakdown_ms=timing_breakdown_ms,
+    )
+
+
+def update_tts_sidecar_optional_conversion(
+    *,
+    stream_id: str,
+    metadata_path: Path,
+    endpoint_audio_url: str,
+    variant_paths: dict[str, Path],
+    variant_sample_rates_hz: dict[str, int | None],
+    timing_breakdown_ms: dict[str, float],
+    status: str,
+    error: str | None,
+) -> None:
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(metadata, dict):
+        return
+    audio_variants = metadata.get("audio_variants") if isinstance(metadata.get("audio_variants"), dict) else {}
+    audio_variants.update({variant: str(path) for variant, path in variant_paths.items()})
+    metadata["audio_variants"] = audio_variants
+    metadata["pending_audio_variants"] = {}
+    metadata["ready_audio_variants"] = list(audio_variants)
+    metadata["optional_conversion_status"] = status
+    metadata["optional_conversion_completed_at"] = datetime.now(UTC).isoformat()
+    metadata["optional_conversion_error"] = error
+    sample_rates = (
+        metadata.get("variant_sample_rates_hz") if isinstance(metadata.get("variant_sample_rates_hz"), dict) else {}
+    )
+    sample_rates.update(variant_sample_rates_hz)
+    metadata["variant_sample_rates_hz"] = sample_rates
+    timings = (
+        metadata.get("tts_timing_breakdown_ms") if isinstance(metadata.get("tts_timing_breakdown_ms"), dict) else {}
+    )
+    timings.update(timing_breakdown_ms)
+    metadata["tts_timing_breakdown_ms"] = timings
+    audio_urls = tts_audio_variant_urls(stream_id, audio_variants)
+    metadata.update(tts_audio_url_metadata(audio_urls, endpoint_audio_url=endpoint_audio_url))
+    try:
+        metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+    except OSError:
+        return
+
+
 def pcm16le_bytes_to_ndarray(frame_bytes: bytes, *, channels: int) -> np.ndarray:
     samples = np.frombuffer(frame_bytes, dtype="<i2")
     if channels > 1:
@@ -1200,6 +1374,7 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             output_sample_rate_hz=settings.voice_tts_output_sample_rate_hz,
             endpoint_sample_rates=settings.resolved_voice_tts_endpoint_sample_rates(),
             conversion_sample_rates=settings.resolved_voice_tts_conversion_sample_rates(),
+            conversion_policy=settings.resolved_voice_tts_conversion_policy(),
             fallback=DeterministicTextToSpeechAdapter(),
         )
 
