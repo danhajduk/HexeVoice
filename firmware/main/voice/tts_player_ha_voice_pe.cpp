@@ -405,7 +405,7 @@ bool ensure_codec_ready() {
 
 bool ensure_i2s_output() {
   if (g_tx_channel == nullptr) {
-    i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_SLAVE);
+    i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_SLAVE);
     channel_config.dma_desc_num = 6;
     channel_config.dma_frame_num = kPlaybackFrameCapacity;
     esp_err_t result = i2s_new_channel(&channel_config, &g_tx_channel, nullptr);
