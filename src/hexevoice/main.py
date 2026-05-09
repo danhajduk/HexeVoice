@@ -514,6 +514,7 @@ def create_app(
             recognition_event=result.recognition_event,
             dispatch_event=result.dispatch_event,
             reply_audio=result.reply_audio,
+            latency_ms=result.latency_ms,
         )
 
     @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)

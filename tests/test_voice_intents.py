@@ -129,6 +129,7 @@ def test_voice_intent_invoke_executes_real_path_and_reports_events(tmp_path):
     assert payload["recognized_event_id"].startswith("voice-intent-")
     assert payload["recognition_event"]["event_type"] == "voice.intent.recognized"
     assert payload["dispatch_event"]["event_type"] == "timer.create_requested"
+    assert payload["latency_ms"] >= 0
 
 
 def test_assistant_turn_uses_registered_timer_intent_in_app(tmp_path):
@@ -145,6 +146,7 @@ def test_assistant_turn_uses_registered_timer_intent_in_app(tmp_path):
     assert payload["command"] == "timer.create"
     assert payload["provider_id"] == "registered_intent"
     assert payload["spoken_text"] == "Setting timer for 2 minutes."
+    assert payload["intent_latency_ms"] >= 0
 
 
 def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):

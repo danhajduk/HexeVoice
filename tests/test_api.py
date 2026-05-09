@@ -840,6 +840,7 @@ def test_assistant_turn_handles_timer_intent_locally(tmp_path):
     assert payload["reply_text"] == "Setting timer for 5 minutes."
     assert payload["spoken_text"] == "Setting timer for 5 minutes."
     assert payload["provider_id"] == "registered_intent"
+    assert payload["intent_latency_ms"] >= 0
 
 
 def test_assistant_turn_fallback_reply_uses_session_id_if_provided():

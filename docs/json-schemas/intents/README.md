@@ -16,3 +16,4 @@ Examples:
 - `examples/timer-cancel-long-lived-audio.intent.json`
 
 Intent reply audio defaults to short-lived artifacts. Set `definition.reply.audio.lifetime` to `long_lived` for canned replies that should survive the five-minute cleanup window.
+Recognized intent events include `intent_latency_ms` when the Voice Node can measure local intent matching and response preparation latency.

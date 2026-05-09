@@ -138,6 +138,7 @@ def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, m
         dispatch={"type": "domain_event", "event_type": "timer.create_requested"},
         requested_at=requested_at,
         reply_audio=reply_audio,
+        intent_latency_ms=12.5,
     )
 
     assert decision.status == "published"
@@ -145,4 +146,5 @@ def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, m
     assert payload["event_type"] == "voice.intent.recognized"
     assert payload["data"]["reply_audio"] == reply_audio
     assert payload["data"]["reply_audio"]["audio_url"].endswith("/voice-intent-audio-1")
+    assert payload["data"]["intent_latency_ms"] == 12.5
     assert datetime.fromisoformat(payload["data"]["mqtt_sent_at"]) >= requested_at

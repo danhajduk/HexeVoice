@@ -49,6 +49,7 @@
         "dispatch": { "type": "object" },
         "reply_audio": { "type": ["object", "null"] },
         "recognized_at": { "type": "string", "format": "date-time" },
+        "intent_latency_ms": { "type": ["number", "null"], "minimum": 0 },
         "mqtt_sent_at": { "type": "string", "format": "date-time" },
         "request_to_mqtt_latency_ms": { "type": "number", "minimum": 0 }
       },

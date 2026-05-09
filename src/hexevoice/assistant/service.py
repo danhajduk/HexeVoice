@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import logging
 import re
+import time
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
 from uuid import uuid4
@@ -45,6 +46,7 @@ class IntentInvocationResult:
     dispatch_event: dict[str, Any] | None = None
     reply: dict[str, Any] | None = None
     reply_audio: dict[str, Any] | None = None
+    latency_ms: float | None = None
 
 
 class AssistantAdapter(Protocol):
@@ -199,11 +201,13 @@ class AssistantTurnService:
         self._context_limit = settings.voice_conversation_context_turns
         self._context_by_endpoint: dict[str, deque[ConversationTurn]] = {}
         self._context_by_session: dict[str, deque[ConversationTurn]] = {}
+        self._last_intent_latency: dict[str, Any] | None = None
 
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
         heard_text = self._strip_wake_words(payload.text)
         session_id = payload.session_id or self._next_session_id(payload.endpoint_id)
         requested_at = utc_event_timestamp()
+        intent_started_at = time.perf_counter()
         intent = self._intent_finder.find(heard_text, requested_at=requested_at)
         if intent is not None:
             self._publish_intent_recognized_event(
@@ -212,6 +216,7 @@ class AssistantTurnService:
                 heard_text=heard_text,
                 intent=intent,
                 requested_at=requested_at,
+                intent_latency_ms=self._elapsed_ms(intent_started_at),
             )
             self._dispatch_intent(
                 endpoint_id=payload.endpoint_id,
@@ -220,6 +225,7 @@ class AssistantTurnService:
                 intent=intent,
                 requested_at=requested_at,
             )
+            intent_latency_ms = self._elapsed_ms(intent_started_at)
             response = AssistantTurnResponse(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
@@ -230,6 +236,16 @@ class AssistantTurnService:
                 command=intent.command,
                 device_state="speaking",
                 provider_id=intent.provider_id,
+                intent_latency_ms=intent_latency_ms,
+            )
+            self._record_intent_latency(
+                matched=True,
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                intent_id=intent.intent,
+                command=intent.command,
+                provider_id=intent.provider_id,
+                latency_ms=intent_latency_ms,
             )
             self._record_turn(response)
             return response
@@ -252,6 +268,7 @@ class AssistantTurnService:
             **self._adapter.status(),
             "local_intents": self._intent_finder.status(),
             "domain_events": self._timer_event_publisher.status(),
+            "last_intent_latency": self._last_intent_latency,
             "context_turn_limit": self._context_limit,
             "endpoint_contexts": {endpoint_id: len(turns) for endpoint_id, turns in self._context_by_endpoint.items()},
             "session_contexts": {session_id: len(turns) for session_id, turns in self._context_by_session.items()},
@@ -271,14 +288,26 @@ class AssistantTurnService:
         heard_text = self._strip_wake_words(text)
         resolved_session_id = session_id or self._next_session_id(endpoint_id)
         requested_at = utc_event_timestamp()
+        intent_started_at = time.perf_counter()
         intent = self._intent_finder.find(heard_text, requested_at=requested_at)
         if intent is None:
+            intent_latency_ms = self._elapsed_ms(intent_started_at)
+            self._record_intent_latency(
+                matched=False,
+                endpoint_id=endpoint_id,
+                session_id=resolved_session_id,
+                intent_id=None,
+                command=None,
+                provider_id=None,
+                latency_ms=intent_latency_ms,
+            )
             return IntentInvocationResult(
                 matched=False,
                 endpoint_id=endpoint_id,
                 session_id=resolved_session_id,
                 heard_text=heard_text,
                 slots={},
+                latency_ms=intent_latency_ms,
             )
         recognized_event_id = f"voice-intent-{uuid4().hex}"
         reply_audio = self._synthesize_intent_reply_audio(
@@ -296,6 +325,7 @@ class AssistantTurnService:
             requested_at=requested_at,
             event_id=recognized_event_id,
             reply_audio=reply_audio,
+            intent_latency_ms=self._elapsed_ms(intent_started_at),
         )
         dispatch_decision = self._dispatch_intent(
             endpoint_id=endpoint_id,
@@ -304,6 +334,7 @@ class AssistantTurnService:
             intent=intent,
             requested_at=requested_at,
         )
+        intent_latency_ms = self._elapsed_ms(intent_started_at)
         response = AssistantTurnResponse(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
@@ -314,6 +345,16 @@ class AssistantTurnService:
             command=intent.command,
             device_state="speaking",
             provider_id=intent.provider_id,
+            intent_latency_ms=intent_latency_ms,
+        )
+        self._record_intent_latency(
+            matched=True,
+            endpoint_id=endpoint_id,
+            session_id=resolved_session_id,
+            intent_id=intent.intent,
+            command=intent.command,
+            provider_id=intent.provider_id,
+            latency_ms=intent_latency_ms,
         )
         self._record_turn(response)
         return IntentInvocationResult(
@@ -331,6 +372,7 @@ class AssistantTurnService:
             dispatch_event=dispatch_decision.as_dict() if dispatch_decision else None,
             reply=intent.reply,
             reply_audio=reply_audio,
+            latency_ms=intent_latency_ms,
         )
 
     def context_for_endpoint(self, endpoint_id: str) -> list[ConversationTurn]:
@@ -422,6 +464,7 @@ class AssistantTurnService:
         requested_at: datetime,
         event_id: str | None = None,
         reply_audio: dict[str, Any] | None = None,
+        intent_latency_ms: float | None = None,
     ):
         recognized_event_id = event_id or f"voice-intent-{uuid4().hex}"
         publisher = getattr(self._timer_event_publisher, "publish_voice_intent_recognized", None)
@@ -443,6 +486,7 @@ class AssistantTurnService:
             requested_at=requested_at,
             dispatch=intent.dispatch,
             reply_audio=reply_audio,
+            intent_latency_ms=intent_latency_ms,
         )
 
     def _synthesize_intent_reply_audio(
@@ -502,3 +546,38 @@ class AssistantTurnService:
         )
         endpoint_context.append(turn)
         session_context.append(turn)
+
+    @staticmethod
+    def _elapsed_ms(started_at: float) -> float:
+        return round((time.perf_counter() - started_at) * 1000, 3)
+
+    def _record_intent_latency(
+        self,
+        *,
+        matched: bool,
+        endpoint_id: str,
+        session_id: str,
+        intent_id: str | None,
+        command: str | None,
+        provider_id: str | None,
+        latency_ms: float,
+    ) -> None:
+        self._last_intent_latency = {
+            "matched": matched,
+            "endpoint_id": endpoint_id,
+            "session_id": session_id,
+            "intent_id": intent_id,
+            "command": command,
+            "provider_id": provider_id,
+            "latency_ms": latency_ms,
+            "recorded_at": utc_event_timestamp().isoformat(),
+        }
+        log.info(
+            "Intent latency recorded: matched=%s endpoint_id=%s session_id=%s intent_id=%s command=%s latency_ms=%s",
+            matched,
+            endpoint_id,
+            session_id,
+            intent_id,
+            command,
+            latency_ms,
+        )

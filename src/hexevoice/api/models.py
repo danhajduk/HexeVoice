@@ -35,6 +35,7 @@ class AssistantTurnResponse(BaseModel):
     provider_id: str = "local_echo"
     model: str | None = None
     error: str | None = None
+    intent_latency_ms: float | None = None
 
 
 class VoiceIntentRegisterRequest(BaseModel):
@@ -119,6 +120,7 @@ class VoiceIntentInvokeResponse(BaseModel):
     recognition_event: dict[str, Any] | None = None
     dispatch_event: dict[str, Any] | None = None
     reply_audio: dict[str, Any] | None = None
+    latency_ms: float | None = None
 
 
 class TtsSynthesizeTarget(BaseModel):

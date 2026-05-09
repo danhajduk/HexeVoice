@@ -113,6 +113,7 @@ def test_voice_turn_pipeline_handles_timer_intent_locally(tmp_path):
     assert result.assistant_response.command == "timer.create"
     assert result.assistant_response.provider_id == "local_pattern"
     assert result.assistant_response.spoken_text == "Setting timer for 10 minutes."
+    assert result.assistant_response.intent_latency_ms >= 0
     assert publisher.calls == [
         {
             "endpoint_id": "esp-box-1",

@@ -828,6 +828,7 @@ class VoiceSessionManager:
                 "text_chars": len(turn.assistant_response.spoken_text or ""),
                 "error": turn.assistant_response.error,
                 "handled_locally": turn.assistant_response.handled_locally,
+                "intent_latency_ms": turn.assistant_response.intent_latency_ms,
             }
             self._set_session_state("responding")
             self._last_tts = {
