@@ -487,6 +487,7 @@ export default function App() {
                     providerSetup={providerSetup}
                     governance={governance}
                     operational={operational}
+                    voiceStatus={voiceStatus}
                   />
                   {renderDashboardSection()}
                 </>
