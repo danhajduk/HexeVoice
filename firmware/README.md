@@ -66,10 +66,16 @@ cd firmware
 ./build.sh
 ```
 
-The default board profile is `esp_box_3`. To build the experimental Home Assistant Voice Preview Edition profile:
+By default, `./build.sh` builds both supported profiles:
+
+- ESP-BOX-3: build directory `firmware/build`, flash export `firmware/export`, OTA binary `runtime/firmware/hexe_firmware_esp_box_3.bin`, and legacy OTA binary `runtime/firmware/hexe_firmware.bin`.
+- Home Assistant Voice Preview Edition: build directory `firmware/build-ha-voice-pe`, flash export `firmware/export-ha-voice-pe`, and OTA binary `runtime/firmware/hexe_firmware_ha_voice_pe.bin`.
+
+The shared `firmware/export` folder also receives the profile-named app binaries for both builds. To build just one profile:
 
 ```bash
 cd firmware
+HEXE_BOARD_PROFILE=esp_box_3 ./build.sh
 HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
 ```
 
@@ -102,7 +108,13 @@ cd firmware
 
 `push` posts to `http://127.0.0.1:9004/api/firmware/ota/push` by default and reads
 the endpoint id from `config/endpoint.yaml`. Override with `OTA_API_BASE` or
-`ENDPOINT_ID` when needed.
+`ENDPOINT_ID` when needed. To push the Home Assistant Voice PE firmware, select
+that profile and provide the target endpoint id:
+
+```bash
+cd firmware
+HEXE_BOARD_PROFILE=ha_voice_pe ENDPOINT_ID=ha-voice-1 ./build.sh push
+```
 
 To copy the flashable artifacts into `firmware/export/` for another machine:
 

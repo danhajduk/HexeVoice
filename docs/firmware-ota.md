@@ -202,9 +202,11 @@ The backend sends an `ota.update` event to the connected endpoint WebSocket with
 
 ```text
 runtime/firmware/hexe_firmware.bin
+runtime/firmware/hexe_firmware_esp_box_3.bin
+runtime/firmware/hexe_firmware_ha_voice_pe.bin
 ```
 
-Runtime firmware binaries and generated manifests are intentionally ignored by git; `runtime/firmware/.gitkeep` keeps the directory present.
+`hexe_firmware.bin` remains the default ESP-BOX OTA artifact for compatibility. Profile-specific OTA pushes can target `hexe_firmware_esp_box_3.bin` or `hexe_firmware_ha_voice_pe.bin`. Runtime firmware binaries and generated manifests are intentionally ignored by git; `runtime/firmware/.gitkeep` keeps the directory present.
 
 Because the partition table changed from a factory-only layout to OTA slots, each device needs one full USB flash of bootloader, partition table, OTA data, and app before backend-pushed OTA updates can work:
 

@@ -6,40 +6,23 @@ TARGET="${IDF_TARGET:-esp32s3}"
 EXPORT_AFTER_BUILD="${EXPORT_AFTER_BUILD:-1}"
 COMMAND="${1:-build}"
 CONVERTER_PYTHON="python3"
-BOARD_PROFILE="${HEXE_BOARD_PROFILE:-esp_box_3}"
-case "${BOARD_PROFILE}" in
-  esp_box_3)
-    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build}"
-    EXPORT_DIR="${EXPORT_DIR:-${ROOT_DIR}/export}"
-    UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-1}"
-    ;;
-  ha_voice_pe)
-    BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build-ha-voice-pe}"
-    EXPORT_DIR="${EXPORT_DIR:-${ROOT_DIR}/export-ha-voice-pe}"
-    UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-0}"
-    ;;
-  *)
-    echo "Unsupported HEXE_BOARD_PROFILE: ${BOARD_PROFILE}" >&2
-    exit 1
-    ;;
-esac
 RUNTIME_FIRMWARE_DIR="${ROOT_DIR}/../runtime/firmware"
-RUNTIME_FIRMWARE_BIN="${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
-RUNTIME_FIRMWARE_MANIFEST="${RUNTIME_FIRMWARE_DIR}/manifest.json"
 OTA_API_BASE="${OTA_API_BASE:-http://127.0.0.1:${API_PORT:-9004}}"
+COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR:-${ROOT_DIR}/export}"
 
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [build|push]
 
 Commands:
-  build  Build firmware and refresh runtime/export artifacts. This is the default.
-  push   Build firmware, refresh artifacts, then push OTA to the endpoint.
+  build  Build firmware and refresh runtime/export artifacts. Builds both profiles by default.
+  push   Build one firmware profile, refresh artifacts, then push OTA to the endpoint.
 
 Environment:
-  HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3 or ha_voice_pe. Default: esp_box_3.
+  HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3, ha_voice_pe, or all. Default: all for build, esp_box_3 for push.
   BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
   EXPORT_DIR    Firmware export directory. Defaults to export or export-ha-voice-pe by profile.
+  COMMON_EXPORT_DIR  Folder that receives profile-named binaries for all builds. Default: firmware/export.
   OTA_API_BASE   Backend API base URL for push mode. Default: ${OTA_API_BASE}
   ENDPOINT_ID    Endpoint id for push mode. Default: endpoint.id from config YAML.
 EOF
@@ -69,7 +52,8 @@ yaml_value() {
 
 json_value() {
   local key="$1"
-  "${CONVERTER_PYTHON}" - "$key" "${RUNTIME_FIRMWARE_MANIFEST}" <<'PY'
+  local manifest_path="$2"
+  "${CONVERTER_PYTHON}" - "$key" "${manifest_path}" <<'PY'
 import json
 import sys
 
@@ -82,24 +66,88 @@ print("" if value is None else value)
 PY
 }
 
+profile_build_dir() {
+  case "$1" in
+    esp_box_3) echo "${BUILD_DIR:-${ROOT_DIR}/build}" ;;
+    ha_voice_pe) echo "${BUILD_DIR:-${ROOT_DIR}/build-ha-voice-pe}" ;;
+  esac
+}
+
+profile_export_dir() {
+  case "$1" in
+    esp_box_3) echo "${EXPORT_DIR:-${ROOT_DIR}/export}" ;;
+    ha_voice_pe) echo "${EXPORT_DIR:-${ROOT_DIR}/export-ha-voice-pe}" ;;
+  esac
+}
+
+profile_app_filename() {
+  echo "hexe_firmware_${1}.bin"
+}
+
+profile_manifest_path() {
+  echo "${RUNTIME_FIRMWARE_DIR}/manifest-${1}.json"
+}
+
+validate_profile() {
+  case "$1" in
+    esp_box_3|ha_voice_pe)
+      ;;
+    *)
+      echo "Unsupported HEXE_BOARD_PROFILE: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+build_profile() {
+  local profile="$1"
+  validate_profile "${profile}"
+
+  local build_dir
+  local export_dir
+  local profile_app
+  build_dir="$(profile_build_dir "${profile}")"
+  export_dir="$(profile_export_dir "${profile}")"
+  profile_app="$(profile_app_filename "${profile}")"
+
+  echo "Building firmware profile ${profile}"
+  idf.py -B "${build_dir}" -D "HEXE_BOARD_PROFILE=${profile}" build
+
+  if [[ "${EXPORT_AFTER_BUILD}" == "1" ]]; then
+    HEXE_BOARD_PROFILE="${profile}" \
+      BUILD_DIR="${build_dir}" \
+      EXPORT_DIR="${export_dir}" \
+      COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR}" \
+      UPDATE_RUNTIME_FIRMWARE=1 \
+      PROFILE_APP_FILENAME="${profile_app}" \
+      PROFILE_MANIFEST_FILENAME="manifest-${profile}.json" \
+      "${ROOT_DIR}/export-artifacts.sh"
+  fi
+}
+
 push_ota() {
+  local profile="$1"
   local endpoint_id="${ENDPOINT_ID:-$(yaml_value endpoint id)}"
+  local filename
+  local manifest_path
   local version
-  version="$(json_value version)"
+  filename="$(profile_app_filename "${profile}")"
+  manifest_path="$(profile_manifest_path "${profile}")"
+  version="$(json_value version "${manifest_path}")"
 
   if [[ -z "${endpoint_id}" ]]; then
     echo "Missing ENDPOINT_ID and could not read endpoint.id from firmware config." >&2
     exit 1
   fi
-  if [[ ! -f "${RUNTIME_FIRMWARE_BIN}" ]]; then
-    echo "Missing ${RUNTIME_FIRMWARE_BIN}; build did not produce a runtime firmware binary." >&2
+  if [[ ! -f "${RUNTIME_FIRMWARE_DIR}/${filename}" ]]; then
+    echo "Missing ${RUNTIME_FIRMWARE_DIR}/${filename}; build did not produce a runtime firmware binary." >&2
     exit 1
   fi
 
-  echo "Pushing firmware OTA to ${endpoint_id} via ${OTA_API_BASE}"
+  echo "Pushing ${profile} firmware OTA to ${endpoint_id} via ${OTA_API_BASE}"
   curl -fsS -X POST "${OTA_API_BASE%/}/api/firmware/ota/push" \
     -H "Content-Type: application/json" \
-    -d "{\"endpoint_id\":\"${endpoint_id}\",\"filename\":\"hexe_firmware.bin\",\"version\":\"${version}\"}"
+    -d "{\"endpoint_id\":\"${endpoint_id}\",\"filename\":\"${filename}\",\"version\":\"${version}\"}"
   echo
 }
 
@@ -116,11 +164,6 @@ case "${COMMAND}" in
     exit 1
     ;;
 esac
-
-if [[ "${COMMAND}" == "push" && "${BOARD_PROFILE}" != "esp_box_3" ]]; then
-  echo "push mode is only supported for the esp_box_3 OTA profile; flash ${BOARD_PROFILE} over USB from its export folder." >&2
-  exit 1
-fi
 
 if [[ -z "${IDF_PATH:-}" ]]; then
   if [[ -f "${HOME}/esp-idf/export.sh" ]]; then
@@ -139,27 +182,38 @@ if [[ ! -f "${ROOT_DIR}/sdkconfig" ]]; then
   idf.py set-target "${TARGET}"
 fi
 
-idf.py -B "${BUILD_DIR}" -D "HEXE_BOARD_PROFILE=${BOARD_PROFILE}" build
-
-if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
-  mkdir -p "${RUNTIME_FIRMWARE_DIR}"
-  cp "${BUILD_DIR}/hexe_firmware.bin" "${RUNTIME_FIRMWARE_BIN}"
-  sha256sum "${RUNTIME_FIRMWARE_BIN}" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
-  echo "Copied firmware app binary to ${RUNTIME_FIRMWARE_BIN}"
-else
-  echo "Skipping runtime OTA firmware refresh for board profile ${BOARD_PROFILE}."
+requested_profile="${HEXE_BOARD_PROFILE:-}"
+if [[ "${COMMAND}" == "push" && -z "${requested_profile}" ]]; then
+  requested_profile="esp_box_3"
+elif [[ -z "${requested_profile}" ]]; then
+  requested_profile="all"
 fi
 
-if [[ "${EXPORT_AFTER_BUILD}" == "1" ]]; then
-  HEXE_BOARD_PROFILE="${BOARD_PROFILE}" \
-    BUILD_DIR="${BUILD_DIR}" \
-    EXPORT_DIR="${EXPORT_DIR}" \
-    UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE}" \
-    "${ROOT_DIR}/export-artifacts.sh"
+if [[ "${requested_profile}" == "all" && (-n "${BUILD_DIR:-}" || -n "${EXPORT_DIR:-}") ]]; then
+  echo "BUILD_DIR and EXPORT_DIR overrides require a single HEXE_BOARD_PROFILE." >&2
+  exit 1
 fi
+
+case "${requested_profile}" in
+  all)
+    if [[ "${COMMAND}" == "push" ]]; then
+      echo "push mode requires a single HEXE_BOARD_PROFILE: esp_box_3 or ha_voice_pe" >&2
+      exit 1
+    fi
+    build_profile esp_box_3
+    build_profile ha_voice_pe
+    ;;
+  esp_box_3|ha_voice_pe)
+    build_profile "${requested_profile}"
+    ;;
+  *)
+    echo "Unsupported HEXE_BOARD_PROFILE: ${requested_profile}" >&2
+    exit 1
+    ;;
+esac
 
 if [[ "${COMMAND}" == "push" ]]; then
-  push_ota
+  push_ota "${requested_profile}"
 fi
 
 echo "Firmware build complete."

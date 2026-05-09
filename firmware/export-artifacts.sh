@@ -5,8 +5,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BOARD_PROFILE="${HEXE_BOARD_PROFILE:-esp_box_3}"
 BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build}"
 EXPORT_DIR="${EXPORT_DIR:-${ROOT_DIR}/export}"
+COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR:-${ROOT_DIR}/export}"
 RUNTIME_FIRMWARE_DIR="${ROOT_DIR}/../runtime/firmware"
 UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-1}"
+PROFILE_APP_FILENAME="${PROFILE_APP_FILENAME:-hexe_firmware_${BOARD_PROFILE}.bin}"
+PROFILE_MANIFEST_FILENAME="${PROFILE_MANIFEST_FILENAME:-manifest-${BOARD_PROFILE}.json}"
 
 BOOTLOADER_SRC="${BUILD_DIR}/bootloader/bootloader.bin"
 PARTITION_SRC="${BUILD_DIR}/partition_table/partition-table.bin"
@@ -40,8 +43,14 @@ cp "${BOOTLOADER_SRC}" "${EXPORT_DIR}/bootloader.bin"
 cp "${PARTITION_SRC}" "${EXPORT_DIR}/partition-table.bin"
 cp "${OTA_DATA_SRC}" "${EXPORT_DIR}/ota_data_initial.bin"
 cp "${APP_SRC}" "${EXPORT_DIR}/hexe_firmware.bin"
+cp "${APP_SRC}" "${EXPORT_DIR}/${PROFILE_APP_FILENAME}"
+mkdir -p "${COMMON_EXPORT_DIR}"
+cp "${APP_SRC}" "${COMMON_EXPORT_DIR}/${PROFILE_APP_FILENAME}"
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
-  cp "${APP_SRC}" "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
+  cp "${APP_SRC}" "${RUNTIME_FIRMWARE_DIR}/${PROFILE_APP_FILENAME}"
+  if [[ "${BOARD_PROFILE}" == "esp_box_3" ]]; then
+    cp "${APP_SRC}" "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
+  fi
 fi
 
 if [[ -f "${ELF_SRC}" ]]; then
@@ -63,11 +72,20 @@ CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
     bootloader.bin \
     partition-table.bin \
     ota_data_initial.bin \
-    hexe_firmware.bin > SHA256SUMS
+    hexe_firmware.bin \
+    "${PROFILE_APP_FILENAME}" > SHA256SUMS
+)
+
+(
+  cd "${COMMON_EXPORT_DIR}"
+  sha256sum hexe_firmware_*.bin > SHA256SUMS.profiles
 )
 
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
-  sha256sum "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin" > "${RUNTIME_FIRMWARE_DIR}/SHA256SUMS"
+  (
+    cd "${RUNTIME_FIRMWARE_DIR}"
+    sha256sum hexe_firmware*.bin > SHA256SUMS
+  )
 fi
 
 cat > "${EXPORT_DIR}/manifest.txt" <<EOF
@@ -84,20 +102,24 @@ ota_data=ota_data_initial.bin
 ota_data_offset=0xd000
 app=hexe_firmware.bin
 app_offset=0x10000
+profile_app=${PROFILE_APP_FILENAME}
 EOF
 
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
-  cat > "${RUNTIME_FIRMWARE_DIR}/manifest.json" <<EOF
+  cat > "${RUNTIME_FIRMWARE_DIR}/${PROFILE_MANIFEST_FILENAME}" <<EOF
 {
   "project_name": "${PROJECT_NAME}",
   "version": "${VERSION}",
   "target": "${TARGET}",
   "board_profile": "${BOARD_PROFILE}",
   "created_at_utc": "${CREATED_AT}",
-  "filename": "hexe_firmware.bin",
-  "sha256": "$(sha256sum "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin" | awk '{print $1}')"
+  "filename": "${PROFILE_APP_FILENAME}",
+  "sha256": "$(sha256sum "${RUNTIME_FIRMWARE_DIR}/${PROFILE_APP_FILENAME}" | awk '{print $1}')"
 }
 EOF
+  if [[ "${BOARD_PROFILE}" == "esp_box_3" ]]; then
+    cp "${RUNTIME_FIRMWARE_DIR}/${PROFILE_MANIFEST_FILENAME}" "${RUNTIME_FIRMWARE_DIR}/manifest.json"
+  fi
 fi
 
 cat > "${EXPORT_DIR}/flash-esptool.sh" <<'EOF'
@@ -135,6 +157,7 @@ This folder contains the files needed to flash Hexe firmware on another machine.
 - \`partition-table.bin\`
 - \`ota_data_initial.bin\`
 - \`hexe_firmware.bin\`
+- \`${PROFILE_APP_FILENAME}\`
 - \`SHA256SUMS\`
 - \`manifest.txt\`
 - \`flash-esptool.sh\`

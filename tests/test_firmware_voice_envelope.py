@@ -2,6 +2,8 @@ from pathlib import Path
 
 
 FIRMWARE_BACKEND_CLIENT = Path("firmware/main/voice/backend_client.cpp")
+FIRMWARE_BUILD_SCRIPT = Path("firmware/build.sh")
+FIRMWARE_EXPORT_SCRIPT = Path("firmware/export-artifacts.sh")
 FIRMWARE_CMAKE = Path("firmware/main/CMakeLists.txt")
 FIRMWARE_AUDIO = Path("firmware/main/board/audio.cpp")
 FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/main/board/audio_ha_voice_pe.cpp")
@@ -273,3 +275,20 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "NVS storage initialized; SD media storage disabled" in storage_source
     assert "TTS output disabled for this board profile" in tts_source
     assert "tts_playback_active()" in tts_source
+
+
+def test_firmware_build_exports_profile_specific_ota_artifacts():
+    build_source = FIRMWARE_BUILD_SCRIPT.read_text()
+    export_source = FIRMWARE_EXPORT_SCRIPT.read_text()
+
+    assert 'requested_profile="all"' in build_source
+    assert "build_profile esp_box_3" in build_source
+    assert "build_profile ha_voice_pe" in build_source
+    assert "hexe_firmware_${1}.bin" in build_source
+    assert '\\"filename\\":\\"${filename}\\"' in build_source
+
+    assert "PROFILE_APP_FILENAME" in export_source
+    assert "hexe_firmware_${BOARD_PROFILE}.bin" in export_source
+    assert "manifest-${BOARD_PROFILE}.json" in export_source
+    assert "hexe_firmware*.bin > SHA256SUMS" in export_source
+    assert "cp \"${APP_SRC}\" \"${COMMON_EXPORT_DIR}/${PROFILE_APP_FILENAME}\"" in export_source
