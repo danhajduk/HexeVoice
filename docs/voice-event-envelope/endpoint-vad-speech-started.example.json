@@ -1,0 +1,14 @@
+{
+  "event_type": "vad.speech_started",
+  "event_id": "evt_endpoint_vad_speech_started_example",
+  "schema_version": "hexevoice.voice.event.v1",
+  "endpoint_id": "esp-pe-1",
+  "direction": "endpoint_to_backend",
+  "session_id": "esp-pe-1-42",
+  "sequence": 3,
+  "timestamp": "2026-05-09T20:51:36.100000Z",
+  "payload": {
+    "level": 1247,
+    "source": "firmware_vad"
+  }
+}

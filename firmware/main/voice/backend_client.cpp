@@ -80,6 +80,7 @@ uint32_t g_chunk_index = 0;
 uint32_t g_session_counter = 0;
 uint32_t g_sequence = 0;
 bool g_session_started = false;
+bool g_vad_speech_started_reported = false;
 bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
 bool g_ws_started = false;
@@ -93,6 +94,7 @@ size_t g_preroll_count = 0;
 std::array<int16_t, kWakePredictionChunkSamples> g_transport_samples = {};
 size_t g_transport_sample_count = 0;
 std::string g_session_id;
+std::string g_tts_playback_session_id;
 std::string g_ws_rx_buffer;
 
 struct MediaTransferRequest {
@@ -132,6 +134,7 @@ std::string endpoint_capabilities_json();
 bool sync_backend_time(const std::string &url);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 bool ensure_session_started(const char *wake_source);
+bool send_vad_speech_started_event(uint32_t level);
 void append_event_header(
     std::string &message,
     const char *event_type,
@@ -153,9 +156,11 @@ void mark_voice_socket_disconnected() {
   auto &state = hexe::state();
   state.voice_ws_connected = false;
   g_session_started = false;
+  g_vad_speech_started_reported = false;
   g_audio_stream_finished = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  g_tts_playback_session_id.clear();
   set_audio_streaming(false);
   if (!state.muted && !state.ota_active) {
     state.phase = hexe::idle_or_connecting_phase();
@@ -501,6 +506,12 @@ void handle_backend_event_json(const std::string &message) {
       }
     }
   } else if (std::strcmp(type, "tts.ready") == 0) {
+    cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
+    if (cJSON_IsString(session_id) && session_id->valuestring[0] != '\0') {
+      g_tts_playback_session_id = session_id->valuestring;
+    } else if (!g_session_id.empty()) {
+      g_tts_playback_session_id = g_session_id;
+    }
     cJSON *stream_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stream_id") : nullptr;
     cJSON *content_type = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "content_type") : nullptr;
     cJSON *audio_url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "audio_url") : nullptr;
@@ -587,8 +598,11 @@ void handle_backend_event_json(const std::string &message) {
   } else if (std::strcmp(type, "session.completed") == 0 || std::strcmp(type, "session.cancelled") == 0) {
     if (std::strcmp(type, "session.completed") == 0) {
       hexe::board::led_ring_show_completed();
+    } else {
+      g_tts_playback_session_id.clear();
     }
     g_session_started = false;
+    g_vad_speech_started_reported = false;
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
@@ -599,9 +613,11 @@ void handle_backend_event_json(const std::string &message) {
   } else if (std::strcmp(type, "session.error") == 0) {
     cJSON *recoverable = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "recoverable") : nullptr;
     g_session_started = false;
+    g_vad_speech_started_reported = false;
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
+    g_tts_playback_session_id.clear();
     set_audio_streaming(false);
     if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
       if (!app_state.muted) {
@@ -1220,8 +1236,10 @@ bool ensure_session_started(const char *wake_source) {
   ++g_session_counter;
   g_chunk_index = 0;
   g_audio_stream_finished = false;
+  g_vad_speech_started_reported = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  g_tts_playback_session_id.clear();
   char session_buffer[96];
   std::snprintf(
       session_buffer,
@@ -1253,6 +1271,31 @@ bool ensure_session_started(const char *wake_source) {
     ESP_LOGI(kTag, "Started voice session %s wake_source=%s", g_session_id.c_str(), normalized_wake_source(wake_source));
   }
   return g_session_started;
+}
+
+bool send_vad_speech_started_event(uint32_t level) {
+  if (g_vad_speech_started_reported) {
+    return true;
+  }
+  if (!ensure_session_started("openwakeword")) {
+    return false;
+  }
+
+  std::string payload;
+  payload.reserve(384);
+  append_event_header(payload, "vad.speech_started", g_session_id.c_str(), g_sequence++);
+  char body[128];
+  std::snprintf(
+      body,
+      sizeof(body),
+      "{\"level\":%" PRIu32 ",\"source\":\"firmware_vad\"}}",
+      level);
+  payload.append(body);
+  const bool sent = send_ws_text(payload);
+  if (sent) {
+    g_vad_speech_started_reported = true;
+  }
+  return sent;
 }
 
 void send_audio_frame(const AudioFrame &frame) {
@@ -1567,11 +1610,13 @@ bool send_tts_playback_event(
 
   std::string envelope;
   envelope.reserve(640);
-  append_event_header(
-      envelope,
-      event_type,
-      g_session_started ? g_session_id.c_str() : nullptr,
-      g_sequence++);
+  const char *session_id = nullptr;
+  if (!g_tts_playback_session_id.empty()) {
+    session_id = g_tts_playback_session_id.c_str();
+  } else if (g_session_started) {
+    session_id = g_session_id.c_str();
+  }
+  append_event_header(envelope, event_type, session_id, g_sequence++);
   char body[384];
   std::snprintf(
       body,
@@ -1592,7 +1637,12 @@ bool send_tts_playback_event(
     envelope.append(failure);
   }
   envelope.append("}}");
-  return send_ws_text(envelope);
+  const bool sent = send_ws_text(envelope);
+  if (sent && (std::strcmp(event_type, "tts.playback.completed") == 0 ||
+               std::strcmp(event_type, "tts.playback.failed") == 0)) {
+    g_tts_playback_session_id.clear();
+  }
+  return sent;
 }
 
 bool submit_audio_frame(const int16_t *samples, size_t sample_count, uint32_t level, bool vad_speaking) {
@@ -1628,6 +1678,10 @@ bool start_voice_session(const char *wake_source) {
     app_state.phase = hexe::AppPhase::kListening;
   }
   return started;
+}
+
+bool notify_vad_speech_started(uint32_t level) {
+  return send_vad_speech_started_event(level);
 }
 
 bool finish_audio_stream(const char *reason) {
@@ -1671,9 +1725,11 @@ bool cancel_active_session(const char *reason) {
   payload.append(body);
   const bool sent = send_ws_text(payload);
   g_session_started = false;
+  g_vad_speech_started_reported = false;
   g_audio_stream_finished = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  g_tts_playback_session_id.clear();
   set_audio_streaming(false);
   hexe::voice::stop_tts_playback();
   return sent;

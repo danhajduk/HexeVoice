@@ -220,6 +220,7 @@ void apply_vad_state(bool speaking, uint32_t level) {
   if (speaking) {
     g_vad_turn_active = true;
     ESP_LOGI(kTag, "VAD speech detected (level=%lu)", static_cast<unsigned long>(level));
+    hexe::voice::notify_vad_speech_started(level);
   } else if (g_vad_turn_active) {
     g_vad_turn_active = false;
     if (hexe::voice::finish_audio_stream("vad_silence")) {

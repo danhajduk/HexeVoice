@@ -27,6 +27,7 @@ from hexevoice.voice.contracts import (
     VoiceTranscriptPayload,
     VoiceTtsPlaybackPayload,
     VoiceTtsReadyPayload,
+    VoiceVadSpeechStartedPayload,
     is_valid_voice_session_transition,
     project_ux_state,
     project_voice_state,
@@ -600,6 +601,7 @@ class VoiceSessionManager:
             "session.start": self._handle_session_start,
             "audio.chunk": self._handle_audio_chunk,
             "audio.end": self._handle_audio_end,
+            "vad.speech_started": self._handle_vad_speech_started,
             "session.cancel": self._handle_session_cancel,
             "session.ping": self._handle_session_ping,
             "command.ack": self._handle_command_ack,
@@ -949,6 +951,7 @@ class VoiceSessionManager:
         if session.session_state == "wake_detected":
             self._set_session_state("listening")
 
+        self._update_vad_latency("audio_end", event.timestamp)
         self._set_session_state("transcribing")
         events: list[VoiceEventEnvelope] = []
         wake_recording = self._record_accepted_wake_session(session)
@@ -1127,6 +1130,7 @@ class VoiceSessionManager:
                     ).model_dump(mode="json"),
                 )
             )
+            self._update_vad_latency("tts_ready", datetime.now(UTC))
         else:
             self._set_session_state("local_command")
             self._set_session_state("responding")
@@ -1385,12 +1389,60 @@ class VoiceSessionManager:
             return
         self._active_session_history["wake"] = wake
 
+    def _set_active_session_vad(self, vad: dict[str, Any]) -> None:
+        if self._active_session_history is None:
+            return
+        current = dict(self._active_session_history.get("vad") or {})
+        current.update(vad)
+        self._active_session_history["vad"] = current
+
     def _update_active_session_history(self, **entries: Any) -> None:
         if self._active_session_history is None:
             return
         for key, value in entries.items():
             if value is not None:
                 self._active_session_history[key] = value
+
+    def _update_vad_latency(self, marker: str, ended_at: datetime) -> None:
+        if self._active_session_history is None:
+            return
+        latency = self._vad_latency_record(self._active_session_history, marker, ended_at)
+        if latency:
+            self._update_active_session_history(latency=latency)
+
+    def _vad_latency_record(self, record: dict[str, Any], marker: str, ended_at: datetime) -> dict[str, Any] | None:
+        vad = record.get("vad")
+        if not isinstance(vad, dict):
+            return None
+        started_at_raw = vad.get("speech_started_at")
+        if not started_at_raw:
+            return None
+        try:
+            started_at = datetime.fromisoformat(str(started_at_raw).replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=UTC)
+        if ended_at.tzinfo is None:
+            ended_at = ended_at.replace(tzinfo=UTC)
+        existing = dict(record.get("latency") or {})
+        existing["vad_speech_started_at"] = started_at.isoformat()
+        existing[f"vad_to_{marker}_ms"] = max(0, int((ended_at - started_at).total_seconds() * 1000))
+        return existing
+
+    def _upsert_persisted_session_history(self, session_id: str, **entries: Any) -> None:
+        if self._session_history_store is None:
+            return
+        record = self._session_history_store.get_session(session_id)
+        if record is None:
+            return
+        for key, value in entries.items():
+            if value is not None:
+                record[key] = value
+        try:
+            self._session_history_store.upsert_session(record)
+        except Exception:
+            log.exception("Failed to update persisted voice session history: session_id=%s", session_id)
 
     def _persist_active_session_history(
         self,
@@ -1403,6 +1455,7 @@ class VoiceSessionManager:
         if self._session_history_store is None or self._active_session_history is None:
             return
         completed_at = datetime.now(UTC)
+        self._update_vad_latency("session_completed", completed_at)
         audio = dict(self._active_session_history.get("audio") or {})
         if self._audio_format is not None:
             audio["format"] = self._audio_format.model_dump(mode="json")
@@ -1533,6 +1586,48 @@ class VoiceSessionManager:
             return [session]
         return [self._state_event("session.state", session)]
 
+    def _handle_vad_speech_started(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        session = self._require_active_session(event)
+        if isinstance(session, VoiceEventEnvelope):
+            return [session]
+
+        try:
+            payload = VoiceVadSpeechStartedPayload.model_validate(event.payload)
+        except ValidationError as exc:
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_vad_speech_started",
+                    message=str(exc.errors()[0]["msg"]),
+                    recoverable=True,
+                )
+            ]
+
+        record = {
+            "speech_started_at": event.timestamp.isoformat(),
+            "level": payload.level,
+            "source": payload.source or "firmware_vad",
+        }
+        self._set_active_session_vad(record)
+        self._last_event_type = event.event_type
+        record_voice_event(
+            "vad.speech_started",
+            endpoint_id=event.endpoint_id,
+            session_id=session.session_id,
+            level=payload.level,
+            source=record["source"],
+            speech_started_at=record["speech_started_at"],
+        )
+        log.info(
+            "Endpoint VAD speech started: endpoint_id=%s session_id=%s level=%s timestamp=%s",
+            event.endpoint_id,
+            session.session_id,
+            payload.level,
+            record["speech_started_at"],
+        )
+        return [self._state_event("session.state", session)]
+
     def _handle_command_ack(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         try:
             payload = VoiceCommandAckPayload.model_validate(event.payload)
@@ -1632,6 +1727,24 @@ class VoiceSessionManager:
         del self._tts_playback_history[20:]
         self._last_event_type = event.event_type
         self._update_active_session_history(tts_playback=record)
+        if event.session_id:
+            persisted = self._session_history_store.get_session(event.session_id) if self._session_history_store else None
+            if persisted is not None:
+                latency_marker = {
+                    "tts.playback.first_audio_frame": "first_audio_frame",
+                    "tts.playback.completed": "playback_completed",
+                    "tts.playback.failed": "playback_failed",
+                }.get(event.event_type)
+                latency = (
+                    self._vad_latency_record(persisted, latency_marker, event.timestamp)
+                    if latency_marker is not None
+                    else None
+                )
+                self._upsert_persisted_session_history(
+                    event.session_id,
+                    tts_playback=record,
+                    latency=latency,
+                )
         record_voice_event(
             event.event_type,
             **{key: value for key, value in record.items() if key != "event_type"},

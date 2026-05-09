@@ -681,6 +681,13 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     with client.websocket_connect("/api/voice/ws") as websocket:
         websocket.send_json(voice_event("session.start"))
         websocket.receive_json()
+        vad_start = voice_event(
+            "vad.speech_started",
+            payload={"level": 1247, "source": "firmware_vad"},
+        )
+        vad_start["timestamp"] = "2026-05-09T20:51:36.100000Z"
+        websocket.send_json(vad_start)
+        websocket.receive_json()
         websocket.send_json(
             voice_event(
                 "audio.chunk",
@@ -693,11 +700,25 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
         )
         websocket.receive_json()
         websocket.receive_json()
-        websocket.send_json(voice_event("audio.end"))
+        audio_end = voice_event("audio.end")
+        audio_end["timestamp"] = "2026-05-09T20:51:38.100000Z"
+        websocket.send_json(audio_end)
         websocket.receive_json()
         websocket.receive_json()
         websocket.receive_json()
         websocket.receive_json()
+        first_audio = voice_event(
+            "tts.playback.first_audio_frame",
+            payload={"stream_id": "tts-history", "audio_url": "/api/voice/tts/tts-history/48k", "byte_count": 4096},
+        )
+        first_audio["timestamp"] = "2026-05-09T20:51:39.100000Z"
+        websocket.send_json(first_audio)
+        completed_playback = voice_event(
+            "tts.playback.completed",
+            payload={"stream_id": "tts-history", "audio_url": "/api/voice/tts/tts-history/48k", "byte_count": 22000},
+        )
+        completed_playback["timestamp"] = "2026-05-09T20:51:40.350000Z"
+        websocket.send_json(completed_playback)
 
     sessions = client.get("/api/voice/sessions").json()["sessions"]
     assert sessions[0]["session_id"] == "voice-session-1"
@@ -709,6 +730,12 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert sessions[0]["assistant"]["provider_id"] == "assistant-test"
     assert sessions[0]["assistant"]["intent_latency_ms"] == 8.5
     assert sessions[0]["turn_timings"]["total_ms"] == 36.0
+    assert sessions[0]["vad"]["speech_started_at"] == "2026-05-09T20:51:36.100000+00:00"
+    assert sessions[0]["vad"]["level"] == 1247
+    assert sessions[0]["latency"]["vad_to_audio_end_ms"] == 2000
+    assert sessions[0]["latency"]["vad_to_first_audio_frame_ms"] == 3000
+    assert sessions[0]["latency"]["vad_to_playback_completed_ms"] == 4250
+    assert sessions[0]["tts_playback"]["event_type"] == "tts.playback.completed"
     assert sessions[0]["tts"]["stream_id"] == "tts-history"
     assert sessions[0]["tts"]["spoken_text"] == "OK"
     assert sessions[0]["tts"]["transcript"]["text"] == "turn on the light"
@@ -729,6 +756,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     detail = client.get("/api/voice/sessions/voice-session-1").json()["session"]
     assert detail["completion_reason"] == "turn_completed"
     assert detail["tts"]["audio_url"] == "/api/voice/tts/tts-history"
+    assert detail["latency"]["vad_to_playback_completed_ms"] == 4250
 
     restarted_manager = VoiceSessionManager(session_history_store=history_store)
     restarted_client = TestClient(create_app(settings, voice_session_manager=restarted_manager))

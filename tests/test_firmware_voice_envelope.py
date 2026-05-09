@@ -35,6 +35,8 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert 'normalized_wake_source(wake_source)' in source
     assert "audio.chunk" in source
     assert "audio.end" in source
+    assert "vad.speech_started" in source
+    assert "notify_vad_speech_started" in source
     assert "session.cancel" in source
     assert "command.ack" in source
     assert "command.error" in source
@@ -59,9 +61,12 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
 
 def test_firmware_vad_keeps_listening_window_after_wake_word():
     source = FIRMWARE_AUDIO.read_text()
+    pe_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
 
     assert "kVadSilenceHoldMs = 2500" in source
     assert 'finish_audio_stream("vad_silence")' in source
+    assert "notify_vad_speech_started(level)" in source
+    assert "notify_vad_speech_started(level)" in pe_source
 
 
 def test_firmware_heartbeat_reports_network_metadata():

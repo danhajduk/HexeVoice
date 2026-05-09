@@ -26,6 +26,7 @@ firmware ignores malformed backend-to-endpoint envelopes instead of applying the
 JSON examples for this contract are stored in `docs/voice-event-envelope/`:
 
 - `endpoint-session-start.example.json`
+- `endpoint-vad-speech-started.example.json`
 - `backend-volume-command.example.json`
 - `endpoint-command-ack.example.json`
 - `endpoint-command-error.example.json`
@@ -45,3 +46,8 @@ Endpoint TTS playback acknowledgements use `tts.playback.download_started`, `tts
 `tts.playback.completed`, and `tts.playback.failed`. The payload includes the `stream_id`, `audio_url`,
 optional `byte_count`, and failure `reason`/`message` when applicable. The backend exposes the latest event as
 `last_tts_playback` and a short `tts_playback_history` list in `/api/voice/status`.
+
+Firmware VAD start uses `vad.speech_started`. The envelope timestamp is the device-side speech-start timestamp, and
+the payload carries the measured VAD `level` plus a `source` such as `firmware_vad`. Session history stores this under
+`vad` and derives latency fields such as `vad_to_audio_end_ms`, `vad_to_first_audio_frame_ms`, and
+`vad_to_playback_completed_ms` as later audio/TTS playback events arrive.

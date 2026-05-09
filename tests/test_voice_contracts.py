@@ -163,6 +163,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "session.start",
         "audio.chunk",
         "audio.end",
+        "vad.speech_started",
         "session.cancel",
         "session.ping",
         "command.ack",
@@ -186,6 +187,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
     "filename",
     [
         "endpoint-session-start.example.json",
+        "endpoint-vad-speech-started.example.json",
         "backend-volume-command.example.json",
         "endpoint-command-ack.example.json",
         "endpoint-command-error.example.json",

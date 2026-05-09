@@ -36,6 +36,7 @@ VoiceEventType = Literal[
     "session.start",
     "audio.chunk",
     "audio.end",
+    "vad.speech_started",
     "session.cancel",
     "session.ping",
     "session.state",
@@ -77,6 +78,7 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
         "session.start",
         "audio.chunk",
         "audio.end",
+        "vad.speech_started",
         "session.cancel",
         "session.ping",
         "command.ack",
@@ -192,6 +194,11 @@ class VoiceTtsPlaybackPayload(BaseModel):
     byte_count: int | None = Field(default=None, ge=0)
     reason: str | None = None
     message: str | None = None
+
+
+class VoiceVadSpeechStartedPayload(BaseModel):
+    level: int | None = Field(default=None, ge=0)
+    source: str | None = None
 
 
 class VoiceErrorPayload(BaseModel):
