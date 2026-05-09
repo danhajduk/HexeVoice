@@ -1,4 +1,7 @@
 import asyncio
+import base64
+import json
+import wave
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +16,7 @@ from hexevoice.voice import (
     SpeechTranscript,
     TtsSynthesis,
     WakeDetectionResult,
+    WakeRecordingService,
     VoiceSessionManager,
     VoiceTurnResult,
     VoiceTurnTimings,
@@ -27,6 +31,10 @@ def voice_event(event_type, *, endpoint_id="esp-box-1", session_id="voice-sessio
         "session_id": session_id,
         "payload": payload or {},
     }
+
+
+def recorded_name(path: str) -> str:
+    return path.rsplit("/", 1)[-1]
 
 
 class CloseTrackingWakeDetector(DeterministicWakeDetector):
@@ -220,6 +228,82 @@ def test_voice_status_records_wake_confidence_history_for_tuning(tmp_path):
     assert confidence_history[1]["confidence"] == 0.42
     assert confidence_history[1]["accepted"] is False
     assert confidence_history[1]["reason"] == "below_threshold"
+
+
+def test_voice_websocket_records_accepted_wake_session_audio(tmp_path):
+    detector = SequenceWakeDetector(
+        [
+            WakeDetectionResult(detected=False, confidence=0.42, model="Hexa", reason="below_threshold"),
+            WakeDetectionResult(detected=True, confidence=0.86, model="Hexa"),
+        ]
+    )
+    recorder = WakeRecordingService(recording_dir=tmp_path / "wake-recordings", retention_days=7, preroll_ms=1000)
+    manager = VoiceSessionManager(wake_detector=detector, wake_recorder=recorder)
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    def encoded(samples: bytes) -> str:
+        return base64.b64encode(samples).decode("ascii")
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": encoded(b"\x01\x00\x02\x00"),
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 1,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": encoded(b"\x03\x00\x04\x00"),
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 2,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": encoded(b"\x05\x00\x06\x00"),
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        completed = websocket.receive_json()
+
+    recording = completed["payload"]["wake_recording"]
+    wav_path = tmp_path / "wake-recordings" / recorded_name(recording["wav_path"])
+    metadata_path = tmp_path / "wake-recordings" / recorded_name(recording["metadata_path"])
+    assert wav_path.exists()
+    assert metadata_path.exists()
+    assert recording["retention_days"] == 7
+    assert recording["confidence"] == 0.86
+    assert recording["recording_type"] == "accepted_wake_session"
+    assert recording["wake_preroll_byte_count"] == 8
+    assert recording["stt_byte_count"] == 4
+
+    with wave.open(str(wav_path), "rb") as wav_file:
+        assert wav_file.getframerate() == 16000
+        assert wav_file.getnchannels() == 1
+        assert wav_file.getnframes() == 6
+
+    metadata = json.loads(metadata_path.read_text())
+    assert metadata["session_id"] == "voice-session-1"
+    assert metadata["expires_at"]
+    assert client.get("/api/voice/status").json()["wake_recordings"]["last_recording"]["wav_path"] == str(wav_path)
 
 
 def test_voice_websocket_closes_wake_stream_after_completed_session(tmp_path):

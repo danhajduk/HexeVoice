@@ -53,6 +53,7 @@ from hexevoice.voice.wake import (
     WyomingOpenWakeWordWakeDetector,
     build_wake_detector,
 )
+from hexevoice.voice.wake_recordings import WakeRecordingService
 
 __all__ = [
     "BACKEND_TO_ENDPOINT_EVENTS",
@@ -98,6 +99,7 @@ __all__ = [
     "WyomingOpenWakeWordWakeDetector",
     "WakeDetectionResult",
     "WakeDetector",
+    "WakeRecordingService",
     "build_wake_detector",
     "is_valid_voice_session_transition",
     "project_ux_state",

@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     voice_wake_service_host: str = Field(default="127.0.0.1", alias="VOICE_WAKE_SERVICE_HOST")
     voice_wake_service_port: int = Field(default=10400, alias="VOICE_WAKE_SERVICE_PORT")
     voice_wake_service_timeout_s: float = Field(default=0.05, alias="VOICE_WAKE_SERVICE_TIMEOUT_S", gt=0)
+    voice_wake_recordings_enabled: bool = Field(default=False, alias="VOICE_WAKE_RECORDINGS_ENABLED")
+    voice_wake_recording_dir: Path | None = Field(default=None, alias="VOICE_WAKE_RECORDING_DIR")
+    voice_wake_recording_retention_days: int = Field(default=7, alias="VOICE_WAKE_RECORDING_RETENTION_DAYS", ge=1)
+    voice_wake_recording_preroll_ms: int = Field(default=2000, alias="VOICE_WAKE_RECORDING_PREROLL_MS", ge=0)
     voice_stt_provider: Literal["deterministic", "openai", "faster_whisper"] = Field(
         default="deterministic",
         alias="VOICE_STT_PROVIDER",
@@ -176,6 +180,11 @@ class Settings(BaseSettings):
         if self.voice_stt_faster_whisper_temp_dir is not None:
             return self.voice_stt_faster_whisper_temp_dir
         return self.runtime_dir / "stt" / "faster-whisper"
+
+    def resolved_voice_wake_recording_dir(self) -> Path:
+        if self.voice_wake_recording_dir is not None:
+            return self.voice_wake_recording_dir
+        return self.runtime_dir / "wake_recordings"
 
     def resolved_voice_tts_piper_base_url(self) -> str | None:
         if self.voice_tts_piper_base_url is not None:

@@ -30,6 +30,7 @@ from hexevoice.voice.contracts import (
 from hexevoice.voice.pipeline import VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
+from hexevoice.voice.wake_recordings import WakeRecordingService
 
 
 log = logging.getLogger(__name__)
@@ -41,6 +42,7 @@ class VoiceSessionManager:
         *,
         wake_detector: WakeDetector | None = None,
         turn_pipeline: VoiceTurnPipeline | None = None,
+        wake_recorder: WakeRecordingService | None = None,
     ) -> None:
         self._connection_active = False
         self._websocket: WebSocket | None = None
@@ -52,6 +54,7 @@ class VoiceSessionManager:
         self._sequence = 0
         self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
         self._turn_pipeline = turn_pipeline
+        self._wake_recorder = wake_recorder
         self._last_transcript: str | None = None
         self._last_response: str | None = None
         self._last_transcript_metadata: dict | None = None
@@ -689,6 +692,13 @@ class VoiceSessionManager:
             except ValueError:
                 pass
         events: list[VoiceEventEnvelope] = []
+        if audio_bytes is not None and session.session_state == "idle" and self._wake_recorder is not None:
+            self._wake_recorder.capture_wake_chunk(
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                audio_format=payload.audio_format,
+                audio_bytes=audio_bytes,
+            )
         detection = (
             self._wake_detector.inspect_chunk(
                 endpoint_id=event.endpoint_id,
@@ -712,6 +722,16 @@ class VoiceSessionManager:
             chunk_count=self._chunk_count,
         )
         if wake_accepted:
+            if self._wake_recorder is not None:
+                self._wake_recorder.mark_accepted_wake(
+                    endpoint_id=event.endpoint_id,
+                    session_id=session.session_id,
+                    model=detection.model,
+                    confidence=detection.confidence,
+                    source="backend_openwakeword",
+                    chunk_index=payload.chunk_index,
+                    chunk_count=self._chunk_count,
+                )
             self._record_wake_history(
                 {
                     "outcome": "accepted",
@@ -830,6 +850,7 @@ class VoiceSessionManager:
 
         self._set_session_state("transcribing")
         events: list[VoiceEventEnvelope] = []
+        wake_recording = self._record_accepted_wake_session(session)
         if self._turn_pipeline is not None:
             turn = self._turn_pipeline.complete_turn(
                 VoiceTurnAudioSummary(
@@ -993,7 +1014,11 @@ class VoiceSessionManager:
             self._state_event(
                 "session.completed",
                 session,
-                extra_payload={"completion_reason": "turn_completed", "chunk_count": self._chunk_count},
+                extra_payload={
+                    "completion_reason": "turn_completed",
+                    "chunk_count": self._chunk_count,
+                    **({"wake_recording": wake_recording} if wake_recording else {}),
+                },
             )
         )
         self._release_active_session_wake_stream()
@@ -1034,6 +1059,7 @@ class VoiceSessionManager:
             "wake_provider": self._wake_detector.status(),
             "wake_history": list(self._wake_history),
             "wake_confidence_history": list(self._wake_confidence_history),
+            "wake_recordings": self._wake_recorder.status() if self._wake_recorder else {"enabled": False},
             "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
             "supported_actions": {
                 "refresh": True,
@@ -1098,6 +1124,30 @@ class VoiceSessionManager:
         self._wake_confidence_history.insert(0, event)
         del self._wake_confidence_history[50:]
         record_voice_event("wake.confidence", **event)
+
+    def _record_accepted_wake_session(self, session: VoiceSessionSnapshot) -> dict[str, object] | None:
+        if self._wake_recorder is None:
+            return None
+        recording = self._wake_recorder.record_accepted_session(
+            endpoint_id=session.endpoint_id,
+            session_id=session.session_id,
+            stt_chunks=self._audio_chunks,
+            chunk_count=self._chunk_count,
+        )
+        if recording is None:
+            return None
+        record_voice_event(
+            "wake.recording.saved",
+            endpoint_id=session.endpoint_id,
+            session_id=session.session_id,
+            wav_path=recording.get("wav_path"),
+            metadata_path=recording.get("metadata_path"),
+            duration_ms=recording.get("duration_ms"),
+            model=recording.get("model"),
+            confidence=recording.get("confidence"),
+            expires_at=recording.get("expires_at"),
+        )
+        return recording
 
     def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
         if self._active_session is None:
@@ -1260,19 +1310,23 @@ class VoiceSessionManager:
         if self._active_session is None:
             return
         close_session = getattr(self._wake_detector, "close_session", None)
-        if not callable(close_session):
-            return
-        try:
-            close_session(
+        if callable(close_session):
+            try:
+                close_session(
+                    endpoint_id=self._active_session.endpoint_id,
+                    session_id=self._active_session.session_id,
+                )
+            except Exception as exc:
+                log.debug(
+                    "Wake detector session cleanup failed: endpoint_id=%s session_id=%s error=%s",
+                    self._active_session.endpoint_id,
+                    self._active_session.session_id,
+                    exc,
+                )
+        if self._wake_recorder is not None:
+            self._wake_recorder.close_session(
                 endpoint_id=self._active_session.endpoint_id,
                 session_id=self._active_session.session_id,
-            )
-        except Exception as exc:
-            log.debug(
-                "Wake detector session cleanup failed: endpoint_id=%s session_id=%s error=%s",
-                self._active_session.endpoint_id,
-                self._active_session.session_id,
-                exc,
             )
 
     def _state_event(

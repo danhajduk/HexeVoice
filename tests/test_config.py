@@ -44,6 +44,15 @@ def test_faster_whisper_stt_settings_defaults():
     assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"
 
 
+def test_wake_recording_settings_default_to_disabled_weekly_retention():
+    settings = Settings()
+
+    assert settings.voice_wake_recordings_enabled is False
+    assert settings.voice_wake_recording_retention_days == 7
+    assert settings.voice_wake_recording_preroll_ms == 2000
+    assert settings.resolved_voice_wake_recording_dir().as_posix() == "runtime/wake_recordings"
+
+
 def test_assistant_settings_default_to_local_echo():
     settings = Settings()
 

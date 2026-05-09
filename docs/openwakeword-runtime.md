@@ -104,4 +104,14 @@ VOICE_WAKE_MODELS=Hexa
 
 `GET /api/voice/status` includes a `wake_history` array with the 10 most recent meaningful wake outcomes. Accepted entries include timestamp, endpoint id, session id, model, confidence, chunk index, and chunk count. No-detection entries include timestamp, endpoint id, session id, reason, and chunk count. It also includes `wake_confidence_history`, the 50 most recent wake scores that reported a confidence value, including below-threshold scores for tuning. Those samples are also written as `wake.confidence` JSON records in the voice record log.
 
+Accepted wake sessions can be recorded for short-term wake-word and STT tuning by enabling:
+
+```env
+VOICE_WAKE_RECORDINGS_ENABLED=true
+VOICE_WAKE_RECORDING_RETENTION_DAYS=7
+VOICE_WAKE_RECORDING_PREROLL_MS=2000
+```
+
+When enabled, HexeVoice writes accepted wake sessions to `runtime/wake_recordings` by default. Each recording is a PCM WAV containing the wake pre-roll/wake chunk plus the post-wake audio sent to STT, with a JSON sidecar containing endpoint, session, model, confidence, format, duration, and expiration metadata. Cleanup removes `.wav` and `.json` recordings older than the configured retention window.
+
 Validation notes are captured in `docs/supervised-openwakeword-validation.md`.

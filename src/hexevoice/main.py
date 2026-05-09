@@ -94,7 +94,7 @@ from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.tts import TtsAudioService
-from hexevoice.voice import VoiceSessionManager, WakeDetector
+from hexevoice.voice import VoiceSessionManager, WakeDetector, WakeRecordingService
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
 from hexevoice.voice.wake import build_wake_detector
 
@@ -253,9 +253,19 @@ def create_app(
     )
     voice_turn_pipeline = build_voice_turn_pipeline(settings=app_settings, assistant_service=assistant_service)
     tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
+    wake_recorder = (
+        WakeRecordingService(
+            recording_dir=app_settings.resolved_voice_wake_recording_dir(),
+            retention_days=app_settings.voice_wake_recording_retention_days,
+            preroll_ms=app_settings.voice_wake_recording_preroll_ms,
+        )
+        if app_settings.voice_wake_recordings_enabled
+        else None
+    )
     voice_session_manager = voice_session_manager or VoiceSessionManager(
         wake_detector=voice_wake_detector or build_wake_detector(app_settings),
         turn_pipeline=voice_turn_pipeline,
+        wake_recorder=wake_recorder,
     )
     timer_announcement_service = TimerSucceededAnnouncementService(
         settings=app_settings,
