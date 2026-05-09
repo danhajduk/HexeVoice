@@ -57,6 +57,7 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
     assert 'std::strncmp(event_type, "endpoint.", 9) == 0' in source
     assert 'send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");' in source
     assert 'return "endpoint.volume.set";' in source
+    assert 'return "endpoint.micro_vad.set";' in source
 
 
 def test_firmware_vad_keeps_listening_window_after_wake_word():
@@ -388,6 +389,7 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     assert "led_ring_show_cancelled" not in led_source
     assert "led_ring_show_cancelled" not in backend_source
     assert 'std::strcmp(type, "endpoint.led.simulate") == 0' in backend_source
+    assert 'std::strcmp(type, "endpoint.micro_vad") == 0' in backend_source
     assert "ESP_ERR_NOT_SUPPORTED" in noop_source
 
     assert "Priority order" in doc_source

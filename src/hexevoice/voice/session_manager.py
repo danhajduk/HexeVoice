@@ -250,6 +250,14 @@ class VoiceSessionManager:
             payload={"muted": muted},
         )
 
+    async def push_micro_vad_command(self, *, endpoint_id: str, pause_ms: int) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.micro_vad",
+            command_type="endpoint.micro_vad.set",
+            payload={"pause_ms": pause_ms},
+        )
+
     async def push_cancel_command(self, *, endpoint_id: str, reason: str = "operator_cancelled") -> dict:
         result = await self._push_endpoint_command(
             endpoint_id=endpoint_id,

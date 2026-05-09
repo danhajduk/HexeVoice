@@ -13,10 +13,18 @@ constexpr char kTag[] = "hexe_settings";
 constexpr char kNamespace[] = "hexe_settings";
 constexpr char kVolumeKey[] = "volume_percent";
 constexpr char kMutedKey[] = "muted";
+constexpr char kMicroVadPauseMsKey[] = "micro_vad_pause_ms";
 constexpr int kDefaultVolumePercent = 70;
+constexpr int kDefaultMicroVadPauseMs = 190;
+constexpr int kMinMicroVadPauseMs = 80;
+constexpr int kMaxMicroVadPauseMs = 1000;
 
 int normalize_volume(int volume_percent) {
   return std::clamp(volume_percent, 0, 100);
+}
+
+int normalize_micro_vad_pause_ms(int pause_ms) {
+  return std::clamp(pause_ms, kMinMicroVadPauseMs, kMaxMicroVadPauseMs);
 }
 
 void save_i32(const char *key, int32_t value) {
@@ -62,6 +70,7 @@ void init_settings() {
   auto &app_state = hexe::state();
   app_state.output_volume_percent = kDefaultVolumePercent;
   app_state.muted = false;
+  app_state.micro_vad_pause_ms = kDefaultMicroVadPauseMs;
 
   nvs_handle_t handle = 0;
   esp_err_t err = nvs_open(kNamespace, NVS_READONLY, &handle);
@@ -91,12 +100,21 @@ void init_settings() {
     ESP_LOGW(kTag, "Failed to read persisted mute state: %s", esp_err_to_name(err));
   }
 
+  int32_t persisted_micro_vad_pause_ms = kDefaultMicroVadPauseMs;
+  err = nvs_get_i32(handle, kMicroVadPauseMsKey, &persisted_micro_vad_pause_ms);
+  if (err == ESP_OK) {
+    app_state.micro_vad_pause_ms = normalize_micro_vad_pause_ms(persisted_micro_vad_pause_ms);
+  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(kTag, "Failed to read persisted micro VAD pause: %s", esp_err_to_name(err));
+  }
+
   nvs_close(handle);
   ESP_LOGI(
       kTag,
-      "Endpoint settings loaded: volume=%d muted=%s",
+      "Endpoint settings loaded: volume=%d muted=%s micro_vad_pause_ms=%d",
       app_state.output_volume_percent,
-      app_state.muted ? "true" : "false");
+      app_state.muted ? "true" : "false",
+      app_state.micro_vad_pause_ms);
 }
 
 void set_muted(bool muted) {
@@ -109,6 +127,17 @@ void set_output_volume_percent(int volume_percent) {
   const int clamped = normalize_volume(volume_percent);
   hexe::state().output_volume_percent = clamped;
   save_i32(kVolumeKey, clamped);
+}
+
+int micro_vad_pause_ms() {
+  const int pause_ms = hexe::state().micro_vad_pause_ms;
+  return normalize_micro_vad_pause_ms(pause_ms == 0 ? kDefaultMicroVadPauseMs : pause_ms);
+}
+
+void set_micro_vad_pause_ms(int pause_ms) {
+  const int clamped = normalize_micro_vad_pause_ms(pause_ms);
+  hexe::state().micro_vad_pause_ms = clamped;
+  save_i32(kMicroVadPauseMsKey, clamped);
 }
 
 }  // namespace hexe::system

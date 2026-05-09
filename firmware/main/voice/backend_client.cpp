@@ -611,6 +611,15 @@ void handle_backend_event_json(const std::string &message) {
     } else {
       send_command_error(request_id, "endpoint.mute", "invalid_payload", "muted must be boolean");
     }
+  } else if (std::strcmp(type, "endpoint.micro_vad") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *pause_ms = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "pause_ms") : nullptr;
+    if (cJSON_IsNumber(pause_ms)) {
+      hexe::system::set_micro_vad_pause_ms(pause_ms->valueint);
+      send_command_ack(request_id, "endpoint.micro_vad.set", "succeeded", "Micro VAD pause updated");
+    } else {
+      send_command_error(request_id, "endpoint.micro_vad.set", "invalid_payload", "pause_ms must be numeric");
+    }
   } else if (std::strcmp(type, "endpoint.cancel") == 0) {
     const char *request_id = payload_request_id(payload);
     hexe::voice::cancel_active_session("backend_cancel_command");
@@ -926,6 +935,9 @@ const char *command_type_for_event(const char *event_type) {
   }
   if (std::strcmp(event_type, "endpoint.volume") == 0) {
     return "endpoint.volume.set";
+  }
+  if (std::strcmp(event_type, "endpoint.micro_vad") == 0) {
+    return "endpoint.micro_vad.set";
   }
   return event_type;
 }

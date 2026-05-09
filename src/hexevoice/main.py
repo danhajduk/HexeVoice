@@ -49,6 +49,7 @@ from hexevoice.api.models import (
     EndpointCommandResponse,
     EndpointLedSimulateCommandRequest,
     EndpointMetadataUpdateRequest,
+    EndpointMicroVadCommandRequest,
     EndpointMuteCommandRequest,
     EndpointMediaAssetResponse,
     EndpointMediaDeliverRequest,
@@ -625,6 +626,21 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             command_type="endpoint.mute",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/micro-vad", response_model=EndpointCommandResponse)
+    async def endpoint_micro_vad(payload: EndpointMicroVadCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_micro_vad_command(
+            endpoint_id=payload.endpoint_id,
+            pause_ms=payload.pause_ms,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.micro_vad.set",
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),

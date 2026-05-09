@@ -229,6 +229,11 @@ class EndpointMuteCommandRequest(BaseModel):
     muted: bool
 
 
+class EndpointMicroVadCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    pause_ms: int = Field(ge=80, le=1000)
+
+
 class EndpointCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
 

@@ -123,4 +123,12 @@ VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS=1
 
 When enabled, the backend buffers firmware-marked micro-VAD chunks and writes them to `runtime/micro_vad_chunks` only after the wake word is accepted for that session. Sessions without an accepted wake word are discarded. Each kept chunk is saved as a PCM WAV with a JSON sidecar that includes endpoint, session, firmware micro-VAD chunk index, pause duration, audio format, duration, and expiration metadata. These files are debug artifacts only and are not exposed in the UI.
 
+The firmware micro-VAD pause threshold defaults to `190` ms and is persisted on the endpoint. It can be adjusted without UI through:
+
+```bash
+curl -X POST http://127.0.0.1:9004/api/endpoint/micro-vad \
+  -H "Content-Type: application/json" \
+  -d '{"endpoint_id":"esp-pe-1","pause_ms":190}'
+```
+
 Validation notes are captured in `docs/supervised-openwakeword-validation.md`.

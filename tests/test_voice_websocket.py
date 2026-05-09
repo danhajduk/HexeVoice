@@ -489,6 +489,60 @@ def test_voice_websocket_discards_micro_vad_chunks_without_wake_acceptance(tmp_p
     assert wav_paths == []
 
 
+def test_voice_websocket_flushes_open_micro_vad_chunk_after_wake_acceptance(tmp_path):
+    detector = DeterministicWakeDetector(detect_on_chunk_index=0)
+    recorder = MicroVadChunkRecordingService(recording_dir=tmp_path / "micro-vad", retention_days=1)
+    manager = VoiceSessionManager(wake_detector=detector, micro_vad_chunk_recorder=recorder)
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    def encoded(samples: bytes) -> str:
+        return base64.b64encode(samples).decode("ascii")
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": encoded(b"\x01\x00\x02\x00"),
+                    "micro_vad_chunk_index": 0,
+                    "micro_vad_chunk_started": True,
+                    "micro_vad_chunk_final": True,
+                    "micro_vad_pause_ms": 180,
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 1,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": encoded(b"\x03\x00\x04\x00"),
+                    "micro_vad_chunk_index": 1,
+                    "micro_vad_chunk_started": True,
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        websocket.receive_json()
+
+    metadata = sorted(
+        (json.loads(path.read_text(encoding="utf-8")) for path in (tmp_path / "micro-vad").glob("*.json")),
+        key=lambda item: item["micro_vad_chunk_index"],
+    )
+    assert [item["micro_vad_chunk_index"] for item in metadata] == [0, 1]
+    assert metadata[0]["micro_vad_chunk_final"] is True
+    assert metadata[1]["micro_vad_chunk_final"] is False
+    assert metadata[1]["byte_count"] == 4
+
+
 def test_voice_websocket_closes_wake_stream_after_completed_session(tmp_path):
     detector = CloseTrackingWakeDetector(detect_on_chunk_index=0)
     manager = VoiceSessionManager(wake_detector=detector)

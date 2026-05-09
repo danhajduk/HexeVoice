@@ -188,6 +188,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "response.text",
         "tts.ready",
         "session.error",
+        "endpoint.micro_vad",
     }.issubset(BACKEND_TO_ENDPOINT_EVENTS)
 
 

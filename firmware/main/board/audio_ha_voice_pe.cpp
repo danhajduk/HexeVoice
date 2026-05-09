@@ -14,6 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "system/settings.h"
 #include "voice/backend_client.h"
 
 namespace {
@@ -30,8 +31,6 @@ constexpr uint32_t kVadStartVoiceFrames = 3;
 constexpr uint32_t kVadReleasePeakPercent = 60;
 constexpr uint32_t kVadSilenceHoldMs = 1200;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
-constexpr uint32_t kMicroVadPauseMs = 200;
-constexpr uint32_t kMicroVadPauseFrames = kMicroVadPauseMs / kFrameDurationMs;
 constexpr uint32_t kVadTaskStackBytes = 8192;
 constexpr uint32_t kMicReadTimeoutLogEvery = 200;
 
@@ -83,6 +82,10 @@ uint32_t update_noise_floor(uint32_t current_floor, uint32_t level) {
   return ((current_floor * 15) + level) / 16;
 }
 
+uint32_t micro_vad_pause_frames() {
+  return std::max<uint32_t>(1, hexe::system::micro_vad_pause_ms() / kFrameDurationMs);
+}
+
 hexe::voice::MicroVadFrameState micro_vad_frame_state(
     bool frame_has_voice,
     uint32_t &chunk_index,
@@ -103,12 +106,13 @@ hexe::voice::MicroVadFrameState micro_vad_frame_state(
     return state;
   }
 
-  if (silent_frames < kMicroVadPauseFrames) {
+  const uint32_t pause_frames = micro_vad_pause_frames();
+  if (silent_frames < pause_frames) {
     ++silent_frames;
   }
   state.active = true;
   state.pause_ms = silent_frames * kFrameDurationMs;
-  if (silent_frames >= kMicroVadPauseFrames) {
+  if (silent_frames >= pause_frames) {
     state.ended = true;
     chunk_active = false;
     silent_frames = 0;

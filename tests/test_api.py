@@ -260,6 +260,47 @@ def test_endpoint_volume_command_requires_valid_percent(tmp_path):
     assert response.status_code == 422
 
 
+def test_endpoint_micro_vad_command_sends_event_to_connected_endpoint(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        response = client.post(
+            "/api/endpoint/micro-vad",
+            json={"endpoint_id": "esp-box-1", "pause_ms": 190},
+        )
+        event = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["command_type"] == "endpoint.micro_vad.set"
+    assert response.json()["status"] == "pending"
+    assert event["event_type"] == "endpoint.micro_vad"
+    assert event["endpoint_id"] == "esp-box-1"
+    assert event["payload"]["request_id"] == response.json()["request_id"]
+    assert event["payload"]["pause_ms"] == 190
+
+
+def test_endpoint_micro_vad_command_requires_valid_pause(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/endpoint/micro-vad",
+        json={"endpoint_id": "esp-box-1", "pause_ms": 20},
+    )
+
+    assert response.status_code == 422
+
+
 def test_endpoint_volume_status_reports_latest_command(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
