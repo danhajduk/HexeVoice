@@ -24,6 +24,8 @@ runtime/firmware/*
 !runtime/firmware/.gitkeep
 runtime/logs/*
 !runtime/logs/.gitkeep
+runtime/stt/*
+!runtime/stt/.gitkeep
 scripts/stack.env
 scripts/openwakeword.env
 scripts/piper-tts.env
