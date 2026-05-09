@@ -294,6 +294,49 @@ def test_tts_audio_cleanup_removes_expired_sidecar_and_audio(tmp_path):
     assert (tts_dir / "voice-intent-live.json").exists()
 
 
+def test_tts_audio_cleanup_removes_expired_sidecar_and_all_variants(tmp_path):
+    service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    for suffix in (".wav", ".raw.wav", ".16k.wav", ".22050.wav", ".48k.wav", ".mp3"):
+        (tts_dir / f"voice-intent-expired{suffix}").write_bytes(b"expired")
+    (tts_dir / "voice-intent-expired.json").write_text(
+        json.dumps({"expires_at": "2026-01-01T00:00:00+00:00"}),
+        encoding="utf-8",
+    )
+
+    service.cleanup_expired(now=datetime(2026, 5, 9, tzinfo=UTC))
+
+    assert not list(tts_dir.glob("voice-intent-expired*"))
+
+
+def test_tts_artifact_listing_handles_legacy_sidecar_without_variant_metadata(tmp_path):
+    service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
+    tts_dir = tmp_path / "voice_tts"
+    tts_dir.mkdir()
+    (tts_dir / "legacy-tts.wav").write_bytes(b"RIFFlegacy")
+    (tts_dir / "legacy-tts.json").write_text(
+        json.dumps(
+            {
+                "stream_id": "legacy-tts",
+                "content_type": "audio/wav",
+                "expires_at": "2999-01-01T00:00:00+00:00",
+                "audio_url": "/api/voice/tts/legacy-tts",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    listing = service.list_artifacts()
+
+    assert listing["count"] == 1
+    artifact = listing["artifacts"][0]
+    assert artifact["stream_id"] == "legacy-tts"
+    assert artifact["audio_url"] == "/api/voice/tts/legacy-tts"
+    assert artifact["playable_urls"]["default"].endswith("/api/tts/audio/legacy-tts/")
+    assert artifact["file_sizes"]["default"] == len(b"RIFFlegacy")
+
+
 def test_tts_audio_path_prefers_variant_artifacts_over_raw_sidecar(tmp_path):
     service = TtsAudioService(settings=Settings(runtime_dir=tmp_path), voice_turn_pipeline=None)  # type: ignore[arg-type]
     tts_dir = tmp_path / "voice_tts"

@@ -619,6 +619,41 @@ def test_piper_tts_endpoint_required_policy_defers_optional_variants(tmp_path):
     assert metadata["tts_timing_breakdown_ms"]["background_conversion_48k_ms"] >= 0
 
 
+def test_piper_tts_endpoint_required_policy_blocks_on_pe_48k_variant(tmp_path):
+    source = io.BytesIO()
+    with wave.open(source, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(22050)
+        wav_file.writeframes((b"\x00\x00\xff\x7f" * 2205))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=source.getvalue(), headers={"content-type": "audio/wav"})
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://piper.test:10200",
+        output_dir=tmp_path,
+        output_sample_rate_hz=16000,
+        endpoint_sample_rates={"esp-pe-1": 48000},
+        conversion_policy="endpoint_required_sync",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(endpoint_id="esp-pe-1", session_id="voice-session-1", text="hello")
+
+    assert synthesis.audio_variant == "48k"
+    assert synthesis.endpoint_audio_url == f"/api/voice/tts/{synthesis.stream_id}/48k"
+    assert synthesis.pending_audio_variants == {"16k": str(tmp_path / f"{synthesis.stream_id}.16k.wav")}
+    assert (tmp_path / f"{synthesis.stream_id}.raw.wav").exists()
+    assert (tmp_path / f"{synthesis.stream_id}.48k.wav").exists()
+    metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["ready_audio_variants"] == ["raw", "48k"]
+    assert metadata["endpoint_audio_url"] == f"/api/voice/tts/{synthesis.stream_id}/48k"
+    assert metadata["audio_variant_sample_rate_hz"] == 48000
+    assert metadata["audio_variant_source_sample_rate_hz"] == 22050
+    assert metadata["pending_audio_variants"] == {"16k": str(tmp_path / f"{synthesis.stream_id}.16k.wav")}
+
+
 def test_piper_tts_adapter_can_generate_configured_22050_variant(tmp_path):
     source = io.BytesIO()
     with wave.open(source, "wb") as wav_file:
@@ -679,6 +714,12 @@ def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):
     assert synthesis.audio_variant_sample_rate_hz == 48000
     assert synthesis.audio_variant_source_sample_rate_hz == 22050
     assert synthesis.output_sample_rate_hz == 48000
+    metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
+    assert metadata["model_id"] == "piper-default"
+    assert metadata["voice_id"] == "piper-default"
+    assert metadata["target_sample_rate_hz"] == 48000
+    assert metadata["raw_sample_rate_hz"] == 22050
+    assert metadata["output_sample_rate_hz"] == 48000
     assert adapter.status()["endpoint_sample_rates"] == {"esp-pe-1": 48000}
 
 
