@@ -26,10 +26,10 @@ For `piper`, the backend writes returned WAV bytes into `runtime/voice_tts` and 
 Firmware playback expects RIFF/WAVE PCM audio. The local Piper path stores generated audio as `.wav` artifacts and the backend serves those artifacts with `audio/wav`.
 Piper voice models commonly emit 22.05 kHz audio; HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output. The Home Assistant Voice PE firmware resamples native-rate PCM16 WAV input locally for its 48 kHz speaker path.
 
-Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to Lessac high:
+Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to the local Jarvis 48 kHz voice:
 
 ```env
-VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_US-lessac-high
+VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_GB-jarvis-medium
 ```
 
 ## Supervisor Shape
