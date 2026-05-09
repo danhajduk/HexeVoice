@@ -626,21 +626,41 @@ class VoiceSessionManager:
 
     def _handle_session_start(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         if self._active_session is not None:
-            log.warning(
-                "Rejected session start because active session exists: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
-                event.endpoint_id,
-                self._active_session.session_id,
-                event.session_id,
-            )
-            return [
-                self._error_event(
-                    endpoint_id=event.endpoint_id,
-                    session_id=event.session_id,
-                    code="active_session_exists",
-                    message="Only one active voice session is supported for the MVP.",
-                    recoverable=True,
+            if (
+                self._active_session.endpoint_id == event.endpoint_id
+                and self._active_session.session_state == "idle"
+                and self._chunk_count == 0
+            ):
+                log.info(
+                    "Replacing stale idle voice session: endpoint_id=%s stale_session_id=%s incoming_session_id=%s",
+                    event.endpoint_id,
+                    self._active_session.session_id,
+                    event.session_id,
                 )
-            ]
+                self._set_session_state("cancelled")
+                self._active_session.cancel_reason = "superseded_by_new_session"
+                self._persist_active_session_history(
+                    self._active_session,
+                    completion_reason="superseded_by_new_session",
+                )
+                self._release_active_session_wake_stream()
+                self._clear_active_session_runtime()
+            else:
+                log.warning(
+                    "Rejected session start because active session exists: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
+                    event.endpoint_id,
+                    self._active_session.session_id,
+                    event.session_id,
+                )
+                return [
+                    self._error_event(
+                        endpoint_id=event.endpoint_id,
+                        session_id=event.session_id,
+                        code="active_session_exists",
+                        message="Only one active voice session is supported for the MVP.",
+                        recoverable=True,
+                    )
+                ]
 
         try:
             payload = VoiceSessionStartPayload.model_validate(event.payload)
