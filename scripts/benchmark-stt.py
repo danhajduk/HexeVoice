@@ -32,6 +32,13 @@ class ClipResult:
     normalized_match: bool
 
 
+@dataclass
+class FasterOnlyClipResult:
+    path: str
+    audio_duration_ms: int
+    faster_whisper: ProviderResult
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Benchmark OpenAI Whisper against faster-whisper on local WAV clips.")
     parser.add_argument(
@@ -45,6 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="base.en", help="Whisper model name for both providers.")
     parser.add_argument("--device", default="cpu", help="Device for both providers.")
     parser.add_argument("--faster-compute-type", default="int8", help="faster-whisper compute type.")
+    parser.add_argument("--faster-only", action="store_true", help="Benchmark only faster-whisper.")
     parser.add_argument("--json-output", type=Path, help="Optional path for machine-readable benchmark output.")
     return parser.parse_args()
 
@@ -121,6 +129,24 @@ def print_table(results: list[ClipResult]) -> None:
         print(" | ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
 
 
+def print_faster_table(results: list[FasterOnlyClipResult]) -> None:
+    headers = ["clip", "audio_ms", "faster_ms", "faster_text"]
+    rows = [
+        [
+            Path(result.path).name,
+            str(result.audio_duration_ms),
+            f"{result.faster_whisper.duration_ms:.2f}",
+            result.faster_whisper.text,
+        ]
+        for result in results
+    ]
+    widths = [max(len(row[index]) for row in [headers, *rows]) for index in range(len(headers))]
+    print(" | ".join(header.ljust(widths[index]) for index, header in enumerate(headers)))
+    print("-+-".join("-" * width for width in widths))
+    for row in rows:
+        print(" | ".join(value.ljust(widths[index]) for index, value in enumerate(row)))
+
+
 def summary(values: list[float]) -> dict[str, float]:
     return {
         "mean_ms": round(statistics.fmean(values), 2),
@@ -137,12 +163,56 @@ def main() -> int:
         raise SystemExit("No WAV clips found to benchmark.")
 
     from faster_whisper import WhisperModel
-    import torch
-    import whisper
 
     faster_load_ms, faster_model = time_call(
         lambda: WhisperModel(args.model, device=args.device, compute_type=args.faster_compute_type)
     )
+
+    if args.faster_only:
+        results: list[FasterOnlyClipResult] = []
+        for path in clips:
+            _audio, audio_duration_ms = load_wav_mono_16k(path)
+            faster_ms, faster_text = time_call(lambda path=path: transcribe_faster(faster_model, path))
+            results.append(
+                FasterOnlyClipResult(
+                    path=str(path),
+                    audio_duration_ms=audio_duration_ms,
+                    faster_whisper=ProviderResult("faster_whisper", faster_ms, faster_text),
+                )
+            )
+        print(f"model={args.model} device={args.device} provider=faster_whisper")
+        print(f"load_ms faster_whisper={faster_load_ms:.2f}")
+        print_faster_table(results)
+        print(
+            "summary "
+            + json.dumps(
+                {
+                    "faster_whisper": summary([result.faster_whisper.duration_ms for result in results]),
+                    "clip_count": len(results),
+                },
+                sort_keys=True,
+            )
+        )
+        if args.json_output:
+            args.json_output.parent.mkdir(parents=True, exist_ok=True)
+            args.json_output.write_text(
+                json.dumps(
+                    {
+                        "model": args.model,
+                        "device": args.device,
+                        "providers": ["faster_whisper"],
+                        "load_ms": {"faster_whisper": faster_load_ms},
+                        "results": [asdict(result) for result in results],
+                    },
+                    indent=2,
+                )
+                + "\n"
+            )
+        return 0
+
+    import torch
+    import whisper
+
     whisper_load_ms, whisper_model = time_call(lambda: whisper.load_model(args.model, device=args.device))
 
     results: list[ClipResult] = []
