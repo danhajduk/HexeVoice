@@ -315,6 +315,7 @@ class AssistantTurnService:
             session_id=resolved_session_id,
             intent=intent,
             event_id=recognized_event_id,
+            heard_text=heard_text,
             reply_audio_factory=reply_audio_factory,
         )
         recognition_decision = self._publish_intent_recognized_event(
@@ -496,6 +497,7 @@ class AssistantTurnService:
         session_id: str,
         intent,
         event_id: str,
+        heard_text: str,
         reply_audio_factory: Callable[..., dict[str, Any] | None] | None,
     ) -> dict[str, Any] | None:
         if not reply_audio_factory or not intent.reply_text:
@@ -511,6 +513,7 @@ class AssistantTurnService:
             session_id=session_id,
             text=intent.reply_text,
             audio_options=audio_options,
+            transcript={"text": heard_text},
         )
 
     def _conversation_context(self, *, endpoint_id: str, session_id: str) -> list[ConversationTurn]:

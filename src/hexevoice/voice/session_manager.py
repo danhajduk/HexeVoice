@@ -953,6 +953,7 @@ class VoiceSessionManager:
                 "text_chars": len(turn.transcript.text or ""),
                 "error": turn.transcript.error,
             }
+            transcript_metadata = {**self._last_transcript_metadata, "text": turn.transcript.text}
             self._last_turn_timings = {
                 "stt_ms": turn.timings.stt_ms,
                 "assistant_ms": turn.timings.assistant_ms,
@@ -960,12 +961,12 @@ class VoiceSessionManager:
                 "total_ms": turn.timings.total_ms,
             }
             self._update_active_session_history(
-                transcript={**self._last_transcript_metadata, "text": turn.transcript.text},
+                transcript=transcript_metadata,
                 turn_timings=self._last_turn_timings,
             )
             wake_recording = self._attach_wake_recording_transcript(
                 wake_recording,
-                transcript={**self._last_transcript_metadata, "text": turn.transcript.text},
+                transcript=transcript_metadata,
             )
             log.info(
                 "Voice transcript finalized: endpoint_id=%s session_id=%s provider=%s model=%s duration_ms=%s text_chars=%s error=%s stt_ms=%s assistant_ms=%s tts_ms=%s total_ms=%s",
@@ -1053,6 +1054,10 @@ class VoiceSessionManager:
             self._update_active_session_history(assistant=self._last_assistant)
             self._set_session_state("responding")
             self._last_tts = tts_synthesis_metadata(turn.tts)
+            self._last_tts["transcript"] = self._attach_tts_sidecar_transcript(
+                turn.tts,
+                transcript=transcript_metadata,
+            )
             self._update_active_session_history(tts=self._last_tts)
             record_voice_event(
                 "tts.ready",
@@ -1284,6 +1289,26 @@ class VoiceSessionManager:
         if self._wake_recorder is None or wake_recording is None:
             return wake_recording
         return self._wake_recorder.attach_transcript(wake_recording, transcript)
+
+    def _attach_tts_sidecar_transcript(self, tts: TtsSynthesis, *, transcript: dict[str, Any]) -> dict[str, Any]:
+        cleaned_transcript = {key: value for key, value in transcript.items() if value is not None}
+        if not tts.metadata_path:
+            return cleaned_transcript
+        metadata_path = Path(tts.metadata_path)
+        if not metadata_path.is_file():
+            return cleaned_transcript
+        try:
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return cleaned_transcript
+        if not isinstance(metadata, dict):
+            return cleaned_transcript
+        metadata["transcript"] = cleaned_transcript
+        try:
+            metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
+        except OSError:
+            log.warning("Failed to attach transcript to TTS sidecar %s", metadata_path)
+        return cleaned_transcript
 
     def _begin_active_session_history(
         self,

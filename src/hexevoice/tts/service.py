@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import json
 from pathlib import Path
+from typing import Any
 import wave
 
 from hexevoice.api.models import TtsSynthesizeRequest, TtsSynthesizeResponse
@@ -99,6 +100,7 @@ class TtsAudioService:
         session_id: str,
         text: str,
         audio_options: dict | None = None,
+        transcript: dict[str, Any] | None = None,
     ) -> dict:
         options = audio_options or {}
         mode = str(options.get("mode") or "best_effort").strip().lower()
@@ -136,6 +138,7 @@ class TtsAudioService:
             "stream_id": stream_id,
             "voice_ready": voice_ready,
             "spoken_text": text,
+            "transcript": transcript,
             **audio_url_metadata,
             "content_type": content_type if voice_ready else None,
             "duration_ms": duration_ms,

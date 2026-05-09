@@ -622,6 +622,9 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
             return {"stt": {"provider": "test", "healthy": True}, "tts": {"provider": "test", "healthy": True}}
 
         def complete_turn(self, audio):
+            tts_sidecar = tmp_path / "voice_tts" / "tts-history.json"
+            tts_sidecar.parent.mkdir(parents=True, exist_ok=True)
+            tts_sidecar.write_text(json.dumps({"stream_id": "tts-history"}), encoding="utf-8")
             return VoiceTurnResult(
                 transcript=SpeechTranscript(
                     text="turn on the light",
@@ -648,6 +651,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
                     stream_id="tts-history",
                     audio_url="/api/voice/tts/tts-history",
                     provider_id="tts-test",
+                    metadata_path=str(tts_sidecar),
                 ),
                 timings=VoiceTurnTimings(stt_ms=11.0, assistant_ms=12.0, tts_ms=13.0, total_ms=36.0),
             )
@@ -696,6 +700,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert sessions[0]["assistant"]["intent_latency_ms"] == 8.5
     assert sessions[0]["turn_timings"]["total_ms"] == 36.0
     assert sessions[0]["tts"]["stream_id"] == "tts-history"
+    assert sessions[0]["tts"]["transcript"]["text"] == "turn on the light"
     assert sessions[0]["replay"]["eligible"] is True
     assert sessions[0]["wake_recording"]["transcript"]["text"] == "turn on the light"
     assert sessions[0]["audio"]["raw_audio_persisted"] is False
@@ -705,6 +710,9 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     )
     assert wake_metadata["transcript"]["text"] == "turn on the light"
     assert wake_metadata["transcript"]["provider_id"] == "stt-test"
+    tts_metadata = json.loads((tmp_path / "voice_tts" / "tts-history.json").read_text(encoding="utf-8"))
+    assert tts_metadata["transcript"]["text"] == "turn on the light"
+    assert tts_metadata["transcript"]["provider_id"] == "stt-test"
 
     detail = client.get("/api/voice/sessions/voice-session-1").json()["session"]
     assert detail["completion_reason"] == "turn_completed"

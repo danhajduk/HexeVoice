@@ -10,6 +10,19 @@
     "stream_id": { "type": "string" },
     "voice_ready": { "type": "boolean" },
     "spoken_text": { "type": "string" },
+    "transcript": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "text": { "type": "string" },
+        "provider_id": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "duration_ms": { "type": ["number", "null"], "minimum": 0 },
+        "text_chars": { "type": ["integer", "null"], "minimum": 0 },
+        "error": { "type": ["string", "null"] }
+      }
+    },
     "audio_url": { "type": ["string", "null"] },
     "endpoint_audio_url": { "type": ["string", "null"] },
     "audio_url_raw": { "type": ["string", "null"] },

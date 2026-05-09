@@ -215,6 +215,7 @@ def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):
     assert payload["reply_audio"]["stream_id"] == event_id
     assert payload["reply_audio"]["voice_ready"] is True
     assert payload["reply_audio"]["spoken_text"] == "Kitchen status accepted."
+    assert payload["reply_audio"]["transcript"]["text"] == "kitchen status"
     assert payload["reply_audio"]["ttl_seconds"] == 120
     sidecar = tmp_path / "voice_tts" / f"{event_id}.json"
     audio = tmp_path / "voice_tts" / f"{event_id}.wav"
@@ -222,6 +223,7 @@ def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):
     metadata = json.loads(sidecar.read_text(encoding="utf-8"))
     assert metadata["voice_ready"] is True
     assert metadata["spoken_text"] == "Kitchen status accepted."
+    assert metadata["transcript"]["text"] == "kitchen status"
     assert metadata["model_id"] == "deterministic"
     assert metadata["ttl_seconds"] == 120
     assert metadata["expires_at"]
