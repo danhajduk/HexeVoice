@@ -10,6 +10,7 @@ from starlette.websockets import WebSocketDisconnect
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
 from hexevoice.api.models import AssistantTurnResponse
+from hexevoice.persistence import VoiceSessionHistoryStore
 from hexevoice.voice import (
     DeterministicWakeDetector,
     PiperTextToSpeechAdapter,
@@ -590,6 +591,151 @@ def test_replay_synthesizes_i_heard_last_transcript(tmp_path):
     assert replay_event["payload"]["stream_id"] == "tts-replay"
     assert replay_event["payload"]["audio_url"] == "/api/voice/tts/tts-replay"
     assert client.get("/api/voice/status").json()["last_response"] == "I heard what is the time"
+
+
+def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_path):
+    class HistoryPipeline:
+        def status(self):
+            return {"stt": {"provider": "test", "healthy": True}, "tts": {"provider": "test", "healthy": True}}
+
+        def complete_turn(self, audio):
+            return VoiceTurnResult(
+                transcript=SpeechTranscript(
+                    text="turn on the light",
+                    confidence=0.91,
+                    provider_id="stt-test",
+                    model="tiny-test",
+                    duration_ms=120,
+                ),
+                assistant_response=AssistantTurnResponse(
+                    endpoint_id=audio.endpoint_id,
+                    session_id=audio.session_id,
+                    heard_text="turn on the light",
+                    reply_text="OK",
+                    spoken_text="OK",
+                    handled_locally=True,
+                    command="light.turn_on",
+                    device_state="speaking",
+                    provider_id="assistant-test",
+                    model="local",
+                    intent_latency_ms=8.5,
+                ),
+                tts=TtsSynthesis(
+                    content_type="audio/wav",
+                    stream_id="tts-history",
+                    audio_url="/api/voice/tts/tts-history",
+                    provider_id="tts-test",
+                ),
+                timings=VoiceTurnTimings(stt_ms=11.0, assistant_ms=12.0, tts_ms=13.0, total_ms=36.0),
+            )
+
+    history_path = tmp_path / "voice_session_history.json"
+    history_store = VoiceSessionHistoryStore(path=history_path, max_records=20)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        turn_pipeline=HistoryPipeline(),
+        session_history_store=history_store,
+    )
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    client = TestClient(create_app(settings, voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.receive_json()
+
+    sessions = client.get("/api/voice/sessions").json()["sessions"]
+    assert sessions[0]["session_id"] == "voice-session-1"
+    assert sessions[0]["endpoint_id"] == "esp-box-1"
+    assert sessions[0]["session_state"] == "completed"
+    assert sessions[0]["wake"]["confidence"] == 1.0
+    assert sessions[0]["transcript"]["text"] == "turn on the light"
+    assert sessions[0]["transcript"]["provider_id"] == "stt-test"
+    assert sessions[0]["assistant"]["provider_id"] == "assistant-test"
+    assert sessions[0]["assistant"]["intent_latency_ms"] == 8.5
+    assert sessions[0]["turn_timings"]["total_ms"] == 36.0
+    assert sessions[0]["tts"]["stream_id"] == "tts-history"
+    assert sessions[0]["replay"]["eligible"] is True
+    assert sessions[0]["audio"]["raw_audio_persisted"] is False
+    assert "audio_bytes" not in sessions[0]["audio"]
+
+    detail = client.get("/api/voice/sessions/voice-session-1").json()["session"]
+    assert detail["completion_reason"] == "turn_completed"
+    assert detail["tts"]["audio_url"] == "/api/voice/tts/tts-history"
+
+    restarted_manager = VoiceSessionManager(session_history_store=history_store)
+    restarted_client = TestClient(create_app(settings, voice_session_manager=restarted_manager))
+    restarted_sessions = restarted_client.get("/api/voice/sessions").json()["sessions"]
+    assert restarted_sessions[0]["session_id"] == "voice-session-1"
+    assert restarted_client.get("/api/voice/status").json()["session_history"]["stored_count"] == 1
+
+
+def test_voice_session_history_replays_cached_tts_after_restart(tmp_path):
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
+    history_store.upsert_session(
+        {
+            "session_id": "voice-session-old",
+            "endpoint_id": "esp-box-1",
+            "session_state": "completed",
+            "started_at": "2026-05-09T00:00:00+00:00",
+            "completed_at": "2026-05-09T00:00:01+00:00",
+            "tts": {
+                "content_type": "audio/wav",
+                "stream_id": "tts-old",
+                "audio_url": "/api/voice/tts/tts-old",
+                "provider_id": "tts-test",
+                "error": None,
+            },
+            "replay": {
+                "eligible": True,
+                "reason": "cached_tts_available",
+                "stream_id": "tts-old",
+                "content_type": "audio/wav",
+                "audio_url": "/api/voice/tts/tts-old",
+            },
+        }
+    )
+    manager = VoiceSessionManager(session_history_store=history_store)
+    client = TestClient(
+        create_app(
+            Settings(onboarding_state_path=tmp_path / "state.json"),
+            voice_session_manager=manager,
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start", session_id="voice-session-live"))
+        websocket.receive_json()
+        session_replay = client.post("/api/voice/sessions/voice-session-old/replay", json={})
+        session_replay_event = websocket.receive_json()
+        latest_replay = client.post("/api/endpoint/replay", json={"endpoint_id": "esp-box-1"})
+        latest_replay_event = websocket.receive_json()
+
+    assert session_replay.status_code == 200
+    assert session_replay.json()["accepted"] is True
+    assert session_replay_event["event_type"] == "endpoint.replay"
+    assert session_replay_event["payload"]["stream_id"] == "tts-old"
+    assert session_replay_event["payload"]["audio_url"] == "/api/voice/tts/tts-old"
+    assert session_replay_event["payload"]["source_session_id"] == "voice-session-old"
+    assert latest_replay.status_code == 200
+    assert latest_replay.json()["accepted"] is True
+    assert latest_replay_event["payload"]["stream_id"] == "tts-old"
 
 
 def test_voice_session_manager_pushes_timer_announcement_to_endpoint():

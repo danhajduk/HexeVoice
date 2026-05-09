@@ -34,6 +34,9 @@ from hexevoice.api.models import (
     VoiceIntentReviewRequest,
     VoiceIntentStateResponse,
     VoiceIntentUpdateRequest,
+    VoiceSessionHistoryDetailResponse,
+    VoiceSessionHistoryListResponse,
+    VoiceSessionReplayRequest,
     LocalSetupStateResponse,
     NodeStatusResponse,
     NodeIdentitySetupRequest,
@@ -87,7 +90,7 @@ from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.onboarding.trust_activation import TrustActivationService
-from hexevoice.persistence import EndpointRegistryStore, OnboardingStateStore
+from hexevoice.persistence import EndpointRegistryStore, OnboardingStateStore, VoiceSessionHistoryStore
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.supervisor.client import SupervisorApiClient
@@ -215,6 +218,10 @@ def create_app(
     onboarding_state_store = OnboardingStateStore(path=app_settings.resolved_onboarding_state_path())
     endpoint_registry_store = EndpointRegistryStore(path=app_settings.resolved_endpoint_registry_path())
     voice_intent_store = VoiceIntentStateStore(path=app_settings.resolved_voice_intent_registry_path())
+    voice_session_history_store = VoiceSessionHistoryStore(
+        path=app_settings.resolved_voice_session_history_path(),
+        max_records=app_settings.voice_session_history_limit,
+    )
     voice_intent_registry = VoiceIntentRegistry(store=voice_intent_store)
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
@@ -266,6 +273,7 @@ def create_app(
         wake_detector=voice_wake_detector or build_wake_detector(app_settings),
         turn_pipeline=voice_turn_pipeline,
         wake_recorder=wake_recorder,
+        session_history_store=voice_session_history_store,
     )
     timer_announcement_service = TimerSucceededAnnouncementService(
         settings=app_settings,
@@ -862,6 +870,34 @@ def create_app(
         status["voice_orphan_cleanup"] = app.state.voice_orphan_cleanup_status
         status["voice_tts_warmup"] = app.state.voice_tts_warmup_status
         return status
+
+    @app.get("/api/voice/sessions", response_model=VoiceSessionHistoryListResponse)
+    async def voice_sessions(limit: int = 20, endpoint_id: str | None = None) -> VoiceSessionHistoryListResponse:
+        return VoiceSessionHistoryListResponse(
+            sessions=voice_session_manager.list_session_history(limit=limit, endpoint_id=endpoint_id)
+        )
+
+    @app.get("/api/voice/sessions/{session_id}", response_model=VoiceSessionHistoryDetailResponse)
+    async def voice_session_detail(session_id: str) -> VoiceSessionHistoryDetailResponse:
+        session = voice_session_manager.get_session_history(session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="voice_session_not_found")
+        return VoiceSessionHistoryDetailResponse(session=session)
+
+    @app.post("/api/voice/sessions/{session_id}/replay", response_model=EndpointCommandResponse)
+    async def voice_session_replay(session_id: str, payload: VoiceSessionReplayRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_session_replay_command(
+            session_id=session_id,
+            endpoint_id=payload.endpoint_id,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=str(result.get("endpoint_id") or payload.endpoint_id or ""),
+            command_type="endpoint.replay",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
 
     @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
     async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:

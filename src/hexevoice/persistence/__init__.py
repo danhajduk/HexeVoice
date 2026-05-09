@@ -18,6 +18,10 @@ from hexevoice.persistence.onboarding_state import (
     ResumeState,
     TrustActivationState,
 )
+from hexevoice.persistence.voice_session_history import (
+    PersistedVoiceSessionHistory,
+    VoiceSessionHistoryStore,
+)
 
 __all__ = [
     "BootstrapDiscoveryState",
@@ -32,6 +36,8 @@ __all__ = [
     "PersistedOnboardingState",
     "PreTrustSetupState",
     "ProviderSetupState",
+    "PersistedVoiceSessionHistory",
     "ResumeState",
     "TrustActivationState",
+    "VoiceSessionHistoryStore",
 ]

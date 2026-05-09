@@ -133,4 +133,16 @@ I heard <last transcript>
 
 The synthesized replay uses the active TTS provider, so with Piper enabled it creates a new WAV artifact under `runtime/voice_tts/` and sends that artifact URL to the endpoint.
 
+Recent voice sessions are also persisted to `runtime/voice_session_history.json` by default. The history record contains session ids, endpoint ids, timestamps, turn timings, wake metadata, transcript/assistant/TTS metadata, error state, and replay eligibility. It does not persist raw microphone audio; accepted wake-session WAV capture is controlled separately by the wake recording settings.
+
+The history APIs are:
+
+```text
+GET  /api/voice/sessions
+GET  /api/voice/sessions/{session_id}
+POST /api/voice/sessions/{session_id}/replay
+```
+
+Session replay uses the cached TTS stream metadata when the generated audio URL is still available. `POST /api/endpoint/replay` can also fall back to the latest eligible persisted session after a backend restart.
+
 `POST /api/endpoint/speak` accepts `{ "endpoint_id": "...", "text": "..." }` and synthesizes the supplied text for immediate endpoint playback through the same endpoint audio delivery path.

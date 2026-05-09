@@ -4,11 +4,13 @@ import base64
 from datetime import UTC, datetime
 import json
 import logging
+from typing import Any
 from uuid import uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from hexevoice.persistence.voice_session_history import VoiceSessionHistoryStore
 from hexevoice.voice.contracts import (
     ENDPOINT_TO_BACKEND_EVENTS,
     VoiceAudioChunkPayload,
@@ -43,6 +45,7 @@ class VoiceSessionManager:
         wake_detector: WakeDetector | None = None,
         turn_pipeline: VoiceTurnPipeline | None = None,
         wake_recorder: WakeRecordingService | None = None,
+        session_history_store: VoiceSessionHistoryStore | None = None,
     ) -> None:
         self._connection_active = False
         self._websocket: WebSocket | None = None
@@ -55,6 +58,8 @@ class VoiceSessionManager:
         self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
         self._turn_pipeline = turn_pipeline
         self._wake_recorder = wake_recorder
+        self._session_history_store = session_history_store
+        self._active_session_history: dict[str, Any] | None = None
         self._last_transcript: str | None = None
         self._last_response: str | None = None
         self._last_transcript_metadata: dict | None = None
@@ -106,14 +111,18 @@ class VoiceSessionManager:
         except WebSocketDisconnect:
             pass
         finally:
+            if self._active_session is not None:
+                self._set_session_state("cancelled")
+                self._active_session.cancel_reason = "websocket_disconnected"
+                self._persist_active_session_history(
+                    self._active_session,
+                    completion_reason="websocket_disconnected",
+                )
             self._release_active_session_wake_stream()
             self._websocket = None
             self._connection_active = False
             self._connected_endpoint_id = None
-            self._active_session = None
-            self._chunk_count = 0
-            self._audio_chunks = []
-            self._audio_format = None
+            self._clear_active_session_runtime()
             log.info("Voice WebSocket disconnected")
 
     async def push_ota_update(
@@ -197,11 +206,12 @@ class VoiceSessionManager:
         if result.get("accepted") and self._active_session is not None:
             self._set_session_state("cancelled")
             self._active_session.cancel_reason = reason
+            self._persist_active_session_history(
+                self._active_session,
+                completion_reason=reason,
+            )
             self._release_active_session_wake_stream()
-            self._active_session = None
-            self._chunk_count = 0
-            self._audio_chunks = []
-            self._audio_format = None
+            self._clear_active_session_runtime()
         return result
 
     async def push_replay_command(self, *, endpoint_id: str) -> dict:
@@ -224,6 +234,13 @@ class VoiceSessionManager:
             if tts.error:
                 return {"accepted": False, "reason": tts.error, "status": "failed"}
         if not self._last_tts or not self._last_tts.get("stream_id"):
+            replay_session = (
+                self._session_history_store.latest_replay_eligible(endpoint_id=endpoint_id)
+                if self._session_history_store is not None
+                else None
+            )
+            if replay_session is not None:
+                return await self._push_session_replay(session=replay_session, endpoint_id=endpoint_id)
             return {"accepted": False, "reason": "no_replay_available", "status": "failed"}
         return await self._push_endpoint_command(
             endpoint_id=endpoint_id,
@@ -235,6 +252,14 @@ class VoiceSessionManager:
                 "audio_url": self._last_tts.get("audio_url"),
             },
         )
+
+    async def push_session_replay_command(self, *, session_id: str, endpoint_id: str | None = None) -> dict:
+        if self._session_history_store is None:
+            return {"accepted": False, "reason": "session_history_unavailable", "status": "failed"}
+        session = self._session_history_store.get_session(session_id)
+        if session is None:
+            return {"accepted": False, "reason": "session_not_found", "status": "failed"}
+        return await self._push_session_replay(session=session, endpoint_id=endpoint_id)
 
     async def push_speak_command(self, *, endpoint_id: str, text: str, session_id: str | None = None) -> dict:
         if self._turn_pipeline is None:
@@ -596,6 +621,10 @@ class VoiceSessionManager:
         self._chunk_count = 0
         self._audio_chunks = []
         self._audio_format = payload.audio_format
+        self._begin_active_session_history(
+            session=self._active_session,
+            start_payload=payload,
+        )
         log.info(
             "Voice session started: endpoint_id=%s session_id=%s wake_source=%s sample_rate_hz=%s",
             event.endpoint_id,
@@ -611,6 +640,16 @@ class VoiceSessionManager:
                     "detected": True,
                     "endpoint_id": event.endpoint_id,
                     "session_id": session_id,
+                    "model": payload.wake_source,
+                    "confidence": 1.0,
+                    "source": payload.wake_source,
+                    "chunk_count": 0,
+                }
+            )
+            self._set_active_session_wake(
+                {
+                    "outcome": "accepted",
+                    "detected": True,
                     "model": payload.wake_source,
                     "confidence": 1.0,
                     "source": payload.wake_source,
@@ -677,6 +716,7 @@ class VoiceSessionManager:
 
         self._chunk_count += 1
         self._audio_format = payload.audio_format
+        self._update_active_session_audio(payload)
         log.debug(
             "Voice audio chunk: endpoint_id=%s session_id=%s chunk_index=%s chunk_count=%s has_payload=%s",
             event.endpoint_id,
@@ -740,6 +780,17 @@ class VoiceSessionManager:
                     "session_id": session.session_id,
                     "model": detection.model,
                     "confidence": detection.confidence,
+                    "chunk_index": payload.chunk_index,
+                    "chunk_count": self._chunk_count,
+                }
+            )
+            self._set_active_session_wake(
+                {
+                    "outcome": "accepted",
+                    "detected": True,
+                    "model": detection.model,
+                    "confidence": detection.confidence,
+                    "source": "backend_openwakeword",
                     "chunk_index": payload.chunk_index,
                     "chunk_count": self._chunk_count,
                 }
@@ -822,6 +873,16 @@ class VoiceSessionManager:
                     "chunk_count": self._chunk_count,
                 }
             )
+            self._set_active_session_wake(
+                {
+                    "outcome": "not_detected",
+                    "detected": False,
+                    "model": wake_status.get("model"),
+                    "confidence": wake_status.get("confidence"),
+                    "reason": wake_status.get("reason") or "wake_not_detected",
+                    "chunk_count": self._chunk_count,
+                }
+            )
             log.info(
                 "Voice session cancelled before wake: endpoint_id=%s session_id=%s chunks=%s",
                 session.endpoint_id,
@@ -838,11 +899,12 @@ class VoiceSessionManager:
                 chunk_count=self._chunk_count,
             )
             cancelled = self._state_event("session.cancelled", session)
+            self._persist_active_session_history(
+                session,
+                completion_reason="wake_not_detected",
+            )
             self._release_active_session_wake_stream()
-            self._active_session = None
-            self._chunk_count = 0
-            self._audio_chunks = []
-            self._audio_format = None
+            self._clear_active_session_runtime()
             return [cancelled]
 
         if session.session_state == "wake_detected":
@@ -877,6 +939,10 @@ class VoiceSessionManager:
                 "tts_ms": turn.timings.tts_ms,
                 "total_ms": turn.timings.total_ms,
             }
+            self._update_active_session_history(
+                transcript={**self._last_transcript_metadata, "text": turn.transcript.text},
+                turn_timings=self._last_turn_timings,
+            )
             log.info(
                 "Voice transcript finalized: endpoint_id=%s session_id=%s provider=%s model=%s duration_ms=%s text_chars=%s error=%s stt_ms=%s assistant_ms=%s tts_ms=%s total_ms=%s",
                 session.endpoint_id,
@@ -916,11 +982,14 @@ class VoiceSessionManager:
                     recoverable=True,
                 )
                 self._set_session_state("failed")
+                self._persist_active_session_history(
+                    session,
+                    completion_reason="stt_failed",
+                    error_state=error.payload,
+                    wake_recording=wake_recording,
+                )
                 self._release_active_session_wake_stream()
-                self._active_session = None
-                self._chunk_count = 0
-                self._audio_chunks = []
-                self._audio_format = None
+                self._clear_active_session_runtime()
                 return [error]
             events.append(
                 self._state_event(
@@ -957,6 +1026,7 @@ class VoiceSessionManager:
                 "handled_locally": turn.assistant_response.handled_locally,
                 "intent_latency_ms": turn.assistant_response.intent_latency_ms,
             }
+            self._update_active_session_history(assistant=self._last_assistant)
             self._set_session_state("responding")
             self._last_tts = {
                 "content_type": turn.tts.content_type,
@@ -965,6 +1035,7 @@ class VoiceSessionManager:
                 "provider_id": turn.tts.provider_id,
                 "error": turn.tts.error,
             }
+            self._update_active_session_history(tts=self._last_tts)
             record_voice_event(
                 "tts.ready",
                 endpoint_id=session.endpoint_id,
@@ -989,11 +1060,14 @@ class VoiceSessionManager:
                     )
                 )
                 self._set_session_state("failed")
+                self._persist_active_session_history(
+                    session,
+                    completion_reason="tts_failed",
+                    error_state=events[-1].payload,
+                    wake_recording=wake_recording,
+                )
                 self._release_active_session_wake_stream()
-                self._active_session = None
-                self._chunk_count = 0
-                self._audio_chunks = []
-                self._audio_format = None
+                self._clear_active_session_runtime()
                 return events
             events.append(
                 self._state_event(
@@ -1021,11 +1095,13 @@ class VoiceSessionManager:
                 },
             )
         )
+        self._persist_active_session_history(
+            session,
+            completion_reason="turn_completed",
+            wake_recording=wake_recording,
+        )
         self._release_active_session_wake_stream()
-        self._active_session = None
-        self._chunk_count = 0
-        self._audio_chunks = []
-        self._audio_format = None
+        self._clear_active_session_runtime()
         return events
 
     def status(self) -> dict:
@@ -1035,6 +1111,19 @@ class VoiceSessionManager:
             connection_active=self._connection_active,
             active_session=self._active_session,
         ).model_dump(mode="json")
+        latest_replay_session = (
+            self._session_history_store.latest_replay_eligible(endpoint_id=self._connected_endpoint_id)
+            if self._session_history_store is not None
+            else None
+        )
+        session_history = (
+            {
+                **self._session_history_store.status(),
+                "recent_sessions": self._session_history_store.list_sessions(limit=5),
+            }
+            if self._session_history_store is not None
+            else {"enabled": False, "recent_sessions": []}
+        )
         return {
             "endpoint_id": self._connected_endpoint_id,
             "connection_state": state_projection["connection_state"],
@@ -1060,18 +1149,29 @@ class VoiceSessionManager:
             "wake_history": list(self._wake_history),
             "wake_confidence_history": list(self._wake_confidence_history),
             "wake_recordings": self._wake_recorder.status() if self._wake_recorder else {"enabled": False},
+            "session_history": session_history,
             "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
             "supported_actions": {
                 "refresh": True,
                 "test_assistant_turn": True,
                 "stop_session": self._active_session is not None,
-                "replay_response": self._connection_active and self._last_tts is not None,
+                "replay_response": self._connection_active and (self._last_tts is not None or latest_replay_session is not None),
                 "mute_endpoint": self._connection_active,
                 "set_volume": self._connection_active,
                 "send_media": self._connection_active,
                 "reconnect": False,
             },
         }
+
+    def list_session_history(self, *, limit: int = 20, endpoint_id: str | None = None) -> list[dict[str, Any]]:
+        if self._session_history_store is None:
+            return []
+        return self._session_history_store.list_sessions(limit=limit, endpoint_id=endpoint_id)
+
+    def get_session_history(self, session_id: str) -> dict[str, Any] | None:
+        if self._session_history_store is None:
+            return None
+        return self._session_history_store.get_session(session_id)
 
     def preload_wake_detector(self) -> dict | None:
         preload = getattr(self._wake_detector, "preload", None)
@@ -1149,17 +1249,168 @@ class VoiceSessionManager:
         )
         return recording
 
+    def _begin_active_session_history(
+        self,
+        *,
+        session: VoiceSessionSnapshot,
+        start_payload: VoiceSessionStartPayload,
+    ) -> None:
+        self._active_session_history = {
+            "session_id": session.session_id,
+            "endpoint_id": session.endpoint_id,
+            "session_state": session.session_state,
+            "started_at": session.started_at.isoformat(),
+            "wake_source": start_payload.wake_source,
+            "firmware_version": start_payload.firmware_version,
+            "audio": {
+                "chunk_count": 0,
+                "captured_chunk_count": 0,
+                "format": start_payload.audio_format.model_dump(mode="json"),
+                "raw_audio_persisted": False,
+            },
+            "replay": {"eligible": False, "reason": "tts_unavailable"},
+        }
+
+    def _update_active_session_audio(self, payload: VoiceAudioChunkPayload) -> None:
+        if self._active_session_history is None:
+            return
+        audio = dict(self._active_session_history.get("audio") or {})
+        audio.update(
+            {
+                "chunk_count": self._chunk_count,
+                "format": payload.audio_format.model_dump(mode="json"),
+                "raw_audio_persisted": False,
+            }
+        )
+        self._active_session_history["audio"] = audio
+
+    def _set_active_session_wake(self, wake: dict[str, Any]) -> None:
+        if self._active_session_history is None:
+            return
+        self._active_session_history["wake"] = wake
+
+    def _update_active_session_history(self, **entries: Any) -> None:
+        if self._active_session_history is None:
+            return
+        for key, value in entries.items():
+            if value is not None:
+                self._active_session_history[key] = value
+
+    def _persist_active_session_history(
+        self,
+        session: VoiceSessionSnapshot,
+        *,
+        completion_reason: str,
+        error_state: dict[str, Any] | None = None,
+        wake_recording: dict[str, object] | None = None,
+    ) -> None:
+        if self._session_history_store is None or self._active_session_history is None:
+            return
+        completed_at = datetime.now(UTC)
+        audio = dict(self._active_session_history.get("audio") or {})
+        if self._audio_format is not None:
+            audio["format"] = self._audio_format.model_dump(mode="json")
+        audio.update(
+            {
+                "chunk_count": self._chunk_count,
+                "captured_chunk_count": len(self._audio_chunks),
+                "raw_audio_persisted": False,
+            }
+        )
+        if error_state is None and session.last_error is not None:
+            error_state = session.last_error.model_dump(mode="json")
+        tts = self._active_session_history.get("tts")
+        replay = self._replay_metadata(tts if isinstance(tts, dict) else None, error_state=error_state)
+        record = {
+            **self._active_session_history,
+            "session_state": session.session_state,
+            "completed_at": completed_at.isoformat(),
+            "duration_ms": max(0, int((completed_at - session.started_at).total_seconds() * 1000)),
+            "completion_reason": completion_reason,
+            "cancel_reason": session.cancel_reason,
+            "error_state": error_state,
+            "audio": audio,
+            "replay": replay,
+        }
+        if wake_recording is not None:
+            record["wake_recording"] = wake_recording
+        try:
+            self._session_history_store.upsert_session(record)
+        except Exception:
+            log.exception("Failed to persist voice session history: session_id=%s", session.session_id)
+
+    def _replay_metadata(self, tts: dict[str, Any] | None, *, error_state: dict[str, Any] | None) -> dict[str, Any]:
+        if error_state is not None:
+            return {"eligible": False, "reason": error_state.get("code") or "session_failed"}
+        if not tts:
+            return {"eligible": False, "reason": "tts_unavailable"}
+        if tts.get("error"):
+            return {"eligible": False, "reason": tts.get("error")}
+        if not tts.get("stream_id"):
+            return {"eligible": False, "reason": "tts_stream_unavailable"}
+        if not tts.get("audio_url"):
+            return {"eligible": False, "reason": "tts_audio_url_unavailable"}
+        return {
+            "eligible": True,
+            "reason": "cached_tts_available",
+            "stream_id": tts.get("stream_id"),
+            "content_type": tts.get("content_type"),
+            "audio_url": tts.get("audio_url"),
+        }
+
+    async def _push_session_replay(self, *, session: dict[str, Any], endpoint_id: str | None = None) -> dict:
+        target_endpoint_id = endpoint_id or str(session.get("endpoint_id") or "")
+        if not target_endpoint_id:
+            return {"accepted": False, "reason": "endpoint_id_required", "status": "failed", "endpoint_id": ""}
+        replay = session.get("replay") if isinstance(session.get("replay"), dict) else {}
+        tts = session.get("tts") if isinstance(session.get("tts"), dict) else {}
+        if not replay.get("eligible"):
+            return {
+                "accepted": False,
+                "reason": replay.get("reason") or "replay_not_eligible",
+                "status": "failed",
+                "endpoint_id": target_endpoint_id,
+            }
+        if not tts.get("stream_id") or not tts.get("audio_url"):
+            return {
+                "accepted": False,
+                "reason": "tts_stream_unavailable",
+                "status": "failed",
+                "endpoint_id": target_endpoint_id,
+            }
+        result = await self._push_endpoint_command(
+            endpoint_id=target_endpoint_id,
+            event_type="endpoint.replay",
+            command_type="endpoint.replay.session",
+            request_id=f"session_replay_{uuid4().hex}",
+            payload={
+                "stream_id": tts.get("stream_id"),
+                "content_type": tts.get("content_type"),
+                "audio_url": tts.get("audio_url"),
+                "source_session_id": session.get("session_id"),
+            },
+        )
+        return {"endpoint_id": target_endpoint_id, **result}
+
+    def _clear_active_session_runtime(self) -> None:
+        self._active_session = None
+        self._chunk_count = 0
+        self._audio_chunks = []
+        self._audio_format = None
+        self._active_session_history = None
+
     def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
         if self._active_session is None:
             return {"accepted": False, "reason": "no_active_session", "status": self.status()}
 
         self._set_session_state("cancelled")
         self._active_session.cancel_reason = reason
+        self._persist_active_session_history(
+            self._active_session,
+            completion_reason=reason,
+        )
         self._release_active_session_wake_stream()
-        self._active_session = None
-        self._chunk_count = 0
-        self._audio_chunks = []
-        self._audio_format = None
+        self._clear_active_session_runtime()
         return {"accepted": True, "reason": reason, "status": self.status()}
 
     def _handle_session_cancel(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
@@ -1170,11 +1421,12 @@ class VoiceSessionManager:
         self._set_session_state("cancelled")
         session.cancel_reason = str(event.payload.get("reason") or "endpoint_cancelled")
         cancelled = self._state_event("session.cancelled", session)
+        self._persist_active_session_history(
+            session,
+            completion_reason=session.cancel_reason,
+        )
         self._release_active_session_wake_stream()
-        self._active_session = None
-        self._chunk_count = 0
-        self._audio_chunks = []
-        self._audio_format = None
+        self._clear_active_session_runtime()
         return [cancelled]
 
     def _handle_session_ping(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:

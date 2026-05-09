@@ -231,6 +231,18 @@ class EndpointCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
 
 
+class VoiceSessionReplayRequest(BaseModel):
+    endpoint_id: str | None = Field(default=None, min_length=1)
+
+
+class VoiceSessionHistoryListResponse(BaseModel):
+    sessions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class VoiceSessionHistoryDetailResponse(BaseModel):
+    session: dict[str, Any]
+
+
 class EndpointSpeakCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     text: str = Field(min_length=1, max_length=4000)

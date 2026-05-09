@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     voice_wake_recording_dir: Path | None = Field(default=None, alias="VOICE_WAKE_RECORDING_DIR")
     voice_wake_recording_retention_days: int = Field(default=7, alias="VOICE_WAKE_RECORDING_RETENTION_DAYS", ge=1)
     voice_wake_recording_preroll_ms: int = Field(default=2000, alias="VOICE_WAKE_RECORDING_PREROLL_MS", ge=0)
+    voice_session_history_path: Path | None = Field(default=None, alias="VOICE_SESSION_HISTORY_PATH")
+    voice_session_history_limit: int = Field(default=100, alias="VOICE_SESSION_HISTORY_LIMIT", ge=1)
     voice_stt_provider: Literal["deterministic", "openai", "faster_whisper"] = Field(
         default="deterministic",
         alias="VOICE_STT_PROVIDER",
@@ -185,6 +187,11 @@ class Settings(BaseSettings):
         if self.voice_wake_recording_dir is not None:
             return self.voice_wake_recording_dir
         return self.runtime_dir / "wake_recordings"
+
+    def resolved_voice_session_history_path(self) -> Path:
+        if self.voice_session_history_path is not None:
+            return self.voice_session_history_path
+        return self.runtime_dir / "voice_session_history.json"
 
     def resolved_voice_tts_piper_base_url(self) -> str | None:
         if self.voice_tts_piper_base_url is not None:
