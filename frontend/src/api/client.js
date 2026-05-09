@@ -182,6 +182,10 @@ export async function replayVoiceSession(sessionId, endpointId) {
   });
 }
 
+export function wakeRecordingAudioUrl(recordingId) {
+  return `${API_BASE}/api/voice/wake-recordings/${encodeURIComponent(recordingId)}`;
+}
+
 export async function getVoiceIntents() {
   return fetchJson("/api/voice/intents");
 }

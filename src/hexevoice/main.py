@@ -5,6 +5,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
 from pathlib import Path
+import re
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse
@@ -899,6 +900,18 @@ def create_app(
             status=result.get("status"),
             reason=result.get("reason"),
         )
+
+    @app.get("/api/voice/wake-recordings/{recording_id}")
+    async def voice_wake_recording_audio(recording_id: str) -> FileResponse:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,180}", recording_id or ""):
+            raise HTTPException(status_code=404, detail="wake_recording_not_found")
+        audio_path = voice_session_manager.wake_recording_path(recording_id)
+        if audio_path is None:
+            audio_path = app_settings.resolved_voice_wake_recording_dir() / f"{recording_id}.wav"
+            audio_path = audio_path if audio_path.is_file() else None
+        if audio_path is None:
+            raise HTTPException(status_code=404, detail="wake_recording_not_found")
+        return FileResponse(audio_path, media_type="audio/wav")
 
     @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
     async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:

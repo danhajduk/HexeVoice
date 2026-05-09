@@ -293,6 +293,8 @@ def test_voice_websocket_records_accepted_wake_session_audio(tmp_path):
     assert recording["retention_days"] == 7
     assert recording["confidence"] == 0.86
     assert recording["recording_type"] == "accepted_wake_session"
+    assert recording["recording_id"]
+    assert recording["audio_url"] == f"/api/voice/wake-recordings/{recording['recording_id']}"
     assert recording["wake_preroll_byte_count"] == 8
     assert recording["stt_byte_count"] == 4
 
@@ -302,9 +304,14 @@ def test_voice_websocket_records_accepted_wake_session_audio(tmp_path):
         assert wav_file.getnframes() == 6
 
     metadata = json.loads(metadata_path.read_text())
+    assert metadata["recording_id"] == recording["recording_id"]
     assert metadata["session_id"] == "voice-session-1"
     assert metadata["expires_at"]
     assert client.get("/api/voice/status").json()["wake_recordings"]["last_recording"]["wav_path"] == str(wav_path)
+    playback = client.get(recording["audio_url"])
+    assert playback.status_code == 200
+    assert playback.headers["content-type"] == "audio/wav"
+    assert playback.content.startswith(b"RIFF")
 
 
 def test_voice_websocket_closes_wake_stream_after_completed_session(tmp_path):
@@ -725,6 +732,10 @@ def test_voice_session_history_replays_cached_tts_after_restart(tmp_path):
                 "content_type": "audio/wav",
                 "audio_url": "/api/voice/tts/tts-old",
             },
+            "wake_recording": {
+                "recording_id": "wake-old",
+                "audio_url": "/api/voice/wake-recordings/wake-old",
+            },
         }
     )
     manager = VoiceSessionManager(session_history_store=history_store)
@@ -744,6 +755,9 @@ def test_voice_session_history_replays_cached_tts_after_restart(tmp_path):
         latest_replay_event = websocket.receive_json()
 
     assert session_replay.status_code == 200
+    sessions = client.get("/api/voice/sessions").json()["sessions"]
+    replayed_session = next(session for session in sessions if session["session_id"] == "voice-session-old")
+    assert replayed_session["wake_recording"]["recording_id"] == "wake-old"
     assert session_replay.json()["accepted"] is True
     assert session_replay_event["event_type"] == "endpoint.replay"
     assert session_replay_event["payload"]["stream_id"] == "tts-old"

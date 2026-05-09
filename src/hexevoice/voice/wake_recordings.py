@@ -110,6 +110,7 @@ class WakeRecordingService:
         duration_ms = round((frame_count / capture.audio_format.sample_rate_hz) * 1000, 2)
         expires_at = now + timedelta(days=self._retention_days)
         metadata: dict[str, Any] = {
+            "recording_id": stem,
             "recorded_at": now.isoformat(),
             "expires_at": expires_at.isoformat(),
             "retention_days": self._retention_days,
@@ -125,6 +126,7 @@ class WakeRecordingService:
             "chunk_count": chunk_count,
             "wav_path": str(wav_path),
             "metadata_path": str(metadata_path),
+            "audio_url": f"/api/voice/wake-recordings/{stem}",
             **capture.accepted,
         }
         metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -169,6 +171,13 @@ class WakeRecordingService:
             "last_recording": self._last_recording,
             "last_cleanup": self._last_cleanup,
         }
+
+    def recording_path(self, recording_id: str) -> Path | None:
+        safe_recording_id = _safe_component(recording_id)
+        if safe_recording_id != recording_id or not safe_recording_id:
+            return None
+        path = self._recording_dir / f"{safe_recording_id}.wav"
+        return path if path.is_file() else None
 
     def _trim_capture(self, capture: _WakeCapture) -> None:
         max_bytes = self._max_preroll_bytes(capture.audio_format)

@@ -115,4 +115,5 @@ class VoiceSessionHistoryStore:
             "turn_timings": session.get("turn_timings"),
             "tts": session.get("tts"),
             "replay": session.get("replay"),
+            "wake_recording": session.get("wake_recording"),
         }

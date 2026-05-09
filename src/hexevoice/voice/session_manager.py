@@ -4,6 +4,7 @@ import base64
 from datetime import UTC, datetime
 import json
 import logging
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -1180,6 +1181,11 @@ class VoiceSessionManager:
         if self._session_history_store is None:
             return None
         return self._session_history_store.get_session(session_id)
+
+    def wake_recording_path(self, recording_id: str) -> Path | None:
+        if self._wake_recorder is None:
+            return None
+        return self._wake_recorder.recording_path(recording_id)
 
     def preload_wake_detector(self) -> dict | None:
         preload = getattr(self._wake_detector, "preload", None)

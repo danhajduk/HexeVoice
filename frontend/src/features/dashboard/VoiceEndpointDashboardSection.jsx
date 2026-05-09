@@ -15,6 +15,7 @@ import {
   testAssistantTurn,
   uploadEndpointMedia,
   updateEndpointMetadata,
+  wakeRecordingAudioUrl,
 } from "../../api/client";
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
 
@@ -659,7 +660,31 @@ function EndpointMediaManagerPanel({ endpointId, onRefresh, setActionMessage }) 
   );
 }
 
-function VoiceSessionHistoryPanel({ sessions, historyStatus, endpointId, onReplaySession, onRefreshHistory }) {
+function wakeRecordingId(recording) {
+  if (!recording || typeof recording !== "object") {
+    return "";
+  }
+  if (recording.recording_id) {
+    return String(recording.recording_id);
+  }
+  const wavPath = typeof recording.wav_path === "string" ? recording.wav_path : "";
+  const filename = wavPath.split(/[\\/]/).pop() || "";
+  return filename.endsWith(".wav") ? filename.slice(0, -4) : "";
+}
+
+function visibleHistorySessions(sessions) {
+  return sessions.filter((session) => session?.session_state !== "cancelled" && session?.completion_reason !== "cancelled");
+}
+
+function VoiceSessionHistoryPanel({
+  sessions,
+  historyStatus,
+  endpointId,
+  onReplaySession,
+  onReplayWakeRecording,
+  onRefreshHistory,
+}) {
+  const visibleSessions = visibleHistorySessions(sessions);
   const storedCount = typeof historyStatus?.stored_count === "number" ? historyStatus.stored_count : sessions.length;
 
   return (
@@ -682,14 +707,16 @@ function VoiceSessionHistoryPanel({ sessions, historyStatus, endpointId, onRepla
               <th scope="col">Transcript</th>
               <th scope="col">Response</th>
               <th scope="col">Total</th>
+              <th scope="col">Wake Audio</th>
               <th scope="col">Replay</th>
             </tr>
           </thead>
           <tbody>
-            {sessions.length ? (
-              sessions.map((session) => {
+            {visibleSessions.length ? (
+              visibleSessions.map((session) => {
                 const replayEligible = session?.replay?.eligible === true;
                 const targetEndpointId = endpointId || session.endpoint_id || "";
+                const recordingId = wakeRecordingId(session.wake_recording);
                 return (
                   <tr key={session.session_id}>
                     <td>{formatLocalDateTime(session.completed_at || session.updated_at || session.started_at)}</td>
@@ -699,6 +726,16 @@ function VoiceSessionHistoryPanel({ sessions, historyStatus, endpointId, onRepla
                     <td className="voice-history-text">{valueOrEmpty(session.transcript?.text)}</td>
                     <td className="voice-history-text">{valueOrEmpty(session.assistant?.text)}</td>
                     <td>{formatMs(session.turn_timings?.total_ms ?? session.duration_ms)}</td>
+                    <td>
+                      <button
+                        className="btn btn-ghost btn-compact"
+                        type="button"
+                        onClick={() => onReplayWakeRecording(session.wake_recording)}
+                        disabled={!recordingId}
+                      >
+                        Play Wake
+                      </button>
+                    </td>
                     <td>
                       <button
                         className="btn btn-ghost btn-compact"
@@ -714,7 +751,7 @@ function VoiceSessionHistoryPanel({ sessions, historyStatus, endpointId, onRepla
               })
             ) : (
               <tr>
-                <td colSpan={8}>none</td>
+                <td colSpan={9}>none</td>
               </tr>
             )}
           </tbody>
@@ -908,6 +945,21 @@ export function VoiceEndpointDashboardSection({
     }
   }
 
+  async function handleReplayWakeRecording(recording) {
+    const recordingId = wakeRecordingId(recording);
+    if (!recordingId) {
+      setActionMessage("Wake replay skipped: recording is missing.");
+      return;
+    }
+    try {
+      const audio = new Audio(wakeRecordingAudioUrl(recordingId));
+      await audio.play();
+      setActionMessage("Wake recording playback started.");
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
   return (
     <section className="card stack panel voice-endpoint-main-card">
       <div className="voice-endpoint-top">
@@ -968,6 +1020,7 @@ export function VoiceEndpointDashboardSection({
         historyStatus={historyStatus}
         endpointId={endpointId}
         onReplaySession={handleReplaySession}
+        onReplayWakeRecording={handleReplayWakeRecording}
         onRefreshHistory={refreshVoiceSessions}
       />
       <EndpointMetadataPanel
