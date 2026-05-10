@@ -60,6 +60,7 @@ constexpr size_t kWakePrerollFrameCount = 15;
 constexpr int kVoiceWsSendTimeoutMs = 3000;
 constexpr int kVoiceWsSendRetryDelayMs = 50;
 constexpr int kVoiceWsSendAttempts = 3;
+constexpr int64_t kPostTtsInputIgnoreUs = 800000;
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
 
 struct AudioFrame {
@@ -104,6 +105,7 @@ bool g_transport_micro_vad_started = false;
 bool g_transport_micro_vad_ended = false;
 uint32_t g_transport_micro_vad_chunk_index = 0;
 uint32_t g_transport_micro_vad_pause_ms = 0;
+int64_t g_post_tts_input_ignore_until_us = 0;
 std::string g_session_id;
 std::string g_tts_playback_session_id;
 std::string g_ws_rx_buffer;
@@ -150,6 +152,8 @@ bool wake_source_is_local_acceptance(const char *wake_source);
 bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
 void resume_audio_stream_for_followup();
 void reset_transport_micro_vad();
+void start_post_tts_input_cooldown();
+void clear_post_tts_input_cooldown();
 void append_event_header(
     std::string &message,
     const char *event_type,
@@ -246,6 +250,19 @@ void reset_transport_micro_vad() {
   g_transport_micro_vad_ended = false;
   g_transport_micro_vad_chunk_index = 0;
   g_transport_micro_vad_pause_ms = 0;
+}
+
+void clear_post_tts_input_cooldown() {
+  g_post_tts_input_ignore_until_us = 0;
+}
+
+void start_post_tts_input_cooldown() {
+  g_post_tts_input_ignore_until_us = esp_timer_get_time() + kPostTtsInputIgnoreUs;
+  g_preroll_count = 0;
+  g_preroll_index = 0;
+  g_transport_sample_count = 0;
+  reset_transport_micro_vad();
+  ESP_LOGI(kTag, "Ignoring microphone wake/VAD input for %lld us after TTS playback", static_cast<long long>(kPostTtsInputIgnoreUs));
 }
 
 std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
@@ -1321,6 +1338,12 @@ bool ensure_session_started(const char *wake_source) {
   if (!g_ws_connected || !backend_ready_for_voice()) {
     return false;
   }
+  if (hexe::voice::post_tts_input_cooldown_active() && !wake_source_is_local_acceptance(wake_source)) {
+    return false;
+  }
+  if (wake_source_is_local_acceptance(wake_source)) {
+    clear_post_tts_input_cooldown();
+  }
   ++g_session_counter;
   g_chunk_index = 0;
   g_audio_stream_finished = false;
@@ -1399,6 +1422,9 @@ void resume_audio_stream_for_followup() {
 bool send_vad_speech_started_event(uint32_t level) {
   if (g_vad_speech_started_reported) {
     return true;
+  }
+  if (hexe::voice::post_tts_input_cooldown_active()) {
+    return false;
   }
   if (!ensure_session_started("openwakeword")) {
     return false;
@@ -1689,6 +1715,18 @@ void websocket_task(void *arg) {
 
 namespace hexe::voice {
 
+bool post_tts_input_cooldown_active() {
+  const int64_t ignore_until_us = g_post_tts_input_ignore_until_us;
+  if (ignore_until_us <= 0) {
+    return false;
+  }
+  if (esp_timer_get_time() < ignore_until_us) {
+    return true;
+  }
+  g_post_tts_input_ignore_until_us = 0;
+  return false;
+}
+
 void init_backend_client() {
   if (g_audio_queue != nullptr) {
     return;
@@ -1763,6 +1801,9 @@ bool send_tts_playback_event(
   const bool sent = send_ws_text(envelope);
   if (sent && (std::strcmp(event_type, "tts.playback.completed") == 0 ||
                std::strcmp(event_type, "tts.playback.failed") == 0)) {
+    if (std::strcmp(event_type, "tts.playback.completed") == 0) {
+      start_post_tts_input_cooldown();
+    }
     g_tts_playback_session_id.clear();
   }
   return sent;
@@ -1775,6 +1816,9 @@ bool submit_audio_frame(
     bool vad_speaking,
     const MicroVadFrameState *micro_vad) {
   if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !backend_ready_for_voice()) {
+    return false;
+  }
+  if (post_tts_input_cooldown_active()) {
     return false;
   }
 

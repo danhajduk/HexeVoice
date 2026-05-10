@@ -389,6 +389,18 @@ void vad_task(void *arg) {
     if (noise_floor == 0) {
       noise_floor = level;
     }
+    if (hexe::voice::post_tts_input_cooldown_active()) {
+      noise_floor = update_noise_floor(noise_floor, level);
+      hexe::state().vad_level = static_cast<int>(level);
+      hexe::state().vad_speaking = false;
+      g_vad_turn_active = false;
+      silent_frames = kVadSilenceHoldFrames;
+      voice_candidate_frames = 0;
+      speech_peak_level = 0;
+      micro_vad_chunk_active = false;
+      micro_vad_silent_frames = 0;
+      continue;
+    }
     const bool was_speaking = hexe::state().vad_speaking;
     const uint32_t start_threshold =
         std::max(kVadStartEnergyThreshold, (noise_floor * kVadStartNoiseMultiplier) + kVadNoiseMargin);

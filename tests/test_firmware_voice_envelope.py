@@ -64,6 +64,7 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
 
 
 def test_firmware_vad_keeps_listening_window_after_wake_word():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     source = FIRMWARE_AUDIO.read_text()
     pe_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
 
@@ -71,6 +72,12 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert 'finish_audio_stream("vad_silence")' in source
     assert "notify_vad_speech_started(level)" in source
     assert "notify_vad_speech_started(level)" in pe_source
+    assert "kPostTtsInputIgnoreUs = 800000" in backend_source
+    assert "start_post_tts_input_cooldown();" in backend_source
+    assert "post_tts_input_cooldown_active()" in backend_source
+    assert "g_preroll_count = 0" in backend_source
+    assert "hexe::voice::post_tts_input_cooldown_active()" in pe_source
+    assert "micro_vad_chunk_active = false" in pe_source
 
 
 def test_firmware_heartbeat_reports_network_metadata():

@@ -16,6 +16,7 @@ struct MicroVadFrameState {
 void init_backend_client();
 bool start_voice_session(const char *wake_source);
 bool notify_vad_speech_started(uint32_t level);
+bool post_tts_input_cooldown_active();
 bool submit_audio_frame(
     const int16_t *samples,
     size_t sample_count,

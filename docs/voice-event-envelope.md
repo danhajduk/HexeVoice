@@ -47,6 +47,10 @@ Endpoint TTS playback acknowledgements use `tts.playback.download_started`, `tts
 optional `byte_count`, and failure `reason`/`message` when applicable. The backend exposes the latest event as
 `last_tts_playback` and a short `tts_playback_history` list in `/api/voice/status`.
 
+Voice PE firmware starts a short post-playback microphone ignore window after `tts.playback.completed`.
+During that window the endpoint keeps updating its local noise floor but suppresses VAD, wake prediction,
+micro-VAD chunking, and audio transport so speaker tail audio cannot start a duplicate voice session.
+
 Firmware VAD start uses `vad.speech_started`. The envelope timestamp is the device-side speech-start timestamp, and
 the payload carries the measured VAD `level` plus a `source` such as `firmware_vad`. Session history stores this under
 `vad` and derives latency fields such as `vad_to_audio_end_ms`, `vad_to_first_audio_frame_ms`, and
