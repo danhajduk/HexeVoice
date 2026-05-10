@@ -11,11 +11,30 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
     captured = {}
 
     class FakeAdapter:
-        def __init__(self, *, model_name, device, compute_type, temp_dir):
+        def __init__(
+            self,
+            *,
+            model_name,
+            device,
+            compute_type,
+            temp_dir,
+            language,
+            beam_size,
+            best_of,
+            without_timestamps,
+            word_timestamps,
+            max_initial_timestamp,
+        ):
             captured["model_name"] = model_name
             captured["device"] = device
             captured["compute_type"] = compute_type
             captured["temp_dir"] = temp_dir
+            captured["language"] = language
+            captured["beam_size"] = beam_size
+            captured["best_of"] = best_of
+            captured["without_timestamps"] = without_timestamps
+            captured["word_timestamps"] = word_timestamps
+            captured["max_initial_timestamp"] = max_initial_timestamp
 
         def status(self):
             return {"healthy": True, "model": captured["model_name"], "loaded": False}
@@ -39,6 +58,12 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
             voice_stt_faster_whisper_model="small.en",
             voice_stt_faster_whisper_device="cpu",
             voice_stt_faster_whisper_compute_type="int8",
+            voice_stt_faster_whisper_language="en",
+            voice_stt_faster_whisper_beam_size=2,
+            voice_stt_faster_whisper_best_of=3,
+            voice_stt_faster_whisper_without_timestamps=True,
+            voice_stt_faster_whisper_word_timestamps=True,
+            voice_stt_faster_whisper_max_initial_timestamp=0.5,
         )
     )
     client = TestClient(app)
@@ -66,13 +91,18 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
     assert response.json()["provider_id"] == "external_faster_whisper"
     assert captured["audio"].endpoint_id == "esp-pe-1"
     assert captured["audio"].audio_bytes == b"\x00\x00" * 320
+    assert captured["language"] == "en"
+    assert captured["beam_size"] == 2
+    assert captured["best_of"] == 3
+    assert captured["word_timestamps"] is True
+    assert captured["max_initial_timestamp"] == 0.5
 
 
 def test_stt_service_preloads_model_on_startup_when_enabled(monkeypatch, tmp_path):
     calls = []
 
     class FakeAdapter:
-        def __init__(self, *, model_name, device, compute_type, temp_dir):
+        def __init__(self, **_kwargs):
             pass
 
         def status(self):
@@ -96,7 +126,7 @@ def test_stt_service_skips_startup_preload_when_disabled(monkeypatch, tmp_path):
     calls = []
 
     class FakeAdapter:
-        def __init__(self, *, model_name, device, compute_type, temp_dir):
+        def __init__(self, **_kwargs):
             pass
 
         def status(self):

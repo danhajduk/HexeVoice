@@ -321,3 +321,8 @@ Task #093
 Step objective: Close the completed faster-whisper model benchmark task.
 What changed: Removed the future TODO after confirming local benchmark artifacts for `base.en`, `small.en`, and `medium.en` exist under `runtime/stt/`. The five-repeat REHASp sample benchmark showed `base.en` averaging 1523.53 ms with 1/2 normalized matches, `small.en` averaging 4519.99 ms with 2/2 matches, and `medium.en` averaging 14755.03 ms with 2/2 matches.
 Verification: Inspected `runtime/stt/faster-whisper-base-en-rehasp-repeat5.json`, `runtime/stt/faster-whisper-small-en-rehasp-repeat5.json`, and `runtime/stt/faster-whisper-medium-en-rehasp-repeat5.json`.
+###########
+Task #095
+Step objective: Add faster-whisper STT decode tuning options.
+What changed: Added settings/env support for language, beam size, best-of, without-timestamps, word timestamps, and max initial timestamp; wired those options into local and external STT service adapter construction; exposed them in adapter status; documented the environment knobs.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_config.py::test_faster_whisper_stt_settings_defaults tests/test_stt_service.py tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_preloads_model tests/test_voice_pipeline.py::test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured` passed with 7 tests.

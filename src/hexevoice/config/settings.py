@@ -95,6 +95,30 @@ class Settings(BaseSettings):
         default="int8",
         alias="VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE",
     )
+    voice_stt_faster_whisper_language: str | None = Field(default="en", alias="VOICE_STT_FASTER_WHISPER_LANGUAGE")
+    voice_stt_faster_whisper_beam_size: int | None = Field(
+        default=5,
+        alias="VOICE_STT_FASTER_WHISPER_BEAM_SIZE",
+        ge=1,
+    )
+    voice_stt_faster_whisper_best_of: int | None = Field(
+        default=5,
+        alias="VOICE_STT_FASTER_WHISPER_BEST_OF",
+        ge=1,
+    )
+    voice_stt_faster_whisper_without_timestamps: bool = Field(
+        default=True,
+        alias="VOICE_STT_FASTER_WHISPER_WITHOUT_TIMESTAMPS",
+    )
+    voice_stt_faster_whisper_word_timestamps: bool = Field(
+        default=False,
+        alias="VOICE_STT_FASTER_WHISPER_WORD_TIMESTAMPS",
+    )
+    voice_stt_faster_whisper_max_initial_timestamp: float | None = Field(
+        default=1.0,
+        alias="VOICE_STT_FASTER_WHISPER_MAX_INITIAL_TIMESTAMP",
+        ge=0,
+    )
     voice_stt_faster_whisper_temp_dir: Path | None = Field(
         default=None,
         alias="VOICE_STT_FASTER_WHISPER_TEMP_DIR",

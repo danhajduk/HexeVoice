@@ -51,6 +51,11 @@ Use:
 The external faster-whisper STT runtime code lives in the standalone
 `src/stt/` package. `src/hexevoice/stt_service.py` remains as a compatibility
 entrypoint, while service launch commands use `python -m stt.service`.
+The runtime accepts faster-whisper tuning via `VOICE_STT_FASTER_WHISPER_LANGUAGE`,
+`VOICE_STT_FASTER_WHISPER_BEAM_SIZE`, `VOICE_STT_FASTER_WHISPER_BEST_OF`,
+`VOICE_STT_FASTER_WHISPER_WITHOUT_TIMESTAMPS`,
+`VOICE_STT_FASTER_WHISPER_WORD_TIMESTAMPS`, and
+`VOICE_STT_FASTER_WHISPER_MAX_INITIAL_TIMESTAMP`.
 
 The Piper TTS runtime code lives in the standalone `src/tts/` package.
 `services/piper_tts/app.py` remains as a compatibility wrapper, while the

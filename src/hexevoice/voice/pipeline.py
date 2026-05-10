@@ -229,12 +229,24 @@ class FasterWhisperSpeechToTextAdapter:
         device: str = "cpu",
         compute_type: str = "int8",
         temp_dir: Path,
+        language: str | None = "en",
+        beam_size: int | None = 5,
+        best_of: int | None = 5,
+        without_timestamps: bool = True,
+        word_timestamps: bool = False,
+        max_initial_timestamp: float | None = 1.0,
         model_factory: Callable[..., Any] | None = None,
     ) -> None:
         self._model_name = model_name
         self._device = device
         self._compute_type = compute_type
         self._temp_dir = temp_dir
+        self._language = language
+        self._beam_size = beam_size
+        self._best_of = best_of
+        self._without_timestamps = without_timestamps
+        self._word_timestamps = word_timestamps
+        self._max_initial_timestamp = max_initial_timestamp
         self._model_factory = model_factory
         self._model: Any | None = None
         self._last_error: str | None = None
@@ -261,7 +273,7 @@ class FasterWhisperSpeechToTextAdapter:
                 temp_file.write(audio_file_bytes(audio))
                 temp_path = Path(temp_file.name)
 
-            segments, _info = model.transcribe(str(temp_path))
+            segments, _info = model.transcribe(str(temp_path), **self._transcribe_options())
             text = " ".join(str(getattr(segment, "text", "")).strip() for segment in segments).strip()
             self._last_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             self._last_text_chars = len(text)
@@ -329,6 +341,7 @@ class FasterWhisperSpeechToTextAdapter:
             "model": self._model_name,
             "device": self._device,
             "compute_type": self._compute_type,
+            "transcribe_options": self._transcribe_options(),
             "temp_dir": str(self._temp_dir),
             "loaded": self._model is not None,
             "last_load_duration_ms": self._last_load_duration_ms,
@@ -362,6 +375,21 @@ class FasterWhisperSpeechToTextAdapter:
             if exc.name == "faster_whisper":
                 raise RuntimeError("missing_dependency:faster-whisper") from exc
             raise
+
+    def _transcribe_options(self) -> dict[str, object]:
+        options: dict[str, object] = {
+            "without_timestamps": self._without_timestamps,
+            "word_timestamps": self._word_timestamps,
+        }
+        if self._language:
+            options["language"] = self._language
+        if self._beam_size is not None:
+            options["beam_size"] = self._beam_size
+        if self._best_of is not None:
+            options["best_of"] = self._best_of
+        if self._max_initial_timestamp is not None:
+            options["max_initial_timestamp"] = self._max_initial_timestamp
+        return options
 
 
 class ExternalFasterWhisperSpeechToTextAdapter:
@@ -1510,6 +1538,12 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             device=settings.voice_stt_faster_whisper_device,
             compute_type=settings.voice_stt_faster_whisper_compute_type,
             temp_dir=settings.resolved_faster_whisper_temp_dir(),
+            language=settings.voice_stt_faster_whisper_language,
+            beam_size=settings.voice_stt_faster_whisper_beam_size,
+            best_of=settings.voice_stt_faster_whisper_best_of,
+            without_timestamps=settings.voice_stt_faster_whisper_without_timestamps,
+            word_timestamps=settings.voice_stt_faster_whisper_word_timestamps,
+            max_initial_timestamp=settings.voice_stt_faster_whisper_max_initial_timestamp,
         )
     elif settings.voice_stt_provider == "external_faster_whisper":
         stt_adapter = ExternalFasterWhisperSpeechToTextAdapter(

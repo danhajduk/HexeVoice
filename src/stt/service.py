@@ -33,6 +33,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         device=app_settings.voice_stt_faster_whisper_device,
         compute_type=app_settings.voice_stt_faster_whisper_compute_type,
         temp_dir=app_settings.resolved_faster_whisper_temp_dir(),
+        language=app_settings.voice_stt_faster_whisper_language,
+        beam_size=app_settings.voice_stt_faster_whisper_beam_size,
+        best_of=app_settings.voice_stt_faster_whisper_best_of,
+        without_timestamps=app_settings.voice_stt_faster_whisper_without_timestamps,
+        word_timestamps=app_settings.voice_stt_faster_whisper_word_timestamps,
+        max_initial_timestamp=app_settings.voice_stt_faster_whisper_max_initial_timestamp,
     )
     app = FastAPI(title="HexeVoice STT")
 

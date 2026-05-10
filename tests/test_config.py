@@ -42,6 +42,12 @@ def test_faster_whisper_stt_settings_defaults():
     assert settings.voice_stt_faster_whisper_model == "base.en"
     assert settings.voice_stt_faster_whisper_device == "cpu"
     assert settings.voice_stt_faster_whisper_compute_type == "int8"
+    assert settings.voice_stt_faster_whisper_language == "en"
+    assert settings.voice_stt_faster_whisper_beam_size == 5
+    assert settings.voice_stt_faster_whisper_best_of == 5
+    assert settings.voice_stt_faster_whisper_without_timestamps is True
+    assert settings.voice_stt_faster_whisper_word_timestamps is False
+    assert settings.voice_stt_faster_whisper_max_initial_timestamp == 1.0
     assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"
 
 

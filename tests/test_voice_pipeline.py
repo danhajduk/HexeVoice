@@ -320,8 +320,9 @@ def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path
             captured["device"] = device
             captured["compute_type"] = compute_type
 
-        def transcribe(self, path):
+        def transcribe(self, path, **options):
             captured["path"] = path
+            captured["options"] = options
             with wave.open(path, "rb") as wav_file:
                 captured["sample_rate_hz"] = wav_file.getframerate()
                 captured["channels"] = wav_file.getnchannels()
@@ -333,6 +334,12 @@ def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path
         device="cpu",
         compute_type="int8",
         temp_dir=tmp_path,
+        language="en",
+        beam_size=2,
+        best_of=3,
+        without_timestamps=True,
+        word_timestamps=True,
+        max_initial_timestamp=0.5,
         model_factory=FakeModel,
     )
 
@@ -358,6 +365,14 @@ def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path
     assert captured["sample_rate_hz"] == 16000
     assert captured["channels"] == 1
     assert captured["frames"] == 320
+    assert captured["options"] == {
+        "without_timestamps": True,
+        "word_timestamps": True,
+        "language": "en",
+        "beam_size": 2,
+        "best_of": 3,
+        "max_initial_timestamp": 0.5,
+    }
     assert not Path(captured["path"]).exists()
 
 
