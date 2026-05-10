@@ -425,18 +425,101 @@ class NodeRuntimeService:
             payload = json.loads((result.stdout or "").strip())
         except ValueError:
             return {"available": False, "error": "invalid_docker_stats_payload"}
+        process = self._docker_container_process_payload(container_name)
         return {
             "available": True,
             "sampled_at": datetime.now(UTC).isoformat(),
+            "pid": process.get("pid"),
+            "main_pid": process.get("main_pid"),
             "cpu_percent": self._parse_percent(payload.get("CPUPerc")),
             "memory_percent": self._parse_percent(payload.get("MemPerc")),
             "memory_usage": payload.get("MemUsage"),
             "network_io": payload.get("NetIO"),
             "block_io": payload.get("BlockIO"),
             "pids": payload.get("PIDs"),
+            "process": process,
         }
 
     def _systemd_service_resource_usage(self, service_name: str) -> dict[str, object]:
+        return self._systemd_service_process_payload(service_name)
+
+    def _current_process_payload(self, *, kind: str = "backend_process") -> dict[str, object]:
+        payload = self._process_resource_usage_payload(os.getpid())
+        payload.update(
+            {
+                "kind": kind,
+                "pid": os.getpid(),
+                "main_pid": os.getpid(),
+            }
+        )
+        return payload
+
+    def _docker_container_process_payload(self, container_name: str) -> dict[str, object]:
+        result = self._service_command_runner(
+            [
+                "docker",
+                "inspect",
+                "--format",
+                "{{json .State}}",
+                container_name,
+            ]
+        )
+        if result.returncode != 0:
+            return {
+                "available": False,
+                "kind": "docker_container",
+                "container_name": container_name,
+                "error": (result.stderr or "").strip() or "docker_inspect_failed",
+            }
+        try:
+            payload = json.loads((result.stdout or "").strip())
+        except ValueError:
+            return {
+                "available": False,
+                "kind": "docker_container",
+                "container_name": container_name,
+                "error": "invalid_docker_inspect_payload",
+            }
+        try:
+            pid = int(payload.get("Pid") or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        status = str(payload.get("Status") or "").strip().lower() or None
+        process: dict[str, object] = {
+            "available": pid > 0,
+            "kind": "docker_container",
+            "container_name": container_name,
+            "status": status,
+            "pid": pid,
+            "main_pid": pid,
+        }
+        if pid > 0:
+            usage = self._process_resource_usage_payload(pid)
+            process.update(
+                {
+                    key: value
+                    for key, value in usage.items()
+                    if key not in {"available", "error", "pid"}
+                }
+            )
+            process.update(
+                {
+                    "available": True,
+                    "kind": "docker_container",
+                    "container_name": container_name,
+                    "status": status,
+                    "pid": pid,
+                    "main_pid": pid,
+                    "resource_available": usage.get("available"),
+                }
+            )
+            if usage.get("error"):
+                process["resource_error"] = usage["error"]
+        else:
+            process["error"] = "container_not_running"
+        return process
+
+    def _systemd_service_process_payload(self, service_name: str) -> dict[str, object]:
         result = self._service_command_runner(
             [
                 "systemctl",
@@ -454,8 +537,47 @@ class NodeRuntimeService:
         except ValueError:
             pid = 0
         if pid <= 0:
-            return {"available": False, "error": "service_not_running", "pid": pid}
-        return self._process_resource_usage_payload(pid)
+            return {
+                "available": False,
+                "kind": "systemd_user_service",
+                "systemd_service": service_name,
+                "error": "service_not_running",
+                "pid": pid,
+                "main_pid": pid,
+                "child_pids": [],
+            }
+        child_pids = self._child_pids(pid)
+        monitor_pid = child_pids[0] if child_pids else pid
+        process = self._process_resource_usage_payload(monitor_pid)
+        process.update(
+            {
+                "kind": "systemd_user_service",
+                "systemd_service": service_name,
+                "pid": monitor_pid,
+                "main_pid": pid,
+                "child_pids": child_pids,
+            }
+        )
+        return process
+
+    def _child_pids(self, pid: int) -> list[int]:
+        children_path = Path(f"/proc/{pid}/task/{pid}/children")
+        try:
+            return [
+                int(value)
+                for value in children_path.read_text(encoding="utf-8").split()
+                if value.isdigit()
+            ]
+        except (OSError, ValueError):
+            return []
+
+    def _service_process_fields(self, process: dict[str, object]) -> dict[str, object]:
+        fields: dict[str, object] = {"process": process}
+        for key in ("pid", "main_pid", "child_pids", "pids"):
+            value = process.get(key)
+            if value is not None:
+                fields[key] = value
+        return fields
 
     def _process_resource_usage_payload(self, pid: int) -> dict[str, object]:
         status_path = Path(f"/proc/{pid}/status")
@@ -501,6 +623,7 @@ class NodeRuntimeService:
             return None
 
     def _resource_usage_payload(self) -> dict[str, object]:
+        pid = os.getpid()
         cpu_count = os.cpu_count() or 1
         uptime_s = max(time.monotonic() - self._started_at_monotonic, 1.0)
         process_cpu_percent = min(100.0, (time.process_time() / uptime_s) * 100.0 / cpu_count)
@@ -526,6 +649,8 @@ class NodeRuntimeService:
 
         return {
             "sampled_at": datetime.now(UTC).isoformat(),
+            "pid": pid,
+            "main_pid": pid,
             "process_cpu_percent": round(process_cpu_percent, 2),
             "system_load_1m": round(load_1m, 2) if load_1m is not None else None,
             "system_load_5m": round(load_5m, 2) if load_5m is not None else None,
@@ -584,6 +709,7 @@ class NodeRuntimeService:
 
     def _openwakeword_service_summary(self) -> dict[str, object]:
         state = self._openwakeword_state()
+        process = self._docker_container_process_payload(self._settings.openwakeword_container_name)
         return {
             "service_id": self._settings.openwakeword_service_id,
             "service_name": "openWakeWord",
@@ -592,6 +718,7 @@ class NodeRuntimeService:
             "managed_by": "core_supervisor_service_action_proxy",
             "container_name": self._settings.openwakeword_container_name,
             "control_script": str(self._settings.openwakeword_control_script),
+            **self._service_process_fields(process),
         }
 
     def _piper_tts_enabled(self) -> bool:
@@ -618,6 +745,7 @@ class NodeRuntimeService:
 
     def _piper_tts_service_summary(self) -> dict[str, object]:
         state = self._piper_tts_state()
+        process = self._docker_container_process_payload(self._settings.piper_tts_container_name)
         return {
             "service_id": self._settings.piper_tts_service_id,
             "service_name": "Piper TTS",
@@ -630,10 +758,12 @@ class NodeRuntimeService:
             "synthesize_path": self._settings.voice_tts_piper_synthesize_path,
             "voice": self._settings.voice_tts_piper_voice,
             "warm_voices": self._settings.resolved_piper_tts_warm_voices(),
+            **self._service_process_fields(process),
         }
 
     def _external_stt_service_summary(self) -> dict[str, object]:
         state = self._external_stt_state()
+        process = self._systemd_service_process_payload(self._settings.voice_stt_service_name)
         return {
             "service_id": self._settings.voice_stt_service_id,
             "service_name": "faster-whisper STT",
@@ -651,6 +781,7 @@ class NodeRuntimeService:
             "model": self._settings.voice_stt_faster_whisper_model,
             "device": self._settings.voice_stt_faster_whisper_device,
             "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
+            **self._service_process_fields(process),
         }
 
     def service_action(self, *, target: str, action: str) -> ServiceActionResponse:
@@ -744,12 +875,15 @@ class NodeRuntimeService:
         host_id = socket.gethostname()
         api_base_url = self._settings.public_api_base_url or f"http://{self._settings.api_host}:{self._settings.api_port}"
         runtime_state = "running" if self.readiness_payload().operational_ready else "unknown"
+        backend_process = self._current_process_payload()
+        frontend_process = self._systemd_service_process_payload("hexevoice-frontend.service")
         services = [
             {
                 "service_id": "backend",
                 "service_name": "backend",
                 "state": runtime_state,
                 "boot_order": 10,
+                **self._service_process_fields(backend_process),
             },
             self._openwakeword_service_summary(),
         ]
@@ -763,6 +897,7 @@ class NodeRuntimeService:
                 "service_name": "frontend",
                 "state": runtime_state,
                 "boot_order": 20,
+                **self._service_process_fields(frontend_process),
             }
         )
         runtime_metadata = {
@@ -784,7 +919,7 @@ class NodeRuntimeService:
             "lifecycle_state": runtime_state,
             "health_status": "healthy" if runtime_state == "running" else "unknown",
             "running": runtime_state == "running",
-            "resource_usage": {},
+            "resource_usage": backend_process,
             "runtime_metadata": runtime_metadata,
         }
 

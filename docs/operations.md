@@ -64,7 +64,7 @@ When supervisor integration is enabled, the backend registers and heartbeats thr
 - register route: `POST /api/supervisor/runtimes/register`
 - heartbeat route: `POST /api/supervisor/runtimes/heartbeat`
 
-The registration metadata includes service entries for `backend`, `openwakeword`, and `frontend`. When `VOICE_STT_PROVIDER=external_faster_whisper`, it also advertises a `faster_whisper_stt` user service with its control-script path and local STT URL. When `VOICE_TTS_PROVIDER=piper`, it also advertises a `piper_tts` service with its Docker container name, control-script path, and local synthesis URL. Core Supervisor can inspect and control managed services through the node service proxy routes:
+The registration metadata includes service entries for `backend`, `openwakeword`, and `frontend`. When `VOICE_STT_PROVIDER=external_faster_whisper`, it also advertises a `faster_whisper_stt` user service with its control-script path and local STT URL. When `VOICE_TTS_PROVIDER=piper`, it also advertises a `piper_tts` service with its Docker container name, control-script path, and local synthesis URL. Each service entry includes a `process` block when the node can resolve one, with `pid`, `main_pid`, and runtime resource fields so Core Supervisor can monitor the actual backend process, Docker container init PID, or managed user-service process. Core Supervisor can inspect and control managed services through the node service proxy routes:
 
 - `GET /api/services/status`
 - `POST /api/services/start` with `{"target":"openwakeword"}`
@@ -105,7 +105,8 @@ the runtime can observe it, supervisor registration status, and whether a
 component has a supported restart target. In-process STT reports backend-process
 resource usage. External faster-whisper STT reports its managed user-service
 process resource usage when enabled, and Piper TTS reports Docker container
-usage when enabled.
+usage when enabled. The same status payload includes process IDs for monitored
+services where available.
 
 The Voice Endpoint runtime page shows endpoint status as summary cards. Selecting
 an endpoint opens a blurred-background detail popup with the full registry,

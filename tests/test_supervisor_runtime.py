@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 
 from hexevoice.config.settings import Settings
@@ -31,7 +32,11 @@ class FakeCommandRunner:
     def __call__(self, command):
         self.commands.append(command)
         if command[:3] == ["docker", "inspect", "--format"]:
+            if command[3] == "{{json .State}}":
+                return subprocess.CompletedProcess(command, 0, '{"Status":"running","Pid":4242}\n', "")
             return subprocess.CompletedProcess(command, 0, "running\n", "")
+        if command[:3] == ["systemctl", "--user", "show"]:
+            return subprocess.CompletedProcess(command, 0, f"{os.getpid()}\n", "")
         return subprocess.CompletedProcess(command, 0, "ok\n", "")
 
 
@@ -114,10 +119,15 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert registration["running"] is True
     assert "runtime_metadata" in registration
     services = registration["runtime_metadata"]["services"]
+    backend = next(service for service in services if service["service_id"] == "backend")
+    assert backend["pid"] == os.getpid()
+    assert backend["process"]["kind"] == "backend_process"
     openwakeword = next(service for service in services if service["service_id"] == "openwakeword")
     assert openwakeword["state"] == "running"
     assert openwakeword["managed_by"] == "core_supervisor_service_action_proxy"
     assert openwakeword["container_name"] == "hexevoice-openwakeword"
+    assert openwakeword["pid"] == 4242
+    assert openwakeword["process"]["kind"] == "docker_container"
     assert not any(service["service_id"] == "piper_tts" for service in services)
 
     heartbeat = client.heartbeat_payloads[0]
@@ -128,6 +138,10 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert heartbeat["lifecycle_state"] == "running"
     assert heartbeat["health_status"] == "healthy"
     assert heartbeat["running"] is True
+    heartbeat_backend = next(
+        service for service in heartbeat["runtime_metadata"]["services"] if service["service_id"] == "backend"
+    )
+    assert heartbeat_backend["pid"] == os.getpid()
 
 
 def test_supervisor_runtime_registration_is_not_repeated_after_success(tmp_path):
@@ -206,6 +220,8 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
     assert piper_tts["synthesize_path"] == "/api/tts"
     assert piper_tts["voice"] == "en_US-test"
     assert piper_tts["warm_voices"] == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
+    assert piper_tts["pid"] == 4242
+    assert piper_tts["process"]["kind"] == "docker_container"
     assert service.service_status_payload().piper_tts == "running"
 
 
@@ -288,9 +304,11 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
         def __call__(self, command):
             self.commands.append(command)
             if command[:3] == ["docker", "inspect", "--format"]:
+                if command[3] == "{{json .State}}":
+                    return subprocess.CompletedProcess(command, 0, '{"Status":"running","Pid":4242}\n', "")
                 return subprocess.CompletedProcess(command, 0, "running\n", "")
             if command[:3] == ["systemctl", "--user", "show"]:
-                return subprocess.CompletedProcess(command, 0, "0\n", "")
+                return subprocess.CompletedProcess(command, 0, f"{os.getpid()}\n", "")
             if len(command) == 2 and command[1] in {"install", "status", "restart"}:
                 return subprocess.CompletedProcess(command, 0, "active\n", "")
             return subprocess.CompletedProcess(command, 0, "ok\n", "")
@@ -323,6 +341,8 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_component["restart_supported"] is True
     assert stt_component["restart_target"] == "faster_whisper_stt"
     assert stt_component["resource_scope"] == "systemd_user_service"
+    assert stt_component["resource_usage"]["pid"] == os.getpid()
+    assert stt_component["resource_usage"]["kind"] == "systemd_user_service"
     assert install.accepted is True
     assert result.accepted is True
     assert [str(script), "install"] in command_runner.commands
@@ -340,3 +360,6 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_service["install_supported"] is True
     assert stt_service["install_action"] == "install"
     assert stt_service["base_url"] == "http://127.0.0.1:10300"
+    assert stt_service["pid"] == os.getpid()
+    assert stt_service["main_pid"] == os.getpid()
+    assert stt_service["process"]["kind"] == "systemd_user_service"
