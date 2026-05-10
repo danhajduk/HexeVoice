@@ -5,6 +5,10 @@ function text(value, fallback = "unknown") {
   return value === null || value === undefined || value === "" ? fallback : String(value);
 }
 
+function componentModel(component) {
+  return component?.model_display_name || component?.model;
+}
+
 function bytes(value) {
   if (!Number.isFinite(value)) {
     return "unknown";
@@ -100,7 +104,7 @@ function RuntimeComponentCard({ component, onRestart, actionBusy }) {
         </div>
         <div className="fact-grid-item">
           <span className="fact-grid-label">Model</span>
-          <span className="fact-grid-value">{text(component?.model)}</span>
+          <span className="fact-grid-value">{text(componentModel(component))}</span>
         </div>
         <div className="fact-grid-item">
           <span className="fact-grid-label">Restart Target</span>

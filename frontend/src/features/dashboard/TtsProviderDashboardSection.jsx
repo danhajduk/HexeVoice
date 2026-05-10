@@ -19,6 +19,10 @@ function formatSampleRate(value) {
   return SAMPLE_RATE_LABELS[value] || `${value} Hz`;
 }
 
+function modelLabel(model) {
+  return model?.display_name || model?.model_id || "unknown";
+}
+
 function sameStrings(left, right) {
   const leftValues = [...left].sort();
   const rightValues = [...right].sort();
@@ -151,10 +155,10 @@ export function TtsProviderDashboardSection({ providerSetup, capabilities, ttsSe
                           type="checkbox"
                           checked={warmVoices.includes(model.model_id)}
                           onChange={() => toggleWarmVoice(model.model_id)}
-                          aria-label={`Keep ${model.model_id} warm`}
+                          aria-label={`Keep ${modelLabel(model)} warm`}
                         />
                       </td>
-                      <td>{model.model_id}</td>
+                      <td>{modelLabel(model)}</td>
                       <td>{formatSampleRate(model.raw_sample_rate_hz)}</td>
                       <td>{valueOrEmpty(model.quality)}</td>
                       <td>{valueOrEmpty(model.language)}</td>

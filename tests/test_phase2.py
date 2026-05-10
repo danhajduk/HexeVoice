@@ -155,12 +155,12 @@ def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypa
     model_dir.mkdir(parents=True)
     (model_dir / "en_US-kathleen-low.onnx").write_bytes(b"model")
     (model_dir / "en_US-kathleen-low.onnx.json").write_text(
-        '{"audio":{"sample_rate":16000,"quality":"low"}}',
+        '{"dataset":"kathleen","audio":{"sample_rate":16000,"quality":"low"}}',
         encoding="utf-8",
     )
     (model_dir / "en_US-lessac-medium.onnx").write_bytes(b"model")
     (model_dir / "en_US-lessac-medium.onnx.json").write_text(
-        '{"audio":{"sample_rate":22050,"quality":"medium"}}',
+        '{"dataset":"lessac","audio":{"sample_rate":22050,"quality":"medium"}}',
         encoding="utf-8",
     )
     state = store.load()
@@ -219,6 +219,7 @@ def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypa
     assert piper["provider"] == "piper"
     models = {model["model_id"]: model for model in piper["available_models"]}
     assert sorted(models) == ["en_US-kathleen-low", "en_US-lessac-medium"]
+    assert models["en_US-lessac-medium"]["display_name"] == "Lessac"
     assert captured["budget_json"]["supported_providers"] == ["piper", "voice"]
 
 

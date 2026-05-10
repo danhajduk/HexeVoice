@@ -8,6 +8,7 @@ from typing import Any
 
 from hexevoice.config.settings import Settings
 from hexevoice.config.settings import parse_tts_conversion_sample_rates
+from hexevoice.piper_models import piper_model_display_name, read_piper_model_config
 
 
 ALLOWED_TTS_CONVERSION_SAMPLE_RATES = (48000, 22050, 16000)
@@ -80,6 +81,7 @@ class TtsRuntimeSettingsService:
             models.append(
                 {
                     "model_id": model_path.stem,
+                    "display_name": piper_model_display_name(config, fallback=model_path.stem),
                     "path": str(model_path),
                     "config_path": str(model_path.with_suffix(model_path.suffix + ".json")),
                     "raw_sample_rate_hz": sample_rate,
@@ -134,17 +136,6 @@ def normalized_voice_list(raw: object) -> list[str]:
         if voice and voice not in voices:
             voices.append(voice)
     return voices
-
-
-def read_piper_model_config(model_path: Path) -> dict[str, Any]:
-    config_path = model_path.with_suffix(model_path.suffix + ".json")
-    if not config_path.exists():
-        return {}
-    try:
-        payload = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return payload if isinstance(payload, dict) else {}
 
 
 def normalize_conversion_policy(raw: object) -> str:

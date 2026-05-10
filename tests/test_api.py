@@ -1062,6 +1062,7 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
     (model_dir / "en_US-jenny-high.onnx.json").write_text(
         json.dumps(
             {
+                "dataset": "jenny_dioco",
                 "audio": {"sample_rate": 22050, "quality": "high"},
                 "language": {"code": "en_US"},
             }
@@ -1094,6 +1095,7 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
     assert payload["conversion_policy"] == "blocking_all"
     assert payload["allowed_conversion_policies"] == ["blocking_all", "endpoint_required_sync"]
     assert payload["models"][0]["model_id"] == "en_US-jenny-high"
+    assert payload["models"][0]["display_name"] == "Jenny Dioco"
     assert payload["models"][0]["raw_sample_rate_hz"] == 22050
     assert payload["models"][0]["quality"] == "high"
 

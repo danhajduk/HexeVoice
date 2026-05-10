@@ -211,11 +211,19 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
 
 def test_piper_tts_status_model_uses_endpoint_voice_without_openai_fallback(tmp_path):
     command_runner = FakeCommandRunner()
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    (model_dir / "en_GB-jenny_dioco-medium.onnx").write_bytes(b"model")
+    (model_dir / "en_GB-jenny_dioco-medium.onnx.json").write_text(
+        '{"dataset":"jenny_dioco","audio":{"sample_rate":22050}}',
+        encoding="utf-8",
+    )
     service = NodeRuntimeService(
         settings=Settings(
             onboarding_state_path=tmp_path / "state.json",
             voice_tts_provider="piper",
             voice_tts_endpoint_voices="esp-pe-1=en_GB-jenny_dioco-medium",
+            piper_tts_model_dir=model_dir,
         ),
         service_command_runner=command_runner,
     )
@@ -225,6 +233,7 @@ def test_piper_tts_status_model_uses_endpoint_voice_without_openai_fallback(tmp_
 
     assert tts_component["provider"] == "piper"
     assert tts_component["model"] == "en_GB-jenny_dioco-medium"
+    assert tts_component["model_display_name"] == "Jenny Dioco"
     assert tts_component["model"] != "gpt-4o-mini-tts"
 
 
