@@ -122,4 +122,8 @@ object, or `conversation.followup`, to its definition:
 
 The pending follow-up is scoped to the endpoint and session, expires after 5 to
 300 seconds, and is cleared after the first `voice.confirm.yes`,
-`voice.confirm.no`, or a different local intent.
+`voice.confirm.no`, or a different local intent. For endpoint voice sessions,
+the backend waits for TTS playback to complete, then sends a follow-up listening
+state and keeps the same audio stream open for 10 seconds. If no follow-up audio
+arrives in that window, the backend sends `session.cancelled` with the message
+`canceled` and returns the endpoint to idle.

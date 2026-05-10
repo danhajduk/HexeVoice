@@ -11,6 +11,7 @@ from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
 from hexevoice.api.models import AssistantTurnResponse
 from hexevoice.persistence import VoiceSessionHistoryStore
+import hexevoice.voice.session_manager as session_manager_module
 from hexevoice.voice import (
     DeterministicWakeDetector,
     MicroVadChunkRecordingService,
@@ -1011,6 +1012,95 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     restarted_sessions = restarted_client.get("/api/voice/sessions").json()["sessions"]
     assert restarted_sessions[0]["session_id"] == "voice-session-1"
     assert restarted_client.get("/api/voice/status").json()["session_history"]["stored_count"] == 1
+
+
+def test_voice_followup_keeps_session_listening_until_timeout(tmp_path, monkeypatch):
+    monkeypatch.setattr(session_manager_module, "FOLLOWUP_LISTEN_TIMEOUT_S", 0.01)
+
+    class FollowupPipeline:
+        def status(self):
+            return {"stt": {"provider": "test", "healthy": True}, "tts": {"provider": "test", "healthy": True}}
+
+        def complete_turn(self, audio):
+            return VoiceTurnResult(
+                transcript=SpeechTranscript(
+                    text="delete cache",
+                    confidence=0.91,
+                    provider_id="stt-test",
+                    model="tiny-test",
+                ),
+                assistant_response=AssistantTurnResponse(
+                    endpoint_id=audio.endpoint_id,
+                    session_id=audio.session_id,
+                    heard_text="delete cache",
+                    reply_text="Delete cache?",
+                    spoken_text="Delete cache?",
+                    handled_locally=True,
+                    command="debug.delete_cache",
+                    device_state="speaking",
+                    provider_id="assistant-test",
+                    conversation_followup={
+                        "intent_id": "debug.delete_cache",
+                        "command": "debug.delete_cache",
+                        "prompt": "Delete cache?",
+                        "yes_reply_text": "Deleting cache.",
+                        "no_reply_text": "Leaving cache alone.",
+                    },
+                ),
+                tts=TtsSynthesis(
+                    content_type="audio/wav",
+                    stream_id="tts-followup",
+                    audio_url="/api/voice/tts/tts-followup",
+                    provider_id="tts-test",
+                ),
+                timings=VoiceTurnTimings(stt_ms=1.0, assistant_ms=1.0, tts_ms=1.0, total_ms=3.0),
+            )
+
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        turn_pipeline=FollowupPipeline(),
+        session_history_store=VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json"),
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(voice_event("vad.speech_started", payload={"level": 1000, "source": "firmware_vad"}))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": "AAECAw==",
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end", payload={"reason": "vad_silence"}))
+        assert websocket.receive_json()["event_type"] == "transcript.final"
+        assert websocket.receive_json()["event_type"] == "response.text"
+        assert websocket.receive_json()["event_type"] == "tts.ready"
+
+        websocket.send_json(
+            voice_event(
+                "tts.playback.completed",
+                payload={"stream_id": "tts-followup", "audio_url": "/api/voice/tts/tts-followup", "byte_count": 1200},
+            )
+        )
+        followup_state = websocket.receive_json()
+        assert followup_state["event_type"] == "session.state"
+        assert followup_state["payload"]["snapshot"]["ux_state"] == "listening"
+        assert followup_state["payload"]["followup"]["needed"] is True
+        assert followup_state["payload"]["followup"]["listen_timeout_ms"] == 10
+
+        timeout_event = websocket.receive_json()
+        assert timeout_event["event_type"] == "session.cancelled"
+        assert timeout_event["payload"]["reason"] == "followup_timeout"
+        assert timeout_event["payload"]["message"] == "canceled"
 
 
 def test_voice_session_history_replays_cached_tts_after_restart(tmp_path):

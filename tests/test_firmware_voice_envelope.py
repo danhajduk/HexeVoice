@@ -174,6 +174,9 @@ def test_firmware_handles_backend_session_state_events():
     assert 'wake_accepted || (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0)' in source
     assert 'g_wake_accepted_for_session && std::strcmp(ux_state, "thinking") == 0' in source
     assert "if (g_wake_accepted_for_session) {\n      hexe::state().phase = hexe::AppPhase::kThinking;" in source
+    assert "event_requests_followup_listen" in source
+    assert "resume_audio_stream_for_followup" in source
+    assert '"listen_timeout_ms"' in source
     assert 'std::strcmp(ux_state, "replying") == 0' in source
     assert "hexe::idle_or_connecting_phase()" in source
 

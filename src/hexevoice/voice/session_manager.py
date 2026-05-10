@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 from datetime import UTC, datetime, timedelta
 import json
@@ -40,6 +41,7 @@ from hexevoice.voice.wake_recordings import WakeRecordingService
 
 
 log = logging.getLogger(__name__)
+FOLLOWUP_LISTEN_TIMEOUT_S = 10.0
 
 LATENCY_POINT_ORDER = {
     "vad_voice_detected": 0,
@@ -131,6 +133,8 @@ class VoiceSessionManager:
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
+        self._pending_session_followup: dict[str, Any] | None = None
+        self._followup_timeout_task: asyncio.Task | None = None
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -174,6 +178,7 @@ class VoiceSessionManager:
                     completion_reason="websocket_disconnected",
                 )
             self._release_active_session_wake_stream()
+            self._cancel_followup_timeout_task()
             self._websocket = None
             self._connection_active = False
             self._connected_endpoint_id = None
@@ -1152,6 +1157,7 @@ class VoiceSessionManager:
                 "error": turn.assistant_response.error,
                 "handled_locally": turn.assistant_response.handled_locally,
                 "intent_latency_ms": turn.assistant_response.intent_latency_ms,
+                "conversation_followup": turn.assistant_response.conversation_followup,
             }
             self._update_active_session_history(assistant=self._last_assistant)
             self._set_session_state("responding")
@@ -1211,6 +1217,14 @@ class VoiceSessionManager:
                 )
             )
             self._update_vad_latency("tts_ready", datetime.now(UTC))
+            if turn.assistant_response.conversation_followup:
+                self._pending_session_followup = {
+                    **turn.assistant_response.conversation_followup,
+                    "listen_timeout_ms": int(FOLLOWUP_LISTEN_TIMEOUT_S * 1000),
+                    "state": "waiting_for_tts_playback",
+                }
+                self._update_active_session_history(conversation_followup=self._pending_session_followup)
+                return events
         else:
             self._set_session_state("local_command")
             self._set_session_state("responding")
@@ -1667,6 +1681,7 @@ class VoiceSessionManager:
         return {"endpoint_id": target_endpoint_id, **result}
 
     def _clear_active_session_runtime(self) -> None:
+        self._cancel_followup_timeout_task()
         if self._active_session is not None and self._micro_vad_chunk_recorder is not None:
             self._micro_vad_chunk_recorder.close_session(
                 endpoint_id=self._active_session.endpoint_id,
@@ -1677,6 +1692,7 @@ class VoiceSessionManager:
         self._audio_chunks = []
         self._audio_format = None
         self._active_session_history = None
+        self._pending_session_followup = None
 
     def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
         if self._active_session is None:
@@ -1901,7 +1917,98 @@ class VoiceSessionManager:
                 payload.stream_id,
                 event.event_type,
             )
+        if event.event_type == "tts.playback.completed" and self._should_open_followup_window(event):
+            return [self._open_followup_window(event.timestamp)]
+        if event.event_type == "tts.playback.failed" and self._pending_session_followup and self._active_session:
+            return [self._cancel_active_followup_session(reason="tts_playback_failed")]
         return [self._state_event("session.state", self._active_session)] if self._active_session else []
+
+    def _should_open_followup_window(self, event: VoiceEventEnvelope) -> bool:
+        return (
+            self._active_session is not None
+            and self._pending_session_followup is not None
+            and event.session_id == self._active_session.session_id
+            and self._active_session.session_state == "responding"
+        )
+
+    def _open_followup_window(self, opened_at: datetime) -> VoiceEventEnvelope:
+        if self._active_session is None or self._pending_session_followup is None:
+            raise RuntimeError("followup_window_requires_active_session")
+        self._audio_chunks = []
+        self._chunk_count = 0
+        followup = {
+            **self._pending_session_followup,
+            "state": "listening",
+            "opened_at": opened_at.isoformat(),
+            "listen_timeout_ms": int(FOLLOWUP_LISTEN_TIMEOUT_S * 1000),
+        }
+        self._pending_session_followup = followup
+        self._update_active_session_history(conversation_followup=followup)
+        self._set_session_state("listening")
+        self._schedule_followup_timeout(
+            endpoint_id=self._active_session.endpoint_id,
+            session_id=self._active_session.session_id,
+        )
+        return self._state_event(
+            "session.state",
+            self._active_session,
+            extra_payload={
+                "followup": {
+                    "needed": True,
+                    "listen_timeout_ms": int(FOLLOWUP_LISTEN_TIMEOUT_S * 1000),
+                    "prompt": followup.get("prompt"),
+                    "state": "listening",
+                }
+            },
+        )
+
+    def _schedule_followup_timeout(self, *, endpoint_id: str, session_id: str) -> None:
+        self._cancel_followup_timeout_task()
+        self._followup_timeout_task = asyncio.create_task(self._followup_timeout(endpoint_id, session_id))
+
+    def _cancel_followup_timeout_task(self) -> None:
+        task = self._followup_timeout_task
+        try:
+            current_task = asyncio.current_task()
+        except RuntimeError:
+            current_task = None
+        if task is not None and task is not current_task and not task.done():
+            task.cancel()
+        self._followup_timeout_task = None
+
+    async def _followup_timeout(self, endpoint_id: str, session_id: str) -> None:
+        try:
+            await asyncio.sleep(FOLLOWUP_LISTEN_TIMEOUT_S)
+            if (
+                self._websocket is None
+                or self._active_session is None
+                or self._active_session.endpoint_id != endpoint_id
+                or self._active_session.session_id != session_id
+                or self._pending_session_followup is None
+            ):
+                return
+            cancelled = self._cancel_active_followup_session(reason="followup_timeout")
+            await self._websocket.send_json(cancelled.model_dump(mode="json"))
+        except asyncio.CancelledError:
+            return
+
+    def _cancel_active_followup_session(self, *, reason: str) -> VoiceEventEnvelope:
+        if self._active_session is None:
+            raise RuntimeError("followup_cancel_requires_active_session")
+        self._set_session_state("cancelled")
+        self._active_session.cancel_reason = reason
+        cancelled = self._state_event(
+            "session.cancelled",
+            self._active_session,
+            extra_payload={"reason": reason, "message": "canceled"},
+        )
+        self._persist_active_session_history(
+            self._active_session,
+            completion_reason=reason,
+        )
+        self._release_active_session_wake_stream()
+        self._clear_active_session_runtime()
+        return cancelled
 
     def _require_active_session(self, event: VoiceEventEnvelope) -> VoiceSessionSnapshot | VoiceEventEnvelope:
         if self._active_session is None:

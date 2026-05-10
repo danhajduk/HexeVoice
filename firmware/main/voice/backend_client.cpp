@@ -147,6 +147,8 @@ void add_media_inventory_files(cJSON *inventory, const char *key, const char *di
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
 bool wake_source_is_local_acceptance(const char *wake_source);
+bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
+void resume_audio_stream_for_followup();
 void reset_transport_micro_vad();
 void append_event_header(
     std::string &message,
@@ -546,6 +548,11 @@ void handle_backend_event_json(const std::string &message) {
           cJSON_IsString(session_id) ? session_id->valuestring : "unknown",
           cJSON_IsString(model) ? model->valuestring : "unknown");
     }
+  }
+
+  const bool followup_listen = event_requests_followup_listen(payload, ux_state);
+  if (followup_listen) {
+    resume_audio_stream_for_followup();
   }
 
   if (wake_accepted || (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0)) {
@@ -1361,6 +1368,32 @@ bool ensure_session_started(const char *wake_source) {
 bool wake_source_is_local_acceptance(const char *wake_source) {
   return wake_source != nullptr &&
          (std::strcmp(wake_source, "button") == 0 || std::strcmp(wake_source, "manual") == 0);
+}
+
+bool event_requests_followup_listen(cJSON *payload, const char *ux_state) {
+  if (std::strcmp(ux_state, "listening") != 0 || !cJSON_IsObject(payload)) {
+    return false;
+  }
+  cJSON *followup = cJSON_GetObjectItem(payload, "followup");
+  if (!cJSON_IsObject(followup)) {
+    return false;
+  }
+  cJSON *needed = cJSON_GetObjectItem(followup, "needed");
+  cJSON *timeout_ms = cJSON_GetObjectItem(followup, "listen_timeout_ms");
+  return cJSON_IsTrue(needed) || (cJSON_IsNumber(timeout_ms) && timeout_ms->valueint > 0);
+}
+
+void resume_audio_stream_for_followup() {
+  if (!g_session_started) {
+    return;
+  }
+  g_audio_stream_finished = false;
+  g_vad_speech_started_reported = false;
+  g_preroll_drained = false;
+  g_transport_sample_count = 0;
+  reset_transport_micro_vad();
+  set_audio_streaming(true);
+  ESP_LOGI(kTag, "Resuming voice audio stream for follow-up window");
 }
 
 bool send_vad_speech_started_event(uint32_t level) {

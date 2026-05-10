@@ -131,7 +131,7 @@ VOICE_SESSION_ALLOWED_TRANSITIONS: dict[VoiceSessionState, frozenset[VoiceSessio
     "transcribing": frozenset({"local_command", "routing", "cancelled", "failed"}),
     "local_command": frozenset({"responding", "completed", "cancelled", "failed"}),
     "routing": frozenset({"responding", "cancelled", "failed"}),
-    "responding": frozenset({"completed", "cancelled", "failed"}),
+    "responding": frozenset({"listening", "completed", "cancelled", "failed"}),
     "completed": frozenset({"idle"}),
     "cancelled": frozenset({"idle"}),
     "failed": frozenset({"idle"}),
