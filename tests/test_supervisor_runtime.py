@@ -121,6 +121,10 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     services = registration["runtime_metadata"]["services"]
     backend = next(service for service in services if service["service_id"] == "backend")
     assert backend["pid"] == os.getpid()
+    assert backend["managed_by"] == "core_supervisor_service_action_proxy"
+    assert backend["systemd_service"] == "hexevoice-backend.service"
+    assert backend["control_target"] == "backend"
+    assert backend["restart_supported"] is True
     assert backend["process"]["kind"] == "backend_process"
     openwakeword = next(service for service in services if service["service_id"] == "openwakeword")
     assert openwakeword["state"] == "running"
@@ -207,6 +211,32 @@ def test_openwakeword_service_status_and_action_use_control_script(tmp_path):
     assert any(component["component_id"] == "stt" for component in status.components)
     assert status.resource_usage["process_cpu_percent"] >= 0
     assert status.supervisor["configured"] is False
+
+
+def test_backend_service_status_and_action_queue_systemd_restart(tmp_path):
+    command_runner = FakeCommandRunner()
+    service = NodeRuntimeService(
+        settings=Settings(onboarding_state_path=tmp_path / "state.json"),
+        service_command_runner=command_runner,
+    )
+
+    status = service.service_status_payload()
+    result = service.service_action(target="backend", action="restart")
+
+    backend_component = next(
+        component for component in status.components if component["component_id"] == "backend"
+    )
+    assert backend_component["restart_supported"] is True
+    assert backend_component["restart_target"] == "backend"
+    assert result.accepted is True
+    assert result.status == "restart_scheduled"
+    assert [
+        "systemctl",
+        "--user",
+        "restart",
+        "--no-block",
+        "hexevoice-backend.service",
+    ] in command_runner.commands
 
 
 def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_path):
@@ -322,11 +352,13 @@ def test_tts_service_action_alias_restarts_piper_when_enabled(tmp_path):
 
     status = service.service_status_payload()
     result = service.service_action(target="tts", action="restart")
+    engine_result = service.service_action(target="tts_engine", action="restart")
 
     tts_component = next(component for component in status.components if component["component_id"] == "tts")
     assert tts_component["restart_supported"] is True
     assert tts_component["restart_target"] == "piper_tts"
     assert result.accepted is True
+    assert engine_result.accepted is True
     assert [str(script), "restart"] in command_runner.commands
 
 
@@ -368,6 +400,7 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     status = service.service_status_payload()
     install = service.service_action(target="stt", action="install")
     result = service.service_action(target="stt", action="restart")
+    engine_result = service.service_action(target="stt_engine", action="restart")
     asyncio.run(service.supervisor_heartbeat_once())
 
     stt_component = next(component for component in status.components if component["component_id"] == "stt")
@@ -379,6 +412,7 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_component["resource_usage"]["kind"] == "systemd_user_service"
     assert install.accepted is True
     assert result.accepted is True
+    assert engine_result.accepted is True
     assert [str(script), "install"] in command_runner.commands
     assert [str(script), "restart"] in command_runner.commands
 

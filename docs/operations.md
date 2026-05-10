@@ -81,6 +81,7 @@ model, health state, configured state, and last error. Core Supervisor can
 inspect and control managed services through the node service proxy routes:
 
 - `GET /api/services/status`
+- `POST /api/services/restart` with `{"target":"backend"}` to queue a user-service backend restart
 - `POST /api/services/start` with `{"target":"openwakeword"}`
 - `POST /api/services/stop` with `{"target":"openwakeword"}`
 - `POST /api/services/restart` with `{"target":"openwakeword"}`
@@ -88,7 +89,8 @@ inspect and control managed services through the node service proxy routes:
 - `POST /api/services/start` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/stop` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/restart` with `{"target":"piper_tts"}` when Piper TTS is enabled
-- `POST /api/services/restart` with `{"target":"stt"}` or `{"target":"faster_whisper_stt"}` when external faster-whisper STT is enabled
+- `POST /api/services/restart` with `{"target":"stt"}`, `{"target":"stt_engine"}`, or `{"target":"faster_whisper_stt"}` when external faster-whisper STT is enabled
+- `POST /api/services/restart` with `{"target":"tts"}`, `{"target":"tts_engine"}`, or `{"target":"piper_tts"}` when Piper TTS is enabled
 
 The external faster-whisper STT service is installed through Supervisor rather
 than by ad hoc stack restarts. The `stt_engine` metadata includes the user

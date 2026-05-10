@@ -315,8 +315,8 @@ class NodeRuntimeService:
                     "status": "running",
                     "healthy": True,
                     "restart_target": "backend",
-                    "restart_supported": False,
-                    "restart_detail": "Backend restart requires supervisor-managed process control.",
+                    "restart_supported": True,
+                    "restart_detail": "Backend restart is queued through the user systemd service.",
                     "resource_usage": backend_usage,
                 },
                 {
@@ -673,6 +673,9 @@ class NodeRuntimeService:
     def _run_service_command(self, command: list[str]) -> subprocess.CompletedProcess[str]:
         return subprocess.run(command, capture_output=True, check=False, text=True, timeout=10)
 
+    def _backend_service_name(self) -> str:
+        return os.getenv("BACKEND_SERVICE_NAME", "hexevoice-backend.service")
+
     def _openwakeword_control_script(self) -> Path:
         return self._resolve_control_script(self._settings.openwakeword_control_script)
 
@@ -916,10 +919,51 @@ class NodeRuntimeService:
     def service_action(self, *, target: str, action: str) -> ServiceActionResponse:
         normalized_target = str(target or "").strip()
         normalized_action = str(action or "").strip().lower()
-        if normalized_target == "tts" and self._piper_tts_enabled():
+        if normalized_target in {"tts", "tts_engine"} and self._piper_tts_enabled():
             normalized_target = self._settings.piper_tts_service_id
-        if normalized_target == "stt" and self._external_stt_enabled():
+        if normalized_target in {"stt", "stt_engine"} and self._external_stt_enabled():
             normalized_target = self._settings.voice_stt_service_id
+        if normalized_action not in {"install", "start", "stop", "restart"}:
+            log.warning(
+                "Rejected service action for unsupported action: target=%s action=%s",
+                normalized_target,
+                normalized_action,
+            )
+            return ServiceActionResponse(
+                target=normalized_target,
+                action=normalized_action,
+                accepted=False,
+                status="unsupported_action",
+                detail="Supported actions are install, start, stop, and restart.",
+            )
+        if normalized_target == "backend":
+            if normalized_action != "restart":
+                return ServiceActionResponse(
+                    target=normalized_target,
+                    action=normalized_action,
+                    accepted=False,
+                    status="unsupported_action",
+                    detail="Backend supports restart only.",
+                )
+            service_name = self._backend_service_name()
+            result = self._service_command_runner(
+                ["systemctl", "--user", "restart", "--no-block", service_name]
+            )
+            if result.returncode != 0:
+                return ServiceActionResponse(
+                    target=normalized_target,
+                    action=normalized_action,
+                    accepted=False,
+                    status="action_failed",
+                    detail=(result.stderr or result.stdout or "").strip() or None,
+                )
+            return ServiceActionResponse(
+                target=normalized_target,
+                action=normalized_action,
+                accepted=True,
+                status="restart_scheduled",
+                detail=(result.stdout or "").strip() or f"Restart queued for {service_name}.",
+            )
         service_scripts = {
             self._settings.openwakeword_service_id: self._openwakeword_control_script,
         }
@@ -943,20 +987,7 @@ class NodeRuntimeService:
                 action=normalized_action,
                 accepted=False,
                 status="unsupported_service",
-                detail="Supported services are openwakeword, piper_tts when enabled, and faster_whisper_stt when enabled.",
-            )
-        if normalized_action not in {"install", "start", "stop", "restart"}:
-            log.warning(
-                "Rejected service action for unsupported action: target=%s action=%s",
-                normalized_target,
-                normalized_action,
-            )
-            return ServiceActionResponse(
-                target=normalized_target,
-                action=normalized_action,
-                accepted=False,
-                status="unsupported_action",
-                detail="Supported actions are install, start, stop, and restart.",
+                detail="Supported services are backend, openwakeword, piper_tts when enabled, and faster_whisper_stt when enabled.",
             )
         script = service_scripts[normalized_target]()
         if not script.exists():
@@ -1012,6 +1043,11 @@ class NodeRuntimeService:
                 "service_name": "backend",
                 "state": runtime_state,
                 "boot_order": 10,
+                "managed_by": "core_supervisor_service_action_proxy",
+                "systemd_service": self._backend_service_name(),
+                "systemd_scope": "user",
+                "control_target": "backend",
+                "restart_supported": True,
                 **self._service_process_fields(backend_process),
             },
             self._openwakeword_service_summary(),
