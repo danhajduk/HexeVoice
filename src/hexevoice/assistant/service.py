@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import re
 import time
@@ -36,6 +36,37 @@ class ConversationTurn:
 
 
 @dataclass(frozen=True)
+class PendingConversationFollowup:
+    endpoint_id: str
+    session_id: str
+    intent_id: str
+    command: str
+    prompt: str
+    yes_reply_text: str
+    no_reply_text: str
+    context: dict[str, Any]
+    created_at: datetime
+    expires_at: datetime
+
+    def is_expired(self, now: datetime) -> bool:
+        return now >= self.expires_at
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "endpoint_id": self.endpoint_id,
+            "session_id": self.session_id,
+            "intent_id": self.intent_id,
+            "command": self.command,
+            "prompt": self.prompt,
+            "yes_reply_text": self.yes_reply_text,
+            "no_reply_text": self.no_reply_text,
+            "context": dict(self.context),
+            "created_at": self.created_at.isoformat(),
+            "expires_at": self.expires_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True)
 class IntentInvocationResult:
     matched: bool
     endpoint_id: str
@@ -51,6 +82,7 @@ class IntentInvocationResult:
     dispatch_event: dict[str, Any] | None = None
     reply: dict[str, Any] | None = None
     reply_audio: dict[str, Any] | None = None
+    conversation_followup: dict[str, Any] | None = None
     latency_ms: float | None = None
 
 
@@ -208,6 +240,8 @@ class AssistantTurnService:
         self._context_limit = settings.voice_conversation_context_turns
         self._context_by_endpoint: dict[str, deque[ConversationTurn]] = {}
         self._context_by_session: dict[str, deque[ConversationTurn]] = {}
+        self._pending_followups_by_endpoint: dict[str, PendingConversationFollowup] = {}
+        self._pending_followups_by_session: dict[str, PendingConversationFollowup] = {}
         self._last_intent_latency: dict[str, Any] | None = None
 
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
@@ -215,7 +249,12 @@ class AssistantTurnService:
         session_id = payload.session_id or self._next_session_id(payload.endpoint_id)
         requested_at = utc_event_timestamp()
         intent_started_at = time.perf_counter()
-        intent = self._intent_finder.find(heard_text, requested_at=requested_at)
+        pending_followup = self._pending_followup(endpoint_id=payload.endpoint_id, session_id=session_id, now=requested_at)
+        intent = self._intent_finder.find(
+            heard_text,
+            requested_at=requested_at,
+            pending_followup=pending_followup.as_dict() if pending_followup else None,
+        )
         if intent is not None:
             self._publish_intent_recognized_event(
                 endpoint_id=payload.endpoint_id,
@@ -233,6 +272,12 @@ class AssistantTurnService:
                 requested_at=requested_at,
             )
             intent_latency_ms = self._elapsed_ms(intent_started_at)
+            conversation_followup = self._apply_followup_transition(
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                intent=intent,
+                now=requested_at,
+            )
             response = AssistantTurnResponse(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
@@ -244,6 +289,7 @@ class AssistantTurnService:
                 device_state="speaking",
                 provider_id=intent.provider_id,
                 intent_latency_ms=intent_latency_ms,
+                conversation_followup=conversation_followup,
             )
             self._record_intent_latency(
                 matched=True,
@@ -279,10 +325,21 @@ class AssistantTurnService:
             "context_turn_limit": self._context_limit,
             "endpoint_contexts": {endpoint_id: len(turns) for endpoint_id, turns in self._context_by_endpoint.items()},
             "session_contexts": {session_id: len(turns) for session_id, turns in self._context_by_session.items()},
+            "pending_followups": {
+                endpoint_id: followup.as_dict()
+                for endpoint_id, followup in self._pending_followups_by_endpoint.items()
+                if not followup.is_expired(utc_event_timestamp())
+            },
         }
 
-    def match_intent(self, text: str):
-        return self._intent_finder.find(self._strip_wake_words(text), requested_at=utc_event_timestamp())
+    def match_intent(self, text: str, *, endpoint_id: str = "intent-test", session_id: str | None = None):
+        requested_at = utc_event_timestamp()
+        pending_followup = self._pending_followup(endpoint_id=endpoint_id, session_id=session_id, now=requested_at)
+        return self._intent_finder.find(
+            self._strip_wake_words(text),
+            requested_at=requested_at,
+            pending_followup=pending_followup.as_dict() if pending_followup else None,
+        )
 
     def invoke_intent(
         self,
@@ -296,7 +353,12 @@ class AssistantTurnService:
         resolved_session_id = session_id or self._next_session_id(endpoint_id)
         requested_at = utc_event_timestamp()
         intent_started_at = time.perf_counter()
-        intent = self._intent_finder.find(heard_text, requested_at=requested_at)
+        pending_followup = self._pending_followup(endpoint_id=endpoint_id, session_id=resolved_session_id, now=requested_at)
+        intent = self._intent_finder.find(
+            heard_text,
+            requested_at=requested_at,
+            pending_followup=pending_followup.as_dict() if pending_followup else None,
+        )
         if intent is None:
             intent_latency_ms = self._elapsed_ms(intent_started_at)
             self._record_intent_latency(
@@ -343,6 +405,12 @@ class AssistantTurnService:
             requested_at=requested_at,
         )
         intent_latency_ms = self._elapsed_ms(intent_started_at)
+        conversation_followup = self._apply_followup_transition(
+            endpoint_id=endpoint_id,
+            session_id=resolved_session_id,
+            intent=intent,
+            now=requested_at,
+        )
         response = AssistantTurnResponse(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
@@ -354,6 +422,7 @@ class AssistantTurnService:
             device_state="speaking",
             provider_id=intent.provider_id,
             intent_latency_ms=intent_latency_ms,
+            conversation_followup=conversation_followup,
         )
         self._record_intent_latency(
             matched=True,
@@ -380,6 +449,7 @@ class AssistantTurnService:
             dispatch_event=dispatch_decision.as_dict() if dispatch_decision else None,
             reply=intent.reply,
             reply_audio=reply_audio,
+            conversation_followup=conversation_followup,
             latency_ms=intent_latency_ms,
         )
 
@@ -461,6 +531,82 @@ class AssistantTurnService:
                 requested_at=requested_at,
             )
         return None
+
+    def _pending_followup(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str | None,
+        now: datetime,
+    ) -> PendingConversationFollowup | None:
+        followup = self._pending_followups_by_endpoint.get(endpoint_id)
+        if followup is None and session_id:
+            followup = self._pending_followups_by_session.get(session_id)
+        if followup is None:
+            return None
+        if followup.is_expired(now):
+            self._clear_pending_followup(followup)
+            return None
+        return followup
+
+    def _apply_followup_transition(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        intent,
+        now: datetime,
+    ) -> dict[str, Any] | None:
+        if intent.command in {"voice.confirm.yes", "voice.confirm.no"}:
+            pending = self._pending_followup(endpoint_id=endpoint_id, session_id=session_id, now=now)
+            if pending is not None:
+                self._clear_pending_followup(pending)
+            return None
+        if intent.conversation_followup:
+            followup = self._store_pending_followup(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                intent_id=intent.intent,
+                command=intent.command,
+                followup=intent.conversation_followup,
+                now=now,
+            )
+            return followup.as_dict()
+        existing = self._pending_followup(endpoint_id=endpoint_id, session_id=session_id, now=now)
+        if existing is not None:
+            self._clear_pending_followup(existing)
+        return None
+
+    def _store_pending_followup(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        intent_id: str,
+        command: str,
+        followup: dict[str, Any],
+        now: datetime,
+    ) -> PendingConversationFollowup:
+        ttl_seconds = max(5, min(int(followup.get("ttl_seconds") or 30), 300))
+        pending = PendingConversationFollowup(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            intent_id=intent_id,
+            command=command,
+            prompt=str(followup.get("prompt") or "").strip(),
+            yes_reply_text=str(followup.get("yes_reply_text") or "Okay.").strip(),
+            no_reply_text=str(followup.get("no_reply_text") or "Okay, cancelled.").strip(),
+            context=followup.get("context") if isinstance(followup.get("context"), dict) else {},
+            created_at=now,
+            expires_at=now + timedelta(seconds=ttl_seconds),
+        )
+        self._pending_followups_by_endpoint[endpoint_id] = pending
+        self._pending_followups_by_session[session_id] = pending
+        return pending
+
+    def _clear_pending_followup(self, followup: PendingConversationFollowup) -> None:
+        self._pending_followups_by_endpoint.pop(followup.endpoint_id, None)
+        self._pending_followups_by_session.pop(followup.session_id, None)
 
     def _publish_intent_recognized_event(
         self,

@@ -136,6 +136,78 @@ def time_query_intent_definition() -> dict[str, Any]:
     }
 
 
+def confirmation_intent_definition(*, response: str) -> dict[str, Any]:
+    if response == "yes":
+        examples = ["yes", "yeah", "yep", "correct", "confirm", "do it"]
+        pattern = r"^(?:yes|yeah|yep|correct|confirm|do\s+it)$"
+        command = "voice.confirm.yes"
+        reply_template = "{yes_reply_text}"
+    else:
+        examples = ["no", "nope", "cancel", "do not", "don't"]
+        pattern = r"^(?:no|nope|cancel|do\s+not|don't)$"
+        command = "voice.confirm.no"
+        reply_template = "{no_reply_text}"
+    return {
+        "utterance_examples": examples,
+        "patterns": [pattern],
+        "slots": {
+            "response": {"type": "string"},
+            "pending_intent_id": {"type": "string"},
+            "pending_command": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "dispatch": {
+            "type": "local_response",
+            "command": command,
+        },
+        "response": {
+            "reply_template": reply_template,
+        },
+        "reply": {
+            "text_template": reply_template,
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "builtin_confirmation",
+            "response": response,
+        },
+    }
+
+
+def built_in_confirmation_intent(*, response: str) -> dict[str, Any]:
+    now = utc_now_iso()
+    intent_id = f"voice.confirm.{response}"
+    return {
+        "intent_id": intent_id,
+        "intent_name": "Confirm yes" if response == "yes" else "Confirm no",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": confirmation_intent_definition(response=response),
+        "constraints": {
+            "requires_operational_mqtt": False,
+            "dispatch_side_effect": "pending_followup_response",
+            "requires_pending_followup": True,
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "conversation",
+            "owned_by": "voice_node",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def built_in_time_query_intent() -> dict[str, Any]:
     now = utc_now_iso()
     return {
@@ -229,6 +301,16 @@ class VoiceIntentRecord(BaseModel):
         reply = value.get("reply")
         if reply is not None and not isinstance(reply, dict):
             raise ValueError("intent_reply_must_be_object")
+        followup = value.get("followup")
+        if followup is not None and not isinstance(followup, dict):
+            raise ValueError("intent_followup_must_be_object")
+        conversation = value.get("conversation")
+        if conversation is not None:
+            if not isinstance(conversation, dict):
+                raise ValueError("intent_conversation_must_be_object")
+            conversation_followup = conversation.get("followup")
+            if conversation_followup is not None and not isinstance(conversation_followup, dict):
+                raise ValueError("intent_conversation_followup_must_be_object")
         return value
 
 
@@ -252,6 +334,8 @@ class VoiceIntentStateStore:
                 intents=[
                     VoiceIntentRecord.model_validate(built_in_timer_intent()),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
+                    VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")),
+                    VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="no")),
                 ],
                 updated_at=utc_now_iso(),
             )
@@ -279,6 +363,12 @@ class VoiceIntentStateStore:
             seeded = True
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))
+            seeded = True
+        if "voice.confirm.yes" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")))
+            seeded = True
+        if "voice.confirm.no" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="no")))
             seeded = True
         return seeded
 

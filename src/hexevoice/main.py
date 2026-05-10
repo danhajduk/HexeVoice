@@ -530,7 +530,11 @@ def create_app(
 
     @app.post("/api/voice/intents/dispatch", response_model=VoiceIntentDispatchResponse)
     async def voice_intent_dispatch(payload: VoiceIntentDispatchRequest) -> VoiceIntentDispatchResponse:
-        match = assistant_service.match_intent(payload.text)
+        match = assistant_service.match_intent(
+            payload.text,
+            endpoint_id=payload.endpoint_id,
+            session_id=payload.session_id,
+        )
         if match is None:
             return VoiceIntentDispatchResponse(matched=False)
         return VoiceIntentDispatchResponse(
@@ -565,6 +569,7 @@ def create_app(
             recognition_event=result.recognition_event,
             dispatch_event=result.dispatch_event,
             reply_audio=result.reply_audio,
+            conversation_followup=result.conversation_followup,
             latency_ms=result.latency_ms,
         )
 

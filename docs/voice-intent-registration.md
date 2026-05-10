@@ -20,6 +20,7 @@ Seeded built-ins:
 
 - `timer.create`: publishes the existing timer create domain event.
 - `voice.time.query`: Voice Node owned local response for "What is the time?" without an external dispatch side effect. Its reply uses spoken-form clock text, such as `four oh five PM`, so TTS does not read leading-zero minutes literally.
+- `voice.confirm.yes` and `voice.confirm.no`: contextual Voice Node owned responses for pending follow-ups. They only match while the endpoint or session has an active follow-up; standalone "yes" or "no" is ignored by the local intent matcher.
 
 ## Register
 
@@ -95,3 +96,30 @@ Response:
 ```
 
 Assistant turns use the same registered-intent matcher. The timer intent still queues the existing MQTT timer request, including request and sent timestamps, but MQTT publication runs off the voice response path so it does not block STT, intent handling, or TTS. Voice Node owned local responses, such as `voice.time.query`, answer directly from the backend runtime.
+
+## Conversation Follow-Ups
+
+An intent can declare a short-lived yes/no follow-up by adding a `followup`
+object, or `conversation.followup`, to its definition:
+
+```json
+{
+  "definition": {
+    "utterance_examples": ["delete cache"],
+    "dispatch": {"type": "local_response", "command": "debug.delete_cache"},
+    "reply": {"text_template": "Delete cache?"},
+    "followup": {
+      "required": true,
+      "prompt": "Delete cache?",
+      "yes_reply_text": "Deleting cache.",
+      "no_reply_text": "Leaving cache alone.",
+      "ttl_seconds": 30
+    },
+    "matcher": {"type": "exact_example"}
+  }
+}
+```
+
+The pending follow-up is scoped to the endpoint and session, expires after 5 to
+300 seconds, and is cleared after the first `voice.confirm.yes`,
+`voice.confirm.no`, or a different local intent.

@@ -17,18 +17,20 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
 
     snapshot = registry.snapshot()
 
-    assert snapshot["registered_count"] == 2
-    assert snapshot["active_count"] == 2
+    assert snapshot["registered_count"] == 4
+    assert snapshot["active_count"] == 4
     assert snapshot["intents"][0]["intent_id"] == "timer.create"
     assert snapshot["intents"][1]["intent_id"] == "voice.time.query"
     assert snapshot["intents"][1]["owner_service"] == "hexevoice"
     assert snapshot["intents"][1]["metadata"]["owned_by"] == "voice_node"
+    assert snapshot["intents"][2]["intent_id"] == "voice.confirm.yes"
+    assert snapshot["intents"][3]["intent_id"] == "voice.confirm.no"
 
     registry.transition_intent(intent_id="timer.create", status="disabled", reason="unit_test")
     reloaded = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
 
     assert reloaded.get_intent(intent_id="timer.create")["status"] == "disabled"
-    assert reloaded.snapshot()["active_count"] == 1
+    assert reloaded.snapshot()["active_count"] == 3
 
 
 def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
@@ -55,6 +57,31 @@ def test_registered_intent_finder_answers_voice_node_time_query(tmp_path):
     assert match.slots["time_text"]
     assert match.slots["requested_at"] == requested_at.isoformat()
     assert match.reply_text.startswith("It is ")
+
+
+def test_confirmation_intents_require_pending_followup(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    finder = LocalIntentFinder(registry=registry)
+    requested_at = datetime(2026, 5, 9, 18, 34, tzinfo=UTC)
+
+    assert finder.find("yes", requested_at=requested_at) is None
+
+    match = finder.find(
+        "yes",
+        requested_at=requested_at,
+        pending_followup={
+            "intent_id": "debug.delete_cache",
+            "command": "debug.delete_cache",
+            "prompt": "Delete cache?",
+            "yes_reply_text": "Deleting cache.",
+            "no_reply_text": "Leaving cache alone.",
+        },
+    )
+
+    assert match.command == "voice.confirm.yes"
+    assert match.reply_text == "Deleting cache."
+    assert match.slots["response"] == "yes"
+    assert match.slots["pending_intent_id"] == "debug.delete_cache"
 
 
 def test_time_query_formats_clock_for_tts():
@@ -85,7 +112,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     )
 
     assert registered.status_code == 200
-    assert registered.json()["registered_count"] == 3
+    assert registered.json()["registered_count"] == 5
 
     dispatch = client.post(
         "/api/voice/intents/dispatch",
@@ -107,7 +134,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
         json={"status": "disabled", "reason": "unit_test"},
     )
     assert disabled.status_code == 200
-    assert disabled.json()["active_count"] == 2
+    assert disabled.json()["active_count"] == 4
 
     dispatch_after_disable = client.post(
         "/api/voice/intents/dispatch",
@@ -188,6 +215,57 @@ def test_assistant_turn_answers_voice_node_time_intent_in_app(tmp_path):
     assert payload["provider_id"] == "registered_intent"
     assert payload["spoken_text"].startswith("It is ")
     assert payload["intent_latency_ms"] >= 0
+
+
+def test_assistant_turn_supports_yes_no_followup_context(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")))
+    client.post(
+        "/api/voice/intents",
+        json={
+            "intent_id": "debug.delete_cache",
+            "intent_name": "Delete cache",
+            "definition": {
+                "utterance_examples": ["delete cache"],
+                "dispatch": {"type": "local_response", "command": "debug.delete_cache"},
+                "reply": {"text_template": "Delete cache?"},
+                "followup": {
+                    "required": True,
+                    "prompt": "Delete cache?",
+                    "yes_reply_text": "Deleting cache.",
+                    "no_reply_text": "Leaving cache alone.",
+                    "ttl_seconds": 30,
+                },
+                "matcher": {"type": "exact_example"},
+            },
+        },
+    )
+
+    prompt = client.post(
+        "/api/assistant/turn",
+        json={"endpoint_id": "box-1", "text": "Hexa, delete cache"},
+    )
+    assert prompt.status_code == 200
+    prompt_payload = prompt.json()
+    assert prompt_payload["command"] == "debug.delete_cache"
+    assert prompt_payload["spoken_text"] == "Delete cache?"
+    assert prompt_payload["conversation_followup"]["intent_id"] == "debug.delete_cache"
+
+    confirmation = client.post(
+        "/api/assistant/turn",
+        json={"endpoint_id": "box-1", "text": "yes"},
+    )
+    assert confirmation.status_code == 200
+    confirmation_payload = confirmation.json()
+    assert confirmation_payload["handled_locally"] is True
+    assert confirmation_payload["command"] == "voice.confirm.yes"
+    assert confirmation_payload["spoken_text"] == "Deleting cache."
+
+    stale_yes = client.post(
+        "/api/assistant/turn",
+        json={"endpoint_id": "box-1", "text": "yes"},
+    )
+    assert stale_yes.status_code == 200
+    assert stale_yes.json()["handled_locally"] is False
 
 
 def test_intent_invoke_can_create_event_named_reply_audio_sidecar(tmp_path):

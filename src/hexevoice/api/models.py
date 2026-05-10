@@ -36,6 +36,7 @@ class AssistantTurnResponse(BaseModel):
     model: str | None = None
     error: str | None = None
     intent_latency_ms: float | None = None
+    conversation_followup: dict[str, Any] | None = None
 
 
 class VoiceIntentRegisterRequest(BaseModel):
@@ -120,6 +121,7 @@ class VoiceIntentInvokeResponse(BaseModel):
     recognition_event: dict[str, Any] | None = None
     dispatch_event: dict[str, Any] | None = None
     reply_audio: dict[str, Any] | None = None
+    conversation_followup: dict[str, Any] | None = None
     latency_ms: float | None = None
 
 

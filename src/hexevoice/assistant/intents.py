@@ -20,19 +20,31 @@ class LocalIntentMatch:
     definition: dict[str, Any] | None = None
     dispatch: dict[str, Any] | None = None
     reply: dict[str, Any] | None = None
+    conversation_followup: dict[str, Any] | None = None
 
 
 class LocalIntentFinder:
     def __init__(self, *, registry: VoiceIntentRegistry | None = None) -> None:
         self._registry = registry
 
-    def find(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+    def find(
+        self,
+        text: str,
+        *,
+        requested_at: datetime | None = None,
+        pending_followup: dict[str, Any] | None = None,
+    ) -> LocalIntentMatch | None:
         normalized = _normalize_text(text)
         if not normalized:
             return None
         extraction_time = requested_at or datetime.now(UTC)
         for intent in self._candidate_intents():
-            match = self._match_registered_intent(intent, normalized, requested_at=extraction_time)
+            match = self._match_registered_intent(
+                intent,
+                normalized,
+                requested_at=extraction_time,
+                pending_followup=pending_followup,
+            )
             if match is not None:
                 return match
         if self._registry is None:
@@ -68,6 +80,7 @@ class LocalIntentFinder:
         text: str,
         *,
         requested_at: datetime,
+        pending_followup: dict[str, Any] | None = None,
     ) -> LocalIntentMatch | None:
         definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
         dispatch = definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else {}
@@ -75,6 +88,27 @@ class LocalIntentFinder:
         command = str(dispatch.get("command") or intent.get("intent_id") or "").strip()
         if not command:
             return None
+
+        if (
+            matcher.get("type") == "builtin_confirmation"
+            or command in {"voice.confirm.yes", "voice.confirm.no"}
+            or intent.get("intent_id") in {"voice.confirm.yes", "voice.confirm.no"}
+        ):
+            response = str(matcher.get("response") or command.rsplit(".", 1)[-1]).strip().lower()
+            if response not in {"yes", "no"}:
+                return None
+            if not _is_confirmation_response(text, response):
+                return None
+            if not pending_followup:
+                self._record_match(intent.get("intent_id"), status="ignored", reason="missing_pending_followup")
+                return None
+            return self._build_confirmation_match(
+                intent=intent,
+                command=command,
+                response=response,
+                pending_followup=pending_followup,
+                requested_at=requested_at,
+            )
 
         if matcher.get("type") == "builtin_timer" or command == "timer.create" or intent.get("intent_id") == "timer.create":
             match = self._find_timer_create(text, requested_at=requested_at)
@@ -137,16 +171,54 @@ class LocalIntentFinder:
         self._record_match(intent.get("intent_id"), status="matched")
         return self._build_generic_match(intent=intent, command=command, slots=extracted_slots)
 
+    def _build_confirmation_match(
+        self,
+        *,
+        intent: dict[str, Any],
+        command: str,
+        response: str,
+        pending_followup: dict[str, Any],
+        requested_at: datetime,
+    ) -> LocalIntentMatch:
+        self._record_match(intent.get("intent_id"), status="matched")
+        slots = {
+            "response": response,
+            "pending_intent_id": str(pending_followup.get("intent_id") or ""),
+            "pending_command": str(pending_followup.get("command") or ""),
+            "pending_prompt": str(pending_followup.get("prompt") or ""),
+            "requested_at": requested_at.isoformat(),
+        }
+        reply_key = "yes_reply_text" if response == "yes" else "no_reply_text"
+        default_reply = "Okay." if response == "yes" else "Okay, cancelled."
+        reply_text = str(pending_followup.get(reply_key) or default_reply).strip()
+        definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
+        return LocalIntentMatch(
+            intent=str(intent.get("intent_id") or command),
+            command=command,
+            slots=slots,
+            reply_text=reply_text,
+            provider_id="registered_intent",
+            intent_name=str(intent.get("intent_name")) if intent.get("intent_name") else None,
+            service_id=str(intent.get("service_id")) if intent.get("service_id") else None,
+            version=str(intent.get("version")) if intent.get("version") else None,
+            definition=definition,
+            dispatch=definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else None,
+            reply=definition.get("reply") if isinstance(definition.get("reply"), dict) else None,
+        )
+
     def _build_generic_match(self, *, intent: dict[str, Any], command: str, slots: dict[str, Any]) -> LocalIntentMatch:
         definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
         response = definition.get("response") if isinstance(definition.get("response"), dict) else {}
         reply = definition.get("reply") if isinstance(definition.get("reply"), dict) else {}
+        conversation_followup = _extract_conversation_followup(definition, slots)
         reply_text = str(reply.get("text") or reply.get("text_template") or response.get("reply_text") or response.get("reply_template") or "").strip()
         if reply_text:
             try:
                 reply_text = reply_text.format(**slots)
             except (KeyError, ValueError):
                 pass
+        if not reply_text and conversation_followup and conversation_followup.get("prompt"):
+            reply_text = str(conversation_followup["prompt"]).strip()
         if not reply_text:
             name = str(intent.get("intent_name") or intent.get("intent_id") or command)
             reply_text = f"{name} accepted."
@@ -162,6 +234,7 @@ class LocalIntentFinder:
             definition=definition,
             dispatch=definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else None,
             reply=reply,
+            conversation_followup=conversation_followup,
         )
 
     def _record_match(self, intent_id: object, *, status: str, reason: str | None = None) -> None:
@@ -222,6 +295,52 @@ def _matches_examples(text: str, examples: object) -> bool:
         return False
     normalized_examples = {_normalize_text(example) for example in examples if isinstance(example, str)}
     return text in normalized_examples
+
+
+def _is_confirmation_response(text: str, response: str) -> bool:
+    if response == "yes":
+        return bool(re.match(r"^(?:yes|yeah|yep|correct|confirm|do\s+it)$", text))
+    if response == "no":
+        return bool(re.match(r"^(?:no|nope|cancel|do\s+not|don't)$", text))
+    return False
+
+
+def _extract_conversation_followup(definition: dict[str, Any], slots: dict[str, Any]) -> dict[str, Any] | None:
+    followup = definition.get("followup")
+    conversation = definition.get("conversation") if isinstance(definition.get("conversation"), dict) else {}
+    if not isinstance(followup, dict):
+        followup = conversation.get("followup")
+    if not isinstance(followup, dict):
+        return None
+    required = bool(followup.get("required", True))
+    prompt = _format_optional_template(followup.get("prompt") or followup.get("prompt_template"), slots)
+    yes_reply = _format_optional_template(followup.get("yes_reply_text") or followup.get("affirmative_reply_text"), slots)
+    no_reply = _format_optional_template(followup.get("no_reply_text") or followup.get("negative_reply_text"), slots)
+    ttl_seconds = followup.get("ttl_seconds", 30)
+    try:
+        ttl_seconds = int(ttl_seconds)
+    except (TypeError, ValueError):
+        ttl_seconds = 30
+    ttl_seconds = max(5, min(ttl_seconds, 300))
+    context = followup.get("context") if isinstance(followup.get("context"), dict) else {}
+    return {
+        "required": required,
+        "prompt": prompt,
+        "yes_reply_text": yes_reply or "Okay.",
+        "no_reply_text": no_reply or "Okay, cancelled.",
+        "ttl_seconds": ttl_seconds,
+        "context": context,
+    }
+
+
+def _format_optional_template(value: object, slots: dict[str, Any]) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    template = value.strip()
+    try:
+        return template.format(**slots)
+    except (KeyError, ValueError):
+        return template
 
 
 def _extract_timer_duration_text(text: str) -> str | None:

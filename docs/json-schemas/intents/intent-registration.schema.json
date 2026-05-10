@@ -74,7 +74,30 @@
           },
           "additionalProperties": true
         },
-        "reply": { "$ref": "#/$defs/reply_options" }
+        "reply": { "$ref": "#/$defs/reply_options" },
+        "followup": { "$ref": "#/$defs/followup_options" },
+        "conversation": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "followup": { "$ref": "#/$defs/followup_options" }
+          }
+        }
+      }
+    },
+    "followup_options": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "required": { "type": "boolean", "default": true },
+        "prompt": { "type": "string" },
+        "prompt_template": { "type": "string" },
+        "yes_reply_text": { "type": "string" },
+        "affirmative_reply_text": { "type": "string" },
+        "no_reply_text": { "type": "string" },
+        "negative_reply_text": { "type": "string" },
+        "ttl_seconds": { "type": "integer", "minimum": 5, "maximum": 300, "default": 30 },
+        "context": { "type": "object" }
       }
     },
     "reply_options": {
