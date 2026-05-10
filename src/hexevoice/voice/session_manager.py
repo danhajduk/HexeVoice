@@ -645,14 +645,15 @@ class VoiceSessionManager:
         if self._active_session is not None:
             if (
                 self._active_session.endpoint_id == event.endpoint_id
-                and self._active_session.session_state == "idle"
+                and self._active_session.session_state in {"idle", "wake_detected", "listening"}
                 and self._chunk_count == 0
             ):
                 log.info(
-                    "Replacing stale idle voice session: endpoint_id=%s stale_session_id=%s incoming_session_id=%s",
+                    "Replacing stale pre-audio voice session: endpoint_id=%s stale_session_id=%s incoming_session_id=%s stale_state=%s",
                     event.endpoint_id,
                     self._active_session.session_id,
                     event.session_id,
+                    self._active_session.session_state,
                 )
                 self._set_session_state("cancelled")
                 self._active_session.cancel_reason = "superseded_by_new_session"

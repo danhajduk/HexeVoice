@@ -152,6 +152,46 @@ def test_voice_websocket_rejects_second_session_when_current_session_has_audio(t
     assert response["payload"]["code"] == "active_session_exists"
 
 
+def test_voice_websocket_replaces_pre_audio_button_session_from_same_endpoint(tmp_path):
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        session_history_store=history_store,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                session_id="button-session",
+                payload={"wake_source": "button", "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        assert websocket.receive_json()["event_type"] == "wake.accepted"
+        assert websocket.receive_json()["event_type"] == "session.state"
+
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                session_id="fresh-session",
+                payload={"wake_source": "button", "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        wake_response = websocket.receive_json()
+        state_response = websocket.receive_json()
+
+    assert wake_response["event_type"] == "wake.accepted"
+    assert wake_response["session_id"] == "fresh-session"
+    assert state_response["event_type"] == "session.state"
+    assert state_response["session_id"] == "fresh-session"
+
+    sessions = client.get("/api/voice/sessions").json()["sessions"]
+    stale = next(session for session in sessions if session["session_id"] == "button-session")
+    assert stale["session_state"] == "cancelled"
+    assert stale["completion_reason"] == "superseded_by_new_session"
+
+
 def test_voice_websocket_clears_last_error_after_successful_session_state(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
