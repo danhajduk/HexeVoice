@@ -8,7 +8,6 @@
 [FUTURE TODO] Task 076: Connect Interaction Node `ui.play_sound` audio_url playback to Voice Node generated TTS clips for kiosk speech
 [FUTURE TODO] Task 077: Later Voice Node TTS extensions: streaming URLs, voice/language listing, common-clip cache, and playback/fetch/expiry events
 [FUTURE TODO] Task 094: Add STT silence trimming before transcription to remove wake tails, pre-roll, and post-speech padding
-[FUTURE TODO] Task 096: Add STT warm-model health, last-load metadata, and reload detection to backend status
 [FUTURE TODO] Task 098: Evaluate streaming STT so transcription can start before utterance capture fully ends
 [FUTURE TODO] Task 099: Add an intent-first STT path using a faster model with fallback to the higher-accuracy model
 [FUTURE TODO] Task 100: Evaluate constrained grammar or hot-phrase recognition for common local commands

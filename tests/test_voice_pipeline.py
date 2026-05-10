@@ -408,6 +408,10 @@ def test_faster_whisper_stt_adapter_preloads_model(tmp_path):
     assert second_preload["loaded"] is True
     assert captured["loads"] == 1
     assert adapter.status()["loaded"] is True
+    assert adapter.status()["loaded_at"] is not None
+    assert adapter.status()["load_count"] == 1
+    assert adapter.status()["reload_required"] is False
+    assert adapter.status()["loaded_config"]["model"] == "base.en"
     assert adapter.status()["last_load_duration_ms"] is not None
 
 

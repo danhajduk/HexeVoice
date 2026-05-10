@@ -9,6 +9,8 @@ from pathlib import Path
 import subprocess
 import time
 
+import httpx
+
 from hexevoice.api.models import (
     ApiHealthResponse,
     CapabilitySetupProviderSelectionResponse,
@@ -43,6 +45,7 @@ class NodeRuntimeService:
         onboarding_state_store: OnboardingStateStore | None = None,
         supervisor_client: SupervisorApiClient | None = None,
         service_command_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
+        external_stt_health_fetcher: Callable[[], dict[str, object]] | None = None,
     ) -> None:
         self._settings = settings
         self._onboarding_state_store = onboarding_state_store or OnboardingStateStore(
@@ -53,6 +56,7 @@ class NodeRuntimeService:
         self._supervisor_last_error: str | None = None
         self._supervisor_last_seen: str | None = None
         self._service_command_runner = service_command_runner or self._run_service_command
+        self._external_stt_health_fetcher = external_stt_health_fetcher
         self._started_at_monotonic = time.monotonic()
 
     def api_health_payload(self) -> ApiHealthResponse:
@@ -302,6 +306,7 @@ class NodeRuntimeService:
             if self._external_stt_enabled()
             else backend_usage
         )
+        stt_health = self._external_stt_health_payload() if self._external_stt_enabled() else {}
         return ServiceStatusResponse(
             backend="running",
             frontend="defined",
@@ -333,6 +338,13 @@ class NodeRuntimeService:
                     else "STT currently runs in the backend process.",
                     "resource_scope": "systemd_user_service" if self._external_stt_enabled() else "backend_process",
                     "resource_usage": stt_usage,
+                    "warm_model_health": stt_health if self._external_stt_enabled() else None,
+                    "loaded": stt_health.get("loaded") if self._external_stt_enabled() else None,
+                    "loaded_at": stt_health.get("loaded_at") if self._external_stt_enabled() else None,
+                    "last_load_duration_ms": stt_health.get("last_load_duration_ms")
+                    if self._external_stt_enabled()
+                    else None,
+                    "reload_required": stt_health.get("reload_required") if self._external_stt_enabled() else None,
                 },
                 {
                     "component_id": "tts",
@@ -757,6 +769,50 @@ class NodeRuntimeService:
         state = (result.stdout or "").strip().splitlines()
         return (state[0].strip().lower() if state else "") or "unknown"
 
+    def _expected_stt_config(self) -> dict[str, object]:
+        options: dict[str, object] = {
+            "without_timestamps": self._settings.voice_stt_faster_whisper_without_timestamps,
+            "word_timestamps": self._settings.voice_stt_faster_whisper_word_timestamps,
+        }
+        if self._settings.voice_stt_faster_whisper_language:
+            options["language"] = self._settings.voice_stt_faster_whisper_language
+        if self._settings.voice_stt_faster_whisper_beam_size is not None:
+            options["beam_size"] = self._settings.voice_stt_faster_whisper_beam_size
+        if self._settings.voice_stt_faster_whisper_best_of is not None:
+            options["best_of"] = self._settings.voice_stt_faster_whisper_best_of
+        if self._settings.voice_stt_faster_whisper_max_initial_timestamp is not None:
+            options["max_initial_timestamp"] = self._settings.voice_stt_faster_whisper_max_initial_timestamp
+        return {
+            "model": self._settings.voice_stt_faster_whisper_model,
+            "device": self._settings.voice_stt_faster_whisper_device,
+            "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
+            "transcribe_options": options,
+        }
+
+    def _external_stt_health_payload(self) -> dict[str, object]:
+        if self._external_stt_health_fetcher is not None:
+            payload = dict(self._external_stt_health_fetcher())
+        else:
+            try:
+                with httpx.Client(timeout=min(self._settings.voice_stt_timeout_s, 2.0)) as client:
+                    response = client.get(f"{self._settings.resolved_voice_stt_service_base_url()}/health")
+                    response.raise_for_status()
+                    payload = response.json()
+            except Exception as exc:
+                return {"healthy": False, "configured": True, "last_error": str(exc), "reload_required": None}
+
+        expected = self._expected_stt_config()
+        observed = {
+            "model": payload.get("model"),
+            "device": payload.get("device"),
+            "compute_type": payload.get("compute_type"),
+            "transcribe_options": payload.get("transcribe_options"),
+        }
+        payload["expected_config"] = expected
+        payload["reload_required"] = observed != expected
+        payload["reload_reason"] = "config_mismatch" if payload["reload_required"] else None
+        return payload
+
     def _piper_tts_service_summary(self) -> dict[str, object]:
         state = self._piper_tts_state()
         process = self._docker_container_process_payload(self._settings.piper_tts_container_name)
@@ -778,6 +834,7 @@ class NodeRuntimeService:
     def _external_stt_service_summary(self) -> dict[str, object]:
         state = self._external_stt_state()
         process = self._systemd_service_process_payload(self._settings.voice_stt_service_name)
+        health = self._external_stt_health_payload()
         return {
             "service_id": self._settings.voice_stt_service_id,
             "service_name": "faster-whisper STT",
@@ -795,6 +852,13 @@ class NodeRuntimeService:
             "model": self._settings.voice_stt_faster_whisper_model,
             "device": self._settings.voice_stt_faster_whisper_device,
             "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
+            "warm_model_health": health,
+            "loaded": health.get("loaded"),
+            "loaded_at": health.get("loaded_at"),
+            "load_count": health.get("load_count"),
+            "last_load_duration_ms": health.get("last_load_duration_ms"),
+            "reload_required": health.get("reload_required"),
+            "reload_reason": health.get("reload_reason"),
             **self._service_process_fields(process),
         }
 
@@ -806,7 +870,8 @@ class NodeRuntimeService:
     ) -> dict[str, object]:
         if self._external_stt_enabled():
             service = self._external_stt_service_summary()
-            healthy = service.get("state") in {"active", "running"}
+            health = service.get("warm_model_health") if isinstance(service.get("warm_model_health"), dict) else {}
+            healthy = service.get("state") in {"active", "running"} and bool(health.get("healthy", True))
             service.update(
                 {
                     "service_id": "stt_engine",
@@ -826,7 +891,12 @@ class NodeRuntimeService:
                         "model": self._settings.voice_stt_faster_whisper_model,
                         "healthy": healthy,
                         "configured": True,
-                        "last_error": None if healthy else service.get("state"),
+                        "loaded": health.get("loaded"),
+                        "loaded_at": health.get("loaded_at"),
+                        "load_count": health.get("load_count"),
+                        "last_load_duration_ms": health.get("last_load_duration_ms"),
+                        "reload_required": health.get("reload_required"),
+                        "last_error": health.get("last_error") or (None if healthy else service.get("state")),
                     },
                 }
             )

@@ -331,3 +331,8 @@ Task #097
 Step objective: Add STT timing breakdown metrics.
 What changed: Added `timing_breakdown_ms` to STT transcript results. Local faster-whisper now records audio preparation, model transcribe call, segment decoding, post-processing, and total timing; the external STT service returns the same block and the backend preserves it.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_stt_service.py tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it tests/test_voice_pipeline.py::test_external_faster_whisper_stt_adapter_posts_audio_to_service tests/test_voice_pipeline.py::test_external_faster_whisper_stt_status_clears_stale_connection_error` passed with 6 tests.
+###########
+Task #096
+Step objective: Surface STT warm-model health and reload detection.
+What changed: Local faster-whisper status now includes load count, loaded-at timestamp, loaded config, and reload-required state. Backend runtime/service metadata fetches external STT health, exposes warm model load metadata, and marks reload required when the running STT service config differs from backend expectations.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_preloads_model tests/test_stt_service.py tests/test_supervisor_runtime.py::test_external_stt_service_status_action_and_supervisor_metadata tests/test_supervisor_runtime.py::test_external_stt_runtime_metadata_marks_reload_required_on_config_mismatch` passed with 6 tests.

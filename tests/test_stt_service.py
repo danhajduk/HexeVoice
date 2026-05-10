@@ -37,7 +37,14 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
             captured["max_initial_timestamp"] = max_initial_timestamp
 
         def status(self):
-            return {"healthy": True, "model": captured["model_name"], "loaded": False}
+            return {
+                "healthy": True,
+                "model": captured["model_name"],
+                "loaded": False,
+                "loaded_at": None,
+                "load_count": 0,
+                "reload_required": False,
+            }
 
         def preload(self):
             return {"loaded": True, "model": captured["model_name"], "duration_ms": 1.2}
@@ -86,6 +93,8 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
 
     assert health.status_code == 200
     assert health.json()["provider"] == "external_faster_whisper"
+    assert health.json()["loaded"] is False
+    assert health.json()["reload_required"] is False
     assert preload.json()["loaded"] is True
     assert response.status_code == 200
     assert response.json()["text"] == "what time"

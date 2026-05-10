@@ -255,6 +255,9 @@ class FasterWhisperSpeechToTextAdapter:
         self._last_timing_breakdown_ms: dict[str, float] = {}
         self._last_text_chars: int | None = None
         self._last_load_duration_ms: float | None = None
+        self._loaded_at: datetime | None = None
+        self._load_count = 0
+        self._loaded_config: dict[str, object] | None = None
 
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         if not audio.audio_bytes:
@@ -361,6 +364,10 @@ class FasterWhisperSpeechToTextAdapter:
             "transcribe_options": self._transcribe_options(),
             "temp_dir": str(self._temp_dir),
             "loaded": self._model is not None,
+            "loaded_at": self._loaded_at.isoformat() if self._loaded_at else None,
+            "load_count": self._load_count,
+            "loaded_config": self._loaded_config,
+            "reload_required": self._reload_required(),
             "last_load_duration_ms": self._last_load_duration_ms,
             "last_duration_ms": self._last_duration_ms,
             "last_timing_breakdown_ms": self._last_timing_breakdown_ms,
@@ -381,6 +388,9 @@ class FasterWhisperSpeechToTextAdapter:
             started_at = time.perf_counter()
             self._model = factory(self._model_name, device=self._device, compute_type=self._compute_type)
             self._last_load_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            self._loaded_at = datetime.now(UTC)
+            self._load_count += 1
+            self._loaded_config = self._current_config()
             log.info(
                 "Local STT model loaded: provider=faster_whisper model=%s device=%s compute_type=%s duration_ms=%s",
                 self._model_name,
@@ -408,6 +418,17 @@ class FasterWhisperSpeechToTextAdapter:
         if self._max_initial_timestamp is not None:
             options["max_initial_timestamp"] = self._max_initial_timestamp
         return options
+
+    def _current_config(self) -> dict[str, object]:
+        return {
+            "model": self._model_name,
+            "device": self._device,
+            "compute_type": self._compute_type,
+            "transcribe_options": self._transcribe_options(),
+        }
+
+    def _reload_required(self) -> bool:
+        return self._loaded_config is not None and self._loaded_config != self._current_config()
 
 
 class ExternalFasterWhisperSpeechToTextAdapter:

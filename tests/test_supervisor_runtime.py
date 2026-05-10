@@ -393,6 +393,27 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     store = trusted_ready_store(tmp_path / "state.json")
     script = tmp_path / "faster-whisper-stt-control.sh"
     script.write_text("#!/usr/bin/env bash\n")
+    stt_health = {
+        "provider": "external_faster_whisper",
+        "healthy": True,
+        "configured": True,
+        "model": "base.en",
+        "device": "cpu",
+        "compute_type": "int8",
+        "transcribe_options": {
+            "without_timestamps": True,
+            "word_timestamps": False,
+            "language": "en",
+            "beam_size": 5,
+            "best_of": 5,
+            "max_initial_timestamp": 1.0,
+        },
+        "loaded": True,
+        "loaded_at": "2026-05-10T08:00:00+00:00",
+        "load_count": 1,
+        "last_load_duration_ms": 1234.5,
+        "last_error": None,
+    }
     service = NodeRuntimeService(
         settings=Settings(
             public_api_base_url="http://10.0.0.100:9004",
@@ -404,6 +425,7 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
         onboarding_state_store=store,
         supervisor_client=client,
         service_command_runner=command_runner,
+        external_stt_health_fetcher=lambda: stt_health,
     )
 
     status = service.service_status_payload()
@@ -419,6 +441,9 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_component["resource_scope"] == "systemd_user_service"
     assert stt_component["resource_usage"]["pid"] == os.getpid()
     assert stt_component["resource_usage"]["kind"] == "systemd_user_service"
+    assert stt_component["loaded"] is True
+    assert stt_component["last_load_duration_ms"] == 1234.5
+    assert stt_component["reload_required"] is False
     assert install.accepted is True
     assert result.accepted is True
     assert engine_result.accepted is True
@@ -443,6 +468,10 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_service["pid"] == os.getpid()
     assert stt_service["main_pid"] == os.getpid()
     assert stt_service["process"]["kind"] == "systemd_user_service"
+    assert stt_service["loaded"] is True
+    assert stt_service["loaded_at"] == "2026-05-10T08:00:00+00:00"
+    assert stt_service["last_load_duration_ms"] == 1234.5
+    assert stt_service["reload_required"] is False
     assert stt_service["implementation_health"] == {
         "engine_role": "stt_engine",
         "active_implementation": "external_faster_whisper",
@@ -450,5 +479,55 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
         "model": "base.en",
         "healthy": True,
         "configured": True,
+        "loaded": True,
+        "loaded_at": "2026-05-10T08:00:00+00:00",
+        "load_count": 1,
+        "last_load_duration_ms": 1234.5,
+        "reload_required": False,
         "last_error": None,
     }
+
+
+def test_external_stt_runtime_metadata_marks_reload_required_on_config_mismatch(tmp_path):
+    client = FakeSupervisorClient()
+    command_runner = FakeCommandRunner()
+    store = trusted_ready_store(tmp_path / "state.json")
+    script = tmp_path / "faster-whisper-stt-control.sh"
+    script.write_text("#!/usr/bin/env bash\n")
+    service = NodeRuntimeService(
+        settings=Settings(
+            public_api_base_url="http://10.0.0.100:9004",
+            voice_stt_provider="external_faster_whisper",
+            voice_stt_control_script=script,
+            voice_stt_service_name="hexevoice-stt.service",
+            voice_stt_faster_whisper_model="small.en",
+        ),
+        onboarding_state_store=store,
+        supervisor_client=client,
+        service_command_runner=command_runner,
+        external_stt_health_fetcher=lambda: {
+            "healthy": True,
+            "configured": True,
+            "model": "base.en",
+            "device": "cpu",
+            "compute_type": "int8",
+            "transcribe_options": {
+                "without_timestamps": True,
+                "word_timestamps": False,
+                "language": "en",
+                "beam_size": 5,
+                "best_of": 5,
+                "max_initial_timestamp": 1.0,
+            },
+            "loaded": True,
+            "last_error": None,
+        },
+    )
+
+    asyncio.run(service.supervisor_heartbeat_once())
+
+    services = client.register_payloads[0]["runtime_metadata"]["services"]
+    stt_service = next(service for service in services if service["service_id"] == "stt_engine")
+    assert stt_service["reload_required"] is True
+    assert stt_service["reload_reason"] == "config_mismatch"
+    assert stt_service["warm_model_health"]["expected_config"]["model"] == "small.en"
