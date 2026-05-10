@@ -41,7 +41,7 @@ The conversion variant set is limited to 48 kHz, 22.05 kHz, and 16 kHz for now:
 VOICE_TTS_CONVERSION_SAMPLE_RATES=48000,22050,16000
 ```
 
-At runtime, the Providers dashboard exposes the installed Piper models, each model's raw sample rate discovered from its `.onnx.json` file, the models kept warm, and the enabled conversion sample rates. The same data is available through:
+At runtime, the Providers dashboard exposes the installed Piper models, each model's raw sample rate discovered from its `.onnx.json` file, the models kept warm, and the enabled conversion sample rates. The Runtime status page reports Piper using Piper-specific voice/model sources rather than the generic OpenAI TTS model default. The same data is available through:
 
 ```text
 GET /api/tts/settings
@@ -52,10 +52,10 @@ PUT /api/tts/settings
 
 Python-SoXR/libsoxr is documented in `docs/third-party-licenses.md`.
 
-Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to the official Lessac high voice, which emits 22.05 kHz audio:
+Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to Jenny, which emits 22.05 kHz audio:
 
 ```env
-VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_US-lessac-high
+VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_GB-jenny_dioco-medium
 ```
 
 ## Supervisor Shape

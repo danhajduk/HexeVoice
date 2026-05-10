@@ -209,6 +209,25 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
     assert service.service_status_payload().piper_tts == "running"
 
 
+def test_piper_tts_status_model_uses_endpoint_voice_without_openai_fallback(tmp_path):
+    command_runner = FakeCommandRunner()
+    service = NodeRuntimeService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "state.json",
+            voice_tts_provider="piper",
+            voice_tts_endpoint_voices="esp-pe-1=en_GB-jenny_dioco-medium",
+        ),
+        service_command_runner=command_runner,
+    )
+
+    status = service.service_status_payload()
+    tts_component = next(component for component in status.components if component["component_id"] == "tts")
+
+    assert tts_component["provider"] == "piper"
+    assert tts_component["model"] == "en_GB-jenny_dioco-medium"
+    assert tts_component["model"] != "gpt-4o-mini-tts"
+
+
 def test_piper_tts_service_action_uses_control_script_when_enabled(tmp_path):
     command_runner = FakeCommandRunner()
     script = tmp_path / "piper-tts-control.sh"

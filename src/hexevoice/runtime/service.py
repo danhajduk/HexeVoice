@@ -333,7 +333,7 @@ class NodeRuntimeService:
                     "status": piper_tts_state if self._piper_tts_enabled() else self._settings.voice_tts_provider,
                     "healthy": piper_tts_state == "running" if self._piper_tts_enabled() else True,
                     "provider": self._settings.voice_tts_provider,
-                    "model": self._settings.voice_tts_piper_voice or self._settings.voice_tts_model,
+                    "model": self._tts_component_model(),
                     "restart_target": self._settings.piper_tts_service_id if self._piper_tts_enabled() else "tts",
                     "restart_supported": self._piper_tts_enabled(),
                     "restart_detail": "Piper TTS is supervisor-proxied."
@@ -351,6 +351,21 @@ class NodeRuntimeService:
                 "last_error": self._supervisor_last_error,
             },
         )
+
+    def _tts_component_model(self) -> str:
+        if not self._piper_tts_enabled():
+            return self._settings.voice_tts_model
+
+        candidates: list[str | None] = [
+            self._settings.voice_tts_piper_voice,
+            *self._settings.resolved_voice_tts_endpoint_voices().values(),
+            *self._settings.resolved_piper_tts_warm_voices(),
+        ]
+        for candidate in candidates:
+            model = str(candidate or "").strip()
+            if model:
+                return model
+        return "piper-default"
 
     def _read_proc_status_value_kb(self, key: str) -> int | None:
         try:
