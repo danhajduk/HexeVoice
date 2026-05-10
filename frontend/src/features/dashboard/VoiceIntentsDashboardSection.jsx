@@ -89,6 +89,127 @@ function IntentExamples({ intent }) {
   );
 }
 
+function IntentCard({ intent, onOpen }) {
+  return (
+    <button className="intent-card" type="button" onClick={() => onOpen(intent)}>
+      <div className="intent-card-header">
+        <span className={`status-pill status-pill-${statusTone(intent.status)}`}>
+          {valueOrEmpty(intent.status, "unknown")}
+        </span>
+        <span className="intent-card-updated">{formatLocalDateTime(intent.updated_at)}</span>
+      </div>
+      <div className="intent-card-title-block">
+        <span className="intent-title">{valueOrEmpty(intent.intent_name || intent.intent_id)}</span>
+        <code className="inline-code">{valueOrEmpty(intent.intent_id)}</code>
+      </div>
+      <div className="intent-card-facts">
+        <span>
+          <strong>Service</strong>
+          {valueOrEmpty(intent.service_id)}
+        </span>
+        <span>
+          <strong>Dispatch</strong>
+          {formatDispatch(intent)}
+        </span>
+        <span>
+          <strong>Matcher</strong>
+          {formatMatcher(intent)}
+        </span>
+        <span>
+          <strong>Usage</strong>
+          {formatUsage(intent)}
+        </span>
+      </div>
+      <div className="intent-card-examples">
+        <IntentExamples intent={intent} />
+      </div>
+    </button>
+  );
+}
+
+function IntentDetailPopout({ intent, onClose }) {
+  if (!intent) {
+    return null;
+  }
+
+  return (
+    <div className="intent-detail-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="intent-detail-popout"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Intent contract details"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Intent Contract</p>
+            <h2 className="panel-title">{valueOrEmpty(intent.intent_name || intent.intent_id)}</h2>
+          </div>
+          <button className="btn btn-ghost btn-compact" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="intent-detail-summary">
+          <span className={`status-pill status-pill-${statusTone(intent.status)}`}>
+            {valueOrEmpty(intent.status, "unknown")}
+          </span>
+          <code className="inline-code">{valueOrEmpty(intent.intent_id)}</code>
+          <span className="muted">{valueOrEmpty(intent.version, "v1")}</span>
+        </div>
+        <div className="intent-detail-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Service</span>
+            <span className="fact-grid-value">{valueOrEmpty(intent.service_id)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Owner</span>
+            <span className="fact-grid-value">{valueOrEmpty(intent.owner_service)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Dispatch</span>
+            <span className="fact-grid-value">{formatDispatch(intent)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Matcher</span>
+            <span className="fact-grid-value">{formatMatcher(intent)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Privacy</span>
+            <span className="fact-grid-value">{valueOrEmpty(intent.privacy_class)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Scope</span>
+            <span className="fact-grid-value">{valueOrEmpty(intent.access_scope)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Metadata</span>
+            <span className="fact-grid-value">
+              <MetadataList intent={intent} />
+            </span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Usage</span>
+            <span className="fact-grid-value">{formatUsage(intent)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Updated</span>
+            <span className="fact-grid-value">{formatLocalDateTime(intent.updated_at)}</span>
+          </div>
+        </div>
+        <section className="intent-detail-section">
+          <p className="panel-kicker">Examples</p>
+          <IntentExamples intent={intent} />
+        </section>
+        <section className="intent-detail-section">
+          <p className="panel-kicker">Raw Contract</p>
+          <pre className="code-panel">{JSON.stringify(intent, null, 2)}</pre>
+        </section>
+      </section>
+    </div>
+  );
+}
+
 function decisionText(decision) {
   if (!decision) {
     return "none";
@@ -184,6 +305,7 @@ export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
   const [testError, setTestError] = useState("");
   const [testingIntent, setTestingIntent] = useState(false);
   const [resultMode, setResultMode] = useState("test");
+  const [selectedIntent, setSelectedIntent] = useState(null);
 
   async function handleIntentTest(event) {
     event.preventDefault();
@@ -311,60 +433,14 @@ export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
         {intents.length === 0 ? (
           <div className="callout callout-neutral">No registered intents found.</div>
         ) : (
-          <div className="intent-table-wrap">
-            <table className="intent-registry-table">
-              <thead>
-                <tr>
-                  <th scope="col">Status</th>
-                  <th scope="col">Intent</th>
-                  <th scope="col">Service</th>
-                  <th scope="col">Dispatch</th>
-                  <th scope="col">Matcher</th>
-                  <th scope="col">Examples</th>
-                  <th scope="col">Scope</th>
-                  <th scope="col">Metadata</th>
-                  <th scope="col">Usage</th>
-                  <th scope="col">Updated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {intents.map((intent) => (
-                  <tr key={intent.intent_id}>
-                    <td>
-                      <span className={`status-pill status-pill-${statusTone(intent.status)}`}>
-                        {valueOrEmpty(intent.status, "unknown")}
-                      </span>
-                    </td>
-                    <th scope="row">
-                      <span className="intent-title">{valueOrEmpty(intent.intent_name || intent.intent_id)}</span>
-                      <code className="inline-code">{valueOrEmpty(intent.intent_id)}</code>
-                      <span className="muted">{valueOrEmpty(intent.version, "v1")}</span>
-                    </th>
-                    <td>
-                      <span>{valueOrEmpty(intent.service_id)}</span>
-                      <span className="muted">{valueOrEmpty(intent.owner_service)}</span>
-                    </td>
-                    <td>{formatDispatch(intent)}</td>
-                    <td>{formatMatcher(intent)}</td>
-                    <td>
-                      <IntentExamples intent={intent} />
-                    </td>
-                    <td>
-                      <span>{valueOrEmpty(intent.privacy_class)}</span>
-                      <span className="muted">{valueOrEmpty(intent.access_scope)}</span>
-                    </td>
-                    <td>
-                      <MetadataList intent={intent} />
-                    </td>
-                    <td>{formatUsage(intent)}</td>
-                    <td>{formatLocalDateTime(intent.updated_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="intent-card-grid">
+            {intents.map((intent) => (
+              <IntentCard key={intent.intent_id} intent={intent} onOpen={setSelectedIntent} />
+            ))}
           </div>
         )}
       </section>
+      <IntentDetailPopout intent={selectedIntent} onClose={() => setSelectedIntent(null)} />
     </section>
   );
 }
