@@ -75,11 +75,10 @@ visually harsh at high brightness and may be left on in bedrooms or quiet rooms.
 - On render failure, clear the frame buffer and power-gate the ring.
 - Keep the LED update task independent of audio/VAD tasks.
 - Wi-Fi and disconnected diagnostic patterns should traverse the full ring.
-- Listening should blink the two side LEDs at visual slots `3` and `9`.
+- Listening should keep the two side LEDs at visual slots `3` and `9` steadily on.
 - During capture, the bottom visual LED should be lit orange as the fixed
   recording marker. If the endpoint is still in the listening state, capture
-  should overlay the bottom orange marker while the side listening LEDs continue
-  blinking.
+  should overlay the bottom orange marker while the side listening LEDs stay on.
 - OTA progress should use dim completed-progress LEDs and a brighter moving
   chase LED so the current transfer activity is easy to see.
 

@@ -397,10 +397,8 @@ void fill_voice_pattern(
     case LedPattern::kWakeListening:
       brightness = hexe::board::kLedRingNormalBrightnessCap;
       {
-        const bool listening_blink_on = (frame_index % 8) < 4;
-        const hexe::board::LedRingColor listening_color = listening_blink_on ? accent : color(0, 0, 0);
-        set_pixel(frame, 3, listening_color);
-        set_pixel(frame, 9, listening_color);
+        set_pixel(frame, 3, accent);
+        set_pixel(frame, 9, accent);
         const bool capturing_active = state.vad_speaking || state.audio_streaming;
         if (capturing_active) {
           set_pixel(frame, kBottomLedIndex, color(255, 120, 0));
