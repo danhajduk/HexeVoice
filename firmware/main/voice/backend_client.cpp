@@ -436,6 +436,24 @@ const char *device_state() {
   }
 }
 
+const char *playback_lifecycle_state_name(hexe::PlaybackLifecycleState state) {
+  switch (state) {
+    case hexe::PlaybackLifecycleState::kQueued:
+      return "queued";
+    case hexe::PlaybackLifecycleState::kStarted:
+      return "started";
+    case hexe::PlaybackLifecycleState::kFinished:
+      return "finished";
+    case hexe::PlaybackLifecycleState::kFailed:
+      return "failed";
+    case hexe::PlaybackLifecycleState::kStopped:
+      return "stopped";
+    case hexe::PlaybackLifecycleState::kIdle:
+    default:
+      return "idle";
+  }
+}
+
 std::string heartbeat_url() {
   char buffer[192];
   std::snprintf(
@@ -885,10 +903,13 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(input, "encoding", hexe::config::kEndpointAudioEncoding);
   cJSON_AddNumberToObject(input, "sample_rate_hz", hexe::config::kEndpointAudioSampleRateHz);
   cJSON_AddNumberToObject(input, "channels", hexe::config::kEndpointAudioChannels);
+  cJSON_AddBoolToObject(input, "paused_for_playback", state.mic_paused_for_playback);
   cJSON *output = cJSON_AddObjectToObject(audio, "output");
   cJSON_AddBoolToObject(output, "available", hexe::board::audio_output_ready());
   cJSON_AddNumberToObject(output, "volume_percent", state.output_volume_percent);
   cJSON_AddBoolToObject(output, "muted", state.muted);
+  cJSON_AddBoolToObject(output, "playback_active", state.tts_playback_active);
+  cJSON_AddStringToObject(output, "playback_state", playback_lifecycle_state_name(state.tts_playback_state));
 
   cJSON *controls = cJSON_AddObjectToObject(root, "controls");
   cJSON_AddBoolToObject(controls, "volume", true);

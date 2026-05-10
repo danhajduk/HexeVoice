@@ -29,6 +29,8 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
       audio_url == nullptr ? "none" : audio_url);
   send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "speaker_disabled", 0);
   auto &state = hexe::state();
+  state.tts_playback_active = false;
+  state.tts_playback_state = hexe::PlaybackLifecycleState::kFailed;
   if (!state.muted) {
     state.phase = hexe::idle_or_connecting_phase();
   }
@@ -40,6 +42,8 @@ void play_sd_sound(const char *filename) {
 
 void stop_tts_playback() {
   auto &state = hexe::state();
+  state.tts_playback_active = false;
+  state.tts_playback_state = hexe::PlaybackLifecycleState::kStopped;
   if (!state.muted) {
     state.phase = hexe::idle_or_connecting_phase();
   }

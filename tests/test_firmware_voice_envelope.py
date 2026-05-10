@@ -19,6 +19,7 @@ FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/main/voice/tts_player_ha_voice_
 FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
 FIRMWARE_APP_MAIN = Path("firmware/main/app_main.cpp")
+FIRMWARE_APP_STATE = Path("firmware/main/app_state.h")
 
 
 def test_firmware_voice_events_emit_full_v1_envelope():
@@ -82,9 +83,27 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
 
 def test_firmware_heartbeat_reports_network_metadata():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
+    app_state_source = FIRMWARE_APP_STATE.read_text()
+    tts_source = FIRMWARE_TTS_PLAYER.read_text()
+    pe_tts_source = FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    audio_source = FIRMWARE_AUDIO.read_text()
+    pe_audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
 
     assert "ip_address" in source
     assert "rssi_dbm" in source
+    assert "enum class PlaybackLifecycleState" in app_state_source
+    assert "mic_paused_for_playback" in app_state_source
+    assert "tts_playback_state" in app_state_source
+    assert "paused_for_playback" in source
+    assert "playback_active" in source
+    assert "playback_state" in source
+    assert "playback_lifecycle_state_name" in source
+    assert "set_playback_lifecycle(hexe::PlaybackLifecycleState::kQueued, true)" in tts_source
+    assert "set_playback_lifecycle(hexe::PlaybackLifecycleState::kStarted, true)" in pe_tts_source
+    assert "played ? hexe::PlaybackLifecycleState::kFinished" in pe_tts_source
+    assert "set_playback_lifecycle(hexe::PlaybackLifecycleState::kStopped, false)" in pe_tts_source
+    assert "mic_paused_for_playback = true" in audio_source
+    assert "mic_paused_for_playback = false" in pe_audio_source
     assert "current_ip_address()" in source
     assert "wifi_rssi" in source
 

@@ -277,6 +277,7 @@ bool pause_microphone_for_playback() {
   app_state.vad_enabled = false;
   app_state.vad_speaking = false;
   app_state.vad_level = 0;
+  app_state.mic_paused_for_playback = true;
   g_mic_paused_for_playback = true;
   ESP_LOGI(kTag, "Microphone paused for playback");
   return true;
@@ -288,6 +289,7 @@ void resume_microphone_after_playback() {
   }
 
   g_mic_paused_for_playback = false;
+  hexe::state().mic_paused_for_playback = false;
   if (open_microphone_stream()) {
     ESP_LOGI(kTag, "Microphone resumed after playback");
   }

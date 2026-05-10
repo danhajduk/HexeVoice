@@ -55,6 +55,13 @@ esp_codec_dev_handle_t g_speaker_codec = nullptr;
 volatile bool g_stop_requested = false;
 volatile bool g_playback_active = false;
 
+void set_playback_lifecycle(hexe::PlaybackLifecycleState playback_state, bool active) {
+  g_playback_active = active;
+  auto &state = hexe::state();
+  state.tts_playback_state = playback_state;
+  state.tts_playback_active = active;
+}
+
 int current_output_volume() {
   return std::clamp(hexe::state().output_volume_percent, 0, 100);
 }
@@ -267,11 +274,12 @@ void playback_task(void *arg) {
     if (state.muted) {
       ESP_LOGI(kTag, "Skipping playback request while muted");
       send_playback_event("tts.playback.failed", request, "muted");
-      g_playback_active = false;
+      set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
       continue;
     }
 
     state.phase = hexe::AppPhase::kReplying;
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kStarted, true);
 
     std::vector<uint8_t> audio;
     const bool mic_paused = hexe::board::pause_microphone_for_playback();
@@ -299,7 +307,10 @@ void playback_task(void *arg) {
     } else if (!state.muted && state.phase == hexe::AppPhase::kReplying) {
       state.phase = hexe::AppPhase::kError;
     }
-    g_playback_active = false;
+    set_playback_lifecycle(
+        played ? hexe::PlaybackLifecycleState::kFinished
+               : (g_stop_requested ? hexe::PlaybackLifecycleState::kStopped : hexe::PlaybackLifecycleState::kFailed),
+        false);
   }
 }
 
@@ -349,6 +360,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   if (state.muted) {
     ESP_LOGI(kTag, "Ignoring TTS while muted");
     hexe::voice::send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "muted", 0);
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
     return;
   }
 
@@ -360,12 +372,12 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
       audio_url == nullptr ? "none" : audio_url);
   if (audio_url == nullptr || audio_url[0] == '\0') {
     state.phase = hexe::AppPhase::kReplying;
-    g_playback_active = false;
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
     hexe::voice::send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "missing_audio_url", 0);
     return;
   }
 
-  g_playback_active = true;
+  set_playback_lifecycle(hexe::PlaybackLifecycleState::kQueued, true);
   PlaybackRequest request = {};
   copy_field(request.stream_id, sizeof(request.stream_id), stream_id);
   copy_field(request.content_type, sizeof(request.content_type), content_type);
@@ -373,7 +385,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping TTS playback request because queue is unavailable");
     send_playback_event("tts.playback.failed", request, "queue_unavailable");
-    g_playback_active = false;
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
     state.phase = hexe::AppPhase::kError;
   }
 }
@@ -382,6 +394,7 @@ void play_sd_sound(const char *filename) {
   auto &state = hexe::state();
   if (state.muted) {
     ESP_LOGI(kTag, "Ignoring SD sound while muted");
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
     return;
   }
   if (!hexe::board::sd_card_mounted() || !is_safe_sound_filename(filename)) {
@@ -403,17 +416,17 @@ void play_sd_sound(const char *filename) {
     return;
   }
 
-  g_playback_active = true;
+  set_playback_lifecycle(hexe::PlaybackLifecycleState::kQueued, true);
   if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping SD sound playback request because queue is unavailable");
-    g_playback_active = false;
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
   }
 }
 
 void stop_tts_playback() {
   ESP_LOGI(kTag, "Stopping TTS playback");
   g_stop_requested = true;
-  g_playback_active = false;
+  set_playback_lifecycle(hexe::PlaybackLifecycleState::kStopped, false);
   auto &state = hexe::state();
   if (!state.muted) {
     state.phase = hexe::idle_or_connecting_phase();

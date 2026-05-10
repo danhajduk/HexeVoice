@@ -22,7 +22,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
 - Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
 - Backend heartbeat and voice WebSocket client scaffold: `firmware/main/voice/backend_client.cpp`.
-- Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, command controls, and firmware build metadata.
+- Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, command controls, firmware build metadata, and TTS playback lifecycle diagnostics.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
 - TTS-ready playback scaffold and stop handling in `firmware/main/voice/tts_player.cpp`.
 - Selectable board profile support in `firmware/main/CMakeLists.txt`. `esp_box_3` remains the default profile, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input, AIC3204/I2S TTS output, center-button wake/cancel controls, and hardware-mute controls.
@@ -30,6 +30,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Firmware LED ring board API with a no-op non-PE fallback and an RMT-backed `ha_voice_pe` driver for `off`, `set_solid`, and visual-frame rendering.
 - Voice PE LED ring voice-state and diagnostic patterns for boot, Wi-Fi/backend connection, disconnected, idle/off, wake/listening, capturing, thinking, replying, completed, muted/privacy, speaker-silent volume, OTA progress, and error states.
 - Voice PE rotary dial support: normal rotation adjusts endpoint volume and shows a temporary LED meter; center-held rotation changes the active LED accent color and suppresses the center-button wake/cancel action on release.
+- Firmware tracks TTS playback lifecycle as `idle`, `queued`, `started`, `finished`, `failed`, or `stopped`, and reports whether the microphone is currently paused for playback in endpoint heartbeat audio capabilities.
 
 ## Partial
 

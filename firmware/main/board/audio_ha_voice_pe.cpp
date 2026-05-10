@@ -496,6 +496,7 @@ bool pause_microphone_for_playback() {
     g_mic_paused_for_playback = true;
     hexe::state().vad_enabled = false;
     hexe::state().vad_speaking = false;
+    hexe::state().mic_paused_for_playback = true;
   }
   return true;
 }
@@ -508,6 +509,7 @@ void resume_microphone_after_playback() {
     i2s_channel_enable(g_rx_channel);
     g_mic_paused_for_playback = false;
     hexe::state().vad_enabled = true;
+    hexe::state().mic_paused_for_playback = false;
   }
   xSemaphoreGive(g_mic_mutex);
 }

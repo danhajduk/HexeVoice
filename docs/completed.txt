@@ -113,3 +113,4 @@ Task 106: Add Voice PE diagnostic LED patterns for boot, Wi-Fi/backend connectio
 Task 107: Add Voice PE rotary dial LED affordances for volume display and active color selection without interfering with center-button wake/cancel behavior - Completed on 05/09/2026 13:10
 Task 108: Add backend/firmware tests and docs for Voice PE LED pattern priority, state transitions, and OTA-safe failure behavior - Completed on 05/09/2026 13:12
 Task 111: Add Voice PE firmware post-TTS cooldown and mic ignore window so speaker tail does not trigger wake/VAD or duplicate sessions - Completed on 05/09/2026 20:06
+Task 112: Add explicit firmware playback lifecycle state tracking for playback started, playback finished, mic paused, and mic resumed - Completed on 05/09/2026 20:13

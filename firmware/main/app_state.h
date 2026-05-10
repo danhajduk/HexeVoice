@@ -16,6 +16,15 @@ enum class AppPhase {
   kError,
 };
 
+enum class PlaybackLifecycleState {
+  kIdle,
+  kQueued,
+  kStarted,
+  kFinished,
+  kFailed,
+  kStopped,
+};
+
 struct AppState {
   AppPhase phase{AppPhase::kBooting};
   bool muted{false};
@@ -26,7 +35,10 @@ struct AppState {
   bool vad_enabled{false};
   bool vad_speaking{false};
   bool audio_streaming{false};
+  bool tts_playback_active{false};
+  bool mic_paused_for_playback{false};
   bool media_transfer_active{false};
+  PlaybackLifecycleState tts_playback_state{PlaybackLifecycleState::kIdle};
   int wifi_rssi{-100};
   int vad_level{0};
   int loading_frame{0};
