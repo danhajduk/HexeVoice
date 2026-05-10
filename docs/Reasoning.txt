@@ -289,3 +289,9 @@ Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_api.py tests/test_i
 #############
 All Tasks completed 04/27/2026 01:25:00
 #############
+###########
+Task #117
+Step objective: Move external faster-whisper STT service into src/stt package boundary.
+Chosen fix: Created a standalone stt package for the FastAPI runtime and adapter exports while preserving the old hexevoice.stt_service module as a compatibility shim.
+What changed: Added src/stt/service.py and src/stt/adapters.py, replaced hexevoice.stt_service with a wrapper, updated STT service tests to target the new package, and documented the package boundary.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_stt_service.py tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_preloads_model` passed with 5 tests.

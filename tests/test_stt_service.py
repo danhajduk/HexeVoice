@@ -3,8 +3,8 @@ import base64
 from fastapi.testclient import TestClient
 
 from hexevoice.config.settings import Settings
-from hexevoice.voice.pipeline import SpeechTranscript
-import hexevoice.stt_service as stt_service
+from stt.adapters import SpeechTranscript
+import stt.service as stt_service
 
 
 def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_path):

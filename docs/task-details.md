@@ -955,3 +955,56 @@ Original task details:
   - Operators can test an utterance without side effects, then intentionally invoke it from the same dashboard area.
   - Timer invocation from the UI sends the real timer event and reports the publish decision.
   - Tests cover dry-run-only behavior, successful invoke, disabled intent, invalid required data, and failed downstream dispatch.
+
+## Task 117
+Original task details:
+- Title: Move the external faster-whisper STT service into a dedicated `src/stt/` package boundary
+- Scope:
+  - Create `src/stt/` as the STT-owned runtime package, separate from the HexeVoice backend package.
+  - Move the FastAPI STT service entrypoint out of `src/hexevoice/stt_service.py`.
+  - Move or wrap the faster-whisper STT adapter code so STT runtime code does not live only inside `hexevoice.voice.pipeline`.
+  - Keep the backend-facing STT adapter contract stable while the implementation moves.
+  - Preserve the existing `/health`, `/preload`, and `/transcribe` HTTP API.
+  - Keep startup preload behavior for `VOICE_STT_PRELOAD=true`.
+
+## Task 118
+Original task details:
+- Title: Update STT service launch, tests, and docs after the `src/stt/` package split
+- Scope:
+  - Update `STT_CMD`, `scripts/stack.env.example`, systemd template expectations, and any control scripts to launch the new module path.
+  - Update imports and tests that reference `hexevoice.stt_service`.
+  - Add migration notes for existing installed `hexevoice-stt.service` units.
+  - Verify Supervisor registration still reports `faster_whisper_stt` with the same service id and control path.
+
+## Task 119
+Original task details:
+- Title: Move the Piper TTS service into a dedicated `src/tts/` package boundary
+- Scope:
+  - Create `src/tts/` as the TTS-owned runtime package, separate from the HexeVoice backend package.
+  - Move the Piper FastAPI service code out of `services/piper_tts/app.py` into the new package.
+  - Keep the Docker service wrapper thin, importing or launching the new `src/tts/` module path.
+  - Preserve existing TTS service HTTP APIs, including health, synthesize, model listing, and runtime settings behavior.
+  - Keep model warmup behavior, conversion sample-rate handling, sidecar generation, and cleanup contracts unchanged.
+  - Keep backend TTS orchestration APIs stable while the service implementation moves.
+
+## Task 120
+Original task details:
+- Title: Update TTS service launch, tests, and docs after the `src/tts/` package split
+- Scope:
+  - Update Dockerfile/module launch paths, service imports, and any scripts that reference `services/piper_tts/app.py`.
+  - Update tests that load or import the Piper TTS service directly.
+  - Add migration notes for existing `hexevoice-piper-tts` Docker runtime expectations.
+  - Verify Supervisor registration still reports `piper_tts` with the same service id, container name, and control path.
+
+## Task 121
+Original task details:
+- Title: Move local STT/TTS engine services to Unix-domain-socket-only transport
+- Scope:
+  - Replace local voice engine TCP host/port communication with Unix domain sockets as the normal and required runtime path.
+  - Use a host runtime socket directory, such as `runtime/sockets/`, mounted into Dockerized engine containers.
+  - Allow STT and TTS engines to listen on sockets such as `stt.sock` and `tts.sock`.
+  - Update backend clients to use `httpx` Unix-socket transport for local STT/TTS calls.
+  - Remove normal TCP exposure for local STT/TTS engines.
+  - Keep any TCP mode limited to an explicit development/debug override, not the production default.
+  - Add socket cleanup on service startup so stale socket files do not block restarts.
+  - Document Docker volume, permissions, health-check, and Supervisor visibility implications.
