@@ -1426,6 +1426,10 @@ class VoiceTurnPipeline:
     def status(self) -> dict:
         stt_status = self._stt_adapter.status()
         tts_status = self._tts_adapter.status()
+        if not (tts_status.get("model") or tts_status.get("model_id") or tts_status.get("voice")):
+            first_endpoint_voice = next(iter(self._endpoint_voices.values()), None)
+            if first_endpoint_voice:
+                tts_status = {**tts_status, "model": first_endpoint_voice}
         return {
             "assistant": self._assistant_service.status(),
             "stt": _engine_status(
