@@ -45,7 +45,7 @@ case "$ACTION" in
     ;;
   restart)
     mkdir -p "$(model_dir_abs)"
-    compose up -d --build --force-recreate
+    compose up -d --force-recreate piper_tts
     ;;
   status)
     compose ps

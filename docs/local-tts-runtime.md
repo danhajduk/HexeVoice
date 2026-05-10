@@ -48,7 +48,7 @@ GET /api/tts/settings
 PUT /api/tts/settings
 ```
 
-`PUT /api/tts/settings` writes `runtime/voice_tts_settings.json` and updates `PIPER_TTS_WARM_VOICES` in `scripts/piper-tts.env`. The backend reports `restart_required=true` after saving because warm voice process changes and conversion policy changes are applied when the Piper/backend runtime is restarted.
+`PUT /api/tts/settings` writes `runtime/voice_tts_settings.json` and updates `PIPER_TTS_WARM_VOICES` in `scripts/piper-tts.env`. The backend reports `restart_required=true` after saving because warm voice process changes are applied when the Piper container is restarted, while backend-side conversion policy changes are applied when the backend runtime is restarted.
 
 Python-SoXR/libsoxr is documented in `docs/third-party-licenses.md`.
 
@@ -134,7 +134,7 @@ To build and run the service locally:
 ./scripts/piper-tts-control.sh stop
 ```
 
-The control script creates the local model directory when starting or restarting the container. It does not enable Docker auto-restart; lifecycle intent remains with Core Supervisor.
+The control script creates the local model directory when starting or restarting the container. `restart` recreates only the Piper TTS compose service without rebuilding the image or restarting the backend. Use `build` explicitly when the local Piper wrapper image changes. It does not enable Docker auto-restart; lifecycle intent remains with Core Supervisor.
 
 Operator health checks:
 
