@@ -66,3 +66,51 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
     assert response.json()["provider_id"] == "external_faster_whisper"
     assert captured["audio"].endpoint_id == "esp-pe-1"
     assert captured["audio"].audio_bytes == b"\x00\x00" * 320
+
+
+def test_stt_service_preloads_model_on_startup_when_enabled(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeAdapter:
+        def __init__(self, *, model_name, device, compute_type, temp_dir):
+            pass
+
+        def status(self):
+            return {"healthy": True, "model": "base.en", "loaded": bool(calls)}
+
+        def preload(self):
+            calls.append("preload")
+            return {"loaded": True, "model": "base.en", "duration_ms": 1.2}
+
+    monkeypatch.setattr(stt_service, "FasterWhisperSpeechToTextAdapter", FakeAdapter)
+    app = stt_service.create_app(Settings(runtime_dir=tmp_path, voice_stt_preload=True))
+
+    with TestClient(app) as client:
+        health = client.get("/health")
+
+    assert calls == ["preload"]
+    assert health.json()["loaded"] is True
+
+
+def test_stt_service_skips_startup_preload_when_disabled(monkeypatch, tmp_path):
+    calls = []
+
+    class FakeAdapter:
+        def __init__(self, *, model_name, device, compute_type, temp_dir):
+            pass
+
+        def status(self):
+            return {"healthy": True, "model": "base.en", "loaded": bool(calls)}
+
+        def preload(self):
+            calls.append("preload")
+            return {"loaded": True, "model": "base.en", "duration_ms": 1.2}
+
+    monkeypatch.setattr(stt_service, "FasterWhisperSpeechToTextAdapter", FakeAdapter)
+    app = stt_service.create_app(Settings(runtime_dir=tmp_path, voice_stt_preload=False))
+
+    with TestClient(app) as client:
+        health = client.get("/health")
+
+    assert calls == []
+    assert health.json()["loaded"] is False

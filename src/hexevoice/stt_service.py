@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from typing import Any
@@ -34,6 +35,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         temp_dir=app_settings.resolved_faster_whisper_temp_dir(),
     )
     app = FastAPI(title="HexeVoice STT")
+
+    @app.on_event("startup")
+    async def preload_on_startup() -> None:
+        if not app_settings.voice_stt_preload:
+            return
+        log.info(
+            "Preloading external faster-whisper STT model: model=%s device=%s compute_type=%s",
+            app_settings.voice_stt_faster_whisper_model,
+            app_settings.voice_stt_faster_whisper_device,
+            app_settings.voice_stt_faster_whisper_compute_type,
+        )
+        result = await asyncio.to_thread(adapter.preload)
+        log.info(
+            "External faster-whisper STT preload complete: loaded=%s duration_ms=%s error=%s",
+            result.get("loaded"),
+            result.get("duration_ms"),
+            result.get("error"),
+        )
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
