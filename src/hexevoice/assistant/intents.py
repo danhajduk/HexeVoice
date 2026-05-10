@@ -253,8 +253,50 @@ def _is_time_query(text: str) -> bool:
 
 
 def _format_clock_time(value: datetime) -> str:
-    formatted = value.strftime("%I:%M %p").lstrip("0")
-    return formatted or value.strftime("%H:%M")
+    hour = value.hour % 12 or 12
+    minute = value.minute
+    period = value.strftime("%p")
+    hour_text = _format_clock_number(hour)
+    if minute == 0:
+        return f"{hour_text} {period}"
+    if minute < 10:
+        return f"{hour_text} oh {_format_clock_number(minute)} {period}"
+    return f"{hour_text} {_format_clock_number(minute)} {period}"
+
+
+def _format_clock_number(value: int) -> str:
+    words = {
+        1: "one",
+        2: "two",
+        3: "three",
+        4: "four",
+        5: "five",
+        6: "six",
+        7: "seven",
+        8: "eight",
+        9: "nine",
+        10: "ten",
+        11: "eleven",
+        12: "twelve",
+        13: "thirteen",
+        14: "fourteen",
+        15: "fifteen",
+        16: "sixteen",
+        17: "seventeen",
+        18: "eighteen",
+        19: "nineteen",
+        20: "twenty",
+        30: "thirty",
+        40: "forty",
+        50: "fifty",
+    }
+    if value in words:
+        return words[value]
+    tens = (value // 10) * 10
+    ones = value % 10
+    if tens in words and ones in words:
+        return f"{words[tens]} {words[ones]}"
+    return str(value)
 
 
 _NUMBER_WORDS: dict[str, float] = {

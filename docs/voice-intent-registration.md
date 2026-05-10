@@ -19,7 +19,7 @@ The registry is stored at `VOICE_INTENT_REGISTRY_PATH`, or `voice_intents.json` 
 Seeded built-ins:
 
 - `timer.create`: publishes the existing timer create domain event.
-- `voice.time.query`: Voice Node owned local response for "What is the time?" without an external dispatch side effect.
+- `voice.time.query`: Voice Node owned local response for "What is the time?" without an external dispatch side effect. Its reply uses spoken-form clock text, such as `four oh five PM`, so TTS does not read leading-zero minutes literally.
 
 ## Register
 

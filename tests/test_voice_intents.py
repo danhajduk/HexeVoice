@@ -5,6 +5,7 @@ import os
 from fastapi.testclient import TestClient
 
 from hexevoice.assistant import LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
+from hexevoice.assistant.intents import _format_clock_time
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
 from hexevoice.tts.service import TtsAudioService
@@ -54,6 +55,12 @@ def test_registered_intent_finder_answers_voice_node_time_query(tmp_path):
     assert match.slots["time_text"]
     assert match.slots["requested_at"] == requested_at.isoformat()
     assert match.reply_text.startswith("It is ")
+
+
+def test_time_query_formats_clock_for_tts():
+    assert _format_clock_time(datetime(2026, 5, 9, 16, 5, tzinfo=UTC)) == "four oh five PM"
+    assert _format_clock_time(datetime(2026, 5, 9, 16, 34, tzinfo=UTC)) == "four thirty four PM"
+    assert _format_clock_time(datetime(2026, 5, 9, 16, 0, tzinfo=UTC)) == "four PM"
 
 
 def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
