@@ -64,6 +64,7 @@ class SpeechTranscript:
     provider_id: str = "deterministic"
     model: str | None = None
     duration_ms: float | None = None
+    timing_breakdown_ms: dict[str, float] = field(default_factory=dict)
     error: str | None = None
 
 
@@ -251,6 +252,7 @@ class FasterWhisperSpeechToTextAdapter:
         self._model: Any | None = None
         self._last_error: str | None = None
         self._last_duration_ms: float | None = None
+        self._last_timing_breakdown_ms: dict[str, float] = {}
         self._last_text_chars: int | None = None
         self._last_load_duration_ms: float | None = None
 
@@ -260,9 +262,12 @@ class FasterWhisperSpeechToTextAdapter:
             return SpeechTranscript(text="", confidence=0.0, provider_id="faster_whisper", error="empty_audio")
 
         temp_path: Path | None = None
+        timing: dict[str, float] = {}
         try:
             started_at = time.perf_counter()
             model = self._load_model()
+            prepared_at = time.perf_counter()
+            wav_bytes = audio_file_bytes(audio)
             self._temp_dir.mkdir(parents=True, exist_ok=True)
             with tempfile.NamedTemporaryFile(
                 suffix=".wav",
@@ -270,12 +275,22 @@ class FasterWhisperSpeechToTextAdapter:
                 dir=self._temp_dir,
                 delete=False,
             ) as temp_file:
-                temp_file.write(audio_file_bytes(audio))
+                temp_file.write(wav_bytes)
                 temp_path = Path(temp_file.name)
+            timing["audio_preparation_ms"] = round((time.perf_counter() - prepared_at) * 1000, 2)
 
+            inference_started_at = time.perf_counter()
             segments, _info = model.transcribe(str(temp_path), **self._transcribe_options())
-            text = " ".join(str(getattr(segment, "text", "")).strip() for segment in segments).strip()
+            timing["model_inference_ms"] = round((time.perf_counter() - inference_started_at) * 1000, 2)
+            decoding_started_at = time.perf_counter()
+            segment_texts = [str(getattr(segment, "text", "")).strip() for segment in segments]
+            timing["decoding_ms"] = round((time.perf_counter() - decoding_started_at) * 1000, 2)
+            post_processing_started_at = time.perf_counter()
+            text = " ".join(segment_texts).strip()
+            timing["post_processing_ms"] = round((time.perf_counter() - post_processing_started_at) * 1000, 2)
             self._last_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            timing["total_ms"] = self._last_duration_ms
+            self._last_timing_breakdown_ms = timing
             self._last_text_chars = len(text)
             self._last_error = None
             log.info(
@@ -291,9 +306,11 @@ class FasterWhisperSpeechToTextAdapter:
                 provider_id="faster_whisper",
                 model=self._model_name,
                 duration_ms=self._last_duration_ms,
+                timing_breakdown_ms=timing,
             )
         except Exception as exc:
             self._last_error = str(exc)
+            self._last_timing_breakdown_ms = timing
             log.error(
                 "Local STT failed: provider=faster_whisper endpoint_id=%s session_id=%s model=%s error=%s",
                 audio.endpoint_id,
@@ -346,6 +363,7 @@ class FasterWhisperSpeechToTextAdapter:
             "loaded": self._model is not None,
             "last_load_duration_ms": self._last_load_duration_ms,
             "last_duration_ms": self._last_duration_ms,
+            "last_timing_breakdown_ms": self._last_timing_breakdown_ms,
             "last_text_chars": self._last_text_chars,
             "last_error": self._last_error,
         }
@@ -407,6 +425,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
         self._http_client = http_client
         self._last_error: str | None = None
         self._last_duration_ms: float | None = None
+        self._last_timing_breakdown_ms: dict[str, float] = {}
 
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         if not audio.audio_bytes:
@@ -437,6 +456,8 @@ class ExternalFasterWhisperSpeechToTextAdapter:
             response.raise_for_status()
             payload = response.json()
             self._last_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            timing_breakdown = payload.get("timing_breakdown_ms")
+            self._last_timing_breakdown_ms = timing_breakdown if isinstance(timing_breakdown, dict) else {}
             self._last_error = None
             return SpeechTranscript(
                 text=str(payload.get("text") or "").strip(),
@@ -444,6 +465,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 provider_id="external_faster_whisper",
                 model=str(payload.get("model") or self._model_name),
                 duration_ms=payload.get("duration_ms") or self._last_duration_ms,
+                timing_breakdown_ms=self._last_timing_breakdown_ms,
                 error=payload.get("error"),
             )
         except Exception as exc:
@@ -497,6 +519,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 "model": payload.get("model") or self._model_name,
                 "service": payload,
                 "last_duration_ms": self._last_duration_ms,
+                "last_timing_breakdown_ms": self._last_timing_breakdown_ms,
                 "last_error": self._last_error,
             }
         except Exception as exc:
@@ -508,6 +531,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 "base_url": self._base_url,
                 "model": self._model_name,
                 "last_duration_ms": self._last_duration_ms,
+                "last_timing_breakdown_ms": self._last_timing_breakdown_ms,
                 "last_error": self._last_error,
             }
         finally:

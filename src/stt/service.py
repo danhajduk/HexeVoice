@@ -101,6 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "provider_id": "external_faster_whisper",
             "model": transcript.model,
             "duration_ms": transcript.duration_ms,
+            "timing_breakdown_ms": transcript.timing_breakdown_ms,
             "error": transcript.error,
         }
 

@@ -56,6 +56,9 @@ The runtime accepts faster-whisper tuning via `VOICE_STT_FASTER_WHISPER_LANGUAGE
 `VOICE_STT_FASTER_WHISPER_WITHOUT_TIMESTAMPS`,
 `VOICE_STT_FASTER_WHISPER_WORD_TIMESTAMPS`, and
 `VOICE_STT_FASTER_WHISPER_MAX_INITIAL_TIMESTAMP`.
+STT transcription responses include `timing_breakdown_ms` with audio
+preparation, model transcribe call, decoding, post-processing, and total
+durations for latency debugging.
 
 The Piper TTS runtime code lives in the standalone `src/tts/` package.
 `services/piper_tts/app.py` remains as a compatibility wrapper, while the

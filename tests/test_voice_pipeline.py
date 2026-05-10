@@ -359,6 +359,11 @@ def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path
     assert transcript.provider_id == "faster_whisper"
     assert transcript.model == "base.en"
     assert transcript.duration_ms is not None
+    assert transcript.timing_breakdown_ms["audio_preparation_ms"] >= 0
+    assert transcript.timing_breakdown_ms["model_inference_ms"] >= 0
+    assert transcript.timing_breakdown_ms["decoding_ms"] >= 0
+    assert transcript.timing_breakdown_ms["post_processing_ms"] >= 0
+    assert transcript.timing_breakdown_ms["total_ms"] == transcript.duration_ms
     assert captured["model_name"] == "base.en"
     assert captured["device"] == "cpu"
     assert captured["compute_type"] == "int8"
@@ -433,6 +438,7 @@ def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
                 "provider_id": "external_faster_whisper",
                 "model": "small.en",
                 "duration_ms": 12.3,
+                "timing_breakdown_ms": {"total_ms": 12.3, "model_inference_ms": 10.0},
             },
         )
 
@@ -463,6 +469,7 @@ def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
     assert transcript.provider_id == "external_faster_whisper"
     assert transcript.model == "small.en"
     assert transcript.duration_ms == 12.3
+    assert transcript.timing_breakdown_ms["model_inference_ms"] == 10.0
 
 
 def test_external_faster_whisper_stt_status_clears_stale_connection_error():

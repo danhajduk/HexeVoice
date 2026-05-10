@@ -129,3 +129,4 @@ Task 124: Add short-intent conflict handling so yes/no/stop/ok are scoped to fol
 Task 116: Add Core Supervisor managed restart controls for Voice Node backend/STT/TTS services - Completed on 05/09/2026 23:35
 Task 093: Benchmark faster-whisper base.en, small.en, and medium.en for short home voice commands - Completed on 05/10/2026 01:19
 Task 095: Add faster-whisper tuning options for beam size, best-of, fixed language, and timestamp controls - Completed on 05/10/2026 01:24
+Task 097: Add STT timing breakdown metrics for audio preparation, model inference, decoding, and post-processing - Completed on 05/10/2026 01:27

@@ -326,3 +326,8 @@ Task #095
 Step objective: Add faster-whisper STT decode tuning options.
 What changed: Added settings/env support for language, beam size, best-of, without-timestamps, word timestamps, and max initial timestamp; wired those options into local and external STT service adapter construction; exposed them in adapter status; documented the environment knobs.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_config.py::test_faster_whisper_stt_settings_defaults tests/test_stt_service.py tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_preloads_model tests/test_voice_pipeline.py::test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured` passed with 7 tests.
+###########
+Task #097
+Step objective: Add STT timing breakdown metrics.
+What changed: Added `timing_breakdown_ms` to STT transcript results. Local faster-whisper now records audio preparation, model transcribe call, segment decoding, post-processing, and total timing; the external STT service returns the same block and the backend preserves it.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_stt_service.py tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it tests/test_voice_pipeline.py::test_external_faster_whisper_stt_adapter_posts_audio_to_service tests/test_voice_pipeline.py::test_external_faster_whisper_stt_status_clears_stale_connection_error` passed with 6 tests.

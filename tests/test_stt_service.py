@@ -49,6 +49,7 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
                 provider_id="faster_whisper",
                 model=captured["model_name"],
                 duration_ms=5.6,
+                timing_breakdown_ms={"total_ms": 5.6, "model_inference_ms": 4.0},
             )
 
     monkeypatch.setattr(stt_service, "FasterWhisperSpeechToTextAdapter", FakeAdapter)
@@ -89,6 +90,7 @@ def test_stt_service_transcribes_with_external_faster_whisper(monkeypatch, tmp_p
     assert response.status_code == 200
     assert response.json()["text"] == "what time"
     assert response.json()["provider_id"] == "external_faster_whisper"
+    assert response.json()["timing_breakdown_ms"]["model_inference_ms"] == 4.0
     assert captured["audio"].endpoint_id == "esp-pe-1"
     assert captured["audio"].audio_bytes == b"\x00\x00" * 320
     assert captured["language"] == "en"
