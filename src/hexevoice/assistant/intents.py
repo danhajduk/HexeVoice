@@ -110,6 +110,10 @@ class LocalIntentFinder:
                 requested_at=requested_at,
             )
 
+        if _is_short_intent_utterance(text) and not pending_followup and not _allows_global_short_intent(intent, definition):
+            self._record_match(intent.get("intent_id"), status="ignored", reason="short_intent_requires_followup")
+            return None
+
         if matcher.get("type") == "builtin_timer" or command == "timer.create" or intent.get("intent_id") == "timer.create":
             match = self._find_timer_create(text, requested_at=requested_at)
             if match is not None:
@@ -302,6 +306,36 @@ def _is_confirmation_response(text: str, response: str) -> bool:
         return bool(re.match(r"^(?:yes|yeah|yep|correct|confirm|do\s+it)$", text))
     if response == "no":
         return bool(re.match(r"^(?:no|nope|cancel|do\s+not|don't)$", text))
+    return False
+
+
+_SHORT_INTENT_UTTERANCES = {
+    "yes",
+    "yeah",
+    "yep",
+    "correct",
+    "confirm",
+    "no",
+    "nope",
+    "cancel",
+    "stop",
+    "ok",
+    "okay",
+}
+
+
+def _is_short_intent_utterance(text: str) -> bool:
+    return text in _SHORT_INTENT_UTTERANCES
+
+
+def _allows_global_short_intent(intent: dict[str, Any], definition: dict[str, Any]) -> bool:
+    constraints = intent.get("constraints") if isinstance(intent.get("constraints"), dict) else {}
+    metadata = intent.get("metadata") if isinstance(intent.get("metadata"), dict) else {}
+    matcher = definition.get("matcher") if isinstance(definition.get("matcher"), dict) else {}
+    for container in (constraints, metadata, definition, matcher):
+        scope = str(container.get("short_intent_scope") or container.get("short_utterance_scope") or "").strip().lower()
+        if scope == "global":
+            return True
     return False
 
 

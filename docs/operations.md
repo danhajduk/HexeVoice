@@ -125,6 +125,12 @@ services where available.
 The Voice Endpoint runtime page shows endpoint status as summary cards. Selecting
 an endpoint opens a blurred-background detail popup with the full registry,
 voice-state, latency, session, and raw debug payload for that endpoint.
+
+Registered short utterance intents such as `yes`, `no`, `stop`, `ok`, and
+`okay` are treated as follow-up-scoped by default so they do not accidentally
+fire as global commands. A registered intent can explicitly opt into global
+matching with `constraints.short_intent_scope: "global"` when that behavior is
+intentional.
 Endpoint status also includes firmware comparison metadata. The backend infers
 the endpoint board profile, checks the matching `runtime/firmware/manifest-*.json`
 and binary artifact, and the endpoint detail popup exposes `Send OTA` when the

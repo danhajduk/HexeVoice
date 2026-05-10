@@ -21,6 +21,11 @@ def _finder(tmp_path) -> LocalIntentFinder:
     return LocalIntentFinder(registry=registry)
 
 
+def _registry_and_finder(tmp_path) -> tuple[VoiceIntentRegistry, LocalIntentFinder]:
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    return registry, LocalIntentFinder(registry=registry)
+
+
 @pytest.mark.parametrize(
     "case",
     [
@@ -69,3 +74,76 @@ def test_transcript_to_intent_regressions(tmp_path, case: IntentCase):
     assert match.command == case.command
     for key, value in (case.slots or {}).items():
         assert match.slots[key] == value
+
+
+def test_short_registered_intents_are_ignored_without_followup_or_global_scope(tmp_path):
+    registry, finder = _registry_and_finder(tmp_path)
+    registry.register_intent(
+        intent_id="debug.ok",
+        intent_name="Debug OK",
+        definition={
+            "utterance_examples": ["ok"],
+            "dispatch": {"type": "local_response", "command": "debug.ok"},
+            "reply": {"text_template": "OK accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+    registry.register_intent(
+        intent_id="debug.stop",
+        intent_name="Debug stop",
+        definition={
+            "utterance_examples": ["stop"],
+            "dispatch": {"type": "local_response", "command": "debug.stop"},
+            "reply": {"text_template": "Stop accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+
+    assert finder.find("ok") is None
+    assert finder.find("stop") is None
+
+
+def test_short_registered_intents_can_be_followup_scoped(tmp_path):
+    registry, finder = _registry_and_finder(tmp_path)
+    registry.register_intent(
+        intent_id="debug.ok",
+        intent_name="Debug OK",
+        definition={
+            "utterance_examples": ["ok"],
+            "dispatch": {"type": "local_response", "command": "debug.ok"},
+            "reply": {"text_template": "OK accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+
+    match = finder.find(
+        "ok",
+        pending_followup={
+            "intent_id": "debug.test",
+            "command": "debug.test",
+            "prompt": "Continue?",
+        },
+    )
+
+    assert match is not None
+    assert match.command == "debug.ok"
+
+
+def test_short_registered_intents_can_be_declared_global(tmp_path):
+    registry, finder = _registry_and_finder(tmp_path)
+    registry.register_intent(
+        intent_id="debug.ok.global",
+        intent_name="Global debug OK",
+        constraints={"short_intent_scope": "global"},
+        definition={
+            "utterance_examples": ["ok"],
+            "dispatch": {"type": "local_response", "command": "debug.ok.global"},
+            "reply": {"text_template": "Global OK accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+
+    match = finder.find("ok")
+
+    assert match is not None
+    assert match.command == "debug.ok.global"
