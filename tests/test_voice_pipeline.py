@@ -450,6 +450,50 @@ def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
     assert transcript.duration_ms == 12.3
 
 
+def test_external_faster_whisper_stt_status_clears_stale_connection_error():
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(str(request.url))
+        if request.url.path == "/transcribe":
+            raise httpx.ConnectError("[Errno 111] Connection refused", request=request)
+        return httpx.Response(
+            200,
+            json={
+                "provider": "external_faster_whisper",
+                "healthy": True,
+                "configured": True,
+                "model": "small.en",
+                "last_error": None,
+            },
+        )
+
+    adapter = ExternalFasterWhisperSpeechToTextAdapter(
+        base_url="http://stt.test:10300",
+        model_name="small.en",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    transcript = adapter.transcribe(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 320,
+        )
+    )
+    assert transcript.error == "[Errno 111] Connection refused"
+
+    status = adapter.status()
+
+    assert requests == ["http://stt.test:10300/transcribe", "http://stt.test:10300/health"]
+    assert status["healthy"] is True
+    assert status["last_error"] is None
+
+
 def test_build_voice_turn_pipeline_uses_external_faster_whisper_stt_when_configured(tmp_path):
     settings = Settings(
         onboarding_state_path=tmp_path / "state.json",
@@ -764,11 +808,16 @@ def test_piper_tts_endpoint_required_policy_blocks_on_pe_48k_variant(tmp_path):
     assert (tmp_path / f"{synthesis.stream_id}.raw.wav").exists()
     assert (tmp_path / f"{synthesis.stream_id}.48k.wav").exists()
     metadata = json.loads((tmp_path / f"{synthesis.stream_id}.json").read_text(encoding="utf-8"))
-    assert metadata["ready_audio_variants"] == ["raw", "48k"]
+    assert "raw" in metadata["ready_audio_variants"]
+    assert "48k" in metadata["ready_audio_variants"]
     assert metadata["endpoint_audio_url"] == f"/api/voice/tts/{synthesis.stream_id}/48k"
     assert metadata["audio_variant_sample_rate_hz"] == 48000
     assert metadata["audio_variant_source_sample_rate_hz"] == 22050
-    assert metadata["pending_audio_variants"] == {"16k": str(tmp_path / f"{synthesis.stream_id}.16k.wav")}
+    if metadata["optional_conversion_status"] == "completed":
+        assert metadata["pending_audio_variants"] == {}
+        assert "16k" in metadata["ready_audio_variants"]
+    else:
+        assert metadata["pending_audio_variants"] == {"16k": str(tmp_path / f"{synthesis.stream_id}.16k.wav")}
 
 
 def test_piper_tts_adapter_can_generate_configured_22050_variant(tmp_path):

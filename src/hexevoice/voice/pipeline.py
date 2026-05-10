@@ -459,6 +459,8 @@ class ExternalFasterWhisperSpeechToTextAdapter:
             response = client.get(f"{self._base_url}/health")
             response.raise_for_status()
             payload = response.json()
+            service_error = payload.get("last_error")
+            self._last_error = str(service_error) if service_error else None
             return {
                 "provider": "external_faster_whisper",
                 "healthy": bool(payload.get("healthy", True)),
@@ -467,7 +469,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 "model": payload.get("model") or self._model_name,
                 "service": payload,
                 "last_duration_ms": self._last_duration_ms,
-                "last_error": payload.get("last_error") or self._last_error,
+                "last_error": self._last_error,
             }
         except Exception as exc:
             self._last_error = str(exc)
