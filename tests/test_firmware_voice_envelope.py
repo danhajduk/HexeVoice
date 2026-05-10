@@ -343,6 +343,8 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "ensure_codec_ready" in tts_source
     assert "set_codec_volume" in tts_source
     assert "interpolate_pcm16" in tts_source
+    assert "kPlaybackDrainFrames = kSpeakerSampleRate / 8" in tts_source
+    assert "write_silence_drain" in tts_source
     assert "tts.playback.first_audio_frame" in tts_source
     assert "tts.playback.completed" in tts_source
     assert "tts.playback.failed" in tts_source

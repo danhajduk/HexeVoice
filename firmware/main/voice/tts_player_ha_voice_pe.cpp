@@ -37,6 +37,7 @@ constexpr int kSpeakerSampleRate = 48000;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
 constexpr size_t kHttpReadBufferBytes = 4096;
 constexpr size_t kPlaybackFrameCapacity = 384;
+constexpr size_t kPlaybackDrainFrames = kSpeakerSampleRate / 8;
 constexpr int kHttpReadIdleRetryDelayMs = 20;
 constexpr int kHttpReadMaxIdleRetries = 50;
 constexpr size_t kMaxWavHeaderBytes = 4096;
@@ -600,6 +601,19 @@ bool flush_output_frames(std::array<int32_t, kPlaybackFrameCapacity * 2> *output
   return written;
 }
 
+bool write_silence_drain() {
+  std::array<int32_t, kPlaybackFrameCapacity * 2> silence = {};
+  size_t remaining_frames = kPlaybackDrainFrames;
+  while (remaining_frames > 0 && !g_stop_requested) {
+    const size_t frame_count = std::min(remaining_frames, kPlaybackFrameCapacity);
+    if (!write_i2s_frames(silence.data(), frame_count)) {
+      return false;
+    }
+    remaining_frames -= frame_count;
+  }
+  return !g_stop_requested;
+}
+
 int16_t pcm16_sample(const uint8_t *bytes) {
   return static_cast<int16_t>(read_le16(bytes));
 }
@@ -692,7 +706,10 @@ bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request)
     }
   }
 
-  const bool flushed = flush_output_frames(&output_frames, &queued_frames);
+  bool flushed = flush_output_frames(&output_frames, &queued_frames);
+  if (flushed && output_frame_count > 0) {
+    flushed = write_silence_drain();
+  }
   if (flushed && !first_frame_reported && output_frame_count > 0 && !g_stop_requested) {
     send_playback_event("tts.playback.first_audio_frame", request, nullptr, wav.pcm_size);
   }
@@ -898,6 +915,8 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
   }
   if (result == StreamPlaybackResult::kPlayed) {
     if (!flush_output_frames(&writer->output_frames, &writer->queued_frames)) {
+      result = StreamPlaybackResult::kFailed;
+    } else if (!write_silence_drain()) {
       result = StreamPlaybackResult::kFailed;
     } else if (!writer->first_frame_reported && writer->source_bytes_written > 0 && !g_stop_requested) {
       send_playback_event("tts.playback.first_audio_frame", request, nullptr, writer->source_bytes_written);
