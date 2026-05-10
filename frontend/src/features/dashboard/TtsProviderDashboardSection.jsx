@@ -23,6 +23,98 @@ function modelLabel(model) {
   return model?.display_name || model?.model_id || "unknown";
 }
 
+function ModelCard({ model, warm, onOpen }) {
+  return (
+    <button className="tts-model-card" type="button" onClick={() => onOpen(model)}>
+      <div className="tts-model-card-header">
+        <span className={`status-pill status-pill-${warm ? "success" : "neutral"}`}>{warm ? "warm" : "cold"}</span>
+        <span className="tts-model-rate">{formatSampleRate(model.raw_sample_rate_hz)}</span>
+      </div>
+      <div className="tts-model-card-title-block">
+        <span className="intent-title">{modelLabel(model)}</span>
+        <code className="inline-code">{valueOrEmpty(model.model_id)}</code>
+      </div>
+      <div className="tts-model-card-facts">
+        <span>
+          <strong>Language</strong>
+          {valueOrEmpty(model.language)}
+        </span>
+        <span>
+          <strong>Dataset</strong>
+          {valueOrEmpty(model.dataset)}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function ModelDetailPopout({ model, warm, onToggleWarm, onClose }) {
+  if (!model) {
+    return null;
+  }
+
+  return (
+    <div className="tts-model-detail-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="tts-model-detail-popout"
+        role="dialog"
+        aria-modal="true"
+        aria-label="TTS model details"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">TTS Model</p>
+            <h2 className="panel-title">{modelLabel(model)}</h2>
+          </div>
+          <div className="hero-actions">
+            <button className="btn btn-secondary btn-compact" type="button" onClick={() => onToggleWarm(model.model_id)}>
+              {warm ? "Remove Warm" : "Keep Warm"}
+            </button>
+            <button className="btn btn-ghost btn-compact" type="button" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="tts-model-detail-summary">
+          <span className={`status-pill status-pill-${warm ? "success" : "neutral"}`}>{warm ? "warm" : "cold"}</span>
+          <code className="inline-code">{valueOrEmpty(model.model_id)}</code>
+        </div>
+        <div className="tts-model-detail-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Raw Rate</span>
+            <span className="fact-grid-value">{formatSampleRate(model.raw_sample_rate_hz)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Language</span>
+            <span className="fact-grid-value">{valueOrEmpty(model.language)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Dataset</span>
+            <span className="fact-grid-value">{valueOrEmpty(model.dataset)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Quality</span>
+            <span className="fact-grid-value">{valueOrEmpty(model.quality)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Provider</span>
+            <span className="fact-grid-value">{valueOrEmpty(model.provider)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Speaker</span>
+            <span className="fact-grid-value">{valueOrEmpty(model.speaker_id)}</span>
+          </div>
+        </div>
+        <section className="tts-model-detail-section">
+          <p className="panel-kicker">Raw Model Metadata</p>
+          <pre className="code-panel">{JSON.stringify(model, null, 2)}</pre>
+        </section>
+      </section>
+    </div>
+  );
+}
+
 function sameStrings(left, right) {
   const leftValues = [...left].sort();
   const rightValues = [...right].sort();
@@ -46,6 +138,7 @@ export function TtsProviderDashboardSection({ providerSetup, capabilities, ttsSe
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [selectedModel, setSelectedModel] = useState(null);
 
   useEffect(() => {
     setWarmVoices(Array.isArray(ttsSettings?.warm_voices) ? ttsSettings.warm_voices : []);
@@ -131,43 +224,20 @@ export function TtsProviderDashboardSection({ providerSetup, capabilities, ttsSe
               <h3 className="section-title">Piper Voices</h3>
             </div>
           </div>
-          <div className="voice-endpoint-table-wrap">
-            <table className="voice-endpoint-status-table">
-              <thead>
-                <tr>
-                  <th scope="col">Warm</th>
-                  <th scope="col">Model</th>
-                  <th scope="col">Raw Rate</th>
-                  <th scope="col">Quality</th>
-                  <th scope="col">Language</th>
-                </tr>
-              </thead>
-              <tbody>
-                {models.length === 0 ? (
-                  <tr>
-                    <td colSpan="5">No Piper models found.</td>
-                  </tr>
-                ) : (
-                  models.map((model) => (
-                    <tr key={model.model_id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={warmVoices.includes(model.model_id)}
-                          onChange={() => toggleWarmVoice(model.model_id)}
-                          aria-label={`Keep ${modelLabel(model)} warm`}
-                        />
-                      </td>
-                      <td>{modelLabel(model)}</td>
-                      <td>{formatSampleRate(model.raw_sample_rate_hz)}</td>
-                      <td>{valueOrEmpty(model.quality)}</td>
-                      <td>{valueOrEmpty(model.language)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+          {models.length === 0 ? (
+            <div className="callout callout-neutral">No Piper models found.</div>
+          ) : (
+            <div className="tts-model-card-grid">
+              {models.map((model) => (
+                <ModelCard
+                  key={model.model_id}
+                  model={model}
+                  warm={warmVoices.includes(model.model_id)}
+                  onOpen={setSelectedModel}
+                />
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="stack">
@@ -206,6 +276,12 @@ export function TtsProviderDashboardSection({ providerSetup, capabilities, ttsSe
           </button>
         </div>
       </form>
+      <ModelDetailPopout
+        model={selectedModel}
+        warm={selectedModel ? warmVoices.includes(selectedModel.model_id) : false}
+        onToggleWarm={toggleWarmVoice}
+        onClose={() => setSelectedModel(null)}
+      />
     </section>
   );
 }

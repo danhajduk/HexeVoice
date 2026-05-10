@@ -483,6 +483,111 @@
   gap: 10px;
 }
 
+.tts-model-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+}
+
+.tts-model-card {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  min-height: 180px;
+  padding: 16px;
+  color: hsl(var(--sx-text));
+  text-align: left;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.03);
+  cursor: pointer;
+}
+
+.tts-model-card:hover,
+.tts-model-card:focus-visible {
+  border-color: hsl(var(--sx-accent) / 0.7);
+  background: hsl(var(--sx-text) / 0.055);
+  outline: none;
+}
+
+.tts-model-card-header,
+.tts-model-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.tts-model-card-header {
+  justify-content: space-between;
+}
+
+.tts-model-rate {
+  color: hsl(var(--sx-text-muted));
+  font-size: 12px;
+}
+
+.tts-model-card-title-block {
+  display: grid;
+  gap: 6px;
+}
+
+.tts-model-card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tts-model-card-facts span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: hsl(var(--sx-text));
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.tts-model-card-facts strong {
+  color: hsl(var(--sx-text-muted));
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.tts-model-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(8px);
+}
+
+.tts-model-detail-popout {
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-lg);
+  background: hsl(var(--sx-panel));
+  box-shadow: var(--sx-shadow-3);
+}
+
+.tts-model-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tts-model-detail-section {
+  display: grid;
+  gap: 10px;
+}
+
 .intent-example-list {
   display: grid;
   gap: 5px;
@@ -1393,6 +1498,7 @@
   .intent-test-result-grid,
   .intent-audio-result,
   .intent-detail-grid,
+  .tts-model-detail-grid,
   .form-grid {
     grid-template-columns: 1fr;
   }

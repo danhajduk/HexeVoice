@@ -26,7 +26,7 @@ During setup, operators should use the onboarding card in this order:
 9. fetch or refresh Governance
 10. poll operational status until `operational_ready=true`
 
-The post-trust setup card remains available after setup completion. Operators can return to it to adjust provider selection, select/redeclare capabilities, and enable/disable registered Voice Node intents. The operational dashboard also exposes an Intents section for inspecting the current registry as compact intent cards, opening a full contract detail popup, and dry-running utterances against registered intent dispatch.
+The post-trust setup card remains available after setup completion. Operators can return to it to adjust provider selection, select/redeclare capabilities, and enable/disable registered Voice Node intents. The operational dashboard also exposes an Intents section for inspecting the current registry as compact intent cards, opening a full contract detail popup, and dry-running utterances against registered intent dispatch. The Providers section shows Piper models as compact cards with detail popups; operators can mark a model warm from the popup and then save the TTS settings.
 
 ## Recovery Signals
 
