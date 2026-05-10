@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from hexevoice.assistant import LocalIntentFinder
 
 
@@ -9,10 +11,10 @@ def test_local_intent_finder_detects_timer_create_with_digits():
     assert match is not None
     assert match.intent == "timer.create"
     assert match.command == "timer.create"
-    assert match.slots == {
-        "duration_seconds": 300,
-        "duration_text": "5 minutes",
-    }
+    assert match.slots["duration_seconds"] == 300
+    assert match.slots["duration_text"] == "5 minutes"
+    assert match.slots["duration_hhmmss"] == "00:05:00"
+    assert datetime.fromisoformat(match.slots["requested_at"])
     assert match.reply_text == "Setting timer for 5 minutes."
 
 
