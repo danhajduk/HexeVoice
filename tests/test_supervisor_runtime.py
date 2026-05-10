@@ -134,11 +134,21 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert stt_engine["provider"] == "deterministic"
     assert stt_engine["pid"] == os.getpid()
     assert stt_engine["process"]["kind"] == "backend_process"
+    assert stt_engine["implementation_health"] == {
+        "engine_role": "stt_engine",
+        "active_implementation": "deterministic",
+        "provider": "deterministic",
+        "model": "deterministic",
+        "healthy": True,
+        "configured": True,
+        "last_error": None,
+    }
     tts_engine = next(service for service in services if service["service_id"] == "tts_engine")
     assert tts_engine["service_name"] == "TTS Engine"
     assert tts_engine["managed_by"] == "backend_process"
     assert tts_engine["pid"] == os.getpid()
     assert tts_engine["process"]["kind"] == "backend_process"
+    assert tts_engine["implementation_health"]["active_implementation"] == "deterministic"
     assert not any(service["service_id"] == "piper_tts" for service in services)
 
     heartbeat = client.heartbeat_payloads[0]
@@ -237,6 +247,15 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
     assert piper_tts["warm_voices"] == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
     assert piper_tts["pid"] == 4242
     assert piper_tts["process"]["kind"] == "docker_container"
+    assert piper_tts["implementation_health"] == {
+        "engine_role": "tts_engine",
+        "active_implementation": "piper",
+        "provider": "piper",
+        "model": "en_US-test",
+        "healthy": True,
+        "configured": True,
+        "last_error": None,
+    }
     assert service.service_status_payload().piper_tts == "running"
 
 
@@ -381,3 +400,12 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_service["pid"] == os.getpid()
     assert stt_service["main_pid"] == os.getpid()
     assert stt_service["process"]["kind"] == "systemd_user_service"
+    assert stt_service["implementation_health"] == {
+        "engine_role": "stt_engine",
+        "active_implementation": "external_faster_whisper",
+        "provider": "external_faster_whisper",
+        "model": "base.en",
+        "healthy": True,
+        "configured": True,
+        "last_error": None,
+    }

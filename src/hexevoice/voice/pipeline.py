@@ -1424,10 +1424,20 @@ class VoiceTurnPipeline:
         )
 
     def status(self) -> dict:
+        stt_status = self._stt_adapter.status()
+        tts_status = self._tts_adapter.status()
         return {
             "assistant": self._assistant_service.status(),
-            "stt": self._stt_adapter.status(),
-            "tts": self._tts_adapter.status(),
+            "stt": _engine_status(
+                role="stt_engine",
+                status=stt_status,
+                fallback_implementation=str(stt_status.get("provider") or "unknown"),
+            ),
+            "tts": _engine_status(
+                role="tts_engine",
+                status=tts_status,
+                fallback_implementation=str(tts_status.get("provider") or "unknown"),
+            ),
             "endpoint_voices": dict(self._endpoint_voices),
         }
 
@@ -1458,6 +1468,25 @@ class VoiceTurnPipeline:
         if not callable(preload):
             return None
         return preload()
+
+
+def _engine_status(*, role: str, status: dict, fallback_implementation: str) -> dict:
+    provider = str(status.get("provider") or fallback_implementation or "unknown")
+    model = status.get("model") or status.get("model_id")
+    health = {
+        "engine_role": role,
+        "active_implementation": provider,
+        "provider": provider,
+        "model": model,
+        "healthy": bool(status.get("healthy", True)),
+        "configured": bool(status.get("configured", True)),
+        "last_error": status.get("last_error") or status.get("error"),
+    }
+    enriched = dict(status)
+    enriched["engine_role"] = role
+    enriched["implementation"] = provider
+    enriched["implementation_health"] = health
+    return enriched
 
 
 def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:

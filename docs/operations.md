@@ -75,8 +75,10 @@ local STT URL. When `VOICE_TTS_PROVIDER=piper`, `tts_engine` includes the
 path, and local synthesis URL. Each service entry includes a `process` block
 when the node can resolve one, with `pid`, `main_pid`, and runtime resource
 fields so Core Supervisor can monitor the actual backend process, Docker
-container init PID, or managed user-service process. Core Supervisor can inspect
-and control managed services through the node service proxy routes:
+container init PID, or managed user-service process. The STT/TTS engine entries
+also include `implementation_health` with the active implementation, provider,
+model, health state, configured state, and last error. Core Supervisor can
+inspect and control managed services through the node service proxy routes:
 
 - `GET /api/services/status`
 - `POST /api/services/start` with `{"target":"openwakeword"}`

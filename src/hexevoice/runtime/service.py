@@ -325,9 +325,7 @@ class NodeRuntimeService:
                     "status": stt_state,
                     "healthy": stt_state in {"active", "running"} if self._external_stt_enabled() else True,
                     "provider": self._settings.voice_stt_provider,
-                    "model": self._settings.voice_stt_faster_whisper_model
-                    if self._settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}
-                    else self._settings.voice_stt_model,
+                    "model": self._stt_component_model(),
                     "restart_target": self._settings.voice_stt_service_id if self._external_stt_enabled() else "stt",
                     "restart_supported": self._external_stt_enabled(),
                     "restart_detail": "External faster-whisper STT is supervisor-proxied."
@@ -363,6 +361,8 @@ class NodeRuntimeService:
         )
 
     def _tts_component_model(self) -> str:
+        if self._settings.voice_tts_provider == "deterministic":
+            return "deterministic"
         if not self._piper_tts_enabled():
             return self._settings.voice_tts_model
 
@@ -383,6 +383,13 @@ class NodeRuntimeService:
             return model
         config = read_piper_model_config(self._settings.resolved_piper_tts_model_dir() / f"{model}.onnx")
         return piper_model_display_name(config, fallback=model)
+
+    def _stt_component_model(self) -> str:
+        if self._settings.voice_stt_provider == "deterministic":
+            return "deterministic"
+        if self._settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}:
+            return self._settings.voice_stt_faster_whisper_model
+        return self._settings.voice_stt_model
 
     def _read_proc_status_value_kb(self, key: str) -> int | None:
         try:
@@ -792,6 +799,7 @@ class NodeRuntimeService:
     ) -> dict[str, object]:
         if self._external_stt_enabled():
             service = self._external_stt_service_summary()
+            healthy = service.get("state") in {"active", "running"}
             service.update(
                 {
                     "service_id": "stt_engine",
@@ -804,15 +812,20 @@ class NodeRuntimeService:
                     "control_target": self._settings.voice_stt_service_id,
                     "restart_supported": True,
                     "resource_scope": "systemd_user_service",
+                    "implementation_health": {
+                        "engine_role": "stt_engine",
+                        "active_implementation": "external_faster_whisper",
+                        "provider": self._settings.voice_stt_provider,
+                        "model": self._settings.voice_stt_faster_whisper_model,
+                        "healthy": healthy,
+                        "configured": True,
+                        "last_error": None if healthy else service.get("state"),
+                    },
                 }
             )
             return service
 
-        model = (
-            self._settings.voice_stt_faster_whisper_model
-            if self._settings.voice_stt_provider == "faster_whisper"
-            else self._settings.voice_stt_model
-        )
+        model = self._stt_component_model()
         return {
             "service_id": "stt_engine",
             "service_name": "STT Engine",
@@ -826,6 +839,15 @@ class NodeRuntimeService:
             "control_target": "stt",
             "restart_supported": False,
             "resource_scope": "backend_process",
+            "implementation_health": {
+                "engine_role": "stt_engine",
+                "active_implementation": self._settings.voice_stt_provider,
+                "provider": self._settings.voice_stt_provider,
+                "model": model,
+                "healthy": True,
+                "configured": True,
+                "last_error": None,
+            },
             **self._service_process_fields(backend_process),
         }
 
@@ -837,6 +859,7 @@ class NodeRuntimeService:
     ) -> dict[str, object]:
         if self._piper_tts_enabled():
             service = self._piper_tts_service_summary()
+            healthy = service.get("state") == "running"
             service.update(
                 {
                     "service_id": "tts_engine",
@@ -851,6 +874,15 @@ class NodeRuntimeService:
                     "control_target": self._settings.piper_tts_service_id,
                     "restart_supported": True,
                     "resource_scope": "docker_container",
+                    "implementation_health": {
+                        "engine_role": "tts_engine",
+                        "active_implementation": "piper",
+                        "provider": self._settings.voice_tts_provider,
+                        "model": self._tts_component_model(),
+                        "healthy": healthy,
+                        "configured": True,
+                        "last_error": None if healthy else service.get("state"),
+                    },
                 }
             )
             return service
@@ -869,6 +901,15 @@ class NodeRuntimeService:
             "control_target": "tts",
             "restart_supported": False,
             "resource_scope": "backend_process",
+            "implementation_health": {
+                "engine_role": "tts_engine",
+                "active_implementation": self._settings.voice_tts_provider,
+                "provider": self._settings.voice_tts_provider,
+                "model": self._tts_component_model(),
+                "healthy": True,
+                "configured": True,
+                "last_error": None,
+            },
             **self._service_process_fields(backend_process),
         }
 

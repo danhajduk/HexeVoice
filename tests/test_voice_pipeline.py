@@ -1004,5 +1004,20 @@ def test_voice_turn_pipeline_status_reports_provider_health(tmp_path):
 
     assert status["stt"]["provider"] == "deterministic"
     assert status["stt"]["healthy"] is True
+    assert status["stt"]["engine_role"] == "stt_engine"
+    assert status["stt"]["implementation"] == "deterministic"
+    assert status["stt"]["implementation_health"] == {
+        "engine_role": "stt_engine",
+        "active_implementation": "deterministic",
+        "provider": "deterministic",
+        "model": None,
+        "healthy": True,
+        "configured": True,
+        "last_error": None,
+    }
     assert status["tts"]["provider"] == "deterministic"
     assert status["tts"]["healthy"] is True
+    assert status["tts"]["engine_role"] == "tts_engine"
+    assert status["tts"]["implementation"] == "deterministic"
+    assert status["tts"]["implementation_health"]["active_implementation"] == "deterministic"
+    assert status["tts"]["implementation_health"]["last_error"] is None
