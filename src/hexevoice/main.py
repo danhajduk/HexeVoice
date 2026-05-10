@@ -1294,7 +1294,10 @@ def create_app(
 
     @app.post("/api/services/restart", response_model=ServiceActionResponse)
     async def service_restart(payload: ServiceActionRequest) -> ServiceActionResponse:
-        return await asyncio.to_thread(service.service_action, target=payload.target, action="restart")
+        result = await asyncio.to_thread(service.service_action, target=payload.target, action="restart")
+        if result.accepted and result.target in {app_settings.piper_tts_service_id, "tts"}:
+            await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
+        return result
 
     @app.get("/api/providers/{provider_id}/status", response_model=ProviderStatusResponse)
     async def provider_status(provider_id: str) -> ProviderStatusResponse:

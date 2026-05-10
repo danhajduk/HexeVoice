@@ -67,6 +67,10 @@ The registration metadata includes service entries for `backend`, `openwakeword`
 - `POST /api/services/restart` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/restart` with `{"target":"stt"}` or `{"target":"faster_whisper_stt"}` when external faster-whisper STT is enabled
 
+When Piper TTS runtime settings are saved, the provider page marks them as
+restart-required. A successful `tts` or `piper_tts` restart through the service
+proxy clears that flag and records `restart_applied_at` in the runtime settings.
+
 `GET /api/services/status` also exposes runtime page metadata for the operator
 UI: Backend, STT, and TTS component health, per-component CPU/memory usage where
 the runtime can observe it, supervisor registration status, and whether a

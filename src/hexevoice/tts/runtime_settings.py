@@ -70,6 +70,16 @@ class TtsRuntimeSettingsService:
         self._write_piper_env_warm_voices(warm_voices)
         return self.status()
 
+    def clear_restart_required(self) -> dict[str, Any]:
+        config = self._load_config()
+        if not config:
+            return self.status()
+        config["restart_required"] = False
+        config["restart_applied_at"] = datetime.now(UTC).isoformat()
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+        return self.status()
+
     def discover_piper_models(self) -> list[dict[str, Any]]:
         models: list[dict[str, Any]] = []
         if not self._model_dir.exists():

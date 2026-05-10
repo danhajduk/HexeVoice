@@ -2,6 +2,7 @@ import base64
 from datetime import datetime
 import io
 import json
+import os
 import wave
 
 from fastapi.testclient import TestClient
@@ -1167,6 +1168,49 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
     assert runtime_config["conversion_sample_rates_hz"] == [48000, 22050]
     assert runtime_config["conversion_policy"] == "endpoint_required_sync"
     assert piper_env_path.read_text(encoding="utf-8").strip() == "PIPER_TTS_WARM_VOICES=en_US-jenny-high"
+
+
+def test_tts_restart_clears_restart_required_flag(tmp_path, monkeypatch):
+    runtime_config_path = tmp_path / "voice_tts_settings.json"
+    runtime_config_path.write_text(
+        json.dumps(
+            {
+                "warm_voices": ["en_US-jenny-high"],
+                "conversion_sample_rates_hz": [48000, 16000],
+                "restart_required": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    control_script = tmp_path / "piper-tts-control.sh"
+    control_script.write_text("#!/usr/bin/env sh\nexit 0\n", encoding="utf-8")
+    control_script.chmod(0o755)
+    fake_docker = tmp_path / "docker"
+    fake_docker.write_text("#!/usr/bin/env sh\nexit 1\n", encoding="utf-8")
+    fake_docker.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ.get('PATH', '')}")
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_tts_provider="piper",
+                piper_tts_control_script=control_script,
+            )
+        )
+    )
+
+    before = client.get("/api/tts/settings")
+    restart = client.post("/api/services/restart", json={"target": "tts"})
+    after = client.get("/api/tts/settings")
+
+    assert before.json()["restart_required"] is True
+    assert restart.status_code == 200
+    assert restart.json()["accepted"] is True
+    assert after.json()["restart_required"] is False
+    runtime_config = json.loads(runtime_config_path.read_text(encoding="utf-8"))
+    assert runtime_config["restart_required"] is False
+    assert runtime_config["restart_applied_at"]
 
 
 def test_core_normalized_piper_voice_ids_resolve_to_installed_model(tmp_path):
