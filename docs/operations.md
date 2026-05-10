@@ -50,7 +50,7 @@ Use:
 
 The external faster-whisper STT runtime code lives in the standalone
 `src/stt/` package. `src/hexevoice/stt_service.py` remains as a compatibility
-entrypoint while service launch commands migrate to `python -m stt.service`.
+entrypoint, while service launch commands use `python -m stt.service`.
 
 Systemd user units are intentionally not enabled for auto-start and do not declare a restart policy. Core Supervisor is the lifecycle authority for managed node runtime behavior.
 
@@ -79,6 +79,12 @@ template, the `scripts/stack.env` environment file, and `install_action:
 install`. Supervisor can invoke the node service proxy install action to render
 the user unit and run `systemctl --user daemon-reload` before starting or
 restarting STT.
+
+After pulling the `src/stt/` package split, existing STT units only need the
+updated `scripts/stack.env` command and a restart because the unit evaluates
+`STT_CMD` at runtime. Running
+`./scripts/faster-whisper-stt-control.sh install` is still safe when operators
+want Supervisor or the local control script to re-render the user unit.
 
 The local `scripts/stack-control.sh` helper will skip the external STT unit when
 it is not installed yet, instead of installing it itself. This keeps Supervisor

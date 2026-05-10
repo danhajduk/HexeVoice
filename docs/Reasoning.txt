@@ -295,3 +295,9 @@ Step objective: Move external faster-whisper STT service into src/stt package bo
 Chosen fix: Created a standalone stt package for the FastAPI runtime and adapter exports while preserving the old hexevoice.stt_service module as a compatibility shim.
 What changed: Added src/stt/service.py and src/stt/adapters.py, replaced hexevoice.stt_service with a wrapper, updated STT service tests to target the new package, and documented the package boundary.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_stt_service.py tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it tests/test_voice_pipeline.py::test_faster_whisper_stt_adapter_preloads_model` passed with 5 tests.
+###########
+Task #118
+Step objective: Update STT service launch, tests, and docs after the src/stt package split.
+Chosen fix: Pointed local stack launch configuration at `python -m stt.service` while preserving the existing systemd/control-script contract.
+What changed: Updated `scripts/stack.env` and `scripts/stack.env.example`, added an operations migration note for existing user units, and completed the task queue entry.
+Verification: `bash -n scripts/faster-whisper-stt-control.sh scripts/run-from-env.sh scripts/stack-control.sh scripts/restart-stack.sh` passed; `PYTHONPATH=src .venv/bin/python` import check confirmed the compatibility entrypoint still wraps `stt.service`; `PYTHONPATH=src .venv/bin/pytest -q tests/test_stt_service.py tests/test_supervisor_runtime.py::test_external_stt_service_status_action_and_supervisor_metadata` passed with 4 tests.
