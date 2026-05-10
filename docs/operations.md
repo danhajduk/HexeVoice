@@ -74,6 +74,10 @@ component has a supported restart target. In-process STT reports backend-process
 resource usage. External faster-whisper STT reports its managed user-service
 process resource usage when enabled, and Piper TTS reports Docker container
 usage when enabled.
+
+The Voice Endpoint runtime page shows endpoint status as summary cards. Selecting
+an endpoint opens a blurred-background detail popup with the full registry,
+voice-state, latency, session, and raw debug payload for that endpoint.
 - expected public node API: `http://10.0.0.100:9004`
 
 Backend logs are written to `runtime/logs/hexevoice-backend.log`. The active file is archived at local midnight each day and retained for `BACKEND_LOG_BACKUP_DAYS` days, defaulting to 14. Set `BACKEND_LOG_LEVEL=DEBUG` in the backend environment when deeper voice transport, supervisor heartbeat, OTA, or service-control traces are needed.

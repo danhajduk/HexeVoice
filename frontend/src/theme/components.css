@@ -190,6 +190,127 @@
   overflow-wrap: anywhere;
 }
 
+.endpoint-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.endpoint-status-card {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  min-height: 182px;
+  padding: 16px;
+  color: hsl(var(--sx-text));
+  text-align: left;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.03);
+  cursor: pointer;
+}
+
+.endpoint-status-card:hover,
+.endpoint-status-card:focus-visible {
+  border-color: hsl(var(--sx-accent) / 0.7);
+  background: hsl(var(--sx-text) / 0.055);
+  outline: none;
+}
+
+.endpoint-status-card-header,
+.endpoint-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.endpoint-status-card-header {
+  justify-content: space-between;
+}
+
+.endpoint-status-card-title-block {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.endpoint-status-card-title-block h3 {
+  margin: 0;
+  color: hsl(var(--sx-text));
+  font-size: 18px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.endpoint-status-card-title-block span,
+.endpoint-status-card-footer {
+  color: hsl(var(--sx-text-muted));
+  font-size: 12px;
+}
+
+.endpoint-status-card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.endpoint-status-card-facts span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  color: hsl(var(--sx-text));
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.endpoint-status-card-facts strong {
+  color: hsl(var(--sx-text-muted));
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.endpoint-status-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  justify-content: space-between;
+}
+
+.endpoint-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(8px);
+}
+
+.endpoint-detail-popout {
+  width: min(980px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-lg);
+  background: hsl(var(--sx-panel));
+  box-shadow: var(--sx-shadow-3);
+}
+
+.endpoint-detail-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.endpoint-detail-section {
+  display: grid;
+  gap: 10px;
+}
+
 .voice-history-table-wrap {
   overflow-x: auto;
   border: 1px solid hsl(var(--sx-border));
@@ -1498,8 +1619,13 @@
   .intent-test-result-grid,
   .intent-audio-result,
   .intent-detail-grid,
+  .endpoint-detail-grid,
   .tts-model-detail-grid,
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .endpoint-status-card-facts {
     grid-template-columns: 1fr;
   }
 

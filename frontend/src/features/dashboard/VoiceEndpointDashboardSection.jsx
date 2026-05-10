@@ -182,6 +182,7 @@ function VoicePipelinePanel({ voiceStatus }) {
 }
 
 function EndpointStatusTable({ voiceStatus, endpointStatus }) {
+  const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const session = voiceStatus?.active_session;
   const projection = voiceStateProjection(voiceStatus);
   const storage = endpointCapabilities(endpointStatus).storage || {};
@@ -204,8 +205,40 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
       sessionId: session?.session_id || "none",
       sttLatency: formatMs(timings.stt_ms),
       totalLatency: formatMs(timings.total_ms),
+      raw: {
+        endpointStatus,
+        voiceStatus: {
+          endpoint_id: voiceStatus?.endpoint_id,
+          connection_state: voiceStatus?.connection_state,
+          transport_health: voiceStatus?.transport_health,
+          active_session: voiceStatus?.active_session,
+          state_projection: voiceStatus?.state_projection,
+          last_turn_timings: voiceStatus?.last_turn_timings,
+          last_event_type: voiceStatus?.last_event_type,
+          last_error: voiceStatus?.last_error,
+        },
+      },
     },
   ];
+  const selectedDetailRows = selectedEndpoint
+    ? [
+        ["Endpoint", selectedEndpoint.endpointId],
+        ["Name", selectedEndpoint.displayName],
+        ["Zone", selectedEndpoint.zoneId],
+        ["Firmware", selectedEndpoint.firmwareVersion],
+        ["Device state", selectedEndpoint.deviceState],
+        ["Registry state", selectedEndpoint.connectionState],
+        ["File transfer", selectedEndpoint.fileTransfer],
+        ["Last heartbeat", selectedEndpoint.lastSeenAt],
+        ["Voice connection", selectedEndpoint.voiceConnection],
+        ["UX state", selectedEndpoint.uxState],
+        ["Session state", selectedEndpoint.sessionState],
+        ["Transport", selectedEndpoint.transportHealth],
+        ["STT latency", selectedEndpoint.sttLatency],
+        ["Total latency", selectedEndpoint.totalLatency],
+        ["Session", selectedEndpoint.sessionId],
+      ]
+    : [];
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -216,54 +249,85 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
         </div>
         <span className="status-pill status-pill-neutral">{valueOrEmpty(voiceStatus?.connection_state, "offline")}</span>
       </div>
-      <div className="voice-endpoint-table-wrap">
-        <table className="voice-endpoint-status-table">
-          <thead>
-            <tr>
-              <th className="endpoint-health-column" scope="col" aria-label="Endpoint health" />
-              <th scope="col">Endpoint</th>
-              <th scope="col">Name</th>
-              <th scope="col">Zone</th>
-              <th scope="col">FW</th>
-              <th scope="col">Device</th>
-              <th scope="col">Registry</th>
-              <th scope="col">File transfer</th>
-              <th scope="col">Last heartbeat</th>
-              <th scope="col">Connection</th>
-              <th scope="col">UX</th>
-              <th scope="col">Session state</th>
-              <th scope="col">Transport</th>
-              <th scope="col">STT</th>
-              <th scope="col">Total</th>
-              <th scope="col">Session</th>
-            </tr>
-          </thead>
-          <tbody>
-            {endpointRows.map((row) => (
-              <tr key={row.endpointId}>
-                <td className="endpoint-health-column">
-                  <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
-                </td>
-                <th scope="row">{valueOrEmpty(row.endpointId)}</th>
-                <td>{valueOrEmpty(row.displayName)}</td>
-                <td>{valueOrEmpty(row.zoneId)}</td>
-                <td>{valueOrEmpty(row.firmwareVersion)}</td>
-                <td>{valueOrEmpty(row.deviceState)}</td>
-                <td>{valueOrEmpty(row.connectionState)}</td>
-                <td>{valueOrEmpty(row.fileTransfer)}</td>
-                <td>{valueOrEmpty(row.lastSeenAt)}</td>
-                <td>{valueOrEmpty(row.voiceConnection)}</td>
-                <td>{valueOrEmpty(row.uxState)}</td>
-                <td>{valueOrEmpty(row.sessionState)}</td>
-                <td>{valueOrEmpty(row.transportHealth)}</td>
-                <td>{valueOrEmpty(row.sttLatency)}</td>
-                <td>{valueOrEmpty(row.totalLatency)}</td>
-                <td>{valueOrEmpty(row.sessionId)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="endpoint-card-grid">
+        {endpointRows.map((row) => (
+          <button
+            key={row.endpointId}
+            className="endpoint-status-card"
+            type="button"
+            onClick={() => setSelectedEndpoint(row)}
+          >
+            <div className="endpoint-status-card-header">
+              <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
+              <div className="endpoint-status-card-title-block">
+                <h3>{valueOrEmpty(row.endpointId)}</h3>
+                <span>{valueOrEmpty(row.displayName)}</span>
+              </div>
+              <span className="status-pill status-pill-neutral">{valueOrEmpty(row.connectionState)}</span>
+            </div>
+            <div className="endpoint-status-card-facts">
+              <span>
+                <strong>Device</strong>
+                {valueOrEmpty(row.deviceState)}
+              </span>
+              <span>
+                <strong>Voice</strong>
+                {valueOrEmpty(row.voiceConnection)}
+              </span>
+              <span>
+                <strong>UX</strong>
+                {valueOrEmpty(row.uxState)}
+              </span>
+              <span>
+                <strong>Total</strong>
+                {valueOrEmpty(row.totalLatency)}
+              </span>
+            </div>
+            <div className="endpoint-status-card-footer">
+              <span>FW {valueOrEmpty(row.firmwareVersion)}</span>
+              <span>{valueOrEmpty(row.lastSeenAt)}</span>
+            </div>
+          </button>
+        ))}
       </div>
+      {selectedEndpoint ? (
+        <div className="endpoint-detail-backdrop" role="presentation" onClick={() => setSelectedEndpoint(null)}>
+          <section
+            className="endpoint-detail-popout"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedEndpoint.endpointId} endpoint details`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="section-heading">
+              <div>
+                <p className="panel-kicker">Endpoint Detail</p>
+                <h2 className="panel-title">{valueOrEmpty(selectedEndpoint.endpointId)}</h2>
+              </div>
+              <button className="btn btn-ghost" type="button" onClick={() => setSelectedEndpoint(null)}>
+                Close
+              </button>
+            </div>
+            <div className="endpoint-detail-summary">
+              <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
+              <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
+              <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.voiceConnection)}</span>
+            </div>
+            <dl className="fact-grid endpoint-detail-grid">
+              {selectedDetailRows.map(([label, value]) => (
+                <div className="fact-grid-item" key={label}>
+                  <dt className="fact-grid-label">{label}</dt>
+                  <dd className="fact-grid-value">{valueOrEmpty(value)}</dd>
+                </div>
+              ))}
+            </dl>
+            <div className="endpoint-detail-section">
+              <h3 className="subsection-title">Raw Data</h3>
+              <pre className="json-preview">{JSON.stringify(selectedEndpoint.raw, null, 2)}</pre>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </section>
   );
 }

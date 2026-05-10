@@ -20,5 +20,4 @@
 [FUTURE TODO] Task 109: Refactor VoiceSessionManager for multiple simultaneous ESP endpoints with per-endpoint WebSockets, active sessions, status, command routing, OTA/media delivery, and replay controls
 [FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
 [FUTURE TODO] Task 116: Add Core Supervisor managed restart controls for Voice Node backend/STT/TTS services
-[TODO] Task 117: Redesign the Endpoint Status UI as endpoint summary cards with detail popups as pre-work for multiple ESP endpoints
 [TODO] Task 118: Have voice endpoints report firmware version, compare it against latest exported firmware artifacts, and expose an update action in the UI
