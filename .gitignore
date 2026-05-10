@@ -20,6 +20,8 @@ runtime/piper-tts/models/*
 !runtime/piper-tts/models/.gitkeep
 runtime/voice_tts/*
 !runtime/voice_tts/.gitkeep
+runtime/wake_recordings/*
+!runtime/wake_recordings/.gitkeep
 runtime/firmware/*
 !runtime/firmware/.gitkeep
 runtime/logs/*
