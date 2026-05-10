@@ -719,7 +719,10 @@ class NodeRuntimeService:
 
     def _openwakeword_service_summary(self) -> dict[str, object]:
         state = self._openwakeword_state()
-        process = self._docker_container_process_payload(self._settings.openwakeword_container_name)
+        resource_usage = self._docker_resource_usage(self._settings.openwakeword_container_name)
+        process = resource_usage.get("process")
+        if not isinstance(process, dict):
+            process = self._docker_container_process_payload(self._settings.openwakeword_container_name)
         return {
             "service_id": self._settings.openwakeword_service_id,
             "service_name": "openWakeWord",
@@ -728,6 +731,7 @@ class NodeRuntimeService:
             "managed_by": "core_supervisor_service_action_proxy",
             "container_name": self._settings.openwakeword_container_name,
             "control_script": str(self._settings.openwakeword_control_script),
+            "resource_usage": resource_usage,
             **self._service_process_fields(process),
         }
 
