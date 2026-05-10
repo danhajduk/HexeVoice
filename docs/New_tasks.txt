@@ -21,3 +21,6 @@
 [FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
 [FUTURE TODO] Task 116: Add Core Supervisor managed restart controls for Voice Node backend/STT/TTS services
 [FUTURE TODO] Task 121: Move local STT/TTS engine services to Unix-domain-socket-only transport
+[FUTURE TODO] Task 122: Add provider implementation health detail for STT/TTS engines, including active implementation, model, health, and last error
+[FUTURE TODO] Task 123: Add intent regression test scaffolding for transcript-to-intent routing before expanding node-owned intents
+[FUTURE TODO] Task 124: Add short-intent conflict handling so yes/no/stop/ok are scoped to followup windows unless explicitly declared global
