@@ -17,20 +17,22 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
 
     snapshot = registry.snapshot()
 
-    assert snapshot["registered_count"] == 4
-    assert snapshot["active_count"] == 4
+    assert snapshot["registered_count"] == 5
+    assert snapshot["active_count"] == 5
     assert snapshot["intents"][0]["intent_id"] == "timer.create"
     assert snapshot["intents"][1]["intent_id"] == "voice.time.query"
     assert snapshot["intents"][1]["owner_service"] == "hexevoice"
     assert snapshot["intents"][1]["metadata"]["owned_by"] == "voice_node"
-    assert snapshot["intents"][2]["intent_id"] == "voice.confirm.yes"
-    assert snapshot["intents"][3]["intent_id"] == "voice.confirm.no"
+    assert snapshot["intents"][2]["intent_id"] == "voice.debug.followup"
+    assert snapshot["intents"][2]["metadata"]["family"] == "debug"
+    assert snapshot["intents"][3]["intent_id"] == "voice.confirm.yes"
+    assert snapshot["intents"][4]["intent_id"] == "voice.confirm.no"
 
     registry.transition_intent(intent_id="timer.create", status="disabled", reason="unit_test")
     reloaded = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
 
     assert reloaded.get_intent(intent_id="timer.create")["status"] == "disabled"
-    assert reloaded.snapshot()["active_count"] == 3
+    assert reloaded.snapshot()["active_count"] == 4
 
 
 def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
@@ -84,6 +86,25 @@ def test_confirmation_intents_require_pending_followup(tmp_path):
     assert match.slots["pending_intent_id"] == "debug.delete_cache"
 
 
+def test_builtin_followup_test_intent_declares_yes_no_prompt(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    finder = LocalIntentFinder(registry=registry)
+    requested_at = datetime(2026, 5, 9, 18, 34, tzinfo=UTC)
+
+    match = finder.find("test follow up", requested_at=requested_at)
+
+    assert match.command == "voice.debug.followup"
+    assert match.reply_text == "Should I complete the follow-up test?"
+    assert match.conversation_followup == {
+        "required": True,
+        "prompt": "Should I complete the follow-up test?",
+        "yes_reply_text": "Follow-up test completed.",
+        "no_reply_text": "Follow-up test canceled.",
+        "ttl_seconds": 30,
+        "context": {"purpose": "operator_followup_test"},
+    }
+
+
 def test_time_query_formats_clock_for_tts():
     assert _format_clock_time(datetime(2026, 5, 9, 16, 5, tzinfo=UTC)) == "four oh five PM"
     assert _format_clock_time(datetime(2026, 5, 9, 16, 34, tzinfo=UTC)) == "four thirty four PM"
@@ -112,7 +133,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     )
 
     assert registered.status_code == 200
-    assert registered.json()["registered_count"] == 5
+    assert registered.json()["registered_count"] == 6
 
     dispatch = client.post(
         "/api/voice/intents/dispatch",
@@ -134,7 +155,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
         json={"status": "disabled", "reason": "unit_test"},
     )
     assert disabled.status_code == 200
-    assert disabled.json()["active_count"] == 4
+    assert disabled.json()["active_count"] == 5
 
     dispatch_after_disable = client.post(
         "/api/voice/intents/dispatch",

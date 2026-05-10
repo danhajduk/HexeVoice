@@ -237,6 +237,84 @@ def built_in_time_query_intent() -> dict[str, Any]:
     }
 
 
+def test_followup_intent_definition() -> dict[str, Any]:
+    return {
+        "utterance_examples": [
+            "test follow up",
+            "test followup",
+            "test conversation",
+            "follow up test",
+        ],
+        "patterns": [
+            r"^(?:please\s+)?(?:test\s+follow\s+up|test\s+followup|test\s+conversation|follow\s+up\s+test)$",
+        ],
+        "slots": {
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "optional": {
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "local_response",
+            "command": "voice.debug.followup",
+        },
+        "response": {
+            "reply_template": "Follow-up test started.",
+        },
+        "reply": {
+            "text_template": "Should I complete the follow-up test?",
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "followup": {
+            "required": True,
+            "prompt": "Should I complete the follow-up test?",
+            "yes_reply_text": "Follow-up test completed.",
+            "no_reply_text": "Follow-up test canceled.",
+            "ttl_seconds": 30,
+            "context": {
+                "purpose": "operator_followup_test",
+            },
+        },
+        "matcher": {
+            "type": "exact_example",
+        },
+    }
+
+
+def built_in_test_followup_intent() -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": "voice.debug.followup",
+        "intent_name": "Test follow-up",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": test_followup_intent_definition(),
+        "constraints": {
+            "requires_operational_mqtt": False,
+            "dispatch_side_effect": "none",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "debug",
+            "owned_by": "voice_node",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 class VoiceIntentRecord(BaseModel):
     intent_id: str = Field(min_length=1, max_length=120)
     intent_name: str | None = Field(default=None, max_length=160)
@@ -334,6 +412,7 @@ class VoiceIntentStateStore:
                 intents=[
                     VoiceIntentRecord.model_validate(built_in_timer_intent()),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
+                    VoiceIntentRecord.model_validate(built_in_test_followup_intent()),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="no")),
                 ],
@@ -363,6 +442,9 @@ class VoiceIntentStateStore:
             seeded = True
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))
+            seeded = True
+        if "voice.debug.followup" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_test_followup_intent()))
             seeded = True
         if "voice.confirm.yes" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")))

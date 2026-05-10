@@ -20,6 +20,7 @@ Seeded built-ins:
 
 - `timer.create`: publishes the existing timer create domain event.
 - `voice.time.query`: Voice Node owned local response for "What is the time?" without an external dispatch side effect. Its reply uses spoken-form clock text, such as `four oh five PM`, so TTS does not read leading-zero minutes literally.
+- `voice.debug.followup`: Voice Node owned follow-up test intent. Say "test follow up" to make the backend ask `Should I complete the follow-up test?`, then answer "yes" or "no" to exercise the follow-up listening path.
 - `voice.confirm.yes` and `voice.confirm.no`: contextual Voice Node owned responses for pending follow-ups. They only match while the endpoint or session has an active follow-up; standalone "yes" or "no" is ignored by the local intent matcher.
 
 ## Register
