@@ -316,3 +316,8 @@ Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_piper_tts_service.p
 #############
 All Tasks completed 05/09/2026 22:33:44
 #############
+###########
+Task #093
+Step objective: Close the completed faster-whisper model benchmark task.
+What changed: Removed the future TODO after confirming local benchmark artifacts for `base.en`, `small.en`, and `medium.en` exist under `runtime/stt/`. The five-repeat REHASp sample benchmark showed `base.en` averaging 1523.53 ms with 1/2 normalized matches, `small.en` averaging 4519.99 ms with 2/2 matches, and `medium.en` averaging 14755.03 ms with 2/2 matches.
+Verification: Inspected `runtime/stt/faster-whisper-base-en-rehasp-repeat5.json`, `runtime/stt/faster-whisper-small-en-rehasp-repeat5.json`, and `runtime/stt/faster-whisper-medium-en-rehasp-repeat5.json`.
