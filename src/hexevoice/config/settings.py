@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     voice_micro_vad_chunk_retention_days: int = Field(default=1, alias="VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS", ge=1)
     voice_session_history_path: Path | None = Field(default=None, alias="VOICE_SESSION_HISTORY_PATH")
     voice_session_history_limit: int = Field(default=100, alias="VOICE_SESSION_HISTORY_LIMIT", ge=1)
-    voice_stt_provider: Literal["deterministic", "openai", "faster_whisper"] = Field(
+    voice_stt_provider: Literal["deterministic", "openai", "faster_whisper", "external_faster_whisper"] = Field(
         default="deterministic",
         alias="VOICE_STT_PROVIDER",
     )
@@ -80,6 +80,15 @@ class Settings(BaseSettings):
     voice_stt_prompt: str | None = Field(default=None, alias="VOICE_STT_PROMPT")
     voice_stt_timeout_s: float = Field(default=30.0, alias="VOICE_STT_TIMEOUT_S", gt=0)
     voice_stt_preload: bool = Field(default=True, alias="VOICE_STT_PRELOAD")
+    voice_stt_service_base_url: str | None = Field(default=None, alias="VOICE_STT_SERVICE_BASE_URL")
+    voice_stt_service_host: str = Field(default="127.0.0.1", alias="VOICE_STT_SERVICE_HOST")
+    voice_stt_service_port: int = Field(default=10300, alias="VOICE_STT_SERVICE_PORT")
+    voice_stt_service_id: str = Field(default="faster_whisper_stt", alias="VOICE_STT_SERVICE_ID")
+    voice_stt_service_name: str = Field(default="hexevoice-stt.service", alias="VOICE_STT_SERVICE_NAME")
+    voice_stt_control_script: Path = Field(
+        default=Path("scripts/faster-whisper-stt-control.sh"),
+        alias="VOICE_STT_CONTROL_SCRIPT",
+    )
     voice_stt_faster_whisper_model: str = Field(default="base.en", alias="VOICE_STT_FASTER_WHISPER_MODEL")
     voice_stt_faster_whisper_device: str = Field(default="cpu", alias="VOICE_STT_FASTER_WHISPER_DEVICE")
     voice_stt_faster_whisper_compute_type: str = Field(
@@ -193,6 +202,11 @@ class Settings(BaseSettings):
         if self.voice_stt_faster_whisper_temp_dir is not None:
             return self.voice_stt_faster_whisper_temp_dir
         return self.runtime_dir / "stt" / "faster-whisper"
+
+    def resolved_voice_stt_service_base_url(self) -> str:
+        if self.voice_stt_service_base_url is not None:
+            return self.voice_stt_service_base_url.rstrip("/")
+        return f"http://{self.voice_stt_service_host}:{self.voice_stt_service_port}"
 
     def resolved_voice_wake_recording_dir(self) -> Path:
         if self.voice_wake_recording_dir is not None:

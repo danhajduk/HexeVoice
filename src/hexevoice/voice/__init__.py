@@ -34,6 +34,7 @@ from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.pipeline import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
+    ExternalFasterWhisperSpeechToTextAdapter,
     FasterWhisperSpeechToTextAdapter,
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
@@ -87,6 +88,7 @@ __all__ = [
     "MicroVadChunkRecordingService",
     "DeterministicSpeechToTextAdapter",
     "DeterministicTextToSpeechAdapter",
+    "ExternalFasterWhisperSpeechToTextAdapter",
     "FasterWhisperSpeechToTextAdapter",
     "OpenAiSpeechToTextAdapter",
     "OpenAiTextToSpeechAdapter",

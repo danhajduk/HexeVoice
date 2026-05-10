@@ -14,7 +14,7 @@ fi
 ACTION="${1:-status}"
 case "$ACTION" in
   start|stop|restart|status)
-    systemctl --user "$ACTION" "$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME"
+    systemctl --user "$ACTION" "$BACKEND_SERVICE_NAME" "${STT_SERVICE_NAME:-hexevoice-stt.service}" "$FRONTEND_SERVICE_NAME"
     ;;
   *)
     echo "Usage: $0 {start|stop|restart|status}"

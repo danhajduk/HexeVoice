@@ -290,11 +290,17 @@ class NodeRuntimeService:
     def service_status_payload(self) -> ServiceStatusResponse:
         openwakeword_state = self._openwakeword_state()
         piper_tts_state = self._piper_tts_state() if self._piper_tts_enabled() else "disabled"
+        stt_state = self._external_stt_state() if self._external_stt_enabled() else self._settings.voice_stt_provider
         backend_usage = self._resource_usage_payload()
         piper_usage = (
             self._docker_resource_usage(self._settings.piper_tts_container_name)
             if self._piper_tts_enabled()
             else {}
+        )
+        stt_usage = (
+            self._systemd_service_resource_usage(self._settings.voice_stt_service_name)
+            if self._external_stt_enabled()
+            else backend_usage
         )
         return ServiceStatusResponse(
             backend="running",
@@ -316,17 +322,19 @@ class NodeRuntimeService:
                 {
                     "component_id": "stt",
                     "label": "STT Engine",
-                    "status": self._settings.voice_stt_provider,
-                    "healthy": True,
+                    "status": stt_state,
+                    "healthy": stt_state in {"active", "running"} if self._external_stt_enabled() else True,
                     "provider": self._settings.voice_stt_provider,
                     "model": self._settings.voice_stt_faster_whisper_model
-                    if self._settings.voice_stt_provider == "faster_whisper"
+                    if self._settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}
                     else self._settings.voice_stt_model,
-                    "restart_target": "stt",
-                    "restart_supported": False,
-                    "restart_detail": "STT currently runs in the backend process.",
-                    "resource_scope": "backend_process",
-                    "resource_usage": backend_usage,
+                    "restart_target": self._settings.voice_stt_service_id if self._external_stt_enabled() else "stt",
+                    "restart_supported": self._external_stt_enabled(),
+                    "restart_detail": "External faster-whisper STT is supervisor-proxied."
+                    if self._external_stt_enabled()
+                    else "STT currently runs in the backend process.",
+                    "resource_scope": "systemd_user_service" if self._external_stt_enabled() else "backend_process",
+                    "resource_usage": stt_usage,
                 },
                 {
                     "component_id": "tts",
@@ -428,6 +436,64 @@ class NodeRuntimeService:
             "pids": payload.get("PIDs"),
         }
 
+    def _systemd_service_resource_usage(self, service_name: str) -> dict[str, object]:
+        result = self._service_command_runner(
+            [
+                "systemctl",
+                "--user",
+                "show",
+                service_name,
+                "--property=MainPID",
+                "--value",
+            ]
+        )
+        if result.returncode != 0:
+            return {"available": False, "error": (result.stderr or "").strip() or "systemctl_show_failed"}
+        try:
+            pid = int((result.stdout or "").strip() or "0")
+        except ValueError:
+            pid = 0
+        if pid <= 0:
+            return {"available": False, "error": "service_not_running", "pid": pid}
+        return self._process_resource_usage_payload(pid)
+
+    def _process_resource_usage_payload(self, pid: int) -> dict[str, object]:
+        status_path = Path(f"/proc/{pid}/status")
+        stat_path = Path(f"/proc/{pid}/stat")
+        rss_kb: int | None = None
+        try:
+            with status_path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if line.startswith("VmRSS:"):
+                        parts = line.split()
+                        rss_kb = int(parts[1]) if len(parts) >= 2 else None
+                        break
+        except (OSError, ValueError):
+            return {"available": False, "error": "proc_status_unavailable", "pid": pid}
+
+        cpu_seconds: float | None = None
+        try:
+            stat_parts = stat_path.read_text(encoding="utf-8").split()
+            clock_ticks = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+            cpu_seconds = round((int(stat_parts[13]) + int(stat_parts[14])) / clock_ticks, 2)
+        except (OSError, ValueError, IndexError, KeyError):
+            cpu_seconds = None
+
+        meminfo = self._read_meminfo_kb()
+        total_kb = meminfo.get("MemTotal")
+        rss_bytes = rss_kb * 1024 if rss_kb is not None else None
+        process_memory_percent = (
+            round((rss_kb / total_kb) * 100.0, 2) if rss_kb is not None and total_kb else None
+        )
+        return {
+            "available": True,
+            "sampled_at": datetime.now(UTC).isoformat(),
+            "pid": pid,
+            "process_cpu_seconds": cpu_seconds,
+            "process_memory_rss_bytes": rss_bytes,
+            "process_memory_percent": process_memory_percent,
+        }
+
     def _parse_percent(self, value: object) -> float | None:
         try:
             return round(float(str(value).strip().rstrip("%")), 2)
@@ -481,6 +547,9 @@ class NodeRuntimeService:
     def _piper_tts_control_script(self) -> Path:
         return self._resolve_control_script(self._settings.piper_tts_control_script)
 
+    def _stt_control_script(self) -> Path:
+        return self._resolve_control_script(self._settings.voice_stt_control_script)
+
     def _resolve_control_script(self, script: Path) -> Path:
         if script.is_absolute():
             return script
@@ -528,11 +597,24 @@ class NodeRuntimeService:
     def _piper_tts_enabled(self) -> bool:
         return self._settings.voice_tts_provider == "piper"
 
+    def _external_stt_enabled(self) -> bool:
+        return self._settings.voice_stt_provider == "external_faster_whisper"
+
     def _piper_tts_state(self) -> str:
         return self._docker_container_state(
             container_name=self._settings.piper_tts_container_name,
             service_label="Piper TTS",
         )
+
+    def _external_stt_state(self) -> str:
+        script = self._stt_control_script()
+        if not script.exists():
+            return "control_script_missing"
+        result = self._service_command_runner([str(script), "status"])
+        if result.returncode != 0:
+            return "unknown"
+        state = (result.stdout or "").strip().splitlines()
+        return (state[0].strip().lower() if state else "") or "unknown"
 
     def _piper_tts_service_summary(self) -> dict[str, object]:
         state = self._piper_tts_state()
@@ -550,11 +632,29 @@ class NodeRuntimeService:
             "warm_voices": self._settings.resolved_piper_tts_warm_voices(),
         }
 
+    def _external_stt_service_summary(self) -> dict[str, object]:
+        state = self._external_stt_state()
+        return {
+            "service_id": self._settings.voice_stt_service_id,
+            "service_name": "faster-whisper STT",
+            "state": state,
+            "boot_order": 17,
+            "managed_by": "core_supervisor_service_action_proxy",
+            "systemd_service": self._settings.voice_stt_service_name,
+            "control_script": str(self._settings.voice_stt_control_script),
+            "base_url": self._settings.resolved_voice_stt_service_base_url(),
+            "model": self._settings.voice_stt_faster_whisper_model,
+            "device": self._settings.voice_stt_faster_whisper_device,
+            "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
+        }
+
     def service_action(self, *, target: str, action: str) -> ServiceActionResponse:
         normalized_target = str(target or "").strip()
         normalized_action = str(action or "").strip().lower()
         if normalized_target == "tts" and self._piper_tts_enabled():
             normalized_target = self._settings.piper_tts_service_id
+        if normalized_target == "stt" and self._external_stt_enabled():
+            normalized_target = self._settings.voice_stt_service_id
         service_scripts = {
             self._settings.openwakeword_service_id: self._openwakeword_control_script,
         }
@@ -564,6 +664,9 @@ class NodeRuntimeService:
         if self._piper_tts_enabled():
             service_scripts[self._settings.piper_tts_service_id] = self._piper_tts_control_script
             service_states[self._settings.piper_tts_service_id] = self._piper_tts_state
+        if self._external_stt_enabled():
+            service_scripts[self._settings.voice_stt_service_id] = self._stt_control_script
+            service_states[self._settings.voice_stt_service_id] = self._external_stt_state
         if normalized_target not in service_scripts:
             log.warning(
                 "Rejected service action for unsupported target: target=%s action=%s",
@@ -575,7 +678,7 @@ class NodeRuntimeService:
                 action=normalized_action,
                 accepted=False,
                 status="unsupported_service",
-                detail="Supported services are openwakeword and piper_tts when enabled.",
+                detail="Supported services are openwakeword, piper_tts when enabled, and faster_whisper_stt when enabled.",
             )
         if normalized_action not in {"start", "stop", "restart"}:
             log.warning(
@@ -592,7 +695,7 @@ class NodeRuntimeService:
             )
         script = service_scripts[normalized_target]()
         if not script.exists():
-            log.error("openWakeWord control script missing: path=%s", script)
+            log.error("Service control script missing: target=%s path=%s", normalized_target, script)
             return ServiceActionResponse(
                 target=normalized_target,
                 action=normalized_action,
@@ -645,6 +748,8 @@ class NodeRuntimeService:
             },
             self._openwakeword_service_summary(),
         ]
+        if self._external_stt_enabled():
+            services.append(self._external_stt_service_summary())
         if self._piper_tts_enabled():
             services.append(self._piper_tts_service_summary())
         services.append(

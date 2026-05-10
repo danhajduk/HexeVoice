@@ -16,8 +16,10 @@ mkdir -p "$SYSTEMD_DIR"
 sed "s|__ROOT_DIR__|$ROOT_DIR|g; s|__ENV_FILE__|$ENV_FILE|g" \
   "$ROOT_DIR/scripts/systemd/hexevoice-backend.service.in" > "$SYSTEMD_DIR/$BACKEND_SERVICE_NAME"
 sed "s|__ROOT_DIR__|$ROOT_DIR|g; s|__ENV_FILE__|$ENV_FILE|g" \
+  "$ROOT_DIR/scripts/systemd/hexevoice-stt.service.in" > "$SYSTEMD_DIR/${STT_SERVICE_NAME:-hexevoice-stt.service}"
+sed "s|__ROOT_DIR__|$ROOT_DIR|g; s|__ENV_FILE__|$ENV_FILE|g" \
   "$ROOT_DIR/scripts/systemd/hexevoice-frontend.service.in" > "$SYSTEMD_DIR/$FRONTEND_SERVICE_NAME"
 
 systemctl --user daemon-reload
-systemctl --user restart "$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME"
-echo "Installed and started: $BACKEND_SERVICE_NAME, $FRONTEND_SERVICE_NAME"
+systemctl --user restart "$BACKEND_SERVICE_NAME" "${STT_SERVICE_NAME:-hexevoice-stt.service}" "$FRONTEND_SERVICE_NAME"
+echo "Installed and started: $BACKEND_SERVICE_NAME, ${STT_SERVICE_NAME:-hexevoice-stt.service}, $FRONTEND_SERVICE_NAME"

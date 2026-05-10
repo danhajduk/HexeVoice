@@ -15,11 +15,14 @@ case "${1:-}" in
   backend)
     eval "$BACKEND_CMD"
     ;;
+  stt)
+    eval "$STT_CMD"
+    ;;
   frontend)
     eval "$FRONTEND_CMD"
     ;;
   *)
-    echo "Usage: $0 {backend|frontend}"
+    echo "Usage: $0 {backend|stt|frontend}"
     exit 1
     ;;
 esac

@@ -278,3 +278,57 @@ def test_tts_service_action_alias_restarts_piper_when_enabled(tmp_path):
     assert tts_component["restart_target"] == "piper_tts"
     assert result.accepted is True
     assert [str(script), "restart"] in command_runner.commands
+
+
+def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
+    class ExternalSttCommandRunner:
+        def __init__(self):
+            self.commands = []
+
+        def __call__(self, command):
+            self.commands.append(command)
+            if command[:3] == ["docker", "inspect", "--format"]:
+                return subprocess.CompletedProcess(command, 0, "running\n", "")
+            if command[:3] == ["systemctl", "--user", "show"]:
+                return subprocess.CompletedProcess(command, 0, "0\n", "")
+            if len(command) == 2 and command[1] in {"status", "restart"}:
+                return subprocess.CompletedProcess(command, 0, "active\n", "")
+            return subprocess.CompletedProcess(command, 0, "ok\n", "")
+
+    client = FakeSupervisorClient()
+    command_runner = ExternalSttCommandRunner()
+    store = trusted_ready_store(tmp_path / "state.json")
+    script = tmp_path / "faster-whisper-stt-control.sh"
+    script.write_text("#!/usr/bin/env bash\n")
+    service = NodeRuntimeService(
+        settings=Settings(
+            public_api_base_url="http://10.0.0.100:9004",
+            voice_stt_provider="external_faster_whisper",
+            voice_stt_control_script=script,
+            voice_stt_service_name="hexevoice-stt.service",
+            voice_stt_service_base_url="http://127.0.0.1:10300",
+        ),
+        onboarding_state_store=store,
+        supervisor_client=client,
+        service_command_runner=command_runner,
+    )
+
+    status = service.service_status_payload()
+    result = service.service_action(target="stt", action="restart")
+    asyncio.run(service.supervisor_heartbeat_once())
+
+    stt_component = next(component for component in status.components if component["component_id"] == "stt")
+    assert stt_component["status"] == "active"
+    assert stt_component["restart_supported"] is True
+    assert stt_component["restart_target"] == "faster_whisper_stt"
+    assert stt_component["resource_scope"] == "systemd_user_service"
+    assert result.accepted is True
+    assert [str(script), "restart"] in command_runner.commands
+
+    services = client.register_payloads[0]["runtime_metadata"]["services"]
+    stt_service = next(service for service in services if service["service_id"] == "faster_whisper_stt")
+    assert stt_service["service_name"] == "faster-whisper STT"
+    assert stt_service["state"] == "active"
+    assert stt_service["managed_by"] == "core_supervisor_service_action_proxy"
+    assert stt_service["systemd_service"] == "hexevoice-stt.service"
+    assert stt_service["base_url"] == "http://127.0.0.1:10300"

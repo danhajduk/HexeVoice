@@ -23,7 +23,7 @@ It includes:
   Native Hexe standalone firmware for the ESP32-S3 Box track
 - `scripts/`
   Environment-driven run and service-control scripts
-  including `scripts/systemd/hexevoice-backend.service.in` and `scripts/systemd/hexevoice-frontend.service.in`
+  including `scripts/systemd/hexevoice-backend.service.in`, `scripts/systemd/hexevoice-stt.service.in`, and `scripts/systemd/hexevoice-frontend.service.in`
 - `docs/`
   Starter architecture, feature spec, setup, operations, and provider notes
 - `runtime/`

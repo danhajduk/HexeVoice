@@ -15,6 +15,7 @@ from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.voice import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
+    ExternalFasterWhisperSpeechToTextAdapter,
     FasterWhisperSpeechToTextAdapter,
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
@@ -402,6 +403,66 @@ def test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured(tmp_p
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._stt_adapter, FasterWhisperSpeechToTextAdapter)
+
+
+def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["json"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            json={
+                "text": "what time",
+                "provider_id": "external_faster_whisper",
+                "model": "small.en",
+                "duration_ms": 12.3,
+            },
+        )
+
+    adapter = ExternalFasterWhisperSpeechToTextAdapter(
+        base_url="http://stt.test:10300",
+        model_name="small.en",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    transcript = adapter.transcribe(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 320,
+        )
+    )
+
+    assert captured["url"] == "http://stt.test:10300/transcribe"
+    assert captured["json"]["endpoint_id"] == "esp-box-1"
+    assert captured["json"]["sample_rate_hz"] == 16000
+    assert captured["json"]["encoding"] == "pcm_s16le"
+    assert captured["json"]["audio_base64"]
+    assert transcript.text == "what time"
+    assert transcript.provider_id == "external_faster_whisper"
+    assert transcript.model == "small.en"
+    assert transcript.duration_ms == 12.3
+
+
+def test_build_voice_turn_pipeline_uses_external_faster_whisper_stt_when_configured(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_stt_provider="external_faster_whisper",
+        voice_stt_service_base_url="http://stt.test:10300",
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    assert isinstance(pipeline._stt_adapter, ExternalFasterWhisperSpeechToTextAdapter)
 
 
 def test_faster_whisper_stt_adapter_returns_error_without_losing_fallback_modes(tmp_path):

@@ -7,6 +7,7 @@ from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from contextlib import ExitStack
+import base64
 import io
 import importlib.util
 import json
@@ -361,6 +362,127 @@ class FasterWhisperSpeechToTextAdapter:
             if exc.name == "faster_whisper":
                 raise RuntimeError("missing_dependency:faster-whisper") from exc
             raise
+
+
+class ExternalFasterWhisperSpeechToTextAdapter:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model_name: str = "base.en",
+        timeout_s: float = 30.0,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._model_name = model_name
+        self._timeout_s = timeout_s
+        self._http_client = http_client
+        self._last_error: str | None = None
+        self._last_duration_ms: float | None = None
+
+    def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
+        if not audio.audio_bytes:
+            self._last_error = "empty_audio"
+            return SpeechTranscript(
+                text="",
+                confidence=0.0,
+                provider_id="external_faster_whisper",
+                model=self._model_name,
+                error="empty_audio",
+            )
+
+        started_at = time.perf_counter()
+        client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        try:
+            response = client.post(
+                f"{self._base_url}/transcribe",
+                json={
+                    "endpoint_id": audio.endpoint_id,
+                    "session_id": audio.session_id,
+                    "chunk_count": audio.chunk_count,
+                    "sample_rate_hz": audio.sample_rate_hz,
+                    "encoding": audio.encoding,
+                    "channels": audio.channels,
+                    "audio_base64": base64.b64encode(audio.audio_bytes).decode("ascii"),
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+            self._last_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            self._last_error = None
+            return SpeechTranscript(
+                text=str(payload.get("text") or "").strip(),
+                confidence=payload.get("confidence"),
+                provider_id="external_faster_whisper",
+                model=str(payload.get("model") or self._model_name),
+                duration_ms=payload.get("duration_ms") or self._last_duration_ms,
+                error=payload.get("error"),
+            )
+        except Exception as exc:
+            self._last_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            self._last_error = str(exc)
+            return SpeechTranscript(
+                text="",
+                confidence=0.0,
+                provider_id="external_faster_whisper",
+                model=self._model_name,
+                duration_ms=self._last_duration_ms,
+                error=self._last_error,
+            )
+        finally:
+            if self._http_client is None:
+                client.close()
+
+    def preload(self) -> dict:
+        client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        try:
+            response = client.post(f"{self._base_url}/preload")
+            response.raise_for_status()
+            payload = response.json()
+            self._last_error = payload.get("error")
+            return payload
+        except Exception as exc:
+            self._last_error = str(exc)
+            return {
+                "provider": "external_faster_whisper",
+                "loaded": False,
+                "model": self._model_name,
+                "error": self._last_error,
+            }
+        finally:
+            if self._http_client is None:
+                client.close()
+
+    def status(self) -> dict:
+        client = self._http_client or httpx.Client(timeout=min(self._timeout_s, 2.0))
+        try:
+            response = client.get(f"{self._base_url}/health")
+            response.raise_for_status()
+            payload = response.json()
+            return {
+                "provider": "external_faster_whisper",
+                "healthy": bool(payload.get("healthy", True)),
+                "configured": True,
+                "base_url": self._base_url,
+                "model": payload.get("model") or self._model_name,
+                "service": payload,
+                "last_duration_ms": self._last_duration_ms,
+                "last_error": payload.get("last_error") or self._last_error,
+            }
+        except Exception as exc:
+            self._last_error = str(exc)
+            return {
+                "provider": "external_faster_whisper",
+                "healthy": False,
+                "configured": True,
+                "base_url": self._base_url,
+                "model": self._model_name,
+                "last_duration_ms": self._last_duration_ms,
+                "last_error": self._last_error,
+            }
+        finally:
+            if self._http_client is None:
+                client.close()
 
 
 class DeterministicTextToSpeechAdapter:
@@ -1353,6 +1475,12 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             device=settings.voice_stt_faster_whisper_device,
             compute_type=settings.voice_stt_faster_whisper_compute_type,
             temp_dir=settings.resolved_faster_whisper_temp_dir(),
+        )
+    elif settings.voice_stt_provider == "external_faster_whisper":
+        stt_adapter = ExternalFasterWhisperSpeechToTextAdapter(
+            base_url=settings.resolved_voice_stt_service_base_url(),
+            model_name=settings.voice_stt_faster_whisper_model,
+            timeout_s=settings.voice_stt_timeout_s,
         )
     if settings.voice_tts_provider == "openai":
         tts_adapter = OpenAiTextToSpeechAdapter(

@@ -116,3 +116,4 @@ Task 111: Add Voice PE firmware post-TTS cooldown and mic ignore window so speak
 Task 112: Add explicit firmware playback lifecycle state tracking for playback started, playback finished, mic paused, and mic resumed - Completed on 05/09/2026 20:13
 Task 113: Redesign the Intents UI as minimal intent cards with basic summary fields and a blurred-background detail popup on click - Completed on 05/09/2026 21:11
 Task 114: Redesign the Provider UI model list as minimal model cards with detail popups and a popup action to mark a model warm - Completed on 05/09/2026 21:13
+Task 115: Extract STT into an external managed process with a local service API, health/status reporting, backend client integration, and supervisor-visible lifecycle metadata - Completed on 05/09/2026 21:21
