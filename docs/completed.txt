@@ -121,3 +121,4 @@ Task 117: Redesign the Endpoint Status UI as endpoint summary cards with detail 
 Task 118: Have voice endpoints report firmware version, compare it against latest exported firmware artifacts, and expose an update action in the UI - Completed on 05/09/2026 21:29
 Task 117: Move the external faster-whisper STT service into a dedicated src/stt package boundary - Completed on 05/09/2026 22:27
 Task 118: Update STT service launch, tests, and docs after the src/stt package split - Completed on 05/09/2026 22:29
+Task 119: Move the Piper TTS service into a dedicated src/tts package boundary - Completed on 05/09/2026 22:31

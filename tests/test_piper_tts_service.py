@@ -1,20 +1,6 @@
-import importlib.util
-from pathlib import Path
-
 from fastapi.testclient import TestClient
 
-
-def load_piper_app_module():
-    module_path = Path(__file__).resolve().parents[1] / "services/piper_tts/app.py"
-    spec = importlib.util.spec_from_file_location("hexevoice_piper_tts_service", module_path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-piper_app = load_piper_app_module()
+import tts.service as piper_app
 
 
 def test_piper_tts_health_reports_configured_model(tmp_path, monkeypatch):

@@ -301,3 +301,9 @@ Step objective: Update STT service launch, tests, and docs after the src/stt pac
 Chosen fix: Pointed local stack launch configuration at `python -m stt.service` while preserving the existing systemd/control-script contract.
 What changed: Updated `scripts/stack.env` and `scripts/stack.env.example`, added an operations migration note for existing user units, and completed the task queue entry.
 Verification: `bash -n scripts/faster-whisper-stt-control.sh scripts/run-from-env.sh scripts/stack-control.sh scripts/restart-stack.sh` passed; `PYTHONPATH=src .venv/bin/python` import check confirmed the compatibility entrypoint still wraps `stt.service`; `PYTHONPATH=src .venv/bin/pytest -q tests/test_stt_service.py tests/test_supervisor_runtime.py::test_external_stt_service_status_action_and_supervisor_metadata` passed with 4 tests.
+###########
+Task #119
+Step objective: Move the Piper TTS service into a dedicated src/tts package boundary.
+Chosen fix: Moved the Piper FastAPI runtime into `src/tts/service.py` and kept `services/piper_tts/app.py` as a thin compatibility wrapper.
+What changed: Added the `tts` package, moved the service implementation, updated direct service tests to import `tts.service`, and documented the new TTS package boundary.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_piper_tts_service.py` passed with 3 tests; `PYTHONPATH=src .venv/bin/python` import check confirmed the Docker compatibility wrapper exposes the same FastAPI app.

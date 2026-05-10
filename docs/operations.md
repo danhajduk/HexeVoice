@@ -52,6 +52,10 @@ The external faster-whisper STT runtime code lives in the standalone
 `src/stt/` package. `src/hexevoice/stt_service.py` remains as a compatibility
 entrypoint, while service launch commands use `python -m stt.service`.
 
+The Piper TTS runtime code lives in the standalone `src/tts/` package.
+`services/piper_tts/app.py` remains as a Docker compatibility wrapper while the
+container launch path migrates to `tts.service`.
+
 Systemd user units are intentionally not enabled for auto-start and do not declare a restart policy. Core Supervisor is the lifecycle authority for managed node runtime behavior.
 
 When supervisor integration is enabled, the backend registers and heartbeats through the local Unix socket:

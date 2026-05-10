@@ -21,5 +21,4 @@
 [FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
 [FUTURE TODO] Task 116: Add Core Supervisor managed restart controls for Voice Node backend/STT/TTS services
 [FUTURE TODO] Task 121: Move local STT/TTS engine services to Unix-domain-socket-only transport
-[TODO] Task 119: Move the Piper TTS service into a dedicated `src/tts/` package boundary
 [TODO] Task 120: Update TTS service launch, tests, and docs after the `src/tts/` package split
