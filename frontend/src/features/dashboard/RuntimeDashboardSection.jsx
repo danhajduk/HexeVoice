@@ -135,47 +135,6 @@ function RuntimeComponentCard({ component, onRestart, actionBusy }) {
   );
 }
 
-function ResourceCard({ servicesStatus }) {
-  const usage = servicesStatus?.resource_usage || {};
-  return (
-    <section className="panel stack operational-content-header">
-      <div className="section-heading">
-        <div>
-          <p className="panel-kicker">Host</p>
-          <h2 className="panel-title">CPU and Memory</h2>
-        </div>
-        <span className="status-pill status-pill-neutral">{text(usage.sampled_at, "not sampled")}</span>
-      </div>
-      <div className="runtime-metric-grid">
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Backend CPU</span>
-          <span className="fact-grid-value">{percent(usage.process_cpu_percent)}</span>
-        </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">System Load</span>
-          <span className="fact-grid-value">{text(usage.system_load_1m)} / {text(usage.system_cpu_count)} CPU</span>
-        </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Backend RSS</span>
-          <span className="fact-grid-value">{bytes(usage.process_memory_rss_bytes)}</span>
-        </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Backend Memory</span>
-          <span className="fact-grid-value">{percent(usage.process_memory_percent)}</span>
-        </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">System Memory</span>
-          <span className="fact-grid-value">{percent(usage.system_memory_percent)}</span>
-        </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Available Memory</span>
-          <span className="fact-grid-value">{bytes(usage.system_memory_available_bytes)}</span>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 export function RuntimeDashboardSection({ servicesStatus, voiceStatus, onRefresh }) {
   const [busyTarget, setBusyTarget] = useState("");
   const [message, setMessage] = useState("");
@@ -242,8 +201,6 @@ export function RuntimeDashboardSection({ servicesStatus, voiceStatus, onRefresh
         {message ? <div className="callout callout-success">{message}</div> : null}
         {error ? <div className="callout callout-danger">{error}</div> : null}
       </section>
-
-      <ResourceCard servicesStatus={servicesStatus} />
 
       {components.map((component) => (
         <RuntimeComponentCard
