@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 import hashlib
+import json
 import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
@@ -222,6 +223,80 @@ def cleanup_voice_artifacts_once(*, tts_audio_service, wake_recorder, micro_vad_
     if micro_vad_chunk_recorder is not None:
         result["micro_vad_chunks"] = micro_vad_chunk_recorder.cleanup_expired()
     return result
+
+
+def firmware_artifact_path_for_settings(settings: Settings, filename: str) -> Path:
+    artifact_dir = settings.resolved_firmware_artifact_dir().resolve()
+    candidate = (artifact_dir / filename).resolve()
+    if candidate.parent != artifact_dir or candidate.suffix != ".bin":
+        raise HTTPException(status_code=400, detail="invalid_firmware_filename")
+    if not candidate.exists():
+        raise HTTPException(status_code=404, detail="firmware_artifact_not_found")
+    return candidate
+
+
+def firmware_public_url_for_settings(settings: Settings, filename: str) -> str:
+    base_url = settings.public_api_base_url or f"http://127.0.0.1:{settings.api_port}"
+    return f"{base_url.rstrip('/')}/api/firmware/artifacts/{filename}"
+
+
+def endpoint_board_profile(endpoint_status: EndpointStatusResponse) -> str:
+    capabilities = endpoint_status.capabilities or {}
+    firmware = capabilities.get("firmware") if isinstance(capabilities, dict) else None
+    if isinstance(firmware, dict):
+        for key in ("board_profile", "profile"):
+            value = str(firmware.get(key) or "").strip()
+            if value:
+                return value
+    endpoint_id = endpoint_status.endpoint_id.lower()
+    if "pe" in endpoint_id or "ha_voice" in endpoint_id:
+        return "ha_voice_pe"
+    return "esp_box_3"
+
+
+def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusResponse) -> dict:
+    profile = endpoint_board_profile(endpoint_status)
+    artifact_dir = settings.resolved_firmware_artifact_dir()
+    manifest_path = artifact_dir / f"manifest-{profile}.json"
+    manifest = {}
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+    filename = str(manifest.get("filename") or f"hexe_firmware_{profile}.bin")
+    path = artifact_dir / filename
+    fallback_path = artifact_dir / "hexe_firmware.bin"
+    if not path.exists() and fallback_path.exists():
+        filename = fallback_path.name
+        path = fallback_path
+    latest_version = str(manifest.get("version") or "").strip() or None
+    current_version = endpoint_status.firmware_version
+    artifact_available = path.exists()
+    update_available = bool(artifact_available and latest_version and current_version and latest_version != current_version)
+    reason = None
+    if not artifact_available:
+        reason = "firmware_artifact_not_found"
+    elif not latest_version:
+        reason = "latest_version_unknown"
+    elif not current_version:
+        reason = "endpoint_version_unknown"
+    elif not update_available:
+        reason = "up_to_date"
+    else:
+        reason = "update_available"
+    return {
+        "board_profile": profile,
+        "current_version": current_version,
+        "latest_version": latest_version,
+        "update_available": update_available,
+        "artifact_available": artifact_available,
+        "filename": filename if artifact_available else None,
+        "url": firmware_public_url_for_settings(settings, filename) if artifact_available else None,
+        "sha256": manifest.get("sha256"),
+        "created_at_utc": manifest.get("created_at_utc"),
+        "reason": reason,
+    }
 
 
 def create_app(
@@ -583,22 +658,31 @@ def create_app(
 
     @app.get("/api/endpoint/status", response_model=EndpointStatusResponse)
     async def latest_endpoint_status() -> EndpointStatusResponse:
-        return endpoint_service.latest_status()
+        status = endpoint_service.latest_status()
+        return status.model_copy(update={"firmware_update": firmware_update_payload(app_settings, status)})
 
     @app.get("/api/endpoint/status/{endpoint_id}", response_model=EndpointStatusResponse)
     async def endpoint_status(endpoint_id: str) -> EndpointStatusResponse:
-        return endpoint_service.status(endpoint_id)
+        status = endpoint_service.status(endpoint_id)
+        return status.model_copy(update={"firmware_update": firmware_update_payload(app_settings, status)})
 
     @app.get("/api/endpoints", response_model=EndpointRegistryListResponse)
     async def endpoint_registry() -> EndpointRegistryListResponse:
-        return endpoint_service.list_statuses()
+        statuses = endpoint_service.list_statuses()
+        return EndpointRegistryListResponse(
+            endpoints=[
+                status.model_copy(update={"firmware_update": firmware_update_payload(app_settings, status)})
+                for status in statuses.endpoints
+            ]
+        )
 
     @app.patch("/api/endpoints/{endpoint_id}", response_model=EndpointStatusResponse)
     async def endpoint_metadata_update(
         endpoint_id: str,
         payload: EndpointMetadataUpdateRequest,
     ) -> EndpointStatusResponse:
-        return endpoint_service.update_metadata(endpoint_id, payload)
+        status = endpoint_service.update_metadata(endpoint_id, payload)
+        return status.model_copy(update={"firmware_update": firmware_update_payload(app_settings, status)})
 
     @app.post("/api/endpoint/volume", response_model=EndpointVolumeCommandResponse)
     async def endpoint_volume(payload: EndpointVolumeCommandRequest) -> EndpointVolumeCommandResponse:
@@ -877,17 +961,10 @@ def create_app(
         )
 
     def firmware_artifact_path(filename: str) -> Path:
-        artifact_dir = app_settings.resolved_firmware_artifact_dir().resolve()
-        candidate = (artifact_dir / filename).resolve()
-        if candidate.parent != artifact_dir or candidate.suffix != ".bin":
-            raise HTTPException(status_code=400, detail="invalid_firmware_filename")
-        if not candidate.exists():
-            raise HTTPException(status_code=404, detail="firmware_artifact_not_found")
-        return candidate
+        return firmware_artifact_path_for_settings(app_settings, filename)
 
     def firmware_public_url(filename: str) -> str:
-        base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
-        return f"{base_url.rstrip('/')}/api/firmware/artifacts/{filename}"
+        return firmware_public_url_for_settings(app_settings, filename)
 
     @app.get("/api/firmware/artifacts/{filename}")
     async def firmware_artifact(filename: str) -> FileResponse:

@@ -173,6 +173,54 @@ def test_firmware_manifest_serves_runtime_artifact(tmp_path):
     assert artifact.content == b"firmware-bin"
 
 
+def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    (firmware_dir / "hexe_firmware_ha_voice_pe.bin").write_bytes(b"pe-firmware")
+    (firmware_dir / "manifest-ha_voice_pe.json").write_text(
+        json.dumps(
+            {
+                "version": "0.2.0",
+                "board_profile": "ha_voice_pe",
+                "filename": "hexe_firmware_ha_voice_pe.bin",
+                "sha256": "abc123",
+                "created_at_utc": "2026-05-09T20:00:00Z",
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    heartbeat = client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "firmware_version": "0.1.0",
+            "capabilities": {"firmware": {"board_profile": "ha_voice_pe"}},
+        },
+    )
+    status = client.get("/api/endpoint/status/esp-pe-1")
+
+    assert heartbeat.status_code == 200
+    assert status.status_code == 200
+    firmware_update = status.json()["firmware_update"]
+    assert firmware_update["board_profile"] == "ha_voice_pe"
+    assert firmware_update["current_version"] == "0.1.0"
+    assert firmware_update["latest_version"] == "0.2.0"
+    assert firmware_update["update_available"] is True
+    assert firmware_update["filename"] == "hexe_firmware_ha_voice_pe.bin"
+    assert firmware_update["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware_ha_voice_pe.bin"
+    assert firmware_update["sha256"] == "abc123"
+
+
 def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     firmware_dir = tmp_path / "firmware"
     firmware_dir.mkdir()

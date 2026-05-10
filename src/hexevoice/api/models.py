@@ -195,6 +195,7 @@ class EndpointStatusResponse(BaseModel):
     last_seen_at: str
     connection_state: Literal["online", "stale", "offline"]
     stale: bool = False
+    firmware_update: dict[str, Any] = Field(default_factory=dict)
 
 
 class EndpointRegistryListResponse(BaseModel):

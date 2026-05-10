@@ -12,6 +12,7 @@ import {
   getVoiceSession,
   getVoiceSessions,
   muteEndpoint,
+  pushFirmwareOta,
   reformatEndpointStorage,
   replayEndpointResponse,
   replayVoiceSession,
@@ -181,7 +182,7 @@ function VoicePipelinePanel({ voiceStatus }) {
   );
 }
 
-function EndpointStatusTable({ voiceStatus, endpointStatus }) {
+function EndpointStatusTable({ voiceStatus, endpointStatus, onPushFirmwareUpdate, firmwareUpdateBusy }) {
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
   const session = voiceStatus?.active_session;
   const projection = voiceStateProjection(voiceStatus);
@@ -205,6 +206,7 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
       sessionId: session?.session_id || "none",
       sttLatency: formatMs(timings.stt_ms),
       totalLatency: formatMs(timings.total_ms),
+      firmwareUpdate: endpointStatus?.firmware_update || {},
       raw: {
         endpointStatus,
         voiceStatus: {
@@ -226,6 +228,9 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
         ["Name", selectedEndpoint.displayName],
         ["Zone", selectedEndpoint.zoneId],
         ["Firmware", selectedEndpoint.firmwareVersion],
+        ["Latest firmware", selectedEndpoint.firmwareUpdate.latest_version || "unknown"],
+        ["Firmware artifact", selectedEndpoint.firmwareUpdate.filename || "none"],
+        ["Firmware update", selectedEndpoint.firmwareUpdate.reason || "unknown"],
         ["Device state", selectedEndpoint.deviceState],
         ["Registry state", selectedEndpoint.connectionState],
         ["File transfer", selectedEndpoint.fileTransfer],
@@ -284,7 +289,10 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
               </span>
             </div>
             <div className="endpoint-status-card-footer">
-              <span>FW {valueOrEmpty(row.firmwareVersion)}</span>
+              <span>
+                FW {valueOrEmpty(row.firmwareVersion)}
+                {row.firmwareUpdate?.update_available ? " -> " + valueOrEmpty(row.firmwareUpdate.latest_version) : ""}
+              </span>
               <span>{valueOrEmpty(row.lastSeenAt)}</span>
             </div>
           </button>
@@ -312,6 +320,9 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
               <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
               <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
               <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.voiceConnection)}</span>
+              {selectedEndpoint.firmwareUpdate?.update_available ? (
+                <span className="status-pill status-pill-warning">Update ready</span>
+              ) : null}
             </div>
             <dl className="fact-grid endpoint-detail-grid">
               {selectedDetailRows.map(([label, value]) => (
@@ -324,6 +335,16 @@ function EndpointStatusTable({ voiceStatus, endpointStatus }) {
             <div className="endpoint-detail-section">
               <h3 className="subsection-title">Raw Data</h3>
               <pre className="json-preview">{JSON.stringify(selectedEndpoint.raw, null, 2)}</pre>
+            </div>
+            <div className="actions">
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={!selectedEndpoint.firmwareUpdate?.update_available || firmwareUpdateBusy}
+                onClick={() => onPushFirmwareUpdate?.(selectedEndpoint)}
+              >
+                {firmwareUpdateBusy ? "Sending OTA..." : "Send OTA"}
+              </button>
             </div>
           </section>
         </div>
@@ -1021,6 +1042,7 @@ export function VoiceEndpointDashboardSection({
   const [historyDetailSession, setHistoryDetailSession] = useState(null);
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState("");
+  const [firmwareUpdateBusy, setFirmwareUpdateBusy] = useState(false);
   const projection = voiceStateProjection(voiceStatus);
   const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
   const reportedOutput = endpointCapabilities(endpointStatus).audio?.output || {};
@@ -1274,6 +1296,32 @@ export function VoiceEndpointDashboardSection({
     }
   }
 
+  async function handlePushFirmwareUpdate(endpointRow) {
+    const update = endpointRow?.firmwareUpdate || {};
+    if (!endpointRow?.endpointId || !update.filename) {
+      setActionMessage("OTA skipped: firmware artifact is missing.");
+      return;
+    }
+    setFirmwareUpdateBusy(true);
+    try {
+      const result = await pushFirmwareOta({
+        endpointId: endpointRow.endpointId,
+        filename: update.filename,
+        version: update.latest_version,
+      });
+      setActionMessage(
+        result.accepted
+          ? `OTA sent to ${endpointRow.endpointId}: ${update.filename}.`
+          : `OTA skipped: ${result.reason || "endpoint unavailable"}`,
+      );
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setFirmwareUpdateBusy(false);
+    }
+  }
+
   return (
     <section className="card stack panel voice-endpoint-main-card">
       <div className="voice-endpoint-top">
@@ -1322,6 +1370,8 @@ export function VoiceEndpointDashboardSection({
       <EndpointStatusTable
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
+        onPushFirmwareUpdate={handlePushFirmwareUpdate}
+        firmwareUpdateBusy={firmwareUpdateBusy}
       />
       <EndpointCapabilitiesPanel endpointStatus={endpointStatus} />
       <EndpointMediaManagerPanel

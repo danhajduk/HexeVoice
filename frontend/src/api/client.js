@@ -234,6 +234,16 @@ export async function getEndpointStatus() {
   return fetchJson("/api/endpoint/status");
 }
 
+export async function pushFirmwareOta({ endpointId, filename, version }) {
+  return sendJson("/api/firmware/ota/push", {
+    body: {
+      endpoint_id: endpointId,
+      filename,
+      version,
+    },
+  });
+}
+
 export async function getEndpointMediaAssets() {
   return fetchJson("/api/endpoint/media");
 }
