@@ -78,6 +78,7 @@ HexeVoice owns the first Piper TTS container wrapper:
 
 - compose file: `compose.piper-tts.yaml`
 - control script: `scripts/piper-tts-control.sh`
+- service module: `src/tts/service.py` launched as `tts.service:app`
 - example env file: `scripts/piper-tts.env.example`
 - default container name: `hexevoice-piper-tts`
 - default image tag: `hexevoice/piper-tts:local`
@@ -134,7 +135,7 @@ To build and run the service locally:
 ./scripts/piper-tts-control.sh stop
 ```
 
-The control script creates the local model directory when starting or restarting the container. `restart` recreates only the Piper TTS compose service without rebuilding the image or restarting the backend. Use `build` explicitly when the local Piper wrapper image changes. It does not enable Docker auto-restart; lifecycle intent remains with Core Supervisor.
+The control script creates the local model directory when starting or restarting the container. `restart` recreates only the Piper TTS compose service without rebuilding the image or restarting the backend. After pulling the `src/tts/` package split, run `./scripts/piper-tts-control.sh build` once so the image copies the new `src/tts` package and launches `tts.service:app`, then use `restart` to recreate the running container. It does not enable Docker auto-restart; lifecycle intent remains with Core Supervisor.
 
 Operator health checks:
 

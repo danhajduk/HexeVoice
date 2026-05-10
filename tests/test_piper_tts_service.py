@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi.testclient import TestClient
 
 import tts.service as piper_app
@@ -47,3 +49,12 @@ def test_piper_tts_voice_lookup_accepts_core_normalized_model_ids(tmp_path, monk
     monkeypatch.setenv("PIPER_TTS_MODEL_PATH", str(fallback))
 
     assert piper_app._model_path_for_voice("en_us-lessac-medium") == requested
+
+
+def test_piper_tts_dockerfile_launches_tts_service_module():
+    dockerfile = Path(__file__).resolve().parents[1] / "services/piper_tts/Dockerfile"
+    content = dockerfile.read_text(encoding="utf-8")
+
+    assert "COPY src/tts /app/tts" in content
+    assert "tts.service:app" in content
+    assert "app:app" not in content

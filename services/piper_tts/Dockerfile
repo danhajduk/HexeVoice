@@ -12,8 +12,8 @@ RUN apt-get update \
 RUN pip install --no-cache-dir fastapi uvicorn piper-tts
 
 WORKDIR /app
-COPY services/piper_tts/app.py /app/app.py
+COPY src/tts /app/tts
 
 EXPOSE 10200
 
-CMD ["python", "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "10200"]
+CMD ["python", "-m", "uvicorn", "tts.service:app", "--host", "0.0.0.0", "--port", "10200"]

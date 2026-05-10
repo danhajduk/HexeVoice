@@ -307,3 +307,12 @@ Step objective: Move the Piper TTS service into a dedicated src/tts package boun
 Chosen fix: Moved the Piper FastAPI runtime into `src/tts/service.py` and kept `services/piper_tts/app.py` as a thin compatibility wrapper.
 What changed: Added the `tts` package, moved the service implementation, updated direct service tests to import `tts.service`, and documented the new TTS package boundary.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_piper_tts_service.py` passed with 3 tests; `PYTHONPATH=src .venv/bin/python` import check confirmed the Docker compatibility wrapper exposes the same FastAPI app.
+###########
+Task #120
+Step objective: Update TTS service launch, tests, and docs after the src/tts package split.
+Chosen fix: Updated the Piper image to copy the standalone `src/tts` package and launch `tts.service:app` directly.
+What changed: Updated `services/piper_tts/Dockerfile`, added a Dockerfile launch-path regression test, documented the image rebuild/restart migration step, and completed the task queue entry.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_piper_tts_service.py tests/test_supervisor_runtime.py::test_supervisor_runtime_registration_includes_piper_tts_when_configured tests/test_supervisor_runtime.py::test_piper_tts_service_action_uses_control_script_when_enabled tests/test_supervisor_runtime.py::test_tts_service_action_alias_restarts_piper_when_enabled` passed with 7 tests; `./scripts/piper-tts-control.sh config` rendered successfully.
+#############
+All Tasks completed 05/09/2026 22:33:44
+#############
