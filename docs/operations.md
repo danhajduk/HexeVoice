@@ -64,7 +64,19 @@ When supervisor integration is enabled, the backend registers and heartbeats thr
 - register route: `POST /api/supervisor/runtimes/register`
 - heartbeat route: `POST /api/supervisor/runtimes/heartbeat`
 
-The registration metadata includes service entries for `backend`, `openwakeword`, and `frontend`. When `VOICE_STT_PROVIDER=external_faster_whisper`, it also advertises a `faster_whisper_stt` user service with its control-script path and local STT URL. When `VOICE_TTS_PROVIDER=piper`, it also advertises a `piper_tts` service with its Docker container name, control-script path, and local synthesis URL. Each service entry includes a `process` block when the node can resolve one, with `pid`, `main_pid`, and runtime resource fields so Core Supervisor can monitor the actual backend process, Docker container init PID, or managed user-service process. Core Supervisor can inspect and control managed services through the node service proxy routes:
+The registration metadata includes stable service entries for `backend`,
+`openwakeword`, `stt_engine`, `tts_engine`, and `frontend`. The STT and TTS
+entries are logical engine wrappers, so Supervisor sees the same service IDs
+whether the active implementation is local, external, in-process, or cloud
+backed. When `VOICE_STT_PROVIDER=external_faster_whisper`, `stt_engine` includes
+the `faster_whisper_stt` implementation service id, control-script path, and
+local STT URL. When `VOICE_TTS_PROVIDER=piper`, `tts_engine` includes the
+`piper_tts` implementation service id, Docker container name, control-script
+path, and local synthesis URL. Each service entry includes a `process` block
+when the node can resolve one, with `pid`, `main_pid`, and runtime resource
+fields so Core Supervisor can monitor the actual backend process, Docker
+container init PID, or managed user-service process. Core Supervisor can inspect
+and control managed services through the node service proxy routes:
 
 - `GET /api/services/status`
 - `POST /api/services/start` with `{"target":"openwakeword"}`
@@ -77,7 +89,7 @@ The registration metadata includes service entries for `backend`, `openwakeword`
 - `POST /api/services/restart` with `{"target":"stt"}` or `{"target":"faster_whisper_stt"}` when external faster-whisper STT is enabled
 
 The external faster-whisper STT service is installed through Supervisor rather
-than by ad hoc stack restarts. Its Supervisor registration includes the user
+than by ad hoc stack restarts. The `stt_engine` metadata includes the user
 systemd service name, the `scripts/systemd/hexevoice-stt.service.in` unit
 template, the `scripts/stack.env` environment file, and `install_action:
 install`. Supervisor can invoke the node service proxy install action to render

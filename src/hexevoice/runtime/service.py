@@ -784,6 +784,94 @@ class NodeRuntimeService:
             **self._service_process_fields(process),
         }
 
+    def _stt_engine_service_summary(
+        self,
+        *,
+        runtime_state: str,
+        backend_process: dict[str, object],
+    ) -> dict[str, object]:
+        if self._external_stt_enabled():
+            service = self._external_stt_service_summary()
+            service.update(
+                {
+                    "service_id": "stt_engine",
+                    "service_name": "STT Engine",
+                    "service_role": "stt_engine",
+                    "implementation_service_id": self._settings.voice_stt_service_id,
+                    "implementation_name": "faster-whisper STT",
+                    "implementation": "external_faster_whisper",
+                    "provider": self._settings.voice_stt_provider,
+                    "control_target": self._settings.voice_stt_service_id,
+                    "restart_supported": True,
+                    "resource_scope": "systemd_user_service",
+                }
+            )
+            return service
+
+        model = (
+            self._settings.voice_stt_faster_whisper_model
+            if self._settings.voice_stt_provider == "faster_whisper"
+            else self._settings.voice_stt_model
+        )
+        return {
+            "service_id": "stt_engine",
+            "service_name": "STT Engine",
+            "service_role": "stt_engine",
+            "state": runtime_state,
+            "boot_order": 17,
+            "managed_by": "backend_process",
+            "implementation": "backend_process",
+            "provider": self._settings.voice_stt_provider,
+            "model": model,
+            "control_target": "stt",
+            "restart_supported": False,
+            "resource_scope": "backend_process",
+            **self._service_process_fields(backend_process),
+        }
+
+    def _tts_engine_service_summary(
+        self,
+        *,
+        runtime_state: str,
+        backend_process: dict[str, object],
+    ) -> dict[str, object]:
+        if self._piper_tts_enabled():
+            service = self._piper_tts_service_summary()
+            service.update(
+                {
+                    "service_id": "tts_engine",
+                    "service_name": "TTS Engine",
+                    "service_role": "tts_engine",
+                    "implementation_service_id": self._settings.piper_tts_service_id,
+                    "implementation_name": "Piper TTS",
+                    "implementation": "piper",
+                    "provider": self._settings.voice_tts_provider,
+                    "model": self._tts_component_model(),
+                    "model_display_name": self._tts_component_model_display_name(),
+                    "control_target": self._settings.piper_tts_service_id,
+                    "restart_supported": True,
+                    "resource_scope": "docker_container",
+                }
+            )
+            return service
+
+        return {
+            "service_id": "tts_engine",
+            "service_name": "TTS Engine",
+            "service_role": "tts_engine",
+            "state": runtime_state,
+            "boot_order": 18,
+            "managed_by": "backend_process",
+            "implementation": "backend_process",
+            "provider": self._settings.voice_tts_provider,
+            "model": self._tts_component_model(),
+            "model_display_name": self._tts_component_model_display_name(),
+            "control_target": "tts",
+            "restart_supported": False,
+            "resource_scope": "backend_process",
+            **self._service_process_fields(backend_process),
+        }
+
     def service_action(self, *, target: str, action: str) -> ServiceActionResponse:
         normalized_target = str(target or "").strip()
         normalized_action = str(action or "").strip().lower()
@@ -886,11 +974,15 @@ class NodeRuntimeService:
                 **self._service_process_fields(backend_process),
             },
             self._openwakeword_service_summary(),
+            self._stt_engine_service_summary(
+                runtime_state=runtime_state,
+                backend_process=backend_process,
+            ),
+            self._tts_engine_service_summary(
+                runtime_state=runtime_state,
+                backend_process=backend_process,
+            ),
         ]
-        if self._external_stt_enabled():
-            services.append(self._external_stt_service_summary())
-        if self._piper_tts_enabled():
-            services.append(self._piper_tts_service_summary())
         services.append(
             {
                 "service_id": "frontend",

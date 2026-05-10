@@ -128,6 +128,17 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert openwakeword["container_name"] == "hexevoice-openwakeword"
     assert openwakeword["pid"] == 4242
     assert openwakeword["process"]["kind"] == "docker_container"
+    stt_engine = next(service for service in services if service["service_id"] == "stt_engine")
+    assert stt_engine["service_name"] == "STT Engine"
+    assert stt_engine["managed_by"] == "backend_process"
+    assert stt_engine["provider"] == "deterministic"
+    assert stt_engine["pid"] == os.getpid()
+    assert stt_engine["process"]["kind"] == "backend_process"
+    tts_engine = next(service for service in services if service["service_id"] == "tts_engine")
+    assert tts_engine["service_name"] == "TTS Engine"
+    assert tts_engine["managed_by"] == "backend_process"
+    assert tts_engine["pid"] == os.getpid()
+    assert tts_engine["process"]["kind"] == "backend_process"
     assert not any(service["service_id"] == "piper_tts" for service in services)
 
     heartbeat = client.heartbeat_payloads[0]
@@ -209,8 +220,12 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
     assert result["status"] == "ok"
     registration = client.register_payloads[0]
     services = registration["runtime_metadata"]["services"]
-    piper_tts = next(service for service in services if service["service_id"] == "piper_tts")
-    assert piper_tts["service_name"] == "Piper TTS"
+    piper_tts = next(service for service in services if service["service_id"] == "tts_engine")
+    assert piper_tts["service_name"] == "TTS Engine"
+    assert piper_tts["service_role"] == "tts_engine"
+    assert piper_tts["implementation_service_id"] == "piper_tts"
+    assert piper_tts["implementation_name"] == "Piper TTS"
+    assert piper_tts["control_target"] == "piper_tts"
     assert piper_tts["state"] == "running"
     assert piper_tts["boot_order"] == 18
     assert piper_tts["managed_by"] == "core_supervisor_service_action_proxy"
@@ -349,8 +364,11 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert [str(script), "restart"] in command_runner.commands
 
     services = client.register_payloads[0]["runtime_metadata"]["services"]
-    stt_service = next(service for service in services if service["service_id"] == "faster_whisper_stt")
-    assert stt_service["service_name"] == "faster-whisper STT"
+    stt_service = next(service for service in services if service["service_id"] == "stt_engine")
+    assert stt_service["service_name"] == "STT Engine"
+    assert stt_service["service_role"] == "stt_engine"
+    assert stt_service["implementation_service_id"] == "faster_whisper_stt"
+    assert stt_service["control_target"] == "faster_whisper_stt"
     assert stt_service["state"] == "active"
     assert stt_service["managed_by"] == "core_supervisor_service_action_proxy"
     assert stt_service["systemd_service"] == "hexevoice-stt.service"
