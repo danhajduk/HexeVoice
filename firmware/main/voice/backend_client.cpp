@@ -85,6 +85,7 @@ uint32_t g_chunk_index = 0;
 uint32_t g_session_counter = 0;
 uint32_t g_sequence = 0;
 bool g_session_started = false;
+bool g_wake_accepted_for_session = false;
 bool g_vad_speech_started_reported = false;
 bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
@@ -145,6 +146,7 @@ bool sync_backend_time(const std::string &url);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
+bool wake_source_is_local_acceptance(const char *wake_source);
 void reset_transport_micro_vad();
 void append_event_header(
     std::string &message,
@@ -167,6 +169,7 @@ void mark_voice_socket_disconnected() {
   auto &state = hexe::state();
   state.voice_ws_connected = false;
   g_session_started = false;
+  g_wake_accepted_for_session = false;
   g_vad_speech_started_reported = false;
   g_audio_stream_finished = false;
   g_preroll_drained = false;
@@ -523,6 +526,7 @@ void handle_backend_event_json(const std::string &message) {
   auto &app_state = hexe::state();
   const bool wake_accepted = std::strcmp(type, "wake.accepted") == 0;
   if (wake_accepted) {
+    g_wake_accepted_for_session = true;
     hexe::voice::prewarm_tts_output();
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
     cJSON *wake = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "wake") : nullptr;
@@ -544,11 +548,11 @@ void handle_backend_event_json(const std::string &message) {
     }
   }
 
-  if (wake_accepted || std::strcmp(ux_state, "listening") == 0) {
+  if (wake_accepted || (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0)) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kListening;
     }
-  } else if (std::strcmp(ux_state, "thinking") == 0) {
+  } else if (g_wake_accepted_for_session && std::strcmp(ux_state, "thinking") == 0) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kThinking;
     }
@@ -670,6 +674,7 @@ void handle_backend_event_json(const std::string &message) {
       g_tts_playback_session_id.clear();
     }
     g_session_started = false;
+    g_wake_accepted_for_session = false;
     g_vad_speech_started_reported = false;
     g_audio_stream_finished = false;
     g_preroll_drained = false;
@@ -682,6 +687,7 @@ void handle_backend_event_json(const std::string &message) {
   } else if (std::strcmp(type, "session.error") == 0) {
     cJSON *recoverable = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "recoverable") : nullptr;
     g_session_started = false;
+    g_wake_accepted_for_session = false;
     g_vad_speech_started_reported = false;
     g_audio_stream_finished = false;
     g_preroll_drained = false;
@@ -747,6 +753,7 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     auto &state = hexe::state();
     state.voice_ws_connected = true;
     g_session_started = false;
+    g_wake_accepted_for_session = false;
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
@@ -1310,6 +1317,7 @@ bool ensure_session_started(const char *wake_source) {
   ++g_session_counter;
   g_chunk_index = 0;
   g_audio_stream_finished = false;
+  g_wake_accepted_for_session = wake_source_is_local_acceptance(wake_source);
   g_vad_speech_started_reported = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
@@ -1344,8 +1352,15 @@ bool ensure_session_started(const char *wake_source) {
   if (g_session_started) {
     set_audio_streaming(true);
     ESP_LOGI(kTag, "Started voice session %s wake_source=%s", g_session_id.c_str(), normalized_wake_source(wake_source));
+  } else {
+    g_wake_accepted_for_session = false;
   }
   return g_session_started;
+}
+
+bool wake_source_is_local_acceptance(const char *wake_source) {
+  return wake_source != nullptr &&
+         (std::strcmp(wake_source, "button") == 0 || std::strcmp(wake_source, "manual") == 0);
 }
 
 bool send_vad_speech_started_event(uint32_t level) {
@@ -1791,7 +1806,9 @@ bool finish_audio_stream(const char *reason) {
   g_audio_stream_finished = send_ws_text(payload);
   if (g_audio_stream_finished) {
     set_audio_streaming(false);
-    hexe::state().phase = hexe::AppPhase::kThinking;
+    if (g_wake_accepted_for_session) {
+      hexe::state().phase = hexe::AppPhase::kThinking;
+    }
   }
   return g_audio_stream_finished;
 }
@@ -1812,6 +1829,7 @@ bool cancel_active_session(const char *reason) {
   payload.append(body);
   const bool sent = send_ws_text(payload);
   g_session_started = false;
+  g_wake_accepted_for_session = false;
   g_vad_speech_started_reported = false;
   g_audio_stream_finished = false;
   g_preroll_drained = false;

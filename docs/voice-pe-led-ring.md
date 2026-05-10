@@ -79,6 +79,9 @@ visually harsh at high brightness and may be left on in bedrooms or quiet rooms.
 - During capture, the bottom visual LED should be lit orange as the fixed
   recording marker. If the endpoint is still in the listening state, capture
   should overlay the bottom orange marker while the side listening LEDs stay on.
+- Pre-wake VAD/prediction sessions must stay LED-invisible. The ring should
+  enter listening or thinking only after `wake.accepted` or a local
+  button/manual wake starts a session.
 - OTA progress should use dim completed-progress LEDs and a brighter moving
   chase LED so the current transfer activity is easy to see.
 
