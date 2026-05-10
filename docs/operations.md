@@ -62,10 +62,24 @@ The registration metadata includes service entries for `backend`, `openwakeword`
 - `POST /api/services/start` with `{"target":"openwakeword"}`
 - `POST /api/services/stop` with `{"target":"openwakeword"}`
 - `POST /api/services/restart` with `{"target":"openwakeword"}`
+- `POST /api/services/install` with `{"target":"stt"}` or `{"target":"faster_whisper_stt"}` when external faster-whisper STT is enabled
 - `POST /api/services/start` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/stop` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/restart` with `{"target":"piper_tts"}` when Piper TTS is enabled
 - `POST /api/services/restart` with `{"target":"stt"}` or `{"target":"faster_whisper_stt"}` when external faster-whisper STT is enabled
+
+The external faster-whisper STT service is installed through Supervisor rather
+than by ad hoc stack restarts. Its Supervisor registration includes the user
+systemd service name, the `scripts/systemd/hexevoice-stt.service.in` unit
+template, the `scripts/stack.env` environment file, and `install_action:
+install`. Supervisor can invoke the node service proxy install action to render
+the user unit and run `systemctl --user daemon-reload` before starting or
+restarting STT.
+
+The local `scripts/stack-control.sh` helper will skip the external STT unit when
+it is not installed yet, instead of installing it itself. This keeps Supervisor
+as the install owner while still letting operators restart the already-installed
+backend and frontend user services.
 
 When Piper TTS runtime settings are saved, the provider page marks them as
 restart-required. A successful `tts` or `piper_tts` restart through the service

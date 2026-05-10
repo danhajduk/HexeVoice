@@ -291,7 +291,7 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
                 return subprocess.CompletedProcess(command, 0, "running\n", "")
             if command[:3] == ["systemctl", "--user", "show"]:
                 return subprocess.CompletedProcess(command, 0, "0\n", "")
-            if len(command) == 2 and command[1] in {"status", "restart"}:
+            if len(command) == 2 and command[1] in {"install", "status", "restart"}:
                 return subprocess.CompletedProcess(command, 0, "active\n", "")
             return subprocess.CompletedProcess(command, 0, "ok\n", "")
 
@@ -314,6 +314,7 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     )
 
     status = service.service_status_payload()
+    install = service.service_action(target="stt", action="install")
     result = service.service_action(target="stt", action="restart")
     asyncio.run(service.supervisor_heartbeat_once())
 
@@ -322,7 +323,9 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_component["restart_supported"] is True
     assert stt_component["restart_target"] == "faster_whisper_stt"
     assert stt_component["resource_scope"] == "systemd_user_service"
+    assert install.accepted is True
     assert result.accepted is True
+    assert [str(script), "install"] in command_runner.commands
     assert [str(script), "restart"] in command_runner.commands
 
     services = client.register_payloads[0]["runtime_metadata"]["services"]
@@ -331,4 +334,9 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_service["state"] == "active"
     assert stt_service["managed_by"] == "core_supervisor_service_action_proxy"
     assert stt_service["systemd_service"] == "hexevoice-stt.service"
+    assert stt_service["systemd_scope"] == "user"
+    assert stt_service["systemd_unit_template"] == "scripts/systemd/hexevoice-stt.service.in"
+    assert stt_service["systemd_env_file"] == "scripts/stack.env"
+    assert stt_service["install_supported"] is True
+    assert stt_service["install_action"] == "install"
     assert stt_service["base_url"] == "http://127.0.0.1:10300"

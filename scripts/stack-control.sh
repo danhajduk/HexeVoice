@@ -11,10 +11,18 @@ fi
 
 . "$ENV_FILE"
 
+STT_SERVICE_NAME="${STT_SERVICE_NAME:-hexevoice-stt.service}"
+
 ACTION="${1:-status}"
 case "$ACTION" in
   start|stop|restart|status)
-    systemctl --user "$ACTION" "$BACKEND_SERVICE_NAME" "${STT_SERVICE_NAME:-hexevoice-stt.service}" "$FRONTEND_SERVICE_NAME"
+    services=("$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME")
+    if systemctl --user cat "$STT_SERVICE_NAME" >/dev/null 2>&1; then
+      services=("$BACKEND_SERVICE_NAME" "$STT_SERVICE_NAME" "$FRONTEND_SERVICE_NAME")
+    else
+      echo "Skipping $STT_SERVICE_NAME: not installed. Supervisor should install it with POST /api/services/install target=stt."
+    fi
+    systemctl --user "$ACTION" "${services[@]}"
     ;;
   *)
     echo "Usage: $0 {start|stop|restart|status}"

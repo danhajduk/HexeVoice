@@ -1292,6 +1292,10 @@ def create_app(
     async def service_stop(payload: ServiceActionRequest) -> ServiceActionResponse:
         return await asyncio.to_thread(service.service_action, target=payload.target, action="stop")
 
+    @app.post("/api/services/install", response_model=ServiceActionResponse)
+    async def service_install(payload: ServiceActionRequest) -> ServiceActionResponse:
+        return await asyncio.to_thread(service.service_action, target=payload.target, action="install")
+
     @app.post("/api/services/restart", response_model=ServiceActionResponse)
     async def service_restart(payload: ServiceActionRequest) -> ServiceActionResponse:
         result = await asyncio.to_thread(service.service_action, target=payload.target, action="restart")

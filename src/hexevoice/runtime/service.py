@@ -641,7 +641,12 @@ class NodeRuntimeService:
             "boot_order": 17,
             "managed_by": "core_supervisor_service_action_proxy",
             "systemd_service": self._settings.voice_stt_service_name,
+            "systemd_scope": "user",
+            "systemd_unit_template": "scripts/systemd/hexevoice-stt.service.in",
+            "systemd_env_file": "scripts/stack.env",
             "control_script": str(self._settings.voice_stt_control_script),
+            "install_supported": True,
+            "install_action": "install",
             "base_url": self._settings.resolved_voice_stt_service_base_url(),
             "model": self._settings.voice_stt_faster_whisper_model,
             "device": self._settings.voice_stt_faster_whisper_device,
@@ -680,7 +685,7 @@ class NodeRuntimeService:
                 status="unsupported_service",
                 detail="Supported services are openwakeword, piper_tts when enabled, and faster_whisper_stt when enabled.",
             )
-        if normalized_action not in {"start", "stop", "restart"}:
+        if normalized_action not in {"install", "start", "stop", "restart"}:
             log.warning(
                 "Rejected service action for unsupported action: target=%s action=%s",
                 normalized_target,
@@ -691,7 +696,7 @@ class NodeRuntimeService:
                 action=normalized_action,
                 accepted=False,
                 status="unsupported_action",
-                detail="Supported actions are start, stop, and restart.",
+                detail="Supported actions are install, start, stop, and restart.",
             )
         script = service_scripts[normalized_target]()
         if not script.exists():
