@@ -7,7 +7,7 @@
 5. Update backend and frontend commands if needed, keeping Python commands on `.venv/bin/...`.
 6. Keep `HEXE_SUPERVISOR_ENABLED=true`, `HEXE_SUPERVISOR_API_TRANSPORT=socket`, and `HEXE_SUPERVISOR_API_SOCKET=/run/hexe/supervisor.sock` when this node should register with Core Supervisor.
 7. Start the backend with `API_HOST=0.0.0.0 API_PORT=9004 PYTHONPATH=src .venv/bin/python -m hexevoice.main`.
-8. Start the frontend from `frontend/` with `VITE_PROXY_TARGET=http://127.0.0.1:9004 npm run dev -- --host 0.0.0.0 --port 8084`.
+8. Build the frontend with `scripts/rebuild-ui.sh`, then start it from `frontend/` with `VITE_PROXY_TARGET=http://127.0.0.1:9004 npm run preview -- --host 0.0.0.0 --port 8084`.
 9. Run backend tests with `PYTHONPATH=src .venv/bin/pytest`.
 10. Run the frontend production validation with `cd frontend && npm run build`.
 
