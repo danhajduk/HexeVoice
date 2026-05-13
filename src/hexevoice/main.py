@@ -391,6 +391,7 @@ def create_app(
         ),
     )
     app = FastAPI(title="HexeVoice")
+    node_ui_page_cache = node_ui.PageSnapshotCache()
     app.state.timer_announcement_service = timer_announcement_service
     app.state.voice_artifact_cleanup_status = {
         "name": "every_5_minutes",
@@ -552,7 +553,9 @@ def create_app(
 
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
-        return assistant_service.handle_turn(payload)
+        response = assistant_service.handle_turn(payload)
+        node_ui_page_cache.invalidate()
+        return response
 
     @app.get("/api/voice/intents", response_model=VoiceIntentStateResponse)
     async def voice_intents_list() -> VoiceIntentStateResponse:
@@ -562,6 +565,7 @@ def create_app(
     async def voice_intents_register(payload: VoiceIntentRegisterRequest) -> VoiceIntentStateResponse:
         try:
             state = voice_intent_registry.register_intent(**payload.model_dump(mode="python"))
+            node_ui_page_cache.invalidate()
             return VoiceIntentStateResponse.model_validate(state)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -580,6 +584,7 @@ def create_app(
                 intent_id=intent_id,
                 **payload.model_dump(mode="python", exclude_unset=True),
             )
+            node_ui_page_cache.invalidate()
             return VoiceIntentStateResponse.model_validate(state)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -592,6 +597,7 @@ def create_app(
                 status=payload.status,
                 reason=payload.reason,
             )
+            node_ui_page_cache.invalidate()
             return VoiceIntentStateResponse.model_validate(state)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -605,6 +611,7 @@ def create_app(
                 review_reason=payload.review_reason,
                 status=payload.status,
             )
+            node_ui_page_cache.invalidate()
             return VoiceIntentStateResponse.model_validate(state)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -636,7 +643,7 @@ def create_app(
             session_id=payload.session_id,
             reply_audio_factory=tts_audio_service.synthesize_intent_reply,
         )
-        return VoiceIntentInvokeResponse(
+        response = VoiceIntentInvokeResponse(
             matched=result.matched,
             endpoint_id=result.endpoint_id,
             session_id=result.session_id,
@@ -653,10 +660,14 @@ def create_app(
             conversation_followup=result.conversation_followup,
             latency_ms=result.latency_ms,
         )
+        node_ui_page_cache.invalidate()
+        return response
 
     @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)
     async def endpoint_heartbeat(payload: EndpointHeartbeatRequest) -> EndpointHeartbeatResponse:
-        return endpoint_service.record_heartbeat(payload)
+        response = endpoint_service.record_heartbeat(payload)
+        node_ui_page_cache.invalidate()
+        return response
 
     @app.get("/api/endpoint/time", response_model=EndpointTimeResponse)
     async def endpoint_time() -> EndpointTimeResponse:
@@ -688,6 +699,7 @@ def create_app(
         payload: EndpointMetadataUpdateRequest,
     ) -> EndpointStatusResponse:
         status = endpoint_service.update_metadata(endpoint_id, payload)
+        node_ui_page_cache.invalidate()
         return status.model_copy(update={"firmware_update": firmware_update_payload(app_settings, status)})
 
     @app.post("/api/endpoint/volume", response_model=EndpointVolumeCommandResponse)
@@ -696,6 +708,7 @@ def create_app(
             endpoint_id=payload.endpoint_id,
             volume_percent=payload.volume_percent,
         )
+        node_ui_page_cache.invalidate()
         return EndpointVolumeCommandResponse(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
@@ -1194,7 +1207,9 @@ def create_app(
 
     @app.post("/api/voice/session/cancel")
     async def voice_session_cancel() -> dict:
-        return voice_session_manager.cancel_from_operator()
+        result = voice_session_manager.cancel_from_operator()
+        node_ui_page_cache.invalidate()
+        return result
 
     def node_ui_operational_status() -> dict:
         try:
@@ -1301,125 +1316,140 @@ def create_app(
 
     @app.get("/api/node/ui/pages/overview")
     async def node_ui_page_overview() -> dict:
-        return node_ui.page_snapshot(
-            "overview",
-            node_ui.NEAR_LIVE_15S,
-            [
-                node_ui_health_page_card(),
-                node_ui.page_card(
-                    "node.warnings",
-                    "Operational Warnings",
-                    node_ui_overview_warnings_payload(),
-                    refresh=node_ui.MANUAL_REFRESH,
-                ),
-            ],
-        )
+        async def build() -> dict:
+            return node_ui.page_snapshot(
+                "overview",
+                node_ui.NEAR_LIVE_15S,
+                [
+                    node_ui_health_page_card(),
+                    node_ui.page_card(
+                        "node.warnings",
+                        "Operational Warnings",
+                        node_ui_overview_warnings_payload(),
+                        refresh=node_ui.MANUAL_REFRESH,
+                    ),
+                ],
+            )
+
+        return await node_ui_page_cache.get_or_build("overview", node_ui.NEAR_LIVE_15S, build)
 
     @app.get("/api/node/ui/pages/runtime")
     async def node_ui_page_runtime() -> dict:
-        return node_ui.page_snapshot(
-            "runtime",
-            node_ui.NEAR_LIVE_15S,
-            [
-                node_ui_health_page_card(),
-                node_ui.page_card(
-                    "runtime.services",
-                    "Runtime Services",
-                    node_ui_runtime_services_payload(),
-                    actions=[node_ui.refresh_runtime_action()],
-                    refresh=node_ui.NEAR_LIVE_15S,
-                ),
-                node_ui.page_card(
-                    "runtime.providers",
-                    "Provider Status",
-                    await node_ui_providers_status_payload(),
-                    refresh=node_ui.NEAR_LIVE_30S,
-                ),
-            ],
-        )
+        async def build() -> dict:
+            return node_ui.page_snapshot(
+                "runtime",
+                node_ui.NEAR_LIVE_15S,
+                [
+                    node_ui_health_page_card(),
+                    node_ui.page_card(
+                        "runtime.services",
+                        "Runtime Services",
+                        node_ui_runtime_services_payload(),
+                        actions=[node_ui.refresh_runtime_action()],
+                        refresh=node_ui.NEAR_LIVE_15S,
+                    ),
+                    node_ui.page_card(
+                        "runtime.providers",
+                        "Provider Status",
+                        await node_ui_providers_status_payload(),
+                        refresh=node_ui.NEAR_LIVE_30S,
+                    ),
+                ],
+            )
+
+        return await node_ui_page_cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, build)
 
     @app.get("/api/node/ui/pages/voice/endpoints")
     async def node_ui_page_voice_endpoints() -> dict:
-        return node_ui.page_snapshot(
-            "voice.endpoints",
-            node_ui.NEAR_LIVE_10S,
-            [
-                node_ui_health_page_card(),
-                node_ui.page_card(
-                    "voice.endpoints",
-                    "Voice Endpoints",
-                    node_ui_voice_endpoints_payload(),
-                    detail_endpoint_template="/api/endpoint/status/{endpoint_id}",
-                    refresh=node_ui.NEAR_LIVE_10S,
-                ),
-                node_ui.page_card(
-                    "voice.endpoint_actions",
-                    "Endpoint Actions",
-                    node_ui_voice_endpoint_actions_payload(),
-                    actions=[node_ui.cancel_active_session_action(), node_ui.test_assistant_turn_action()],
-                    refresh=node_ui.NEAR_LIVE_10S,
-                ),
-                node_ui.page_card(
-                    "voice.sessions",
-                    "Recent Sessions",
-                    node_ui_voice_sessions_payload(),
-                    detail_endpoint_template="/api/voice/sessions/{session_id}",
-                    refresh=node_ui.MANUAL_REFRESH,
-                ),
-            ],
-        )
+        async def build() -> dict:
+            return node_ui.page_snapshot(
+                "voice.endpoints",
+                node_ui.NEAR_LIVE_10S,
+                [
+                    node_ui_health_page_card(),
+                    node_ui.page_card(
+                        "voice.endpoints",
+                        "Voice Endpoints",
+                        node_ui_voice_endpoints_payload(),
+                        detail_endpoint_template="/api/endpoint/status/{endpoint_id}",
+                        refresh=node_ui.NEAR_LIVE_10S,
+                    ),
+                    node_ui.page_card(
+                        "voice.endpoint_actions",
+                        "Endpoint Actions",
+                        node_ui_voice_endpoint_actions_payload(),
+                        actions=[node_ui.cancel_active_session_action(), node_ui.test_assistant_turn_action()],
+                        refresh=node_ui.NEAR_LIVE_10S,
+                    ),
+                    node_ui.page_card(
+                        "voice.sessions",
+                        "Recent Sessions",
+                        node_ui_voice_sessions_payload(),
+                        detail_endpoint_template="/api/voice/sessions/{session_id}",
+                        refresh=node_ui.MANUAL_REFRESH,
+                    ),
+                ],
+            )
+
+        return await node_ui_page_cache.get_or_build("voice.endpoints", node_ui.NEAR_LIVE_10S, build)
 
     @app.get("/api/node/ui/pages/voice/intents")
     async def node_ui_page_voice_intents() -> dict:
-        return node_ui.page_snapshot(
-            "voice.intents",
-            node_ui.MANUAL_REFRESH,
-            [
-                node_ui_health_page_card(),
-                node_ui.page_card(
-                    "voice.intent_registry",
-                    "Registered Intents",
-                    node_ui_voice_intents_payload(),
-                    detail_endpoint_template="/api/voice/intents/{intent_id}",
-                    refresh=node_ui.MANUAL_REFRESH,
-                ),
-                node_ui.page_card(
-                    "voice.intent_actions",
-                    "Intent Actions",
-                    node_ui_voice_intent_actions_payload(),
-                    actions=[node_ui.test_intent_action(), node_ui.invoke_intent_action()],
-                    refresh=node_ui.MANUAL_REFRESH,
-                ),
-            ],
-        )
+        async def build() -> dict:
+            return node_ui.page_snapshot(
+                "voice.intents",
+                node_ui.MANUAL_REFRESH,
+                [
+                    node_ui_health_page_card(),
+                    node_ui.page_card(
+                        "voice.intent_registry",
+                        "Registered Intents",
+                        node_ui_voice_intents_payload(),
+                        detail_endpoint_template="/api/voice/intents/{intent_id}",
+                        refresh=node_ui.MANUAL_REFRESH,
+                    ),
+                    node_ui.page_card(
+                        "voice.intent_actions",
+                        "Intent Actions",
+                        node_ui_voice_intent_actions_payload(),
+                        actions=[node_ui.test_intent_action(), node_ui.invoke_intent_action()],
+                        refresh=node_ui.MANUAL_REFRESH,
+                    ),
+                ],
+            )
+
+        return await node_ui_page_cache.get_or_build("voice.intents", node_ui.MANUAL_REFRESH, build)
 
     @app.get("/api/node/ui/pages/voice/tts")
     async def node_ui_page_voice_tts() -> dict:
-        return node_ui.page_snapshot(
-            "voice.tts",
-            node_ui.NEAR_LIVE_30S,
-            [
-                node_ui_health_page_card(),
-                node_ui.page_card(
-                    "voice.tts_runtime",
-                    "TTS Runtime",
-                    await node_ui_voice_tts_payload(),
-                    refresh=node_ui.NEAR_LIVE_30S,
-                ),
-                node_ui.page_card(
-                    "voice.tts_artifacts",
-                    "Generated TTS Artifacts",
-                    await node_ui_voice_tts_artifacts_payload(),
-                    refresh=node_ui.MANUAL_REFRESH,
-                ),
-                node_ui.page_card(
-                    "voice.media",
-                    "Endpoint Media",
-                    node_ui_voice_media_payload(),
-                    refresh=node_ui.MANUAL_REFRESH,
-                ),
-            ],
-        )
+        async def build() -> dict:
+            return node_ui.page_snapshot(
+                "voice.tts",
+                node_ui.NEAR_LIVE_30S,
+                [
+                    node_ui_health_page_card(),
+                    node_ui.page_card(
+                        "voice.tts_runtime",
+                        "TTS Runtime",
+                        await node_ui_voice_tts_payload(),
+                        refresh=node_ui.NEAR_LIVE_30S,
+                    ),
+                    node_ui.page_card(
+                        "voice.tts_artifacts",
+                        "Generated TTS Artifacts",
+                        await node_ui_voice_tts_artifacts_payload(),
+                        refresh=node_ui.MANUAL_REFRESH,
+                    ),
+                    node_ui.page_card(
+                        "voice.media",
+                        "Endpoint Media",
+                        node_ui_voice_media_payload(),
+                        refresh=node_ui.MANUAL_REFRESH,
+                    ),
+                ],
+            )
+
+        return await node_ui_page_cache.get_or_build("voice.tts", node_ui.NEAR_LIVE_30S, build)
 
     @app.get("/api/node/ui/overview/node")
     async def node_ui_overview_node() -> dict:
@@ -1479,6 +1509,7 @@ def create_app(
 
     @app.post("/api/node/ui/actions/refresh-status")
     async def node_ui_refresh_status_action() -> dict:
+        node_ui_page_cache.invalidate()
         return {
             "accepted": True,
             "status": "refreshed",
@@ -1488,9 +1519,11 @@ def create_app(
 
     @app.post("/api/node/ui/actions/test-assistant-turn", response_model=AssistantTurnResponse)
     async def node_ui_test_assistant_turn_action() -> AssistantTurnResponse:
-        return assistant_service.handle_turn(
+        response = assistant_service.handle_turn(
             AssistantTurnRequest(endpoint_id="core-rendered-ui-test", text="hello"),
         )
+        node_ui_page_cache.invalidate()
+        return response
 
     @app.get("/api/node/status", response_model=NodeStatusResponse)
     async def node_status() -> NodeStatusResponse:

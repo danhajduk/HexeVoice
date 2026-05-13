@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import copy
+import time
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from hexevoice.config.settings import Settings
 
@@ -63,6 +65,47 @@ NEAR_LIVE_10S = {"mode": "near_live", "interval_ms": 10000}
 NEAR_LIVE_15S = {"mode": "near_live", "interval_ms": 15000}
 NEAR_LIVE_30S = {"mode": "near_live", "interval_ms": 30000}
 MANUAL_REFRESH = {"mode": "manual"}
+
+
+def page_cache_ttl_seconds(refresh: dict[str, Any]) -> float:
+    mode = str(refresh.get("mode") or "").strip().lower()
+    if mode not in {"live", "near_live"}:
+        return 0
+    interval_ms = refresh.get("interval_ms")
+    try:
+        interval = float(interval_ms)
+    except (TypeError, ValueError):
+        return 0
+    return max(interval / 1000, 0)
+
+
+class PageSnapshotCache:
+    def __init__(self, clock: Callable[[], float] | None = None) -> None:
+        self._clock = clock or time.monotonic
+        self._entries: dict[str, tuple[float, dict[str, Any]]] = {}
+
+    async def get_or_build(
+        self,
+        key: str,
+        refresh: dict[str, Any],
+        builder: Callable[[], Awaitable[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        ttl = page_cache_ttl_seconds(refresh)
+        if ttl <= 0:
+            return await builder()
+        now = self._clock()
+        cached = self._entries.get(key)
+        if cached and cached[0] > now:
+            return copy.deepcopy(cached[1])
+        payload = await builder()
+        self._entries[key] = (now + ttl, copy.deepcopy(payload))
+        return payload
+
+    def invalidate(self, key: str | None = None) -> None:
+        if key is None:
+            self._entries.clear()
+            return
+        self._entries.pop(key, None)
 
 
 def page_card(

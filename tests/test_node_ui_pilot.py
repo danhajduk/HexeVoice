@@ -1,3 +1,5 @@
+import time
+
 from fastapi.testclient import TestClient
 
 from hexevoice.config.settings import Settings
@@ -63,6 +65,38 @@ def test_core_rendered_node_ui_overview_snapshot_advertises_only_health_and_warn
 
     assert [card["id"] for card in snapshot["cards"]] == ["node.health", "node.warnings"]
     assert [card["kind"] for card in snapshot["cards"]] == ["health_strip", "warning_banner"]
+
+
+def test_core_rendered_node_ui_caches_near_live_page_snapshots(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    first = client.get("/api/node/ui/pages/runtime").json()
+    time.sleep(0.01)
+    second = client.get("/api/node/ui/pages/runtime").json()
+
+    assert first == second
+
+
+def test_core_rendered_node_ui_invalidates_page_cache_on_endpoint_updates(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    first = client.get("/api/node/ui/pages/voice/endpoints").json()
+    endpoint_card = next(card for card in first["cards"] if card["id"] == "voice.endpoints")
+    assert endpoint_card["data"]["records"] == []
+
+    client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-box-1",
+            "device_state": "idle",
+            "firmware_version": "0.1.0",
+            "capabilities": {"storage": {"sd_card_available": True}},
+        },
+    )
+
+    second = client.get("/api/node/ui/pages/voice/endpoints").json()
+    endpoint_card = next(card for card in second["cards"] if card["id"] == "voice.endpoints")
+    assert [record["endpoint_id"] for record in endpoint_card["data"]["records"]] == ["esp-box-1"]
 
 
 def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
