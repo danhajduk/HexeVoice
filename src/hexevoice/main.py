@@ -391,7 +391,10 @@ def create_app(
         ),
     )
     app = FastAPI(title="HexeVoice")
-    node_ui_page_cache = node_ui.PageSnapshotCache()
+    node_ui_page_cache = node_ui.PageSnapshotCache(
+        cache_dir=app_settings.resolved_onboarding_state_path().parent / "rendered_node_ui_pages"
+    )
+    app.state.node_ui_page_cache = node_ui_page_cache
     app.state.timer_announcement_service = timer_announcement_service
     app.state.voice_artifact_cleanup_status = {
         "name": "every_5_minutes",

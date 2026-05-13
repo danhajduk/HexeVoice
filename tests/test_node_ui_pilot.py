@@ -1,3 +1,4 @@
+import json
 import time
 
 from fastapi.testclient import TestClient
@@ -68,13 +69,28 @@ def test_core_rendered_node_ui_overview_snapshot_advertises_only_health_and_warn
 
 
 def test_core_rendered_node_ui_caches_near_live_page_snapshots(tmp_path):
-    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    client = TestClient(create_app(settings))
 
     first = client.get("/api/node/ui/pages/runtime").json()
     time.sleep(0.01)
     second = client.get("/api/node/ui/pages/runtime").json()
 
     assert first == second
+    cache_path = tmp_path / "rendered_node_ui_pages" / "runtime.json"
+    assert cache_path.exists()
+    assert json.loads(cache_path.read_text(encoding="utf-8")) == first
+
+
+def test_core_rendered_node_ui_loads_page_snapshot_cache_from_runtime_file(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    first_client = TestClient(create_app(settings))
+    first = first_client.get("/api/node/ui/pages/runtime").json()
+
+    second_client = TestClient(create_app(settings))
+    second = second_client.get("/api/node/ui/pages/runtime").json()
+
+    assert second == first
 
 
 def test_core_rendered_node_ui_invalidates_page_cache_on_endpoint_updates(tmp_path):
@@ -97,6 +113,8 @@ def test_core_rendered_node_ui_invalidates_page_cache_on_endpoint_updates(tmp_pa
     second = client.get("/api/node/ui/pages/voice/endpoints").json()
     endpoint_card = next(card for card in second["cards"] if card["id"] == "voice.endpoints")
     assert [record["endpoint_id"] for record in endpoint_card["data"]["records"]] == ["esp-box-1"]
+    cache_path = tmp_path / "rendered_node_ui_pages" / "voice.endpoints.json"
+    assert json.loads(cache_path.read_text(encoding="utf-8")) == second
 
 
 def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):

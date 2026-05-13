@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import copy
+import json
+import os
 import time
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from hexevoice.config.settings import Settings
@@ -80,9 +83,59 @@ def page_cache_ttl_seconds(refresh: dict[str, Any]) -> float:
 
 
 class PageSnapshotCache:
-    def __init__(self, clock: Callable[[], float] | None = None) -> None:
+    def __init__(
+        self,
+        cache_dir: Path | None = None,
+        clock: Callable[[], float] | None = None,
+        wall_clock: Callable[[], float] | None = None,
+    ) -> None:
         self._clock = clock or time.monotonic
+        self._wall_clock = wall_clock or time.time
+        self._cache_dir = cache_dir
         self._entries: dict[str, tuple[float, dict[str, Any]]] = {}
+        self._invalidated_at: dict[str, float] = {}
+        self._all_invalidated_at = 0.0
+
+    def snapshot_path(self, key: str) -> Path | None:
+        if self._cache_dir is None:
+            return None
+        safe_key = "".join(char if char.isalnum() or char in "._-" else "_" for char in key).strip("._")
+        return self._cache_dir / f"{safe_key or 'page'}.json"
+
+    def _read_disk(self, key: str, ttl: float) -> dict[str, Any] | None:
+        path = self.snapshot_path(key)
+        if path is None or ttl <= 0 or not path.exists():
+            return None
+        try:
+            stat = path.stat()
+        except OSError:
+            return None
+        invalidated_at = max(self._all_invalidated_at, self._invalidated_at.get(key, 0.0))
+        if stat.st_mtime <= invalidated_at:
+            return None
+        remaining = stat.st_mtime + ttl - self._wall_clock()
+        if remaining <= 0:
+            return None
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        self._entries[key] = (self._clock() + remaining, copy.deepcopy(payload))
+        return payload
+
+    def _write_disk(self, key: str, payload: dict[str, Any]) -> None:
+        path = self.snapshot_path(key)
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = path.with_suffix(f"{path.suffix}.tmp")
+            tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(tmp_path, path)
+        except OSError:
+            return
 
     async def get_or_build(
         self,
@@ -97,15 +150,22 @@ class PageSnapshotCache:
         cached = self._entries.get(key)
         if cached and cached[0] > now:
             return copy.deepcopy(cached[1])
+        disk_payload = self._read_disk(key, ttl)
+        if disk_payload is not None:
+            return copy.deepcopy(disk_payload)
         payload = await builder()
         self._entries[key] = (now + ttl, copy.deepcopy(payload))
+        self._write_disk(key, payload)
         return payload
 
     def invalidate(self, key: str | None = None) -> None:
+        now = self._wall_clock()
         if key is None:
             self._entries.clear()
+            self._all_invalidated_at = now
             return
         self._entries.pop(key, None)
+        self._invalidated_at[key] = now
 
 
 def page_card(
