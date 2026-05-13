@@ -43,7 +43,13 @@ def text(value: object, fallback: str = "unknown") -> str:
     return str(value)
 
 
-def base_card(kind: str, *, empty: bool = False, stale: bool = False, errors: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+def base_card(
+    kind: str,
+    *,
+    empty: bool = False,
+    stale: bool = False,
+    errors: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     return {
         "kind": kind,
         "updated_at": utc_now(),
@@ -53,12 +59,105 @@ def base_card(kind: str, *, empty: bool = False, stale: bool = False, errors: li
     }
 
 
+NEAR_LIVE_10S = {"mode": "near_live", "interval_ms": 10000}
+NEAR_LIVE_15S = {"mode": "near_live", "interval_ms": 15000}
+NEAR_LIVE_30S = {"mode": "near_live", "interval_ms": 30000}
+MANUAL_REFRESH = {"mode": "manual"}
+
+
+def page_card(
+    card_id: str,
+    title: str,
+    data: dict[str, Any],
+    *,
+    description: str | None = None,
+    detail_endpoint_template: str | None = None,
+    actions: list[dict[str, Any]] | None = None,
+    refresh: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    card = {
+        "id": card_id,
+        "kind": text(data.get("kind"), "unknown"),
+        "title": title,
+        "data": data,
+    }
+    if description:
+        card["description"] = description
+    if detail_endpoint_template:
+        card["detail_endpoint_template"] = detail_endpoint_template
+    if actions:
+        card["actions"] = actions
+    if refresh:
+        card["refresh"] = refresh
+    return card
+
+
+def page_snapshot(
+    page_id: str,
+    refresh: dict[str, Any],
+    cards: list[dict[str, Any]],
+) -> dict[str, Any]:
+    return {
+        "page_id": page_id,
+        "updated_at": utc_now(),
+        "refresh": refresh,
+        "cards": cards,
+    }
+
+
+def refresh_runtime_action() -> dict[str, Any]:
+    return {
+        "id": "refresh_runtime",
+        "label": "Refresh Runtime",
+        "method": "POST",
+        "endpoint": "/api/node/ui/actions/refresh-status",
+    }
+
+
+def cancel_active_session_action() -> dict[str, Any]:
+    return {
+        "id": "cancel_active_session",
+        "label": "Cancel Active Session",
+        "method": "POST",
+        "endpoint": "/api/voice/session/cancel",
+        "confirmation": {"required": True, "message": "Cancel the active voice session?"},
+    }
+
+
+def test_assistant_turn_action() -> dict[str, Any]:
+    return {
+        "id": "test_assistant_turn",
+        "label": "Test Assistant Turn",
+        "method": "POST",
+        "endpoint": "/api/node/ui/actions/test-assistant-turn",
+    }
+
+
+def test_intent_action() -> dict[str, Any]:
+    return {
+        "id": "test_intent",
+        "label": "Test Intent",
+        "method": "POST",
+        "endpoint": "/api/voice/intents/dispatch",
+    }
+
+
+def invoke_intent_action() -> dict[str, Any]:
+    return {
+        "id": "invoke_intent",
+        "label": "Invoke Intent",
+        "method": "POST",
+        "endpoint": "/api/voice/intents/invoke",
+        "confirmation": {"required": True, "message": "Invoke this intent through the real dispatch path?"},
+    }
+
+
 def manifest(settings: Settings, node_status: dict[str, Any]) -> dict[str, Any]:
     node_id = text(node_status.get("node_id"), settings.node_name)
     display_name = text(node_status.get("node_name"), settings.node_name)
     return {
         "schema_version": "1.0",
-        "manifest_revision": "hexevoice-core-rendered-ui-pilot-v1",
+        "manifest_revision": "hexevoice-core-rendered-ui-pilot-v2",
         "node_id": node_id,
         "node_type": "voice",
         "display_name": display_name,
@@ -66,171 +165,32 @@ def manifest(settings: Settings, node_status: dict[str, Any]) -> dict[str, Any]:
             {
                 "id": "overview",
                 "title": "Overview",
-                "surfaces": [
-                    {
-                        "id": "node.overview",
-                        "kind": "node_overview",
-                        "title": "Node Overview",
-                        "data_endpoint": "/api/node/ui/overview/node",
-                        "refresh": {"mode": "near_live", "interval_ms": 15000},
-                    },
-                    {
-                        "id": "node.health",
-                        "kind": "health_strip",
-                        "title": "Node Health",
-                        "data_endpoint": "/api/node/ui/overview/health",
-                        "refresh": {"mode": "near_live", "interval_ms": 15000},
-                    },
-                    {
-                        "id": "node.warnings",
-                        "kind": "warning_banner",
-                        "title": "Operational Warnings",
-                        "data_endpoint": "/api/node/ui/overview/warnings",
-                        "refresh": {"mode": "manual"},
-                    },
-                    {
-                        "id": "node.facts",
-                        "kind": "facts_card",
-                        "title": "Live Facts",
-                        "data_endpoint": "/api/node/ui/overview/facts",
-                        "refresh": {"mode": "near_live", "interval_ms": 30000},
-                    },
-                ],
+                "page_endpoint": "/api/node/ui/pages/overview",
+                "refresh": NEAR_LIVE_15S,
             },
             {
                 "id": "runtime",
                 "title": "Runtime",
-                "surfaces": [
-                    {
-                        "id": "runtime.services",
-                        "kind": "runtime_service",
-                        "title": "Runtime Services",
-                        "data_endpoint": "/api/node/ui/runtime/services",
-                        "actions": [
-                            {
-                                "id": "refresh_runtime",
-                                "label": "Refresh Runtime",
-                                "method": "POST",
-                                "endpoint": "/api/node/ui/actions/refresh-status",
-                            }
-                        ],
-                        "refresh": {"mode": "near_live", "interval_ms": 15000},
-                    },
-                    {
-                        "id": "runtime.providers",
-                        "kind": "provider_status",
-                        "title": "Provider Status",
-                        "data_endpoint": "/api/node/ui/providers/status",
-                        "refresh": {"mode": "near_live", "interval_ms": 30000},
-                    },
-                ],
+                "page_endpoint": "/api/node/ui/pages/runtime",
+                "refresh": NEAR_LIVE_15S,
             },
             {
                 "id": "voice.endpoints",
                 "title": "Endpoints",
-                "surfaces": [
-                    {
-                        "id": "voice.endpoints",
-                        "kind": "record_list",
-                        "title": "Voice Endpoints",
-                        "data_endpoint": "/api/node/ui/voice/endpoints",
-                        "detail_endpoint_template": "/api/endpoint/status/{endpoint_id}",
-                        "refresh": {"mode": "near_live", "interval_ms": 10000},
-                    },
-                    {
-                        "id": "voice.endpoint_actions",
-                        "kind": "action_panel",
-                        "title": "Endpoint Actions",
-                        "data_endpoint": "/api/node/ui/voice/endpoint-actions",
-                        "actions": [
-                            {
-                                "id": "cancel_active_session",
-                                "label": "Cancel Active Session",
-                                "method": "POST",
-                                "endpoint": "/api/voice/session/cancel",
-                                "confirmation": {"required": True, "message": "Cancel the active voice session?"},
-                            },
-                            {
-                                "id": "test_assistant_turn",
-                                "label": "Test Assistant Turn",
-                                "method": "POST",
-                                "endpoint": "/api/node/ui/actions/test-assistant-turn",
-                            },
-                        ],
-                        "refresh": {"mode": "near_live", "interval_ms": 10000},
-                    },
-                    {
-                        "id": "voice.sessions",
-                        "kind": "record_list",
-                        "title": "Recent Sessions",
-                        "data_endpoint": "/api/node/ui/voice/sessions",
-                        "detail_endpoint_template": "/api/voice/sessions/{session_id}",
-                        "refresh": {"mode": "manual"},
-                    },
-                ],
+                "page_endpoint": "/api/node/ui/pages/voice/endpoints",
+                "refresh": NEAR_LIVE_10S,
             },
             {
                 "id": "voice.intents",
                 "title": "Intents",
-                "surfaces": [
-                    {
-                        "id": "voice.intent_registry",
-                        "kind": "record_list",
-                        "title": "Registered Intents",
-                        "data_endpoint": "/api/node/ui/voice/intents",
-                        "detail_endpoint_template": "/api/voice/intents/{intent_id}",
-                        "refresh": {"mode": "manual"},
-                    },
-                    {
-                        "id": "voice.intent_actions",
-                        "kind": "action_panel",
-                        "title": "Intent Actions",
-                        "data_endpoint": "/api/node/ui/voice/intent-actions",
-                        "actions": [
-                            {
-                                "id": "test_intent",
-                                "label": "Test Intent",
-                                "method": "POST",
-                                "endpoint": "/api/voice/intents/dispatch",
-                            },
-                            {
-                                "id": "invoke_intent",
-                                "label": "Invoke Intent",
-                                "method": "POST",
-                                "endpoint": "/api/voice/intents/invoke",
-                                "confirmation": {"required": True, "message": "Invoke this intent through the real dispatch path?"},
-                            },
-                        ],
-                        "refresh": {"mode": "manual"},
-                    },
-                ],
+                "page_endpoint": "/api/node/ui/pages/voice/intents",
+                "refresh": MANUAL_REFRESH,
             },
             {
                 "id": "voice.tts",
                 "title": "TTS",
-                "surfaces": [
-                    {
-                        "id": "voice.tts_runtime",
-                        "kind": "provider_status",
-                        "title": "TTS Runtime",
-                        "data_endpoint": "/api/node/ui/voice/tts",
-                        "refresh": {"mode": "near_live", "interval_ms": 30000},
-                    },
-                    {
-                        "id": "voice.tts_artifacts",
-                        "kind": "artifact_browser",
-                        "title": "Generated TTS Artifacts",
-                        "data_endpoint": "/api/node/ui/voice/tts-artifacts",
-                        "refresh": {"mode": "manual"},
-                    },
-                    {
-                        "id": "voice.media",
-                        "kind": "artifact_browser",
-                        "title": "Endpoint Media",
-                        "data_endpoint": "/api/node/ui/voice/media",
-                        "refresh": {"mode": "manual"},
-                    },
-                ],
+                "page_endpoint": "/api/node/ui/pages/voice/tts",
+                "refresh": NEAR_LIVE_30S,
             },
         ],
     }

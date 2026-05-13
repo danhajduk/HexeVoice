@@ -2,7 +2,7 @@
 
 Status: Implemented
 
-HexeVoice keeps its local node-owned UI available during the Core-rendered UI pilot. The pilot adds node-side manifest and card data endpoints that Core can render from shared components.
+HexeVoice keeps its local node-owned UI available during the Core-rendered UI pilot. The pilot adds a node-side page manifest and page snapshot endpoints that Core can render from shared components.
 
 ## Current Surface Inventory
 
@@ -27,14 +27,20 @@ HexeVoice keeps its local node-owned UI available during the Core-rendered UI pi
 ## Pilot Boundary
 
 - Local React dashboard routes and components stay unchanged.
-- Core receives only declarative manifests and structured JSON card data.
+- Core receives only declarative page manifests and structured JSON page snapshots.
 - Existing action endpoints stay authoritative for validation, authorization, and behavior.
-- New `/api/node/ui/...` endpoints are lightweight summaries for visible Core cards.
+- New `/api/node/ui/pages/...` endpoints are lightweight page snapshots for visible Core pages.
+- Legacy `/api/node/ui/...` per-card endpoints remain available during migration.
 - Later Core-only card kinds may be returned before Core has renderers; Core should show unsupported-card states until those kinds land.
 
 ## Implemented Pilot Endpoints
 
 - `GET /api/node/ui-manifest`
+- `GET /api/node/ui/pages/overview`
+- `GET /api/node/ui/pages/runtime`
+- `GET /api/node/ui/pages/voice/endpoints`
+- `GET /api/node/ui/pages/voice/intents`
+- `GET /api/node/ui/pages/voice/tts`
 - `GET /api/node/ui/overview/node`
 - `GET /api/node/ui/overview/health`
 - `GET /api/node/ui/overview/warnings`

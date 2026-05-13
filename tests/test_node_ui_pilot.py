@@ -22,8 +22,37 @@ def test_core_rendered_node_ui_manifest_keeps_local_ui_available(tmp_path):
         "voice.intents",
         "voice.tts",
     }
+    for page in manifest["pages"]:
+        assert page["page_endpoint"].startswith("/api/node/ui/pages/")
+        assert "refresh" in page
+        assert "surfaces" not in page
     assert local_status_response.status_code == 200
     assert local_status_response.json()["current_step_id"] == "node_identity"
+
+
+def test_core_rendered_node_ui_page_snapshots_bundle_cards(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    expected_pages = {
+        "overview": "/api/node/ui/pages/overview",
+        "runtime": "/api/node/ui/pages/runtime",
+        "voice.endpoints": "/api/node/ui/pages/voice/endpoints",
+        "voice.intents": "/api/node/ui/pages/voice/intents",
+        "voice.tts": "/api/node/ui/pages/voice/tts",
+    }
+
+    for page_id, endpoint in expected_pages.items():
+        response = client.get(endpoint)
+
+        assert response.status_code == 200
+        snapshot = response.json()
+        assert snapshot["page_id"] == page_id
+        assert "refresh" in snapshot
+        assert snapshot["cards"]
+        assert snapshot["cards"][0]["id"] == "node.health"
+        assert snapshot["cards"][0]["kind"] == "health_strip"
+        assert snapshot["cards"][0]["data"]["kind"] == "health_strip"
+        assert all("data" in card for card in snapshot["cards"])
 
 
 def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):

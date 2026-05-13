@@ -1216,16 +1216,14 @@ def create_app(
     async def node_ui_manifest() -> dict:
         return node_ui.manifest(app_settings, node_ui.as_json(service.status_payload()))
 
-    @app.get("/api/node/ui/overview/node")
-    async def node_ui_overview_node() -> dict:
+    def node_ui_overview_node_payload() -> dict:
         return node_ui.overview_node(
             app_settings,
             node_ui.as_json(service.status_payload()),
             node_ui.as_json(service.onboarding_payload()),
         )
 
-    @app.get("/api/node/ui/overview/health")
-    async def node_ui_overview_health() -> dict:
+    def node_ui_overview_health_payload() -> dict:
         return node_ui.overview_health(
             node_ui.as_json(service.status_payload()),
             node_ui.as_json(service.readiness_payload()),
@@ -1234,8 +1232,7 @@ def create_app(
             voice_session_manager.status(),
         )
 
-    @app.get("/api/node/ui/overview/warnings")
-    async def node_ui_overview_warnings() -> dict:
+    def node_ui_overview_warnings_payload() -> dict:
         return node_ui.overview_warnings(
             node_ui.as_json(service.status_payload()),
             node_ui.as_json(service.onboarding_payload()),
@@ -1244,8 +1241,7 @@ def create_app(
             voice_session_manager.status(),
         )
 
-    @app.get("/api/node/ui/overview/facts")
-    async def node_ui_overview_facts() -> dict:
+    def node_ui_overview_facts_payload() -> dict:
         return node_ui.overview_facts(
             node_ui.as_json(service.status_payload()),
             node_ui.as_json(service.onboarding_payload()),
@@ -1254,51 +1250,244 @@ def create_app(
             voice_session_manager.status(),
         )
 
-    @app.get("/api/node/ui/runtime/services")
-    async def node_ui_runtime_services() -> dict:
+    def node_ui_runtime_services_payload() -> dict:
         return node_ui.runtime_services(node_ui.as_json(service.service_status_payload()), voice_session_manager.status())
 
-    @app.get("/api/node/ui/providers/status")
-    async def node_ui_providers_status() -> dict:
+    async def node_ui_providers_status_payload() -> dict:
         return node_ui.provider_status(
             node_ui.as_json(service.service_status_payload()),
             voice_session_manager.status(),
             await node_ui_tts_settings(),
         )
 
-    @app.get("/api/node/ui/voice/endpoints")
-    async def node_ui_voice_endpoints() -> dict:
+    def node_ui_voice_endpoints_payload() -> dict:
         return node_ui.endpoint_records(node_ui_endpoint_statuses(), voice_session_manager.status())
 
-    @app.get("/api/node/ui/voice/endpoint-actions")
-    async def node_ui_voice_endpoint_actions() -> dict:
+    def node_ui_voice_endpoint_actions_payload() -> dict:
         return node_ui.endpoint_actions(voice_session_manager.status())
 
-    @app.get("/api/node/ui/voice/sessions")
-    async def node_ui_voice_sessions(limit: int = 20) -> dict:
+    def node_ui_voice_sessions_payload(limit: int = 20) -> dict:
         return node_ui.session_records(voice_session_manager.list_session_history(limit=limit))
 
-    @app.get("/api/node/ui/voice/intents")
-    async def node_ui_voice_intents() -> dict:
+    def node_ui_voice_intents_payload() -> dict:
         return node_ui.intent_records(voice_intent_registry.snapshot())
 
-    @app.get("/api/node/ui/voice/intent-actions")
-    async def node_ui_voice_intent_actions() -> dict:
+    def node_ui_voice_intent_actions_payload() -> dict:
         return node_ui.intent_actions(voice_intent_registry.snapshot())
 
-    @app.get("/api/node/ui/voice/tts")
-    async def node_ui_voice_tts() -> dict:
+    async def node_ui_voice_tts_payload() -> dict:
         return node_ui.tts_runtime(await node_ui_tts_settings(), voice_session_manager.status())
 
-    @app.get("/api/node/ui/voice/tts-artifacts")
-    async def node_ui_voice_tts_artifacts(limit: int = 50) -> dict:
+    async def node_ui_voice_tts_artifacts_payload(limit: int = 50) -> dict:
         artifacts = await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
         return node_ui.artifact_records(artifacts)
 
+    def node_ui_voice_media_payload() -> dict:
+        assets = {
+            "assets": [
+                node_ui.as_json(endpoint_media_response(asset))
+                for asset in endpoint_media_service.list_assets()
+            ]
+        }
+        return node_ui.media_records(assets, node_ui_endpoint_statuses())
+
+    def node_ui_health_page_card() -> dict:
+        return node_ui.page_card(
+            "node.health",
+            "Node Health",
+            node_ui_overview_health_payload(),
+            refresh=node_ui.NEAR_LIVE_15S,
+        )
+
+    @app.get("/api/node/ui/pages/overview")
+    async def node_ui_page_overview() -> dict:
+        return node_ui.page_snapshot(
+            "overview",
+            node_ui.NEAR_LIVE_15S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "node.overview",
+                    "Node Overview",
+                    node_ui_overview_node_payload(),
+                    refresh=node_ui.NEAR_LIVE_15S,
+                ),
+                node_ui.page_card(
+                    "node.warnings",
+                    "Operational Warnings",
+                    node_ui_overview_warnings_payload(),
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+                node_ui.page_card(
+                    "node.facts",
+                    "Live Facts",
+                    node_ui_overview_facts_payload(),
+                    refresh=node_ui.NEAR_LIVE_30S,
+                ),
+            ],
+        )
+
+    @app.get("/api/node/ui/pages/runtime")
+    async def node_ui_page_runtime() -> dict:
+        return node_ui.page_snapshot(
+            "runtime",
+            node_ui.NEAR_LIVE_15S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "runtime.services",
+                    "Runtime Services",
+                    node_ui_runtime_services_payload(),
+                    actions=[node_ui.refresh_runtime_action()],
+                    refresh=node_ui.NEAR_LIVE_15S,
+                ),
+                node_ui.page_card(
+                    "runtime.providers",
+                    "Provider Status",
+                    await node_ui_providers_status_payload(),
+                    refresh=node_ui.NEAR_LIVE_30S,
+                ),
+            ],
+        )
+
+    @app.get("/api/node/ui/pages/voice/endpoints")
+    async def node_ui_page_voice_endpoints() -> dict:
+        return node_ui.page_snapshot(
+            "voice.endpoints",
+            node_ui.NEAR_LIVE_10S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "voice.endpoints",
+                    "Voice Endpoints",
+                    node_ui_voice_endpoints_payload(),
+                    detail_endpoint_template="/api/endpoint/status/{endpoint_id}",
+                    refresh=node_ui.NEAR_LIVE_10S,
+                ),
+                node_ui.page_card(
+                    "voice.endpoint_actions",
+                    "Endpoint Actions",
+                    node_ui_voice_endpoint_actions_payload(),
+                    actions=[node_ui.cancel_active_session_action(), node_ui.test_assistant_turn_action()],
+                    refresh=node_ui.NEAR_LIVE_10S,
+                ),
+                node_ui.page_card(
+                    "voice.sessions",
+                    "Recent Sessions",
+                    node_ui_voice_sessions_payload(),
+                    detail_endpoint_template="/api/voice/sessions/{session_id}",
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+            ],
+        )
+
+    @app.get("/api/node/ui/pages/voice/intents")
+    async def node_ui_page_voice_intents() -> dict:
+        return node_ui.page_snapshot(
+            "voice.intents",
+            node_ui.MANUAL_REFRESH,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "voice.intent_registry",
+                    "Registered Intents",
+                    node_ui_voice_intents_payload(),
+                    detail_endpoint_template="/api/voice/intents/{intent_id}",
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+                node_ui.page_card(
+                    "voice.intent_actions",
+                    "Intent Actions",
+                    node_ui_voice_intent_actions_payload(),
+                    actions=[node_ui.test_intent_action(), node_ui.invoke_intent_action()],
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+            ],
+        )
+
+    @app.get("/api/node/ui/pages/voice/tts")
+    async def node_ui_page_voice_tts() -> dict:
+        return node_ui.page_snapshot(
+            "voice.tts",
+            node_ui.NEAR_LIVE_30S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "voice.tts_runtime",
+                    "TTS Runtime",
+                    await node_ui_voice_tts_payload(),
+                    refresh=node_ui.NEAR_LIVE_30S,
+                ),
+                node_ui.page_card(
+                    "voice.tts_artifacts",
+                    "Generated TTS Artifacts",
+                    await node_ui_voice_tts_artifacts_payload(),
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+                node_ui.page_card(
+                    "voice.media",
+                    "Endpoint Media",
+                    node_ui_voice_media_payload(),
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+            ],
+        )
+
+    @app.get("/api/node/ui/overview/node")
+    async def node_ui_overview_node() -> dict:
+        return node_ui_overview_node_payload()
+
+    @app.get("/api/node/ui/overview/health")
+    async def node_ui_overview_health() -> dict:
+        return node_ui_overview_health_payload()
+
+    @app.get("/api/node/ui/overview/warnings")
+    async def node_ui_overview_warnings() -> dict:
+        return node_ui_overview_warnings_payload()
+
+    @app.get("/api/node/ui/overview/facts")
+    async def node_ui_overview_facts() -> dict:
+        return node_ui_overview_facts_payload()
+
+    @app.get("/api/node/ui/runtime/services")
+    async def node_ui_runtime_services() -> dict:
+        return node_ui_runtime_services_payload()
+
+    @app.get("/api/node/ui/providers/status")
+    async def node_ui_providers_status() -> dict:
+        return await node_ui_providers_status_payload()
+
+    @app.get("/api/node/ui/voice/endpoints")
+    async def node_ui_voice_endpoints() -> dict:
+        return node_ui_voice_endpoints_payload()
+
+    @app.get("/api/node/ui/voice/endpoint-actions")
+    async def node_ui_voice_endpoint_actions() -> dict:
+        return node_ui_voice_endpoint_actions_payload()
+
+    @app.get("/api/node/ui/voice/sessions")
+    async def node_ui_voice_sessions(limit: int = 20) -> dict:
+        return node_ui_voice_sessions_payload(limit=limit)
+
+    @app.get("/api/node/ui/voice/intents")
+    async def node_ui_voice_intents() -> dict:
+        return node_ui_voice_intents_payload()
+
+    @app.get("/api/node/ui/voice/intent-actions")
+    async def node_ui_voice_intent_actions() -> dict:
+        return node_ui_voice_intent_actions_payload()
+
+    @app.get("/api/node/ui/voice/tts")
+    async def node_ui_voice_tts() -> dict:
+        return await node_ui_voice_tts_payload()
+
+    @app.get("/api/node/ui/voice/tts-artifacts")
+    async def node_ui_voice_tts_artifacts(limit: int = 50) -> dict:
+        return await node_ui_voice_tts_artifacts_payload(limit=limit)
+
     @app.get("/api/node/ui/voice/media")
     async def node_ui_voice_media() -> dict:
-        assets = {"assets": [node_ui.as_json(endpoint_media_response(asset)) for asset in endpoint_media_service.list_assets()]}
-        return node_ui.media_records(assets, node_ui_endpoint_statuses())
+        return node_ui_voice_media_payload()
 
     @app.post("/api/node/ui/actions/refresh-status")
     async def node_ui_refresh_status_action() -> dict:
