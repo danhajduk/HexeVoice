@@ -48,6 +48,12 @@ Use:
 - `scripts/stack-control.sh` for service control
 - `scripts/restart-stack.sh` to restart the configured stack services
 
+`scripts/stack-control.sh` restarts services one at a time and prints each
+service as it is handled. Each `systemctl --user` operation is bounded by
+`STACK_CONTROL_TIMEOUT_S`, which defaults to 45 seconds. Override it when a
+machine needs a longer model unload/load window, for example
+`STACK_CONTROL_TIMEOUT_S=90 scripts/restart-stack.sh`.
+
 The external faster-whisper STT runtime code lives in the standalone
 `src/stt/` package. `src/hexevoice/stt_service.py` remains as a compatibility
 entrypoint, while service launch commands use `python -m stt.service`.
