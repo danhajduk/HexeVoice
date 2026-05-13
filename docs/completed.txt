@@ -131,3 +131,4 @@ Task 093: Benchmark faster-whisper base.en, small.en, and medium.en for short ho
 Task 095: Add faster-whisper tuning options for beam size, best-of, fixed language, and timestamp controls - Completed on 05/10/2026 01:24
 Task 097: Add STT timing breakdown metrics for audio preparation, model inference, decoding, and post-processing - Completed on 05/10/2026 01:27
 Task 096: Add STT warm-model health, last-load metadata, and reload detection to backend status - Completed on 05/10/2026 01:31
+Task 125: Inventory HexeVoice dashboard surfaces against the Core-rendered node UI manifest and card contracts - Completed on 05/12/2026 23:55

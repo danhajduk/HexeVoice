@@ -1008,3 +1008,47 @@ Original task details:
   - Keep any TCP mode limited to an explicit development/debug override, not the production default.
   - Add socket cleanup on service startup so stale socket files do not block restarts.
   - Document Docker volume, permissions, health-check, and Supervisor visibility implications.
+
+## Task 125-133
+Original task details:
+- Title: Start the HexeVoice migration to Core-rendered node UI
+- Source docs:
+  - `docs/Core-Documents/nodes/future-dev/core-rendered-node-ui-migration.md`
+  - `docs/Core-Documents/nodes/ui-mogration/README.md`
+  - `docs/Core-Documents/nodes/ui-mogration/node-requirements.md`
+- Scope and boundaries:
+  - Implement node-side contracts in HexeVoice only; do not change Core behavior from this queue.
+  - Keep the existing node-hosted operational dashboard available during the pilot.
+  - Treat the local UI as `full` until Core-rendered parity is verified.
+  - Expose declarative manifests, data endpoints, detail endpoints, and action endpoints; do not expose React components, arbitrary HTML, scripts, secrets, or giant full-page data payloads.
+  - Shape responses for Core card kinds instead of current frontend internals.
+  - Preserve node-side authorization, validation, trust boundaries, and operator-safe error payloads for every new endpoint.
+
+Active normalized queue entries:
+- Task 125: Inventory HexeVoice dashboard surfaces against the Core-rendered node UI manifest and card contracts.
+- Task 126: Add the HexeVoice `/api/node/ui-manifest` pilot for Core-rendered overview, runtime, endpoint, TTS, and intents pages.
+- Task 127: Add Core-rendered overview data endpoints for Voice node identity, health strip, warnings, and live facts.
+- Task 128: Add Core-rendered runtime and provider status data endpoints for backend, STT, TTS, wake, and Piper services.
+- Task 129: Add Core-rendered voice endpoint summary and action-panel data endpoints without removing the local dashboard.
+- Task 130: Add Core-rendered registered-intent record list, detail, test, and invoke surfaces.
+- Task 131: Add Core-rendered TTS model, artifact, wake-recording, and media inventory surfaces.
+- Task 132: Add contract tests and migration docs for the HexeVoice Core-rendered UI pilot.
+- Task 133: Add a Voice node local UI mode setting for `full`, `setup_only`, and future `disabled` operation.
+
+Preserved task details:
+- Task 125 inventories existing dashboard sections and cards under `frontend/src/features/dashboard/`, setup cards under `frontend/src/features/setup/`, and API sources under `src/hexevoice/main.py`, `src/hexevoice/runtime/service.py`, `src/hexevoice/endpoint/`, `src/hexevoice/assistant/`, and `src/hexevoice/tts/`. Completion requires a short mapping from current surfaces to Core card kinds, identifying which existing endpoints can be reused and which need lightweight `/api/node/ui/...` summaries.
+- Task 126 adds `GET /api/node/ui-manifest` with `schema_version`, Voice node identity, `node_type=voice`, display name, page definitions, surface ids, card kinds, Core-routable `data_endpoint` values, refresh policies, detail endpoint templates, and manifest action metadata. The first pilot should include overview, runtime, endpoints, TTS, and intents pages while leaving `/nodes/:nodeId/UI` fallback behavior untouched in Core.
+- Task 127 adds lightweight summary endpoints such as `/api/node/ui/overview/node`, `/api/node/ui/overview/health`, `/api/node/ui/overview/warnings`, and `/api/node/ui/overview/facts`. Responses should map existing onboarding, trust, governance, readiness, provider setup, and operational-status data into `node_overview`, `health_strip`, `warning_banner`, and `facts_card` shapes.
+- Task 128 adds runtime/provider endpoints such as `/api/node/ui/runtime/services` and `/api/node/ui/providers/status`. Responses should summarize backend, external STT, TTS engine, wake runtime, Piper runtime, provider configuration, model state, restart support, resource usage, and last errors using `runtime_service` and `provider_status` shapes.
+- Task 129 adds endpoint-focused data endpoints such as `/api/node/ui/voice/endpoints`, `/api/node/ui/voice/endpoint-actions`, and optional endpoint detail endpoints. The data should project endpoint connection, transport, firmware, mute, volume, session, replay, OTA, media, and storage state into shared `record_list`, `facts_card`, and `action_panel` responses without requiring Core to fetch every endpoint detail up front.
+- Task 130 adds intent-focused Core-rendered surfaces: a `record_list` endpoint for registered intents, a detail endpoint for selected intent contracts, and action metadata/data for dry-run test and real invoke flows. Existing `/api/voice/intents`, `/api/voice/intents/{intent_id}`, `/api/voice/intents/dispatch`, and `/api/voice/intents/invoke` behavior should stay authoritative.
+- Task 131 adds TTS and artifact surfaces for model inventory, warm/cold model status, conversion sample-rate settings, generated TTS artifacts, wake recordings, endpoint media inventory, and related safe actions. Use `resource_grid`, `artifact_browser`, `settings_form`, `provider_status`, and `record_list` shapes where Core already supports or plans those card kinds.
+- Task 132 adds tests that validate the manifest and card payloads against the Core-rendered UI handoff contract available in `docs/Core-Documents/nodes/ui-mogration/`. Tests should cover manifest shape, endpoint routing, no forbidden executable content, lightweight data payloads, safe action metadata, detail loading, and preservation of existing local dashboard/API behavior. Docs should explain how to enable the pilot from Core and what remains local-only.
+- Task 133 adds a Voice node local UI mode configuration with initial default `full`. `setup_only` must preserve first boot, Core pairing, trust registration, recovery diagnostics, and handoff messaging while hiding normal operational dashboard surfaces only after Core-rendered parity is verified. `disabled` should remain documented as future-only until recovery coverage is strong enough.
+
+Definition of done:
+- Core can fetch a HexeVoice manifest through its rendered-node UI path and render useful Voice operational pages without node-hosted React cards.
+- HexeVoice still serves its existing local dashboard for setup, recovery, diagnostics, and migration fallback.
+- Overview, runtime, endpoint, TTS, and intent surfaces expose lightweight Core card payloads with explicit refresh policy.
+- Operator actions remain backed by existing node-side authorization and validation.
+- Tests prove new Core-rendered endpoints do not break current Voice dashboard, onboarding, provider setup, endpoint, intent, TTS, or service-control APIs.
