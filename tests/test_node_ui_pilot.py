@@ -133,6 +133,35 @@ def test_page_snapshot_cache_serves_expired_disk_snapshot_while_refreshing(tmp_p
     asyncio.run(run())
 
 
+def test_page_snapshot_cache_serves_runtime_file_before_rebuild(tmp_path):
+    builds: list[str] = []
+
+    async def run() -> None:
+        cache = node_ui.PageSnapshotCache(cache_dir=tmp_path)
+
+        async def first_builder() -> dict:
+            builds.append("first")
+            return {"page_id": "runtime", "version": "first"}
+
+        first = await cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, first_builder)
+        cache.snapshot_path("runtime").write_text(
+            json.dumps({"page_id": "runtime", "version": "file"}) + "\n",
+            encoding="utf-8",
+        )
+
+        async def second_builder() -> dict:
+            builds.append("second")
+            return {"page_id": "runtime", "version": "second"}
+
+        from_file = await cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, second_builder)
+
+        assert first == {"page_id": "runtime", "version": "first"}
+        assert from_file == {"page_id": "runtime", "version": "file"}
+        assert builds == ["first"]
+
+    asyncio.run(run())
+
+
 def test_core_rendered_node_ui_invalidates_page_cache_on_endpoint_updates(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 

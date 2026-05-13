@@ -30,6 +30,8 @@ HexeVoice keeps its local node-owned UI available during the Core-rendered UI pi
 - Core receives only declarative page manifests and structured JSON page snapshots.
 - Existing action endpoints stay authoritative for validation, authorization, and behavior.
 - New `/api/node/ui/pages/...` endpoints are lightweight page snapshots for visible Core pages.
+- Page snapshot endpoints serve the runtime JSON files from `runtime/rendered_node_ui_pages/` once those files exist.
+- HexeVoice refreshes the runtime JSON files in the background on each page cadence so Core proxy reads do not block on snapshot rebuilding.
 - Legacy `/api/node/ui/...` per-card endpoints remain available during migration.
 - Later Core-only card kinds may be returned before Core has renderers; Core should show unsupported-card states until those kinds land.
 

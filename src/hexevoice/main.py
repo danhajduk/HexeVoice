@@ -517,9 +517,18 @@ def create_app(
             asyncio.create_task(refresh_piper_tts_warmup_voices())
             app.state.voice_tts_warmup_task = asyncio.create_task(warm_piper_tts_every_10_minutes())
 
+        app.state.node_ui_page_refresh_task = asyncio.create_task(node_ui_page_cache.maintain_registered_pages())
+
     @app.on_event("shutdown")
     async def stop_background_services():
         timer_announcement_service.stop()
+        page_refresh_task = getattr(app.state, "node_ui_page_refresh_task", None)
+        if page_refresh_task is not None:
+            page_refresh_task.cancel()
+            try:
+                await page_refresh_task
+            except asyncio.CancelledError:
+                pass
         cleanup_task = getattr(app.state, "voice_artifact_cleanup_task", None)
         if cleanup_task is not None:
             cleanup_task.cancel()
@@ -1317,142 +1326,156 @@ def create_app(
             refresh=node_ui.NEAR_LIVE_15S,
         )
 
+    async def build_node_ui_page_overview() -> dict:
+        return node_ui.page_snapshot(
+            "overview",
+            node_ui.NEAR_LIVE_15S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "node.warnings",
+                    "Operational Warnings",
+                    node_ui_overview_warnings_payload(),
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+            ],
+        )
+
+    async def build_node_ui_page_runtime() -> dict:
+        return node_ui.page_snapshot(
+            "runtime",
+            node_ui.NEAR_LIVE_15S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "runtime.services",
+                    "Runtime Services",
+                    node_ui_runtime_services_payload(),
+                    actions=[node_ui.refresh_runtime_action()],
+                    refresh=node_ui.NEAR_LIVE_15S,
+                ),
+                node_ui.page_card(
+                    "runtime.providers",
+                    "Provider Status",
+                    await node_ui_providers_status_payload(),
+                    refresh=node_ui.NEAR_LIVE_30S,
+                ),
+            ],
+        )
+
+    async def build_node_ui_page_voice_endpoints() -> dict:
+        return node_ui.page_snapshot(
+            "voice.endpoints",
+            node_ui.NEAR_LIVE_10S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "voice.endpoints",
+                    "Voice Endpoints",
+                    node_ui_voice_endpoints_payload(),
+                    detail_endpoint_template="/api/endpoint/status/{endpoint_id}",
+                    refresh=node_ui.NEAR_LIVE_10S,
+                ),
+                node_ui.page_card(
+                    "voice.endpoint_actions",
+                    "Endpoint Actions",
+                    node_ui_voice_endpoint_actions_payload(),
+                    actions=[node_ui.cancel_active_session_action(), node_ui.test_assistant_turn_action()],
+                    refresh=node_ui.NEAR_LIVE_10S,
+                ),
+                node_ui.page_card(
+                    "voice.sessions",
+                    "Recent Sessions",
+                    node_ui_voice_sessions_payload(),
+                    detail_endpoint_template="/api/voice/sessions/{session_id}",
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+            ],
+        )
+
+    async def build_node_ui_page_voice_intents() -> dict:
+        return node_ui.page_snapshot(
+            "voice.intents",
+            node_ui.MANUAL_REFRESH,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "voice.intent_registry",
+                    "Registered Intents",
+                    node_ui_voice_intents_payload(),
+                    detail_endpoint_template="/api/voice/intents/{intent_id}",
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+                node_ui.page_card(
+                    "voice.intent_actions",
+                    "Intent Actions",
+                    node_ui_voice_intent_actions_payload(),
+                    actions=[node_ui.test_intent_action(), node_ui.invoke_intent_action()],
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+            ],
+        )
+
+    async def build_node_ui_page_voice_tts() -> dict:
+        return node_ui.page_snapshot(
+            "voice.tts",
+            node_ui.NEAR_LIVE_30S,
+            [
+                node_ui_health_page_card(),
+                node_ui.page_card(
+                    "voice.tts_runtime",
+                    "TTS Runtime",
+                    await node_ui_voice_tts_payload(),
+                    refresh=node_ui.NEAR_LIVE_30S,
+                ),
+                node_ui.page_card(
+                    "voice.tts_artifacts",
+                    "Generated TTS Artifacts",
+                    await node_ui_voice_tts_artifacts_payload(),
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+                node_ui.page_card(
+                    "voice.media",
+                    "Endpoint Media",
+                    node_ui_voice_media_payload(),
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
+            ],
+        )
+
+    node_ui_page_specs = [
+        ("overview", node_ui.NEAR_LIVE_15S, build_node_ui_page_overview, 15.0),
+        ("runtime", node_ui.NEAR_LIVE_15S, build_node_ui_page_runtime, 15.0),
+        ("voice.endpoints", node_ui.NEAR_LIVE_10S, build_node_ui_page_voice_endpoints, 10.0),
+        ("voice.intents", node_ui.MANUAL_REFRESH, build_node_ui_page_voice_intents, 60.0),
+        ("voice.tts", node_ui.NEAR_LIVE_30S, build_node_ui_page_voice_tts, 30.0),
+    ]
+    for key, refresh, builder, interval_seconds in node_ui_page_specs:
+        node_ui_page_cache.register_page(key, refresh, builder, interval_seconds=interval_seconds)
+
     @app.get("/api/node/ui/pages/overview")
     async def node_ui_page_overview() -> dict:
-        async def build() -> dict:
-            return node_ui.page_snapshot(
-                "overview",
-                node_ui.NEAR_LIVE_15S,
-                [
-                    node_ui_health_page_card(),
-                    node_ui.page_card(
-                        "node.warnings",
-                        "Operational Warnings",
-                        node_ui_overview_warnings_payload(),
-                        refresh=node_ui.MANUAL_REFRESH,
-                    ),
-                ],
-            )
-
-        return await node_ui_page_cache.get_or_build("overview", node_ui.NEAR_LIVE_15S, build)
+        return await node_ui_page_cache.get_or_build("overview", node_ui.NEAR_LIVE_15S, build_node_ui_page_overview)
 
     @app.get("/api/node/ui/pages/runtime")
     async def node_ui_page_runtime() -> dict:
-        async def build() -> dict:
-            return node_ui.page_snapshot(
-                "runtime",
-                node_ui.NEAR_LIVE_15S,
-                [
-                    node_ui_health_page_card(),
-                    node_ui.page_card(
-                        "runtime.services",
-                        "Runtime Services",
-                        node_ui_runtime_services_payload(),
-                        actions=[node_ui.refresh_runtime_action()],
-                        refresh=node_ui.NEAR_LIVE_15S,
-                    ),
-                    node_ui.page_card(
-                        "runtime.providers",
-                        "Provider Status",
-                        await node_ui_providers_status_payload(),
-                        refresh=node_ui.NEAR_LIVE_30S,
-                    ),
-                ],
-            )
-
-        return await node_ui_page_cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, build)
+        return await node_ui_page_cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, build_node_ui_page_runtime)
 
     @app.get("/api/node/ui/pages/voice/endpoints")
     async def node_ui_page_voice_endpoints() -> dict:
-        async def build() -> dict:
-            return node_ui.page_snapshot(
-                "voice.endpoints",
-                node_ui.NEAR_LIVE_10S,
-                [
-                    node_ui_health_page_card(),
-                    node_ui.page_card(
-                        "voice.endpoints",
-                        "Voice Endpoints",
-                        node_ui_voice_endpoints_payload(),
-                        detail_endpoint_template="/api/endpoint/status/{endpoint_id}",
-                        refresh=node_ui.NEAR_LIVE_10S,
-                    ),
-                    node_ui.page_card(
-                        "voice.endpoint_actions",
-                        "Endpoint Actions",
-                        node_ui_voice_endpoint_actions_payload(),
-                        actions=[node_ui.cancel_active_session_action(), node_ui.test_assistant_turn_action()],
-                        refresh=node_ui.NEAR_LIVE_10S,
-                    ),
-                    node_ui.page_card(
-                        "voice.sessions",
-                        "Recent Sessions",
-                        node_ui_voice_sessions_payload(),
-                        detail_endpoint_template="/api/voice/sessions/{session_id}",
-                        refresh=node_ui.MANUAL_REFRESH,
-                    ),
-                ],
-            )
-
-        return await node_ui_page_cache.get_or_build("voice.endpoints", node_ui.NEAR_LIVE_10S, build)
+        return await node_ui_page_cache.get_or_build(
+            "voice.endpoints",
+            node_ui.NEAR_LIVE_10S,
+            build_node_ui_page_voice_endpoints,
+        )
 
     @app.get("/api/node/ui/pages/voice/intents")
     async def node_ui_page_voice_intents() -> dict:
-        async def build() -> dict:
-            return node_ui.page_snapshot(
-                "voice.intents",
-                node_ui.MANUAL_REFRESH,
-                [
-                    node_ui_health_page_card(),
-                    node_ui.page_card(
-                        "voice.intent_registry",
-                        "Registered Intents",
-                        node_ui_voice_intents_payload(),
-                        detail_endpoint_template="/api/voice/intents/{intent_id}",
-                        refresh=node_ui.MANUAL_REFRESH,
-                    ),
-                    node_ui.page_card(
-                        "voice.intent_actions",
-                        "Intent Actions",
-                        node_ui_voice_intent_actions_payload(),
-                        actions=[node_ui.test_intent_action(), node_ui.invoke_intent_action()],
-                        refresh=node_ui.MANUAL_REFRESH,
-                    ),
-                ],
-            )
-
-        return await node_ui_page_cache.get_or_build("voice.intents", node_ui.MANUAL_REFRESH, build)
+        return await node_ui_page_cache.get_or_build("voice.intents", node_ui.MANUAL_REFRESH, build_node_ui_page_voice_intents)
 
     @app.get("/api/node/ui/pages/voice/tts")
     async def node_ui_page_voice_tts() -> dict:
-        async def build() -> dict:
-            return node_ui.page_snapshot(
-                "voice.tts",
-                node_ui.NEAR_LIVE_30S,
-                [
-                    node_ui_health_page_card(),
-                    node_ui.page_card(
-                        "voice.tts_runtime",
-                        "TTS Runtime",
-                        await node_ui_voice_tts_payload(),
-                        refresh=node_ui.NEAR_LIVE_30S,
-                    ),
-                    node_ui.page_card(
-                        "voice.tts_artifacts",
-                        "Generated TTS Artifacts",
-                        await node_ui_voice_tts_artifacts_payload(),
-                        refresh=node_ui.MANUAL_REFRESH,
-                    ),
-                    node_ui.page_card(
-                        "voice.media",
-                        "Endpoint Media",
-                        node_ui_voice_media_payload(),
-                        refresh=node_ui.MANUAL_REFRESH,
-                    ),
-                ],
-            )
-
-        return await node_ui_page_cache.get_or_build("voice.tts", node_ui.NEAR_LIVE_30S, build)
+        return await node_ui_page_cache.get_or_build("voice.tts", node_ui.NEAR_LIVE_30S, build_node_ui_page_voice_tts)
 
     @app.get("/api/node/ui/overview/node")
     async def node_ui_overview_node() -> dict:

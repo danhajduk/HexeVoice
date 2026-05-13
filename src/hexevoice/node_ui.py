@@ -7,7 +7,7 @@ import os
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, NamedTuple
 
 from hexevoice.config.settings import Settings
 
@@ -97,6 +97,7 @@ class PageSnapshotCache:
         self._invalidated_at: dict[str, float] = {}
         self._all_invalidated_at = 0.0
         self._refresh_tasks: dict[str, asyncio.Task[None]] = {}
+        self._registered_pages: dict[str, RegisteredPageSnapshot] = {}
 
     def snapshot_path(self, key: str) -> Path | None:
         if self._cache_dir is None:
@@ -104,19 +105,9 @@ class PageSnapshotCache:
         safe_key = "".join(char if char.isalnum() or char in "._-" else "_" for char in key).strip("._")
         return self._cache_dir / f"{safe_key or 'page'}.json"
 
-    def _read_disk(self, key: str, ttl: float, *, allow_stale: bool = False) -> dict[str, Any] | None:
+    def _read_disk(self, key: str) -> dict[str, Any] | None:
         path = self.snapshot_path(key)
-        if path is None or ttl <= 0 or not path.exists():
-            return None
-        try:
-            stat = path.stat()
-        except OSError:
-            return None
-        invalidated_at = max(self._all_invalidated_at, self._invalidated_at.get(key, 0.0))
-        if stat.st_mtime <= invalidated_at:
-            return None
-        remaining = stat.st_mtime + ttl - self._wall_clock()
-        if remaining <= 0 and not allow_stale:
+        if path is None or not path.exists():
             return None
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -124,9 +115,16 @@ class PageSnapshotCache:
             return None
         if not isinstance(payload, dict):
             return None
-        if remaining > 0:
-            self._entries[key] = (self._clock() + remaining, copy.deepcopy(payload))
         return payload
+
+    def _snapshot_mtime(self, key: str) -> float | None:
+        path = self.snapshot_path(key)
+        if path is None:
+            return None
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return None
 
     def _write_disk(self, key: str, payload: dict[str, Any]) -> None:
         path = self.snapshot_path(key)
@@ -146,46 +144,98 @@ class PageSnapshotCache:
         refresh: dict[str, Any],
         builder: Callable[[], Awaitable[dict[str, Any]]],
     ) -> dict[str, Any]:
-        ttl = page_cache_ttl_seconds(refresh)
-        if ttl <= 0:
-            return await builder()
-        now = self._clock()
-        cached = self._entries.get(key)
-        if cached and cached[0] > now:
-            return copy.deepcopy(cached[1])
-        disk_payload = self._read_disk(key, ttl)
+        disk_payload = self._read_disk(key)
         if disk_payload is not None:
+            self.refresh_if_due(key, refresh, builder)
             return copy.deepcopy(disk_payload)
-        stale_disk_payload = self._read_disk(key, ttl, allow_stale=True)
-        if stale_disk_payload is not None:
-            self._refresh_stale_entry(key, ttl, builder)
-            return copy.deepcopy(stale_disk_payload)
-        payload = await builder()
-        self._entries[key] = (self._clock() + ttl, copy.deepcopy(payload))
-        self._write_disk(key, payload)
+
+        payload = await self.refresh_now(key, refresh, builder)
         return payload
 
-    def _refresh_stale_entry(
+    async def refresh_now(
         self,
         key: str,
-        ttl: float,
+        refresh: dict[str, Any],
         builder: Callable[[], Awaitable[dict[str, Any]]],
+    ) -> dict[str, Any]:
+        ttl = page_cache_ttl_seconds(refresh)
+        payload = await builder()
+        if ttl > 0:
+            self._entries[key] = (self._clock() + ttl, copy.deepcopy(payload))
+        self._write_disk(key, payload)
+        return copy.deepcopy(payload)
+
+    def refresh_if_due(
+        self,
+        key: str,
+        refresh_policy: dict[str, Any],
+        builder: Callable[[], Awaitable[dict[str, Any]]],
+        *,
+        interval_seconds: float | None = None,
     ) -> None:
+        if not self.needs_refresh(key, refresh_policy, interval_seconds=interval_seconds):
+            return
         existing = self._refresh_tasks.get(key)
         if existing is not None and not existing.done():
             return
 
-        async def refresh() -> None:
+        async def refresh_task() -> None:
             try:
-                payload = await builder()
-                self._entries[key] = (self._clock() + ttl, copy.deepcopy(payload))
-                self._write_disk(key, payload)
+                await self.refresh_now(key, refresh_policy, builder)
             finally:
                 task = self._refresh_tasks.get(key)
                 if task is asyncio.current_task():
                     self._refresh_tasks.pop(key, None)
 
-        self._refresh_tasks[key] = asyncio.create_task(refresh())
+        try:
+            self._refresh_tasks[key] = asyncio.create_task(refresh_task())
+        except RuntimeError:
+            return
+
+    def needs_refresh(
+        self,
+        key: str,
+        refresh: dict[str, Any],
+        *,
+        interval_seconds: float | None = None,
+    ) -> bool:
+        mtime = self._snapshot_mtime(key)
+        if mtime is None:
+            return True
+        invalidated_at = max(self._all_invalidated_at, self._invalidated_at.get(key, 0.0))
+        if mtime <= invalidated_at:
+            return True
+        interval = interval_seconds if interval_seconds is not None else page_cache_ttl_seconds(refresh)
+        if interval <= 0:
+            return False
+        return mtime + interval <= self._wall_clock()
+
+    def register_page(
+        self,
+        key: str,
+        refresh: dict[str, Any],
+        builder: Callable[[], Awaitable[dict[str, Any]]],
+        *,
+        interval_seconds: float | None = None,
+    ) -> None:
+        interval = interval_seconds if interval_seconds is not None else page_cache_ttl_seconds(refresh)
+        self._registered_pages[key] = RegisteredPageSnapshot(
+            key=key,
+            refresh=refresh,
+            builder=builder,
+            interval_seconds=interval,
+        )
+
+    async def maintain_registered_pages(self, *, poll_interval_seconds: float = 1.0) -> None:
+        while True:
+            for page in self._registered_pages.values():
+                self.refresh_if_due(
+                    page.key,
+                    page.refresh,
+                    page.builder,
+                    interval_seconds=page.interval_seconds,
+                )
+            await asyncio.sleep(max(poll_interval_seconds, 0.1))
 
     def invalidate(self, key: str | None = None) -> None:
         now = self._wall_clock()
@@ -195,12 +245,34 @@ class PageSnapshotCache:
                 task.cancel()
             self._refresh_tasks.clear()
             self._all_invalidated_at = now
+            for page in self._registered_pages.values():
+                self.refresh_if_due(
+                    page.key,
+                    page.refresh,
+                    page.builder,
+                    interval_seconds=page.interval_seconds,
+                )
             return
         self._entries.pop(key, None)
         task = self._refresh_tasks.pop(key, None)
         if task is not None:
             task.cancel()
         self._invalidated_at[key] = now
+        page = self._registered_pages.get(key)
+        if page is not None:
+            self.refresh_if_due(
+                page.key,
+                page.refresh,
+                page.builder,
+                interval_seconds=page.interval_seconds,
+            )
+
+
+class RegisteredPageSnapshot(NamedTuple):
+    key: str
+    refresh: dict[str, Any]
+    builder: Callable[[], Awaitable[dict[str, Any]]]
+    interval_seconds: float
 
 
 def page_card(
