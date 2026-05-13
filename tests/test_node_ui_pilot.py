@@ -56,6 +56,15 @@ def test_core_rendered_node_ui_page_snapshots_bundle_cards(tmp_path):
         assert all("data" in card for card in snapshot["cards"])
 
 
+def test_core_rendered_node_ui_overview_snapshot_advertises_only_health_and_warnings(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    snapshot = client.get("/api/node/ui/pages/overview").json()
+
+    assert [card["id"] for card in snapshot["cards"]] == ["node.health", "node.warnings"]
+    assert [card["kind"] for card in snapshot["cards"]] == ["health_strip", "warning_banner"]
+
+
 def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 

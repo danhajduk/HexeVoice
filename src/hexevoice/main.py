@@ -1307,22 +1307,10 @@ def create_app(
             [
                 node_ui_health_page_card(),
                 node_ui.page_card(
-                    "node.overview",
-                    "Node Overview",
-                    node_ui_overview_node_payload(),
-                    refresh=node_ui.NEAR_LIVE_15S,
-                ),
-                node_ui.page_card(
                     "node.warnings",
                     "Operational Warnings",
                     node_ui_overview_warnings_payload(),
                     refresh=node_ui.MANUAL_REFRESH,
-                ),
-                node_ui.page_card(
-                    "node.facts",
-                    "Live Facts",
-                    node_ui_overview_facts_payload(),
-                    refresh=node_ui.NEAR_LIVE_30S,
                 ),
             ],
         )
