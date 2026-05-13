@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import os
@@ -95,6 +96,7 @@ class PageSnapshotCache:
         self._entries: dict[str, tuple[float, dict[str, Any]]] = {}
         self._invalidated_at: dict[str, float] = {}
         self._all_invalidated_at = 0.0
+        self._refresh_tasks: dict[str, asyncio.Task[None]] = {}
 
     def snapshot_path(self, key: str) -> Path | None:
         if self._cache_dir is None:
@@ -102,7 +104,7 @@ class PageSnapshotCache:
         safe_key = "".join(char if char.isalnum() or char in "._-" else "_" for char in key).strip("._")
         return self._cache_dir / f"{safe_key or 'page'}.json"
 
-    def _read_disk(self, key: str, ttl: float) -> dict[str, Any] | None:
+    def _read_disk(self, key: str, ttl: float, *, allow_stale: bool = False) -> dict[str, Any] | None:
         path = self.snapshot_path(key)
         if path is None or ttl <= 0 or not path.exists():
             return None
@@ -114,7 +116,7 @@ class PageSnapshotCache:
         if stat.st_mtime <= invalidated_at:
             return None
         remaining = stat.st_mtime + ttl - self._wall_clock()
-        if remaining <= 0:
+        if remaining <= 0 and not allow_stale:
             return None
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))
@@ -122,7 +124,8 @@ class PageSnapshotCache:
             return None
         if not isinstance(payload, dict):
             return None
-        self._entries[key] = (self._clock() + remaining, copy.deepcopy(payload))
+        if remaining > 0:
+            self._entries[key] = (self._clock() + remaining, copy.deepcopy(payload))
         return payload
 
     def _write_disk(self, key: str, payload: dict[str, Any]) -> None:
@@ -153,18 +156,50 @@ class PageSnapshotCache:
         disk_payload = self._read_disk(key, ttl)
         if disk_payload is not None:
             return copy.deepcopy(disk_payload)
+        stale_disk_payload = self._read_disk(key, ttl, allow_stale=True)
+        if stale_disk_payload is not None:
+            self._refresh_stale_entry(key, ttl, builder)
+            return copy.deepcopy(stale_disk_payload)
         payload = await builder()
-        self._entries[key] = (now + ttl, copy.deepcopy(payload))
+        self._entries[key] = (self._clock() + ttl, copy.deepcopy(payload))
         self._write_disk(key, payload)
         return payload
+
+    def _refresh_stale_entry(
+        self,
+        key: str,
+        ttl: float,
+        builder: Callable[[], Awaitable[dict[str, Any]]],
+    ) -> None:
+        existing = self._refresh_tasks.get(key)
+        if existing is not None and not existing.done():
+            return
+
+        async def refresh() -> None:
+            try:
+                payload = await builder()
+                self._entries[key] = (self._clock() + ttl, copy.deepcopy(payload))
+                self._write_disk(key, payload)
+            finally:
+                task = self._refresh_tasks.get(key)
+                if task is asyncio.current_task():
+                    self._refresh_tasks.pop(key, None)
+
+        self._refresh_tasks[key] = asyncio.create_task(refresh())
 
     def invalidate(self, key: str | None = None) -> None:
         now = self._wall_clock()
         if key is None:
             self._entries.clear()
+            for task in self._refresh_tasks.values():
+                task.cancel()
+            self._refresh_tasks.clear()
             self._all_invalidated_at = now
             return
         self._entries.pop(key, None)
+        task = self._refresh_tasks.pop(key, None)
+        if task is not None:
+            task.cancel()
         self._invalidated_at[key] = now
 
 

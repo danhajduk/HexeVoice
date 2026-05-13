@@ -1,3 +1,4 @@
+import asyncio
 import json
 import time
 
@@ -91,6 +92,45 @@ def test_core_rendered_node_ui_loads_page_snapshot_cache_from_runtime_file(tmp_p
     second = second_client.get("/api/node/ui/pages/runtime").json()
 
     assert second == first
+
+
+def test_page_snapshot_cache_serves_expired_disk_snapshot_while_refreshing(tmp_path):
+    now = 100.0
+    wall_now = time.time()
+    builds: list[str] = []
+
+    def clock() -> float:
+        return now
+
+    def wall_clock() -> float:
+        return wall_now
+
+    async def run() -> None:
+        nonlocal now, wall_now
+        cache = node_ui.PageSnapshotCache(cache_dir=tmp_path, clock=clock, wall_clock=wall_clock)
+
+        async def first_builder() -> dict:
+            builds.append("first")
+            return {"page_id": "runtime", "version": "first"}
+
+        first = await cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, first_builder)
+        now += 20
+        wall_now = cache.snapshot_path("runtime").stat().st_mtime + 20
+
+        async def second_builder() -> dict:
+            builds.append("second")
+            return {"page_id": "runtime", "version": "second"}
+
+        stale = await cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, second_builder)
+        await asyncio.sleep(0)
+        refreshed = await cache.get_or_build("runtime", node_ui.NEAR_LIVE_15S, second_builder)
+
+        assert first == {"page_id": "runtime", "version": "first"}
+        assert stale == first
+        assert refreshed == {"page_id": "runtime", "version": "second"}
+        assert builds == ["first", "second"]
+
+    asyncio.run(run())
 
 
 def test_core_rendered_node_ui_invalidates_page_cache_on_endpoint_updates(tmp_path):
