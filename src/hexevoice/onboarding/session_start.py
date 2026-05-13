@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import httpx
 from fastapi import HTTPException
-import socket
 
 from hexevoice.api.models import OnboardingSessionStartResponse
 from hexevoice.config.settings import Settings
 from hexevoice.core.client import CoreOnboardingClient
+from hexevoice.onboarding.registration_metadata import onboarding_start_metadata
 from hexevoice.persistence import OnboardingStateStore
 
 
@@ -38,10 +38,7 @@ class OnboardingSessionStartService:
             "node_software_version": self._settings.node_software_version,
             "protocol_version": state.pre_trust.protocol_version,
             "node_nonce": state.pre_trust.node_nonce,
-            "node_id": state.pre_trust.requested_node_id,
-            "hostname": self._registration_hostname(state.pre_trust.hostname),
-            "ui_endpoint": self._registration_ui_endpoint(state.pre_trust.ui_endpoint),
-            "api_base_url": self._registration_api_base_url(state.pre_trust.api_base_url),
+            **onboarding_start_metadata(self._settings, state),
         }
 
         try:
@@ -129,21 +126,4 @@ class OnboardingSessionStartService:
             path = finalize_value.get("path")
             if isinstance(path, str) and path.strip():
                 return path
-        return None
-
-    def _registration_hostname(self, configured_hostname: str | None) -> str | None:
-        if configured_hostname:
-            return configured_hostname
-        return socket.gethostname() or None
-
-    def _registration_ui_endpoint(self, configured_ui_endpoint: str | None) -> str | None:
-        return configured_ui_endpoint or self._settings.public_ui_base_url
-
-    def _registration_api_base_url(self, configured_api_base_url: str | None) -> str | None:
-        if configured_api_base_url:
-            return configured_api_base_url
-        if self._settings.public_api_base_url:
-            return self._settings.public_api_base_url.rstrip("/")
-        if self._settings.api_host and self._settings.api_host not in {"0.0.0.0", "::"}:
-            return f"http://{self._settings.api_host}:{self._settings.api_port}"
         return None

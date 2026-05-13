@@ -1842,6 +1842,75 @@ def test_trust_status_refresh_surfaces_removed_state_and_reonboarding(tmp_path, 
     assert node_status.json()["blocking_reasons"] == ["node_removed_by_core", "re_onboarding_required"]
 
 
+def test_registration_metadata_refresh_patches_core_node_with_full_metadata(tmp_path, monkeypatch):
+    state_path = tmp_path / "onboarding-state.json"
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "core_base_url": "http://10.0.0.100:9001",
+                    "hostname": "voice-node.local",
+                },
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+            }
+        )
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=state_path,
+                core_admin_token="core-admin-token",
+                public_api_base_url="http://10.0.0.22:9004/",
+                public_ui_base_url="http://10.0.0.22:8082",
+            )
+        )
+    )
+
+    captured = {}
+
+    class MetadataRefreshResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"ok": True, "registration": {"node_id": "node-voice-123"}}
+
+    def fake_put(url, headers, json, timeout):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        captured["timeout"] = timeout
+        return MetadataRefreshResponse()
+
+    monkeypatch.setattr(httpx, "put", fake_put)
+
+    response = client.post("/api/onboarding/registration-metadata/refresh")
+
+    assert response.status_code == 200
+    assert captured["url"] == "http://10.0.0.100:9001/api/system/nodes/registrations/node-voice-123/metadata"
+    assert captured["headers"] == {"X-Admin-Token": "core-admin-token"}
+    assert captured["json"] == {
+        "metadata_schema_version": "1.0",
+        "hostname": "voice-node.local",
+        "ui_endpoint": "http://10.0.0.22:8082",
+        "api_base_url": "http://10.0.0.22:9004",
+        "ui_enabled": False,
+        "ui_base_url": None,
+        "ui_mode": "spa",
+        "ui_health_endpoint": None,
+    }
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["node_id"] == "node-voice-123"
+    assert payload["registration"] == {"node_id": "node-voice-123"}
+
+
 def test_provider_setup_enables_provider_and_advances_to_capability_declaration(tmp_path):
     state_path = tmp_path / "onboarding-state.json"
     client = TestClient(create_app(Settings(onboarding_state_path=state_path)))

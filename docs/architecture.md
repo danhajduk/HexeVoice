@@ -156,6 +156,18 @@ The session poll route calls Core's canonical finalize endpoint:
 
 - `GET {core_base_url}/api/system/nodes/onboarding/sessions/{session_id}/finalize?node_nonce=...`
 
+Trusted nodes can refresh stale Core registration endpoint metadata with:
+
+- `POST /api/onboarding/registration-metadata/refresh`
+
+This local route builds the Core `full-onboarding-metadata.schema.json` payload
+from saved onboarding identity plus runtime URL settings and patches Core via:
+
+- `PUT {core_base_url}/api/system/nodes/registrations/{node_id}/metadata`
+
+The Core call requires `CORE_ADMIN_TOKEN`; HexeVoice sends it as
+`X-Admin-Token`.
+
 Current finalize handling supports the canonical outcome set:
 
 - `pending`

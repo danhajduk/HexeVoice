@@ -79,3 +79,20 @@ class CoreOnboardingClient:
         )
         response.raise_for_status()
         return response.json()
+
+    def update_registration_metadata(
+        self,
+        *,
+        core_base_url: str,
+        node_id: str,
+        admin_token: str,
+        payload: dict,
+    ) -> dict:
+        response = httpx.put(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/registrations/{node_id}/metadata",
+            headers={"X-Admin-Token": admin_token},
+            json=payload,
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()

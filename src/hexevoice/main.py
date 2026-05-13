@@ -93,6 +93,7 @@ from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
 from hexevoice import node_ui
 from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
+from hexevoice.onboarding.registration_metadata import RegistrationMetadataRefreshService
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.onboarding.trust_activation import TrustActivationService
@@ -326,6 +327,10 @@ def create_app(
     )
     trust_activation_service = TrustActivationService(onboarding_state_store=onboarding_state_store)
     trust_status_service = TrustStatusService(onboarding_state_store=onboarding_state_store)
+    registration_metadata_refresh_service = RegistrationMetadataRefreshService(
+        settings=app_settings,
+        onboarding_state_store=onboarding_state_store,
+    )
     provider_setup_service = ProviderSetupService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     capability_service = CapabilityDeclarationService(
         settings=app_settings,
@@ -1363,6 +1368,10 @@ def create_app(
     @app.post("/api/onboarding/trust-status/refresh", response_model=TrustStatusRefreshResponse)
     async def onboarding_trust_status_refresh() -> TrustStatusRefreshResponse:
         return trust_status_service.refresh_status()
+
+    @app.post("/api/onboarding/registration-metadata/refresh")
+    async def onboarding_registration_metadata_refresh() -> dict:
+        return registration_metadata_refresh_service.refresh()
 
     @app.get("/api/providers/setup", response_model=ProviderSetupResponse)
     async def provider_setup_status() -> ProviderSetupResponse:
