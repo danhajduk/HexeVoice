@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
+from hexevoice import node_ui
 
 
 def test_core_rendered_node_ui_manifest_keeps_local_ui_available(tmp_path):
@@ -141,3 +142,22 @@ def test_core_rendered_node_ui_reports_configured_local_ui_mode(tmp_path):
     assert response.status_code == 200
     assert response.json()["identity"]["local_ui_mode"] == "setup_only"
     assert client.get("/api/node/status").status_code == 200
+
+
+def test_core_rendered_node_ui_health_uses_governance_freshness_state():
+    health = node_ui.overview_health(
+        {
+            "lifecycle_state": "operational",
+            "trust_state": "trusted",
+            "governance_sync_status": "issued",
+            "governance_freshness_state": "fresh",
+        },
+        {},
+        {"configured": True},
+        {},
+        {"turn_pipeline": {"stt": {"status": "ready"}, "tts": {"status": "ready"}}},
+    )
+
+    governance = next(item for item in health["items"] if item["id"] == "governance")
+    assert governance["value"] == "fresh"
+    assert governance["tone"] == "info"

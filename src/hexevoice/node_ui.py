@@ -244,6 +244,12 @@ def overview_health(
             return "danger"
         return tone_for_state(status.get("status") or "ready")
 
+    governance_state = text(
+        node_status.get("governance_freshness_state") or node_status.get("governance_sync_status"),
+        "unknown",
+    )
+    governance_tone = "info" if governance_state.strip().lower() == "fresh" else tone_for_state(governance_state)
+
     items = [
         {
             "id": "lifecycle",
@@ -260,8 +266,8 @@ def overview_health(
         {
             "id": "governance",
             "label": "Gov",
-            "value": text(node_status.get("governance_sync_status"), "unknown"),
-            "tone": tone_for_state(node_status.get("governance_sync_status")),
+            "value": governance_state,
+            "tone": governance_tone,
         },
         {
             "id": "providers",
