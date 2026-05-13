@@ -120,6 +120,14 @@ This route uses the saved Node Identity, Core Connection, and bootstrap discover
 
 - `POST {core_base_url}/api/system/nodes/onboarding/sessions`
 
+The registration request includes Core-facing discovery metadata. If the
+operator did not save explicit node identity values for these fields,
+HexeVoice falls back to runtime settings:
+
+- `api_base_url` from `PUBLIC_API_BASE_URL`, or from non-wildcard `API_HOST` plus `API_PORT`
+- `ui_endpoint` from `PUBLIC_UI_BASE_URL` when configured
+- `hostname` from the local host name
+
 On success, HexeVoice persists:
 
 - `session_id`

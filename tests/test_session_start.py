@@ -118,3 +118,67 @@ def test_session_start_accepts_wrapped_core_session_response(tmp_path, monkeypat
     assert response.approval_url.startswith("http://10.0.0.100/onboarding/nodes/approve")
     assert persisted.onboarding_session.session_id == "sx_wrapped"
     assert persisted.onboarding_session.session_state == "pending"
+
+
+def test_session_start_defaults_core_registration_metadata_from_runtime_settings(tmp_path, monkeypatch):
+    store = OnboardingStateStore(path=tmp_path / "onboarding-state.json")
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "node_name": "kitchen-voice",
+                    "requested_node_id": "node-kitchen-voice",
+                    "protocol_version": "1.0",
+                    "node_nonce": "voice-node-nonce",
+                    "core_base_url": "http://10.0.0.100:9001",
+                },
+                "bootstrap_discovery": {
+                    "advertisement_valid": True,
+                },
+                "resume": {
+                    "current_step_id": "registration",
+                    "last_completed_step_id": "bootstrap_discovery",
+                },
+            }
+        )
+    )
+    captured = {}
+
+    class DummyResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "node_name": "kitchen-voice",
+                "node_type": "voice-node",
+                "node_software_version": "0.1.0",
+                "approval_url": "http://10.0.0.100/onboarding/nodes/approve?sid=session-123&state=abc",
+                "session_id": "session-123",
+            }
+
+    def fake_post(*args, **kwargs):
+        captured["url"] = args[0]
+        captured["json"] = kwargs["json"]
+        return DummyResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    service = OnboardingSessionStartService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "onboarding-state.json",
+            public_api_base_url="http://10.0.0.100:9004/",
+            public_ui_base_url="http://10.0.0.100:8082",
+        ),
+        onboarding_state_store=store,
+    )
+    response = service.start_session()
+
+    assert response.session_id == "session-123"
+    assert captured["url"] == "http://10.0.0.100:9001/api/system/nodes/onboarding/sessions"
+    assert captured["json"]["node_id"] == "node-kitchen-voice"
+    assert captured["json"]["api_base_url"] == "http://10.0.0.100:9004"
+    assert captured["json"]["ui_endpoint"] == "http://10.0.0.100:8082"
+    assert captured["json"]["hostname"]
