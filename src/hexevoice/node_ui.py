@@ -230,10 +230,24 @@ def overview_health(
     services_status: dict[str, Any],
     voice_status: dict[str, Any],
 ) -> dict[str, Any]:
+    pipeline = voice_status.get("turn_pipeline") if isinstance(voice_status.get("turn_pipeline"), dict) else {}
+    stt = pipeline.get("stt") if isinstance(pipeline.get("stt"), dict) else {}
+    tts = pipeline.get("tts") if isinstance(pipeline.get("tts"), dict) else {}
+
+    def engine_value(status: dict[str, Any]) -> str:
+        return text(status.get("implementation") or status.get("provider") or status.get("model"), "unknown")
+
+    def engine_tone(status: dict[str, Any]) -> str:
+        if status.get("configured") is False:
+            return "warning"
+        if status.get("healthy") is False:
+            return "danger"
+        return tone_for_state(status.get("status") or "ready")
+
     items = [
         {
             "id": "lifecycle",
-            "label": "Lifecycle",
+            "label": "Life cycle",
             "value": text(node_status.get("lifecycle_state")),
             "tone": tone_for_state(node_status.get("lifecycle_state")),
         },
@@ -244,10 +258,10 @@ def overview_health(
             "tone": tone_for_state(node_status.get("trust_state")),
         },
         {
-            "id": "operational",
-            "label": "Operational",
-            "value": "ready" if readiness.get("operational_ready") else "blocked",
-            "tone": "success" if readiness.get("operational_ready") else "warning",
+            "id": "governance",
+            "label": "Gov",
+            "value": text(node_status.get("governance_sync_status"), "unknown"),
+            "tone": tone_for_state(node_status.get("governance_sync_status")),
         },
         {
             "id": "providers",
@@ -256,16 +270,16 @@ def overview_health(
             "tone": "success" if provider_setup.get("configured") else "warning",
         },
         {
-            "id": "backend",
-            "label": "Backend",
-            "value": text(services_status.get("backend")),
-            "tone": tone_for_state(services_status.get("backend")),
+            "id": "stt_engine",
+            "label": "STT engine",
+            "value": engine_value(stt),
+            "tone": engine_tone(stt),
         },
         {
-            "id": "voice_transport",
-            "label": "Voice Transport",
-            "value": text(voice_status.get("transport_health"), "offline"),
-            "tone": tone_for_state(voice_status.get("transport_health")),
+            "id": "tts_engine",
+            "label": "TTS engine",
+            "value": engine_value(tts),
+            "tone": engine_tone(tts),
         },
     ]
     card = base_card("health_strip", empty=False)

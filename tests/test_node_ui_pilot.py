@@ -68,7 +68,14 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     assert overview["kind"] == "node_overview"
     assert overview["identity"]["local_ui_mode"] == "full"
     assert health["kind"] == "health_strip"
-    assert {item["id"] for item in health["items"]} >= {"lifecycle", "trust", "operational"}
+    assert [item["id"] for item in health["items"]] == [
+        "lifecycle",
+        "trust",
+        "governance",
+        "providers",
+        "stt_engine",
+        "tts_engine",
+    ]
     assert warnings["kind"] == "warning_banner"
     assert facts["kind"] == "facts_card"
     assert any(fact["id"] == "node_id" for fact in facts["facts"])
