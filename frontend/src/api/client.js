@@ -119,6 +119,10 @@ export async function finalizeTrustActivation() {
   return sendJson("/api/onboarding/trust-activation/finalize");
 }
 
+export async function refreshRegistrationMetadata() {
+  return sendJson("/api/onboarding/registration-metadata/refresh");
+}
+
 export async function getProviderSetup() {
   return fetchJson("/api/providers/setup");
 }

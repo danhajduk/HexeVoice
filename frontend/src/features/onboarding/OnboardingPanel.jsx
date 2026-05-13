@@ -11,6 +11,7 @@ import {
   getVoiceIntents,
   pollOnboardingSession,
   registerVoiceIntent,
+  refreshRegistrationMetadata,
   refreshGovernance,
   reviewVoiceIntent,
   saveCoreConnection,
@@ -121,10 +122,10 @@ function sanitizeOptionalFields(payload) {
   );
 }
 
-function FormActions({ busyLabel, busy, label, onClick, secondaryLabel, onSecondaryClick, secondaryDisabled }) {
+function FormActions({ busyLabel, busy, disabled, label, onClick, secondaryLabel, onSecondaryClick, secondaryDisabled }) {
   return (
     <div className="form-actions">
-      <button className="btn btn-primary" type="button" onClick={onClick} disabled={busy}>
+      <button className="btn btn-primary" type="button" onClick={onClick} disabled={busy || disabled}>
         {busy ? busyLabel : label}
       </button>
       {secondaryLabel ? (
@@ -319,6 +320,7 @@ function renderStageBody({
   onCapabilityToggle,
   onCapabilitySave,
   onDeclareCapabilities,
+  onRefreshRegistrationMetadata,
   onGovernanceCurrent,
   onGovernanceRefresh,
   onOperationalPoll,
@@ -450,6 +452,7 @@ function renderStageBody({
     const selectedCapabilities = capabilityForm?.selected_capabilities || capabilities?.selected || capabilitySetup?.task_capability_selection?.selected || [];
     const declaredCapabilities = capabilities?.declared || [];
     const intents = voiceIntents?.intents || [];
+    const nodeId = status?.node_id || onboarding?.node_id;
 
     return (
       <>
@@ -475,6 +478,13 @@ function renderStageBody({
             <span className="fact-grid-value">{readinessValue ? "operational" : "blocked"}</span>
           </div>
         </div>
+        <FormActions
+          busy={busyState === "registration-metadata-refresh"}
+          busyLabel="Refreshing..."
+          disabled={!nodeId || busyState !== ""}
+          label="Refresh Core metadata"
+          onClick={onRefreshRegistrationMetadata}
+        />
         <div className="section-divider" />
         <div className="section-heading-inline">
           <div>
@@ -1059,6 +1069,23 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     }
   }
 
+  async function handleRegistrationMetadataRefresh() {
+    setBusyState("registration-metadata-refresh");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await refreshRegistrationMetadata();
+      if (onRefresh) {
+        await onRefresh();
+      }
+      setStageNotice(`Core metadata refreshed for ${payload.node_id}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
   async function handleProviderSave() {
     setBusyState("provider-save");
     setStageError("");
@@ -1462,6 +1489,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           onCapabilityToggle: updateCapabilitySelection,
           onCapabilitySave: handleCapabilitySave,
           onDeclareCapabilities: handleDeclareCapabilities,
+          onRefreshRegistrationMetadata: handleRegistrationMetadataRefresh,
           onGovernanceCurrent: handleGovernanceCurrent,
           onGovernanceRefresh: handleGovernanceRefresh,
           onOperationalPoll: handleOperationalPoll,
