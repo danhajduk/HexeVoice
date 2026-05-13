@@ -1,6 +1,6 @@
 # HexeVoice Core-Rendered Node UI Pilot
 
-Status: Planned
+Status: Implemented
 
 HexeVoice keeps its local node-owned UI available during the Core-rendered UI pilot. The pilot adds node-side manifest and card data endpoints that Core can render from shared components.
 
@@ -31,3 +31,29 @@ HexeVoice keeps its local node-owned UI available during the Core-rendered UI pi
 - Existing action endpoints stay authoritative for validation, authorization, and behavior.
 - New `/api/node/ui/...` endpoints are lightweight summaries for visible Core cards.
 - Later Core-only card kinds may be returned before Core has renderers; Core should show unsupported-card states until those kinds land.
+
+## Implemented Pilot Endpoints
+
+- `GET /api/node/ui-manifest`
+- `GET /api/node/ui/overview/node`
+- `GET /api/node/ui/overview/health`
+- `GET /api/node/ui/overview/warnings`
+- `GET /api/node/ui/overview/facts`
+- `GET /api/node/ui/runtime/services`
+- `GET /api/node/ui/providers/status`
+- `GET /api/node/ui/voice/endpoints`
+- `GET /api/node/ui/voice/endpoint-actions`
+- `GET /api/node/ui/voice/sessions`
+- `GET /api/node/ui/voice/intents`
+- `GET /api/node/ui/voice/intent-actions`
+- `GET /api/node/ui/voice/tts`
+- `GET /api/node/ui/voice/tts-artifacts`
+- `GET /api/node/ui/voice/media`
+- `POST /api/node/ui/actions/refresh-status`
+- `POST /api/node/ui/actions/test-assistant-turn`
+
+## Local UI Mode
+
+`VOICE_LOCAL_UI_MODE` accepts `full`, `setup_only`, or `disabled`. The default is `full`.
+
+During this pilot the value is reported to Core in the `node_overview` card data, but the local dashboard remains available unchanged for setup, recovery, diagnostics, and migration fallback.

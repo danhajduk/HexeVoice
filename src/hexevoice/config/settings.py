@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=9000, alias="API_PORT")
     public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
+    voice_local_ui_mode: Literal["full", "setup_only", "disabled"] = Field(default="full", alias="VOICE_LOCAL_UI_MODE")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
     backend_log_path: Path | None = Field(default=None, alias="BACKEND_LOG_PATH")
     voice_record_log_path: Path | None = Field(default=None, alias="VOICE_RECORD_LOG_PATH")

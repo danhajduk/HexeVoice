@@ -16,11 +16,3 @@
 [FUTURE TODO] Task 109: Refactor VoiceSessionManager for multiple simultaneous ESP endpoints with per-endpoint WebSockets, active sessions, status, command routing, OTA/media delivery, and replay controls
 [FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
 [FUTURE TODO] Task 121: Move local STT/TTS engine services to Unix-domain-socket-only transport
-[TODO] Task 126: Add the HexeVoice `/api/node/ui-manifest` pilot for Core-rendered overview, runtime, endpoint, TTS, and intents pages
-[TODO] Task 127: Add Core-rendered overview data endpoints for Voice node identity, health strip, warnings, and live facts
-[TODO] Task 128: Add Core-rendered runtime and provider status data endpoints for backend, STT, TTS, wake, and Piper services
-[TODO] Task 129: Add Core-rendered voice endpoint summary and action-panel data endpoints without removing the local dashboard
-[TODO] Task 130: Add Core-rendered registered-intent record list, detail, test, and invoke surfaces
-[TODO] Task 131: Add Core-rendered TTS model, artifact, wake-recording, and media inventory surfaces
-[TODO] Task 132: Add contract tests and migration docs for the HexeVoice Core-rendered UI pilot
-[TODO] Task 133: Add a Voice node local UI mode setting for `full`, `setup_only`, and future `disabled` operation

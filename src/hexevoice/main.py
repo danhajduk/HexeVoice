@@ -91,6 +91,7 @@ from hexevoice.endpoint.service import EndpointHeartbeatService
 from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
+from hexevoice import node_ui
 from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
@@ -1189,6 +1190,125 @@ def create_app(
     @app.post("/api/voice/session/cancel")
     async def voice_session_cancel() -> dict:
         return voice_session_manager.cancel_from_operator()
+
+    def node_ui_operational_status() -> dict:
+        try:
+            return node_ui.as_json(governance_service.operational_status())
+        except HTTPException as exc:
+            return {"operational_ready": False, "status": "unavailable", "detail": exc.detail}
+
+    def node_ui_endpoint_statuses() -> list[dict]:
+        statuses = endpoint_service.list_statuses()
+        return [
+            node_ui.as_json(status.model_copy(update={"firmware_update": firmware_update_payload(app_settings, status)}))
+            for status in statuses.endpoints
+        ]
+
+    async def node_ui_tts_settings() -> dict:
+        return await asyncio.to_thread(tts_runtime_settings_service.status)
+
+    @app.get("/api/node/ui-manifest")
+    async def node_ui_manifest() -> dict:
+        return node_ui.manifest(app_settings, node_ui.as_json(service.status_payload()))
+
+    @app.get("/api/node/ui/overview/node")
+    async def node_ui_overview_node() -> dict:
+        return node_ui.overview_node(
+            app_settings,
+            node_ui.as_json(service.status_payload()),
+            node_ui.as_json(service.onboarding_payload()),
+        )
+
+    @app.get("/api/node/ui/overview/health")
+    async def node_ui_overview_health() -> dict:
+        return node_ui.overview_health(
+            node_ui.as_json(service.status_payload()),
+            node_ui.as_json(service.readiness_payload()),
+            node_ui.as_json(provider_setup_service.status_payload()),
+            node_ui.as_json(service.service_status_payload()),
+            voice_session_manager.status(),
+        )
+
+    @app.get("/api/node/ui/overview/warnings")
+    async def node_ui_overview_warnings() -> dict:
+        return node_ui.overview_warnings(
+            node_ui.as_json(service.status_payload()),
+            node_ui.as_json(service.onboarding_payload()),
+            node_ui.as_json(service.readiness_payload()),
+            node_ui.as_json(service.service_status_payload()),
+            voice_session_manager.status(),
+        )
+
+    @app.get("/api/node/ui/overview/facts")
+    async def node_ui_overview_facts() -> dict:
+        return node_ui.overview_facts(
+            node_ui.as_json(service.status_payload()),
+            node_ui.as_json(service.onboarding_payload()),
+            node_ui_operational_status(),
+            node_ui.as_json(provider_setup_service.status_payload()),
+            voice_session_manager.status(),
+        )
+
+    @app.get("/api/node/ui/runtime/services")
+    async def node_ui_runtime_services() -> dict:
+        return node_ui.runtime_services(node_ui.as_json(service.service_status_payload()), voice_session_manager.status())
+
+    @app.get("/api/node/ui/providers/status")
+    async def node_ui_providers_status() -> dict:
+        return node_ui.provider_status(
+            node_ui.as_json(service.service_status_payload()),
+            voice_session_manager.status(),
+            await node_ui_tts_settings(),
+        )
+
+    @app.get("/api/node/ui/voice/endpoints")
+    async def node_ui_voice_endpoints() -> dict:
+        return node_ui.endpoint_records(node_ui_endpoint_statuses(), voice_session_manager.status())
+
+    @app.get("/api/node/ui/voice/endpoint-actions")
+    async def node_ui_voice_endpoint_actions() -> dict:
+        return node_ui.endpoint_actions(voice_session_manager.status())
+
+    @app.get("/api/node/ui/voice/sessions")
+    async def node_ui_voice_sessions(limit: int = 20) -> dict:
+        return node_ui.session_records(voice_session_manager.list_session_history(limit=limit))
+
+    @app.get("/api/node/ui/voice/intents")
+    async def node_ui_voice_intents() -> dict:
+        return node_ui.intent_records(voice_intent_registry.snapshot())
+
+    @app.get("/api/node/ui/voice/intent-actions")
+    async def node_ui_voice_intent_actions() -> dict:
+        return node_ui.intent_actions(voice_intent_registry.snapshot())
+
+    @app.get("/api/node/ui/voice/tts")
+    async def node_ui_voice_tts() -> dict:
+        return node_ui.tts_runtime(await node_ui_tts_settings(), voice_session_manager.status())
+
+    @app.get("/api/node/ui/voice/tts-artifacts")
+    async def node_ui_voice_tts_artifacts(limit: int = 50) -> dict:
+        artifacts = await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
+        return node_ui.artifact_records(artifacts)
+
+    @app.get("/api/node/ui/voice/media")
+    async def node_ui_voice_media() -> dict:
+        assets = {"assets": [node_ui.as_json(endpoint_media_response(asset)) for asset in endpoint_media_service.list_assets()]}
+        return node_ui.media_records(assets, node_ui_endpoint_statuses())
+
+    @app.post("/api/node/ui/actions/refresh-status")
+    async def node_ui_refresh_status_action() -> dict:
+        return {
+            "accepted": True,
+            "status": "refreshed",
+            "updated_at": node_ui.utc_now(),
+            "node": node_ui.as_json(service.status_payload()),
+        }
+
+    @app.post("/api/node/ui/actions/test-assistant-turn", response_model=AssistantTurnResponse)
+    async def node_ui_test_assistant_turn_action() -> AssistantTurnResponse:
+        return assistant_service.handle_turn(
+            AssistantTurnRequest(endpoint_id="core-rendered-ui-test", text="hello"),
+        )
 
     @app.get("/api/node/status", response_model=NodeStatusResponse)
     async def node_status() -> NodeStatusResponse:
