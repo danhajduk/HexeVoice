@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 from typing import Literal
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     api_port: int = Field(default=9000, alias="API_PORT")
     public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
-    core_admin_token: str | None = Field(default=None, alias="CORE_ADMIN_TOKEN")
+    core_admin_token: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("CORE_ADMIN_TOKEN", "SYNTHIA_ADMIN_TOKEN"),
+    )
     voice_local_ui_mode: Literal["full", "setup_only", "disabled"] = Field(default="full", alias="VOICE_LOCAL_UI_MODE")
     runtime_dir: Path = Field(default=Path("runtime"), alias="RUNTIME_DIR")
     backend_log_path: Path | None = Field(default=None, alias="BACKEND_LOG_PATH")

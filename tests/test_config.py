@@ -14,6 +14,15 @@ def test_settings_defaults():
     assert settings.provider_id == "voice"
 
 
+def test_core_admin_token_accepts_legacy_core_env_name(monkeypatch):
+    monkeypatch.delenv("CORE_ADMIN_TOKEN", raising=False)
+    monkeypatch.setenv("SYNTHIA_ADMIN_TOKEN", "legacy-token")
+
+    settings = Settings()
+
+    assert settings.core_admin_token == "legacy-token"
+
+
 def test_onboarding_state_path_defaults_under_runtime_dir():
     settings = Settings()
     assert settings.resolved_onboarding_state_path().name == "onboarding_state.json"
