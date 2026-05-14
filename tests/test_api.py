@@ -2023,7 +2023,21 @@ def test_node_ui_provider_setup_updates_one_provider(tmp_path):
     assert payload["default_provider"] == "piper"
 
 
-def test_node_ui_stt_provider_status_prefers_saved_model(tmp_path):
+def test_node_ui_stt_provider_status_prefers_saved_model(tmp_path, monkeypatch):
+    class FailingAsyncClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def put(self, url, *, json):
+            raise httpx.ConnectError("stt unavailable")
+
+    monkeypatch.setattr("hexevoice.main.httpx.AsyncClient", FailingAsyncClient)
     state_path = tmp_path / "onboarding-state.json"
     client = TestClient(
         create_app(
@@ -2031,6 +2045,7 @@ def test_node_ui_stt_provider_status_prefers_saved_model(tmp_path):
                 onboarding_state_path=state_path,
                 voice_stt_provider="external_faster_whisper",
                 voice_stt_faster_whisper_model="base.en",
+                voice_stt_service_base_url="http://127.0.0.1:9",
             )
         )
     )

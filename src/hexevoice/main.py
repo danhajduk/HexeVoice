@@ -430,6 +430,7 @@ def create_app(
             voice_session_manager.preload_wake_detector()
         if app_settings.voice_stt_preload:
             asyncio.create_task(asyncio.to_thread(voice_session_manager.preload_turn_pipeline))
+        asyncio.create_task(reconcile_external_stt_provider_config())
         timer_announcement_service.start(asyncio.get_running_loop())
 
         async def loop():
@@ -1374,6 +1375,31 @@ def create_app(
             deduped.append(model)
         return deduped
 
+    async def apply_external_stt_provider_config(payload: ProviderConfigRequest) -> bool:
+        if not payload.model:
+            return False
+        async with httpx.AsyncClient(timeout=app_settings.voice_stt_timeout_s) as client:
+            await client.put(
+                f"{app_settings.resolved_voice_stt_service_base_url()}/config",
+                json={"model": payload.model, "warm_model": bool(payload.warm_model)},
+            )
+        return True
+
+    async def reconcile_external_stt_provider_config() -> None:
+        await asyncio.sleep(1)
+        provider_setup = provider_setup_service.status_payload()
+        provider_config = provider_setup.provider_configs.get("external_faster_whisper", {})
+        model = str(provider_config.get("model") or "").strip()
+        if not model:
+            return
+        payload = ProviderConfigRequest(model=model, warm_model=bool(provider_config.get("warm_model")))
+        for _attempt in range(30):
+            try:
+                await apply_external_stt_provider_config(payload)
+                return
+            except httpx.HTTPError:
+                await asyncio.sleep(2)
+
     async def node_ui_voice_tts_artifacts_payload(limit: int = 50) -> dict:
         artifacts = await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
         return node_ui.artifact_records(artifacts)
@@ -1719,11 +1745,7 @@ def create_app(
             )
         if provider_id == "external_faster_whisper" and payload.model:
             try:
-                async with httpx.AsyncClient(timeout=app_settings.voice_stt_timeout_s) as client:
-                    await client.put(
-                        f"{app_settings.resolved_voice_stt_service_base_url()}/config",
-                        json={"model": payload.model, "warm_model": bool(payload.warm_model)},
-                    )
+                await apply_external_stt_provider_config(payload)
             except httpx.HTTPError:
                 pass
         return response
