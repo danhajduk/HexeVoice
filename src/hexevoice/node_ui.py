@@ -8,6 +8,7 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Awaitable, Callable, NamedTuple
+from urllib.parse import quote
 
 from hexevoice.config.settings import Settings
 
@@ -339,6 +340,55 @@ def refresh_runtime_action() -> dict[str, Any]:
     }
 
 
+def service_control_action_id(target: object, action: str) -> str:
+    return f"runtime_service.{text(target)}.{action}"
+
+
+def service_control_action(target: object, action: str, *, label: str | None = None) -> dict[str, Any]:
+    normalized_action = str(action or "").strip().lower()
+    encoded_target = quote(text(target), safe="")
+    payload: dict[str, Any] = {
+        "id": service_control_action_id(target, normalized_action),
+        "label": label or normalized_action.title(),
+        "method": "POST",
+        "endpoint": f"/api/node/ui/runtime/services/{encoded_target}/{normalized_action}",
+    }
+    if normalized_action == "stop":
+        payload["destructive"] = True
+        payload["confirmation"] = {"required": True, "message": f"Stop {text(target)}?"}
+    elif normalized_action == "restart":
+        payload["confirmation"] = {"required": True, "message": f"Restart {text(target)}?"}
+    return payload
+
+
+def runtime_service_action_definitions(runtime_card: dict[str, Any]) -> list[dict[str, Any]]:
+    actions = [refresh_runtime_action()]
+    seen = {actions[0]["id"]}
+    services = runtime_card.get("services") if isinstance(runtime_card.get("services"), list) else []
+    for service in services:
+        if not isinstance(service, dict):
+            continue
+        target = service.get("restart_target")
+        if not target:
+            continue
+        for action_state in service.get("actions") or []:
+            if not isinstance(action_state, dict):
+                continue
+            action_id = text(action_state.get("id"))
+            if action_id in seen:
+                continue
+            action_name = action_id.rsplit(".", 1)[-1]
+            actions.append(
+                service_control_action(
+                    target,
+                    action_name,
+                    label=text(action_state.get("label"), action_name.title()),
+                )
+            )
+            seen.add(action_id)
+    return actions
+
+
 def cancel_active_session_action() -> dict[str, Any]:
     return {
         "id": "cancel_active_session",
@@ -572,6 +622,36 @@ def runtime_services(services_status: dict[str, Any], voice_status: dict[str, An
     for component in components:
         if not isinstance(component, dict):
             continue
+        restart_target = component.get("restart_target")
+        restart_supported = bool(component.get("restart_supported"))
+        control_actions: list[dict[str, Any]] = []
+        if restart_target and restart_supported:
+            supports_full_lifecycle = text(component.get("component_id")) != "backend"
+            if supports_full_lifecycle:
+                control_actions.extend(
+                    [
+                        {
+                            "id": service_control_action_id(restart_target, "start"),
+                            "label": "Start",
+                            "enabled": True,
+                            "tone": "success",
+                        },
+                        {
+                            "id": service_control_action_id(restart_target, "stop"),
+                            "label": "Stop",
+                            "enabled": True,
+                            "tone": "warning",
+                        },
+                    ]
+                )
+            control_actions.append(
+                {
+                    "id": service_control_action_id(restart_target, "restart"),
+                    "label": "Restart",
+                    "enabled": True,
+                    "tone": "neutral",
+                }
+            )
         provider_status = pipeline.get(component.get("component_id")) if isinstance(pipeline.get(component.get("component_id")), dict) else {}
         services.append(
             {
@@ -580,12 +660,13 @@ def runtime_services(services_status: dict[str, Any], voice_status: dict[str, An
                 "state": text(provider_status.get("status") or component.get("status")),
                 "healthy": bool(component.get("healthy", True)),
                 "tone": "success" if component.get("healthy", True) else "danger",
-                "restart_supported": bool(component.get("restart_supported")),
-                "restart_target": component.get("restart_target"),
+                "restart_supported": restart_supported,
+                "restart_target": restart_target,
                 "provider": provider_status.get("provider") or component.get("provider"),
                 "model": provider_status.get("model") or component.get("model") or component.get("model_display_name"),
                 "resource_usage": component.get("resource_usage") if isinstance(component.get("resource_usage"), dict) else {},
                 "last_error": provider_status.get("last_error") or component.get("last_error"),
+                "actions": control_actions,
             }
         )
     card = base_card("runtime_service", empty=not services)

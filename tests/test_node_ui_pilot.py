@@ -202,6 +202,7 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     facts = client.get("/api/node/ui/overview/facts").json()
     runtime = client.get("/api/node/ui/runtime/services").json()
     providers = client.get("/api/node/ui/providers/status").json()
+    runtime_page = client.get("/api/node/ui/pages/runtime").json()
 
     assert overview["kind"] == "node_overview"
     assert overview["identity"]["local_ui_mode"] == "full"
@@ -222,6 +223,16 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     wake_runtime = next(service for service in runtime["services"] if service["id"] == "wake")
     assert wake_runtime["label"] == "Wake Word"
     assert wake_runtime["provider"] == "openwakeword"
+    assert [action["label"] for action in wake_runtime["actions"]] == ["Start", "Stop", "Restart"]
+    runtime_page_card = next(card for card in runtime_page["cards"] if card["id"] == "runtime.services")
+    action_map = {action["id"]: action for action in runtime_page_card["actions"]}
+    wake_start = node_ui.service_control_action_id("openwakeword", "start")
+    wake_stop = node_ui.service_control_action_id("openwakeword", "stop")
+    wake_restart = node_ui.service_control_action_id("openwakeword", "restart")
+    assert action_map[wake_start]["endpoint"] == "/api/node/ui/runtime/services/openwakeword/start"
+    assert action_map[wake_stop]["endpoint"] == "/api/node/ui/runtime/services/openwakeword/stop"
+    assert action_map[wake_stop]["destructive"] is True
+    assert action_map[wake_restart]["endpoint"] == "/api/node/ui/runtime/services/openwakeword/restart"
     assert providers["kind"] == "provider_status"
     assert {provider["id"] for provider in providers["providers"]} >= {"stt", "tts", "wake"}
 
@@ -265,11 +276,15 @@ def test_core_rendered_node_ui_safe_actions(tmp_path):
 
     refresh = client.post("/api/node/ui/actions/refresh-status")
     assistant_turn = client.post("/api/node/ui/actions/test-assistant-turn")
+    unsupported_service = client.post("/api/node/ui/runtime/services/not_registered/restart")
 
     assert refresh.status_code == 200
     assert refresh.json()["accepted"] is True
     assert assistant_turn.status_code == 200
     assert assistant_turn.json()["endpoint_id"] == "core-rendered-ui-test"
+    assert unsupported_service.status_code == 200
+    assert unsupported_service.json()["accepted"] is False
+    assert unsupported_service.json()["status"] == "unsupported_service"
 
 
 def test_core_rendered_node_ui_reports_configured_local_ui_mode(tmp_path):

@@ -1342,6 +1342,7 @@ def create_app(
         )
 
     async def build_node_ui_page_runtime() -> dict:
+        runtime_services_payload = node_ui_runtime_services_payload()
         return node_ui.page_snapshot(
             "runtime",
             node_ui.NEAR_LIVE_15S,
@@ -1350,8 +1351,8 @@ def create_app(
                 node_ui.page_card(
                     "runtime.services",
                     "Runtime Services",
-                    node_ui_runtime_services_payload(),
-                    actions=[node_ui.refresh_runtime_action()],
+                    runtime_services_payload,
+                    actions=node_ui.runtime_service_action_definitions(runtime_services_payload),
                     refresh=node_ui.NEAR_LIVE_15S,
                 ),
                 node_ui.page_card(
@@ -1542,6 +1543,20 @@ def create_app(
             "updated_at": node_ui.utc_now(),
             "node": node_ui.as_json(service.status_payload()),
         }
+
+    async def run_node_ui_runtime_service_action(target: str, action: str) -> ServiceActionResponse:
+        normalized_action = str(action or "").strip().lower()
+        if normalized_action not in {"start", "stop", "restart"}:
+            raise HTTPException(status_code=404, detail="unsupported_runtime_service_action")
+        result = await asyncio.to_thread(service.service_action, target=target, action=normalized_action)
+        if result.accepted and normalized_action == "restart" and result.target in {app_settings.piper_tts_service_id, "tts"}:
+            await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
+        node_ui_page_cache.invalidate("runtime")
+        return result
+
+    @app.post("/api/node/ui/runtime/services/{target}/{action}", response_model=ServiceActionResponse)
+    async def node_ui_runtime_service_action(target: str, action: str) -> ServiceActionResponse:
+        return await run_node_ui_runtime_service_action(target, action)
 
     @app.post("/api/node/ui/actions/test-assistant-turn", response_model=AssistantTurnResponse)
     async def node_ui_test_assistant_turn_action() -> AssistantTurnResponse:

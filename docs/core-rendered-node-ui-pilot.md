@@ -14,7 +14,7 @@ The manifest advertises the health strip as a top-level `health` surface backed 
 | Health strip | onboarding, trust, governance, provider, and runtime status APIs | `health_strip` | `/api/node/ui/overview/health` |
 | Operational warnings | onboarding blockers, trust errors, governance freshness, runtime warnings | `warning_banner` | `/api/node/ui/overview/warnings` |
 | Live node facts | `/api/node/status`, `/api/node/operational-status`, `/api/providers/setup` | `facts_card` | `/api/node/ui/overview/facts` |
-| Runtime control | `RuntimeDashboardSection`, `/api/services/status` including backend, STT, wake word, and TTS components | `runtime_service` | `/api/node/ui/runtime/services` |
+| Runtime control | `RuntimeDashboardSection`, `/api/services/status` including backend, STT, wake word, and TTS components; rendered UI service actions use `/api/node/ui/runtime/services/{service_id}/{start|stop|restart}` | `runtime_service` | `/api/node/ui/runtime/services` |
 | Provider status | `/api/services/status`, `/api/voice/status`, `/api/tts/settings` | `provider_status` | `/api/node/ui/providers/status` |
 | Voice endpoint status | `VoiceEndpointDashboardSection`, `/api/endpoints`, `/api/voice/status` | `record_list` | `/api/node/ui/voice/endpoints` |
 | Endpoint actions | endpoint command APIs | `action_panel` | `/api/node/ui/voice/endpoint-actions` |
@@ -60,6 +60,9 @@ The manifest advertises the health strip as a top-level `health` surface backed 
 - `GET /api/node/ui/voice/tts-artifacts`
 - `GET /api/node/ui/voice/media`
 - `POST /api/node/ui/actions/refresh-status`
+- `POST /api/node/ui/runtime/services/{service_id}/start`
+- `POST /api/node/ui/runtime/services/{service_id}/stop`
+- `POST /api/node/ui/runtime/services/{service_id}/restart`
 - `POST /api/node/ui/actions/test-assistant-turn`
 
 ## Local UI Mode
