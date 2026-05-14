@@ -682,32 +682,66 @@ def runtime_services(services_status: dict[str, Any], voice_status: dict[str, An
     return card
 
 
-def provider_status(services_status: dict[str, Any], voice_status: dict[str, Any], tts_settings: dict[str, Any]) -> dict[str, Any]:
+def provider_setup_section(provider_id: str, provider_name: str | None, provider_setup: dict[str, Any]) -> dict[str, Any]:
+    supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
+    enabled = [text(item) for item in provider_setup.get("enabled_providers") or [] if item]
+    candidate_ids = {provider_id, text(provider_name, "")}
+    is_enabled = any(candidate in enabled for candidate in candidate_ids if candidate)
+    is_default = text(provider_setup.get("default_provider"), "") in candidate_ids
+    facts = [
+        {"id": "provider_id", "label": "Provider ID", "value": text(provider_name or provider_id)},
+        {"id": "enabled", "label": "Enabled", "value": yes_no(is_enabled)},
+        {"id": "default", "label": "Default", "value": yes_no(is_default)},
+        {"id": "declaration_allowed", "label": "Declaration Allowed", "value": yes_no(provider_setup.get("declaration_allowed"))},
+        {"id": "enabled_providers", "label": "Enabled Providers", "value": ", ".join(enabled) or "none"},
+        {"id": "supported_providers", "label": "Supported Providers", "value": ", ".join(supported) or "none"},
+    ]
+    blocking_reasons = [text(item) for item in provider_setup.get("blocking_reasons") or [] if item]
+    return {
+        "facts": facts,
+        "errors": [
+            {"code": f"setup.blocking_reason.{index}", "message": reason, "tone": "warning"}
+            for index, reason in enumerate(blocking_reasons)
+        ],
+    }
+
+
+def provider_status(
+    services_status: dict[str, Any],
+    voice_status: dict[str, Any],
+    tts_settings: dict[str, Any],
+    provider_setup: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     pipeline = voice_status.get("turn_pipeline") if isinstance(voice_status.get("turn_pipeline"), dict) else {}
+    setup = provider_setup if isinstance(provider_setup, dict) else {}
     providers = []
     for provider_id, label in (("stt", "STT Provider"), ("tts", "TTS Provider")):
         status = pipeline.get(provider_id) if isinstance(pipeline.get(provider_id), dict) else {}
+        provider_name = text(status.get("provider") or tts_settings.get("provider") if provider_id == "tts" else status.get("provider"))
         providers.append(
             {
                 "id": provider_id,
                 "label": label,
-                "provider": text(status.get("provider") or tts_settings.get("provider") if provider_id == "tts" else status.get("provider")),
+                "provider": provider_name,
                 "state": provider_state(status.get("status")),
                 "tone": "success" if status.get("healthy") else tone_for_state(status.get("status")),
                 "facts": [
                     {"id": "model", "label": "Model", "value": text(status.get("model") or (tts_settings.get("provider") if provider_id == "tts" else None))},
                     {"id": "last_error", "label": "Last Error", "value": text(status.get("last_error") or status.get("error"), "clear")},
                 ],
+                "setup": provider_setup_section(provider_id, provider_name, setup),
             }
         )
+    wake_provider = text(voice_status.get("wake_provider", {}).get("provider") if isinstance(voice_status.get("wake_provider"), dict) else None)
     providers.append(
         {
             "id": "wake",
             "label": "Wake Runtime",
-            "provider": text(voice_status.get("wake_provider", {}).get("provider") if isinstance(voice_status.get("wake_provider"), dict) else None),
+            "provider": wake_provider,
             "state": provider_state(services_status.get("openwakeword")),
             "tone": tone_for_state(services_status.get("openwakeword")),
             "facts": [{"id": "piper", "label": "Piper Runtime", "value": text(services_status.get("piper_tts"))}],
+            "setup": provider_setup_section("wake", wake_provider, setup),
         }
     )
     card = base_card("provider_status", empty=not providers)

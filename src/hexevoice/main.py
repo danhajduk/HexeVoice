@@ -1288,6 +1288,7 @@ def create_app(
             await node_ui_services_status(),
             voice_session_manager.status(),
             await node_ui_tts_settings(),
+            node_ui.as_json(provider_setup_service.status_payload()),
         )
 
     def node_ui_voice_endpoints_payload() -> dict:

@@ -235,6 +235,15 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     assert action_map[wake_restart]["endpoint"] == "/api/node/ui/runtime/services/openwakeword/restart"
     assert providers["kind"] == "provider_status"
     assert {provider["id"] for provider in providers["providers"]} >= {"stt", "tts", "wake"}
+    tts_provider = next(provider for provider in providers["providers"] if provider["id"] == "tts")
+    assert [fact["id"] for fact in tts_provider["setup"]["facts"]] == [
+        "provider_id",
+        "enabled",
+        "default",
+        "declaration_allowed",
+        "enabled_providers",
+        "supported_providers",
+    ]
 
 
 def test_core_rendered_voice_domain_cards(tmp_path):
