@@ -440,34 +440,16 @@ class NodeRuntimeService:
         return values
 
     def _docker_resource_usage(self, container_name: str) -> dict[str, object]:
-        result = self._service_command_runner(
-            [
-                "docker",
-                "stats",
-                "--no-stream",
-                "--format",
-                "{{json .}}",
-                container_name,
-            ]
-        )
-        if result.returncode != 0:
-            return {"available": False, "error": (result.stderr or "").strip() or "docker_stats_failed"}
-        try:
-            payload = json.loads((result.stdout or "").strip())
-        except ValueError:
-            return {"available": False, "error": "invalid_docker_stats_payload"}
         process = self._docker_container_process_payload(container_name)
         return {
             "available": True,
             "sampled_at": datetime.now(UTC).isoformat(),
             "pid": process.get("pid"),
             "main_pid": process.get("main_pid"),
-            "cpu_percent": self._parse_percent(payload.get("CPUPerc")),
-            "memory_percent": self._parse_percent(payload.get("MemPerc")),
-            "memory_usage": payload.get("MemUsage"),
-            "network_io": payload.get("NetIO"),
-            "block_io": payload.get("BlockIO"),
-            "pids": payload.get("PIDs"),
+            "process_cpu_seconds": process.get("process_cpu_seconds"),
+            "process_memory_percent": process.get("process_memory_percent"),
+            "process_memory_rss_bytes": process.get("process_memory_rss_bytes"),
+            "resource_available": bool(process.get("available")),
             "process": process,
         }
 
@@ -1183,7 +1165,7 @@ class NodeRuntimeService:
         if client is None:
             log.debug("Supervisor heartbeat skipped: supervisor_client_not_configured")
             return {"status": "skipped", "reason": "supervisor_client_not_configured"}
-        payload = self._supervisor_runtime_payload()
+        payload = await asyncio.to_thread(self._supervisor_runtime_payload)
         node_id = str(payload.get("node_id") or "").strip()
         if not node_id:
             log.debug("Supervisor heartbeat skipped: missing_node_id")

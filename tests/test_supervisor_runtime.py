@@ -139,8 +139,8 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert openwakeword["container_name"] == "hexevoice-openwakeword"
     assert openwakeword["pid"] == 4242
     assert openwakeword["process"]["kind"] == "docker_container"
-    assert openwakeword["resource_usage"]["cpu_percent"] == 1.23
-    assert openwakeword["resource_usage"]["memory_percent"] == 4.56
+    assert openwakeword["resource_usage"]["pid"] == 4242
+    assert ["docker", "stats", "--no-stream", "--format", "{{json .}}", "hexevoice-openwakeword"] not in command_runner.commands
     stt_engine = next(service for service in services if service["service_id"] == "stt_engine")
     assert stt_engine["service_name"] == "STT Engine"
     assert stt_engine["managed_by"] == "backend_process"

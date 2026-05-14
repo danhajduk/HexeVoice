@@ -1665,7 +1665,7 @@ def create_app(
 
     @app.get("/api/services/status", response_model=ServiceStatusResponse)
     async def services_status() -> ServiceStatusResponse:
-        return service.service_status_payload()
+        return await asyncio.to_thread(service.service_status_payload)
 
     @app.post("/api/services/start", response_model=ServiceActionResponse)
     async def service_start(payload: ServiceActionRequest) -> ServiceActionResponse:
