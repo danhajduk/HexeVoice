@@ -244,6 +244,26 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
         "enabled_providers",
         "supported_providers",
     ]
+    wake_provider = next(provider for provider in providers["providers"] if provider["id"] == "wake")
+    wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
+    assert wake_setup["enabled"] == "no"
+
+
+def test_provider_status_treats_voice_setup_as_wake_enabled():
+    card = node_ui.provider_status(
+        {"openwakeword": "running", "piper_tts": "running"},
+        {"wake_provider": {"provider": "supervised_openwakeword"}},
+        {"provider": "piper"},
+        {
+            "enabled_providers": ["voice", "piper", "external_faster_whisper"],
+            "supported_providers": ["voice", "piper", "external_faster_whisper"],
+            "declaration_allowed": True,
+        },
+    )
+
+    wake_provider = next(provider for provider in card["providers"] if provider["id"] == "wake")
+    wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
+    assert wake_setup["enabled"] == "yes"
 
 
 def test_core_rendered_voice_domain_cards(tmp_path):

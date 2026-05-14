@@ -682,10 +682,16 @@ def runtime_services(services_status: dict[str, Any], voice_status: dict[str, An
     return card
 
 
-def provider_setup_section(provider_id: str, provider_name: str | None, provider_setup: dict[str, Any]) -> dict[str, Any]:
+def provider_setup_section(
+    provider_id: str,
+    provider_name: str | None,
+    provider_setup: dict[str, Any],
+    *,
+    enabled_aliases: list[str] | None = None,
+) -> dict[str, Any]:
     supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
     enabled = [text(item) for item in provider_setup.get("enabled_providers") or [] if item]
-    candidate_ids = {provider_id, text(provider_name, "")}
+    candidate_ids = {provider_id, text(provider_name, ""), *(enabled_aliases or [])}
     is_enabled = any(candidate in enabled for candidate in candidate_ids if candidate)
     is_default = text(provider_setup.get("default_provider"), "") in candidate_ids
     facts = [
@@ -741,7 +747,7 @@ def provider_status(
             "state": provider_state(services_status.get("openwakeword")),
             "tone": tone_for_state(services_status.get("openwakeword")),
             "facts": [{"id": "piper", "label": "Piper Runtime", "value": text(services_status.get("piper_tts"))}],
-            "setup": provider_setup_section("wake", wake_provider, setup),
+            "setup": provider_setup_section("wake", wake_provider, setup, enabled_aliases=["voice"]),
         }
     )
     card = base_card("provider_status", empty=not providers)
