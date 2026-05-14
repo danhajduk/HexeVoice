@@ -488,6 +488,79 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     }
 
 
+def test_external_stt_status_uses_live_health_when_wrapper_is_stale(tmp_path):
+    class FailedWrapperCommandRunner:
+        def __init__(self):
+            self.commands = []
+
+        def __call__(self, command):
+            self.commands.append(command)
+            if command[:3] == ["systemctl", "--user", "show"]:
+                return subprocess.CompletedProcess(command, 0, "0\n", "")
+            if len(command) == 2 and command[1] == "status":
+                return subprocess.CompletedProcess(command, 0, "failed\n", "")
+            return subprocess.CompletedProcess(command, 0, "ok\n", "")
+
+    store = trusted_ready_store(tmp_path / "state.json")
+    state = store.load()
+    store.save(
+        state.model_copy(
+            update={
+                "provider_setup": state.provider_setup.model_copy(
+                    update={
+                        "provider_configs": {
+                            "external_faster_whisper": {
+                                "model": "small.en",
+                                "warm_model": True,
+                            }
+                        }
+                    }
+                )
+            }
+        )
+    )
+    script = tmp_path / "faster-whisper-stt-control.sh"
+    script.write_text("#!/usr/bin/env bash\n")
+    stt_health = {
+        "provider": "external_faster_whisper",
+        "healthy": True,
+        "configured": True,
+        "model": "small.en",
+        "device": "cpu",
+        "compute_type": "int8",
+        "transcribe_options": {
+            "without_timestamps": True,
+            "word_timestamps": False,
+            "language": "en",
+            "beam_size": 5,
+            "best_of": 5,
+            "max_initial_timestamp": 1.0,
+        },
+        "loaded": True,
+        "last_error": None,
+    }
+    service = NodeRuntimeService(
+        settings=Settings(
+            voice_stt_provider="external_faster_whisper",
+            voice_stt_control_script=script,
+            voice_stt_service_name="hexevoice-stt.service",
+            voice_stt_faster_whisper_model="base.en",
+        ),
+        onboarding_state_store=store,
+        service_command_runner=FailedWrapperCommandRunner(),
+        external_stt_health_fetcher=lambda: stt_health,
+    )
+
+    status = service.service_status_payload()
+
+    stt_component = next(component for component in status.components if component["component_id"] == "stt")
+    assert stt_component["status"] == "running"
+    assert stt_component["healthy"] is True
+    assert stt_component["model"] == "small.en"
+    assert stt_component["reload_required"] is False
+    assert stt_component["warm_model_health"]["expected_config"]["model"] == "small.en"
+
+
 def test_external_stt_runtime_metadata_marks_reload_required_on_config_mismatch(tmp_path):
     client = FakeSupervisorClient()
     command_runner = FakeCommandRunner()

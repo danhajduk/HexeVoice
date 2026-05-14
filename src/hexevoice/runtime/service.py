@@ -294,7 +294,9 @@ class NodeRuntimeService:
     def service_status_payload(self) -> ServiceStatusResponse:
         openwakeword_state = self._openwakeword_state()
         piper_tts_state = self._piper_tts_state() if self._piper_tts_enabled() else "disabled"
-        stt_state = self._external_stt_state() if self._external_stt_enabled() else self._settings.voice_stt_provider
+        stt_health = self._external_stt_health_payload() if self._external_stt_enabled() else {}
+        raw_stt_state = self._external_stt_state() if self._external_stt_enabled() else self._settings.voice_stt_provider
+        stt_state = self._external_stt_effective_state(raw_stt_state, stt_health) if self._external_stt_enabled() else raw_stt_state
         backend_usage = self._resource_usage_payload()
         piper_usage = (
             self._docker_resource_usage(self._settings.piper_tts_container_name)
@@ -302,11 +304,10 @@ class NodeRuntimeService:
             else {}
         )
         stt_usage = (
-            self._systemd_service_resource_usage(self._settings.voice_stt_service_name)
+            self._external_stt_resource_usage(stt_health)
             if self._external_stt_enabled()
             else backend_usage
         )
-        stt_health = self._external_stt_health_payload() if self._external_stt_enabled() else {}
         return ServiceStatusResponse(
             backend="running",
             frontend="defined",
@@ -328,7 +329,9 @@ class NodeRuntimeService:
                     "component_id": "stt",
                     "label": "STT Engine",
                     "status": stt_state,
-                    "healthy": stt_state in {"active", "running"} if self._external_stt_enabled() else True,
+                    "healthy": self._external_stt_component_healthy(stt_state, stt_health)
+                    if self._external_stt_enabled()
+                    else True,
                     "provider": self._settings.voice_stt_provider,
                     "model": self._stt_component_model(),
                     "restart_target": self._settings.voice_stt_service_id if self._external_stt_enabled() else "stt",
@@ -336,7 +339,9 @@ class NodeRuntimeService:
                     "restart_detail": "External faster-whisper STT is supervisor-proxied."
                     if self._external_stt_enabled()
                     else "STT currently runs in the backend process.",
-                    "resource_scope": "systemd_user_service" if self._external_stt_enabled() else "backend_process",
+                    "resource_scope": stt_usage.get("kind", "systemd_user_service")
+                    if self._external_stt_enabled()
+                    else "backend_process",
                     "resource_usage": stt_usage,
                     "warm_model_health": stt_health if self._external_stt_enabled() else None,
                     "loaded": stt_health.get("loaded") if self._external_stt_enabled() else None,
@@ -412,7 +417,7 @@ class NodeRuntimeService:
         if self._settings.voice_stt_provider == "deterministic":
             return "deterministic"
         if self._settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}:
-            return self._settings.voice_stt_faster_whisper_model
+            return self._configured_external_stt_model()
         return self._settings.voice_stt_model
 
     def _read_proc_status_value_kb(self, key: str) -> int | None:
@@ -455,6 +460,23 @@ class NodeRuntimeService:
 
     def _systemd_service_resource_usage(self, service_name: str) -> dict[str, object]:
         return self._systemd_service_process_payload(service_name)
+
+    def _external_stt_resource_usage(self, health: dict[str, object]) -> dict[str, object]:
+        process = self._systemd_service_process_payload(self._settings.voice_stt_service_name)
+        if process.get("available"):
+            return process
+        if health.get("healthy"):
+            fallback = self._process_resource_usage_by_cmdline("stt.service")
+            if fallback.get("available"):
+                fallback.update(
+                    {
+                        "kind": "external_stt_process",
+                        "systemd_service": self._settings.voice_stt_service_name,
+                        "systemd_error": process.get("error"),
+                    }
+                )
+                return fallback
+        return process
 
     def _current_process_payload(self, *, kind: str = "backend_process") -> dict[str, object]:
         payload = self._process_resource_usage_payload(os.getpid())
@@ -629,6 +651,22 @@ class NodeRuntimeService:
             "process_memory_percent": process_memory_percent,
         }
 
+    def _process_resource_usage_by_cmdline(self, needle: str) -> dict[str, object]:
+        for proc_path in sorted(Path("/proc").iterdir(), key=lambda path: int(path.name) if path.name.isdigit() else -1):
+            if not proc_path.name.isdigit():
+                continue
+            try:
+                pid = int(proc_path.name)
+                cmdline = proc_path.joinpath("cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "ignore")
+            except (OSError, ValueError):
+                continue
+            if needle not in cmdline:
+                continue
+            process = self._process_resource_usage_payload(pid)
+            process.update({"pid": pid, "main_pid": pid, "cmdline": cmdline.strip()})
+            return process
+        return {"available": False, "kind": "process", "error": "process_not_found", "needle": needle}
+
     def _parse_percent(self, value: object) -> float | None:
         try:
             return round(float(str(value).strip().rstrip("%")), 2)
@@ -763,6 +801,29 @@ class NodeRuntimeService:
         state = (result.stdout or "").strip().splitlines()
         return (state[0].strip().lower() if state else "") or "unknown"
 
+    def _external_stt_effective_state(self, state: str, health: dict[str, object]) -> str:
+        if state in {"active", "running"}:
+            return state
+        if health.get("healthy"):
+            return "running"
+        return state
+
+    def _external_stt_component_healthy(self, state: str, health: dict[str, object]) -> bool:
+        if not health:
+            return state in {"active", "running"}
+        return state in {"active", "running"} and bool(health.get("healthy", True))
+
+    def _configured_external_stt_model(self) -> str:
+        try:
+            provider_config = self._state().provider_setup.provider_configs.get("external_faster_whisper", {})
+        except Exception:
+            provider_config = {}
+        if isinstance(provider_config, dict):
+            model = str(provider_config.get("model") or "").strip()
+            if model:
+                return model
+        return self._settings.voice_stt_faster_whisper_model
+
     def _expected_stt_config(self) -> dict[str, object]:
         options: dict[str, object] = {
             "without_timestamps": self._settings.voice_stt_faster_whisper_without_timestamps,
@@ -777,7 +838,7 @@ class NodeRuntimeService:
         if self._settings.voice_stt_faster_whisper_max_initial_timestamp is not None:
             options["max_initial_timestamp"] = self._settings.voice_stt_faster_whisper_max_initial_timestamp
         return {
-            "model": self._settings.voice_stt_faster_whisper_model,
+            "model": self._configured_external_stt_model(),
             "device": self._settings.voice_stt_faster_whisper_device,
             "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
             "transcribe_options": options,
@@ -826,9 +887,10 @@ class NodeRuntimeService:
         }
 
     def _external_stt_service_summary(self) -> dict[str, object]:
-        state = self._external_stt_state()
-        process = self._systemd_service_process_payload(self._settings.voice_stt_service_name)
         health = self._external_stt_health_payload()
+        raw_state = self._external_stt_state()
+        state = self._external_stt_effective_state(raw_state, health)
+        process = self._external_stt_resource_usage(health)
         return {
             "service_id": self._settings.voice_stt_service_id,
             "service_name": "faster-whisper STT",
@@ -843,7 +905,7 @@ class NodeRuntimeService:
             "install_supported": True,
             "install_action": "install",
             "base_url": self._settings.resolved_voice_stt_service_base_url(),
-            "model": self._settings.voice_stt_faster_whisper_model,
+            "model": self._configured_external_stt_model(),
             "device": self._settings.voice_stt_faster_whisper_device,
             "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
             "warm_model_health": health,
@@ -865,7 +927,7 @@ class NodeRuntimeService:
         if self._external_stt_enabled():
             service = self._external_stt_service_summary()
             health = service.get("warm_model_health") if isinstance(service.get("warm_model_health"), dict) else {}
-            healthy = service.get("state") in {"active", "running"} and bool(health.get("healthy", True))
+            healthy = self._external_stt_component_healthy(str(service.get("state") or ""), health)
             service.update(
                 {
                     "service_id": "stt_engine",
@@ -877,12 +939,14 @@ class NodeRuntimeService:
                     "provider": self._settings.voice_stt_provider,
                     "control_target": self._settings.voice_stt_service_id,
                     "restart_supported": True,
-                    "resource_scope": "systemd_user_service",
+                    "resource_scope": service.get("process", {}).get("kind", "systemd_user_service")
+                    if isinstance(service.get("process"), dict)
+                    else "systemd_user_service",
                     "implementation_health": {
                         "engine_role": "stt_engine",
                         "active_implementation": "external_faster_whisper",
                         "provider": self._settings.voice_stt_provider,
-                        "model": self._settings.voice_stt_faster_whisper_model,
+                        "model": self._configured_external_stt_model(),
                         "healthy": healthy,
                         "configured": True,
                         "loaded": health.get("loaded"),
