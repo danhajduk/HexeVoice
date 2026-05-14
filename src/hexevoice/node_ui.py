@@ -353,13 +353,44 @@ def refresh_runtime_action() -> dict[str, Any]:
     }
 
 
-def provider_setup_action_definition() -> dict[str, Any]:
+def provider_setup_action_id(provider_id: object) -> str:
+    return f"configure_provider_setup.{text(provider_id)}"
+
+
+def provider_setup_action_definition(provider_id: object, *, label: str | None = None) -> dict[str, Any]:
+    normalized_provider_id = text(provider_id)
     return {
-        "id": "configure_provider_setup",
-        "label": "Save Setup",
+        "id": provider_setup_action_id(normalized_provider_id),
+        "label": label or "Save Setup",
         "method": "PUT",
-        "endpoint": "/api/providers/setup",
+        "endpoint": f"/api/node/ui/providers/{quote(normalized_provider_id, safe='')}/setup",
     }
+
+
+def provider_setup_action_definitions(provider_card: dict[str, Any]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    providers = provider_card.get("providers") if isinstance(provider_card.get("providers"), list) else []
+    for provider in providers:
+        if not isinstance(provider, dict):
+            continue
+        setup = provider.get("setup") if isinstance(provider.get("setup"), dict) else {}
+        for action_state in setup.get("actions") or []:
+            if not isinstance(action_state, dict):
+                continue
+            action_id = text(action_state.get("id"), "")
+            prefix = "configure_provider_setup."
+            if not action_id.startswith(prefix) or action_id in seen:
+                continue
+            provider_id = action_id.removeprefix(prefix)
+            actions.append(
+                provider_setup_action_definition(
+                    provider_id,
+                    label=text(action_state.get("label"), "Save Setup"),
+                )
+            )
+            seen.add(action_id)
+    return actions
 
 
 def service_control_action_id(target: object, action: str) -> str:
@@ -708,13 +739,17 @@ def provider_setup_section(
     supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
     enabled = [text(item) for item in provider_setup.get("enabled_providers") or [] if item]
     default_provider = text(provider_setup.get("default_provider"), "")
-    candidate_ids = {provider_id, text(provider_name, ""), *(enabled_aliases or [])}
+    candidate_ids = [provider_id, text(provider_name, ""), *(enabled_aliases or [])]
+    candidate_set = set(candidate_ids)
+    setup_provider_id = next((candidate for candidate in candidate_ids if candidate in supported), text(provider_name or provider_id))
     is_enabled = any(candidate in enabled for candidate in candidate_ids if candidate)
-    is_default = default_provider in candidate_ids
-    provider_options = [{"value": item, "label": labelize(item)} for item in supported]
-    setup_action_enabled = bool(provider_options)
+    is_default = default_provider in candidate_set
+    setup_action_enabled = setup_provider_id in supported
+    action_id = provider_setup_action_id(setup_provider_id)
+    provider_label = labelize(setup_provider_id)
     facts = [
         {"id": "provider_id", "label": "Provider ID", "value": text(provider_name or provider_id)},
+        {"id": "setup_provider_id", "label": "Setup Provider", "value": setup_provider_id},
         {"id": "enabled", "label": "Enabled", "value": yes_no(is_enabled)},
         {"id": "default", "label": "Default", "value": yes_no(is_default)},
         {"id": "declaration_allowed", "label": "Declaration Allowed", "value": yes_no(provider_setup.get("declaration_allowed"))},
@@ -730,32 +765,28 @@ def provider_setup_section(
         ],
         "actions": [
             {
-                "id": "configure_provider_setup",
+                "id": action_id,
                 "label": "Save Setup",
                 "enabled": setup_action_enabled,
-                "disabled_reason": None if setup_action_enabled else "No supported providers are available.",
+                "disabled_reason": None if setup_action_enabled else f"{setup_provider_id} is not a supported provider.",
                 "tone": "success",
             }
         ],
         "form": {
-            "title": "Provider Setup",
-            "submit_action_id": "configure_provider_setup",
+            "title": f"{provider_label} Setup",
+            "submit_action_id": action_id,
             "fields": [
                 {
-                    "id": "enabled_providers",
-                    "label": "Enabled Providers",
-                    "type": "multiselect",
-                    "value": enabled,
-                    "options": provider_options,
-                    "required": True,
+                    "id": "enabled",
+                    "label": f"Enable {provider_label}",
+                    "type": "checkbox",
+                    "value": is_enabled,
                 },
                 {
-                    "id": "default_provider",
-                    "label": "Default Provider",
-                    "type": "select",
-                    "value": default_provider or (enabled[0] if enabled else None),
-                    "options": provider_options,
-                    "required": True,
+                    "id": "default",
+                    "label": "Use as default provider",
+                    "type": "checkbox",
+                    "value": is_default,
                 },
             ],
         },

@@ -1968,6 +1968,45 @@ def test_provider_setup_enables_provider_and_advances_to_capability_declaration(
     assert selection.json()["capability_status"] == "selection_pending"
 
 
+def test_node_ui_provider_setup_updates_one_provider(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "provider_setup": {
+                    "supported_providers": ["voice", "piper", "external_faster_whisper"],
+                    "enabled_providers": ["voice"],
+                    "default_provider": "voice",
+                },
+                "resume": {
+                    "current_step_id": "provider_setup",
+                    "last_completed_step_id": "trust_activation",
+                },
+            }
+        )
+    )
+
+    response = client.put("/api/node/ui/providers/piper/setup", json={"enabled": True, "default": True})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["enabled_providers"] == ["voice", "piper"]
+    assert payload["default_provider"] == "piper"
+
+    response = client.put("/api/node/ui/providers/voice/setup", json={"enabled": False, "default": False})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["enabled_providers"] == ["piper"]
+    assert payload["default_provider"] == "piper"
+
+
 def test_capability_declaration_governance_and_operational_status_flow(tmp_path, monkeypatch):
     state_path = tmp_path / "onboarding-state.json"
     client = TestClient(create_app(Settings(onboarding_state_path=state_path)))

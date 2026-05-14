@@ -541,6 +541,11 @@ class ProviderSetupRequest(BaseModel):
     default_provider: str | None = None
 
 
+class ProviderConfigRequest(BaseModel):
+    enabled: bool = True
+    default: bool = False
+
+
 class ProviderSetupResponse(BaseModel):
     configured: bool
     supported_providers: list[str] = Field(default_factory=list)

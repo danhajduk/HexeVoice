@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException
 
-from hexevoice.api.models import ProviderSetupRequest, ProviderSetupResponse
+from hexevoice.api.models import ProviderConfigRequest, ProviderSetupRequest, ProviderSetupResponse
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore
 
@@ -93,6 +93,37 @@ class ProviderSetupService:
         )
         self._store.save(updated)
         return self.status_payload()
+
+    def save_provider_setup(self, provider_id: str, payload: ProviderConfigRequest) -> ProviderSetupResponse:
+        state = self._store.load()
+        supported_providers = self._supported_providers(state)
+        normalized_provider_id = str(provider_id or "").strip()
+        if normalized_provider_id not in supported_providers:
+            raise HTTPException(status_code=404, detail="provider_not_supported")
+
+        selected = set(state.provider_setup.enabled_providers)
+        if payload.enabled or payload.default:
+            selected.add(normalized_provider_id)
+        else:
+            selected.discard(normalized_provider_id)
+
+        enabled_providers = [item for item in supported_providers if item in selected]
+        if payload.default:
+            default_provider = normalized_provider_id
+        elif state.provider_setup.default_provider == normalized_provider_id:
+            default_provider = enabled_providers[0] if enabled_providers else None
+        else:
+            default_provider = state.provider_setup.default_provider
+
+        if default_provider not in enabled_providers:
+            default_provider = enabled_providers[0] if enabled_providers else None
+
+        return self.save_setup(
+            ProviderSetupRequest(
+                enabled_providers=enabled_providers,
+                default_provider=default_provider,
+            )
+        )
 
     def _supported_providers(self, state) -> list[str]:
         persisted = [provider_id for provider_id in state.provider_setup.supported_providers if provider_id]

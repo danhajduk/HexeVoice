@@ -71,6 +71,7 @@ from hexevoice.api.models import (
     OnboardingSessionPollResponse,
     OnboardingSessionStartResponse,
     OnboardingStatusResponse,
+    ProviderConfigRequest,
     ProviderStatusResponse,
     ServiceActionRequest,
     ServiceActionResponse,
@@ -1364,7 +1365,7 @@ def create_app(
                     "runtime.providers",
                     "Provider Status",
                     providers_status_payload,
-                    actions=[node_ui.provider_setup_action_definition()],
+                    actions=node_ui.provider_setup_action_definitions(providers_status_payload),
                     refresh=node_ui.NEAR_LIVE_30S,
                 ),
             ],
@@ -1637,6 +1638,10 @@ def create_app(
     @app.put("/api/providers/setup", response_model=ProviderSetupResponse)
     async def provider_setup_save(payload: ProviderSetupRequest) -> ProviderSetupResponse:
         return provider_setup_service.save_setup(payload)
+
+    @app.put("/api/node/ui/providers/{provider_id}/setup", response_model=ProviderSetupResponse)
+    async def node_ui_provider_setup_save(provider_id: str, payload: ProviderConfigRequest) -> ProviderSetupResponse:
+        return provider_setup_service.save_provider_setup(provider_id, payload)
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:

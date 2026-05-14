@@ -237,23 +237,25 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     assert {provider["id"] for provider in providers["providers"]} >= {"stt", "tts", "wake"}
     provider_page_card = next(card for card in runtime_page["cards"] if card["id"] == "runtime.providers")
     provider_action_map = {action["id"]: action for action in provider_page_card["actions"]}
-    assert provider_action_map["configure_provider_setup"]["method"] == "PUT"
-    assert provider_action_map["configure_provider_setup"]["endpoint"] == "/api/providers/setup"
+    voice_action_id = node_ui.provider_setup_action_id("voice")
+    assert provider_action_map[voice_action_id]["method"] == "PUT"
+    assert provider_action_map[voice_action_id]["endpoint"] == "/api/node/ui/providers/voice/setup"
     tts_provider = next(provider for provider in providers["providers"] if provider["id"] == "tts")
     assert [fact["id"] for fact in tts_provider["setup"]["facts"]] == [
         "provider_id",
+        "setup_provider_id",
         "enabled",
         "default",
         "declaration_allowed",
         "enabled_providers",
         "supported_providers",
     ]
-    assert tts_provider["setup"]["actions"][0]["id"] == "configure_provider_setup"
+    assert tts_provider["setup"]["actions"][0]["id"].startswith("configure_provider_setup.")
     setup_form = tts_provider["setup"]["form"]
-    assert setup_form["submit_action_id"] == "configure_provider_setup"
-    assert [field["id"] for field in setup_form["fields"]] == ["enabled_providers", "default_provider"]
-    assert setup_form["fields"][0]["type"] == "multiselect"
-    assert setup_form["fields"][1]["type"] == "select"
+    assert setup_form["submit_action_id"] == tts_provider["setup"]["actions"][0]["id"]
+    assert [field["id"] for field in setup_form["fields"]] == ["enabled", "default"]
+    assert setup_form["fields"][0]["type"] == "checkbox"
+    assert setup_form["fields"][1]["type"] == "checkbox"
     wake_provider = next(provider for provider in providers["providers"] if provider["id"] == "wake")
     wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
     assert wake_setup["enabled"] == "no"
@@ -275,7 +277,9 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
     wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
     assert wake_setup["enabled"] == "yes"
     wake_form = wake_provider["setup"]["form"]
-    assert wake_form["fields"][0]["value"] == ["voice", "piper", "external_faster_whisper"]
+    assert wake_form["title"] == "Voice Setup"
+    assert wake_form["fields"][0]["value"] is True
+    assert wake_form["submit_action_id"] == node_ui.provider_setup_action_id("voice")
 
 
 def test_provider_status_marks_healthy_stt_without_status_as_ready():

@@ -15,7 +15,7 @@ The manifest advertises the health strip as a top-level `health` surface backed 
 | Operational warnings | onboarding blockers, trust errors, governance freshness, runtime warnings | `warning_banner` | `/api/node/ui/overview/warnings` |
 | Live node facts | `/api/node/status`, `/api/node/operational-status`, `/api/providers/setup` | `facts_card` | `/api/node/ui/overview/facts` |
 | Runtime control | `RuntimeDashboardSection`, `/api/services/status` including backend, STT, wake word, and TTS components; rendered UI service actions use `/api/node/ui/runtime/services/{service_id}/{start|stop|restart}` | `runtime_service` | `/api/node/ui/runtime/services` |
-| Provider status | `/api/services/status`, `/api/voice/status`, `/api/tts/settings`, `/api/providers/setup` | `provider_status` with `setup.form` | `/api/node/ui/providers/status` |
+| Provider status | `/api/services/status`, `/api/voice/status`, `/api/tts/settings`, `/api/providers/setup`; provider-specific setup actions use `/api/node/ui/providers/{provider_id}/setup` | `provider_status` with provider-scoped `setup.form` | `/api/node/ui/providers/status` |
 | Voice endpoint status | `VoiceEndpointDashboardSection`, `/api/endpoints`, `/api/voice/status` | `record_list` | `/api/node/ui/voice/endpoints` |
 | Endpoint actions | endpoint command APIs | `action_panel` | `/api/node/ui/voice/endpoint-actions` |
 | Registered intents | `VoiceIntentsDashboardSection`, `/api/voice/intents` | `record_list` | `/api/node/ui/voice/intents` |
@@ -65,6 +65,7 @@ The manifest advertises the health strip as a top-level `health` surface backed 
 - `POST /api/node/ui/runtime/services/{service_id}/restart`
 - `POST /api/node/ui/actions/test-assistant-turn`
 - `PUT /api/providers/setup`
+- `PUT /api/node/ui/providers/{provider_id}/setup`
 
 ## Local UI Mode
 
