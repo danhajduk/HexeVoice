@@ -367,10 +367,17 @@ def manifest(settings: Settings, node_status: dict[str, Any]) -> dict[str, Any]:
     display_name = text(node_status.get("node_name"), settings.node_name)
     return {
         "schema_version": "1.0",
-        "manifest_revision": "hexevoice-core-rendered-ui-pilot-v2",
+        "manifest_revision": "hexevoice-core-rendered-ui-pilot-v3",
         "node_id": node_id,
         "node_type": "voice",
         "display_name": display_name,
+        "health": {
+            "id": "node.health",
+            "kind": "health_strip",
+            "title": "Node Health",
+            "data_endpoint": "/api/node/ui/overview/health",
+            "refresh": NEAR_LIVE_15S,
+        },
         "pages": [
             {
                 "id": "overview",

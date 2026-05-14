@@ -4,6 +4,8 @@ Status: Implemented
 
 HexeVoice keeps its local node-owned UI available during the Core-rendered UI pilot. The pilot adds a node-side page manifest and page snapshot endpoints that Core can render from shared components.
 
+The manifest advertises the health strip as a top-level `health` surface backed by `/api/node/ui/overview/health`; Core renders that surface globally above every page tab while page snapshot payloads carry the page-specific cards.
+
 ## Current Surface Inventory
 
 | Current local surface | Current files or APIs | Core card kind | Pilot endpoint |

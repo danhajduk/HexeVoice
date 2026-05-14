@@ -20,6 +20,13 @@ def test_core_rendered_node_ui_manifest_keeps_local_ui_available(tmp_path):
     assert manifest["schema_version"] == "1.0"
     assert manifest["node_type"] == "voice"
     assert manifest["node_id"] == "hexevoice"
+    assert manifest["health"] == {
+        "id": "node.health",
+        "kind": "health_strip",
+        "title": "Node Health",
+        "data_endpoint": "/api/node/ui/overview/health",
+        "refresh": node_ui.NEAR_LIVE_15S,
+    }
     assert {page["id"] for page in manifest["pages"]} == {
         "overview",
         "runtime",
