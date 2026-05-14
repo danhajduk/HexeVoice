@@ -218,7 +218,10 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     assert facts["kind"] == "facts_card"
     assert any(fact["id"] == "node_id" for fact in facts["facts"])
     assert runtime["kind"] == "runtime_service"
-    assert {service["id"] for service in runtime["services"]} >= {"backend", "stt", "tts"}
+    assert {service["id"] for service in runtime["services"]} >= {"backend", "stt", "wake", "tts"}
+    wake_runtime = next(service for service in runtime["services"] if service["id"] == "wake")
+    assert wake_runtime["label"] == "Wake Word"
+    assert wake_runtime["provider"] == "openwakeword"
     assert providers["kind"] == "provider_status"
     assert {provider["id"] for provider in providers["providers"]} >= {"stt", "tts", "wake"}
 

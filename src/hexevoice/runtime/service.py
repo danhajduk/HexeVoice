@@ -347,6 +347,18 @@ class NodeRuntimeService:
                     "reload_required": stt_health.get("reload_required") if self._external_stt_enabled() else None,
                 },
                 {
+                    "component_id": "wake",
+                    "label": "Wake Word",
+                    "status": openwakeword_state,
+                    "healthy": openwakeword_state in {"active", "running"},
+                    "provider": self._settings.voice_wake_provider,
+                    "restart_target": self._settings.openwakeword_service_id,
+                    "restart_supported": True,
+                    "restart_detail": "openWakeWord is supervisor-proxied.",
+                    "resource_scope": "docker_container",
+                    "resource_usage": self._docker_resource_usage(self._settings.openwakeword_container_name),
+                },
+                {
                     "component_id": "tts",
                     "label": "TTS Engine",
                     "status": piper_tts_state if self._piper_tts_enabled() else self._settings.voice_tts_provider,
