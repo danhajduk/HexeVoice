@@ -1347,6 +1347,7 @@ def create_app(
 
     async def build_node_ui_page_runtime() -> dict:
         runtime_services_payload = await node_ui_runtime_services_payload()
+        providers_status_payload = await node_ui_providers_status_payload()
         return node_ui.page_snapshot(
             "runtime",
             node_ui.NEAR_LIVE_15S,
@@ -1362,7 +1363,8 @@ def create_app(
                 node_ui.page_card(
                     "runtime.providers",
                     "Provider Status",
-                    await node_ui_providers_status_payload(),
+                    providers_status_payload,
+                    actions=[node_ui.provider_setup_action_definition()],
                     refresh=node_ui.NEAR_LIVE_30S,
                 ),
             ],

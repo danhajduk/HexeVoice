@@ -235,6 +235,10 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     assert action_map[wake_restart]["endpoint"] == "/api/node/ui/runtime/services/openwakeword/restart"
     assert providers["kind"] == "provider_status"
     assert {provider["id"] for provider in providers["providers"]} >= {"stt", "tts", "wake"}
+    provider_page_card = next(card for card in runtime_page["cards"] if card["id"] == "runtime.providers")
+    provider_action_map = {action["id"]: action for action in provider_page_card["actions"]}
+    assert provider_action_map["configure_provider_setup"]["method"] == "PUT"
+    assert provider_action_map["configure_provider_setup"]["endpoint"] == "/api/providers/setup"
     tts_provider = next(provider for provider in providers["providers"] if provider["id"] == "tts")
     assert [fact["id"] for fact in tts_provider["setup"]["facts"]] == [
         "provider_id",
@@ -244,6 +248,12 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
         "enabled_providers",
         "supported_providers",
     ]
+    assert tts_provider["setup"]["actions"][0]["id"] == "configure_provider_setup"
+    setup_form = tts_provider["setup"]["form"]
+    assert setup_form["submit_action_id"] == "configure_provider_setup"
+    assert [field["id"] for field in setup_form["fields"]] == ["enabled_providers", "default_provider"]
+    assert setup_form["fields"][0]["type"] == "multiselect"
+    assert setup_form["fields"][1]["type"] == "select"
     wake_provider = next(provider for provider in providers["providers"] if provider["id"] == "wake")
     wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
     assert wake_setup["enabled"] == "no"
@@ -264,6 +274,8 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
     wake_provider = next(provider for provider in card["providers"] if provider["id"] == "wake")
     wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
     assert wake_setup["enabled"] == "yes"
+    wake_form = wake_provider["setup"]["form"]
+    assert wake_form["fields"][0]["value"] == ["voice", "piper", "external_faster_whisper"]
 
 
 def test_provider_status_marks_healthy_stt_without_status_as_ready():

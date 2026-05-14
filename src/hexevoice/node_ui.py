@@ -65,6 +65,13 @@ def text(value: object, fallback: str = "unknown") -> str:
     return str(value)
 
 
+def labelize(value: object) -> str:
+    normalized = text(value, "").replace("_", " ").replace("-", " ").strip()
+    if not normalized:
+        return "Unknown"
+    return " ".join(part.capitalize() for part in normalized.split())
+
+
 def base_card(
     kind: str,
     *,
@@ -343,6 +350,15 @@ def refresh_runtime_action() -> dict[str, Any]:
         "label": "Refresh Runtime",
         "method": "POST",
         "endpoint": "/api/node/ui/actions/refresh-status",
+    }
+
+
+def provider_setup_action_definition() -> dict[str, Any]:
+    return {
+        "id": "configure_provider_setup",
+        "label": "Save Setup",
+        "method": "PUT",
+        "endpoint": "/api/providers/setup",
     }
 
 
@@ -691,9 +707,12 @@ def provider_setup_section(
 ) -> dict[str, Any]:
     supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
     enabled = [text(item) for item in provider_setup.get("enabled_providers") or [] if item]
+    default_provider = text(provider_setup.get("default_provider"), "")
     candidate_ids = {provider_id, text(provider_name, ""), *(enabled_aliases or [])}
     is_enabled = any(candidate in enabled for candidate in candidate_ids if candidate)
-    is_default = text(provider_setup.get("default_provider"), "") in candidate_ids
+    is_default = default_provider in candidate_ids
+    provider_options = [{"value": item, "label": labelize(item)} for item in supported]
+    setup_action_enabled = bool(provider_options)
     facts = [
         {"id": "provider_id", "label": "Provider ID", "value": text(provider_name or provider_id)},
         {"id": "enabled", "label": "Enabled", "value": yes_no(is_enabled)},
@@ -709,6 +728,37 @@ def provider_setup_section(
             {"code": f"setup.blocking_reason.{index}", "message": reason, "tone": "warning"}
             for index, reason in enumerate(blocking_reasons)
         ],
+        "actions": [
+            {
+                "id": "configure_provider_setup",
+                "label": "Save Setup",
+                "enabled": setup_action_enabled,
+                "disabled_reason": None if setup_action_enabled else "No supported providers are available.",
+                "tone": "success",
+            }
+        ],
+        "form": {
+            "title": "Provider Setup",
+            "submit_action_id": "configure_provider_setup",
+            "fields": [
+                {
+                    "id": "enabled_providers",
+                    "label": "Enabled Providers",
+                    "type": "multiselect",
+                    "value": enabled,
+                    "options": provider_options,
+                    "required": True,
+                },
+                {
+                    "id": "default_provider",
+                    "label": "Default Provider",
+                    "type": "select",
+                    "value": default_provider or (enabled[0] if enabled else None),
+                    "options": provider_options,
+                    "required": True,
+                },
+            ],
+        },
     }
 
 
