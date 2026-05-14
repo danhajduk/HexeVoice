@@ -48,6 +48,7 @@ class ProviderSetupService:
             supported_providers=supported_providers,
             enabled_providers=enabled_providers,
             default_provider=state.provider_setup.default_provider,
+            provider_configs=dict(state.provider_setup.provider_configs),
             declaration_allowed=declaration_allowed,
             blocking_reasons=blocking_reasons,
         )
@@ -118,12 +119,47 @@ class ProviderSetupService:
         if default_provider not in enabled_providers:
             default_provider = enabled_providers[0] if enabled_providers else None
 
-        return self.save_setup(
+        response = self.save_setup(
             ProviderSetupRequest(
                 enabled_providers=enabled_providers,
                 default_provider=default_provider,
             )
         )
+        refreshed = self._store.load()
+        provider_configs = dict(refreshed.provider_setup.provider_configs)
+        provider_configs[normalized_provider_id] = self._provider_config_payload(payload)
+        updated = refreshed.model_copy(
+            update={
+                "provider_setup": refreshed.provider_setup.model_copy(
+                    update={
+                        "provider_configs": provider_configs,
+                        "last_updated_at": _utc_now(),
+                    }
+                )
+            }
+        )
+        self._store.save(updated)
+        return self.status_payload()
+
+    @staticmethod
+    def _provider_config_payload(payload: ProviderConfigRequest) -> dict[str, object]:
+        config: dict[str, object] = {
+            "enabled": payload.enabled,
+            "default": payload.default,
+        }
+        for field in ("model", "warm_model", "warm_models", "default_voice", "default_wakeword"):
+            value = getattr(payload, field)
+            if value is None:
+                continue
+            if isinstance(value, list):
+                config[field] = [str(item).strip() for item in value if str(item).strip()]
+            elif isinstance(value, str):
+                cleaned = value.strip()
+                if cleaned:
+                    config[field] = cleaned
+            else:
+                config[field] = value
+        return config
 
     def _supported_providers(self, state) -> list[str]:
         persisted = [provider_id for provider_id in state.provider_setup.supported_providers if provider_id]

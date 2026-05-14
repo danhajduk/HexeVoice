@@ -735,18 +735,38 @@ def provider_setup_section(
     provider_setup: dict[str, Any],
     *,
     enabled_aliases: list[str] | None = None,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    config = config if isinstance(config, dict) else {}
     supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
     enabled = [text(item) for item in provider_setup.get("enabled_providers") or [] if item]
+    provider_configs = provider_setup.get("provider_configs") if isinstance(provider_setup.get("provider_configs"), dict) else {}
     default_provider = text(provider_setup.get("default_provider"), "")
     candidate_ids = [provider_id, text(provider_name, ""), *(enabled_aliases or [])]
     candidate_set = set(candidate_ids)
     setup_provider_id = next((candidate for candidate in candidate_ids if candidate in supported), text(provider_name or provider_id))
+    saved_config = provider_configs.get(setup_provider_id) if isinstance(provider_configs.get(setup_provider_id), dict) else {}
     is_enabled = any(candidate in enabled for candidate in candidate_ids if candidate)
     is_default = default_provider in candidate_set
     setup_action_enabled = setup_provider_id in supported
     action_id = provider_setup_action_id(setup_provider_id)
     provider_label = labelize(setup_provider_id)
+    fields = [
+        {
+            "id": "enabled",
+            "label": f"Enable {provider_label}",
+            "type": "checkbox",
+            "value": is_enabled,
+        },
+        {
+            "id": "default",
+            "label": "Use as default provider",
+            "type": "checkbox",
+            "value": is_default,
+        },
+    ]
+    for field in provider_config_fields(config, saved_config):
+        fields.append(field)
     facts = [
         {"id": "provider_id", "label": "Provider ID", "value": text(provider_name or provider_id)},
         {"id": "setup_provider_id", "label": "Setup Provider", "value": setup_provider_id},
@@ -775,22 +795,92 @@ def provider_setup_section(
         "form": {
             "title": f"{provider_label} Setup",
             "submit_action_id": action_id,
-            "fields": [
-                {
-                    "id": "enabled",
-                    "label": f"Enable {provider_label}",
-                    "type": "checkbox",
-                    "value": is_enabled,
-                },
-                {
-                    "id": "default",
-                    "label": "Use as default provider",
-                    "type": "checkbox",
-                    "value": is_default,
-                },
-            ],
+            "fields": fields,
         },
     }
+
+
+def provider_config_fields(config: dict[str, Any], saved_config: dict[str, Any]) -> list[dict[str, Any]]:
+    kind = text(config.get("kind"), "")
+    if kind == "tts":
+        options = config.get("model_options") if isinstance(config.get("model_options"), list) else []
+        if not options:
+            return []
+        default_voice = text(saved_config.get("default_voice") or config.get("default_voice"), "")
+        warm_models = saved_config.get("warm_models") if isinstance(saved_config.get("warm_models"), list) else config.get("warm_models")
+        return [
+            {
+                "id": "default_voice",
+                "label": "Default Voice",
+                "type": "select",
+                "value": default_voice,
+                "options": options,
+                "required": True,
+            },
+            {
+                "id": "warm_models",
+                "label": "Warm Loaded Voices",
+                "type": "multiselect",
+                "value": warm_models if isinstance(warm_models, list) else [],
+                "options": options,
+            },
+        ]
+    if kind == "stt":
+        options = config.get("model_options") if isinstance(config.get("model_options"), list) else []
+        fields: list[dict[str, Any]] = []
+        current_model = text(saved_config.get("model") or config.get("model"), "")
+        if options:
+            fields.append(
+                {
+                    "id": "model",
+                    "label": "Default Model",
+                    "type": "select",
+                    "value": current_model,
+                    "options": options,
+                    "required": True,
+                }
+            )
+        else:
+            fields.append({"id": "model", "label": "Default Model", "type": "text", "value": current_model})
+        fields.append(
+            {
+                "id": "warm_model",
+                "label": "Warm load model",
+                "type": "checkbox",
+                "value": bool(saved_config.get("warm_model", config.get("warm_model"))),
+            }
+        )
+        return fields
+    if kind == "wake":
+        options = config.get("wakeword_options") if isinstance(config.get("wakeword_options"), list) else []
+        value = text(saved_config.get("default_wakeword") or config.get("default_wakeword"), "")
+        if options:
+            return [
+                {
+                    "id": "default_wakeword",
+                    "label": "Default Wake Word",
+                    "type": "select",
+                    "value": value,
+                    "options": options,
+                    "required": True,
+                },
+                {
+                    "id": "warm_model",
+                    "label": "Warm load wake model",
+                    "type": "checkbox",
+                    "value": bool(saved_config.get("warm_model", config.get("warm_model"))),
+                },
+            ]
+        return [
+            {"id": "default_wakeword", "label": "Default Wake Word", "type": "text", "value": value},
+            {
+                "id": "warm_model",
+                "label": "Warm load wake model",
+                "type": "checkbox",
+                "value": bool(saved_config.get("warm_model", config.get("warm_model"))),
+            },
+        ]
+    return []
 
 
 def provider_display_state(status: dict[str, Any]) -> str:
@@ -809,9 +899,11 @@ def provider_status(
     voice_status: dict[str, Any],
     tts_settings: dict[str, Any],
     provider_setup: dict[str, Any] | None = None,
+    provider_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     pipeline = voice_status.get("turn_pipeline") if isinstance(voice_status.get("turn_pipeline"), dict) else {}
     setup = provider_setup if isinstance(provider_setup, dict) else {}
+    config = provider_config if isinstance(provider_config, dict) else {}
     providers = []
     for provider_id, label in (("stt", "STT Provider"), ("tts", "TTS Provider")):
         status = pipeline.get(provider_id) if isinstance(pipeline.get(provider_id), dict) else {}
@@ -828,7 +920,7 @@ def provider_status(
                     {"id": "model", "label": "Model", "value": text(status.get("model") or (tts_settings.get("provider") if provider_id == "tts" else None))},
                     {"id": "last_error", "label": "Last Error", "value": text(status.get("last_error") or status.get("error"), "clear")},
                 ],
-                "setup": provider_setup_section(provider_id, provider_name, setup),
+                "setup": provider_setup_section(provider_id, provider_name, setup, config=config.get(provider_id)),
             }
         )
     wake_provider = text(voice_status.get("wake_provider", {}).get("provider") if isinstance(voice_status.get("wake_provider"), dict) else None)
@@ -840,7 +932,7 @@ def provider_status(
             "state": provider_state(services_status.get("openwakeword")),
             "tone": tone_for_state(services_status.get("openwakeword")),
             "facts": [{"id": "piper", "label": "Piper Runtime", "value": text(services_status.get("piper_tts"))}],
-            "setup": provider_setup_section("wake", wake_provider, setup, enabled_aliases=["voice"]),
+            "setup": provider_setup_section("wake", wake_provider, setup, enabled_aliases=["voice"], config=config.get("wake")),
         }
     )
     card = base_card("provider_status", empty=not providers)

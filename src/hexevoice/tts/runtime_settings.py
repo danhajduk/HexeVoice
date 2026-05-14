@@ -27,6 +27,7 @@ class TtsRuntimeSettingsService:
         warm_voices = normalized_voice_list(config.get("warm_voices"))
         if not warm_voices:
             warm_voices = self._settings.resolved_piper_tts_warm_voices()
+        default_voice = normalize_voice(config.get("default_voice")) or normalize_voice(self._settings.voice_tts_piper_voice)
         conversion_rates = sorted(
             parse_tts_conversion_sample_rates(config.get("conversion_sample_rates_hz") or self._settings.voice_tts_conversion_sample_rates).values(),
             reverse=True,
@@ -36,6 +37,7 @@ class TtsRuntimeSettingsService:
             "config_path": str(self._path),
             "model_dir": str(self._model_dir),
             "models": self.discover_piper_models(),
+            "default_voice": default_voice,
             "warm_voices": warm_voices,
             "conversion_sample_rates_hz": conversion_rates,
             "allowed_conversion_sample_rates_hz": list(ALLOWED_TTS_CONVERSION_SAMPLE_RATES),
@@ -48,7 +50,11 @@ class TtsRuntimeSettingsService:
         }
 
     def update(self, payload: dict[str, Any]) -> dict[str, Any]:
+        current_config = self._load_config()
         model_ids = {model["model_id"] for model in self.discover_piper_models()}
+        default_voice = normalize_voice(payload.get("default_voice") or current_config.get("default_voice"))
+        if default_voice and default_voice not in model_ids:
+            default_voice = None
         warm_voices = [
             voice
             for voice in normalized_voice_list(payload.get("warm_voices"))
@@ -59,6 +65,7 @@ class TtsRuntimeSettingsService:
             reverse=True,
         )
         config = {
+            "default_voice": default_voice,
             "warm_voices": warm_voices,
             "conversion_sample_rates_hz": conversion_rates,
             "conversion_policy": normalize_conversion_policy(payload.get("conversion_policy")),
@@ -67,7 +74,7 @@ class TtsRuntimeSettingsService:
         }
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
-        self._write_piper_env_warm_voices(warm_voices)
+        self._write_piper_env(default_voice=default_voice, warm_voices=warm_voices)
         return self.status()
 
     def clear_restart_required(self) -> dict[str, Any]:
@@ -110,23 +117,27 @@ class TtsRuntimeSettingsService:
             return {}
         return payload if isinstance(payload, dict) else {}
 
-    def _write_piper_env_warm_voices(self, warm_voices: list[str]) -> None:
+    def _write_piper_env(self, *, default_voice: str | None, warm_voices: list[str]) -> None:
         env_path = self._piper_env_path
         if env_path.exists():
             lines = env_path.read_text(encoding="utf-8").splitlines()
         else:
             lines = []
-        value = f"PIPER_TTS_WARM_VOICES={','.join(warm_voices)}"
-        replaced = False
+        replacements = {"PIPER_TTS_WARM_VOICES": ",".join(warm_voices)}
+        if default_voice:
+            replacements["PIPER_TTS_MODEL_PATH"] = f"/models/{default_voice}.onnx"
+        replaced: set[str] = set()
         updated_lines: list[str] = []
         for line in lines:
-            if line.startswith("PIPER_TTS_WARM_VOICES="):
-                updated_lines.append(value)
-                replaced = True
-            else:
-                updated_lines.append(line)
-        if not replaced:
-            updated_lines.append(value)
+            key = line.split("=", 1)[0]
+            if key in replacements:
+                updated_lines.append(f"{key}={replacements[key]}")
+                replaced.add(key)
+                continue
+            updated_lines.append(line)
+        for key, value in replacements.items():
+            if key not in replaced:
+                updated_lines.append(f"{key}={value}")
         env_path.parent.mkdir(parents=True, exist_ok=True)
         env_path.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
 
@@ -146,6 +157,11 @@ def normalized_voice_list(raw: object) -> list[str]:
         if voice and voice not in voices:
             voices.append(voice)
     return voices
+
+
+def normalize_voice(raw: object) -> str | None:
+    voice = str(raw or "").strip()
+    return voice or None
 
 
 def normalize_conversion_policy(raw: object) -> str:

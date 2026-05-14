@@ -88,6 +88,7 @@ class ProviderSetupState(BaseModel):
     supported_providers: list[str] = Field(default_factory=list)
     enabled_providers: list[str] = Field(default_factory=list)
     default_provider: str | None = None
+    provider_configs: dict[str, dict[str, object]] = Field(default_factory=dict)
     declaration_allowed: bool = False
     blocking_reasons: list[str] = Field(default_factory=list)
     last_updated_at: str | None = None

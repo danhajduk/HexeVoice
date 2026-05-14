@@ -253,9 +253,11 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     assert tts_provider["setup"]["actions"][0]["id"].startswith("configure_provider_setup.")
     setup_form = tts_provider["setup"]["form"]
     assert setup_form["submit_action_id"] == tts_provider["setup"]["actions"][0]["id"]
-    assert [field["id"] for field in setup_form["fields"]] == ["enabled", "default"]
+    assert [field["id"] for field in setup_form["fields"]] == ["enabled", "default", "default_voice", "warm_models"]
     assert setup_form["fields"][0]["type"] == "checkbox"
     assert setup_form["fields"][1]["type"] == "checkbox"
+    assert setup_form["fields"][2]["type"] == "select"
+    assert setup_form["fields"][3]["type"] == "multiselect"
     wake_provider = next(provider for provider in providers["providers"] if provider["id"] == "wake")
     wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
     assert wake_setup["enabled"] == "no"
@@ -265,13 +267,48 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
     card = node_ui.provider_status(
         {"openwakeword": "running", "piper_tts": "running"},
         {"wake_provider": {"provider": "supervised_openwakeword"}},
-        {"provider": "piper"},
+        {
+            "provider": "piper",
+            "default_voice": "en_US-jenny-high",
+            "warm_voices": ["en_US-jenny-high"],
+            "models": [{"model_id": "en_US-jenny-high", "display_name": "Jenny High"}],
+        },
         {
             "enabled_providers": ["voice", "piper", "external_faster_whisper"],
             "supported_providers": ["voice", "piper", "external_faster_whisper"],
+            "provider_configs": {
+                "piper": {
+                    "default_voice": "en_US-jenny-high",
+                    "warm_models": ["en_US-jenny-high"],
+                },
+                "voice": {
+                    "default_wakeword": "Hexa",
+                    "warm_model": True,
+                },
+            },
             "declaration_allowed": True,
         },
+        {
+            "tts": {
+                "kind": "tts",
+                "default_voice": "en_US-jenny-high",
+                "warm_models": ["en_US-jenny-high"],
+                "model_options": [{"value": "en_US-jenny-high", "label": "Jenny High"}],
+            },
+            "wake": {
+                "kind": "wake",
+                "default_wakeword": "Hexa",
+                "warm_model": True,
+                "wakeword_options": [{"value": "Hexa", "label": "Hexa"}],
+            },
+        },
     )
+
+    tts_provider = next(provider for provider in card["providers"] if provider["id"] == "tts")
+    tts_fields = {field["id"]: field for field in tts_provider["setup"]["form"]["fields"]}
+    assert tts_fields["default_voice"]["value"] == "en_US-jenny-high"
+    assert tts_fields["warm_models"]["type"] == "multiselect"
+    assert tts_fields["warm_models"]["value"] == ["en_US-jenny-high"]
 
     wake_provider = next(provider for provider in card["providers"] if provider["id"] == "wake")
     wake_setup = {fact["id"]: fact["value"] for fact in wake_provider["setup"]["facts"]}
@@ -279,6 +316,9 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
     wake_form = wake_provider["setup"]["form"]
     assert wake_form["title"] == "Voice Setup"
     assert wake_form["fields"][0]["value"] is True
+    wake_fields = {field["id"]: field for field in wake_form["fields"]}
+    assert wake_fields["default_wakeword"]["value"] == "Hexa"
+    assert wake_fields["warm_model"]["value"] is True
     assert wake_form["submit_action_id"] == node_ui.provider_setup_action_id("voice")
 
 

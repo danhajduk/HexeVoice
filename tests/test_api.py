@@ -1143,6 +1143,7 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
     assert payload["allowed_conversion_sample_rates_hz"] == [48000, 22050, 16000]
     assert payload["conversion_policy"] == "blocking_all"
     assert payload["allowed_conversion_policies"] == ["blocking_all", "endpoint_required_sync"]
+    assert payload["default_voice"] is None
     assert payload["models"][0]["model_id"] == "en_US-jenny-high"
     assert payload["models"][0]["display_name"] == "Jenny Dioco"
     assert payload["models"][0]["raw_sample_rate_hz"] == 22050
@@ -1152,6 +1153,7 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
         "/api/tts/settings",
         json={
             "warm_voices": ["en_US-jenny-high", "missing"],
+            "default_voice": "en_US-jenny-high",
             "conversion_sample_rates_hz": [48000, 22050],
             "conversion_policy": "endpoint_required_sync",
         },
@@ -1159,15 +1161,18 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
 
     assert update.status_code == 200
     updated = update.json()
+    assert updated["default_voice"] == "en_US-jenny-high"
     assert updated["warm_voices"] == ["en_US-jenny-high"]
     assert updated["conversion_sample_rates_hz"] == [48000, 22050]
     assert updated["conversion_policy"] == "endpoint_required_sync"
     assert updated["restart_required"] is True
     runtime_config = json.loads((tmp_path / "voice_tts_settings.json").read_text(encoding="utf-8"))
+    assert runtime_config["default_voice"] == "en_US-jenny-high"
     assert runtime_config["warm_voices"] == ["en_US-jenny-high"]
     assert runtime_config["conversion_sample_rates_hz"] == [48000, 22050]
     assert runtime_config["conversion_policy"] == "endpoint_required_sync"
-    assert piper_env_path.read_text(encoding="utf-8").strip() == "PIPER_TTS_WARM_VOICES=en_US-jenny-high"
+    assert "PIPER_TTS_MODEL_PATH=/models/en_US-jenny-high.onnx" in piper_env_path.read_text(encoding="utf-8")
+    assert "PIPER_TTS_WARM_VOICES=en_US-jenny-high" in piper_env_path.read_text(encoding="utf-8")
 
 
 def test_tts_restart_clears_restart_required_flag(tmp_path, monkeypatch):
@@ -1992,12 +1997,23 @@ def test_node_ui_provider_setup_updates_one_provider(tmp_path):
         )
     )
 
-    response = client.put("/api/node/ui/providers/piper/setup", json={"enabled": True, "default": True})
+    response = client.put(
+        "/api/node/ui/providers/piper/setup",
+        json={
+            "enabled": True,
+            "default": True,
+            "model": "en_US-jenny-high",
+            "warm_models": ["en_US-jenny-high"],
+            "default_voice": "en_US-jenny-high",
+        },
+    )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["enabled_providers"] == ["voice", "piper"]
     assert payload["default_provider"] == "piper"
+    assert payload["provider_configs"]["piper"]["default_voice"] == "en_US-jenny-high"
+    assert payload["provider_configs"]["piper"]["warm_models"] == ["en_US-jenny-high"]
 
     response = client.put("/api/node/ui/providers/voice/setup", json={"enabled": False, "default": False})
 

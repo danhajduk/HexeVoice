@@ -1285,11 +1285,13 @@ def create_app(
         return node_ui.runtime_services(await node_ui_services_status(), voice_session_manager.status())
 
     async def node_ui_providers_status_payload() -> dict:
+        tts_settings = await node_ui_tts_settings()
         return node_ui.provider_status(
             await node_ui_services_status(),
             voice_session_manager.status(),
-            await node_ui_tts_settings(),
+            tts_settings,
             node_ui.as_json(provider_setup_service.status_payload()),
+            node_ui_provider_config_context(tts_settings),
         )
 
     def node_ui_voice_endpoints_payload() -> dict:
@@ -1309,6 +1311,68 @@ def create_app(
 
     async def node_ui_voice_tts_payload() -> dict:
         return node_ui.tts_runtime(await node_ui_tts_settings(), voice_session_manager.status())
+
+    def node_ui_provider_config_context(tts_settings: dict) -> dict:
+        return {
+            "stt": {
+                "kind": "stt",
+                "model": app_settings.voice_stt_faster_whisper_model
+                if app_settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}
+                else app_settings.voice_stt_model,
+                "warm_model": app_settings.voice_stt_preload,
+                "model_options": node_ui_model_options(
+                    [
+                        "tiny.en",
+                        "base.en",
+                        "small.en",
+                        "medium.en",
+                        app_settings.voice_stt_model,
+                        app_settings.voice_stt_faster_whisper_model,
+                    ]
+                ),
+            },
+            "tts": {
+                "kind": "tts",
+                "default_voice": tts_settings.get("default_voice") or app_settings.voice_tts_piper_voice,
+                "warm_models": tts_settings.get("warm_voices") if isinstance(tts_settings.get("warm_voices"), list) else [],
+                "model_options": [
+                    {"value": model.get("model_id"), "label": model.get("display_name") or node_ui.labelize(model.get("model_id"))}
+                    for model in tts_settings.get("models", [])
+                    if isinstance(model, dict) and model.get("model_id")
+                ],
+            },
+            "wake": {
+                "kind": "wake",
+                "default_wakeword": node_ui_wake_models()[0] if node_ui_wake_models() else "",
+                "warm_model": app_settings.voice_wake_preload,
+                "wakeword_options": node_ui_model_options(node_ui_wake_models()),
+            },
+        }
+
+    def node_ui_model_options(values: list[str | None]) -> list[dict]:
+        options = []
+        seen = set()
+        for value in values:
+            model_id = str(value or "").strip()
+            if not model_id or model_id in seen:
+                continue
+            seen.add(model_id)
+            options.append({"value": model_id, "label": node_ui.labelize(model_id)})
+        return options
+
+    def node_ui_wake_models() -> list[str]:
+        configured = [item.strip() for item in (app_settings.voice_wake_models or "").split(",") if item.strip()]
+        model_dir = app_settings.runtime_dir / "openwakeword" / "models"
+        discovered = [path.stem for path in sorted(model_dir.glob("*.onnx")) + sorted(model_dir.glob("*.tflite"))] if model_dir.exists() else []
+        models = [*configured, *discovered, "Hexa"]
+        deduped: list[str] = []
+        seen = set()
+        for model in models:
+            if model in seen:
+                continue
+            seen.add(model)
+            deduped.append(model)
+        return deduped
 
     async def node_ui_voice_tts_artifacts_payload(limit: int = 50) -> dict:
         artifacts = await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
@@ -1641,7 +1705,19 @@ def create_app(
 
     @app.put("/api/node/ui/providers/{provider_id}/setup", response_model=ProviderSetupResponse)
     async def node_ui_provider_setup_save(provider_id: str, payload: ProviderConfigRequest) -> ProviderSetupResponse:
-        return provider_setup_service.save_provider_setup(provider_id, payload)
+        response = provider_setup_service.save_provider_setup(provider_id, payload)
+        if provider_id == "piper":
+            current_tts = await asyncio.to_thread(tts_runtime_settings_service.status)
+            await asyncio.to_thread(
+                tts_runtime_settings_service.update,
+                {
+                    "default_voice": payload.default_voice or current_tts.get("default_voice"),
+                    "warm_voices": payload.warm_models or current_tts.get("warm_voices", []),
+                    "conversion_sample_rates_hz": current_tts.get("conversion_sample_rates_hz", []),
+                    "conversion_policy": current_tts.get("conversion_policy"),
+                },
+            )
+        return response
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)
     async def capabilities_status() -> CapabilitySummaryResponse:

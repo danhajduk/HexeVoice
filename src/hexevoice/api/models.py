@@ -544,6 +544,11 @@ class ProviderSetupRequest(BaseModel):
 class ProviderConfigRequest(BaseModel):
     enabled: bool = True
     default: bool = False
+    model: str | None = None
+    warm_model: bool | None = None
+    warm_models: list[str] = Field(default_factory=list)
+    default_voice: str | None = None
+    default_wakeword: str | None = None
 
 
 class ProviderSetupResponse(BaseModel):
@@ -551,6 +556,7 @@ class ProviderSetupResponse(BaseModel):
     supported_providers: list[str] = Field(default_factory=list)
     enabled_providers: list[str] = Field(default_factory=list)
     default_provider: str | None = None
+    provider_configs: dict[str, dict[str, object]] = Field(default_factory=dict)
     declaration_allowed: bool = False
     blocking_reasons: list[str] = Field(default_factory=list)
 
