@@ -26,10 +26,14 @@ class TranscribeRequest(BaseModel):
     audio_base64: str = Field(min_length=1)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    app_settings = settings or Settings()
-    adapter = FasterWhisperSpeechToTextAdapter(
-        model_name=app_settings.voice_stt_faster_whisper_model,
+class SttConfigRequest(BaseModel):
+    model: str | None = None
+    warm_model: bool = False
+
+
+def _build_adapter(app_settings: Settings, *, model_name: str | None = None) -> FasterWhisperSpeechToTextAdapter:
+    return FasterWhisperSpeechToTextAdapter(
+        model_name=model_name or app_settings.voice_stt_faster_whisper_model,
         device=app_settings.voice_stt_faster_whisper_device,
         compute_type=app_settings.voice_stt_faster_whisper_compute_type,
         temp_dir=app_settings.resolved_faster_whisper_temp_dir(),
@@ -40,7 +44,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         word_timestamps=app_settings.voice_stt_faster_whisper_word_timestamps,
         max_initial_timestamp=app_settings.voice_stt_faster_whisper_max_initial_timestamp,
     )
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    app_settings = settings or Settings()
+    adapter = _build_adapter(app_settings)
     app = FastAPI(title="HexeVoice STT")
+
+    def service_status() -> dict[str, Any]:
+        status = adapter.status()
+        return {
+            **status,
+            "provider": "external_faster_whisper",
+            "service": "hexevoice-stt",
+        }
 
     @app.on_event("startup")
     async def preload_on_startup() -> None:
@@ -62,12 +79,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        status = adapter.status()
-        return {
-            **status,
-            "provider": "external_faster_whisper",
-            "service": "hexevoice-stt",
-        }
+        return service_status()
 
     @app.post("/preload")
     async def preload() -> dict[str, Any]:
@@ -76,6 +88,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             **result,
             "provider": "external_faster_whisper",
             "service": "hexevoice-stt",
+        }
+
+    @app.put("/config")
+    async def update_config(payload: SttConfigRequest) -> dict[str, Any]:
+        nonlocal adapter
+        requested_model = str(payload.model or "").strip()
+        current_model = str(adapter.status().get("model") or "").strip()
+        if requested_model and requested_model != current_model:
+            log.info("Switching external faster-whisper STT model: %s -> %s", current_model, requested_model)
+            adapter = _build_adapter(app_settings, model_name=requested_model)
+        if payload.warm_model:
+            result = await asyncio.to_thread(adapter.preload)
+            return {
+                **service_status(),
+                "config_applied": True,
+                "preload": result,
+            }
+        return {
+            **service_status(),
+            "config_applied": True,
         }
 
     @app.post("/transcribe")

@@ -2071,6 +2071,72 @@ def test_node_ui_stt_provider_status_prefers_saved_model(tmp_path):
     assert facts["restart_required"] == "yes"
 
 
+def test_node_ui_stt_provider_setup_applies_external_runtime_config(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def put(self, url, *, json):
+            calls.append({"url": url, "json": json, "timeout": self.timeout})
+
+            class Response:
+                def raise_for_status(self):
+                    return None
+
+            return Response()
+
+    monkeypatch.setattr("hexevoice.main.httpx.AsyncClient", FakeAsyncClient)
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=state_path,
+                voice_stt_provider="external_faster_whisper",
+                voice_stt_service_base_url="http://stt.test:10300",
+                voice_stt_timeout_s=12.0,
+            )
+        )
+    )
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "provider_setup": {
+                    "supported_providers": ["voice", "external_faster_whisper"],
+                    "enabled_providers": ["voice"],
+                    "default_provider": "voice",
+                },
+            }
+        )
+    )
+
+    response = client.put(
+        "/api/node/ui/providers/external_faster_whisper/setup",
+        json={"enabled": True, "default": True, "model": "small.en", "warm_model": True},
+    )
+
+    assert response.status_code == 200
+    assert calls == [
+        {
+            "url": "http://stt.test:10300/config",
+            "json": {"model": "small.en", "warm_model": True},
+            "timeout": 12.0,
+        }
+    ]
+
+
 def test_capability_declaration_governance_and_operational_status_flow(tmp_path, monkeypatch):
     state_path = tmp_path / "onboarding-state.json"
     client = TestClient(create_app(Settings(onboarding_state_path=state_path)))

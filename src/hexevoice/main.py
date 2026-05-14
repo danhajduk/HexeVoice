@@ -1717,6 +1717,15 @@ def create_app(
                     "conversion_policy": current_tts.get("conversion_policy"),
                 },
             )
+        if provider_id == "external_faster_whisper" and payload.model:
+            try:
+                async with httpx.AsyncClient(timeout=app_settings.voice_stt_timeout_s) as client:
+                    await client.put(
+                        f"{app_settings.resolved_voice_stt_service_base_url()}/config",
+                        json={"model": payload.model, "warm_model": bool(payload.warm_model)},
+                    )
+            except httpx.HTTPError:
+                pass
         return response
 
     @app.get("/api/capabilities", response_model=CapabilitySummaryResponse)

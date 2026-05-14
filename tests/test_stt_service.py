@@ -155,3 +155,34 @@ def test_stt_service_skips_startup_preload_when_disabled(monkeypatch, tmp_path):
 
     assert calls == []
     assert health.json()["loaded"] is False
+
+
+def test_stt_service_config_switches_active_model(monkeypatch, tmp_path):
+    created_models = []
+    preloaded = []
+
+    class FakeAdapter:
+        def __init__(self, *, model_name, **_kwargs):
+            self.model_name = model_name
+            self.loaded = False
+            created_models.append(model_name)
+
+        def status(self):
+            return {"healthy": True, "model": self.model_name, "loaded": self.loaded}
+
+        def preload(self):
+            self.loaded = True
+            preloaded.append(self.model_name)
+            return {"loaded": True, "model": self.model_name, "duration_ms": 1.2}
+
+    monkeypatch.setattr(stt_service, "FasterWhisperSpeechToTextAdapter", FakeAdapter)
+    app = stt_service.create_app(Settings(runtime_dir=tmp_path, voice_stt_faster_whisper_model="base.en"))
+    client = TestClient(app)
+
+    response = client.put("/config", json={"model": "small.en", "warm_model": True})
+
+    assert response.status_code == 200
+    assert response.json()["model"] == "small.en"
+    assert response.json()["loaded"] is True
+    assert created_models == ["base.en", "small.en"]
+    assert preloaded == ["small.en"]
