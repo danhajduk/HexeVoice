@@ -24,6 +24,11 @@ class TtsRequest(BaseModel):
     voice: str | None = None
 
 
+class TtsConfigRequest(BaseModel):
+    default_voice: str | None = None
+    warm_voices: list[str] | None = None
+
+
 def _env_float(name: str, default: float) -> float:
     try:
         return float(os.getenv(name, str(default)))
@@ -44,6 +49,11 @@ def _model_path_for_voice(voice: str | None) -> Path:
     configured = Path(os.getenv("PIPER_TTS_MODEL_PATH", str(_models_dir() / "en_US-lessac-medium.onnx")))
     if not voice:
         return configured
+    resolved = _resolve_voice_model_path(voice)
+    return resolved or configured
+
+
+def _resolve_voice_model_path(voice: str) -> Path | None:
     safe_voice = Path(voice).name
     candidate = _models_dir() / f"{safe_voice}.onnx"
     if candidate.exists():
@@ -52,7 +62,7 @@ def _model_path_for_voice(voice: str | None) -> Path:
     for model_path in sorted(_models_dir().glob("*.onnx")):
         if model_path.stem.casefold() == requested:
             return model_path
-    return configured
+    return None
 
 
 def _model_sample_rate(model_path: Path) -> int:
@@ -208,6 +218,25 @@ def _warm_worker_for_model(model_path: Path) -> WarmPiperWorker | None:
     return _warm_workers().get(model_path)
 
 
+def _replace_warm_workers(voices: list[str]) -> None:
+    new_workers: dict[Path, WarmPiperWorker] = {}
+    for voice in voices:
+        model_path = _resolve_voice_model_path(voice)
+        if model_path is None:
+            raise ValueError(f"unknown_voice:{voice}")
+        new_workers[model_path] = WarmPiperWorker(model_path)
+
+    with _WARM_WORKERS_LOCK:
+        old_workers = list(_WARM_WORKERS.values())
+        _WARM_WORKERS.clear()
+        _WARM_WORKERS.update(new_workers)
+
+    for worker in old_workers:
+        worker.stop()
+    for worker in new_workers.values():
+        worker.start()
+
+
 def synthesize_wav(*, text: str, voice: str | None = None) -> bytes:
     model_path = _model_path_for_voice(voice)
     if not model_path.exists():
@@ -276,3 +305,31 @@ def synthesize(payload: TtsRequest) -> Response:
     except Exception as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return Response(content=audio, media_type="audio/wav")
+
+
+@app.put("/config")
+def update_config(payload: TtsConfigRequest) -> dict[str, object]:
+    if payload.default_voice is not None:
+        requested_default = str(payload.default_voice or "").strip()
+        if requested_default:
+            model_path = _resolve_voice_model_path(requested_default)
+            if model_path is None:
+                raise HTTPException(status_code=400, detail=f"unknown_voice:{requested_default}")
+            os.environ["PIPER_TTS_MODEL_PATH"] = str(model_path)
+
+    if payload.warm_voices is not None:
+        warm_voices = []
+        for voice in payload.warm_voices:
+            voice_id = str(voice or "").strip()
+            if voice_id and voice_id not in warm_voices:
+                warm_voices.append(voice_id)
+        try:
+            _replace_warm_workers(warm_voices)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        os.environ["PIPER_TTS_WARM_VOICES"] = ",".join(warm_voices)
+
+    return {
+        **health(),
+        "config_applied": True,
+    }

@@ -51,6 +51,34 @@ def test_piper_tts_voice_lookup_accepts_core_normalized_model_ids(tmp_path, monk
     assert piper_app._model_path_for_voice("en_us-lessac-medium") == requested
 
 
+def test_piper_tts_config_updates_default_and_warm_voices(tmp_path, monkeypatch):
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    fallback = model_dir / "fallback.onnx"
+    fallback.write_bytes(b"fallback")
+    requested = model_dir / "en_US-jenny-high.onnx"
+    requested.write_bytes(b"model")
+    monkeypatch.setenv("PIPER_TTS_MODEL_DIR", str(model_dir))
+    monkeypatch.setenv("PIPER_TTS_MODEL_PATH", str(fallback))
+    monkeypatch.setattr(piper_app.WarmPiperWorker, "start", lambda self: None)
+    monkeypatch.setattr(piper_app.WarmPiperWorker, "stop", lambda self: None)
+    piper_app._WARM_WORKERS.clear()
+
+    client = TestClient(piper_app.app)
+    response = client.put(
+        "/config",
+        json={"default_voice": "en_us-jenny-high", "warm_voices": ["en_US-jenny-high"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["config_applied"] is True
+    assert payload["model_path"] == str(requested)
+    assert payload["warm_voices"] == ["en_US-jenny-high"]
+    assert piper_app._model_path_for_voice(None) == requested
+    piper_app._WARM_WORKERS.clear()
+
+
 def test_piper_tts_dockerfile_launches_tts_service_module():
     dockerfile = Path(__file__).resolve().parents[1] / "services/piper_tts/Dockerfile"
     content = dockerfile.read_text(encoding="utf-8")

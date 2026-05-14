@@ -1105,7 +1105,19 @@ def create_app(
 
     @app.put("/api/tts/settings")
     async def tts_settings_update(payload: dict) -> dict:
-        return await asyncio.to_thread(tts_runtime_settings_service.update, payload)
+        updated = await asyncio.to_thread(tts_runtime_settings_service.update, payload)
+        try:
+            applied = await apply_piper_tts_provider_config(
+                ProviderConfigRequest(
+                    default_voice=updated.get("default_voice"),
+                    warm_models=updated.get("warm_voices") if isinstance(updated.get("warm_voices"), list) else None,
+                )
+            )
+            if applied:
+                updated = await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
+        except httpx.HTTPError:
+            pass
+        return updated
 
     @app.get("/api/tts/artifacts")
     async def tts_artifacts(limit: int = 50) -> dict:
@@ -1382,6 +1394,24 @@ def create_app(
             await client.put(
                 f"{app_settings.resolved_voice_stt_service_base_url()}/config",
                 json={"model": payload.model, "warm_model": bool(payload.warm_model)},
+            )
+        return True
+
+    async def apply_piper_tts_provider_config(payload: ProviderConfigRequest) -> bool:
+        if app_settings.voice_tts_provider != "piper":
+            return False
+        default_voice = str(payload.default_voice or "").strip()
+        warm_voices = payload.warm_models if isinstance(payload.warm_models, list) else None
+        if not default_voice and warm_voices is None:
+            return False
+        request_payload = {
+            "default_voice": default_voice or None,
+            "warm_voices": [str(voice or "").strip() for voice in (warm_voices or []) if str(voice or "").strip()],
+        }
+        async with httpx.AsyncClient(timeout=app_settings.voice_tts_timeout_s) as client:
+            await client.put(
+                f"{app_settings.resolved_voice_tts_piper_base_url()}/config",
+                json=request_payload,
             )
         return True
 
@@ -1734,7 +1764,7 @@ def create_app(
         response = provider_setup_service.save_provider_setup(provider_id, payload)
         if provider_id == "piper":
             current_tts = await asyncio.to_thread(tts_runtime_settings_service.status)
-            await asyncio.to_thread(
+            updated_tts = await asyncio.to_thread(
                 tts_runtime_settings_service.update,
                 {
                     "default_voice": payload.default_voice or current_tts.get("default_voice"),
@@ -1743,6 +1773,17 @@ def create_app(
                     "conversion_policy": current_tts.get("conversion_policy"),
                 },
             )
+            try:
+                applied = await apply_piper_tts_provider_config(
+                    ProviderConfigRequest(
+                        default_voice=updated_tts.get("default_voice"),
+                        warm_models=updated_tts.get("warm_voices") if isinstance(updated_tts.get("warm_voices"), list) else None,
+                    )
+                )
+                if applied:
+                    await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
+            except httpx.HTTPError:
+                pass
         if provider_id == "external_faster_whisper" and payload.model:
             try:
                 await apply_external_stt_provider_config(payload)

@@ -1975,7 +1975,15 @@ def test_provider_setup_enables_provider_and_advances_to_capability_declaration(
 
 def test_node_ui_provider_setup_updates_one_provider(tmp_path):
     state_path = tmp_path / "onboarding-state.json"
-    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=state_path,
+                runtime_dir=tmp_path,
+                piper_tts_env_path=tmp_path / "piper-tts.env",
+            )
+        )
+    )
     store = OnboardingStateStore(path=state_path)
     store.save(
         PersistedOnboardingState.model_validate(
@@ -2021,6 +2029,87 @@ def test_node_ui_provider_setup_updates_one_provider(tmp_path):
     payload = response.json()
     assert payload["enabled_providers"] == ["piper"]
     assert payload["default_provider"] == "piper"
+
+
+def test_node_ui_piper_provider_setup_applies_runtime_config(tmp_path, monkeypatch):
+    calls = []
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def put(self, url, *, json):
+            calls.append({"url": url, "json": json, "timeout": self.timeout})
+
+            class Response:
+                def raise_for_status(self):
+                    return None
+
+            return Response()
+
+    monkeypatch.setattr("hexevoice.main.httpx.AsyncClient", FakeAsyncClient)
+    state_path = tmp_path / "onboarding-state.json"
+    model_dir = tmp_path / "models"
+    model_dir.mkdir()
+    (model_dir / "en_US-jenny-high.onnx").write_bytes(b"model")
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=state_path,
+                runtime_dir=tmp_path,
+                voice_tts_provider="piper",
+                voice_tts_piper_base_url="http://tts.test:10200",
+                voice_tts_timeout_s=9.0,
+                piper_tts_model_dir=model_dir,
+                piper_tts_env_path=tmp_path / "piper-tts.env",
+            )
+        )
+    )
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "provider_setup": {
+                    "supported_providers": ["voice", "piper"],
+                    "enabled_providers": ["voice"],
+                    "default_provider": "voice",
+                },
+            }
+        )
+    )
+
+    response = client.put(
+        "/api/node/ui/providers/piper/setup",
+        json={
+            "enabled": True,
+            "default": True,
+            "default_voice": "en_US-jenny-high",
+            "warm_models": ["en_US-jenny-high"],
+        },
+    )
+
+    assert response.status_code == 200
+    assert calls == [
+        {
+            "url": "http://tts.test:10200/config",
+            "json": {"default_voice": "en_US-jenny-high", "warm_voices": ["en_US-jenny-high"]},
+            "timeout": 9.0,
+        }
+    ]
+    settings = client.get("/api/tts/settings").json()
+    assert settings["default_voice"] == "en_US-jenny-high"
+    assert settings["warm_voices"] == ["en_US-jenny-high"]
+    assert settings["restart_required"] is False
 
 
 def test_node_ui_stt_provider_status_prefers_saved_model(tmp_path, monkeypatch):
