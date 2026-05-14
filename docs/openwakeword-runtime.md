@@ -128,7 +128,9 @@ The firmware micro-VAD pause threshold defaults to `190` ms and is persisted on 
 ```bash
 curl -X POST http://127.0.0.1:9004/api/endpoint/micro-vad \
   -H "Content-Type: application/json" \
-  -d '{"endpoint_id":"esp-pe-1","pause_ms":190}'
+  -d '{"endpoint_id":"esp-pe-1","pause_ms":2200}'
 ```
+
+The backend accepts values from `80` to `3000` ms. Short values around the old `190` ms default can end the stream before enough post-wake speech reaches STT on slower wake-word turns; `2200` ms is a useful diagnostic value when STT only hears the start of a command.
 
 Validation notes are captured in `docs/supervised-openwakeword-validation.md`.
