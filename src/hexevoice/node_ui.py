@@ -712,6 +712,17 @@ def provider_setup_section(
     }
 
 
+def provider_display_state(status: dict[str, Any]) -> str:
+    raw_state = status.get("status")
+    if raw_state:
+        return provider_state(raw_state)
+    if status.get("healthy") is True and status.get("configured", True):
+        return "ready"
+    if status.get("configured") is False:
+        return "disabled"
+    return provider_state(raw_state)
+
+
 def provider_status(
     services_status: dict[str, Any],
     voice_status: dict[str, Any],
@@ -724,13 +735,14 @@ def provider_status(
     for provider_id, label in (("stt", "STT Provider"), ("tts", "TTS Provider")):
         status = pipeline.get(provider_id) if isinstance(pipeline.get(provider_id), dict) else {}
         provider_name = text(status.get("provider") or tts_settings.get("provider") if provider_id == "tts" else status.get("provider"))
+        state = provider_display_state(status)
         providers.append(
             {
                 "id": provider_id,
                 "label": label,
                 "provider": provider_name,
-                "state": provider_state(status.get("status")),
-                "tone": "success" if status.get("healthy") else tone_for_state(status.get("status")),
+                "state": state,
+                "tone": "success" if status.get("healthy") else tone_for_state(state),
                 "facts": [
                     {"id": "model", "label": "Model", "value": text(status.get("model") or (tts_settings.get("provider") if provider_id == "tts" else None))},
                     {"id": "last_error", "label": "Last Error", "value": text(status.get("last_error") or status.get("error"), "clear")},

@@ -266,6 +266,29 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
     assert wake_setup["enabled"] == "yes"
 
 
+def test_provider_status_marks_healthy_stt_without_status_as_ready():
+    card = node_ui.provider_status(
+        {"openwakeword": "running", "piper_tts": "running"},
+        {
+            "turn_pipeline": {
+                "stt": {
+                    "provider": "external_faster_whisper",
+                    "healthy": True,
+                    "configured": True,
+                    "model": "base.en",
+                }
+            },
+            "wake_provider": {"provider": "supervised_openwakeword"},
+        },
+        {"provider": "piper"},
+        {"enabled_providers": ["voice", "piper", "external_faster_whisper"]},
+    )
+
+    stt_provider = next(provider for provider in card["providers"] if provider["id"] == "stt")
+    assert stt_provider["state"] == "ready"
+    assert stt_provider["tone"] == "success"
+
+
 def test_core_rendered_voice_domain_cards(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
     client.post(
