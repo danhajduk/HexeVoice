@@ -22,9 +22,9 @@ The manifest advertises the health strip as a top-level `health` surface backed 
 | Intent detail | `/api/voice/intents/{intent_id}` | `detail_drawer` | `/api/voice/intents/{intent_id}` |
 | Intent test/invoke | `/api/voice/intents/dispatch`, `/api/voice/intents/invoke` | `action_panel` | `/api/node/ui/voice/intent-actions` |
 | TTS settings and models | `TtsProviderDashboardSection`, `/api/tts/settings` | `provider_status`, `resource_grid`, `settings_form` | `/api/node/ui/voice/tts` |
-| TTS artifacts | `/api/tts/artifacts`, `/api/voice/tts/artifacts` | `artifact_browser` | `/api/node/ui/voice/tts-artifacts` |
-| Voice sessions and wake recordings | `/api/voice/sessions`, `/api/voice/status` | `record_list`, `artifact_browser` | `/api/node/ui/voice/sessions` |
-| Endpoint media inventory | `/api/endpoint/media`, `/api/endpoint/media/inventory/{endpoint_id}` | `artifact_browser`, `resource_grid` | `/api/node/ui/voice/media` |
+| TTS artifacts | `/api/tts/artifacts`, `/api/voice/tts/artifacts` | `record_list` | `/api/node/ui/voice/tts-artifacts` |
+| Voice sessions and wake recordings | `/api/voice/sessions`, `/api/voice/status` | `record_list` | `/api/node/ui/voice/sessions` |
+| Endpoint media inventory | `/api/endpoint/media`, `/api/endpoint/media/inventory/{endpoint_id}` | `record_list` | `/api/node/ui/voice/media` |
 
 ## Pilot Boundary
 
@@ -35,7 +35,7 @@ The manifest advertises the health strip as a top-level `health` surface backed 
 - Page snapshot endpoints serve the runtime JSON files from `runtime/rendered_node_ui_pages/` once those files exist.
 - HexeVoice refreshes the runtime JSON files in the background on each page cadence so Core proxy reads do not block on snapshot rebuilding.
 - Legacy `/api/node/ui/...` per-card endpoints remain available during migration.
-- Later Core-only card kinds may be returned before Core has renderers; Core should show unsupported-card states until those kinds land.
+- Later Core-only card kinds should be added to Core contracts and renderers before HexeVoice advertises them in page snapshots.
 
 ## Implemented Pilot Endpoints
 

@@ -37,6 +37,21 @@ def tone_for_state(value: object) -> str:
     return "neutral"
 
 
+def provider_state(value: object) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"ok", "ready", "running", "healthy", "online", "connected", "success", "fresh"}:
+        return "ready"
+    if normalized in {"disabled", "off"}:
+        return "disabled"
+    if normalized in {"warning", "degraded", "stale", "pending", "review_due", "probation", "restart_required"}:
+        return "degraded"
+    if normalized in {"missing", "not_created", "exited", "offline", "unavailable", "unknown"}:
+        return "unavailable"
+    if normalized in {"error", "failed", "untrusted", "blocked"}:
+        return "error"
+    return "unknown"
+
+
 def yes_no(value: object) -> str:
     if isinstance(value, bool):
         return "yes" if value else "no"
@@ -469,39 +484,33 @@ def overview_health(
 
     items = [
         {
-            "id": "lifecycle",
-            "label": "Life cycle",
-            "value": text(node_status.get("lifecycle_state")),
+            "state_name": "Life cycle",
+            "current_state": text(node_status.get("lifecycle_state")),
             "tone": tone_for_state(node_status.get("lifecycle_state")),
         },
         {
-            "id": "trust",
-            "label": "Trust",
-            "value": text(node_status.get("trust_state")),
+            "state_name": "Trust",
+            "current_state": text(node_status.get("trust_state")),
             "tone": tone_for_state(node_status.get("trust_state")),
         },
         {
-            "id": "governance",
-            "label": "Gov",
-            "value": governance_state,
+            "state_name": "Governance",
+            "current_state": governance_state,
             "tone": governance_tone,
         },
         {
-            "id": "providers",
-            "label": "Providers",
-            "value": "configured" if provider_setup.get("configured") else "pending",
+            "state_name": "Providers",
+            "current_state": "configured" if provider_setup.get("configured") else "pending",
             "tone": "success" if provider_setup.get("configured") else "warning",
         },
         {
-            "id": "stt_engine",
-            "label": "STT engine",
-            "value": engine_value(stt),
+            "state_name": "STT engine",
+            "current_state": engine_value(stt),
             "tone": engine_tone(stt),
         },
         {
-            "id": "tts_engine",
-            "label": "TTS engine",
-            "value": engine_value(tts),
+            "state_name": "TTS engine",
+            "current_state": engine_value(tts),
             "tone": engine_tone(tts),
         },
     ]
@@ -519,16 +528,16 @@ def overview_warnings(
 ) -> dict[str, Any]:
     warnings: list[dict[str, Any]] = []
     for reason in node_status.get("blocking_reasons") or readiness.get("blocking_reasons") or []:
-        warnings.append({"id": f"blocker.{reason}", "label": "Readiness Blocker", "message": text(reason), "tone": "warning"})
+        warnings.append({"id": f"blocker.{reason}", "title": "Readiness Blocker", "message": text(reason), "tone": "warning"})
     if onboarding.get("last_error"):
-        warnings.append({"id": "onboarding.last_error", "label": "Onboarding", "message": text(onboarding.get("last_error")), "tone": "danger"})
+        warnings.append({"id": "onboarding.last_error", "title": "Onboarding", "message": text(onboarding.get("last_error")), "tone": "danger"})
     supervisor = services_status.get("supervisor") if isinstance(services_status.get("supervisor"), dict) else {}
     if supervisor.get("last_error"):
-        warnings.append({"id": "supervisor.last_error", "label": "Supervisor", "message": text(supervisor.get("last_error")), "tone": "warning"})
+        warnings.append({"id": "supervisor.last_error", "title": "Supervisor", "message": text(supervisor.get("last_error")), "tone": "warning"})
     if voice_status.get("last_error"):
         last_error = voice_status.get("last_error")
         message = text(last_error.get("code") if isinstance(last_error, dict) else last_error)
-        warnings.append({"id": "voice.last_error", "label": "Voice Pipeline", "message": message, "tone": "danger"})
+        warnings.append({"id": "voice.last_error", "title": "Voice Pipeline", "message": message, "tone": "danger"})
     card = base_card("warning_banner", empty=not warnings)
     card["warnings"] = warnings
     return card
@@ -596,7 +605,7 @@ def provider_status(services_status: dict[str, Any], voice_status: dict[str, Any
                 "id": provider_id,
                 "label": label,
                 "provider": text(status.get("provider") or tts_settings.get("provider") if provider_id == "tts" else status.get("provider")),
-                "state": text(status.get("status"), "unknown"),
+                "state": provider_state(status.get("status")),
                 "tone": "success" if status.get("healthy") else tone_for_state(status.get("status")),
                 "facts": [
                     {"id": "model", "label": "Model", "value": text(status.get("model") or (tts_settings.get("provider") if provider_id == "tts" else None))},
@@ -609,7 +618,7 @@ def provider_status(services_status: dict[str, Any], voice_status: dict[str, Any
             "id": "wake",
             "label": "Wake Runtime",
             "provider": text(voice_status.get("wake_provider", {}).get("provider") if isinstance(voice_status.get("wake_provider"), dict) else None),
-            "state": text(services_status.get("openwakeword")),
+            "state": provider_state(services_status.get("openwakeword")),
             "tone": tone_for_state(services_status.get("openwakeword")),
             "facts": [{"id": "piper", "label": "Piper Runtime", "value": text(services_status.get("piper_tts"))}],
         }
@@ -751,25 +760,49 @@ def tts_runtime(tts_settings: dict[str, Any], voice_status: dict[str, Any]) -> d
             "id": "tts",
             "label": "TTS Provider",
             "provider": text(tts_settings.get("provider")),
-            "state": "restart_required" if tts_settings.get("restart_required") else text(tts.get("status"), "ready"),
+            "state": provider_state("restart_required" if tts_settings.get("restart_required") else tts.get("status")),
             "tone": "warning" if tts_settings.get("restart_required") else ("success" if tts.get("healthy", True) else "danger"),
             "facts": [
                 {"id": "models", "label": "Models", "value": str(len(tts_settings.get("models") or []))},
                 {"id": "warm_voices", "label": "Warm Voices", "value": ", ".join(tts_settings.get("warm_voices") or []) or "none"},
                 {"id": "conversion_rates", "label": "Conversion Rates", "value": ", ".join(str(item) for item in tts_settings.get("conversion_sample_rates_hz") or []) or "none"},
                 {"id": "policy", "label": "Conversion Policy", "value": text(tts_settings.get("conversion_policy"))},
+                {"id": "restart_required", "label": "Restart Required", "value": yes_no(tts_settings.get("restart_required"))},
             ],
         }
     ]
-    card["models"] = tts_settings.get("models") if isinstance(tts_settings.get("models"), list) else []
     return card
 
 
 def artifact_records(artifacts_payload: dict[str, Any]) -> dict[str, Any]:
     artifacts = artifacts_payload.get("artifacts") if isinstance(artifacts_payload.get("artifacts"), list) else []
-    card = base_card("artifact_browser", empty=not artifacts)
+    records = []
+    for artifact in artifacts:
+        if not isinstance(artifact, dict):
+            continue
+        stream_id = text(artifact.get("stream_id") or artifact.get("artifact_id") or artifact.get("id"))
+        records.append(
+            {
+                "id": stream_id,
+                "name": artifact.get("filename") or stream_id,
+                "status": text(artifact.get("status"), "available"),
+                "stream_id": artifact.get("stream_id"),
+                "endpoint_id": artifact.get("endpoint_id"),
+                "voice": artifact.get("voice"),
+                "created_at": artifact.get("created_at"),
+                "duration_ms": artifact.get("duration_ms"),
+                "detail_ref": {"endpoint": f"/api/voice/tts/{stream_id}"},
+            }
+        )
+    card = base_card("record_list", empty=not records)
     card["summary"] = {"count": artifacts_payload.get("count", len(artifacts)), "limit": artifacts_payload.get("limit")}
-    card["artifacts"] = artifacts
+    card["columns"] = [
+        {"id": "name", "label": "Artifact"},
+        {"id": "status", "label": "Status"},
+        {"id": "voice", "label": "Voice"},
+        {"id": "created_at", "label": "Created"},
+    ]
+    card["records"] = records
     return card
 
 
@@ -801,15 +834,45 @@ def session_records(sessions: list[dict[str, Any]]) -> dict[str, Any]:
 
 def media_records(assets_payload: dict[str, Any], endpoints: list[dict[str, Any]]) -> dict[str, Any]:
     assets = assets_payload.get("assets") if isinstance(assets_payload.get("assets"), list) else []
-    card = base_card("artifact_browser", empty=not assets and not endpoints)
-    card["assets"] = assets
-    card["endpoint_inventories"] = [
-        {
-            "endpoint_id": endpoint.get("endpoint_id"),
-            "last_seen_at": endpoint.get("last_seen_at"),
-            "storage": endpoint.get("capabilities", {}).get("storage", {}) if isinstance(endpoint.get("capabilities"), dict) else {},
-        }
-        for endpoint in endpoints
-    ]
+    records = []
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        asset_id = text(asset.get("asset_id") or asset.get("filename") or asset.get("id"))
+        records.append(
+            {
+                "id": f"asset.{asset_id}",
+                "name": asset.get("filename") or asset_id,
+                "status": text(asset.get("status"), "available"),
+                "record_type": "asset",
+                "asset_id": asset_id,
+                "content_type": asset.get("content_type"),
+                "bytes": asset.get("bytes"),
+                "detail_ref": {"endpoint": f"/api/endpoint/media/files/{asset_id}"},
+            }
+        )
+    for endpoint in endpoints:
+        endpoint_id = text(endpoint.get("endpoint_id"))
+        storage = endpoint.get("capabilities", {}).get("storage", {}) if isinstance(endpoint.get("capabilities"), dict) else {}
+        records.append(
+            {
+                "id": f"endpoint.{endpoint_id}",
+                "name": endpoint_id,
+                "status": endpoint.get("connection_state"),
+                "record_type": "endpoint_inventory",
+                "endpoint_id": endpoint_id,
+                "last_seen_at": endpoint.get("last_seen_at"),
+                "storage": storage,
+                "tone": tone_for_state(endpoint.get("connection_state")),
+            }
+        )
+    card = base_card("record_list", empty=not records)
     card["summary"] = {"asset_count": len(assets), "endpoint_count": len(endpoints)}
+    card["columns"] = [
+        {"id": "name", "label": "Name"},
+        {"id": "record_type", "label": "Type"},
+        {"id": "status", "label": "Status"},
+        {"id": "last_seen_at", "label": "Last Seen"},
+    ]
+    card["records"] = records
     return card

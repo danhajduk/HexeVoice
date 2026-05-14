@@ -206,13 +206,13 @@ def test_core_rendered_node_ui_overview_and_runtime_cards(tmp_path):
     assert overview["kind"] == "node_overview"
     assert overview["identity"]["local_ui_mode"] == "full"
     assert health["kind"] == "health_strip"
-    assert [item["id"] for item in health["items"]] == [
-        "lifecycle",
-        "trust",
-        "governance",
-        "providers",
-        "stt_engine",
-        "tts_engine",
+    assert [item["state_name"] for item in health["items"]] == [
+        "Life cycle",
+        "Trust",
+        "Governance",
+        "Providers",
+        "STT engine",
+        "TTS engine",
     ]
     assert warnings["kind"] == "warning_banner"
     assert facts["kind"] == "facts_card"
@@ -255,8 +255,8 @@ def test_core_rendered_voice_domain_cards(tmp_path):
     assert intents["summary"]["registered_count"] >= 1
     assert intent_actions["kind"] == "action_panel"
     assert tts["kind"] == "provider_status"
-    assert artifacts["kind"] == "artifact_browser"
-    assert media["kind"] == "artifact_browser"
+    assert artifacts["kind"] == "record_list"
+    assert media["kind"] == "record_list"
     assert media["summary"]["endpoint_count"] == 1
 
 
@@ -298,6 +298,6 @@ def test_core_rendered_node_ui_health_uses_governance_freshness_state():
         {"turn_pipeline": {"stt": {"status": "ready"}, "tts": {"status": "ready"}}},
     )
 
-    governance = next(item for item in health["items"] if item["id"] == "governance")
-    assert governance["value"] == "fresh"
+    governance = next(item for item in health["items"] if item["state_name"] == "Governance")
+    assert governance["current_state"] == "fresh"
     assert governance["tone"] == "info"
