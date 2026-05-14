@@ -69,6 +69,8 @@ The manifest advertises the health strip as a top-level `health` surface backed 
 
 Provider-specific setup forms intentionally stay scoped to the clicked provider tile. STT exposes model and warm-load controls, TTS exposes default voice/model and multi-select warm voices from the discovered Piper model inventory, and Wake exposes default wakeword and warm-load controls.
 
+STT status displays the saved configured model as `Model`. If the live STT runtime is still using a previous model, the status details also include `Active Model` and `Restart Required` so operators can see that a service restart is needed before the new model is active.
+
 ## Local UI Mode
 
 `VOICE_LOCAL_UI_MODE` accepts `full`, `setup_only`, or `disabled`. The default is `full`.

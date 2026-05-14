@@ -740,12 +740,10 @@ def provider_setup_section(
     config = config if isinstance(config, dict) else {}
     supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
     enabled = [text(item) for item in provider_setup.get("enabled_providers") or [] if item]
-    provider_configs = provider_setup.get("provider_configs") if isinstance(provider_setup.get("provider_configs"), dict) else {}
     default_provider = text(provider_setup.get("default_provider"), "")
     candidate_ids = [provider_id, text(provider_name, ""), *(enabled_aliases or [])]
     candidate_set = set(candidate_ids)
-    setup_provider_id = next((candidate for candidate in candidate_ids if candidate in supported), text(provider_name or provider_id))
-    saved_config = provider_configs.get(setup_provider_id) if isinstance(provider_configs.get(setup_provider_id), dict) else {}
+    setup_provider_id, saved_config = provider_setup_target(provider_id, provider_name, provider_setup, enabled_aliases=enabled_aliases)
     is_enabled = any(candidate in enabled for candidate in candidate_ids if candidate)
     is_default = default_provider in candidate_set
     setup_action_enabled = setup_provider_id in supported
@@ -798,6 +796,21 @@ def provider_setup_section(
             "fields": fields,
         },
     }
+
+
+def provider_setup_target(
+    provider_id: str,
+    provider_name: str | None,
+    provider_setup: dict[str, Any],
+    *,
+    enabled_aliases: list[str] | None = None,
+) -> tuple[str, dict[str, Any]]:
+    supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
+    candidate_ids = [provider_id, text(provider_name, ""), *(enabled_aliases or [])]
+    setup_provider_id = next((candidate for candidate in candidate_ids if candidate in supported), text(provider_name or provider_id))
+    provider_configs = provider_setup.get("provider_configs") if isinstance(provider_setup.get("provider_configs"), dict) else {}
+    saved_config = provider_configs.get(setup_provider_id) if isinstance(provider_configs.get(setup_provider_id), dict) else {}
+    return setup_provider_id, saved_config
 
 
 def provider_config_fields(config: dict[str, Any], saved_config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -883,6 +896,37 @@ def provider_config_fields(config: dict[str, Any], saved_config: dict[str, Any])
     return []
 
 
+def provider_status_facts(
+    provider_id: str,
+    provider_name: str | None,
+    status: dict[str, Any],
+    tts_settings: dict[str, Any],
+    setup: dict[str, Any],
+    config: dict[str, Any],
+) -> list[dict[str, Any]]:
+    active_model = text(status.get("model") or (tts_settings.get("provider") if provider_id == "tts" else None), "")
+    if provider_id != "stt":
+        return [
+            {"id": "model", "label": "Model", "value": text(active_model, "unknown")},
+            {"id": "last_error", "label": "Last Error", "value": text(status.get("last_error") or status.get("error"), "clear")},
+        ]
+
+    _, saved_config = provider_setup_target(provider_id, provider_name, setup)
+    configured_model = text(saved_config.get("model") or config.get("model") or active_model, "")
+    facts = [
+        {"id": "model", "label": "Model", "value": text(configured_model or active_model, "unknown")},
+        {"id": "last_error", "label": "Last Error", "value": text(status.get("last_error") or status.get("error"), "clear")},
+    ]
+    if configured_model and active_model and configured_model != active_model:
+        facts.extend(
+            [
+                {"id": "active_model", "label": "Active Model", "value": active_model, "tone": "warning"},
+                {"id": "restart_required", "label": "Restart Required", "value": "yes", "tone": "warning"},
+            ]
+        )
+    return facts
+
+
 def provider_display_state(status: dict[str, Any]) -> str:
     raw_state = status.get("status")
     if raw_state:
@@ -916,10 +960,7 @@ def provider_status(
                 "provider": provider_name,
                 "state": state,
                 "tone": "success" if status.get("healthy") else tone_for_state(state),
-                "facts": [
-                    {"id": "model", "label": "Model", "value": text(status.get("model") or (tts_settings.get("provider") if provider_id == "tts" else None))},
-                    {"id": "last_error", "label": "Last Error", "value": text(status.get("last_error") or status.get("error"), "clear")},
-                ],
+                "facts": provider_status_facts(provider_id, provider_name, status, tts_settings, setup, config.get(provider_id) or {}),
                 "setup": provider_setup_section(provider_id, provider_name, setup, config=config.get(provider_id)),
             }
         )

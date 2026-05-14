@@ -2023,6 +2023,54 @@ def test_node_ui_provider_setup_updates_one_provider(tmp_path):
     assert payload["default_provider"] == "piper"
 
 
+def test_node_ui_stt_provider_status_prefers_saved_model(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=state_path,
+                voice_stt_provider="external_faster_whisper",
+                voice_stt_faster_whisper_model="base.en",
+            )
+        )
+    )
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "provider_setup": {
+                    "supported_providers": ["voice", "external_faster_whisper"],
+                    "enabled_providers": ["voice"],
+                    "default_provider": "voice",
+                },
+                "resume": {
+                    "current_step_id": "provider_setup",
+                    "last_completed_step_id": "trust_activation",
+                },
+            }
+        )
+    )
+
+    response = client.put(
+        "/api/node/ui/providers/external_faster_whisper/setup",
+        json={"enabled": True, "default": False, "model": "small.en", "warm_model": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["provider_configs"]["external_faster_whisper"]["model"] == "small.en"
+
+    status = client.get("/api/node/ui/providers/status")
+    assert status.status_code == 200
+    stt_provider = next(provider for provider in status.json()["providers"] if provider["id"] == "stt")
+    facts = {fact["id"]: fact["value"] for fact in stt_provider["facts"]}
+    assert facts["model"] == "small.en"
+    assert facts["active_model"] == "base.en"
+    assert facts["restart_required"] == "yes"
+
+
 def test_capability_declaration_governance_and_operational_status_flow(tmp_path, monkeypatch):
     state_path = tmp_path / "onboarding-state.json"
     client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
