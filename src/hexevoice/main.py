@@ -1250,21 +1250,24 @@ def create_app(
             node_ui.as_json(service.onboarding_payload()),
         )
 
-    def node_ui_overview_health_payload() -> dict:
+    async def node_ui_services_status() -> dict:
+        return node_ui.as_json(await asyncio.to_thread(service.service_status_payload))
+
+    async def node_ui_overview_health_payload() -> dict:
         return node_ui.overview_health(
             node_ui.as_json(service.status_payload()),
             node_ui.as_json(service.readiness_payload()),
             node_ui.as_json(provider_setup_service.status_payload()),
-            node_ui.as_json(service.service_status_payload()),
+            await node_ui_services_status(),
             voice_session_manager.status(),
         )
 
-    def node_ui_overview_warnings_payload() -> dict:
+    async def node_ui_overview_warnings_payload() -> dict:
         return node_ui.overview_warnings(
             node_ui.as_json(service.status_payload()),
             node_ui.as_json(service.onboarding_payload()),
             node_ui.as_json(service.readiness_payload()),
-            node_ui.as_json(service.service_status_payload()),
+            await node_ui_services_status(),
             voice_session_manager.status(),
         )
 
@@ -1277,12 +1280,12 @@ def create_app(
             voice_session_manager.status(),
         )
 
-    def node_ui_runtime_services_payload() -> dict:
-        return node_ui.runtime_services(node_ui.as_json(service.service_status_payload()), voice_session_manager.status())
+    async def node_ui_runtime_services_payload() -> dict:
+        return node_ui.runtime_services(await node_ui_services_status(), voice_session_manager.status())
 
     async def node_ui_providers_status_payload() -> dict:
         return node_ui.provider_status(
-            node_ui.as_json(service.service_status_payload()),
+            await node_ui_services_status(),
             voice_session_manager.status(),
             await node_ui_tts_settings(),
         )
@@ -1318,11 +1321,11 @@ def create_app(
         }
         return node_ui.media_records(assets, node_ui_endpoint_statuses())
 
-    def node_ui_health_page_card() -> dict:
+    async def node_ui_health_page_card() -> dict:
         return node_ui.page_card(
             "node.health",
             "Node Health",
-            node_ui_overview_health_payload(),
+            await node_ui_overview_health_payload(),
             refresh=node_ui.NEAR_LIVE_15S,
         )
 
@@ -1331,23 +1334,23 @@ def create_app(
             "overview",
             node_ui.NEAR_LIVE_15S,
             [
-                node_ui_health_page_card(),
+                await node_ui_health_page_card(),
                 node_ui.page_card(
                     "node.warnings",
                     "Operational Warnings",
-                    node_ui_overview_warnings_payload(),
+                    await node_ui_overview_warnings_payload(),
                     refresh=node_ui.MANUAL_REFRESH,
                 ),
             ],
         )
 
     async def build_node_ui_page_runtime() -> dict:
-        runtime_services_payload = node_ui_runtime_services_payload()
+        runtime_services_payload = await node_ui_runtime_services_payload()
         return node_ui.page_snapshot(
             "runtime",
             node_ui.NEAR_LIVE_15S,
             [
-                node_ui_health_page_card(),
+                await node_ui_health_page_card(),
                 node_ui.page_card(
                     "runtime.services",
                     "Runtime Services",
@@ -1369,7 +1372,7 @@ def create_app(
             "voice.endpoints",
             node_ui.NEAR_LIVE_10S,
             [
-                node_ui_health_page_card(),
+                await node_ui_health_page_card(),
                 node_ui.page_card(
                     "voice.endpoints",
                     "Voice Endpoints",
@@ -1399,7 +1402,7 @@ def create_app(
             "voice.intents",
             node_ui.MANUAL_REFRESH,
             [
-                node_ui_health_page_card(),
+                await node_ui_health_page_card(),
                 node_ui.page_card(
                     "voice.intent_registry",
                     "Registered Intents",
@@ -1422,7 +1425,7 @@ def create_app(
             "voice.tts",
             node_ui.NEAR_LIVE_30S,
             [
-                node_ui_health_page_card(),
+                await node_ui_health_page_card(),
                 node_ui.page_card(
                     "voice.tts_runtime",
                     "TTS Runtime",
@@ -1484,11 +1487,11 @@ def create_app(
 
     @app.get("/api/node/ui/overview/health")
     async def node_ui_overview_health() -> dict:
-        return node_ui_overview_health_payload()
+        return await node_ui_overview_health_payload()
 
     @app.get("/api/node/ui/overview/warnings")
     async def node_ui_overview_warnings() -> dict:
-        return node_ui_overview_warnings_payload()
+        return await node_ui_overview_warnings_payload()
 
     @app.get("/api/node/ui/overview/facts")
     async def node_ui_overview_facts() -> dict:
@@ -1496,7 +1499,7 @@ def create_app(
 
     @app.get("/api/node/ui/runtime/services")
     async def node_ui_runtime_services() -> dict:
-        return node_ui_runtime_services_payload()
+        return await node_ui_runtime_services_payload()
 
     @app.get("/api/node/ui/providers/status")
     async def node_ui_providers_status() -> dict:

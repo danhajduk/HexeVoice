@@ -162,8 +162,14 @@ class PageSnapshotCache:
     ) -> dict[str, Any]:
         disk_payload = self._read_disk(key)
         if disk_payload is not None:
-            self.refresh_if_due(key, refresh, builder)
-            return copy.deepcopy(disk_payload)
+            mtime = self._snapshot_mtime(key)
+            invalidated_at = max(self._all_invalidated_at, self._invalidated_at.get(key, 0.0))
+            if mtime is None or mtime > invalidated_at:
+                self.refresh_if_due(key, refresh, builder)
+                return copy.deepcopy(disk_payload)
+
+            payload = await self.refresh_now(key, refresh, builder)
+            return payload
 
         payload = await self.refresh_now(key, refresh, builder)
         return payload
