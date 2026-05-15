@@ -463,6 +463,28 @@ class LocalSetupStateResponse(BaseModel):
     core_connection: CoreConnectionSetupResponse
 
 
+class NodeMigrationExportRequest(BaseModel):
+    include_trust_secrets: bool = False
+
+
+class NodeMigrationImportRequest(BaseModel):
+    bundle: dict[str, Any]
+    destination_core_base_url: AnyHttpUrl | None = None
+    destination_api_base_url: AnyHttpUrl | None = None
+    destination_ui_endpoint: AnyHttpUrl | None = None
+    destination_hostname: str | None = Field(default=None, max_length=120)
+
+
+class NodeMigrationImportResponse(BaseModel):
+    imported: bool
+    files_imported: list[str] = Field(default_factory=list)
+    node_id: str | None = None
+    core_base_url: str | None = None
+    api_base_url: str | None = None
+    ui_endpoint: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class BootstrapAdvertisementRequest(BaseModel):
     topic: str
     api_base: str | None = None

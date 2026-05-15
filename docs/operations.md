@@ -30,6 +30,21 @@ The post-trust setup card remains available after setup completion. Operators ca
 
 The setup card also exposes **Refresh Core metadata** after trust activation. Use it when Core has a stale Voice Node `api_base_url` or UI endpoint; the backend requires `CORE_ADMIN_TOKEN` or Core's legacy `SYNTHIA_ADMIN_TOKEN` and patches Core's node registration metadata refresh route.
 
+## Node Migration
+
+The operational dashboard includes a Migration section for moving a Voice Node
+identity to a different machine. Export creates a JSON bundle containing local
+onboarding/trust state, endpoint registry metadata, registered voice intents
+when present, and runtime TTS settings when present. Trust tokens are included
+only when the operator leaves **Include trust secrets** enabled; without those
+tokens, the imported node must be reactivated with Core.
+
+Import validates the bundle, writes the supported local runtime state files, and
+can rewrite destination-specific `api_base_url`, `ui_endpoint`, `core_base_url`,
+and hostname values for the new machine. Large local artifacts are intentionally
+not bundled. Copy Piper models, firmware artifacts, endpoint media, service env
+files, logs, and retained audio/history separately when those are needed.
+
 ## Recovery Signals
 
 The frontend and local API surface the following important recovery conditions:

@@ -44,6 +44,13 @@ export function DashboardSidebarCard({ dashboardSection, openDashboard }) {
         >
           Diagnostics
         </button>
+        <button
+          type="button"
+          className={`btn operational-nav-btn ${dashboardSection === "migration" ? "btn-primary" : ""}`}
+          onClick={() => openDashboard("migration")}
+        >
+          Migration
+        </button>
         <button type="button" className="btn operational-nav-btn">
           Activity
         </button>

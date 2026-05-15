@@ -41,6 +41,9 @@ from hexevoice.api.models import (
     VoiceSessionHistoryListResponse,
     VoiceSessionReplayRequest,
     LocalSetupStateResponse,
+    NodeMigrationExportRequest,
+    NodeMigrationImportRequest,
+    NodeMigrationImportResponse,
     NodeStatusResponse,
     NodeIdentitySetupRequest,
     NodeIdentitySetupResponse,
@@ -93,6 +96,7 @@ from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
 from hexevoice import node_ui
+from hexevoice.migration import NodeMigrationError, NodeMigrationService
 from hexevoice.onboarding.bootstrap import BootstrapDiscoveryService
 from hexevoice.onboarding.registration_metadata import RegistrationMetadataRefreshService
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
@@ -317,6 +321,7 @@ def create_app(
     )
     voice_intent_registry = VoiceIntentRegistry(store=voice_intent_store)
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
+    node_migration_service = NodeMigrationService(settings=app_settings)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     session_start_service = OnboardingSessionStartService(
         settings=app_settings,
@@ -1708,6 +1713,20 @@ def create_app(
     @app.post("/api/onboarding/restart", response_model=LocalSetupStateResponse)
     async def restart_onboarding_setup() -> LocalSetupStateResponse:
         return onboarding_state_service.restart_setup()
+
+    @app.post("/api/node/migration/export")
+    async def export_node_migration_bundle(payload: NodeMigrationExportRequest) -> dict:
+        try:
+            return node_migration_service.export_bundle(payload)
+        except NodeMigrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/node/migration/import", response_model=NodeMigrationImportResponse)
+    async def import_node_migration_bundle(payload: NodeMigrationImportRequest) -> NodeMigrationImportResponse:
+        try:
+            return node_migration_service.import_bundle(payload)
+        except NodeMigrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.put("/api/onboarding/local-setup/node-identity", response_model=NodeIdentitySetupResponse)
     async def save_node_identity(payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:

@@ -26,6 +26,7 @@ import { VoiceIntentsDashboardSection } from "./features/dashboard/VoiceIntentsD
 import { TtsProviderDashboardSection } from "./features/dashboard/TtsProviderDashboardSection";
 import { RuntimeDashboardSection } from "./features/dashboard/RuntimeDashboardSection";
 import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDashboardSection";
+import { MigrationDashboardSection } from "./features/dashboard/MigrationDashboardSection";
 
 const CANONICAL_SETUP_STEPS = [
   { id: "node_identity", label: "Node Identity" },
@@ -473,6 +474,10 @@ export default function App() {
           copy="Diagnostics, export tools, and deep inspection will live here next."
         />
       );
+    }
+
+    if (dashboardSection === "migration") {
+      return <MigrationDashboardSection onRefresh={refresh} />;
     }
 
     return (
