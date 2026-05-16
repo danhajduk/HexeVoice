@@ -84,6 +84,9 @@ from hexevoice.api.models import (
     ServiceActionRequest,
     ServiceActionResponse,
     SetupBootstrapStatusResponse,
+    SetupHostReadinessActionRequest,
+    SetupHostReadinessActionResponse,
+    SetupHostReadinessResponse,
     ProviderSetupRequest,
     ProviderSetupResponse,
     ServiceStatusResponse,
@@ -113,6 +116,7 @@ from hexevoice.persistence import EndpointRegistryStore, OnboardingStateStore, V
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.setup_bootstrap import SetupBootstrapStatusService
+from hexevoice.setup_host import SetupHostReadinessService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
@@ -336,6 +340,7 @@ def create_app(
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     node_migration_service = NodeMigrationService(settings=app_settings)
     setup_bootstrap_status_service = SetupBootstrapStatusService(settings=app_settings)
+    setup_host_readiness_service = SetupHostReadinessService(settings=app_settings)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     session_start_service = OnboardingSessionStartService(
         settings=app_settings,
@@ -1846,6 +1851,20 @@ def create_app(
     @app.get("/api/setup/bootstrap/status", response_model=SetupBootstrapStatusResponse)
     async def setup_bootstrap_status() -> SetupBootstrapStatusResponse:
         return setup_bootstrap_status_service.status_payload()
+
+    @app.get("/api/setup/host-readiness", response_model=SetupHostReadinessResponse)
+    async def setup_host_readiness() -> SetupHostReadinessResponse:
+        return setup_host_readiness_service.readiness_payload()
+
+    @app.post(
+        "/api/setup/host-readiness/actions/{action}",
+        response_model=SetupHostReadinessActionResponse,
+    )
+    async def setup_host_readiness_action(
+        action: str,
+        payload: SetupHostReadinessActionRequest,
+    ) -> SetupHostReadinessActionResponse:
+        return setup_host_readiness_service.run_action(action, payload)
 
     @app.put("/api/onboarding/local-setup/node-identity", response_model=NodeIdentitySetupResponse)
     async def save_node_identity(payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:

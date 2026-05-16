@@ -87,6 +87,14 @@ export async function getSetupBootstrapStatus() {
   return fetchJson("/api/setup/bootstrap/status");
 }
 
+export async function getSetupHostReadiness() {
+  return fetchJson("/api/setup/host-readiness");
+}
+
+export async function runSetupHostReadinessAction(action, payload = {}) {
+  return sendJson(`/api/setup/host-readiness/actions/${encodeURIComponent(action)}`, { body: payload });
+}
+
 export async function restartOnboardingSetup() {
   return sendJson("/api/onboarding/restart");
 }

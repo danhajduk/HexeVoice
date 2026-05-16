@@ -56,6 +56,11 @@ The runner writes progress to `runtime/setup/bootstrap-status.json`. The
 temporary or production backend exposes the same state at
 `GET /api/setup/bootstrap/status`, including current action, completed actions,
 pending downloads, retryable failures, lifecycle mode, and final redirect URL.
+The first production setup page is available at `/setup/host`; it polls
+`GET /api/setup/host-readiness` for host checks and uses targeted
+`/api/setup/host-readiness/actions/<action>` calls for runtime directory prep,
+CUDA preflight, host alias setup, Supervisor handoff, and saving the selected
+new-node or migration setup mode.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none

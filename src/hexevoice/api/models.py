@@ -544,6 +544,58 @@ class SetupBootstrapStatusResponse(BaseModel):
     updated_at: str | None = None
 
 
+class SetupHostReadinessCheck(BaseModel):
+    id: str
+    label: str
+    status: Literal["pass", "warn", "fail", "unknown"]
+    required: bool = False
+    message: str
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class SetupHostSelection(BaseModel):
+    setup_mode: Literal["new_node", "migrate_existing"] = "new_node"
+    lifecycle_mode: Literal[
+        "existing_supervisor",
+        "joined_supervisor",
+        "standalone_supervisor",
+        "unsupervised_systemd",
+    ] = "unsupervised_systemd"
+    core_base_url: str | None = None
+    supervisor_id: str | None = None
+
+
+class SetupHostReadinessResponse(BaseModel):
+    ok: bool
+    hostname: str
+    lan_host: str
+    temporary_setup_url: str | None = None
+    production_setup_url: str
+    api_base_url: str
+    ui_base_url: str
+    setup_mode: str = "new_node"
+    lifecycle_mode: str = "unsupervised_systemd"
+    supervisor_detected: bool = False
+    checks: list[SetupHostReadinessCheck] = Field(default_factory=list)
+    blockers: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    supported_actions: list[str] = Field(default_factory=list)
+    enrollment_token_url: str | None = None
+    updated_at: str | None = None
+
+
+class SetupHostReadinessActionRequest(SetupHostSelection):
+    enrollment_token: str | None = None
+
+
+class SetupHostReadinessActionResponse(BaseModel):
+    accepted: bool
+    action: str
+    message: str
+    retryable: bool = True
+    readiness: SetupHostReadinessResponse | None = None
+
+
 class BootstrapAdvertisementRequest(BaseModel):
     topic: str
     api_base: str | None = None

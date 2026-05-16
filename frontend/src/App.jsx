@@ -15,6 +15,7 @@ import {
 } from "./api/client";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
 import { SetupSidebar } from "./features/setup/SetupComponents";
+import { HostSetupPage } from "./features/setup/HostSetupPage";
 import { SetupHeroCard } from "./features/setup/cards/SetupHeroCard";
 import { LiveStatusCard } from "./features/setup/cards/LiveStatusCard";
 import { OperatorPromptsCard } from "./features/setup/cards/OperatorPromptsCard";
@@ -60,6 +61,16 @@ function parseDashboardSection(hash) {
   }
   const [, , section] = hash.split("/");
   return section || "overview";
+}
+
+function parseSetupSection(location) {
+  if (!location) {
+    return "flow";
+  }
+  if (location.pathname === "/setup/host" || location.hash === "#/setup/host") {
+    return "host";
+  }
+  return "flow";
 }
 
 function setHashRoute(view) {
@@ -170,6 +181,9 @@ export default function App() {
   const [dashboardSection, setDashboardSection] = useState(() =>
     parseDashboardSection(typeof window !== "undefined" ? window.location.hash : ""),
   );
+  const [setupSection, setSetupSection] = useState(() =>
+    parseSetupSection(typeof window !== "undefined" ? window.location : null),
+  );
   const setupComplete = !isSetupStage(onboarding, status);
   const showSetupPage = !setupComplete || routeView === "setup";
   const setupFlow = buildSetupFlow(onboarding, status);
@@ -279,11 +293,16 @@ export default function App() {
     function syncRoute() {
       setRouteView(parseRouteView(window.location.hash));
       setDashboardSection(parseDashboardSection(window.location.hash));
+      setSetupSection(parseSetupSection(window.location));
     }
 
     window.addEventListener("hashchange", syncRoute);
+    window.addEventListener("popstate", syncRoute);
     syncRoute();
-    return () => window.removeEventListener("hashchange", syncRoute);
+    return () => {
+      window.removeEventListener("hashchange", syncRoute);
+      window.removeEventListener("popstate", syncRoute);
+    };
   }, []);
 
   useEffect(() => {
@@ -517,18 +536,22 @@ export default function App() {
           <div className="main-column">
             <section className="content-stack">
               {showSetupPage ? (
-                <>
-                  <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
-                  <section className="grid setup-secondary-grid">
-                    <LiveStatusCard status={status} />
-                    <OperatorPromptsCard
-                      requiredInputs={requiredInputs}
-                      onboarding={onboarding}
-                      status={status}
-                      setupFlow={setupFlow}
-                    />
-                  </section>
-                </>
+                setupSection === "host" ? (
+                  <HostSetupPage />
+                ) : (
+                  <>
+                    <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
+                    <section className="grid setup-secondary-grid">
+                      <LiveStatusCard status={status} />
+                      <OperatorPromptsCard
+                        requiredInputs={requiredInputs}
+                        onboarding={onboarding}
+                        status={status}
+                        setupFlow={setupFlow}
+                      />
+                    </section>
+                  </>
+                )
               ) : (
                 <>
                   <NodeHealthStripCard

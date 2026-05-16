@@ -1,0 +1,67 @@
+import json
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from hexevoice.config.settings import Settings
+from hexevoice.main import create_app
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    client = TestClient(create_app(Settings(runtime_dir=runtime_dir, api_port=9004)))
+
+    response = client.get("/api/setup/host-readiness")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["production_setup_url"].endswith(":8084/setup/host")
+    assert "continue" in payload["supported_actions"]
+    runtime_check = next(check for check in payload["checks"] if check["id"] == "runtime_dirs")
+    assert runtime_check["status"] == "fail"
+    assert "runtime_dirs" in payload["blockers"]
+
+
+def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    for path in json.loads((ROOT / "config" / "runtime-dirs.json").read_text()).get("runtime_dirs", []):
+        (runtime_dir / path).mkdir(parents=True, exist_ok=True)
+    client = TestClient(create_app(Settings(runtime_dir=runtime_dir)))
+
+    response = client.post(
+        "/api/setup/host-readiness/actions/continue",
+        json={
+            "setup_mode": "migrate_existing",
+            "lifecycle_mode": "joined_supervisor",
+            "core_base_url": "http://10.0.0.100:9001",
+            "supervisor_id": "lab-supervisor",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted"] is True
+    assert payload["readiness"]["setup_mode"] == "migrate_existing"
+    assert payload["readiness"]["lifecycle_mode"] == "joined_supervisor"
+    assert payload["readiness"]["enrollment_token_url"] == "http://10.0.0.100:9001/system/supervisors/enrollment-tokens"
+
+
+def test_setup_host_joined_supervisor_requires_token(tmp_path):
+    client = TestClient(create_app(Settings(runtime_dir=tmp_path / "runtime")))
+
+    response = client.post(
+        "/api/setup/host-readiness/actions/install-joined-supervisor",
+        json={
+            "setup_mode": "new_node",
+            "lifecycle_mode": "joined_supervisor",
+            "core_base_url": "http://10.0.0.100:9001",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted"] is False
+    assert payload["message"] == "joined_supervisor_requires_core_url_and_enrollment_token"
