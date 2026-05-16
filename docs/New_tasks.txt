@@ -1,7 +1,4 @@
 [STOP]
-[STOP]
-[TODO] Task 145: Define runtime state cleanup and git-tracking policy
-[STOP]
 [TODO] Task 146: Make trust secret migration choice explicit
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
 

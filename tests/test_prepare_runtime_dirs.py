@@ -1,29 +1,16 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import subprocess
 
 
-EXPECTED_RUNTIME_DIRS = {
-    "endpoint_media",
-    "endpoint_media/ota",
-    "endpoint_media/ui_manifest",
-    "firmware",
-    "logs",
-    "migration",
-    "migration/backups",
-    "micro_vad_chunks",
-    "openwakeword",
-    "openwakeword/models",
-    "piper-tts",
-    "piper-tts/models",
-    "rendered_node_ui_pages",
-    "sockets",
-    "stt",
-    "stt/faster-whisper",
-    "voice_tts",
-    "wake_recordings",
-}
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def expected_runtime_dirs() -> set[str]:
+    payload = json.loads((ROOT / "config" / "runtime-dirs.json").read_text(encoding="utf-8"))
+    return set(payload["runtime_dirs"])
 
 
 def test_prepare_runtime_dirs_creates_expected_tree(tmp_path):
@@ -39,7 +26,7 @@ def test_prepare_runtime_dirs_creates_expected_tree(tmp_path):
     )
 
     assert f"Prepared HexeVoice runtime directories under {runtime_dir}" in result.stdout
-    missing = [path for path in EXPECTED_RUNTIME_DIRS if not (runtime_dir / path).is_dir()]
+    missing = [path for path in expected_runtime_dirs() if not (runtime_dir / path).is_dir()]
     assert missing == []
 
 

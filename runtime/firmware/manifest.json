@@ -1,9 +1,0 @@
-{
-  "project_name": "hexe_firmware",
-  "version": "ffcf952-dirty",
-  "target": "esp32s3",
-  "board_profile": "esp_box_3",
-  "created_at_utc": "2026-05-14T18:21:58Z",
-  "filename": "hexe_firmware_esp_box_3.bin",
-  "sha256": "4e3ecf31bea5ac12ee39a0c12b1ef321aabda05bc4194b5e39404feaf21b77df"
-}

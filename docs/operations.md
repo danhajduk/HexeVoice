@@ -156,8 +156,8 @@ machine needs a longer model unload/load window, for example
 `STACK_CONTROL_TIMEOUT_S=90 scripts/restart-stack.sh`.
 
 Hosted install runs `scripts/prepare-runtime-dirs.sh` to create the runtime
-directory skeleton idempotently. Run it directly after manual checkouts or after
-changing `RUNTIME_DIR`:
+directory skeleton idempotently from `config/runtime-dirs.json`. Run it directly
+after manual checkouts or after changing `RUNTIME_DIR`:
 
 ```bash
 ./scripts/prepare-runtime-dirs.sh
@@ -169,6 +169,11 @@ models, rendered node UI pages, local sockets, STT cache/model files, generated
 TTS artifacts, and wake recordings. It does not download model binaries,
 firmware binaries, migrated state, logs, or generated audio; those are populated
 by their specific install, download, import, or runtime paths.
+
+Runtime files are local state and should normally stay uncommitted. See
+`docs/runtime-state-policy.md` for the tracking policy and run
+`./scripts/runtime-state-status.sh` to separate source changes from generated
+runtime state when the working tree looks noisy.
 
 Firmware OTA artifacts can be populated during hosted install with
 `HEXEVOICE_SETUP_FIRMWARE=true`, or later with the firmware artifact control

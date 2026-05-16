@@ -158,3 +158,4 @@ Task 142: Add migration preflight and dry-run validation - Completed on 05/16/20
 Task 143: Add post-install smoke test command - Completed on 05/16/2026 13:55
 Task 144: Add migration backup and rollback workflow - Completed on 05/16/2026 13:58
 Task 147: Add optional HexeVoice hostname alias during setup - Completed on 05/16/2026 14:01
+Task 145: Define runtime state cleanup and git-tracking policy - Completed on 05/16/2026 15:36
