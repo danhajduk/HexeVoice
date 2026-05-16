@@ -115,6 +115,18 @@ export async function saveCoreConnection(payload) {
   return sendJson("/api/onboarding/local-setup/core-connection", { method: "PUT", body: payload });
 }
 
+export async function saveSetupCoreConnection(payload) {
+  return sendJson("/api/setup/core", { method: "PUT", body: payload });
+}
+
+export async function preflightSetupMigration(payload) {
+  return sendJson("/api/setup/migration/preflight", { body: payload });
+}
+
+export async function importSetupMigration(payload) {
+  return sendJson("/api/setup/migration/import", { body: payload });
+}
+
 export async function getBootstrapDiscovery() {
   return fetchJson("/api/onboarding/bootstrap-discovery");
 }

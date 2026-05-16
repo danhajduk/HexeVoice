@@ -16,6 +16,7 @@ import {
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
 import { SetupSidebar } from "./features/setup/SetupComponents";
 import { HostSetupPage } from "./features/setup/HostSetupPage";
+import { CoreSetupPage, MigrationSetupPage } from "./features/setup/CoreMigrationSetupPage";
 import { SetupHeroCard } from "./features/setup/cards/SetupHeroCard";
 import { LiveStatusCard } from "./features/setup/cards/LiveStatusCard";
 import { OperatorPromptsCard } from "./features/setup/cards/OperatorPromptsCard";
@@ -69,6 +70,12 @@ function parseSetupSection(location) {
   }
   if (location.pathname === "/setup/host" || location.hash === "#/setup/host") {
     return "host";
+  }
+  if (location.pathname === "/setup/core" || location.hash === "#/setup/core") {
+    return "core";
+  }
+  if (location.pathname === "/setup/migration" || location.hash === "#/setup/migration") {
+    return "migration";
   }
   return "flow";
 }
@@ -538,6 +545,10 @@ export default function App() {
               {showSetupPage ? (
                 setupSection === "host" ? (
                   <HostSetupPage />
+                ) : setupSection === "core" ? (
+                  <CoreSetupPage />
+                ) : setupSection === "migration" ? (
+                  <MigrationSetupPage />
                 ) : (
                   <>
                     <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />

@@ -596,6 +596,15 @@ class SetupHostReadinessActionResponse(BaseModel):
     readiness: SetupHostReadinessResponse | None = None
 
 
+class SetupCoreConnectionResponse(BaseModel):
+    configured: bool
+    core_base_url: str | None = None
+    reachable: bool = False
+    registration_supported: bool = False
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class BootstrapAdvertisementRequest(BaseModel):
     topic: str
     api_base: str | None = None

@@ -87,6 +87,7 @@ from hexevoice.api.models import (
     SetupHostReadinessActionRequest,
     SetupHostReadinessActionResponse,
     SetupHostReadinessResponse,
+    SetupCoreConnectionResponse,
     ProviderSetupRequest,
     ProviderSetupResponse,
     ServiceStatusResponse,
@@ -1873,6 +1874,42 @@ def create_app(
     @app.put("/api/onboarding/local-setup/core-connection", response_model=CoreConnectionSetupResponse)
     async def save_core_connection(payload: CoreConnectionSetupRequest) -> CoreConnectionSetupResponse:
         return onboarding_state_service.save_core_connection(payload)
+
+    @app.put("/api/setup/core", response_model=SetupCoreConnectionResponse)
+    async def setup_core_connection(payload: CoreConnectionSetupRequest) -> SetupCoreConnectionResponse:
+        saved = onboarding_state_service.save_core_connection(payload)
+        warnings: list[str] = []
+        metadata: dict[str, object] = {}
+        reachable = False
+        registration_supported = False
+        core_base = str(payload.core_base_url).rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                response = await client.get(core_base)
+                reachable = response.status_code < 500
+                metadata["root_status_code"] = response.status_code
+                registration_supported = reachable
+        except Exception as exc:
+            warnings.append(f"core_unreachable:{exc}")
+        return SetupCoreConnectionResponse(
+            configured=saved.configured,
+            core_base_url=saved.core_base_url,
+            reachable=reachable,
+            registration_supported=registration_supported,
+            metadata=metadata,
+            warnings=warnings,
+        )
+
+    @app.post("/api/setup/migration/preflight", response_model=NodeMigrationPreflightResponse)
+    async def setup_migration_preflight(payload: NodeMigrationPreflightRequest) -> dict:
+        return node_migration_service.preflight_bundle(payload)
+
+    @app.post("/api/setup/migration/import", response_model=NodeMigrationImportResponse)
+    async def setup_migration_import(payload: NodeMigrationImportRequest) -> NodeMigrationImportResponse:
+        try:
+            return node_migration_service.import_bundle(payload)
+        except NodeMigrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/onboarding/bootstrap-discovery", response_model=BootstrapDiscoveryResponse)
     async def bootstrap_discovery_status() -> BootstrapDiscoveryResponse:

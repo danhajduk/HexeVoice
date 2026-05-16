@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 152: Implement Core Connection and Migration Source setup routes
 [TODO] Task 153: Implement migrated-node re-auth setup step using Core re-auth API
 [TODO] Task 154: Implement provider/runtime setup status, config, apply, and polling flow
 [TODO] Task 155: Implement capability declaration and governance setup step

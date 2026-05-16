@@ -61,6 +61,11 @@ The first production setup page is available at `/setup/host`; it polls
 `/api/setup/host-readiness/actions/<action>` calls for runtime directory prep,
 CUDA preflight, host alias setup, Supervisor handoff, and saving the selected
 new-node or migration setup mode.
+Core connection and migration setup are split into `/setup/core` and
+`/setup/migration`. `/api/setup/core` saves the Core URL even when Core is
+temporarily offline and reports reachability as a warning. The migration setup
+routes wrap the node migration preflight/import APIs and continue to reject any
+bundle containing trust tokens.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none
