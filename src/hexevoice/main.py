@@ -44,6 +44,8 @@ from hexevoice.api.models import (
     NodeMigrationExportRequest,
     NodeMigrationImportRequest,
     NodeMigrationImportResponse,
+    NodeMigrationPreflightRequest,
+    NodeMigrationPreflightResponse,
     NodeStatusResponse,
     NodeIdentitySetupRequest,
     NodeIdentitySetupResponse,
@@ -1816,6 +1818,10 @@ def create_app(
             return node_migration_service.import_bundle(payload)
         except NodeMigrationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/node/migration/preflight", response_model=NodeMigrationPreflightResponse)
+    async def preflight_node_migration_bundle(payload: NodeMigrationPreflightRequest) -> dict:
+        return node_migration_service.preflight_bundle(payload)
 
     @app.put("/api/onboarding/local-setup/node-identity", response_model=NodeIdentitySetupResponse)
     async def save_node_identity(payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:

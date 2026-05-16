@@ -63,6 +63,23 @@ JSON bundle, confirm the destination API/UI URLs, and import. The later
 operational Migration page remains available for exporting bundles and for
 post-setup imports.
 
+Before importing on a new host, run migration preflight. It validates the bundle,
+reports the files/settings that would be written, checks Docker/Compose, Python,
+npm, runtime directory/disk readiness, firmware directory presence, and can
+optionally check Core reachability:
+
+```bash
+./scripts/migration-preflight.py migration-bundle.json \
+  --core-url http://10.0.0.100:9001 \
+  --api-url http://10.0.0.55:9004 \
+  --ui-url http://10.0.0.55:8084
+
+./scripts/migration-preflight.py migration-bundle.json --check-core
+```
+
+The import API also accepts `dry_run=true`; it validates destination overrides
+and returns planned writes plus warnings without changing runtime state.
+
 ## Recovery Signals
 
 The frontend and local API surface the following important recovery conditions:

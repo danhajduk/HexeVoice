@@ -473,6 +473,7 @@ class NodeMigrationImportRequest(BaseModel):
     destination_api_base_url: AnyHttpUrl | None = None
     destination_ui_endpoint: AnyHttpUrl | None = None
     destination_hostname: str | None = Field(default=None, max_length=120)
+    dry_run: bool = False
 
 
 class NodeMigrationImportResponse(BaseModel):
@@ -483,6 +484,19 @@ class NodeMigrationImportResponse(BaseModel):
     api_base_url: str | None = None
     ui_endpoint: str | None = None
     warnings: list[str] = Field(default_factory=list)
+
+
+class NodeMigrationPreflightRequest(NodeMigrationImportRequest):
+    check_core_reachability: bool = False
+
+
+class NodeMigrationPreflightResponse(BaseModel):
+    ok: bool
+    dry_run: bool = True
+    planned_writes: list[str] = Field(default_factory=list)
+    checks: list[dict[str, object]] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
 
 class BootstrapAdvertisementRequest(BaseModel):

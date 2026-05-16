@@ -130,6 +130,100 @@ def test_node_migration_import_restores_state_and_applies_destination_overrides(
     assert tts_settings["default_voice"] == "en_US-lessac-medium"
 
 
+def test_node_migration_import_dry_run_does_not_write_state(tmp_path):
+    bundle = {
+        "schema_version": 1,
+        "state_files": {
+            "onboarding_state": {
+                "pre_trust": {
+                    "node_name": "kitchen-voice",
+                    "api_base_url": "http://10.0.0.22:9004",
+                },
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                    "node_trust_token": None,
+                },
+            }
+        },
+    }
+    destination_path = tmp_path / "destination" / "onboarding-state.json"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=destination_path,
+                endpoint_registry_path=tmp_path / "destination" / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "destination" / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "destination" / "voice-tts-settings.json",
+            )
+        )
+    )
+
+    response = client.post("/api/node/migration/import", json={"bundle": bundle, "dry_run": True})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["imported"] is False
+    assert payload["files_imported"] == ["onboarding_state"]
+    assert "Dry-run only" in " ".join(payload["warnings"])
+    assert not destination_path.exists()
+
+
+def test_node_migration_preflight_reports_missing_docker_and_planned_writes(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+    bundle = {
+        "schema_version": 1,
+        "state_files": {
+            "voice_stt_settings": {
+                "provider": "external_faster_whisper",
+                "model": "small.en",
+                "device": "cpu",
+                "compute_type": "int8",
+            }
+        },
+    }
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "onboarding-state.json",
+                endpoint_registry_path=tmp_path / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+            )
+        )
+    )
+
+    response = client.post("/api/node/migration/preflight", json={"bundle": bundle})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert payload["planned_writes"] == ["voice_stt_settings"]
+    docker_check = next(check for check in payload["checks"] if check["id"] == "docker")
+    assert docker_check["status"] == "fail"
+    assert "docker" in " ".join(payload["errors"]).lower()
+
+
+def test_node_migration_preflight_rejects_invalid_bundle(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "onboarding-state.json",
+                endpoint_registry_path=tmp_path / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+            )
+        )
+    )
+
+    response = client.post("/api/node/migration/preflight", json={"bundle": {"schema_version": 999, "state_files": {}}})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is False
+    assert "unsupported_migration_schema_version" in " ".join(payload["errors"])
+
+
 def test_node_migration_export_imports_stt_provider_settings(tmp_path):
     source_path = tmp_path / "source" / "onboarding-state.json"
     source_settings = Settings(

@@ -3,9 +3,19 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 from pathlib import Path
+import shutil
+import subprocess
+import sys
 from typing import Any
 
-from hexevoice.api.models import NodeMigrationExportRequest, NodeMigrationImportRequest, NodeMigrationImportResponse
+import httpx
+
+from hexevoice.api.models import (
+    NodeMigrationExportRequest,
+    NodeMigrationImportRequest,
+    NodeMigrationImportResponse,
+    NodeMigrationPreflightRequest,
+)
 from hexevoice.assistant.intent_registry import VoiceIntentState, VoiceIntentStateStore
 from hexevoice.config.settings import Settings, parse_tts_conversion_sample_rates
 from hexevoice.persistence import (
@@ -102,6 +112,18 @@ class NodeMigrationService:
         }
 
     def import_bundle(self, payload: NodeMigrationImportRequest) -> NodeMigrationImportResponse:
+        if payload.dry_run:
+            plan = self._dry_run_import_plan(payload)
+            return NodeMigrationImportResponse(
+                imported=False,
+                files_imported=plan["files_imported"],
+                node_id=plan.get("node_id"),
+                core_base_url=plan.get("core_base_url"),
+                api_base_url=plan.get("api_base_url"),
+                ui_endpoint=plan.get("ui_endpoint"),
+                warnings=[*plan["warnings"], "Dry-run only; no runtime state was written."],
+            )
+
         bundle = payload.bundle
         if not isinstance(bundle, dict):
             raise NodeMigrationError("migration_bundle_must_be_object")
@@ -203,6 +225,191 @@ class NodeMigrationService:
             ui_endpoint=ui_endpoint,
             warnings=warnings,
         )
+
+    def preflight_bundle(self, payload: NodeMigrationPreflightRequest) -> dict[str, Any]:
+        checks: list[dict[str, object]] = []
+        warnings: list[str] = []
+        errors: list[str] = []
+        planned_writes: list[str] = []
+
+        def check(check_id: str, ok: bool, message: str, *, required: bool = True, detail: object | None = None) -> None:
+            status = "pass" if ok else ("fail" if required else "warn")
+            item: dict[str, object] = {
+                "id": check_id,
+                "status": status,
+                "required": required,
+                "message": message,
+            }
+            if detail is not None:
+                item["detail"] = detail
+            checks.append(item)
+            if not ok:
+                (errors if required else warnings).append(f"{check_id}: {message}")
+
+        try:
+            plan = self._dry_run_import_plan(payload)
+            planned_writes = plan["files_imported"]
+            warnings.extend(plan["warnings"])
+            check("bundle_schema", True, "Migration bundle schema is valid.")
+        except NodeMigrationError as exc:
+            check("bundle_schema", False, str(exc))
+            plan = {"state_files": {}}
+
+        docker = shutil.which("docker")
+        check("docker", bool(docker), "Docker is available." if docker else "Docker executable was not found.")
+        if docker:
+            compose = subprocess.run(
+                [docker, "compose", "version"],
+                text=True,
+                capture_output=True,
+                timeout=10,
+                check=False,
+            )
+            check(
+                "docker_compose",
+                compose.returncode == 0,
+                "Docker Compose is available." if compose.returncode == 0 else "Docker Compose command failed.",
+                detail=(compose.stderr or compose.stdout or "").strip() or None,
+            )
+        else:
+            check("docker_compose", False, "Docker Compose could not be checked because Docker is missing.")
+
+        check("python", True, f"Python is available at {sys.executable}.")
+        npm = shutil.which("npm")
+        check("npm", bool(npm), "npm is available." if npm else "npm executable was not found.", required=False)
+
+        runtime_dir = self._settings.runtime_dir
+        check(
+            "runtime_dir",
+            runtime_dir.exists(),
+            f"Runtime directory exists: {runtime_dir}" if runtime_dir.exists() else f"Runtime directory is missing: {runtime_dir}",
+            required=False,
+        )
+        try:
+            usage = shutil.disk_usage(runtime_dir if runtime_dir.exists() else runtime_dir.parent)
+            free_gib = round(usage.free / (1024**3), 2)
+            check("disk_space", usage.free >= 1024**3, f"{free_gib} GiB free near runtime directory.", detail={"free_gib": free_gib})
+        except Exception as exc:
+            check("disk_space", False, f"Could not check disk space: {exc}")
+
+        state_files = plan.get("state_files") if isinstance(plan, dict) else {}
+        state_files = state_files if isinstance(state_files, dict) else {}
+        if "voice_stt_settings" in state_files:
+            warnings.append("STT settings may require model download/preload and STT service restart.")
+        if "voice_tts_provider_settings" in state_files or "voice_tts_settings" in state_files:
+            warnings.append("TTS settings may require Piper model files and TTS service restart.")
+        if "voice_wake_settings" in state_files:
+            warnings.append("Wake settings may require wake model files and wake service restart.")
+
+        firmware_dir = self._settings.runtime_dir / "firmware"
+        check(
+            "firmware_dir",
+            firmware_dir.exists(),
+            f"Firmware artifact directory exists: {firmware_dir}" if firmware_dir.exists() else f"Firmware artifact directory is missing: {firmware_dir}",
+            required=False,
+        )
+
+        core_url = self._planned_core_url(payload)
+        if core_url and payload.check_core_reachability:
+            try:
+                response = httpx.get(core_url, timeout=2.0)
+                check("core_reachability", response.status_code < 500, f"Core URL responded with HTTP {response.status_code}.")
+            except Exception as exc:
+                check("core_reachability", False, f"Core URL is not reachable: {exc}")
+        elif core_url:
+            check("core_reachability", True, "Core URL reachability was not requested.", required=False, detail={"core_base_url": core_url})
+        else:
+            check("core_reachability", False, "No destination or bundled Core URL was found.", required=False)
+
+        ok = not errors
+        return {
+            "ok": ok,
+            "dry_run": True,
+            "planned_writes": planned_writes,
+            "checks": checks,
+            "warnings": warnings,
+            "errors": errors,
+        }
+
+    def _dry_run_import_plan(self, payload: NodeMigrationImportRequest) -> dict[str, Any]:
+        bundle = payload.bundle
+        if not isinstance(bundle, dict):
+            raise NodeMigrationError("migration_bundle_must_be_object")
+        if bundle.get("schema_version") != MIGRATION_SCHEMA_VERSION:
+            raise NodeMigrationError("unsupported_migration_schema_version")
+
+        state_files = bundle.get("state_files")
+        if not isinstance(state_files, dict):
+            raise NodeMigrationError("migration_state_files_missing")
+
+        planned: list[str] = []
+        warnings: list[str] = []
+        node_id: str | None = None
+        core_base_url: str | None = None
+        api_base_url: str | None = None
+        ui_endpoint: str | None = None
+
+        onboarding_payload = state_files.get("onboarding_state")
+        if onboarding_payload is not None:
+            onboarding_state = PersistedOnboardingState.model_validate(onboarding_payload)
+            onboarding_state = self._apply_destination_overrides(onboarding_state, payload)
+            node_id = onboarding_state.trust_activation.node_id
+            core_base_url = onboarding_state.pre_trust.core_base_url
+            api_base_url = onboarding_state.pre_trust.api_base_url
+            ui_endpoint = onboarding_state.pre_trust.ui_endpoint
+            planned.append("onboarding_state")
+            if onboarding_state.trust_activation.trust_status == "trusted" and not onboarding_state.trust_activation.node_trust_token:
+                warnings.append("Imported state is trusted but missing node_trust_token; run trust activation again.")
+
+        if state_files.get("endpoint_registry") is not None:
+            PersistedEndpointRegistry.model_validate(state_files["endpoint_registry"])
+            planned.append("endpoint_registry")
+        if state_files.get("voice_intents") is not None:
+            VoiceIntentState.model_validate(state_files["voice_intents"])
+            planned.append("voice_intents")
+        if state_files.get("voice_tts_settings") is not None:
+            if not isinstance(state_files["voice_tts_settings"], dict):
+                raise NodeMigrationError("voice_tts_settings_must_be_object")
+            planned.append("voice_tts_settings")
+        if state_files.get("voice_tts_provider_settings") is not None:
+            self._validate_tts_provider_settings(state_files["voice_tts_provider_settings"])
+            planned.append("voice_tts_provider_settings")
+            warnings.append("Imported TTS provider settings may require Piper voice downloads, warmup, and service restart.")
+        if state_files.get("voice_stt_settings") is not None:
+            stt_settings = self._validate_stt_settings(state_files["voice_stt_settings"])
+            planned.append("voice_stt_settings")
+            warnings.append("Imported STT settings may require model downloads and an STT service restart on this host.")
+            if stt_settings.get("device") == "cuda":
+                warnings.append("Imported STT settings request CUDA; verify GPU support before starting the STT service.")
+        if state_files.get("voice_wake_settings") is not None:
+            self._validate_wake_settings(state_files["voice_wake_settings"])
+            planned.append("voice_wake_settings")
+            warnings.append("Imported wake settings may require wake model download/copy and wake service restart.")
+
+        if not planned:
+            raise NodeMigrationError("migration_bundle_contains_no_supported_state_files")
+
+        warnings.append("Copy model, firmware, endpoint media, and service env files separately if this node uses them.")
+        return {
+            "files_imported": planned,
+            "warnings": warnings,
+            "node_id": node_id,
+            "core_base_url": core_base_url,
+            "api_base_url": api_base_url,
+            "ui_endpoint": ui_endpoint,
+            "state_files": state_files,
+        }
+
+    def _planned_core_url(self, payload: NodeMigrationImportRequest) -> str | None:
+        if payload.destination_core_base_url is not None:
+            return str(payload.destination_core_base_url)
+        try:
+            pre_trust = payload.bundle.get("state_files", {}).get("onboarding_state", {}).get("pre_trust", {})
+        except AttributeError:
+            return None
+        if isinstance(pre_trust, dict) and pre_trust.get("core_base_url"):
+            return str(pre_trust.get("core_base_url"))
+        return None
 
     def _apply_destination_overrides(
         self,
