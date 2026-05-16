@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 155: Implement capability declaration and governance setup step
 [TODO] Task 156: Implement final smoke-test ready step and setup-mode root redirect
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
 
