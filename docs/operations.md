@@ -94,6 +94,40 @@ TTS artifacts, and wake recordings. It does not download model binaries,
 firmware binaries, migrated state, logs, or generated audio; those are populated
 by their specific install, download, import, or runtime paths.
 
+Firmware OTA artifacts can be populated during hosted install with
+`HEXEVOICE_SETUP_FIRMWARE=true`, or later with the firmware artifact control
+script. The source is intentionally configurable so firmware can move to a
+separate repository or release feed:
+
+```bash
+HEXEVOICE_SETUP_FIRMWARE=true \
+HEXEVOICE_FIRMWARE_SOURCE_DIR=/path/to/exported/runtime/firmware \
+./install.sh
+
+HEXEVOICE_FIRMWARE_ARTIFACT_BASE_URL=https://downloads.example.com/hexe/firmware/latest \
+./scripts/firmware-artifacts-control.sh download
+
+HEXEVOICE_FIRMWARE_REPO_URL=https://github.com/example/HexeFirmware.git \
+HEXEVOICE_FIRMWARE_REF=main \
+HEXEVOICE_FIRMWARE_REPO_ARTIFACT_DIR=runtime/firmware \
+./scripts/firmware-artifacts-control.sh download
+
+HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY=example/HexeFirmware \
+HEXEVOICE_FIRMWARE_SOURCE=github-release \
+HEXEVOICE_FIRMWARE_RELEASE_TAG=latest \
+./scripts/firmware-artifacts-control.sh download
+```
+
+The downloader writes artifacts atomically into `runtime/firmware`, validates
+`SHA256SUMS` when present, and checks for the configured board profiles
+(`HEXEVOICE_FIRMWARE_REQUIRED_PROFILES`, default `esp_box_3,ha_voice_pe`).
+`HEXEVOICE_FIRMWARE_RELEASE_URL` is accepted as an alias for an asset base URL,
+and `HEXEVOICE_FIRMWARE_ARTIFACTS` can override the exact filenames to fetch
+when a release adds another board profile.
+For offline installs, copy `hexe_firmware*.bin`, `manifest*.json`, and
+`SHA256SUMS` into a local directory and point `HEXEVOICE_FIRMWARE_SOURCE_DIR`
+at it. Use `./scripts/firmware-artifacts-control.sh verify` after manual copies.
+
 The external faster-whisper STT runtime code lives in the standalone
 `src/stt/` package. `src/hexevoice/stt_service.py` remains as a compatibility
 entrypoint, while service launch commands use `python -m stt.service`.

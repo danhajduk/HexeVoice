@@ -208,6 +208,22 @@ runtime/firmware/hexe_firmware_ha_voice_pe.bin
 
 `hexe_firmware.bin` remains the default ESP-BOX OTA artifact for compatibility. Profile-specific OTA pushes can target `hexe_firmware_esp_box_3.bin` or `hexe_firmware_ha_voice_pe.bin`. Runtime firmware binaries and generated manifests are intentionally ignored by git; `runtime/firmware/.gitkeep` keeps the directory present.
 
+Fresh hosted installs can populate `runtime/firmware` from a local export,
+artifact base URL, git repository, or GitHub release without building firmware
+on the Voice Node host:
+
+```bash
+./scripts/firmware-artifacts-control.sh download
+./scripts/firmware-artifacts-control.sh verify
+./scripts/firmware-artifacts-control.sh list
+```
+
+Configure one source before running `download`: `HEXEVOICE_FIRMWARE_SOURCE_DIR`,
+`HEXEVOICE_FIRMWARE_ARTIFACT_URLS`, `HEXEVOICE_FIRMWARE_ARTIFACT_BASE_URL`,
+`HEXEVOICE_FIRMWARE_REPO_URL`, or `HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY` with
+`HEXEVOICE_FIRMWARE_SOURCE=github-release`. Hosted install runs the same path
+when `HEXEVOICE_SETUP_FIRMWARE=true`.
+
 Because the partition table changed from a factory-only layout to OTA slots, each device needs one full USB flash of bootloader, partition table, OTA data, and app before backend-pushed OTA updates can work:
 
 ```bash

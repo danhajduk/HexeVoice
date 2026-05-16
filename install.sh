@@ -9,6 +9,7 @@ RUN_BOOTSTRAP="${HEXEVOICE_RUN_BOOTSTRAP:-false}"
 SETUP_STT="${HEXEVOICE_SETUP_STT:-false}"
 SETUP_TTS="${HEXEVOICE_SETUP_TTS:-false}"
 SETUP_WAKE="${HEXEVOICE_SETUP_WAKE:-false}"
+SETUP_FIRMWARE="${HEXEVOICE_SETUP_FIRMWARE:-false}"
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
@@ -93,6 +94,10 @@ if [[ "$RUN_BOOTSTRAP" == "true" || "$RUN_BOOTSTRAP" == "1" || "$RUN_BOOTSTRAP" 
     log "Installing, starting, and checking openWakeWord"
     ./scripts/openwakeword-control.sh ready
   fi
+  if [[ "$SETUP_FIRMWARE" == "true" || "$SETUP_FIRMWARE" == "1" || "$SETUP_FIRMWARE" == "yes" ]]; then
+    log "Downloading firmware artifacts"
+    ./scripts/firmware-artifacts-control.sh download
+  fi
 else
   if [[ "$SETUP_STT" == "true" || "$SETUP_STT" == "1" || "$SETUP_STT" == "yes" ]]; then
     require_command systemctl
@@ -107,6 +112,10 @@ else
     log "Installing, starting, and checking openWakeWord"
     ./scripts/openwakeword-control.sh ready
   fi
+  if [[ "$SETUP_FIRMWARE" == "true" || "$SETUP_FIRMWARE" == "1" || "$SETUP_FIRMWARE" == "yes" ]]; then
+    log "Downloading firmware artifacts"
+    ./scripts/firmware-artifacts-control.sh download
+  fi
   log "Install complete"
   printf '\nNext steps:\n'
   printf '  cd %s\n' "$APP_DIR"
@@ -114,5 +123,6 @@ else
   printf '  ./scripts/faster-whisper-stt-control.sh ready   # optional: install/start/preload STT\n'
   printf '  ./scripts/piper-tts-control.sh ready            # optional: download/start/warm Piper TTS\n'
   printf '  ./scripts/openwakeword-control.sh ready         # optional: sync/start/check wake word\n'
+  printf '  ./scripts/firmware-artifacts-control.sh download # optional: fetch endpoint firmware artifacts\n'
   printf '  ./scripts/bootstrap.sh\n'
 fi
