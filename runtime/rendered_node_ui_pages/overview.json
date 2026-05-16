@@ -1,0 +1,81 @@
+{
+  "cards": [
+    {
+      "data": {
+        "empty": false,
+        "errors": [],
+        "items": [
+          {
+            "current_state": "operational",
+            "state_name": "Life cycle",
+            "tone": "success"
+          },
+          {
+            "current_state": "trusted",
+            "state_name": "Trust",
+            "tone": "success"
+          },
+          {
+            "current_state": "fresh",
+            "state_name": "Governance",
+            "tone": "info"
+          },
+          {
+            "current_state": "configured",
+            "state_name": "Providers",
+            "tone": "success"
+          },
+          {
+            "current_state": "external_faster_whisper",
+            "state_name": "STT engine",
+            "tone": "success"
+          },
+          {
+            "current_state": "piper",
+            "state_name": "TTS engine",
+            "tone": "success"
+          }
+        ],
+        "kind": "health_strip",
+        "stale": false,
+        "updated_at": "2026-05-16T18:10:13.092580+00:00"
+      },
+      "id": "node.health",
+      "kind": "health_strip",
+      "refresh": {
+        "interval_ms": 15000,
+        "mode": "near_live"
+      },
+      "title": "Node Health"
+    },
+    {
+      "data": {
+        "empty": false,
+        "errors": [],
+        "kind": "warning_banner",
+        "stale": false,
+        "updated_at": "2026-05-16T18:10:13.388170+00:00",
+        "warnings": [
+          {
+            "id": "voice.last_error",
+            "message": "session_conflict",
+            "title": "Voice Pipeline",
+            "tone": "danger"
+          }
+        ]
+      },
+      "id": "node.warnings",
+      "kind": "warning_banner",
+      "refresh": {
+        "mode": "manual"
+      },
+      "title": "Operational Warnings"
+    }
+  ],
+  "page_id": "overview",
+  "refresh": {
+    "interval_ms": 15000,
+    "mode": "near_live"
+  },
+  "updated_at": "2026-05-16T18:10:13.388221+00:00"
+}

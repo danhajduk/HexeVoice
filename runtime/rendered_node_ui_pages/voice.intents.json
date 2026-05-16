@@ -1,0 +1,441 @@
+{
+  "cards": [
+    {
+      "data": {
+        "empty": false,
+        "errors": [],
+        "items": [
+          {
+            "current_state": "operational",
+            "state_name": "Life cycle",
+            "tone": "success"
+          },
+          {
+            "current_state": "trusted",
+            "state_name": "Trust",
+            "tone": "success"
+          },
+          {
+            "current_state": "fresh",
+            "state_name": "Governance",
+            "tone": "info"
+          },
+          {
+            "current_state": "configured",
+            "state_name": "Providers",
+            "tone": "success"
+          },
+          {
+            "current_state": "external_faster_whisper",
+            "state_name": "STT engine",
+            "tone": "success"
+          },
+          {
+            "current_state": "piper",
+            "state_name": "TTS engine",
+            "tone": "success"
+          }
+        ],
+        "kind": "health_strip",
+        "stale": false,
+        "updated_at": "2026-05-16T18:10:12.993329+00:00"
+      },
+      "id": "node.health",
+      "kind": "health_strip",
+      "refresh": {
+        "interval_ms": 15000,
+        "mode": "near_live"
+      },
+      "title": "Node Health"
+    },
+    {
+      "data": {
+        "columns": [
+          {
+            "id": "name",
+            "label": "Name"
+          },
+          {
+            "id": "status",
+            "label": "Status"
+          },
+          {
+            "id": "owner",
+            "label": "Owner"
+          },
+          {
+            "id": "dispatch",
+            "label": "Dispatch"
+          },
+          {
+            "id": "updated_at",
+            "label": "Updated"
+          }
+        ],
+        "empty": false,
+        "errors": [],
+        "kind": "record_list",
+        "records": [
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/timer.create"
+            },
+            "dispatch": "timer.create",
+            "id": "timer.create",
+            "matcher": "builtin_timer",
+            "name": "Create timer",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.382228+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice.time.query"
+            },
+            "dispatch": "voice.time.query",
+            "id": "voice.time.query",
+            "matcher": "builtin_time_query",
+            "name": "What is the time",
+            "owner": "hexevoice",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T19:48:38.286576+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice.confirm.yes"
+            },
+            "dispatch": "voice.confirm.yes",
+            "id": "voice.confirm.yes",
+            "matcher": "builtin_confirmation",
+            "name": "Confirm yes",
+            "owner": "hexevoice",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-10T01:46:20.561948+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice.confirm.no"
+            },
+            "dispatch": "voice.confirm.no",
+            "id": "voice.confirm.no",
+            "matcher": "builtin_confirmation",
+            "name": "Confirm no",
+            "owner": "hexevoice",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-10T01:45:31.686485+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice.debug.followup"
+            },
+            "dispatch": "voice.debug.followup",
+            "id": "voice.debug.followup",
+            "matcher": "exact_example",
+            "name": "Test follow-up",
+            "owner": "hexevoice",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.387134+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/timer.cancel"
+            },
+            "dispatch": "timer.cancel",
+            "id": "timer.cancel",
+            "matcher": "registered_pattern",
+            "name": "Cancel timer",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.388420+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/timer.label"
+            },
+            "dispatch": "timer.label",
+            "id": "timer.label",
+            "matcher": "registered_pattern",
+            "name": "Label timer",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.406537+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/timer.query"
+            },
+            "dispatch": "timer.query",
+            "id": "timer.query",
+            "matcher": "registered_pattern",
+            "name": "Query timer",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.407906+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/notification.dismiss"
+            },
+            "dispatch": "notification.dismiss",
+            "id": "notification.dismiss",
+            "matcher": "registered_pattern",
+            "name": "Dismiss notification",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.436778+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/notification.read"
+            },
+            "dispatch": "notification.read",
+            "id": "notification.read",
+            "matcher": "registered_pattern",
+            "name": "Read notification",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.437956+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/notification.repeat"
+            },
+            "dispatch": "notification.repeat",
+            "id": "notification.repeat",
+            "matcher": "registered_pattern",
+            "name": "Repeat notification",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.481089+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/reminder.cancel"
+            },
+            "dispatch": "reminder.cancel",
+            "id": "reminder.cancel",
+            "matcher": "registered_pattern",
+            "name": "Cancel reminder",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.482362+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/reminder.create"
+            },
+            "dispatch": "reminder.create",
+            "id": "reminder.create",
+            "matcher": "registered_pattern",
+            "name": "Create reminder",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.483268+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/reminder.query"
+            },
+            "dispatch": "reminder.query",
+            "id": "reminder.query",
+            "matcher": "registered_pattern",
+            "name": "Query reminders",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.484224+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/reminder.snooze"
+            },
+            "dispatch": "reminder.snooze",
+            "id": "reminder.snooze",
+            "matcher": "registered_pattern",
+            "name": "Snooze reminder",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.485109+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice_control.cancel"
+            },
+            "dispatch": "voice_control.cancel",
+            "id": "voice_control.cancel",
+            "matcher": "registered_pattern",
+            "name": "Cancel voice interaction",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.485995+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice_control.help"
+            },
+            "dispatch": "voice_control.help",
+            "id": "voice_control.help",
+            "matcher": "registered_pattern",
+            "name": "Voice help",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.486882+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice_control.repeat"
+            },
+            "dispatch": "voice_control.repeat",
+            "id": "voice_control.repeat",
+            "matcher": "registered_pattern",
+            "name": "Repeat voice response",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.487849+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/voice_control.stop"
+            },
+            "dispatch": "voice_control.stop",
+            "id": "voice_control.stop",
+            "matcher": "registered_pattern",
+            "name": "Stop voice playback",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.488732+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/weather.current"
+            },
+            "dispatch": "weather.current",
+            "id": "weather.current",
+            "matcher": "registered_pattern",
+            "name": "Current weather",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.489722+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/weather.forecast"
+            },
+            "dispatch": "weather.forecast",
+            "id": "weather.forecast",
+            "matcher": "registered_pattern",
+            "name": "Weather forecast",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.490769+00:00"
+          },
+          {
+            "detail_ref": {
+              "endpoint": "/api/voice/intents/weather.hourly"
+            },
+            "dispatch": "weather.hourly",
+            "id": "weather.hourly",
+            "matcher": "registered_pattern",
+            "name": "Hourly weather",
+            "owner": "hexe-interaction",
+            "status": "active",
+            "tone": "neutral",
+            "updated_at": "2026-05-14T18:00:49.491867+00:00"
+          }
+        ],
+        "stale": false,
+        "summary": {
+          "active_count": 22,
+          "registered_count": 22,
+          "schema_version": "1.0"
+        },
+        "updated_at": "2026-05-16T18:10:12.995132+00:00"
+      },
+      "detail_endpoint_template": "/api/voice/intents/{intent_id}",
+      "id": "voice.intent_registry",
+      "kind": "record_list",
+      "refresh": {
+        "mode": "manual"
+      },
+      "title": "Registered Intents"
+    },
+    {
+      "actions": [
+        {
+          "endpoint": "/api/voice/intents/dispatch",
+          "id": "test_intent",
+          "label": "Test Intent",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Invoke this intent through the real dispatch path?",
+            "required": true
+          },
+          "endpoint": "/api/voice/intents/invoke",
+          "id": "invoke_intent",
+          "label": "Invoke Intent",
+          "method": "POST"
+        }
+      ],
+      "data": {
+        "empty": false,
+        "errors": [],
+        "groups": [
+          {
+            "actions": [
+              {
+                "enabled": true,
+                "id": "test_intent",
+                "label": "Test Intent",
+                "tone": "neutral"
+              },
+              {
+                "enabled": true,
+                "id": "invoke_intent",
+                "label": "Invoke Intent",
+                "tone": "warning"
+              }
+            ],
+            "id": "intent_test",
+            "label": "Intent Test"
+          }
+        ],
+        "kind": "action_panel",
+        "stale": false,
+        "updated_at": "2026-05-16T18:10:12.996868+00:00"
+      },
+      "id": "voice.intent_actions",
+      "kind": "action_panel",
+      "refresh": {
+        "mode": "manual"
+      },
+      "title": "Intent Actions"
+    }
+  ],
+  "page_id": "voice.intents",
+  "refresh": {
+    "mode": "manual"
+  },
+  "updated_at": "2026-05-16T18:10:12.996943+00:00"
+}

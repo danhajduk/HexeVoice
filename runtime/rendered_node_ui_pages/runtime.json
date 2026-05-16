@@ -1,0 +1,808 @@
+{
+  "cards": [
+    {
+      "data": {
+        "empty": false,
+        "errors": [],
+        "items": [
+          {
+            "current_state": "operational",
+            "state_name": "Life cycle",
+            "tone": "success"
+          },
+          {
+            "current_state": "trusted",
+            "state_name": "Trust",
+            "tone": "success"
+          },
+          {
+            "current_state": "fresh",
+            "state_name": "Governance",
+            "tone": "info"
+          },
+          {
+            "current_state": "configured",
+            "state_name": "Providers",
+            "tone": "success"
+          },
+          {
+            "current_state": "external_faster_whisper",
+            "state_name": "STT engine",
+            "tone": "success"
+          },
+          {
+            "current_state": "piper",
+            "state_name": "TTS engine",
+            "tone": "success"
+          }
+        ],
+        "kind": "health_strip",
+        "stale": false,
+        "updated_at": "2026-05-16T18:10:13.661736+00:00"
+      },
+      "id": "node.health",
+      "kind": "health_strip",
+      "refresh": {
+        "interval_ms": 15000,
+        "mode": "near_live"
+      },
+      "title": "Node Health"
+    },
+    {
+      "actions": [
+        {
+          "endpoint": "/api/node/ui/actions/refresh-status",
+          "id": "refresh_runtime",
+          "label": "Refresh Runtime",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Restart backend?",
+            "required": true
+          },
+          "endpoint": "/api/node/ui/runtime/services/backend/restart",
+          "id": "runtime_service.backend.restart",
+          "label": "Restart",
+          "method": "POST"
+        },
+        {
+          "endpoint": "/api/node/ui/runtime/services/faster_whisper_stt/start",
+          "id": "runtime_service.faster_whisper_stt.start",
+          "label": "Start",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Stop faster_whisper_stt?",
+            "required": true
+          },
+          "destructive": true,
+          "endpoint": "/api/node/ui/runtime/services/faster_whisper_stt/stop",
+          "id": "runtime_service.faster_whisper_stt.stop",
+          "label": "Stop",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Restart faster_whisper_stt?",
+            "required": true
+          },
+          "endpoint": "/api/node/ui/runtime/services/faster_whisper_stt/restart",
+          "id": "runtime_service.faster_whisper_stt.restart",
+          "label": "Restart",
+          "method": "POST"
+        },
+        {
+          "endpoint": "/api/node/ui/runtime/services/openwakeword/start",
+          "id": "runtime_service.openwakeword.start",
+          "label": "Start",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Stop openwakeword?",
+            "required": true
+          },
+          "destructive": true,
+          "endpoint": "/api/node/ui/runtime/services/openwakeword/stop",
+          "id": "runtime_service.openwakeword.stop",
+          "label": "Stop",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Restart openwakeword?",
+            "required": true
+          },
+          "endpoint": "/api/node/ui/runtime/services/openwakeword/restart",
+          "id": "runtime_service.openwakeword.restart",
+          "label": "Restart",
+          "method": "POST"
+        },
+        {
+          "endpoint": "/api/node/ui/runtime/services/piper_tts/start",
+          "id": "runtime_service.piper_tts.start",
+          "label": "Start",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Stop piper_tts?",
+            "required": true
+          },
+          "destructive": true,
+          "endpoint": "/api/node/ui/runtime/services/piper_tts/stop",
+          "id": "runtime_service.piper_tts.stop",
+          "label": "Stop",
+          "method": "POST"
+        },
+        {
+          "confirmation": {
+            "message": "Restart piper_tts?",
+            "required": true
+          },
+          "endpoint": "/api/node/ui/runtime/services/piper_tts/restart",
+          "id": "runtime_service.piper_tts.restart",
+          "label": "Restart",
+          "method": "POST"
+        }
+      ],
+      "data": {
+        "actions": [
+          {
+            "enabled": true,
+            "id": "refresh_runtime",
+            "label": "Refresh Runtime",
+            "tone": "neutral"
+          }
+        ],
+        "empty": false,
+        "errors": [],
+        "kind": "runtime_service",
+        "services": [
+          {
+            "actions": [
+              {
+                "enabled": true,
+                "id": "runtime_service.backend.restart",
+                "label": "Restart",
+                "tone": "neutral"
+              }
+            ],
+            "healthy": true,
+            "id": "backend",
+            "label": "Backend",
+            "last_error": null,
+            "model": null,
+            "provider": null,
+            "resource_usage": {
+              "main_pid": 340728,
+              "pid": 340728,
+              "process_cpu_percent": 5.0,
+              "process_memory_percent": 0.78,
+              "process_memory_rss_bytes": 129351680,
+              "sampled_at": "2026-05-16T18:10:12.899393+00:00",
+              "system_cpu_count": 4,
+              "system_load_15m": 3.15,
+              "system_load_1m": 4.25,
+              "system_load_5m": 3.48,
+              "system_memory_available_bytes": 7831973888,
+              "system_memory_percent": 53.03,
+              "system_memory_total_bytes": 16673808384
+            },
+            "restart_supported": true,
+            "restart_target": "backend",
+            "state": "running",
+            "tone": "success"
+          },
+          {
+            "actions": [
+              {
+                "enabled": true,
+                "id": "runtime_service.faster_whisper_stt.start",
+                "label": "Start",
+                "tone": "success"
+              },
+              {
+                "enabled": true,
+                "id": "runtime_service.faster_whisper_stt.stop",
+                "label": "Stop",
+                "tone": "warning"
+              },
+              {
+                "enabled": true,
+                "id": "runtime_service.faster_whisper_stt.restart",
+                "label": "Restart",
+                "tone": "neutral"
+              }
+            ],
+            "healthy": true,
+            "id": "stt",
+            "label": "STT Engine",
+            "last_error": null,
+            "model": "small.en",
+            "provider": "external_faster_whisper",
+            "resource_usage": {
+              "available": true,
+              "child_pids": [
+                320040
+              ],
+              "kind": "systemd_user_service",
+              "main_pid": 320010,
+              "pid": 320040,
+              "process_cpu_seconds": 355.85,
+              "process_memory_percent": 5.2,
+              "process_memory_rss_bytes": 867446784,
+              "sampled_at": "2026-05-16T18:10:12.939320+00:00",
+              "systemd_service": "hexevoice-stt.service"
+            },
+            "restart_supported": true,
+            "restart_target": "faster_whisper_stt",
+            "state": "active",
+            "tone": "success"
+          },
+          {
+            "actions": [
+              {
+                "enabled": true,
+                "id": "runtime_service.openwakeword.start",
+                "label": "Start",
+                "tone": "success"
+              },
+              {
+                "enabled": true,
+                "id": "runtime_service.openwakeword.stop",
+                "label": "Stop",
+                "tone": "warning"
+              },
+              {
+                "enabled": true,
+                "id": "runtime_service.openwakeword.restart",
+                "label": "Restart",
+                "tone": "neutral"
+              }
+            ],
+            "healthy": true,
+            "id": "wake",
+            "label": "Wake Word",
+            "last_error": null,
+            "model": null,
+            "provider": "supervised_openwakeword",
+            "resource_usage": {
+              "available": true,
+              "main_pid": 761129,
+              "pid": 761129,
+              "process": {
+                "available": true,
+                "container_name": "hexevoice-openwakeword",
+                "kind": "docker_container",
+                "main_pid": 761129,
+                "pid": 761129,
+                "process_cpu_seconds": 0.03,
+                "process_memory_percent": 0.0,
+                "process_memory_rss_bytes": 606208,
+                "resource_available": true,
+                "sampled_at": "2026-05-16T18:10:12.982507+00:00",
+                "status": "running"
+              },
+              "process_cpu_seconds": 0.03,
+              "process_memory_percent": 0.0,
+              "process_memory_rss_bytes": 606208,
+              "resource_available": true,
+              "sampled_at": "2026-05-16T18:10:12.982530+00:00"
+            },
+            "restart_supported": true,
+            "restart_target": "openwakeword",
+            "state": "running",
+            "tone": "success"
+          },
+          {
+            "actions": [
+              {
+                "enabled": true,
+                "id": "runtime_service.piper_tts.start",
+                "label": "Start",
+                "tone": "success"
+              },
+              {
+                "enabled": true,
+                "id": "runtime_service.piper_tts.stop",
+                "label": "Stop",
+                "tone": "warning"
+              },
+              {
+                "enabled": true,
+                "id": "runtime_service.piper_tts.restart",
+                "label": "Restart",
+                "tone": "neutral"
+              }
+            ],
+            "healthy": true,
+            "id": "tts",
+            "label": "TTS Engine",
+            "last_error": null,
+            "model": "en_GB-jenny_dioco-medium",
+            "provider": "piper",
+            "resource_usage": {
+              "available": true,
+              "main_pid": 3528770,
+              "pid": 3528770,
+              "process": {
+                "available": true,
+                "container_name": "hexevoice-piper-tts",
+                "kind": "docker_container",
+                "main_pid": 3528770,
+                "pid": 3528770,
+                "process_cpu_seconds": 195.82,
+                "process_memory_percent": 0.18,
+                "process_memory_rss_bytes": 30056448,
+                "resource_available": true,
+                "sampled_at": "2026-05-16T18:10:12.927235+00:00",
+                "status": "running"
+              },
+              "process_cpu_seconds": 195.82,
+              "process_memory_percent": 0.18,
+              "process_memory_rss_bytes": 30056448,
+              "resource_available": true,
+              "sampled_at": "2026-05-16T18:10:12.927258+00:00"
+            },
+            "restart_supported": true,
+            "restart_target": "piper_tts",
+            "state": "running",
+            "tone": "success"
+          }
+        ],
+        "stale": false,
+        "supervisor": {
+          "configured": true,
+          "last_error": null,
+          "last_seen_at": "2026-05-16T18:10:11.706400",
+          "registered": true
+        },
+        "updated_at": "2026-05-16T18:10:13.139097+00:00"
+      },
+      "id": "runtime.services",
+      "kind": "runtime_service",
+      "refresh": {
+        "interval_ms": 15000,
+        "mode": "near_live"
+      },
+      "title": "Runtime Services"
+    },
+    {
+      "actions": [
+        {
+          "endpoint": "/api/node/ui/providers/external_faster_whisper/setup",
+          "id": "configure_provider_setup.external_faster_whisper",
+          "label": "Save Setup",
+          "method": "PUT"
+        },
+        {
+          "endpoint": "/api/node/ui/providers/piper/setup",
+          "id": "configure_provider_setup.piper",
+          "label": "Save Setup",
+          "method": "PUT"
+        },
+        {
+          "endpoint": "/api/node/ui/providers/voice/setup",
+          "id": "configure_provider_setup.voice",
+          "label": "Save Setup",
+          "method": "PUT"
+        }
+      ],
+      "data": {
+        "empty": false,
+        "errors": [],
+        "kind": "provider_status",
+        "providers": [
+          {
+            "facts": [
+              {
+                "id": "model",
+                "label": "Model",
+                "value": "small.en"
+              },
+              {
+                "id": "last_error",
+                "label": "Last Error",
+                "value": "clear"
+              }
+            ],
+            "id": "stt",
+            "label": "STT Provider",
+            "provider": "external_faster_whisper",
+            "setup": {
+              "actions": [
+                {
+                  "disabled_reason": null,
+                  "enabled": true,
+                  "id": "configure_provider_setup.external_faster_whisper",
+                  "label": "Save Setup",
+                  "tone": "success"
+                }
+              ],
+              "errors": [],
+              "facts": [
+                {
+                  "id": "provider_id",
+                  "label": "Provider ID",
+                  "value": "external_faster_whisper"
+                },
+                {
+                  "id": "setup_provider_id",
+                  "label": "Setup Provider",
+                  "value": "external_faster_whisper"
+                },
+                {
+                  "id": "enabled",
+                  "label": "Enabled",
+                  "value": "yes"
+                },
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "value": "no"
+                },
+                {
+                  "id": "declaration_allowed",
+                  "label": "Declaration Allowed",
+                  "value": "yes"
+                },
+                {
+                  "id": "enabled_providers",
+                  "label": "Enabled Providers",
+                  "value": "voice, piper, external_faster_whisper"
+                },
+                {
+                  "id": "supported_providers",
+                  "label": "Supported Providers",
+                  "value": "voice, faster_whisper, piper, external_faster_whisper"
+                }
+              ],
+              "form": {
+                "fields": [
+                  {
+                    "id": "enabled",
+                    "label": "Enable External Faster Whisper",
+                    "type": "checkbox",
+                    "value": true
+                  },
+                  {
+                    "id": "default",
+                    "label": "Use as default provider",
+                    "type": "checkbox",
+                    "value": false
+                  },
+                  {
+                    "id": "model",
+                    "label": "Default Model",
+                    "options": [
+                      {
+                        "label": "Tiny.en",
+                        "value": "tiny.en"
+                      },
+                      {
+                        "label": "Base.en",
+                        "value": "base.en"
+                      },
+                      {
+                        "label": "Small.en",
+                        "value": "small.en"
+                      },
+                      {
+                        "label": "Medium.en",
+                        "value": "medium.en"
+                      },
+                      {
+                        "label": "Gpt 4o Mini Transcribe",
+                        "value": "gpt-4o-mini-transcribe"
+                      }
+                    ],
+                    "required": true,
+                    "type": "select",
+                    "value": "small.en"
+                  },
+                  {
+                    "id": "warm_model",
+                    "label": "Warm load model",
+                    "type": "checkbox",
+                    "value": true
+                  }
+                ],
+                "submit_action_id": "configure_provider_setup.external_faster_whisper",
+                "title": "External Faster Whisper Setup"
+              }
+            },
+            "state": "ready",
+            "tone": "success"
+          },
+          {
+            "facts": [
+              {
+                "id": "model",
+                "label": "Model",
+                "value": "en_GB-jenny_dioco-medium"
+              },
+              {
+                "id": "last_error",
+                "label": "Last Error",
+                "value": "clear"
+              }
+            ],
+            "id": "tts",
+            "label": "TTS Provider",
+            "provider": "piper",
+            "setup": {
+              "actions": [
+                {
+                  "disabled_reason": null,
+                  "enabled": true,
+                  "id": "configure_provider_setup.piper",
+                  "label": "Save Setup",
+                  "tone": "success"
+                }
+              ],
+              "errors": [],
+              "facts": [
+                {
+                  "id": "provider_id",
+                  "label": "Provider ID",
+                  "value": "piper"
+                },
+                {
+                  "id": "setup_provider_id",
+                  "label": "Setup Provider",
+                  "value": "piper"
+                },
+                {
+                  "id": "enabled",
+                  "label": "Enabled",
+                  "value": "yes"
+                },
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "value": "yes"
+                },
+                {
+                  "id": "declaration_allowed",
+                  "label": "Declaration Allowed",
+                  "value": "yes"
+                },
+                {
+                  "id": "enabled_providers",
+                  "label": "Enabled Providers",
+                  "value": "voice, piper, external_faster_whisper"
+                },
+                {
+                  "id": "supported_providers",
+                  "label": "Supported Providers",
+                  "value": "voice, faster_whisper, piper, external_faster_whisper"
+                }
+              ],
+              "form": {
+                "fields": [
+                  {
+                    "id": "enabled",
+                    "label": "Enable Piper",
+                    "type": "checkbox",
+                    "value": true
+                  },
+                  {
+                    "id": "default",
+                    "label": "Use as default provider",
+                    "type": "checkbox",
+                    "value": true
+                  },
+                  {
+                    "id": "default_voice",
+                    "label": "Default Voice",
+                    "options": [
+                      {
+                        "label": "Jarvis",
+                        "value": "en_GB-jarvis-medium"
+                      },
+                      {
+                        "label": "Jenny Dioco",
+                        "value": "en_GB-jenny_dioco-medium"
+                      },
+                      {
+                        "label": "Amy",
+                        "value": "en_US-amy-medium"
+                      },
+                      {
+                        "label": "Hfc Female",
+                        "value": "en_US-hfc_female-medium"
+                      },
+                      {
+                        "label": "Kathleen",
+                        "value": "en_US-kathleen-low"
+                      },
+                      {
+                        "label": "Lessac",
+                        "value": "en_US-lessac-high"
+                      },
+                      {
+                        "label": "Lessac",
+                        "value": "en_US-lessac-medium"
+                      }
+                    ],
+                    "required": true,
+                    "type": "select",
+                    "value": "en_GB-jenny_dioco-medium"
+                  },
+                  {
+                    "id": "warm_models",
+                    "label": "Warm Loaded Voices",
+                    "options": [
+                      {
+                        "label": "Jarvis",
+                        "value": "en_GB-jarvis-medium"
+                      },
+                      {
+                        "label": "Jenny Dioco",
+                        "value": "en_GB-jenny_dioco-medium"
+                      },
+                      {
+                        "label": "Amy",
+                        "value": "en_US-amy-medium"
+                      },
+                      {
+                        "label": "Hfc Female",
+                        "value": "en_US-hfc_female-medium"
+                      },
+                      {
+                        "label": "Kathleen",
+                        "value": "en_US-kathleen-low"
+                      },
+                      {
+                        "label": "Lessac",
+                        "value": "en_US-lessac-high"
+                      },
+                      {
+                        "label": "Lessac",
+                        "value": "en_US-lessac-medium"
+                      }
+                    ],
+                    "type": "multiselect",
+                    "value": [
+                      "en_GB-jenny_dioco-medium"
+                    ]
+                  }
+                ],
+                "submit_action_id": "configure_provider_setup.piper",
+                "title": "Piper Setup"
+              }
+            },
+            "state": "ready",
+            "tone": "success"
+          },
+          {
+            "facts": [
+              {
+                "id": "piper",
+                "label": "Piper Runtime",
+                "value": "running"
+              }
+            ],
+            "id": "wake",
+            "label": "Wake Runtime",
+            "provider": "supervised_openwakeword",
+            "setup": {
+              "actions": [
+                {
+                  "disabled_reason": null,
+                  "enabled": true,
+                  "id": "configure_provider_setup.voice",
+                  "label": "Save Setup",
+                  "tone": "success"
+                }
+              ],
+              "errors": [],
+              "facts": [
+                {
+                  "id": "provider_id",
+                  "label": "Provider ID",
+                  "value": "supervised_openwakeword"
+                },
+                {
+                  "id": "setup_provider_id",
+                  "label": "Setup Provider",
+                  "value": "voice"
+                },
+                {
+                  "id": "enabled",
+                  "label": "Enabled",
+                  "value": "yes"
+                },
+                {
+                  "id": "default",
+                  "label": "Default",
+                  "value": "no"
+                },
+                {
+                  "id": "declaration_allowed",
+                  "label": "Declaration Allowed",
+                  "value": "yes"
+                },
+                {
+                  "id": "enabled_providers",
+                  "label": "Enabled Providers",
+                  "value": "voice, piper, external_faster_whisper"
+                },
+                {
+                  "id": "supported_providers",
+                  "label": "Supported Providers",
+                  "value": "voice, faster_whisper, piper, external_faster_whisper"
+                }
+              ],
+              "form": {
+                "fields": [
+                  {
+                    "id": "enabled",
+                    "label": "Enable Voice",
+                    "type": "checkbox",
+                    "value": true
+                  },
+                  {
+                    "id": "default",
+                    "label": "Use as default provider",
+                    "type": "checkbox",
+                    "value": false
+                  },
+                  {
+                    "id": "default_wakeword",
+                    "label": "Default Wake Word",
+                    "options": [
+                      {
+                        "label": "Hexa",
+                        "value": "Hexa"
+                      },
+                      {
+                        "label": "Nora",
+                        "value": "Nora"
+                      },
+                      {
+                        "label": "Hexe",
+                        "value": "hexe"
+                      }
+                    ],
+                    "required": true,
+                    "type": "select",
+                    "value": "Hexa"
+                  },
+                  {
+                    "id": "warm_model",
+                    "label": "Warm load wake model",
+                    "type": "checkbox",
+                    "value": true
+                  }
+                ],
+                "submit_action_id": "configure_provider_setup.voice",
+                "title": "Voice Setup"
+              }
+            },
+            "state": "ready",
+            "tone": "success"
+          }
+        ],
+        "stale": false,
+        "updated_at": "2026-05-16T18:10:13.501952+00:00"
+      },
+      "id": "runtime.providers",
+      "kind": "provider_status",
+      "refresh": {
+        "interval_ms": 30000,
+        "mode": "near_live"
+      },
+      "title": "Provider Status"
+    }
+  ],
+  "page_id": "runtime",
+  "refresh": {
+    "interval_ms": 15000,
+    "mode": "near_live"
+  },
+  "updated_at": "2026-05-16T18:10:13.661838+00:00"
+}
