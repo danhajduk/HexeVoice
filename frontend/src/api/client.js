@@ -83,6 +83,10 @@ export async function getLocalSetup() {
   return fetchJson("/api/onboarding/local-setup");
 }
 
+export async function getSetupBootstrapStatus() {
+  return fetchJson("/api/setup/bootstrap/status");
+}
+
 export async function restartOnboardingSetup() {
   return sendJson("/api/onboarding/restart");
 }

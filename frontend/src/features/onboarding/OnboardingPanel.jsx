@@ -8,6 +8,7 @@ import {
   getOperationalStatus,
   getProviderSetup,
   getGovernanceCurrent,
+  getSetupBootstrapStatus,
   getVoiceIntents,
   importNodeMigrationBundle,
   pollOnboardingSession,
@@ -886,6 +887,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   }));
   const [advertisementForm, setAdvertisementForm] = useState(emptyAdvertisementForm);
   const [providerSetup, setProviderSetup] = useState(null);
+  const [setupBootstrapStatus, setSetupBootstrapStatus] = useState(null);
   const [capabilities, setCapabilities] = useState(null);
   const [governanceCurrent, setGovernanceCurrent] = useState(null);
   const [operationalStatus, setOperationalStatus] = useState(null);
@@ -916,8 +918,9 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
       getProviderSetup().catch(() => null),
       getCapabilities().catch(() => null),
       getVoiceIntents().catch(() => null),
+      getSetupBootstrapStatus().catch(() => null),
     ])
-      .then(([setupPayload, bootstrapPayload, providerPayload, capabilityPayload, intentPayload]) => {
+      .then(([setupPayload, bootstrapPayload, providerPayload, capabilityPayload, intentPayload, setupBootstrapPayload]) => {
         if (!mounted) {
           return;
         }
@@ -946,6 +949,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           registrations: bootstrapPayload?.registrations_endpoint || "/api/system/nodes/registrations",
         });
         setProviderSetup(providerPayload);
+        setSetupBootstrapStatus(setupBootstrapPayload);
         setCapabilities(capabilityPayload);
         setVoiceIntents(intentPayload);
         setProviderForm({
@@ -964,6 +968,29 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
       });
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const refresh = () => {
+      getSetupBootstrapStatus()
+        .then((payload) => {
+          if (mounted) {
+            setSetupBootstrapStatus(payload);
+          }
+        })
+        .catch(() => {
+          if (mounted) {
+            setSetupBootstrapStatus(null);
+          }
+        });
+    };
+    refresh();
+    const interval = window.setInterval(refresh, 3000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
     };
   }, []);
 
@@ -1685,6 +1712,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         onMigrationFile={handleMigrationFile}
         onMigrationDestinationChange={updateMigrationDestination}
         onMigrationImport={handleMigrationImport}
+        setupBootstrap={setupBootstrapStatus}
       />
     );
   }

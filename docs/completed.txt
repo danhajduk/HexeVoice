@@ -162,3 +162,4 @@ Task 145: Define runtime state cleanup and git-tracking policy - Completed on 05
 Task 146: Remove trust-secret migration export/import and require Core re-auth - Completed on 05/16/2026 16:16
 Task 148: Add setup bootstrap runner for temporary LAN setup UI/API - Completed on 05/16/2026 16:19
 Task 149: Add setup bootstrap status API and installer progress tracking - Completed on 05/16/2026 16:21
+Task 150: Extend hosted install Step 1 for default firmware/model downloads and browser launch - Completed on 05/16/2026 16:25

@@ -351,6 +351,25 @@ prepare_runtime_dirs() {
   mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
 }
 
+download_model() {
+  prepare_runtime_dirs
+  apply_saved_stt_provider_config
+  python_with_src - <<'PY'
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from faster_whisper import WhisperModel
+
+model = os.environ.get("VOICE_STT_FASTER_WHISPER_MODEL", "base")
+cache_dir = Path(os.environ["HEXEVOICE_STT_CACHE_DIR"])
+cache_dir.mkdir(parents=True, exist_ok=True)
+WhisperModel(model, device="cpu", compute_type="int8", download_root=str(cache_dir))
+print(f"downloaded {model} to {cache_dir}")
+PY
+}
+
 build_if_needed() {
   if [[ "$STT_RUNTIME_IMAGE_VERIFIED" != "true" ]]; then
     compose build
@@ -372,6 +391,9 @@ case "$ACTION" in
     apply_saved_stt_provider_config
     select_stt_runtime
     build_if_needed
+    ;;
+  download-model)
+    download_model
     ;;
   start)
     prepare_runtime_dirs
@@ -424,7 +446,7 @@ case "$ACTION" in
     compose config
     ;;
   *)
-    echo "Usage: $0 {install|build|start|stop|restart|status|health|wait-health|preload|ready|doctor|cuda-preflight|logs|config}"
+    echo "Usage: $0 {install|build|download-model|start|stop|restart|status|health|wait-health|preload|ready|doctor|cuda-preflight|logs|config}"
     exit 1
     ;;
 esac

@@ -10,7 +10,11 @@ curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh
 
 The installer clones or updates the checkout, creates `.venv`, installs Python
 requirements, installs frontend dependencies, builds the frontend, and creates
-`scripts/stack.env` from the example when it is missing.
+`scripts/stack.env` from the example when it is missing. By default it also
+starts the temporary setup runner, opens the setup URL when the host can launch a
+browser, and prepares the default install artifacts while setup is visible:
+faster-whisper `base`, Piper `en_US-kathleen-low.onnx`, the `Hexe` wake model,
+and configured firmware artifacts.
 
 Set `HEXEVOICE_RUN_BOOTSTRAP=true` to run `scripts/bootstrap.sh` at the end:
 
@@ -24,6 +28,10 @@ Optional overrides:
 - `HEXEVOICE_APP_DIR=/path/HexeVoice` changes the exact checkout path.
 - `HEXEVOICE_REPO_URL=https://...` changes the Git remote.
 - `HEXEVOICE_BRANCH=main` changes the branch.
+- `HEXEVOICE_START_SETUP_RUNNER=false` skips the temporary setup UI/API.
+- `HEXEVOICE_SETUP_DEFAULT_ARTIFACTS=false` skips default artifact downloads.
+- `HEXEVOICE_DEFAULT_STT_MODEL=base`, `HEXEVOICE_DEFAULT_PIPER_VOICE=en_US-kathleen-low`,
+  and `HEXEVOICE_DEFAULT_WAKE_MODEL=Hexe` override default model choices.
 - `HEXEVOICE_SETUP_HOST_ALIAS=true` adds optional local `/etc/hosts` aliases
   for `HexeVoice` and `HexeVoice.local` after checkout. The alias helper backs
   up the hosts file first and requires the explicit enable flag before writing.

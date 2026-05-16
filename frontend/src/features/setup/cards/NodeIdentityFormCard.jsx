@@ -13,13 +13,45 @@ export function NodeIdentityFormCard({
   onMigrationFile,
   onMigrationDestinationChange,
   onMigrationImport,
+  setupBootstrap,
 }) {
+  const retryableFailures = setupBootstrap?.retryable_failures || [];
+  const pendingDownloads = setupBootstrap?.pending_downloads || [];
+  const completedActions = setupBootstrap?.completed_actions || [];
+
   return (
     <article className="card stack">
       <div className="section-heading">
         <h2>Node Identity</h2>
         <span className="pill">UI {uiPort || 8084}</span>
       </div>
+      {setupBootstrap ? (
+        <>
+          <div className="section-heading">
+            <h2>Install Prep</h2>
+            <span className="pill">{setupBootstrap.phase || "idle"}</span>
+          </div>
+          <div className="fact-grid">
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Current</span>
+              <span className="fact-grid-value">{setupBootstrap.current_action || "ready"}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Pending</span>
+              <span className="fact-grid-value">{pendingDownloads.length ? pendingDownloads.join(", ") : "none"}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Completed</span>
+              <span className="fact-grid-value">{completedActions.length}</span>
+            </div>
+          </div>
+          {retryableFailures.length ? (
+            <div className="callout callout-warning">
+              Retryable setup items: {retryableFailures.map((failure) => failure.id).join(", ")}
+            </div>
+          ) : null}
+        </>
+      ) : null}
       <label className="field">
         <span className="field-label">Core base URL</span>
         <input
