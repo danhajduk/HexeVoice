@@ -1,3 +1,4 @@
+[WIP] Task 122: Make external faster-whisper STT ready immediately after hosted install
 [FUTURE TODO] Task 064: Build the first touchscreen interaction layer
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card
 [FUTURE TODO] Task 068: Integrate AI Node assistant routing as the primary assistant path

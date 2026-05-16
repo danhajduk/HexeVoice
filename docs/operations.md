@@ -88,6 +88,11 @@ The runtime accepts faster-whisper tuning via `VOICE_STT_FASTER_WHISPER_LANGUAGE
 STT transcription responses include `timing_breakdown_ms` with audio
 preparation, model transcribe call, decoding, post-processing, and total
 durations for latency debugging.
+Provider setup can select the external faster-whisper default model, extra
+models to download/preload, device, and compute type. The safe default is
+`device=cpu` with `compute_type=int8`. GPU mode uses `device=cuda` and normally
+`compute_type=float16`, but it requires compatible NVIDIA drivers, CUDA/cuDNN
+runtime libraries, and a CTranslate2/faster-whisper install that can use CUDA.
 Runtime service status also exposes external STT `warm_model_health`, including
 loaded state, loaded-at timestamp, load count, last load duration, and
 `reload_required` when the running STT service does not match the backend's

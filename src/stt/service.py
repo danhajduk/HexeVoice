@@ -28,14 +28,22 @@ class TranscribeRequest(BaseModel):
 
 class SttConfigRequest(BaseModel):
     model: str | None = None
+    device: str | None = None
+    compute_type: str | None = None
     warm_model: bool = False
 
 
-def _build_adapter(app_settings: Settings, *, model_name: str | None = None) -> FasterWhisperSpeechToTextAdapter:
+def _build_adapter(
+    app_settings: Settings,
+    *,
+    model_name: str | None = None,
+    device: str | None = None,
+    compute_type: str | None = None,
+) -> FasterWhisperSpeechToTextAdapter:
     return FasterWhisperSpeechToTextAdapter(
         model_name=model_name or app_settings.voice_stt_faster_whisper_model,
-        device=app_settings.voice_stt_faster_whisper_device,
-        compute_type=app_settings.voice_stt_faster_whisper_compute_type,
+        device=device or app_settings.voice_stt_faster_whisper_device,
+        compute_type=compute_type or app_settings.voice_stt_faster_whisper_compute_type,
         temp_dir=app_settings.resolved_faster_whisper_temp_dir(),
         language=app_settings.voice_stt_faster_whisper_language,
         beam_size=app_settings.voice_stt_faster_whisper_beam_size,
@@ -94,10 +102,35 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def update_config(payload: SttConfigRequest) -> dict[str, Any]:
         nonlocal adapter
         requested_model = str(payload.model or "").strip()
-        current_model = str(adapter.status().get("model") or "").strip()
-        if requested_model and requested_model != current_model:
-            log.info("Switching external faster-whisper STT model: %s -> %s", current_model, requested_model)
-            adapter = _build_adapter(app_settings, model_name=requested_model)
+        requested_device = str(payload.device or "").strip()
+        requested_compute_type = str(payload.compute_type or "").strip()
+        status = adapter.status()
+        current_model = str(status.get("model") or "").strip()
+        current_device = str(status.get("device") or "").strip()
+        current_compute_type = str(status.get("compute_type") or "").strip()
+        next_model = requested_model or current_model
+        next_device = requested_device or current_device
+        next_compute_type = requested_compute_type or current_compute_type
+        if (
+            next_model != current_model
+            or next_device != current_device
+            or next_compute_type != current_compute_type
+        ):
+            log.info(
+                "Switching external faster-whisper STT config: model=%s->%s device=%s->%s compute_type=%s->%s",
+                current_model,
+                next_model,
+                current_device,
+                next_device,
+                current_compute_type,
+                next_compute_type,
+            )
+            adapter = _build_adapter(
+                app_settings,
+                model_name=next_model,
+                device=next_device,
+                compute_type=next_compute_type,
+            )
         if payload.warm_model:
             result = await asyncio.to_thread(adapter.preload)
             return {

@@ -1009,6 +1009,28 @@ Original task details:
   - Add socket cleanup on service startup so stale socket files do not block restarts.
   - Document Docker volume, permissions, health-check, and Supervisor visibility implications.
 
+## Task 122
+Original task details:
+- Title: Make external faster-whisper STT ready immediately after hosted install
+- Goal:
+  - A fresh `curl ... | bash` install should leave the external faster-whisper STT engine installed, startable, and verifiably healthy without the operator having to discover extra manual STT steps.
+- Scope:
+  - Extend the hosted installer or a dedicated install helper to perform STT-specific setup after Python dependencies are installed.
+  - Ensure `scripts/stack.env` contains a valid default `STT_CMD` using `python -m stt.service`, `VOICE_STT_PROVIDER=external_faster_whisper`, `VOICE_STT_SERVICE_HOST=127.0.0.1`, `VOICE_STT_SERVICE_PORT=10300`, and a CPU-safe default model such as `base.en` with `int8` compute.
+  - Add an explicit STT readiness command that installs/renders the user service, starts or restarts it, waits for `/health`, preloads the configured model, and reports actionable errors.
+  - Decide whether the installer should always preload/download the configured model or gate that behavior behind an option such as `HEXEVOICE_STT_PRELOAD=true`; default should be practical for a first-use voice node.
+  - Add provider setup controls for choosing the default faster-whisper model, additional models to download/preload, device (`cpu` or `cuda`), and compute type.
+  - Allow GPU use when the host has compatible NVIDIA drivers/CUDA libraries and the installed CTranslate2/faster-whisper stack supports CUDA; keep CPU `int8` as the safe default.
+  - Handle missing host prerequisites gracefully, especially `python3-venv`, systemd user availability, network access for model download, and enough disk space for faster-whisper model/cache files.
+  - Keep model/cache downloads out of git and use normal Hugging Face/faster-whisper cache behavior unless a local cache directory is explicitly configured.
+  - Update `scripts/faster-whisper-stt-control.sh` if needed so it can run `install`, `start`, `restart`, `preload`, `health`, and `doctor` style checks consistently.
+  - Add tests or shell validation for the new installer/control-script behavior without requiring a real model download in CI.
+  - Update setup/operations docs with the STT-ready install path and troubleshooting commands.
+- Acceptance criteria:
+  - After a hosted install on a supported Linux host, the operator can run one documented command and see `hexevoice-stt.service` active with `/health` returning `provider=external_faster_whisper`, configured model details, and `loaded=true` when preload is enabled.
+  - Backend service status reports the STT engine as healthy once the STT service is running.
+  - Failures name the missing prerequisite or model-download/preload error instead of silently succeeding.
+
 ## Task 125-133
 Original task details:
 - Title: Start the HexeVoice migration to Core-rendered node UI

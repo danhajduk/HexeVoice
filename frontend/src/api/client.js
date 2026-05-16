@@ -143,6 +143,10 @@ export async function saveProviderSetup(payload) {
   return sendJson("/api/providers/setup", { method: "PUT", body: payload });
 }
 
+export async function saveProviderConfig(providerId, payload) {
+  return sendJson(`/api/node/ui/providers/${providerId}/setup`, { method: "PUT", body: payload });
+}
+
 export async function getCapabilities() {
   return fetchJson("/api/capabilities");
 }

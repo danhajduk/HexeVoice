@@ -824,6 +824,28 @@ class NodeRuntimeService:
                 return model
         return self._settings.voice_stt_faster_whisper_model
 
+    def _configured_external_stt_device(self) -> str:
+        try:
+            provider_config = self._state().provider_setup.provider_configs.get("external_faster_whisper", {})
+        except Exception:
+            provider_config = {}
+        if isinstance(provider_config, dict):
+            device = str(provider_config.get("device") or "").strip()
+            if device:
+                return device
+        return self._settings.voice_stt_faster_whisper_device
+
+    def _configured_external_stt_compute_type(self) -> str:
+        try:
+            provider_config = self._state().provider_setup.provider_configs.get("external_faster_whisper", {})
+        except Exception:
+            provider_config = {}
+        if isinstance(provider_config, dict):
+            compute_type = str(provider_config.get("compute_type") or "").strip()
+            if compute_type:
+                return compute_type
+        return self._settings.voice_stt_faster_whisper_compute_type
+
     def _expected_stt_config(self) -> dict[str, object]:
         options: dict[str, object] = {
             "without_timestamps": self._settings.voice_stt_faster_whisper_without_timestamps,
@@ -839,8 +861,8 @@ class NodeRuntimeService:
             options["max_initial_timestamp"] = self._settings.voice_stt_faster_whisper_max_initial_timestamp
         return {
             "model": self._configured_external_stt_model(),
-            "device": self._settings.voice_stt_faster_whisper_device,
-            "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
+            "device": self._configured_external_stt_device(),
+            "compute_type": self._configured_external_stt_compute_type(),
             "transcribe_options": options,
         }
 

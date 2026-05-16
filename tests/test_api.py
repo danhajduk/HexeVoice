@@ -2161,10 +2161,22 @@ def test_node_ui_stt_provider_status_prefers_saved_model(tmp_path, monkeypatch):
 
     response = client.put(
         "/api/node/ui/providers/external_faster_whisper/setup",
-        json={"enabled": True, "default": False, "model": "small.en", "warm_model": True},
+        json={
+            "enabled": True,
+            "default": False,
+            "model": "small.en",
+            "device": "cuda",
+            "compute_type": "float16",
+            "warm_model": True,
+            "warm_models": ["tiny.en"],
+        },
     )
     assert response.status_code == 200
-    assert response.json()["provider_configs"]["external_faster_whisper"]["model"] == "small.en"
+    saved_config = response.json()["provider_configs"]["external_faster_whisper"]
+    assert saved_config["model"] == "small.en"
+    assert saved_config["device"] == "cuda"
+    assert saved_config["compute_type"] == "float16"
+    assert saved_config["warm_models"] == ["tiny.en"]
 
     status = client.get("/api/node/ui/providers/status")
     assert status.status_code == 200
@@ -2228,14 +2240,27 @@ def test_node_ui_stt_provider_setup_applies_external_runtime_config(tmp_path, mo
 
     response = client.put(
         "/api/node/ui/providers/external_faster_whisper/setup",
-        json={"enabled": True, "default": True, "model": "small.en", "warm_model": True},
+        json={
+            "enabled": True,
+            "default": True,
+            "model": "small.en",
+            "warm_model": True,
+            "warm_models": ["tiny.en"],
+            "device": "cpu",
+            "compute_type": "int8",
+        },
     )
 
     assert response.status_code == 200
     assert calls == [
         {
             "url": "http://stt.test:10300/config",
-            "json": {"model": "small.en", "warm_model": True},
+            "json": {"model": "tiny.en", "device": "cpu", "compute_type": "int8", "warm_model": True},
+            "timeout": 12.0,
+        },
+        {
+            "url": "http://stt.test:10300/config",
+            "json": {"model": "small.en", "device": "cpu", "compute_type": "int8", "warm_model": True},
             "timeout": 12.0,
         }
     ]

@@ -858,9 +858,41 @@ def provider_config_fields(config: dict[str, Any], saved_config: dict[str, Any])
         fields.append(
             {
                 "id": "warm_model",
-                "label": "Warm load model",
+                "label": "Download and preload default model",
                 "type": "checkbox",
                 "value": bool(saved_config.get("warm_model", config.get("warm_model"))),
+            }
+        )
+        warm_models = saved_config.get("warm_models") if isinstance(saved_config.get("warm_models"), list) else config.get("warm_models")
+        fields.append(
+            {
+                "id": "warm_models",
+                "label": "Additional models to download and preload",
+                "type": "multiselect",
+                "value": warm_models if isinstance(warm_models, list) else [],
+                "options": options,
+            }
+        )
+        device_options = config.get("device_options") if isinstance(config.get("device_options"), list) else []
+        fields.append(
+            {
+                "id": "device",
+                "label": "Device",
+                "type": "select",
+                "value": text(saved_config.get("device") or config.get("device"), "cpu"),
+                "options": device_options,
+                "required": True,
+            }
+        )
+        compute_options = config.get("compute_type_options") if isinstance(config.get("compute_type_options"), list) else []
+        fields.append(
+            {
+                "id": "compute_type",
+                "label": "Compute Type",
+                "type": "select",
+                "value": text(saved_config.get("compute_type") or config.get("compute_type"), "int8"),
+                "options": compute_options,
+                "required": True,
             }
         )
         return fields

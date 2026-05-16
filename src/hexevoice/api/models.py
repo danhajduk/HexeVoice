@@ -567,6 +567,8 @@ class ProviderConfigRequest(BaseModel):
     enabled: bool = True
     default: bool = False
     model: str | None = None
+    device: str | None = None
+    compute_type: str | None = None
     warm_model: bool | None = None
     warm_models: list[str] = Field(default_factory=list)
     default_voice: str | None = None

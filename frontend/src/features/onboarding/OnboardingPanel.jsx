@@ -17,6 +17,7 @@ import {
   reviewVoiceIntent,
   saveCoreConnection,
   saveCapabilitySelection,
+  saveProviderConfig,
   saveNodeIdentity,
   saveProviderSetup,
   startOnboardingSession,
@@ -87,6 +88,39 @@ function emptyIntentForm() {
     example: "",
     reply_text: "",
   };
+}
+
+const sttModelOptions = ["tiny.en", "base.en", "small.en", "medium.en", "large-v3"];
+const sttDeviceOptions = ["cpu", "cuda"];
+const sttComputeTypeOptions = ["int8", "float16", "int8_float16", "float32"];
+
+function emptySttProviderForm() {
+  return {
+    model: "base.en",
+    warm_model: true,
+    warm_models_text: "",
+    device: "cpu",
+    compute_type: "int8",
+  };
+}
+
+function sttProviderFormFromSetup(providerSetup) {
+  const config = providerSetup?.provider_configs?.external_faster_whisper || {};
+  const warmModels = Array.isArray(config.warm_models) ? config.warm_models : [];
+  return {
+    model: config.model || "base.en",
+    warm_model: config.warm_model ?? true,
+    warm_models_text: warmModels.join(", "),
+    device: config.device || "cpu",
+    compute_type: config.compute_type || "int8",
+  };
+}
+
+function splitModelList(value) {
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function automaticAdvertisementPayload(connectionForm, bootstrap, advertisementForm) {
@@ -335,8 +369,10 @@ function renderStageBody({
   governanceCurrent,
   operationalStatus,
   providerForm,
+  sttProviderForm,
   capabilityForm,
   onProviderToggle,
+  onSttProviderChange,
   onProviderSave,
   onCapabilityToggle,
   onCapabilitySave,
@@ -532,6 +568,78 @@ function renderStageBody({
             );
           })}
         </div>
+        {supportedProviders.includes("external_faster_whisper") ? (
+          <>
+            <div className="section-divider" />
+            <div className="section-heading-inline">
+              <div>
+                <p className="panel-kicker">STT Engine</p>
+                <h3 className="section-title">faster-whisper model setup</h3>
+              </div>
+            </div>
+            <div className="form-grid">
+              <label className="field">
+                <span className="field-label">Default STT model</span>
+                <select
+                  className="field-input"
+                  value={sttProviderForm.model}
+                  onChange={(event) => onSttProviderChange("model", event.target.value)}
+                >
+                  {sttModelOptions.map((model) => (
+                    <option key={model} value={model}>
+                      {model}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field-label">Device</span>
+                <select
+                  className="field-input"
+                  value={sttProviderForm.device}
+                  onChange={(event) => onSttProviderChange("device", event.target.value)}
+                >
+                  {sttDeviceOptions.map((device) => (
+                    <option key={device} value={device}>
+                      {device}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field-label">Compute type</span>
+                <select
+                  className="field-input"
+                  value={sttProviderForm.compute_type}
+                  onChange={(event) => onSttProviderChange("compute_type", event.target.value)}
+                >
+                  {sttComputeTypeOptions.map((computeType) => (
+                    <option key={computeType} value={computeType}>
+                      {computeType}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field field-span-2">
+                <span className="field-label">Additional models to download/preload</span>
+                <input
+                  className="field-input"
+                  value={sttProviderForm.warm_models_text}
+                  onChange={(event) => onSttProviderChange("warm_models_text", event.target.value)}
+                  placeholder="tiny.en, small.en"
+                />
+              </label>
+            </div>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={Boolean(sttProviderForm.warm_model)}
+                onChange={(event) => onSttProviderChange("warm_model", event.target.checked)}
+              />
+              <span>Download and preload the default model when provider setup is saved</span>
+            </label>
+          </>
+        ) : null}
         <FormActions
           busy={busyState === "provider-save"}
           busyLabel="Saving..."
@@ -783,6 +891,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   const [operationalStatus, setOperationalStatus] = useState(null);
   const [voiceIntents, setVoiceIntents] = useState(null);
   const [providerForm, setProviderForm] = useState({ enabled_providers: [], default_provider: "voice" });
+  const [sttProviderForm, setSttProviderForm] = useState(emptySttProviderForm);
   const [capabilityForm, setCapabilityForm] = useState({ selected_capabilities: [] });
   const [intentForm, setIntentForm] = useState(emptyIntentForm);
   const [busyState, setBusyState] = useState("");
@@ -843,6 +952,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           enabled_providers: providerPayload?.enabled_providers || [],
           default_provider: providerPayload?.default_provider || providerPayload?.supported_providers?.[0] || "voice",
         });
+        setSttProviderForm(sttProviderFormFromSetup(providerPayload));
         setCapabilityForm({
           selected_capabilities: capabilityPayload?.selected || capabilityPayload?.available || [],
         });
@@ -930,6 +1040,10 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     });
   }
 
+  function updateSttProviderForm(field, value) {
+    setSttProviderForm((current) => ({ ...current, [field]: value }));
+  }
+
   function updateCapabilitySelection(capabilityId) {
     setCapabilityForm((current) => {
       const selected = current.selected_capabilities.includes(capabilityId)
@@ -983,6 +1097,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         enabled_providers: providerPayload.enabled_providers || [],
         default_provider: providerPayload.default_provider || providerPayload.supported_providers?.[0] || "voice",
       });
+      setSttProviderForm(sttProviderFormFromSetup(providerPayload));
     }
     if (capabilityPayload) {
       setCapabilityForm({
@@ -1192,6 +1307,17 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     try {
       const payload = await saveProviderSetup(providerForm);
       setProviderSetup(payload);
+      if ((payload.supported_providers || []).includes("external_faster_whisper")) {
+        await saveProviderConfig("external_faster_whisper", {
+          enabled: (providerForm.enabled_providers || []).includes("external_faster_whisper"),
+          default: providerForm.default_provider === "external_faster_whisper",
+          model: sttProviderForm.model,
+          warm_model: Boolean(sttProviderForm.warm_model),
+          warm_models: splitModelList(sttProviderForm.warm_models_text),
+          device: sttProviderForm.device,
+          compute_type: sttProviderForm.compute_type,
+        });
+      }
       await refreshSetupPanels();
       setStageNotice("Provider setup saved.");
     } catch (error) {
@@ -1594,8 +1720,10 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           governanceCurrent,
           operationalStatus,
           providerForm,
+          sttProviderForm,
           capabilityForm,
           onProviderToggle: updateProviderSelection,
+          onSttProviderChange: updateSttProviderForm,
           onProviderSave: handleProviderSave,
           onCapabilityToggle: updateCapabilitySelection,
           onCapabilitySave: handleCapabilitySave,

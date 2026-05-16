@@ -1337,17 +1337,23 @@ def create_app(
                 "model": app_settings.voice_stt_faster_whisper_model
                 if app_settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}
                 else app_settings.voice_stt_model,
+                "device": app_settings.voice_stt_faster_whisper_device,
+                "compute_type": app_settings.voice_stt_faster_whisper_compute_type,
                 "warm_model": app_settings.voice_stt_preload,
+                "warm_models": [],
                 "model_options": node_ui_model_options(
                     [
                         "tiny.en",
                         "base.en",
                         "small.en",
                         "medium.en",
+                        "large-v3",
                         app_settings.voice_stt_model,
                         app_settings.voice_stt_faster_whisper_model,
                     ]
                 ),
+                "device_options": node_ui_model_options(["cpu", "cuda"]),
+                "compute_type_options": node_ui_model_options(["int8", "float16", "int8_float16", "float32"]),
             },
             "tts": {
                 "kind": "tts",
@@ -1393,12 +1399,33 @@ def create_app(
         return deduped
 
     async def apply_external_stt_provider_config(payload: ProviderConfigRequest) -> bool:
-        if not payload.model:
+        default_model = str(payload.model or "").strip()
+        warm_models = [str(model or "").strip() for model in payload.warm_models if str(model or "").strip()]
+        device = str(payload.device or app_settings.voice_stt_faster_whisper_device).strip()
+        compute_type = str(payload.compute_type or app_settings.voice_stt_faster_whisper_compute_type).strip()
+        if not default_model and not warm_models:
             return False
         async with httpx.AsyncClient(timeout=app_settings.voice_stt_timeout_s) as client:
+            for warm_model in [model for model in warm_models if model != default_model]:
+                await client.put(
+                    f"{app_settings.resolved_voice_stt_service_base_url()}/config",
+                    json={
+                        "model": warm_model,
+                        "device": device,
+                        "compute_type": compute_type,
+                        "warm_model": True,
+                    },
+                )
+            if not default_model:
+                return True
             await client.put(
                 f"{app_settings.resolved_voice_stt_service_base_url()}/config",
-                json={"model": payload.model, "warm_model": bool(payload.warm_model)},
+                json={
+                    "model": default_model,
+                    "device": device,
+                    "compute_type": compute_type,
+                    "warm_model": bool(payload.warm_model) or default_model in warm_models,
+                },
             )
         return True
 
@@ -1425,9 +1452,16 @@ def create_app(
         provider_setup = provider_setup_service.status_payload()
         provider_config = provider_setup.provider_configs.get("external_faster_whisper", {})
         model = str(provider_config.get("model") or "").strip()
-        if not model:
+        warm_models = provider_config.get("warm_models") if isinstance(provider_config.get("warm_models"), list) else []
+        if not model and not warm_models:
             return
-        payload = ProviderConfigRequest(model=model, warm_model=bool(provider_config.get("warm_model")))
+        payload = ProviderConfigRequest(
+            model=model or None,
+            device=str(provider_config.get("device") or "").strip() or None,
+            compute_type=str(provider_config.get("compute_type") or "").strip() or None,
+            warm_model=bool(provider_config.get("warm_model")),
+            warm_models=[str(item or "").strip() for item in warm_models if str(item or "").strip()],
+        )
         for _attempt in range(30):
             try:
                 await apply_external_stt_provider_config(payload)
@@ -1803,7 +1837,7 @@ def create_app(
                     await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
             except httpx.HTTPError:
                 pass
-        if provider_id == "external_faster_whisper" and payload.model:
+        if provider_id == "external_faster_whisper" and (payload.model or payload.warm_models or payload.device or payload.compute_type):
             try:
                 await apply_external_stt_provider_config(payload)
             except httpx.HTTPError:
