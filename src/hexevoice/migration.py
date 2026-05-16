@@ -7,7 +7,7 @@ from typing import Any
 
 from hexevoice.api.models import NodeMigrationExportRequest, NodeMigrationImportRequest, NodeMigrationImportResponse
 from hexevoice.assistant.intent_registry import VoiceIntentState, VoiceIntentStateStore
-from hexevoice.config.settings import Settings
+from hexevoice.config.settings import Settings, parse_tts_conversion_sample_rates
 from hexevoice.persistence import (
     EndpointRegistryStore,
     OnboardingStateStore,
@@ -20,6 +20,8 @@ MIGRATION_SCHEMA_VERSION = 1
 TRUST_SECRET_FIELDS = {"node_trust_token", "operational_mqtt_token"}
 STT_PROVIDERS = {"deterministic", "openai", "faster_whisper", "external_faster_whisper"}
 STT_PROVIDER_CONFIG_FIELDS = {"enabled", "default", "model", "device", "compute_type", "warm_model", "warm_models"}
+TTS_PROVIDERS = {"deterministic", "openai", "piper"}
+TTS_PROVIDER_CONFIG_FIELDS = {"enabled", "default", "model", "warm_models", "default_voice"}
 
 
 class NodeMigrationError(ValueError):
@@ -46,6 +48,10 @@ class NodeMigrationService:
 
         if self._tts_runtime_settings_path.exists():
             state_files["voice_tts_settings"] = self._read_object_file(self._tts_runtime_settings_path)
+
+        tts_provider_settings = self._tts_provider_settings_payload(state_files["onboarding_state"])
+        if tts_provider_settings:
+            state_files["voice_tts_provider_settings"] = tts_provider_settings
 
         stt_settings = self._stt_settings_payload(state_files["onboarding_state"])
         if stt_settings:
@@ -127,6 +133,18 @@ class NodeMigrationService:
                 raise NodeMigrationError("voice_tts_settings_must_be_object")
             self._write_json_file(self._tts_runtime_settings_path, tts_settings_payload)
             imported.append("voice_tts_settings")
+
+        tts_provider_settings_payload = state_files.get("voice_tts_provider_settings")
+        if tts_provider_settings_payload is not None:
+            tts_provider_settings = self._validate_tts_provider_settings(tts_provider_settings_payload)
+            current_state = self._onboarding_store.load()
+            saved = self._onboarding_store.save(self._merge_tts_provider_settings(current_state, tts_provider_settings))
+            node_id = node_id or saved.trust_activation.node_id
+            core_base_url = core_base_url or saved.pre_trust.core_base_url
+            api_base_url = api_base_url or saved.pre_trust.api_base_url
+            ui_endpoint = ui_endpoint or saved.pre_trust.ui_endpoint
+            imported.append("voice_tts_provider_settings")
+            warnings.append("Imported TTS provider settings may require Piper voice downloads, warmup, and service restart.")
 
         stt_settings_payload = state_files.get("voice_stt_settings")
         if stt_settings_payload is not None:
@@ -271,6 +289,136 @@ class NodeMigrationService:
                 raise NodeMigrationError(f"voice_stt_settings_{section_name}_must_be_object")
             validated[section_name] = json.loads(json.dumps(section))
         return validated
+
+    def _tts_provider_settings_payload(self, onboarding_state: dict[str, Any]) -> dict[str, Any] | None:
+        provider = str(self._settings.voice_tts_provider or "").strip()
+        if not provider:
+            return None
+        provider_setup = onboarding_state.get("provider_setup", {}) if isinstance(onboarding_state, dict) else {}
+        provider_configs = provider_setup.get("provider_configs", {}) if isinstance(provider_setup, dict) else {}
+        provider_config = provider_configs.get(provider, {}) if isinstance(provider_configs, dict) else {}
+        if not isinstance(provider_config, dict):
+            provider_config = {}
+        if provider == "deterministic" and not provider_config:
+            return None
+
+        warm_models = provider_config.get("warm_models") if isinstance(provider_config.get("warm_models"), list) else []
+        warm_voices = [*self._settings.resolved_piper_tts_warm_voices()]
+        for model in warm_models:
+            cleaned = str(model).strip()
+            if cleaned and cleaned not in warm_voices:
+                warm_voices.append(cleaned)
+        default_voice = str(
+            provider_config.get("default_voice")
+            or self._settings.voice_tts_piper_voice
+            or self._settings.voice_tts_voice
+            or ""
+        ).strip()
+        payload: dict[str, Any] = {
+            "provider": provider,
+            "enabled": provider in (provider_setup.get("enabled_providers", []) if isinstance(provider_setup, dict) else []),
+            "default": provider == (provider_setup.get("default_provider") if isinstance(provider_setup, dict) else None),
+            "model": str(provider_config.get("model") or self._settings.voice_tts_model).strip(),
+            "default_voice": default_voice,
+            "warm_models": warm_voices,
+            "output_sample_rate_hz": self._settings.voice_tts_output_sample_rate_hz,
+            "endpoint_voices": self._settings.resolved_voice_tts_endpoint_voices(),
+            "endpoint_sample_rates": self._settings.resolved_voice_tts_endpoint_sample_rates(),
+            "conversion_sample_rates": parse_tts_conversion_sample_rates(self._settings.voice_tts_conversion_sample_rates),
+            "conversion_policy": self._settings.resolved_voice_tts_conversion_policy(),
+            "piper": {
+                "transport": self._settings.voice_tts_piper_transport,
+                "base_url": self._settings.voice_tts_piper_base_url,
+                "host": self._settings.voice_tts_piper_service_host,
+                "port": self._settings.voice_tts_piper_service_port,
+                "socket_path": str(self._settings.voice_tts_piper_socket_path)
+                if self._settings.voice_tts_piper_socket_path is not None
+                else None,
+                "synthesize_path": self._settings.voice_tts_piper_synthesize_path,
+                "model_dir": str(self._settings.resolved_piper_tts_model_dir()),
+                "service_id": self._settings.piper_tts_service_id,
+                "container_name": self._settings.piper_tts_container_name,
+                "env_path": str(self._settings.piper_tts_env_path),
+                "control_script": str(self._settings.piper_tts_control_script),
+            },
+        }
+        return self._validate_tts_provider_settings(payload)
+
+    @staticmethod
+    def _validate_tts_provider_settings(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise NodeMigrationError("voice_tts_provider_settings_must_be_object")
+        provider = str(payload.get("provider") or "").strip()
+        if provider not in TTS_PROVIDERS:
+            raise NodeMigrationError("voice_tts_provider_settings_provider_invalid")
+
+        validated: dict[str, Any] = {"provider": provider}
+        for key in ("enabled", "default"):
+            if key in payload:
+                validated[key] = bool(payload.get(key))
+        for key in ("model", "default_voice", "conversion_policy"):
+            value = str(payload.get(key) or "").strip()
+            if value:
+                validated[key] = value
+        if "output_sample_rate_hz" in payload:
+            try:
+                sample_rate = int(payload["output_sample_rate_hz"])
+            except (TypeError, ValueError):
+                raise NodeMigrationError("voice_tts_provider_settings_output_sample_rate_invalid") from None
+            if sample_rate < 0:
+                raise NodeMigrationError("voice_tts_provider_settings_output_sample_rate_invalid")
+            validated["output_sample_rate_hz"] = sample_rate
+
+        warm_models = payload.get("warm_models", [])
+        if not isinstance(warm_models, list):
+            raise NodeMigrationError("voice_tts_provider_settings_warm_models_must_be_list")
+        validated["warm_models"] = [str(model).strip() for model in warm_models if str(model).strip()]
+
+        for section_name in ("endpoint_voices", "endpoint_sample_rates", "conversion_sample_rates", "piper"):
+            section = payload.get(section_name, {})
+            if section is None:
+                section = {}
+            if not isinstance(section, dict):
+                raise NodeMigrationError(f"voice_tts_provider_settings_{section_name}_must_be_object")
+            validated[section_name] = json.loads(json.dumps(section))
+        return validated
+
+    @staticmethod
+    def _merge_tts_provider_settings(
+        state: PersistedOnboardingState,
+        tts_settings: dict[str, Any],
+    ) -> PersistedOnboardingState:
+        provider = str(tts_settings["provider"])
+        provider_config = {
+            key: tts_settings[key]
+            for key in TTS_PROVIDER_CONFIG_FIELDS
+            if key in tts_settings and tts_settings[key] not in (None, "", [])
+        }
+        provider_configs = dict(state.provider_setup.provider_configs)
+        provider_configs[provider] = {**provider_configs.get(provider, {}), **provider_config}
+
+        supported = list(state.provider_setup.supported_providers)
+        if provider not in supported:
+            supported.append(provider)
+        enabled = list(state.provider_setup.enabled_providers)
+        if tts_settings.get("enabled") and provider not in enabled:
+            enabled.append(provider)
+        if tts_settings.get("enabled") is False:
+            enabled = [item for item in enabled if item != provider]
+        default_provider = provider if tts_settings.get("default") else state.provider_setup.default_provider
+
+        return state.model_copy(
+            update={
+                "provider_setup": state.provider_setup.model_copy(
+                    update={
+                        "supported_providers": supported,
+                        "enabled_providers": enabled,
+                        "default_provider": default_provider,
+                        "provider_configs": provider_configs,
+                    }
+                )
+            }
+        )
 
     @staticmethod
     def _merge_stt_settings(state: PersistedOnboardingState, stt_settings: dict[str, Any]) -> PersistedOnboardingState:

@@ -235,3 +235,120 @@ def test_node_migration_rejects_malformed_stt_settings(tmp_path):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "voice_stt_settings_warm_models_must_be_list"
+
+
+def test_node_migration_export_imports_tts_provider_settings(tmp_path):
+    source_path = tmp_path / "source" / "onboarding-state.json"
+    source_settings = Settings(
+        onboarding_state_path=source_path,
+        endpoint_registry_path=tmp_path / "source" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "source" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "source" / "voice-tts-settings.json",
+        voice_tts_provider="piper",
+        voice_tts_piper_transport="unix",
+        voice_tts_piper_socket_path=tmp_path / "source" / "sockets" / "tts.sock",
+        voice_tts_output_sample_rate_hz=48000,
+        voice_tts_endpoint_voices="esp-pe-1=en_US-lessac-high",
+        voice_tts_endpoint_sample_rates="esp-pe-1=48000,esp-box-1=16000",
+        voice_tts_conversion_sample_rates="48000,22050,16000",
+        voice_tts_conversion_policy="endpoint_required_sync",
+        piper_tts_model_dir=tmp_path / "source" / "piper-models",
+        piper_tts_warm_voices="en_US-lessac-high,en_GB-jenny_dioco-medium",
+    )
+    OnboardingStateStore(path=source_path).save(
+        PersistedOnboardingState.model_validate(
+            {
+                "provider_setup": {
+                    "supported_providers": ["voice", "piper"],
+                    "enabled_providers": ["voice", "piper"],
+                    "default_provider": "piper",
+                    "provider_configs": {
+                        "piper": {
+                            "enabled": True,
+                            "default": True,
+                            "model": "en_GB-jenny_dioco-medium",
+                            "default_voice": "en_GB-jenny_dioco-medium",
+                            "warm_models": ["en_US-lessac-high"],
+                        }
+                    },
+                },
+            }
+        )
+    )
+    source_settings.resolved_voice_tts_runtime_config_path().parent.mkdir(parents=True, exist_ok=True)
+    source_settings.resolved_voice_tts_runtime_config_path().write_text(
+        json.dumps({"default_voice": "en_GB-jenny_dioco-medium", "restart_required": True}),
+        encoding="utf-8",
+    )
+
+    bundle = TestClient(create_app(source_settings)).post("/api/node/migration/export", json={}).json()
+
+    tts_provider_settings = bundle["state_files"]["voice_tts_provider_settings"]
+    assert bundle["state_files"]["voice_tts_settings"]["restart_required"] is True
+    assert tts_provider_settings["provider"] == "piper"
+    assert tts_provider_settings["default"] is True
+    assert tts_provider_settings["model"] == "en_GB-jenny_dioco-medium"
+    assert tts_provider_settings["default_voice"] == "en_GB-jenny_dioco-medium"
+    assert tts_provider_settings["warm_models"] == ["en_US-lessac-high", "en_GB-jenny_dioco-medium"]
+    assert tts_provider_settings["endpoint_voices"] == {"esp-pe-1": "en_US-lessac-high"}
+    assert tts_provider_settings["endpoint_sample_rates"] == {"esp-pe-1": 48000, "esp-box-1": 16000}
+    assert tts_provider_settings["conversion_sample_rates"] == {"48k": 48000, "22050": 22050, "16k": 16000}
+    assert tts_provider_settings["conversion_policy"] == "endpoint_required_sync"
+    assert tts_provider_settings["piper"]["model_dir"] == str(tmp_path / "source" / "piper-models")
+
+    destination_path = tmp_path / "destination" / "onboarding-state.json"
+    destination_settings = Settings(
+        onboarding_state_path=destination_path,
+        endpoint_registry_path=tmp_path / "destination" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "destination" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "destination" / "voice-tts-settings.json",
+    )
+    response = TestClient(create_app(destination_settings)).post(
+        "/api/node/migration/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "state_files": {"voice_tts_provider_settings": tts_provider_settings},
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["files_imported"] == ["voice_tts_provider_settings"]
+    assert "Piper voice downloads" in " ".join(payload["warnings"])
+    imported = OnboardingStateStore(path=destination_path).load()
+    assert imported.provider_setup.supported_providers == ["piper"]
+    assert imported.provider_setup.enabled_providers == ["piper"]
+    assert imported.provider_setup.default_provider == "piper"
+    assert imported.provider_setup.provider_configs["piper"]["default_voice"] == "en_GB-jenny_dioco-medium"
+    assert imported.provider_setup.provider_configs["piper"]["warm_models"] == [
+        "en_US-lessac-high",
+        "en_GB-jenny_dioco-medium",
+    ]
+
+
+def test_node_migration_rejects_malformed_tts_provider_settings(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "onboarding-state.json",
+        endpoint_registry_path=tmp_path / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+    )
+    response = TestClient(create_app(settings)).post(
+        "/api/node/migration/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "state_files": {
+                    "voice_tts_provider_settings": {
+                        "provider": "piper",
+                        "warm_models": "en_US-lessac-high",
+                    }
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "voice_tts_provider_settings_warm_models_must_be_list"

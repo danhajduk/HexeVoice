@@ -35,19 +35,22 @@ The setup card also exposes **Refresh Core metadata** after trust activation. Us
 The operational dashboard includes a Migration section for moving a Voice Node
 identity to a different machine. Export creates a JSON bundle containing local
 onboarding/trust state, endpoint registry metadata, registered voice intents
-when present, STT provider settings when present, and runtime TTS settings when
-present. Trust tokens are included only when the operator leaves **Include trust
-secrets** enabled; without those tokens, the imported node must be reactivated
-with Core.
+when present, STT provider settings when present, runtime TTS settings when
+present, and TTS provider settings when present. Trust tokens are included only
+when the operator leaves **Include trust secrets** enabled; without those tokens,
+the imported node must be reactivated with Core.
 
 Import validates the bundle, writes the supported local runtime state files, and
 can rewrite destination-specific `api_base_url`, `ui_endpoint`, `core_base_url`,
 and hostname values for the new machine. Large local artifacts are intentionally
 not bundled. STT migration preserves model names, preload intent, device and
 compute choices, and safe service/runtime options, but model binaries must be
-downloaded or copied separately on the destination host. Copy Piper models,
-firmware artifacts, endpoint media, service env files, logs, and retained
-audio/history separately when those are needed.
+downloaded or copied separately on the destination host. TTS migration preserves
+the selected provider, Piper default voice/model, warm voice intent, endpoint
+voice/sample-rate mappings, conversion policy, and safe Piper runtime metadata;
+Piper model binaries and generated audio artifacts are not bundled. Copy Piper
+models, firmware artifacts, endpoint media, service env files, logs, and
+retained audio/history separately when those are needed.
 
 Fresh installs can import a migration bundle from the first setup page before
 starting onboarding. Enter the destination Core base URL, choose the migration
