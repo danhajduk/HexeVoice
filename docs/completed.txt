@@ -161,3 +161,4 @@ Task 147: Add optional HexeVoice hostname alias during setup - Completed on 05/1
 Task 145: Define runtime state cleanup and git-tracking policy - Completed on 05/16/2026 15:36
 Task 146: Remove trust-secret migration export/import and require Core re-auth - Completed on 05/16/2026 16:16
 Task 148: Add setup bootstrap runner for temporary LAN setup UI/API - Completed on 05/16/2026 16:19
+Task 149: Add setup bootstrap status API and installer progress tracking - Completed on 05/16/2026 16:21

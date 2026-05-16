@@ -44,6 +44,11 @@ and the temporary UI on port `8180`, then watches
 healthy, the temporary UI becomes a redirect for `120` seconds by default and
 the runner exits.
 
+The runner writes progress to `runtime/setup/bootstrap-status.json`. The
+temporary or production backend exposes the same state at
+`GET /api/setup/bootstrap/status`, including current action, completed actions,
+pending downloads, retryable failures, lifecycle mode, and final redirect URL.
+
 ```bash
 ./scripts/setup-runner.sh --handoff none
 ./scripts/setup-runner.sh --handoff systemd

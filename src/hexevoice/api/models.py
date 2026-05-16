@@ -523,6 +523,27 @@ class NodeMigrationRestoreRequest(BaseModel):
     destination_hostname: str | None = Field(default=None, max_length=120)
 
 
+class SetupBootstrapFailure(BaseModel):
+    id: str
+    message: str
+    retryable: bool = True
+    detail: dict[str, Any] = Field(default_factory=dict)
+
+
+class SetupBootstrapStatusResponse(BaseModel):
+    phase: str = "idle"
+    current_action: str | None = None
+    completed_actions: list[str] = Field(default_factory=list)
+    pending_downloads: list[str] = Field(default_factory=list)
+    failures: list[SetupBootstrapFailure] = Field(default_factory=list)
+    retryable_failures: list[SetupBootstrapFailure] = Field(default_factory=list)
+    final_redirect_url: str | None = None
+    temporary_setup_url: str | None = None
+    production_setup_url: str | None = None
+    lifecycle_mode: str | None = None
+    updated_at: str | None = None
+
+
 class BootstrapAdvertisementRequest(BaseModel):
     topic: str
     api_base: str | None = None

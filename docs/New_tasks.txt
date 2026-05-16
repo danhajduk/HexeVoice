@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 149: Add setup bootstrap status API and installer progress tracking
 [TODO] Task 150: Extend hosted install Step 1 for default firmware/model downloads and browser launch
 [TODO] Task 151: Implement Host and Node Setup page with readiness, setup mode, and lifecycle mode
 [TODO] Task 152: Implement Core Connection and Migration Source setup routes

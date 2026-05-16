@@ -14,6 +14,7 @@ SETUP_RUNNER_PRODUCTION_TIMEOUT_S="${SETUP_RUNNER_PRODUCTION_TIMEOUT_S:-600}"
 SETUP_RUNNER_POLL_INTERVAL_S="${SETUP_RUNNER_POLL_INTERVAL_S:-3}"
 SETUP_RUNNER_HANDOFF_MODE="${SETUP_RUNNER_HANDOFF_MODE:-none}"
 SETUP_RUNNER_OPEN_BROWSER="${SETUP_RUNNER_OPEN_BROWSER:-false}"
+SETUP_BOOTSTRAP_STATUS_PATH="${SETUP_BOOTSTRAP_STATUS_PATH:-$ROOT_DIR/runtime/setup/bootstrap-status.json}"
 DEFAULT_CORE_SUPERVISOR_INSTALLER="$ROOT_DIR/docs/Core-Documents/scripts/install-supervisor.sh"
 if [[ ! -x "$DEFAULT_CORE_SUPERVISOR_INSTALLER" ]]; then
   DEFAULT_CORE_SUPERVISOR_INSTALLER="install-supervisor.sh"
@@ -53,6 +54,77 @@ USAGE
 
 log() {
   printf '[setup-runner] %s\n' "$*"
+}
+
+write_status() {
+  local phase="$1"
+  local current_action="${2:-}"
+  local completed_action="${3:-}"
+  local failure_id="${4:-}"
+  local failure_message="${5:-}"
+  local failure_retryable="${6:-true}"
+  STATUS_PATH="$SETUP_BOOTSTRAP_STATUS_PATH" \
+    STATUS_PHASE="$phase" \
+    STATUS_CURRENT_ACTION="$current_action" \
+    STATUS_COMPLETED_ACTION="$completed_action" \
+    STATUS_FAILURE_ID="$failure_id" \
+    STATUS_FAILURE_MESSAGE="$failure_message" \
+    STATUS_FAILURE_RETRYABLE="$failure_retryable" \
+    STATUS_TEMPORARY_SETUP_URL="${TEMP_SETUP_URL:-}" \
+    STATUS_PRODUCTION_SETUP_URL="${PRODUCTION_SETUP_URL:-}" \
+    STATUS_FINAL_REDIRECT_URL="${FINAL_REDIRECT_URL:-}" \
+    STATUS_LIFECYCLE_MODE="$SETUP_RUNNER_HANDOFF_MODE" \
+    "$ROOT_DIR/.venv/bin/python" - <<'PY'
+from __future__ import annotations
+
+from datetime import UTC, datetime
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["STATUS_PATH"])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+except (OSError, json.JSONDecodeError):
+    payload = {}
+payload = payload if isinstance(payload, dict) else {}
+
+phase = os.environ.get("STATUS_PHASE") or "running"
+current_action = os.environ.get("STATUS_CURRENT_ACTION") or None
+completed_action = os.environ.get("STATUS_COMPLETED_ACTION") or ""
+failure_id = os.environ.get("STATUS_FAILURE_ID") or ""
+failure_message = os.environ.get("STATUS_FAILURE_MESSAGE") or ""
+
+payload["phase"] = phase
+payload["current_action"] = current_action
+payload["temporary_setup_url"] = os.environ.get("STATUS_TEMPORARY_SETUP_URL") or payload.get("temporary_setup_url")
+payload["production_setup_url"] = os.environ.get("STATUS_PRODUCTION_SETUP_URL") or payload.get("production_setup_url")
+payload["final_redirect_url"] = os.environ.get("STATUS_FINAL_REDIRECT_URL") or payload.get("final_redirect_url")
+payload["lifecycle_mode"] = os.environ.get("STATUS_LIFECYCLE_MODE") or payload.get("lifecycle_mode")
+payload["updated_at"] = datetime.now(UTC).isoformat()
+payload.setdefault("pending_downloads", [])
+
+completed = payload.setdefault("completed_actions", [])
+if completed_action and completed_action not in completed:
+    completed.append(completed_action)
+
+failures = payload.setdefault("failures", [])
+if failure_id:
+    failures = [item for item in failures if not (isinstance(item, dict) and item.get("id") == failure_id)]
+    failures.append(
+        {
+            "id": failure_id,
+            "message": failure_message or failure_id,
+            "retryable": os.environ.get("STATUS_FAILURE_RETRYABLE", "true").lower() in {"1", "true", "yes", "on"},
+        }
+    )
+    payload["failures"] = failures
+
+path.parent.mkdir(parents=True, exist_ok=True)
+temp_path = path.with_suffix(f"{path.suffix}.tmp")
+temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+temp_path.replace(path)
+PY
 }
 
 lan_host() {
@@ -135,6 +207,7 @@ require_file "$ROOT_DIR/frontend/node_modules" "Missing frontend dependencies at
 
 start_temp_backend() {
   log "Starting temporary backend on ${TEMP_API_BASE_URL}"
+  write_status "running" "starting-temporary-backend"
   (
     cd "$ROOT_DIR"
     API_HOST="$TEMP_BACKEND_HOST" \
@@ -146,6 +219,7 @@ start_temp_backend() {
       .venv/bin/python -m hexevoice.main
   ) &
   TEMP_BACKEND_PID=$!
+  write_status "running" "starting-temporary-frontend" "temporary-backend-started"
 }
 
 start_temp_frontend() {
@@ -156,6 +230,7 @@ start_temp_frontend() {
       npm run dev -- --host "$TEMP_FRONTEND_HOST" --port "$TEMP_FRONTEND_PORT" --strictPort
   ) &
   TEMP_FRONTEND_PID=$!
+  write_status "running" "waiting-for-production-setup" "temporary-frontend-started"
 }
 
 open_browser() {
@@ -175,34 +250,42 @@ run_handoff() {
   case "$SETUP_RUNNER_HANDOFF_MODE" in
     none)
       log "No production handoff requested yet."
+      write_status "running" "waiting-for-production-handoff"
       ;;
     existing-supervisor)
       log "Existing Supervisor mode selected; waiting for production setup URL."
+      write_status "running" "waiting-for-existing-supervisor" "existing-supervisor-selected"
       ;;
     systemd)
       log "Starting unsupervised systemd user services through scripts/bootstrap.sh"
+      write_status "running" "starting-systemd-services" "systemd-handoff-selected"
       "$ROOT_DIR/scripts/bootstrap.sh" &
       HANDOFF_PID=$!
       ;;
     standalone-supervisor)
       if ! installer_available; then
         log "Supervisor installer not found: ${CORE_SUPERVISOR_INSTALLER}. Keeping temporary setup running."
+        write_status "running" "waiting-for-supervisor-installer" "" "supervisor_installer_missing" "Supervisor installer not found: ${CORE_SUPERVISOR_INSTALLER}" "true"
         return
       fi
       log "Installing standalone Core Supervisor."
+      write_status "running" "installing-standalone-supervisor" "standalone-supervisor-handoff-selected"
       "$CORE_SUPERVISOR_INSTALLER" --standalone &
       HANDOFF_PID=$!
       ;;
     joined-supervisor)
       if ! installer_available; then
         log "Supervisor installer not found: ${CORE_SUPERVISOR_INSTALLER}. Keeping temporary setup running."
+        write_status "running" "waiting-for-supervisor-installer" "" "supervisor_installer_missing" "Supervisor installer not found: ${CORE_SUPERVISOR_INSTALLER}" "true"
         return
       fi
       if [[ -z "$CORE_SUPERVISOR_URL" || -z "$CORE_SUPERVISOR_ENROLLMENT_TOKEN" ]]; then
         log "Joined Supervisor requires CORE_SUPERVISOR_URL and CORE_SUPERVISOR_ENROLLMENT_TOKEN."
+        write_status "running" "waiting-for-joined-supervisor-token" "" "joined_supervisor_token_missing" "Joined Supervisor requires CORE_SUPERVISOR_URL and CORE_SUPERVISOR_ENROLLMENT_TOKEN." "true"
         return
       fi
       log "Installing joined Core Supervisor for ${CORE_SUPERVISOR_URL}."
+      write_status "running" "installing-joined-supervisor" "joined-supervisor-handoff-selected"
       "$CORE_SUPERVISOR_INSTALLER" \
         --join-core \
         --core-url "$CORE_SUPERVISOR_URL" \
@@ -246,8 +329,10 @@ class RedirectHandler(BaseHTTPRequestHandler):
 ThreadingHTTPServer(("0.0.0.0", port), RedirectHandler).serve_forever()
 PY
   REDIRECT_PID=$!
+  FINAL_REDIRECT_URL="$PRODUCTION_SETUP_URL" write_status "redirecting" "redirecting-to-production-setup" "production-setup-ready"
   log "Temporary runner will stop in ${delay}s."
   sleep "$delay"
+  FINAL_REDIRECT_URL="$PRODUCTION_SETUP_URL" write_status "complete" "" "temporary-runner-stopped"
 }
 
 start_temp_backend
@@ -276,5 +361,6 @@ if [[ "$PRODUCTION_READY" == "true" ]]; then
 else
   log "Production setup URL was not healthy before timeout: ${PRODUCTION_SETUP_URL}"
   log "Temporary setup remains active until this runner is stopped."
+  write_status "running" "waiting-for-production-setup" "" "production_setup_timeout" "Production setup URL was not healthy before timeout: ${PRODUCTION_SETUP_URL}" "true"
   wait -n "$TEMP_BACKEND_PID" "$TEMP_FRONTEND_PID"
 fi

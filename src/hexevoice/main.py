@@ -83,6 +83,7 @@ from hexevoice.api.models import (
     ProviderStatusResponse,
     ServiceActionRequest,
     ServiceActionResponse,
+    SetupBootstrapStatusResponse,
     ProviderSetupRequest,
     ProviderSetupResponse,
     ServiceStatusResponse,
@@ -111,6 +112,7 @@ from hexevoice.onboarding.trust_activation import TrustActivationService
 from hexevoice.persistence import EndpointRegistryStore, OnboardingStateStore, VoiceSessionHistoryStore
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.setup_bootstrap import SetupBootstrapStatusService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
@@ -333,6 +335,7 @@ def create_app(
     voice_intent_registry = VoiceIntentRegistry(store=voice_intent_store)
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     node_migration_service = NodeMigrationService(settings=app_settings)
+    setup_bootstrap_status_service = SetupBootstrapStatusService(settings=app_settings)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     session_start_service = OnboardingSessionStartService(
         settings=app_settings,
@@ -1839,6 +1842,10 @@ def create_app(
             return node_migration_service.restore_backup(payload)
         except NodeMigrationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.get("/api/setup/bootstrap/status", response_model=SetupBootstrapStatusResponse)
+    async def setup_bootstrap_status() -> SetupBootstrapStatusResponse:
+        return setup_bootstrap_status_service.status_payload()
 
     @app.put("/api/onboarding/local-setup/node-identity", response_model=NodeIdentitySetupResponse)
     async def save_node_identity(payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:
