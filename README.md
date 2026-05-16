@@ -39,6 +39,22 @@ python3 -m venv .venv
 PYTHONPATH=src .venv/bin/python -m hexevoice.main
 ```
 
+## One-Line Install
+
+Once changes are hosted on the default branch, install the node into
+`~/hexe/HexeVoice` with:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | bash
+```
+
+To also render and restart the user services after `scripts/stack.env` is
+created, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_RUN_BOOTSTRAP=true bash
+```
+
 ## Frontend Start
 
 ```bash

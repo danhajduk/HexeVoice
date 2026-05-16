@@ -45,6 +45,12 @@ and hostname values for the new machine. Large local artifacts are intentionally
 not bundled. Copy Piper models, firmware artifacts, endpoint media, service env
 files, logs, and retained audio/history separately when those are needed.
 
+Fresh installs can import a migration bundle from the first setup page before
+starting onboarding. Enter the destination Core base URL, choose the migration
+JSON bundle, confirm the destination API/UI URLs, and import. The later
+operational Migration page remains available for exporting bundles and for
+post-setup imports.
+
 ## Recovery Signals
 
 The frontend and local API surface the following important recovery conditions:

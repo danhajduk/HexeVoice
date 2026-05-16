@@ -9,6 +9,7 @@ import {
   getProviderSetup,
   getGovernanceCurrent,
   getVoiceIntents,
+  importNodeMigrationBundle,
   pollOnboardingSession,
   registerVoiceIntent,
   refreshRegistrationMetadata,
@@ -117,6 +118,26 @@ function automaticAdvertisementPayload(connectionForm, bootstrap, advertisementF
 }
 
 function sanitizeOptionalFields(payload) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([, value]) => value !== "" && value !== null && value !== undefined),
+  );
+}
+
+function defaultDestinationUrls() {
+  if (typeof window === "undefined") {
+    return {
+      destination_api_base_url: "",
+      destination_ui_endpoint: "",
+    };
+  }
+  const { protocol, hostname, origin } = window.location;
+  return {
+    destination_api_base_url: `${protocol}//${hostname}:9004`,
+    destination_ui_endpoint: origin,
+  };
+}
+
+function nonEmptyPayload(payload) {
   return Object.fromEntries(
     Object.entries(payload).filter(([, value]) => value !== "" && value !== null && value !== undefined),
   );
@@ -748,6 +769,13 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   const [bootstrap, setBootstrap] = useState(null);
   const [identityForm, setIdentityForm] = useState(emptyIdentityForm);
   const [connectionForm, setConnectionForm] = useState(emptyConnectionForm);
+  const [migrationBundle, setMigrationBundle] = useState(null);
+  const [migrationFileName, setMigrationFileName] = useState("");
+  const [migrationDestinationForm, setMigrationDestinationForm] = useState(() => ({
+    destination_core_base_url: "",
+    destination_hostname: "",
+    ...defaultDestinationUrls(),
+  }));
   const [advertisementForm, setAdvertisementForm] = useState(emptyAdvertisementForm);
   const [providerSetup, setProviderSetup] = useState(null);
   const [capabilities, setCapabilities] = useState(null);
@@ -837,6 +865,55 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     setConnectionForm((current) => ({ ...current, [field]: value }));
   }
 
+  function updateMigrationDestination(field, value) {
+    setMigrationDestinationForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleMigrationFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setStageNotice("");
+    setStageError("");
+    try {
+      const text = await file.text();
+      const bundle = JSON.parse(text);
+      setMigrationBundle(bundle);
+      setMigrationFileName(file.name);
+      setStageNotice("Migration bundle loaded.");
+    } catch (error) {
+      setMigrationBundle(null);
+      setMigrationFileName("");
+      setStageError(String(error.message || error));
+    }
+  }
+
+  async function handleMigrationImport() {
+    if (!migrationBundle) {
+      setStageError("migration_bundle_required");
+      return;
+    }
+    setBusyState("migration-import");
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await importNodeMigrationBundle(
+        nonEmptyPayload({
+          bundle: migrationBundle,
+          ...migrationDestinationForm,
+          destination_core_base_url: connectionForm.core_base_url || migrationDestinationForm.destination_core_base_url,
+        }),
+      );
+      await refreshSetupPanels();
+      setStageNotice(`Imported ${payload.files_imported.join(", ")}.`);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
   function updateAdvertisement(field, value) {
     setAdvertisementForm((current) => ({ ...current, [field]: value }));
   }
@@ -876,6 +953,28 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     ]);
     setLocalSetup(setupPayload);
     setBootstrap(bootstrapPayload);
+    setIdentityForm({
+      node_name: setupPayload?.node_identity?.node_name || "",
+      protocol_version: setupPayload?.node_identity?.protocol_version || "1.0",
+      node_nonce: setupPayload?.node_identity?.node_nonce || "",
+      requested_node_id: setupPayload?.node_identity?.requested_node_id || "",
+      hostname: setupPayload?.node_identity?.hostname || "",
+      ui_endpoint: setupPayload?.node_identity?.ui_endpoint || "",
+      api_base_url: setupPayload?.node_identity?.api_base_url || "",
+    });
+    setConnectionForm({
+      core_base_url: setupPayload?.core_connection?.core_base_url || "",
+    });
+    setAdvertisementForm({
+      topic: bootstrapPayload?.bootstrap_topic || "hexe/bootstrap/core",
+      api_base: bootstrapPayload?.api_base || "",
+      mqtt_host: bootstrapPayload?.mqtt_host || bootstrapPayload?.bootstrap_host || "",
+      mqtt_port: bootstrapPayload?.mqtt_port || bootstrapPayload?.bootstrap_port || 1884,
+      onboarding_mode: bootstrapPayload?.onboarding_mode || "api",
+      onboarding_contract: bootstrapPayload?.onboarding_contract || "global-node-v1",
+      register_session: bootstrapPayload?.register_session_endpoint || "/api/system/nodes/onboarding/sessions",
+      registrations: bootstrapPayload?.registrations_endpoint || "/api/system/nodes/registrations",
+    });
     setProviderSetup(providerPayload);
     setCapabilities(capabilityPayload);
     setVoiceIntents(intentPayload);
@@ -1428,6 +1527,9 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
   ) : (
     <span className="status-pill status-pill-neutral">{onboarding?.next_action || "follow setup flow"}</span>
   );
+  const migrationSummary = migrationBundle?.source
+    ? [migrationBundle.source.node_name, migrationBundle.source.node_id].filter(Boolean).join(" / ") || "Bundle selected"
+    : migrationFileName || "";
 
   if (!nodeSetupVisible) {
     return (
@@ -1448,6 +1550,15 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
         requiredInputs={requiredInputs}
         notice={stageNotice}
         error={stageError}
+        migration={{
+          bundleLoaded: Boolean(migrationBundle),
+          destinationForm: migrationDestinationForm,
+          summary: migrationSummary,
+          busy: busyState === "migration-import",
+        }}
+        onMigrationFile={handleMigrationFile}
+        onMigrationDestinationChange={updateMigrationDestination}
+        onMigrationImport={handleMigrationImport}
       />
     );
   }

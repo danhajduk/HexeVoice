@@ -9,6 +9,10 @@ export function NodeIdentityFormCard({
   requiredInputs,
   notice,
   error,
+  migration,
+  onMigrationFile,
+  onMigrationDestinationChange,
+  onMigrationImport,
 }) {
   return (
     <article className="card stack">
@@ -51,6 +55,52 @@ export function NodeIdentityFormCard({
       {requiredInputs.length > 0 ? (
         <div className="callout callout-warning">Required before onboarding: {requiredInputs.join(", ")}</div>
       ) : null}
+      <div className="section-divider" />
+      <div className="section-heading">
+        <h2>Migration</h2>
+        <span className="pill">{migration?.summary || "optional"}</span>
+      </div>
+      <label className="field">
+        <span className="field-label">Migration bundle</span>
+        <input className="field-input" type="file" accept="application/json,.json" onChange={onMigrationFile} />
+      </label>
+      <div className="form-grid">
+        <label className="field">
+          <span className="field-label">Destination API base URL</span>
+          <input
+            className="field-input"
+            value={migration?.destinationForm?.destination_api_base_url || ""}
+            onChange={(event) => onMigrationDestinationChange("destination_api_base_url", event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">Destination UI endpoint</span>
+          <input
+            className="field-input"
+            value={migration?.destinationForm?.destination_ui_endpoint || ""}
+            onChange={(event) => onMigrationDestinationChange("destination_ui_endpoint", event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="field-label">Destination hostname</span>
+          <input
+            className="field-input"
+            value={migration?.destinationForm?.destination_hostname || ""}
+            onChange={(event) => onMigrationDestinationChange("destination_hostname", event.target.value)}
+            placeholder="optional"
+          />
+        </label>
+      </div>
+      <div className="actions">
+        <button
+          className="btn btn-secondary"
+          type="button"
+          onClick={onMigrationImport}
+          disabled={migration?.busy || !migration?.bundleLoaded}
+        >
+          {migration?.busy ? "Importing..." : "Import Migration"}
+        </button>
+      </div>
     </article>
   );
 }

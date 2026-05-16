@@ -1,5 +1,32 @@
 # Setup
 
+## One-Line Install
+
+Install or update HexeVoice at `~/hexe/HexeVoice` from the hosted repository:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | bash
+```
+
+The installer clones or updates the checkout, creates `.venv`, installs Python
+requirements, installs frontend dependencies, builds the frontend, and creates
+`scripts/stack.env` from the example when it is missing.
+
+Set `HEXEVOICE_RUN_BOOTSTRAP=true` to run `scripts/bootstrap.sh` at the end:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_RUN_BOOTSTRAP=true bash
+```
+
+Optional overrides:
+
+- `HEXEVOICE_INSTALL_ROOT=/path` changes the parent install directory.
+- `HEXEVOICE_APP_DIR=/path/HexeVoice` changes the exact checkout path.
+- `HEXEVOICE_REPO_URL=https://...` changes the Git remote.
+- `HEXEVOICE_BRANCH=main` changes the branch.
+
+## Manual Setup
+
 1. Create the repo-local virtual environment with `python3 -m venv .venv`.
 2. Install backend requirements with `.venv/bin/pip install -r requirements.txt`.
 3. Install frontend dependencies from `frontend/` with `npm install`.
