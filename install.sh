@@ -6,6 +6,7 @@ BRANCH="${HEXEVOICE_BRANCH:-main}"
 INSTALL_ROOT="${HEXEVOICE_INSTALL_ROOT:-$HOME/hexe}"
 APP_DIR="${HEXEVOICE_APP_DIR:-$INSTALL_ROOT/HexeVoice}"
 RUN_BOOTSTRAP="${HEXEVOICE_RUN_BOOTSTRAP:-false}"
+SETUP_STT="${HEXEVOICE_SETUP_STT:-false}"
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
@@ -75,10 +76,20 @@ if [[ "$RUN_BOOTSTRAP" == "true" || "$RUN_BOOTSTRAP" == "1" || "$RUN_BOOTSTRAP" 
   require_command systemctl
   log "Installing and starting user services"
   ./scripts/bootstrap.sh
+  if [[ "$SETUP_STT" == "true" || "$SETUP_STT" == "1" || "$SETUP_STT" == "yes" ]]; then
+    log "Verifying and preloading external faster-whisper STT"
+    ./scripts/faster-whisper-stt-control.sh ready
+  fi
 else
+  if [[ "$SETUP_STT" == "true" || "$SETUP_STT" == "1" || "$SETUP_STT" == "yes" ]]; then
+    require_command systemctl
+    log "Installing, starting, and preloading external faster-whisper STT"
+    ./scripts/faster-whisper-stt-control.sh ready
+  fi
   log "Install complete"
   printf '\nNext steps:\n'
   printf '  cd %s\n' "$APP_DIR"
   printf '  edit scripts/stack.env for this host\n'
+  printf '  ./scripts/faster-whisper-stt-control.sh ready   # optional: install/start/preload STT\n'
   printf '  ./scripts/bootstrap.sh\n'
 fi

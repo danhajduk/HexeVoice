@@ -998,8 +998,10 @@ Original task details:
 
 ## Task 121
 Original task details:
-- Title: Move local STT/TTS engine services to Unix-domain-socket-only transport
+- Title: Dockerize local STT/TTS engines and move them to Unix-socket transport
 - Scope:
+  - Dockerize the external faster-whisper STT service so STT runs as a HexeVoice-owned container instead of a user systemd Python process.
+  - Keep Piper TTS as a HexeVoice-owned container and update its runtime shape as needed for socket transport.
   - Replace local voice engine TCP host/port communication with Unix domain sockets as the normal and required runtime path.
   - Use a host runtime socket directory, such as `runtime/sockets/`, mounted into Dockerized engine containers.
   - Allow STT and TTS engines to listen on sockets such as `stt.sock` and `tts.sock`.
@@ -1007,7 +1009,17 @@ Original task details:
   - Remove normal TCP exposure for local STT/TTS engines.
   - Keep any TCP mode limited to an explicit development/debug override, not the production default.
   - Add socket cleanup on service startup so stale socket files do not block restarts.
-  - Document Docker volume, permissions, health-check, and Supervisor visibility implications.
+  - Add a small shared Python health-ping helper for HexeVoice-owned engine containers that can call the node health/registration endpoint over the mounted Unix socket.
+  - Include the health-ping helper in the STT and TTS Docker images or mounted runtime scripts, and make it report engine identity, version/config summary, container hostname, health state, and last error without exposing secrets.
+  - Ensure the backend/node side has a Unix-socket route for local engine health pings and records the latest engine heartbeat/status for Runtime UI and Supervisor metadata.
+  - Evaluate whether the wake word container should use the same health-ping helper or remain covered by Wyoming/container health checks; document the decision.
+  - Document Docker volume, permissions, socket ownership, health-check, health-ping, and Supervisor visibility implications.
+- Acceptance criteria:
+  - STT and TTS run as local containers by default, with no required TCP ports for backend communication.
+  - Backend talks to STT and TTS through mounted Unix sockets.
+  - STT and TTS containers can send health pings to the node over the mounted Unix socket.
+  - Runtime status shows fresh container health/heartbeat data and clear stale/missing states.
+  - TCP remains available only through an explicit development/debug override.
 
 ## Task 122
 Original task details:
@@ -1114,6 +1126,240 @@ Original task details:
   - A fresh host can run a documented install/firmware command and populate `runtime/firmware/` with the latest selected release artifacts.
   - Backend OTA manifest and endpoint firmware comparison continue to work from the downloaded artifacts.
   - Failures clearly identify missing source configuration, download failure, checksum mismatch, or unsupported board artifact.
+
+## Task 134
+Original task details:
+- Title: Include STT provider settings in node migration bundles
+- Goal:
+  - A migration export/import should preserve the STT provider choices needed for a destination host to continue using the same speech-to-text configuration after install.
+- Scope:
+  - Extend node migration export/import to include STT provider settings when present.
+  - Preserve selected provider, faster-whisper model name, additional requested models, preload preference, device choice (`cpu`/`cuda`), GPU enablement, compute type, cache/model directory references, and service/runtime options that are safe to move.
+  - Keep downloaded model binaries out of the JSON migration bundle; migrate model selection and download/preload intent, then let install/setup fetch models on the destination host.
+  - Validate imported STT settings before writing them so malformed bundles cannot corrupt runtime config.
+  - Surface clear import warnings when the destination host must download models, lacks GPU support, or needs the STT service restarted.
+  - Add tests covering export, import, missing settings, malformed settings, and GPU/model fields.
+  - Update migration docs to explain that STT settings migrate but model files are downloaded or copied separately.
+- Acceptance criteria:
+  - Exported migration bundles contain an STT settings section when STT provider settings exist.
+  - Import restores STT settings and reports any follow-up model download/preload or service restart requirement.
+  - Existing migrations without STT settings still import successfully.
+
+## Task 135
+Original task details:
+- Title: Expand TTS provider settings in node migration bundles
+- Goal:
+  - A migration export/import should preserve all TTS provider choices, not only the current runtime TTS settings file.
+- Scope:
+  - Audit the existing `voice_tts_settings` migration behavior and extend it to cover provider setup choices that are not currently included.
+  - Preserve selected TTS provider, default Piper voice/model, additional requested voices, preload/warm voices, conversion sample-rate settings, model source metadata, Docker/runtime options, and restart-required state where appropriate.
+  - Keep Piper model binaries and generated audio artifacts out of the JSON migration bundle; migrate model choices and download/preload intent instead.
+  - Validate imported TTS settings before writing them and return actionable warnings for missing voices, required downloads, container runtime gaps, or service restart needs.
+  - Add tests covering current `voice_tts_settings` compatibility, expanded provider settings, missing settings, and malformed settings.
+  - Update migration docs to describe exactly which TTS settings migrate and which artifacts must be downloaded/copied separately.
+- Acceptance criteria:
+  - Exported migration bundles preserve TTS provider and voice/model setup choices.
+  - Import restores TTS settings without breaking existing bundles that only contain `voice_tts_settings`.
+  - Destination follow-up actions for model downloads, warmup, and restarts are reported clearly.
+
+## Task 136
+Original task details:
+- Title: Include wake word provider settings in node migration bundles
+- Goal:
+  - A migration export/import should preserve wake word provider choices and selected wake models for the destination host.
+- Scope:
+  - Extend node migration export/import to include wake word provider settings when present.
+  - Preserve selected provider, enabled state, default wake word/model, additional requested models, model source references, sensitivity/threshold settings, custom model paths, and preload/startup preferences that are safe to move.
+  - Keep wake model binaries out of the JSON migration bundle unless a future explicit artifact-copy path is added; migrate model choices and source references instead.
+  - Ensure the default wake word/model naming uses `Hexe`, not `Hexa`.
+  - Validate imported wake settings before writing them and warn when the destination host needs model download/copy, service restart, or provider setup.
+  - Add tests covering export, import, missing settings, malformed settings, default `Hexe` model references, and additional model selections.
+  - Update migration docs to explain that wake settings migrate while model binaries are handled by install/download/copy steps.
+- Acceptance criteria:
+  - Exported migration bundles contain wake word settings when configured.
+  - Import restores wake settings and reports required follow-up model/runtime actions.
+  - Existing migrations without wake settings still import successfully.
+
+## Task 137
+Original task details:
+- Title: Add CUDA host preflight, STT benchmark, and CPU fallback validation
+- Goal:
+  - Before moving HexeVoice to a CUDA-capable host, make it obvious whether the destination can actually run faster-whisper on GPU and how it compares to the CPU fallback.
+- Scope:
+  - Add a doctor/preflight command that checks NVIDIA driver visibility, `nvidia-smi`, CUDA/cuDNN runtime availability where applicable, Python package compatibility, CTranslate2 CUDA support, and faster-whisper import/load behavior.
+  - Verify the configured STT model, device, compute type, preload setting, and cache/model directory without requiring model binaries to be committed.
+  - Add a short STT benchmark path using a known small sample or generated fixture so CPU and CUDA profiles can report model load time, transcription time, device, compute type, RAM, and GPU memory when available.
+  - Keep CPU `int8` as the required fallback and report a clear warning when CUDA is requested but unsupported.
+  - Expose enough status for the provider setup page and runtime service status to show whether CUDA is active, unavailable, or configured but not currently used.
+  - Add tests or dry-run validation that can run without a real GPU in CI.
+  - Update migration/setup docs with the CUDA preflight command and expected pass/fail outputs.
+- Acceptance criteria:
+  - On a non-GPU host, the preflight reports CUDA unavailable and confirms CPU fallback without failing the install.
+  - On a CUDA-capable host, the preflight can prove faster-whisper/CTranslate2 can load the configured model on GPU.
+  - Benchmark output is structured enough to compare CPU and CUDA runs before choosing the production profile.
+
+## Task 138
+Original task details:
+- Title: Tune endpoint utterance capture and STT silence trimming before CUDA migration
+- Goal:
+  - Reduce bad or wasteful audio sent to STT before using a larger/faster CUDA-backed model.
+- Scope:
+  - Combine the future silence-trimming and endpoint-capture tuning work into one pre-migration task.
+  - Add or tune STT-side silence trimming so wake tails, pre-roll, and post-speech padding are removed without cutting off the command.
+  - Tune endpoint utterance capture duration, micro-VAD pause handling, and backend end-of-speech thresholds against real wake recordings.
+  - Use retained wake recordings and micro-VAD debug chunks as fixtures where possible, while keeping those recordings out of git.
+  - Report before/after metrics for audio duration sent to STT, transcript quality, latency, and common cutoff/filler cases.
+  - Keep defaults conservative and configurable per endpoint/provider.
+  - Add tests for trimming boundaries using synthetic audio or lightweight fixtures.
+  - Update operations docs with tuning commands and recommended migration defaults.
+- Acceptance criteria:
+  - Real-device wake recordings produce cleaner STT input without losing the spoken command.
+  - Default capture/trimming settings reduce unnecessary STT audio duration compared with the current baseline.
+  - Operators can adjust capture and silence settings without code changes.
+
+## Task 139
+Original task details:
+- Title: Define STT model profiles for fast intent path and accurate fallback
+- Goal:
+  - Prepare model-selection behavior that can benefit from a CUDA host while still remaining usable on CPU.
+- Scope:
+  - Define named STT profiles such as `cpu_default`, `cuda_fast_intent`, and `cuda_accurate_fallback`.
+  - Map each profile to faster-whisper model, device, compute type, preload/download preference, language, beam size, and fallback behavior.
+  - Support a fast intent-first transcription path using a smaller/faster model, with fallback to a higher-accuracy model when confidence, match quality, or intent extraction is weak.
+  - Ensure provider setup can persist selected profiles and migration bundles can carry those choices without embedding model binaries.
+  - Add status reporting that shows loaded/warm models, active profile, fallback model, and reload-required state.
+  - Add tests around profile validation, migration/import compatibility, and fallback decision rules without requiring large model downloads in CI.
+  - Document recommended CPU and CUDA profiles for first install and post-migration tuning.
+- Acceptance criteria:
+  - Operators can choose or migrate named STT profiles instead of hand-editing scattered env vars.
+  - The fast intent path can fall back to a more accurate model when needed.
+  - Existing single-model STT settings continue to work.
+
+## Task 140
+Original task details:
+- Title: Auto-detect CUDA-capable STT Docker image during install
+- Goal:
+  - Hosted install should choose the CUDA faster-whisper STT container only when the destination host proves Docker GPU passthrough works, and otherwise fall back cleanly to the CPU image.
+- Scope:
+  - Add installer/control-script detection for Docker or Podman availability before selecting an STT image.
+  - Detect NVIDIA GPU and driver availability with host checks such as `nvidia-smi` when present.
+  - Detect Docker GPU passthrough with a small CUDA smoke container, such as `docker run --rm --gpus all nvidia/cuda:<tag> nvidia-smi`, using a configurable CUDA smoke image/tag.
+  - Add an STT image capability check that verifies the selected faster-whisper image can import CTranslate2/faster-whisper and report CUDA availability from inside the container.
+  - If CUDA checks pass, set the STT runtime to the CUDA image/profile, `VOICE_STT_FASTER_WHISPER_DEVICE=cuda`, and a CUDA-safe compute type such as `float16`.
+  - If any CUDA check fails, keep the CPU image/profile, `VOICE_STT_FASTER_WHISPER_DEVICE=cpu`, and `VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE=int8` without failing the full install.
+  - Record the detection result, chosen image/profile, failure reason, and fallback status in install output and runtime/provider status.
+  - Integrate with Task 137's CUDA preflight/benchmark path so the install-time detection and operator-facing doctor command share checks where practical.
+  - Add CI-safe tests/dry-runs that mock GPU-present, GPU-missing, Docker-missing, and Docker-GPU-broken cases without requiring a real GPU.
+  - Update setup docs with override environment variables for forcing CPU, forcing CUDA, or skipping CUDA detection.
+- Acceptance criteria:
+  - Fresh install on a non-GPU host succeeds with the CPU STT image/profile.
+  - Fresh install on a properly configured CUDA host selects the CUDA STT image/profile and reports the proof checks.
+  - A host with a GPU but broken Docker GPU passthrough falls back to CPU with a clear warning.
+
+## Task 141
+Original task details:
+- Title: Evaluate alternative neural TTS engines, including GPU-capable options
+- Goal:
+  - Decide whether HexeVoice should add a second local TTS engine beyond Piper, especially one that benefits from CUDA on larger hosts.
+- Scope:
+  - Compare candidate local neural TTS engines for quality, latency, language/voice coverage, licensing, model size, Docker support, CPU performance, and GPU/CUDA support.
+  - Include Piper CPU as the baseline.
+  - Prefer engines that can run behind the existing TTS provider contract or a small adapter without changing firmware playback expectations.
+  - Check whether outputs can be normalized to the existing WAV/sample-rate/artifact sidecar flow.
+  - Identify install complexity, VRAM/RAM/disk requirements, and model download behavior.
+  - Produce a recommendation: keep Piper only, add an optional experimental provider, or replace the default later.
+- Acceptance criteria:
+  - A short evaluation doc compares at least two alternatives against Piper.
+  - Recommendation includes whether GPU TTS is worth implementing for HexeVoice.
+  - Any follow-up implementation task is scoped separately.
+
+## Task 142
+Original task details:
+- Title: Add migration preflight and dry-run validation
+- Goal:
+  - Before importing a migration bundle on a new host, operators should get a clear pass/fail report for host readiness and bundle compatibility.
+- Scope:
+  - Add a migration preflight command or API path that can run before destructive writes.
+  - Check Docker/Compose or Podman availability, disk space, Python/npm availability when relevant, required runtime directories, expected ports or socket paths, Core URL reachability, model download/network access, firmware source configuration, and migration bundle schema/version validity.
+  - Validate that STT, TTS, wake, firmware, endpoint media, and migration state requirements are either satisfied or have clear follow-up actions.
+  - Support a dry-run import mode that validates destination overrides and reports which files/settings would be written without writing them.
+  - Return structured results suitable for CLI output and setup-page display.
+  - Add tests for missing Docker, low disk, invalid bundle, unreachable Core, missing model source, and successful dry-run.
+  - Update docs with the recommended preflight command before migration.
+- Acceptance criteria:
+  - Operators can run one preflight command and know whether the host is ready for migration.
+  - Dry-run import reports planned writes and warnings without modifying runtime state.
+  - Failures name the exact missing prerequisite or invalid bundle field.
+
+## Task 143
+Original task details:
+- Title: Add post-install smoke test command
+- Goal:
+  - After hosted install and/or migration import, operators should have one command that proves the node is actually usable.
+- Scope:
+  - Add a smoke test command or API-driven helper that checks backend health, frontend reachability, Core registration/trust state, STT health/preload status, TTS health/model availability, wake word runtime/model availability, firmware artifacts, runtime directory presence, and service-control visibility.
+  - Include optional checks for Docker container state, Unix socket availability, CUDA image selection, and migration import status when those features are enabled.
+  - Keep checks read-only except for safe health/preload calls explicitly marked as such.
+  - Output a concise pass/fail summary plus detailed remediation hints.
+  - Add tests or dry-run fixtures that cover pass, partial failure, and unavailable optional components.
+  - Document the command as the final step after install or migration.
+- Acceptance criteria:
+  - A fresh install can run the smoke test and receive a clear readiness summary.
+  - The command identifies whether failures are backend, Core trust, STT, TTS, wake, firmware, or artifact related.
+  - The smoke test can run safely multiple times.
+
+## Task 144
+Original task details:
+- Title: Add migration backup and rollback workflow
+- Goal:
+  - Operators should be able to preserve current node state before migration and recover if the destination setup fails.
+- Scope:
+  - Add a backup command that exports the migration bundle and creates a timestamped backup of important local runtime state.
+  - Include onboarding/trust state, endpoint registry, voice intents, STT/TTS/wake settings, runtime TTS settings, selected service env files, and any lightweight manifests/settings needed to retry migration.
+  - Exclude large model binaries, generated audio, logs, and session history by default, with explicit options for including selected local artifacts when needed.
+  - Add a rollback/restore command or documented workflow that can restore a backup into the same host or retry import on another host.
+  - Treat backups containing trust secrets as sensitive and label them clearly.
+  - Add tests for backup manifest creation, redacted vs secret-inclusive export, restore validation, and missing-file tolerance.
+  - Update docs with backup, rollback, and retry steps.
+- Acceptance criteria:
+  - A timestamped migration backup can be created before changing hosts.
+  - Backup contents are listed in a manifest and clearly mark whether trust secrets are included.
+  - Restore/rollback validates before writing and reports what was restored.
+
+## Task 145
+Original task details:
+- Title: Define runtime state cleanup and git-tracking policy
+- Goal:
+  - The repository should not stay dirty after normal runtime operation or hosted install.
+- Scope:
+  - Classify runtime paths as tracked defaults, generated caches, mutable local state, migration data, large artifacts, logs, or ignored secrets.
+  - Decide policy for `runtime/endpoint_registry.json`, `runtime/voice_intents.json`, `runtime/voice_session_history.json`, `runtime/voice_tts_settings.json`, `runtime/rendered_node_ui_pages/*.json`, endpoint media, firmware artifacts, wake models, Piper models, and STT model/cache files.
+  - Update `.gitignore` and tracked file layout as needed, using `git rm --cached` only for files that should stop being tracked.
+  - Provide seed/default files or installer-created skeleton directories where needed so fresh installs still work.
+  - Add a cleanup/status helper that distinguishes source changes from mutable runtime state.
+  - Update docs to explain which runtime data migrates through the API, which downloads during install, and which should never be committed.
+- Acceptance criteria:
+  - Running HexeVoice no longer dirties tracked generated/runtime files during normal operation.
+  - Default install assets remain available without committing local mutable state.
+  - Docs clearly identify what belongs in git, migration bundles, downloads, and backups.
+
+## Task 146
+Original task details:
+- Title: Make trust secret migration choice explicit
+- Goal:
+  - Operators should deliberately choose whether migration preserves node trust identity or redacts secrets and requires Core reactivation.
+- Scope:
+  - Make export/import UI and CLI flows clearly present the two migration modes: include trust secrets or redact trust secrets.
+  - Explain the effect of each choice before export/import: preserved node identity versus safer bundle requiring reactivation.
+  - Add validation/warnings when importing a trusted state without trust tokens.
+  - Ensure first-setup migration import surfaces the same choice and warnings as the operational Migration page.
+  - Label generated bundles containing trust secrets as sensitive in filenames/metadata where practical.
+  - Add tests for redacted export, secret-inclusive export, import warnings, first-setup import warnings, and metadata/filename behavior.
+  - Update docs with recommended handling and storage of secret-inclusive bundles.
+- Acceptance criteria:
+  - The operator cannot accidentally confuse a redacted migration with a trust-preserving migration.
+  - Import clearly states whether Core reactivation is required.
+  - Secret-inclusive bundles are marked and documented as sensitive.
 
 ## Task 125-133
 Original task details:

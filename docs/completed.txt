@@ -140,3 +140,5 @@ Task 130: Add Core-rendered registered-intent record list, detail, test, and inv
 Task 131: Add Core-rendered TTS model, artifact, wake-recording, and media inventory surfaces - Completed on 05/13/2026 00:02
 Task 132: Add contract tests and migration docs for the HexeVoice Core-rendered UI pilot - Completed on 05/13/2026 00:02
 Task 133: Add a Voice node local UI mode setting for full, setup_only, and future disabled operation - Completed on 05/13/2026 00:02
+Task 069: Validate real-device audio providers end to end - Completed on 05/16/2026 11:24
+Task 122: Make external faster-whisper STT ready immediately after hosted install - Completed on 05/16/2026 11:49

@@ -1,14 +1,29 @@
-[WIP] Task 122: Make external faster-whisper STT ready immediately after hosted install
+[TODO] Task 125: Ensure hosted install creates the full runtime directory skeleton
 [TODO] Task 123: Make Piper TTS ready immediately after hosted install
 [TODO] Task 124: Make wake word runtime ready immediately after hosted install
-[TODO] Task 125: Ensure hosted install creates the full runtime directory skeleton
 [TODO] Task 126: Add firmware artifact download to hosted install
-[TODO] Task 121: Move local STT/TTS engine services to Unix-domain-socket-only transport
+[TODO] Task 121: Dockerize local STT/TTS engines and move them to Unix-socket transport
+[TODO] Task 140: Auto-detect CUDA-capable STT Docker image during install
+[TODO] Task 134: Include STT provider settings in node migration bundles
+[TODO] Task 135: Expand TTS provider settings in node migration bundles
+[TODO] Task 136: Include wake word provider settings in node migration bundles
+[TODO] Task 137: Add CUDA host preflight, STT benchmark, and CPU fallback validation
+[TODO] Task 138: Tune endpoint utterance capture and STT silence trimming before CUDA migration
+[TODO] Task 139: Define STT model profiles for fast intent path and accurate fallback
+[TODO] Task 142: Add migration preflight and dry-run validation
+[TODO] Task 143: Add post-install smoke test command
+[TODO] Task 144: Add migration backup and rollback workflow
+[TODO] Task 145: Define runtime state cleanup and git-tracking policy
+[TODO] Task 146: Make trust secret migration choice explicit
+[TODO] Task 070: Update Phase 2 operator docs and release checklist
+
+**********************************************************************************************
+* Future TODO listing
+**********************************************************************************************
+
 [FUTURE TODO] Task 064: Build the first touchscreen interaction layer
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card
 [FUTURE TODO] Task 068: Integrate AI Node assistant routing as the primary assistant path
-[FUTURE TODO] Task 069: Validate real-device audio providers end to end
-[FUTURE TODO] Task 070: Update Phase 2 operator docs and release checklist
 [FUTURE TODO] Task 071: Add touchscreen swipe navigation and a separate UI pages manifest for settings pages; use ~40px button art inside ~56px touch targets
 [FUTURE TODO] Task 072: Add a native ESP voice endpoint timer screen with active countdown, paused/finished states, and MQTT/request timestamp-aware due-time rendering
 [FUTURE TODO] Task 076: Connect Interaction Node `ui.play_sound` audio_url playback to Voice Node generated TTS clips for kiosk speech
@@ -21,3 +36,4 @@
 [FUTURE TODO] Task 102: Tune endpoint utterance capture duration and silence detection to reduce audio sent to STT
 [FUTURE TODO] Task 109: Refactor VoiceSessionManager for multiple simultaneous ESP endpoints with per-endpoint WebSockets, active sessions, status, command routing, OTA/media delivery, and replay controls
 [FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
+[FUTURE TODO] Task 141: Evaluate alternative neural TTS engines, including GPU-capable options

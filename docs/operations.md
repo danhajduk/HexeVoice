@@ -70,6 +70,8 @@ Use:
 - `scripts/run-from-env.sh frontend` to launch the frontend from `scripts/stack.env`
 - `scripts/stack-control.sh` for service control
 - `scripts/restart-stack.sh` to restart the configured stack services
+- `scripts/faster-whisper-stt-control.sh ready` to render the STT user unit,
+  restart it, wait for `/health`, and preload/download the configured model
 
 `scripts/stack-control.sh` restarts services one at a time and prints each
 service as it is handled. Each `systemctl --user` operation is bounded by
@@ -97,6 +99,19 @@ Runtime service status also exposes external STT `warm_model_health`, including
 loaded state, loaded-at timestamp, load count, last load duration, and
 `reload_required` when the running STT service does not match the backend's
 expected model/device/compute/transcribe options.
+
+The hosted installer can run the same STT readiness path with
+`HEXEVOICE_SETUP_STT=true`. This may download the configured faster-whisper
+model, so the default installer leaves it as an explicit opt-in:
+
+```bash
+HEXEVOICE_SETUP_STT=true ./install.sh
+./scripts/faster-whisper-stt-control.sh doctor
+./scripts/faster-whisper-stt-control.sh health
+```
+
+When the STT service URL is not the default `http://127.0.0.1:10300`, set
+`STT_HEALTH_URL` or `VOICE_STT_SERVICE_BASE_URL` for the control script.
 
 The Piper TTS runtime code lives in the standalone `src/tts/` package.
 `services/piper_tts/app.py` remains as a compatibility wrapper, while the
