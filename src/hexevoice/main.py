@@ -1981,9 +1981,9 @@ def create_app(
         for provider_id in provider_setup.enabled_providers:
             target = provider_targets.get(provider_id)
             component = component_by_target.get(target or "")
-            healthy = bool(component.get("healthy")) if component else provider_id in {"deterministic", "openai"}
-            state = "healthy" if healthy else "warning" if provider_id in {"deterministic", "openai"} else "failed"
-            if not healthy and provider_id not in {"deterministic", "openai"}:
+            healthy = bool(component.get("healthy")) if component else provider_id in {"deterministic", "openai", "voice"}
+            state = "healthy" if healthy else "warning" if provider_id in {"deterministic", "openai", "voice"} else "failed"
+            if not healthy and provider_id not in {"deterministic", "openai", "voice"}:
                 blockers.append(f"{provider_id}_not_healthy")
             states.append(
                 {
@@ -2156,6 +2156,290 @@ def create_app(
             "action": "sync-governance",
             "result": result.model_dump(mode="json"),
             "status": await asyncio.to_thread(setup_capabilities_status_payload),
+        }
+
+    def setup_ready_state_path() -> Path:
+        return app_settings.runtime_dir / "setup" / "ready-state.json"
+
+    def read_setup_ready_state() -> dict:
+        try:
+            payload = json.loads(setup_ready_state_path().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def write_setup_ready_state(payload: dict) -> None:
+        payload["updated_at"] = datetime.now(UTC).isoformat()
+        path = setup_ready_state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_suffix(f"{path.suffix}.tmp")
+        temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        temp_path.replace(path)
+
+    def setup_ready_check(
+        check_id: str,
+        label: str,
+        ok: bool,
+        message: str,
+        *,
+        required: bool = True,
+        detail: dict | None = None,
+    ) -> dict:
+        return {
+            "id": check_id,
+            "label": label,
+            "status": "pass" if ok else ("fail" if required else "warn"),
+            "required": required,
+            "message": message,
+            "detail": detail or {},
+        }
+
+    def setup_ready_runtime_missing() -> list[str]:
+        config_path = Path("config/runtime-dirs.json")
+        try:
+            payload = json.loads(config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return ["config/runtime-dirs.json"]
+        runtime_dirs = payload.get("runtime_dirs")
+        if not isinstance(runtime_dirs, list):
+            return ["config/runtime-dirs.json"]
+        return [
+            str(item)
+            for item in runtime_dirs
+            if str(item).strip() and not (app_settings.runtime_dir / str(item)).is_dir()
+        ]
+
+    def setup_ready_frontend_url() -> str:
+        host_payload = setup_host_readiness_service.readiness_payload()
+        return (app_settings.public_ui_base_url or host_payload.ui_base_url).rstrip("/") + "/"
+
+    def setup_ready_smoke_payload() -> dict:
+        checks: list[dict] = []
+        state = onboarding_state_store.load()
+        provider_status = setup_provider_status_payload()
+        capability_status = setup_capabilities_status_payload()
+        host_status = setup_host_readiness_service.readiness_payload()
+
+        checks.append(setup_ready_check("backend", "Backend API", True, "Backend API handled the smoke request."))
+
+        frontend_url = setup_ready_frontend_url()
+        try:
+            response = httpx.get(frontend_url, timeout=2.0, follow_redirects=False)
+            frontend_ok = response.status_code < 500
+            frontend_message = f"Frontend returned HTTP {response.status_code}."
+        except httpx.HTTPError as exc:
+            frontend_ok = False
+            frontend_message = f"Frontend is unreachable: {exc}"
+        checks.append(
+            setup_ready_check(
+                "frontend",
+                "Frontend",
+                frontend_ok,
+                frontend_message,
+                detail={"url": frontend_url},
+            )
+        )
+
+        trusted = (
+            state.trust_activation.trust_status == "trusted"
+            and bool(state.trust_activation.node_id)
+            and bool(state.trust_activation.node_trust_token)
+        )
+        checks.append(
+            setup_ready_check(
+                "trust",
+                "Trust",
+                trusted,
+                "Node trust is active." if trusted else "Node trust is not active.",
+                detail={"trust_status": state.trust_activation.trust_status, "node_id": state.trust_activation.node_id},
+            )
+        )
+
+        governance_current = bool(capability_status.get("governance_current"))
+        checks.append(
+            setup_ready_check(
+                "governance",
+                "Governance",
+                governance_current,
+                "Governance bundle is current." if governance_current else "Governance has not been refreshed locally.",
+                detail=capability_status.get("governance", {}),
+            )
+        )
+
+        provider_blockers = list(provider_status.get("blockers") or [])
+        provider_states = provider_status.get("provider_states") or []
+        unhealthy_providers = [
+            provider.get("provider_id")
+            for provider in provider_states
+            if provider.get("state") == "failed" or provider.get("healthy") is False
+        ]
+        providers_ok = not provider_blockers and not unhealthy_providers
+        checks.append(
+            setup_ready_check(
+                "providers",
+                "Providers",
+                providers_ok,
+                "Enabled providers are ready." if providers_ok else "Provider readiness is still blocked.",
+                detail={"blockers": provider_blockers, "unhealthy": unhealthy_providers, "states": provider_states},
+            )
+        )
+
+        runtime_missing = setup_ready_runtime_missing()
+        checks.append(
+            setup_ready_check(
+                "runtime_dirs",
+                "Runtime directories",
+                not runtime_missing,
+                "Runtime directory skeleton is present." if not runtime_missing else "Runtime directories are missing.",
+                detail={"missing": runtime_missing[:30]},
+            )
+        )
+        sockets_dir = app_settings.runtime_dir / "sockets"
+        checks.append(
+            setup_ready_check(
+                "sockets",
+                "Runtime sockets",
+                sockets_dir.is_dir(),
+                "Socket directory is present." if sockets_dir.is_dir() else "Socket directory is missing.",
+                detail={"path": str(sockets_dir)},
+            )
+        )
+
+        firmware_dir = app_settings.resolved_firmware_artifact_dir()
+        firmware_files = list(firmware_dir.glob("*.bin")) if firmware_dir.exists() else []
+        manifest_present = (firmware_dir / "manifest.json").exists()
+        firmware_ok = bool(firmware_files) and manifest_present
+        checks.append(
+            setup_ready_check(
+                "firmware",
+                "Firmware artifacts",
+                firmware_ok,
+                "Firmware manifest and binaries are present." if firmware_ok else "Firmware manifest or binaries are missing.",
+                detail={"dir": str(firmware_dir), "bin_count": len(firmware_files), "manifest": manifest_present},
+            )
+        )
+
+        lan_ok = bool(host_status.lan_host and host_status.api_base_url and host_status.ui_base_url)
+        checks.append(
+            setup_ready_check(
+                "lan_urls",
+                "LAN URLs",
+                lan_ok,
+                "LAN URLs are available." if lan_ok else "LAN URLs are incomplete.",
+                detail={"lan_host": host_status.lan_host, "api_base_url": host_status.api_base_url, "ui_base_url": host_status.ui_base_url},
+            )
+        )
+        host_alias = next((check for check in host_status.checks if check.id == "host_alias"), None)
+        checks.append(
+            setup_ready_check(
+                "host_alias",
+                "HexeVoice host alias",
+                bool(host_alias and host_alias.status == "pass"),
+                host_alias.message if host_alias else "Host alias check unavailable.",
+                required=False,
+                detail=host_alias.detail if host_alias else {},
+            )
+        )
+
+        try:
+            if not state.pre_trust.core_base_url or not state.trust_activation.node_id or not state.trust_activation.node_trust_token:
+                raise HTTPException(status_code=400, detail="core_visibility_identity_missing")
+            response = httpx.get(
+                f"{state.pre_trust.core_base_url.rstrip('/')}/api/system/nodes/operational-status/{state.trust_activation.node_id}",
+                headers={"X-Node-Trust-Token": state.trust_activation.node_trust_token},
+                timeout=5.0,
+            )
+            response.raise_for_status()
+            core_detail = response.json()
+            core_visible = bool(core_detail.get("operational_ready"))
+            core_message = "Core reports this node operational." if core_visible else "Core can see the node but does not report operational readiness."
+        except (HTTPException, httpx.HTTPError) as exc:
+            core_visible = False
+            core_message = f"Core node visibility check failed: {exc.detail if isinstance(exc, HTTPException) else exc}"
+            core_detail = {}
+        checks.append(
+            setup_ready_check(
+                "core_node_visibility",
+                "Core node visibility",
+                core_visible,
+                core_message,
+                detail=core_detail,
+            )
+        )
+
+        failures = [check for check in checks if check["required"] and check["status"] == "fail"]
+        warnings = [check for check in checks if check["status"] == "warn"]
+        payload = {
+            "ok": not failures,
+            "completed": False,
+            "summary": {
+                "passed": len([check for check in checks if check["status"] == "pass"]),
+                "failed": len(failures),
+                "warnings": len(warnings),
+            },
+            "checks": checks,
+            "ran_at": datetime.now(UTC).isoformat(),
+        }
+        ready_state = read_setup_ready_state()
+        ready_state["last_smoke"] = payload
+        write_setup_ready_state(ready_state)
+        return payload
+
+    def setup_ready_status_payload() -> dict:
+        ready_state = read_setup_ready_state()
+        state = onboarding_state_store.load()
+        last_smoke = ready_state.get("last_smoke") if isinstance(ready_state.get("last_smoke"), dict) else None
+        completed = bool(ready_state.get("completed_at"))
+        return {
+            "completed": completed,
+            "completed_at": ready_state.get("completed_at"),
+            "continue_blocked": not bool(last_smoke and last_smoke.get("ok")),
+            "current_step_id": state.normalized_current_step_id(),
+            "operational_ready": state.operational_status.operational_ready,
+            "last_smoke": last_smoke,
+            "setup_root_redirect_active": not completed,
+            "dashboard_url": (app_settings.public_ui_base_url or setup_host_readiness_service.readiness_payload().ui_base_url).rstrip("/") + "/",
+        }
+
+    @app.get("/api/setup/ready/status")
+    async def setup_ready_status() -> dict:
+        return await asyncio.to_thread(setup_ready_status_payload)
+
+    @app.post("/api/setup/ready/run-smoke-test")
+    async def setup_ready_run_smoke_test() -> dict:
+        smoke = await asyncio.to_thread(setup_ready_smoke_payload)
+        return {"accepted": True, "smoke": smoke, "status": await asyncio.to_thread(setup_ready_status_payload)}
+
+    @app.post("/api/setup/ready/complete")
+    async def setup_ready_complete() -> dict:
+        ready_state = await asyncio.to_thread(read_setup_ready_state)
+        last_smoke = ready_state.get("last_smoke") if isinstance(ready_state.get("last_smoke"), dict) else None
+        if not last_smoke or not last_smoke.get("ok"):
+            return {
+                "accepted": False,
+                "message": "required_smoke_checks_not_passed",
+                "status": await asyncio.to_thread(setup_ready_status_payload),
+            }
+        state = onboarding_state_store.load()
+        updated = state.model_copy(
+            update={
+                "operational_status": state.operational_status.model_copy(update={"operational_ready": True}),
+                "resume": state.resume.model_copy(
+                    update={
+                        "current_step_id": "ready",
+                        "last_completed_step_id": "governance_sync",
+                        "last_transition_at": datetime.now(UTC).isoformat(),
+                    }
+                ),
+            }
+        )
+        onboarding_state_store.save(updated)
+        ready_state["completed_at"] = datetime.now(UTC).isoformat()
+        await asyncio.to_thread(write_setup_ready_state, ready_state)
+        return {
+            "accepted": True,
+            "message": "setup_complete",
+            "status": await asyncio.to_thread(setup_ready_status_payload),
         }
 
     @app.put("/api/providers/setup", response_model=ProviderSetupResponse)
