@@ -240,9 +240,16 @@ Actions:
    - temporary setup URL: `http://<lan-host>:8180/setup`
    - temporary backend API base: `http://<lan-host>:9100`
    - preferred temporary runner shape: one setup runner script that starts backend/frontend in the same command/env shape used by production services
-   - temporary runner should exist to show setup UI and ask whether to use host Supervisor later
-   - Supervisor install is a placeholder for now because host Supervisor install is not supported yet
-   - if operator chooses Supervisor later, install/register it when that path exists, then let host Supervisor restart/manage everything
+   - temporary runner should exist to show setup UI and ask whether to use or install host Supervisor
+   - Core now supports host Supervisor installation through the Core installer:
+     - standalone: `install-supervisor.sh --standalone`
+     - joined to Core: `install-supervisor.sh --join-core --core-url <core-url> --enrollment-token <token> --supervisor-id <id>`
+   - Core one-time enrollment tokens are created with:
+     - `POST /api/system/supervisors/enrollment-tokens`
+   - the Supervisor installer exchanges the one-time token through Core enrollment and stores only the returned reporting token
+   - joined Supervisor install should prefer Core one-time enrollment tokens over admin tokens
+   - if operator chooses joined Supervisor, collect Core URL, Supervisor ID/name, and enrollment token, run the Core supervisor installer, then let host Supervisor restart/manage everything
+   - if operator chooses standalone Supervisor, run the Core supervisor installer in standalone mode and let local Supervisor manage the node without Core reporting
    - if operator skips Supervisor, install normal systemd user services and continue as an unsupervised node
    - add a later config option to enable/add Supervisor after initial setup
    - keep the temporary runner alive while production services start
@@ -381,8 +388,16 @@ What the first production setup page should show:
 
 3. Lifecycle mode
    - Host Supervisor detected: use Supervisor
+   - Host Supervisor missing: install joined Supervisor with Core enrollment token
+   - Host Supervisor missing: install standalone Supervisor
    - Host Supervisor missing: continue as unsupervised systemd node
-   - Host Supervisor install/add later: visible placeholder, not active yet
+   - Joined Supervisor install should use a one-time Core enrollment token when available and should never persist that one-time token
+   - If joined Supervisor is selected, show a button to open Core's Supervisor
+     enrollment-token page/flow.
+   - First implementation can open Core for token creation and let the operator
+     paste the returned one-time token into HexeVoice setup.
+   - Later implementation can use a Core callback/return URL if Core adds that
+     contract.
 
 4. Node identity
    - node display name
@@ -414,10 +429,35 @@ Backend API needed for this step:
     - `sync-default-wake-model`
     - `check-cuda`
     - `install-host-alias`
+    - `install-standalone-supervisor`
+    - `install-joined-supervisor`
 
 - `POST /api/onboarding/local-setup/node-identity`
   - keep the existing identity save route if practical
   - UI can call it from the renamed first step
+
+Supervisor install inputs:
+
+- Standalone Supervisor:
+  - uses Core installer mode `--standalone`
+  - default checkout from Core docs: `~/hexe/hexe/supervisor`
+  - does not report to Core
+
+- Joined Supervisor:
+  - uses Core installer mode `--join-core`
+  - requires Core URL
+  - requires Supervisor ID
+  - should receive a Core one-time enrollment token
+  - Core creates one-time enrollment tokens with `POST /api/system/supervisors/enrollment-tokens`
+  - setup UI should provide an `Open Core enrollment token` button when joined
+    Supervisor is selected
+  - the button should open the Core enrollment-token page/flow for the selected
+    Core URL
+  - operator pastes the one-time token into setup for the first implementation
+  - `--one-time-token` is accepted as an alias for `--enrollment-token`
+  - enrollment token is exchanged during install and should not be persisted
+  - installer stores only the returned Supervisor reporting token in the Supervisor environment
+  - admin-token join remains a compatibility path but should not be the preferred setup UI path
 
 New node path from Step 2:
 
@@ -585,7 +625,7 @@ Trust/security rule:
   and require a redacted export.
 - Imported migrated nodes must re-authorize with Core.
 - Add a `re-auth node` step after migration import.
-- If Core does not support re-auth yet, this becomes a Core development task.
+- Core re-auth is supported by the Core node onboarding API.
 
 Actions:
 
@@ -616,18 +656,18 @@ Re-auth Node:
 
 - Confirms the imported node identity with Core without requiring migrated trust
   tokens.
-- Should allow Core to issue fresh trust credentials for this host.
-- Should replace the current migrated/redacted trust state with new trusted state.
-- Placeholder until Core supports the required re-auth route.
+- Uses Core `POST /api/system/nodes/reauth/sessions`.
+- Shows Core approval URL from the response.
+- Finalizes with Core `GET /api/system/nodes/reauth/sessions/{session_id}/finalize?node_nonce=...`.
+- Core issues fresh trust credentials for this host.
+- Replaces the migrated/redacted trust state with new trusted state.
 
 Post-import resume logic:
 
-- If migration import succeeds and Core re-auth is supported:
+- If migration import succeeds:
   - continue to Re-auth Node.
 - If Core URL is missing or invalid:
   - return to Core Connection.
-- If Core re-auth is not supported yet:
-  - show a clear blocker and link/add task for Core support.
 - After successful re-auth:
   - continue to Provider Setup / Capability Declaration.
 
@@ -643,7 +683,7 @@ Validation:
 
 Open questions:
 
-- Re-auth Node Core route/API: TBD.
+- None for Step 3 right now.
 
 
 Step 4: Registration, re-auth, and trust activation
@@ -721,34 +761,59 @@ Inputs:
 - Core URL from migration bundle or destination rewrite.
 - LAN API URL.
 - LAN UI URL.
-- Re-auth Core API support.
+- Fresh node nonce generated by HexeVoice for the re-auth session.
 
 Core support:
 
-- Re-auth Core route/API: TBD.
-- Re-auth Core UI/surface is separate from first-registration approval.
-- Re-auth UI details: TBD, being worked on in Core.
-- If Core does not support re-auth yet, show this as a hard blocker and stop on
-  this step.
-- This is a Core development dependency.
+- Re-auth start route: `POST /api/system/nodes/reauth/sessions`
+- Request fields:
+  - `node_id`
+  - `node_nonce`
+  - `reason` (optional, use `migration` for migrated node setup)
+- Response includes:
+  - `reauth_status: pending_approval`
+  - `approval_url`
+  - `finalize.path`
+- Core approval URL shape:
+  - `<core_base>/reauth/nodes/approve?rid=<session_id>&state=<state_token>`
+- Re-auth approval UI is separate from first-registration approval.
+- Re-auth finalize route:
+  - `GET /api/system/nodes/reauth/sessions/{session_id}/finalize?node_nonce=...`
+- Finalize outcomes:
+  - `pending`
+  - `approved`
+  - `rejected`
+  - `expired`
+  - `consumed`
+  - `invalid`
+- On `approved`, Core returns an `activation` payload with the same shape as
+  normal trust activation.
+- Re-auth is one-time consumption; replay after successful collection returns
+  `consumed`.
 
 Expected re-auth behavior:
 
-1. Voice Node asks Core to re-authorize the migrated node identity.
-2. Core validates that the operator is allowed to re-authorize/take over that
-   node.
-3. UI shows approval/re-auth instructions.
-4. Voice Node polls re-auth status.
-5. Core issues fresh trust credentials for this host.
-6. Voice Node saves fresh trust state locally.
-7. Voice Node continues to Provider Setup.
+1. Voice Node generates a fresh `node_nonce`.
+2. Voice Node asks Core to re-authorize the migrated node identity with
+   `POST /api/system/nodes/reauth/sessions`.
+3. Core validates that the `node_id` exists and no duplicate active re-auth
+   session exists for that node.
+4. Voice Node shows the returned `approval_url`.
+5. Operator approves in the separate Core re-auth UI.
+6. Voice Node polls/finalizes with the returned finalize path and `node_nonce`.
+7. Core returns `pending`, `rejected`, `expired`, `consumed`, `invalid`, or
+   `approved`.
+8. On `approved`, Core returns fresh trust credentials for this host.
+9. Voice Node saves fresh trust state locally.
+10. Voice Node continues to Provider Setup.
 
 Validation:
 
 - Imported node identity exists.
 - No migrated trust tokens/secrets are present.
 - Core URL is reachable.
-- Core supports the re-auth route/API.
+- Re-auth start request succeeds.
+- Returned approval URL is shown to the operator.
 - Re-auth approval succeeds.
 - Fresh trust credentials are issued.
 - Local trust state is saved and readable.
@@ -760,7 +825,8 @@ Failure states:
 - Registration/re-auth rejected.
 - Approval expired.
 - Approval consumed or invalid.
-- Core re-auth API missing.
+- Duplicate active re-auth session for the same node.
+- Existing node registration not found in Core.
 - Fresh trust credential save failed.
 - Local state mismatch after trust activation.
 
@@ -770,12 +836,10 @@ Recovery actions:
 - Restart approval polling.
 - Return to Core Connection.
 - Return to Migration Source for a different bundle.
-- Show Core development blocker when re-auth API is missing.
 
 Open questions:
 
-- Exact Core re-auth API contract: TBD.
-- Exact Core re-auth UI/surface: TBD.
+- None for Step 4 right now.
 
 
 Step 5: Provider and runtime configuration

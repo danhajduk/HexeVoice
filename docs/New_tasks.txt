@@ -1,5 +1,14 @@
 [STOP]
-[TODO] Task 146: Make trust secret migration choice explicit
+[TODO] Task 146: Remove trust-secret migration export/import and require Core re-auth
+[TODO] Task 148: Add setup bootstrap runner for temporary LAN setup UI/API
+[TODO] Task 149: Add setup bootstrap status API and installer progress tracking
+[TODO] Task 150: Extend hosted install Step 1 for default firmware/model downloads and browser launch
+[TODO] Task 151: Implement Host and Node Setup page with readiness, setup mode, and lifecycle mode
+[TODO] Task 152: Implement Core Connection and Migration Source setup routes
+[TODO] Task 153: Implement migrated-node re-auth setup step using Core re-auth API
+[TODO] Task 154: Implement provider/runtime setup status, config, apply, and polling flow
+[TODO] Task 155: Implement capability declaration and governance setup step
+[TODO] Task 156: Implement final smoke-test ready step and setup-mode root redirect
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
 
 **********************************************************************************************

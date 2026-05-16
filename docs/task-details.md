@@ -1345,21 +1345,20 @@ Original task details:
 
 ## Task 146
 Original task details:
-- Title: Make trust secret migration choice explicit
+- Title: Remove trust-secret migration export/import and require Core re-auth
 - Goal:
-  - Operators should deliberately choose whether migration preserves node trust identity or redacts secrets and requires Core reactivation.
+  - Migration should never export or import node trust tokens/secrets; migrated nodes should always receive fresh trust material through Core re-auth.
 - Scope:
-  - Make export/import UI and CLI flows clearly present the two migration modes: include trust secrets or redact trust secrets.
-  - Explain the effect of each choice before export/import: preserved node identity versus safer bundle requiring reactivation.
-  - Add validation/warnings when importing a trusted state without trust tokens.
-  - Ensure first-setup migration import surfaces the same choice and warnings as the operational Migration page.
-  - Label generated bundles containing trust secrets as sensitive in filenames/metadata where practical.
-  - Add tests for redacted export, secret-inclusive export, import warnings, first-setup import warnings, and metadata/filename behavior.
-  - Update docs with recommended handling and storage of secret-inclusive bundles.
+  - Remove or disable trust-secret-inclusive migration export paths in API and CLI.
+  - Reject migration imports that contain trust tokens/secrets.
+  - Update migration backup/restore behavior so backups do not include trust tokens/secrets.
+  - Update first-setup and operational migration language to say migrated nodes must re-authorize with Core.
+  - Add tests for redacted export, import rejection when trust tokens/secrets are present, backup redaction, and re-auth-required messaging.
+  - Update docs with the no-secrets migration policy and Core re-auth requirement.
 - Acceptance criteria:
-  - The operator cannot accidentally confuse a redacted migration with a trust-preserving migration.
-  - Import clearly states whether Core reactivation is required.
-  - Secret-inclusive bundles are marked and documented as sensitive.
+  - There is no supported migration path that exports or imports trust tokens/secrets.
+  - Bundles containing trust tokens/secrets are rejected before import writes state.
+  - Migration UI/CLI clearly says Core re-auth is required after migration.
 
 ## Task 147
 Original task details:
@@ -1378,6 +1377,165 @@ Original task details:
   - Setup can optionally add a `HexeVoice` alias for the current host.
   - Existing hostnames and VPN-published names continue to work.
   - The change is documented, reversible, and safe to skip.
+
+## Task 148
+Original task details:
+- Title: Add setup bootstrap runner for temporary LAN setup UI/API
+- Goal:
+  - Hosted install should bring up a temporary setup UI/API before production services are ready.
+- Scope:
+  - Add `scripts/setup-runner.sh`.
+  - Run temporary backend on `9100` and temporary frontend/UI on `8180`.
+  - Use LAN URL routing, with temporary setup URL `http://<lan-host>:8180/setup`.
+  - Keep the temp runner alive while production services start.
+  - Redirect to `http://<lan-host>:8084/setup` after production setup URL is healthy.
+  - Stop the temp runner after a configurable delay, default `120` seconds.
+  - Support handoff to an existing Supervisor, newly installed Core Supervisor, or unsupervised systemd services.
+  - Integrate with Core Supervisor installer modes:
+    - `install-supervisor.sh --standalone`
+    - `install-supervisor.sh --join-core --core-url <core-url> --enrollment-token <token> --supervisor-id <id>`
+  - Support Core one-time enrollment token creation/collection through `POST /api/system/supervisors/enrollment-tokens`.
+  - Prefer one-time Core enrollment tokens over admin tokens for joined Supervisor install.
+- Acceptance criteria:
+  - Fresh install can show the temporary setup page on the LAN.
+  - Temp setup redirects to production setup when healthy.
+  - Temp runner exits after the configured grace period.
+  - Supervisor handoff can target existing, standalone, joined, or unsupervised lifecycle mode.
+
+## Task 149
+Original task details:
+- Title: Add setup bootstrap status API and installer progress tracking
+- Goal:
+  - The setup UI should show Step 1 install/download/progress state while bootstrap work is running.
+- Scope:
+  - Add `GET /api/setup/bootstrap/status`.
+  - Persist or expose current bootstrap action, completed actions, pending downloads, failures, retryable failures, and final redirect URL.
+  - Wire install/setup scripts to update the status source.
+  - Add tests for status payload shape and failure reporting.
+- Acceptance criteria:
+  - UI can poll one endpoint to display Step 1 progress.
+  - Failed firmware/model downloads are visible and retryable from setup.
+
+## Task 150
+Original task details:
+- Title: Extend hosted install Step 1 for default firmware/model downloads and browser launch
+- Goal:
+  - Hosted install should prepare default artifacts while the setup UI is visible.
+- Scope:
+  - Download firmware artifacts during Step 1.
+  - Download default STT model `base`.
+  - Download default Piper TTS voice/model `en_US-kathleen-low.onnx`.
+  - Ensure default wake model `Hexe` is present.
+  - Attempt to open the LAN setup URL in a browser; print it clearly if opening fails.
+  - Continue to setup UI with retry status when downloads fail.
+- Acceptance criteria:
+  - Fresh install starts setup UI before model downloads finish.
+  - Default artifact download status is visible in setup.
+
+## Task 151
+Original task details:
+- Title: Implement Host and Node Setup page with readiness, setup mode, and lifecycle mode
+- Goal:
+  - Replace the narrow Node Identity first step with `/setup/host`.
+- Scope:
+  - Add `GET /api/setup/host-readiness`.
+  - Add targeted readiness actions under `/api/setup/host-readiness/actions/<action>`.
+  - Show backend/frontend, LAN URL, runtime dirs, firmware/model status, Docker/CUDA, systemd, Supervisor, host alias, and disk space.
+  - Add New Voice Node vs Migrate Existing Voice Node mode selection.
+  - Add lifecycle mode display/selection for:
+    - existing Supervisor
+    - install joined Supervisor with Core enrollment token
+    - install standalone Supervisor
+    - unsupervised systemd node
+  - Joined Supervisor install should use Core one-time enrollment tokens when available and should never persist the one-time token.
+  - When joined Supervisor is selected, show an `Open Core enrollment token` button.
+  - The button should open the Core enrollment-token page/flow for the selected Core URL.
+  - First implementation may require the operator to paste the returned one-time token into HexeVoice setup.
+  - Leave room for a future Core callback/return URL flow.
+  - Add safe actions for standalone and joined Supervisor install.
+  - Save setup mode only when the operator presses Continue.
+- Acceptance criteria:
+  - `/setup/host` renders from production UI/API.
+  - Readiness blockers/warnings match `docs/setup_re-desing.txt`.
+
+## Task 152
+Original task details:
+- Title: Implement Core Connection and Migration Source setup routes
+- Goal:
+  - Route Step 3 based on the selected setup mode.
+- Scope:
+  - New node path: `/setup/core`, Core URL validation, metadata fetch, registration support validation, and save.
+  - Migration path: `/setup/migration`, migration bundle upload or local backup selection, preflight/dry-run, destination rewrites, token/secret scan, and redacted import.
+  - Reject migration bundles containing trust tokens/secrets.
+  - Return migration flow to Core Connection or Re-auth Node as appropriate.
+- Acceptance criteria:
+  - New node path can save a valid Core connection.
+  - Migration path can preflight/import redacted state and rejects token/secret bundles.
+
+## Task 153
+Original task details:
+- Title: Implement migrated-node re-auth setup step using Core re-auth API
+- Goal:
+  - Migrated nodes should receive fresh trust material through Core re-auth.
+- Scope:
+  - Add `/setup/trust/reauth`.
+  - Start Core re-auth with `POST /api/system/nodes/reauth/sessions`.
+  - Generate and retain a fresh `node_nonce` for finalization.
+  - Show Core approval URL `/reauth/nodes/approve?rid=...&state=...`.
+  - Finalize with `GET /api/system/nodes/reauth/sessions/{session_id}/finalize?node_nonce=...`.
+  - Handle `pending`, `approved`, `rejected`, `expired`, `consumed`, and `invalid`.
+  - Save approved activation payload as fresh local trust state.
+- Acceptance criteria:
+  - Migrated setup can re-authorize and save new trust credentials without imported trust tokens/secrets.
+
+## Task 154
+Original task details:
+- Title: Implement provider/runtime setup status, config, apply, and polling flow
+- Goal:
+  - Step 5 should configure STT/TTS/wake/firmware and prove local engine health before continuing.
+- Scope:
+  - Add `/setup/providers`.
+  - Add `GET /api/setup/providers/status`.
+  - Add `POST /api/setup/providers/config`.
+  - Add `POST /api/setup/providers/apply`.
+  - Add targeted actions for downloads, sync, restarts, and health checks.
+  - Track provider state as configured/downloading/downloaded/applying/restarting/healthy/warning/failed/skipped.
+  - Poll the same status endpoint during apply.
+- Acceptance criteria:
+  - Continue is blocked until required enabled providers are healthy or explicitly skipped/accepted.
+
+## Task 155
+Original task details:
+- Title: Implement capability declaration and governance setup step
+- Goal:
+  - Step 6 should tell Core what this trusted node can do and verify governance.
+- Scope:
+  - Add `/setup/capabilities`.
+  - Add `GET /api/setup/capabilities/status`.
+  - Add declare/sync actions.
+  - Build declaration from trusted state and provider/runtime health.
+  - Fetch and verify governance.
+  - Poll status during declaration/governance sync.
+- Acceptance criteria:
+  - Setup cannot continue until Core has current capabilities and governance is current.
+
+## Task 156
+Original task details:
+- Title: Implement final smoke-test ready step and setup-mode root redirect
+- Goal:
+  - Step 7 should be the final gate before leaving setup.
+- Scope:
+  - Add `/setup/ready`.
+  - Add `GET /api/setup/ready/status`.
+  - Add `POST /api/setup/ready/run-smoke-test`.
+  - Add `POST /api/setup/ready/complete`.
+  - Run final smoke checks for backend/frontend, trust, governance, providers, firmware, runtime dirs, sockets, LAN URLs, host alias, and Core node visibility.
+  - Save setup-complete state after required checks pass.
+  - Redirect `http://<lan-host>:8084/` into the current `/setup/*` page while setup mode is active.
+  - After setup completion, keep `8084/` on the local dashboard/fallback surface for now.
+- Acceptance criteria:
+  - Setup completes only after required smoke checks pass.
+  - Root URL redirects into setup while setup is incomplete and stops redirecting after completion.
 
 ## Task 125-133
 Original task details:
