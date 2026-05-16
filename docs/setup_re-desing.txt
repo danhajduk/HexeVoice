@@ -1,0 +1,1197 @@
+HexeVoice install / setup / config / migration redesign scratchpad
+===================================================================
+
+Current install, setup, config, and migration flow
+--------------------------------------------------
+
+Hosted install:
+
+- Operator runs the hosted installer:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | bash
+```
+
+- Default install path is `~/hexe/HexeVoice`.
+- `install.sh` clones or updates the repo.
+- It initializes submodules.
+- It creates `.venv`.
+- It installs Python requirements.
+- It installs frontend dependencies.
+- It builds the frontend.
+- It creates `scripts/stack.env` from `scripts/stack.env.example` when missing.
+- It makes shell scripts executable.
+- It runs `scripts/prepare-runtime-dirs.sh`.
+- It prints next-step commands when bootstrap is not enabled.
+
+Optional install flags:
+
+- `HEXEVOICE_RUN_BOOTSTRAP=true` runs `scripts/bootstrap.sh`.
+- `HEXEVOICE_SETUP_STT=true` runs the STT ready path.
+- `HEXEVOICE_SETUP_TTS=true` runs the Piper TTS ready path.
+- `HEXEVOICE_SETUP_WAKE=true` runs the openWakeWord ready path.
+- `HEXEVOICE_SETUP_FIRMWARE=true` downloads firmware artifacts.
+- `HEXEVOICE_SETUP_HOST_ALIAS=true` adds the optional local `HexeVoice` host alias.
+
+Runtime directory setup:
+
+- `scripts/prepare-runtime-dirs.sh` creates the runtime directory skeleton.
+- The runtime skeleton includes:
+  - `runtime/endpoint_media`
+  - `runtime/firmware`
+  - `runtime/logs`
+  - `runtime/migration/backups`
+  - `runtime/openwakeword/models`
+  - `runtime/piper-tts/models`
+  - `runtime/rendered_node_ui_pages`
+  - `runtime/sockets`
+  - `runtime/stt/faster-whisper`
+  - generated TTS/audio and wake recording directories
+
+Service setup:
+
+- `scripts/bootstrap.sh` installs user services.
+- `scripts/stack-control.sh` controls stack services.
+- `scripts/restart-stack.sh` restarts configured services.
+- Core Supervisor is intended to be the lifecycle authority for managed runtime behavior.
+- Systemd user units are installed for local service launch/control.
+
+Engine setup:
+
+- STT uses the external faster-whisper runtime.
+- STT can run in Docker and uses Unix socket transport by default.
+- STT setup can build/start the runtime, wait for health, download/preload the configured model, and apply CPU/CUDA choices.
+- TTS uses Piper.
+- Piper TTS can run in Docker and uses Unix socket transport by default.
+- Piper setup can download configured voices, start the runtime, wait for health, and warm the selected voice.
+- Wake word uses supervised openWakeWord / Wyoming behavior.
+- Wake setup syncs the default Hexe wake model, starts the runtime, and waits for health.
+- Firmware setup can download endpoint firmware artifacts into `runtime/firmware`.
+
+Local setup UI:
+
+- After install/start, the frontend shows the canonical onboarding card.
+- Current onboarding steps:
+  1. Node Identity
+  2. Core Connection
+  3. Bootstrap Discovery
+  4. Registration
+  5. Approval
+  6. Trust Activation
+  7. Provider Setup
+  8. Capability Declaration
+  9. Governance Sync
+  10. Ready
+
+Provider configuration:
+
+- Provider setup happens after trust activation.
+- Provider setup can configure STT, TTS, and wake providers.
+- STT provider settings can include model/profile, extra models, preload intent, CPU/CUDA device, and compute type.
+- TTS provider settings can include provider, default Piper voice/model, warm voice intent, endpoint voice/sample-rate mappings, and conversion policy.
+- Wake provider settings can include provider, selected wake models, default wake word, threshold/timing settings, preload intent, and recording retention.
+
+Migration:
+
+- The operational dashboard has a Migration section.
+- Fresh installs can import a migration bundle from the first setup page before onboarding.
+- Migration export creates a JSON bundle.
+- Migration import writes supported local runtime state files.
+- Migration dry-run/preflight validates what would be written before changing runtime state.
+- Migration can rewrite destination-specific values:
+  - Core URL
+  - API URL
+  - UI URL
+  - hostname
+- Migration currently includes:
+  - onboarding state without trust tokens/secrets
+  - endpoint registry
+  - voice intents
+  - STT provider settings
+  - TTS runtime/settings/provider settings
+  - wake provider settings
+- Trust tokens/secrets should not be exported or imported.
+- Imported migrated nodes must re-authorize with Core.
+
+Migration backup / rollback:
+
+- `scripts/migration-backup.py create` creates a timestamped backup under `runtime/migration/backups`.
+- Backup includes:
+  - `migration-bundle.json`
+  - `manifest.json`
+  - small service env files when present
+- Trust tokens/secrets should not be included.
+- `scripts/migration-backup.py restore <backup-id> --dry-run` validates restore without writing state.
+- `scripts/migration-backup.py restore <backup-id>` validates first, then imports the backup bundle.
+
+Data and artifacts not bundled in migration:
+
+- STT model cache/model binaries.
+- Piper model binaries.
+- openWakeWord model binaries.
+- firmware binaries.
+- generated TTS audio.
+- logs.
+- retained recordings/history.
+- large endpoint media artifacts.
+
+Verification:
+
+- `scripts/post-install-smoke-test.py` checks backend/frontend, STT/TTS/wake health, runtime dirs, and Docker visibility.
+- `scripts/post-install-smoke-test.py --check-host-alias` also checks for the optional `HexeVoice` host alias.
+- The smoke test returns a non-zero exit code when required checks fail.
+
+
+Proposed flow:
+
+Step 1: Download and create required directories
+------------------------------------------------
+
+Purpose:
+
+- Get the HexeVoice code onto the host.
+- Create the required local folder layout.
+- Prepare the host enough that the setup UI and later migration/provider steps have a stable filesystem to 
+  work with.
+- Do not configure Core trust yet.
+- Do not make final STT/TTS/wake provider choices yet.
+
+Operator input:
+- Install directory.
+  - Default: `~/hexe/HexeVoice`
+- Repo URL.
+  - Default: HexeVoice hosted repo.
+- Branch/ref.
+  - Default: `main`
+- Runtime directory.
+  - Default: repo-local `runtime`
+- Local hostname alias.
+  - Default: enabled.
+  - Operator can opt out.
+
+Actions:
+
+1. Check required host commands:
+   - `git`
+   - `python3`
+   - `npm`
+   - optionally `docker`
+   - optionally `systemctl`
+
+2. Download/update the code:
+   - create install root
+   - clone repo if missing
+   - update repo if already cloned
+   - fail if target path exists but is not a git checkout
+   - initialize submodules
+
+3. Prepare local app dependencies:
+   - create `.venv`
+   - install Python requirements
+   - install frontend dependencies
+   - build frontend
+   - create `scripts/stack.env` from example when missing
+   - mark scripts executable
+
+4. Create runtime directory skeleton from a tracked config file:
+   - directory list should live in a repo file, not hardcoded only in the shell script
+   - file format: JSON
+   - proposed file: `config/runtime-dirs.json`
+   - `scripts/prepare-runtime-dirs.sh` reads that file and creates every listed directory
+   - the same file can be used by tests, docs, install preflight, and smoke checks
+   - example directory entries:
+     - `endpoint_media`
+     - `endpoint_media/ota`
+     - `endpoint_media/ui_manifest`
+     - `firmware`
+     - `logs`
+     - `migration`
+     - `migration/backups`
+     - `micro_vad_chunks`
+     - `openwakeword`
+     - `openwakeword/models`
+     - `piper-tts`
+     - `piper-tts/models`
+     - `rendered_node_ui_pages`
+     - `sockets`
+     - `stt`
+     - `stt/faster-whisper`
+     - `voice_tts`
+     - `wake_recordings`
+
+5. Create local hostname alias by default:
+   - add `HexeVoice`
+   - add `HexeVoice.local`
+   - backup `/etc/hosts` first
+   - default should be install alias unless operator opts out
+   - opt-out flag example: `HEXEVOICE_SKIP_HOST_ALIAS=true`
+   - still expose a dry-run/status command for troubleshooting
+
+6. Start backend/frontend as soon as the app can run:
+   - start backend after Python deps, `stack.env`, and runtime dirs exist
+   - start frontend after frontend dependencies/build are ready
+   - first check whether the host Supervisor is installed/reachable
+   - if host Supervisor exists, let Supervisor start/manage backend and frontend
+   - if host Supervisor is missing, start backend/frontend with a temporary setup runner
+   - temporary setup runner should be easy to switch to production lifecycle
+   - temporary setup runner script: `scripts/setup-runner.sh`
+   - temporary backend port: `9100`
+   - temporary frontend/UI port: `8180`
+   - temporary setup URL: `http://<lan-host>:8180/setup`
+   - temporary backend API base: `http://<lan-host>:9100`
+   - preferred temporary runner shape: one setup runner script that starts backend/frontend in the same command/env shape used by production services
+   - temporary runner should exist to show setup UI and ask whether to use host Supervisor later
+   - Supervisor install is a placeholder for now because host Supervisor install is not supported yet
+   - if operator chooses Supervisor later, install/register it when that path exists, then let host Supervisor restart/manage everything
+   - if operator skips Supervisor, install normal systemd user services and continue as an unsupervised node
+   - add a later config option to enable/add Supervisor after initial setup
+   - keep the temporary runner alive while production services start
+   - production setup URL: `http://<lan-host>:8084/setup`
+   - once `http://<lan-host>:8084/setup` is healthy, temporary UI should redirect the browser to it
+   - after redirect is requested, temporary runner should stop itself after about 2 minutes
+   - temporary runner shutdown delay should be configurable
+   - default temporary shutdown delay: `120` seconds
+   - setup page should become available before model downloads start
+   - setup URL should always be the LAN URL, not only localhost
+   - if possible, installer should open the browser to the LAN HexeVoice setup page automatically
+   - if browser open fails, print the setup URL clearly
+   - UI should receive Step 1 progress from backend endpoint: `GET /api/setup/bootstrap/status`
+   - setup content area should show an initial setup state such as:
+     - "Initial setup is preparing this host"
+     - current action
+     - completed actions
+     - pending downloads
+     - failures/retry controls
+
+7. Download default firmware and default models:
+   - firmware artifacts should download during Step 1
+   - default STT model should download during Step 1: `base`
+   - default Piper TTS voice/model should download during Step 1: `en_US-kathleen-low.onnx`
+   - default wake model should be present during Step 1: `Hexe`
+   - default downloads should run after backend/frontend are available so the UI can show progress
+   - if a default download fails, continue to the setup UI and show retry/failure state
+
+Downloads in this step:
+
+- Required:
+  - HexeVoice repo
+  - git submodules
+  - Python dependencies
+  - frontend npm dependencies
+  - firmware artifacts
+  - default STT model: `base`
+  - default Piper TTS voice/model: `en_US-kathleen-low.onnx`
+  - default wake model: `Hexe`
+
+- Default model storage:
+  - small default wake model files can stay tracked in git when practical
+  - large STT/TTS model binaries should not live directly in git
+  - large default models should download into `runtime/*` from configured release/model sources
+  - if we want repo-managed large defaults later, use Git LFS or a separate model/artifact repo
+
+Output of this step:
+
+- Code exists at install path.
+- `.venv` exists.
+- Frontend is built.
+- `scripts/stack.env` exists.
+- Runtime directory skeleton exists.
+- Host alias is installed unless explicitly skipped.
+- Backend is running.
+- Frontend is running and showing setup progress.
+- Setup URL is the LAN URL.
+- Firmware artifacts are present.
+- Default STT/TTS/wake models are present or a clear download failure/retry state is shown.
+- Browser is opened to the setup page when possible.
+- Setup can move to host preflight / first setup UI.
+
+Validation:
+
+- `scripts/prepare-runtime-dirs.sh` completes successfully.
+- Required directories exist.
+- `scripts/stack.env` exists.
+- Frontend build exists.
+- Host alias status is known.
+- Backend health is reachable.
+- Frontend setup page is reachable.
+- Firmware artifact verification passes.
+- Default model verification passes.
+
+Step 2: Host readiness and setup mode
+-------------------------------------
+
+Purpose:
+
+- Move from temporary/bootstrap setup into the production UI/API.
+- Replace the current narrow `Node Identity` first setup step with a broader
+  first step that explains what this host is and how it should be configured.
+- Decide whether this host is a new Voice Node or a migrated Voice Node before
+  Core registration/trust begins.
+- Surface host readiness before the operator commits to onboarding or migration.
+
+Current setup step to rename:
+
+- Current name: `Node Identity`
+- Proposed new name: `Host and Node Setup`
+
+Why rename it:
+
+- The first setup step is no longer only about node name/type.
+- It also needs to show host readiness, lifecycle mode, setup mode, LAN URL,
+  optional alias status, and migration/new-node choice.
+- Node identity fields still live here, but they become one section inside the
+  broader first step.
+
+Where it lives:
+
+- Production frontend.
+- Production backend API.
+- The temporary Step 1 UI redirects here once production UI/API are healthy.
+- The operator should not have to go back to the temp runner after this point.
+
+Production route:
+
+- Frontend first step: `http://<lan-host>:8084/setup/host`
+- General setup route: `http://<lan-host>:8084/setup`
+- Backend API: `http://<lan-host>:9004`
+
+What the first production setup page should show:
+
+1. Host readiness
+   - backend health
+   - frontend health
+   - LAN URL
+   - runtime directory status
+   - default firmware status
+   - default STT model status: `base`
+   - default Piper TTS model status: `en_US-kathleen-low.onnx`
+   - default wake model status: `Hexe`
+   - Docker availability
+   - CUDA availability / Docker CUDA usability
+   - systemd user service availability
+   - host Supervisor detected or missing
+   - optional `HexeVoice` host alias status
+   - disk space status
+
+2. Setup mode
+   - New Voice Node
+   - Migrate Existing Voice Node
+   - save selected setup mode when the operator presses Continue
+   - do not persist the mode immediately on click/select
+
+3. Lifecycle mode
+   - Host Supervisor detected: use Supervisor
+   - Host Supervisor missing: continue as unsupervised systemd node
+   - Host Supervisor install/add later: visible placeholder, not active yet
+
+4. Node identity
+   - node display name
+   - node type
+   - hostname
+   - LAN API URL
+   - LAN UI URL
+
+5. Recovery/actions
+   - retry firmware download
+   - retry default model downloads
+   - re-run runtime directory creation
+   - re-check Docker/CUDA
+   - re-check host alias
+   - continue despite non-critical warnings
+
+Backend API needed for this step:
+
+- `GET /api/setup/host-readiness`
+  - returns the readiness/status values shown on the first production setup page
+
+- `POST /api/setup/host-readiness/actions/<action>`
+  - runs targeted safe repair/retry actions
+  - examples:
+    - `prepare-runtime-dirs`
+    - `download-firmware`
+    - `download-default-stt-model`
+    - `download-default-tts-model`
+    - `sync-default-wake-model`
+    - `check-cuda`
+    - `install-host-alias`
+
+- `POST /api/onboarding/local-setup/node-identity`
+  - keep the existing identity save route if practical
+  - UI can call it from the renamed first step
+
+New node path from Step 2:
+
+- Save host/node identity.
+- Save lifecycle mode.
+- Proceed to Core Connection.
+- Continue the existing onboarding flow:
+  1. Core Connection
+  2. Bootstrap Discovery
+  3. Registration
+  4. Approval
+  5. Trust Activation
+  6. Provider Setup
+  7. Capability Declaration
+  8. Governance Sync
+  9. Ready
+
+Migration path from Step 2:
+
+- Select/upload migration bundle or select local backup.
+- Run migration preflight/dry-run before writing.
+- Show import plan:
+  - files/settings to write
+  - destination URL rewrites
+  - token/secret scan result
+  - artifacts still needed
+- Reject bundles that contain trust tokens/secrets.
+- Imported migrated nodes must re-authorize with Core.
+- After migration import, return to the setup flow at the correct next step:
+  - if Core URL is missing or changed, continue to Core Connection
+  - otherwise continue to Re-auth Node
+
+Validation:
+
+- The first production setup page can load using only production UI/API.
+- Host readiness API returns enough data to render all visible checks.
+- Operator can choose New or Migration before Core registration.
+- Existing node identity fields still save correctly.
+- Non-critical readiness failures do not block setup unless the selected path
+  requires them.
+
+Readiness failure levels:
+
+Hard blockers for both New Node and Migration:
+
+- Backend not reachable.
+- Frontend not reachable.
+- `scripts/stack.env` missing or unreadable.
+- Runtime directory cannot be created or written.
+- No usable LAN IP/URL detected.
+- Disk space critically low.
+- Python environment/dependencies missing or broken.
+
+Hard blockers for New Node:
+
+- Node identity invalid or missing.
+- Core URL missing once moving past Host and Node Setup.
+- Core unreachable once Core Connection starts.
+- Registration failure.
+- Approval failure or timeout.
+- Trust activation failure.
+
+Hard blockers for Migration:
+
+- Migration bundle missing or invalid.
+- Migration schema unsupported.
+- Migration dry-run/preflight fails.
+- Destination runtime state cannot be written.
+- Migration bundle contains trust tokens/secrets.
+- Destination URL rewrites invalid.
+
+Soft warnings / retryable failures:
+
+- Docker missing.
+- CUDA unavailable.
+- Default STT model download failed.
+- Default TTS model download failed.
+- Default wake model missing.
+- Firmware download failed.
+- Host alias missing.
+- Supervisor missing.
+- systemd user services unavailable, unless unsupervised mode is selected.
+- Optional model/artifact cache missing.
+
+Open questions:
+
+- None for Step 2 right now.
+
+
+Step 3: Core connection or migration source
+-------------------------------------------
+
+Purpose:
+
+- Continue from the setup mode selected in `/setup/host`.
+- Decide where the node identity/config comes from:
+  - New Voice Node: identity is created through Core registration.
+  - Migrate Existing Voice Node: identity/config is restored from a migration
+    bundle or local backup, then re-authorized with Core.
+
+Shared behavior:
+
+- Keep the Step 2 readiness/status panel visible.
+- Keep using production UI/API.
+- Continue to use LAN URLs.
+- Do not continue if Step 2 has hard blockers for the selected path.
+
+New Voice Node path: Core Connection
+------------------------------------
+
+Purpose:
+
+- Connect this fresh Voice Node to the correct Hexe Core.
+
+Page route:
+
+- `http://<lan-host>:8084/setup/core`
+
+Operator input:
+
+- Core LAN URL.
+
+Actions:
+
+1. Enter or confirm Core LAN URL.
+2. Test Core reachability.
+3. Fetch Core metadata/version.
+4. Validate Core supports Voice Node registration.
+5. Save Core URL.
+6. Continue to Registration / Approval / Trust Activation.
+
+Validation:
+
+- Core URL is syntactically valid.
+- Core is reachable from the Voice Node host.
+- Core responds with expected metadata.
+- Core supports the registration/trust flow needed by this node.
+
+Migration path: Migration Source
+--------------------------------
+
+Purpose:
+
+- Restore local Voice Node state without carrying trust tokens/secrets forward.
+- Prepare the node to re-authorize with Core after import.
+
+Page route:
+
+- `http://<lan-host>:8084/setup/migration`
+
+Operator input:
+
+- Migration bundle upload, or local rollback backup selection.
+- Destination Core URL.
+- Destination API URL.
+- Destination UI URL.
+- Destination hostname.
+
+Trust/security rule:
+
+- Migration setup should not share or import trust tokens/secrets.
+- Migration bundles used through this flow should be treated as redacted.
+- Migration export should not export trust tokens/secrets.
+- If an uploaded migration bundle contains trust tokens/secrets, block import
+  and require a redacted export.
+- Imported migrated nodes must re-authorize with Core.
+- Add a `re-auth node` step after migration import.
+- If Core does not support re-auth yet, this becomes a Core development task.
+
+Actions:
+
+1. Upload migration bundle or choose local backup.
+2. Run migration preflight/dry-run immediately.
+3. Show import plan:
+   - local files/settings to write
+   - destination URL rewrites
+   - migrated node id/name when present
+   - provider settings included
+   - token/secret scan result
+   - artifacts still needed
+   - warnings and blockers
+4. Confirm destination rewrites:
+   - Core URL
+   - API URL
+   - UI URL
+   - hostname
+5. Import redacted migration state.
+6. Reconcile local artifacts:
+   - default/migrated STT models
+   - default/migrated Piper voices
+   - default/migrated wake models
+   - firmware artifacts
+7. Continue to `Re-auth Node`.
+
+Re-auth Node:
+
+- Confirms the imported node identity with Core without requiring migrated trust
+  tokens.
+- Should allow Core to issue fresh trust credentials for this host.
+- Should replace the current migrated/redacted trust state with new trusted state.
+- Placeholder until Core supports the required re-auth route.
+
+Post-import resume logic:
+
+- If migration import succeeds and Core re-auth is supported:
+  - continue to Re-auth Node.
+- If Core URL is missing or invalid:
+  - return to Core Connection.
+- If Core re-auth is not supported yet:
+  - show a clear blocker and link/add task for Core support.
+- After successful re-auth:
+  - continue to Provider Setup / Capability Declaration.
+
+Validation:
+
+- Migration bundle exists and is valid JSON.
+- Migration schema is supported.
+- Dry-run/preflight succeeds before import writes state.
+- Destination rewrites are valid LAN URLs/hostname.
+- Trust tokens/secrets are not imported through setup migration.
+- Bundles containing trust tokens/secrets are rejected.
+- Re-auth status is explicit before continuing.
+
+Open questions:
+
+- Re-auth Node Core route/API: TBD.
+
+
+Step 4: Registration, re-auth, and trust activation
+---------------------------------------------------
+
+Purpose:
+
+- Converge the New Voice Node and Migrate Existing Voice Node paths into one
+  trusted local node state.
+- Ensure Core knows this Voice Node and has issued fresh trust credentials for
+  this host.
+- Avoid using migrated trust tokens/secrets.
+- Continue to Provider Setup only after trust is established.
+
+Shared behavior:
+
+- Keep using production UI/API.
+- Keep using LAN URLs.
+- Keep the readiness/status panel visible.
+- Show trust progress as a step-by-step state machine.
+- Store only fresh trust state issued by Core during this setup.
+
+Routes:
+
+- New node trust route: `http://<lan-host>:8084/setup/trust/new`
+- Migrated node re-auth route: `http://<lan-host>:8084/setup/trust/reauth`
+- Next route after success: `http://<lan-host>:8084/setup/providers`
+
+New Voice Node path: Registration and Trust Activation
+------------------------------------------------------
+
+Purpose:
+
+- Register a new Voice Node with Core and activate trust after operator approval.
+
+Inputs:
+
+- Core URL from Step 3.
+- Node identity from Step 2.
+- LAN API URL.
+- LAN UI URL.
+
+Actions:
+
+1. Start registration with Core.
+2. Show approval URL and approval instructions.
+3. Poll registration/approval status.
+4. Detect approval, rejection, expiration, or consumed/invalid approval.
+5. Activate trust after approval.
+6. Save fresh trust state locally.
+7. Continue to Provider Setup.
+
+Validation:
+
+- Core registration request succeeds.
+- Approval session is valid.
+- Approval is accepted.
+- Trust activation returns fresh credentials.
+- Local trust state is saved and readable.
+- Backend status reports trusted state before continuing.
+
+Migrated Voice Node path: Re-auth Node
+--------------------------------------
+
+Purpose:
+
+- Re-authorize a migrated/redacted node identity with Core without importing old
+  trust tokens/secrets.
+- Allow this host to take over the migrated Voice Node identity using fresh
+  credentials.
+
+Inputs:
+
+- Imported migrated node identity/state from Step 3.
+- Core URL from migration bundle or destination rewrite.
+- LAN API URL.
+- LAN UI URL.
+- Re-auth Core API support.
+
+Core support:
+
+- Re-auth Core route/API: TBD.
+- Re-auth Core UI/surface is separate from first-registration approval.
+- Re-auth UI details: TBD, being worked on in Core.
+- If Core does not support re-auth yet, show this as a hard blocker and stop on
+  this step.
+- This is a Core development dependency.
+
+Expected re-auth behavior:
+
+1. Voice Node asks Core to re-authorize the migrated node identity.
+2. Core validates that the operator is allowed to re-authorize/take over that
+   node.
+3. UI shows approval/re-auth instructions.
+4. Voice Node polls re-auth status.
+5. Core issues fresh trust credentials for this host.
+6. Voice Node saves fresh trust state locally.
+7. Voice Node continues to Provider Setup.
+
+Validation:
+
+- Imported node identity exists.
+- No migrated trust tokens/secrets are present.
+- Core URL is reachable.
+- Core supports the re-auth route/API.
+- Re-auth approval succeeds.
+- Fresh trust credentials are issued.
+- Local trust state is saved and readable.
+- Backend status reports trusted state before continuing.
+
+Failure states:
+
+- Core unreachable.
+- Registration/re-auth rejected.
+- Approval expired.
+- Approval consumed or invalid.
+- Core re-auth API missing.
+- Fresh trust credential save failed.
+- Local state mismatch after trust activation.
+
+Recovery actions:
+
+- Retry registration/re-auth.
+- Restart approval polling.
+- Return to Core Connection.
+- Return to Migration Source for a different bundle.
+- Show Core development blocker when re-auth API is missing.
+
+Open questions:
+
+- Exact Core re-auth API contract: TBD.
+- Exact Core re-auth UI/surface: TBD.
+
+
+Step 5: Provider and runtime configuration
+------------------------------------------
+
+Purpose:
+
+- Configure local voice providers after the node is trusted.
+- Merge the New Voice Node and Migrated Voice Node paths into one provider setup
+  flow.
+- Ensure STT, TTS, wake word, firmware, and runtime artifacts are configured,
+  downloaded, applied, restarted, and healthy before moving on.
+- Do not declare capabilities to Core yet; capability declaration happens after
+  local runtime health is proven.
+
+Route:
+
+- `http://<lan-host>:8084/setup/providers`
+
+Shared behavior:
+
+- Keep using production UI/API.
+- Keep the readiness/status panel visible.
+- UI must track config/download/apply/restart/health status before allowing the
+  operator to move to the next step.
+- Each provider section should show:
+  - selected config
+  - required downloads
+  - download status
+  - service/container status
+  - socket/transport status
+  - health result
+  - retry/apply controls
+
+STT configuration:
+
+- provider
+- default model: `base`
+- extra models to download/preload
+- CPU/CUDA choice
+- compute type
+- selected profile
+- fallback profile when enabled
+- preload/warm behavior
+- Docker image selection/status
+- Unix socket path/status
+- health check result
+
+TTS configuration:
+
+- provider
+- default Piper voice/model: `en_US-kathleen-low.onnx`
+- extra voices/models to download/preload
+- warm behavior
+- endpoint voice/sample-rate mappings
+- conversion policy
+- Docker image/status
+- Unix socket path/status
+- health check result
+
+Wake word configuration:
+
+- provider
+- default wake model/wake word: `Hexe`
+- extra wake models
+- threshold/timing settings
+- preload/start behavior
+- recording retention policy
+- runtime status
+- health check result
+
+Firmware/runtime artifact state:
+
+- firmware source mode
+- required endpoint board profiles
+- firmware artifacts present/missing
+- checksum/manifest verification
+- retry/download controls
+
+Apply plan:
+
+1. Save provider settings.
+2. Render/write local env/config files.
+3. Download missing STT models.
+4. Download missing Piper voices/models.
+5. Sync/download missing wake models.
+6. Download/verify firmware artifacts.
+7. Start/restart/reload STT service.
+8. Start/restart/reload TTS service.
+9. Start/restart/reload wake service.
+10. Wait for all required health checks.
+11. Save final provider setup state.
+12. Allow Continue only after required statuses pass.
+
+Backend API needed for this step:
+
+- `GET /api/setup/providers/status`
+  - returns selected config, required artifacts, download/apply/health status
+  - UI polls this same endpoint for apply/download/restart progress
+
+- `POST /api/setup/providers/config`
+  - saves provider selections and model/voice/wake settings
+
+- `POST /api/setup/providers/apply`
+  - runs the apply plan
+  - should be idempotent
+
+- `POST /api/setup/providers/actions/<action>`
+  - targeted retry/repair actions
+  - examples:
+    - `download-stt-models`
+    - `download-tts-models`
+    - `sync-wake-models`
+    - `download-firmware`
+    - `restart-stt`
+    - `restart-tts`
+    - `restart-wake`
+    - `health-check`
+
+UI tracking requirements:
+
+- The UI should show each provider/artifact as one of:
+  - not configured
+  - configured
+  - downloading
+  - downloaded
+  - applying
+  - restarting
+  - healthy
+  - warning
+  - failed
+  - skipped
+- Continue is disabled while required work is:
+  - not configured
+  - downloading
+  - applying
+  - restarting
+  - failed
+- Continue is allowed when required work is:
+  - healthy
+  - warning but explicitly accepted
+  - skipped because that provider/capability is intentionally disabled
+
+Hard blockers:
+
+- Provider config is invalid.
+- Required STT provider is enabled but not healthy.
+- Required TTS provider is enabled but not healthy.
+- Required wake provider is enabled but not healthy.
+- Required model/voice/wake artifact download failed and was not skipped.
+- Required firmware artifact download/verification failed and was not skipped.
+- Local env/config files cannot be written.
+- Required service cannot start/restart.
+
+Soft warnings / retryable:
+
+- CUDA unavailable; CPU fallback selected.
+- Extra non-default model download failed.
+- Extra non-default TTS voice download failed.
+- Extra non-default wake model download failed.
+- Firmware artifact missing for an endpoint profile not currently used.
+- Warm/preload failed but service is otherwise healthy.
+
+Validation:
+
+- Provider settings save successfully.
+- Required artifacts are present or intentionally skipped.
+- Local env/config files match saved provider settings.
+- STT/TTS/wake services are running when enabled.
+- Required health checks pass.
+- UI reflects the latest backend status before allowing Continue.
+
+Next step:
+
+- Continue to Capability Declaration only after required local runtime health is
+  proven.
+
+Open questions:
+
+- None for Step 5 right now.
+
+
+Step 6: Capability declaration and governance sync
+--------------------------------------------------
+
+Purpose:
+
+- Tell Core what this trusted Voice Node can actually do.
+- Use the provider/runtime health proven in Step 5 as the source of truth.
+- Fetch and verify Core governance before declaring setup complete.
+- Ensure the node is Core-visible, trusted, capable, and governed.
+
+Route:
+
+- `http://<lan-host>:8084/setup/capabilities`
+
+Prerequisites:
+
+- Trust is active.
+- Step 5 provider/runtime configuration is complete.
+- Required enabled providers are healthy.
+- Production backend/frontend are running.
+- Core is reachable.
+
+What gets declared:
+
+- STT capability when STT provider is enabled and healthy.
+- TTS capability when TTS provider is enabled and healthy.
+- Wake word capability when wake provider is enabled and healthy.
+- Endpoint media support when runtime/media directories are ready.
+- Firmware/OTA support when firmware artifacts are present and verified.
+- Registered voice intents when present.
+- Node API/UI metadata:
+  - LAN API URL
+  - LAN UI URL
+  - hostname
+  - lifecycle mode
+
+Actions:
+
+1. Build capability declaration from local trusted state and Step 5 runtime status.
+2. Show declaration preview in the UI.
+3. Send/update capability declaration to Core.
+4. Fetch governance from Core.
+5. Verify governance is current and compatible.
+6. Show Core-side warnings/blockers.
+7. Allow retry for declaration or governance sync failures.
+8. Continue to final smoke test / ready step after success.
+
+Backend API needed for this step:
+
+- `GET /api/setup/capabilities/status`
+  - returns current trust state, local capability candidates, Core declaration
+    status, governance status, warnings, and blockers
+  - UI polls this endpoint during declaration/governance actions
+
+- `POST /api/setup/capabilities/declare`
+  - sends/updates the capability declaration in Core
+
+- `POST /api/setup/capabilities/sync-governance`
+  - fetches and stores current Core governance
+
+- `POST /api/setup/capabilities/actions/<action>`
+  - targeted retry/repair actions
+  - examples:
+    - `refresh-core-metadata`
+    - `declare-capabilities`
+    - `sync-governance`
+    - `reload-intents`
+
+UI tracking requirements:
+
+- The UI should show capability declaration as one of:
+  - not ready
+  - ready to declare
+  - declaring
+  - declared
+  - failed
+
+- The UI should show governance sync as one of:
+  - not synced
+  - syncing
+  - current
+  - stale
+  - failed
+
+- Continue is disabled while:
+  - trust is missing
+  - required enabled provider health is failing
+  - declaration is not complete
+  - governance is not current
+  - Core reports blocking errors
+
+Hard blockers:
+
+- Trust is missing or inactive.
+- Core is unreachable.
+- Required enabled provider is unhealthy.
+- Capability declaration rejected by Core.
+- Governance fetch/sync fails.
+- Governance is stale or incompatible.
+- Core node metadata cannot be refreshed when required.
+
+Soft warnings / retryable:
+
+- Optional capability is disabled or skipped.
+- Optional voice intent registration is missing.
+- Firmware capability skipped because firmware artifacts are missing.
+- Core metadata refresh warning when existing metadata is already usable.
+
+Validation:
+
+- Core has the latest capability declaration for this node.
+- Governance is fetched and current.
+- Backend status shows trusted and governed state.
+- UI reflects declaration/governance status before allowing Continue.
+
+Next step:
+
+- Continue to final smoke test / ready screen.
+
+Open questions:
+
+- None for Step 6 right now.
+
+
+Step 7: Final smoke test and ready
+----------------------------------
+
+Purpose:
+
+- Prove the full install/setup/migration path worked end to end.
+- Run the final required checks before setup is marked complete.
+- Show clear pass/fail/retry status.
+- Move the operator out of setup only after the local node is trusted,
+  governed, configured, healthy, and reachable.
+
+Route:
+
+- `http://<lan-host>:8084/setup/ready`
+
+Prerequisites:
+
+- Trust is active.
+- Capability declaration succeeded.
+- Governance is current.
+- Required enabled providers are healthy.
+- Production backend/frontend are running.
+
+Actions:
+
+1. Run final smoke test from the production backend/API.
+2. Show live smoke-test progress and final summary.
+3. Surface failed checks with retry actions.
+4. Mark setup complete only when required checks pass.
+5. Show final URLs and lifecycle mode.
+6. Offer post-setup backup/export without trust tokens/secrets.
+7. Continue to the local config/fallback page.
+
+Final smoke checks:
+
+- backend reachable
+- frontend reachable
+- trusted state active
+- governance current
+- STT healthy when enabled
+- TTS healthy when enabled
+- wake healthy when enabled
+- firmware directory/artifacts verified when firmware capability is enabled
+- runtime dirs writable
+- Docker containers running when Docker engines are used
+- Unix sockets reachable when socket transports are used
+- LAN API URL reachable
+- LAN UI URL reachable
+- `HexeVoice` host alias works when enabled
+- Core can see the node as trusted/capable/governed
+
+Backend API needed for this step:
+
+- `GET /api/setup/ready/status`
+  - returns smoke-test state, final setup state, lifecycle mode, final URLs,
+    warnings, and blockers
+  - UI polls this endpoint during final smoke test
+
+- `POST /api/setup/ready/run-smoke-test`
+  - starts or reruns final smoke test
+
+- `POST /api/setup/ready/complete`
+  - marks setup complete after required smoke checks pass
+
+- `POST /api/setup/ready/export-backup`
+  - creates a post-setup migration/rollback backup without trust tokens/secrets
+
+Hard blockers:
+
+- Any required smoke check fails.
+- Trust is missing or inactive.
+- Governance is missing, stale, or incompatible.
+- Enabled provider is unhealthy.
+- Final LAN API URL is unreachable.
+- Final LAN UI URL is unreachable.
+- Runtime dirs are not writable.
+- Core does not see the node as trusted/capable/governed.
+
+Soft warnings / retryable:
+
+- Optional artifacts missing.
+- Host alias missing when operator opted out.
+- CUDA not used.
+- Optional models missing.
+- Optional firmware profile missing for an endpoint not currently used.
+- Post-setup backup/export skipped.
+
+Validation:
+
+- Final smoke test passes.
+- Setup complete flag is saved.
+- Final URLs are shown.
+- Lifecycle mode is shown:
+  - Supervisor-managed
+  - unsupervised systemd
+  - temporary runner should no longer be active
+- Operator can open the post-setup local config/fallback page.
+
+Post-setup destination:
+
+- For now, keep the local dashboard when available.
+- Post-setup destination: `http://<lan-host>:8084/`
+- While the node is in setup mode, `http://<lan-host>:8084/` should redirect to
+  the current `/setup/*` page.
+- After setup is complete, `http://<lan-host>:8084/` should show the dashboard
+  or local fallback/config surface that exists at that time.
+- Longer term, Core should become the primary operational dashboard when
+  available, and the local page can become a config/fallback surface for local
+  setup/config when Core cannot do it or is unreachable.
+
+Open questions:
+
+- None for Step 7 right now.
