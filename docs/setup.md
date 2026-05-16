@@ -74,6 +74,13 @@ Provider/runtime setup is exposed at `/setup/providers` and backed by
 `/api/setup/providers/apply`. The status endpoint reports provider selection,
 runtime service health, provider states, and blockers so the UI can poll during
 downloads, restarts, and health checks.
+Capability and governance setup is exposed at `/setup/capabilities` and backed
+by `/api/setup/capabilities/status`,
+`/api/setup/capabilities/selection`,
+`/api/setup/capabilities/declare`, and
+`/api/setup/capabilities/sync-governance`. The setup status remains blocked
+until selected capabilities are current in Core and a governance bundle has been
+refreshed locally.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none

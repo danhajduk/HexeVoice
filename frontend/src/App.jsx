@@ -19,6 +19,7 @@ import { HostSetupPage } from "./features/setup/HostSetupPage";
 import { CoreSetupPage, MigrationSetupPage } from "./features/setup/CoreMigrationSetupPage";
 import { ReauthSetupPage } from "./features/setup/ReauthSetupPage";
 import { ProvidersSetupPage } from "./features/setup/ProvidersSetupPage";
+import { CapabilitiesSetupPage } from "./features/setup/CapabilitiesSetupPage";
 import { SetupHeroCard } from "./features/setup/cards/SetupHeroCard";
 import { LiveStatusCard } from "./features/setup/cards/LiveStatusCard";
 import { OperatorPromptsCard } from "./features/setup/cards/OperatorPromptsCard";
@@ -84,6 +85,9 @@ function parseSetupSection(location) {
   }
   if (location.pathname === "/setup/providers" || location.hash === "#/setup/providers") {
     return "providers";
+  }
+  if (location.pathname === "/setup/capabilities" || location.hash === "#/setup/capabilities") {
+    return "capabilities";
   }
   return "flow";
 }
@@ -561,6 +565,8 @@ export default function App() {
                   <ReauthSetupPage />
                 ) : setupSection === "providers" ? (
                   <ProvidersSetupPage />
+                ) : setupSection === "capabilities" ? (
+                  <CapabilitiesSetupPage />
                 ) : (
                   <>
                     <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />

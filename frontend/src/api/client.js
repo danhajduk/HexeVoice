@@ -199,6 +199,22 @@ export async function declareCapabilities() {
   return sendJson("/api/capabilities/declaration");
 }
 
+export async function getSetupCapabilitiesStatus() {
+  return fetchJson("/api/setup/capabilities/status");
+}
+
+export async function saveSetupCapabilitySelection(payload) {
+  return sendJson("/api/setup/capabilities/selection", { method: "PUT", body: payload });
+}
+
+export async function declareSetupCapabilities() {
+  return sendJson("/api/setup/capabilities/declare");
+}
+
+export async function syncSetupGovernance() {
+  return sendJson("/api/setup/capabilities/sync-governance");
+}
+
 export async function getGovernanceCurrent() {
   return fetchJson("/api/governance/current");
 }
