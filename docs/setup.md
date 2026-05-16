@@ -35,6 +35,31 @@ Preview or apply the host alias manually:
 HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install
 ```
 
+## Temporary Setup Runner
+
+Use `scripts/setup-runner.sh` when a fresh host should expose setup before
+production services are ready. It starts the temporary backend on port `9100`
+and the temporary UI on port `8180`, then watches
+`http://<lan-host>:8084/setup` for the production UI. When production setup is
+healthy, the temporary UI becomes a redirect for `120` seconds by default and
+the runner exits.
+
+```bash
+./scripts/setup-runner.sh --handoff none
+./scripts/setup-runner.sh --handoff systemd
+./scripts/setup-runner.sh --handoff existing-supervisor
+```
+
+Joined or standalone Supervisor handoff is available when the Core Supervisor
+installer is present. If Core or the installer is unavailable, the runner keeps
+the temporary setup UI/API active instead of blocking the install.
+
+```bash
+CORE_SUPERVISOR_URL=http://10.0.0.100:9001 \
+CORE_SUPERVISOR_ENROLLMENT_TOKEN=<one-time-token> \
+./scripts/setup-runner.sh --handoff joined-supervisor
+```
+
 ## Manual Setup
 
 1. Create the repo-local virtual environment with `python3 -m venv .venv`.
