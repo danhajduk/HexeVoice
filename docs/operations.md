@@ -34,12 +34,12 @@ The setup card also exposes **Refresh Core metadata** after trust activation. Us
 
 The operational dashboard includes a Migration section for moving a Voice Node
 identity to a different machine. Export creates a JSON bundle containing local
-onboarding/trust state, endpoint registry metadata, registered voice intents
+onboarding state, endpoint registry metadata, registered voice intents
 when present, STT provider settings when present, runtime TTS settings when
 present, TTS provider settings when present, and wake word provider settings
-when present. Trust tokens are included only when the operator leaves **Include
-trust secrets** enabled; without those tokens, the imported node must be
-reactivated with Core.
+when present. Trust tokens and operational secrets are never included. Imported
+nodes must re-authorize with Core before becoming trusted on the destination
+host.
 
 Import validates the bundle, writes the supported local runtime state files, and
 can rewrite destination-specific `api_base_url`, `ui_endpoint`, `core_base_url`,
@@ -84,12 +84,10 @@ Before a migration or risky reconfiguration, create a rollback backup. Backups
 live under `runtime/migration/backups/<backup-id>` and include a manifest, a
 migration bundle, and small service env files such as `scripts/stack.env`,
 `scripts/piper-tts.env`, and `scripts/openwakeword.env` when present. Trust
-tokens are redacted by default; include them only when the backup will be
-handled as secret material.
+tokens and operational secrets are always redacted.
 
 ```bash
 ./scripts/migration-backup.py create --label before-cuda-move
-./scripts/migration-backup.py create --include-trust-secrets --label before-cuda-move
 ./scripts/migration-backup.py restore 20260516T210000Z-before-cuda-move --dry-run
 ./scripts/migration-backup.py restore 20260516T210000Z-before-cuda-move \
   --core-url http://10.0.0.100:9001 \

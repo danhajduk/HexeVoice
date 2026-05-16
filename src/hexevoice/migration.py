@@ -64,6 +64,9 @@ class NodeMigrationService:
         self._backup_dir = settings.runtime_dir / "migration" / "backups"
 
     def export_bundle(self, payload: NodeMigrationExportRequest) -> dict[str, Any]:
+        if payload.include_trust_secrets:
+            raise NodeMigrationError("migration_trust_secret_export_not_supported")
+
         state_files: dict[str, Any] = {
             "onboarding_state": self._onboarding_store.load().model_dump(mode="json"),
             "endpoint_registry": self._endpoint_registry_store.load().model_dump(mode="json"),
@@ -88,13 +91,12 @@ class NodeMigrationService:
         if wake_settings:
             state_files["voice_wake_settings"] = wake_settings
 
+        state_files["onboarding_state"] = self._redact_trust_secrets(state_files["onboarding_state"])
+
         warnings = [
-            "Bundle can contain trust tokens and should be handled like a secret.",
+            "Trust secrets were redacted; migrated nodes must re-authorize with Core before becoming trusted.",
             "Large model, media, firmware, log, and audio-history folders are not included.",
         ]
-        if not payload.include_trust_secrets:
-            state_files["onboarding_state"] = self._redact_trust_secrets(state_files["onboarding_state"])
-            warnings.append("Trust secrets were redacted; imported node will need trust reactivation.")
 
         onboarding_state = state_files["onboarding_state"]
         trust_activation = onboarding_state.get("trust_activation", {}) if isinstance(onboarding_state, dict) else {}
@@ -109,21 +111,24 @@ class NodeMigrationService:
                 "api_base_url": self._settings.public_api_base_url,
                 "ui_endpoint": self._settings.public_ui_base_url,
             },
-            "contains_trust_secrets": payload.include_trust_secrets,
+            "contains_trust_secrets": False,
             "state_files": state_files,
             "warnings": warnings,
         }
 
     def create_backup(self, payload: NodeMigrationBackupRequest) -> dict[str, Any]:
+        if payload.include_trust_secrets:
+            raise NodeMigrationError("migration_trust_secret_backup_not_supported")
+
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        suffix = self._safe_label(payload.label) if payload.label else ("sensitive" if payload.include_trust_secrets else "redacted")
+        suffix = self._safe_label(payload.label) if payload.label else "redacted"
         backup_id = f"{timestamp}-{suffix}"
         backup_dir = self._backup_path(backup_id, must_exist=False)
         if backup_dir.exists():
             raise NodeMigrationError("migration_backup_already_exists")
         backup_dir.mkdir(parents=True, exist_ok=False)
 
-        bundle = self.export_bundle(NodeMigrationExportRequest(include_trust_secrets=payload.include_trust_secrets))
+        bundle = self.export_bundle(NodeMigrationExportRequest())
         bundle_path = backup_dir / "migration-bundle.json"
         self._write_json_file(bundle_path, bundle)
 
@@ -147,7 +152,7 @@ class NodeMigrationService:
         manifest = {
             "backup_id": backup_id,
             "created_at": datetime.now(UTC).isoformat(),
-            "contains_trust_secrets": payload.include_trust_secrets,
+            "contains_trust_secrets": False,
             "bundle_path": "migration-bundle.json",
             "service_env_files": service_env_files,
             "missing_service_env_files": missing_service_env_files,
@@ -168,7 +173,7 @@ class NodeMigrationService:
             "backup_dir": str(backup_dir),
             "manifest_path": str(manifest_path),
             "bundle_path": str(bundle_path),
-            "contains_trust_secrets": payload.include_trust_secrets,
+            "contains_trust_secrets": False,
             "files": ["migration-bundle.json", "manifest.json", *service_env_files],
             "warnings": [
                 *bundle.get("warnings", []),
@@ -218,6 +223,7 @@ class NodeMigrationService:
         state_files = bundle.get("state_files")
         if not isinstance(state_files, dict):
             raise NodeMigrationError("migration_state_files_missing")
+        self._reject_trust_secrets(bundle)
 
         imported: list[str] = []
         warnings: list[str] = []
@@ -237,8 +243,8 @@ class NodeMigrationService:
             ui_endpoint = saved.pre_trust.ui_endpoint
             imported.append("onboarding_state")
 
-            if saved.trust_activation.trust_status == "trusted" and not saved.trust_activation.node_trust_token:
-                warnings.append("Imported state is trusted but missing node_trust_token; run trust activation again.")
+            if saved.trust_activation.trust_status != "trusted":
+                warnings.append("Imported node must re-authorize with Core before it can become trusted.")
 
         endpoint_registry_payload = state_files.get("endpoint_registry")
         if endpoint_registry_payload is not None:
@@ -426,6 +432,7 @@ class NodeMigrationService:
         state_files = bundle.get("state_files")
         if not isinstance(state_files, dict):
             raise NodeMigrationError("migration_state_files_missing")
+        self._reject_trust_secrets(bundle)
 
         planned: list[str] = []
         warnings: list[str] = []
@@ -443,8 +450,8 @@ class NodeMigrationService:
             api_base_url = onboarding_state.pre_trust.api_base_url
             ui_endpoint = onboarding_state.pre_trust.ui_endpoint
             planned.append("onboarding_state")
-            if onboarding_state.trust_activation.trust_status == "trusted" and not onboarding_state.trust_activation.node_trust_token:
-                warnings.append("Imported state is trusted but missing node_trust_token; run trust activation again.")
+            if onboarding_state.trust_activation.trust_status != "trusted":
+                warnings.append("Imported node must re-authorize with Core before it can become trusted.")
 
         if state_files.get("endpoint_registry") is not None:
             PersistedEndpointRegistry.model_validate(state_files["endpoint_registry"])
@@ -540,6 +547,10 @@ class NodeMigrationService:
             for field in TRUST_SECRET_FIELDS:
                 if field in trust_activation:
                     trust_activation[field] = None
+            if trust_activation.get("node_id"):
+                trust_activation["trust_status"] = "reauth_required"
+                trust_activation["trusted_at"] = None
+                trust_activation["activation_applied_at"] = None
 
         onboarding_session = redacted.get("onboarding_session")
         pending_activation = onboarding_session.get("pending_activation") if isinstance(onboarding_session, dict) else None
@@ -547,7 +558,34 @@ class NodeMigrationService:
             for field in TRUST_SECRET_FIELDS:
                 if field in pending_activation:
                     pending_activation[field] = None
+        operational_status = redacted.get("operational_status")
+        if isinstance(operational_status, dict) and isinstance(trust_activation, dict) and trust_activation.get("node_id"):
+            operational_status["trust_status"] = "reauth_required"
+            operational_status["operational_ready"] = False
         return redacted
+
+    @staticmethod
+    def _reject_trust_secrets(bundle: dict[str, Any]) -> None:
+        if bundle.get("contains_trust_secrets"):
+            raise NodeMigrationError("migration_bundle_contains_trust_secrets")
+
+        state_files = bundle.get("state_files")
+        if not isinstance(state_files, dict):
+            return
+
+        def contains_secret_value(value: Any) -> bool:
+            if isinstance(value, dict):
+                for key, child in value.items():
+                    if key in TRUST_SECRET_FIELDS and child not in (None, ""):
+                        return True
+                    if contains_secret_value(child):
+                        return True
+            elif isinstance(value, list):
+                return any(contains_secret_value(child) for child in value)
+            return False
+
+        if contains_secret_value(state_files):
+            raise NodeMigrationError("migration_bundle_contains_trust_secrets")
 
     def _stt_settings_payload(self, onboarding_state: dict[str, Any]) -> dict[str, Any] | None:
         provider = str(self._settings.voice_stt_provider or "").strip()

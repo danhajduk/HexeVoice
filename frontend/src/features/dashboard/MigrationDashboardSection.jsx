@@ -40,7 +40,6 @@ function nonEmptyPayload(payload) {
 }
 
 export function MigrationDashboardSection({ onRefresh }) {
-  const [includeTrustSecrets, setIncludeTrustSecrets] = useState(true);
   const [exportedBundle, setExportedBundle] = useState(null);
   const [importBundle, setImportBundle] = useState(null);
   const [destinationForm, setDestinationForm] = useState(() => ({
@@ -67,10 +66,10 @@ export function MigrationDashboardSection({ onRefresh }) {
     setNotice("");
     setError("");
     try {
-      const bundle = await exportNodeMigrationBundle({ includeTrustSecrets });
+      const bundle = await exportNodeMigrationBundle();
       setExportedBundle(bundle);
       downloadBundle(bundle);
-      setNotice("Migration bundle exported.");
+      setNotice("Migration bundle exported. Core re-auth is required after import.");
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -132,17 +131,9 @@ export function MigrationDashboardSection({ onRefresh }) {
         {notice ? <div className="callout callout-success">{notice}</div> : null}
         {error ? <div className="callout callout-danger">{error}</div> : null}
         <div className="callout callout-warning">
-          Migration bundles contain local node trust and operator state. Handle exported files like secrets.
+          Migration bundles do not include trust secrets. Imported nodes must re-authorize with Core before becoming trusted.
         </div>
         <div className="form-actions">
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={includeTrustSecrets}
-              onChange={(event) => setIncludeTrustSecrets(event.target.checked)}
-            />
-            <span>Include trust secrets</span>
-          </label>
           <button className="btn btn-primary" type="button" onClick={handleExport} disabled={busyState !== ""}>
             {busyState === "export" ? "Exporting..." : "Export Bundle"}
           </button>

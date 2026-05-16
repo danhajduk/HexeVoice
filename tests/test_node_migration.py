@@ -48,9 +48,28 @@ def test_node_migration_export_redacts_trust_secrets_by_default(tmp_path):
     onboarding_state = bundle["state_files"]["onboarding_state"]
     assert bundle["contains_trust_secrets"] is False
     assert onboarding_state["trust_activation"]["node_id"] == "node-voice-123"
+    assert onboarding_state["trust_activation"]["trust_status"] == "reauth_required"
     assert onboarding_state["trust_activation"]["node_trust_token"] is None
     assert onboarding_state["trust_activation"]["operational_mqtt_token"] is None
     assert "voice_intents" in bundle["state_files"]
+
+
+def test_node_migration_export_rejects_trust_secret_request(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "onboarding-state.json",
+                endpoint_registry_path=tmp_path / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+            )
+        )
+    )
+
+    response = client.post("/api/node/migration/export", json={"include_trust_secrets": True})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "migration_trust_secret_export_not_supported"
 
 
 def test_node_migration_import_restores_state_and_applies_destination_overrides(tmp_path):
@@ -91,10 +110,7 @@ def test_node_migration_import_restores_state_and_applies_destination_overrides(
         encoding="utf-8",
     )
     source_client = TestClient(create_app(source_settings))
-    bundle = source_client.post(
-        "/api/node/migration/export",
-        json={"include_trust_secrets": True},
-    ).json()
+    bundle = source_client.post("/api/node/migration/export", json={}).json()
 
     destination_path = tmp_path / "destination" / "onboarding-state.json"
     destination_settings = Settings(
@@ -121,14 +137,80 @@ def test_node_migration_import_restores_state_and_applies_destination_overrides(
     assert payload["imported"] is True
     assert payload["node_id"] == "node-voice-123"
     assert payload["files_imported"] == ["onboarding_state", "endpoint_registry", "voice_intents", "voice_tts_settings"]
+    assert "re-authorize with Core" in " ".join(payload["warnings"])
     imported_state = OnboardingStateStore(path=destination_path).load()
-    assert imported_state.trust_activation.node_trust_token == "trust-token-123"
+    assert imported_state.trust_activation.node_trust_token is None
+    assert imported_state.trust_activation.operational_mqtt_token is None
+    assert imported_state.trust_activation.trust_status == "reauth_required"
     assert imported_state.pre_trust.core_base_url == "http://10.0.0.101:9001/"
     assert imported_state.pre_trust.api_base_url == "http://10.0.0.55:9004/"
     assert imported_state.pre_trust.ui_endpoint == "http://10.0.0.55:8084/"
     assert imported_state.pre_trust.hostname == "voice-new-host"
     tts_settings = json.loads(destination_settings.resolved_voice_tts_runtime_config_path().read_text(encoding="utf-8"))
     assert tts_settings["default_voice"] == "en_US-lessac-medium"
+
+
+def test_node_migration_import_rejects_trust_secrets_before_writing(tmp_path):
+    destination_path = tmp_path / "destination" / "onboarding-state.json"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=destination_path,
+                endpoint_registry_path=tmp_path / "destination" / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "destination" / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "destination" / "voice-tts-settings.json",
+            )
+        )
+    )
+    bundle = {
+        "schema_version": 1,
+        "contains_trust_secrets": True,
+        "state_files": {
+            "onboarding_state": {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                    "node_trust_token": "trust-token-123",
+                }
+            }
+        },
+    }
+
+    response = client.post("/api/node/migration/import", json={"bundle": bundle})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "migration_bundle_contains_trust_secrets"
+    assert not destination_path.exists()
+
+
+def test_node_migration_dry_run_rejects_nested_trust_secrets(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "destination" / "onboarding-state.json",
+                endpoint_registry_path=tmp_path / "destination" / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "destination" / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "destination" / "voice-tts-settings.json",
+            )
+        )
+    )
+    bundle = {
+        "schema_version": 1,
+        "state_files": {
+            "onboarding_state": {
+                "onboarding_session": {
+                    "pending_activation": {
+                        "operational_mqtt_token": "mqtt-token-123",
+                    }
+                }
+            }
+        },
+    }
+
+    response = client.post("/api/node/migration/import", json={"bundle": bundle, "dry_run": True})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "migration_bundle_contains_trust_secrets"
 
 
 def test_node_migration_import_dry_run_does_not_write_state(tmp_path):
@@ -285,7 +367,7 @@ def test_node_migration_restore_validates_backup_before_writing(tmp_path):
     )
     backup = TestClient(create_app(backup_settings)).post(
         "/api/node/migration/backup",
-        json={"include_trust_secrets": True, "label": "rollback"},
+        json={"label": "rollback"},
     ).json()
 
     destination_path = tmp_path / "destination" / "onboarding-state.json"
@@ -311,7 +393,28 @@ def test_node_migration_restore_validates_backup_before_writing(tmp_path):
 
     assert restored.status_code == 200
     assert restored.json()["imported"] is True
-    assert OnboardingStateStore(path=destination_path).load().trust_activation.node_trust_token == "secret-token"
+    restored_state = OnboardingStateStore(path=destination_path).load()
+    assert restored_state.trust_activation.node_trust_token is None
+    assert restored_state.trust_activation.trust_status == "reauth_required"
+
+
+def test_node_migration_backup_rejects_trust_secret_request(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                runtime_dir=tmp_path / "runtime",
+                onboarding_state_path=tmp_path / "onboarding-state.json",
+                endpoint_registry_path=tmp_path / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+            )
+        )
+    )
+
+    response = client.post("/api/node/migration/backup", json={"include_trust_secrets": True})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "migration_trust_secret_backup_not_supported"
 
 
 def test_node_migration_export_imports_stt_provider_settings(tmp_path):

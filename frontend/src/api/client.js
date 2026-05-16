@@ -87,12 +87,8 @@ export async function restartOnboardingSetup() {
   return sendJson("/api/onboarding/restart");
 }
 
-export async function exportNodeMigrationBundle({ includeTrustSecrets = false } = {}) {
-  return sendJson("/api/node/migration/export", {
-    body: {
-      include_trust_secrets: includeTrustSecrets,
-    },
-  });
+export async function exportNodeMigrationBundle() {
+  return sendJson("/api/node/migration/export", { body: {} });
 }
 
 export async function importNodeMigrationBundle(payload) {

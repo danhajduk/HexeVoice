@@ -19,7 +19,6 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     backup = subparsers.add_parser("create", help="Create a timestamped migration backup.")
-    backup.add_argument("--include-trust-secrets", action="store_true")
     backup.add_argument("--label")
 
     restore = subparsers.add_parser("restore", help="Restore or dry-run a migration backup.")
@@ -35,7 +34,6 @@ def main() -> int:
     if args.command == "create":
         result = service.create_backup(
             NodeMigrationBackupRequest(
-                include_trust_secrets=args.include_trust_secrets,
                 label=args.label,
             )
         )

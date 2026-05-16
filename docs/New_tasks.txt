@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 146: Remove trust-secret migration export/import and require Core re-auth
 [TODO] Task 148: Add setup bootstrap runner for temporary LAN setup UI/API
 [TODO] Task 149: Add setup bootstrap status API and installer progress tracking
 [TODO] Task 150: Extend hosted install Step 1 for default firmware/model downloads and browser launch
