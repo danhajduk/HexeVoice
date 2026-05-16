@@ -38,7 +38,7 @@
         ],
         "kind": "health_strip",
         "stale": false,
-        "updated_at": "2026-05-16T18:10:13.092580+00:00"
+        "updated_at": "2026-05-16T18:10:33.258993+00:00"
       },
       "id": "node.health",
       "kind": "health_strip",
@@ -54,7 +54,7 @@
         "errors": [],
         "kind": "warning_banner",
         "stale": false,
-        "updated_at": "2026-05-16T18:10:13.388170+00:00",
+        "updated_at": "2026-05-16T18:10:33.606728+00:00",
         "warnings": [
           {
             "id": "voice.last_error",
@@ -77,5 +77,5 @@
     "interval_ms": 15000,
     "mode": "near_live"
   },
-  "updated_at": "2026-05-16T18:10:13.388221+00:00"
+  "updated_at": "2026-05-16T18:10:33.606777+00:00"
 }

@@ -38,7 +38,7 @@
         ],
         "kind": "health_strip",
         "stale": false,
-        "updated_at": "2026-05-16T18:10:13.197088+00:00"
+        "updated_at": "2026-05-16T18:10:33.425120+00:00"
       },
       "id": "node.health",
       "kind": "health_strip",
@@ -85,7 +85,7 @@
             "endpoint_id": "esp-pe-1",
             "firmware_version": "ffcf952-dirty",
             "id": "esp-pe-1",
-            "last_seen_at": "2026-05-16T18:10:12.654531+00:00",
+            "last_seen_at": "2026-05-16T18:10:32.895441+00:00",
             "name": "esp-pe-1",
             "status": "online",
             "tone": "success"
@@ -110,7 +110,7 @@
           "active_endpoint_id": "esp-pe-1",
           "endpoint_count": 2
         },
-        "updated_at": "2026-05-16T18:10:13.240338+00:00"
+        "updated_at": "2026-05-16T18:10:33.465567+00:00"
       },
       "detail_endpoint_template": "/api/endpoint/status/{endpoint_id}",
       "id": "voice.endpoints",
@@ -190,7 +190,7 @@
         ],
         "kind": "action_panel",
         "stale": false,
-        "updated_at": "2026-05-16T18:10:13.281623+00:00"
+        "updated_at": "2026-05-16T18:10:33.504992+00:00"
       },
       "id": "voice.endpoint_actions",
       "kind": "action_panel",
@@ -449,7 +449,7 @@
         "summary": {
           "session_count": 20
         },
-        "updated_at": "2026-05-16T18:10:13.282772+00:00"
+        "updated_at": "2026-05-16T18:10:33.506061+00:00"
       },
       "detail_endpoint_template": "/api/voice/sessions/{session_id}",
       "id": "voice.sessions",
@@ -465,5 +465,5 @@
     "interval_ms": 10000,
     "mode": "near_live"
   },
-  "updated_at": "2026-05-16T18:10:13.282803+00:00"
+  "updated_at": "2026-05-16T18:10:33.506088+00:00"
 }

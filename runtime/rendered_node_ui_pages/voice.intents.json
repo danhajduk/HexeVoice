@@ -38,7 +38,7 @@
         ],
         "kind": "health_strip",
         "stale": false,
-        "updated_at": "2026-05-16T18:10:12.993329+00:00"
+        "updated_at": "2026-05-16T18:10:33.212502+00:00"
       },
       "id": "node.health",
       "kind": "health_strip",
@@ -369,7 +369,7 @@
           "registered_count": 22,
           "schema_version": "1.0"
         },
-        "updated_at": "2026-05-16T18:10:12.995132+00:00"
+        "updated_at": "2026-05-16T18:10:33.214027+00:00"
       },
       "detail_endpoint_template": "/api/voice/intents/{intent_id}",
       "id": "voice.intent_registry",
@@ -423,7 +423,7 @@
         ],
         "kind": "action_panel",
         "stale": false,
-        "updated_at": "2026-05-16T18:10:12.996868+00:00"
+        "updated_at": "2026-05-16T18:10:33.215538+00:00"
       },
       "id": "voice.intent_actions",
       "kind": "action_panel",
@@ -437,5 +437,5 @@
   "refresh": {
     "mode": "manual"
   },
-  "updated_at": "2026-05-16T18:10:12.996943+00:00"
+  "updated_at": "2026-05-16T18:10:33.215594+00:00"
 }

@@ -38,7 +38,7 @@
         ],
         "kind": "health_strip",
         "stale": false,
-        "updated_at": "2026-05-16T18:10:13.661736+00:00"
+        "updated_at": "2026-05-16T18:10:28.712610+00:00"
       },
       "id": "node.health",
       "kind": "health_strip",
@@ -182,13 +182,13 @@
               "process_cpu_percent": 5.0,
               "process_memory_percent": 0.78,
               "process_memory_rss_bytes": 129351680,
-              "sampled_at": "2026-05-16T18:10:12.899393+00:00",
+              "sampled_at": "2026-05-16T18:10:27.998297+00:00",
               "system_cpu_count": 4,
-              "system_load_15m": 3.15,
-              "system_load_1m": 4.25,
-              "system_load_5m": 3.48,
-              "system_memory_available_bytes": 7831973888,
-              "system_memory_percent": 53.03,
+              "system_load_15m": 3.12,
+              "system_load_1m": 3.54,
+              "system_load_5m": 3.35,
+              "system_memory_available_bytes": 7864188928,
+              "system_memory_percent": 52.84,
               "system_memory_total_bytes": 16673808384
             },
             "restart_supported": true,
@@ -231,10 +231,10 @@
               "kind": "systemd_user_service",
               "main_pid": 320010,
               "pid": 320040,
-              "process_cpu_seconds": 355.85,
+              "process_cpu_seconds": 355.93,
               "process_memory_percent": 5.2,
               "process_memory_rss_bytes": 867446784,
-              "sampled_at": "2026-05-16T18:10:12.939320+00:00",
+              "sampled_at": "2026-05-16T18:10:28.030209+00:00",
               "systemd_service": "hexevoice-stt.service"
             },
             "restart_supported": true,
@@ -283,14 +283,14 @@
                 "process_memory_percent": 0.0,
                 "process_memory_rss_bytes": 606208,
                 "resource_available": true,
-                "sampled_at": "2026-05-16T18:10:12.982507+00:00",
+                "sampled_at": "2026-05-16T18:10:28.062887+00:00",
                 "status": "running"
               },
               "process_cpu_seconds": 0.03,
               "process_memory_percent": 0.0,
               "process_memory_rss_bytes": 606208,
               "resource_available": true,
-              "sampled_at": "2026-05-16T18:10:12.982530+00:00"
+              "sampled_at": "2026-05-16T18:10:28.062910+00:00"
             },
             "restart_supported": true,
             "restart_target": "openwakeword",
@@ -334,18 +334,18 @@
                 "kind": "docker_container",
                 "main_pid": 3528770,
                 "pid": 3528770,
-                "process_cpu_seconds": 195.82,
+                "process_cpu_seconds": 195.84,
                 "process_memory_percent": 0.18,
                 "process_memory_rss_bytes": 30056448,
                 "resource_available": true,
-                "sampled_at": "2026-05-16T18:10:12.927235+00:00",
+                "sampled_at": "2026-05-16T18:10:28.018735+00:00",
                 "status": "running"
               },
-              "process_cpu_seconds": 195.82,
+              "process_cpu_seconds": 195.84,
               "process_memory_percent": 0.18,
               "process_memory_rss_bytes": 30056448,
               "resource_available": true,
-              "sampled_at": "2026-05-16T18:10:12.927258+00:00"
+              "sampled_at": "2026-05-16T18:10:28.018761+00:00"
             },
             "restart_supported": true,
             "restart_target": "piper_tts",
@@ -357,10 +357,10 @@
         "supervisor": {
           "configured": true,
           "last_error": null,
-          "last_seen_at": "2026-05-16T18:10:11.706400",
+          "last_seen_at": "2026-05-16T18:10:24.563851",
           "registered": true
         },
-        "updated_at": "2026-05-16T18:10:13.139097+00:00"
+        "updated_at": "2026-05-16T18:10:28.129175+00:00"
       },
       "id": "runtime.services",
       "kind": "runtime_service",
@@ -788,7 +788,7 @@
           }
         ],
         "stale": false,
-        "updated_at": "2026-05-16T18:10:13.501952+00:00"
+        "updated_at": "2026-05-16T18:10:28.540398+00:00"
       },
       "id": "runtime.providers",
       "kind": "provider_status",
@@ -804,5 +804,5 @@
     "interval_ms": 15000,
     "mode": "near_live"
   },
-  "updated_at": "2026-05-16T18:10:13.661838+00:00"
+  "updated_at": "2026-05-16T18:10:28.712715+00:00"
 }
