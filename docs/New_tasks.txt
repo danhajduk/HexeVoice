@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 143: Add post-install smoke test command
 [TODO] Task 144: Add migration backup and rollback workflow
 [TODO] Task 147: Add optional HexeVoice hostname alias during setup
 [STOP]

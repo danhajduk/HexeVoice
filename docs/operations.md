@@ -80,6 +80,19 @@ optionally check Core reachability:
 The import API also accepts `dry_run=true`; it validates destination overrides
 and returns planned writes plus warnings without changing runtime state.
 
+After install or migration, run the smoke test to prove the node is usable. It
+checks backend status, frontend reachability, STT/TTS/wake runtime health,
+runtime directories, and optional Docker visibility:
+
+```bash
+./scripts/post-install-smoke-test.py
+./scripts/post-install-smoke-test.py --json
+./scripts/post-install-smoke-test.py --backend-url http://127.0.0.1:9004 --frontend-url http://127.0.0.1:8084/
+```
+
+The command is read-only except for normal health probes and returns a non-zero
+exit code when any required check fails.
+
 ## Recovery Signals
 
 The frontend and local API surface the following important recovery conditions:
