@@ -18,6 +18,8 @@ from hexevoice.persistence import (
 
 MIGRATION_SCHEMA_VERSION = 1
 TRUST_SECRET_FIELDS = {"node_trust_token", "operational_mqtt_token"}
+STT_PROVIDERS = {"deterministic", "openai", "faster_whisper", "external_faster_whisper"}
+STT_PROVIDER_CONFIG_FIELDS = {"enabled", "default", "model", "device", "compute_type", "warm_model", "warm_models"}
 
 
 class NodeMigrationError(ValueError):
@@ -44,6 +46,10 @@ class NodeMigrationService:
 
         if self._tts_runtime_settings_path.exists():
             state_files["voice_tts_settings"] = self._read_object_file(self._tts_runtime_settings_path)
+
+        stt_settings = self._stt_settings_payload(state_files["onboarding_state"])
+        if stt_settings:
+            state_files["voice_stt_settings"] = stt_settings
 
         warnings = [
             "Bundle can contain trust tokens and should be handled like a secret.",
@@ -122,6 +128,20 @@ class NodeMigrationService:
             self._write_json_file(self._tts_runtime_settings_path, tts_settings_payload)
             imported.append("voice_tts_settings")
 
+        stt_settings_payload = state_files.get("voice_stt_settings")
+        if stt_settings_payload is not None:
+            stt_settings = self._validate_stt_settings(stt_settings_payload)
+            current_state = self._onboarding_store.load()
+            saved = self._onboarding_store.save(self._merge_stt_settings(current_state, stt_settings))
+            node_id = node_id or saved.trust_activation.node_id
+            core_base_url = core_base_url or saved.pre_trust.core_base_url
+            api_base_url = api_base_url or saved.pre_trust.api_base_url
+            ui_endpoint = ui_endpoint or saved.pre_trust.ui_endpoint
+            imported.append("voice_stt_settings")
+            warnings.append("Imported STT settings may require model downloads and an STT service restart on this host.")
+            if stt_settings.get("device") == "cuda":
+                warnings.append("Imported STT settings request CUDA; verify GPU support before starting the STT service.")
+
         if not imported:
             raise NodeMigrationError("migration_bundle_contains_no_supported_state_files")
 
@@ -170,6 +190,121 @@ class NodeMigrationService:
                 if field in pending_activation:
                     pending_activation[field] = None
         return redacted
+
+    def _stt_settings_payload(self, onboarding_state: dict[str, Any]) -> dict[str, Any] | None:
+        provider = str(self._settings.voice_stt_provider or "").strip()
+        if not provider:
+            return None
+        provider_setup = onboarding_state.get("provider_setup", {}) if isinstance(onboarding_state, dict) else {}
+        provider_configs = provider_setup.get("provider_configs", {}) if isinstance(provider_setup, dict) else {}
+        provider_config = provider_configs.get(provider, {}) if isinstance(provider_configs, dict) else {}
+        if not isinstance(provider_config, dict):
+            provider_config = {}
+        if provider == "deterministic" and not provider_config:
+            return None
+
+        warm_models = provider_config.get("warm_models") if isinstance(provider_config.get("warm_models"), list) else []
+        payload: dict[str, Any] = {
+            "provider": provider,
+            "enabled": provider in (provider_setup.get("enabled_providers", []) if isinstance(provider_setup, dict) else []),
+            "default": provider == (provider_setup.get("default_provider") if isinstance(provider_setup, dict) else None),
+            "model": str(provider_config.get("model") or self._settings.voice_stt_faster_whisper_model).strip(),
+            "device": str(provider_config.get("device") or self._settings.voice_stt_faster_whisper_device).strip(),
+            "compute_type": str(
+                provider_config.get("compute_type") or self._settings.voice_stt_faster_whisper_compute_type
+            ).strip(),
+            "warm_model": bool(provider_config.get("warm_model", self._settings.voice_stt_preload)),
+            "warm_models": [str(model).strip() for model in warm_models if str(model).strip()],
+            "preload": self._settings.voice_stt_preload,
+            "service": {
+                "transport": self._settings.voice_stt_service_transport,
+                "base_url": self._settings.voice_stt_service_base_url,
+                "host": self._settings.voice_stt_service_host,
+                "port": self._settings.voice_stt_service_port,
+                "socket_path": str(self._settings.voice_stt_service_socket_path)
+                if self._settings.voice_stt_service_socket_path is not None
+                else None,
+                "service_id": self._settings.voice_stt_service_id,
+                "container_name": self._settings.voice_stt_container_name,
+                "control_script": str(self._settings.voice_stt_control_script),
+            },
+            "faster_whisper": {
+                "language": self._settings.voice_stt_faster_whisper_language,
+                "beam_size": self._settings.voice_stt_faster_whisper_beam_size,
+                "best_of": self._settings.voice_stt_faster_whisper_best_of,
+                "without_timestamps": self._settings.voice_stt_faster_whisper_without_timestamps,
+                "word_timestamps": self._settings.voice_stt_faster_whisper_word_timestamps,
+                "max_initial_timestamp": self._settings.voice_stt_faster_whisper_max_initial_timestamp,
+                "temp_dir": str(self._settings.voice_stt_faster_whisper_temp_dir)
+                if self._settings.voice_stt_faster_whisper_temp_dir is not None
+                else None,
+            },
+        }
+        return self._validate_stt_settings(payload)
+
+    @staticmethod
+    def _validate_stt_settings(payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise NodeMigrationError("voice_stt_settings_must_be_object")
+        provider = str(payload.get("provider") or "").strip()
+        if provider not in STT_PROVIDERS:
+            raise NodeMigrationError("voice_stt_settings_provider_invalid")
+
+        validated: dict[str, Any] = {"provider": provider}
+        for key in ("enabled", "default", "warm_model", "preload"):
+            if key in payload:
+                validated[key] = bool(payload.get(key))
+        for key in ("model", "device", "compute_type"):
+            value = str(payload.get(key) or "").strip()
+            if value:
+                validated[key] = value
+        warm_models = payload.get("warm_models", [])
+        if not isinstance(warm_models, list):
+            raise NodeMigrationError("voice_stt_settings_warm_models_must_be_list")
+        validated["warm_models"] = [str(model).strip() for model in warm_models if str(model).strip()]
+
+        for section_name in ("service", "faster_whisper"):
+            section = payload.get(section_name, {})
+            if section is None:
+                section = {}
+            if not isinstance(section, dict):
+                raise NodeMigrationError(f"voice_stt_settings_{section_name}_must_be_object")
+            validated[section_name] = json.loads(json.dumps(section))
+        return validated
+
+    @staticmethod
+    def _merge_stt_settings(state: PersistedOnboardingState, stt_settings: dict[str, Any]) -> PersistedOnboardingState:
+        provider = str(stt_settings["provider"])
+        provider_config = {
+            key: stt_settings[key]
+            for key in STT_PROVIDER_CONFIG_FIELDS
+            if key in stt_settings and stt_settings[key] not in (None, "", [])
+        }
+        provider_configs = dict(state.provider_setup.provider_configs)
+        provider_configs[provider] = {**provider_configs.get(provider, {}), **provider_config}
+
+        supported = list(state.provider_setup.supported_providers)
+        if provider not in supported:
+            supported.append(provider)
+        enabled = list(state.provider_setup.enabled_providers)
+        if stt_settings.get("enabled") and provider not in enabled:
+            enabled.append(provider)
+        if stt_settings.get("enabled") is False:
+            enabled = [item for item in enabled if item != provider]
+        default_provider = provider if stt_settings.get("default") else state.provider_setup.default_provider
+
+        return state.model_copy(
+            update={
+                "provider_setup": state.provider_setup.model_copy(
+                    update={
+                        "supported_providers": supported,
+                        "enabled_providers": enabled,
+                        "default_provider": default_provider,
+                        "provider_configs": provider_configs,
+                    }
+                )
+            }
+        )
 
     @staticmethod
     def _read_object_file(path: Path) -> dict[str, Any]:

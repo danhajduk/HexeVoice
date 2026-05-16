@@ -128,3 +128,110 @@ def test_node_migration_import_restores_state_and_applies_destination_overrides(
     assert imported_state.pre_trust.hostname == "voice-new-host"
     tts_settings = json.loads(destination_settings.resolved_voice_tts_runtime_config_path().read_text(encoding="utf-8"))
     assert tts_settings["default_voice"] == "en_US-lessac-medium"
+
+
+def test_node_migration_export_imports_stt_provider_settings(tmp_path):
+    source_path = tmp_path / "source" / "onboarding-state.json"
+    source_settings = Settings(
+        onboarding_state_path=source_path,
+        endpoint_registry_path=tmp_path / "source" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "source" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "source" / "voice-tts-settings.json",
+        voice_stt_provider="external_faster_whisper",
+        voice_stt_service_transport="unix",
+        voice_stt_service_socket_path=tmp_path / "source" / "sockets" / "stt.sock",
+        voice_stt_preload=True,
+        voice_stt_faster_whisper_model="base.en",
+        voice_stt_faster_whisper_device="cpu",
+        voice_stt_faster_whisper_compute_type="int8",
+        voice_stt_faster_whisper_temp_dir=tmp_path / "source" / "stt-cache",
+    )
+    OnboardingStateStore(path=source_path).save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "provider_setup": {
+                    "supported_providers": ["voice", "external_faster_whisper"],
+                    "enabled_providers": ["voice", "external_faster_whisper"],
+                    "default_provider": "voice",
+                    "provider_configs": {
+                        "external_faster_whisper": {
+                            "enabled": True,
+                            "model": "small.en",
+                            "device": "cuda",
+                            "compute_type": "float16",
+                            "warm_model": True,
+                            "warm_models": ["tiny.en"],
+                        }
+                    },
+                },
+            }
+        )
+    )
+    source_client = TestClient(create_app(source_settings))
+
+    bundle = source_client.post("/api/node/migration/export", json={}).json()
+
+    stt_settings = bundle["state_files"]["voice_stt_settings"]
+    assert stt_settings["provider"] == "external_faster_whisper"
+    assert stt_settings["model"] == "small.en"
+    assert stt_settings["device"] == "cuda"
+    assert stt_settings["compute_type"] == "float16"
+    assert stt_settings["warm_models"] == ["tiny.en"]
+    assert stt_settings["preload"] is True
+    assert stt_settings["service"]["transport"] == "unix"
+    assert stt_settings["faster_whisper"]["temp_dir"] == str(tmp_path / "source" / "stt-cache")
+
+    destination_path = tmp_path / "destination" / "onboarding-state.json"
+    destination_settings = Settings(
+        onboarding_state_path=destination_path,
+        endpoint_registry_path=tmp_path / "destination" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "destination" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "destination" / "voice-tts-settings.json",
+    )
+    response = TestClient(create_app(destination_settings)).post(
+        "/api/node/migration/import",
+        json={"bundle": {"schema_version": 1, "state_files": {"voice_stt_settings": stt_settings}}},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["files_imported"] == ["voice_stt_settings"]
+    assert "model downloads" in " ".join(payload["warnings"])
+    assert "CUDA" in " ".join(payload["warnings"])
+    imported = OnboardingStateStore(path=destination_path).load()
+    assert imported.provider_setup.supported_providers == ["external_faster_whisper"]
+    assert imported.provider_setup.enabled_providers == ["external_faster_whisper"]
+    assert imported.provider_setup.provider_configs["external_faster_whisper"]["model"] == "small.en"
+    assert imported.provider_setup.provider_configs["external_faster_whisper"]["device"] == "cuda"
+    assert imported.provider_setup.provider_configs["external_faster_whisper"]["compute_type"] == "float16"
+    assert imported.provider_setup.provider_configs["external_faster_whisper"]["warm_models"] == ["tiny.en"]
+
+
+def test_node_migration_rejects_malformed_stt_settings(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "onboarding-state.json",
+        endpoint_registry_path=tmp_path / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+    )
+    response = TestClient(create_app(settings)).post(
+        "/api/node/migration/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "state_files": {
+                    "voice_stt_settings": {
+                        "provider": "external_faster_whisper",
+                        "warm_models": "tiny.en",
+                    }
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "voice_stt_settings_warm_models_must_be_list"

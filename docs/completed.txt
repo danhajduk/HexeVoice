@@ -148,3 +148,4 @@ Task 124: Make wake word runtime ready immediately after hosted install - Comple
 Task 126: Add firmware artifact download to hosted install - Completed on 05/16/2026 12:11
 Task 121: Dockerize local STT/TTS engines and move them to Unix-socket transport - Completed on 05/16/2026 12:24
 Task 140: Auto-detect CUDA-capable STT Docker image during install - Completed on 05/16/2026 12:49
+Task 134: Include STT provider settings in node migration bundles - Completed on 05/16/2026 12:55
