@@ -14,12 +14,24 @@ from hexevoice.persistence import (
     PersistedEndpointRegistry,
     PersistedOnboardingState,
 )
+from hexevoice.stt_profiles import get_stt_model_profile
+from hexevoice.stt_profiles import resolve_stt_model_profile
 
 
 MIGRATION_SCHEMA_VERSION = 1
 TRUST_SECRET_FIELDS = {"node_trust_token", "operational_mqtt_token"}
 STT_PROVIDERS = {"deterministic", "openai", "faster_whisper", "external_faster_whisper"}
-STT_PROVIDER_CONFIG_FIELDS = {"enabled", "default", "model", "device", "compute_type", "warm_model", "warm_models"}
+STT_PROVIDER_CONFIG_FIELDS = {
+    "enabled",
+    "default",
+    "profile",
+    "fallback_profile",
+    "model",
+    "device",
+    "compute_type",
+    "warm_model",
+    "warm_models",
+}
 TTS_PROVIDERS = {"deterministic", "openai", "piper"}
 TTS_PROVIDER_CONFIG_FIELDS = {"enabled", "default", "model", "warm_models", "default_voice"}
 WAKE_PROVIDERS = {"deterministic", "openwakeword", "supervised_openwakeword"}
@@ -239,19 +251,21 @@ class NodeMigrationService:
         if provider == "deterministic" and not provider_config:
             return None
 
+        stt_profile = resolve_stt_model_profile(self._settings, provider_config)
         warm_models = provider_config.get("warm_models") if isinstance(provider_config.get("warm_models"), list) else []
         payload: dict[str, Any] = {
             "provider": provider,
             "enabled": provider in (provider_setup.get("enabled_providers", []) if isinstance(provider_setup, dict) else []),
             "default": provider == (provider_setup.get("default_provider") if isinstance(provider_setup, dict) else None),
-            "model": str(provider_config.get("model") or self._settings.voice_stt_faster_whisper_model).strip(),
-            "device": str(provider_config.get("device") or self._settings.voice_stt_faster_whisper_device).strip(),
-            "compute_type": str(
-                provider_config.get("compute_type") or self._settings.voice_stt_faster_whisper_compute_type
-            ).strip(),
-            "warm_model": bool(provider_config.get("warm_model", self._settings.voice_stt_preload)),
+            "profile": stt_profile.name,
+            "fallback_profile": stt_profile.fallback_profile,
+            "model": stt_profile.model,
+            "device": stt_profile.device,
+            "compute_type": stt_profile.compute_type,
+            "warm_model": bool(provider_config.get("warm_model", stt_profile.preload)),
             "warm_models": [str(model).strip() for model in warm_models if str(model).strip()],
-            "preload": self._settings.voice_stt_preload,
+            "preload": stt_profile.preload,
+            "auto_download": stt_profile.auto_download,
             "service": {
                 "transport": self._settings.voice_stt_service_transport,
                 "base_url": self._settings.voice_stt_service_base_url,
@@ -265,12 +279,12 @@ class NodeMigrationService:
                 "control_script": str(self._settings.voice_stt_control_script),
             },
             "faster_whisper": {
-                "language": self._settings.voice_stt_faster_whisper_language,
-                "beam_size": self._settings.voice_stt_faster_whisper_beam_size,
-                "best_of": self._settings.voice_stt_faster_whisper_best_of,
-                "without_timestamps": self._settings.voice_stt_faster_whisper_without_timestamps,
-                "word_timestamps": self._settings.voice_stt_faster_whisper_word_timestamps,
-                "max_initial_timestamp": self._settings.voice_stt_faster_whisper_max_initial_timestamp,
+                "language": stt_profile.language,
+                "beam_size": stt_profile.beam_size,
+                "best_of": stt_profile.best_of,
+                "without_timestamps": stt_profile.without_timestamps,
+                "word_timestamps": stt_profile.word_timestamps,
+                "max_initial_timestamp": stt_profile.max_initial_timestamp,
                 "temp_dir": str(self._settings.voice_stt_faster_whisper_temp_dir)
                 if self._settings.voice_stt_faster_whisper_temp_dir is not None
                 else None,
@@ -287,12 +301,17 @@ class NodeMigrationService:
             raise NodeMigrationError("voice_stt_settings_provider_invalid")
 
         validated: dict[str, Any] = {"provider": provider}
-        for key in ("enabled", "default", "warm_model", "preload"):
+        for key in ("enabled", "default", "warm_model", "preload", "auto_download"):
             if key in payload:
                 validated[key] = bool(payload.get(key))
         for key in ("model", "device", "compute_type"):
             value = str(payload.get(key) or "").strip()
             if value:
+                validated[key] = value
+        for key in ("profile", "fallback_profile"):
+            value = str(payload.get(key) or "").strip()
+            if value:
+                get_stt_model_profile(value)
                 validated[key] = value
         warm_models = payload.get("warm_models", [])
         if not isinstance(warm_models, list):

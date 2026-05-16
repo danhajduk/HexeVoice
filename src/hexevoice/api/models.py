@@ -566,6 +566,8 @@ class ProviderSetupRequest(BaseModel):
 class ProviderConfigRequest(BaseModel):
     enabled: bool = True
     default: bool = False
+    profile: str | None = None
+    fallback_profile: str | None = None
     model: str | None = None
     device: str | None = None
     compute_type: str | None = None

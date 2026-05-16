@@ -113,6 +113,8 @@ from hexevoice.tts import TtsAudioService
 from hexevoice.tts.runtime_settings import TtsRuntimeSettingsService
 from hexevoice.voice import MicroVadChunkRecordingService, VoiceSessionManager, WakeDetector, WakeRecordingService
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
+from hexevoice.stt_profiles import resolve_stt_model_profile
+from hexevoice.stt_profiles import stt_profile_options
 from hexevoice.voice.wake import build_wake_detector
 
 
@@ -1348,16 +1350,21 @@ def create_app(
         return node_ui.tts_runtime(await node_ui_tts_settings(), voice_session_manager.status())
 
     def node_ui_provider_config_context(tts_settings: dict) -> dict:
+        stt_profile = resolve_stt_model_profile(app_settings)
         return {
             "stt": {
                 "kind": "stt",
-                "model": app_settings.voice_stt_faster_whisper_model
+                "profile": stt_profile.name,
+                "fallback_profile": stt_profile.fallback_profile,
+                "model": stt_profile.model
                 if app_settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}
                 else app_settings.voice_stt_model,
-                "device": app_settings.voice_stt_faster_whisper_device,
-                "compute_type": app_settings.voice_stt_faster_whisper_compute_type,
-                "warm_model": app_settings.voice_stt_preload,
+                "device": stt_profile.device,
+                "compute_type": stt_profile.compute_type,
+                "warm_model": stt_profile.preload,
                 "warm_models": [],
+                "profile_options": stt_profile_options(),
+                "fallback_profile_options": stt_profile_options(),
                 "model_options": node_ui_model_options(
                     [
                         "tiny.en",
@@ -1416,10 +1423,21 @@ def create_app(
         return deduped
 
     async def apply_external_stt_provider_config(payload: ProviderConfigRequest) -> bool:
+        provider_config = {
+            "profile": payload.profile,
+            "fallback_profile": payload.fallback_profile,
+            "model": payload.model,
+            "device": payload.device,
+            "compute_type": payload.compute_type,
+            "warm_model": payload.warm_model,
+        }
+        stt_profile = resolve_stt_model_profile(app_settings, provider_config)
         default_model = str(payload.model or "").strip()
         warm_models = [str(model or "").strip() for model in payload.warm_models if str(model or "").strip()]
-        device = str(payload.device or app_settings.voice_stt_faster_whisper_device).strip()
-        compute_type = str(payload.compute_type or app_settings.voice_stt_faster_whisper_compute_type).strip()
+        if not default_model:
+            default_model = stt_profile.model
+        device = stt_profile.device
+        compute_type = stt_profile.compute_type
         if not default_model and not warm_models:
             return False
         async with async_client_for_engine(
@@ -1476,9 +1494,13 @@ def create_app(
         provider_config = provider_setup.provider_configs.get("external_faster_whisper", {})
         model = str(provider_config.get("model") or "").strip()
         warm_models = provider_config.get("warm_models") if isinstance(provider_config.get("warm_models"), list) else []
-        if not model and not warm_models:
+        profile = str(provider_config.get("profile") or "").strip()
+        fallback_profile = str(provider_config.get("fallback_profile") or "").strip()
+        if not model and not warm_models and not profile:
             return
         payload = ProviderConfigRequest(
+            profile=profile or None,
+            fallback_profile=fallback_profile or None,
             model=model or None,
             device=str(provider_config.get("device") or "").strip() or None,
             compute_type=str(provider_config.get("compute_type") or "").strip() or None,

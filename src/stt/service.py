@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 from hexevoice.config.settings import Settings
+from hexevoice.stt_profiles import resolve_stt_model_profile
 from stt.adapters import FasterWhisperSpeechToTextAdapter, VoiceTurnAudioSummary
 
 
@@ -42,17 +43,18 @@ def _build_adapter(
     device: str | None = None,
     compute_type: str | None = None,
 ) -> FasterWhisperSpeechToTextAdapter:
+    profile = resolve_stt_model_profile(app_settings)
     return FasterWhisperSpeechToTextAdapter(
-        model_name=model_name or app_settings.voice_stt_faster_whisper_model,
-        device=device or app_settings.voice_stt_faster_whisper_device,
-        compute_type=compute_type or app_settings.voice_stt_faster_whisper_compute_type,
+        model_name=model_name or profile.model,
+        device=device or profile.device,
+        compute_type=compute_type or profile.compute_type,
         temp_dir=app_settings.resolved_faster_whisper_temp_dir(),
-        language=app_settings.voice_stt_faster_whisper_language,
-        beam_size=app_settings.voice_stt_faster_whisper_beam_size,
-        best_of=app_settings.voice_stt_faster_whisper_best_of,
-        without_timestamps=app_settings.voice_stt_faster_whisper_without_timestamps,
-        word_timestamps=app_settings.voice_stt_faster_whisper_word_timestamps,
-        max_initial_timestamp=app_settings.voice_stt_faster_whisper_max_initial_timestamp,
+        language=profile.language,
+        beam_size=profile.beam_size,
+        best_of=profile.best_of,
+        without_timestamps=profile.without_timestamps,
+        word_timestamps=profile.word_timestamps,
+        max_initial_timestamp=profile.max_initial_timestamp,
     )
 
 
@@ -63,10 +65,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def service_status() -> dict[str, Any]:
         status = adapter.status()
+        profile = resolve_stt_model_profile(app_settings)
         return {
             **status,
             "provider": "external_faster_whisper",
             "service": "hexevoice-stt",
+            "active_profile": profile.name,
+            "fallback_profile": profile.fallback_profile,
+            "stt_profile": profile.as_dict(),
         }
 
     @app.on_event("startup")
@@ -75,9 +81,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return
         log.info(
             "Preloading external faster-whisper STT model: model=%s device=%s compute_type=%s",
-            app_settings.voice_stt_faster_whisper_model,
-            app_settings.voice_stt_faster_whisper_device,
-            app_settings.voice_stt_faster_whisper_compute_type,
+            adapter.status().get("model"),
+            adapter.status().get("device"),
+            adapter.status().get("compute_type"),
         )
         result = await asyncio.to_thread(adapter.preload)
         log.info(

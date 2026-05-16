@@ -153,3 +153,4 @@ Task 135: Expand TTS provider settings in node migration bundles - Completed on 
 Task 136: Include wake word provider settings in node migration bundles - Completed on 05/16/2026 13:00
 Task 137: Add CUDA host preflight, STT benchmark, and CPU fallback validation - Completed on 05/16/2026 13:11
 Task 138: Tune endpoint utterance capture and STT silence trimming before CUDA migration - Completed on 05/16/2026 13:21
+Task 139: Define STT model profiles for fast intent path and accurate fallback - Completed on 05/16/2026 13:39

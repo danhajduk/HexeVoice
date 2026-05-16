@@ -160,6 +160,8 @@ def test_node_migration_export_imports_stt_provider_settings(tmp_path):
                     "provider_configs": {
                         "external_faster_whisper": {
                             "enabled": True,
+                            "profile": "cuda_fast_intent",
+                            "fallback_profile": "cuda_accurate_fallback",
                             "model": "small.en",
                             "device": "cuda",
                             "compute_type": "float16",
@@ -177,6 +179,8 @@ def test_node_migration_export_imports_stt_provider_settings(tmp_path):
 
     stt_settings = bundle["state_files"]["voice_stt_settings"]
     assert stt_settings["provider"] == "external_faster_whisper"
+    assert stt_settings["profile"] == "cuda_fast_intent"
+    assert stt_settings["fallback_profile"] == "cuda_accurate_fallback"
     assert stt_settings["model"] == "small.en"
     assert stt_settings["device"] == "cuda"
     assert stt_settings["compute_type"] == "float16"
@@ -206,6 +210,8 @@ def test_node_migration_export_imports_stt_provider_settings(tmp_path):
     assert imported.provider_setup.supported_providers == ["external_faster_whisper"]
     assert imported.provider_setup.enabled_providers == ["external_faster_whisper"]
     assert imported.provider_setup.provider_configs["external_faster_whisper"]["model"] == "small.en"
+    assert imported.provider_setup.provider_configs["external_faster_whisper"]["profile"] == "cuda_fast_intent"
+    assert imported.provider_setup.provider_configs["external_faster_whisper"]["fallback_profile"] == "cuda_accurate_fallback"
     assert imported.provider_setup.provider_configs["external_faster_whisper"]["device"] == "cuda"
     assert imported.provider_setup.provider_configs["external_faster_whisper"]["compute_type"] == "float16"
     assert imported.provider_setup.provider_configs["external_faster_whisper"]["warm_models"] == ["tiny.en"]

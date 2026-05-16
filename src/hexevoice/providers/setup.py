@@ -147,7 +147,17 @@ class ProviderSetupService:
             "enabled": payload.enabled,
             "default": payload.default,
         }
-        for field in ("model", "device", "compute_type", "warm_model", "warm_models", "default_voice", "default_wakeword"):
+        for field in (
+            "profile",
+            "fallback_profile",
+            "model",
+            "device",
+            "compute_type",
+            "warm_model",
+            "warm_models",
+            "default_voice",
+            "default_wakeword",
+        ):
             value = getattr(payload, field)
             if value is None:
                 continue

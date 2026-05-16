@@ -85,6 +85,15 @@ class Settings(BaseSettings):
     voice_stt_prompt: str | None = Field(default=None, alias="VOICE_STT_PROMPT")
     voice_stt_timeout_s: float = Field(default=30.0, alias="VOICE_STT_TIMEOUT_S", gt=0)
     voice_stt_preload: bool = Field(default=True, alias="VOICE_STT_PRELOAD")
+    voice_stt_profile: str = Field(default="", alias="VOICE_STT_PROFILE")
+    voice_stt_fallback_profile: str = Field(default="", alias="VOICE_STT_FALLBACK_PROFILE")
+    voice_stt_fallback_min_confidence: float = Field(
+        default=0.55,
+        alias="VOICE_STT_FALLBACK_MIN_CONFIDENCE",
+        ge=0.0,
+        le=1.0,
+    )
+    voice_stt_fallback_min_text_chars: int = Field(default=3, alias="VOICE_STT_FALLBACK_MIN_TEXT_CHARS", ge=0)
     voice_stt_silence_trim_enabled: bool = Field(default=True, alias="VOICE_STT_SILENCE_TRIM_ENABLED")
     voice_stt_silence_trim_threshold: int = Field(default=180, alias="VOICE_STT_SILENCE_TRIM_THRESHOLD", ge=0)
     voice_stt_silence_trim_leading_padding_ms: int = Field(

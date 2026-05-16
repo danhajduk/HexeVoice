@@ -33,6 +33,7 @@ from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.piper_models import piper_model_display_name, read_piper_model_config
 from hexevoice.supervisor.client import SupervisorApiClient
+from hexevoice.stt_profiles import resolve_stt_model_profile
 
 
 log = logging.getLogger(__name__)
@@ -817,55 +818,43 @@ class NodeRuntimeService:
         return state in {"active", "running"} and bool(health.get("healthy", True))
 
     def _configured_external_stt_model(self) -> str:
-        try:
-            provider_config = self._state().provider_setup.provider_configs.get("external_faster_whisper", {})
-        except Exception:
-            provider_config = {}
-        if isinstance(provider_config, dict):
-            model = str(provider_config.get("model") or "").strip()
-            if model:
-                return model
-        return self._settings.voice_stt_faster_whisper_model
+        return self._configured_external_stt_profile().model
 
     def _configured_external_stt_device(self) -> str:
-        try:
-            provider_config = self._state().provider_setup.provider_configs.get("external_faster_whisper", {})
-        except Exception:
-            provider_config = {}
-        if isinstance(provider_config, dict):
-            device = str(provider_config.get("device") or "").strip()
-            if device:
-                return device
-        return self._settings.voice_stt_faster_whisper_device
+        return self._configured_external_stt_profile().device
 
     def _configured_external_stt_compute_type(self) -> str:
+        return self._configured_external_stt_profile().compute_type
+
+    def _configured_external_stt_profile(self):
         try:
             provider_config = self._state().provider_setup.provider_configs.get("external_faster_whisper", {})
         except Exception:
             provider_config = {}
-        if isinstance(provider_config, dict):
-            compute_type = str(provider_config.get("compute_type") or "").strip()
-            if compute_type:
-                return compute_type
-        return self._settings.voice_stt_faster_whisper_compute_type
+        if not isinstance(provider_config, dict):
+            provider_config = {}
+        return resolve_stt_model_profile(self._settings, provider_config)
 
     def _expected_stt_config(self) -> dict[str, object]:
+        profile = self._configured_external_stt_profile()
         options: dict[str, object] = {
-            "without_timestamps": self._settings.voice_stt_faster_whisper_without_timestamps,
-            "word_timestamps": self._settings.voice_stt_faster_whisper_word_timestamps,
+            "without_timestamps": profile.without_timestamps,
+            "word_timestamps": profile.word_timestamps,
         }
-        if self._settings.voice_stt_faster_whisper_language:
-            options["language"] = self._settings.voice_stt_faster_whisper_language
-        if self._settings.voice_stt_faster_whisper_beam_size is not None:
-            options["beam_size"] = self._settings.voice_stt_faster_whisper_beam_size
-        if self._settings.voice_stt_faster_whisper_best_of is not None:
-            options["best_of"] = self._settings.voice_stt_faster_whisper_best_of
-        if self._settings.voice_stt_faster_whisper_max_initial_timestamp is not None:
-            options["max_initial_timestamp"] = self._settings.voice_stt_faster_whisper_max_initial_timestamp
+        if profile.language:
+            options["language"] = profile.language
+        if profile.beam_size is not None:
+            options["beam_size"] = profile.beam_size
+        if profile.best_of is not None:
+            options["best_of"] = profile.best_of
+        if profile.max_initial_timestamp is not None:
+            options["max_initial_timestamp"] = profile.max_initial_timestamp
         return {
-            "model": self._configured_external_stt_model(),
-            "device": self._configured_external_stt_device(),
-            "compute_type": self._configured_external_stt_compute_type(),
+            "model": profile.model,
+            "device": profile.device,
+            "compute_type": profile.compute_type,
+            "profile": profile.name,
+            "fallback_profile": profile.fallback_profile,
             "transcribe_options": options,
         }
 
@@ -892,7 +881,13 @@ class NodeRuntimeService:
             "transcribe_options": payload.get("transcribe_options"),
         }
         payload["expected_config"] = expected
-        payload["reload_required"] = observed != expected
+        expected_runtime = {
+            "model": expected.get("model"),
+            "device": expected.get("device"),
+            "compute_type": expected.get("compute_type"),
+            "transcribe_options": expected.get("transcribe_options"),
+        }
+        payload["reload_required"] = observed != expected_runtime
         payload["reload_reason"] = "config_mismatch" if payload["reload_required"] else None
         return payload
 
@@ -940,8 +935,10 @@ class NodeRuntimeService:
             if self._settings.resolved_voice_stt_service_socket_path() is not None
             else None,
             "model": self._configured_external_stt_model(),
-            "device": self._settings.voice_stt_faster_whisper_device,
-            "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
+            "device": self._configured_external_stt_device(),
+            "compute_type": self._configured_external_stt_compute_type(),
+            "profile": self._configured_external_stt_profile().name,
+            "fallback_profile": self._configured_external_stt_profile().fallback_profile,
             "warm_model_health": health,
             "loaded": health.get("loaded"),
             "loaded_at": health.get("loaded_at"),

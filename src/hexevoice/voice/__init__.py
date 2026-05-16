@@ -39,6 +39,7 @@ from hexevoice.voice.pipeline import (
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
     PiperTextToSpeechAdapter,
+    ProfiledSpeechToTextAdapter,
     SilenceTrimmingSpeechToTextAdapter,
     SpeechToTextAdapter,
     SpeechTranscript,
@@ -51,6 +52,14 @@ from hexevoice.voice.pipeline import (
     VoiceTurnResult,
     build_voice_turn_pipeline,
     trim_stt_silence,
+)
+from hexevoice.stt_profiles import (
+    STT_MODEL_PROFILES,
+    SttModelProfile,
+    get_stt_model_profile,
+    resolve_stt_model_profile,
+    should_use_stt_fallback,
+    stt_profile_options,
 )
 from hexevoice.voice.wake import (
     DeterministicWakeDetector,
@@ -96,6 +105,7 @@ __all__ = [
     "OpenAiSpeechToTextAdapter",
     "OpenAiTextToSpeechAdapter",
     "PiperTextToSpeechAdapter",
+    "ProfiledSpeechToTextAdapter",
     "SilenceTrimmingSpeechToTextAdapter",
     "SpeechToTextAdapter",
     "SpeechTranscript",
@@ -108,6 +118,12 @@ __all__ = [
     "VoiceTurnResult",
     "build_voice_turn_pipeline",
     "trim_stt_silence",
+    "STT_MODEL_PROFILES",
+    "SttModelProfile",
+    "get_stt_model_profile",
+    "resolve_stt_model_profile",
+    "should_use_stt_fallback",
+    "stt_profile_options",
     "DeterministicWakeDetector",
     "OpenWakeWordWakeDetector",
     "WyomingOpenWakeWordWakeDetector",

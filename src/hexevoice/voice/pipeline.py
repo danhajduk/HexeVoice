@@ -31,6 +31,8 @@ from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.engine_http import client_for_engine
 from hexevoice.voice.records import record_voice_event
+from hexevoice.stt_profiles import SttModelProfile
+from hexevoice.stt_profiles import resolve_stt_model_profile
 
 if TYPE_CHECKING:
     from hexevoice.config.settings import Settings
@@ -187,6 +189,32 @@ class SilenceTrimmingSpeechToTextAdapter:
             "min_audio_ms": self._config.min_audio_ms,
             "last_trim": self._last_trim,
         }
+        return status
+
+
+class ProfiledSpeechToTextAdapter:
+    def __init__(self, *, wrapped: SpeechToTextAdapter, profile: SttModelProfile) -> None:
+        self._wrapped = wrapped
+        self._profile = profile
+
+    def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
+        return self._wrapped.transcribe(audio)
+
+    def preload(self) -> dict:
+        preload = getattr(self._wrapped, "preload", None)
+        if not callable(preload):
+            return {"loaded": False, "profile": self._profile.name, "reason": "adapter_does_not_support_preload"}
+        result = dict(preload())
+        result["profile"] = self._profile.name
+        return result
+
+    def status(self) -> dict:
+        status = dict(self._wrapped.status())
+        status["stt_profile"] = self._profile.as_dict()
+        status["active_profile"] = self._profile.name
+        status["fallback_profile"] = self._profile.fallback_profile
+        status["preload"] = self._profile.preload
+        status["auto_download"] = self._profile.auto_download
         return status
 
 
@@ -1690,6 +1718,7 @@ def _engine_status(*, role: str, status: dict, fallback_implementation: str) -> 
 def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:
     stt_adapter: SpeechToTextAdapter | None = None
     tts_adapter: TextToSpeechAdapter | None = None
+    stt_profile = resolve_stt_model_profile(settings)
     if settings.voice_stt_provider == "openai":
         stt_adapter = OpenAiSpeechToTextAdapter(
             api_key=settings.openai_api_key,
@@ -1700,25 +1729,27 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
         )
     elif settings.voice_stt_provider == "faster_whisper":
         stt_adapter = FasterWhisperSpeechToTextAdapter(
-            model_name=settings.voice_stt_faster_whisper_model,
-            device=settings.voice_stt_faster_whisper_device,
-            compute_type=settings.voice_stt_faster_whisper_compute_type,
+            model_name=stt_profile.model,
+            device=stt_profile.device,
+            compute_type=stt_profile.compute_type,
             temp_dir=settings.resolved_faster_whisper_temp_dir(),
-            language=settings.voice_stt_faster_whisper_language,
-            beam_size=settings.voice_stt_faster_whisper_beam_size,
-            best_of=settings.voice_stt_faster_whisper_best_of,
-            without_timestamps=settings.voice_stt_faster_whisper_without_timestamps,
-            word_timestamps=settings.voice_stt_faster_whisper_word_timestamps,
-            max_initial_timestamp=settings.voice_stt_faster_whisper_max_initial_timestamp,
+            language=stt_profile.language,
+            beam_size=stt_profile.beam_size,
+            best_of=stt_profile.best_of,
+            without_timestamps=stt_profile.without_timestamps,
+            word_timestamps=stt_profile.word_timestamps,
+            max_initial_timestamp=stt_profile.max_initial_timestamp,
         )
     elif settings.voice_stt_provider == "external_faster_whisper":
         stt_adapter = ExternalFasterWhisperSpeechToTextAdapter(
             base_url=settings.resolved_voice_stt_service_base_url(),
             socket_path=settings.resolved_voice_stt_service_socket_path(),
-            model_name=settings.voice_stt_faster_whisper_model,
+            model_name=stt_profile.model,
             timeout_s=settings.voice_stt_timeout_s,
         )
     if stt_adapter is not None:
+        if settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}:
+            stt_adapter = ProfiledSpeechToTextAdapter(wrapped=stt_adapter, profile=stt_profile)
         stt_adapter = SilenceTrimmingSpeechToTextAdapter(
             wrapped=stt_adapter,
             config=SttSilenceTrimConfig(

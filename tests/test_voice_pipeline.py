@@ -21,11 +21,15 @@ from hexevoice.voice import (
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
     PiperTextToSpeechAdapter,
+    ProfiledSpeechToTextAdapter,
     SilenceTrimmingSpeechToTextAdapter,
+    SpeechTranscript,
     VoiceTurnAudioSummary,
     VoiceTurnPipeline,
     SttSilenceTrimConfig,
     build_voice_turn_pipeline,
+    resolve_stt_model_profile,
+    should_use_stt_fallback,
     trim_stt_silence,
 )
 
@@ -491,7 +495,29 @@ def test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured(tmp_p
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._stt_adapter, SilenceTrimmingSpeechToTextAdapter)
-    assert isinstance(pipeline._stt_adapter._wrapped, FasterWhisperSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter._wrapped, ProfiledSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter._wrapped._wrapped, FasterWhisperSpeechToTextAdapter)
+
+
+def test_build_voice_turn_pipeline_uses_selected_stt_profile(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_stt_provider="faster_whisper",
+        voice_stt_profile="cuda_fast_intent",
+    )
+    runtime = NodeRuntimeService(settings=settings)
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime)
+
+    pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
+
+    status = pipeline.status()["stt"]
+    assert status["active_profile"] == "cuda_fast_intent"
+    assert status["model"] == "small.en"
+    assert status["device"] == "cuda"
+    assert status["compute_type"] == "float16"
+    assert status["stt_profile"]["beam_size"] == 1
+    assert status["fallback_profile"] == "cuda_accurate_fallback"
 
 
 def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
@@ -650,7 +676,47 @@ def test_build_voice_turn_pipeline_uses_external_faster_whisper_stt_when_configu
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
     assert isinstance(pipeline._stt_adapter, SilenceTrimmingSpeechToTextAdapter)
-    assert isinstance(pipeline._stt_adapter._wrapped, ExternalFasterWhisperSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter._wrapped, ProfiledSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter._wrapped._wrapped, ExternalFasterWhisperSpeechToTextAdapter)
+
+
+def test_stt_profile_resolver_preserves_legacy_single_model_settings(tmp_path):
+    settings = Settings(
+        runtime_dir=tmp_path,
+        voice_stt_faster_whisper_model="small.en",
+        voice_stt_faster_whisper_device="cpu",
+        voice_stt_faster_whisper_compute_type="int8",
+        voice_stt_faster_whisper_beam_size=2,
+    )
+
+    profile = resolve_stt_model_profile(settings)
+
+    assert profile.name == "custom_legacy"
+    assert profile.model == "small.en"
+    assert profile.device == "cpu"
+    assert profile.compute_type == "int8"
+    assert profile.beam_size == 2
+
+
+def test_stt_fast_profile_fallback_rules():
+    settings = Settings(voice_stt_profile="cuda_fast_intent")
+    profile = resolve_stt_model_profile(settings)
+
+    assert should_use_stt_fallback(
+        SpeechTranscript(text="turn on the kitchen", confidence=0.4, provider_id="faster_whisper"),
+        profile=profile,
+        intent_matched=True,
+    )
+    assert should_use_stt_fallback(
+        SpeechTranscript(text="turn on the kitchen", confidence=0.9, provider_id="faster_whisper"),
+        profile=profile,
+        intent_matched=False,
+    )
+    assert not should_use_stt_fallback(
+        SpeechTranscript(text="turn on the kitchen", confidence=0.9, provider_id="faster_whisper"),
+        profile=profile,
+        intent_matched=True,
+    )
 
 
 def test_faster_whisper_stt_adapter_returns_error_without_losing_fallback_modes(tmp_path):

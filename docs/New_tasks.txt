@@ -1,4 +1,3 @@
-[TODO] Task 139: Define STT model profiles for fast intent path and accurate fallback
 [STOP]
 [TODO] Task 142: Add migration preflight and dry-run validation
 [TODO] Task 143: Add post-install smoke test command

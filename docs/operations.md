@@ -161,6 +161,25 @@ loaded state, loaded-at timestamp, load count, last load duration, and
 `reload_required` when the running STT service does not match the backend's
 expected model/device/compute/transcribe options.
 
+STT model profiles can be selected with `VOICE_STT_PROFILE` or provider setup.
+When no profile is selected, the existing single-model
+`VOICE_STT_FASTER_WHISPER_*` settings remain the active custom profile.
+
+Recommended profiles:
+
+- `cpu_default`: `base.en`, CPU, `int8`, preload/download friendly for first
+  installs.
+- `cuda_fast_intent`: `small.en`, CUDA, `float16`, beam/best-of 1 for a fast
+  intent-first pass.
+- `cuda_accurate_fallback`: `medium.en`, CUDA, `float16`, beam/best-of 5 for a
+  slower but more accurate fallback.
+
+`cuda_fast_intent` declares `cuda_accurate_fallback` as its fallback profile.
+The fallback decision helper triggers on empty transcripts, low confidence, STT
+errors, or an unmatched intent. The current runtime reports the active and
+fallback profile in STT status; full second-pass fallback execution can be
+tuned after real CUDA-host benchmarks.
+
 The hosted installer can run the same STT readiness path with
 `HEXEVOICE_SETUP_STT=true`. This may download the configured faster-whisper
 model, so the default installer leaves it as an explicit opt-in:

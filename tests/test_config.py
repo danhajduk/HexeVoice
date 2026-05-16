@@ -48,6 +48,10 @@ def test_faster_whisper_stt_settings_defaults():
 
     assert settings.voice_stt_provider == "faster_whisper"
     assert settings.voice_stt_preload is True
+    assert settings.voice_stt_profile == ""
+    assert settings.voice_stt_fallback_profile == ""
+    assert settings.voice_stt_fallback_min_confidence == 0.55
+    assert settings.voice_stt_fallback_min_text_chars == 3
     assert settings.voice_stt_faster_whisper_model == "base.en"
     assert settings.voice_stt_faster_whisper_device == "cpu"
     assert settings.voice_stt_faster_whisper_compute_type == "int8"
