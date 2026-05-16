@@ -1,4 +1,3 @@
-[TODO] Task 123: Make Piper TTS ready immediately after hosted install
 [TODO] Task 124: Make wake word runtime ready immediately after hosted install
 [TODO] Task 126: Add firmware artifact download to hosted install
 [TODO] Task 121: Dockerize local STT/TTS engines and move them to Unix-socket transport

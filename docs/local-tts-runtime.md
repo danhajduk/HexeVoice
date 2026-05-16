@@ -107,6 +107,17 @@ mkdir -p runtime/piper-tts/models
 ```
 
 Place Piper `.onnx` model files and optional `.onnx.json` config files in `runtime/piper-tts/models`, then set `PIPER_TTS_MODEL_PATH` in `scripts/piper-tts.env` if the default model name is not present.
+To prepare the default voice and any configured warm voices automatically, run:
+
+```bash
+./scripts/piper-tts-control.sh ready
+```
+
+The ready command downloads missing voices, builds/starts the container, waits
+for `/health`, and applies the warm-voice config. The default download source is
+`https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0`; set
+`PIPER_TTS_DOWNLOAD_VOICES` and `PIPER_TTS_VOICE_REPO_URL` in
+`scripts/piper-tts.env` to choose voices or use a mirror.
 
 Set `PIPER_TTS_WARM_VOICES` to keep one or more Piper model processes loaded for low-latency synthesis. The local runtime currently keeps the Box default voice on Kathleen low while also warming HFC female medium and Jenny:
 

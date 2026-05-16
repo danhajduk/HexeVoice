@@ -131,6 +131,21 @@ When the STT service URL is not the default `http://127.0.0.1:10300`, set
 The Piper TTS runtime code lives in the standalone `src/tts/` package.
 `services/piper_tts/app.py` remains as a compatibility wrapper, while the
 container launches `tts.service:app` directly.
+Hosted install can run the Piper readiness path with `HEXEVOICE_SETUP_TTS=true`.
+This downloads the configured Piper voices when they are missing, builds/starts
+the container, waits for `/health`, and applies the runtime warm-voice config:
+
+```bash
+HEXEVOICE_SETUP_TTS=true ./install.sh
+./scripts/piper-tts-control.sh ready
+./scripts/piper-tts-control.sh doctor
+./scripts/piper-tts-control.sh health
+```
+
+By default the downloader uses the `rhasspy/piper-voices` Hugging Face repo at
+the `v1.0.0` tag and derives the model path from Piper voice ids such as
+`en_US-lessac-medium`. Set `PIPER_TTS_DOWNLOAD_VOICES` to a comma-separated
+voice list and `PIPER_TTS_VOICE_REPO_URL` to use a mirror or different source.
 
 Systemd user units are intentionally not enabled for auto-start and do not declare a restart policy. Core Supervisor is the lifecycle authority for managed node runtime behavior.
 
