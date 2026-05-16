@@ -205,6 +205,25 @@ accuracy comparison.
   --json-output runtime/stt/cpu-benchmark.json
 ```
 
+STT input trimming is enabled by default for provider-backed STT and runs before
+audio is sent to OpenAI, local faster-whisper, or the external faster-whisper
+container. It only trims raw `pcm_s16le` audio and keeps conservative leading
+and trailing padding so wake tails and end-of-speech padding are removed without
+cutting normal commands. Tune it with:
+
+```bash
+VOICE_STT_SILENCE_TRIM_ENABLED=true
+VOICE_STT_SILENCE_TRIM_THRESHOLD=180
+VOICE_STT_SILENCE_TRIM_LEADING_PADDING_MS=160
+VOICE_STT_SILENCE_TRIM_TRAILING_PADDING_MS=500
+VOICE_STT_SILENCE_TRIM_MIN_AUDIO_MS=350
+```
+
+Each transcript status/timing payload includes `silence_trim_*` fields when
+trimming runs. Before moving to a larger CUDA model, compare wake recording or
+micro-VAD debug clips before and after tuning, and watch for command cutoff,
+filler-only transcripts, reduced STT input duration, and total STT latency.
+
 When the STT service URL is not the default `http://127.0.0.1:10300`, set
 `STT_HEALTH_URL` or `VOICE_STT_SERVICE_BASE_URL` for the control script. The
 normal local runtime uses Unix sockets instead: `VOICE_STT_SERVICE_TRANSPORT=unix`

@@ -85,6 +85,23 @@ class Settings(BaseSettings):
     voice_stt_prompt: str | None = Field(default=None, alias="VOICE_STT_PROMPT")
     voice_stt_timeout_s: float = Field(default=30.0, alias="VOICE_STT_TIMEOUT_S", gt=0)
     voice_stt_preload: bool = Field(default=True, alias="VOICE_STT_PRELOAD")
+    voice_stt_silence_trim_enabled: bool = Field(default=True, alias="VOICE_STT_SILENCE_TRIM_ENABLED")
+    voice_stt_silence_trim_threshold: int = Field(default=180, alias="VOICE_STT_SILENCE_TRIM_THRESHOLD", ge=0)
+    voice_stt_silence_trim_leading_padding_ms: int = Field(
+        default=160,
+        alias="VOICE_STT_SILENCE_TRIM_LEADING_PADDING_MS",
+        ge=0,
+    )
+    voice_stt_silence_trim_trailing_padding_ms: int = Field(
+        default=500,
+        alias="VOICE_STT_SILENCE_TRIM_TRAILING_PADDING_MS",
+        ge=0,
+    )
+    voice_stt_silence_trim_min_audio_ms: int = Field(
+        default=350,
+        alias="VOICE_STT_SILENCE_TRIM_MIN_AUDIO_MS",
+        ge=0,
+    )
     voice_stt_service_transport: Literal["unix", "tcp"] = Field(default="unix", alias="VOICE_STT_SERVICE_TRANSPORT")
     voice_stt_service_base_url: str | None = Field(default=None, alias="VOICE_STT_SERVICE_BASE_URL")
     voice_stt_service_host: str = Field(default="127.0.0.1", alias="VOICE_STT_SERVICE_HOST")

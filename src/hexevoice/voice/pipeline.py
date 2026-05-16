@@ -59,6 +59,15 @@ class VoiceTurnAudioSummary:
 
 
 @dataclass(frozen=True)
+class SttSilenceTrimConfig:
+    enabled: bool = True
+    threshold: int = 180
+    leading_padding_ms: int = 160
+    trailing_padding_ms: int = 500
+    min_audio_ms: int = 350
+
+
+@dataclass(frozen=True)
 class SpeechTranscript:
     text: str
     confidence: float | None = None
@@ -149,6 +158,36 @@ class DeterministicSpeechToTextAdapter:
 
     def status(self) -> dict:
         return {"provider": "deterministic", "healthy": True, "configured": True}
+
+
+class SilenceTrimmingSpeechToTextAdapter:
+    def __init__(self, *, wrapped: SpeechToTextAdapter, config: SttSilenceTrimConfig) -> None:
+        self._wrapped = wrapped
+        self._config = config
+        self._last_trim: dict[str, object] | None = None
+
+    def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
+        trimmed_audio, trim_metadata = trim_stt_silence(audio, self._config)
+        self._last_trim = trim_metadata
+        transcript = self._wrapped.transcribe(trimmed_audio)
+        timings = dict(transcript.timing_breakdown_ms)
+        if trim_metadata:
+            for key, value in trim_metadata.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    timings[f"silence_trim_{key}"] = value
+        return replace(transcript, timing_breakdown_ms=timings)
+
+    def status(self) -> dict:
+        status = dict(self._wrapped.status())
+        status["silence_trim"] = {
+            "enabled": self._config.enabled,
+            "threshold": self._config.threshold,
+            "leading_padding_ms": self._config.leading_padding_ms,
+            "trailing_padding_ms": self._config.trailing_padding_ms,
+            "min_audio_ms": self._config.min_audio_ms,
+            "last_trim": self._last_trim,
+        }
+        return status
 
 
 class OpenAiSpeechToTextAdapter:
@@ -1069,6 +1108,80 @@ def audio_file_bytes(audio: VoiceTurnAudioSummary) -> bytes:
     return buffer.getvalue()
 
 
+def trim_stt_silence(
+    audio: VoiceTurnAudioSummary,
+    config: SttSilenceTrimConfig,
+) -> tuple[VoiceTurnAudioSummary, dict[str, object]]:
+    metadata: dict[str, object] = {
+        "enabled": config.enabled,
+        "applied": False,
+        "reason": None,
+    }
+    raw = audio.audio_bytes or b""
+    sample_rate = int(audio.sample_rate_hz or 16000)
+    channels = max(1, int(audio.channels or 1))
+    if not config.enabled:
+        metadata["reason"] = "disabled"
+        return audio, metadata
+    if audio.encoding != "pcm_s16le" or not raw:
+        metadata["reason"] = "unsupported_audio"
+        return audio, metadata
+    if len(raw) < 2 * channels:
+        metadata["reason"] = "too_short"
+        return audio, metadata
+
+    sample_count = len(raw) // 2
+    frame_count = sample_count // channels
+    if frame_count <= 0:
+        metadata["reason"] = "empty_frames"
+        return audio, metadata
+
+    usable = raw[: frame_count * channels * 2]
+    samples = np.frombuffer(usable, dtype=np.int16)
+    frames = samples.reshape(frame_count, channels)
+    frame_levels = np.max(np.abs(frames.astype(np.int32)), axis=1)
+    speech_frames = np.flatnonzero(frame_levels >= config.threshold)
+    original_duration_ms = round((frame_count / sample_rate) * 1000, 2)
+    metadata["original_duration_ms"] = original_duration_ms
+    if speech_frames.size == 0:
+        metadata["reason"] = "no_speech_above_threshold"
+        return audio, metadata
+
+    leading_frames = int(round((config.leading_padding_ms / 1000) * sample_rate))
+    trailing_frames = int(round((config.trailing_padding_ms / 1000) * sample_rate))
+    start_frame = max(0, int(speech_frames[0]) - leading_frames)
+    end_frame = min(frame_count, int(speech_frames[-1]) + trailing_frames + 1)
+
+    min_frames = int(round((config.min_audio_ms / 1000) * sample_rate))
+    if min_frames > 0 and end_frame - start_frame < min_frames:
+        missing = min_frames - (end_frame - start_frame)
+        start_frame = max(0, start_frame - (missing // 2))
+        end_frame = min(frame_count, end_frame + (missing - missing // 2))
+        if end_frame - start_frame < min_frames:
+            start_frame = max(0, end_frame - min_frames)
+
+    if start_frame == 0 and end_frame == frame_count:
+        metadata["reason"] = "already_trimmed"
+        return audio, metadata
+
+    trimmed = frames[start_frame:end_frame].astype(np.int16, copy=False).tobytes()
+    trimmed_duration_ms = round(((end_frame - start_frame) / sample_rate) * 1000, 2)
+    metadata.update(
+        {
+            "applied": True,
+            "reason": "trimmed",
+            "threshold": config.threshold,
+            "trimmed_duration_ms": trimmed_duration_ms,
+            "removed_duration_ms": round(original_duration_ms - trimmed_duration_ms, 2),
+            "removed_leading_ms": round((start_frame / sample_rate) * 1000, 2),
+            "removed_trailing_ms": round(((frame_count - end_frame) / sample_rate) * 1000, 2),
+            "start_frame": start_frame,
+            "end_frame": end_frame,
+        }
+    )
+    return replace(audio, audio_bytes=trimmed), metadata
+
+
 def normalize_tts_conversion_sample_rates(sample_rates: dict[str, int] | None) -> dict[str, int]:
     normalized: dict[str, int] = {}
     allowed = {16000: "16k", 22050: "22050", 48000: "48k"}
@@ -1604,6 +1717,17 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             socket_path=settings.resolved_voice_stt_service_socket_path(),
             model_name=settings.voice_stt_faster_whisper_model,
             timeout_s=settings.voice_stt_timeout_s,
+        )
+    if stt_adapter is not None:
+        stt_adapter = SilenceTrimmingSpeechToTextAdapter(
+            wrapped=stt_adapter,
+            config=SttSilenceTrimConfig(
+                enabled=settings.voice_stt_silence_trim_enabled,
+                threshold=settings.voice_stt_silence_trim_threshold,
+                leading_padding_ms=settings.voice_stt_silence_trim_leading_padding_ms,
+                trailing_padding_ms=settings.voice_stt_silence_trim_trailing_padding_ms,
+                min_audio_ms=settings.voice_stt_silence_trim_min_audio_ms,
+            ),
         )
     if settings.voice_tts_provider == "openai":
         tts_adapter = OpenAiTextToSpeechAdapter(

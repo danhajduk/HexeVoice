@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 from pathlib import Path
@@ -20,9 +21,12 @@ from hexevoice.voice import (
     OpenAiSpeechToTextAdapter,
     OpenAiTextToSpeechAdapter,
     PiperTextToSpeechAdapter,
+    SilenceTrimmingSpeechToTextAdapter,
     VoiceTurnAudioSummary,
     VoiceTurnPipeline,
+    SttSilenceTrimConfig,
     build_voice_turn_pipeline,
+    trim_stt_silence,
 )
 
 
@@ -308,7 +312,67 @@ def test_build_voice_turn_pipeline_uses_openai_stt_when_configured(tmp_path):
 
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
-    assert isinstance(pipeline._stt_adapter, OpenAiSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter, SilenceTrimmingSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter._wrapped, OpenAiSpeechToTextAdapter)
+
+
+def test_trim_stt_silence_removes_leading_and_trailing_pcm_padding():
+    samples = [0] * 100 + [1200] * 200 + [0] * 300
+    audio = VoiceTurnAudioSummary(
+        endpoint_id="esp-box-1",
+        session_id="voice-session-1",
+        chunk_count=1,
+        sample_rate_hz=1000,
+        encoding="pcm_s16le",
+        channels=1,
+        audio_bytes=b"".join(int(sample).to_bytes(2, byteorder="little", signed=True) for sample in samples),
+    )
+
+    trimmed, metadata = trim_stt_silence(
+        audio,
+        SttSilenceTrimConfig(
+            enabled=True,
+            threshold=1000,
+            leading_padding_ms=20,
+            trailing_padding_ms=30,
+            min_audio_ms=0,
+        ),
+    )
+
+    assert metadata["applied"] is True
+    assert metadata["removed_leading_ms"] == 80
+    assert metadata["removed_trailing_ms"] == 270
+    assert metadata["original_duration_ms"] == 600
+    assert metadata["trimmed_duration_ms"] == 250
+    assert len(trimmed.audio_bytes or b"") == 250 * 2
+
+
+def test_trim_stt_silence_preserves_minimum_audio_window():
+    samples = [0] * 100 + [1200] * 20 + [0] * 100
+    audio = VoiceTurnAudioSummary(
+        endpoint_id="esp-box-1",
+        session_id="voice-session-1",
+        chunk_count=1,
+        sample_rate_hz=1000,
+        encoding="pcm_s16le",
+        channels=1,
+        audio_bytes=b"".join(int(sample).to_bytes(2, byteorder="little", signed=True) for sample in samples),
+    )
+
+    trimmed, metadata = trim_stt_silence(
+        audio,
+        SttSilenceTrimConfig(
+            enabled=True,
+            threshold=1000,
+            leading_padding_ms=0,
+            trailing_padding_ms=0,
+            min_audio_ms=100,
+        ),
+    )
+
+    assert metadata["applied"] is True
+    assert metadata["trimmed_duration_ms"] == 100
+    assert len(trimmed.audio_bytes or b"") == 100 * 2
 
 
 def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path):
@@ -426,7 +490,8 @@ def test_build_voice_turn_pipeline_uses_faster_whisper_stt_when_configured(tmp_p
 
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
-    assert isinstance(pipeline._stt_adapter, FasterWhisperSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter, SilenceTrimmingSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter._wrapped, FasterWhisperSpeechToTextAdapter)
 
 
 def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
@@ -474,6 +539,58 @@ def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
     assert transcript.model == "small.en"
     assert transcript.duration_ms == 12.3
     assert transcript.timing_breakdown_ms["model_inference_ms"] == 10.0
+
+
+def test_silence_trimming_adapter_trims_audio_before_external_faster_whisper_request():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.content.decode("utf-8"))
+        return httpx.Response(
+            200,
+            json={
+                "text": "what time",
+                "provider_id": "external_faster_whisper",
+                "model": "small.en",
+                "duration_ms": 12.3,
+                "timing_breakdown_ms": {"total_ms": 12.3},
+            },
+        )
+
+    wrapped = ExternalFasterWhisperSpeechToTextAdapter(
+        base_url="http://stt.test:10300",
+        model_name="small.en",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    adapter = SilenceTrimmingSpeechToTextAdapter(
+        wrapped=wrapped,
+        config=SttSilenceTrimConfig(
+            enabled=True,
+            threshold=1000,
+            leading_padding_ms=20,
+            trailing_padding_ms=30,
+            min_audio_ms=0,
+        ),
+    )
+    samples = [0] * 100 + [1200] * 200 + [0] * 300
+
+    transcript = adapter.transcribe(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=1,
+            sample_rate_hz=1000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"".join(int(sample).to_bytes(2, byteorder="little", signed=True) for sample in samples),
+        )
+    )
+
+    sent_audio = base64.b64decode(captured["json"]["audio_base64"])
+    assert len(sent_audio) == 250 * 2
+    assert transcript.text == "what time"
+    assert transcript.timing_breakdown_ms["silence_trim_removed_duration_ms"] == 350
+    assert adapter.status()["silence_trim"]["last_trim"]["applied"] is True
 
 
 def test_external_faster_whisper_stt_status_clears_stale_connection_error():
@@ -532,7 +649,8 @@ def test_build_voice_turn_pipeline_uses_external_faster_whisper_stt_when_configu
 
     pipeline = build_voice_turn_pipeline(settings=settings, assistant_service=assistant)
 
-    assert isinstance(pipeline._stt_adapter, ExternalFasterWhisperSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter, SilenceTrimmingSpeechToTextAdapter)
+    assert isinstance(pipeline._stt_adapter._wrapped, ExternalFasterWhisperSpeechToTextAdapter)
 
 
 def test_faster_whisper_stt_adapter_returns_error_without_losing_fallback_modes(tmp_path):
@@ -985,7 +1103,7 @@ def test_build_voice_turn_pipeline_routes_piper_to_supervised_default(tmp_path):
     status = pipeline.status()["tts"]
     assert status["provider"] == "piper"
     assert status["configured"] is True
-    assert status["base_url"] == "http://127.0.0.1:10200"
+    assert status["base_url"] == "http://hexevoice-piper-tts"
     assert status["synthesize_path"] == "/api/tts"
     assert status["output_sample_rate_hz"] == 16000
     assert status["fallback"]["provider"] == "deterministic"

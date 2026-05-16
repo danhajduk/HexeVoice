@@ -57,6 +57,11 @@ def test_faster_whisper_stt_settings_defaults():
     assert settings.voice_stt_faster_whisper_without_timestamps is True
     assert settings.voice_stt_faster_whisper_word_timestamps is False
     assert settings.voice_stt_faster_whisper_max_initial_timestamp == 1.0
+    assert settings.voice_stt_silence_trim_enabled is True
+    assert settings.voice_stt_silence_trim_threshold == 180
+    assert settings.voice_stt_silence_trim_leading_padding_ms == 160
+    assert settings.voice_stt_silence_trim_trailing_padding_ms == 500
+    assert settings.voice_stt_silence_trim_min_audio_ms == 350
     assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"
 
 
