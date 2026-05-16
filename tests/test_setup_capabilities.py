@@ -1,0 +1,141 @@
+import httpx
+from fastapi.testclient import TestClient
+
+from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
+from hexevoice.config.settings import Settings
+from hexevoice.main import create_app
+from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
+
+
+def trusted_capability_settings(tmp_path) -> Settings:
+    state_path = tmp_path / "onboarding-state.json"
+    OnboardingStateStore(path=state_path).save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "node_name": "kitchen-voice",
+                    "core_base_url": "http://core.test:9001",
+                },
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "node_type": "voice-node",
+                    "node_trust_token": "trust-token-123",
+                    "trust_status": "trusted",
+                },
+                "provider_setup": {
+                    "supported_providers": ["voice"],
+                    "enabled_providers": ["voice"],
+                    "default_provider": "voice",
+                    "declaration_allowed": True,
+                    "blocking_reasons": [],
+                },
+                "resume": {
+                    "current_step_id": "capability_declaration",
+                    "last_completed_step_id": "provider_setup",
+                },
+            }
+        )
+    )
+    return Settings(
+        onboarding_state_path=state_path,
+        endpoint_registry_path=tmp_path / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+    )
+
+
+def test_setup_capabilities_status_blocks_until_declaration_and_governance(tmp_path):
+    client = TestClient(create_app(trusted_capability_settings(tmp_path)))
+
+    response = client.get("/api/setup/capabilities/status")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["capabilities"]["selected"] == VOICE_NODE_CAPABILITIES
+    assert payload["capability_current"] is False
+    assert payload["governance_current"] is False
+    assert payload["continue_blocked"] is True
+    assert "capability_declaration_not_current" in payload["blockers"]
+    assert "governance_not_current" in payload["blockers"]
+
+
+def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):
+    client = TestClient(create_app(trusted_capability_settings(tmp_path)))
+
+    class CapabilityResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "acceptance_status": "accepted",
+                "node_id": "node-voice-123",
+                "manifest_version": "1.0",
+                "accepted_at": "2026-04-08T03:00:00+00:00",
+                "declared_capabilities": VOICE_NODE_CAPABILITIES,
+                "enabled_providers": ["voice"],
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "governance_issued_at": "2026-04-08T03:00:05+00:00",
+            }
+
+    class GovernanceRefreshResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "updated": True,
+                "governance_version": "gov-2026.04",
+                "issued_timestamp": "2026-04-08T03:00:05+00:00",
+                "refresh_interval_s": 3600,
+                "governance_bundle": {"telemetry_requirements": {"interval_s": 60}},
+            }
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        if url.endswith("/api/system/nodes/capabilities/declaration"):
+            return CapabilityResponse()
+        if url.endswith("/api/system/nodes/budgets/declaration"):
+            return CapabilityResponse()
+        if url.endswith("/api/system/nodes/governance/refresh"):
+            return GovernanceRefreshResponse()
+        raise AssertionError(url)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    declaration = client.post("/api/setup/capabilities/declare")
+    assert declaration.status_code == 200
+    assert declaration.json()["accepted"] is True
+    assert declaration.json()["status"]["capability_current"] is True
+    assert declaration.json()["status"]["governance_current"] is False
+
+    governance = client.post("/api/setup/capabilities/sync-governance")
+    assert governance.status_code == 200
+    payload = governance.json()
+    assert payload["accepted"] is True
+    assert payload["status"]["capability_current"] is True
+    assert payload["status"]["governance_current"] is True
+    assert payload["status"]["continue_blocked"] is False
+
+
+def test_setup_capabilities_declare_core_offline_is_retryable(tmp_path, monkeypatch):
+    client = TestClient(create_app(trusted_capability_settings(tmp_path)))
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        raise httpx.ConnectError("core offline")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    response = client.post("/api/setup/capabilities/declare")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted"] is False
+    assert payload["action"] == "declare"
+    assert payload["status_code"] == 502
+    assert "capability_declaration_request_failed" in payload["error"]
+    assert payload["status"]["continue_blocked"] is True

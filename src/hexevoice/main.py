@@ -2042,6 +2042,122 @@ def create_app(
                     break
         return {"actions": actions, "status": await asyncio.to_thread(setup_provider_status_payload)}
 
+    def setup_capabilities_status_payload() -> dict:
+        state = onboarding_state_store.load()
+        capabilities = service.capabilities_payload()
+        readiness = service.readiness_payload()
+        provider_setup = provider_setup_service.status_payload()
+        selected = set(capabilities.selected)
+        declared = set(capabilities.declared)
+        capability_current = (
+            capabilities.capability_status in {"accepted", "declared"}
+            and bool(selected)
+            and selected.issubset(declared)
+        )
+        governance_current = (
+            state.governance_sync.governance_sync_status == "issued"
+            and bool(state.governance_sync.governance_version)
+            and bool(state.governance_sync.governance_bundle)
+        )
+
+        blockers: list[str] = []
+        if state.trust_activation.trust_status != "trusted":
+            blockers.append("trust_not_configured")
+        if not state.pre_trust.core_base_url:
+            blockers.append("core_connection_not_configured")
+        if not provider_setup.declaration_allowed:
+            blockers.extend(provider_setup.blocking_reasons or ["provider_setup_incomplete"])
+        if not capabilities.selected:
+            blockers.append("capability_selection_required")
+        if not capability_current:
+            blockers.append("capability_declaration_not_current")
+        if not governance_current:
+            blockers.append("governance_not_current")
+
+        return {
+            "capabilities": capabilities.model_dump(mode="json"),
+            "provider_setup": provider_setup.model_dump(mode="json"),
+            "governance": {
+                "governance_sync_status": state.governance_sync.governance_sync_status,
+                "governance_version": state.governance_sync.governance_version,
+                "issued_timestamp": state.governance_sync.issued_timestamp,
+                "refresh_interval_s": state.governance_sync.refresh_interval_s,
+                "governance_bundle": state.governance_sync.governance_bundle or {},
+                "governance_freshness_state": state.governance_sync.governance_freshness_state,
+                "governance_outdated": state.governance_sync.governance_outdated,
+                "last_refresh_request_at": state.governance_sync.last_refresh_request_at,
+            },
+            "operational": state.operational_status.model_dump(mode="json"),
+            "readiness": readiness.model_dump(mode="json"),
+            "capability_current": capability_current,
+            "governance_current": governance_current,
+            "continue_blocked": bool(blockers),
+            "blockers": list(dict.fromkeys(blockers)),
+        }
+
+    def setup_action_error_payload(action: str, exc: Exception) -> dict:
+        status_code = 500
+        detail = str(exc)
+        if isinstance(exc, HTTPException):
+            status_code = exc.status_code
+            detail = str(exc.detail)
+        elif isinstance(exc, httpx.TimeoutException):
+            status_code = 504
+            detail = "core_request_timeout"
+        elif isinstance(exc, httpx.HTTPError):
+            status_code = 502
+            detail = f"core_request_failed: {exc}"
+        return {
+            "accepted": False,
+            "action": action,
+            "status_code": status_code,
+            "error": detail,
+            "status": setup_capabilities_status_payload(),
+        }
+
+    @app.get("/api/setup/capabilities/status")
+    async def setup_capabilities_status() -> dict:
+        return await asyncio.to_thread(setup_capabilities_status_payload)
+
+    @app.put("/api/setup/capabilities/selection")
+    async def setup_capabilities_selection(payload: CapabilitySelectionRequest) -> dict:
+        try:
+            result = await asyncio.to_thread(capability_service.save_selection, payload)
+        except (HTTPException, httpx.HTTPError) as exc:
+            return await asyncio.to_thread(setup_action_error_payload, "selection", exc)
+        return {
+            "accepted": True,
+            "action": "selection",
+            "result": result.model_dump(mode="json"),
+            "status": await asyncio.to_thread(setup_capabilities_status_payload),
+        }
+
+    @app.post("/api/setup/capabilities/declare")
+    async def setup_capabilities_declare() -> dict:
+        try:
+            result = await asyncio.to_thread(capability_service.declare)
+        except (HTTPException, httpx.HTTPError) as exc:
+            return await asyncio.to_thread(setup_action_error_payload, "declare", exc)
+        return {
+            "accepted": True,
+            "action": "declare",
+            "result": result.model_dump(mode="json"),
+            "status": await asyncio.to_thread(setup_capabilities_status_payload),
+        }
+
+    @app.post("/api/setup/capabilities/sync-governance")
+    async def setup_capabilities_sync_governance() -> dict:
+        try:
+            result = await asyncio.to_thread(governance_service.refresh)
+        except (HTTPException, httpx.HTTPError) as exc:
+            return await asyncio.to_thread(setup_action_error_payload, "sync-governance", exc)
+        return {
+            "accepted": True,
+            "action": "sync-governance",
+            "result": result.model_dump(mode="json"),
+            "status": await asyncio.to_thread(setup_capabilities_status_payload),
+        }
+
     @app.put("/api/providers/setup", response_model=ProviderSetupResponse)
     async def provider_setup_save(payload: ProviderSetupRequest) -> ProviderSetupResponse:
         return provider_setup_service.save_setup(payload)
