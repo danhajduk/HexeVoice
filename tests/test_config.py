@@ -89,7 +89,7 @@ def test_assistant_settings_default_to_local_echo():
 
 
 def test_piper_tts_settings_default_to_supervised_local_service():
-    settings = Settings(voice_tts_provider="piper")
+    settings = Settings(voice_tts_provider="piper", voice_tts_conversion_sample_rates="48000,16000")
 
     assert settings.voice_tts_provider == "piper"
     assert settings.voice_tts_piper_base_url is None
@@ -105,13 +105,25 @@ def test_piper_tts_settings_default_to_supervised_local_service():
     assert settings.piper_tts_container_name == "hexevoice-piper-tts"
     assert settings.piper_tts_env_path.as_posix() == "scripts/piper-tts.env"
     assert settings.piper_tts_control_script.as_posix() == "scripts/piper-tts-control.sh"
-    assert settings.resolved_voice_tts_piper_base_url() == "http://127.0.0.1:10200"
+    assert settings.voice_tts_piper_transport == "unix"
+    assert settings.resolved_voice_tts_piper_base_url() == "http://hexevoice-piper-tts"
+    assert settings.resolved_voice_tts_piper_socket_path().as_posix() == "runtime/sockets/tts.sock"
     assert settings.resolved_piper_tts_model_dir().as_posix() == "runtime/piper-tts/models"
     assert settings.resolved_piper_tts_warm_voices() == []
     assert settings.resolved_voice_tts_endpoint_voices() == {}
     assert settings.resolved_voice_tts_endpoint_sample_rates() == {}
     assert settings.resolved_voice_tts_runtime_config_path().as_posix() == "runtime/voice_tts_settings.json"
-    assert settings.resolved_voice_tts_conversion_sample_rates() == {"48k": 48000, "16k": 16000}
+    conversion_sample_rates = settings.resolved_voice_tts_conversion_sample_rates()
+    assert conversion_sample_rates["48k"] == 48000
+    assert conversion_sample_rates["16k"] == 16000
+
+
+def test_external_stt_settings_default_to_unix_socket_transport():
+    settings = Settings(voice_stt_provider="external_faster_whisper")
+
+    assert settings.voice_stt_service_transport == "unix"
+    assert settings.resolved_voice_stt_service_base_url() == "http://hexevoice-stt"
+    assert settings.resolved_voice_stt_service_socket_path().as_posix() == "runtime/sockets/stt.sock"
 
 
 def test_tts_endpoint_voice_overrides_parse_env_mapping():

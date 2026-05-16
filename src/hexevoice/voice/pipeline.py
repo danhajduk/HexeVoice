@@ -29,6 +29,7 @@ import soxr
 
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
+from hexevoice.engine_http import client_for_engine
 from hexevoice.voice.records import record_voice_event
 
 if TYPE_CHECKING:
@@ -436,11 +437,13 @@ class ExternalFasterWhisperSpeechToTextAdapter:
         self,
         *,
         base_url: str,
+        socket_path: Path | None = None,
         model_name: str = "base.en",
         timeout_s: float = 30.0,
         http_client: httpx.Client | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
+        self._socket_path = socket_path
         self._model_name = model_name
         self._timeout_s = timeout_s
         self._http_client = http_client
@@ -460,7 +463,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
             )
 
         started_at = time.perf_counter()
-        client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        client = self._http_client or client_for_engine(timeout=self._timeout_s, socket_path=self._socket_path)
         try:
             response = client.post(
                 f"{self._base_url}/transcribe",
@@ -505,7 +508,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 client.close()
 
     def preload(self) -> dict:
-        client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        client = self._http_client or client_for_engine(timeout=self._timeout_s, socket_path=self._socket_path)
         try:
             response = client.post(f"{self._base_url}/preload")
             response.raise_for_status()
@@ -525,7 +528,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 client.close()
 
     def status(self) -> dict:
-        client = self._http_client or httpx.Client(timeout=min(self._timeout_s, 2.0))
+        client = self._http_client or client_for_engine(timeout=min(self._timeout_s, 2.0), socket_path=self._socket_path)
         try:
             response = client.get(f"{self._base_url}/health")
             response.raise_for_status()
@@ -537,6 +540,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 "healthy": bool(payload.get("healthy", True)),
                 "configured": True,
                 "base_url": self._base_url,
+                "socket_path": str(self._socket_path) if self._socket_path is not None else None,
                 "model": payload.get("model") or self._model_name,
                 "service": payload,
                 "last_duration_ms": self._last_duration_ms,
@@ -550,6 +554,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                 "healthy": False,
                 "configured": True,
                 "base_url": self._base_url,
+                "socket_path": str(self._socket_path) if self._socket_path is not None else None,
                 "model": self._model_name,
                 "last_duration_ms": self._last_duration_ms,
                 "last_timing_breakdown_ms": self._last_timing_breakdown_ms,
@@ -599,6 +604,7 @@ class PiperTextToSpeechAdapter:
         self,
         *,
         base_url: str | None,
+        socket_path: Path | None = None,
         synthesize_path: str = "/api/tts",
         voice: str | None = None,
         output_dir: Path,
@@ -611,6 +617,7 @@ class PiperTextToSpeechAdapter:
         http_client: httpx.Client | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/") if base_url else None
+        self._socket_path = socket_path
         self._synthesize_path = synthesize_path if synthesize_path.startswith("/") else f"/{synthesize_path}"
         self._voice = voice
         self._output_dir = output_dir
@@ -646,7 +653,7 @@ class PiperTextToSpeechAdapter:
             return self._fallback.synthesize(endpoint_id=endpoint_id, session_id=session_id, text=text, voice=voice, stream_id=stream_id)
 
         stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
-        client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        client = self._http_client or client_for_engine(timeout=self._timeout_s, socket_path=self._socket_path)
         selected_voice = voice or self._voice or "piper-default"
         timing_breakdown_ms: dict[str, float] = {}
         try:
@@ -812,6 +819,7 @@ class PiperTextToSpeechAdapter:
             "healthy": self._last_error is None,
             "configured": bool(self._base_url),
             "base_url": self._base_url,
+            "socket_path": str(self._socket_path) if self._socket_path is not None else None,
             "synthesize_path": self._synthesize_path,
             "voice": self._voice,
             "output_sample_rate_hz": self._output_sample_rate_hz,
@@ -1593,6 +1601,7 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
     elif settings.voice_stt_provider == "external_faster_whisper":
         stt_adapter = ExternalFasterWhisperSpeechToTextAdapter(
             base_url=settings.resolved_voice_stt_service_base_url(),
+            socket_path=settings.resolved_voice_stt_service_socket_path(),
             model_name=settings.voice_stt_faster_whisper_model,
             timeout_s=settings.voice_stt_timeout_s,
         )
@@ -1609,6 +1618,7 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
     elif settings.voice_tts_provider == "piper":
         tts_adapter = PiperTextToSpeechAdapter(
             base_url=settings.resolved_voice_tts_piper_base_url(),
+            socket_path=settings.resolved_voice_tts_piper_socket_path(),
             synthesize_path=settings.voice_tts_piper_synthesize_path,
             voice=settings.voice_tts_piper_voice,
             output_dir=settings.runtime_dir / "voice_tts",

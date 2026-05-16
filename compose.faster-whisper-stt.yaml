@@ -1,0 +1,29 @@
+name: hexevoice-faster-whisper-stt
+
+services:
+  faster_whisper_stt:
+    build:
+      context: .
+      dockerfile: services/faster_whisper_stt/Dockerfile
+    image: ${STT_IMAGE:-hexevoice/faster-whisper-stt:local}
+    container_name: ${STT_CONTAINER_NAME:-hexevoice-faster-whisper-stt}
+    environment:
+      STT_SOCKET_PATH: /sockets/stt.sock
+      HEXEVOICE_ENGINE_ID: faster_whisper_stt
+      HEXEVOICE_NODE_HEALTH_SOCKET: ${HEXEVOICE_NODE_HEALTH_SOCKET:-/sockets/node.sock}
+      VOICE_STT_PRELOAD: ${VOICE_STT_PRELOAD:-true}
+      VOICE_STT_FASTER_WHISPER_MODEL: ${VOICE_STT_FASTER_WHISPER_MODEL:-base.en}
+      VOICE_STT_FASTER_WHISPER_DEVICE: ${VOICE_STT_FASTER_WHISPER_DEVICE:-cpu}
+      VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE: ${VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE:-int8}
+      VOICE_STT_FASTER_WHISPER_LANGUAGE: ${VOICE_STT_FASTER_WHISPER_LANGUAGE:-en}
+      VOICE_STT_FASTER_WHISPER_BEAM_SIZE: ${VOICE_STT_FASTER_WHISPER_BEAM_SIZE:-5}
+      VOICE_STT_FASTER_WHISPER_BEST_OF: ${VOICE_STT_FASTER_WHISPER_BEST_OF:-5}
+      VOICE_STT_FASTER_WHISPER_WITHOUT_TIMESTAMPS: ${VOICE_STT_FASTER_WHISPER_WITHOUT_TIMESTAMPS:-true}
+      VOICE_STT_FASTER_WHISPER_WORD_TIMESTAMPS: ${VOICE_STT_FASTER_WHISPER_WORD_TIMESTAMPS:-false}
+      VOICE_STT_FASTER_WHISPER_MAX_INITIAL_TIMESTAMP: ${VOICE_STT_FASTER_WHISPER_MAX_INITIAL_TIMESTAMP:-1.0}
+      VOICE_STT_FASTER_WHISPER_TEMP_DIR: /cache/faster-whisper
+      RUNTIME_DIR: /runtime
+    volumes:
+      - ${HEXEVOICE_SOCKET_DIR:-./runtime/sockets}:/sockets
+      - ${HEXEVOICE_STT_CACHE_DIR:-./runtime/stt/faster-whisper}:/cache/faster-whisper
+    restart: "no"

@@ -26,7 +26,9 @@ export PIPER_TTS_WARM_TIMEOUT_S="${PIPER_TTS_WARM_TIMEOUT_S:-10}"
 export PIPER_TTS_WARM_IDLE_S="${PIPER_TTS_WARM_IDLE_S:-0.25}"
 export PIPER_TTS_VOICE_REPO_URL="${PIPER_TTS_VOICE_REPO_URL:-https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0}"
 export PIPER_TTS_DOWNLOAD_VOICES="${PIPER_TTS_DOWNLOAD_VOICES:-}"
-PIPER_TTS_SERVICE_URL="${PIPER_TTS_HEALTH_URL:-${VOICE_TTS_PIPER_BASE_URL:-http://${VOICE_TTS_PIPER_SERVICE_HOST:-127.0.0.1}:${VOICE_TTS_PIPER_SERVICE_PORT:-$PIPER_TTS_PORT}}}"
+export HEXEVOICE_SOCKET_DIR="${HEXEVOICE_SOCKET_DIR:-$ROOT_DIR/runtime/sockets}"
+export PIPER_TTS_SOCKET_PATH="${PIPER_TTS_SOCKET_PATH:-${VOICE_TTS_PIPER_SOCKET:-$HEXEVOICE_SOCKET_DIR/tts.sock}}"
+PIPER_TTS_SERVICE_URL="${PIPER_TTS_HEALTH_URL:-${VOICE_TTS_PIPER_BASE_URL:-http://hexevoice-piper-tts}}"
 PIPER_TTS_HEALTH_TIMEOUT_S="${PIPER_TTS_HEALTH_TIMEOUT_S:-60}"
 PIPER_TTS_HEALTH_INTERVAL_S="${PIPER_TTS_HEALTH_INTERVAL_S:-2}"
 
@@ -54,27 +56,68 @@ http_request() {
 from __future__ import annotations
 
 import json
+import os
+import socket
 import sys
 import urllib.error
 import urllib.request
 
 method = sys.argv[1]
 url = sys.argv[2]
-request = urllib.request.Request(url, method=method)
+socket_path = os.environ["PIPER_TTS_SOCKET_PATH"]
 if method in {"POST", "PUT"}:
-    request.add_header("Content-Type", "application/json")
     data = b"{}"
 else:
-    data = None
-try:
-    with urllib.request.urlopen(request, data=data, timeout=5) as response:
-        body = response.read().decode("utf-8")
-except urllib.error.HTTPError as exc:
-    print(exc.read().decode("utf-8"), file=sys.stderr)
-    raise SystemExit(exc.code)
-except Exception as exc:
-    print(str(exc), file=sys.stderr)
-    raise SystemExit(1)
+    data = b""
+if url.startswith("http://hexevoice-piper-tts"):
+    parsed_path = "/" + url.split("/", 3)[3] if len(url.split("/", 3)) > 3 else "/"
+    request = (
+        f"{method} {parsed_path} HTTP/1.1\r\n"
+        "Host: hexevoice-piper-tts\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(data)}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode("utf-8") + data
+    try:
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(5)
+        client.connect(socket_path)
+        client.sendall(request)
+        chunks = []
+        while True:
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1)
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+    raw = b"".join(chunks)
+    header, _, payload = raw.partition(b"\r\n\r\n")
+    status_line = header.splitlines()[0].decode("iso-8859-1") if header else ""
+    status = int(status_line.split()[1]) if len(status_line.split()) >= 2 else 0
+    if status >= 400 or status == 0:
+        print(payload.decode("utf-8", errors="replace"), file=sys.stderr)
+        raise SystemExit(status or 1)
+    body = payload.decode("utf-8", errors="replace")
+else:
+    request = urllib.request.Request(url, method=method)
+    if data:
+        request.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(request, data=data or None, timeout=5) as response:
+            body = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        print(exc.read().decode("utf-8"), file=sys.stderr)
+        raise SystemExit(exc.code)
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1)
 if body:
     try:
         print(json.dumps(json.loads(body), indent=2, sort_keys=True))
@@ -161,6 +204,7 @@ PY
 doctor() {
   local failed=0
   echo "Piper TTS URL: $(service_url)"
+  echo "socket: $PIPER_TTS_SOCKET_PATH"
   echo "model dir: $(model_dir_abs)"
   if "$DOCKER_BIN" --version >/dev/null 2>&1; then
     echo "docker: ok"
@@ -199,14 +243,16 @@ case "$ACTION" in
     download_models
     ;;
   start)
-    mkdir -p "$(model_dir_abs)"
+    mkdir -p "$(model_dir_abs)" "$HEXEVOICE_SOCKET_DIR"
+    rm -f "$PIPER_TTS_SOCKET_PATH"
     compose up -d --build
     ;;
   stop)
     compose stop
     ;;
   restart)
-    mkdir -p "$(model_dir_abs)"
+    mkdir -p "$(model_dir_abs)" "$HEXEVOICE_SOCKET_DIR"
+    rm -f "$PIPER_TTS_SOCKET_PATH"
     compose up -d --force-recreate piper_tts
     ;;
   status)
@@ -223,7 +269,8 @@ case "$ACTION" in
     ;;
   ready)
     download_models
-    mkdir -p "$(model_dir_abs)"
+    mkdir -p "$(model_dir_abs)" "$HEXEVOICE_SOCKET_DIR"
+    rm -f "$PIPER_TTS_SOCKET_PATH"
     compose up -d --build
     wait_for_health
     http_request PUT /config

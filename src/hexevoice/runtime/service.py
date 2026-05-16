@@ -28,6 +28,7 @@ from hexevoice.api.models import (
 )
 from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES, capability_summary, normalize_capability_selection
 from hexevoice.config.settings import Settings
+from hexevoice.engine_http import client_for_engine
 from hexevoice.onboarding import CANONICAL_ONBOARDING_STEPS, initial_onboarding_step
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.piper_models import piper_model_display_name, read_piper_model_config
@@ -46,6 +47,7 @@ class NodeRuntimeService:
         supervisor_client: SupervisorApiClient | None = None,
         service_command_runner: Callable[[list[str]], subprocess.CompletedProcess[str]] | None = None,
         external_stt_health_fetcher: Callable[[], dict[str, object]] | None = None,
+        engine_heartbeat_fetcher: Callable[[], dict[str, dict[str, object]]] | None = None,
     ) -> None:
         self._settings = settings
         self._onboarding_state_store = onboarding_state_store or OnboardingStateStore(
@@ -57,6 +59,7 @@ class NodeRuntimeService:
         self._supervisor_last_seen: str | None = None
         self._service_command_runner = service_command_runner or self._run_service_command
         self._external_stt_health_fetcher = external_stt_health_fetcher
+        self._engine_heartbeat_fetcher = engine_heartbeat_fetcher
         self._started_at_monotonic = time.monotonic()
 
     def api_health_payload(self) -> ApiHealthResponse:
@@ -462,7 +465,7 @@ class NodeRuntimeService:
         return self._systemd_service_process_payload(service_name)
 
     def _external_stt_resource_usage(self, health: dict[str, object]) -> dict[str, object]:
-        process = self._systemd_service_process_payload(self._settings.voice_stt_service_name)
+        process = self._docker_container_process_payload(self._settings.voice_stt_container_name)
         if process.get("available"):
             return process
         if health.get("healthy"):
@@ -471,8 +474,8 @@ class NodeRuntimeService:
                 fallback.update(
                     {
                         "kind": "external_stt_process",
-                        "systemd_service": self._settings.voice_stt_service_name,
-                        "systemd_error": process.get("error"),
+                        "container_name": self._settings.voice_stt_container_name,
+                        "container_error": process.get("error"),
                     }
                 )
                 return fallback
@@ -871,7 +874,10 @@ class NodeRuntimeService:
             payload = dict(self._external_stt_health_fetcher())
         else:
             try:
-                with httpx.Client(timeout=min(self._settings.voice_stt_timeout_s, 2.0)) as client:
+                with client_for_engine(
+                    timeout=min(self._settings.voice_stt_timeout_s, 2.0),
+                    socket_path=self._settings.resolved_voice_stt_service_socket_path(),
+                ) as client:
                     response = client.get(f"{self._settings.resolved_voice_stt_service_base_url()}/health")
                     response.raise_for_status()
                     payload = response.json()
@@ -893,6 +899,7 @@ class NodeRuntimeService:
     def _piper_tts_service_summary(self) -> dict[str, object]:
         state = self._piper_tts_state()
         process = self._docker_container_process_payload(self._settings.piper_tts_container_name)
+        heartbeat = self._engine_heartbeat("piper_tts")
         return {
             "service_id": self._settings.piper_tts_service_id,
             "service_name": "Piper TTS",
@@ -902,9 +909,13 @@ class NodeRuntimeService:
             "container_name": self._settings.piper_tts_container_name,
             "control_script": str(self._settings.piper_tts_control_script),
             "base_url": self._settings.resolved_voice_tts_piper_base_url(),
+            "socket_path": str(self._settings.resolved_voice_tts_piper_socket_path())
+            if self._settings.resolved_voice_tts_piper_socket_path() is not None
+            else None,
             "synthesize_path": self._settings.voice_tts_piper_synthesize_path,
             "voice": self._settings.voice_tts_piper_voice,
             "warm_voices": self._settings.resolved_piper_tts_warm_voices(),
+            "engine_heartbeat": heartbeat,
             **self._service_process_fields(process),
         }
 
@@ -913,20 +924,21 @@ class NodeRuntimeService:
         raw_state = self._external_stt_state()
         state = self._external_stt_effective_state(raw_state, health)
         process = self._external_stt_resource_usage(health)
+        heartbeat = self._engine_heartbeat("faster_whisper_stt")
         return {
             "service_id": self._settings.voice_stt_service_id,
             "service_name": "faster-whisper STT",
             "state": state,
             "boot_order": 17,
             "managed_by": "core_supervisor_service_action_proxy",
-            "systemd_service": self._settings.voice_stt_service_name,
-            "systemd_scope": "user",
-            "systemd_unit_template": "scripts/systemd/hexevoice-stt.service.in",
-            "systemd_env_file": "scripts/stack.env",
+            "container_name": self._settings.voice_stt_container_name,
             "control_script": str(self._settings.voice_stt_control_script),
             "install_supported": True,
             "install_action": "install",
             "base_url": self._settings.resolved_voice_stt_service_base_url(),
+            "socket_path": str(self._settings.resolved_voice_stt_service_socket_path())
+            if self._settings.resolved_voice_stt_service_socket_path() is not None
+            else None,
             "model": self._configured_external_stt_model(),
             "device": self._settings.voice_stt_faster_whisper_device,
             "compute_type": self._settings.voice_stt_faster_whisper_compute_type,
@@ -937,8 +949,15 @@ class NodeRuntimeService:
             "last_load_duration_ms": health.get("last_load_duration_ms"),
             "reload_required": health.get("reload_required"),
             "reload_reason": health.get("reload_reason"),
+            "engine_heartbeat": heartbeat,
             **self._service_process_fields(process),
         }
+
+    def _engine_heartbeat(self, engine_id: str) -> dict[str, object] | None:
+        if self._engine_heartbeat_fetcher is None:
+            return None
+        payload = self._engine_heartbeat_fetcher().get(engine_id)
+        return dict(payload) if isinstance(payload, dict) else None
 
     def _stt_engine_service_summary(
         self,

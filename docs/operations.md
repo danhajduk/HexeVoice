@@ -66,12 +66,12 @@ Use:
 
 - `scripts/bootstrap.sh` to install user services
 - `scripts/run-from-env.sh backend` to launch the backend from `scripts/stack.env`
-- `scripts/run-from-env.sh stt` to launch the external faster-whisper STT service from `scripts/stack.env`
 - `scripts/run-from-env.sh frontend` to launch the frontend from `scripts/stack.env`
 - `scripts/stack-control.sh` for service control
 - `scripts/restart-stack.sh` to restart the configured stack services
-- `scripts/faster-whisper-stt-control.sh ready` to render the STT user unit,
-  restart it, wait for `/health`, and preload/download the configured model
+- `scripts/faster-whisper-stt-control.sh ready` to build/start the local STT
+  container, wait for `/health` over `runtime/sockets/stt.sock`, and
+  preload/download the configured model
 
 `scripts/stack-control.sh` restarts services one at a time and prints each
 service as it is handled. Each `systemctl --user` operation is bounded by
@@ -160,7 +160,13 @@ HEXEVOICE_SETUP_STT=true ./install.sh
 ```
 
 When the STT service URL is not the default `http://127.0.0.1:10300`, set
-`STT_HEALTH_URL` or `VOICE_STT_SERVICE_BASE_URL` for the control script.
+`STT_HEALTH_URL` or `VOICE_STT_SERVICE_BASE_URL` for the control script. The
+normal local runtime uses Unix sockets instead: `VOICE_STT_SERVICE_TRANSPORT=unix`
+with `VOICE_STT_SERVICE_SOCKET=runtime/sockets/stt.sock`, and
+`VOICE_TTS_PIPER_TRANSPORT=unix` with
+`VOICE_TTS_PIPER_SOCKET=runtime/sockets/tts.sock`. TCP remains available only
+when those transports are explicitly set to `tcp` or a base URL override is set
+for development/debugging.
 
 The Piper TTS runtime code lives in the standalone `src/tts/` package.
 `services/piper_tts/app.py` remains as a compatibility wrapper, while the
@@ -193,6 +199,13 @@ HEXEVOICE_SETUP_WAKE=true ./install.sh
 ./scripts/openwakeword-control.sh health
 ```
 
+STT and TTS images include `python -m hexevoice.engine_health_ping`, a small
+container helper that can post engine identity, hostname, config summary, health
+state, and last error to `/api/engines/heartbeat` through either
+`HEXEVOICE_NODE_HEALTH_SOCKET` or `HEXEVOICE_NODE_HEALTH_URL`. The wake-word
+container stays on Wyoming/container health checks for now because its protocol
+is not an HTTP voice engine API.
+
 Systemd user units are intentionally not enabled for auto-start and do not declare a restart policy. Core Supervisor is the lifecycle authority for managed node runtime behavior.
 
 When supervisor integration is enabled, the backend registers and heartbeats through the local Unix socket:
@@ -206,10 +219,11 @@ The registration metadata includes stable service entries for `backend`,
 entries are logical engine wrappers, so Supervisor sees the same service IDs
 whether the active implementation is local, external, in-process, or cloud
 backed. When `VOICE_STT_PROVIDER=external_faster_whisper`, `stt_engine` includes
-the `faster_whisper_stt` implementation service id, control-script path, and
-local STT URL. When `VOICE_TTS_PROVIDER=piper`, `tts_engine` includes the
+the `faster_whisper_stt` implementation service id, Docker container name,
+control-script path, socket path, and local STT URL. When
+`VOICE_TTS_PROVIDER=piper`, `tts_engine` includes the
 `piper_tts` implementation service id, Docker container name, control-script
-path, and local synthesis URL. Each service entry includes a `process` block
+path, socket path, and local synthesis URL. Each service entry includes a `process` block
 when the node can resolve one, with `pid`, `main_pid`, and runtime resource
 fields so Core Supervisor can monitor the actual backend process, Docker
 container init PID, or managed user-service process. The STT/TTS engine entries
@@ -229,24 +243,10 @@ inspect and control managed services through the node service proxy routes:
 - `POST /api/services/restart` with `{"target":"stt"}`, `{"target":"stt_engine"}`, or `{"target":"faster_whisper_stt"}` when external faster-whisper STT is enabled
 - `POST /api/services/restart` with `{"target":"tts"}`, `{"target":"tts_engine"}`, or `{"target":"piper_tts"}` when Piper TTS is enabled
 
-The external faster-whisper STT service is installed through Supervisor rather
-than by ad hoc stack restarts. The `stt_engine` metadata includes the user
-systemd service name, the `scripts/systemd/hexevoice-stt.service.in` unit
-template, the `scripts/stack.env` environment file, and `install_action:
-install`. Supervisor can invoke the node service proxy install action to render
-the user unit and run `systemctl --user daemon-reload` before starting or
-restarting STT.
-
-After pulling the `src/stt/` package split, existing STT units only need the
-updated `scripts/stack.env` command and a restart because the unit evaluates
-`STT_CMD` at runtime. Running
-`./scripts/faster-whisper-stt-control.sh install` is still safe when operators
-want Supervisor or the local control script to re-render the user unit.
-
-The local `scripts/stack-control.sh` helper will skip the external STT unit when
-it is not installed yet, instead of installing it itself. This keeps Supervisor
-as the install owner while still letting operators restart the already-installed
-backend and frontend user services.
+The external faster-whisper STT service is now installed through the
+HexeVoice-owned Docker Compose control script. The `install` action builds the
+image, and `ready` builds/starts the container, waits on the Unix-socket
+`/health` endpoint, and preloads the configured model.
 
 When Piper TTS runtime settings are saved, the provider page marks them as
 restart-required. A successful `tts` or `piper_tts` restart through the service
@@ -256,10 +256,9 @@ proxy clears that flag and records `restart_applied_at` in the runtime settings.
 UI: Backend, STT, and TTS component health, per-component CPU/memory usage where
 the runtime can observe it, supervisor registration status, and whether a
 component has a supported restart target. In-process STT reports backend-process
-resource usage. External faster-whisper STT reports its managed user-service
-process resource usage when enabled, and Piper TTS reports Docker container
-usage when enabled. The same status payload includes process IDs for monitored
-services where available.
+resource usage. External faster-whisper STT and Piper TTS report Docker
+container usage when enabled. The same status payload includes process IDs for
+monitored services where available.
 
 The Voice Endpoint runtime page shows endpoint status as summary cards. Selecting
 an endpoint opens a blurred-background detail popup with the full registry,

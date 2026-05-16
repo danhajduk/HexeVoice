@@ -12,6 +12,7 @@ import wave
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+import uvicorn
 
 
 app = FastAPI(title="HexeVoice Piper TTS")
@@ -333,3 +334,22 @@ def update_config(payload: TtsConfigRequest) -> dict[str, object]:
         **health(),
         "config_applied": True,
     }
+
+
+def main() -> None:
+    socket_path = os.getenv("PIPER_TTS_SOCKET_PATH") or os.getenv("VOICE_TTS_PIPER_SOCKET")
+    if socket_path:
+        path = Path(socket_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.unlink(missing_ok=True)
+        uvicorn.run(app, uds=str(path))
+        return
+    uvicorn.run(
+        app,
+        host=os.getenv("PIPER_TTS_HOST", "0.0.0.0"),
+        port=int(os.getenv("PIPER_TTS_PORT", "10200")),
+    )
+
+
+if __name__ == "__main__":
+    main()

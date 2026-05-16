@@ -100,8 +100,7 @@ if [[ "$RUN_BOOTSTRAP" == "true" || "$RUN_BOOTSTRAP" == "1" || "$RUN_BOOTSTRAP" 
   fi
 else
   if [[ "$SETUP_STT" == "true" || "$SETUP_STT" == "1" || "$SETUP_STT" == "yes" ]]; then
-    require_command systemctl
-    log "Installing, starting, and preloading external faster-whisper STT"
+    log "Building, starting, and preloading external faster-whisper STT"
     ./scripts/faster-whisper-stt-control.sh ready
   fi
   if [[ "$SETUP_TTS" == "true" || "$SETUP_TTS" == "1" || "$SETUP_TTS" == "yes" ]]; then

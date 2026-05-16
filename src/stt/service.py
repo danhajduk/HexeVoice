@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -176,6 +178,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     settings = Settings()
+    socket_path = os.getenv("STT_SOCKET_PATH") or os.getenv("VOICE_STT_SERVICE_SOCKET")
+    if socket_path:
+        path = Path(socket_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.unlink(missing_ok=True)
+        uvicorn.run(create_app(settings), uds=str(path))
+        return
     uvicorn.run(
         create_app(settings),
         host=settings.voice_stt_service_host,

@@ -146,3 +146,4 @@ Task 125: Ensure hosted install creates the full runtime directory skeleton - Co
 Task 123: Make Piper TTS ready immediately after hosted install - Completed on 05/16/2026 11:57
 Task 124: Make wake word runtime ready immediately after hosted install - Completed on 05/16/2026 12:06
 Task 126: Add firmware artifact download to hosted install - Completed on 05/16/2026 12:11
+Task 121: Dockerize local STT/TTS engines and move them to Unix-socket transport - Completed on 05/16/2026 12:24

@@ -85,11 +85,17 @@ class Settings(BaseSettings):
     voice_stt_prompt: str | None = Field(default=None, alias="VOICE_STT_PROMPT")
     voice_stt_timeout_s: float = Field(default=30.0, alias="VOICE_STT_TIMEOUT_S", gt=0)
     voice_stt_preload: bool = Field(default=True, alias="VOICE_STT_PRELOAD")
+    voice_stt_service_transport: Literal["unix", "tcp"] = Field(default="unix", alias="VOICE_STT_SERVICE_TRANSPORT")
     voice_stt_service_base_url: str | None = Field(default=None, alias="VOICE_STT_SERVICE_BASE_URL")
     voice_stt_service_host: str = Field(default="127.0.0.1", alias="VOICE_STT_SERVICE_HOST")
     voice_stt_service_port: int = Field(default=10300, alias="VOICE_STT_SERVICE_PORT")
+    voice_stt_service_socket_path: Path | None = Field(default=None, alias="VOICE_STT_SERVICE_SOCKET")
     voice_stt_service_id: str = Field(default="faster_whisper_stt", alias="VOICE_STT_SERVICE_ID")
     voice_stt_service_name: str = Field(default="hexevoice-stt.service", alias="VOICE_STT_SERVICE_NAME")
+    voice_stt_container_name: str = Field(
+        default="hexevoice-faster-whisper-stt",
+        alias="STT_CONTAINER_NAME",
+    )
     voice_stt_control_script: Path = Field(
         default=Path("scripts/faster-whisper-stt-control.sh"),
         alias="VOICE_STT_CONTROL_SCRIPT",
@@ -156,9 +162,11 @@ class Settings(BaseSettings):
     voice_tts_response_format: str = Field(default="wav", alias="VOICE_TTS_RESPONSE_FORMAT")
     voice_tts_output_sample_rate_hz: int = Field(default=16000, alias="VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ", ge=0)
     voice_tts_timeout_s: float = Field(default=30.0, alias="VOICE_TTS_TIMEOUT_S", gt=0)
+    voice_tts_piper_transport: Literal["unix", "tcp"] = Field(default="unix", alias="VOICE_TTS_PIPER_TRANSPORT")
     voice_tts_piper_base_url: str | None = Field(default=None, alias="VOICE_TTS_PIPER_BASE_URL")
     voice_tts_piper_service_host: str = Field(default="127.0.0.1", alias="VOICE_TTS_PIPER_SERVICE_HOST")
     voice_tts_piper_service_port: int = Field(default=10200, alias="VOICE_TTS_PIPER_SERVICE_PORT")
+    voice_tts_piper_socket_path: Path | None = Field(default=None, alias="VOICE_TTS_PIPER_SOCKET")
     voice_tts_piper_synthesize_path: str = Field(default="/api/tts", alias="VOICE_TTS_PIPER_SYNTHESIZE_PATH")
     voice_tts_piper_voice: str | None = Field(default=None, alias="VOICE_TTS_PIPER_VOICE")
     voice_tts_endpoint_voices: str = Field(default="", alias="VOICE_TTS_ENDPOINT_VOICES")
@@ -235,7 +243,18 @@ class Settings(BaseSettings):
     def resolved_voice_stt_service_base_url(self) -> str:
         if self.voice_stt_service_base_url is not None:
             return self.voice_stt_service_base_url.rstrip("/")
+        if self.voice_stt_service_transport == "unix":
+            return "http://hexevoice-stt"
         return f"http://{self.voice_stt_service_host}:{self.voice_stt_service_port}"
+
+    def resolved_voice_stt_service_socket_path(self) -> Path | None:
+        if self.voice_stt_service_base_url is not None:
+            return None
+        if self.voice_stt_service_transport != "unix":
+            return None
+        if self.voice_stt_service_socket_path is not None:
+            return self.voice_stt_service_socket_path
+        return self.runtime_dir / "sockets" / "stt.sock"
 
     def resolved_voice_wake_recording_dir(self) -> Path:
         if self.voice_wake_recording_dir is not None:
@@ -262,7 +281,18 @@ class Settings(BaseSettings):
             return self.voice_tts_piper_base_url.rstrip("/")
         if self.voice_tts_provider != "piper":
             return None
+        if self.voice_tts_piper_transport == "unix":
+            return "http://hexevoice-piper-tts"
         return f"http://{self.voice_tts_piper_service_host}:{self.voice_tts_piper_service_port}"
+
+    def resolved_voice_tts_piper_socket_path(self) -> Path | None:
+        if self.voice_tts_piper_base_url is not None:
+            return None
+        if self.voice_tts_piper_transport != "unix":
+            return None
+        if self.voice_tts_piper_socket_path is not None:
+            return self.voice_tts_piper_socket_path
+        return self.runtime_dir / "sockets" / "tts.sock"
 
     def resolved_piper_tts_model_dir(self) -> Path:
         if self.piper_tts_model_dir is not None:

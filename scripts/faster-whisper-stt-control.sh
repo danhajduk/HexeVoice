@@ -2,22 +2,27 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$ROOT_DIR/scripts/stack.env"
+ENV_FILE="${STT_ENV_FILE:-$ROOT_DIR/scripts/stack.env}"
+COMPOSE_FILE="$ROOT_DIR/compose.faster-whisper-stt.yaml"
+DOCKER_BIN="${DOCKER_BIN:-docker}"
+PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
 
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   . "$ENV_FILE"
 fi
 
-STT_SERVICE_NAME="${STT_SERVICE_NAME:-${VOICE_STT_SERVICE_NAME:-hexevoice-stt.service}}"
-SYSTEMD_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-STT_UNIT_TEMPLATE="$ROOT_DIR/scripts/systemd/hexevoice-stt.service.in"
-SYSTEMCTL_BIN="${SYSTEMCTL_BIN:-systemctl}"
-JOURNALCTL_BIN="${JOURNALCTL_BIN:-journalctl}"
-PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
-STT_SERVICE_URL="${STT_HEALTH_URL:-${VOICE_STT_SERVICE_BASE_URL:-http://${VOICE_STT_SERVICE_HOST:-127.0.0.1}:${VOICE_STT_SERVICE_PORT:-10300}}}"
+export HEXEVOICE_SOCKET_DIR="${HEXEVOICE_SOCKET_DIR:-$ROOT_DIR/runtime/sockets}"
+export HEXEVOICE_STT_CACHE_DIR="${HEXEVOICE_STT_CACHE_DIR:-$ROOT_DIR/runtime/stt/faster-whisper}"
+export STT_CONTAINER_NAME="${STT_CONTAINER_NAME:-hexevoice-faster-whisper-stt}"
+export STT_SOCKET_PATH="${STT_SOCKET_PATH:-${VOICE_STT_SERVICE_SOCKET:-$HEXEVOICE_SOCKET_DIR/stt.sock}}"
+STT_SERVICE_URL="${STT_HEALTH_URL:-${VOICE_STT_SERVICE_BASE_URL:-http://hexevoice-stt}}"
 STT_HEALTH_TIMEOUT_S="${STT_HEALTH_TIMEOUT_S:-60}"
 STT_HEALTH_INTERVAL_S="${STT_HEALTH_INTERVAL_S:-2}"
+
+compose() {
+  "$DOCKER_BIN" compose -f "$COMPOSE_FILE" "$@"
+}
 
 service_url() {
   printf '%s' "${STT_SERVICE_URL%/}"
@@ -32,53 +37,76 @@ http_request() {
   local path="$2"
   local url
   url="$(service_url)$path"
-  python_with_src - "$method" "$url" <<'PY'
+  python_with_src - "$method" "$url" "$STT_SOCKET_PATH" <<'PY'
 from __future__ import annotations
 
 import json
+import socket
 import sys
 import urllib.error
 import urllib.request
 
 method = sys.argv[1]
 url = sys.argv[2]
-request = urllib.request.Request(url, method=method)
-if method in {"POST", "PUT"}:
-    request.add_header("Content-Type", "application/json")
-    data = b"{}"
-else:
-    data = None
-try:
-    with urllib.request.urlopen(request, data=data, timeout=5) as response:
-        body = response.read().decode("utf-8")
-except urllib.error.HTTPError as exc:
-    print(exc.read().decode("utf-8"), file=sys.stderr)
-    raise SystemExit(exc.code)
-except Exception as exc:
-    print(str(exc), file=sys.stderr)
-    raise SystemExit(1)
-if body:
+socket_path = sys.argv[3]
+body = b"{}" if method in {"POST", "PUT"} else b""
+
+if url.startswith("http://hexevoice-stt"):
+    parsed_path = "/" + url.split("/", 3)[3] if len(url.split("/", 3)) > 3 else "/"
+    request = (
+        f"{method} {parsed_path} HTTP/1.1\r\n"
+        "Host: hexevoice-stt\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "Connection: close\r\n\r\n"
+    ).encode("utf-8") + body
     try:
-        print(json.dumps(json.loads(body), indent=2, sort_keys=True))
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        client.settimeout(5)
+        client.connect(socket_path)
+        client.sendall(request)
+        chunks = []
+        while True:
+            chunk = client.recv(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1)
+    finally:
+        try:
+            client.close()
+        except Exception:
+            pass
+    raw = b"".join(chunks)
+    header, _, payload = raw.partition(b"\r\n\r\n")
+    status_line = header.splitlines()[0].decode("iso-8859-1") if header else ""
+    status = int(status_line.split()[1]) if len(status_line.split()) >= 2 else 0
+    if status >= 400 or status == 0:
+        print(payload.decode("utf-8", errors="replace"), file=sys.stderr)
+        raise SystemExit(status or 1)
+    text = payload.decode("utf-8", errors="replace")
+else:
+    request = urllib.request.Request(url, method=method)
+    if body:
+        request.add_header("Content-Type", "application/json")
+    try:
+        with urllib.request.urlopen(request, data=body or None, timeout=5) as response:
+            text = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        print(exc.read().decode("utf-8"), file=sys.stderr)
+        raise SystemExit(exc.code)
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1)
+
+if text:
+    try:
+        print(json.dumps(json.loads(text), indent=2, sort_keys=True))
     except json.JSONDecodeError:
-        print(body)
+        print(text)
 PY
-}
-
-systemctl_user() {
-  "$SYSTEMCTL_BIN" --user "$@"
-}
-
-install_unit() {
-  if [[ ! -f "$ENV_FILE" ]]; then
-    echo "Missing $ENV_FILE. Copy scripts/stack.env.example first."
-    exit 1
-  fi
-  mkdir -p "$SYSTEMD_DIR"
-  sed "s|__ROOT_DIR__|$ROOT_DIR|g; s|__ENV_FILE__|$ENV_FILE|g" \
-    "$STT_UNIT_TEMPLATE" > "$SYSTEMD_DIR/$STT_SERVICE_NAME"
-  systemctl_user daemon-reload
-  echo "Installed $STT_SERVICE_NAME"
 }
 
 wait_for_health() {
@@ -91,7 +119,7 @@ wait_for_health() {
     fi
     now="$SECONDS"
     if (( now >= deadline )); then
-      echo "STT health check did not pass within ${STT_HEALTH_TIMEOUT_S}s at $(service_url)/health" >&2
+      echo "STT health check did not pass within ${STT_HEALTH_TIMEOUT_S}s at $(service_url)/health via $STT_SOCKET_PATH" >&2
       return 1
     fi
     sleep "$STT_HEALTH_INTERVAL_S"
@@ -100,53 +128,55 @@ wait_for_health() {
 
 doctor() {
   local failed=0
-  echo "STT service: $STT_SERVICE_NAME"
+  echo "STT container: $STT_CONTAINER_NAME"
   echo "STT URL: $(service_url)"
-  if [[ -f "$ENV_FILE" ]]; then
-    echo "env: ok ($ENV_FILE)"
+  echo "STT socket: $STT_SOCKET_PATH"
+  if "$DOCKER_BIN" --version >/dev/null 2>&1; then
+    echo "docker: ok"
   else
-    echo "env: missing ($ENV_FILE)"
+    echo "docker: missing"
     failed=1
   fi
-  if [[ -x "$PYTHON_BIN" ]]; then
-    echo "python: ok ($PYTHON_BIN)"
+  if "$DOCKER_BIN" compose version >/dev/null 2>&1; then
+    echo "docker compose: ok"
   else
-    echo "python: missing or not executable ($PYTHON_BIN)"
+    echo "docker compose: missing"
     failed=1
   fi
-  if python_with_src - <<'PY' >/dev/null 2>&1; then
-import faster_whisper  # noqa: F401
-import stt.service  # noqa: F401
-PY
-    echo "imports: ok (faster_whisper, stt.service)"
+  if [[ -S "$STT_SOCKET_PATH" ]]; then
+    echo "socket: ok"
   else
-    echo "imports: failed (faster_whisper or stt.service)"
-    failed=1
-  fi
-  if "$SYSTEMCTL_BIN" --user --version >/dev/null 2>&1; then
-    echo "systemctl --user: ok"
-  else
-    echo "systemctl --user: unavailable"
-    failed=1
+    echo "socket: unavailable (container may be stopped)"
   fi
   if http_request GET /health >/dev/null 2>&1; then
     echo "health: ok"
   else
-    echo "health: unavailable (service may be stopped)"
+    echo "health: unavailable"
   fi
   return "$failed"
 }
 
 ACTION="${1:-status}"
 case "$ACTION" in
-  install)
-    install_unit
+  install|build)
+    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+    compose build
     ;;
-  start|stop|restart)
-    systemctl_user "$ACTION" "$STT_SERVICE_NAME"
+  start)
+    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+    rm -f "$STT_SOCKET_PATH"
+    compose up -d --build
+    ;;
+  stop)
+    compose stop
+    ;;
+  restart)
+    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+    rm -f "$STT_SOCKET_PATH"
+    compose up -d --build --force-recreate
     ;;
   status)
-    systemctl_user is-active "$STT_SERVICE_NAME" || true
+    compose ps
     ;;
   health)
     http_request GET /health
@@ -158,8 +188,9 @@ case "$ACTION" in
     http_request POST /preload
     ;;
   ready)
-    install_unit
-    systemctl_user restart "$STT_SERVICE_NAME"
+    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+    rm -f "$STT_SOCKET_PATH"
+    compose up -d --build
     wait_for_health
     http_request POST /preload
     ;;
@@ -167,10 +198,13 @@ case "$ACTION" in
     doctor
     ;;
   logs)
-    "$JOURNALCTL_BIN" --user -u "$STT_SERVICE_NAME" -f --lines="${2:-100}"
+    compose logs -f --tail="${2:-100}"
+    ;;
+  config)
+    compose config
     ;;
   *)
-    echo "Usage: $0 {install|start|stop|restart|status|health|wait-health|preload|ready|doctor|logs}"
+    echo "Usage: $0 {install|build|start|stop|restart|status|health|wait-health|preload|ready|doctor|logs|config}"
     exit 1
     ;;
 esac

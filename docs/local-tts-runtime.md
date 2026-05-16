@@ -8,12 +8,12 @@ HexeVoice can route text-to-speech through a local Piper service by setting:
 
 ```bash
 VOICE_TTS_PROVIDER=piper
-VOICE_TTS_PIPER_SERVICE_HOST=127.0.0.1
-VOICE_TTS_PIPER_SERVICE_PORT=10200
+VOICE_TTS_PIPER_TRANSPORT=unix
+VOICE_TTS_PIPER_SOCKET=runtime/sockets/tts.sock
 VOICE_TTS_PIPER_SYNTHESIZE_PATH=/api/tts
 ```
 
-`VOICE_TTS_PIPER_BASE_URL` remains available as an explicit override. When it is unset and `VOICE_TTS_PROVIDER=piper`, the backend resolves the Piper base URL from the service host and port.
+`VOICE_TTS_PIPER_BASE_URL` remains available as an explicit TCP/debug override. When it is unset and `VOICE_TTS_PROVIDER=piper`, the backend uses the Piper Unix socket by default.
 
 Backend TTS routing is selected with `VOICE_TTS_PROVIDER`:
 
@@ -69,7 +69,8 @@ Default service metadata:
 - `container_name`: `hexevoice-piper-tts`
 - `control_script`: `scripts/piper-tts-control.sh`
 - `managed_by`: `core_supervisor_service_action_proxy`
-- `base_url`: `http://127.0.0.1:10200`
+- `base_url`: `http://hexevoice-piper-tts`
+- `socket_path`: `runtime/sockets/tts.sock`
 - `synthesize_path`: `/api/tts`
 
 ## Docker Runtime
@@ -82,7 +83,7 @@ HexeVoice owns the first Piper TTS container wrapper:
 - example env file: `scripts/piper-tts.env.example`
 - default container name: `hexevoice-piper-tts`
 - default image tag: `hexevoice/piper-tts:local`
-- default port: `10200`
+- default socket: `runtime/sockets/tts.sock`
 - default model directory: `runtime/piper-tts/models`
 - Docker restart policy: `no`
 
@@ -97,7 +98,7 @@ POST /api/tts {"text":"hello","voice":"optional-model-name"}
 
 During capability declaration, HexeVoice advertises installed Piper `.onnx` files as Core provider models under provider `piper`. Core service resolution can therefore use `preferred_model` to select a voice model, and the caller should pass that same model id to `POST /api/tts/synthesize` as `voice`. The Piper service accepts Core-normalized lowercase model ids as well as the original filename casing.
 
-The compose service also has a Docker health check that calls `GET /health` inside the container.
+The compose service does not publish a TCP port by default. Backend calls use HTTP over the mounted Unix socket; set `VOICE_TTS_PIPER_TRANSPORT=tcp` or `VOICE_TTS_PIPER_BASE_URL` only for development/debugging.
 
 To configure local model assets:
 

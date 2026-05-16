@@ -92,6 +92,7 @@ from hexevoice.assistant import AssistantTurnService, LocalIntentFinder, VoiceIn
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
 from hexevoice.endpoint.service import EndpointHeartbeatService
+from hexevoice.engine_http import async_client_for_engine
 from hexevoice.onboarding.approval import ApprovalPollingService
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
@@ -204,7 +205,10 @@ async def _discover_piper_warm_voices(settings: Settings) -> list[str]:
     if not base_url:
         return []
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
+        async with async_client_for_engine(
+            timeout=2.0,
+            socket_path=settings.resolved_voice_tts_piper_socket_path(),
+        ) as client:
             response = await client.get(f"{base_url.rstrip('/')}/health")
             response.raise_for_status()
     except httpx.HTTPError:
@@ -350,10 +354,12 @@ def create_app(
     endpoint_media_service = EndpointMediaService(media_dir=app_settings.resolved_endpoint_media_dir())
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
+    engine_heartbeats: dict[str, dict[str, object]] = {}
     service = NodeRuntimeService(
         settings=app_settings,
         onboarding_state_store=onboarding_state_store,
         supervisor_client=supervisor_client,
+        engine_heartbeat_fetcher=lambda: engine_heartbeats,
     )
     assistant_service = AssistantTurnService(
         settings=app_settings,
@@ -569,6 +575,17 @@ def create_app(
     @app.get("/api/health", response_model=ApiHealthResponse)
     async def api_health() -> ApiHealthResponse:
         return service.api_health_payload()
+
+    @app.post("/api/engines/heartbeat")
+    async def engine_heartbeat(payload: dict[str, object]) -> dict[str, object]:
+        engine_id = str(payload.get("engine_id") or payload.get("service_id") or "").strip()
+        if engine_id not in {"faster_whisper_stt", "piper_tts"}:
+            raise HTTPException(status_code=400, detail="unsupported_engine_id")
+        recorded = dict(payload)
+        recorded["engine_id"] = engine_id
+        recorded["received_at"] = datetime.now(UTC).isoformat()
+        engine_heartbeats[engine_id] = recorded
+        return {"ok": True, "engine_id": engine_id}
 
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
@@ -1405,7 +1422,10 @@ def create_app(
         compute_type = str(payload.compute_type or app_settings.voice_stt_faster_whisper_compute_type).strip()
         if not default_model and not warm_models:
             return False
-        async with httpx.AsyncClient(timeout=app_settings.voice_stt_timeout_s) as client:
+        async with async_client_for_engine(
+            timeout=app_settings.voice_stt_timeout_s,
+            socket_path=app_settings.resolved_voice_stt_service_socket_path(),
+        ) as client:
             for warm_model in [model for model in warm_models if model != default_model]:
                 await client.put(
                     f"{app_settings.resolved_voice_stt_service_base_url()}/config",
@@ -1440,7 +1460,10 @@ def create_app(
             "default_voice": default_voice or None,
             "warm_voices": [str(voice or "").strip() for voice in (warm_voices or []) if str(voice or "").strip()],
         }
-        async with httpx.AsyncClient(timeout=app_settings.voice_tts_timeout_s) as client:
+        async with async_client_for_engine(
+            timeout=app_settings.voice_tts_timeout_s,
+            socket_path=app_settings.resolved_voice_tts_piper_socket_path(),
+        ) as client:
             await client.put(
                 f"{app_settings.resolved_voice_tts_piper_base_url()}/config",
                 json=request_payload,

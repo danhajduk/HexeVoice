@@ -48,29 +48,32 @@ def test_faster_whisper_stt_control_ready_installs_restarts_waits_and_preloads(t
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        systemctl_log = tmp_path / "systemctl.log"
-        fake_systemctl = tmp_path / "systemctl"
-        fake_systemctl.write_text(
+        repo_root = Path(__file__).resolve().parents[1]
+        docker_log = tmp_path / "docker.log"
+        fake_docker = tmp_path / "docker"
+        fake_docker.write_text(
             "#!/usr/bin/env bash\n"
-            'printf "%s\\n" "$*" >> "$SYSTEMCTL_LOG"\n'
+            'printf "%s\\n" "$*" >> "$DOCKER_LOG"\n'
             "exit 0\n",
             encoding="utf-8",
         )
-        fake_systemctl.chmod(0o755)
+        fake_docker.chmod(0o755)
 
         service_url = f"http://127.0.0.1:{server.server_address[1]}"
         result = subprocess.run(
             ["bash", "scripts/faster-whisper-stt-control.sh", "ready"],
-            cwd=Path(__file__).resolve().parents[1],
+            cwd=repo_root,
             env={
                 "PATH": "/usr/bin:/bin",
                 "PYTHON_BIN": sys.executable,
-                "SYSTEMCTL_BIN": str(fake_systemctl),
-                "SYSTEMCTL_LOG": str(systemctl_log),
+                "DOCKER_BIN": str(fake_docker),
+                "DOCKER_LOG": str(docker_log),
+                "STT_ENV_FILE": str(tmp_path / "missing.env"),
+                "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
+                "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
                 "STT_HEALTH_URL": service_url,
                 "STT_HEALTH_TIMEOUT_S": "5",
                 "STT_HEALTH_INTERVAL_S": "0",
-                "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
             },
             text=True,
             capture_output=True,
@@ -80,11 +83,9 @@ def test_faster_whisper_stt_control_ready_installs_restarts_waits_and_preloads(t
         server.shutdown()
         server.server_close()
 
-    assert "Installed hexevoice-stt.service" in result.stdout
-    assert (tmp_path / "xdg" / "systemd" / "user" / "hexevoice-stt.service").exists()
-    assert systemctl_log.read_text(encoding="utf-8").splitlines() == [
-        "--user daemon-reload",
-        "--user restart hexevoice-stt.service",
+    assert "loaded" in result.stdout
+    assert docker_log.read_text(encoding="utf-8").splitlines() == [
+        f"compose -f {repo_root / 'compose.faster-whisper-stt.yaml'} up -d --build"
     ]
     assert ("GET", "/health") in _SttHandler.requests
     assert ("POST", "/preload") in _SttHandler.requests

@@ -47,6 +47,7 @@ def test_standard_route_groups_exist(tmp_path):
     assert client.post("/api/onboarding/trust-activation/finalize").status_code == 400
     assert client.post("/api/onboarding/trust-status/refresh").status_code == 400
     assert client.get("/api/providers/setup").status_code == 200
+    assert client.post("/api/engines/heartbeat", json={"engine_id": "piper_tts", "health_state": "ok"}).status_code == 200
     assert client.get("/api/endpoint/status/box-1").status_code == 404
     assert client.post("/api/endpoint/heartbeat", json={"endpoint_id": "box-1"}).status_code == 200
     assert client.get("/api/endpoint/time").status_code == 200

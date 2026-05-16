@@ -280,7 +280,8 @@ def test_supervisor_runtime_registration_includes_piper_tts_when_configured(tmp_
     assert piper_tts["managed_by"] == "core_supervisor_service_action_proxy"
     assert piper_tts["container_name"] == "hexevoice-piper-tts"
     assert piper_tts["control_script"] == "scripts/piper-tts-control.sh"
-    assert piper_tts["base_url"] == "http://127.0.0.1:10200"
+    assert piper_tts["base_url"] == "http://hexevoice-piper-tts"
+    assert piper_tts["socket_path"] == "runtime/sockets/tts.sock"
     assert piper_tts["synthesize_path"] == "/api/tts"
     assert piper_tts["voice"] == "en_US-test"
     assert piper_tts["warm_voices"] == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
@@ -438,9 +439,9 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_component["status"] == "active"
     assert stt_component["restart_supported"] is True
     assert stt_component["restart_target"] == "faster_whisper_stt"
-    assert stt_component["resource_scope"] == "systemd_user_service"
-    assert stt_component["resource_usage"]["pid"] == os.getpid()
-    assert stt_component["resource_usage"]["kind"] == "systemd_user_service"
+    assert stt_component["resource_scope"] == "docker_container"
+    assert stt_component["resource_usage"]["pid"] == 4242
+    assert stt_component["resource_usage"]["kind"] == "docker_container"
     assert stt_component["loaded"] is True
     assert stt_component["last_load_duration_ms"] == 1234.5
     assert stt_component["reload_required"] is False
@@ -458,16 +459,14 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_service["control_target"] == "faster_whisper_stt"
     assert stt_service["state"] == "active"
     assert stt_service["managed_by"] == "core_supervisor_service_action_proxy"
-    assert stt_service["systemd_service"] == "hexevoice-stt.service"
-    assert stt_service["systemd_scope"] == "user"
-    assert stt_service["systemd_unit_template"] == "scripts/systemd/hexevoice-stt.service.in"
-    assert stt_service["systemd_env_file"] == "scripts/stack.env"
+    assert stt_service["container_name"] == "hexevoice-faster-whisper-stt"
     assert stt_service["install_supported"] is True
     assert stt_service["install_action"] == "install"
     assert stt_service["base_url"] == "http://127.0.0.1:10300"
-    assert stt_service["pid"] == os.getpid()
-    assert stt_service["main_pid"] == os.getpid()
-    assert stt_service["process"]["kind"] == "systemd_user_service"
+    assert stt_service["socket_path"] is None
+    assert stt_service["pid"] == 4242
+    assert stt_service["main_pid"] == 4242
+    assert stt_service["process"]["kind"] == "docker_container"
     assert stt_service["loaded"] is True
     assert stt_service["loaded_at"] == "2026-05-10T08:00:00+00:00"
     assert stt_service["last_load_duration_ms"] == 1234.5

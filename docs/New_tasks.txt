@@ -1,15 +1,19 @@
-[TODO] Task 121: Dockerize local STT/TTS engines and move them to Unix-socket transport
+[STOP]
 [TODO] Task 140: Auto-detect CUDA-capable STT Docker image during install
 [TODO] Task 134: Include STT provider settings in node migration bundles
 [TODO] Task 135: Expand TTS provider settings in node migration bundles
 [TODO] Task 136: Include wake word provider settings in node migration bundles
+[STOP]
 [TODO] Task 137: Add CUDA host preflight, STT benchmark, and CPU fallback validation
 [TODO] Task 138: Tune endpoint utterance capture and STT silence trimming before CUDA migration
 [TODO] Task 139: Define STT model profiles for fast intent path and accurate fallback
+[STOP]
 [TODO] Task 142: Add migration preflight and dry-run validation
 [TODO] Task 143: Add post-install smoke test command
 [TODO] Task 144: Add migration backup and rollback workflow
+[STOP]
 [TODO] Task 145: Define runtime state cleanup and git-tracking policy
+[STOP]
 [TODO] Task 146: Make trust secret migration choice explicit
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
 
