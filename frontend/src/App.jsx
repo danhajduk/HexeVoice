@@ -17,6 +17,7 @@ import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
 import { SetupSidebar } from "./features/setup/SetupComponents";
 import { HostSetupPage } from "./features/setup/HostSetupPage";
 import { CoreSetupPage, MigrationSetupPage } from "./features/setup/CoreMigrationSetupPage";
+import { ReauthSetupPage } from "./features/setup/ReauthSetupPage";
 import { SetupHeroCard } from "./features/setup/cards/SetupHeroCard";
 import { LiveStatusCard } from "./features/setup/cards/LiveStatusCard";
 import { OperatorPromptsCard } from "./features/setup/cards/OperatorPromptsCard";
@@ -76,6 +77,9 @@ function parseSetupSection(location) {
   }
   if (location.pathname === "/setup/migration" || location.hash === "#/setup/migration") {
     return "migration";
+  }
+  if (location.pathname === "/setup/trust/reauth" || location.hash === "#/setup/trust/reauth") {
+    return "reauth";
   }
   return "flow";
 }
@@ -549,6 +553,8 @@ export default function App() {
                   <CoreSetupPage />
                 ) : setupSection === "migration" ? (
                   <MigrationSetupPage />
+                ) : setupSection === "reauth" ? (
+                  <ReauthSetupPage />
                 ) : (
                   <>
                     <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />

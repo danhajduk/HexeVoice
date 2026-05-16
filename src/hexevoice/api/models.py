@@ -605,6 +605,25 @@ class SetupCoreConnectionResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class SetupReauthStartResponse(BaseModel):
+    started: bool
+    node_id: str | None = None
+    session_id: str | None = None
+    approval_url: str | None = None
+    finalize_path: str | None = None
+    status: str = "pending"
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SetupReauthFinalizeResponse(BaseModel):
+    status: str
+    approved: bool = False
+    node_id: str | None = None
+    trust_state: str | None = None
+    approval_url: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+
+
 class BootstrapAdvertisementRequest(BaseModel):
     topic: str
     api_base: str | None = None

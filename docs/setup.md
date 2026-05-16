@@ -66,6 +66,9 @@ Core connection and migration setup are split into `/setup/core` and
 temporarily offline and reports reachability as a warning. The migration setup
 routes wrap the node migration preflight/import APIs and continue to reject any
 bundle containing trust tokens.
+Migrated nodes continue through `/setup/trust/reauth`, which starts Core
+re-auth with `POST /api/system/nodes/reauth/sessions`, opens the returned Core
+approval URL, finalizes the session, and saves the fresh activation payload.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none

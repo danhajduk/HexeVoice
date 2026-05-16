@@ -127,6 +127,14 @@ export async function importSetupMigration(payload) {
   return sendJson("/api/setup/migration/import", { body: payload });
 }
 
+export async function startSetupReauth() {
+  return sendJson("/api/setup/trust/reauth/start", { body: {} });
+}
+
+export async function finalizeSetupReauth() {
+  return sendJson("/api/setup/trust/reauth/finalize", { body: {} });
+}
+
 export async function getBootstrapDiscovery() {
   return fetchJson("/api/onboarding/bootstrap-discovery");
 }

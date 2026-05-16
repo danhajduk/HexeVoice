@@ -88,6 +88,8 @@ from hexevoice.api.models import (
     SetupHostReadinessActionResponse,
     SetupHostReadinessResponse,
     SetupCoreConnectionResponse,
+    SetupReauthFinalizeResponse,
+    SetupReauthStartResponse,
     ProviderSetupRequest,
     ProviderSetupResponse,
     ServiceStatusResponse,
@@ -118,6 +120,7 @@ from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.setup_bootstrap import SetupBootstrapStatusService
 from hexevoice.setup_host import SetupHostReadinessService
+from hexevoice.setup_reauth import SetupReauthService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
@@ -342,6 +345,7 @@ def create_app(
     node_migration_service = NodeMigrationService(settings=app_settings)
     setup_bootstrap_status_service = SetupBootstrapStatusService(settings=app_settings)
     setup_host_readiness_service = SetupHostReadinessService(settings=app_settings)
+    setup_reauth_service = SetupReauthService(onboarding_state_store=onboarding_state_store)
     bootstrap_service = BootstrapDiscoveryService(settings=app_settings, onboarding_state_store=onboarding_state_store)
     session_start_service = OnboardingSessionStartService(
         settings=app_settings,
@@ -1910,6 +1914,14 @@ def create_app(
             return node_migration_service.import_bundle(payload)
         except NodeMigrationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/setup/trust/reauth/start", response_model=SetupReauthStartResponse)
+    async def setup_reauth_start() -> SetupReauthStartResponse:
+        return setup_reauth_service.start()
+
+    @app.post("/api/setup/trust/reauth/finalize", response_model=SetupReauthFinalizeResponse)
+    async def setup_reauth_finalize() -> SetupReauthFinalizeResponse:
+        return setup_reauth_service.finalize()
 
     @app.get("/api/onboarding/bootstrap-discovery", response_model=BootstrapDiscoveryResponse)
     async def bootstrap_discovery_status() -> BootstrapDiscoveryResponse:
