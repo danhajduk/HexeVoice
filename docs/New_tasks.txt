@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 140: Auto-detect CUDA-capable STT Docker image during install
 [TODO] Task 134: Include STT provider settings in node migration bundles
 [TODO] Task 135: Expand TTS provider settings in node migration bundles
 [TODO] Task 136: Include wake word provider settings in node migration bundles

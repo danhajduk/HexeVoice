@@ -159,6 +159,22 @@ HEXEVOICE_SETUP_STT=true ./install.sh
 ./scripts/faster-whisper-stt-control.sh health
 ```
 
+During STT setup, `scripts/faster-whisper-stt-control.sh` auto-detects whether
+the host can run the CUDA STT Docker profile. In `STT_CUDA_MODE=auto`, it first
+runs a Docker GPU smoke check with `STT_CUDA_SMOKE_IMAGE` and then verifies the
+selected CUDA STT image can import faster-whisper/CTranslate2 and report CUDA
+compute support. When either check fails, setup keeps the CPU image/profile
+without failing the install.
+
+Useful overrides:
+
+```bash
+STT_CUDA_MODE=cpu ./scripts/faster-whisper-stt-control.sh ready   # force CPU
+STT_CUDA_MODE=cuda ./scripts/faster-whisper-stt-control.sh ready  # require CUDA checks to pass
+STT_CUDA_MODE=skip ./scripts/faster-whisper-stt-control.sh ready  # skip detection and use CPU
+STT_CUDA_IMAGE=registry.example/hexevoice/faster-whisper-stt:cuda ./scripts/faster-whisper-stt-control.sh ready
+```
+
 When the STT service URL is not the default `http://127.0.0.1:10300`, set
 `STT_HEALTH_URL` or `VOICE_STT_SERVICE_BASE_URL` for the control script. The
 normal local runtime uses Unix sockets instead: `VOICE_STT_SERVICE_TRANSPORT=unix`

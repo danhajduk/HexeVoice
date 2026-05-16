@@ -69,6 +69,7 @@ def test_faster_whisper_stt_control_ready_installs_restarts_waits_and_preloads(t
                 "DOCKER_BIN": str(fake_docker),
                 "DOCKER_LOG": str(docker_log),
                 "STT_ENV_FILE": str(tmp_path / "missing.env"),
+                "STT_CUDA_MODE": "cpu",
                 "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
                 "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
                 "STT_HEALTH_URL": service_url,
@@ -89,3 +90,92 @@ def test_faster_whisper_stt_control_ready_installs_restarts_waits_and_preloads(t
     ]
     assert ("GET", "/health") in _SttHandler.requests
     assert ("POST", "/preload") in _SttHandler.requests
+
+
+def test_faster_whisper_stt_control_auto_cuda_falls_back_to_cpu_when_smoke_fails(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    docker_log = tmp_path / "docker.log"
+    fake_docker = tmp_path / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\n"
+        'for arg in "$@"; do printf "%q " "$arg" >> "$DOCKER_LOG"; done\n'
+        'printf "STT_IMAGE=%q DEVICE=%q COMPUTE=%q\\n" "$STT_IMAGE" "$VOICE_STT_FASTER_WHISPER_DEVICE" "$VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE" >> "$DOCKER_LOG"\n'
+        'if [[ "$1" == "run" ]]; then exit 1; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", "scripts/faster-whisper-stt-control.sh", "build"],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "PYTHON_BIN": sys.executable,
+            "DOCKER_BIN": str(fake_docker),
+            "DOCKER_LOG": str(docker_log),
+            "STT_ENV_FILE": str(tmp_path / "missing.env"),
+            "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
+            "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
+            "STT_CUDA_MODE": "auto",
+            "STT_CUDA_CHECK_TIMEOUT_S": "2",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    lines = docker_log.read_text(encoding="utf-8").splitlines()
+    assert "Docker GPU passthrough unavailable; using CPU runtime" in result.stdout
+    assert lines == [
+        "run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi STT_IMAGE='' DEVICE='' COMPUTE=''",
+        f"compose -f {repo_root / 'compose.faster-whisper-stt.yaml'} build STT_IMAGE=hexevoice/faster-whisper-stt:local DEVICE=cpu COMPUTE=int8",
+    ]
+
+
+def test_faster_whisper_stt_control_forced_cuda_uses_cuda_compose_profile(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    docker_log = tmp_path / "docker.log"
+    fake_docker = tmp_path / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\n"
+        'for arg in "$@"; do printf "%q " "$arg" >> "$DOCKER_LOG"; done\n'
+        'printf "STT_IMAGE=%q DEVICE=%q COMPUTE=%q\\n" "$STT_IMAGE" "$VOICE_STT_FASTER_WHISPER_DEVICE" "$VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE" >> "$DOCKER_LOG"\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+
+    subprocess.run(
+        ["bash", "scripts/faster-whisper-stt-control.sh", "build"],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "PYTHON_BIN": sys.executable,
+            "DOCKER_BIN": str(fake_docker),
+            "DOCKER_LOG": str(docker_log),
+            "STT_ENV_FILE": str(tmp_path / "missing.env"),
+            "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
+            "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
+            "STT_CUDA_MODE": "cuda",
+            "STT_CUDA_CHECK_TIMEOUT_S": "2",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    lines = docker_log.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi STT_IMAGE='' DEVICE='' COMPUTE=''"
+    assert lines[1] == (
+        f"compose -f {repo_root / 'compose.faster-whisper-stt.yaml'} -f "
+        f"{repo_root / 'compose.faster-whisper-stt.cuda.yaml'} build "
+        "STT_IMAGE=hexevoice/faster-whisper-stt:cuda DEVICE=cuda COMPUTE=float16"
+    )
+    assert lines[2].startswith(
+        "run --rm --gpus all hexevoice/faster-whisper-stt:cuda python -c"
+    )
+    assert lines[2].endswith(
+        "STT_IMAGE=hexevoice/faster-whisper-stt:cuda DEVICE=cuda COMPUTE=float16"
+    )
+    assert len(lines) == 3

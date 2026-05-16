@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${STT_ENV_FILE:-$ROOT_DIR/scripts/stack.env}"
 COMPOSE_FILE="$ROOT_DIR/compose.faster-whisper-stt.yaml"
+CUDA_COMPOSE_FILE="$ROOT_DIR/compose.faster-whisper-stt.cuda.yaml"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
 PYTHON_BIN="${PYTHON_BIN:-$ROOT_DIR/.venv/bin/python}"
 
@@ -16,12 +17,25 @@ export HEXEVOICE_SOCKET_DIR="${HEXEVOICE_SOCKET_DIR:-$ROOT_DIR/runtime/sockets}"
 export HEXEVOICE_STT_CACHE_DIR="${HEXEVOICE_STT_CACHE_DIR:-$ROOT_DIR/runtime/stt/faster-whisper}"
 export STT_CONTAINER_NAME="${STT_CONTAINER_NAME:-hexevoice-faster-whisper-stt}"
 export STT_SOCKET_PATH="${STT_SOCKET_PATH:-${VOICE_STT_SERVICE_SOCKET:-$HEXEVOICE_SOCKET_DIR/stt.sock}}"
+STT_CUDA_MODE="${STT_CUDA_MODE:-auto}"
+STT_CUDA_SMOKE_IMAGE="${STT_CUDA_SMOKE_IMAGE:-nvidia/cuda:12.4.1-base-ubuntu22.04}"
+STT_CUDA_CHECK_TIMEOUT_S="${STT_CUDA_CHECK_TIMEOUT_S:-45}"
+STT_CPU_IMAGE="${STT_CPU_IMAGE:-${STT_IMAGE:-hexevoice/faster-whisper-stt:local}}"
+STT_CUDA_IMAGE="${STT_CUDA_IMAGE:-hexevoice/faster-whisper-stt:cuda}"
+STT_CPU_COMPUTE_TYPE="${STT_CPU_COMPUTE_TYPE:-int8}"
+STT_CUDA_COMPUTE_TYPE="${STT_CUDA_COMPUTE_TYPE:-float16}"
 STT_SERVICE_URL="${STT_HEALTH_URL:-${VOICE_STT_SERVICE_BASE_URL:-http://hexevoice-stt}}"
 STT_HEALTH_TIMEOUT_S="${STT_HEALTH_TIMEOUT_S:-60}"
 STT_HEALTH_INTERVAL_S="${STT_HEALTH_INTERVAL_S:-2}"
+STT_RUNTIME_PROFILE="cpu"
+STT_RUNTIME_IMAGE_VERIFIED=false
 
 compose() {
-  "$DOCKER_BIN" compose -f "$COMPOSE_FILE" "$@"
+  local compose_args=(-f "$COMPOSE_FILE")
+  if [[ "$STT_RUNTIME_PROFILE" == "cuda" ]]; then
+    compose_args+=(-f "$CUDA_COMPOSE_FILE")
+  fi
+  "$DOCKER_BIN" compose "${compose_args[@]}" "$@"
 }
 
 service_url() {
@@ -30,6 +44,122 @@ service_url() {
 
 python_with_src() {
   PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" "$@"
+}
+
+truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+normalized_cuda_mode() {
+  if truthy "${STT_FORCE_CPU:-}" || truthy "${HEXEVOICE_STT_FORCE_CPU:-}"; then
+    printf 'cpu'
+    return
+  fi
+  if truthy "${STT_FORCE_CUDA:-}" || truthy "${HEXEVOICE_STT_FORCE_CUDA:-}"; then
+    printf 'cuda'
+    return
+  fi
+  if truthy "${STT_SKIP_CUDA_DETECTION:-}" || truthy "${HEXEVOICE_STT_SKIP_CUDA_DETECTION:-}"; then
+    printf 'skip'
+    return
+  fi
+  case "${STT_CUDA_MODE,,}" in
+    auto|cpu|cuda|skip) printf '%s' "${STT_CUDA_MODE,,}" ;;
+    *)
+      echo "Invalid STT_CUDA_MODE=$STT_CUDA_MODE. Expected auto, cpu, cuda, or skip." >&2
+      return 2
+      ;;
+  esac
+}
+
+use_cpu_runtime() {
+  STT_RUNTIME_PROFILE="cpu"
+  STT_RUNTIME_IMAGE_VERIFIED=false
+  export STT_IMAGE="$STT_CPU_IMAGE"
+  export VOICE_STT_FASTER_WHISPER_DEVICE="cpu"
+  export VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE="$STT_CPU_COMPUTE_TYPE"
+}
+
+use_cuda_runtime() {
+  STT_RUNTIME_PROFILE="cuda"
+  STT_RUNTIME_IMAGE_VERIFIED=false
+  export STT_IMAGE="$STT_CUDA_IMAGE"
+  export VOICE_STT_FASTER_WHISPER_DEVICE="cuda"
+  export VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE="$STT_CUDA_COMPUTE_TYPE"
+}
+
+cuda_smoke_check() {
+  timeout "${STT_CUDA_CHECK_TIMEOUT_S}s" "$DOCKER_BIN" run --rm --gpus all "$STT_CUDA_SMOKE_IMAGE" nvidia-smi >/dev/null
+}
+
+cuda_image_capability_check() {
+  timeout "${STT_CUDA_CHECK_TIMEOUT_S}s" "$DOCKER_BIN" run --rm --gpus all "$STT_CUDA_IMAGE" python -c '
+import json
+import sys
+
+report = {"faster_whisper": False, "ctranslate2": False, "cuda_supported": False}
+try:
+    import faster_whisper  # noqa: F401
+    report["faster_whisper"] = True
+    import ctranslate2
+    report["ctranslate2"] = True
+    supported = set(ctranslate2.get_supported_compute_types("cuda"))
+    report["supported_compute_types"] = sorted(supported)
+    report["cuda_supported"] = bool(supported)
+except Exception as exc:
+    report["error"] = str(exc)
+
+print(json.dumps(report, sort_keys=True))
+sys.exit(0 if report["cuda_supported"] else 1)
+' >/dev/null
+}
+
+select_stt_runtime() {
+  local mode
+  mode="$(normalized_cuda_mode)"
+  case "$mode" in
+    cpu)
+      echo "STT CUDA detection: forced CPU runtime"
+      use_cpu_runtime
+      ;;
+    skip)
+      echo "STT CUDA detection: skipped; using CPU runtime"
+      use_cpu_runtime
+      ;;
+    cuda)
+      echo "STT CUDA detection: forced CUDA runtime"
+      if ! cuda_smoke_check; then
+        echo "CUDA Docker smoke check failed while STT_CUDA_MODE=cuda." >&2
+        return 1
+      fi
+      use_cuda_runtime
+      compose build
+      if ! cuda_image_capability_check; then
+        echo "CUDA STT image capability check failed while STT_CUDA_MODE=cuda." >&2
+        return 1
+      fi
+      STT_RUNTIME_IMAGE_VERIFIED=true
+      ;;
+    auto)
+      if ! cuda_smoke_check; then
+        echo "STT CUDA detection: Docker GPU passthrough unavailable; using CPU runtime"
+        use_cpu_runtime
+        return 0
+      fi
+      use_cuda_runtime
+      compose build
+      if cuda_image_capability_check; then
+        STT_RUNTIME_IMAGE_VERIFIED=true
+        echo "STT CUDA detection: CUDA runtime selected"
+        return 0
+      fi
+      echo "STT CUDA detection: CUDA STT image check failed; using CPU runtime"
+      use_cpu_runtime
+      ;;
+  esac
 }
 
 http_request() {
@@ -131,6 +261,7 @@ doctor() {
   echo "STT container: $STT_CONTAINER_NAME"
   echo "STT URL: $(service_url)"
   echo "STT socket: $STT_SOCKET_PATH"
+  echo "STT CUDA mode: $STT_CUDA_MODE"
   if "$DOCKER_BIN" --version >/dev/null 2>&1; then
     echo "docker: ok"
   else
@@ -156,24 +287,45 @@ doctor() {
   return "$failed"
 }
 
+prepare_runtime_dirs() {
+  mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+}
+
+build_if_needed() {
+  if [[ "$STT_RUNTIME_IMAGE_VERIFIED" != "true" ]]; then
+    compose build
+  fi
+}
+
+up_build_if_needed() {
+  if [[ "$STT_RUNTIME_IMAGE_VERIFIED" == "true" ]]; then
+    compose up -d "$@"
+  else
+    compose up -d --build "$@"
+  fi
+}
+
 ACTION="${1:-status}"
 case "$ACTION" in
   install|build)
-    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
-    compose build
+    prepare_runtime_dirs
+    select_stt_runtime
+    build_if_needed
     ;;
   start)
-    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+    prepare_runtime_dirs
+    select_stt_runtime
     rm -f "$STT_SOCKET_PATH"
-    compose up -d --build
+    up_build_if_needed
     ;;
   stop)
     compose stop
     ;;
   restart)
-    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+    prepare_runtime_dirs
+    select_stt_runtime
     rm -f "$STT_SOCKET_PATH"
-    compose up -d --build --force-recreate
+    up_build_if_needed --force-recreate
     ;;
   status)
     compose ps
@@ -188,9 +340,10 @@ case "$ACTION" in
     http_request POST /preload
     ;;
   ready)
-    mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
+    prepare_runtime_dirs
+    select_stt_runtime
     rm -f "$STT_SOCKET_PATH"
-    compose up -d --build
+    up_build_if_needed
     wait_for_health
     http_request POST /preload
     ;;

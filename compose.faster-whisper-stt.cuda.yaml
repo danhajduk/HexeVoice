@@ -1,0 +1,10 @@
+services:
+  faster_whisper_stt:
+    build:
+      context: .
+      dockerfile: services/faster_whisper_stt/Dockerfile.cuda
+    image: ${STT_IMAGE:-hexevoice/faster-whisper-stt:cuda}
+    gpus: all
+    environment:
+      VOICE_STT_FASTER_WHISPER_DEVICE: ${VOICE_STT_FASTER_WHISPER_DEVICE:-cuda}
+      VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE: ${VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE:-float16}
