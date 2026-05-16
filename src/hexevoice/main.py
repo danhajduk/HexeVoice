@@ -1514,6 +1514,15 @@ def create_app(
             except httpx.HTTPError:
                 await asyncio.sleep(2)
 
+    def schedule_external_stt_provider_reconcile(result: ServiceActionResponse, action: str) -> None:
+        if not result.accepted:
+            return
+        if action not in {"install", "start", "restart"}:
+            return
+        if result.target not in {app_settings.voice_stt_service_id, "stt", "stt_engine"}:
+            return
+        asyncio.create_task(reconcile_external_stt_provider_config())
+
     async def node_ui_voice_tts_artifacts_payload(limit: int = 50) -> dict:
         artifacts = await asyncio.to_thread(tts_audio_service.list_artifacts, limit=limit)
         return node_ui.artifact_records(artifacts)
@@ -1762,6 +1771,7 @@ def create_app(
         result = await asyncio.to_thread(service.service_action, target=target, action=normalized_action)
         if result.accepted and normalized_action == "restart" and result.target in {app_settings.piper_tts_service_id, "tts"}:
             await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
+        schedule_external_stt_provider_reconcile(result, normalized_action)
         node_ui_page_cache.invalidate("runtime")
         return result
 
@@ -1882,7 +1892,14 @@ def create_app(
                     await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
             except httpx.HTTPError:
                 pass
-        if provider_id == "external_faster_whisper" and (payload.model or payload.warm_models or payload.device or payload.compute_type):
+        if provider_id == "external_faster_whisper" and (
+            payload.profile
+            or payload.fallback_profile
+            or payload.model
+            or payload.warm_models
+            or payload.device
+            or payload.compute_type
+        ):
             try:
                 await apply_external_stt_provider_config(payload)
             except httpx.HTTPError:
@@ -1923,7 +1940,9 @@ def create_app(
 
     @app.post("/api/services/start", response_model=ServiceActionResponse)
     async def service_start(payload: ServiceActionRequest) -> ServiceActionResponse:
-        return await asyncio.to_thread(service.service_action, target=payload.target, action="start")
+        result = await asyncio.to_thread(service.service_action, target=payload.target, action="start")
+        schedule_external_stt_provider_reconcile(result, "start")
+        return result
 
     @app.post("/api/services/stop", response_model=ServiceActionResponse)
     async def service_stop(payload: ServiceActionRequest) -> ServiceActionResponse:
@@ -1931,13 +1950,16 @@ def create_app(
 
     @app.post("/api/services/install", response_model=ServiceActionResponse)
     async def service_install(payload: ServiceActionRequest) -> ServiceActionResponse:
-        return await asyncio.to_thread(service.service_action, target=payload.target, action="install")
+        result = await asyncio.to_thread(service.service_action, target=payload.target, action="install")
+        schedule_external_stt_provider_reconcile(result, "install")
+        return result
 
     @app.post("/api/services/restart", response_model=ServiceActionResponse)
     async def service_restart(payload: ServiceActionRequest) -> ServiceActionResponse:
         result = await asyncio.to_thread(service.service_action, target=payload.target, action="restart")
         if result.accepted and result.target in {app_settings.piper_tts_service_id, "tts"}:
             await asyncio.to_thread(tts_runtime_settings_service.clear_restart_required)
+        schedule_external_stt_provider_reconcile(result, "restart")
         return result
 
     @app.get("/api/providers/{provider_id}/status", response_model=ProviderStatusResponse)

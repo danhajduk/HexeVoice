@@ -75,6 +75,62 @@ normalized_cuda_mode() {
   esac
 }
 
+apply_saved_stt_provider_config() {
+  local exports
+  if exports="$(python_with_src - "$ROOT_DIR" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import os
+import shlex
+import sys
+
+from hexevoice.config.settings import Settings
+from hexevoice.stt_profiles import resolve_stt_model_profile
+
+root_dir = Path(sys.argv[1])
+runtime_dir = Path(os.environ.get("RUNTIME_DIR") or root_dir / "runtime")
+try:
+    settings = Settings(runtime_dir=runtime_dir)
+    state = json.loads(settings.resolved_onboarding_state_path().read_text(encoding="utf-8"))
+    provider_config = (
+        state.get("provider_setup", {})
+        .get("provider_configs", {})
+        .get("external_faster_whisper", {})
+    )
+except Exception:
+    raise SystemExit(0)
+
+if not isinstance(provider_config, dict):
+    raise SystemExit(0)
+if not any(provider_config.get(key) not in (None, "", []) for key in ("profile", "model", "device", "compute_type", "warm_model")):
+    raise SystemExit(0)
+
+try:
+    profile = resolve_stt_model_profile(settings, provider_config)
+except Exception:
+    raise SystemExit(0)
+
+exports = {
+    "VOICE_STT_FASTER_WHISPER_MODEL": profile.model,
+    "VOICE_STT_FASTER_WHISPER_DEVICE": profile.device,
+    "VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE": profile.compute_type,
+}
+if provider_config.get("warm_model") is not None:
+    exports["VOICE_STT_PRELOAD"] = "true" if provider_config.get("warm_model") else "false"
+
+for key, value in exports.items():
+    if value is not None:
+        print(f"export {key}={shlex.quote(str(value))}")
+PY
+  )"; then
+    if [[ -n "$exports" ]]; then
+      eval "$exports"
+    fi
+  fi
+}
+
 use_cpu_runtime() {
   STT_RUNTIME_PROFILE="cpu"
   STT_RUNTIME_IMAGE_VERIFIED=false
@@ -313,11 +369,13 @@ ACTION="${1:-status}"
 case "$ACTION" in
   install|build)
     prepare_runtime_dirs
+    apply_saved_stt_provider_config
     select_stt_runtime
     build_if_needed
     ;;
   start)
     prepare_runtime_dirs
+    apply_saved_stt_provider_config
     select_stt_runtime
     rm -f "$STT_SOCKET_PATH"
     up_build_if_needed
@@ -327,6 +385,7 @@ case "$ACTION" in
     ;;
   restart)
     prepare_runtime_dirs
+    apply_saved_stt_provider_config
     select_stt_runtime
     rm -f "$STT_SOCKET_PATH"
     up_build_if_needed --force-recreate
@@ -345,6 +404,7 @@ case "$ACTION" in
     ;;
   ready)
     prepare_runtime_dirs
+    apply_saved_stt_provider_config
     select_stt_runtime
     rm -f "$STT_SOCKET_PATH"
     up_build_if_needed

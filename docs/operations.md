@@ -190,6 +190,14 @@ HEXEVOICE_SETUP_STT=true ./install.sh
 ./scripts/faster-whisper-stt-control.sh health
 ```
 
+The STT control script reads saved `external_faster_whisper` provider setup from
+the onboarding state before `start`, `restart`, `ready`, or `build`. This keeps a
+manual Docker restart aligned with the model selected in setup, even when
+`scripts/stack.env` still contains the bootstrap CPU-safe default. Backend
+service actions also schedule a provider-config reconcile after STT
+install/start/restart so the running engine is corrected after it becomes
+healthy.
+
 During STT setup, `scripts/faster-whisper-stt-control.sh` auto-detects whether
 the host can run the CUDA STT Docker profile. In `STT_CUDA_MODE=auto`, it first
 runs a Docker GPU smoke check with `STT_CUDA_SMOKE_IMAGE` and then verifies the

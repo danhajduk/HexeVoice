@@ -69,6 +69,7 @@ def test_faster_whisper_stt_control_ready_installs_restarts_waits_and_preloads(t
                 "DOCKER_BIN": str(fake_docker),
                 "DOCKER_LOG": str(docker_log),
                 "STT_ENV_FILE": str(tmp_path / "missing.env"),
+                "RUNTIME_DIR": str(tmp_path / "runtime"),
                 "STT_CUDA_MODE": "cpu",
                 "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
                 "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
@@ -115,6 +116,7 @@ def test_faster_whisper_stt_control_auto_cuda_falls_back_to_cpu_when_smoke_fails
             "DOCKER_BIN": str(fake_docker),
             "DOCKER_LOG": str(docker_log),
             "STT_ENV_FILE": str(tmp_path / "missing.env"),
+            "RUNTIME_DIR": str(tmp_path / "runtime"),
             "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
             "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
             "STT_CUDA_MODE": "auto",
@@ -155,6 +157,7 @@ def test_faster_whisper_stt_control_forced_cuda_uses_cuda_compose_profile(tmp_pa
             "DOCKER_BIN": str(fake_docker),
             "DOCKER_LOG": str(docker_log),
             "STT_ENV_FILE": str(tmp_path / "missing.env"),
+            "RUNTIME_DIR": str(tmp_path / "runtime"),
             "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
             "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
             "STT_CUDA_MODE": "cuda",
@@ -181,6 +184,60 @@ def test_faster_whisper_stt_control_forced_cuda_uses_cuda_compose_profile(tmp_pa
     assert len(lines) == 3
 
 
+def test_faster_whisper_stt_control_uses_saved_provider_model_before_restart(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    runtime_dir = tmp_path / "runtime"
+    runtime_dir.mkdir()
+    (runtime_dir / "onboarding_state.json").write_text(
+        json.dumps(
+            {
+                "provider_setup": {
+                    "provider_configs": {
+                        "external_faster_whisper": {
+                            "model": "small.en",
+                            "warm_model": True,
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    docker_log = tmp_path / "docker.log"
+    fake_docker = tmp_path / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\n"
+        'for arg in "$@"; do printf "%q " "$arg" >> "$DOCKER_LOG"; done\n'
+        'printf "MODEL=%q DEVICE=%q COMPUTE=%q PRELOAD=%q\\n" "$VOICE_STT_FASTER_WHISPER_MODEL" "$VOICE_STT_FASTER_WHISPER_DEVICE" "$VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE" "$VOICE_STT_PRELOAD" >> "$DOCKER_LOG"\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+
+    subprocess.run(
+        ["bash", "scripts/faster-whisper-stt-control.sh", "restart"],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "PYTHON_BIN": sys.executable,
+            "DOCKER_BIN": str(fake_docker),
+            "DOCKER_LOG": str(docker_log),
+            "STT_ENV_FILE": str(tmp_path / "missing.env"),
+            "RUNTIME_DIR": str(runtime_dir),
+            "HEXEVOICE_SOCKET_DIR": str(tmp_path / "sockets"),
+            "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
+            "STT_CUDA_MODE": "cpu",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert docker_log.read_text(encoding="utf-8").splitlines() == [
+        f"compose -f {repo_root / 'compose.faster-whisper-stt.yaml'} up -d --build --force-recreate MODEL=small.en DEVICE=cpu COMPUTE=int8 PRELOAD=true"
+    ]
+
+
 def test_faster_whisper_stt_preflight_reports_cpu_fallback_without_gpu(tmp_path):
     repo_root = Path(__file__).resolve().parents[1]
     docker_log = tmp_path / "docker.log"
@@ -205,6 +262,7 @@ def test_faster_whisper_stt_preflight_reports_cpu_fallback_without_gpu(tmp_path)
             "DOCKER_BIN": str(fake_docker),
             "DOCKER_LOG": str(docker_log),
             "STT_ENV_FILE": str(tmp_path / "missing.env"),
+            "RUNTIME_DIR": str(tmp_path / "runtime"),
             "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
             "STT_CUDA_MODE": "auto",
             "STT_CUDA_CHECK_TIMEOUT_S": "2",
