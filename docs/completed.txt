@@ -144,3 +144,4 @@ Task 069: Validate real-device audio providers end to end - Completed on 05/16/2
 Task 122: Make external faster-whisper STT ready immediately after hosted install - Completed on 05/16/2026 11:49
 Task 125: Ensure hosted install creates the full runtime directory skeleton - Completed on 05/16/2026 11:51
 Task 123: Make Piper TTS ready immediately after hosted install - Completed on 05/16/2026 11:57
+Task 124: Make wake word runtime ready immediately after hosted install - Completed on 05/16/2026 12:06

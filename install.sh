@@ -8,6 +8,7 @@ APP_DIR="${HEXEVOICE_APP_DIR:-$INSTALL_ROOT/HexeVoice}"
 RUN_BOOTSTRAP="${HEXEVOICE_RUN_BOOTSTRAP:-false}"
 SETUP_STT="${HEXEVOICE_SETUP_STT:-false}"
 SETUP_TTS="${HEXEVOICE_SETUP_TTS:-false}"
+SETUP_WAKE="${HEXEVOICE_SETUP_WAKE:-false}"
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
@@ -88,6 +89,10 @@ if [[ "$RUN_BOOTSTRAP" == "true" || "$RUN_BOOTSTRAP" == "1" || "$RUN_BOOTSTRAP" 
     log "Installing, starting, and warming Piper TTS"
     ./scripts/piper-tts-control.sh ready
   fi
+  if [[ "$SETUP_WAKE" == "true" || "$SETUP_WAKE" == "1" || "$SETUP_WAKE" == "yes" ]]; then
+    log "Installing, starting, and checking openWakeWord"
+    ./scripts/openwakeword-control.sh ready
+  fi
 else
   if [[ "$SETUP_STT" == "true" || "$SETUP_STT" == "1" || "$SETUP_STT" == "yes" ]]; then
     require_command systemctl
@@ -98,11 +103,16 @@ else
     log "Installing, starting, and warming Piper TTS"
     ./scripts/piper-tts-control.sh ready
   fi
+  if [[ "$SETUP_WAKE" == "true" || "$SETUP_WAKE" == "1" || "$SETUP_WAKE" == "yes" ]]; then
+    log "Installing, starting, and checking openWakeWord"
+    ./scripts/openwakeword-control.sh ready
+  fi
   log "Install complete"
   printf '\nNext steps:\n'
   printf '  cd %s\n' "$APP_DIR"
   printf '  edit scripts/stack.env for this host\n'
   printf '  ./scripts/faster-whisper-stt-control.sh ready   # optional: install/start/preload STT\n'
   printf '  ./scripts/piper-tts-control.sh ready            # optional: download/start/warm Piper TTS\n'
+  printf '  ./scripts/openwakeword-control.sh ready         # optional: sync/start/check wake word\n'
   printf '  ./scripts/bootstrap.sh\n'
 fi

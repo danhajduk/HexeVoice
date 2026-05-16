@@ -478,7 +478,7 @@ class AssistantTurnService:
     def _wake_words(self) -> list[str]:
         configured = self._settings.voice_wake_models or ""
         wake_words = [item.strip() for item in configured.split(",") if item.strip()]
-        return wake_words or ["Hexa"]
+        return wake_words or ["Hexe"]
 
     def _build_adapter(self) -> AssistantAdapter:
         fallback = LocalEchoAssistantAdapter()

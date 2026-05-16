@@ -1388,7 +1388,7 @@ def create_app(
         configured = [item.strip() for item in (app_settings.voice_wake_models or "").split(",") if item.strip()]
         model_dir = app_settings.runtime_dir / "openwakeword" / "models"
         discovered = [path.stem for path in sorted(model_dir.glob("*.onnx")) + sorted(model_dir.glob("*.tflite"))] if model_dir.exists() else []
-        models = [*configured, *discovered, "Hexa"]
+        models = [*configured, *discovered, "Hexe"]
         deduped: list[str] = []
         seen = set()
         for model in models:

@@ -147,6 +147,18 @@ the `v1.0.0` tag and derives the model path from Piper voice ids such as
 `en_US-lessac-medium`. Set `PIPER_TTS_DOWNLOAD_VOICES` to a comma-separated
 voice list and `PIPER_TTS_VOICE_REPO_URL` to use a mirror or different source.
 
+Hosted install can also bring up the supervised openWakeWord runtime with
+`HEXEVOICE_SETUP_WAKE=true`. This syncs the default Hexe model into
+`runtime/openwakeword/models`, starts the Docker container, and waits for the
+Wyoming TCP port to accept connections:
+
+```bash
+HEXEVOICE_SETUP_WAKE=true ./install.sh
+./scripts/openwakeword-control.sh ready
+./scripts/openwakeword-control.sh doctor
+./scripts/openwakeword-control.sh health
+```
+
 Systemd user units are intentionally not enabled for auto-start and do not declare a restart policy. Core Supervisor is the lifecycle authority for managed node runtime behavior.
 
 When supervisor integration is enabled, the backend registers and heartbeats through the local Unix socket:

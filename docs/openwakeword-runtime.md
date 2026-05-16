@@ -48,17 +48,20 @@ HexeVoice now owns a local openWakeWord container definition:
 - default model directory: `runtime/openwakeword/models`
 - Docker restart policy: `no`
 
-The runtime model directory is intentionally gitignored except for `.gitkeep`; trained `.tflite` and `.onnx` model files are local runtime assets.
+The runtime model directory is intentionally gitignored except for `.gitkeep`; trained `.tflite` and `.onnx` model files are local runtime assets. Hosted installs include the default Hexe wake model at `runtime/openwakeword/models/hexe.tflite`.
 
-To copy models from the old HomeAssistant-owned directory or from the current local `runtime/vioce_models/Hexa.tflite` file:
+To prepare wake models from the included Hexe model, the old HomeAssistant-owned directory, or the legacy local `runtime/vioce_models/Hexa.tflite` file:
 
 ```bash
 ./scripts/openwakeword-control.sh sync-models
 ```
 
-To start, stop, or inspect the HexeVoice-owned container:
+To start, stop, check, or inspect the HexeVoice-owned container:
 
 ```bash
+./scripts/openwakeword-control.sh ready
+./scripts/openwakeword-control.sh health
+./scripts/openwakeword-control.sh doctor
 ./scripts/openwakeword-control.sh start
 ./scripts/openwakeword-control.sh status
 ./scripts/openwakeword-control.sh logs
@@ -97,7 +100,7 @@ Use the supervised wake provider when the backend should stream firmware audio t
 VOICE_WAKE_PROVIDER=supervised_openwakeword
 VOICE_WAKE_SERVICE_HOST=127.0.0.1
 VOICE_WAKE_SERVICE_PORT=10400
-VOICE_WAKE_MODELS=Hexa
+VOICE_WAKE_MODELS=Hexe
 ```
 
 `VOICE_WAKE_MODELS` is interpreted as wake-word names for the Wyoming service in this mode. The older in-process provider remains available with `VOICE_WAKE_PROVIDER=openwakeword`, where `VOICE_WAKE_MODELS` continues to mean local model paths.

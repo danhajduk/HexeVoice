@@ -35,7 +35,7 @@ Observed provider status:
   "loaded": true,
   "host": "127.0.0.1",
   "port": 10400,
-  "models": ["Hexa"],
+  "models": ["Hexe"],
   "last_error": null
 }
 ```
@@ -62,7 +62,7 @@ Result:
 
 ## Remaining Live Validation
 
-A true wake-to-listening acceptance test still needs a recorded or live utterance of the trained wake word. The current automated validation covers the protocol path and session transition logic with a fake Wyoming detection event, plus the live container connection with silence. It does not prove that the trained `Hexa` model detects the spoken wake word from ESP-BOX microphone audio.
+A true wake-to-listening acceptance test still needs a recorded or live utterance of the trained wake word. The current automated validation covers the protocol path and session transition logic with a fake Wyoming detection event, plus the live container connection with silence. It does not prove that the trained `Hexe` model detects the spoken wake word from ESP-BOX microphone audio.
 
 The next live check should:
 

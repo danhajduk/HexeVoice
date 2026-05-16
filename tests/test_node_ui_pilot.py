@@ -282,7 +282,7 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
                     "warm_models": ["en_US-jenny-high"],
                 },
                 "voice": {
-                    "default_wakeword": "Hexa",
+                    "default_wakeword": "Hexe",
                     "warm_model": True,
                 },
             },
@@ -297,9 +297,9 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
             },
             "wake": {
                 "kind": "wake",
-                "default_wakeword": "Hexa",
+                "default_wakeword": "Hexe",
                 "warm_model": True,
-                "wakeword_options": [{"value": "Hexa", "label": "Hexa"}],
+                "wakeword_options": [{"value": "Hexe", "label": "Hexe"}],
             },
         },
     )
@@ -317,7 +317,7 @@ def test_provider_status_treats_voice_setup_as_wake_enabled():
     assert wake_form["title"] == "Voice Setup"
     assert wake_form["fields"][0]["value"] is True
     wake_fields = {field["id"]: field for field in wake_form["fields"]}
-    assert wake_fields["default_wakeword"]["value"] == "Hexa"
+    assert wake_fields["default_wakeword"]["value"] == "Hexe"
     assert wake_fields["warm_model"]["value"] is True
     assert wake_form["submit_action_id"] == node_ui.provider_setup_action_id("voice")
 
