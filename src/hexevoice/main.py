@@ -42,10 +42,13 @@ from hexevoice.api.models import (
     VoiceSessionReplayRequest,
     LocalSetupStateResponse,
     NodeMigrationExportRequest,
+    NodeMigrationBackupRequest,
+    NodeMigrationBackupResponse,
     NodeMigrationImportRequest,
     NodeMigrationImportResponse,
     NodeMigrationPreflightRequest,
     NodeMigrationPreflightResponse,
+    NodeMigrationRestoreRequest,
     NodeStatusResponse,
     NodeIdentitySetupRequest,
     NodeIdentitySetupResponse,
@@ -1822,6 +1825,20 @@ def create_app(
     @app.post("/api/node/migration/preflight", response_model=NodeMigrationPreflightResponse)
     async def preflight_node_migration_bundle(payload: NodeMigrationPreflightRequest) -> dict:
         return node_migration_service.preflight_bundle(payload)
+
+    @app.post("/api/node/migration/backup", response_model=NodeMigrationBackupResponse)
+    async def backup_node_migration_state(payload: NodeMigrationBackupRequest) -> dict:
+        try:
+            return node_migration_service.create_backup(payload)
+        except NodeMigrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/node/migration/restore", response_model=NodeMigrationImportResponse)
+    async def restore_node_migration_backup(payload: NodeMigrationRestoreRequest) -> NodeMigrationImportResponse:
+        try:
+            return node_migration_service.restore_backup(payload)
+        except NodeMigrationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.put("/api/onboarding/local-setup/node-identity", response_model=NodeIdentitySetupResponse)
     async def save_node_identity(payload: NodeIdentitySetupRequest) -> NodeIdentitySetupResponse:

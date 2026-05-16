@@ -11,10 +11,12 @@ from typing import Any
 import httpx
 
 from hexevoice.api.models import (
+    NodeMigrationBackupRequest,
     NodeMigrationExportRequest,
     NodeMigrationImportRequest,
     NodeMigrationImportResponse,
     NodeMigrationPreflightRequest,
+    NodeMigrationRestoreRequest,
 )
 from hexevoice.assistant.intent_registry import VoiceIntentState, VoiceIntentStateStore
 from hexevoice.config.settings import Settings, parse_tts_conversion_sample_rates
@@ -59,6 +61,7 @@ class NodeMigrationService:
         self._endpoint_registry_store = EndpointRegistryStore(path=settings.resolved_endpoint_registry_path())
         self._voice_intent_store = VoiceIntentStateStore(path=settings.resolved_voice_intent_registry_path())
         self._tts_runtime_settings_path = settings.resolved_voice_tts_runtime_config_path()
+        self._backup_dir = settings.runtime_dir / "migration" / "backups"
 
     def export_bundle(self, payload: NodeMigrationExportRequest) -> dict[str, Any]:
         state_files: dict[str, Any] = {
@@ -110,6 +113,88 @@ class NodeMigrationService:
             "state_files": state_files,
             "warnings": warnings,
         }
+
+    def create_backup(self, payload: NodeMigrationBackupRequest) -> dict[str, Any]:
+        timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+        suffix = self._safe_label(payload.label) if payload.label else ("sensitive" if payload.include_trust_secrets else "redacted")
+        backup_id = f"{timestamp}-{suffix}"
+        backup_dir = self._backup_path(backup_id, must_exist=False)
+        if backup_dir.exists():
+            raise NodeMigrationError("migration_backup_already_exists")
+        backup_dir.mkdir(parents=True, exist_ok=False)
+
+        bundle = self.export_bundle(NodeMigrationExportRequest(include_trust_secrets=payload.include_trust_secrets))
+        bundle_path = backup_dir / "migration-bundle.json"
+        self._write_json_file(bundle_path, bundle)
+
+        service_env_dir = backup_dir / "service-env"
+        service_env_dir.mkdir()
+        service_env_files = []
+        missing_service_env_files = []
+        for path in [
+            Path("scripts/stack.env"),
+            self._settings.piper_tts_env_path,
+            Path("scripts/openwakeword.env"),
+        ]:
+            source = path if path.is_absolute() else Path.cwd() / path
+            if source.exists() and source.is_file():
+                destination = service_env_dir / source.name
+                destination.write_bytes(source.read_bytes())
+                service_env_files.append(str(destination.relative_to(backup_dir)))
+            else:
+                missing_service_env_files.append(str(path))
+
+        manifest = {
+            "backup_id": backup_id,
+            "created_at": datetime.now(UTC).isoformat(),
+            "contains_trust_secrets": payload.include_trust_secrets,
+            "bundle_path": "migration-bundle.json",
+            "service_env_files": service_env_files,
+            "missing_service_env_files": missing_service_env_files,
+            "excluded_by_default": [
+                "runtime/stt/faster-whisper model cache",
+                "runtime/piper-tts/models",
+                "runtime/openwakeword/models",
+                "runtime/voice_tts generated audio",
+                "runtime/logs",
+                "runtime/voice_session_history.json",
+            ],
+            "warnings": bundle.get("warnings", []),
+        }
+        manifest_path = backup_dir / "manifest.json"
+        self._write_json_file(manifest_path, manifest)
+        return {
+            "backup_id": backup_id,
+            "backup_dir": str(backup_dir),
+            "manifest_path": str(manifest_path),
+            "bundle_path": str(bundle_path),
+            "contains_trust_secrets": payload.include_trust_secrets,
+            "files": ["migration-bundle.json", "manifest.json", *service_env_files],
+            "warnings": [
+                *bundle.get("warnings", []),
+                *[f"Service env file missing and skipped: {path}" for path in missing_service_env_files],
+            ],
+        }
+
+    def restore_backup(self, payload: NodeMigrationRestoreRequest) -> NodeMigrationImportResponse:
+        backup_dir = self._backup_path(payload.backup_id, must_exist=True)
+        bundle_path = backup_dir / "migration-bundle.json"
+        if not bundle_path.exists():
+            raise NodeMigrationError("migration_backup_bundle_missing")
+        bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+        import_payload = NodeMigrationImportRequest(
+            bundle=bundle,
+            dry_run=payload.dry_run,
+            destination_core_base_url=payload.destination_core_base_url,
+            destination_api_base_url=payload.destination_api_base_url,
+            destination_ui_endpoint=payload.destination_ui_endpoint,
+            destination_hostname=payload.destination_hostname,
+        )
+        if not payload.dry_run:
+            self.import_bundle(import_payload.model_copy(update={"dry_run": True}))
+        response = self.import_bundle(import_payload)
+        warnings = [*response.warnings, f"Restored from migration backup {payload.backup_id}."]
+        return response.model_copy(update={"warnings": warnings})
 
     def import_bundle(self, payload: NodeMigrationImportRequest) -> NodeMigrationImportResponse:
         if payload.dry_run:
@@ -410,6 +495,24 @@ class NodeMigrationService:
         if isinstance(pre_trust, dict) and pre_trust.get("core_base_url"):
             return str(pre_trust.get("core_base_url"))
         return None
+
+    def _backup_path(self, backup_id: str, *, must_exist: bool) -> Path:
+        cleaned = self._safe_label(backup_id)
+        if not cleaned:
+            raise NodeMigrationError("migration_backup_id_required")
+        path = (self._backup_dir / cleaned).resolve()
+        backup_root = self._backup_dir.resolve()
+        if backup_root not in path.parents:
+            raise NodeMigrationError("migration_backup_id_invalid")
+        if must_exist and not path.exists():
+            raise NodeMigrationError("migration_backup_not_found")
+        return path
+
+    @staticmethod
+    def _safe_label(value: str | None) -> str:
+        cleaned = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in str(value or "").strip())
+        cleaned = "-".join(part for part in cleaned.split("-") if part)
+        return cleaned[:120]
 
     def _apply_destination_overrides(
         self,

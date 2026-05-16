@@ -156,3 +156,4 @@ Task 138: Tune endpoint utterance capture and STT silence trimming before CUDA m
 Task 139: Define STT model profiles for fast intent path and accurate fallback - Completed on 05/16/2026 13:39
 Task 142: Add migration preflight and dry-run validation - Completed on 05/16/2026 13:52
 Task 143: Add post-install smoke test command - Completed on 05/16/2026 13:55
+Task 144: Add migration backup and rollback workflow - Completed on 05/16/2026 13:58

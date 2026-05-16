@@ -80,6 +80,28 @@ optionally check Core reachability:
 The import API also accepts `dry_run=true`; it validates destination overrides
 and returns planned writes plus warnings without changing runtime state.
 
+Before a migration or risky reconfiguration, create a rollback backup. Backups
+live under `runtime/migration/backups/<backup-id>` and include a manifest, a
+migration bundle, and small service env files such as `scripts/stack.env`,
+`scripts/piper-tts.env`, and `scripts/openwakeword.env` when present. Trust
+tokens are redacted by default; include them only when the backup will be
+handled as secret material.
+
+```bash
+./scripts/migration-backup.py create --label before-cuda-move
+./scripts/migration-backup.py create --include-trust-secrets --label before-cuda-move
+./scripts/migration-backup.py restore 20260516T210000Z-before-cuda-move --dry-run
+./scripts/migration-backup.py restore 20260516T210000Z-before-cuda-move \
+  --core-url http://10.0.0.100:9001 \
+  --api-url http://10.0.0.55:9004 \
+  --ui-url http://10.0.0.55:8084
+```
+
+Restore validates the stored bundle with the same dry-run import path before it
+writes runtime state. Model caches, generated audio, firmware binaries, logs,
+retained recordings, and large media artifacts remain outside the rollback
+backup and should be copied or downloaded through their normal runtime paths.
+
 After install or migration, run the smoke test to prove the node is usable. It
 checks backend status, frontend reachability, STT/TTS/wake runtime health,
 runtime directories, and optional Docker visibility:

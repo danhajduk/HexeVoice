@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -222,6 +223,95 @@ def test_node_migration_preflight_rejects_invalid_bundle(tmp_path):
     payload = response.json()
     assert payload["ok"] is False
     assert "unsupported_migration_schema_version" in " ".join(payload["errors"])
+
+
+def test_node_migration_backup_creates_manifest_and_redacts_trust_by_default(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    OnboardingStateStore(path=state_path).save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                    "node_trust_token": "secret-token",
+                }
+            }
+        )
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                runtime_dir=tmp_path / "runtime",
+                onboarding_state_path=state_path,
+                endpoint_registry_path=tmp_path / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+            )
+        )
+    )
+
+    response = client.post("/api/node/migration/backup", json={"label": "before-move"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["contains_trust_secrets"] is False
+    manifest = json.loads(Path(payload["manifest_path"]).read_text(encoding="utf-8"))
+    bundle = json.loads(Path(payload["bundle_path"]).read_text(encoding="utf-8"))
+    assert manifest["backup_id"] == payload["backup_id"]
+    assert manifest["contains_trust_secrets"] is False
+    assert bundle["state_files"]["onboarding_state"]["trust_activation"]["node_trust_token"] is None
+    assert "manifest.json" in payload["files"]
+
+
+def test_node_migration_restore_validates_backup_before_writing(tmp_path):
+    source_path = tmp_path / "source" / "onboarding-state.json"
+    OnboardingStateStore(path=source_path).save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                    "node_trust_token": "secret-token",
+                }
+            }
+        )
+    )
+    backup_settings = Settings(
+        runtime_dir=tmp_path / "source-runtime",
+        onboarding_state_path=source_path,
+        endpoint_registry_path=tmp_path / "source" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "source" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "source" / "voice-tts-settings.json",
+    )
+    backup = TestClient(create_app(backup_settings)).post(
+        "/api/node/migration/backup",
+        json={"include_trust_secrets": True, "label": "rollback"},
+    ).json()
+
+    destination_path = tmp_path / "destination" / "onboarding-state.json"
+    restore_client = TestClient(
+        create_app(
+            Settings(
+                runtime_dir=tmp_path / "source-runtime",
+                onboarding_state_path=destination_path,
+                endpoint_registry_path=tmp_path / "destination" / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "destination" / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "destination" / "voice-tts-settings.json",
+            )
+        )
+    )
+
+    dry_run = restore_client.post("/api/node/migration/restore", json={"backup_id": backup["backup_id"], "dry_run": True})
+
+    assert dry_run.status_code == 200
+    assert dry_run.json()["imported"] is False
+    assert not destination_path.exists()
+
+    restored = restore_client.post("/api/node/migration/restore", json={"backup_id": backup["backup_id"]})
+
+    assert restored.status_code == 200
+    assert restored.json()["imported"] is True
+    assert OnboardingStateStore(path=destination_path).load().trust_activation.node_trust_token == "secret-token"
 
 
 def test_node_migration_export_imports_stt_provider_settings(tmp_path):

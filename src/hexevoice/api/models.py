@@ -499,6 +499,30 @@ class NodeMigrationPreflightResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
+class NodeMigrationBackupRequest(BaseModel):
+    include_trust_secrets: bool = False
+    label: str | None = Field(default=None, max_length=80)
+
+
+class NodeMigrationBackupResponse(BaseModel):
+    backup_id: str
+    backup_dir: str
+    manifest_path: str
+    bundle_path: str
+    contains_trust_secrets: bool
+    files: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class NodeMigrationRestoreRequest(BaseModel):
+    backup_id: str
+    dry_run: bool = False
+    destination_core_base_url: AnyHttpUrl | None = None
+    destination_api_base_url: AnyHttpUrl | None = None
+    destination_ui_endpoint: AnyHttpUrl | None = None
+    destination_hostname: str | None = Field(default=None, max_length=120)
+
+
 class BootstrapAdvertisementRequest(BaseModel):
     topic: str
     api_base: str | None = None
