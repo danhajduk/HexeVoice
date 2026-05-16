@@ -1,4 +1,9 @@
 [WIP] Task 122: Make external faster-whisper STT ready immediately after hosted install
+[TODO] Task 123: Make Piper TTS ready immediately after hosted install
+[TODO] Task 124: Make wake word runtime ready immediately after hosted install
+[TODO] Task 125: Ensure hosted install creates the full runtime directory skeleton
+[TODO] Task 126: Add firmware artifact download to hosted install
+[TODO] Task 121: Move local STT/TTS engine services to Unix-domain-socket-only transport
 [FUTURE TODO] Task 064: Build the first touchscreen interaction layer
 [FUTURE TODO] Task 066: Load and play sound assets from the SPI SD card
 [FUTURE TODO] Task 068: Integrate AI Node assistant routing as the primary assistant path
@@ -16,4 +21,3 @@
 [FUTURE TODO] Task 102: Tune endpoint utterance capture duration and silence detection to reduce audio sent to STT
 [FUTURE TODO] Task 109: Refactor VoiceSessionManager for multiple simultaneous ESP endpoints with per-endpoint WebSockets, active sessions, status, command routing, OTA/media delivery, and replay controls
 [FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
-[FUTURE TODO] Task 121: Move local STT/TTS engine services to Unix-domain-socket-only transport

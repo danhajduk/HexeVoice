@@ -80,7 +80,7 @@ You can override the defaults with `BACKEND_PORT`, `FRONTEND_PORT`, `BACKEND_HOS
 
 ## Notes
 
-- This scaffold follows the Hexe node standards entrypoint at `/home/dan/Projects/Hexe/docs/standards/Node/README.md`.
+- This scaffold follows the Hexe node standards entrypoint at `docs/Core-Documents/docs/standards/Node/README.md`.
 - Node onboarding is implemented end to end across the backend and frontend shell.
 - HexeVoice registers and heartbeats to the Core Supervisor over `/run/hexe/supervisor.sock` when `HEXE_SUPERVISOR_ENABLED=true`.
 - The operator UI follows the shared Hexe node visual standard and renders the full canonical 10-step flow plus post-setup operational overview surfaces.

@@ -40,6 +40,9 @@ fi
 
 cd "$APP_DIR"
 
+log "Initializing submodules"
+git submodule update --init --recursive
+
 log "Creating Python virtual environment"
 python3 -m venv .venv
 

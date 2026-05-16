@@ -1,0 +1,4 @@
+[submodule "docs/Core-Documents"]
+	path = docs/Core-Documents
+	url = https://github.com/danhajduk/HexeCore.git
+	branch = main

@@ -31,18 +31,18 @@ Original task details:
    - Reach `operational_ready=true` as projected by `GET /api/system/nodes/operational-status/{node_id}`.
 
 ### Core docs used as source of truth
-- `../Hexe/docs/nodes/node-onboarding-api-contract.md`
-- `../Hexe/docs/nodes/node-onboarding-phase1-contract.md`
-- `../Hexe/docs/nodes/node-trust-activation-payload-contract.md`
-- `../Hexe/docs/nodes/node-trust-status-contract.md`
-- `../Hexe/docs/nodes/node-phase2-lifecycle-contract.md`
-- `../Hexe/docs/nodes/node-capability-activation-architecture.md`
-- `../Hexe/docs/nodes/node-lifecycle.md`
-- `../Hexe/docs/nodes/node-onboarding-registration-architecture.md`
-- `../Hexe/docs/nodes/onboarding-trust-terminology.md`
-- `../Hexe/docs/json_schema/node_onboarding_start_request.schema.json`
-- `../Hexe/docs/standards/Node/frontend-standard.md`
-- `../Hexe/docs/standards/Node/frontend-visual-and-interaction-standard.md`
+- `docs/Core-Documents/docs/nodes/node-onboarding-api-contract.md`
+- `docs/Core-Documents/docs/nodes/node-onboarding-phase1-contract.md`
+- `docs/Core-Documents/docs/nodes/node-trust-activation-payload-contract.md`
+- `docs/Core-Documents/docs/nodes/node-trust-status-contract.md`
+- `docs/Core-Documents/docs/nodes/node-phase2-lifecycle-contract.md`
+- `docs/Core-Documents/docs/nodes/node-capability-activation-architecture.md`
+- `docs/Core-Documents/docs/nodes/node-lifecycle.md`
+- `docs/Core-Documents/docs/nodes/node-onboarding-registration-architecture.md`
+- `docs/Core-Documents/docs/nodes/onboarding-trust-terminology.md`
+- `docs/Core-Documents/docs/json_schema/node_onboarding_start_request.schema.json`
+- `docs/Core-Documents/docs/standards/Node/frontend-standard.md`
+- `docs/Core-Documents/docs/standards/Node/frontend-visual-and-interaction-standard.md`
 
 ## Task 001
 Original task details:
@@ -1031,13 +1031,97 @@ Original task details:
   - Backend service status reports the STT engine as healthy once the STT service is running.
   - Failures name the missing prerequisite or model-download/preload error instead of silently succeeding.
 
+## Task 123
+Original task details:
+- Title: Make Piper TTS ready immediately after hosted install
+- Goal:
+  - A fresh hosted install should leave the Piper TTS engine installable, startable, and verifiably healthy without manual Docker/model discovery work.
+- Scope:
+  - Extend the hosted installer or a dedicated TTS readiness helper to verify Docker/Podman availability, image build/pull behavior, model directory setup, and service start/restart.
+  - Add provider setup controls mirroring the STT work: choose default Piper voice/model, choose additional voices to download/preload, and persist those choices through provider setup.
+  - Add a model download path for selected Piper voices. Prefer configurable model source metadata rather than hardcoded one-off files; keep model binaries out of git.
+  - Decide and document safe default voices for first install, including one lightweight default and optional higher-quality voices.
+  - Make the TTS control script support install/build/pull, model download, start/restart, health, preload/warm, and doctor-style diagnostics with actionable errors.
+  - Keep existing Piper TTS HTTP APIs, Docker container naming, Supervisor metadata, runtime settings, warm voice behavior, and conversion sample-rate handling stable.
+  - Add tests or shell validation that cover control-script/provider-config behavior without downloading real model files in CI.
+  - Update setup/operations docs with a TTS-ready install path and troubleshooting commands.
+- Acceptance criteria:
+  - After a hosted install on a supported host with Docker/Podman available, the operator can run one documented command and see the Piper TTS runtime healthy.
+  - Provider setup can select one or more voices to download/preload and mark the default voice.
+  - Failures clearly identify missing container runtime, image build/pull failure, model download failure, or health/preload failure.
+
+## Task 124
+Original task details:
+- Title: Make wake word runtime ready immediately after hosted install
+- Goal:
+  - A fresh hosted install should leave the wake word runtime installable, startable, and verifiably healthy with at least one configured wake model.
+- Scope:
+  - Extend the hosted installer or a dedicated wake readiness helper to prepare the configured wake provider, model directory, service/container runtime, and health checks.
+  - Add provider setup controls for choosing the default wake word/model, choosing additional wake models to download/copy/preload, and persisting those choices.
+  - Include a default `Hexe` wake model, not `Hexa`, under `runtime/openwakeword/models/` as `hexe.*` or download/copy it there during install. Normalize config and docs to use `Hexe` as the default wake word name.
+  - Define how trained wake models are sourced: existing migration bundle/runtime copy, local file upload/copy, known repo/release asset, or configured URL. Keep trained model binaries out of git unless explicitly approved.
+  - Update `scripts/openwakeword-control.sh` or a companion helper so it can install/sync/download models, start/restart, health-check, preload if supported, and run doctor-style diagnostics.
+  - Preserve existing supervised OpenWakeWord/Wyoming behavior and backend wake provider contracts.
+  - Add tests or shell validation for setup/control-script behavior without requiring real wake model downloads in CI.
+  - Update setup/operations docs with a wake-ready install path and troubleshooting commands.
+- Acceptance criteria:
+  - After a hosted install and documented wake setup command, the wake runtime is healthy and reports the configured model list.
+  - Provider setup can select the default wake model and any additional models to prepare, with `Hexe` available by default.
+  - Failures clearly identify missing runtime, missing wake model, model download/copy failure, or wake service health failure.
+
+## Task 125
+Original task details:
+- Title: Ensure hosted install creates the full runtime directory skeleton
+- Goal:
+  - A fresh hosted install should always create the runtime directory layout expected by backend, STT, TTS, wake word, firmware, endpoint media, logs, generated UI pages, and migration/runtime artifacts.
+- Scope:
+  - Add an installer or helper step that explicitly creates the runtime skeleton with `mkdir -p` rather than relying only on tracked `.gitkeep` files.
+  - Include at least:
+    - `runtime/endpoint_media/`
+    - `runtime/endpoint_media/ota/`
+    - `runtime/endpoint_media/ui_manifest/`
+    - `runtime/firmware/`
+    - `runtime/logs/`
+    - `runtime/openwakeword/models/`
+    - `runtime/piper-tts/models/`
+    - `runtime/rendered_node_ui_pages/`
+    - `runtime/stt/faster-whisper/`
+    - `runtime/voice_tts/`
+    - `runtime/wake_recordings/`
+  - Ensure directory creation is idempotent and does not overwrite existing runtime state.
+  - Consider a single `scripts/prepare-runtime-dirs.sh` helper used by `install.sh`, tests, and docs.
+  - Add shell validation or tests that verify the expected directories are created in a temporary install root.
+  - Update setup docs to describe which directories are guaranteed empty scaffolding versus populated by model/artifact downloads.
+- Acceptance criteria:
+  - Running the hosted installer or runtime-dir helper on a clean checkout creates the expected directory tree.
+  - Existing files in those directories are preserved.
+  - Docs clearly state that model binaries, firmware binaries, and migrated state are separate downloads/imports unless their specific install tasks are run.
+
+## Task 126
+Original task details:
+- Title: Add firmware artifact download to hosted install
+- Goal:
+  - The hosted install should be able to fetch the latest compatible endpoint firmware artifacts into `runtime/firmware/` so OTA and endpoint comparison work on a fresh host.
+- Scope:
+  - Add installer/control-script support for firmware artifact download after app install. The source should be configurable because firmware may live in a separate repository.
+  - Support a future separate firmware repository with a configurable repo URL, branch/tag, release asset URL, or GitHub Releases source.
+  - Ensure `runtime/firmware/` is tracked/scaffolded and download manifests, binaries, and checksums into it using atomic writes and checksum validation when checksums are available.
+  - Preserve board-specific artifacts such as ESP Box and HA Voice PE variants and keep endpoint firmware comparison metadata compatible with existing backend behavior.
+  - Avoid committing firmware binaries to this repo as part of the installer work unless explicitly approved.
+  - Add docs for configuring `HEXEVOICE_FIRMWARE_REPO_URL`, release/tag selection, offline/manual copy fallback, and verification commands.
+  - Add tests or script dry-runs that validate source selection, destination paths, and checksum handling without requiring network downloads in CI.
+- Acceptance criteria:
+  - A fresh host can run a documented install/firmware command and populate `runtime/firmware/` with the latest selected release artifacts.
+  - Backend OTA manifest and endpoint firmware comparison continue to work from the downloaded artifacts.
+  - Failures clearly identify missing source configuration, download failure, checksum mismatch, or unsupported board artifact.
+
 ## Task 125-133
 Original task details:
 - Title: Start the HexeVoice migration to Core-rendered node UI
 - Source docs:
-  - `docs/Core-Documents/nodes/future-dev/core-rendered-node-ui-migration.md`
-  - `docs/Core-Documents/nodes/ui-mogration/README.md`
-  - `docs/Core-Documents/nodes/ui-mogration/node-requirements.md`
+  - `docs/Core-Documents/docs/nodes/future-dev/core-rendered-node-ui-migration.md`
+  - `docs/Core-Documents/docs/nodes/ui-mogration/README.md`
+  - `docs/Core-Documents/docs/nodes/ui-mogration/node-requirements.md`
 - Scope and boundaries:
   - Implement node-side contracts in HexeVoice only; do not change Core behavior from this queue.
   - Keep the existing node-hosted operational dashboard available during the pilot.
@@ -1065,7 +1149,7 @@ Preserved task details:
 - Task 129 adds endpoint-focused data endpoints such as `/api/node/ui/voice/endpoints`, `/api/node/ui/voice/endpoint-actions`, and optional endpoint detail endpoints. The data should project endpoint connection, transport, firmware, mute, volume, session, replay, OTA, media, and storage state into shared `record_list`, `facts_card`, and `action_panel` responses without requiring Core to fetch every endpoint detail up front.
 - Task 130 adds intent-focused Core-rendered surfaces: a `record_list` endpoint for registered intents, a detail endpoint for selected intent contracts, and action metadata/data for dry-run test and real invoke flows. Existing `/api/voice/intents`, `/api/voice/intents/{intent_id}`, `/api/voice/intents/dispatch`, and `/api/voice/intents/invoke` behavior should stay authoritative.
 - Task 131 adds TTS and artifact surfaces for model inventory, warm/cold model status, conversion sample-rate settings, generated TTS artifacts, wake recordings, endpoint media inventory, and related safe actions. Use `resource_grid`, `artifact_browser`, `settings_form`, `provider_status`, and `record_list` shapes where Core already supports or plans those card kinds.
-- Task 132 adds tests that validate the manifest and card payloads against the Core-rendered UI handoff contract available in `docs/Core-Documents/nodes/ui-mogration/`. Tests should cover manifest shape, endpoint routing, no forbidden executable content, lightweight data payloads, safe action metadata, detail loading, and preservation of existing local dashboard/API behavior. Docs should explain how to enable the pilot from Core and what remains local-only.
+- Task 132 adds tests that validate the manifest and card payloads against the Core-rendered UI handoff contract available in `docs/Core-Documents/docs/nodes/ui-mogration/`. Tests should cover manifest shape, endpoint routing, no forbidden executable content, lightweight data payloads, safe action metadata, detail loading, and preservation of existing local dashboard/API behavior. Docs should explain how to enable the pilot from Core and what remains local-only.
 - Task 133 adds a Voice node local UI mode configuration with initial default `full`. `setup_only` must preserve first boot, Core pairing, trust registration, recovery diagnostics, and handoff messaging while hiding normal operational dashboard surfaces only after Core-rendered parity is verified. `disabled` should remain documented as future-only until recovery coverage is strong enough.
 
 Definition of done:
