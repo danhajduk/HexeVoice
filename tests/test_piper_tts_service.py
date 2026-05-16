@@ -84,5 +84,5 @@ def test_piper_tts_dockerfile_launches_tts_service_module():
     content = dockerfile.read_text(encoding="utf-8")
 
     assert "COPY src/tts /app/tts" in content
-    assert "tts.service:app" in content
+    assert '"python", "-m", "tts.service"' in content
     assert "app:app" not in content
