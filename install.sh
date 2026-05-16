@@ -72,6 +72,9 @@ fi
 
 chmod +x scripts/*.sh
 
+log "Preparing runtime directory skeleton"
+./scripts/prepare-runtime-dirs.sh
+
 if [[ "$RUN_BOOTSTRAP" == "true" || "$RUN_BOOTSTRAP" == "1" || "$RUN_BOOTSTRAP" == "yes" ]]; then
   require_command systemctl
   log "Installing and starting user services"

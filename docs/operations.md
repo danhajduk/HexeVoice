@@ -79,6 +79,21 @@ service as it is handled. Each `systemctl --user` operation is bounded by
 machine needs a longer model unload/load window, for example
 `STACK_CONTROL_TIMEOUT_S=90 scripts/restart-stack.sh`.
 
+Hosted install runs `scripts/prepare-runtime-dirs.sh` to create the runtime
+directory skeleton idempotently. Run it directly after manual checkouts or after
+changing `RUNTIME_DIR`:
+
+```bash
+./scripts/prepare-runtime-dirs.sh
+```
+
+The helper creates empty scaffolding for endpoint media, firmware artifacts,
+logs, migration backups, micro-VAD debug chunks, openWakeWord models, Piper
+models, rendered node UI pages, local sockets, STT cache/model files, generated
+TTS artifacts, and wake recordings. It does not download model binaries,
+firmware binaries, migrated state, logs, or generated audio; those are populated
+by their specific install, download, import, or runtime paths.
+
 The external faster-whisper STT runtime code lives in the standalone
 `src/stt/` package. `src/hexevoice/stt_service.py` remains as a compatibility
 entrypoint, while service launch commands use `python -m stt.service`.
