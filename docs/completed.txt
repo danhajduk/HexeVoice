@@ -151,3 +151,4 @@ Task 140: Auto-detect CUDA-capable STT Docker image during install - Completed o
 Task 134: Include STT provider settings in node migration bundles - Completed on 05/16/2026 12:55
 Task 135: Expand TTS provider settings in node migration bundles - Completed on 05/16/2026 12:58
 Task 136: Include wake word provider settings in node migration bundles - Completed on 05/16/2026 13:00
+Task 137: Add CUDA host preflight, STT benchmark, and CPU fallback validation - Completed on 05/16/2026 13:11

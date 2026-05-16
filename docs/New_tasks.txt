@@ -1,4 +1,3 @@
-[TODO] Task 137: Add CUDA host preflight, STT benchmark, and CPU fallback validation
 [TODO] Task 138: Tune endpoint utterance capture and STT silence trimming before CUDA migration
 [TODO] Task 139: Define STT model profiles for fast intent path and accurate fallback
 [STOP]

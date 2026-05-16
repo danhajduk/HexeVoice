@@ -179,3 +179,45 @@ def test_faster_whisper_stt_control_forced_cuda_uses_cuda_compose_profile(tmp_pa
         "STT_IMAGE=hexevoice/faster-whisper-stt:cuda DEVICE=cuda COMPUTE=float16"
     )
     assert len(lines) == 3
+
+
+def test_faster_whisper_stt_preflight_reports_cpu_fallback_without_gpu(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    docker_log = tmp_path / "docker.log"
+    fake_docker = tmp_path / "docker"
+    fake_docker.write_text(
+        "#!/usr/bin/env bash\n"
+        'printf "%s\\n" "$*" >> "$DOCKER_LOG"\n'
+        'if [[ "$1" == "--version" ]]; then echo "Docker version test"; exit 0; fi\n'
+        'if [[ "$1" == "compose" ]]; then echo "Docker Compose version test"; exit 0; fi\n'
+        'if [[ "$1" == "run" ]]; then echo "gpu unavailable" >&2; exit 1; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    fake_docker.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", "scripts/faster-whisper-stt-control.sh", "cuda-preflight"],
+        cwd=repo_root,
+        env={
+            "PATH": "/usr/bin:/bin",
+            "PYTHON_BIN": sys.executable,
+            "DOCKER_BIN": str(fake_docker),
+            "DOCKER_LOG": str(docker_log),
+            "STT_ENV_FILE": str(tmp_path / "missing.env"),
+            "HEXEVOICE_STT_CACHE_DIR": str(tmp_path / "stt-cache"),
+            "STT_CUDA_MODE": "auto",
+            "STT_CUDA_CHECK_TIMEOUT_S": "2",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    payload = json.loads(result.stdout)
+    assert payload["cuda_available"] is False
+    assert payload["selected_profile"] == "cpu"
+    assert payload["cpu_fallback"]["compute_type"] == "int8"
+    assert payload["checks"]["docker"]["ok"] is True
+    assert payload["checks"]["docker_gpu_smoke"]["ok"] is False
+    assert "CPU fallback" in " ".join(payload["warnings"])

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 import time
@@ -69,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         help="Optional JSON manifest with clips and reference transcripts for accuracy scoring.",
     )
     parser.add_argument("--json-output", type=Path, help="Optional path for machine-readable benchmark output.")
+    parser.add_argument(
+        "--generate-fixture",
+        action="store_true",
+        help="Generate a small 16 kHz WAV fixture when no clips are available.",
+    )
     return parser.parse_args()
 
 
@@ -79,6 +85,23 @@ def newest_wake_clips(recordings_dir: Path, samples: int) -> list[Path]:
         reverse=True,
     )
     return clips[:samples]
+
+
+def generate_fixture(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    sample_rate = 16000
+    frame_count = sample_rate
+    amplitude = 0.08
+    with wave.open(str(path), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(sample_rate)
+        frames = bytearray()
+        for index in range(frame_count):
+            sample = int(math.sin(2 * math.pi * 440 * (index / sample_rate)) * amplitude * 32767)
+            frames.extend(sample.to_bytes(2, byteorder="little", signed=True))
+        wav.writeframes(bytes(frames))
+    return path
 
 
 def load_wav_mono_16k(path: Path) -> tuple[np.ndarray, int]:
@@ -242,6 +265,8 @@ def main() -> int:
     args = parse_args()
     manifest_clips, references = load_reference_manifest(args.reference_manifest)
     clips = args.clips or manifest_clips or newest_wake_clips(args.recordings_dir, args.samples)
+    if not clips and args.generate_fixture:
+        clips = [generate_fixture(Path("runtime/stt/benchmark-fixture.wav"))]
     if not clips:
         raise SystemExit("No WAV clips found to benchmark.")
 
@@ -297,6 +322,10 @@ def main() -> int:
                         "device": args.device,
                         "providers": ["faster_whisper"],
                         "load_ms": {"faster_whisper": faster_load_ms},
+                        "benchmark": {
+                            "compute_type": args.faster_compute_type,
+                            "repeat": args.repeat,
+                        },
                         "results": [asdict(result) for result in results],
                     },
                     indent=2,
@@ -352,6 +381,10 @@ def main() -> int:
                     "torch": torch.__version__,
                     "cuda_available": torch.cuda.is_available(),
                     "load_ms": {"faster_whisper": faster_load_ms, "whisper": whisper_load_ms},
+                    "benchmark": {
+                        "compute_type": args.faster_compute_type,
+                        "repeat": args.repeat,
+                    },
                     "results": [asdict(result) for result in results],
                 },
                 indent=2,

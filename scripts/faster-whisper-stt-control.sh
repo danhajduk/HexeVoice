@@ -287,6 +287,10 @@ doctor() {
   return "$failed"
 }
 
+cuda_preflight() {
+  PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" "$ROOT_DIR/scripts/stt-cuda-preflight.py"
+}
+
 prepare_runtime_dirs() {
   mkdir -p "$HEXEVOICE_SOCKET_DIR" "$HEXEVOICE_STT_CACHE_DIR"
 }
@@ -350,6 +354,9 @@ case "$ACTION" in
   doctor)
     doctor
     ;;
+  cuda-preflight|preflight)
+    cuda_preflight
+    ;;
   logs)
     compose logs -f --tail="${2:-100}"
     ;;
@@ -357,7 +364,7 @@ case "$ACTION" in
     compose config
     ;;
   *)
-    echo "Usage: $0 {install|build|start|stop|restart|status|health|wait-health|preload|ready|doctor|logs|config}"
+    echo "Usage: $0 {install|build|start|stop|restart|status|health|wait-health|preload|ready|doctor|cuda-preflight|logs|config}"
     exit 1
     ;;
 esac

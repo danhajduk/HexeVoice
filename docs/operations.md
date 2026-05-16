@@ -178,13 +178,31 @@ selected CUDA STT image can import faster-whisper/CTranslate2 and report CUDA
 compute support. When either check fails, setup keeps the CPU image/profile
 without failing the install.
 
+Before migrating to a CUDA-capable host, run the structured preflight. It checks
+Docker, Docker Compose, host `nvidia-smi`, Docker GPU passthrough, the CUDA STT
+image's faster-whisper/CTranslate2 CUDA support, and the configured model/device
+fields. On non-GPU hosts it exits successfully in auto mode and reports
+`selected_profile=cpu`.
+
 Useful overrides:
 
 ```bash
+./scripts/faster-whisper-stt-control.sh cuda-preflight
 STT_CUDA_MODE=cpu ./scripts/faster-whisper-stt-control.sh ready   # force CPU
 STT_CUDA_MODE=cuda ./scripts/faster-whisper-stt-control.sh ready  # require CUDA checks to pass
 STT_CUDA_MODE=skip ./scripts/faster-whisper-stt-control.sh ready  # skip detection and use CPU
 STT_CUDA_IMAGE=registry.example/hexevoice/faster-whisper-stt:cuda ./scripts/faster-whisper-stt-control.sh ready
+```
+
+For a comparable STT timing baseline, use the faster-whisper benchmark in
+faster-only mode. `--generate-fixture` creates a tiny deterministic WAV when no
+wake recordings are available; recorded command clips remain better for real
+accuracy comparison.
+
+```bash
+.venv/bin/python scripts/benchmark-stt.py --faster-only --generate-fixture \
+  --model base.en --device cpu --faster-compute-type int8 --repeat 3 \
+  --json-output runtime/stt/cpu-benchmark.json
 ```
 
 When the STT service URL is not the default `http://127.0.0.1:10300`, set
