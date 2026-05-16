@@ -352,3 +352,110 @@ def test_node_migration_rejects_malformed_tts_provider_settings(tmp_path):
 
     assert response.status_code == 400
     assert response.json()["detail"] == "voice_tts_provider_settings_warm_models_must_be_list"
+
+
+def test_node_migration_export_imports_wake_settings_with_hexe_normalization(tmp_path):
+    source_path = tmp_path / "source" / "onboarding-state.json"
+    source_settings = Settings(
+        onboarding_state_path=source_path,
+        endpoint_registry_path=tmp_path / "source" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "source" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "source" / "voice-tts-settings.json",
+        voice_wake_provider="supervised_openwakeword",
+        voice_wake_models="Hexa,Nora",
+        voice_wake_threshold=0.7,
+        voice_wake_auto_download_models=True,
+        voice_wake_preload=True,
+        voice_wake_service_host="10.0.0.38",
+        voice_wake_service_port=10400,
+        voice_wake_service_timeout_s=0.25,
+        voice_wake_recordings_enabled=True,
+        voice_wake_recording_dir=tmp_path / "source" / "wake-recordings",
+    )
+    OnboardingStateStore(path=source_path).save(
+        PersistedOnboardingState.model_validate(
+            {
+                "provider_setup": {
+                    "supported_providers": ["voice", "wake"],
+                    "enabled_providers": ["voice", "wake"],
+                    "default_provider": "voice",
+                    "provider_configs": {
+                        "wake": {
+                            "enabled": True,
+                            "default_wakeword": "Hexa",
+                            "warm_model": True,
+                            "warm_models": ["Hexa", "Nora"],
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+    bundle = TestClient(create_app(source_settings)).post("/api/node/migration/export", json={}).json()
+
+    wake_settings = bundle["state_files"]["voice_wake_settings"]
+    assert wake_settings["provider"] == "supervised_openwakeword"
+    assert wake_settings["default_wakeword"] == "Hexe"
+    assert wake_settings["models"] == ["Hexe", "Nora"]
+    assert wake_settings["warm_models"] == ["Hexe", "Nora"]
+    assert wake_settings["threshold"] == 0.7
+    assert wake_settings["auto_download_models"] is True
+    assert wake_settings["preload"] is True
+    assert wake_settings["service"]["host"] == "10.0.0.38"
+    assert wake_settings["recordings"]["enabled"] is True
+
+    destination_path = tmp_path / "destination" / "onboarding-state.json"
+    destination_settings = Settings(
+        onboarding_state_path=destination_path,
+        endpoint_registry_path=tmp_path / "destination" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "destination" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "destination" / "voice-tts-settings.json",
+    )
+    response = TestClient(create_app(destination_settings)).post(
+        "/api/node/migration/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "state_files": {"voice_wake_settings": wake_settings},
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["files_imported"] == ["voice_wake_settings"]
+    assert "wake model download/copy" in " ".join(payload["warnings"])
+    imported = OnboardingStateStore(path=destination_path).load()
+    assert imported.provider_setup.supported_providers == ["wake"]
+    assert imported.provider_setup.enabled_providers == ["wake"]
+    assert imported.provider_setup.provider_configs["wake"]["provider"] == "supervised_openwakeword"
+    assert imported.provider_setup.provider_configs["wake"]["default_wakeword"] == "Hexe"
+    assert imported.provider_setup.provider_configs["wake"]["model"] == "Hexe"
+    assert imported.provider_setup.provider_configs["wake"]["warm_models"] == ["Hexe", "Nora"]
+
+
+def test_node_migration_rejects_malformed_wake_settings(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "onboarding-state.json",
+        endpoint_registry_path=tmp_path / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+    )
+    response = TestClient(create_app(settings)).post(
+        "/api/node/migration/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "state_files": {
+                    "voice_wake_settings": {
+                        "provider": "supervised_openwakeword",
+                        "models": "Hexe",
+                    }
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "voice_wake_settings_models_must_be_list"

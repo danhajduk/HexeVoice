@@ -22,6 +22,8 @@ STT_PROVIDERS = {"deterministic", "openai", "faster_whisper", "external_faster_w
 STT_PROVIDER_CONFIG_FIELDS = {"enabled", "default", "model", "device", "compute_type", "warm_model", "warm_models"}
 TTS_PROVIDERS = {"deterministic", "openai", "piper"}
 TTS_PROVIDER_CONFIG_FIELDS = {"enabled", "default", "model", "warm_models", "default_voice"}
+WAKE_PROVIDERS = {"deterministic", "openwakeword", "supervised_openwakeword"}
+WAKE_PROVIDER_CONFIG_FIELDS = {"enabled", "default_wakeword", "model", "warm_model", "warm_models"}
 
 
 class NodeMigrationError(ValueError):
@@ -56,6 +58,10 @@ class NodeMigrationService:
         stt_settings = self._stt_settings_payload(state_files["onboarding_state"])
         if stt_settings:
             state_files["voice_stt_settings"] = stt_settings
+
+        wake_settings = self._wake_settings_payload(state_files["onboarding_state"])
+        if wake_settings:
+            state_files["voice_wake_settings"] = wake_settings
 
         warnings = [
             "Bundle can contain trust tokens and should be handled like a secret.",
@@ -159,6 +165,18 @@ class NodeMigrationService:
             warnings.append("Imported STT settings may require model downloads and an STT service restart on this host.")
             if stt_settings.get("device") == "cuda":
                 warnings.append("Imported STT settings request CUDA; verify GPU support before starting the STT service.")
+
+        wake_settings_payload = state_files.get("voice_wake_settings")
+        if wake_settings_payload is not None:
+            wake_settings = self._validate_wake_settings(wake_settings_payload)
+            current_state = self._onboarding_store.load()
+            saved = self._onboarding_store.save(self._merge_wake_settings(current_state, wake_settings))
+            node_id = node_id or saved.trust_activation.node_id
+            core_base_url = core_base_url or saved.pre_trust.core_base_url
+            api_base_url = api_base_url or saved.pre_trust.api_base_url
+            ui_endpoint = ui_endpoint or saved.pre_trust.ui_endpoint
+            imported.append("voice_wake_settings")
+            warnings.append("Imported wake settings may require wake model download/copy and wake service restart.")
 
         if not imported:
             raise NodeMigrationError("migration_bundle_contains_no_supported_state_files")
@@ -382,6 +400,176 @@ class NodeMigrationService:
                 raise NodeMigrationError(f"voice_tts_provider_settings_{section_name}_must_be_object")
             validated[section_name] = json.loads(json.dumps(section))
         return validated
+
+    def _wake_settings_payload(self, onboarding_state: dict[str, Any]) -> dict[str, Any] | None:
+        provider = str(self._settings.voice_wake_provider or "").strip()
+        if not provider:
+            return None
+        provider_setup = onboarding_state.get("provider_setup", {}) if isinstance(onboarding_state, dict) else {}
+        provider_configs = provider_setup.get("provider_configs", {}) if isinstance(provider_setup, dict) else {}
+        wake_config = provider_configs.get("wake", {}) if isinstance(provider_configs, dict) else {}
+        if not isinstance(wake_config, dict):
+            wake_config = {}
+
+        models = self._normalized_wake_models(self._settings.voice_wake_models)
+        if provider in {"deterministic", "openwakeword"} and not wake_config and not models:
+            return None
+        default_wakeword = str(wake_config.get("default_wakeword") or (models[0] if models else "Hexe")).strip()
+        default_wakeword = self._normalize_wake_name(default_wakeword)
+        warm_models = wake_config.get("warm_models") if isinstance(wake_config.get("warm_models"), list) else []
+
+        payload: dict[str, Any] = {
+            "provider": provider,
+            "enabled": "wake" in (provider_setup.get("enabled_providers", []) if isinstance(provider_setup, dict) else []),
+            "default_wakeword": default_wakeword,
+            "models": models or [default_wakeword],
+            "warm_model": bool(wake_config.get("warm_model", self._settings.voice_wake_preload)),
+            "warm_models": [self._normalize_wake_name(str(model).strip()) for model in warm_models if str(model).strip()],
+            "threshold": self._settings.voice_wake_threshold,
+            "auto_download_models": self._settings.voice_wake_auto_download_models,
+            "preload": self._settings.voice_wake_preload,
+            "enable_speex_noise_suppression": self._settings.voice_wake_enable_speex_noise_suppression,
+            "vad_threshold": self._settings.voice_wake_vad_threshold,
+            "buffer_ms": self._settings.voice_wake_buffer_ms,
+            "prediction_frame_ms": self._settings.voice_wake_prediction_frame_ms,
+            "service": {
+                "host": self._settings.voice_wake_service_host,
+                "port": self._settings.voice_wake_service_port,
+                "timeout_s": self._settings.voice_wake_service_timeout_s,
+                "service_id": self._settings.openwakeword_service_id,
+                "container_name": self._settings.openwakeword_container_name,
+                "control_script": str(self._settings.openwakeword_control_script),
+            },
+            "recordings": {
+                "enabled": self._settings.voice_wake_recordings_enabled,
+                "recording_dir": str(self._settings.voice_wake_recording_dir)
+                if self._settings.voice_wake_recording_dir is not None
+                else None,
+                "retention_days": self._settings.voice_wake_recording_retention_days,
+                "preroll_ms": self._settings.voice_wake_recording_preroll_ms,
+            },
+        }
+        return self._validate_wake_settings(payload)
+
+    @classmethod
+    def _normalized_wake_models(cls, raw: str | None) -> list[str]:
+        models: list[str] = []
+        for item in (raw or "").split(","):
+            cleaned = cls._normalize_wake_name(item.strip())
+            if cleaned and cleaned not in models:
+                models.append(cleaned)
+        return models
+
+    @staticmethod
+    def _normalize_wake_name(value: str) -> str:
+        if value.strip().lower() == "hexa":
+            return "Hexe"
+        return value
+
+    @classmethod
+    def _validate_wake_settings(cls, payload: Any) -> dict[str, Any]:
+        if not isinstance(payload, dict):
+            raise NodeMigrationError("voice_wake_settings_must_be_object")
+        provider = str(payload.get("provider") or "").strip()
+        if provider not in WAKE_PROVIDERS:
+            raise NodeMigrationError("voice_wake_settings_provider_invalid")
+
+        validated: dict[str, Any] = {"provider": provider}
+        for key in (
+            "enabled",
+            "warm_model",
+            "auto_download_models",
+            "preload",
+            "enable_speex_noise_suppression",
+        ):
+            if key in payload:
+                validated[key] = bool(payload.get(key))
+        for key in ("default_wakeword",):
+            value = cls._normalize_wake_name(str(payload.get(key) or "").strip())
+            if value:
+                validated[key] = value
+        for key in ("threshold", "vad_threshold"):
+            if payload.get(key) is None:
+                continue
+            try:
+                value = float(payload[key])
+            except (TypeError, ValueError):
+                raise NodeMigrationError(f"voice_wake_settings_{key}_invalid") from None
+            if value < 0 or value > 1:
+                raise NodeMigrationError(f"voice_wake_settings_{key}_invalid")
+            validated[key] = value
+        for key in ("buffer_ms", "prediction_frame_ms"):
+            if payload.get(key) is None:
+                continue
+            try:
+                value = int(payload[key])
+            except (TypeError, ValueError):
+                raise NodeMigrationError(f"voice_wake_settings_{key}_invalid") from None
+            if value < 0:
+                raise NodeMigrationError(f"voice_wake_settings_{key}_invalid")
+            validated[key] = value
+
+        for list_key in ("models", "warm_models"):
+            values = payload.get(list_key, [])
+            if not isinstance(values, list):
+                raise NodeMigrationError(f"voice_wake_settings_{list_key}_must_be_list")
+            validated[list_key] = [
+                cls._normalize_wake_name(str(model).strip()) for model in values if str(model).strip()
+            ]
+
+        for section_name in ("service", "recordings"):
+            section = payload.get(section_name, {})
+            if section is None:
+                section = {}
+            if not isinstance(section, dict):
+                raise NodeMigrationError(f"voice_wake_settings_{section_name}_must_be_object")
+            validated[section_name] = json.loads(json.dumps(section))
+        return validated
+
+    @staticmethod
+    def _merge_wake_settings(state: PersistedOnboardingState, wake_settings: dict[str, Any]) -> PersistedOnboardingState:
+        default_wakeword = str(wake_settings.get("default_wakeword") or "").strip()
+        warm_models = wake_settings.get("warm_models") if isinstance(wake_settings.get("warm_models"), list) else []
+        if not warm_models:
+            warm_models = wake_settings.get("models") if isinstance(wake_settings.get("models"), list) else []
+        provider_config = {
+            "enabled": bool(wake_settings.get("enabled", True)),
+            "provider": wake_settings["provider"],
+            "default_wakeword": default_wakeword,
+            "model": default_wakeword,
+            "warm_model": bool(wake_settings.get("warm_model", wake_settings.get("preload", False))),
+            "warm_models": warm_models,
+        }
+        provider_config = {
+            key: value
+            for key, value in provider_config.items()
+            if key in WAKE_PROVIDER_CONFIG_FIELDS or key == "provider"
+            if value not in (None, "", [])
+        }
+
+        provider_configs = dict(state.provider_setup.provider_configs)
+        provider_configs["wake"] = {**provider_configs.get("wake", {}), **provider_config}
+
+        supported = list(state.provider_setup.supported_providers)
+        if "wake" not in supported:
+            supported.append("wake")
+        enabled = list(state.provider_setup.enabled_providers)
+        if wake_settings.get("enabled", True) and "wake" not in enabled:
+            enabled.append("wake")
+        if wake_settings.get("enabled") is False:
+            enabled = [item for item in enabled if item != "wake"]
+
+        return state.model_copy(
+            update={
+                "provider_setup": state.provider_setup.model_copy(
+                    update={
+                        "supported_providers": supported,
+                        "enabled_providers": enabled,
+                        "provider_configs": provider_configs,
+                    }
+                )
+            }
+        )
 
     @staticmethod
     def _merge_tts_provider_settings(
