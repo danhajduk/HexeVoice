@@ -24,6 +24,16 @@ Optional overrides:
 - `HEXEVOICE_APP_DIR=/path/HexeVoice` changes the exact checkout path.
 - `HEXEVOICE_REPO_URL=https://...` changes the Git remote.
 - `HEXEVOICE_BRANCH=main` changes the branch.
+- `HEXEVOICE_SETUP_HOST_ALIAS=true` adds optional local `/etc/hosts` aliases
+  for `HexeVoice` and `HexeVoice.local` after checkout. The alias helper backs
+  up the hosts file first and requires the explicit enable flag before writing.
+
+Preview or apply the host alias manually:
+
+```bash
+./scripts/hostname-alias-control.sh dry-run
+HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install
+```
 
 ## Manual Setup
 

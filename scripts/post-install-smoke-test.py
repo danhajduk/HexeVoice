@@ -67,6 +67,9 @@ def smoke_test(
     frontend_url: str,
     timeout: float,
     check_docker: bool,
+    check_host_alias: bool,
+    hosts_path: Path,
+    host_alias: str,
 ) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
 
@@ -97,6 +100,21 @@ def smoke_test(
     for rel in ("runtime/sockets", "runtime/firmware", "runtime/stt/faster-whisper", "runtime/piper-tts/models", "runtime/openwakeword/models"):
         path = root / rel
         checks.append(check_result(f"dir:{rel}", path.exists(), f"{rel} {'exists' if path.exists() else 'missing'}", required=False))
+
+    if check_host_alias:
+        try:
+            hosts_text = hosts_path.read_text(encoding="utf-8")
+            present = f" {host_alias} " in f" {hosts_text.replace(chr(9), ' ')} "
+            checks.append(
+                check_result(
+                    "host_alias",
+                    present,
+                    f"{host_alias} {'present' if present else 'not present'} in {hosts_path}",
+                    required=False,
+                )
+            )
+        except Exception as exc:
+            checks.append(check_result("host_alias", False, f"host alias check unavailable: {exc}", required=False))
 
     for check_id, script in (
         ("stt_health", "faster-whisper-stt-control.sh"),
@@ -142,6 +160,9 @@ def main() -> int:
     parser.add_argument("--frontend-url", default="http://127.0.0.1:8084/")
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--skip-docker", action="store_true")
+    parser.add_argument("--check-host-alias", action="store_true")
+    parser.add_argument("--hosts-path", type=Path, default=Path("/etc/hosts"))
+    parser.add_argument("--host-alias", default="HexeVoice")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
 
@@ -151,6 +172,9 @@ def main() -> int:
         frontend_url=args.frontend_url,
         timeout=args.timeout,
         check_docker=not args.skip_docker,
+        check_host_alias=args.check_host_alias,
+        hosts_path=args.hosts_path,
+        host_alias=args.host_alias,
     )
     if args.json:
         print(json.dumps(result, indent=2, sort_keys=True))

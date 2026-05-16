@@ -147,3 +147,49 @@ def test_post_install_smoke_test_reports_engine_failure(tmp_path):
     failed = [check["id"] for check in payload["checks"] if check["status"] == "fail"]
     assert "stt_status" in failed
     assert "stt_health" in failed
+
+
+def test_post_install_smoke_test_can_check_host_alias(tmp_path):
+    _SmokeHandler.service_status = {
+        "backend": "running",
+        "components": [
+            {"component_id": "stt", "status": "running", "healthy": True},
+            {"component_id": "tts", "status": "running", "healthy": True},
+            {"component_id": "wake", "status": "running", "healthy": True},
+        ],
+    }
+    hosts_path = tmp_path / "hosts"
+    hosts_path.write_text("127.0.1.1 hexe-ai HexeVoice HexeVoice.local\n", encoding="utf-8")
+    server = _ThreadedServer(("127.0.0.1", 0), _SmokeHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}"
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/post-install-smoke-test.py",
+                "--root",
+                str(_smoke_root(tmp_path)),
+                "--backend-url",
+                url,
+                "--frontend-url",
+                f"{url}/",
+                "--skip-docker",
+                "--check-host-alias",
+                "--hosts-path",
+                str(hosts_path),
+                "--json",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    payload = json.loads(result.stdout)
+    host_alias = next(check for check in payload["checks"] if check["id"] == "host_alias")
+    assert host_alias["status"] == "pass"

@@ -110,10 +110,22 @@ runtime directories, and optional Docker visibility:
 ./scripts/post-install-smoke-test.py
 ./scripts/post-install-smoke-test.py --json
 ./scripts/post-install-smoke-test.py --backend-url http://127.0.0.1:9004 --frontend-url http://127.0.0.1:8084/
+./scripts/post-install-smoke-test.py --check-host-alias
 ```
 
 The command is read-only except for normal health probes and returns a non-zero
 exit code when any required check fails.
+
+To make the new host answer to `HexeVoice` through local name resolution, run
+the optional host alias helper. It appends `HexeVoice` and `HexeVoice.local` to
+the current hostname in `/etc/hosts`, creates a timestamped hosts-file backup,
+and only writes when explicitly enabled:
+
+```bash
+./scripts/hostname-alias-control.sh dry-run
+HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install
+HEXEVOICE_SETUP_HOST_ALIAS=true ./install.sh
+```
 
 ## Recovery Signals
 

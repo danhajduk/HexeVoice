@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 147: Add optional HexeVoice hostname alias during setup
 [STOP]
 [TODO] Task 145: Define runtime state cleanup and git-tracking policy
 [STOP]

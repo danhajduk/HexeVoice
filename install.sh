@@ -10,6 +10,7 @@ SETUP_STT="${HEXEVOICE_SETUP_STT:-false}"
 SETUP_TTS="${HEXEVOICE_SETUP_TTS:-false}"
 SETUP_WAKE="${HEXEVOICE_SETUP_WAKE:-false}"
 SETUP_FIRMWARE="${HEXEVOICE_SETUP_FIRMWARE:-false}"
+SETUP_HOST_ALIAS="${HEXEVOICE_SETUP_HOST_ALIAS:-false}"
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
@@ -78,6 +79,11 @@ chmod +x scripts/*.sh
 log "Preparing runtime directory skeleton"
 ./scripts/prepare-runtime-dirs.sh
 
+if [[ "$SETUP_HOST_ALIAS" == "true" || "$SETUP_HOST_ALIAS" == "1" || "$SETUP_HOST_ALIAS" == "yes" ]]; then
+  log "Installing optional local hostname alias"
+  HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install
+fi
+
 if [[ "$RUN_BOOTSTRAP" == "true" || "$RUN_BOOTSTRAP" == "1" || "$RUN_BOOTSTRAP" == "yes" ]]; then
   require_command systemctl
   log "Installing and starting user services"
@@ -123,5 +129,6 @@ else
   printf '  ./scripts/piper-tts-control.sh ready            # optional: download/start/warm Piper TTS\n'
   printf '  ./scripts/openwakeword-control.sh ready         # optional: sync/start/check wake word\n'
   printf '  ./scripts/firmware-artifacts-control.sh download # optional: fetch endpoint firmware artifacts\n'
+  printf '  HEXEVOICE_SETUP_HOST_ALIAS=true ./install.sh    # optional: add HexeVoice host alias\n'
   printf '  ./scripts/bootstrap.sh\n'
 fi

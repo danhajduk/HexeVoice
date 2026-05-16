@@ -55,6 +55,12 @@ created, run:
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_RUN_BOOTSTRAP=true bash
 ```
 
+Optional local hostname alias:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_SETUP_HOST_ALIAS=true bash
+```
+
 ## Frontend Start
 
 ```bash
