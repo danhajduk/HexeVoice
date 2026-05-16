@@ -1361,6 +1361,24 @@ Original task details:
   - Import clearly states whether Core reactivation is required.
   - Secret-inclusive bundles are marked and documented as sensitive.
 
+## Task 147
+Original task details:
+- Title: Add optional HexeVoice hostname alias during setup
+- Goal:
+  - A fresh or migrated host should be reachable through a stable `HexeVoice` alias in addition to its current machine hostname, LAN IP, mDNS name, or VPN name.
+- Scope:
+  - Add setup/install configuration for an optional host alias such as `HexeVoice` and `HexeVoice.local`.
+  - Detect the current hostname and existing aliases before making changes.
+  - Prefer a reversible, least-surprising mechanism appropriate for Linux hosts, such as documenting `/etc/hosts` changes or configuring local hostname/mDNS aliases when supported.
+  - Require explicit operator confirmation or an install environment flag before changing system host files.
+  - Avoid breaking the real host name, Tailscale/VPN DNS, DHCP, mDNS, or existing Core URLs.
+  - Surface the alias in setup docs and migration/post-install smoke checks.
+  - Add tests or dry-run validation for the alias planning logic without requiring root access.
+- Acceptance criteria:
+  - Setup can optionally add a `HexeVoice` alias for the current host.
+  - Existing hostnames and VPN-published names continue to work.
+  - The change is documented, reversible, and safe to skip.
+
 ## Task 125-133
 Original task details:
 - Title: Start the HexeVoice migration to Core-rendered node UI
