@@ -69,6 +69,11 @@ bundle containing trust tokens.
 Migrated nodes continue through `/setup/trust/reauth`, which starts Core
 re-auth with `POST /api/system/nodes/reauth/sessions`, opens the returned Core
 approval URL, finalizes the session, and saves the fresh activation payload.
+Provider/runtime setup is exposed at `/setup/providers` and backed by
+`/api/setup/providers/status`, `/api/setup/providers/config`, and
+`/api/setup/providers/apply`. The status endpoint reports provider selection,
+runtime service health, provider states, and blockers so the UI can poll during
+downloads, restarts, and health checks.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none

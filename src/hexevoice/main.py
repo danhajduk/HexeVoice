@@ -1961,6 +1961,87 @@ def create_app(
     async def provider_setup_status() -> ProviderSetupResponse:
         return provider_setup_service.status_payload()
 
+    def setup_provider_status_payload() -> dict:
+        provider_setup = provider_setup_service.status_payload()
+        services = service.service_status_payload()
+        component_by_target = {
+            str(component.get("restart_target") or component.get("service_id") or ""): component
+            for component in services.components
+            if isinstance(component, dict)
+        }
+        provider_targets = {
+            "external_faster_whisper": app_settings.voice_stt_service_id,
+            "faster_whisper": app_settings.voice_stt_service_id,
+            "piper": app_settings.piper_tts_service_id,
+            "openwakeword": app_settings.openwakeword_service_id,
+            "supervised_openwakeword": app_settings.openwakeword_service_id,
+        }
+        states = []
+        blockers = list(provider_setup.blocking_reasons)
+        for provider_id in provider_setup.enabled_providers:
+            target = provider_targets.get(provider_id)
+            component = component_by_target.get(target or "")
+            healthy = bool(component.get("healthy")) if component else provider_id in {"deterministic", "openai"}
+            state = "healthy" if healthy else "warning" if provider_id in {"deterministic", "openai"} else "failed"
+            if not healthy and provider_id not in {"deterministic", "openai"}:
+                blockers.append(f"{provider_id}_not_healthy")
+            states.append(
+                {
+                    "provider_id": provider_id,
+                    "target": target,
+                    "state": state,
+                    "healthy": healthy,
+                    "component": component or {},
+                }
+            )
+        return {
+            "configured": provider_setup.configured,
+            "provider_setup": provider_setup.model_dump(mode="json"),
+            "services": services.model_dump(mode="json"),
+            "provider_states": states,
+            "continue_blocked": bool(blockers),
+            "blockers": blockers,
+        }
+
+    @app.get("/api/setup/providers/status")
+    async def setup_providers_status() -> dict:
+        return await asyncio.to_thread(setup_provider_status_payload)
+
+    @app.post("/api/setup/providers/config", response_model=ProviderSetupResponse)
+    async def setup_providers_config(payload: ProviderSetupRequest) -> ProviderSetupResponse:
+        return provider_setup_service.save_setup(payload)
+
+    @app.post("/api/setup/providers/apply")
+    async def setup_providers_apply(payload: dict | None = None) -> dict:
+        payload = payload or {}
+        target = payload.get("target")
+        action = str(payload.get("action") or "install").strip().lower()
+        if target:
+            result = await asyncio.to_thread(service.service_action, target=str(target), action=action)
+            return {"actions": [result.model_dump(mode="json")], "status": await asyncio.to_thread(setup_provider_status_payload)}
+
+        provider_setup = provider_setup_service.status_payload()
+        target_by_provider = {
+            "external_faster_whisper": app_settings.voice_stt_service_id,
+            "faster_whisper": app_settings.voice_stt_service_id,
+            "piper": app_settings.piper_tts_service_id,
+            "openwakeword": app_settings.openwakeword_service_id,
+            "supervised_openwakeword": app_settings.openwakeword_service_id,
+        }
+        actions = []
+        seen_targets: set[str] = set()
+        for provider_id in provider_setup.enabled_providers:
+            provider_target = target_by_provider.get(provider_id)
+            if not provider_target or provider_target in seen_targets:
+                continue
+            seen_targets.add(provider_target)
+            for provider_action in ("install", "start"):
+                result = await asyncio.to_thread(service.service_action, target=provider_target, action=provider_action)
+                actions.append(result.model_dump(mode="json"))
+                if not result.accepted:
+                    break
+        return {"actions": actions, "status": await asyncio.to_thread(setup_provider_status_payload)}
+
     @app.put("/api/providers/setup", response_model=ProviderSetupResponse)
     async def provider_setup_save(payload: ProviderSetupRequest) -> ProviderSetupResponse:
         return provider_setup_service.save_setup(payload)

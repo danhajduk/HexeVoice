@@ -135,6 +135,18 @@ export async function finalizeSetupReauth() {
   return sendJson("/api/setup/trust/reauth/finalize", { body: {} });
 }
 
+export async function getSetupProvidersStatus() {
+  return fetchJson("/api/setup/providers/status");
+}
+
+export async function saveSetupProvidersConfig(payload) {
+  return sendJson("/api/setup/providers/config", { body: payload });
+}
+
+export async function applySetupProviders(payload = {}) {
+  return sendJson("/api/setup/providers/apply", { body: payload });
+}
+
 export async function getBootstrapDiscovery() {
   return fetchJson("/api/onboarding/bootstrap-discovery");
 }

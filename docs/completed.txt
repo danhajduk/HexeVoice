@@ -166,3 +166,4 @@ Task 150: Extend hosted install Step 1 for default firmware/model downloads and 
 Task 151: Implement Host and Node Setup page with readiness, setup mode, and lifecycle mode - Completed on 05/16/2026 16:41
 Task 152: Implement Core Connection and Migration Source setup routes - Completed on 05/16/2026 16:43
 Task 153: Implement migrated-node re-auth setup step using Core re-auth API - Completed on 05/16/2026 16:46
+Task 154: Implement provider/runtime setup status, config, apply, and polling flow - Completed on 05/16/2026 16:49
