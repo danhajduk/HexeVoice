@@ -118,6 +118,7 @@ process_in_app_dir() {
   local pid="$1"
   local cwd
   cwd="$(readlink "/proc/$pid/cwd" 2>/dev/null || true)"
+  cwd="${cwd% (deleted)}"
   [[ "$cwd" == "$APP_DIR" || "$cwd" == "$APP_DIR"/* ]]
 }
 
@@ -142,6 +143,35 @@ kill_matching_processes() {
     fi
     run kill "$pid" 2>/dev/null || true
   done <<<"$pids"
+
+  if "$DRY_RUN"; then
+    return
+  fi
+
+  sleep 1
+  while IFS= read -r pid; do
+    [[ -z "$pid" || "$pid" == "$$" ]] && continue
+    [[ -e "/proc/$pid" ]] || continue
+    process_in_app_dir "$pid" || continue
+    run kill -9 "$pid" 2>/dev/null || true
+  done <<<"$pids"
+}
+
+docker_compose_down() {
+  if ! command -v docker >/dev/null 2>&1; then
+    return
+  fi
+  local compose_files=(
+    "$APP_DIR/compose.faster-whisper-stt.yaml"
+    "$APP_DIR/compose.faster-whisper-stt.cuda.yaml"
+    "$APP_DIR/compose.piper-tts.yaml"
+    "$APP_DIR/compose.openwakeword.yaml"
+  )
+  log "Stopping HexeVoice compose stacks if present."
+  for compose_file in "${compose_files[@]}"; do
+    [[ -f "$compose_file" ]] || continue
+    run docker compose -f "$compose_file" down --remove-orphans 2>/dev/null || true
+  done
 }
 
 docker_remove_containers() {
@@ -188,15 +218,37 @@ remove_user_services() {
     return
   fi
   load_service_names
-  local services=("$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME" "$STT_SERVICE_NAME")
-  log "Stopping HexeVoice user services if present."
-  run systemctl --user stop "${services[@]}" 2>/dev/null || true
   local systemd_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-  log "Removing generated user service files."
+  local services=("$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME" "$STT_SERVICE_NAME")
+  local service_file
+  shopt -s nullglob
+  for service_file in "$systemd_dir"/hexevoice-*.service; do
+    services+=("$(basename "$service_file")")
+  done
+  shopt -u nullglob
+  local unique_services=()
+  local seen=" "
+  local service
   for service in "${services[@]}"; do
+    [[ -n "$service" ]] || continue
+    if [[ "$seen" != *" $service "* ]]; then
+      unique_services+=("$service")
+      seen+="$service "
+    fi
+  done
+  if [[ "${#unique_services[@]}" -eq 0 ]]; then
+    return
+  fi
+  log "Stopping HexeVoice user services if present."
+  run systemctl --user stop "${unique_services[@]}" 2>/dev/null || true
+  log "Disabling HexeVoice user services if present."
+  run systemctl --user disable "${unique_services[@]}" 2>/dev/null || true
+  log "Removing generated user service files."
+  for service in "${unique_services[@]}"; do
     run rm -f "$systemd_dir/$service"
   done
   run systemctl --user daemon-reload 2>/dev/null || true
+  run systemctl --user reset-failed "${unique_services[@]}" 2>/dev/null || true
 }
 
 remove_host_alias() {
@@ -264,11 +316,12 @@ remove_app_dir() {
 
 main() {
   log "Using app directory: $APP_DIR"
-  kill_matching_processes "$APP_DIR/install.sh" "installer process"
-  kill_matching_processes "$APP_DIR/scripts/setup-runner.sh" "setup runner"
-  kill_matching_processes "$APP_DIR/.venv/bin/python -m hexevoice.main|PYTHONPATH=src .*hexevoice.main" "backend process"
-  kill_matching_processes "$APP_DIR/frontend/node_modules/.bin/vite|npm run (dev|preview)" "frontend process"
+  kill_matching_processes "install.sh" "installer process"
+  kill_matching_processes "scripts/setup-runner.sh|setup-runner.sh" "setup runner"
+  kill_matching_processes "python -m hexevoice.main|hexevoice.main" "backend process"
+  kill_matching_processes "vite .*--port (8180|8084)|npm run (dev|preview)" "frontend process"
   remove_user_services
+  docker_compose_down
   docker_remove_containers
   docker_remove_images
   run rm -f "/tmp/hexevoice-install-status-$(id -u).json"

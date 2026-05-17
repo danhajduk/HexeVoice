@@ -90,6 +90,10 @@ Partial install cleanup:
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/uninstall.sh | bash -s -- --remove-app-dir
 ```
 
+The uninstall script stops temporary setup runners, disables/removes generated
+`hexevoice-*.service` user units, stops HexeVoice compose/container runtimes,
+and then removes the app directory when `--remove-app-dir` is supplied.
+
 ## Frontend Start
 
 ```bash
