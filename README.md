@@ -58,6 +58,11 @@ without installing anything, run:
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash
 ```
 
+When `python3` is available, the installer also starts a tiny temporary status
+page on port `8180` while host requirements, Python packages, and frontend
+assets are prepared. Disable it with `HEXEVOICE_INSTALL_STATUS_UI=false` or
+change the port with `HEXEVOICE_INSTALL_STATUS_UI_PORT=8181`.
+
 To also render and restart the user services after `scripts/stack.env` is
 created, run:
 

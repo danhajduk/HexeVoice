@@ -22,9 +22,14 @@ SETUP_FIRMWARE="${HEXEVOICE_SETUP_FIRMWARE:-false}"
 SETUP_HOST_ALIAS="${HEXEVOICE_SETUP_HOST_ALIAS:-false}"
 INSTALL_SYSTEM_PACKAGES="${HEXEVOICE_INSTALL_SYSTEM_PACKAGES:-ask}"
 PRINT_PREREQ_COMMANDS="${HEXEVOICE_PRINT_PREREQ_COMMANDS:-false}"
+INSTALL_STATUS_UI="${HEXEVOICE_INSTALL_STATUS_UI:-true}"
+INSTALL_STATUS_UI_HOST="${HEXEVOICE_INSTALL_STATUS_UI_HOST:-0.0.0.0}"
+INSTALL_STATUS_UI_PORT="${HEXEVOICE_INSTALL_STATUS_UI_PORT:-8180}"
+INSTALL_STATUS_UI_PATH="${HEXEVOICE_INSTALL_STATUS_UI_PATH:-/tmp/hexevoice-install-status-$(id -u).json}"
 MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
 APT_UPDATED=false
 SYSTEM_PACKAGE_INSTALL_APPROVED=false
+INSTALL_STATUS_UI_PID=""
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
@@ -43,6 +48,172 @@ system_package_install_enabled() {
     *) return 0 ;;
   esac
 }
+
+install_status_ui_enabled() {
+  truthy "$INSTALL_STATUS_UI"
+}
+
+install_lan_host() {
+  hostname -I 2>/dev/null | awk '{print $1; exit}'
+}
+
+install_status_update() {
+  if ! install_status_ui_enabled || [[ -z "$INSTALL_STATUS_UI_PID" ]]; then
+    return
+  fi
+  local phase="$1"
+  local message="$2"
+  local detail="${3:-}"
+  STATUS_PATH="$INSTALL_STATUS_UI_PATH" \
+    STATUS_PHASE="$phase" \
+    STATUS_MESSAGE="$message" \
+    STATUS_DETAIL="$detail" \
+    python3 - <<'PY'
+from __future__ import annotations
+
+from datetime import UTC, datetime
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["STATUS_PATH"])
+payload = {
+    "phase": os.environ.get("STATUS_PHASE") or "running",
+    "message": os.environ.get("STATUS_MESSAGE") or "Preparing HexeVoice.",
+    "detail": os.environ.get("STATUS_DETAIL") or None,
+    "updated_at": datetime.now(UTC).isoformat(),
+}
+path.parent.mkdir(parents=True, exist_ok=True)
+temp_path = path.with_suffix(f"{path.suffix}.tmp")
+temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+temp_path.replace(path)
+PY
+}
+
+stop_install_status_ui() {
+  if [[ -n "$INSTALL_STATUS_UI_PID" ]] && kill -0 "$INSTALL_STATUS_UI_PID" 2>/dev/null; then
+    kill "$INSTALL_STATUS_UI_PID" 2>/dev/null || true
+    wait "$INSTALL_STATUS_UI_PID" 2>/dev/null || true
+  fi
+  INSTALL_STATUS_UI_PID=""
+}
+
+cleanup_install_status_ui() {
+  stop_install_status_ui
+}
+
+start_install_status_ui() {
+  if ! install_status_ui_enabled || [[ -n "$INSTALL_STATUS_UI_PID" ]]; then
+    return
+  fi
+  local lan_host
+  lan_host="$(install_lan_host)"
+  lan_host="${lan_host:-127.0.0.1}"
+  STATUS_PATH="$INSTALL_STATUS_UI_PATH" \
+    STATUS_HOST="$INSTALL_STATUS_UI_HOST" \
+    STATUS_PORT="$INSTALL_STATUS_UI_PORT" \
+    python3 - <<'PY' &
+from __future__ import annotations
+
+import json
+import os
+from http import HTTPStatus
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+status_path = Path(os.environ["STATUS_PATH"])
+host = os.environ.get("STATUS_HOST") or "0.0.0.0"
+port = int(os.environ.get("STATUS_PORT") or "8180")
+
+HTML = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HexeVoice Setup</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #101418; color: #ecf2f8; }
+    main { width: min(680px, calc(100vw - 32px)); }
+    h1 { margin: 0 0 12px; font-size: clamp(28px, 5vw, 46px); font-weight: 680; letter-spacing: 0; }
+    p { margin: 0; color: #b5c1cc; line-height: 1.6; font-size: 17px; }
+    .panel { border: 1px solid #2c3742; border-radius: 8px; padding: 28px; background: #151b21; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24); }
+    .status { margin-top: 24px; display: grid; gap: 10px; }
+    .bar { height: 8px; overflow: hidden; border-radius: 999px; background: #26313b; }
+    .bar span { display: block; width: 42%; height: 100%; border-radius: inherit; background: #40c4aa; animation: pulse 1.6s ease-in-out infinite; }
+    .label { font-size: 14px; color: #d7e1ea; }
+    .detail { min-height: 22px; font-size: 13px; color: #93a3b2; overflow-wrap: anywhere; }
+    @keyframes pulse { 0% { transform: translateX(-80%); } 50% { transform: translateX(65%); } 100% { transform: translateX(180%); } }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>HexeVoice setup is preparing</h1>
+    <p>The installer is getting this host ready. This page will hand off to the setup flow when the runtime is available.</p>
+    <section class="status" aria-live="polite">
+      <div class="bar"><span></span></div>
+      <div id="message" class="label">Starting installer...</div>
+      <div id="detail" class="detail"></div>
+    </section>
+  </main>
+  <script>
+    async function refresh() {
+      try {
+        const response = await fetch('/status.json', { cache: 'no-store' });
+        const status = await response.json();
+        document.getElementById('message').textContent = status.message || 'Preparing HexeVoice.';
+        document.getElementById('detail').textContent = status.detail || '';
+      } catch (error) {
+        document.getElementById('message').textContent = 'Waiting for installer status...';
+      }
+    }
+    refresh();
+    setInterval(refresh, 1500);
+  </script>
+</body>
+</html>
+"""
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path.startswith("/status.json"):
+            try:
+                payload = json.loads(status_path.read_text(encoding="utf-8"))
+            except Exception:
+                payload = {"phase": "running", "message": "Preparing HexeVoice.", "detail": None}
+            body = json.dumps(payload).encode("utf-8")
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        body = HTML.encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: object) -> None:
+        return
+
+ThreadingHTTPServer((host, port), Handler).serve_forever()
+PY
+  INSTALL_STATUS_UI_PID=$!
+  sleep 0.3
+  if kill -0 "$INSTALL_STATUS_UI_PID" 2>/dev/null; then
+    log "Temporary install status UI: http://${lan_host}:${INSTALL_STATUS_UI_PORT}/"
+    install_status_update "running" "Preparing HexeVoice installer." "Checking host requirements."
+  else
+    log "Temporary install status UI could not start on port ${INSTALL_STATUS_UI_PORT}; continuing in terminal."
+    INSTALL_STATUS_UI_PID=""
+  fi
+}
+
+trap cleanup_install_status_ui EXIT INT TERM
 
 has_interactive_tty() {
   true 2>/dev/null </dev/tty >/dev/tty
@@ -117,6 +288,7 @@ apt_install_packages() {
     return 1
   fi
   confirm_system_package_install "$@" || return 1
+  install_status_update "running" "Installing host requirements." "Packages: $*"
   if [[ "$APT_UPDATED" != "true" ]]; then
     log "Updating apt package metadata"
     run_privileged env DEBIAN_FRONTEND=noninteractive apt-get update
@@ -228,8 +400,10 @@ if truthy "$PRINT_PREREQ_COMMANDS" || [[ "$INSTALL_SYSTEM_PACKAGES" == "print" |
   exit 0
 fi
 
-ensure_command git git
 ensure_command python3 python3
+start_install_status_ui
+install_status_update "running" "Checking host requirements." "Verifying Git, Python venv support, Node.js, and npm."
+ensure_command git git
 ensure_python_venv
 ensure_node_runtime
 
@@ -323,6 +497,7 @@ mkdir -p "$INSTALL_ROOT"
 
 if [[ -d "$APP_DIR/.git" ]]; then
   log "Updating existing checkout at $APP_DIR"
+  install_status_update "running" "Updating HexeVoice checkout." "$APP_DIR"
   git -C "$APP_DIR" fetch --prune origin "$BRANCH"
   git -C "$APP_DIR" checkout "$BRANCH"
   git -C "$APP_DIR" pull --ff-only origin "$BRANCH"
@@ -332,22 +507,27 @@ elif [[ -e "$APP_DIR" ]]; then
   exit 1
 else
   log "Cloning $REPO_URL into $APP_DIR"
+  install_status_update "running" "Downloading HexeVoice." "$REPO_URL"
   git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
 fi
 
 cd "$APP_DIR"
 
 log "Initializing submodules"
+install_status_update "running" "Preparing bundled documentation and submodules." "Initializing Git submodules."
 git submodule update --init --recursive
 
 log "Creating Python virtual environment"
+install_status_update "running" "Preparing Python runtime." "Creating virtual environment."
 python3 -m venv .venv
 
 log "Installing Python dependencies"
+install_status_update "running" "Installing Python requirements." "This can take a few minutes on a fresh host."
 .venv/bin/pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
 
 log "Installing frontend dependencies"
+install_status_update "running" "Installing frontend requirements." "Preparing the setup UI."
 cd frontend
 if [[ -f package-lock.json ]]; then
   npm ci
@@ -356,6 +536,7 @@ else
 fi
 
 log "Building frontend"
+install_status_update "running" "Building frontend." "Preparing the production setup UI."
 npm run build
 cd ..
 
@@ -369,6 +550,7 @@ fi
 chmod +x scripts/*.sh
 
 log "Preparing runtime directory skeleton"
+install_status_update "running" "Preparing runtime directories." "Creating local runtime folders."
 ./scripts/prepare-runtime-dirs.sh
 
 pending_downloads=()
@@ -389,11 +571,14 @@ bootstrap_status_update "running" "starting-setup" "" "" "" "true" "$pending_dow
 
 if truthy "$START_SETUP_RUNNER"; then
   mkdir -p runtime/logs
+  install_status_update "running" "Starting setup UI." "Handing off to the HexeVoice setup runner."
+  stop_install_status_ui
   log "Starting temporary setup runner"
   SETUP_BOOTSTRAP_STATUS_PATH="${SETUP_BOOTSTRAP_STATUS_PATH:-$APP_DIR/runtime/setup/bootstrap-status.json}" \
     nohup ./scripts/setup-runner.sh --handoff none --open-browser > runtime/logs/setup-runner.log 2>&1 &
   log "Temporary setup runner log: $APP_DIR/runtime/logs/setup-runner.log"
 else
+  install_status_update "running" "Setup runner skipped." "Continuing install in terminal."
   log "Temporary setup runner skipped by HEXEVOICE_START_SETUP_RUNNER=$START_SETUP_RUNNER"
 fi
 
