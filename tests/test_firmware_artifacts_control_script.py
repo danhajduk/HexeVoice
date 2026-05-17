@@ -111,6 +111,8 @@ def test_firmware_artifacts_control_reports_missing_source_configuration(tmp_pat
             "PATH": "/usr/bin:/bin",
             "PYTHON_BIN": sys.executable,
             "HEXEVOICE_FIRMWARE_ARTIFACT_DIR": str(tmp_path / "runtime" / "firmware"),
+            "HEXEVOICE_FIRMWARE_SOURCE": "manual",
+            "HEXEVOICE_FIRMWARE_BUILD_FALLBACK": "false",
         },
         text=True,
         capture_output=True,
@@ -119,3 +121,47 @@ def test_firmware_artifacts_control_reports_missing_source_configuration(tmp_pat
 
     assert result.returncode != 0
     assert "firmware_source_not_configured" in result.stderr
+
+
+def test_firmware_artifacts_control_runs_build_fallback(tmp_path):
+    project_root = tmp_path / "project"
+    firmware_dir = project_root / "firmware"
+    target = tmp_path / "runtime" / "firmware"
+    firmware_dir.mkdir(parents=True)
+    build_script = firmware_dir / "build.sh"
+    build_script.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p "${RUNTIME_FIRMWARE_DIR}"
+printf 'default-firmware' > "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
+printf 'esp-box-firmware' > "${RUNTIME_FIRMWARE_DIR}/hexe_firmware_esp_box_3.bin"
+printf 'voice-pe-firmware' > "${RUNTIME_FIRMWARE_DIR}/hexe_firmware_ha_voice_pe.bin"
+printf '{"filename":"hexe_firmware.bin","version":"0.2.0"}' > "${RUNTIME_FIRMWARE_DIR}/manifest.json"
+printf '{"filename":"hexe_firmware_esp_box_3.bin","version":"0.2.0"}' > "${RUNTIME_FIRMWARE_DIR}/manifest-esp_box_3.json"
+printf '{"filename":"hexe_firmware_ha_voice_pe.bin","version":"0.2.0"}' > "${RUNTIME_FIRMWARE_DIR}/manifest-ha_voice_pe.json"
+cd "${RUNTIME_FIRMWARE_DIR}"
+sha256sum hexe_firmware.bin hexe_firmware_esp_box_3.bin hexe_firmware_ha_voice_pe.bin > SHA256SUMS
+""",
+        encoding="utf-8",
+    )
+    build_script.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", "scripts/firmware-artifacts-control.sh", "download"],
+        cwd=Path(__file__).resolve().parents[1],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "PYTHON_BIN": sys.executable,
+            "HEXEVOICE_FIRMWARE_ARTIFACT_DIR": str(target),
+            "HEXEVOICE_PROJECT_ROOT": str(project_root),
+            "HEXEVOICE_FIRMWARE_SOURCE": "build",
+            "HEXEVOICE_FIRMWARE_BUILD_FALLBACK": "true",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "firmware_build_fallback: running" in result.stdout
+    assert "checksums: ok (3)" in result.stdout
+    assert (target / "hexe_firmware_ha_voice_pe.bin").read_bytes() == b"voice-pe-firmware"

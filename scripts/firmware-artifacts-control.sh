@@ -235,6 +235,11 @@ def build_firmware_artifacts(reason: str) -> None:
     print(f"firmware_build_fallback: running {build_script}")
     env = os.environ.copy()
     env["RUNTIME_FIRMWARE_DIR"] = str(artifact_dir())
+    if not env.get("HOME"):
+        try:
+            env["HOME"] = str(Path.home())
+        except RuntimeError:
+            env["HOME"] = str(root)
     try:
         subprocess.run([str(build_script), "build"], cwd=build_script.parent, text=True, check=True, env=env)
     except subprocess.CalledProcessError as exc:

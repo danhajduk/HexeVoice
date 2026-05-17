@@ -165,12 +165,15 @@ case "${COMMAND}" in
     ;;
 esac
 
+USER_HOME="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6 2>/dev/null || true)}"
+USER_HOME="${USER_HOME:-$ROOT_DIR}"
+
 if [[ -z "${IDF_PATH:-}" ]]; then
-  if [[ -f "${HOME}/esp-idf/export.sh" ]]; then
+  if [[ -f "${USER_HOME}/esp-idf/export.sh" ]]; then
     # shellcheck disable=SC1090
-    . "${HOME}/esp-idf/export.sh"
+    . "${USER_HOME}/esp-idf/export.sh"
   else
-    echo "ESP-IDF environment is not loaded and ${HOME}/esp-idf/export.sh was not found." >&2
+    echo "ESP-IDF environment is not loaded and ${USER_HOME}/esp-idf/export.sh was not found." >&2
     echo "Run '. ~/esp-idf/export.sh' first, or install ESP-IDF under ~/esp-idf." >&2
     exit 1
   fi
