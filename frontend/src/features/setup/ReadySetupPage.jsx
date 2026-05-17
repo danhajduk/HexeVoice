@@ -91,6 +91,7 @@ export function ReadySetupPage({ onRefresh }) {
 
   const smoke = status?.last_smoke;
   const checks = smoke?.checks || [];
+  const finalSummary = status?.final_summary || {};
 
   return (
     <article className="card stack">
@@ -127,6 +128,68 @@ export function ReadySetupPage({ onRefresh }) {
           <span className="fact-grid-value">{smoke?.ran_at || "pending"}</span>
         </div>
       </div>
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Final Summary</h3>
+          <span className={`status-pill status-pill-${status?.completed ? "success" : "warning"}`}>
+            {status?.completed ? "complete" : "pending"}
+          </span>
+        </div>
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Node</span>
+            <span className="fact-grid-value">{finalSummary.node_name || "pending"}</span>
+            <span className="fact-grid-label">{finalSummary.node_id || "waiting"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Core</span>
+            <span className="fact-grid-value">{finalSummary.core_base_url || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Local API</span>
+            <span className="fact-grid-value">{finalSummary.api_base_url || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Local UI</span>
+            <span className="fact-grid-value">{finalSummary.ui_endpoint || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Providers</span>
+            <span className={`status-pill status-pill-${finalSummary.provider_health?.blocked ? "warning" : "success"}`}>
+              {finalSummary.provider_health?.blocked ? "blocked" : "ready"}
+            </span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Capabilities</span>
+            <span className="fact-grid-value">{finalSummary.capability_status || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Governance</span>
+            <span className="fact-grid-value">{finalSummary.governance_status || "pending"}</span>
+            <span className="fact-grid-label">{finalSummary.governance_version || "no version"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Lifecycle</span>
+            <span className="fact-grid-value">{finalSummary.lifecycle_mode || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Runtime dirs</span>
+            <span className={`status-pill status-pill-${finalSummary.runtime_dirs?.missing?.length ? "warning" : "success"}`}>
+              {finalSummary.runtime_dirs?.missing?.length ? "missing" : "ready"}
+            </span>
+            <span className="fact-grid-label">{finalSummary.runtime_dirs?.root || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Accepted warnings</span>
+            <span className="fact-grid-value">
+              {finalSummary.accepted_warnings?.length
+                ? finalSummary.accepted_warnings.map((warning) => warning.label || warning.id).join(", ")
+                : "none"}
+            </span>
+          </div>
+        </div>
+      </section>
 
       <div className="form-actions">
         <button className="btn btn-primary" type="button" onClick={runSmokeTest} disabled={busy !== ""}>

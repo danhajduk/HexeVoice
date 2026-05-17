@@ -218,7 +218,10 @@ The final setup gate is `/setup/ready`, backed by
 `/api/setup/ready/complete`. Final setup export is available through
 `/api/setup/ready/export` and `/api/setup/ready/export/download`; it writes a
 redacted setup summary, recovery bundle, migration bundle, and migration import
-receipt when one exists. The smoke test checks backend/frontend reachability,
+receipt when one exists. Step 7 status also exposes a `final_summary` with node
+identity, Core/local URLs, provider health, capability/governance state,
+lifecycle mode, runtime directory state, and accepted smoke-test warnings. The
+smoke test checks backend/frontend reachability,
 trust, provider STT/TTS/wake health, backend provider routing, Core
 trust/capability visibility, governance currency, Supervisor registration,
 firmware, runtime directories, sockets, LAN URLs, host alias state, and Core

@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 200: Add a richer Step 7 final summary showing node name/ID, Core URL, local UI/API URLs, provider health, capability/governance status, lifecycle mode, runtime dirs, and accepted warnings
 [TODO] Task 201: Verify Step 7 completion routing so /setup stops forcing setup flow, / opens the dashboard/config page, and setup-mode redirects are disabled after completion
 [TODO] Task 202: Add Step 7 warning acknowledgement for unresolved firmware, host alias, CUDA, or other non-blocking setup warnings before final completion
 [TODO] Task 203: Add Step 7 recovery actions for full smoke test rerun, provider health rerun, governance sync, capability redeclare, opening Core node page, exporting setup bundle, and returning to failed setup steps

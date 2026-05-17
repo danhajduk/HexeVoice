@@ -2997,6 +2997,44 @@ def create_app(
         state = onboarding_state_store.load()
         last_smoke = ready_state.get("last_smoke") if isinstance(ready_state.get("last_smoke"), dict) else None
         completed = bool(ready_state.get("completed_at"))
+        host_status = setup_host_readiness_service.readiness_payload()
+        provider_status = setup_provider_status_payload()
+        capability_status = setup_capabilities_status_payload()
+        runtime_missing = setup_ready_runtime_missing()
+        smoke_warnings = [
+            check
+            for check in (last_smoke or {}).get("checks", [])
+            if isinstance(check, dict) and check.get("status") == "warn"
+        ] if isinstance(last_smoke, dict) else []
+        final_summary = {
+            "node_name": state.pre_trust.node_name or app_settings.node_name,
+            "node_id": state.trust_activation.node_id,
+            "node_type": state.trust_activation.node_type or app_settings.node_type,
+            "core_base_url": state.pre_trust.core_base_url,
+            "api_base_url": state.pre_trust.api_base_url or host_status.api_base_url,
+            "ui_endpoint": state.pre_trust.ui_endpoint or host_status.ui_base_url,
+            "provider_health": {
+                "blocked": bool(provider_status.get("continue_blocked")),
+                "blockers": provider_status.get("blockers") or [],
+                "states": provider_status.get("provider_states") or [],
+            },
+            "capability_status": capability_status.get("capabilities", {}).get("capability_status"),
+            "governance_status": capability_status.get("governance", {}).get("governance_sync_status"),
+            "governance_version": capability_status.get("governance", {}).get("governance_version"),
+            "lifecycle_mode": state.normalized_current_step_id(),
+            "runtime_dirs": {
+                "root": str(app_settings.runtime_dir),
+                "missing": runtime_missing,
+            },
+            "accepted_warnings": [
+                {
+                    "id": warning.get("id"),
+                    "label": warning.get("label"),
+                    "message": warning.get("message"),
+                }
+                for warning in smoke_warnings
+            ],
+        }
         return {
             "completed": completed,
             "completed_at": ready_state.get("completed_at"),
@@ -3004,6 +3042,7 @@ def create_app(
             "current_step_id": state.normalized_current_step_id(),
             "operational_ready": state.operational_status.operational_ready,
             "last_smoke": last_smoke,
+            "final_summary": final_summary,
             "setup_root_redirect_active": not completed,
             "dashboard_url": (app_settings.public_ui_base_url or setup_host_readiness_service.readiness_payload().ui_base_url).rstrip("/") + "/",
         }

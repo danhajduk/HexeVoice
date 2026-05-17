@@ -98,6 +98,10 @@ def test_setup_ready_status_blocks_before_smoke_test(tmp_path):
     assert payload["completed"] is False
     assert payload["continue_blocked"] is True
     assert payload["setup_root_redirect_active"] is True
+    assert payload["final_summary"]["node_name"] == "kitchen-voice"
+    assert payload["final_summary"]["node_id"] == "node-voice-123"
+    assert payload["final_summary"]["core_base_url"] == "http://core.test:9001"
+    assert payload["final_summary"]["runtime_dirs"]["missing"] == []
 
 
 def test_setup_ready_smoke_test_and_complete(tmp_path, monkeypatch):
@@ -143,6 +147,7 @@ def test_setup_ready_smoke_test_and_complete(tmp_path, monkeypatch):
     complete_payload = complete.json()
     assert complete_payload["accepted"] is True
     assert complete_payload["status"]["completed"] is True
+    assert complete_payload["status"]["final_summary"]["lifecycle_mode"] == "ready"
     assert complete_payload["status"]["setup_root_redirect_active"] is False
     persisted = OnboardingStateStore(path=settings.resolved_onboarding_state_path()).load()
     assert persisted.resume.current_step_id == "ready"
