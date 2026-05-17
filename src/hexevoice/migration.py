@@ -659,7 +659,12 @@ class NodeMigrationService:
         for key in ("profile", "fallback_profile"):
             value = str(payload.get(key) or "").strip()
             if value:
-                get_stt_model_profile(value)
+                if key == "profile" and value == "custom_legacy":
+                    continue
+                try:
+                    get_stt_model_profile(value)
+                except ValueError as exc:
+                    raise NodeMigrationError(f"voice_stt_settings_{key}_invalid") from exc
                 validated[key] = value
         warm_models = payload.get("warm_models", [])
         if not isinstance(warm_models, list):

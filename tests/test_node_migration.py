@@ -530,6 +530,74 @@ def test_node_migration_rejects_malformed_stt_settings(tmp_path):
     assert response.json()["detail"] == "voice_stt_settings_warm_models_must_be_list"
 
 
+def test_node_migration_export_omits_custom_legacy_stt_profile(tmp_path):
+    source_path = tmp_path / "source" / "onboarding-state.json"
+    source_settings = Settings(
+        onboarding_state_path=source_path,
+        endpoint_registry_path=tmp_path / "source" / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "source" / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "source" / "voice-tts-settings.json",
+        voice_stt_provider="external_faster_whisper",
+        voice_stt_faster_whisper_model="small.en",
+        voice_stt_faster_whisper_device="cpu",
+        voice_stt_faster_whisper_compute_type="int8",
+    )
+    OnboardingStateStore(path=source_path).save(
+        PersistedOnboardingState.model_validate(
+            {
+                "provider_setup": {
+                    "supported_providers": ["voice", "external_faster_whisper"],
+                    "enabled_providers": ["voice", "external_faster_whisper"],
+                    "provider_configs": {
+                        "external_faster_whisper": {
+                            "enabled": True,
+                            "model": "small.en",
+                            "device": "cpu",
+                            "compute_type": "int8",
+                            "warm_model": True,
+                        }
+                    },
+                },
+            }
+        )
+    )
+
+    response = TestClient(create_app(source_settings)).post("/api/node/migration/export", json={})
+
+    assert response.status_code == 200
+    stt_settings = response.json()["state_files"]["voice_stt_settings"]
+    assert "profile" not in stt_settings
+    assert stt_settings["model"] == "small.en"
+    assert stt_settings["device"] == "cpu"
+    assert stt_settings["compute_type"] == "int8"
+
+
+def test_node_migration_rejects_unknown_stt_profile_without_500(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "onboarding-state.json",
+        endpoint_registry_path=tmp_path / "endpoint-registry.json",
+        voice_intent_registry_path=tmp_path / "voice-intents.json",
+        voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+    )
+    response = TestClient(create_app(settings)).post(
+        "/api/node/migration/import",
+        json={
+            "bundle": {
+                "schema_version": 1,
+                "state_files": {
+                    "voice_stt_settings": {
+                        "provider": "external_faster_whisper",
+                        "profile": "not_a_real_profile",
+                    }
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "voice_stt_settings_profile_invalid"
+
+
 def test_node_migration_export_imports_tts_provider_settings(tmp_path):
     source_path = tmp_path / "source" / "onboarding-state.json"
     source_settings = Settings(
