@@ -1,5 +1,4 @@
 [STOP]
-[TODO] Task 070: Update Phase 2 operator docs and release checklist
 
 **********************************************************************************************
 * Future TODO listing

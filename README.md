@@ -27,6 +27,8 @@ It includes:
   including `scripts/systemd/hexevoice-backend.service.in`, `scripts/systemd/hexevoice-stt.service.in`, and `scripts/systemd/hexevoice-frontend.service.in`
 - `docs/`
   Starter architecture, feature spec, setup, operations, and provider notes
+  including the Phase 2 operator release checklist at
+  `docs/phase2-operator-release-checklist.md`
 - `runtime/`
   Mutable runtime state and logs
 - `tests/`

@@ -11,6 +11,11 @@ HexeVoice now uses one shared operator shell with two distinct concerns:
 
 These concerns intentionally share one shell while remaining visually separate.
 
+For a blank-host and real-endpoint release runbook, use
+`docs/phase2-operator-release-checklist.md`. It covers host install, migration,
+provider setup, endpoint SD wiring, media conversion, firmware build/OTA,
+dashboard endpoint controls, troubleshooting, and the Phase 2 release checklist.
+
 ## Setup Progression
 
 During setup, operators should use the onboarding card in this order:
