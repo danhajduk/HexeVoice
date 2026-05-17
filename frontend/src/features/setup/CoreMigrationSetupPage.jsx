@@ -52,7 +52,9 @@ export function CoreSetupPage({ onContinue }) {
       setCoreUrl(normalized);
       const payload = await saveSetupCoreConnection({ core_base_url: normalized });
       setResult(payload);
-      onContinue?.();
+      if (!payload.recheck_required_before_trust) {
+        onContinue?.();
+      }
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -70,6 +72,7 @@ export function CoreSetupPage({ onContinue }) {
         ["API URL", result.core_api_url || result.core_base_url || "pending"],
         ["UI URL", result.core_ui_url || result.core_public_url || "pending"],
         ["Endpoint tested", testedEndpoint || "pending"],
+        ["Validation", result.validation_state || "deferred"],
         ["Registration support", result.registration_supported ? "detected" : "pending"],
         ["Re-auth support", result.reauth_supported ? "detected" : "pending"],
         ["Supervisor enrollment", result.supervisor_enrollment_supported ? "detected" : "pending"],
@@ -101,6 +104,11 @@ export function CoreSetupPage({ onContinue }) {
         <button className="btn btn-primary" type="button" onClick={save} disabled={busy || !coreUrl}>
           {busy ? "Saving..." : "Save & Continue"}
         </button>
+        {result?.recheck_required_before_trust ? (
+          <button className="btn btn-secondary" type="button" onClick={save} disabled={busy || !coreUrl}>
+            Re-check Core
+          </button>
+        ) : null}
       </div>
       {result ? (
         <div className="fact-grid">

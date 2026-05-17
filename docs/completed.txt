@@ -185,3 +185,4 @@ Task 172: Add automatic migration preflight after migration file upload, with vi
 Task 173: Add a detailed Step 3 migration import plan showing imported data, skipped secrets/tokens, voice intents, provider settings, STT/TTS/wake settings, runtime asset expectations, and required re-auth - Completed on 05/16/2026 22:05
 Task 174: Add Step 3 migration source options for uploaded file, old-node/Core fetch when supported, and local migration path/schema-version review - Completed on 05/16/2026 22:06
 Task 175: Smooth Step 3 post-import routing so migrated nodes move to re-auth, new nodes move to onboarding/provider setup as appropriate, and unsupported Core re-auth shows a clear blocker - Completed on 05/16/2026 22:08
+Task 176: Allow Step 3 to save a temporarily unreachable Core URL with offline/deferred validation state, then re-check Core before trust and capability steps - Completed on 05/16/2026 22:09

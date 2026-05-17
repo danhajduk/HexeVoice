@@ -26,6 +26,8 @@ def test_setup_core_saves_url_when_core_is_unreachable(tmp_path):
     assert payload["configured"] is True
     assert payload["core_base_url"] == "http://127.0.0.1:9"
     assert payload["reachable"] is False
+    assert payload["validation_state"] == "deferred"
+    assert payload["recheck_required_before_trust"] is True
     assert payload["warnings"]
     assert OnboardingStateStore(path=state_path).load().pre_trust.core_base_url == "http://127.0.0.1:9"
 
@@ -82,6 +84,8 @@ def test_setup_core_reports_core_metadata_and_supported_paths(monkeypatch, tmp_p
     assert payload["core_api_url"] == "http://10.0.0.100:9001"
     assert payload["core_ui_url"] == "http://10.0.0.100"
     assert payload["reachable"] is True
+    assert payload["validation_state"] == "validated"
+    assert payload["recheck_required_before_trust"] is False
     assert payload["core_version"] == "1.2.3"
     assert payload["core_identity"]["core_id"] == "core-123"
     assert payload["core_identity"]["core_name"] == "Kitchen Core"

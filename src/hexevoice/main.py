@@ -1985,6 +1985,8 @@ def create_app(
             core_api_url=normalized_core_base_url,
             core_ui_url=normalized_core_public_url,
             reachable=reachable,
+            validation_state="validated" if reachable else "deferred",
+            recheck_required_before_trust=not reachable,
             core_identity=core_identity,
             core_version=core_version,
             registration_supported=registration_supported,

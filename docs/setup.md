@@ -109,6 +109,9 @@ probes for node registration, migration re-auth, Supervisor enrollment,
 capability profiles, and governance endpoints. The response separates the
 operator-entered LAN/public URL, Core API URL, Core UI URL, and exact tested
 endpoints so hosts with UI on port 80 and API on port 9001 are understandable.
+Unreachable Core URLs are saved with `validation_state=deferred` and
+`recheck_required_before_trust=true`; the Core step stays put until re-check
+passes before trust or capability setup continues.
 The migration setup
 routes wrap the node migration preflight/import APIs, automatically run a dry
 preflight when a bundle is uploaded, show planned writes/errors before import,

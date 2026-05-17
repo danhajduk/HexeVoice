@@ -608,6 +608,8 @@ class SetupCoreConnectionResponse(BaseModel):
     core_api_url: str | None = None
     core_ui_url: str | None = None
     reachable: bool = False
+    validation_state: str = "deferred"
+    recheck_required_before_trust: bool = True
     core_identity: dict[str, Any] = Field(default_factory=dict)
     core_version: str | None = None
     registration_supported: bool = False
