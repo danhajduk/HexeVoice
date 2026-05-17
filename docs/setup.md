@@ -86,9 +86,10 @@ installed.
 Use `scripts/setup-runner.sh` when a fresh host should expose setup before
 production services are ready. It starts the temporary backend on port `9100`
 and the temporary UI on port `8180`, then watches
-`http://<lan-host>:8084/setup` for the production UI. When production setup is
-healthy, the temporary UI becomes a redirect for `120` seconds by default and
-the runner exits.
+`http://<lan-host>:8084/setup/host` for the production UI. The temporary setup
+page is `http://<lan-host>:8180/setup/host`. When production setup is healthy,
+the temporary UI becomes a redirect for `120` seconds by default and the runner
+exits.
 
 The runner writes progress to `runtime/setup/bootstrap-status.json`. The
 temporary or production backend exposes the same state at

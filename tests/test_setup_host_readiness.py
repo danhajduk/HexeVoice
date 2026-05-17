@@ -20,6 +20,7 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["temporary_setup_url"].endswith(":8180/setup/host")
     assert payload["production_setup_url"].endswith(":8084/setup/host")
     assert "continue" in payload["supported_actions"]
     assert "download-default-stt-model" in payload["supported_actions"]

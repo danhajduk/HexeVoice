@@ -1386,9 +1386,9 @@ Original task details:
 - Scope:
   - Add `scripts/setup-runner.sh`.
   - Run temporary backend on `9100` and temporary frontend/UI on `8180`.
-  - Use LAN URL routing, with temporary setup URL `http://<lan-host>:8180/setup`.
+  - Use LAN URL routing, with temporary setup URL `http://<lan-host>:8180/setup/host`.
   - Keep the temp runner alive while production services start.
-  - Redirect to `http://<lan-host>:8084/setup` after production setup URL is healthy.
+  - Redirect to `http://<lan-host>:8084/setup/host` after production setup URL is healthy.
   - Stop the temp runner after a configurable delay, default `120` seconds.
   - Support handoff to an existing Supervisor, newly installed Core Supervisor, or unsupervised systemd services.
   - Integrate with Core Supervisor installer modes:

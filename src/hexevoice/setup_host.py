@@ -85,7 +85,7 @@ class SetupHostReadinessService:
         api_base_url = self._settings.public_api_base_url or f"http://{lan_host}:{self._settings.api_port}"
         ui_base_url = self._settings.public_ui_base_url or f"http://{lan_host}:8084"
         production_setup_url = f"{ui_base_url.rstrip('/')}/setup/host"
-        temporary_setup_url = f"http://{lan_host}:8180/setup"
+        temporary_setup_url = f"http://{lan_host}:8180/setup/host"
         node_identity = self._node_identity(api_base_url=api_base_url, ui_base_url=ui_base_url, hostname=hostname, lan_host=lan_host)
         lifecycle_mode = str(state.get("lifecycle_mode") or self._default_lifecycle_mode())
         checks = self._checks(

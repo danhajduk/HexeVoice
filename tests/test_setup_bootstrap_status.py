@@ -42,8 +42,8 @@ def test_setup_bootstrap_status_reports_progress_and_retryable_failures(tmp_path
                         "retryable": False,
                     },
                 ],
-                "temporary_setup_url": "http://10.0.0.55:8180/setup",
-                "production_setup_url": "http://10.0.0.55:8084/setup",
+                "temporary_setup_url": "http://10.0.0.55:8180/setup/host",
+                "production_setup_url": "http://10.0.0.55:8084/setup/host",
                 "lifecycle_mode": "systemd",
             }
         ),
@@ -61,8 +61,8 @@ def test_setup_bootstrap_status_reports_progress_and_retryable_failures(tmp_path
     assert payload["pending_downloads"] == ["stt:base", "tts:en_US-kathleen-low.onnx"]
     assert [failure["id"] for failure in payload["failures"]] == ["firmware_download_failed", "systemd_unavailable"]
     assert [failure["id"] for failure in payload["retryable_failures"]] == ["firmware_download_failed"]
-    assert payload["temporary_setup_url"] == "http://10.0.0.55:8180/setup"
-    assert payload["production_setup_url"] == "http://10.0.0.55:8084/setup"
+    assert payload["temporary_setup_url"] == "http://10.0.0.55:8180/setup/host"
+    assert payload["production_setup_url"] == "http://10.0.0.55:8084/setup/host"
 
 
 def test_setup_bootstrap_status_reports_unreadable_status_file(tmp_path):

@@ -40,7 +40,7 @@ Usage: $0 [--handoff MODE] [--lan-host HOST] [--open-browser]
 
 Starts a temporary HexeVoice setup API/UI:
   API: http://<lan-host>:${TEMP_BACKEND_PORT}
-  UI:  http://<lan-host>:${TEMP_FRONTEND_PORT}/setup
+  UI:  http://<lan-host>:${TEMP_FRONTEND_PORT}/setup/host
 
 Handoff modes:
   none                  Start only the temporary setup API/UI.
@@ -203,8 +203,10 @@ done
 LAN_HOST="$(lan_host)"
 LAN_HOST="${LAN_HOST:-127.0.0.1}"
 TEMP_API_BASE_URL="http://${LAN_HOST}:${TEMP_BACKEND_PORT}"
-TEMP_SETUP_URL="http://${LAN_HOST}:${TEMP_FRONTEND_PORT}/setup"
-PRODUCTION_SETUP_URL="${SETUP_RUNNER_PRODUCTION_URL:-http://${LAN_HOST}:${PRODUCTION_FRONTEND_PORT}/setup}"
+TEMP_UI_BASE_URL="http://${LAN_HOST}:${TEMP_FRONTEND_PORT}"
+TEMP_SETUP_URL="${TEMP_UI_BASE_URL}/setup/host"
+PRODUCTION_UI_BASE_URL="http://${LAN_HOST}:${PRODUCTION_FRONTEND_PORT}"
+PRODUCTION_SETUP_URL="${SETUP_RUNNER_PRODUCTION_URL:-${PRODUCTION_UI_BASE_URL}/setup/host}"
 PRODUCTION_API_HEALTH_URL="${SETUP_RUNNER_PRODUCTION_API_HEALTH_URL:-http://${LAN_HOST}:9004/api/health}"
 PRODUCTION_HOST_READINESS_URL="${SETUP_RUNNER_PRODUCTION_HOST_READINESS_URL:-http://${LAN_HOST}:9004/api/setup/host-readiness}"
 PRODUCTION_SUPERVISOR_REGISTER_URL="${SETUP_RUNNER_PRODUCTION_SUPERVISOR_REGISTER_URL:-http://${LAN_HOST}:9004/api/setup/supervisor/register-runtime}"
@@ -220,7 +222,7 @@ start_temp_backend() {
     API_HOST="$TEMP_BACKEND_HOST" \
       API_PORT="$TEMP_BACKEND_PORT" \
       PUBLIC_API_BASE_URL="$TEMP_API_BASE_URL" \
-      PUBLIC_UI_BASE_URL="$TEMP_SETUP_URL" \
+      PUBLIC_UI_BASE_URL="$TEMP_UI_BASE_URL" \
       HEXEVOICE_SETUP_RUNNER_MODE="temporary" \
       PYTHONPATH=src \
       .venv/bin/python -m hexevoice.main

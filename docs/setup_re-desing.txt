@@ -237,7 +237,7 @@ Actions:
    - temporary setup runner script: `scripts/setup-runner.sh`
    - temporary backend port: `9100`
    - temporary frontend/UI port: `8180`
-   - temporary setup URL: `http://<lan-host>:8180/setup`
+   - temporary setup URL: `http://<lan-host>:8180/setup/host`
    - temporary backend API base: `http://<lan-host>:9100`
    - preferred temporary runner shape: one setup runner script that starts backend/frontend in the same command/env shape used by production services
    - temporary runner should exist to show setup UI and ask whether to use or install host Supervisor
@@ -253,8 +253,8 @@ Actions:
    - if operator skips Supervisor, install normal systemd user services and continue as an unsupervised node
    - add a later config option to enable/add Supervisor after initial setup
    - keep the temporary runner alive while production services start
-   - production setup URL: `http://<lan-host>:8084/setup`
-   - once `http://<lan-host>:8084/setup` is healthy, temporary UI should redirect the browser to it
+   - production setup URL: `http://<lan-host>:8084/setup/host`
+   - once `http://<lan-host>:8084/setup/host` is healthy, temporary UI should redirect the browser to it
    - after redirect is requested, temporary runner should stop itself after about 2 minutes
    - temporary runner shutdown delay should be configurable
    - default temporary shutdown delay: `120` seconds
