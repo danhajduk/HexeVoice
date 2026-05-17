@@ -102,6 +102,10 @@ bool current_local_time(std::tm *local_time) {
   return true;
 }
 
+bool current_utc_unix_ms(int64_t *utc_ms) {
+  return current_utc_ms(utc_ms);
+}
+
 int current_local_minute_signature() {
   std::tm local = {};
   if (!current_local_time(&local)) {

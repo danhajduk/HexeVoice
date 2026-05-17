@@ -296,6 +296,10 @@ struct DisplayFrameSignature {
   bool ota_active{false};
   int ota_progress_percent{0};
   bool media_transfer_active{false};
+  bool timer_active{false};
+  hexe::TimerLifecycleState timer_state{hexe::TimerLifecycleState::kInactive};
+  int timer_seconds_remaining{-1};
+  uint32_t timer_label_hash{0};
   int clock_tick{-1};
 };
 
@@ -394,6 +398,33 @@ int clock_tick_signature(UiAssetId id) {
   return g_scene.clock.seconds ? (minute * 60) + local.tm_sec : minute;
 }
 
+uint32_t hash_label(const char *text) {
+  uint32_t hash = 2166136261u;
+  if (text == nullptr) {
+    return hash;
+  }
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    hash ^= static_cast<uint8_t>(*cursor);
+    hash *= 16777619u;
+  }
+  return hash;
+}
+
+int64_t timer_remaining_ms_for_render(const hexe::AppState &app_state) {
+  if (!app_state.timer_active || app_state.timer_state == hexe::TimerLifecycleState::kInactive ||
+      app_state.timer_state == hexe::TimerLifecycleState::kFinished) {
+    return 0;
+  }
+  if (app_state.timer_state == hexe::TimerLifecycleState::kPaused) {
+    return app_state.timer_remaining_ms > 0 ? app_state.timer_remaining_ms : 0;
+  }
+  int64_t now_unix_ms = 0;
+  if (app_state.timer_due_unix_ms > 0 && hexe::system::current_utc_unix_ms(&now_unix_ms)) {
+    return app_state.timer_due_unix_ms > now_unix_ms ? (app_state.timer_due_unix_ms - now_unix_ms) : 0;
+  }
+  return app_state.timer_remaining_ms > 0 ? app_state.timer_remaining_ms : 0;
+}
+
 DisplayFrameSignature make_frame_signature(hexe::AppPhase phase, UiAssetId asset_id) {
   const auto &app_state = hexe::state();
   int volume = app_state.output_volume_percent;
@@ -422,6 +453,10 @@ DisplayFrameSignature make_frame_signature(hexe::AppPhase phase, UiAssetId asset
       .ota_active = app_state.ota_active,
       .ota_progress_percent = ota_progress,
       .media_transfer_active = app_state.media_transfer_active,
+      .timer_active = app_state.timer_active,
+      .timer_state = app_state.timer_state,
+      .timer_seconds_remaining = static_cast<int>((timer_remaining_ms_for_render(app_state) + 999) / 1000),
+      .timer_label_hash = hash_label(app_state.timer_label),
       .clock_tick = clock_tick_signature(asset_id),
   };
 }
@@ -438,6 +473,10 @@ bool same_frame_signature(const DisplayFrameSignature &left, const DisplayFrameS
       left.ota_active == right.ota_active &&
       left.ota_progress_percent == right.ota_progress_percent &&
       left.media_transfer_active == right.media_transfer_active &&
+      left.timer_active == right.timer_active &&
+      left.timer_state == right.timer_state &&
+      left.timer_seconds_remaining == right.timer_seconds_remaining &&
+      left.timer_label_hash == right.timer_label_hash &&
       left.clock_tick == right.clock_tick;
 }
 
@@ -816,6 +855,7 @@ const uint8_t *font5x7_glyph(char ch) {
   };
   static constexpr uint8_t kDot[5] = {0x00, 0x60, 0x60, 0x00, 0x00};
   static constexpr uint8_t kDash[5] = {0x08, 0x08, 0x08, 0x08, 0x08};
+  static constexpr uint8_t kColon[5] = {0x00, 0x36, 0x36, 0x00, 0x00};
 
   if (ch >= '0' && ch <= '9') {
     return kDigits[ch - '0'];
@@ -831,6 +871,9 @@ const uint8_t *font5x7_glyph(char ch) {
   }
   if (ch == '-') {
     return kDash;
+  }
+  if (ch == ':') {
+    return kColon;
   }
   return nullptr;
 }
@@ -1012,6 +1055,108 @@ void draw_ota_progress() {
   } else {
     const int fill_width = (inner_w * percent) / 100;
     fill_rect(bar.x + padding, bar.y + padding, fill_width, inner_h, swap565(bar.fill_color));
+  }
+}
+
+void format_timer_duration(int total_seconds, char *buffer, size_t buffer_size) {
+  if (buffer == nullptr || buffer_size == 0) {
+    return;
+  }
+  if (total_seconds < 0) {
+    total_seconds = 0;
+  }
+  const int hours = total_seconds / 3600;
+  const int minutes = (total_seconds / 60) % 60;
+  const int seconds = total_seconds % 60;
+  if (hours > 0) {
+    std::snprintf(buffer, buffer_size, "%d:%02d:%02d", hours, minutes, seconds);
+  } else {
+    std::snprintf(buffer, buffer_size, "%d:%02d", minutes, seconds);
+  }
+}
+
+const char *timer_status_text(hexe::TimerLifecycleState state) {
+  switch (state) {
+    case hexe::TimerLifecycleState::kActive:
+      return "Timer";
+    case hexe::TimerLifecycleState::kPaused:
+      return "Paused";
+    case hexe::TimerLifecycleState::kFinished:
+      return "Finished";
+    case hexe::TimerLifecycleState::kInactive:
+      return "Timer";
+  }
+  return "Timer";
+}
+
+bool should_draw_timer_screen(const hexe::AppState &app_state) {
+  if (!app_state.timer_active) {
+    return false;
+  }
+  return app_state.phase == hexe::AppPhase::kIdle || app_state.phase == hexe::AppPhase::kTimerFinished ||
+      app_state.phase == hexe::AppPhase::kMuted;
+}
+
+void draw_centered_text(int y, const char *text, int scale_percent, uint16_t color) {
+  const int width = text5x7_width(text, scale_percent);
+  draw_text5x7((kWidth - width) / 2, y, text, scale_percent, color);
+}
+
+void draw_timer_overlay() {
+  const auto &app_state = hexe::state();
+  if (!should_draw_timer_screen(app_state)) {
+    return;
+  }
+
+  const uint16_t shadow = swap565(0x0000);
+  const uint16_t panel = swap565(0x1082);
+  const uint16_t outline = swap565(app_state.timer_state == hexe::TimerLifecycleState::kFinished ? 0xFBE0 : 0x07FF);
+  const uint16_t primary = swap565(0xFFFF);
+  const uint16_t muted = swap565(0xBDF7);
+  const uint16_t fill = swap565(app_state.timer_state == hexe::TimerLifecycleState::kPaused ? 0xFFE0 : 0x07FF);
+
+  constexpr int kPanelX = 42;
+  constexpr int kPanelY = 56;
+  constexpr int kPanelW = 236;
+  constexpr int kPanelH = 132;
+  fill_rect(kPanelX + 4, kPanelY + 4, kPanelW, kPanelH, shadow);
+  fill_rect(kPanelX, kPanelY, kPanelW, kPanelH, panel);
+  draw_rect_outline(kPanelX, kPanelY, kPanelW, kPanelH, outline);
+
+  draw_centered_text(kPanelY + 18, timer_status_text(app_state.timer_state), 220, app_state.timer_state == hexe::TimerLifecycleState::kFinished ? outline : muted);
+
+  char time_text[16] = {};
+  const int remaining_seconds = static_cast<int>((timer_remaining_ms_for_render(app_state) + 999) / 1000);
+  if (app_state.timer_state == hexe::TimerLifecycleState::kFinished) {
+    std::snprintf(time_text, sizeof(time_text), "%s", "DONE");
+  } else {
+    format_timer_duration(remaining_seconds, time_text, sizeof(time_text));
+  }
+  const int time_scale = std::strlen(time_text) > 5 ? 390 : 500;
+  draw_centered_text(kPanelY + 52, time_text, time_scale, primary);
+
+  if (app_state.timer_label[0] != '\0') {
+    char label[18] = {};
+    std::snprintf(label, sizeof(label), "%.17s", app_state.timer_label);
+    draw_centered_text(kPanelY + 104, label, 150, muted);
+  }
+
+  if (app_state.timer_duration_seconds > 0 && app_state.timer_state != hexe::TimerLifecycleState::kFinished) {
+    constexpr int kBarX = 76;
+    constexpr int kBarY = 171;
+    constexpr int kBarW = 168;
+    constexpr int kBarH = 10;
+    const int duration_ms = app_state.timer_duration_seconds * 1000;
+    int fill_width = duration_ms > 0 ? ((kBarW - 4) * remaining_seconds * 1000) / duration_ms : 0;
+    if (fill_width < 0) {
+      fill_width = 0;
+    } else if (fill_width > (kBarW - 4)) {
+      fill_width = kBarW - 4;
+    }
+    draw_rect_outline(kBarX, kBarY, kBarW, kBarH, muted);
+    if (fill_width > 0) {
+      fill_rect(kBarX + 2, kBarY + 2, fill_width, kBarH - 4, fill);
+    }
   }
 }
 
@@ -1324,6 +1469,7 @@ void render_boot_frame(int frame, const char *build_id) {
   if (!draw_composed_scene(asset_id)) {
     return;
   }
+  draw_timer_overlay();
   draw_wifi_icon(hexe::state().wifi_connected, hexe::state().wifi_rssi);
   draw_audio_stream_icon(hexe::state().audio_streaming);
   if (phase != hexe::AppPhase::kBooting) {

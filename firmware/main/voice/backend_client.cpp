@@ -519,6 +519,7 @@ const char *command_type_for_event(const char *event_type);
 bool is_backend_command_event(const char *event_type);
 void acknowledge_command_received(const char *event_type, cJSON *payload);
 bool queue_media_transfer(cJSON *payload);
+void handle_endpoint_timer(cJSON *payload);
 
 void handle_backend_event_json(const std::string &message) {
   cJSON *root = cJSON_ParseWithLength(message.c_str(), message.size());
@@ -690,6 +691,8 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else if (std::strcmp(type, "endpoint.media.transfer") == 0) {
     queue_media_transfer(payload);
+  } else if (std::strcmp(type, "endpoint.timer") == 0) {
+    handle_endpoint_timer(payload);
   } else if (std::strcmp(type, "endpoint.storage.reformat") == 0) {
     const char *request_id = payload_request_id(payload);
     send_command_ack(request_id, "endpoint.storage.reformat", "started", "Reformatting SD media folders");
@@ -1425,6 +1428,160 @@ bool event_requests_followup_listen(cJSON *payload, const char *ux_state) {
   cJSON *needed = cJSON_GetObjectItem(followup, "needed");
   cJSON *timeout_ms = cJSON_GetObjectItem(followup, "listen_timeout_ms");
   return cJSON_IsTrue(needed) || (cJSON_IsNumber(timeout_ms) && timeout_ms->valueint > 0);
+}
+
+bool timer_state_matches(const char *value, const char *expected) {
+  return value != nullptr && expected != nullptr && std::strcmp(value, expected) == 0;
+}
+
+const char *timer_state_from_payload(cJSON *payload) {
+  cJSON *state = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "state") : nullptr;
+  if (!cJSON_IsString(state)) {
+    state = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "status") : nullptr;
+  }
+  if (!cJSON_IsString(state)) {
+    state = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "timer_state") : nullptr;
+  }
+  return cJSON_IsString(state) ? state->valuestring : "";
+}
+
+int64_t unix_ms_from_number(double value) {
+  if (value <= 0) {
+    return 0;
+  }
+  int64_t normalized = static_cast<int64_t>(value);
+  if (normalized > 0 && normalized < 1000000000000LL) {
+    normalized *= 1000;
+  }
+  return normalized;
+}
+
+int64_t read_unix_ms_field(cJSON *payload, const char *field_name) {
+  cJSON *item = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, field_name) : nullptr;
+  return cJSON_IsNumber(item) ? unix_ms_from_number(item->valuedouble) : 0;
+}
+
+int64_t read_duration_ms(cJSON *payload, const char *ms_field, const char *seconds_field) {
+  cJSON *ms = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, ms_field) : nullptr;
+  if (cJSON_IsNumber(ms) && ms->valuedouble > 0) {
+    return static_cast<int64_t>(ms->valuedouble);
+  }
+  cJSON *seconds = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, seconds_field) : nullptr;
+  if (cJSON_IsNumber(seconds) && seconds->valuedouble > 0) {
+    return static_cast<int64_t>(seconds->valuedouble * 1000.0);
+  }
+  return 0;
+}
+
+bool is_timer_active_state(const char *state) {
+  return timer_state_matches(state, "active") || timer_state_matches(state, "running") || timer_state_matches(state, "started");
+}
+
+bool is_timer_paused_state(const char *state) {
+  return timer_state_matches(state, "paused");
+}
+
+bool is_timer_finished_state(const char *state) {
+  return timer_state_matches(state, "finished") || timer_state_matches(state, "expired") || timer_state_matches(state, "done");
+}
+
+bool is_timer_clear_state(const char *state) {
+  return timer_state_matches(state, "inactive") || timer_state_matches(state, "cancelled") ||
+      timer_state_matches(state, "canceled") || timer_state_matches(state, "cleared");
+}
+
+void clear_timer_state() {
+  auto &app_state = hexe::state();
+  app_state.timer_active = false;
+  app_state.timer_state = hexe::TimerLifecycleState::kInactive;
+  app_state.timer_due_unix_ms = 0;
+  app_state.timer_remaining_ms = 0;
+  app_state.timer_duration_seconds = 0;
+  app_state.timer_label[0] = '\0';
+  if (app_state.phase == hexe::AppPhase::kTimerFinished) {
+    app_state.phase = hexe::idle_or_connecting_phase();
+  }
+}
+
+void handle_endpoint_timer(cJSON *payload) {
+  const char *request_id = payload_request_id(payload);
+  const char *state_value = timer_state_from_payload(payload);
+  int64_t due_unix_ms = read_unix_ms_field(payload, "due_unix_ms");
+  if (due_unix_ms <= 0) {
+    due_unix_ms = read_unix_ms_field(payload, "due_at_unix_ms");
+  }
+  if (due_unix_ms <= 0) {
+    due_unix_ms = read_unix_ms_field(payload, "due_epoch_ms");
+  }
+  const int64_t requested_unix_ms = read_unix_ms_field(payload, "requested_at_unix_ms");
+  int64_t remaining_ms = read_duration_ms(payload, "remaining_ms", "remaining_seconds");
+  const int64_t duration_ms = read_duration_ms(payload, "duration_ms", "duration_seconds");
+  if (due_unix_ms <= 0 && requested_unix_ms > 0 && duration_ms > 0) {
+    due_unix_ms = requested_unix_ms + duration_ms;
+  }
+
+  int64_t now_unix_ms = 0;
+  const bool has_clock = hexe::system::current_utc_unix_ms(&now_unix_ms);
+  if (due_unix_ms <= 0 && has_clock && remaining_ms > 0 && is_timer_active_state(state_value)) {
+    due_unix_ms = now_unix_ms + remaining_ms;
+  }
+  if (remaining_ms <= 0 && due_unix_ms > 0 && has_clock) {
+    remaining_ms = due_unix_ms > now_unix_ms ? (due_unix_ms - now_unix_ms) : 0;
+  }
+
+  if (state_value[0] == '\0' && (due_unix_ms > 0 || remaining_ms > 0 || duration_ms > 0)) {
+    state_value = "active";
+  }
+
+  if (is_timer_clear_state(state_value)) {
+    clear_timer_state();
+    send_command_ack(request_id, "endpoint.timer", "succeeded", "Timer cleared");
+    return;
+  }
+
+  auto &app_state = hexe::state();
+  if (is_timer_active_state(state_value) && has_clock && due_unix_ms > 0 && due_unix_ms <= now_unix_ms) {
+    state_value = "finished";
+  }
+  if (is_timer_active_state(state_value)) {
+    app_state.timer_active = true;
+    app_state.timer_state = hexe::TimerLifecycleState::kActive;
+    app_state.timer_due_unix_ms = due_unix_ms;
+    app_state.timer_remaining_ms = remaining_ms;
+    app_state.timer_duration_seconds = duration_ms > 0 ? static_cast<int>(duration_ms / 1000) : 0;
+    if (app_state.phase == hexe::AppPhase::kTimerFinished) {
+      app_state.phase = hexe::idle_or_connecting_phase();
+    }
+  } else if (is_timer_paused_state(state_value)) {
+    app_state.timer_active = true;
+    app_state.timer_state = hexe::TimerLifecycleState::kPaused;
+    app_state.timer_due_unix_ms = 0;
+    app_state.timer_remaining_ms = remaining_ms;
+    app_state.timer_duration_seconds = duration_ms > 0 ? static_cast<int>(duration_ms / 1000) : app_state.timer_duration_seconds;
+    if (app_state.phase == hexe::AppPhase::kTimerFinished) {
+      app_state.phase = hexe::idle_or_connecting_phase();
+    }
+  } else if (is_timer_finished_state(state_value)) {
+    app_state.timer_active = true;
+    app_state.timer_state = hexe::TimerLifecycleState::kFinished;
+    app_state.timer_due_unix_ms = 0;
+    app_state.timer_remaining_ms = 0;
+    app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::AppPhase::kTimerFinished;
+  } else {
+    send_command_error(request_id, "endpoint.timer", "invalid_payload", "Timer state is not supported");
+    return;
+  }
+
+  cJSON *label = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "label") : nullptr;
+  if (!cJSON_IsString(label)) {
+    label = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "name") : nullptr;
+  }
+  if (cJSON_IsString(label) && label->valuestring != nullptr) {
+    std::snprintf(app_state.timer_label, sizeof(app_state.timer_label), "%s", label->valuestring);
+  } else if (app_state.timer_label[0] == '\0') {
+    std::snprintf(app_state.timer_label, sizeof(app_state.timer_label), "%s", "Timer");
+  }
+  send_command_ack(request_id, "endpoint.timer", "succeeded", "Timer state updated");
 }
 
 void resume_audio_stream_for_followup() {

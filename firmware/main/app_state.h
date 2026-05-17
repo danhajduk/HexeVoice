@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace hexe {
 
 enum class AppPhase {
@@ -25,6 +27,13 @@ enum class PlaybackLifecycleState {
   kStopped,
 };
 
+enum class TimerLifecycleState {
+  kInactive,
+  kActive,
+  kPaused,
+  kFinished,
+};
+
 struct AppState {
   AppPhase phase{AppPhase::kBooting};
   bool muted{false};
@@ -32,6 +41,11 @@ struct AppState {
   bool backend_connected{false};
   bool voice_ws_connected{false};
   bool timer_active{false};
+  TimerLifecycleState timer_state{TimerLifecycleState::kInactive};
+  int64_t timer_due_unix_ms{0};
+  int64_t timer_remaining_ms{0};
+  int timer_duration_seconds{0};
+  char timer_label[48]{};
   bool vad_enabled{false};
   bool vad_speaking{false};
   bool audio_streaming{false};

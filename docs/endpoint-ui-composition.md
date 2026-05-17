@@ -197,7 +197,7 @@ Firmware renders layers in this order:
 2. Current avatar variant from `/sdcard/hexe/sprites`.
 3. Scene-specific dynamic overlays such as clock hands and date.
 4. Manifest sprites such as buttons and icons.
-5. Built-in status overlays such as Wi-Fi, audio streaming, volume, and OTA progress.
+5. Built-in overlays such as the timer screen, Wi-Fi, audio streaming, volume, and OTA progress.
 
 ## Avatar States
 
@@ -246,6 +246,35 @@ OTA progress options:
 - `padding`: inset from the bar outline to the fill area.
 - `shadow_margin`: shadow rectangle margin around the bar.
 - `shadow_color_rgb565`, `background_color_rgb565`, `outline_color_rgb565`, and `fill_color_rgb565`: RGB565 colors.
+
+## Endpoint Timer Screen
+
+The ESP-BOX firmware accepts an `endpoint.timer` websocket command and renders a native timer panel when the endpoint is idle, muted, or showing a finished timer. Voice listening, thinking, replying, and OTA phases keep their normal screen priority.
+
+Supported payload fields:
+
+- `state`: `active`, `running`, `started`, `paused`, `finished`, `expired`, `done`, `inactive`, `cancelled`, `canceled`, or `cleared`.
+- `due_unix_ms`, `due_at_unix_ms`, or `due_epoch_ms`: absolute UTC due time. Values below `1000000000000` are treated as Unix seconds and converted to milliseconds.
+- `requested_at_unix_ms` plus `duration_seconds` or `duration_ms`: fallback due-time calculation for MQTT/request timestamp-aware rendering.
+- `remaining_seconds` or `remaining_ms`: fallback for active or paused timers when an absolute due time is unavailable.
+- `label` or `name`: optional short timer label.
+
+Example:
+
+```json
+{
+  "event_type": "endpoint.timer",
+  "payload": {
+    "request_id": "timer-123",
+    "state": "active",
+    "label": "Kitchen",
+    "requested_at_unix_ms": 1778991000000,
+    "duration_seconds": 600
+  }
+}
+```
+
+The active and paused screens show a countdown and remaining-time bar. The finished state shows `DONE` and sets the endpoint phase to `timer finished` until the timer is cleared or a new active/paused timer arrives.
 
 ## Alpha Formats
 
