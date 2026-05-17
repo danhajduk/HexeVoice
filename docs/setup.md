@@ -43,6 +43,32 @@ Preview or apply the host alias manually:
 HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install
 ```
 
+## Uninstall / Partial Install Cleanup
+
+Use `uninstall.sh` to clean up a failed or partial install. By default it stops
+HexeVoice processes, removes generated user service files, removes HexeVoice
+runtime containers, and leaves the checkout/runtime directory in place.
+
+```bash
+~/hexe/HexeVoice/uninstall.sh
+```
+
+To remove the checkout and runtime directory too:
+
+```bash
+~/hexe/HexeVoice/uninstall.sh --remove-app-dir
+```
+
+The uninstall script can also be run from the hosted repository:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/uninstall.sh | bash -s -- --remove-app-dir
+```
+
+Use `--yes` for non-interactive cleanup, `--dry-run` to preview actions, and
+`--remove-host-alias` if the optional `HexeVoice` `/etc/hosts` alias was
+installed.
+
 ## Temporary Setup Runner
 
 Use `scripts/setup-runner.sh` when a fresh host should expose setup before

@@ -76,6 +76,12 @@ Optional local hostname alias:
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_SETUP_HOST_ALIAS=true bash
 ```
 
+Partial install cleanup:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/uninstall.sh | bash -s -- --remove-app-dir
+```
+
 ## Frontend Start
 
 ```bash
