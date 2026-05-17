@@ -20,10 +20,11 @@ SETUP_TTS="${HEXEVOICE_SETUP_TTS:-false}"
 SETUP_WAKE="${HEXEVOICE_SETUP_WAKE:-false}"
 SETUP_FIRMWARE="${HEXEVOICE_SETUP_FIRMWARE:-false}"
 SETUP_HOST_ALIAS="${HEXEVOICE_SETUP_HOST_ALIAS:-false}"
-INSTALL_SYSTEM_PACKAGES="${HEXEVOICE_INSTALL_SYSTEM_PACKAGES:-auto}"
+INSTALL_SYSTEM_PACKAGES="${HEXEVOICE_INSTALL_SYSTEM_PACKAGES:-ask}"
 PRINT_PREREQ_COMMANDS="${HEXEVOICE_PRINT_PREREQ_COMMANDS:-false}"
 MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
 APT_UPDATED=false
+SYSTEM_PACKAGE_INSTALL_APPROVED=false
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
@@ -40,6 +41,49 @@ system_package_install_enabled() {
   case "$INSTALL_SYSTEM_PACKAGES" in
     0|false|FALSE|no|NO|off|OFF|print|PRINT) return 1 ;;
     *) return 0 ;;
+  esac
+}
+
+has_interactive_tty() {
+  true 2>/dev/null </dev/tty >/dev/tty
+}
+
+confirm_system_package_install() {
+  if ! system_package_install_enabled; then
+    return 1
+  fi
+  case "$INSTALL_SYSTEM_PACKAGES" in
+    1|true|TRUE|yes|YES|on|ON|auto|AUTO)
+      SYSTEM_PACKAGE_INSTALL_APPROVED=true
+      return 0
+      ;;
+  esac
+  if [[ "$SYSTEM_PACKAGE_INSTALL_APPROVED" == "true" ]]; then
+    return 0
+  fi
+  if ! has_interactive_tty; then
+    printf 'Missing system packages are required, but no interactive terminal is available for approval.\n' >&2
+    printf 'Rerun with HEXEVOICE_INSTALL_SYSTEM_PACKAGES=true to install them automatically, or print manual commands with HEXEVOICE_PRINT_PREREQ_COMMANDS=true.\n' >&2
+    return 1
+  fi
+  printf '\nHexeVoice needs to install missing system packages with sudo/apt.\n' >/dev/tty
+  printf 'Packages needed now: %s\n' "$*" >/dev/tty
+  printf 'Install them now? [Y/n] ' >/dev/tty
+  local answer
+  if ! IFS= read -r answer </dev/tty; then
+    printf 'Could not read install approval from the terminal.\n' >&2
+    return 1
+  fi
+  case "$answer" in
+    ""|y|Y|yes|YES)
+      SYSTEM_PACKAGE_INSTALL_APPROVED=true
+      return 0
+      ;;
+    *)
+      printf 'System package install skipped by operator.\n' >&2
+      printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+      return 1
+      ;;
   esac
 }
 
@@ -72,6 +116,7 @@ apt_install_packages() {
   if ! command -v apt-get >/dev/null 2>&1; then
     return 1
   fi
+  confirm_system_package_install "$@" || return 1
   if [[ "$APT_UPDATED" != "true" ]]; then
     log "Updating apt package metadata"
     run_privileged env DEBIAN_FRONTEND=noninteractive apt-get update
@@ -86,7 +131,7 @@ install_node_runtime() {
     return 1
   fi
   if command -v apt-get >/dev/null 2>&1; then
-    apt_install_packages ca-certificates curl gnupg
+    apt_install_packages ca-certificates curl gnupg || return 1
     run_privileged install -d -m 0755 /etc/apt/keyrings
     run_privileged rm -f /etc/apt/keyrings/nodesource.gpg
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \

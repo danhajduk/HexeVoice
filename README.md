@@ -48,9 +48,11 @@ Once changes are hosted on the default branch, install the node into
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | bash
 ```
 
-On Debian/Ubuntu hosts the installer will try to install missing system
+On Debian/Ubuntu hosts the installer asks before installing missing system
 prerequisites with `apt`, including Git, Python venv support, and Node.js/npm.
-To print the prerequisite commands without installing anything, run:
+To allow prerequisite install without a prompt, run with
+`HEXEVOICE_INSTALL_SYSTEM_PACKAGES=true`. To print the prerequisite commands
+without installing anything, run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash
