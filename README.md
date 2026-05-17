@@ -66,7 +66,9 @@ prints and opens the hostname URL by default; override it with
 `HEXEVOICE_INSTALL_STATUS_UI_PUBLIC_HOST=<host>` or disable browser launch with
 `HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER=false`. Terminal hyperlink escape
 codes are off by default; enable them with
-`HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK=true`.
+`HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK=true`. Installer command output is
+hidden after the preparation UI starts; disable that with
+`HEXEVOICE_INSTALL_QUIET=false` or set `HEXEVOICE_INSTALL_LOG_PATH=/path/log`.
 
 To also render and restart the user services after `scripts/stack.env` is
 created, run:

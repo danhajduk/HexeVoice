@@ -36,6 +36,9 @@ Optional overrides:
   launch from the installer.
 - `HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK=true` enables OSC-8 terminal
   hyperlinks for terminals that render them cleanly.
+- `HEXEVOICE_INSTALL_QUIET=false` keeps installer command output visible after
+  the preparation UI starts.
+- `HEXEVOICE_INSTALL_LOG_PATH=/path/log` changes the quiet-mode install log.
 - `HEXEVOICE_SETUP_DEFAULT_ARTIFACTS=false` skips default artifact downloads.
 - `HEXEVOICE_DEFAULT_STT_MODEL=base`, `HEXEVOICE_DEFAULT_PIPER_VOICE=en_US-kathleen-low`,
   and `HEXEVOICE_DEFAULT_WAKE_MODEL=Hexe` override default model choices.

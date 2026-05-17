@@ -29,13 +29,22 @@ INSTALL_STATUS_UI_PATH="${HEXEVOICE_INSTALL_STATUS_UI_PATH:-/tmp/hexevoice-insta
 INSTALL_STATUS_UI_PUBLIC_HOST="${HEXEVOICE_INSTALL_STATUS_UI_PUBLIC_HOST:-}"
 INSTALL_STATUS_UI_OPEN_BROWSER="${HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER:-true}"
 INSTALL_STATUS_UI_TERMINAL_LINK="${HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK:-false}"
+INSTALL_QUIET="${HEXEVOICE_INSTALL_QUIET:-true}"
+INSTALL_LOG_PATH="${HEXEVOICE_INSTALL_LOG_PATH:-/tmp/hexevoice-install-$(id -u).log}"
 MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
 APT_UPDATED=false
 SYSTEM_PACKAGE_INSTALL_APPROVED=false
 INSTALL_STATUS_UI_PID=""
+INSTALL_OUTPUT_REDIRECTED=false
+
+exec 3>&1 4>&2
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
+}
+
+terminal_log() {
+  printf '[hexevoice-install] %s\n' "$*" >&3
 }
 
 truthy() {
@@ -70,10 +79,23 @@ install_public_host() {
 
 print_open_url_hint() {
   local url="$1"
-  log "Temporary install status UI: $url"
+  terminal_log "Temporary install status UI: $url"
   if truthy "$INSTALL_STATUS_UI_TERMINAL_LINK" && true 2>/dev/null </dev/tty >/dev/tty; then
     printf '\033]8;;%s\033\\Open HexeVoice setup preparation UI\033]8;;\033\\\n' "$url" >/dev/tty || true
+  else
+    printf 'Open HexeVoice setup preparation UI\n' >&3
   fi
+}
+
+quiet_redirect_output() {
+  if ! truthy "$INSTALL_QUIET" || [[ "$INSTALL_OUTPUT_REDIRECTED" == "true" ]]; then
+    return
+  fi
+  mkdir -p "$(dirname "$INSTALL_LOG_PATH")"
+  : > "$INSTALL_LOG_PATH"
+  exec >>"$INSTALL_LOG_PATH" 2>&1
+  INSTALL_OUTPUT_REDIRECTED=true
+  log "Install output redirected to $INSTALL_LOG_PATH"
 }
 
 open_install_status_browser() {
@@ -137,6 +159,15 @@ stop_install_status_ui() {
 
 cleanup_install_status_ui() {
   stop_install_status_ui
+}
+
+finish_install() {
+  local status=$?
+  if [[ "$status" -ne 0 && "$INSTALL_OUTPUT_REDIRECTED" == "true" ]]; then
+    terminal_log "Install failed; see log: $INSTALL_LOG_PATH"
+  fi
+  cleanup_install_status_ui
+  exit "$status"
 }
 
 start_install_status_ui() {
@@ -252,7 +283,7 @@ PY
   fi
 }
 
-trap cleanup_install_status_ui EXIT INT TERM
+trap finish_install EXIT INT TERM
 
 has_interactive_tty() {
   true 2>/dev/null </dev/tty >/dev/tty
@@ -441,6 +472,9 @@ fi
 
 ensure_command python3 python3
 start_install_status_ui
+if [[ -n "$INSTALL_STATUS_UI_PID" ]]; then
+  quiet_redirect_output
+fi
 install_status_update "running" "Checking host requirements." "Verifying Git, Python venv support, Node.js, and npm."
 ensure_command git git
 ensure_python_venv
