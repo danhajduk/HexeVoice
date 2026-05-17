@@ -492,6 +492,17 @@ export default function App() {
       return;
     }
     if (setupComplete) {
+      const setupPathActive = window.location.pathname.startsWith("/setup");
+      const dashboardHashActive = window.location.hash.startsWith("#/dashboard");
+      if (setupPathActive || !dashboardHashActive) {
+        const section = dashboardSection || "overview";
+        if (setupPathActive) {
+          window.history.replaceState(null, "", `/#/dashboard/${section}`);
+        } else {
+          setDashboardHashRoute(section);
+        }
+        setRouteView("dashboard");
+      }
       return;
     }
     if (window.location.pathname === "/" && !window.location.hash) {

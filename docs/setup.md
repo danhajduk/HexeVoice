@@ -227,7 +227,8 @@ trust/capability visibility, governance currency, Supervisor registration,
 firmware, runtime directories, sockets, LAN URLs, host alias state, and Core
 node visibility before setup can be completed. While setup is incomplete, the
 frontend redirects `8084/` into the current `/setup/*` route; after completion,
-`8084/` stays on the dashboard/fallback surface.
+`8084/` stays on the dashboard/fallback surface and completed `/setup/*`
+requests are normalized back to the dashboard route instead of forcing setup.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none
