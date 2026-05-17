@@ -60,6 +60,7 @@ class SetupHostReadinessService:
             production_setup_url=production_setup_url,
             api_base_url=api_base_url,
             ui_base_url=ui_base_url,
+            core_base_url=core_url,
             setup_mode=str(state.get("setup_mode") or "new_node"),
             lifecycle_mode=str(state.get("lifecycle_mode") or self._default_lifecycle_mode()),
             supervisor_detected=self._supervisor_detected(),

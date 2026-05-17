@@ -29,12 +29,11 @@ function enrollmentTokenApiUrl(form, readiness) {
 
 function enrollmentPageUrl(form, readiness) {
   const baseUrl = form.core_base_url?.trim();
-  const fallback = readiness?.enrollment_page_url || "";
   const supervisorId = (form.supervisor_id || defaultSupervisorId(readiness)).trim();
-  const base = baseUrl ? `${baseUrl.replace(/\/$/, "")}/system/supervisors/enrollment` : fallback;
-  if (!base) {
+  if (!baseUrl) {
     return "";
   }
+  const base = `${baseUrl.replace(/\/$/, "")}/system/supervisors/enrollment`;
   try {
     const url = new URL(base);
     if (supervisorId) {
@@ -46,6 +45,26 @@ function enrollmentPageUrl(form, readiness) {
   } catch {
     return base;
   }
+}
+
+function coreUrlWarning(form, readiness) {
+  const raw = form.core_base_url?.trim();
+  if (!raw) {
+    return "Enter the Core host URL, for example http://10.0.0.100:9001.";
+  }
+  try {
+    const url = new URL(raw);
+    const host = url.hostname.toLowerCase();
+    const nodeHosts = [readiness?.hostname, readiness?.lan_host, window.location.hostname]
+      .filter(Boolean)
+      .map((item) => String(item).toLowerCase());
+    if (nodeHosts.includes(host)) {
+      return "This Core URL points at this Voice node. Use the Core host address, not the node address.";
+    }
+  } catch {
+    return "Core URL is not a valid URL.";
+  }
+  return "";
 }
 
 export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness }) {
@@ -69,7 +88,7 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
       ...current,
       setup_mode: payload.setup_mode || current.setup_mode,
       lifecycle_mode: payload.lifecycle_mode || current.lifecycle_mode,
-      core_base_url: current.core_base_url || "",
+      core_base_url: current.core_base_url || payload.core_base_url || "",
       supervisor_id: current.supervisor_id || defaultSupervisorId(payload),
     }));
   }
@@ -160,6 +179,9 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
     }
   }
 
+  const enrollmentUrl = enrollmentPageUrl(form, activeReadiness);
+  const enrollmentWarning = form.lifecycle_mode === "joined_supervisor" ? coreUrlWarning(form, activeReadiness) : "";
+
   return (
     <article className="card stack">
       <div className="section-heading">
@@ -204,17 +226,26 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
       </div>
 
       {form.lifecycle_mode === "joined_supervisor" ? (
-        <div className="form-actions">
-          <label className="field">
-            <span className="field-label">Enrollment token</span>
-            <input className="field-input" value={form.enrollment_token} onChange={(event) => update("enrollment_token", event.target.value)} />
-          </label>
-          <button className="btn btn-secondary" type="button" onClick={openEnrollmentPage} disabled={!form.core_base_url && !activeReadiness?.enrollment_page_url}>
-            Open Core enrollment
-          </button>
-          <button className="btn btn-ghost" type="button" onClick={copyEnrollmentTokenCommand} disabled={!form.core_base_url && !activeReadiness?.enrollment_token_url}>
-            Copy API command
-          </button>
+        <div className="stack">
+          {enrollmentWarning ? <div className="callout callout-warning">{enrollmentWarning}</div> : null}
+          {enrollmentUrl ? (
+            <div className="fact-grid">
+              <span className="fact-grid-label">Core enrollment URL</span>
+              <span className="fact-grid-value">{enrollmentUrl}</span>
+            </div>
+          ) : null}
+          <div className="form-actions">
+            <label className="field">
+              <span className="field-label">Enrollment token</span>
+              <input className="field-input" value={form.enrollment_token} onChange={(event) => update("enrollment_token", event.target.value)} />
+            </label>
+            <button className="btn btn-secondary" type="button" onClick={openEnrollmentPage} disabled={!form.core_base_url}>
+              Open Core enrollment
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={copyEnrollmentTokenCommand} disabled={!form.core_base_url && !activeReadiness?.enrollment_token_url}>
+              Copy API command
+            </button>
+          </div>
         </div>
       ) : null}
 

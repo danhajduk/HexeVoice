@@ -573,6 +573,7 @@ class SetupHostReadinessResponse(BaseModel):
     production_setup_url: str
     api_base_url: str
     ui_base_url: str
+    core_base_url: str | None = None
     setup_mode: str = "new_node"
     lifecycle_mode: str = "unsupervised_systemd"
     supervisor_detected: bool = False
