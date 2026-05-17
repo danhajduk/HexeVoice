@@ -81,7 +81,8 @@ class SetupHostReadinessService:
     def readiness_payload(self) -> SetupHostReadinessResponse:
         state = self._read_state()
         hostname = socket.gethostname() or "localhost"
-        lan_host = self._lan_host()
+        lan_identity = self._lan_identity(hostname=hostname)
+        lan_host = lan_identity["host"]
         api_base_url = self._settings.public_api_base_url or f"http://{lan_host}:{self._settings.api_port}"
         ui_base_url = self._settings.public_ui_base_url or f"http://{lan_host}:8084"
         production_setup_url = f"{ui_base_url.rstrip('/')}/setup/host"
@@ -90,6 +91,7 @@ class SetupHostReadinessService:
         lifecycle_mode = str(state.get("lifecycle_mode") or self._default_lifecycle_mode())
         checks = self._checks(
             lan_host=lan_host,
+            lan_identity=lan_identity,
             api_base_url=api_base_url,
             ui_base_url=ui_base_url,
             node_identity=node_identity,
@@ -102,6 +104,7 @@ class SetupHostReadinessService:
             ok=not blockers,
             hostname=hostname,
             lan_host=lan_host,
+            lan_detected_ip=lan_identity.get("detected_ip"),
             node_identity=node_identity,
             temporary_setup_url=temporary_setup_url,
             production_setup_url=production_setup_url,
@@ -266,6 +269,7 @@ class SetupHostReadinessService:
         self,
         *,
         lan_host: str,
+        lan_identity: dict[str, Any],
         api_base_url: str,
         ui_base_url: str,
         node_identity: dict[str, Any],
@@ -296,7 +300,17 @@ class SetupHostReadinessService:
             )
 
         add("backend", "Backend API", "pass", "Backend API is serving host readiness.", required=True)
-        add("lan_url", "LAN URL", "pass" if lan_host else "fail", f"LAN host is {lan_host}.", required=True)
+        lan_detected = bool(lan_identity.get("detected_ip"))
+        add(
+            "lan_url",
+            "LAN URL",
+            "pass" if lan_detected else "fail",
+            f"LAN host is {lan_host}."
+            if lan_detected
+            else "No non-loopback LAN IP was detected; using hostname fallback until networking is fixed.",
+            required=True,
+            detail=lan_identity,
+        )
         add(
             "node_identity",
             "Node identity",
@@ -464,13 +478,31 @@ class SetupHostReadinessService:
 
     @staticmethod
     def _lan_host() -> str:
-        for candidate in (
+        return SetupHostReadinessService._lan_identity()["host"]
+
+    @staticmethod
+    def _lan_identity(*, hostname: str | None = None) -> dict[str, Any]:
+        hostname = hostname or socket.gethostname() or "host-unresolved"
+        candidates = [
             SetupHostReadinessService._route_lan_host(),
             *SetupHostReadinessService._hostname_lan_hosts(),
-        ):
+        ]
+        for candidate in candidates:
             if SetupHostReadinessService._usable_lan_host(candidate):
-                return candidate
-        return "127.0.0.1"
+                return {
+                    "host": candidate,
+                    "detected_ip": candidate,
+                    "hostname": hostname,
+                    "candidates": [item for item in candidates if item],
+                    "fallback": False,
+                }
+        return {
+            "host": hostname,
+            "detected_ip": None,
+            "hostname": hostname,
+            "candidates": [item for item in candidates if item],
+            "fallback": True,
+        }
 
     @staticmethod
     def _route_lan_host() -> str:

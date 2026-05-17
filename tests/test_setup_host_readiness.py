@@ -10,6 +10,7 @@ from hexevoice.main import create_app
 
 
 ROOT = Path(__file__).resolve().parents[1]
+LAN_IDENTITY = {"host": "10.0.0.55", "detected_ip": "10.0.0.55", "candidates": ["10.0.0.55"], "fallback": False}
 
 
 def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
@@ -22,6 +23,7 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
     payload = response.json()
     assert payload["temporary_setup_url"].endswith(":8180/setup/host")
     assert payload["production_setup_url"].endswith(":8084/setup/host")
+    assert "lan_detected_ip" in payload
     assert "continue" in payload["supported_actions"]
     assert "download-default-stt-model" in payload["supported_actions"]
     assert "redetect-lan-ip" in payload["supported_actions"]
@@ -31,6 +33,8 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
     assert runtime_check["detail"]["policy"]["severity"] == "hard_blocker"
     assert "runtime_dirs" in payload["blockers"]
     assert "node_identity" in payload["blockers"]
+    lan_check = next(check for check in payload["checks"] if check["id"] == "lan_url")
+    assert "detected_ip" in lan_check["detail"]
     stt_check = next(check for check in payload["checks"] if check["id"] == "stt_model")
     assert stt_check["detail"]["action"] == "download-default-stt-model"
 
@@ -156,6 +160,25 @@ def test_setup_host_lan_host_ignores_loopback_alias(monkeypatch):
     assert SetupHostReadinessService._lan_host() == "10.0.0.55"
 
 
+def test_setup_host_lan_host_never_falls_back_to_loopback(monkeypatch):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    monkeypatch.setattr("hexevoice.setup_host.socket.gethostname", lambda: "hexe-ai")
+    monkeypatch.setattr(SetupHostReadinessService, "_route_lan_host", staticmethod(lambda: "127.0.0.1"))
+    monkeypatch.setattr(
+        SetupHostReadinessService,
+        "_hostname_lan_hosts",
+        staticmethod(lambda: ["127.0.1.1", "127.0.0.1"]),
+    )
+
+    identity = SetupHostReadinessService._lan_identity()
+
+    assert identity["host"] == "hexe-ai"
+    assert identity["detected_ip"] is None
+    assert identity["fallback"] is True
+    assert SetupHostReadinessService._lan_host() == "hexe-ai"
+
+
 def test_setup_host_actions_run_helpers_from_project_root(monkeypatch, tmp_path):
     from hexevoice.setup_host import SetupHostReadinessService
 
@@ -163,6 +186,11 @@ def test_setup_host_actions_run_helpers_from_project_root(monkeypatch, tmp_path)
     service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
 
     monkeypatch.setattr(SetupHostReadinessService, "_lan_host", staticmethod(lambda: "10.0.0.55"))
+    monkeypatch.setattr(
+        SetupHostReadinessService,
+        "_lan_identity",
+        staticmethod(lambda hostname=None: LAN_IDENTITY),
+    )
 
     def fake_run(command, **kwargs):
         recorded["command"] = command
@@ -205,6 +233,11 @@ def test_setup_host_recovery_actions_use_stack_scripts(monkeypatch, tmp_path):
     service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
 
     monkeypatch.setattr(SetupHostReadinessService, "_lan_host", staticmethod(lambda: "10.0.0.55"))
+    monkeypatch.setattr(
+        SetupHostReadinessService,
+        "_lan_identity",
+        staticmethod(lambda hostname=None: LAN_IDENTITY),
+    )
 
     def fake_run(command, **kwargs):
         recorded.append({"command": command, "timeout": kwargs.get("timeout"), "cwd": kwargs.get("cwd")})
@@ -253,6 +286,11 @@ def test_setup_host_default_asset_actions_use_control_scripts(monkeypatch, tmp_p
     service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
 
     monkeypatch.setattr(SetupHostReadinessService, "_lan_host", staticmethod(lambda: "10.0.0.55"))
+    monkeypatch.setattr(
+        SetupHostReadinessService,
+        "_lan_identity",
+        staticmethod(lambda hostname=None: LAN_IDENTITY),
+    )
 
     def fake_run(command, **kwargs):
         recorded.append(

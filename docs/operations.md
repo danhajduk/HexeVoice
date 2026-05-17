@@ -205,6 +205,10 @@ API URL, LAN identity, node identity, runtime directories, and disk space are
 hard blockers. Supervisor is a hard blocker only when the selected lifecycle
 mode requires Supervisor. Docker, systemd, firmware, CUDA, host alias, default
 assets, and deferred Supervisor registration remain warnings at this step.
+LAN identity detection rejects loopback, link-local, unspecified, and multicast
+addresses. If no usable LAN IP is found, Host Setup exposes the hostname as a
+fallback URL host but fails the `lan_url` hard blocker until a real LAN IP is
+detected.
 Step 2 recovery actions are exposed through the same Host Setup action API:
 re-detect LAN identity, re-check Supervisor, restart production services,
 re-run Supervisor service registration, rebuild systemd service definitions, and

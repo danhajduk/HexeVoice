@@ -136,7 +136,16 @@ lan_host() {
     printf '%s\n' "$SETUP_RUNNER_LAN_HOST"
     return
   fi
-  hostname -I 2>/dev/null | awk '{print $1; exit}'
+  hostname -I 2>/dev/null | awk '
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i !~ /^127\\./ && $i !~ /^169\\.254\\./ && $i != "0.0.0.0") {
+          print $i
+          exit
+        }
+      }
+    }
+  '
 }
 
 require_file() {
@@ -201,7 +210,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 LAN_HOST="$(lan_host)"
-LAN_HOST="${LAN_HOST:-127.0.0.1}"
+LAN_HOST="${LAN_HOST:-$(hostname -s 2>/dev/null || hostname 2>/dev/null || printf 'hexevoice')}"
 TEMP_API_BASE_URL="http://${LAN_HOST}:${TEMP_BACKEND_PORT}"
 TEMP_UI_BASE_URL="http://${LAN_HOST}:${TEMP_FRONTEND_PORT}"
 TEMP_SETUP_URL="${TEMP_UI_BASE_URL}/setup/host"

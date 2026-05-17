@@ -178,3 +178,4 @@ Task 165: Update Step 2 handoff so supervisor/service registration waits until n
 Task 166: Define and enforce Step 2 readiness policy with explicit hard blockers versus warnings for runtime dirs, LAN identity, backend/frontend, Docker, supervisor, firmware, CUDA, host alias, and default assets - Completed on 05/16/2026 22:10
 Task 167: Add Step 2 recovery actions for re-detect LAN IP, restart temp services, restart production services, re-run service registration, re-check supervisor, and rebuild systemd/supervisor service definitions - Completed on 05/16/2026 21:48
 Task 168: Normalize setup URLs so temp uses /setup/host on port 8180 and production uses /setup/host on port 8084 without duplicate /setup path segments - Completed on 05/16/2026 21:50
+Task 169: Harden LAN identity detection so loopback addresses are never selected as the LAN host and the detected LAN IP is exposed as setup readiness data - Completed on 05/16/2026 21:54

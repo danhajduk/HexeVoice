@@ -5,6 +5,7 @@ export { StageCard };
 const SETUP_HEALTH_CHECKS = [
   ["backend", "Backend"],
   ["frontend", "Frontend"],
+  ["lan_url", "LAN"],
   ["runtime_dirs", "Runtime dirs"],
   ["docker", "Docker"],
   ["cuda", "CUDA"],
@@ -57,6 +58,8 @@ export function SetupSidebar({ flow }) {
 
 export function SetupHealthCard({ readiness }) {
   const checks = readiness?.checks || [];
+  const lanCheck = checks.find((item) => item.id === "lan_url");
+  const detectedLanIp = readiness?.lan_detected_ip || lanCheck?.detail?.detected_ip || "";
   const state = !readiness ? "checking" : readiness.ok ? "ready" : "needs attention";
   const tone = !readiness ? "neutral" : readiness.ok ? "success" : "warning";
 
@@ -85,7 +88,7 @@ export function SetupHealthCard({ readiness }) {
         </div>
         <div className="fact-grid-item">
           <span className="fact-grid-label">LAN</span>
-          <span className="fact-grid-value">{readiness?.lan_host || "pending"}</span>
+          <span className="fact-grid-value">{detectedLanIp || readiness?.lan_host || "pending"}</span>
         </div>
         <div className="fact-grid-item">
           <span className="fact-grid-label">Production setup</span>
