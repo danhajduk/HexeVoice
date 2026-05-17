@@ -505,6 +505,17 @@ export default function App() {
   }, [showSetupPage, setupSection, setupReadiness?.setup_mode, status?.trust_state, onboarding?.trust_state]);
 
   useEffect(() => {
+    if (!showSetupPage || setupSection !== "onboard") {
+      return;
+    }
+    const trustState = status?.trust_state || onboarding?.trust_state;
+    const stepId = onboarding?.current_step_id || status?.current_step_id;
+    if (trustState === "trusted" && stepId === "provider_setup") {
+      openSetupSection("providers");
+    }
+  }, [showSetupPage, setupSection, status?.trust_state, status?.current_step_id, onboarding?.trust_state, onboarding?.current_step_id]);
+
+  useEffect(() => {
     if (showSetupPage || dashboardSection !== "voice-endpoint") {
       return undefined;
     }
