@@ -8,13 +8,14 @@ import {
   getOperationalStatus,
   getProviderSetup,
   getServicesStatus,
+  getSetupHostReadiness,
   getTtsSettings,
   getVoiceIntents,
   getVoiceStatus,
   restartOnboardingSetup,
 } from "./api/client";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
-import { SetupSidebar } from "./features/setup/SetupComponents";
+import { SetupHealthCard, SetupSidebar } from "./features/setup/SetupComponents";
 import { HostSetupPage } from "./features/setup/HostSetupPage";
 import { CoreSetupPage, MigrationSetupPage } from "./features/setup/CoreMigrationSetupPage";
 import { ReauthSetupPage } from "./features/setup/ReauthSetupPage";
@@ -47,6 +48,7 @@ const SETUP_FLOW_STEPS = [
 const VOICE_ENDPOINT_REFRESH_MS = 2000;
 const VOICE_INTENTS_REFRESH_MS = 5000;
 const RUNTIME_REFRESH_MS = 2000;
+const SETUP_HEALTH_REFRESH_MS = 5000;
 
 function isSetupStage(onboarding, status) {
   const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
@@ -239,6 +241,7 @@ export default function App() {
   const [voiceIntents, setVoiceIntents] = useState(null);
   const [ttsSettings, setTtsSettings] = useState(null);
   const [endpointStatus, setEndpointStatus] = useState(null);
+  const [setupReadiness, setSetupReadiness] = useState(null);
   const [error, setError] = useState("");
   const [restartingSetup, setRestartingSetup] = useState(false);
   const [routeView, setRouteView] = useState(() =>
@@ -256,6 +259,12 @@ export default function App() {
   const inSetup = showSetupPage;
   const nodeState = nodeStateFromStatus(status, onboarding);
   const requiredInputs = requiredSetupInputs(status);
+
+  const refreshSetupReadiness = useCallback(async () => {
+    const payload = await getSetupHostReadiness();
+    setSetupReadiness(payload);
+    return payload;
+  }, []);
 
   const refresh = useCallback(async () => {
     const [
@@ -350,6 +359,23 @@ export default function App() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!showSetupPage) {
+      return undefined;
+    }
+
+    refreshSetupReadiness().catch((err) => {
+      setError(String(err.message || err));
+    });
+    const timer = window.setInterval(() => {
+      refreshSetupReadiness().catch(() => {});
+    }, SETUP_HEALTH_REFRESH_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [refreshSetupReadiness, showSetupPage]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -609,21 +635,47 @@ export default function App() {
             <section className="content-stack">
               {showSetupPage ? (
                 setupSection === "host" ? (
-                  <HostSetupPage />
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <HostSetupPage
+                      readiness={setupReadiness}
+                      onReadinessChange={setSetupReadiness}
+                      onRefreshReadiness={refreshSetupReadiness}
+                    />
+                  </>
                 ) : setupSection === "core" ? (
-                  <CoreSetupPage />
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <CoreSetupPage />
+                  </>
                 ) : setupSection === "migration" ? (
-                  <MigrationSetupPage />
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <MigrationSetupPage />
+                  </>
                 ) : setupSection === "reauth" ? (
-                  <ReauthSetupPage />
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <ReauthSetupPage />
+                  </>
                 ) : setupSection === "providers" ? (
-                  <ProvidersSetupPage />
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <ProvidersSetupPage />
+                  </>
                 ) : setupSection === "capabilities" ? (
-                  <CapabilitiesSetupPage />
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <CapabilitiesSetupPage />
+                  </>
                 ) : setupSection === "ready" ? (
-                  <ReadySetupPage onRefresh={refresh} />
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <ReadySetupPage onRefresh={refresh} />
+                  </>
                 ) : (
                   <>
+                    <SetupHealthCard readiness={setupReadiness} />
                     <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
                     <section className="grid setup-secondary-grid">
                       <LiveStatusCard status={status} />

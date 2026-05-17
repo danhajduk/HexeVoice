@@ -852,10 +852,15 @@
   border-color: hsl(var(--sx-danger) / 0.45);
 }
 
+.setup-health-pills,
 .host-readiness-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.setup-health-card .fact-grid {
+  margin-top: 0;
 }
 
 .hero-copy {

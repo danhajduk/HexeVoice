@@ -364,7 +364,7 @@ Production route:
 
 What the first production setup page should show:
 
-1. Host readiness
+1. Setup Health card, shown above every setup stage
    - backend health
    - frontend health
    - LAN URL
@@ -560,7 +560,7 @@ Purpose:
 
 Shared behavior:
 
-- Keep the Step 2 readiness/status panel visible.
+- Keep the Setup Health card visible.
 - Keep using production UI/API.
 - Continue to use LAN URLs.
 - Do not continue if Step 2 has hard blockers for the selected path.
@@ -702,7 +702,7 @@ Shared behavior:
 
 - Keep using production UI/API.
 - Keep using LAN URLs.
-- Keep the readiness/status panel visible.
+- Keep the Setup Health card visible.
 - Show trust progress as a step-by-step state machine.
 - Store only fresh trust state issued by Core during this setup.
 
@@ -862,7 +862,7 @@ Route:
 Shared behavior:
 
 - Keep using production UI/API.
-- Keep the readiness/status panel visible.
+- Keep the Setup Health card visible.
 - UI must track config/download/apply/restart/health status before allowing the
   operator to move to the next step.
 - Each provider section should show:

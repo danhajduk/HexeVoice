@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { getSetupHostReadiness, runSetupHostReadinessAction } from "../../api/client";
 
 const setupModes = [
@@ -13,20 +13,8 @@ const lifecycleModes = [
   { value: "unsupervised_systemd", label: "Unsupervised systemd" },
 ];
 
-function toneForStatus(status) {
-  if (status === "pass") return "success";
-  if (status === "fail") return "danger";
-  if (status === "warn") return "warning";
-  return "neutral";
-}
-
-function checkLabel(checks, id) {
-  const check = checks.find((item) => item.id === id);
-  return check?.status || "unknown";
-}
-
-export function HostSetupPage() {
-  const [readiness, setReadiness] = useState(null);
+export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness }) {
+  const [localReadiness, setLocalReadiness] = useState(null);
   const [form, setForm] = useState({
     setup_mode: "new_node",
     lifecycle_mode: "unsupervised_systemd",
@@ -37,29 +25,11 @@ export function HostSetupPage() {
   const [busyAction, setBusyAction] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [readinessSynced, setReadinessSynced] = useState(false);
+  const activeReadiness = readiness || localReadiness;
 
-  const checks = readiness?.checks || [];
-  const summaryChecks = useMemo(
-    () => [
-      ["backend", "Backend"],
-      ["frontend", "Frontend"],
-      ["runtime_dirs", "Runtime dirs"],
-      ["docker", "Docker"],
-      ["cuda", "CUDA"],
-      ["systemd", "systemd"],
-      ["supervisor", "Supervisor"],
-      ["host_alias", "Host alias"],
-      ["firmware", "Firmware"],
-      ["stt_model", "STT"],
-      ["tts_model", "TTS"],
-      ["wake_model", "Wake"],
-    ],
-    [],
-  );
-
-  async function refresh() {
-    const payload = await getSetupHostReadiness();
-    setReadiness(payload);
+  function syncFormFromReadiness(payload) {
+    setReadinessSynced(true);
     setForm((current) => ({
       ...current,
       setup_mode: payload.setup_mode || current.setup_mode,
@@ -68,26 +38,36 @@ export function HostSetupPage() {
     }));
   }
 
+  function applyReadiness(payload) {
+    setLocalReadiness(payload);
+    onReadinessChange?.(payload);
+    syncFormFromReadiness(payload);
+  }
+
+  async function refresh() {
+    const payload = onRefreshReadiness ? await onRefreshReadiness() : await getSetupHostReadiness();
+    applyReadiness(payload);
+  }
+
   useEffect(() => {
     let mounted = true;
-    getSetupHostReadiness()
-      .then((payload) => {
-        if (mounted) {
-          setReadiness(payload);
-          setForm((current) => ({
-            ...current,
-            setup_mode: payload.setup_mode || current.setup_mode,
-            lifecycle_mode: payload.lifecycle_mode || current.lifecycle_mode,
-          }));
-        }
-      })
-      .catch((err) => {
-        if (mounted) setError(String(err.message || err));
-      });
+    if (readiness && !readinessSynced) {
+      syncFormFromReadiness(readiness);
+    } else if (!readiness && !readinessSynced) {
+      getSetupHostReadiness()
+        .then((payload) => {
+          if (mounted) {
+            applyReadiness(payload);
+          }
+        })
+        .catch((err) => {
+          if (mounted) setError(String(err.message || err));
+        });
+    }
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [readiness, readinessSynced]);
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -100,7 +80,7 @@ export function HostSetupPage() {
     try {
       const payload = await runSetupHostReadinessAction(action, form);
       if (payload.readiness) {
-        setReadiness(payload.readiness);
+        applyReadiness(payload.readiness);
       } else {
         await refresh();
       }
@@ -117,8 +97,8 @@ export function HostSetupPage() {
   }
 
   function openEnrollmentToken() {
-    const base = form.core_base_url || readiness?.enrollment_token_url?.replace(/\/system\/supervisors\/enrollment-tokens$/, "");
-    const url = readiness?.enrollment_token_url || (base ? `${base.replace(/\/$/, "")}/system/supervisors/enrollment-tokens` : "");
+    const base = form.core_base_url || activeReadiness?.enrollment_token_url?.replace(/\/system\/supervisors\/enrollment-tokens$/, "");
+    const url = activeReadiness?.enrollment_token_url || (base ? `${base.replace(/\/$/, "")}/system/supervisors/enrollment-tokens` : "");
     if (url) {
       window.open(url, "_blank", "noopener,noreferrer");
     }
@@ -128,38 +108,12 @@ export function HostSetupPage() {
     <article className="card stack">
       <div className="section-heading">
         <h2>Host Setup</h2>
-        <span className={`status-pill status-pill-${readiness?.ok ? "success" : "warning"}`}>
-          {readiness?.ok ? "ready" : "needs attention"}
+        <span className={`status-pill status-pill-${activeReadiness?.ok ? "success" : "warning"}`}>
+          {activeReadiness?.ok ? "ready" : "needs attention"}
         </span>
       </div>
       {notice ? <div className="callout callout-success">{notice}</div> : null}
       {error ? <div className="callout callout-danger">{error}</div> : null}
-
-      <div className="host-readiness-pills">
-        {summaryChecks.map(([id, label]) => {
-          const status = checkLabel(checks, id);
-          return (
-            <span className={`status-pill status-pill-${toneForStatus(status)}`} key={id}>
-              {label}: {status}
-            </span>
-          );
-        })}
-      </div>
-
-      <div className="fact-grid">
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Host</span>
-          <span className="fact-grid-value">{readiness?.hostname || "loading"}</span>
-        </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">LAN</span>
-          <span className="fact-grid-value">{readiness?.lan_host || "pending"}</span>
-        </div>
-        <div className="fact-grid-item">
-          <span className="fact-grid-label">Production setup</span>
-          <span className="fact-grid-value">{readiness?.production_setup_url || "/setup/host"}</span>
-        </div>
-      </div>
 
       <div className="form-grid">
         <label className="field">
@@ -194,7 +148,7 @@ export function HostSetupPage() {
             <span className="field-label">Enrollment token</span>
             <input className="field-input" value={form.enrollment_token} onChange={(event) => update("enrollment_token", event.target.value)} />
           </label>
-          <button className="btn btn-secondary" type="button" onClick={openEnrollmentToken} disabled={!form.core_base_url && !readiness?.enrollment_token_url}>
+          <button className="btn btn-secondary" type="button" onClick={openEnrollmentToken} disabled={!form.core_base_url && !activeReadiness?.enrollment_token_url}>
             Open Core enrollment token
           </button>
         </div>
@@ -225,8 +179,8 @@ export function HostSetupPage() {
         </button>
       </div>
 
-      {readiness?.blockers?.length ? <div className="callout callout-danger">Blockers: {readiness.blockers.join(", ")}</div> : null}
-      {readiness?.warnings?.length ? <div className="callout callout-warning">Warnings: {readiness.warnings.join(", ")}</div> : null}
+      {activeReadiness?.blockers?.length ? <div className="callout callout-danger">Blockers: {activeReadiness.blockers.join(", ")}</div> : null}
+      {activeReadiness?.warnings?.length ? <div className="callout callout-warning">Warnings: {activeReadiness.warnings.join(", ")}</div> : null}
     </article>
   );
 }
