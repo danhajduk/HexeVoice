@@ -196,6 +196,11 @@ temporary runner redirects. The runner also calls
 redirect. That endpoint forces the existing Supervisor heartbeat/registration
 path; if Core trust has not issued a `node_id` yet, registration is reported as
 deferred and the backend heartbeat loop completes it after trust activation.
+Host readiness checks include an explicit `policy` detail. Backend, frontend,
+API URL, LAN identity, node identity, runtime directories, and disk space are
+hard blockers. Supervisor is a hard blocker only when the selected lifecycle
+mode requires Supervisor. Docker, systemd, firmware, CUDA, host alias, default
+assets, and deferred Supervisor registration remain warnings at this step.
 
 Runtime files are local state and should normally stay uncommitted. See
 `docs/runtime-state-policy.md` for the tracking policy and run

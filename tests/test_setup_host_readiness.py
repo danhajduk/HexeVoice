@@ -25,6 +25,7 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
     assert "download-default-stt-model" in payload["supported_actions"]
     runtime_check = next(check for check in payload["checks"] if check["id"] == "runtime_dirs")
     assert runtime_check["status"] == "fail"
+    assert runtime_check["detail"]["policy"]["severity"] == "hard_blocker"
     assert "runtime_dirs" in payload["blockers"]
     assert "node_identity" in payload["blockers"]
     stt_check = next(check for check in payload["checks"] if check["id"] == "stt_model")
@@ -45,7 +46,11 @@ def test_setup_host_stt_model_check_requires_non_empty_cache(tmp_path):
     assert "empty" in stt_check["message"]
 
 
-def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
+def test_setup_host_continue_saves_setup_and_lifecycle_mode(monkeypatch, tmp_path):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    monkeypatch.setattr(SetupHostReadinessService, "_supervisor_detected", staticmethod(lambda: False))
+
     runtime_dir = tmp_path / "runtime"
     for path in json.loads((ROOT / "config" / "runtime-dirs.json").read_text()).get("runtime_dirs", []):
         (runtime_dir / path).mkdir(parents=True, exist_ok=True)
@@ -69,6 +74,10 @@ def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
     assert payload["readiness"]["core_base_url"] == "http://10.0.0.100:9001"
     assert payload["readiness"]["enrollment_token_url"] == "http://10.0.0.100:9001/api/system/supervisors/enrollment-tokens"
     assert payload["readiness"]["enrollment_page_url"] == "http://10.0.0.100:9001/system/supervisors/enrollment?supervisor_id=lab-supervisor"
+    supervisor_check = next(check for check in payload["readiness"]["checks"] if check["id"] == "supervisor")
+    assert supervisor_check["status"] == "fail"
+    assert supervisor_check["required"] is True
+    assert "supervisor" in payload["readiness"]["blockers"]
 
 
 def test_setup_host_readiness_includes_saved_node_identity(tmp_path):

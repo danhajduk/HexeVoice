@@ -37,6 +37,27 @@ DEFAULT_STT_MODEL = "base"
 DEFAULT_PIPER_VOICE = "en_US-kathleen-low"
 DEFAULT_WAKE_MODEL = "Hexe"
 ASSET_ACTION_TIMEOUT_S = 1800
+SUPERVISOR_LIFECYCLE_MODES = {"existing_supervisor", "joined_supervisor", "standalone_supervisor"}
+
+READINESS_POLICY: dict[str, dict[str, str]] = {
+    "backend": {"severity": "hard_blocker", "reason": "Temporary or production backend must answer setup APIs."},
+    "frontend": {"severity": "hard_blocker", "reason": "Production setup UI must be reachable before temp redirect."},
+    "api_url": {"severity": "hard_blocker", "reason": "Final API URL must be known before handoff."},
+    "lan_url": {"severity": "hard_blocker", "reason": "LAN identity cannot be loopback or empty."},
+    "node_identity": {"severity": "hard_blocker", "reason": "Node display name and nonce are required before handoff."},
+    "runtime_dirs": {"severity": "hard_blocker", "reason": "Runtime directory skeleton must exist before services start."},
+    "disk_space": {"severity": "hard_blocker", "reason": "Install/runtime directory must have minimum free disk space."},
+    "docker": {"severity": "warning", "reason": "Docker is required by selected runtime providers, but provider setup enforces that later."},
+    "systemd": {"severity": "warning", "reason": "systemd is required for unsupervised lifecycle service management."},
+    "supervisor": {"severity": "conditional_blocker", "reason": "Supervisor is required only for Supervisor lifecycle modes."},
+    "supervisor_registration": {"severity": "warning", "reason": "Registration is deferred until Core trust provides node ID."},
+    "host_alias": {"severity": "warning", "reason": "Alias improves LAN access but is not required."},
+    "cuda": {"severity": "warning", "reason": "CUDA is optional and can be configured later."},
+    "firmware": {"severity": "warning", "reason": "Firmware can be downloaded or built later."},
+    "stt_model": {"severity": "warning", "reason": "Default STT asset can be retried before provider setup."},
+    "tts_model": {"severity": "warning", "reason": "Default TTS asset can be retried before provider setup."},
+    "wake_model": {"severity": "warning", "reason": "Default wake model can be retried before provider setup."},
+}
 
 
 def _utc_now() -> str:
@@ -58,11 +79,13 @@ class SetupHostReadinessService:
         production_setup_url = f"{ui_base_url.rstrip('/')}/setup/host"
         temporary_setup_url = f"http://{lan_host}:8180/setup"
         node_identity = self._node_identity(api_base_url=api_base_url, ui_base_url=ui_base_url, hostname=hostname, lan_host=lan_host)
+        lifecycle_mode = str(state.get("lifecycle_mode") or self._default_lifecycle_mode())
         checks = self._checks(
             lan_host=lan_host,
             api_base_url=api_base_url,
             ui_base_url=ui_base_url,
             node_identity=node_identity,
+            lifecycle_mode=lifecycle_mode,
         )
         blockers = [check.id for check in checks if check.required and check.status == "fail"]
         warnings = [check.id for check in checks if check.status == "warn"]
@@ -78,7 +101,7 @@ class SetupHostReadinessService:
             ui_base_url=ui_base_url,
             core_base_url=core_url,
             setup_mode=str(state.get("setup_mode") or "new_node"),
-            lifecycle_mode=str(state.get("lifecycle_mode") or self._default_lifecycle_mode()),
+            lifecycle_mode=lifecycle_mode,
             supervisor_detected=self._supervisor_detected(),
             checks=checks,
             blockers=blockers,
@@ -206,6 +229,7 @@ class SetupHostReadinessService:
         api_base_url: str,
         ui_base_url: str,
         node_identity: dict[str, Any],
+        lifecycle_mode: str,
     ) -> list[SetupHostReadinessCheck]:
         checks: list[SetupHostReadinessCheck] = []
 
@@ -218,6 +242,8 @@ class SetupHostReadinessService:
             required: bool = False,
             detail: dict[str, Any] | None = None,
         ) -> None:
+            policy = READINESS_POLICY.get(check_id, {"severity": "warning", "reason": ""})
+            merged_detail = {"policy": policy, **(detail or {})}
             checks.append(
                 SetupHostReadinessCheck(
                     id=check_id,
@@ -225,7 +251,7 @@ class SetupHostReadinessService:
                     status=status,  # type: ignore[arg-type]
                     required=required,
                     message=message,
-                    detail=detail or {},
+                    detail=merged_detail,
                 )
             )
 
@@ -258,8 +284,8 @@ class SetupHostReadinessService:
             detail={"missing": runtime_missing[:20]},
         )
 
-        add("frontend", "Frontend URL", "pass", f"Production UI target is {ui_base_url}.", detail={"ui_base_url": ui_base_url})
-        add("api_url", "API URL", "pass", f"Production API target is {api_base_url}.", detail={"api_base_url": api_base_url})
+        add("frontend", "Frontend URL", "pass", f"Production UI target is {ui_base_url}.", required=True, detail={"ui_base_url": ui_base_url})
+        add("api_url", "API URL", "pass", f"Production API target is {api_base_url}.", required=True, detail={"api_base_url": api_base_url})
 
         docker = shutil.which("docker")
         add("docker", "Docker", "pass" if docker else "warn", "Docker executable is available." if docker else "Docker executable was not found.")
@@ -270,12 +296,22 @@ class SetupHostReadinessService:
             "pass" if systemctl else "warn",
             "systemctl is available." if systemctl else "systemctl was not found.",
         )
+        supervisor_required = lifecycle_mode in SUPERVISOR_LIFECYCLE_MODES
+        supervisor_detected = self._supervisor_detected()
         add(
             "supervisor",
             "Host Supervisor",
-            "pass" if self._supervisor_detected() else "warn",
-            "Supervisor socket is visible." if self._supervisor_detected() else "Supervisor socket was not detected.",
-            detail={"socket": os.environ.get("HEXE_SUPERVISOR_API_SOCKET", "/run/hexe/supervisor.sock")},
+            "pass" if supervisor_detected else "fail" if supervisor_required else "warn",
+            "Supervisor socket is visible."
+            if supervisor_detected
+            else "Supervisor socket is required by the selected lifecycle mode."
+            if supervisor_required
+            else "Supervisor socket was not detected.",
+            required=supervisor_required,
+            detail={
+                "socket": os.environ.get("HEXE_SUPERVISOR_API_SOCKET", "/run/hexe/supervisor.sock"),
+                "lifecycle_mode": lifecycle_mode,
+            },
         )
         add(
             "supervisor_registration",
