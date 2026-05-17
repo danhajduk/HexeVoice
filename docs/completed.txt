@@ -188,3 +188,4 @@ Task 175: Smooth Step 3 post-import routing so migrated nodes move to re-auth, n
 Task 176: Allow Step 3 to save a temporarily unreachable Core URL with offline/deferred validation state, then re-check Core before trust and capability steps - Completed on 05/16/2026 22:09
 Task 177: Clarify Step 4 trust routes so new-node onboarding and migration re-auth have distinct URLs and labels that match setup mode - Completed on 05/16/2026 22:11
 Task 178: Harden Step 4 routing so new-node setup never enters migration re-auth and migrated-node setup cannot skip required re-auth - Completed on 05/16/2026 22:12
+Task 179: Expand Step 4 onboarding/re-auth status tracking to show waiting, approved, rejected, expired, trust finalized, node ID/name received, and ready-to-continue states - Completed on 05/16/2026 22:13

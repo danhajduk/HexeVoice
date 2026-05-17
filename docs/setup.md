@@ -132,6 +132,8 @@ finalizes the session, and saves the fresh activation payload.
 The frontend route guard keeps new-node setup out of migration re-auth and keeps
 migration setup out of new-node onboarding unless no migrated node identity has
 been imported yet.
+The migration re-auth page shows explicit status flags for waiting, approved,
+rejected, expired, trust finalized, node ID received, and ready-to-continue.
 Provider/runtime setup is exposed at `/setup/providers` and backed by
 `/api/setup/providers/status`, `/api/setup/providers/config`, and
 `/api/setup/providers/apply`. The status endpoint reports provider selection,

@@ -6,6 +6,18 @@ export function ReauthSetupPage() {
   const [finalizeResult, setFinalizeResult] = useState(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const currentStatus = finalizeResult?.status || session?.status || "not_started";
+  const nodeId = session?.node_id || finalizeResult?.node_id || "";
+  const trustFinalized = Boolean(finalizeResult?.approved);
+  const statusChecks = [
+    { label: "Waiting", complete: session?.started && !["approved", "rejected", "expired"].includes(currentStatus) },
+    { label: "Approved", complete: currentStatus === "approved" || trustFinalized },
+    { label: "Rejected", complete: currentStatus === "rejected" },
+    { label: "Expired", complete: currentStatus === "expired" },
+    { label: "Trust finalized", complete: trustFinalized },
+    { label: "Node ID received", complete: Boolean(nodeId) },
+    { label: "Ready to continue", complete: trustFinalized && Boolean(nodeId) },
+  ];
 
   async function start() {
     setBusy("start");
@@ -40,7 +52,7 @@ export function ReauthSetupPage() {
       <div className="section-heading">
         <h2>Migration Re-auth</h2>
         <span className={`status-pill status-pill-${finalizeResult?.approved ? "success" : "warning"}`}>
-          {finalizeResult?.approved ? "trusted" : session?.status || "not started"}
+          {finalizeResult?.approved ? "trusted" : currentStatus}
         </span>
       </div>
       {error ? <div className="callout callout-danger">{error}</div> : null}
@@ -50,9 +62,15 @@ export function ReauthSetupPage() {
         Migration re-auth uses `/setup/trust/reauth`. Migration does not import trust secrets. Approve this node in Core, then finalize to save fresh trust material.
       </div>
       <div className="fact-grid">
+        {statusChecks.map((item) => (
+          <div className="fact-grid-item" key={item.label}>
+            <span className="fact-grid-label">{item.label}</span>
+            <span className="fact-grid-value">{item.complete ? "yes" : "no"}</span>
+          </div>
+        ))}
         <div className="fact-grid-item">
           <span className="fact-grid-label">Node ID</span>
-          <span className="fact-grid-value">{session?.node_id || finalizeResult?.node_id || "pending"}</span>
+          <span className="fact-grid-value">{nodeId || "pending"}</span>
         </div>
         <div className="fact-grid-item">
           <span className="fact-grid-label">Session</span>
