@@ -734,6 +734,7 @@ class ProviderConfigRequest(BaseModel):
     model: str | None = None
     language: str | None = None
     device: str | None = None
+    cuda_mode: str | None = None
     compute_type: str | None = None
     warm_model: bool | None = None
     warm_models: list[str] = Field(default_factory=list)

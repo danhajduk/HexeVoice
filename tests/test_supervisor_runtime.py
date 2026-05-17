@@ -432,6 +432,7 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     status = service.service_status_payload()
     install = service.service_action(target="stt", action="install")
     download = service.service_action(target="stt", action="download-models")
+    cuda_preflight = service.service_action(target="stt", action="cuda-preflight")
     result = service.service_action(target="stt", action="restart")
     engine_result = service.service_action(target="stt_engine", action="restart")
     asyncio.run(service.supervisor_heartbeat_once())
@@ -448,10 +449,12 @@ def test_external_stt_service_status_action_and_supervisor_metadata(tmp_path):
     assert stt_component["reload_required"] is False
     assert install.accepted is True
     assert download.accepted is True
+    assert cuda_preflight.accepted is True
     assert result.accepted is True
     assert engine_result.accepted is True
     assert [str(script), "install"] in command_runner.commands
     assert [str(script), "download-model"] in command_runner.commands
+    assert [str(script), "cuda-preflight"] in command_runner.commands
     assert [str(script), "restart"] in command_runner.commands
 
     services = client.register_payloads[0]["runtime_metadata"]["services"]

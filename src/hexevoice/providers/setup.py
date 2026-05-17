@@ -162,6 +162,7 @@ class ProviderSetupService:
             "model",
             "language",
             "device",
+            "cuda_mode",
             "compute_type",
             "warm_model",
             "warm_models",

@@ -1115,7 +1115,7 @@ class NodeRuntimeService:
             normalized_target = self._settings.piper_tts_service_id
         if normalized_target in {"stt", "stt_engine"} and self._external_stt_enabled():
             normalized_target = self._settings.voice_stt_service_id
-        if normalized_action not in {"install", "start", "stop", "restart", "download-model", "download-models", "sync-models", "preload"}:
+        if normalized_action not in {"install", "start", "stop", "restart", "download-model", "download-models", "sync-models", "preload", "cuda-preflight", "preflight"}:
             log.warning(
                 "Rejected service action for unsupported action: target=%s action=%s",
                 normalized_target,
@@ -1126,7 +1126,7 @@ class NodeRuntimeService:
                 action=normalized_action,
                 accepted=False,
                 status="unsupported_action",
-                detail="Supported actions are install, start, stop, restart, download-models, sync-models, and preload.",
+                detail="Supported actions are install, start, stop, restart, download-models, sync-models, preload, and cuda-preflight.",
             )
         if normalized_target == "backend":
             if normalized_action != "restart":

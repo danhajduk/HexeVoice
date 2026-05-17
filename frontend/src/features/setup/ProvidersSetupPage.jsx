@@ -49,6 +49,7 @@ function defaultProviderConfigs() {
       model: "base.en",
       language: "en",
       device: "cpu",
+      cuda_mode: "auto",
       compute_type: "int8",
       warm_model: true,
       warm_models_text: "",
@@ -59,6 +60,7 @@ function defaultProviderConfigs() {
       model: "base.en",
       language: "en",
       device: "cpu",
+      cuda_mode: "auto",
       compute_type: "int8",
       warm_model: true,
       warm_models_text: "",
@@ -234,6 +236,7 @@ export function ProvidersSetupPage() {
   const sttState = sttProviderId ? providerStateFor(status, sttProviderId) : null;
   const ttsState = providerStateFor(status, "piper");
   const wakeState = wakeProviderId ? providerStateFor(status, wakeProviderId) : null;
+  const cudaProfile = status?.cuda_profile || {};
 
   return (
     <article className="card stack">
@@ -316,6 +319,15 @@ export function ProvidersSetupPage() {
               </select>
             </label>
             <label className="field">
+              <span className="field-label">CUDA runtime</span>
+              <select className="field-input" value={providerConfigs[sttProviderId]?.cuda_mode || "auto"} onChange={(event) => updateProviderConfig(sttProviderId, "cuda_mode", event.target.value)}>
+                <option value="auto">Auto detect</option>
+                <option value="cpu">Force CPU image</option>
+                <option value="cuda">Force CUDA image</option>
+                <option value="skip">Skip CUDA check</option>
+              </select>
+            </label>
+            <label className="field">
               <span className="field-label">Compute type</span>
               <select className="field-input" value={providerConfigs[sttProviderId]?.compute_type || "int8"} onChange={(event) => updateProviderConfig(sttProviderId, "compute_type", event.target.value)}>
                 <option value="int8">int8</option>
@@ -340,6 +352,26 @@ export function ProvidersSetupPage() {
             <span className="field-label">Preload/download models</span>
             <input className="field-input" value={providerConfigs[sttProviderId]?.warm_models_text || ""} onChange={(event) => updateProviderConfig(sttProviderId, "warm_models_text", event.target.value)} placeholder="base.en, small.en" />
           </label>
+          <div className="fact-grid">
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">CUDA recommendation</span>
+              <span className="fact-grid-value">{cudaProfile.recommended_mode || "pending"}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Selected image</span>
+              <span className="fact-grid-value">{cudaProfile.selected_image || "cpu"}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Docker CUDA validation</span>
+              <span className="fact-grid-value">{cudaProfile.validation_state || "not_checked"}</span>
+            </div>
+          </div>
+          {cudaProfile.warning ? <div className="callout callout-warning">{cudaProfile.warning}</div> : null}
+          <div className="form-actions">
+            <button className="btn btn-secondary" type="button" onClick={() => apply(sttState?.target, "cuda-preflight")} disabled={busy !== "" || !sttState?.target}>
+              {busy === sttState?.target ? "Checking..." : "Validate CUDA"}
+            </button>
+          </div>
         </section>
       ) : null}
 

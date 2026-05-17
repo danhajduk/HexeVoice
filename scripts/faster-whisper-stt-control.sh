@@ -120,6 +120,9 @@ exports = {
 }
 if provider_config.get("warm_model") is not None:
     exports["VOICE_STT_PRELOAD"] = "true" if provider_config.get("warm_model") else "false"
+cuda_mode = str(provider_config.get("cuda_mode") or "").strip().lower()
+if cuda_mode in {"auto", "cpu", "cuda", "skip"}:
+    exports["STT_CUDA_MODE"] = cuda_mode
 warm_models = provider_config.get("warm_models")
 if isinstance(warm_models, list):
     exports["VOICE_STT_DOWNLOAD_MODELS"] = ",".join(str(item).strip() for item in warm_models if str(item).strip())

@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 186: Implement Step 5 CUDA profile handling with auto-detect recommendation, CPU/CUDA image selection, user override, and Docker CUDA validation
 [TODO] Task 187: Add Step 5 provider asset progress tracking for missing, downloading, downloaded, preloading, healthy, failed, and retry states
 [TODO] Task 188: Connect Step 5 provider setup to supervisor registration after node identity exists for STT, TTS, wake, backend/frontend, and Docker service health checks
 [TODO] Task 189: Define and enforce Step 5 continue blockers for enabled unhealthy providers, missing selected models, unavailable CUDA mode, failed config writes, and failed service registration

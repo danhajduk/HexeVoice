@@ -7,6 +7,7 @@ from logging.handlers import TimedRotatingFileHandler
 import os
 from pathlib import Path
 import re
+import shutil
 import time
 
 from fastapi import FastAPI, HTTPException, WebSocket
@@ -2121,6 +2122,33 @@ def create_app(
 
         service_targets = [provider["target"] for provider in states if provider.get("target")]
         unhealthy = [provider["provider_id"] for provider in states if not provider.get("healthy")]
+        stt_config = (
+            provider_configs.get("external_faster_whisper")
+            or provider_configs.get("faster_whisper")
+            or {}
+        )
+        cuda_mode = str(stt_config.get("cuda_mode") or "auto").strip().lower()
+        if cuda_mode not in {"auto", "cpu", "cuda", "skip"}:
+            cuda_mode = "auto"
+        docker_gpu_hint = bool(shutil.which("nvidia-smi"))
+        recommended_cuda_mode = "cuda" if docker_gpu_hint else "cpu"
+        selected_cuda_profile = (
+            "cuda"
+            if cuda_mode == "cuda" or (cuda_mode == "auto" and docker_gpu_hint)
+            else "cpu"
+        )
+        cuda_profile = {
+            "mode": cuda_mode,
+            "requested_device": stt_config.get("device") or "cpu",
+            "requested_profile": stt_config.get("profile") or "",
+            "recommended_mode": recommended_cuda_mode,
+            "selected_profile": selected_cuda_profile,
+            "selected_image": "cuda" if selected_cuda_profile == "cuda" else "cpu",
+            "docker_gpu_hint": docker_gpu_hint,
+            "validation_action": "cuda-preflight",
+            "validation_state": "not_checked",
+            "warning": None if docker_gpu_hint else "nvidia-smi was not found on the host PATH.",
+        }
         apply_plan = [
             {
                 "id": "config_writes",
@@ -2171,6 +2199,7 @@ def create_app(
             "services": services.model_dump(mode="json"),
             "provider_states": states,
             "apply_plan": apply_plan,
+            "cuda_profile": cuda_profile,
             "continue_blocked": bool(blockers),
             "blockers": blockers,
         }

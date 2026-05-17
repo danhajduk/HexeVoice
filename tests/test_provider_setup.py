@@ -138,6 +138,7 @@ def test_provider_setup_saves_provider_configs_from_setup_request(tmp_path):
                     "model": "small.en",
                     "language": "en",
                     "device": "cuda",
+                    "cuda_mode": "cuda",
                     "compute_type": "float16",
                 },
                 "piper": {
@@ -154,6 +155,7 @@ def test_provider_setup_saves_provider_configs_from_setup_request(tmp_path):
     )
 
     assert response.provider_configs["external_faster_whisper"]["device"] == "cuda"
+    assert response.provider_configs["external_faster_whisper"]["cuda_mode"] == "cuda"
     assert response.provider_configs["external_faster_whisper"]["language"] == "en"
     assert response.provider_configs["piper"]["default_voice"] == "en_US-kathleen-low"
     assert response.provider_configs["openwakeword"]["threshold"] == 0.65

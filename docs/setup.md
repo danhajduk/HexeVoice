@@ -160,6 +160,10 @@ The provider status payload includes an `apply_plan` preview covering config
 writes, model downloads, Docker/container changes, Supervisor registration,
 health validation, and the persisted provider selections that will drive the
 scripts.
+Step 5 also exposes `cuda_profile` for faster-whisper. The profile records the
+operator override (`auto`, `cpu`, `cuda`, or `skip`), the recommended CPU/CUDA
+mode from the host hint, the selected Docker image family, and the
+`cuda-preflight` validation action.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,
