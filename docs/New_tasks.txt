@@ -5,4 +5,4 @@
 **********************************************************************************************
 
 [FUTURE TODO] Task 157: Add LAN-wide HexeVoice naming via mDNS/Avahi or local DNS, with optional reverse proxy support for no-port setup access
-[FUTURE TODO] Task 163: Add an optional experimental Kokoro TTS provider with Docker/Unix-socket runtime, CPU/CUDA mode, voice selection, WAV artifact normalization, and Piper-compatible fallback behavior
+[FUTURE TODO] Task 205: Add an optional experimental Kokoro TTS provider with Docker/Unix-socket runtime, CPU/CUDA mode, voice selection, WAV artifact normalization, and Piper-compatible fallback behavior
