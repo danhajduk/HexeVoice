@@ -27,6 +27,32 @@ def trusted_settings(tmp_path):
     )
 
 
+def test_setup_provider_status_blocks_missing_selected_assets(tmp_path):
+    settings = trusted_settings(tmp_path)
+    settings = settings.model_copy(update={"voice_tts_provider": "piper", "piper_tts_model_dir": tmp_path / "piper-models"})
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/api/setup/providers/config",
+        json={
+            "enabled_providers": ["voice", "piper"],
+            "default_provider": "voice",
+            "provider_configs": {
+                "piper": {
+                    "default_voice": "en_US-kathleen-low",
+                    "warm_models": ["en_US-kathleen-low"],
+                }
+            },
+        },
+    )
+    assert response.status_code == 200
+
+    status = client.get("/api/setup/providers/status").json()
+
+    assert status["continue_blocked"] is True
+    assert any(blocker.startswith("selected_asset_") and ":piper:en_US-kathleen-low" in blocker for blocker in status["blockers"])
+
+
 def test_setup_provider_status_shape(tmp_path):
     client = TestClient(create_app(trusted_settings(tmp_path)))
 

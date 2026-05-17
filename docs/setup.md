@@ -170,6 +170,10 @@ preloading, healthy, failed, and retry states reflected in the setup UI.
 Step 5 exposes Supervisor runtime registration status and can call
 `POST /api/setup/supervisor/register-runtime` after the trusted node ID exists,
 covering backend, frontend, STT, TTS, wake, and provider Docker services.
+Step 5 continue is blocked when enabled providers are unhealthy, selected
+models/voices/wake assets are missing, forced CUDA is unavailable, required
+provider configs are not persisted, or Supervisor registration reports a local
+failure.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,

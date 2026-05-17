@@ -2091,14 +2091,14 @@ def create_app(
             target = provider_targets.get(provider_id)
             component = component_by_target.get(target or "")
             healthy = bool(component.get("healthy")) if component else provider_id in {"deterministic", "openai", "voice"}
-            state = "healthy" if healthy else "warning" if provider_id in {"deterministic", "openai", "voice"} else "failed"
+            provider_state_label = "healthy" if healthy else "warning" if provider_id in {"deterministic", "openai", "voice"} else "failed"
             if not healthy and provider_id not in {"deterministic", "openai", "voice"}:
                 blockers.append(f"{provider_id}_not_healthy")
             states.append(
                 {
                     "provider_id": provider_id,
                     "target": target,
-                    "state": state,
+                    "state": provider_state_label,
                     "healthy": healthy,
                     "component": component or {},
                 }
@@ -2252,6 +2252,17 @@ def create_app(
             "blocked": not bool(state.trust_activation.node_id),
             "service_ids": ["backend", "frontend", *[provider["target"] for provider in states if provider.get("target")]],
         }
+        for asset in asset_progress:
+            if asset.get("state") in {"missing", "failed"}:
+                blockers.append(f"selected_asset_{asset.get('state')}:{asset.get('provider_id')}:{asset.get('asset_id')}")
+        for provider_id in provider_setup.enabled_providers:
+            if provider_id not in {"voice", "deterministic", "openai"} and provider_id not in provider_configs:
+                blockers.append(f"provider_config_missing:{provider_id}")
+        if cuda_mode == "cuda" and not docker_gpu_hint:
+            blockers.append("cuda_mode_unavailable")
+        if supervisor_registration.get("last_error"):
+            blockers.append("supervisor_registration_failed")
+        blockers = list(dict.fromkeys(blockers))
         return {
             "configured": provider_setup.configured,
             "provider_setup": provider_setup.model_dump(mode="json"),
