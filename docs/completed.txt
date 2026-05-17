@@ -201,3 +201,4 @@ Task 188: Connect Step 5 provider setup to supervisor registration after node id
 Task 189: Define and enforce Step 5 continue blockers for enabled unhealthy providers, missing selected models, unavailable CUDA mode, failed config writes, and failed service registration - Completed on 05/16/2026 22:44
 Task 190: Add Step 5 provider recovery actions for downloading selected models, restarting providers, rebuilding env, recreating containers, switching CPU/CUDA profile, and re-registering services - Completed on 05/16/2026 22:47
 Task 191: Add Step 6 capability manifest preview before declaration, including node identity, providers, models, enabled capabilities, runtime URLs/sockets, and governance metadata - Completed on 05/16/2026 22:51
+Task 192: Link Step 6 capability declaration tightly to Step 5 provider config so provider/model changes mark the capability manifest stale - Completed on 05/16/2026 22:53

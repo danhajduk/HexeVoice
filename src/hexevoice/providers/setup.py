@@ -80,29 +80,79 @@ class ProviderSetupService:
             if normalized_provider_id in supported_providers:
                 provider_configs[normalized_provider_id] = self._provider_config_payload(provider_config)
 
-        updated = state.model_copy(
-            update={
-                "provider_setup": state.provider_setup.model_copy(
-                    update={
-                        "supported_providers": supported_providers,
-                        "enabled_providers": enabled_providers,
-                        "default_provider": default_provider,
-                        "provider_configs": provider_configs,
-                        "declaration_allowed": declaration_allowed,
-                        "blocking_reasons": blocking_reasons,
-                        "last_updated_at": _utc_now(),
-                    }
-                ),
-                "resume": state.resume.model_copy(
-                    update={
-                        "current_step_id": current_step_id,
-                        "last_completed_step_id": last_completed_step_id,
-                    }
-                ),
-            }
+        provider_changed = self._provider_setup_changed(
+            state,
+            enabled_providers=enabled_providers,
+            default_provider=default_provider,
+            provider_configs=provider_configs,
         )
+        update_payload = {
+            "provider_setup": state.provider_setup.model_copy(
+                update={
+                    "supported_providers": supported_providers,
+                    "enabled_providers": enabled_providers,
+                    "default_provider": default_provider,
+                    "provider_configs": provider_configs,
+                    "declaration_allowed": declaration_allowed,
+                    "blocking_reasons": blocking_reasons,
+                    "last_updated_at": _utc_now(),
+                }
+            ),
+            "resume": state.resume.model_copy(
+                update={
+                    "current_step_id": current_step_id,
+                    "last_completed_step_id": last_completed_step_id,
+                }
+            ),
+        }
+        update_payload.update(self._manifest_stale_updates(state, provider_changed))
+        updated = state.model_copy(update=update_payload)
         self._store.save(updated)
         return self.status_payload()
+
+    def _provider_setup_changed(
+        self,
+        state,
+        *,
+        enabled_providers: list[str],
+        default_provider: str | None,
+        provider_configs: dict[str, dict[str, object]],
+    ) -> bool:
+        return (
+            list(state.provider_setup.enabled_providers) != list(enabled_providers)
+            or state.provider_setup.default_provider != default_provider
+            or dict(state.provider_setup.provider_configs) != dict(provider_configs)
+        )
+
+    @staticmethod
+    def _manifest_stale_updates(state, provider_changed: bool) -> dict[str, object]:
+        if not provider_changed:
+            return {}
+        if state.capability_declaration.capability_status not in {"accepted", "declared"}:
+            return {}
+        return {
+            "capability_declaration": state.capability_declaration.model_copy(
+                update={
+                    "capability_status": "manifest_stale",
+                    "last_error": None,
+                }
+            ),
+            "governance_sync": state.governance_sync.model_copy(
+                update={
+                    "governance_sync_status": "pending_capability",
+                    "governance_outdated": True,
+                }
+            ),
+            "operational_status": state.operational_status.model_copy(
+                update={
+                    "capability_status": "manifest_stale",
+                    "governance_status": "pending_capability",
+                    "operational_ready": False,
+                    "governance_outdated": True,
+                    "updated_at": _utc_now(),
+                }
+            ),
+        }
 
     def save_provider_setup(self, provider_id: str, payload: ProviderConfigRequest) -> ProviderSetupResponse:
         state = self._store.load()
@@ -137,15 +187,18 @@ class ProviderSetupService:
         refreshed = self._store.load()
         provider_configs = dict(refreshed.provider_setup.provider_configs)
         provider_configs[normalized_provider_id] = self._provider_config_payload(payload)
+        provider_changed = dict(refreshed.provider_setup.provider_configs) != dict(provider_configs)
+        update_payload = {
+            "provider_setup": refreshed.provider_setup.model_copy(
+                update={
+                    "provider_configs": provider_configs,
+                    "last_updated_at": _utc_now(),
+                }
+            )
+        }
+        update_payload.update(self._manifest_stale_updates(refreshed, provider_changed))
         updated = refreshed.model_copy(
-            update={
-                "provider_setup": refreshed.provider_setup.model_copy(
-                    update={
-                        "provider_configs": provider_configs,
-                        "last_updated_at": _utc_now(),
-                    }
-                )
-            }
+            update=update_payload
         )
         self._store.save(updated)
         return self.status_payload()

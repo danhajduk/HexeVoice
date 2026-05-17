@@ -190,6 +190,10 @@ preview contains the Core declaration payload, node identity, enabled providers,
 provider models/configs, selected capabilities, runtime URLs or sockets, budget
 metadata, and current governance metadata so the operator can inspect the exact
 shape before declaring to Core.
+When Step 5 provider selections or model config change after Core has accepted
+capabilities, the local capability state moves to `manifest_stale`, governance
+returns to `pending_capability`, and operational readiness is cleared until the
+manifest is declared again.
 The final setup gate is `/setup/ready`, backed by
 `/api/setup/ready/status`, `/api/setup/ready/run-smoke-test`, and
 `/api/setup/ready/complete`. The smoke test checks backend/frontend reachability,

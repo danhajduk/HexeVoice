@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 192: Link Step 6 capability declaration tightly to Step 5 provider config so provider/model changes mark the capability manifest stale
 [TODO] Task 193: Add a Step 6 Core-visible capability summary showing provided STT/TTS/wake services, available models, enabled states, and disabled capabilities
 [TODO] Task 194: Expand Step 6 governance sync UI to show accepted, denied, pending, and locally required changes returned from Core
 [TODO] Task 195: Define and enforce Step 6 blockers for untrusted node, Core unavailable, provider setup incomplete, invalid manifest, Core declaration rejection, governance sync failure, and selected capability without healthy provider
