@@ -16,11 +16,13 @@ const apiProxy = {
 export default defineConfig({
   plugins: [react()],
   server: {
+    allowedHosts: true,
     host: "0.0.0.0",
     port: 8084,
     proxy: apiProxy,
   },
   preview: {
+    allowedHosts: true,
     host: "0.0.0.0",
     port: 8084,
     proxy: apiProxy,
