@@ -28,6 +28,7 @@ INSTALL_STATUS_UI_PORT="${HEXEVOICE_INSTALL_STATUS_UI_PORT:-8180}"
 INSTALL_STATUS_UI_PATH="${HEXEVOICE_INSTALL_STATUS_UI_PATH:-/tmp/hexevoice-install-status-$(id -u).json}"
 INSTALL_STATUS_UI_PUBLIC_HOST="${HEXEVOICE_INSTALL_STATUS_UI_PUBLIC_HOST:-}"
 INSTALL_STATUS_UI_OPEN_BROWSER="${HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER:-true}"
+INSTALL_STATUS_UI_TERMINAL_LINK="${HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK:-false}"
 MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
 APT_UPDATED=false
 SYSTEM_PACKAGE_INSTALL_APPROVED=false
@@ -70,7 +71,7 @@ install_public_host() {
 print_open_url_hint() {
   local url="$1"
   log "Temporary install status UI: $url"
-  if true 2>/dev/null </dev/tty >/dev/tty; then
+  if truthy "$INSTALL_STATUS_UI_TERMINAL_LINK" && true 2>/dev/null </dev/tty >/dev/tty; then
     printf '\033]8;;%s\033\\Open HexeVoice setup preparation UI\033]8;;\033\\\n' "$url" >/dev/tty || true
   fi
 }

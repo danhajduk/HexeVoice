@@ -64,7 +64,9 @@ assets are prepared. Disable it with `HEXEVOICE_INSTALL_STATUS_UI=false` or
 change the port with `HEXEVOICE_INSTALL_STATUS_UI_PORT=8181`. The installer
 prints and opens the hostname URL by default; override it with
 `HEXEVOICE_INSTALL_STATUS_UI_PUBLIC_HOST=<host>` or disable browser launch with
-`HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER=false`.
+`HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER=false`. Terminal hyperlink escape
+codes are off by default; enable them with
+`HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK=true`.
 
 To also render and restart the user services after `scripts/stack.env` is
 created, run:

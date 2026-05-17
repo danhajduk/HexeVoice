@@ -34,6 +34,8 @@ Optional overrides:
   and opened for the early install page and setup runner handoff.
 - `HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER=false` disables best-effort browser
   launch from the installer.
+- `HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK=true` enables OSC-8 terminal
+  hyperlinks for terminals that render them cleanly.
 - `HEXEVOICE_SETUP_DEFAULT_ARTIFACTS=false` skips default artifact downloads.
 - `HEXEVOICE_DEFAULT_STT_MODEL=base`, `HEXEVOICE_DEFAULT_PIPER_VOICE=en_US-kathleen-low`,
   and `HEXEVOICE_DEFAULT_WAKE_MODEL=Hexe` override default model choices.
