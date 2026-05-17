@@ -17,9 +17,9 @@ const ttsVoiceOptions = ["en_US-kathleen-low", "en_US-lessac-medium", "en_US-jen
 const wakeModelOptions = ["Hexe"];
 
 function stateTone(state) {
-  if (state === "healthy") return "success";
-  if (state === "failed") return "danger";
-  if (state === "warning") return "warning";
+  if (state === "healthy" || state === "ready") return "success";
+  if (state === "failed" || state === "blocked") return "danger";
+  if (state === "warning" || state === "pending") return "warning";
   return "neutral";
 }
 
@@ -246,6 +246,24 @@ export function ProvidersSetupPage() {
       {notice ? <div className="callout callout-success">{notice}</div> : null}
       {error ? <div className="callout callout-danger">{error}</div> : null}
       {status?.blockers?.length ? <div className="callout callout-warning">Blockers: {status.blockers.join(", ")}</div> : null}
+
+      <section className="stack">
+        <div className="section-heading-inline">
+          <div>
+            <p className="panel-kicker">Apply Plan</p>
+            <h3 className="section-title">Provider setup actions</h3>
+          </div>
+        </div>
+        <div className="fact-grid">
+          {(status?.apply_plan || []).map((item) => (
+            <div className="fact-grid-item" key={item.id}>
+              <span className="fact-grid-label">{item.label}</span>
+              <span className={`status-pill status-pill-${stateTone(item.status)}`}>{item.status}</span>
+              <span className="fact-grid-value">{item.items?.length ? item.items.join(", ") : item.detail}</span>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="fact-grid">
         {providerChoices.map((provider) => (

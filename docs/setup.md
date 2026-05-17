@@ -156,6 +156,10 @@ sync selected provider assets before containers are started: faster-whisper
 downloads the default model plus configured warm models, Piper downloads the
 default voice plus warm voices, and openWakeWord syncs the default Hexe model
 plus any selected local wake models.
+The provider status payload includes an `apply_plan` preview covering config
+writes, model downloads, Docker/container changes, Supervisor registration,
+health validation, and the persisted provider selections that will drive the
+scripts.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,

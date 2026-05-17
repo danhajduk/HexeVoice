@@ -37,6 +37,7 @@ def test_setup_provider_status_shape(tmp_path):
     assert "provider_setup" in payload
     assert "services" in payload
     assert "provider_states" in payload
+    assert "apply_plan" in payload
     assert "continue_blocked" in payload
 
 

@@ -2069,6 +2069,7 @@ def create_app(
         return provider_setup_service.status_payload()
 
     def setup_provider_status_payload() -> dict:
+        state = onboarding_state_store.load()
         provider_setup = provider_setup_service.status_payload()
         services = service.service_status_payload()
         component_by_target = {
@@ -2101,11 +2102,75 @@ def create_app(
                     "component": component or {},
                 }
             )
+        provider_configs = provider_setup.provider_configs or {}
+        selected_assets: list[str] = []
+        for provider_id in provider_setup.enabled_providers:
+            config = provider_configs.get(provider_id, {})
+            if provider_id in {"external_faster_whisper", "faster_whisper"}:
+                for model in [config.get("model"), *(config.get("warm_models") or [])]:
+                    if model and str(model) not in selected_assets:
+                        selected_assets.append(str(model))
+            elif provider_id == "piper":
+                for voice in [config.get("default_voice") or config.get("model"), *(config.get("warm_models") or [])]:
+                    if voice and str(voice) not in selected_assets:
+                        selected_assets.append(str(voice))
+            elif provider_id in {"openwakeword", "supervised_openwakeword"}:
+                for wake_model in [config.get("default_wakeword") or config.get("model"), *(config.get("warm_models") or [])]:
+                    if wake_model and str(wake_model) not in selected_assets:
+                        selected_assets.append(str(wake_model))
+
+        service_targets = [provider["target"] for provider in states if provider.get("target")]
+        unhealthy = [provider["provider_id"] for provider in states if not provider.get("healthy")]
+        apply_plan = [
+            {
+                "id": "config_writes",
+                "label": "Config writes",
+                "status": "ready" if provider_setup.configured else "pending",
+                "detail": "Persist provider selection and provider_configs in onboarding state.",
+                "items": provider_setup.enabled_providers,
+            },
+            {
+                "id": "model_downloads",
+                "label": "Model downloads",
+                "status": "ready" if selected_assets else "pending",
+                "detail": "Download or sync selected STT/TTS/wake assets before service start.",
+                "items": selected_assets,
+            },
+            {
+                "id": "container_changes",
+                "label": "Docker/container changes",
+                "status": "ready" if service_targets else "not_required",
+                "detail": "Install/start/recreate provider containers through their control scripts.",
+                "items": service_targets,
+            },
+            {
+                "id": "supervisor_registration",
+                "label": "Supervisor registration",
+                "status": "ready" if state.trust_activation.node_id else "blocked",
+                "detail": "Register runtime services with Supervisor after node identity exists.",
+                "items": [state.trust_activation.node_id] if state.trust_activation.node_id else [],
+            },
+            {
+                "id": "health_validation",
+                "label": "Health validation",
+                "status": "ready" if not unhealthy and states else "blocked" if unhealthy else "pending",
+                "detail": "Require enabled provider health checks before continuing.",
+                "items": unhealthy or [provider["provider_id"] for provider in states],
+            },
+            {
+                "id": "persisted_selections",
+                "label": "Persisted selections",
+                "status": "ready" if provider_setup.provider_configs else "pending",
+                "detail": "Use saved STT/TTS/wake provider config during install, download, and restart actions.",
+                "items": list(provider_setup.provider_configs.keys()),
+            },
+        ]
         return {
             "configured": provider_setup.configured,
             "provider_setup": provider_setup.model_dump(mode="json"),
             "services": services.model_dump(mode="json"),
             "provider_states": states,
+            "apply_plan": apply_plan,
             "continue_blocked": bool(blockers),
             "blockers": blockers,
         }
