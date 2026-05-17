@@ -13,6 +13,11 @@ const lifecycleModes = [
   { value: "unsupervised_systemd", label: "Unsupervised systemd" },
 ];
 
+function defaultSupervisorId(readiness) {
+  const hostname = readiness?.hostname || "hexevoice";
+  return `${hostname}-hexe-supervisor`;
+}
+
 export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness }) {
   const [localReadiness, setLocalReadiness] = useState(null);
   const [form, setForm] = useState({
@@ -35,6 +40,7 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
       setup_mode: payload.setup_mode || current.setup_mode,
       lifecycle_mode: payload.lifecycle_mode || current.lifecycle_mode,
       core_base_url: current.core_base_url || "",
+      supervisor_id: current.supervisor_id || defaultSupervisorId(payload),
     }));
   }
 
@@ -138,7 +144,12 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
         </label>
         <label className="field">
           <span className="field-label">Supervisor ID</span>
-          <input className="field-input" value={form.supervisor_id} onChange={(event) => update("supervisor_id", event.target.value)} />
+          <input
+            className="field-input"
+            value={form.supervisor_id}
+            onChange={(event) => update("supervisor_id", event.target.value)}
+            placeholder={defaultSupervisorId(activeReadiness)}
+          />
         </label>
       </div>
 

@@ -80,7 +80,10 @@ class SetupHostReadinessService:
             )
 
         if action == "continue":
-            self._write_state(payload.model_dump(mode="json", exclude_none=True))
+            selection = payload.model_dump(mode="json", exclude_none=True)
+            if not selection.get("supervisor_id"):
+                selection["supervisor_id"] = self._default_supervisor_id()
+            self._write_state(selection)
             return SetupHostReadinessActionResponse(
                 accepted=True,
                 action=action,
@@ -122,7 +125,7 @@ class SetupHostReadinessService:
                     message="supervisor_installer_missing",
                     readiness=self.readiness_payload(),
                 )
-            supervisor_id = payload.supervisor_id or f"{socket.gethostname() or 'hexevoice'}-supervisor"
+            supervisor_id = payload.supervisor_id or self._default_supervisor_id()
             return self._run_helper(
                 action,
                 [
@@ -321,6 +324,10 @@ class SetupHostReadinessService:
     @staticmethod
     def _supervisor_detected() -> bool:
         return Path(os.environ.get("HEXE_SUPERVISOR_API_SOCKET", "/run/hexe/supervisor.sock")).exists()
+
+    @staticmethod
+    def _default_supervisor_id() -> str:
+        return f"{socket.gethostname() or 'hexevoice'}-hexe-supervisor"
 
     @staticmethod
     def _host_alias_present() -> bool:

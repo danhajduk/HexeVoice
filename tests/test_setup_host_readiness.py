@@ -4,7 +4,7 @@ import subprocess
 
 from fastapi.testclient import TestClient
 
-from hexevoice.api.models import SetupHostReadinessActionRequest
+from hexevoice.api.models import SetupHostReadinessActionRequest, SetupHostReadinessActionResponse
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
 
@@ -102,3 +102,39 @@ def test_setup_host_actions_run_helpers_from_project_root(monkeypatch, tmp_path)
     assert response.accepted is True
     assert recorded["cwd"] == ROOT
     assert recorded["command"][1] == str(ROOT / "scripts" / "hostname-alias-control.sh")
+
+
+def test_setup_host_joined_supervisor_defaults_id_to_hostname(monkeypatch, tmp_path):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    recorded = {}
+    service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
+
+    monkeypatch.setattr("hexevoice.setup_host.socket.gethostname", lambda: "hexe-ai")
+    monkeypatch.setattr(service, "_supervisor_installer", lambda: ROOT / "fake-install-supervisor.sh")
+
+    def fake_run_helper(action, command, *, extra_env=None):
+        recorded["action"] = action
+        recorded["command"] = command
+        return SetupHostReadinessActionResponse(
+            accepted=True,
+            action=action,
+            message="ok",
+            readiness=service.readiness_payload(),
+        )
+
+    monkeypatch.setattr(service, "_run_helper", fake_run_helper)
+
+    response = service.run_action(
+        "install-joined-supervisor",
+        SetupHostReadinessActionRequest(
+            lifecycle_mode="joined_supervisor",
+            core_base_url="http://10.0.0.100:9001",
+            enrollment_token="token-123",
+        ),
+    )
+
+    assert response.accepted is True
+    assert response.readiness.hostname == "hexe-ai"
+    supervisor_index = recorded["command"].index("--supervisor-id") + 1
+    assert recorded["command"][supervisor_index] == "hexe-ai-hexe-supervisor"
