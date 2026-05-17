@@ -4,7 +4,6 @@
 * Future TODO listing
 **********************************************************************************************
 
-[FUTURE TODO] Task 110: Play a short ding sound on the PE endpoint when wake word is accepted
 [FUTURE TODO] Task 141: Evaluate alternative neural TTS engines, including GPU-capable options
 [FUTURE TODO] Task 157: Add LAN-wide HexeVoice naming via mDNS/Avahi or local DNS, with optional reverse proxy support for no-port setup access
 [FUTURE TODO] Task 158: Implement the full firmware artifact download/install flow from the separate FW release repo, including setup UI retry/status and local build fallback

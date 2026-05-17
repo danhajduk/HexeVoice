@@ -77,6 +77,7 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert "start_post_tts_input_cooldown();" in backend_source
     assert "post_tts_input_cooldown_active()" in backend_source
     assert "g_preroll_count = 0" in backend_source
+    assert "play_wake_accepted_sound();" in backend_source
     assert '"micro_vad"' in backend_source
     assert '"max_pause_ms", 3000' in backend_source
     assert "hexe::voice::post_tts_input_cooldown_active()" in pe_source
@@ -374,6 +375,10 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "interpolate_pcm16" in tts_source
     assert "kPlaybackDrainFrames = kSpeakerSampleRate / 4" in tts_source
     assert "write_silence_drain" in tts_source
+    assert "kWakeDingStreamId[] = \"wake-ding\"" in tts_source
+    assert "play_wake_ding" in tts_source
+    assert "play_wake_accepted_sound()" in tts_source
+    assert "if (!wake_ding) {\n      state.phase = hexe::AppPhase::kReplying;" in tts_source
     assert "tts.playback.first_audio_frame" in tts_source
     assert "tts.playback.completed" in tts_source
     assert "tts.playback.failed" in tts_source

@@ -390,6 +390,8 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   }
 }
 
+void play_wake_accepted_sound() {}
+
 void play_sd_sound(const char *filename) {
   auto &state = hexe::state();
   if (state.muted) {

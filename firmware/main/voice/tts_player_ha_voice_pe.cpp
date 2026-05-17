@@ -44,6 +44,11 @@ constexpr size_t kMaxWavHeaderBytes = 4096;
 constexpr uint32_t kI2cClockHz = 400000;
 constexpr uint32_t kI2cTimeoutMs = 1000;
 constexpr uint32_t kI2sWriteTimeoutMs = 1000;
+constexpr char kWakeDingRequestPath[] = "__builtin_wake_ding";
+constexpr char kWakeDingStreamId[] = "wake-ding";
+constexpr uint32_t kWakeDingDurationMs = 120;
+constexpr uint32_t kWakeDingFrequencyHz = 880;
+constexpr int32_t kWakeDingAmplitude = 5600;
 
 constexpr gpio_num_t kI2cSda = GPIO_NUM_5;
 constexpr gpio_num_t kI2cScl = GPIO_NUM_6;
@@ -724,6 +729,56 @@ bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request)
   return flushed && !g_stop_requested;
 }
 
+bool is_wake_ding_request(const PlaybackRequest &request) {
+  return std::strcmp(request.file_path, kWakeDingRequestPath) == 0;
+}
+
+bool play_wake_ding(const PlaybackRequest &request) {
+  if (!ensure_codec_ready_locked() || !ensure_i2s_output()) {
+    return false;
+  }
+
+  std::array<int32_t, kPlaybackFrameCapacity * 2> output_frames = {};
+  size_t queued_frames = 0;
+  bool first_frame_reported = false;
+  const uint32_t total_frames = (kSpeakerSampleRate * kWakeDingDurationMs) / 1000;
+  const uint32_t attack_frames = kSpeakerSampleRate / 100;
+  const uint32_t release_frames = (kSpeakerSampleRate * 7) / 100;
+  const uint32_t half_period_frames = std::max<uint32_t>(1, kSpeakerSampleRate / (kWakeDingFrequencyHz * 2));
+
+  for (uint32_t frame = 0; frame < total_frames && !g_stop_requested; ++frame) {
+    int32_t envelope = 1000;
+    if (frame < attack_frames) {
+      envelope = static_cast<int32_t>((frame * 1000) / attack_frames);
+    } else if (total_frames - frame < release_frames) {
+      envelope = static_cast<int32_t>(((total_frames - frame) * 1000) / release_frames);
+    }
+    const bool high = ((frame / half_period_frames) % 2) == 0;
+    const int32_t sample = ((high ? kWakeDingAmplitude : -kWakeDingAmplitude) * envelope) / 1000;
+    const int32_t sample32 = sample << 16;
+    output_frames[queued_frames * 2] = sample32;
+    output_frames[(queued_frames * 2) + 1] = sample32;
+    ++queued_frames;
+    if (queued_frames == kPlaybackFrameCapacity) {
+      if (!flush_output_frames(&output_frames, &queued_frames)) {
+        disable_i2s_output();
+        return false;
+      }
+      if (!first_frame_reported) {
+        send_playback_event("tts.playback.first_audio_frame", request, nullptr, total_frames * sizeof(int16_t));
+        first_frame_reported = true;
+      }
+    }
+  }
+
+  bool flushed = flush_output_frames(&output_frames, &queued_frames);
+  if (flushed && !first_frame_reported && total_frames > 0 && !g_stop_requested) {
+    send_playback_event("tts.playback.first_audio_frame", request, nullptr, total_frames * sizeof(int16_t));
+  }
+  disable_i2s_output();
+  return flushed && !g_stop_requested;
+}
+
 bool write_stream_pcm(
     const WavStreamInfo &wav,
     const uint8_t *pcm,
@@ -959,7 +1014,10 @@ void playback_task(void *arg) {
       continue;
     }
 
-    state.phase = hexe::AppPhase::kReplying;
+    const bool wake_ding = is_wake_ding_request(request);
+    if (!wake_ding) {
+      state.phase = hexe::AppPhase::kReplying;
+    }
     set_playback_lifecycle(hexe::PlaybackLifecycleState::kStarted, true);
 
     std::vector<uint8_t> audio;
@@ -968,7 +1026,11 @@ void playback_task(void *arg) {
     bool loaded = false;
     bool played = false;
     size_t byte_count = 0;
-    if (request.file_path[0] == '\0') {
+    if (wake_ding) {
+      loaded = true;
+      played = play_wake_ding(request);
+      byte_count = (kSpeakerSampleRate * kWakeDingDurationMs * sizeof(int16_t)) / 1000;
+    } else if (request.file_path[0] == '\0') {
       send_playback_event("tts.playback.download_started", request);
       const StreamPlaybackResult streamed = stream_http_wav(url, request, &byte_count);
       if (streamed == StreamPlaybackResult::kPlayed) {
@@ -1001,9 +1063,9 @@ void playback_task(void *arg) {
     } else {
       send_playback_event("tts.playback.failed", request, g_stop_requested ? "stopped" : "playback_failed", byte_count);
     }
-    if (played && !state.muted) {
+    if (played && !state.muted && !wake_ding) {
       state.phase = hexe::idle_or_connecting_phase();
-    } else if (!state.muted && state.phase == hexe::AppPhase::kReplying) {
+    } else if (!state.muted && state.phase == hexe::AppPhase::kReplying && !wake_ding) {
       state.phase = hexe::AppPhase::kError;
     }
     set_playback_lifecycle(
@@ -1096,6 +1158,24 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
     send_playback_event("tts.playback.failed", request, "queue_unavailable");
     set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
     state.phase = hexe::AppPhase::kError;
+  }
+}
+
+void play_wake_accepted_sound() {
+  auto &state = hexe::state();
+  if (state.muted || g_playback_active) {
+    return;
+  }
+
+  PlaybackRequest request = {};
+  copy_field(request.stream_id, sizeof(request.stream_id), kWakeDingStreamId);
+  copy_field(request.content_type, sizeof(request.content_type), "audio/wav");
+  copy_field(request.file_path, sizeof(request.file_path), kWakeDingRequestPath);
+
+  set_playback_lifecycle(hexe::PlaybackLifecycleState::kQueued, true);
+  if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
+    ESP_LOGW(kTag, "Dropping wake accepted ding because playback queue is unavailable");
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
   }
 }
 

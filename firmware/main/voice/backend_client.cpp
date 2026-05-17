@@ -566,6 +566,7 @@ void handle_backend_event_json(const std::string &message) {
   if (wake_accepted) {
     g_wake_accepted_for_session = true;
     hexe::voice::prewarm_tts_output();
+    hexe::voice::play_wake_accepted_sound();
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
     cJSON *wake = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "wake") : nullptr;
     cJSON *confidence = cJSON_IsObject(wake) ? cJSON_GetObjectItem(wake, "confidence") : nullptr;

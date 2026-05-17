@@ -36,6 +36,8 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   }
 }
 
+void play_wake_accepted_sound() {}
+
 void play_sd_sound(const char *filename) {
   ESP_LOGW(kTag, "Ignoring SD sound %s because local speaker output is not enabled", filename == nullptr ? "none" : filename);
 }
