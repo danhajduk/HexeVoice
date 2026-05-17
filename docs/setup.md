@@ -185,6 +185,11 @@ by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/sync-governance`. The setup status remains blocked
 until selected capabilities are current in Core and a governance bundle has been
 refreshed locally.
+The Step 6 status payload includes a manifest preview before declaration. The
+preview contains the Core declaration payload, node identity, enabled providers,
+provider models/configs, selected capabilities, runtime URLs or sockets, budget
+metadata, and current governance metadata so the operator can inspect the exact
+shape before declaring to Core.
 The final setup gate is `/setup/ready`, backed by
 `/api/setup/ready/status`, `/api/setup/ready/run-smoke-test`, and
 `/api/setup/ready/complete`. The smoke test checks backend/frontend reachability,

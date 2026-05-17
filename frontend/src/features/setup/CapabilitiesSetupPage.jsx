@@ -18,6 +18,10 @@ function normalizeSelection(status) {
     : status?.capabilities?.available || [];
 }
 
+function joinList(value) {
+  return Array.isArray(value) && value.length ? value.join(", ") : "pending";
+}
+
 export function CapabilitiesSetupPage() {
   const [status, setStatus] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -96,8 +100,11 @@ export function CapabilitiesSetupPage() {
 
   const capabilities = status?.capabilities || {};
   const governance = status?.governance || {};
+  const manifestPreview = status?.manifest_preview || {};
   const available = capabilities.available || [];
   const declared = capabilities.declared || [];
+  const providerModels = manifestPreview.providers?.models || [];
+  const runtimeProviders = manifestPreview.runtime?.providers || {};
 
   return (
     <article className="card stack">
@@ -133,6 +140,65 @@ export function CapabilitiesSetupPage() {
           <span className="fact-grid-value">{governance.governance_version || capabilities.governance_version || "pending"}</span>
         </div>
       </div>
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Manifest Preview</h3>
+          <span className={`status-pill status-pill-${toneForStatus(status?.capability_current)}`}>
+            {status?.capability_current ? "current" : "preview"}
+          </span>
+        </div>
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Node</span>
+            <span className="fact-grid-value">{manifestPreview.node_identity?.node_name || "pending"}</span>
+            <span className="fact-grid-label">{manifestPreview.node_identity?.node_id || "waiting for node id"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Enabled providers</span>
+            <span className="fact-grid-value">{joinList(manifestPreview.providers?.enabled)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Selected capabilities</span>
+            <span className="fact-grid-value">{joinList(manifestPreview.capabilities?.selected)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Runtime API</span>
+            <span className="fact-grid-value">{manifestPreview.runtime?.api_base_url || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Governance</span>
+            <span className="fact-grid-value">{manifestPreview.governance?.governance_version || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Budget declaration</span>
+            <span className="fact-grid-value">{manifestPreview.budget_declaration?.node_id ? "included" : "pending"}</span>
+          </div>
+        </div>
+        <div className="fact-grid">
+          {providerModels.map((provider) => (
+            <div className="fact-grid-item" key={provider.provider_id}>
+              <span className="fact-grid-label">{provider.provider_id}</span>
+              <span className="fact-grid-value">{provider.model || "pending"}</span>
+              <span className="fact-grid-label">
+                {[provider.profile, provider.device, provider.cuda_mode, provider.compute_type, provider.language]
+                  .filter(Boolean)
+                  .join(" / ") || "default"}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="fact-grid">
+          {Object.entries(runtimeProviders).map(([role, provider]) => (
+            <div className="fact-grid-item" key={role}>
+              <span className="fact-grid-label">{role}</span>
+              <span className="fact-grid-value">{provider?.base_url || provider?.socket_path || provider?.host || "local"}</span>
+              <span className="fact-grid-label">{provider?.port ? `port ${provider.port}` : provider?.provider || "runtime"}</span>
+            </div>
+          ))}
+        </div>
+        <pre className="code-panel">{JSON.stringify(manifestPreview.declaration_payload || {}, null, 2)}</pre>
+      </section>
 
       <div className="stack">
         <div className="section-heading">

@@ -59,6 +59,59 @@ def test_setup_capabilities_status_blocks_until_declaration_and_governance(tmp_p
     assert "governance_not_current" in payload["blockers"]
 
 
+def test_setup_capabilities_status_includes_manifest_preview(tmp_path):
+    settings = trusted_capability_settings(tmp_path).model_copy(
+        update={
+            "public_api_base_url": "http://voice.local:8084",
+            "voice_stt_provider": "external_faster_whisper",
+            "voice_tts_provider": "piper",
+            "voice_wake_provider": "openwakeword",
+            "voice_tts_piper_voice": "en_US-kathleen-low",
+        }
+    )
+    store = OnboardingStateStore(path=settings.onboarding_state_path)
+    state = store.load()
+    store.save(
+        state.model_copy(
+            update={
+                "provider_setup": state.provider_setup.model_copy(
+                    update={
+                        "supported_providers": ["voice", "external_faster_whisper", "piper", "openwakeword"],
+                        "enabled_providers": ["voice", "external_faster_whisper", "piper", "openwakeword"],
+                        "default_provider": "voice",
+                        "provider_configs": {
+                            "external_faster_whisper": {
+                                "model": "small.en",
+                                "profile": "cuda_fast_intent",
+                                "device": "cuda",
+                                "cuda_mode": "cuda",
+                                "compute_type": "float16",
+                                "language": "en",
+                            },
+                            "piper": {"default_voice": "en_US-kathleen-low"},
+                            "openwakeword": {"default_wakeword": "Hexe", "threshold": 0.5},
+                        },
+                    }
+                )
+            }
+        )
+    )
+    client = TestClient(create_app(settings))
+
+    payload = client.get("/api/setup/capabilities/status").json()
+    preview = payload["manifest_preview"]
+
+    assert preview["node_identity"]["node_id"] == "node-voice-123"
+    assert preview["runtime"]["api_base_url"] == "http://voice.local:8084"
+    assert preview["declaration_payload"]["manifest"]["capability_endpoints"]["voice.tts.synthesize"]["url"] == "http://voice.local:8084/api/tts/synthesize"
+    assert preview["providers"]["enabled"] == ["external_faster_whisper", "openwakeword", "piper", "voice"]
+    models = {item["provider_id"]: item for item in preview["providers"]["models"]}
+    assert models["external_faster_whisper"]["model"] == "small.en"
+    assert models["piper"]["model"] == "en_US-kathleen-low"
+    assert models["openwakeword"]["model"] == "Hexe"
+    assert preview["budget_declaration"]["node_id"] == "node-voice-123"
+
+
 def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):
     client = TestClient(create_app(trusted_capability_settings(tmp_path)))
 

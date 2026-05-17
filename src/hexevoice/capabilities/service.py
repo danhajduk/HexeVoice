@@ -44,45 +44,8 @@ class CapabilityDeclarationService:
             raise HTTPException(status_code=400, detail="provider_setup_incomplete")
 
         declared_task_families = self._selected_capabilities(state)
-        supported_providers = sorted(
-            {
-                provider_id.strip()
-                for provider_id in [*state.provider_setup.supported_providers, *voice_provider_ids(self._settings)]
-                if provider_id and provider_id.strip()
-            }
-        )
-        enabled_providers = sorted({provider_id.strip() for provider_id in state.provider_setup.enabled_providers if provider_id and provider_id.strip()})
-        capability_endpoints = self._capability_endpoints(declared_task_families)
-
-        payload = {
-            "manifest": {
-                "manifest_version": "1.0",
-                "node": {
-                    "node_id": state.trust_activation.node_id,
-                    "node_type": state.trust_activation.node_type or self._settings.node_type,
-                    "node_name": state.pre_trust.node_name or self._settings.node_name,
-                    "node_software_version": self._settings.node_software_version,
-                },
-                "declared_task_families": declared_task_families,
-                "declared_capabilities": declared_task_families,
-                "capability_endpoints": capability_endpoints,
-                "supported_providers": supported_providers,
-                "enabled_providers": enabled_providers,
-                "provider_intelligence": self._provider_intelligence(enabled_providers),
-                "node_features": {
-                    "telemetry": True,
-                    "governance_refresh": True,
-                    "lifecycle_events": True,
-                    "provider_failover": False,
-                },
-                "environment_hints": {
-                    "deployment_target": "node",
-                    "acceleration": "none",
-                    "network_tier": "lan",
-                    "region": "local",
-                },
-            }
-        }
+        enabled_providers = self._enabled_providers(state)
+        payload = self.capability_declaration_payload(state)
         try:
             response = self._core_client.submit_capability_declaration(
                 core_base_url=state.pre_trust.core_base_url,
@@ -179,6 +142,77 @@ class CapabilityDeclarationService:
             governance_issued_at=updated.capability_declaration.governance_issued_at,
         )
 
+    def manifest_preview(self) -> dict:
+        state = self._store.load()
+        declaration_payload = self.capability_declaration_payload(state)
+        enabled_providers = self._enabled_providers(state)
+        node_id = state.trust_activation.node_id or ""
+        return {
+            "declaration_payload": declaration_payload,
+            "budget_declaration": self._budget_declaration_payload(
+                node_id=node_id,
+                providers=enabled_providers,
+            )
+            if node_id
+            else {},
+            "node_identity": declaration_payload["manifest"]["node"],
+            "providers": {
+                "supported": declaration_payload["manifest"]["supported_providers"],
+                "enabled": enabled_providers,
+                "default_provider": state.provider_setup.default_provider,
+                "configs": dict(state.provider_setup.provider_configs),
+                "models": self._provider_model_preview(enabled_providers, state.provider_setup.provider_configs),
+            },
+            "capabilities": {
+                "selected": declaration_payload["manifest"]["declared_capabilities"],
+                "endpoints": declaration_payload["manifest"]["capability_endpoints"],
+            },
+            "runtime": self._runtime_preview(declaration_payload["manifest"]["capability_endpoints"]),
+            "governance": {
+                "capability_profile_id": state.capability_declaration.capability_profile_id,
+                "governance_version": state.governance_sync.governance_version
+                or state.capability_declaration.governance_version,
+                "governance_sync_status": state.governance_sync.governance_sync_status,
+                "governance_freshness_state": state.governance_sync.governance_freshness_state,
+                "refresh_interval_s": state.governance_sync.refresh_interval_s,
+                "last_refresh_request_at": state.governance_sync.last_refresh_request_at,
+            },
+        }
+
+    def capability_declaration_payload(self, state=None) -> dict:
+        state = state or self._store.load()
+        declared_task_families = self._selected_capabilities(state)
+        enabled_providers = self._enabled_providers(state)
+        return {
+            "manifest": {
+                "manifest_version": "1.0",
+                "node": {
+                    "node_id": state.trust_activation.node_id,
+                    "node_type": state.trust_activation.node_type or self._settings.node_type,
+                    "node_name": state.pre_trust.node_name or self._settings.node_name,
+                    "node_software_version": self._settings.node_software_version,
+                },
+                "declared_task_families": declared_task_families,
+                "declared_capabilities": declared_task_families,
+                "capability_endpoints": self._capability_endpoints(declared_task_families),
+                "supported_providers": self._supported_providers(state),
+                "enabled_providers": enabled_providers,
+                "provider_intelligence": self._provider_intelligence(enabled_providers),
+                "node_features": {
+                    "telemetry": True,
+                    "governance_refresh": True,
+                    "lifecycle_events": True,
+                    "provider_failover": False,
+                },
+                "environment_hints": {
+                    "deployment_target": "node",
+                    "acceleration": "none",
+                    "network_tier": "lan",
+                    "region": "local",
+                },
+            }
+        }
+
     def _budget_declaration_payload(self, *, node_id: str, providers: list[str]) -> dict:
         return {
             "node_id": node_id,
@@ -193,6 +227,86 @@ class CapabilityDeclarationService:
             "setup_requirements": [],
             "suggested_money_limit": None,
             "suggested_compute_limit": None,
+        }
+
+    def _supported_providers(self, state) -> list[str]:
+        return sorted(
+            {
+                provider_id.strip()
+                for provider_id in [*state.provider_setup.supported_providers, *voice_provider_ids(self._settings)]
+                if provider_id and provider_id.strip()
+            }
+        )
+
+    def _enabled_providers(self, state) -> list[str]:
+        return sorted(
+            {
+                provider_id.strip()
+                for provider_id in state.provider_setup.enabled_providers
+                if provider_id and provider_id.strip()
+            }
+        )
+
+    def _api_base_url(self) -> str:
+        return (
+            self._settings.public_api_base_url
+            or f"http://{self._settings.api_host}:{self._settings.api_port}"
+        ).rstrip("/")
+
+    def _provider_model_preview(self, enabled_providers: list[str], provider_configs: dict[str, dict[str, object]]) -> list[dict]:
+        previews: list[dict] = []
+        for provider_id in enabled_providers:
+            config = dict(provider_configs.get(provider_id) or {})
+            if provider_id in {"external_faster_whisper", "faster_whisper"}:
+                model = config.get("model") or self._settings.voice_stt_faster_whisper_model
+            elif provider_id == "piper":
+                model = config.get("default_voice") or self._settings.voice_tts_piper_voice or self._settings.voice_tts_model
+            elif provider_id in {"openwakeword", "supervised_openwakeword"}:
+                model = config.get("default_wakeword") or self._settings.voice_wake_models or "Hexe"
+            else:
+                model = config.get("model") or provider_id
+            previews.append(
+                {
+                    "provider_id": provider_id,
+                    "model": str(model or provider_id),
+                    "warm_models": config.get("warm_models") or [],
+                    "profile": config.get("profile"),
+                    "device": config.get("device"),
+                    "cuda_mode": config.get("cuda_mode"),
+                    "compute_type": config.get("compute_type"),
+                    "language": config.get("language"),
+                    "threshold": config.get("threshold"),
+                }
+            )
+        return previews
+
+    def _runtime_preview(self, capability_endpoints: dict) -> dict:
+        return {
+            "api_base_url": self._api_base_url(),
+            "capability_endpoints": capability_endpoints,
+            "providers": {
+                "stt": {
+                    "provider": self._settings.voice_stt_provider,
+                    "base_url": self._settings.resolved_voice_stt_service_base_url(),
+                    "socket_path": str(self._settings.resolved_voice_stt_service_socket_path())
+                    if self._settings.resolved_voice_stt_service_socket_path() is not None
+                    else None,
+                    "port": self._settings.voice_stt_service_port,
+                },
+                "tts": {
+                    "provider": self._settings.voice_tts_provider,
+                    "base_url": self._settings.resolved_voice_tts_piper_base_url(),
+                    "socket_path": str(self._settings.resolved_voice_tts_piper_socket_path())
+                    if self._settings.resolved_voice_tts_piper_socket_path() is not None
+                    else None,
+                    "port": self._settings.voice_tts_piper_service_port,
+                },
+                "wake": {
+                    "provider": self._settings.voice_wake_provider,
+                    "host": self._settings.voice_wake_service_host,
+                    "port": self._settings.voice_wake_service_port,
+                },
+            },
         }
 
     def _provider_intelligence(self, enabled_providers: list[str]) -> list[dict]:

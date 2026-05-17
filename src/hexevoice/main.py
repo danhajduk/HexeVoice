@@ -2366,6 +2366,7 @@ def create_app(
 
         return {
             "capabilities": capabilities.model_dump(mode="json"),
+            "manifest_preview": capability_service.manifest_preview(),
             "provider_setup": provider_setup.model_dump(mode="json"),
             "governance": {
                 "governance_sync_status": state.governance_sync.governance_sync_status,
