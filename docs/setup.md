@@ -129,6 +129,9 @@ New nodes continue through `/setup/trust` as new-node onboarding. Migrated nodes
 continue through `/setup/trust/reauth`, which starts Core re-auth with
 `POST /api/system/nodes/reauth/sessions`, opens the returned Core approval URL,
 finalizes the session, and saves the fresh activation payload.
+The frontend route guard keeps new-node setup out of migration re-auth and keeps
+migration setup out of new-node onboarding unless no migrated node identity has
+been imported yet.
 Provider/runtime setup is exposed at `/setup/providers` and backed by
 `/api/setup/providers/status`, `/api/setup/providers/config`, and
 `/api/setup/providers/apply`. The status endpoint reports provider selection,

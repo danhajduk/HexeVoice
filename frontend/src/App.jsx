@@ -518,6 +518,19 @@ export default function App() {
   }, [showSetupPage, setupSection, setupReadiness?.setup_mode, status?.trust_state, onboarding?.trust_state]);
 
   useEffect(() => {
+    if (!showSetupPage || !setupReadiness?.setup_mode) {
+      return;
+    }
+    if (setupReadiness.setup_mode === "new_node" && setupSection === "reauth") {
+      openSetupSection("onboard");
+      return;
+    }
+    if (setupReadiness.setup_mode === "migrate_existing" && setupSection === "onboard") {
+      openSetupSection(status?.node_id || onboarding?.node_id ? "reauth" : "migration");
+    }
+  }, [showSetupPage, setupSection, setupReadiness?.setup_mode, status?.node_id, onboarding?.node_id]);
+
+  useEffect(() => {
     if (!showSetupPage || setupSection !== "onboard") {
       return;
     }
