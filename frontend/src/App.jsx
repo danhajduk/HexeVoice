@@ -556,7 +556,7 @@ export default function App() {
   }
 
   function openNextSectionAfterCore() {
-    openSetupSection(setupReadiness?.setup_mode === "migrate_existing" ? "migration" : "reauth");
+    openSetupSection(setupReadiness?.setup_mode === "migrate_existing" ? "migration" : "providers");
   }
 
   function openDashboardSection(section) {
