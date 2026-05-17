@@ -26,6 +26,8 @@ INSTALL_STATUS_UI="${HEXEVOICE_INSTALL_STATUS_UI:-true}"
 INSTALL_STATUS_UI_HOST="${HEXEVOICE_INSTALL_STATUS_UI_HOST:-0.0.0.0}"
 INSTALL_STATUS_UI_PORT="${HEXEVOICE_INSTALL_STATUS_UI_PORT:-8180}"
 INSTALL_STATUS_UI_PATH="${HEXEVOICE_INSTALL_STATUS_UI_PATH:-/tmp/hexevoice-install-status-$(id -u).json}"
+INSTALL_STATUS_UI_PUBLIC_HOST="${HEXEVOICE_INSTALL_STATUS_UI_PUBLIC_HOST:-}"
+INSTALL_STATUS_UI_OPEN_BROWSER="${HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER:-true}"
 MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
 APT_UPDATED=false
 SYSTEM_PACKAGE_INSTALL_APPROVED=false
@@ -55,6 +57,40 @@ install_status_ui_enabled() {
 
 install_lan_host() {
   hostname -I 2>/dev/null | awk '{print $1; exit}'
+}
+
+install_public_host() {
+  if [[ -n "$INSTALL_STATUS_UI_PUBLIC_HOST" ]]; then
+    printf '%s\n' "$INSTALL_STATUS_UI_PUBLIC_HOST"
+    return
+  fi
+  hostname -s 2>/dev/null || hostname 2>/dev/null || install_lan_host || printf '127.0.0.1\n'
+}
+
+print_open_url_hint() {
+  local url="$1"
+  log "Temporary install status UI: $url"
+  if true 2>/dev/null </dev/tty >/dev/tty; then
+    printf '\033]8;;%s\033\\Open HexeVoice setup preparation UI\033]8;;\033\\\n' "$url" >/dev/tty || true
+  fi
+}
+
+open_install_status_browser() {
+  if ! truthy "$INSTALL_STATUS_UI_OPEN_BROWSER"; then
+    return
+  fi
+  local url="$1"
+  if command -v xdg-open >/dev/null 2>&1; then
+    nohup xdg-open "$url" >/dev/null 2>&1 || true
+  elif command -v sensible-browser >/dev/null 2>&1; then
+    nohup sensible-browser "$url" >/dev/null 2>&1 || true
+  elif command -v gio >/dev/null 2>&1; then
+    nohup gio open "$url" >/dev/null 2>&1 || true
+  elif command -v open >/dev/null 2>&1; then
+    nohup open "$url" >/dev/null 2>&1 || true
+  else
+    log "No browser opener found; open $url manually."
+  fi
 }
 
 install_status_update() {
@@ -106,9 +142,10 @@ start_install_status_ui() {
   if ! install_status_ui_enabled || [[ -n "$INSTALL_STATUS_UI_PID" ]]; then
     return
   fi
-  local lan_host
-  lan_host="$(install_lan_host)"
-  lan_host="${lan_host:-127.0.0.1}"
+  local public_host status_url
+  public_host="$(install_public_host)"
+  public_host="${public_host:-127.0.0.1}"
+  status_url="http://${public_host}:${INSTALL_STATUS_UI_PORT}/"
   STATUS_PATH="$INSTALL_STATUS_UI_PATH" \
     STATUS_HOST="$INSTALL_STATUS_UI_HOST" \
     STATUS_PORT="$INSTALL_STATUS_UI_PORT" \
@@ -205,7 +242,8 @@ PY
   INSTALL_STATUS_UI_PID=$!
   sleep 0.3
   if kill -0 "$INSTALL_STATUS_UI_PID" 2>/dev/null; then
-    log "Temporary install status UI: http://${lan_host}:${INSTALL_STATUS_UI_PORT}/"
+    print_open_url_hint "$status_url"
+    open_install_status_browser "$status_url"
     install_status_update "running" "Preparing HexeVoice installer." "Checking host requirements."
   else
     log "Temporary install status UI could not start on port ${INSTALL_STATUS_UI_PORT}; continuing in terminal."
@@ -575,7 +613,7 @@ if truthy "$START_SETUP_RUNNER"; then
   stop_install_status_ui
   log "Starting temporary setup runner"
   SETUP_BOOTSTRAP_STATUS_PATH="${SETUP_BOOTSTRAP_STATUS_PATH:-$APP_DIR/runtime/setup/bootstrap-status.json}" \
-    nohup ./scripts/setup-runner.sh --handoff none --open-browser > runtime/logs/setup-runner.log 2>&1 &
+    nohup ./scripts/setup-runner.sh --handoff none --lan-host "$(install_public_host)" --open-browser > runtime/logs/setup-runner.log 2>&1 &
   log "Temporary setup runner log: $APP_DIR/runtime/logs/setup-runner.log"
 else
   install_status_update "running" "Setup runner skipped." "Continuing install in terminal."

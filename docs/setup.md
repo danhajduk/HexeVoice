@@ -29,6 +29,11 @@ Optional overrides:
 - `HEXEVOICE_REPO_URL=https://...` changes the Git remote.
 - `HEXEVOICE_BRANCH=main` changes the branch.
 - `HEXEVOICE_START_SETUP_RUNNER=false` skips the temporary setup UI/API.
+- `HEXEVOICE_INSTALL_STATUS_UI=false` skips the early install-preparation page.
+- `HEXEVOICE_INSTALL_STATUS_UI_PUBLIC_HOST=<host>` changes the hostname printed
+  and opened for the early install page and setup runner handoff.
+- `HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER=false` disables best-effort browser
+  launch from the installer.
 - `HEXEVOICE_SETUP_DEFAULT_ARTIFACTS=false` skips default artifact downloads.
 - `HEXEVOICE_DEFAULT_STT_MODEL=base`, `HEXEVOICE_DEFAULT_PIPER_VOICE=en_US-kathleen-low`,
   and `HEXEVOICE_DEFAULT_WAKE_MODEL=Hexe` override default model choices.
