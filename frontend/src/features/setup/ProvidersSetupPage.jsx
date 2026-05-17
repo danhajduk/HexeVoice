@@ -12,6 +12,7 @@ const providerMetadata = {
 
 const fallbackProviderChoices = ["voice", "external_faster_whisper", "piper", "openwakeword"];
 const requiredProviderId = "voice";
+const providerAliasGroups = [["openwakeword", "supervised_openwakeword"]];
 const sttProfileOptions = ["cpu_default", "cuda_fast_intent", "cuda_accurate_fallback"];
 const sttModelOptions = ["tiny.en", "base.en", "small.en", "medium.en", "large-v3"];
 const ttsVoiceOptions = ["en_US-kathleen-low", "en_US-lessac-medium", "en_US-jenny-high"];
@@ -31,11 +32,34 @@ function splitList(value) {
     .filter(Boolean);
 }
 
+function aliasesForProvider(providerId) {
+  return providerAliasGroups.find((group) => group.includes(providerId)) || [providerId];
+}
+
+function providerSelected(enabledProviders, providerId) {
+  const aliases = aliasesForProvider(providerId);
+  return aliases.some((alias) => enabledProviders.includes(alias));
+}
+
+function expandProviderAliases(providers) {
+  const next = [];
+  for (const provider of providers || []) {
+    for (const alias of aliasesForProvider(provider)) {
+      if (!alias || next.includes(alias)) continue;
+      next.push(alias);
+    }
+  }
+  return next;
+}
+
 function providerChoicesFor(status) {
   const supported = status?.provider_setup?.supported_providers?.length
     ? status.provider_setup.supported_providers
     : fallbackProviderChoices;
-  return supported.map((id) => ({
+  const displaySupported = supported.includes("supervised_openwakeword")
+    ? supported.filter((id) => id !== "openwakeword")
+    : supported;
+  return displaySupported.map((id) => ({
     id,
     label: providerMetadata[id]?.label || id,
     role: providerMetadata[id]?.role || "Provider",
@@ -44,7 +68,7 @@ function providerChoicesFor(status) {
 
 function normalizedEnabledProviders(providers) {
   const next = [];
-  for (const provider of [requiredProviderId, ...(providers || [])]) {
+  for (const provider of [requiredProviderId, ...expandProviderAliases(providers || [])]) {
     if (!provider || next.includes(provider)) continue;
     next.push(provider);
   }
@@ -101,8 +125,13 @@ function defaultProviderConfigs() {
 function providerConfigsFromStatus(status) {
   const next = defaultProviderConfigs();
   const saved = status?.provider_setup?.provider_configs || {};
+  const savedWithAliases = {
+    ...saved,
+    supervised_openwakeword: saved.supervised_openwakeword || saved.openwakeword,
+    openwakeword: saved.openwakeword || saved.supervised_openwakeword,
+  };
   for (const providerId of Object.keys(next)) {
-    const config = saved[providerId] || {};
+    const config = savedWithAliases[providerId] || {};
     next[providerId] = {
       ...next[providerId],
       ...config,
@@ -172,8 +201,9 @@ export function ProvidersSetupPage() {
   function toggleProvider(providerId) {
     if (providerId === requiredProviderId) return;
     setEnabled((current) => {
-      if (current.includes(providerId)) {
-        const next = current.filter((item) => item !== providerId);
+      if (providerSelected(current, providerId)) {
+        const aliases = aliasesForProvider(providerId);
+        const next = current.filter((item) => !aliases.includes(item));
         if (defaultProvider === providerId) {
           setDefaultProvider(requiredProviderId);
         }
@@ -322,7 +352,7 @@ export function ProvidersSetupPage() {
         </div>
         <div className="choice-list provider-choice-list">
           {providerChoices.map((provider) => {
-            const selected = enabled.includes(provider.id);
+            const selected = providerSelected(enabled, provider.id);
             const required = provider.id === requiredProviderId;
             return (
               <button
