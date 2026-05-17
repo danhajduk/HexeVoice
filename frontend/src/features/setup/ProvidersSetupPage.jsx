@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { applySetupProviders, getSetupProvidersStatus, saveSetupProvidersConfig } from "../../api/client";
+import { applySetupProviders, getSetupProvidersStatus, registerSetupSupervisorRuntime, saveSetupProvidersConfig } from "../../api/client";
 
 const providerMetadata = {
   voice: { label: "Voice", role: "Pipeline" },
@@ -221,6 +221,21 @@ export function ProvidersSetupPage() {
     }
   }
 
+  async function registerSupervisor() {
+    setBusy("supervisor-registration");
+    setError("");
+    setNotice("");
+    try {
+      const payload = await registerSetupSupervisorRuntime();
+      setNotice(`Supervisor registration: ${payload.status || "requested"}.`);
+      await refresh();
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   const providerChoices = providerChoicesFor(status);
   const defaultProviderChoices = providerChoices.filter((provider) => enabled.includes(provider.id));
   const sttProviderId = providerChoices.some((provider) => provider.id === "external_faster_whisper")
@@ -292,6 +307,37 @@ export function ProvidersSetupPage() {
               <span className="fact-grid-value">Save provider selections to build the asset list.</span>
             </div>
           ) : null}
+        </div>
+      </section>
+
+      <section className="stack">
+        <div className="section-heading-inline">
+          <div>
+            <p className="panel-kicker">Supervisor Registration</p>
+            <h3 className="section-title">Runtime services</h3>
+          </div>
+          <span className={`status-pill status-pill-${status?.supervisor_registration?.registered ? "success" : "warning"}`}>
+            {status?.supervisor_registration?.registered ? "registered" : "pending"}
+          </span>
+        </div>
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Node ID</span>
+            <span className="fact-grid-value">{status?.supervisor_registration?.node_id || "waiting"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Services</span>
+            <span className="fact-grid-value">{status?.supervisor_registration?.service_ids?.join(", ") || "pending"}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Last error</span>
+            <span className="fact-grid-value">{status?.supervisor_registration?.last_error || "none"}</span>
+          </div>
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-secondary" type="button" onClick={registerSupervisor} disabled={busy !== "" || status?.supervisor_registration?.blocked}>
+            {busy === "supervisor-registration" ? "Registering..." : "Register runtime services"}
+          </button>
         </div>
       </section>
 

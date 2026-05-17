@@ -197,3 +197,4 @@ Task 184: Add Step 5 provider-driven default and optional model downloads for Fa
 Task 185: Add Step 5 provider apply plan preview showing config writes, model downloads, Docker/container changes, supervisor registration, health validation, and persisted selections - Completed on 05/16/2026 22:35
 Task 186: Implement Step 5 CUDA profile handling with auto-detect recommendation, CPU/CUDA image selection, user override, and Docker CUDA validation - Completed on 05/16/2026 22:38
 Task 187: Add Step 5 provider asset progress tracking for missing, downloading, downloaded, preloading, healthy, failed, and retry states - Completed on 05/16/2026 22:39
+Task 188: Connect Step 5 provider setup to supervisor registration after node identity exists for STT, TTS, wake, backend/frontend, and Docker service health checks - Completed on 05/16/2026 22:41

@@ -151,6 +151,10 @@ export async function applySetupProviders(payload = {}) {
   return sendJson("/api/setup/providers/apply", { body: payload });
 }
 
+export async function registerSetupSupervisorRuntime() {
+  return sendJson("/api/setup/supervisor/register-runtime", { body: {} });
+}
+
 export async function getBootstrapDiscovery() {
   return fetchJson("/api/onboarding/bootstrap-discovery");
 }

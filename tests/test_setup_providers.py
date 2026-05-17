@@ -40,6 +40,7 @@ def test_setup_provider_status_shape(tmp_path):
     assert "apply_plan" in payload
     assert "asset_progress" in payload
     assert "cuda_profile" in payload
+    assert "supervisor_registration" in payload
     assert "continue_blocked" in payload
 
 

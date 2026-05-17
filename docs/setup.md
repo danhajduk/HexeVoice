@@ -167,6 +167,9 @@ mode from the host hint, the selected Docker image family, and the
 The provider status payload also includes `asset_progress` entries for selected
 STT models, Piper voices, and wake models with missing, downloading, downloaded,
 preloading, healthy, failed, and retry states reflected in the setup UI.
+Step 5 exposes Supervisor runtime registration status and can call
+`POST /api/setup/supervisor/register-runtime` after the trusted node ID exists,
+covering backend, frontend, STT, TTS, wake, and provider Docker services.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,

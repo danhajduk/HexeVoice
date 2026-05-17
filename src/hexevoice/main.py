@@ -2241,6 +2241,17 @@ def create_app(
                 "items": list(provider_setup.provider_configs.keys()),
             },
         ]
+        supervisor_status = services.supervisor or {}
+        supervisor_registration = {
+            "node_id": state.trust_activation.node_id,
+            "configured": bool(supervisor_status.get("configured")),
+            "registered": bool(supervisor_status.get("registered")),
+            "last_seen_at": supervisor_status.get("last_seen_at"),
+            "last_error": supervisor_status.get("last_error"),
+            "register_action": "/api/setup/supervisor/register-runtime",
+            "blocked": not bool(state.trust_activation.node_id),
+            "service_ids": ["backend", "frontend", *[provider["target"] for provider in states if provider.get("target")]],
+        }
         return {
             "configured": provider_setup.configured,
             "provider_setup": provider_setup.model_dump(mode="json"),
@@ -2249,6 +2260,7 @@ def create_app(
             "apply_plan": apply_plan,
             "asset_progress": asset_progress,
             "cuda_profile": cuda_profile,
+            "supervisor_registration": supervisor_registration,
             "continue_blocked": bool(blockers),
             "blockers": blockers,
         }
