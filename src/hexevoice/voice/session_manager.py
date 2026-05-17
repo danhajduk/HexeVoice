@@ -367,6 +367,75 @@ class VoiceSessionManager:
             },
         )
 
+    async def push_play_sound_command(
+        self,
+        *,
+        endpoint_id: str,
+        audio_url: str | None = None,
+        stream_id: str | None = None,
+        content_type: str | None = None,
+        text: str | None = None,
+        voice: str | None = None,
+        session_id: str | None = None,
+        source_event_id: str | None = None,
+        interaction_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict:
+        requested_audio_url = str(audio_url or "").strip()
+        spoken_text = str(text or "").strip()
+        command_session_id = session_id or f"{endpoint_id}-play-sound"
+        tts: TtsSynthesis | None = None
+        if not requested_audio_url and spoken_text:
+            if self._turn_pipeline is None:
+                return {"accepted": False, "reason": "turn_pipeline_unavailable", "status": "failed"}
+            tts = self._turn_pipeline.synthesize_reply(
+                endpoint_id=endpoint_id,
+                session_id=command_session_id,
+                text=spoken_text,
+                voice=voice,
+            )
+            self._last_response = spoken_text
+            self._last_tts = tts_synthesis_metadata(tts)
+            if tts.error:
+                return {"accepted": False, "reason": tts.error, "status": "failed"}
+            if not tts.stream_id:
+                return {"accepted": False, "reason": "tts_stream_unavailable", "status": "failed"}
+            requested_audio_url = endpoint_tts_audio_url(tts) or ""
+            stream_id = tts.stream_id
+            content_type = tts.content_type
+        if not requested_audio_url:
+            return {"accepted": False, "reason": "audio_url_or_text_required", "status": "failed"}
+
+        record_voice_event(
+            "endpoint.play_sound.ready",
+            endpoint_id=endpoint_id,
+            session_id=command_session_id,
+            command="ui.play_sound",
+            stream_id=stream_id or (tts.stream_id if tts else None),
+            content_type=content_type or (tts.content_type if tts else "audio/wav"),
+            audio_url=requested_audio_url,
+            spoken_text=spoken_text or None,
+            source_event_id=source_event_id,
+            interaction_id=interaction_id,
+            metadata=metadata or {},
+        )
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.replay",
+            command_type="endpoint.play_sound",
+            request_id=f"endpoint_play_sound_{uuid4().hex}",
+            payload={
+                "stream_id": stream_id or (tts.stream_id if tts else None),
+                "content_type": content_type or (tts.content_type if tts else "audio/wav"),
+                "audio_url": requested_audio_url,
+                "text": spoken_text or None,
+                "source_event_id": source_event_id,
+                "interaction_id": interaction_id,
+                "command": "ui.play_sound",
+                "metadata": metadata or {},
+            },
+        )
+
     async def push_timer_announcement(
         self,
         *,

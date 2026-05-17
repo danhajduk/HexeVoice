@@ -176,6 +176,8 @@ I heard <last transcript>
 
 The synthesized replay uses the active TTS provider, so with Piper enabled it creates a new WAV artifact under `runtime/voice_tts/` and sends that artifact URL to the endpoint.
 
+`POST /api/endpoint/play-sound` and its Interaction Node-facing alias `POST /api/interaction/ui/play-sound` bridge `ui.play_sound` style kiosk commands to endpoint audio playback. The payload can provide an existing `audio_url`/`stream_id`, or provide `text` and optional `voice` so HexeVoice generates a TTS clip first and then sends the resulting endpoint audio URL through the existing `endpoint.replay` firmware command.
+
 Recent voice sessions are also persisted to `runtime/voice_session_history.json` by default. The history record contains session ids, endpoint ids, timestamps, turn timings, wake metadata, a `latency_points` timeline, transcript/assistant/TTS metadata, error state, and replay eligibility. It does not persist raw microphone audio; accepted wake-session WAV capture is controlled separately by the wake recording settings.
 
 The history APIs are:

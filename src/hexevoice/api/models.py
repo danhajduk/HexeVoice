@@ -269,6 +269,19 @@ class EndpointSpeakCommandRequest(BaseModel):
     session_id: str | None = Field(default=None, min_length=1, max_length=120)
 
 
+class EndpointPlaySoundCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    audio_url: str | None = Field(default=None, max_length=2000)
+    stream_id: str | None = Field(default=None, max_length=160)
+    content_type: str | None = Field(default="audio/wav", max_length=120)
+    text: str | None = Field(default=None, max_length=4000)
+    voice: str | None = Field(default=None, max_length=80)
+    session_id: str | None = Field(default=None, min_length=1, max_length=120)
+    source_event_id: str | None = Field(default=None, max_length=160)
+    interaction_id: str | None = Field(default=None, max_length=160)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class EndpointCommandResponse(BaseModel):
     accepted: bool
     endpoint_id: str

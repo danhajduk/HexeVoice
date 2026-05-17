@@ -68,6 +68,7 @@ from hexevoice.api.models import (
     EndpointMediaInventoryResponse,
     EndpointMediaListResponse,
     EndpointMediaUploadRequest,
+    EndpointPlaySoundCommandRequest,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
     EndpointSpeakCommandRequest,
@@ -884,6 +885,36 @@ def create_app(
             status=result.get("status"),
             reason=result.get("reason"),
         )
+
+    async def push_play_sound_response(payload: EndpointPlaySoundCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_play_sound_command(
+            endpoint_id=payload.endpoint_id,
+            audio_url=payload.audio_url,
+            stream_id=payload.stream_id,
+            content_type=payload.content_type,
+            text=payload.text,
+            voice=payload.voice,
+            session_id=payload.session_id,
+            source_event_id=payload.source_event_id,
+            interaction_id=payload.interaction_id,
+            metadata=payload.metadata,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.play_sound",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/play-sound", response_model=EndpointCommandResponse)
+    async def endpoint_play_sound(payload: EndpointPlaySoundCommandRequest) -> EndpointCommandResponse:
+        return await push_play_sound_response(payload)
+
+    @app.post("/api/interaction/ui/play-sound", response_model=EndpointCommandResponse)
+    async def interaction_ui_play_sound(payload: EndpointPlaySoundCommandRequest) -> EndpointCommandResponse:
+        return await push_play_sound_response(payload)
 
     @app.post("/api/endpoint/storage/reformat", response_model=EndpointCommandResponse)
     async def endpoint_storage_reformat(payload: EndpointCommandRequest) -> EndpointCommandResponse:

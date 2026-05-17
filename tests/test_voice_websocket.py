@@ -1298,6 +1298,89 @@ def test_voice_session_manager_pushes_speak_command_to_endpoint():
     assert websocket.sent[0]["payload"]["text"] == "Vioce test"
 
 
+def test_voice_session_manager_pushes_play_sound_audio_url_to_endpoint():
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    websocket = FakeWebSocket()
+    manager = VoiceSessionManager()
+    manager._connection_active = True
+    manager._websocket = websocket
+    manager._connected_endpoint_id = "esp-box-1"
+
+    result = asyncio.run(
+        manager.push_play_sound_command(
+            endpoint_id="esp-box-1",
+            stream_id="tts-kiosk",
+            audio_url="/api/voice/tts/tts-kiosk/48k",
+            source_event_id="interaction-ui-play-sound-1",
+            interaction_id="kiosk-1",
+        )
+    )
+
+    assert result["accepted"] is True
+    assert websocket.sent[0]["event_type"] == "endpoint.replay"
+    assert websocket.sent[0]["payload"]["request_id"] == result["request_id"]
+    assert websocket.sent[0]["payload"]["command"] == "ui.play_sound"
+    assert websocket.sent[0]["payload"]["stream_id"] == "tts-kiosk"
+    assert websocket.sent[0]["payload"]["audio_url"] == "/api/voice/tts/tts-kiosk/48k"
+    assert websocket.sent[0]["payload"]["source_event_id"] == "interaction-ui-play-sound-1"
+    assert websocket.sent[0]["payload"]["interaction_id"] == "kiosk-1"
+
+
+def test_voice_session_manager_play_sound_can_synthesize_kiosk_text():
+    class PlaySoundPipeline:
+        def __init__(self):
+            self.voice = None
+            self.text = None
+
+        def synthesize_reply(self, *, endpoint_id, session_id, text, voice=None):
+            self.voice = voice
+            self.text = text
+            return TtsSynthesis(
+                content_type="audio/wav",
+                stream_id="tts-kiosk-speech",
+                audio_url="/api/voice/tts/tts-kiosk-speech",
+                endpoint_audio_url="/api/voice/tts/tts-kiosk-speech/48k",
+                provider_id="test",
+            )
+
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    pipeline = PlaySoundPipeline()
+    websocket = FakeWebSocket()
+    manager = VoiceSessionManager(turn_pipeline=pipeline)
+    manager._connection_active = True
+    manager._websocket = websocket
+    manager._connected_endpoint_id = "esp-box-1"
+
+    result = asyncio.run(
+        manager.push_play_sound_command(
+            endpoint_id="esp-box-1",
+            text="Kiosk speech ready.",
+            voice="en_US-kathleen-low",
+        )
+    )
+
+    assert result["accepted"] is True
+    assert pipeline.text == "Kiosk speech ready."
+    assert pipeline.voice == "en_US-kathleen-low"
+    assert websocket.sent[0]["event_type"] == "endpoint.replay"
+    assert websocket.sent[0]["payload"]["command"] == "ui.play_sound"
+    assert websocket.sent[0]["payload"]["stream_id"] == "tts-kiosk-speech"
+    assert websocket.sent[0]["payload"]["audio_url"] == "/api/voice/tts/tts-kiosk-speech/48k"
+    assert websocket.sent[0]["payload"]["text"] == "Kiosk speech ready."
+
+
 def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
     class FailingSttPipeline:
         def status(self):
