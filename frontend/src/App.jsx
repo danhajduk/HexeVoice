@@ -38,14 +38,16 @@ import { MigrationDashboardSection } from "./features/dashboard/MigrationDashboa
 const SETUP_FLOW_STEPS = [
   { id: "host", label: "Host Preparation" },
   { id: "core", label: "Core Connection" },
+  { id: "onboard", label: "Node Onboarding" },
   { id: "migration", label: "Migration Import" },
-  { id: "reauth", label: "Trust Authorization" },
+  { id: "reauth", label: "Trust Re-auth" },
   { id: "providers", label: "Provider Setup" },
   { id: "capabilities", label: "Capabilities & Governance" },
   { id: "ready", label: "Ready Check" },
 ];
 
 const MIGRATION_ONLY_SETUP_STEPS = new Set(["migration", "reauth"]);
+const NEW_ONLY_SETUP_STEPS = new Set(["onboard"]);
 
 const VOICE_ENDPOINT_REFRESH_MS = 2000;
 const VOICE_INTENTS_REFRESH_MS = 5000;
@@ -88,6 +90,9 @@ function parseSetupSection(location) {
   if (location.pathname === "/setup/migration" || location.hash === "#/setup/migration") {
     return "migration";
   }
+  if (location.pathname === "/setup/trust" || location.hash === "#/setup/trust") {
+    return "onboard";
+  }
   if (location.pathname === "/setup/trust/reauth" || location.hash === "#/setup/trust/reauth") {
     return "reauth";
   }
@@ -111,6 +116,9 @@ function setupPathForState(onboarding, status) {
   const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
   if (stepId === "core_connection") {
     return "/setup/core";
+  }
+  if (["bootstrap_discovery", "registration", "approval", "trust_activation"].includes(stepId)) {
+    return "/setup/trust";
   }
   if (stepId === "provider_setup") {
     return "/setup/providers";
@@ -148,7 +156,7 @@ function setSetupPathRoute(section = "host") {
   if (typeof window === "undefined") {
     return;
   }
-  const path = section === "reauth" ? "/setup/trust/reauth" : `/setup/${section}`;
+  const path = section === "reauth" ? "/setup/trust/reauth" : section === "onboard" ? "/setup/trust" : `/setup/${section}`;
   if (window.location.pathname !== path) {
     window.history.pushState(null, "", path);
   }
@@ -209,6 +217,9 @@ function setupFlowStepForSection(setupSection, onboarding, status) {
   if (stepId === "core_connection") {
     return "core";
   }
+  if (["bootstrap_discovery", "registration", "approval", "trust_activation"].includes(stepId)) {
+    return "onboard";
+  }
   if (stepId === "provider_setup") {
     return "providers";
   }
@@ -223,7 +234,7 @@ function setupFlowStepForSection(setupSection, onboarding, status) {
 
 function setupFlowStepsForMode(setupMode) {
   if (setupMode === "migrate_existing") {
-    return SETUP_FLOW_STEPS;
+    return SETUP_FLOW_STEPS.filter((step) => !NEW_ONLY_SETUP_STEPS.has(step.id));
   }
   return SETUP_FLOW_STEPS.filter((step) => !MIGRATION_ONLY_SETUP_STEPS.has(step.id));
 }
@@ -437,6 +448,17 @@ export default function App() {
   }, [setupComplete, routeView, onboarding, status]);
 
   useEffect(() => {
+    if (!showSetupPage || setupSection !== "providers") {
+      return;
+    }
+    const trustState = status?.trust_state || onboarding?.trust_state;
+    if (!trustState || trustState === "trusted") {
+      return;
+    }
+    openSetupSection(setupReadiness?.setup_mode === "migrate_existing" || trustState === "reauth_required" ? "reauth" : "onboard");
+  }, [showSetupPage, setupSection, setupReadiness?.setup_mode, status?.trust_state, onboarding?.trust_state]);
+
+  useEffect(() => {
     if (showSetupPage || dashboardSection !== "voice-endpoint") {
       return undefined;
     }
@@ -566,7 +588,7 @@ export default function App() {
   }
 
   function openNextSectionAfterCore() {
-    openSetupSection(setupReadiness?.setup_mode === "migrate_existing" ? "migration" : "providers");
+    openSetupSection(setupReadiness?.setup_mode === "migrate_existing" ? "migration" : "onboard");
   }
 
   function openDashboardSection(section) {
@@ -683,6 +705,11 @@ export default function App() {
                   <>
                     <SetupHealthCard readiness={setupReadiness} />
                     <MigrationSetupPage />
+                  </>
+                ) : setupSection === "onboard" ? (
+                  <>
+                    <SetupHealthCard readiness={setupReadiness} />
+                    <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />
                   </>
                 ) : setupSection === "reauth" ? (
                   <>
