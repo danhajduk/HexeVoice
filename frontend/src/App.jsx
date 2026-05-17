@@ -45,6 +45,8 @@ const SETUP_FLOW_STEPS = [
   { id: "ready", label: "Ready Check" },
 ];
 
+const MIGRATION_ONLY_SETUP_STEPS = new Set(["migration", "reauth"]);
+
 const VOICE_ENDPOINT_REFRESH_MS = 2000;
 const VOICE_INTENTS_REFRESH_MS = 5000;
 const RUNTIME_REFRESH_MS = 2000;
@@ -219,16 +221,24 @@ function setupFlowStepForSection(setupSection, onboarding, status) {
   return "host";
 }
 
-function buildSetupFlow(onboarding, status, setupSection) {
+function setupFlowStepsForMode(setupMode) {
+  if (setupMode === "migrate_existing") {
+    return SETUP_FLOW_STEPS;
+  }
+  return SETUP_FLOW_STEPS.filter((step) => !MIGRATION_ONLY_SETUP_STEPS.has(step.id));
+}
+
+function buildSetupFlow(onboarding, status, setupSection, setupMode) {
   const operationalReady = Boolean(status?.operational_ready || onboarding?.operational_ready);
   const currentStepId = operationalReady ? "ready" : setupFlowStepForSection(setupSection, onboarding, status);
-  const currentStepIndex = SETUP_FLOW_STEPS.findIndex((step) => step.id === currentStepId);
+  const steps = setupFlowStepsForMode(setupMode);
+  const currentStepIndex = steps.findIndex((step) => step.id === currentStepId);
 
-  const current = SETUP_FLOW_STEPS.find((step) => step.id === currentStepId) || SETUP_FLOW_STEPS[0];
+  const current = steps.find((step) => step.id === currentStepId) || SETUP_FLOW_STEPS.find((step) => step.id === currentStepId) || steps[0];
 
   return {
     current: current ? { id: current.id, label: current.label } : null,
-    steps: SETUP_FLOW_STEPS.map((step, index) => {
+    steps: steps.map((step, index) => {
       return {
         id: step.id,
         label: step.label,
@@ -265,7 +275,7 @@ export default function App() {
   );
   const setupComplete = !isSetupStage(onboarding, status);
   const showSetupPage = !setupComplete || routeView === "setup";
-  const setupFlow = buildSetupFlow(onboarding, status, setupSection);
+  const setupFlow = buildSetupFlow(onboarding, status, setupSection, setupReadiness?.setup_mode);
   const inSetup = showSetupPage;
   const nodeState = nodeStateFromStatus(status, onboarding);
   const requiredInputs = requiredSetupInputs(status);
