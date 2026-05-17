@@ -27,6 +27,7 @@ from hexevoice.voice import (
     VoiceTurnAudioSummary,
     VoiceTurnPipeline,
     SttSilenceTrimConfig,
+    SttModelProfile,
     build_voice_turn_pipeline,
     resolve_stt_model_profile,
     should_use_stt_fallback,
@@ -559,6 +560,7 @@ def test_external_faster_whisper_stt_adapter_posts_audio_to_service():
     assert captured["json"]["endpoint_id"] == "esp-box-1"
     assert captured["json"]["sample_rate_hz"] == 16000
     assert captured["json"]["encoding"] == "pcm_s16le"
+    assert captured["json"]["model"] == "small.en"
     assert captured["json"]["audio_base64"]
     assert transcript.text == "what time"
     assert transcript.provider_id == "external_faster_whisper"
@@ -717,6 +719,60 @@ def test_stt_fast_profile_fallback_rules():
         profile=profile,
         intent_matched=True,
     )
+
+
+def test_voice_turn_pipeline_reruns_stt_with_fallback_profile_when_fast_intent_unmatched(tmp_path):
+    class FixedSttAdapter:
+        def __init__(self, transcript: SpeechTranscript) -> None:
+            self.transcript = transcript
+            self.calls = 0
+
+        def transcribe(self, audio):
+            self.calls += 1
+            return self.transcript
+
+        def status(self):
+            return {"provider": self.transcript.provider_id, "healthy": True, "model": self.transcript.model}
+
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    publisher = FakeTimerEventPublisher()
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime, timer_event_publisher=publisher)
+    primary = FixedSttAdapter(SpeechTranscript(text="kitchen marble", confidence=0.91, provider_id="faster_whisper", model="small.en"))
+    fallback = FixedSttAdapter(
+        SpeechTranscript(text="Hexa, set a timer for 5 minutes", confidence=0.98, provider_id="faster_whisper", model="medium.en")
+    )
+    stt_adapter = ProfiledSpeechToTextAdapter(
+        wrapped=primary,
+        profile=SttModelProfile(
+            name="fast_intent",
+            model="small.en",
+            device="cuda",
+            compute_type="float16",
+            fallback_profile="accurate_fallback",
+            fallback_when=("intent_unmatched",),
+        ),
+        fallback_wrapped=fallback,
+        fallback_profile=SttModelProfile(name="accurate_fallback", model="medium.en", device="cuda", compute_type="float16"),
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=stt_adapter,
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-box-1", session_id="voice-session-1", chunk_count=1, audio_bytes=b"\x01\x00" * 320)
+    )
+
+    assert primary.calls == 1
+    assert fallback.calls == 1
+    assert result.transcript.text == "set a timer for 5 minutes"
+    assert result.transcript.model == "medium.en"
+    assert result.assistant_response.command == "timer.create"
+    assert publisher.calls[0]["duration_seconds"] == 300
+    assert stt_adapter.status()["last_fallback"]["used"] is True
+    assert stt_adapter.status()["last_fallback"]["fallback_profile"] == "accurate_fallback"
 
 
 def test_faster_whisper_stt_adapter_returns_error_without_losing_fallback_modes(tmp_path):

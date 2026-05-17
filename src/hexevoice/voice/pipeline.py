@@ -32,7 +32,9 @@ from hexevoice.assistant import AssistantTurnService
 from hexevoice.engine_http import client_for_engine
 from hexevoice.voice.records import record_voice_event
 from hexevoice.stt_profiles import SttModelProfile
+from hexevoice.stt_profiles import get_stt_model_profile
 from hexevoice.stt_profiles import resolve_stt_model_profile
+from hexevoice.stt_profiles import should_use_stt_fallback
 
 if TYPE_CHECKING:
     from hexevoice.config.settings import Settings
@@ -179,6 +181,28 @@ class SilenceTrimmingSpeechToTextAdapter:
                     timings[f"silence_trim_{key}"] = value
         return replace(transcript, timing_breakdown_ms=timings)
 
+    def maybe_fallback_transcribe(
+        self,
+        audio: VoiceTurnAudioSummary,
+        *,
+        primary: SpeechTranscript,
+        intent_matched: bool,
+    ) -> SpeechTranscript | None:
+        fallback = getattr(self._wrapped, "maybe_fallback_transcribe", None)
+        if not callable(fallback):
+            return None
+        trimmed_audio, trim_metadata = trim_stt_silence(audio, self._config)
+        self._last_trim = trim_metadata
+        transcript = fallback(trimmed_audio, primary=primary, intent_matched=intent_matched)
+        if transcript is None:
+            return None
+        timings = dict(transcript.timing_breakdown_ms)
+        if trim_metadata:
+            for key, value in trim_metadata.items():
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    timings.setdefault(f"silence_trim_{key}", value)
+        return replace(transcript, timing_breakdown_ms=timings)
+
     def status(self) -> dict:
         status = dict(self._wrapped.status())
         status["silence_trim"] = {
@@ -193,12 +217,56 @@ class SilenceTrimmingSpeechToTextAdapter:
 
 
 class ProfiledSpeechToTextAdapter:
-    def __init__(self, *, wrapped: SpeechToTextAdapter, profile: SttModelProfile) -> None:
+    def __init__(
+        self,
+        *,
+        wrapped: SpeechToTextAdapter,
+        profile: SttModelProfile,
+        fallback_wrapped: SpeechToTextAdapter | None = None,
+        fallback_profile: SttModelProfile | None = None,
+    ) -> None:
         self._wrapped = wrapped
         self._profile = profile
+        self._fallback_wrapped = fallback_wrapped
+        self._fallback_profile = fallback_profile
+        self._last_fallback: dict[str, object] | None = None
 
     def transcribe(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
         return self._wrapped.transcribe(audio)
+
+    def maybe_fallback_transcribe(
+        self,
+        audio: VoiceTurnAudioSummary,
+        *,
+        primary: SpeechTranscript,
+        intent_matched: bool,
+    ) -> SpeechTranscript | None:
+        if self._fallback_wrapped is None or self._fallback_profile is None:
+            self._last_fallback = {"used": False, "reason": "fallback_not_configured"}
+            return None
+        if not should_use_stt_fallback(primary, profile=self._profile, intent_matched=intent_matched):
+            self._last_fallback = {"used": False, "reason": "primary_transcript_accepted"}
+            return None
+        started_at = time.perf_counter()
+        fallback = self._fallback_wrapped.transcribe(audio)
+        duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        self._last_fallback = {
+            "used": True,
+            "primary_profile": self._profile.name,
+            "fallback_profile": self._fallback_profile.name,
+            "primary_model": primary.model,
+            "fallback_model": fallback.model,
+            "duration_ms": duration_ms,
+            "primary_text_chars": len(primary.text or ""),
+            "fallback_text_chars": len(fallback.text or ""),
+            "primary_confidence": primary.confidence,
+            "fallback_confidence": fallback.confidence,
+            "intent_matched": intent_matched,
+            "fallback_error": fallback.error,
+        }
+        timings = dict(fallback.timing_breakdown_ms)
+        timings.setdefault("stt_fallback_ms", duration_ms)
+        return replace(fallback, timing_breakdown_ms=timings)
 
     def preload(self) -> dict:
         preload = getattr(self._wrapped, "preload", None)
@@ -213,6 +281,8 @@ class ProfiledSpeechToTextAdapter:
         status["stt_profile"] = self._profile.as_dict()
         status["active_profile"] = self._profile.name
         status["fallback_profile"] = self._profile.fallback_profile
+        status["fallback_active_profile"] = self._fallback_profile.name if self._fallback_profile else None
+        status["last_fallback"] = self._last_fallback
         status["preload"] = self._profile.preload
         status["auto_download"] = self._profile.auto_download
         return status
@@ -541,6 +611,7 @@ class ExternalFasterWhisperSpeechToTextAdapter:
                     "sample_rate_hz": audio.sample_rate_hz,
                     "encoding": audio.encoding,
                     "channels": audio.channels,
+                    "model": self._model_name,
                     "audio_base64": base64.b64encode(audio.audio_bytes).decode("ascii"),
                 },
             )
@@ -1613,9 +1684,46 @@ class VoiceTurnPipeline:
                 session_id=audio.session_id,
                 text=transcript.text or " ",
             )
-        )
+            )
         if assistant_response.heard_text != transcript.text:
             transcript = replace(transcript, text=assistant_response.heard_text)
+        fallback_transcribe = getattr(self._stt_adapter, "maybe_fallback_transcribe", None)
+        if callable(fallback_transcribe):
+            fallback_started_at = time.perf_counter()
+            fallback = fallback_transcribe(
+                audio,
+                primary=transcript,
+                intent_matched=bool(assistant_response.command),
+            )
+            if fallback is not None:
+                fallback_ms = round((time.perf_counter() - fallback_started_at) * 1000, 2)
+                record_voice_event(
+                    "stt.fallback.completed" if not fallback.error else "stt.fallback.failed",
+                    endpoint_id=audio.endpoint_id,
+                    session_id=audio.session_id,
+                    provider_id=fallback.provider_id,
+                    model=fallback.model,
+                    confidence=fallback.confidence,
+                    duration_ms=fallback.duration_ms,
+                    text_chars=len(fallback.text or ""),
+                    transcript_text=fallback.text,
+                    error=fallback.error,
+                    chunk_count=audio.chunk_count,
+                    stt_ms=fallback_ms,
+                    primary_model=transcript.model,
+                    primary_text=transcript.text,
+                )
+                transcript = fallback
+                assistant_response = self._assistant_service.handle_turn(
+                    AssistantTurnRequest(
+                        endpoint_id=audio.endpoint_id,
+                        session_id=audio.session_id,
+                        text=transcript.text or " ",
+                    )
+                )
+                if assistant_response.heard_text != transcript.text:
+                    transcript = replace(transcript, text=assistant_response.heard_text)
+                stt_ms = round(stt_ms + fallback_ms, 2)
         assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
         tts_started_at = time.perf_counter()
         tts = self._tts_adapter.synthesize(
@@ -1717,6 +1825,34 @@ def _engine_status(*, role: str, status: dict, fallback_implementation: str) -> 
     return enriched
 
 
+def _faster_whisper_stt_adapter_for_profile(*, settings: "Settings", profile: SttModelProfile) -> SpeechToTextAdapter:
+    return FasterWhisperSpeechToTextAdapter(
+        model_name=profile.model,
+        device=profile.device,
+        compute_type=profile.compute_type,
+        temp_dir=settings.resolved_faster_whisper_temp_dir(),
+        language=profile.language,
+        beam_size=profile.beam_size,
+        best_of=profile.best_of,
+        without_timestamps=profile.without_timestamps,
+        word_timestamps=profile.word_timestamps,
+        max_initial_timestamp=profile.max_initial_timestamp,
+    )
+
+
+def _external_faster_whisper_stt_adapter_for_profile(*, settings: "Settings", profile: SttModelProfile) -> SpeechToTextAdapter:
+    return ExternalFasterWhisperSpeechToTextAdapter(
+        base_url=settings.resolved_voice_stt_service_base_url(),
+        socket_path=settings.resolved_voice_stt_service_socket_path(),
+        model_name=profile.model,
+        timeout_s=settings.voice_stt_timeout_s,
+    )
+
+
+def _fallback_profile_for(profile: SttModelProfile) -> SttModelProfile | None:
+    return get_stt_model_profile(profile.fallback_profile) if profile.fallback_profile else None
+
+
 def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:
     stt_adapter: SpeechToTextAdapter | None = None
     tts_adapter: TextToSpeechAdapter | None = None
@@ -1730,28 +1866,25 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
             timeout_s=settings.voice_stt_timeout_s,
         )
     elif settings.voice_stt_provider == "faster_whisper":
-        stt_adapter = FasterWhisperSpeechToTextAdapter(
-            model_name=stt_profile.model,
-            device=stt_profile.device,
-            compute_type=stt_profile.compute_type,
-            temp_dir=settings.resolved_faster_whisper_temp_dir(),
-            language=stt_profile.language,
-            beam_size=stt_profile.beam_size,
-            best_of=stt_profile.best_of,
-            without_timestamps=stt_profile.without_timestamps,
-            word_timestamps=stt_profile.word_timestamps,
-            max_initial_timestamp=stt_profile.max_initial_timestamp,
-        )
+        stt_adapter = _faster_whisper_stt_adapter_for_profile(settings=settings, profile=stt_profile)
     elif settings.voice_stt_provider == "external_faster_whisper":
-        stt_adapter = ExternalFasterWhisperSpeechToTextAdapter(
-            base_url=settings.resolved_voice_stt_service_base_url(),
-            socket_path=settings.resolved_voice_stt_service_socket_path(),
-            model_name=stt_profile.model,
-            timeout_s=settings.voice_stt_timeout_s,
-        )
+        stt_adapter = _external_faster_whisper_stt_adapter_for_profile(settings=settings, profile=stt_profile)
     if stt_adapter is not None:
         if settings.voice_stt_provider in {"faster_whisper", "external_faster_whisper"}:
-            stt_adapter = ProfiledSpeechToTextAdapter(wrapped=stt_adapter, profile=stt_profile)
+            fallback_profile = _fallback_profile_for(stt_profile)
+            fallback_adapter = None
+            if fallback_profile is not None:
+                fallback_adapter = (
+                    _faster_whisper_stt_adapter_for_profile(settings=settings, profile=fallback_profile)
+                    if settings.voice_stt_provider == "faster_whisper"
+                    else _external_faster_whisper_stt_adapter_for_profile(settings=settings, profile=fallback_profile)
+                )
+            stt_adapter = ProfiledSpeechToTextAdapter(
+                wrapped=stt_adapter,
+                profile=stt_profile,
+                fallback_wrapped=fallback_adapter,
+                fallback_profile=fallback_profile,
+            )
         stt_adapter = SilenceTrimmingSpeechToTextAdapter(
             wrapped=stt_adapter,
             config=SttSilenceTrimConfig(
