@@ -1,5 +1,49 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
+[TODO] Task 160: Make the temporary install UI match the production setup UI shell, including the setup health strip and clear install-prep progress states
+[TODO] Task 161: Strengthen Step 1 production handoff validation so temp UI redirects only after production backend/frontend, runtime dirs, required default assets, and setup health are ready
+[TODO] Task 163: Expand Step 2 Host and Node Setup with node identity fields: node display name, node type/role, hostname, LAN identity, final API URL, and final UI URL
+[TODO] Task 164: Make the setup sidebar adapt to setup mode so new-node installs hide migration/re-auth steps and migration installs show migration plus re-auth
+[TODO] Task 165: Update Step 2 handoff so supervisor/service registration waits until node identity/name is set, then registers backend/frontend/STT/TTS/wake/docker services before production redirect
+[TODO] Task 166: Define and enforce Step 2 readiness policy with explicit hard blockers versus warnings for runtime dirs, LAN identity, backend/frontend, Docker, supervisor, firmware, CUDA, host alias, and default assets
+[TODO] Task 167: Add Step 2 recovery actions for re-detect LAN IP, restart temp services, restart production services, re-run service registration, re-check supervisor, and rebuild systemd/supervisor service definitions
+[TODO] Task 168: Normalize setup URLs so temp uses /setup/host on port 8180 and production uses /setup/host on port 8084 without duplicate /setup path segments
+[TODO] Task 169: Harden LAN identity detection so loopback addresses are never selected as the LAN host and the detected LAN IP is exposed as setup readiness data
+[TODO] Task 170: Expand Step 3 Core Connection to fetch and display Core identity, version, registration support, re-auth support, supervisor enrollment support, and capability/governance support
+[TODO] Task 171: Clean up Step 3 Core URL handling so the UI clearly separates Core base URL, API URL, UI URL, LAN/public URL, and the exact endpoint tested
+[TODO] Task 172: Add automatic migration preflight after migration file upload, with visible summary before import
+[TODO] Task 173: Add a detailed Step 3 migration import plan showing imported data, skipped secrets/tokens, voice intents, provider settings, STT/TTS/wake settings, runtime asset expectations, and required re-auth
+[TODO] Task 174: Add Step 3 migration source options for uploaded file, old-node/Core fetch when supported, and local migration path/schema-version review
+[TODO] Task 175: Smooth Step 3 post-import routing so migrated nodes move to re-auth, new nodes move to onboarding/provider setup as appropriate, and unsupported Core re-auth shows a clear blocker
+[TODO] Task 176: Allow Step 3 to save a temporarily unreachable Core URL with offline/deferred validation state, then re-check Core before trust and capability steps
+[TODO] Task 177: Clarify Step 4 trust routes so new-node onboarding and migration re-auth have distinct URLs and labels that match setup mode
+[TODO] Task 178: Harden Step 4 routing so new-node setup never enters migration re-auth and migrated-node setup cannot skip required re-auth
+[TODO] Task 179: Expand Step 4 onboarding/re-auth status tracking to show waiting, approved, rejected, expired, trust finalized, node ID/name received, and ready-to-continue states
+[TODO] Task 180: Make Step 4 continue automatically after Core approval, local trust activation, node ID/name persistence, and setup-state save all succeed
+[TODO] Task 181: Add Step 4 blocker policy for Core unreachable, unsupported onboarding/re-auth, rejected or expired sessions, local trust activation failure, missing node identity, and required migrated re-auth
+[TODO] Task 182: Add Step 4 recovery actions to restart onboarding, reopen Core approval, re-poll approval, retry trust finalize, clear expired sessions, and re-check Core trust support
+[TODO] Task 183: Expand Step 5 provider setup UI with STT model/profile/CPU-GPU mode, TTS voice/model/language, wakeword model/threshold, and provider socket/port/health fields
+[TODO] Task 184: Add Step 5 provider-driven default and optional model downloads for Faster Whisper, Piper, wakeword models, and user-selected extra STT/TTS/wake assets
+[TODO] Task 185: Add Step 5 provider apply plan preview showing config writes, model downloads, Docker/container changes, supervisor registration, health validation, and persisted selections
+[TODO] Task 186: Implement Step 5 CUDA profile handling with auto-detect recommendation, CPU/CUDA image selection, user override, and Docker CUDA validation
+[TODO] Task 187: Add Step 5 provider asset progress tracking for missing, downloading, downloaded, preloading, healthy, failed, and retry states
+[TODO] Task 188: Connect Step 5 provider setup to supervisor registration after node identity exists for STT, TTS, wake, backend/frontend, and Docker service health checks
+[TODO] Task 189: Define and enforce Step 5 continue blockers for enabled unhealthy providers, missing selected models, unavailable CUDA mode, failed config writes, and failed service registration
+[TODO] Task 190: Add Step 5 provider recovery actions for downloading selected models, restarting providers, rebuilding env, recreating containers, switching CPU/CUDA profile, and re-registering services
+[TODO] Task 191: Add Step 6 capability manifest preview before declaration, including node identity, providers, models, enabled capabilities, runtime URLs/sockets, and governance metadata
+[TODO] Task 192: Link Step 6 capability declaration tightly to Step 5 provider config so provider/model changes mark the capability manifest stale
+[TODO] Task 193: Add a Step 6 Core-visible capability summary showing provided STT/TTS/wake services, available models, enabled states, and disabled capabilities
+[TODO] Task 194: Expand Step 6 governance sync UI to show accepted, denied, pending, and locally required changes returned from Core
+[TODO] Task 195: Define and enforce Step 6 blockers for untrusted node, Core unavailable, provider setup incomplete, invalid manifest, Core declaration rejection, governance sync failure, and selected capability without healthy provider
+[TODO] Task 196: Add Step 6 recovery actions to rebuild manifest, re-declare capabilities, re-sync governance, re-check provider health, re-run trust check, and open Core governance pages
+[TODO] Task 197: Validate Step 6 capability manifests locally against the Core-compatible schema before sending them to Core
+[TODO] Task 198: Expand Step 7 smoke tests to verify STT/TTS/wake provider responses, backend provider calls, Core trust/capability visibility, governance currency, and supervisor service registration
+[TODO] Task 199: Add Step 7 final backup/export support with a setup summary, recovery bundle, migration/import receipt, and downloadable endpoint
+[TODO] Task 200: Add a richer Step 7 final summary showing node name/ID, Core URL, local UI/API URLs, provider health, capability/governance status, lifecycle mode, runtime dirs, and accepted warnings
+[TODO] Task 201: Verify Step 7 completion routing so /setup stops forcing setup flow, / opens the dashboard/config page, and setup-mode redirects are disabled after completion
+[TODO] Task 202: Add Step 7 warning acknowledgement for unresolved firmware, host alias, CUDA, or other non-blocking setup warnings before final completion
+[TODO] Task 203: Add Step 7 recovery actions for full smoke test rerun, provider health rerun, governance sync, capability redeclare, opening Core node page, exporting setup bundle, and returning to failed setup steps
+[TODO] Task 204: Verify Step 7 post-complete lifecycle so production backend/frontend, Docker providers, supervisor/systemd units, and temp runner shutdown survive restart
 
 **********************************************************************************************
 * Future TODO listing
@@ -23,3 +67,4 @@
 [FUTURE TODO] Task 141: Evaluate alternative neural TTS engines, including GPU-capable options
 [FUTURE TODO] Task 157: Add LAN-wide HexeVoice naming via mDNS/Avahi or local DNS, with optional reverse proxy support for no-port setup access
 [FUTURE TODO] Task 158: Implement the full firmware artifact download/install flow from the separate FW release repo, including setup UI retry/status and local build fallback
+[FUTURE TODO] Task 162: Make the local HexeVoice host alias default-on during install/setup with an explicit opt-out path

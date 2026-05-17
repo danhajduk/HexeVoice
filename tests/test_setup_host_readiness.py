@@ -22,9 +22,12 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
     payload = response.json()
     assert payload["production_setup_url"].endswith(":8084/setup/host")
     assert "continue" in payload["supported_actions"]
+    assert "download-default-stt-model" in payload["supported_actions"]
     runtime_check = next(check for check in payload["checks"] if check["id"] == "runtime_dirs")
     assert runtime_check["status"] == "fail"
     assert "runtime_dirs" in payload["blockers"]
+    stt_check = next(check for check in payload["checks"] if check["id"] == "stt_model")
+    assert stt_check["detail"]["action"] == "download-default-stt-model"
 
 
 def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
@@ -106,6 +109,47 @@ def test_setup_host_actions_run_helpers_from_project_root(monkeypatch, tmp_path)
     assert recorded["command"][1] == str(ROOT / "scripts" / "hostname-alias-control.sh")
 
 
+def test_setup_host_default_asset_actions_use_control_scripts(monkeypatch, tmp_path):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    recorded = []
+    service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
+
+    monkeypatch.setattr(SetupHostReadinessService, "_lan_host", staticmethod(lambda: "10.0.0.55"))
+
+    def fake_run(command, **kwargs):
+        recorded.append(
+            {
+                "command": command,
+                "env": kwargs.get("env", {}),
+                "timeout": kwargs.get("timeout"),
+                "cwd": kwargs.get("cwd"),
+            }
+        )
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("hexevoice.setup_host.subprocess.run", fake_run)
+
+    for action in (
+        "download-default-stt-model",
+        "download-default-tts-model",
+        "download-default-wake-model",
+        "download-firmware",
+    ):
+        response = service.run_action(action, SetupHostReadinessActionRequest())
+        assert response.accepted is True
+
+    assert recorded[0]["command"][-1] == "download-model"
+    assert recorded[0]["env"]["VOICE_STT_FASTER_WHISPER_MODEL"] == "base"
+    assert recorded[1]["command"][-1] == "download-models"
+    assert recorded[1]["env"]["PIPER_TTS_MODEL_PATH"] == "/models/en_US-kathleen-low.onnx"
+    assert recorded[2]["command"][-1] == "sync-models"
+    assert recorded[2]["env"]["OPENWAKEWORD_DEFAULT_MODEL"] == "Hexe"
+    assert recorded[3]["command"][-1] == "download"
+    assert all(item["cwd"] == ROOT for item in recorded)
+    assert all(item["timeout"] == 1800 for item in recorded)
+
+
 def test_setup_host_joined_supervisor_defaults_id_to_hostname(monkeypatch, tmp_path):
     from hexevoice.setup_host import SetupHostReadinessService
 
@@ -115,7 +159,7 @@ def test_setup_host_joined_supervisor_defaults_id_to_hostname(monkeypatch, tmp_p
     monkeypatch.setattr("hexevoice.setup_host.socket.gethostname", lambda: "hexe-ai")
     monkeypatch.setattr(service, "_supervisor_installer", lambda: ROOT / "fake-install-supervisor.sh")
 
-    def fake_run_helper(action, command, *, extra_env=None):
+    def fake_run_helper(action, command, *, extra_env=None, timeout_s=120):
         recorded["action"] = action
         recorded["command"] = command
         return SetupHostReadinessActionResponse(

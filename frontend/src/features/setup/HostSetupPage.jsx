@@ -13,6 +13,13 @@ const lifecycleModes = [
   { value: "unsupervised_systemd", label: "Unsupervised systemd" },
 ];
 
+const defaultAssetChecks = [
+  { id: "stt_model", action: "download-default-stt-model", label: "STT base model", button: "Download STT" },
+  { id: "tts_model", action: "download-default-tts-model", label: "Piper Kathleen voice", button: "Download TTS" },
+  { id: "wake_model", action: "download-default-wake-model", label: "Hexe wake model", button: "Prepare wake" },
+  { id: "firmware", action: "download-firmware", label: "Firmware artifacts", button: "Download FW" },
+];
+
 function defaultSupervisorId(readiness) {
   const hostname = readiness?.hostname || "hexevoice";
   return `${hostname}-hexe-supervisor`;
@@ -211,6 +218,8 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
 
   const enrollmentUrl = enrollmentPageUrl(form, activeReadiness);
   const enrollmentWarning = form.lifecycle_mode === "joined_supervisor" ? coreUrlWarning(form, activeReadiness) : "";
+  const checkById = new Map((activeReadiness?.checks || []).map((check) => [check.id, check]));
+  const supportedActions = new Set(activeReadiness?.supported_actions || []);
 
   return (
     <article className="card stack">
@@ -278,6 +287,37 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
           </div>
         </div>
       ) : null}
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Default assets</h3>
+          <span className="status-pill status-pill-neutral">Step 1</span>
+        </div>
+        <div className="fact-grid">
+          {defaultAssetChecks.map((asset) => {
+            const check = checkById.get(asset.id);
+            const status = check?.status || "unknown";
+            const statusClass = status === "pass" ? "success" : status === "fail" ? "danger" : "warning";
+            return (
+              <div className="fact-grid-item stack" key={asset.id}>
+                <span className="fact-grid-label">{asset.label}</span>
+                <span className="fact-grid-value">
+                  <span className={`status-pill status-pill-${statusClass}`}>{status}</span>
+                  <span>{check?.message || "Not checked yet."}</span>
+                </span>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => runAction(asset.action)}
+                  disabled={busyAction !== "" || !supportedActions.has(asset.action)}
+                >
+                  {busyAction === asset.action ? "Working..." : asset.button}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       <div className="form-actions">
         <button className="btn btn-ghost" type="button" onClick={() => runAction("prepare-runtime-dirs")} disabled={busyAction !== ""}>

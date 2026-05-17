@@ -168,6 +168,12 @@ TTS artifacts, and wake recordings. It does not download model binaries,
 firmware binaries, migrated state, logs, or generated audio; those are populated
 by their specific install, download, import, or runtime paths.
 
+The Host Setup readiness API exposes retryable setup actions for the default
+Step 1 assets: `download-default-stt-model`, `download-default-tts-model`,
+`download-default-wake-model`, and `download-firmware`. The setup UI shows the
+current readiness check for each default asset and calls the same control
+scripts used by hosted install.
+
 Runtime files are local state and should normally stay uncommitted. See
 `docs/runtime-state-policy.md` for the tracking policy and run
 `./scripts/runtime-state-status.sh` to separate source changes from generated

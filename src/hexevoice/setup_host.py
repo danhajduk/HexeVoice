@@ -22,12 +22,21 @@ from hexevoice.config.settings import Settings
 
 SUPPORTED_ACTIONS = [
     "prepare-runtime-dirs",
+    "download-default-stt-model",
+    "download-default-tts-model",
+    "download-default-wake-model",
+    "download-firmware",
     "check-cuda",
     "install-host-alias",
     "install-standalone-supervisor",
     "install-joined-supervisor",
     "continue",
 ]
+
+DEFAULT_STT_MODEL = "base"
+DEFAULT_PIPER_VOICE = "en_US-kathleen-low"
+DEFAULT_WAKE_MODEL = "Hexe"
+ASSET_ACTION_TIMEOUT_S = 1800
 
 
 def _utc_now() -> str:
@@ -100,6 +109,36 @@ class SetupHostReadinessService:
 
         if action == "prepare-runtime-dirs":
             return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "prepare-runtime-dirs.sh")])
+        if action == "download-default-stt-model":
+            return self._run_helper(
+                action,
+                ["bash", str(self._project_root / "scripts" / "faster-whisper-stt-control.sh"), "download-model"],
+                extra_env={"VOICE_STT_FASTER_WHISPER_MODEL": DEFAULT_STT_MODEL},
+                timeout_s=ASSET_ACTION_TIMEOUT_S,
+            )
+        if action == "download-default-tts-model":
+            return self._run_helper(
+                action,
+                ["bash", str(self._project_root / "scripts" / "piper-tts-control.sh"), "download-models"],
+                extra_env={
+                    "PIPER_TTS_MODEL_PATH": f"/models/{DEFAULT_PIPER_VOICE}.onnx",
+                    "PIPER_TTS_DOWNLOAD_VOICES": DEFAULT_PIPER_VOICE,
+                },
+                timeout_s=ASSET_ACTION_TIMEOUT_S,
+            )
+        if action == "download-default-wake-model":
+            return self._run_helper(
+                action,
+                ["bash", str(self._project_root / "scripts" / "openwakeword-control.sh"), "sync-models"],
+                extra_env={"OPENWAKEWORD_DEFAULT_MODEL": DEFAULT_WAKE_MODEL},
+                timeout_s=ASSET_ACTION_TIMEOUT_S,
+            )
+        if action == "download-firmware":
+            return self._run_helper(
+                action,
+                ["bash", str(self._project_root / "scripts" / "firmware-artifacts-control.sh"), "download"],
+                timeout_s=ASSET_ACTION_TIMEOUT_S,
+            )
         if action == "check-cuda":
             return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "faster-whisper-stt-control.sh"), "cuda-preflight"])
         if action == "install-host-alias":
@@ -226,10 +265,42 @@ class SetupHostReadinessService:
             *self._disk_space_status(),
             required=True,
         )
-        add("firmware", "Firmware artifacts", *self._artifact_status(self._settings.resolved_firmware_artifact_dir(), ["manifest.json"]))
-        add("stt_model", "STT model cache", *self._artifact_status(self._settings.runtime_dir / "stt" / "faster-whisper", []))
-        add("tts_model", "Piper TTS model", *self._artifact_status(self._settings.resolved_piper_tts_model_dir(), ["en_US-kathleen-low.onnx"]))
-        add("wake_model", "Wake model", *self._artifact_status(self._settings.runtime_dir / "openwakeword" / "models", ["hexe.tflite"]))
+        add(
+            "firmware",
+            "Firmware artifacts",
+            *self._artifact_status(self._settings.resolved_firmware_artifact_dir(), ["manifest.json"]),
+            detail={"action": "download-firmware", "path": str(self._settings.resolved_firmware_artifact_dir())},
+        )
+        add(
+            "stt_model",
+            "STT base model",
+            *self._artifact_status(self._settings.runtime_dir / "stt" / "faster-whisper", []),
+            detail={
+                "action": "download-default-stt-model",
+                "model": DEFAULT_STT_MODEL,
+                "path": str(self._settings.runtime_dir / "stt" / "faster-whisper"),
+            },
+        )
+        add(
+            "tts_model",
+            "Piper Kathleen voice",
+            *self._artifact_status(self._settings.resolved_piper_tts_model_dir(), [f"{DEFAULT_PIPER_VOICE}.onnx"]),
+            detail={
+                "action": "download-default-tts-model",
+                "voice": DEFAULT_PIPER_VOICE,
+                "path": str(self._settings.resolved_piper_tts_model_dir()),
+            },
+        )
+        add(
+            "wake_model",
+            "Hexe wake model",
+            *self._artifact_status(self._settings.runtime_dir / "openwakeword" / "models", ["hexe.tflite"]),
+            detail={
+                "action": "download-default-wake-model",
+                "model": DEFAULT_WAKE_MODEL,
+                "path": str(self._settings.runtime_dir / "openwakeword" / "models"),
+            },
+        )
         return checks
 
     def _disk_space_status(self) -> tuple[str, str]:
@@ -431,6 +502,7 @@ class SetupHostReadinessService:
         command: list[str],
         *,
         extra_env: dict[str, str] | None = None,
+        timeout_s: int = 120,
     ) -> SetupHostReadinessActionResponse:
         env = os.environ.copy()
         if extra_env:
@@ -440,7 +512,7 @@ class SetupHostReadinessService:
                 command,
                 text=True,
                 capture_output=True,
-                timeout=120,
+                timeout=timeout_s,
                 check=False,
                 env=env,
                 cwd=self._project_root,
