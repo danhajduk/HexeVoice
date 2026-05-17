@@ -29,6 +29,7 @@ INSTALL_STATUS_UI_PATH="${HEXEVOICE_INSTALL_STATUS_UI_PATH:-/tmp/hexevoice-insta
 INSTALL_STATUS_UI_PUBLIC_HOST="${HEXEVOICE_INSTALL_STATUS_UI_PUBLIC_HOST:-}"
 INSTALL_STATUS_UI_OPEN_BROWSER="${HEXEVOICE_INSTALL_STATUS_UI_OPEN_BROWSER:-true}"
 INSTALL_STATUS_UI_TERMINAL_LINK="${HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK:-false}"
+INSTALL_STATUS_UI_HANDOFF_DELAY_S="${HEXEVOICE_INSTALL_STATUS_UI_HANDOFF_DELAY_S:-5}"
 INSTALL_QUIET="${HEXEVOICE_INSTALL_QUIET:-true}"
 INSTALL_LOG_PATH="${HEXEVOICE_INSTALL_LOG_PATH:-/tmp/hexevoice-install-$(id -u).log}"
 MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
@@ -93,6 +94,11 @@ quiet_redirect_output() {
   fi
   mkdir -p "$(dirname "$INSTALL_LOG_PATH")"
   : > "$INSTALL_LOG_PATH"
+  export CI="${CI:-1}"
+  export NO_COLOR="${NO_COLOR:-1}"
+  export PIP_DISABLE_PIP_VERSION_CHECK="${PIP_DISABLE_PIP_VERSION_CHECK:-1}"
+  export npm_config_progress="${npm_config_progress:-false}"
+  export npm_config_update_notifier="${npm_config_update_notifier:-false}"
   exec >>"$INSTALL_LOG_PATH" 2>&1
   INSTALL_OUTPUT_REDIRECTED=true
   log "Install output redirected to $INSTALL_LOG_PATH"
@@ -123,10 +129,13 @@ install_status_update() {
   local phase="$1"
   local message="$2"
   local detail="${3:-}"
+  local redirect_url="${4:-}"
   STATUS_PATH="$INSTALL_STATUS_UI_PATH" \
     STATUS_PHASE="$phase" \
     STATUS_MESSAGE="$message" \
     STATUS_DETAIL="$detail" \
+    STATUS_REDIRECT_URL="$redirect_url" \
+    STATUS_REDIRECT_DELAY_MS="$((INSTALL_STATUS_UI_HANDOFF_DELAY_S * 1000))" \
     python3 - <<'PY'
 from __future__ import annotations
 
@@ -140,6 +149,8 @@ payload = {
     "phase": os.environ.get("STATUS_PHASE") or "running",
     "message": os.environ.get("STATUS_MESSAGE") or "Preparing HexeVoice.",
     "detail": os.environ.get("STATUS_DETAIL") or None,
+    "redirect_url": os.environ.get("STATUS_REDIRECT_URL") or None,
+    "redirect_delay_ms": int(os.environ.get("STATUS_REDIRECT_DELAY_MS") or "5000"),
     "updated_at": datetime.now(UTC).isoformat(),
 }
 path.parent.mkdir(parents=True, exist_ok=True)
@@ -226,12 +237,20 @@ HTML = """<!doctype html>
     </section>
   </main>
   <script>
+    let redirectScheduled = false;
     async function refresh() {
       try {
         const response = await fetch('/status.json', { cache: 'no-store' });
         const status = await response.json();
         document.getElementById('message').textContent = status.message || 'Preparing HexeVoice.';
         document.getElementById('detail').textContent = status.detail || '';
+        if (status.redirect_url && !redirectScheduled) {
+          redirectScheduled = true;
+          const delay = Number(status.redirect_delay_ms || 5000);
+          window.setTimeout(() => {
+            window.location.assign(status.redirect_url);
+          }, Math.max(1000, delay));
+        }
       } catch (error) {
         document.getElementById('message').textContent = 'Waiting for installer status...';
       }
@@ -644,7 +663,9 @@ bootstrap_status_update "running" "starting-setup" "" "" "" "true" "$pending_dow
 
 if truthy "$START_SETUP_RUNNER"; then
   mkdir -p runtime/logs
-  install_status_update "running" "Starting setup UI." "Handing off to the HexeVoice setup runner."
+  setup_handoff_url="http://$(install_public_host):${INSTALL_STATUS_UI_PORT}/setup"
+  install_status_update "handoff" "Opening HexeVoice setup." "The setup UI is starting now." "$setup_handoff_url"
+  sleep 2
   stop_install_status_ui
   log "Starting temporary setup runner"
   SETUP_BOOTSTRAP_STATUS_PATH="${SETUP_BOOTSTRAP_STATUS_PATH:-$APP_DIR/runtime/setup/bootstrap-status.json}" \

@@ -69,6 +69,7 @@ codes are off by default; enable them with
 `HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK=true`. Installer command output is
 hidden after the preparation UI starts; disable that with
 `HEXEVOICE_INSTALL_QUIET=false` or set `HEXEVOICE_INSTALL_LOG_PATH=/path/log`.
+When the real setup UI starts, the preparation page redirects to `/setup`.
 
 To also render and restart the user services after `scripts/stack.env` is
 created, run:
