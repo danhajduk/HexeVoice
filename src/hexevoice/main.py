@@ -3006,6 +3006,9 @@ def create_app(
             for check in (last_smoke or {}).get("checks", [])
             if isinstance(check, dict) and check.get("status") == "warn"
         ] if isinstance(last_smoke, dict) else []
+        acknowledged_warning_ids = set(ready_state.get("warnings_acknowledged_ids") or [])
+        active_warning_ids = {str(warning.get("id") or "") for warning in smoke_warnings if warning.get("id")}
+        warning_acknowledgement_required = bool(active_warning_ids - acknowledged_warning_ids)
         final_summary = {
             "node_name": state.pre_trust.node_name or app_settings.node_name,
             "node_id": state.trust_activation.node_id,
@@ -3043,6 +3046,12 @@ def create_app(
             "operational_ready": state.operational_status.operational_ready,
             "last_smoke": last_smoke,
             "final_summary": final_summary,
+            "warning_acknowledgement": {
+                "required": warning_acknowledgement_required,
+                "acknowledged_at": ready_state.get("warnings_acknowledged_at"),
+                "acknowledged_ids": sorted(acknowledged_warning_ids),
+                "active_warning_ids": sorted(active_warning_ids),
+            },
             "setup_root_redirect_active": not completed,
             "dashboard_url": (app_settings.public_ui_base_url or setup_host_readiness_service.readiness_payload().ui_base_url).rstrip("/") + "/",
         }
@@ -3066,6 +3075,19 @@ def create_app(
                 "message": "required_smoke_checks_not_passed",
                 "status": await asyncio.to_thread(setup_ready_status_payload),
             }
+        warnings = [
+            check
+            for check in (last_smoke or {}).get("checks", [])
+            if isinstance(check, dict) and check.get("status") == "warn" and check.get("id")
+        ]
+        active_warning_ids = {str(warning.get("id")) for warning in warnings}
+        acknowledged_warning_ids = set(ready_state.get("warnings_acknowledged_ids") or [])
+        if active_warning_ids - acknowledged_warning_ids:
+            return {
+                "accepted": False,
+                "message": "warning_acknowledgement_required",
+                "status": await asyncio.to_thread(setup_ready_status_payload),
+            }
         state = onboarding_state_store.load()
         updated = state.model_copy(
             update={
@@ -3085,6 +3107,24 @@ def create_app(
         return {
             "accepted": True,
             "message": "setup_complete",
+            "status": await asyncio.to_thread(setup_ready_status_payload),
+        }
+
+    @app.post("/api/setup/ready/acknowledge-warnings")
+    async def setup_ready_acknowledge_warnings() -> dict:
+        ready_state = await asyncio.to_thread(read_setup_ready_state)
+        last_smoke = ready_state.get("last_smoke") if isinstance(ready_state.get("last_smoke"), dict) else None
+        warnings = [
+            check
+            for check in (last_smoke or {}).get("checks", [])
+            if isinstance(check, dict) and check.get("status") == "warn" and check.get("id")
+        ] if isinstance(last_smoke, dict) else []
+        ready_state["warnings_acknowledged_at"] = datetime.now(UTC).isoformat()
+        ready_state["warnings_acknowledged_ids"] = sorted({str(warning.get("id")) for warning in warnings})
+        await asyncio.to_thread(write_setup_ready_state, ready_state)
+        return {
+            "accepted": True,
+            "message": "warnings_acknowledged",
             "status": await asyncio.to_thread(setup_ready_status_payload),
         }
 

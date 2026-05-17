@@ -221,6 +221,9 @@ redacted setup summary, recovery bundle, migration bundle, and migration import
 receipt when one exists. Step 7 status also exposes a `final_summary` with node
 identity, Core/local URLs, provider health, capability/governance state,
 lifecycle mode, runtime directory state, and accepted smoke-test warnings. The
+ready endpoint requires non-blocking smoke-test warnings to be acknowledged via
+`/api/setup/ready/acknowledge-warnings` before `/api/setup/ready/complete` is
+accepted.
 smoke test checks backend/frontend reachability,
 trust, provider STT/TTS/wake health, backend provider routing, Core
 trust/capability visibility, governance currency, Supervisor registration,

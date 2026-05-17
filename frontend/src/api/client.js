@@ -235,6 +235,10 @@ export async function completeSetupReady() {
   return sendJson("/api/setup/ready/complete");
 }
 
+export async function acknowledgeSetupReadyWarnings() {
+  return sendJson("/api/setup/ready/acknowledge-warnings", { body: {} });
+}
+
 export async function exportSetupReadyBundle() {
   return sendJson("/api/setup/ready/export", { body: {} });
 }

@@ -141,6 +141,16 @@ def test_setup_ready_smoke_test_and_complete(tmp_path, monkeypatch):
     assert checks["core_capability_visibility"]["status"] == "pass"
     assert checks["governance_currency"]["status"] == "pass"
     assert checks["supervisor_registration"]["status"] == "warn"
+    assert smoke_payload["status"]["warning_acknowledgement"]["required"] is True
+
+    complete = client.post("/api/setup/ready/complete")
+    assert complete.json()["accepted"] is False
+    assert complete.json()["message"] == "warning_acknowledgement_required"
+
+    ack = client.post("/api/setup/ready/acknowledge-warnings")
+    assert ack.status_code == 200
+    assert ack.json()["accepted"] is True
+    assert ack.json()["status"]["warning_acknowledgement"]["required"] is False
 
     complete = client.post("/api/setup/ready/complete")
     assert complete.status_code == 200

@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { completeSetupReady, exportSetupReadyBundle, getSetupReadyStatus, runSetupReadySmokeTest } from "../../api/client";
+import {
+  acknowledgeSetupReadyWarnings,
+  completeSetupReady,
+  exportSetupReadyBundle,
+  getSetupReadyStatus,
+  runSetupReadySmokeTest,
+} from "../../api/client";
 
 function toneForCheck(status) {
   if (status === "pass") return "success";
@@ -72,6 +78,21 @@ export function ReadySetupPage({ onRefresh }) {
     }
   }
 
+  async function acknowledgeWarnings() {
+    setBusy("ack-warnings");
+    setError("");
+    setNotice("");
+    try {
+      const payload = await acknowledgeSetupReadyWarnings();
+      setStatus(payload.status);
+      setNotice("Warnings acknowledged.");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function exportBundle() {
     setBusy("export");
     setError("");
@@ -92,6 +113,7 @@ export function ReadySetupPage({ onRefresh }) {
   const smoke = status?.last_smoke;
   const checks = smoke?.checks || [];
   const finalSummary = status?.final_summary || {};
+  const warningAck = status?.warning_acknowledgement || {};
 
   return (
     <article className="card stack">
@@ -126,6 +148,13 @@ export function ReadySetupPage({ onRefresh }) {
         <div className="fact-grid-item">
           <span className="fact-grid-label">Last run</span>
           <span className="fact-grid-value">{smoke?.ran_at || "pending"}</span>
+        </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Warnings</span>
+          <span className={`status-pill status-pill-${warningAck.required ? "warning" : "success"}`}>
+            {warningAck.required ? "ack required" : "clear"}
+          </span>
+          <span className="fact-grid-label">{warningAck.acknowledged_at || "not acknowledged"}</span>
         </div>
       </div>
 
@@ -195,7 +224,10 @@ export function ReadySetupPage({ onRefresh }) {
         <button className="btn btn-primary" type="button" onClick={runSmokeTest} disabled={busy !== ""}>
           {busy === "smoke" ? "Running..." : "Run smoke test"}
         </button>
-        <button className="btn btn-secondary" type="button" onClick={completeSetup} disabled={busy !== "" || status?.continue_blocked}>
+        <button className="btn btn-secondary" type="button" onClick={acknowledgeWarnings} disabled={busy !== "" || !warningAck.required}>
+          {busy === "ack-warnings" ? "Acknowledging..." : "Acknowledge warnings"}
+        </button>
+        <button className="btn btn-secondary" type="button" onClick={completeSetup} disabled={busy !== "" || status?.continue_blocked || warningAck.required}>
           {busy === "complete" ? "Completing..." : "Complete setup"}
         </button>
         <button className="btn btn-secondary" type="button" onClick={exportBundle} disabled={busy !== ""}>
