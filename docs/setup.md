@@ -174,6 +174,10 @@ Step 5 continue is blocked when enabled providers are unhealthy, selected
 models/voices/wake assets are missing, forced CUDA is unavailable, required
 provider configs are not persisted, or Supervisor registration reports a local
 failure.
+Step 5 recovery actions can download selected assets, preload selected models,
+restart providers, recreate provider containers, rebuild provider env/config,
+switch faster-whisper between CPU and CUDA profiles, and re-register runtime
+services with Supervisor.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,

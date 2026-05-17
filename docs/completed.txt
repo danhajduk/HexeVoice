@@ -199,3 +199,4 @@ Task 186: Implement Step 5 CUDA profile handling with auto-detect recommendation
 Task 187: Add Step 5 provider asset progress tracking for missing, downloading, downloaded, preloading, healthy, failed, and retry states - Completed on 05/16/2026 22:39
 Task 188: Connect Step 5 provider setup to supervisor registration after node identity exists for STT, TTS, wake, backend/frontend, and Docker service health checks - Completed on 05/16/2026 22:41
 Task 189: Define and enforce Step 5 continue blockers for enabled unhealthy providers, missing selected models, unavailable CUDA mode, failed config writes, and failed service registration - Completed on 05/16/2026 22:44
+Task 190: Add Step 5 provider recovery actions for downloading selected models, restarting providers, rebuilding env, recreating containers, switching CPU/CUDA profile, and re-registering services - Completed on 05/16/2026 22:47

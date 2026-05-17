@@ -136,6 +136,23 @@ from hexevoice.stt_profiles import stt_profile_options
 from hexevoice.voice.wake import build_wake_detector
 
 
+def setup_provider_action_sequence(action: str) -> tuple[str, ...]:
+    normalized = str(action or "install").strip().lower()
+    if normalized in {"download-model", "download-models", "sync-models"}:
+        return ("download-models",)
+    if normalized == "preload":
+        return ("preload",)
+    if normalized == "restart":
+        return ("restart",)
+    if normalized in {"recreate", "recreate-containers"}:
+        return ("restart",)
+    if normalized == "start":
+        return ("start",)
+    if normalized in {"install", "build", "rebuild-env", "rebuild-config"}:
+        return ("install", "start")
+    return ("install", "start")
+
+
 def configure_backend_logging(settings: Settings) -> Path:
     log_path = settings.resolved_backend_log_path()
     voice_record_log_path = settings.resolved_voice_record_log_path()
@@ -2308,13 +2325,7 @@ def create_app(
             if not provider_target or provider_target in seen_targets:
                 continue
             seen_targets.add(provider_target)
-            if action in {"download-model", "download-models", "sync-models"}:
-                provider_actions = ("download-models",)
-            elif action == "preload":
-                provider_actions = ("preload",)
-            else:
-                provider_actions = ("install", "start")
-            for provider_action in provider_actions:
+            for provider_action in setup_provider_action_sequence(action):
                 result = await asyncio.to_thread(service.service_action, target=provider_target, action=provider_action)
                 actions.append(result.model_dump(mode="json"))
                 if not result.accepted:

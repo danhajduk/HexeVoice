@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from hexevoice.config.settings import Settings
-from hexevoice.main import create_app
+from hexevoice.main import create_app, setup_provider_action_sequence
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 
 
@@ -94,3 +94,11 @@ def test_setup_provider_apply_supports_targeted_action(tmp_path):
     assert payload["actions"][0]["accepted"] is False
     assert payload["actions"][0]["status"] == "unsupported_service"
     assert "status" in payload
+
+
+def test_setup_provider_action_sequence_supports_recovery_actions():
+    assert setup_provider_action_sequence("download-models") == ("download-models",)
+    assert setup_provider_action_sequence("preload") == ("preload",)
+    assert setup_provider_action_sequence("restart") == ("restart",)
+    assert setup_provider_action_sequence("recreate") == ("restart",)
+    assert setup_provider_action_sequence("rebuild-env") == ("install", "start")

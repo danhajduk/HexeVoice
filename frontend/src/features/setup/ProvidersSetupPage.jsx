@@ -186,16 +186,20 @@ export function ProvidersSetupPage() {
     }));
   }
 
+  function buildSavePayload(configs = providerConfigs, enabledProviders = enabled, defaultProviderId = defaultProvider) {
+    return {
+      enabled_providers: enabledProviders,
+      default_provider: defaultProviderId,
+      provider_configs: providerConfigPayload(configs, enabledProviders, defaultProviderId),
+    };
+  }
+
   async function saveConfig() {
     setBusy("config");
     setError("");
     setNotice("");
     try {
-      const payload = await saveSetupProvidersConfig({
-        enabled_providers: enabled,
-        default_provider: defaultProvider,
-        provider_configs: providerConfigPayload(providerConfigs, enabled, defaultProvider),
-      });
+      const payload = await saveSetupProvidersConfig(buildSavePayload());
       setStatus((current) => ({ ...(current || {}), provider_setup: payload }));
       setNotice("Provider configuration saved.");
       await refresh();
@@ -213,6 +217,38 @@ export function ProvidersSetupPage() {
     try {
       await applySetupProviders(target ? { target, action } : { action });
       setNotice("Provider action queued.");
+      await refresh();
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function switchCudaProfile(mode) {
+    if (!sttProviderId) {
+      setError("No faster-whisper provider is available.");
+      return;
+    }
+    const nextConfig = {
+      ...(providerConfigs[sttProviderId] || {}),
+      cuda_mode: mode,
+      device: mode === "cuda" ? "cuda" : "cpu",
+      compute_type: mode === "cuda" ? "float16" : "int8",
+      profile: mode === "cuda" ? "cuda_fast_intent" : "cpu_default",
+    };
+    const nextConfigs = {
+      ...providerConfigs,
+      [sttProviderId]: nextConfig,
+    };
+    setProviderConfigs(nextConfigs);
+    setBusy(`profile-${mode}`);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await saveSetupProvidersConfig(buildSavePayload(nextConfigs));
+      setStatus((current) => ({ ...(current || {}), provider_setup: payload }));
+      setNotice(`${mode === "cuda" ? "CUDA" : "CPU"} provider profile saved.`);
       await refresh();
     } catch (err) {
       setError(String(err.message || err));
@@ -337,6 +373,41 @@ export function ProvidersSetupPage() {
         <div className="form-actions">
           <button className="btn btn-secondary" type="button" onClick={registerSupervisor} disabled={busy !== "" || status?.supervisor_registration?.blocked}>
             {busy === "supervisor-registration" ? "Registering..." : "Register runtime services"}
+          </button>
+        </div>
+      </section>
+
+      <section className="stack">
+        <div className="section-heading-inline">
+          <div>
+            <p className="panel-kicker">Recovery Actions</p>
+            <h3 className="section-title">Provider repair tools</h3>
+          </div>
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "download-models")} disabled={busy !== ""}>
+            {busy === "download-models" ? "Downloading..." : "Download selected models"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "preload")} disabled={busy !== ""}>
+            {busy === "preload" ? "Preloading..." : "Preload selected models"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "restart")} disabled={busy !== ""}>
+            {busy === "restart" ? "Restarting..." : "Restart providers"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "recreate")} disabled={busy !== ""}>
+            {busy === "recreate" ? "Recreating..." : "Recreate containers"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "rebuild-env")} disabled={busy !== ""}>
+            {busy === "rebuild-env" ? "Rebuilding..." : "Rebuild env"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => switchCudaProfile("cpu")} disabled={busy !== "" || !sttProviderId}>
+            {busy === "profile-cpu" ? "Saving..." : "Force CPU profile"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => switchCudaProfile("cuda")} disabled={busy !== "" || !sttProviderId}>
+            {busy === "profile-cuda" ? "Saving..." : "Force CUDA profile"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={registerSupervisor} disabled={busy !== "" || status?.supervisor_registration?.blocked}>
+            {busy === "supervisor-registration" ? "Registering..." : "Re-register services"}
           </button>
         </div>
       </section>
@@ -516,9 +587,6 @@ export function ProvidersSetupPage() {
         </button>
         <button className="btn btn-primary" type="button" onClick={() => apply()} disabled={busy !== ""}>
           {busy === "apply" ? "Applying..." : "Apply enabled"}
-        </button>
-        <button className="btn btn-secondary" type="button" onClick={() => apply(null, "download-models")} disabled={busy !== ""}>
-          {busy === "download-models" ? "Downloading..." : "Download selected models"}
         </button>
       </div>
 
