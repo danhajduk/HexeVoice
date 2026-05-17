@@ -2194,13 +2194,54 @@ def create_app(
         }
         states = []
         blockers = list(provider_setup.blocking_reasons)
+
+        def component_error_text(component: object) -> str:
+            if not isinstance(component, dict):
+                return ""
+            resource_usage = component.get("resource_usage")
+            values = []
+            if isinstance(resource_usage, dict):
+                values.append(resource_usage.get("error"))
+                process = resource_usage.get("process")
+                if isinstance(process, dict):
+                    values.append(process.get("error"))
+            warm_model_health = component.get("warm_model_health")
+            if isinstance(warm_model_health, dict):
+                values.append(warm_model_health.get("last_error"))
+            return " ".join(str(value) for value in values if value)
+
+        def component_has_docker_permission_error(component: object) -> bool:
+            error_text = component_error_text(component).lower()
+            return "permission denied" in error_text and (
+                "docker.sock" in error_text or "docker daemon" in error_text
+            )
+
+        def provider_state_for_component(provider_id: str, component: object, healthy: bool) -> str:
+            if healthy:
+                return "healthy"
+            if provider_id in {"deterministic", "openai", "voice"}:
+                return "warning"
+            if not isinstance(component, dict):
+                return "pending"
+            if component_has_docker_permission_error(component):
+                return "blocked"
+            status = str(component.get("status") or "").strip().lower()
+            if status in {"not_created", "not_started", "defined", "missing", ""}:
+                return "pending"
+            return "failed"
+
         for provider_id in provider_setup.enabled_providers:
             target = provider_targets.get(provider_id)
             component = component_by_target.get(target or "")
             healthy = bool(component.get("healthy")) if component else provider_id in {"deterministic", "openai", "voice"}
-            provider_state_label = "healthy" if healthy else "warning" if provider_id in {"deterministic", "openai", "voice"} else "failed"
+            provider_state_label = provider_state_for_component(provider_id, component, healthy)
             if not healthy and provider_id not in {"deterministic", "openai", "voice"}:
-                blockers.append(f"{provider_id}_not_healthy")
+                if provider_state_label == "pending":
+                    blockers.append(f"{provider_id}_not_started")
+                elif provider_state_label == "blocked":
+                    blockers.append(f"{provider_id}_docker_permission_denied")
+                else:
+                    blockers.append(f"{provider_id}_not_healthy")
             states.append(
                 {
                     "provider_id": provider_id,

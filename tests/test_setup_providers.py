@@ -1,8 +1,10 @@
 from fastapi.testclient import TestClient
 
+from hexevoice.api.models import ServiceStatusResponse
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app, setup_provider_action_sequence
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
+from hexevoice.runtime.service import NodeRuntimeService
 
 
 def trusted_settings(tmp_path):
@@ -68,6 +70,59 @@ def test_setup_provider_status_shape(tmp_path):
     assert "cuda_profile" in payload
     assert "supervisor_registration" in payload
     assert "continue_blocked" in payload
+
+
+def test_setup_provider_status_reports_docker_permission_blocker(tmp_path, monkeypatch):
+    settings = trusted_settings(tmp_path).model_copy(
+        update={"voice_tts_provider": "piper", "piper_tts_model_dir": tmp_path / "piper-models"}
+    )
+
+    def fake_service_status_payload(self):
+        return ServiceStatusResponse(
+            backend="running",
+            frontend="defined",
+            scheduler="not_started",
+            piper_tts="not_created",
+            components=[
+                {
+                    "component_id": "tts",
+                    "label": "TTS Engine",
+                    "status": "not_created",
+                    "healthy": False,
+                    "provider": "piper",
+                    "service_id": "piper_tts",
+                    "model": "en_US-kathleen-low",
+                    "restart_target": "piper_tts",
+                    "resource_usage": {
+                        "process": {
+                            "error": (
+                                "permission denied while trying to connect to the Docker daemon socket "
+                                "at unix:///var/run/docker.sock"
+                            )
+                        }
+                    },
+                }
+            ],
+        )
+
+    monkeypatch.setattr(NodeRuntimeService, "service_status_payload", fake_service_status_payload)
+    client = TestClient(create_app(settings))
+    response = client.post(
+        "/api/setup/providers/config",
+        json={
+            "enabled_providers": ["voice", "piper"],
+            "default_provider": "voice",
+            "provider_configs": {"piper": {"default_voice": "en_US-kathleen-low"}},
+        },
+    )
+    assert response.status_code == 200
+
+    status = client.get("/api/setup/providers/status").json()
+
+    assert status["provider_states"][1]["state"] == "blocked"
+    assert "piper_docker_permission_denied" in status["blockers"]
+    assert "selected_asset_missing:piper:en_US-kathleen-low" in status["blockers"]
+    assert "selected_asset_failed:piper:en_US-kathleen-low" not in status["blockers"]
 
 
 def test_setup_provider_config_saves_selection(tmp_path):
