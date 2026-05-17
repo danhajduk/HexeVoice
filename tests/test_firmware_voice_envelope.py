@@ -77,6 +77,8 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert "start_post_tts_input_cooldown();" in backend_source
     assert "post_tts_input_cooldown_active()" in backend_source
     assert "g_preroll_count = 0" in backend_source
+    assert '"micro_vad"' in backend_source
+    assert '"max_pause_ms", 3000' in backend_source
     assert "hexe::voice::post_tts_input_cooldown_active()" in pe_source
     assert "micro_vad_chunk_active = false" in pe_source
 
@@ -341,6 +343,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "kVadStartNoiseMultiplier = 3" in audio_source
     assert "kVadReleasePeakPercent = 60" in audio_source
     assert "kVadSilenceHoldMs = 1200" in audio_source
+    assert "kMaxMicroVadPauseMs = 3000" in FIRMWARE_APP_MAIN.parent.joinpath("system/settings.cpp").read_text()
     assert "speech_peak_level" in audio_source
     assert "update_noise_floor" in audio_source
     assert "std::array<int32_t, kFrameSamples * 2> g_raw_samples" in audio_source

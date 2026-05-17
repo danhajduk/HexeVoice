@@ -907,6 +907,11 @@ std::string endpoint_capabilities_json() {
   cJSON_AddNumberToObject(input, "sample_rate_hz", hexe::config::kEndpointAudioSampleRateHz);
   cJSON_AddNumberToObject(input, "channels", hexe::config::kEndpointAudioChannels);
   cJSON_AddBoolToObject(input, "paused_for_playback", state.mic_paused_for_playback);
+  cJSON *micro_vad = cJSON_AddObjectToObject(input, "micro_vad");
+  cJSON_AddBoolToObject(micro_vad, "configurable", true);
+  cJSON_AddNumberToObject(micro_vad, "pause_ms", hexe::system::micro_vad_pause_ms());
+  cJSON_AddNumberToObject(micro_vad, "min_pause_ms", 80);
+  cJSON_AddNumberToObject(micro_vad, "max_pause_ms", 3000);
   cJSON *output = cJSON_AddObjectToObject(audio, "output");
   cJSON_AddBoolToObject(output, "available", hexe::board::audio_output_ready());
   cJSON_AddNumberToObject(output, "volume_percent", state.output_volume_percent);

@@ -227,3 +227,4 @@ Task 098: Evaluate streaming STT so transcription can start before utterance cap
 Task 099: Add an intent-first STT path using a faster model with fallback to the higher-accuracy model - Completed on 05/17/2026 00:13
 Task 100: Evaluate constrained grammar or hot-phrase recognition for common local commands - Completed on 05/17/2026 00:14
 Task 101: Add optional GPU/CUDA STT configuration and status reporting when hardware is available - Completed on 05/17/2026 00:12
+Task 102: Tune endpoint utterance capture duration and silence detection to reduce audio sent to STT - Completed on 05/17/2026 00:16

@@ -17,7 +17,7 @@ constexpr char kMicroVadPauseMsKey[] = "micro_vad_pause_ms";
 constexpr int kDefaultVolumePercent = 70;
 constexpr int kDefaultMicroVadPauseMs = 190;
 constexpr int kMinMicroVadPauseMs = 80;
-constexpr int kMaxMicroVadPauseMs = 1000;
+constexpr int kMaxMicroVadPauseMs = 3000;
 
 int normalize_volume(int volume_percent) {
   return std::clamp(volume_percent, 0, 100);
