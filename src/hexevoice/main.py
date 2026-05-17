@@ -2103,22 +2103,70 @@ def create_app(
                     "component": component or {},
                 }
             )
+        state_by_provider = {provider["provider_id"]: provider for provider in states}
         provider_configs = provider_setup.provider_configs or {}
         selected_assets: list[str] = []
+        asset_progress: list[dict[str, object]] = []
+
+        def asset_state(provider_id: str, exists: bool) -> str:
+            provider_state = state_by_provider.get(provider_id, {})
+            component = provider_state.get("component") if isinstance(provider_state, dict) else {}
+            if not isinstance(component, dict):
+                component = {}
+            if provider_state.get("state") == "failed" and not exists:
+                return "failed"
+            if provider_id in {"external_faster_whisper", "faster_whisper"} and exists and component.get("loaded") is False:
+                return "preloading"
+            if exists and provider_state.get("healthy"):
+                return "healthy"
+            return "downloaded" if exists else "missing"
+
+        def stt_model_exists(model: str) -> bool:
+            cache_dir = app_settings.runtime_dir / "stt" / "faster-whisper"
+            if not cache_dir.exists():
+                return False
+            normalized = model.casefold()
+            return any(normalized in path.name.casefold() for path in cache_dir.rglob("*"))
+
+        def piper_voice_exists(voice: str) -> bool:
+            model_dir = app_settings.resolved_piper_tts_model_dir()
+            return (model_dir / f"{voice}.onnx").exists() and (model_dir / f"{voice}.onnx.json").exists()
+
+        def wake_model_exists(model: str) -> bool:
+            model_dir = app_settings.runtime_dir / "openwakeword" / "models"
+            candidates = [model, model.casefold(), model.lower()]
+            return any(
+                (model_dir / f"{candidate}.tflite").exists() or (model_dir / f"{candidate}.onnx").exists()
+                for candidate in candidates
+            )
+
+        def append_asset(provider_id: str, asset_type: str, asset_id: object, exists: bool) -> None:
+            if not asset_id:
+                return
+            asset_name = str(asset_id)
+            if asset_name not in selected_assets:
+                selected_assets.append(asset_name)
+            asset_progress.append(
+                {
+                    "provider_id": provider_id,
+                    "asset_type": asset_type,
+                    "asset_id": asset_name,
+                    "state": asset_state(provider_id, exists),
+                    "retry_action": "download-models",
+                }
+            )
+
         for provider_id in provider_setup.enabled_providers:
             config = provider_configs.get(provider_id, {})
             if provider_id in {"external_faster_whisper", "faster_whisper"}:
                 for model in [config.get("model"), *(config.get("warm_models") or [])]:
-                    if model and str(model) not in selected_assets:
-                        selected_assets.append(str(model))
+                    append_asset(provider_id, "stt_model", model, stt_model_exists(str(model)) if model else False)
             elif provider_id == "piper":
                 for voice in [config.get("default_voice") or config.get("model"), *(config.get("warm_models") or [])]:
-                    if voice and str(voice) not in selected_assets:
-                        selected_assets.append(str(voice))
+                    append_asset(provider_id, "piper_voice", voice, piper_voice_exists(str(voice)) if voice else False)
             elif provider_id in {"openwakeword", "supervised_openwakeword"}:
                 for wake_model in [config.get("default_wakeword") or config.get("model"), *(config.get("warm_models") or [])]:
-                    if wake_model and str(wake_model) not in selected_assets:
-                        selected_assets.append(str(wake_model))
+                    append_asset(provider_id, "wake_model", wake_model, wake_model_exists(str(wake_model)) if wake_model else False)
 
         service_targets = [provider["target"] for provider in states if provider.get("target")]
         unhealthy = [provider["provider_id"] for provider in states if not provider.get("healthy")]
@@ -2199,6 +2247,7 @@ def create_app(
             "services": services.model_dump(mode="json"),
             "provider_states": states,
             "apply_plan": apply_plan,
+            "asset_progress": asset_progress,
             "cuda_profile": cuda_profile,
             "continue_blocked": bool(blockers),
             "blockers": blockers,

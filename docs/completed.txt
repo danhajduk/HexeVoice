@@ -196,3 +196,4 @@ Task 183: Expand Step 5 provider setup UI with STT model/profile/CPU-GPU mode, T
 Task 184: Add Step 5 provider-driven default and optional model downloads for Faster Whisper, Piper, wakeword models, and user-selected extra STT/TTS/wake assets - Completed on 05/16/2026 22:32
 Task 185: Add Step 5 provider apply plan preview showing config writes, model downloads, Docker/container changes, supervisor registration, health validation, and persisted selections - Completed on 05/16/2026 22:35
 Task 186: Implement Step 5 CUDA profile handling with auto-detect recommendation, CPU/CUDA image selection, user override, and Docker CUDA validation - Completed on 05/16/2026 22:38
+Task 187: Add Step 5 provider asset progress tracking for missing, downloading, downloaded, preloading, healthy, failed, and retry states - Completed on 05/16/2026 22:39

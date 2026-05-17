@@ -164,6 +164,9 @@ Step 5 also exposes `cuda_profile` for faster-whisper. The profile records the
 operator override (`auto`, `cpu`, `cuda`, or `skip`), the recommended CPU/CUDA
 mode from the host hint, the selected Docker image family, and the
 `cuda-preflight` validation action.
+The provider status payload also includes `asset_progress` entries for selected
+STT models, Piper voices, and wake models with missing, downloading, downloaded,
+preloading, healthy, failed, and retry states reflected in the setup UI.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,

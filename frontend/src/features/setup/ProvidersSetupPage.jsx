@@ -17,9 +17,9 @@ const ttsVoiceOptions = ["en_US-kathleen-low", "en_US-lessac-medium", "en_US-jen
 const wakeModelOptions = ["Hexe"];
 
 function stateTone(state) {
-  if (state === "healthy" || state === "ready") return "success";
+  if (state === "healthy" || state === "ready" || state === "downloaded") return "success";
   if (state === "failed" || state === "blocked") return "danger";
-  if (state === "warning" || state === "pending") return "warning";
+  if (state === "warning" || state === "pending" || state === "missing" || state === "downloading" || state === "preloading") return "warning";
   return "neutral";
 }
 
@@ -265,6 +265,33 @@ export function ProvidersSetupPage() {
               <span className="fact-grid-value">{item.items?.length ? item.items.join(", ") : item.detail}</span>
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="stack">
+        <div className="section-heading-inline">
+          <div>
+            <p className="panel-kicker">Provider Assets</p>
+            <h3 className="section-title">Model download and preload state</h3>
+          </div>
+        </div>
+        <div className="fact-grid">
+          {(status?.asset_progress || []).map((asset) => {
+            const assetState = busy === "download-models" && asset.state === "missing" ? "downloading" : asset.state;
+            return (
+              <div className="fact-grid-item" key={`${asset.provider_id}:${asset.asset_type}:${asset.asset_id}`}>
+                <span className="fact-grid-label">{asset.provider_id}</span>
+                <span className={`status-pill status-pill-${stateTone(assetState)}`}>{assetState}</span>
+                <span className="fact-grid-value">{asset.asset_id}</span>
+              </div>
+            );
+          })}
+          {!(status?.asset_progress || []).length ? (
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Assets</span>
+              <span className="fact-grid-value">Save provider selections to build the asset list.</span>
+            </div>
+          ) : null}
         </div>
       </section>
 
