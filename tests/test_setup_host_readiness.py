@@ -38,7 +38,7 @@ def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
         json={
             "setup_mode": "migrate_existing",
             "lifecycle_mode": "joined_supervisor",
-            "core_base_url": "http://10.0.0.100:9001",
+            "core_base_url": "http://10.0.0.100",
             "supervisor_id": "lab-supervisor",
         },
     )

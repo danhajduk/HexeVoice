@@ -9,7 +9,7 @@ import shutil
 import socket
 import subprocess
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from hexevoice.api.models import (
     SetupHostReadinessActionRequest,
@@ -51,7 +51,7 @@ class SetupHostReadinessService:
         checks = self._checks(lan_host=lan_host, api_base_url=api_base_url, ui_base_url=ui_base_url)
         blockers = [check.id for check in checks if check.required and check.status == "fail"]
         warnings = [check.id for check in checks if check.status == "warn"]
-        core_url = state.get("core_base_url") or self._core_url_from_state()
+        core_url = self._normalize_core_base_url(state.get("core_base_url") or self._core_url_from_state())
         return SetupHostReadinessResponse(
             ok=not blockers,
             hostname=hostname,
@@ -355,6 +355,33 @@ class SetupHostReadinessService:
         if isinstance(pre_trust, dict) and pre_trust.get("core_base_url"):
             return str(pre_trust["core_base_url"])
         return None
+
+    @staticmethod
+    def _normalize_core_base_url(core_base_url: object) -> str | None:
+        raw = str(core_base_url or "").strip().rstrip("/")
+        if not raw:
+            return None
+        if "://" not in raw:
+            raw = f"http://{raw}"
+        try:
+            parsed = urlsplit(raw)
+        except ValueError:
+            return raw
+        if not parsed.hostname:
+            return raw
+        netloc = parsed.netloc
+        if parsed.scheme == "http" and parsed.port is None:
+            host = parsed.hostname
+            if ":" in host and not host.startswith("["):
+                host = f"[{host}]"
+            auth = ""
+            if parsed.username:
+                auth = parsed.username
+                if parsed.password:
+                    auth += f":{parsed.password}"
+                auth += "@"
+            netloc = f"{auth}{host}:9001"
+        return urlunsplit((parsed.scheme, netloc, parsed.path.rstrip("/"), "", "")).rstrip("/")
 
     @staticmethod
     def _enrollment_token_url(core_base_url: str | None) -> str | None:

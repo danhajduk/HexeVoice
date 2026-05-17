@@ -19,21 +19,40 @@ function defaultSupervisorId(readiness) {
 }
 
 function enrollmentTokenApiUrl(form, readiness) {
-  const fromReadiness = readiness?.enrollment_token_url;
-  if (fromReadiness) {
-    return fromReadiness;
+  const base = normalizedCoreBaseUrl(form.core_base_url);
+  if (!base && readiness?.enrollment_token_url) {
+    return readiness.enrollment_token_url;
   }
-  const base = form.core_base_url?.trim();
   return base ? `${base.replace(/\/$/, "")}/api/system/supervisors/enrollment-tokens` : "";
 }
 
+function normalizedCoreBaseUrl(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    const url = new URL(withScheme);
+    if (!url.port && url.protocol === "http:") {
+      url.port = "9001";
+    }
+    url.pathname = url.pathname.replace(/\/$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return trimmed.replace(/\/$/, "");
+  }
+}
+
 function enrollmentPageUrl(form, readiness) {
-  const baseUrl = form.core_base_url?.trim();
+  const baseUrl = normalizedCoreBaseUrl(form.core_base_url);
   const supervisorId = (form.supervisor_id || defaultSupervisorId(readiness)).trim();
   if (!baseUrl) {
     return "";
   }
-  const base = `${baseUrl.replace(/\/$/, "")}/system/supervisors/enrollment`;
+  const base = `${baseUrl}/system/supervisors/enrollment`;
   try {
     const url = new URL(base);
     if (supervisorId) {
@@ -52,14 +71,18 @@ function coreUrlWarning(form, readiness) {
   if (!raw) {
     return "Enter the Core host URL, for example http://10.0.0.100:9001.";
   }
+  const normalized = normalizedCoreBaseUrl(raw);
   try {
-    const url = new URL(raw);
+    const url = new URL(normalized);
     const host = url.hostname.toLowerCase();
     const nodeHosts = [readiness?.hostname, readiness?.lan_host, window.location.hostname]
       .filter(Boolean)
       .map((item) => String(item).toLowerCase());
     if (nodeHosts.includes(host)) {
       return "This Core URL points at this Voice node. Use the Core host address, not the node address.";
+    }
+    if (normalized !== raw.replace(/\/$/, "")) {
+      return `Using normalized Core URL: ${normalized}`;
     }
   } catch {
     return "Core URL is not a valid URL.";
@@ -133,7 +156,11 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
     setNotice("");
     setError("");
     try {
-      const payload = await runSetupHostReadinessAction(action, form);
+      const actionForm = {
+        ...form,
+        core_base_url: normalizedCoreBaseUrl(form.core_base_url) || form.core_base_url,
+      };
+      const payload = await runSetupHostReadinessAction(action, actionForm);
       if (payload.readiness) {
         applyReadiness(payload.readiness);
       } else {
