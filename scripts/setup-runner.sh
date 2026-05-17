@@ -14,6 +14,7 @@ SETUP_RUNNER_PRODUCTION_TIMEOUT_S="${SETUP_RUNNER_PRODUCTION_TIMEOUT_S:-600}"
 SETUP_RUNNER_POLL_INTERVAL_S="${SETUP_RUNNER_POLL_INTERVAL_S:-3}"
 SETUP_RUNNER_HANDOFF_MODE="${SETUP_RUNNER_HANDOFF_MODE:-none}"
 SETUP_RUNNER_OPEN_BROWSER="${SETUP_RUNNER_OPEN_BROWSER:-false}"
+SETUP_RUNNER_REQUIRED_HOST_CHECKS="${SETUP_RUNNER_REQUIRED_HOST_CHECKS:-runtime_dirs,stt_model,tts_model,wake_model}"
 SETUP_BOOTSTRAP_STATUS_PATH="${SETUP_BOOTSTRAP_STATUS_PATH:-$ROOT_DIR/runtime/setup/bootstrap-status.json}"
 SETUP_HOST_STATE_PATH="${SETUP_HOST_STATE_PATH:-$ROOT_DIR/runtime/setup/host-state.json}"
 SUPERVISOR_SOCKET="${HEXE_SUPERVISOR_API_SOCKET:-/run/hexe/supervisor.sock}"
@@ -205,6 +206,7 @@ TEMP_API_BASE_URL="http://${LAN_HOST}:${TEMP_BACKEND_PORT}"
 TEMP_SETUP_URL="http://${LAN_HOST}:${TEMP_FRONTEND_PORT}/setup"
 PRODUCTION_SETUP_URL="${SETUP_RUNNER_PRODUCTION_URL:-http://${LAN_HOST}:${PRODUCTION_FRONTEND_PORT}/setup}"
 PRODUCTION_API_HEALTH_URL="${SETUP_RUNNER_PRODUCTION_API_HEALTH_URL:-http://${LAN_HOST}:9004/api/health}"
+PRODUCTION_HOST_READINESS_URL="${SETUP_RUNNER_PRODUCTION_HOST_READINESS_URL:-http://${LAN_HOST}:9004/api/setup/host-readiness}"
 
 require_file "$ROOT_DIR/.venv/bin/python" "Missing backend virtualenv at $ROOT_DIR/.venv/bin/python"
 require_file "$ROOT_DIR/frontend/node_modules" "Missing frontend dependencies at $ROOT_DIR/frontend/node_modules"
@@ -306,9 +308,70 @@ run_handoff() {
   esac
 }
 
+production_host_readiness_ready() {
+  local payload detail
+  if ! payload="$(curl -fsS --max-time 4 "$PRODUCTION_HOST_READINESS_URL" 2>/dev/null)"; then
+    write_status "running" "waiting-for-production-host-readiness" "" "production_host_readiness_unavailable" "Production host readiness API is not available at ${PRODUCTION_HOST_READINESS_URL}." "true"
+    return 1
+  fi
+  if ! detail="$(
+    HOST_READINESS_PAYLOAD="$payload" \
+      REQUIRED_HOST_CHECKS="$SETUP_RUNNER_REQUIRED_HOST_CHECKS" \
+      "$ROOT_DIR/.venv/bin/python" - <<'PY'
+from __future__ import annotations
+
+import json
+import os
+
+try:
+    payload = json.loads(os.environ["HOST_READINESS_PAYLOAD"])
+except (KeyError, json.JSONDecodeError) as exc:
+    raise SystemExit(f"host_readiness_invalid:{exc}")
+
+if not isinstance(payload, dict):
+    raise SystemExit("host_readiness_invalid")
+
+if payload.get("ok") is not True:
+    blockers = payload.get("blockers") if isinstance(payload.get("blockers"), list) else []
+    raise SystemExit("host_readiness_blocked:" + ",".join(str(item) for item in blockers))
+
+checks = {
+    str(item.get("id")): item
+    for item in payload.get("checks", [])
+    if isinstance(item, dict) and item.get("id")
+}
+required = [item.strip() for item in os.environ.get("REQUIRED_HOST_CHECKS", "").split(",") if item.strip()]
+missing: list[str] = []
+for check_id in required:
+    check = checks.get(check_id)
+    if not check:
+        missing.append(f"{check_id}:missing")
+    elif check.get("status") != "pass":
+        missing.append(f"{check_id}:{check.get('status') or 'unknown'}")
+if missing:
+    raise SystemExit("host_readiness_required_checks_not_ready:" + ",".join(missing))
+print("host_readiness_ready")
+PY
+  )"; then
+    write_status "running" "waiting-for-production-host-readiness" "" "production_host_readiness_not_ready" "${detail:-Production host readiness checks are not ready.}" "true"
+    return 1
+  fi
+  return 0
+}
+
 production_ready() {
-  curl -fsS --max-time 2 "$PRODUCTION_API_HEALTH_URL" >/dev/null 2>&1 &&
-    curl -fsS --max-time 2 "$PRODUCTION_SETUP_URL" >/dev/null 2>&1
+  if ! curl -fsS --max-time 2 "$PRODUCTION_API_HEALTH_URL" >/dev/null 2>&1; then
+    write_status "running" "waiting-for-production-backend" "" "production_backend_not_ready" "Production backend health is not available at ${PRODUCTION_API_HEALTH_URL}." "true"
+    return 1
+  fi
+  if ! curl -fsS --max-time 2 "$PRODUCTION_SETUP_URL" >/dev/null 2>&1; then
+    write_status "running" "waiting-for-production-frontend" "" "production_frontend_not_ready" "Production setup UI is not available at ${PRODUCTION_SETUP_URL}." "true"
+    return 1
+  fi
+  if ! production_host_readiness_ready >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
 }
 
 host_state_lifecycle_mode() {

@@ -320,6 +320,8 @@ class SetupHostReadinessService:
             missing = [name for name in expected_files if not (path / name).exists()]
             if missing:
                 return ("warn", f"Missing expected files: {', '.join(missing)}.")
+        elif path.is_dir() and not any(path.iterdir()):
+            return ("warn", f"{path} is empty.")
         return ("pass", f"{path} is present.")
 
     def _runtime_dirs(self) -> list[str]:

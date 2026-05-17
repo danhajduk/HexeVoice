@@ -178,6 +178,10 @@ During hosted install, the temporary status UI uses the same setup-shell shape
 as the production setup flow: a setup-flow sidebar, setup health strip, current
 install action, and redirect handoff status. It is served before the frontend
 build is available and remains intentionally self-contained inside `install.sh`.
+The temporary setup runner redirects only after production backend health,
+production setup UI, and production host readiness pass. By default it requires
+`runtime_dirs`, `stt_model`, `tts_model`, and `wake_model`; override that set
+with `SETUP_RUNNER_REQUIRED_HOST_CHECKS` when testing a narrower install path.
 
 Runtime files are local state and should normally stay uncommitted. See
 `docs/runtime-state-policy.md` for the tracking policy and run

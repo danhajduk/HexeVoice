@@ -30,6 +30,20 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
     assert stt_check["detail"]["action"] == "download-default-stt-model"
 
 
+def test_setup_host_stt_model_check_requires_non_empty_cache(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    for path in json.loads((ROOT / "config" / "runtime-dirs.json").read_text()).get("runtime_dirs", []):
+        (runtime_dir / path).mkdir(parents=True, exist_ok=True)
+    client = TestClient(create_app(Settings(runtime_dir=runtime_dir, api_port=9004)))
+
+    response = client.get("/api/setup/host-readiness")
+
+    assert response.status_code == 200
+    stt_check = next(check for check in response.json()["checks"] if check["id"] == "stt_model")
+    assert stt_check["status"] == "warn"
+    assert "empty" in stt_check["message"]
+
+
 def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
     runtime_dir = tmp_path / "runtime"
     for path in json.loads((ROOT / "config" / "runtime-dirs.json").read_text()).get("runtime_dirs", []):
