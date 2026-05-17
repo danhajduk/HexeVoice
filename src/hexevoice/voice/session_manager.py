@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextvars
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import json
 import logging
@@ -91,7 +93,75 @@ def endpoint_tts_audio_url(tts: TtsSynthesis | dict[str, Any]) -> str | None:
     return tts.get("endpoint_audio_url") or tts.get("audio_url")
 
 
+@dataclass
+class EndpointSessionRuntime:
+    connection_active: bool = False
+    websocket: WebSocket | None = None
+    connected_endpoint_id: str | None = None
+    active_session: VoiceSessionSnapshot | None = None
+    chunk_count: int = 0
+    audio_chunks: list[bytes] = field(default_factory=list)
+    audio_format: Any = None
+    sequence: int = 0
+    active_session_history: dict[str, Any] | None = None
+    last_transcript: str | None = None
+    last_response: str | None = None
+    last_transcript_metadata: dict | None = None
+    last_error: dict | None = None
+    last_tts: dict | None = None
+    last_tts_playback: dict | None = None
+    tts_playback_history: list[dict[str, object]] = field(default_factory=list)
+    last_assistant: dict | None = None
+    last_turn_timings: dict | None = None
+    last_event_type: str | None = None
+    last_command_ack: dict | None = None
+    last_command_error: dict | None = None
+    pending_session_followup: dict[str, Any] | None = None
+    followup_timeout_task: asyncio.Task | None = None
+
+
+def _runtime_property(field_name: str):
+    def getter(self: "VoiceSessionManager"):
+        return getattr(self._current_runtime(), field_name)
+
+    def setter(self: "VoiceSessionManager", value):
+        state = self._current_runtime()
+        if field_name == "connected_endpoint_id":
+            self._unbind_runtime_endpoint(state)
+        setattr(state, field_name, value)
+        if field_name == "connected_endpoint_id" and value:
+            self._bind_runtime_endpoint(state, str(value))
+        if field_name == "websocket" and value is not None and state.connected_endpoint_id:
+            self._bind_runtime_endpoint(state, state.connected_endpoint_id)
+
+    return property(getter, setter)
+
+
 class VoiceSessionManager:
+    _connection_active = _runtime_property("connection_active")
+    _websocket = _runtime_property("websocket")
+    _connected_endpoint_id = _runtime_property("connected_endpoint_id")
+    _active_session = _runtime_property("active_session")
+    _chunk_count = _runtime_property("chunk_count")
+    _audio_chunks = _runtime_property("audio_chunks")
+    _audio_format = _runtime_property("audio_format")
+    _sequence = _runtime_property("sequence")
+    _active_session_history = _runtime_property("active_session_history")
+    _last_transcript = _runtime_property("last_transcript")
+    _last_response = _runtime_property("last_response")
+    _last_transcript_metadata = _runtime_property("last_transcript_metadata")
+    _last_error = _runtime_property("last_error")
+    _last_tts = _runtime_property("last_tts")
+    _last_tts_playback = _runtime_property("last_tts_playback")
+    _tts_playback_history = _runtime_property("tts_playback_history")
+    _last_assistant = _runtime_property("last_assistant")
+    _last_turn_timings = _runtime_property("last_turn_timings")
+    _last_event_type = _runtime_property("last_event_type")
+    _last_command_ack = _runtime_property("last_command_ack")
+    _last_command_error = _runtime_property("last_command_error")
+    _pending_session_followup = _runtime_property("pending_session_followup")
+    _followup_timeout_task = _runtime_property("followup_timeout_task")
+
     def __init__(
         self,
         *,
@@ -101,56 +171,95 @@ class VoiceSessionManager:
         micro_vad_chunk_recorder: MicroVadChunkRecordingService | None = None,
         session_history_store: VoiceSessionHistoryStore | None = None,
     ) -> None:
-        self._connection_active = False
-        self._websocket: WebSocket | None = None
-        self._connected_endpoint_id: str | None = None
-        self._active_session: VoiceSessionSnapshot | None = None
-        self._chunk_count = 0
-        self._audio_chunks: list[bytes] = []
-        self._audio_format = None
-        self._sequence = 0
+        self._default_runtime = EndpointSessionRuntime()
+        self._runtime_context: contextvars.ContextVar[EndpointSessionRuntime | None] = contextvars.ContextVar(
+            "hexevoice_endpoint_runtime",
+            default=None,
+        )
+        self._endpoint_runtimes: dict[str, EndpointSessionRuntime] = {}
         self._wake_detector = wake_detector or OpenWakeWordWakeDetector()
         self._turn_pipeline = turn_pipeline
         self._wake_recorder = wake_recorder
         self._micro_vad_chunk_recorder = micro_vad_chunk_recorder
         self._session_history_store = session_history_store
-        self._active_session_history: dict[str, Any] | None = None
-        self._last_transcript: str | None = None
-        self._last_response: str | None = None
-        self._last_transcript_metadata: dict | None = None
-        self._last_error: dict | None = None
-        self._last_tts: dict | None = None
-        self._last_tts_playback: dict | None = None
-        self._tts_playback_history: list[dict[str, object]] = []
-        self._last_assistant: dict | None = None
-        self._last_turn_timings: dict | None = None
-        self._last_event_type: str | None = None
-        self._last_command_ack: dict | None = None
-        self._last_command_error: dict | None = None
         self._command_records: dict[str, dict[str, object]] = {}
         self._last_volume_percent_by_endpoint: dict[str, int] = {}
         self._command_timeout_s = 10.0
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
-        self._pending_session_followup: dict[str, Any] | None = None
-        self._followup_timeout_task: asyncio.Task | None = None
+
+    def _current_runtime(self) -> EndpointSessionRuntime:
+        runtime_context = getattr(self, "_runtime_context", None)
+        if runtime_context is None:
+            return self._default_runtime
+        return runtime_context.get() or self._default_runtime
+
+    def _bind_runtime_endpoint(self, state: EndpointSessionRuntime, endpoint_id: str) -> None:
+        existing = self._endpoint_runtimes.get(endpoint_id)
+        if (
+            existing is not None
+            and existing is not state
+            and existing.connection_active
+            and existing.websocket is not None
+        ):
+            return
+        self._endpoint_runtimes[endpoint_id] = state
+
+    def _unbind_runtime_endpoint(self, state: EndpointSessionRuntime) -> None:
+        endpoint_id = state.connected_endpoint_id
+        if endpoint_id and self._endpoint_runtimes.get(endpoint_id) is state:
+            del self._endpoint_runtimes[endpoint_id]
+
+    def _runtime_for_endpoint(self, endpoint_id: str) -> EndpointSessionRuntime | None:
+        state = self._endpoint_runtimes.get(endpoint_id)
+        if state is not None and state.connection_active and state.websocket is not None:
+            return state
+        if (
+            self._default_runtime.connection_active
+            and self._default_runtime.websocket is not None
+            and self._default_runtime.connected_endpoint_id == endpoint_id
+        ):
+            return self._default_runtime
+        return None
+
+    def _runtime_switch_for_endpoint(self, endpoint_id: str) -> EndpointSessionRuntime | None:
+        runtime = self._runtime_for_endpoint(endpoint_id)
+        return runtime if runtime is not None and runtime is not self._current_runtime() else None
+
+    def _status_runtime(self) -> EndpointSessionRuntime:
+        for state in self._endpoint_runtimes.values():
+            if state.active_session is not None:
+                return state
+        for state in self._endpoint_runtimes.values():
+            if state.connection_active:
+                return state
+        for state in self._endpoint_runtimes.values():
+            if state.last_event_type is not None:
+                return state
+        return self._default_runtime
+
+    def _runtime_status_summary(self, state: EndpointSessionRuntime) -> dict[str, Any]:
+        active_snapshot = state.active_session.model_dump(mode="json") if state.active_session else None
+        projection = project_voice_state(
+            connection_active=state.connection_active,
+            active_session=state.active_session,
+        ).model_dump(mode="json")
+        return {
+            "endpoint_id": state.connected_endpoint_id,
+            "connection_state": projection["connection_state"],
+            "ux_state": projection["ux_state"],
+            "session_state": projection["session_state"],
+            "transport_health": projection["transport_health"],
+            "active_session": active_snapshot,
+            "last_event_type": state.last_event_type,
+            "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
+        }
 
     async def handle_websocket(self, websocket: WebSocket) -> None:
         await websocket.accept()
-        if self._connection_active:
-            await websocket.send_json(
-                self._error_event(
-                    endpoint_id="unknown",
-                    session_id=None,
-                    code="endpoint_busy",
-                    message="Only one voice endpoint connection is supported for the MVP.",
-                    recoverable=False,
-                ).model_dump(mode="json")
-            )
-            await websocket.close(code=1008)
-            return
-
+        runtime = EndpointSessionRuntime(connection_active=True, websocket=websocket)
+        token = self._runtime_context.set(runtime)
         self._connection_active = True
         self._websocket = websocket
         log.info("Voice WebSocket connected")
@@ -181,8 +290,8 @@ class VoiceSessionManager:
             self._cancel_followup_timeout_task()
             self._websocket = None
             self._connection_active = False
-            self._connected_endpoint_id = None
             self._clear_active_session_runtime()
+            self._runtime_context.reset(token)
             log.info("Voice WebSocket disconnected")
 
     async def push_ota_update(
@@ -194,16 +303,10 @@ class VoiceSessionManager:
         sha256: str | None,
         size_bytes: int | None,
     ) -> dict:
-        if not self._connection_active or self._websocket is None:
+        runtime = self._runtime_for_endpoint(endpoint_id)
+        if runtime is None:
             log.warning("OTA push rejected: endpoint_id=%s reason=endpoint_not_connected", endpoint_id)
             return {"accepted": False, "reason": "endpoint_not_connected"}
-        if self._connected_endpoint_id is not None and endpoint_id != self._connected_endpoint_id:
-            log.warning(
-                "OTA push rejected: endpoint_id=%s connected_endpoint_id=%s reason=endpoint_mismatch",
-                endpoint_id,
-                self._connected_endpoint_id,
-            )
-            return {"accepted": False, "reason": "endpoint_mismatch"}
 
         log.info(
             "OTA push accepted for endpoint: endpoint_id=%s version=%s size_bytes=%s",
@@ -211,30 +314,34 @@ class VoiceSessionManager:
             version,
             size_bytes,
         )
-        request_id = f"cmd_{uuid4().hex}"
-        event = VoiceEventEnvelope(
-            event_type="ota.update",
-            endpoint_id=endpoint_id,
-            direction="backend_to_endpoint",
-            session_id=self._active_session.session_id if self._active_session else None,
-            sequence=self._next_sequence(),
-            payload={
-                "request_id": request_id,
-                "url": firmware_url,
-                "version": version,
-                "sha256": sha256,
-                "size_bytes": size_bytes,
-            },
-        )
-        await self._websocket.send_json(event.model_dump(mode="json"))
-        self._last_event_type = "ota.update"
-        record = self._record_command(
-            request_id=request_id,
-            endpoint_id=endpoint_id,
-            command_type="ota.update",
-            event_type="ota.update",
-        )
-        return {"accepted": True, "request_id": request_id, "status": record["status"]}
+        token = self._runtime_context.set(runtime)
+        try:
+            request_id = f"cmd_{uuid4().hex}"
+            event = VoiceEventEnvelope(
+                event_type="ota.update",
+                endpoint_id=endpoint_id,
+                direction="backend_to_endpoint",
+                session_id=self._active_session.session_id if self._active_session else None,
+                sequence=self._next_sequence(),
+                payload={
+                    "request_id": request_id,
+                    "url": firmware_url,
+                    "version": version,
+                    "sha256": sha256,
+                    "size_bytes": size_bytes,
+                },
+            )
+            await runtime.websocket.send_json(event.model_dump(mode="json"))
+            self._last_event_type = "ota.update"
+            record = self._record_command(
+                request_id=request_id,
+                endpoint_id=endpoint_id,
+                command_type="ota.update",
+                event_type="ota.update",
+            )
+            return {"accepted": True, "request_id": request_id, "status": record["status"]}
+        finally:
+            self._runtime_context.reset(token)
 
     async def push_volume_command(self, *, endpoint_id: str, volume_percent: int) -> dict:
         result = await self._push_endpoint_command(
@@ -265,24 +372,37 @@ class VoiceSessionManager:
         )
 
     async def push_cancel_command(self, *, endpoint_id: str, reason: str = "operator_cancelled") -> dict:
+        runtime = self._runtime_for_endpoint(endpoint_id)
         result = await self._push_endpoint_command(
             endpoint_id=endpoint_id,
             event_type="endpoint.cancel",
             command_type="endpoint.cancel",
             payload={"reason": reason},
         )
-        if result.get("accepted") and self._active_session is not None:
-            self._set_session_state("cancelled")
-            self._active_session.cancel_reason = reason
-            self._persist_active_session_history(
-                self._active_session,
-                completion_reason=reason,
-            )
-            self._release_active_session_wake_stream()
-            self._clear_active_session_runtime()
+        if result.get("accepted") and runtime is not None:
+            token = self._runtime_context.set(runtime)
+            try:
+                if self._active_session is not None:
+                    self._set_session_state("cancelled")
+                    self._active_session.cancel_reason = reason
+                    self._persist_active_session_history(
+                        self._active_session,
+                        completion_reason=reason,
+                    )
+                    self._release_active_session_wake_stream()
+                    self._clear_active_session_runtime()
+            finally:
+                self._runtime_context.reset(token)
         return result
 
     async def push_replay_command(self, *, endpoint_id: str) -> dict:
+        runtime = self._runtime_switch_for_endpoint(endpoint_id)
+        if runtime is not None:
+            token = self._runtime_context.set(runtime)
+            try:
+                return await self.push_replay_command(endpoint_id=endpoint_id)
+            finally:
+                self._runtime_context.reset(token)
         if self._last_transcript and self._turn_pipeline is not None:
             replay_text = f"I heard {self._last_transcript}"
             session_id = self._active_session.session_id if self._active_session else f"{endpoint_id}-replay"
@@ -324,6 +444,13 @@ class VoiceSessionManager:
         return await self._push_session_replay(session=session, endpoint_id=endpoint_id)
 
     async def push_speak_command(self, *, endpoint_id: str, text: str, session_id: str | None = None) -> dict:
+        runtime = self._runtime_switch_for_endpoint(endpoint_id)
+        if runtime is not None:
+            token = self._runtime_context.set(runtime)
+            try:
+                return await self.push_speak_command(endpoint_id=endpoint_id, text=text, session_id=session_id)
+            finally:
+                self._runtime_context.reset(token)
         if self._turn_pipeline is None:
             return {"accepted": False, "reason": "turn_pipeline_unavailable", "status": "failed"}
         spoken_text = str(text or "").strip()
@@ -381,6 +508,24 @@ class VoiceSessionManager:
         interaction_id: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> dict:
+        runtime = self._runtime_switch_for_endpoint(endpoint_id)
+        if runtime is not None:
+            token = self._runtime_context.set(runtime)
+            try:
+                return await self.push_play_sound_command(
+                    endpoint_id=endpoint_id,
+                    audio_url=audio_url,
+                    stream_id=stream_id,
+                    content_type=content_type,
+                    text=text,
+                    voice=voice,
+                    session_id=session_id,
+                    source_event_id=source_event_id,
+                    interaction_id=interaction_id,
+                    metadata=metadata,
+                )
+            finally:
+                self._runtime_context.reset(token)
         requested_audio_url = str(audio_url or "").strip()
         spoken_text = str(text or "").strip()
         command_session_id = session_id or f"{endpoint_id}-play-sound"
@@ -444,6 +589,18 @@ class VoiceSessionManager:
         text: str,
         source_event_id: str | None = None,
     ) -> dict:
+        runtime = self._runtime_switch_for_endpoint(endpoint_id)
+        if runtime is not None:
+            token = self._runtime_context.set(runtime)
+            try:
+                return await self.push_timer_announcement(
+                    endpoint_id=endpoint_id,
+                    session_id=session_id,
+                    text=text,
+                    source_event_id=source_event_id,
+                )
+            finally:
+                self._runtime_context.reset(token)
         if self._turn_pipeline is None:
             return {"accepted": False, "reason": "turn_pipeline_unavailable", "status": "failed"}
         announcement_text = str(text or "").strip()
@@ -560,36 +717,32 @@ class VoiceSessionManager:
         payload: dict[str, object],
         request_id: str | None = None,
     ) -> dict:
-        if not self._connection_active or self._websocket is None:
+        runtime = self._runtime_for_endpoint(endpoint_id)
+        if runtime is None or runtime.websocket is None:
             log.warning("Endpoint command rejected: endpoint_id=%s command_type=%s reason=endpoint_not_connected", endpoint_id, command_type)
             return {"accepted": False, "reason": "endpoint_not_connected", "status": "failed"}
-        if self._connected_endpoint_id is not None and endpoint_id != self._connected_endpoint_id:
-            log.warning(
-                "Endpoint command rejected: endpoint_id=%s connected_endpoint_id=%s command_type=%s reason=endpoint_mismatch",
-                endpoint_id,
-                self._connected_endpoint_id,
-                command_type,
+        token = self._runtime_context.set(runtime)
+        try:
+            request_id = request_id or f"cmd_{uuid4().hex}"
+            event = VoiceEventEnvelope(
+                event_type=event_type,
+                endpoint_id=endpoint_id,
+                direction="backend_to_endpoint",
+                session_id=self._active_session.session_id if self._active_session else None,
+                sequence=self._next_sequence(),
+                payload={"request_id": request_id, **payload},
             )
-            return {"accepted": False, "reason": "endpoint_mismatch", "status": "failed"}
-
-        request_id = request_id or f"cmd_{uuid4().hex}"
-        event = VoiceEventEnvelope(
-            event_type=event_type,
-            endpoint_id=endpoint_id,
-            direction="backend_to_endpoint",
-            session_id=self._active_session.session_id if self._active_session else None,
-            sequence=self._next_sequence(),
-            payload={"request_id": request_id, **payload},
-        )
-        await self._websocket.send_json(event.model_dump(mode="json"))
-        self._last_event_type = event_type
-        record = self._record_command(
-            request_id=request_id,
-            endpoint_id=endpoint_id,
-            command_type=command_type,
-            event_type=event_type,
-        )
-        return {"accepted": True, "request_id": request_id, "status": record["status"]}
+            await runtime.websocket.send_json(event.model_dump(mode="json"))
+            self._last_event_type = event_type
+            record = self._record_command(
+                request_id=request_id,
+                endpoint_id=endpoint_id,
+                command_type=command_type,
+                event_type=event_type,
+            )
+            return {"accepted": True, "request_id": request_id, "status": record["status"]}
+        finally:
+            self._runtime_context.reset(token)
 
     def _handle_raw_message(self, raw_message: str) -> list[VoiceEventEnvelope]:
         try:
@@ -670,6 +823,29 @@ class VoiceSessionManager:
                     code="unsupported_endpoint_event",
                     message=f"{event.event_type} is not accepted from endpoints.",
                     recoverable=True,
+                )
+            ]
+
+        existing_runtime = self._endpoint_runtimes.get(event.endpoint_id)
+        current_runtime = self._current_runtime()
+        if (
+            existing_runtime is not None
+            and existing_runtime is not current_runtime
+            and existing_runtime.connection_active
+            and existing_runtime.websocket is not None
+        ):
+            log.error(
+                "Voice endpoint conflict: endpoint_id=%s already has an active WebSocket event_type=%s",
+                event.endpoint_id,
+                event.event_type,
+            )
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="endpoint_already_connected",
+                    message="This endpoint already has an active WebSocket.",
+                    recoverable=False,
                 )
             ]
 
@@ -1325,64 +1501,82 @@ class VoiceSessionManager:
 
     def status(self) -> dict:
         self._expire_commands()
-        active_snapshot = self._active_session.model_dump(mode="json") if self._active_session else None
-        state_projection = project_voice_state(
-            connection_active=self._connection_active,
-            active_session=self._active_session,
-        ).model_dump(mode="json")
-        latest_replay_session = (
-            self._session_history_store.latest_replay_eligible(endpoint_id=self._connected_endpoint_id)
-            if self._session_history_store is not None
-            else None
-        )
-        session_history = (
-            {
-                **self._session_history_store.status(),
-                "recent_sessions": self._session_history_store.list_sessions(limit=5),
+        selected_runtime = self._status_runtime()
+        token = self._runtime_context.set(selected_runtime)
+        try:
+            active_snapshot = self._active_session.model_dump(mode="json") if self._active_session else None
+            state_projection = project_voice_state(
+                connection_active=self._connection_active,
+                active_session=self._active_session,
+            ).model_dump(mode="json")
+            connected_endpoint_ids = sorted(
+                endpoint_id
+                for endpoint_id, state in self._endpoint_runtimes.items()
+                if state.connection_active and state.websocket is not None
+            )
+            latest_replay_session = (
+                self._session_history_store.latest_replay_eligible(endpoint_id=self._connected_endpoint_id)
+                if self._session_history_store is not None
+                else None
+            )
+            session_history = (
+                {
+                    **self._session_history_store.status(),
+                    "recent_sessions": self._session_history_store.list_sessions(limit=5),
+                }
+                if self._session_history_store is not None
+                else {"enabled": False, "recent_sessions": []}
+            )
+            return {
+                "endpoint_id": self._connected_endpoint_id,
+                "connected_endpoint_ids": connected_endpoint_ids,
+                "connection_count": len(connected_endpoint_ids),
+                "endpoints": {
+                    endpoint_id: self._runtime_status_summary(state)
+                    for endpoint_id, state in sorted(self._endpoint_runtimes.items())
+                    if state.connection_active and state.websocket is not None
+                },
+                "connection_state": state_projection["connection_state"],
+                "ux_state": state_projection["ux_state"],
+                "session_state": state_projection["session_state"],
+                "transport_health": state_projection["transport_health"],
+                "state_projection": state_projection,
+                "active_session": active_snapshot,
+                "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
+                "last_event_type": self._last_event_type,
+                "last_transcript": self._last_transcript,
+                "last_transcript_metadata": self._last_transcript_metadata,
+                "last_turn_timings": self._last_turn_timings,
+                "last_response": self._last_response,
+                "last_assistant": self._last_assistant,
+                "last_tts": self._last_tts,
+                "last_tts_playback": self._last_tts_playback,
+                "tts_playback_history": list(self._tts_playback_history),
+                "last_error": self._last_error,
+                "last_command_ack": self._last_command_ack,
+                "last_command_error": self._last_command_error,
+                "commands": list(self._command_records.values()),
+                "event_diagnostics": list(self._event_diagnostics),
+                "wake_provider": self._wake_detector.status(),
+                "wake_history": list(self._wake_history),
+                "wake_confidence_history": list(self._wake_confidence_history),
+                "wake_recordings": self._wake_recorder.status() if self._wake_recorder else {"enabled": False},
+                "session_history": session_history,
+                "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
+                "supported_actions": {
+                    "refresh": True,
+                    "test_assistant_turn": True,
+                    "stop_session": self._active_session is not None,
+                    "replay_response": bool(connected_endpoint_ids)
+                    and (self._last_tts is not None or latest_replay_session is not None),
+                    "mute_endpoint": bool(connected_endpoint_ids),
+                    "set_volume": bool(connected_endpoint_ids),
+                    "send_media": bool(connected_endpoint_ids),
+                    "reconnect": False,
+                },
             }
-            if self._session_history_store is not None
-            else {"enabled": False, "recent_sessions": []}
-        )
-        return {
-            "endpoint_id": self._connected_endpoint_id,
-            "connection_state": state_projection["connection_state"],
-            "ux_state": state_projection["ux_state"],
-            "session_state": state_projection["session_state"],
-            "transport_health": state_projection["transport_health"],
-            "state_projection": state_projection,
-            "active_session": active_snapshot,
-            "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
-            "last_event_type": self._last_event_type,
-            "last_transcript": self._last_transcript,
-            "last_transcript_metadata": self._last_transcript_metadata,
-            "last_turn_timings": self._last_turn_timings,
-            "last_response": self._last_response,
-            "last_assistant": self._last_assistant,
-            "last_tts": self._last_tts,
-            "last_tts_playback": self._last_tts_playback,
-            "tts_playback_history": list(self._tts_playback_history),
-            "last_error": self._last_error,
-            "last_command_ack": self._last_command_ack,
-            "last_command_error": self._last_command_error,
-            "commands": list(self._command_records.values()),
-            "event_diagnostics": list(self._event_diagnostics),
-            "wake_provider": self._wake_detector.status(),
-            "wake_history": list(self._wake_history),
-            "wake_confidence_history": list(self._wake_confidence_history),
-            "wake_recordings": self._wake_recorder.status() if self._wake_recorder else {"enabled": False},
-            "session_history": session_history,
-            "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
-            "supported_actions": {
-                "refresh": True,
-                "test_assistant_turn": True,
-                "stop_session": self._active_session is not None,
-                "replay_response": self._connection_active and (self._last_tts is not None or latest_replay_session is not None),
-                "mute_endpoint": self._connection_active,
-                "set_volume": self._connection_active,
-                "send_media": self._connection_active,
-                "reconnect": False,
-            },
-        }
+        finally:
+            self._runtime_context.reset(token)
 
     def list_session_history(self, *, limit: int = 20, endpoint_id: str | None = None) -> list[dict[str, Any]]:
         if self._session_history_store is None:
@@ -1769,18 +1963,23 @@ class VoiceSessionManager:
         self._pending_session_followup = None
 
     def cancel_from_operator(self, *, reason: str = "operator_cancelled") -> dict:
-        if self._active_session is None:
-            return {"accepted": False, "reason": "no_active_session", "status": self.status()}
+        runtime = self._status_runtime()
+        token = self._runtime_context.set(runtime)
+        try:
+            if self._active_session is None:
+                return {"accepted": False, "reason": "no_active_session", "status": self.status()}
 
-        self._set_session_state("cancelled")
-        self._active_session.cancel_reason = reason
-        self._persist_active_session_history(
-            self._active_session,
-            completion_reason=reason,
-        )
-        self._release_active_session_wake_stream()
-        self._clear_active_session_runtime()
-        return {"accepted": True, "reason": reason, "status": self.status()}
+            self._set_session_state("cancelled")
+            self._active_session.cancel_reason = reason
+            self._persist_active_session_history(
+                self._active_session,
+                completion_reason=reason,
+            )
+            self._release_active_session_wake_stream()
+            self._clear_active_session_runtime()
+            return {"accepted": True, "reason": reason, "status": self.status()}
+        finally:
+            self._runtime_context.reset(token)
 
     def _handle_session_cancel(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         session = self._require_active_session(event)

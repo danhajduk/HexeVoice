@@ -13,9 +13,10 @@ That changes everything—in a good way.
 
 # Current Implementation Snapshot
 
-The current Voice Node is a backend-owned, single-endpoint MVP with:
+The current Voice Node is a backend-owned endpoint runtime with:
 
 * `/api/voice/ws` event transport using `hexevoice.voice.event.v1`
+* multiple connected ESP endpoints, each with its own WebSocket command route and session runtime
 * backend wake detection, STT, assistant routing, TTS metadata, and session state projection
 * persistent endpoint registry records from heartbeat data
 * firmware-persisted endpoint volume/mute settings and hardware capability heartbeats

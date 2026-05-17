@@ -228,3 +228,4 @@ Task 099: Add an intent-first STT path using a faster model with fallback to the
 Task 100: Evaluate constrained grammar or hot-phrase recognition for common local commands - Completed on 05/17/2026 00:14
 Task 101: Add optional GPU/CUDA STT configuration and status reporting when hardware is available - Completed on 05/17/2026 00:12
 Task 102: Tune endpoint utterance capture duration and silence detection to reduce audio sent to STT - Completed on 05/17/2026 00:16
+Task 109: Refactor VoiceSessionManager for multiple simultaneous ESP endpoints with per-endpoint WebSockets, active sessions, status, command routing, OTA/media delivery, and replay controls - Completed on 05/17/2026 00:30

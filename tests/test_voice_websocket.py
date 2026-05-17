@@ -101,6 +101,47 @@ def test_voice_websocket_starts_single_endpoint_session(tmp_path):
     assert response["payload"]["snapshot"]["ux_state"] == "wake_armed"
 
 
+def test_voice_websocket_routes_commands_to_multiple_connected_endpoints(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as first_socket:
+        first_socket.send_json(voice_event("session.start", endpoint_id="esp-box-1", session_id="box-session"))
+        assert first_socket.receive_json()["endpoint_id"] == "esp-box-1"
+
+        with client.websocket_connect("/api/voice/ws") as second_socket:
+            second_socket.send_json(voice_event("session.start", endpoint_id="esp-pe-1", session_id="pe-session"))
+            assert second_socket.receive_json()["endpoint_id"] == "esp-pe-1"
+
+            volume_response = client.post(
+                "/api/endpoint/volume",
+                json={"endpoint_id": "esp-pe-1", "volume_percent": 42},
+            )
+            pe_command = second_socket.receive_json()
+
+            mute_response = client.post(
+                "/api/endpoint/mute",
+                json={"endpoint_id": "esp-box-1", "muted": True},
+            )
+            box_command = first_socket.receive_json()
+
+            status = client.get("/api/voice/status").json()
+
+    assert volume_response.status_code == 200
+    assert volume_response.json()["accepted"] is True
+    assert pe_command["endpoint_id"] == "esp-pe-1"
+    assert pe_command["event_type"] == "endpoint.volume"
+    assert pe_command["payload"]["volume_percent"] == 42
+    assert mute_response.status_code == 200
+    assert mute_response.json()["accepted"] is True
+    assert box_command["endpoint_id"] == "esp-box-1"
+    assert box_command["event_type"] == "endpoint.mute"
+    assert box_command["payload"]["muted"] is True
+    assert status["connection_count"] == 2
+    assert status["connected_endpoint_ids"] == ["esp-box-1", "esp-pe-1"]
+    assert status["endpoints"]["esp-box-1"]["active_session"]["session_id"] == "box-session"
+    assert status["endpoints"]["esp-pe-1"]["active_session"]["session_id"] == "pe-session"
+
+
 def test_voice_websocket_replaces_stale_idle_session_from_same_endpoint(tmp_path):
     history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
     manager = VoiceSessionManager(
@@ -1703,13 +1744,17 @@ def test_voice_websocket_rejects_audio_without_active_session(tmp_path):
     assert response["payload"]["code"] == "no_active_session"
 
 
-def test_voice_websocket_allows_only_one_connected_endpoint(tmp_path):
+def test_voice_websocket_allows_multiple_connected_endpoints(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
-    with client.websocket_connect("/api/voice/ws"):
+    with client.websocket_connect("/api/voice/ws") as first_socket:
+        first_socket.send_json(voice_event("session.start", endpoint_id="esp-box-1", session_id="box-session"))
+        first_response = first_socket.receive_json()
         with client.websocket_connect("/api/voice/ws") as second_socket:
-            response = second_socket.receive_json()
-            assert response["event_type"] == "session.error"
-            assert response["payload"]["code"] == "endpoint_busy"
-            with pytest.raises(WebSocketDisconnect):
-                second_socket.receive_json()
+            second_socket.send_json(voice_event("session.start", endpoint_id="esp-pe-1", session_id="pe-session"))
+            second_response = second_socket.receive_json()
+
+    assert first_response["endpoint_id"] == "esp-box-1"
+    assert first_response["payload"]["snapshot"]["session_state"] == "idle"
+    assert second_response["endpoint_id"] == "esp-pe-1"
+    assert second_response["payload"]["snapshot"]["session_state"] == "idle"

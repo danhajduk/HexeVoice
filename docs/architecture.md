@@ -51,7 +51,7 @@ Current voice WebSocket API:
 
 - `GET /api/voice/ws` as a WebSocket upgrade route
 
-The WebSocket is implemented by `src/hexevoice/voice/session_manager.py`. It supports one connected endpoint and one active session for the MVP, accepts `session.start`, `audio.chunk`, `audio.end`, `vad.speech_started`, `session.cancel`, `session.ping`, `command.ack`, `command.error`, and endpoint TTS playback acknowledgement events through the versioned `VoiceEventEnvelope`, and returns `wake.accepted`, `session.state`, `session.completed`, `session.cancelled`, or `session.error` events through the same envelope. The envelope contract and JSON schema/examples live in `docs/voice-event-envelope.md` and `docs/voice-event-envelope/`.
+The WebSocket is implemented by `src/hexevoice/voice/session_manager.py`. It supports multiple connected endpoints, with each endpoint bound to its own WebSocket runtime, active session state, audio buffers, replay metadata, and command route. It accepts `session.start`, `audio.chunk`, `audio.end`, `vad.speech_started`, `session.cancel`, `session.ping`, `command.ack`, `command.error`, and endpoint TTS playback acknowledgement events through the versioned `VoiceEventEnvelope`, and returns `wake.accepted`, `session.state`, `session.completed`, `session.cancelled`, or `session.error` events through the same envelope. The envelope contract and JSON schema/examples live in `docs/voice-event-envelope.md` and `docs/voice-event-envelope/`.
 
 Backend wake authority now enters through `src/hexevoice/voice/wake.py`. The session manager feeds idle-state audio chunk metadata and transient base64 audio payloads to a `WakeDetector` adapter. Tests use `DeterministicWakeDetector`; runtime can use either the Supervisor-managed Wyoming openWakeWord service with `VOICE_WAKE_PROVIDER=supervised_openwakeword` or the older in-process `OpenWakeWordWakeDetector` with `VOICE_WAKE_PROVIDER=openwakeword`. Once wake is accepted, the STT audio buffer starts on the following chunk so pre-roll and the wake-detection chunk are not transcribed. Raw audio is not persisted unless `VOICE_WAKE_RECORDINGS_ENABLED=true`, which saves only accepted wake sessions with seven-day retention by default. STT, TTS, assistant routing, and persistent endpoint/session history are still pending Phase 1 implementation.
 
@@ -62,7 +62,7 @@ Voice observability now has local backend APIs for the dashboard:
 - `GET /api/voice/status`
 - `POST /api/voice/session/cancel`
 
-The status route returns an explicit `state_projection` with `connection_state`, `ux_state`, `session_state`, and `transport_health`, plus the active session snapshot, recent transcript/response/TTS/playback/error metadata, structured command acknowledgements/errors, event diagnostics, and supported operator actions. The frontend voice endpoint dashboard consumes this route instead of placeholder cards.
+The status route returns an explicit `state_projection` with `connection_state`, `ux_state`, `session_state`, and `transport_health` for the selected active or most recent endpoint, plus `connected_endpoint_ids`, `connection_count`, and an `endpoints` map with per-endpoint session summaries. It also includes recent transcript/response/TTS/playback/error metadata, structured command acknowledgements/errors, event diagnostics, and supported operator actions. The frontend voice endpoint dashboard consumes this route instead of placeholder cards.
 
 The onboarding domain now aligns to the canonical Core 10-step node lifecycle:
 
