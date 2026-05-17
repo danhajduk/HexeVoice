@@ -555,6 +555,10 @@ export default function App() {
     setSetupSection(section);
   }
 
+  function openNextSectionAfterCore() {
+    openSetupSection(setupReadiness?.setup_mode === "migrate_existing" ? "migration" : "reauth");
+  }
+
   function openDashboardSection(section) {
     setDashboardHashRoute(section);
     setRouteView("dashboard");
@@ -663,7 +667,7 @@ export default function App() {
                 ) : setupSection === "core" ? (
                   <>
                     <SetupHealthCard readiness={setupReadiness} />
-                    <CoreSetupPage onContinue={() => openSetupSection("migration")} />
+                    <CoreSetupPage onContinue={openNextSectionAfterCore} />
                   </>
                 ) : setupSection === "migration" ? (
                   <>
