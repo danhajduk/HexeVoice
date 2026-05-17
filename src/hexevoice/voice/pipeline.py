@@ -1248,6 +1248,8 @@ def tts_audio_url_metadata(audio_urls: dict[str, str], *, endpoint_audio_url: st
         "audio_url_raw": audio_urls.get("raw"),
         "audio_urls": dict(audio_urls),
         "endpoint_audio_url": endpoint_audio_url,
+        "stream_url": endpoint_audio_url or audio_url,
+        "stream_urls": dict(audio_urls),
     }
     for variant, url in audio_urls.items():
         metadata[f"audio_url_{variant}"] = url

@@ -143,18 +143,23 @@ class TtsSynthesizeRequest(BaseModel):
     voice: str | None = Field(default=None, max_length=80)
     format: Literal["wav", "mp3"] = "wav"
     ttl_seconds: int = Field(default=3600, ge=5, le=3600)
+    cache_key: str | None = Field(default=None, min_length=1, max_length=120)
 
 
 class TtsSynthesizeResponse(BaseModel):
     status: Literal["ready", "failed"]
     audio_url: str | None = None
     endpoint_audio_url: str | None = None
+    stream_url: str | None = None
     audio_urls: dict[str, str] = Field(default_factory=dict)
+    stream_urls: dict[str, str] = Field(default_factory=dict)
     content_type: str | None = None
     duration_ms: int | None = None
     expires_at: str | None = None
     stream_id: str | None = None
     provider_id: str | None = None
+    cache_key: str | None = None
+    cache_hit: bool = False
     error: str | None = None
 
 

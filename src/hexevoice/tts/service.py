@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,12 @@ class TtsAudioService:
 
     def synthesize(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         self.cleanup_expired()
-        session_id = f"tts-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
+        cache_key = normalized_common_clip_cache_key(request.cache_key)
+        if cache_key:
+            cached = self.cached_common_clip_response(cache_key=cache_key)
+            if cached is not None:
+                return cached
+        session_id = common_clip_stream_id(cache_key) if cache_key else f"tts-{datetime.now(UTC).strftime('%Y%m%d%H%M%S%f')}"
         endpoint_id = request.target.device_id or request.target.location or "tts-client"
         synthesis = self._pipeline.synthesize_reply(
             endpoint_id=endpoint_id,
@@ -33,6 +39,7 @@ class TtsAudioService:
             text=request.text,
             voice=self._resolve_voice_model(request.voice),
             audio_format=request.format,
+            stream_id=session_id if cache_key else None,
         )
         if synthesis.error:
             return TtsSynthesizeResponse(
@@ -83,6 +90,10 @@ class TtsAudioService:
             "requested_format": request.format,
             "ttl_seconds": request.ttl_seconds,
             "created_at": created_at.isoformat(),
+            "cache_key": cache_key,
+            "cache_scope": "common_clip" if cache_key else None,
+            "stream_url": endpoint_audio_url or audio_url_metadata.get("audio_url"),
+            "stream_urls": dict(audio_urls),
         }
         metadata = self._merge_existing_generated_metadata(stream_id, metadata)
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
@@ -90,13 +101,67 @@ class TtsAudioService:
             status="ready",
             audio_url=audio_url_metadata.get("audio_url"),
             endpoint_audio_url=endpoint_audio_url,
+            stream_url=endpoint_audio_url or audio_url_metadata.get("audio_url"),
             audio_urls=audio_urls,
+            stream_urls=audio_urls,
             content_type=content_type,
             duration_ms=duration_ms,
             expires_at=expires_at.isoformat(),
             stream_id=stream_id,
             provider_id=synthesis.provider_id,
+            cache_key=cache_key,
+            cache_hit=False,
         )
+
+    def synthesize_common_clip(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
+        cache_key = normalized_common_clip_cache_key(request.cache_key) or common_clip_cache_key(
+            text=request.text,
+            voice=request.voice,
+            audio_format=request.format,
+        )
+        return self.synthesize(request.model_copy(update={"cache_key": cache_key}))
+
+    def cached_common_clip_response(self, *, cache_key: str) -> TtsSynthesizeResponse | None:
+        stream_id = common_clip_stream_id(cache_key)
+        metadata = self.metadata(stream_id)
+        if not metadata or not self._metadata_is_available(metadata):
+            return None
+        audio_path = self.audio_path(stream_id, variant=metadata.get("audio_variant"))
+        if audio_path is None:
+            return None
+        audio_urls = metadata.get("audio_urls") if isinstance(metadata.get("audio_urls"), dict) else {}
+        if not audio_urls:
+            audio_urls = self._public_tts_audio_variant_urls(stream_id, metadata.get("audio_variants") if isinstance(metadata.get("audio_variants"), dict) else {})
+        endpoint_audio_url = metadata.get("endpoint_audio_url") or metadata.get("audio_url")
+        return TtsSynthesizeResponse(
+            status="ready",
+            audio_url=metadata.get("audio_url") or endpoint_audio_url,
+            endpoint_audio_url=endpoint_audio_url,
+            stream_url=endpoint_audio_url or metadata.get("audio_url"),
+            audio_urls=audio_urls,
+            stream_urls=audio_urls,
+            content_type=metadata.get("content_type") or content_type_for_path(audio_path),
+            duration_ms=metadata.get("duration_ms"),
+            expires_at=metadata.get("expires_at"),
+            stream_id=stream_id,
+            provider_id=metadata.get("provider_id"),
+            cache_key=cache_key,
+            cache_hit=True,
+        )
+
+    def _metadata_is_available(self, metadata: dict[str, Any]) -> bool:
+        if str(metadata.get("lifetime") or "").strip().lower() == "long_lived":
+            return True
+        expires_at_value = metadata.get("expires_at")
+        if not expires_at_value:
+            return True
+        try:
+            expires_at = datetime.fromisoformat(str(expires_at_value))
+        except ValueError:
+            return False
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=UTC)
+        return expires_at > datetime.now(UTC)
 
     def synthesize_intent_reply(
         self,
@@ -350,6 +415,10 @@ class TtsAudioService:
             normalized["endpoint_audio_url"] = audio_urls.get(normalized["audio_variant"]) or normalized.get("audio_url")
         if "voice_ready" not in normalized:
             normalized["voice_ready"] = bool(audio_files)
+        if not normalized.get("stream_url"):
+            normalized["stream_url"] = normalized.get("endpoint_audio_url") or normalized.get("audio_url")
+        if not isinstance(normalized.get("stream_urls"), dict):
+            normalized["stream_urls"] = dict(audio_urls)
         return normalized
 
     def list_artifacts(self, *, limit: int = 50) -> dict[str, Any]:
@@ -422,7 +491,11 @@ class TtsAudioService:
             "content_type": metadata.get("content_type"),
             "audio_url": metadata.get("audio_url"),
             "endpoint_audio_url": metadata.get("endpoint_audio_url"),
+            "stream_url": metadata.get("stream_url") or metadata.get("endpoint_audio_url") or metadata.get("audio_url"),
             "playable_urls": playable_urls,
+            "stream_urls": metadata.get("stream_urls") if isinstance(metadata.get("stream_urls"), dict) else playable_urls,
+            "cache_key": metadata.get("cache_key"),
+            "cache_scope": metadata.get("cache_scope"),
             "audio_variant": metadata.get("audio_variant"),
             "audio_variants": metadata.get("audio_variants") if isinstance(metadata.get("audio_variants"), dict) else {},
             "planned_audio_variants": metadata.get("planned_audio_variants")
@@ -507,6 +580,12 @@ class TtsAudioService:
             if expires_at > current:
                 continue
             stream_id = metadata_path.stem
+            record_voice_event(
+                "tts.expired",
+                stream_id=stream_id,
+                expires_at=expires_at.isoformat(),
+                cache_key=metadata.get("cache_key"),
+            )
             for candidate in self._audio_dir.glob(f"{stream_id}.*"):
                 try:
                     candidate.unlink()
@@ -602,6 +681,32 @@ def safe_tts_stream_id(stream_id: str) -> str | None:
     if not cleaned or not cleaned.replace("-", "").replace("_", "").isalnum():
         return None
     return cleaned
+
+
+def normalized_common_clip_cache_key(cache_key: str | None) -> str | None:
+    cleaned = str(cache_key or "").strip().lower()
+    if not cleaned:
+        return None
+    safe = "".join(ch if ch.isalnum() or ch in {"-", "_"} else "-" for ch in cleaned)
+    safe = "-".join(part for part in safe.split("-") if part)
+    return safe[:96] or None
+
+
+def common_clip_cache_key(*, text: str, voice: str | None, audio_format: str) -> str:
+    identity = json.dumps(
+        {
+            "text": str(text or "").strip(),
+            "voice": str(voice or "").strip(),
+            "format": str(audio_format or "wav").strip().lower(),
+        },
+        sort_keys=True,
+    )
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest()[:32]
+
+
+def common_clip_stream_id(cache_key: str) -> str:
+    safe_key = normalized_common_clip_cache_key(cache_key) or hashlib.sha256(str(cache_key).encode("utf-8")).hexdigest()[:32]
+    return f"common-{safe_key}"
 
 
 def safe_tts_audio_variant(variant: object) -> str | None:

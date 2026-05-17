@@ -1207,6 +1207,31 @@ def create_app(
     async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         return await asyncio.to_thread(tts_audio_service.synthesize, payload)
 
+    @app.post("/api/tts/common-clips", response_model=TtsSynthesizeResponse)
+    async def tts_common_clip(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
+        return await asyncio.to_thread(tts_audio_service.synthesize_common_clip, payload)
+
+    @app.get("/api/tts/voices")
+    async def tts_voices() -> dict:
+        status = await asyncio.to_thread(tts_runtime_settings_service.status)
+        voices = status.get("models") if isinstance(status.get("models"), list) else []
+        languages: dict[str, dict] = {}
+        for voice in voices:
+            if not isinstance(voice, dict):
+                continue
+            language = str(voice.get("language") or "unknown")
+            languages.setdefault(language, {"language": language, "voice_count": 0, "voices": []})
+            languages[language]["voice_count"] += 1
+            languages[language]["voices"].append(voice.get("model_id"))
+        return {
+            "provider": status.get("provider"),
+            "default_voice": status.get("default_voice"),
+            "warm_voices": status.get("warm_voices") if isinstance(status.get("warm_voices"), list) else [],
+            "voices": voices,
+            "languages": list(languages.values()),
+            "count": len(voices),
+        }
+
     @app.get("/api/tts/settings")
     async def tts_settings() -> dict:
         return await asyncio.to_thread(tts_runtime_settings_service.status)
@@ -1294,6 +1319,15 @@ def create_app(
             not_found_detail="tts_audio_not_found",
         )
 
+    @app.get("/api/tts/stream/{stream_id}/{variant}")
+    async def tts_stream_variant(stream_id: str, variant: str) -> FileResponse:
+        return tts_file_response(
+            stream_id,
+            variant=variant,
+            route="/api/tts/stream/{stream_id}/{variant}",
+            not_found_detail="tts_stream_not_found",
+        )
+
     @app.get("/api/tts/audio/{stream_id}")
     async def tts_audio(stream_id: str) -> FileResponse:
         return tts_file_response(
@@ -1301,6 +1335,15 @@ def create_app(
             variant=None,
             route="/api/tts/audio/{stream_id}",
             not_found_detail="tts_audio_not_found",
+        )
+
+    @app.get("/api/tts/stream/{stream_id}")
+    async def tts_stream(stream_id: str) -> FileResponse:
+        return tts_file_response(
+            stream_id,
+            variant=None,
+            route="/api/tts/stream/{stream_id}",
+            not_found_detail="tts_stream_not_found",
         )
 
     @app.get("/api/tts/audio/{stream_id}/")

@@ -885,7 +885,9 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert payload["audio_url"].startswith(f"{public_base_url}/api/tts/audio/")
     assert payload["audio_url"].endswith("/")
     assert payload["endpoint_audio_url"] == payload["audio_url"]
+    assert payload["stream_url"] == payload["endpoint_audio_url"]
     assert payload["audio_urls"]["raw"] == payload["audio_url"]
+    assert payload["stream_urls"]["raw"] == payload["audio_url"]
     assert payload["content_type"] == "audio/wav"
     assert payload["duration_ms"] is not None
     assert payload["expires_at"]
@@ -895,6 +897,7 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert metadata["voice_id"] == "default"
     assert metadata["audio_url"] == payload["audio_url"]
     assert metadata["endpoint_audio_url"] == payload["endpoint_audio_url"]
+    assert metadata["stream_url"] == payload["stream_url"]
     assert metadata["audio_url_raw"] == payload["audio_url"]
     assert metadata["ttl_seconds"] == 3600
     assert metadata["expires_at"] == payload["expires_at"]
@@ -903,6 +906,79 @@ def test_tts_synthesize_returns_fetchable_audio_url(tmp_path):
     assert audio.status_code == 200
     assert audio.headers["content-type"] == "audio/wav"
     assert audio.content.startswith(b"RIFF")
+
+    stream = client.get(payload["stream_url"].removeprefix(public_base_url))
+    assert stream.status_code == 200
+    assert stream.headers["content-type"] == "audio/wav"
+
+
+def test_tts_common_clip_reuses_cached_audio(tmp_path):
+    public_base_url = "http://voice-node.local:9004"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                public_api_base_url=public_base_url,
+            )
+        )
+    )
+    payload = {
+        "intent": "tts.speak",
+        "text": "Welcome to the kiosk.",
+        "voice": "default",
+        "format": "wav",
+        "cache_key": "kiosk-welcome",
+    }
+
+    first = client.post("/api/tts/common-clips", json=payload)
+    second = client.post("/api/tts/common-clips", json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_payload = first.json()
+    second_payload = second.json()
+    assert first_payload["cache_key"] == "kiosk-welcome"
+    assert first_payload["cache_hit"] is False
+    assert second_payload["cache_hit"] is True
+    assert second_payload["stream_id"] == first_payload["stream_id"] == "common-kiosk-welcome"
+    assert second_payload["stream_url"] == first_payload["stream_url"]
+    audio = client.get(second_payload["stream_url"].removeprefix(public_base_url))
+    assert audio.status_code == 200
+    assert audio.content.startswith(b"RIFF")
+
+
+def test_tts_voices_lists_models_and_languages(tmp_path):
+    model_dir = tmp_path / "piper-models"
+    model_dir.mkdir()
+    (model_dir / "en_US-kathleen-low.onnx").write_bytes(b"model")
+    (model_dir / "en_US-kathleen-low.onnx.json").write_text(
+        json.dumps({"dataset": "kathleen", "audio": {"sample_rate": 22050, "quality": "low"}, "language": {"code": "en_US"}}),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                piper_tts_model_dir=model_dir,
+                voice_tts_piper_voice="en_US-kathleen-low",
+                piper_tts_warm_voices="en_US-kathleen-low",
+            )
+        )
+    )
+
+    response = client.get("/api/tts/voices")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["default_voice"] == "en_US-kathleen-low"
+    assert payload["warm_voices"] == ["en_US-kathleen-low"]
+    assert payload["count"] == 1
+    assert payload["voices"][0]["model_id"] == "en_US-kathleen-low"
+    assert payload["voices"][0]["display_name"] == "Kathleen"
+    assert payload["languages"][0]["language"] == "en_US"
+    assert payload["languages"][0]["voices"] == ["en_US-kathleen-low"]
 
 
 def test_tts_artifacts_debug_api_lists_recent_streams(tmp_path):
