@@ -65,3 +65,16 @@ def test_setup_host_joined_supervisor_requires_token(tmp_path):
     payload = response.json()
     assert payload["accepted"] is False
     assert payload["message"] == "joined_supervisor_requires_core_url_and_enrollment_token"
+
+
+def test_setup_host_lan_host_ignores_loopback_alias(monkeypatch):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    monkeypatch.setattr(SetupHostReadinessService, "_route_lan_host", staticmethod(lambda: ""))
+    monkeypatch.setattr(
+        SetupHostReadinessService,
+        "_hostname_lan_hosts",
+        staticmethod(lambda: ["127.0.1.1", "127.0.0.1", "10.0.0.55"]),
+    )
+
+    assert SetupHostReadinessService._lan_host() == "10.0.0.55"

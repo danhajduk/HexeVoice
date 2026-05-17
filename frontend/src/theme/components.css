@@ -852,6 +852,12 @@
   border-color: hsl(var(--sx-danger) / 0.45);
 }
 
+.host-readiness-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .hero-copy {
   max-width: 58ch;
   margin: 0;

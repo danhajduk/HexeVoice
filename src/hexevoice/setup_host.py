@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -105,19 +106,19 @@ class SetupHostReadinessService:
                 )
             return self._run_helper(action, [str(installer), "--standalone"])
         if action == "install-joined-supervisor":
+            if not payload.core_base_url or not payload.enrollment_token:
+                return SetupHostReadinessActionResponse(
+                    accepted=False,
+                    action=action,
+                    message="joined_supervisor_requires_core_url_and_enrollment_token",
+                    readiness=self.readiness_payload(),
+                )
             installer = self._supervisor_installer()
             if installer is None:
                 return SetupHostReadinessActionResponse(
                     accepted=False,
                     action=action,
                     message="supervisor_installer_missing",
-                    readiness=self.readiness_payload(),
-                )
-            if not payload.core_base_url or not payload.enrollment_token:
-                return SetupHostReadinessActionResponse(
-                    accepted=False,
-                    action=action,
-                    message="joined_supervisor_requires_core_url_and_enrollment_token",
                     readiness=self.readiness_payload(),
                 )
             supervisor_id = payload.supervisor_id or f"{socket.gethostname() or 'hexevoice'}-supervisor"
@@ -265,10 +266,56 @@ class SetupHostReadinessService:
 
     @staticmethod
     def _lan_host() -> str:
+        for candidate in (
+            SetupHostReadinessService._route_lan_host(),
+            *SetupHostReadinessService._hostname_lan_hosts(),
+        ):
+            if SetupHostReadinessService._usable_lan_host(candidate):
+                return candidate
+        return "127.0.0.1"
+
+    @staticmethod
+    def _route_lan_host() -> str:
         try:
-            return socket.gethostbyname(socket.gethostname())
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+                probe.settimeout(1)
+                probe.connect(("8.8.8.8", 80))
+                return str(probe.getsockname()[0])
         except OSError:
-            return "127.0.0.1"
+            return ""
+
+    @staticmethod
+    def _hostname_lan_hosts() -> list[str]:
+        candidates: list[str] = []
+        try:
+            candidates.append(socket.gethostbyname(socket.gethostname()))
+        except OSError:
+            pass
+        try:
+            for item in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+                candidates.append(str(item[4][0]))
+        except OSError:
+            pass
+        try:
+            completed = subprocess.run(
+                ["hostname", "-I"],
+                text=True,
+                capture_output=True,
+                timeout=2,
+                check=False,
+            )
+            candidates.extend((completed.stdout or "").split())
+        except Exception:
+            pass
+        return candidates
+
+    @staticmethod
+    def _usable_lan_host(value: str) -> bool:
+        try:
+            address = ipaddress.ip_address(str(value).strip())
+        except ValueError:
+            return False
+        return not (address.is_loopback or address.is_link_local or address.is_unspecified or address.is_multicast)
 
     @staticmethod
     def _supervisor_detected() -> bool:

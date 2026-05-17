@@ -135,6 +135,17 @@ export function HostSetupPage() {
       {notice ? <div className="callout callout-success">{notice}</div> : null}
       {error ? <div className="callout callout-danger">{error}</div> : null}
 
+      <div className="host-readiness-pills">
+        {summaryChecks.map(([id, label]) => {
+          const status = checkLabel(checks, id);
+          return (
+            <span className={`status-pill status-pill-${toneForStatus(status)}`} key={id}>
+              {label}: {status}
+            </span>
+          );
+        })}
+      </div>
+
       <div className="fact-grid">
         <div className="fact-grid-item">
           <span className="fact-grid-label">Host</span>
@@ -214,14 +225,6 @@ export function HostSetupPage() {
         </button>
       </div>
 
-      <div className="fact-grid">
-        {summaryChecks.map(([id, label]) => (
-          <div className="fact-grid-item" key={id}>
-            <span className="fact-grid-label">{label}</span>
-            <span className={`status-pill status-pill-${toneForStatus(checkLabel(checks, id))}`}>{checkLabel(checks, id)}</span>
-          </div>
-        ))}
-      </div>
       {readiness?.blockers?.length ? <div className="callout callout-danger">Blockers: {readiness.blockers.join(", ")}</div> : null}
       {readiness?.warnings?.length ? <div className="callout callout-warning">Warnings: {readiness.warnings.join(", ")}</div> : null}
     </article>
