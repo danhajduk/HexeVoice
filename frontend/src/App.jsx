@@ -20,6 +20,7 @@ import { CoreSetupPage, MigrationSetupPage } from "./features/setup/CoreMigratio
 import { ReauthSetupPage } from "./features/setup/ReauthSetupPage";
 import { ProvidersSetupPage } from "./features/setup/ProvidersSetupPage";
 import { CapabilitiesSetupPage } from "./features/setup/CapabilitiesSetupPage";
+import { ReadySetupPage } from "./features/setup/ReadySetupPage";
 import { SetupHeroCard } from "./features/setup/cards/SetupHeroCard";
 import { LiveStatusCard } from "./features/setup/cards/LiveStatusCard";
 import { OperatorPromptsCard } from "./features/setup/cards/OperatorPromptsCard";
@@ -89,7 +90,31 @@ function parseSetupSection(location) {
   if (location.pathname === "/setup/capabilities" || location.hash === "#/setup/capabilities") {
     return "capabilities";
   }
+  if (location.pathname === "/setup/ready" || location.hash === "#/setup/ready") {
+    return "ready";
+  }
   return "flow";
+}
+
+function setupPathForState(onboarding, status) {
+  const trustState = status?.trust_state || onboarding?.trust_state;
+  if (trustState === "reauth_required") {
+    return "/setup/trust/reauth";
+  }
+  const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
+  if (stepId === "core_connection") {
+    return "/setup/core";
+  }
+  if (stepId === "provider_setup") {
+    return "/setup/providers";
+  }
+  if (stepId === "capability_declaration" || stepId === "governance_sync") {
+    return "/setup/capabilities";
+  }
+  if (stepId === "ready") {
+    return "/setup/ready";
+  }
+  return "/setup/host";
 }
 
 function setHashRoute(view) {
@@ -331,11 +356,17 @@ export default function App() {
     if (setupComplete) {
       return;
     }
-    setHashRoute("setup");
+    if (window.location.pathname === "/" && !window.location.hash) {
+      const setupPath = setupPathForState(onboarding, status);
+      window.history.replaceState(null, "", setupPath);
+      setSetupSection(parseSetupSection(window.location));
+    } else if (!window.location.pathname.startsWith("/setup") && !window.location.hash.startsWith("#/setup")) {
+      setHashRoute("setup");
+    }
     if (routeView !== "setup") {
       setRouteView("setup");
     }
-  }, [setupComplete, routeView]);
+  }, [setupComplete, routeView, onboarding, status]);
 
   useEffect(() => {
     if (showSetupPage || dashboardSection !== "voice-endpoint") {
@@ -567,6 +598,8 @@ export default function App() {
                   <ProvidersSetupPage />
                 ) : setupSection === "capabilities" ? (
                   <CapabilitiesSetupPage />
+                ) : setupSection === "ready" ? (
+                  <ReadySetupPage onRefresh={refresh} />
                 ) : (
                   <>
                     <OnboardingPanel status={status} onboarding={onboarding} onRefresh={refresh} />

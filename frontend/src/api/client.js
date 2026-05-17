@@ -215,6 +215,18 @@ export async function syncSetupGovernance() {
   return sendJson("/api/setup/capabilities/sync-governance");
 }
 
+export async function getSetupReadyStatus() {
+  return fetchJson("/api/setup/ready/status");
+}
+
+export async function runSetupReadySmokeTest() {
+  return sendJson("/api/setup/ready/run-smoke-test");
+}
+
+export async function completeSetupReady() {
+  return sendJson("/api/setup/ready/complete");
+}
+
 export async function getGovernanceCurrent() {
   return fetchJson("/api/governance/current");
 }
