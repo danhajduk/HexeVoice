@@ -2647,6 +2647,14 @@ def create_app(
         provider_status = setup_provider_status_payload()
         capability_status = setup_capabilities_status_payload()
         host_status = setup_host_readiness_service.readiness_payload()
+        service_status = service.service_status_payload().model_dump(mode="json")
+        service_components = {
+            component.get("component_id"): component
+            for component in service_status.get("components", [])
+            if component.get("component_id")
+        }
+        enabled_providers = set(provider_status.get("provider_setup", {}).get("enabled_providers") or [])
+        selected_capabilities = set(capability_status.get("capabilities", {}).get("selected") or [])
 
         checks.append(setup_ready_check("backend", "Backend API", True, "Backend API handled the smoke request."))
 
@@ -2709,6 +2717,57 @@ def create_app(
                 providers_ok,
                 "Enabled providers are ready." if providers_ok else "Provider readiness is still blocked.",
                 detail={"blockers": provider_blockers, "unhealthy": unhealthy_providers, "states": provider_states},
+            )
+        )
+        provider_requirements = [
+            ("stt_provider_response", "STT provider response", "stt", "voice.inference" in selected_capabilities),
+            (
+                "tts_provider_response",
+                "TTS provider response",
+                "tts",
+                bool({"voice.tts.synthesize", "voice.tts.audio_url"} & selected_capabilities),
+            ),
+            (
+                "wake_provider_response",
+                "Wake provider response",
+                "wake",
+                bool({"openwakeword", "supervised_openwakeword"} & enabled_providers),
+            ),
+        ]
+        for check_id, label, component_id, required in provider_requirements:
+            component = service_components.get(component_id) or {}
+            healthy = bool(component.get("healthy"))
+            status = component.get("status") or "unknown"
+            checks.append(
+                setup_ready_check(
+                    check_id,
+                    label,
+                    healthy,
+                    f"{label} is healthy." if healthy else f"{label} is {status}.",
+                    required=required,
+                    detail=component,
+                )
+            )
+
+        backend_component = service_components.get("backend") or {}
+        backend_provider_ok = bool(backend_component.get("healthy", True)) and all(
+            (service_components.get(component_id) or {}).get("healthy")
+            for capability, component_id in {
+                "voice.inference": "stt",
+                "voice.tts.synthesize": "tts",
+                "voice.tts.audio_url": "tts",
+            }.items()
+            if capability in selected_capabilities
+        )
+        checks.append(
+            setup_ready_check(
+                "backend_provider_calls",
+                "Backend provider calls",
+                backend_provider_ok,
+                "Backend can route selected voice capabilities to providers."
+                if backend_provider_ok
+                else "Backend provider routing has unhealthy selected providers.",
+                detail={"selected_capabilities": sorted(selected_capabilities), "components": service_components},
             )
         )
 
@@ -2792,6 +2851,57 @@ def create_app(
                 core_visible,
                 core_message,
                 detail=core_detail,
+            )
+        )
+        core_trust_ok = core_detail.get("trust_status") == "trusted"
+        checks.append(
+            setup_ready_check(
+                "core_trust_visibility",
+                "Core trust visibility",
+                core_trust_ok,
+                "Core reports trusted node state." if core_trust_ok else "Core does not report trusted node state.",
+                detail=core_detail,
+            )
+        )
+        core_capability_ok = core_detail.get("capability_status") in {"accepted", "declared"}
+        checks.append(
+            setup_ready_check(
+                "core_capability_visibility",
+                "Core capability visibility",
+                core_capability_ok,
+                "Core reports accepted capabilities." if core_capability_ok else "Core capability status is not accepted.",
+                detail=core_detail,
+            )
+        )
+        local_governance_version = capability_status.get("governance", {}).get("governance_version")
+        core_governance_version = core_detail.get("active_governance_version")
+        governance_currency_ok = governance_current and (
+            not core_governance_version or core_governance_version == local_governance_version
+        )
+        checks.append(
+            setup_ready_check(
+                "governance_currency",
+                "Governance currency",
+                governance_currency_ok,
+                "Local governance is current with Core."
+                if governance_currency_ok
+                else "Local governance is not current with Core.",
+                detail={"local_governance_version": local_governance_version, "core_governance_version": core_governance_version},
+            )
+        )
+        supervisor_registration = provider_status.get("supervisor_registration") or {}
+        supervisor_configured = bool(supervisor_registration.get("configured"))
+        supervisor_registered = bool(supervisor_registration.get("registered"))
+        checks.append(
+            setup_ready_check(
+                "supervisor_registration",
+                "Supervisor registration",
+                supervisor_registered if supervisor_configured else False,
+                "Supervisor has runtime service registration."
+                if supervisor_registered
+                else "Supervisor registration is pending or not configured.",
+                required=supervisor_configured,
+                detail=supervisor_registration,
             )
         )
 

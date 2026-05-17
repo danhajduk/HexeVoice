@@ -216,10 +216,12 @@ manifest is declared again.
 The final setup gate is `/setup/ready`, backed by
 `/api/setup/ready/status`, `/api/setup/ready/run-smoke-test`, and
 `/api/setup/ready/complete`. The smoke test checks backend/frontend reachability,
-trust, governance, providers, firmware, runtime directories, sockets, LAN URLs,
-host alias state, and Core node visibility before setup can be completed. While
-setup is incomplete, the frontend redirects `8084/` into the current `/setup/*`
-route; after completion, `8084/` stays on the dashboard/fallback surface.
+trust, provider STT/TTS/wake health, backend provider routing, Core
+trust/capability visibility, governance currency, Supervisor registration,
+firmware, runtime directories, sockets, LAN URLs, host alias state, and Core
+node visibility before setup can be completed. While setup is incomplete, the
+frontend redirects `8084/` into the current `/setup/*` route; after completion,
+`8084/` stays on the dashboard/fallback surface.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none

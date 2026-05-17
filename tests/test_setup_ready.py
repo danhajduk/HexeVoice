@@ -128,6 +128,15 @@ def test_setup_ready_smoke_test_and_complete(tmp_path, monkeypatch):
     smoke_payload = smoke.json()
     assert smoke_payload["smoke"]["ok"] is True
     assert smoke_payload["status"]["continue_blocked"] is False
+    checks = {check["id"]: check for check in smoke_payload["smoke"]["checks"]}
+    assert checks["stt_provider_response"]["status"] == "pass"
+    assert checks["tts_provider_response"]["status"] == "pass"
+    assert checks["wake_provider_response"]["status"] == "warn"
+    assert checks["backend_provider_calls"]["status"] == "pass"
+    assert checks["core_trust_visibility"]["status"] == "pass"
+    assert checks["core_capability_visibility"]["status"] == "pass"
+    assert checks["governance_currency"]["status"] == "pass"
+    assert checks["supervisor_registration"]["status"] == "warn"
 
     complete = client.post("/api/setup/ready/complete")
     assert complete.status_code == 200
