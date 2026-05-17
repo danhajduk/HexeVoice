@@ -120,7 +120,7 @@ export function CoreSetupPage({ onContinue }) {
   );
 }
 
-export function MigrationSetupPage() {
+export function MigrationSetupPage({ onImportComplete }) {
   const [sourceMode, setSourceMode] = useState("upload");
   const [sourceUrl, setSourceUrl] = useState("");
   const [localPath, setLocalPath] = useState("");
@@ -129,12 +129,14 @@ export function MigrationSetupPage() {
   const [form, setForm] = useState({ destination_core_base_url: "", destination_api_base_url: "", destination_ui_endpoint: "", destination_hostname: "" });
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState("");
+  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   async function handleFile(event) {
     const file = event.target.files?.[0];
     if (!file) return;
     setError("");
+    setNotice("");
     try {
       const parsed = JSON.parse(await file.text());
       setBundle(parsed);
@@ -193,6 +195,7 @@ export function MigrationSetupPage() {
     }
     setBusy("preflight");
     setError("");
+    setNotice("");
     try {
       const payload = compactPayload({ bundle: currentBundle, ...form, dry_run: true });
       setResult(await preflightSetupMigration(payload));
@@ -214,9 +217,15 @@ export function MigrationSetupPage() {
     }
     setBusy(kind);
     setError("");
+    setNotice("");
     try {
       const payload = compactPayload({ bundle, ...form, dry_run: kind === "preflight" });
-      setResult(kind === "preflight" ? await preflightSetupMigration(payload) : await importSetupMigration(payload));
+      const nextResult = kind === "preflight" ? await preflightSetupMigration(payload) : await importSetupMigration(payload);
+      setResult(nextResult);
+      if (kind === "import" && nextResult.imported) {
+        setNotice(nextResult.node_id ? "Migration imported. Continuing to Core re-auth." : "Migration imported. Continuing to node onboarding.");
+        onImportComplete?.(nextResult);
+      }
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -231,6 +240,7 @@ export function MigrationSetupPage() {
         <span className="pill">{summary || "no bundle"}</span>
       </div>
       {error ? <div className="callout callout-danger">{error}</div> : null}
+      {notice ? <div className="callout callout-success">{notice}</div> : null}
       <div className="callout callout-warning">Migration bundles with trust tokens are rejected. Core re-auth is required after import.</div>
       <label className="field">
         <span className="field-label">Migration source</span>

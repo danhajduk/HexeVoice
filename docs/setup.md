@@ -119,6 +119,9 @@ containing trust tokens. The setup page exposes migration source choices for an
 uploaded bundle, a future constrained local backup path loader, and a future
 old-node/Core fetch path; upload remains the active source until those fetch
 paths are explicitly supported.
+After a successful migration import, setup routes migrated bundles with a
+preserved node ID to `/setup/trust/reauth`; bundles without a previous node ID
+continue through the normal onboarding/provider path.
 Migrated nodes continue through `/setup/trust/reauth`, which starts Core
 re-auth with `POST /api/system/nodes/reauth/sessions`, opens the returned Core
 approval URL, finalizes the session, and saves the fresh activation payload.

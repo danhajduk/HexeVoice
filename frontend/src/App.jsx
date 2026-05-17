@@ -661,6 +661,16 @@ export default function App() {
     openSetupSection(setupReadiness?.setup_mode === "migrate_existing" ? "migration" : "onboard");
   }
 
+  async function handleMigrationImportComplete(result) {
+    await refresh();
+    if (result?.node_id) {
+      openSetupSection("reauth");
+      return;
+    }
+    const trustState = status?.trust_state || onboarding?.trust_state;
+    openSetupSection(trustState === "trusted" ? "providers" : "onboard");
+  }
+
   function openDashboardSection(section) {
     setDashboardHashRoute(section);
     setRouteView("dashboard");
@@ -774,7 +784,7 @@ export default function App() {
                 ) : setupSection === "migration" ? (
                   <>
                     <SetupHealthCard readiness={setupReadiness} />
-                    <MigrationSetupPage />
+                    <MigrationSetupPage onImportComplete={handleMigrationImportComplete} />
                   </>
                 ) : setupSection === "onboard" ? (
                   <>

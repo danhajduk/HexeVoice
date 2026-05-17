@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 175: Smooth Step 3 post-import routing so migrated nodes move to re-auth, new nodes move to onboarding/provider setup as appropriate, and unsupported Core re-auth shows a clear blocker
 [TODO] Task 176: Allow Step 3 to save a temporarily unreachable Core URL with offline/deferred validation state, then re-check Core before trust and capability steps
 [TODO] Task 177: Clarify Step 4 trust routes so new-node onboarding and migration re-auth have distinct URLs and labels that match setup mode
 [TODO] Task 178: Harden Step 4 routing so new-node setup never enters migration re-auth and migrated-node setup cannot skip required re-auth
