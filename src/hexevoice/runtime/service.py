@@ -337,6 +337,14 @@ class NodeRuntimeService:
                     if self._external_stt_enabled()
                     else True,
                     "provider": self._settings.voice_stt_provider,
+                    "service_id": self._settings.voice_stt_service_id if self._external_stt_enabled() else "stt",
+                    "base_url": self._settings.resolved_voice_stt_service_base_url()
+                    if self._external_stt_enabled()
+                    else None,
+                    "socket_path": str(self._settings.resolved_voice_stt_service_socket_path())
+                    if self._external_stt_enabled() and self._settings.resolved_voice_stt_service_socket_path() is not None
+                    else None,
+                    "port": self._settings.voice_stt_service_port if self._external_stt_enabled() else None,
                     "model": self._stt_component_model(),
                     "restart_target": self._settings.voice_stt_service_id if self._external_stt_enabled() else "stt",
                     "restart_supported": self._external_stt_enabled(),
@@ -361,6 +369,12 @@ class NodeRuntimeService:
                     "status": openwakeword_state,
                     "healthy": openwakeword_state in {"active", "running"},
                     "provider": self._settings.voice_wake_provider,
+                    "service_id": self._settings.openwakeword_service_id,
+                    "model": self._settings.voice_wake_models or "Hexe",
+                    "threshold": self._settings.voice_wake_threshold,
+                    "host": self._settings.voice_wake_service_host,
+                    "port": self._settings.voice_wake_service_port,
+                    "container_name": self._settings.openwakeword_container_name,
                     "restart_target": self._settings.openwakeword_service_id,
                     "restart_supported": True,
                     "restart_detail": "openWakeWord is supervisor-proxied.",
@@ -373,6 +387,14 @@ class NodeRuntimeService:
                     "status": piper_tts_state if self._piper_tts_enabled() else self._settings.voice_tts_provider,
                     "healthy": piper_tts_state == "running" if self._piper_tts_enabled() else True,
                     "provider": self._settings.voice_tts_provider,
+                    "service_id": self._settings.piper_tts_service_id if self._piper_tts_enabled() else "tts",
+                    "base_url": self._settings.resolved_voice_tts_piper_base_url()
+                    if self._piper_tts_enabled()
+                    else None,
+                    "socket_path": str(self._settings.resolved_voice_tts_piper_socket_path())
+                    if self._piper_tts_enabled() and self._settings.resolved_voice_tts_piper_socket_path() is not None
+                    else None,
+                    "port": self._settings.voice_tts_piper_service_port if self._piper_tts_enabled() else None,
                     "model": self._tts_component_model(),
                     "model_display_name": self._tts_component_model_display_name(),
                     "restart_target": self._settings.piper_tts_service_id if self._piper_tts_enabled() else "tts",

@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 183: Expand Step 5 provider setup UI with STT model/profile/CPU-GPU mode, TTS voice/model/language, wakeword model/threshold, and provider socket/port/health fields
 [TODO] Task 184: Add Step 5 provider-driven default and optional model downloads for Faster Whisper, Piper, wakeword models, and user-selected extra STT/TTS/wake assets
 [TODO] Task 185: Add Step 5 provider apply plan preview showing config writes, model downloads, Docker/container changes, supervisor registration, health validation, and persisted selections
 [TODO] Task 186: Implement Step 5 CUDA profile handling with auto-detect recommendation, CPU/CUDA image selection, user override, and Docker CUDA validation

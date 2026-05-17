@@ -19,6 +19,8 @@ def voice_provider_ids(settings: Settings) -> list[str]:
         provider_ids.append(settings.voice_stt_provider)
     if settings.voice_tts_provider != "deterministic":
         provider_ids.append(settings.voice_tts_provider)
+    if settings.voice_wake_provider != "deterministic":
+        provider_ids.append(settings.voice_wake_provider)
 
     normalized: list[str] = []
     seen: set[str] = set()
@@ -72,6 +74,12 @@ class ProviderSetupService:
             current_step_id = "capability_declaration"
             last_completed_step_id = "provider_setup"
 
+        provider_configs = dict(state.provider_setup.provider_configs)
+        for provider_id, provider_config in payload.provider_configs.items():
+            normalized_provider_id = str(provider_id or "").strip()
+            if normalized_provider_id in supported_providers:
+                provider_configs[normalized_provider_id] = self._provider_config_payload(provider_config)
+
         updated = state.model_copy(
             update={
                 "provider_setup": state.provider_setup.model_copy(
@@ -79,6 +87,7 @@ class ProviderSetupService:
                         "supported_providers": supported_providers,
                         "enabled_providers": enabled_providers,
                         "default_provider": default_provider,
+                        "provider_configs": provider_configs,
                         "declaration_allowed": declaration_allowed,
                         "blocking_reasons": blocking_reasons,
                         "last_updated_at": _utc_now(),
@@ -151,12 +160,14 @@ class ProviderSetupService:
             "profile",
             "fallback_profile",
             "model",
+            "language",
             "device",
             "compute_type",
             "warm_model",
             "warm_models",
             "default_voice",
             "default_wakeword",
+            "threshold",
         ):
             value = getattr(payload, field)
             if value is None:

@@ -726,23 +726,26 @@ class TrustStatusRefreshResponse(BaseModel):
     trust_last_checked_at: str | None = None
 
 
-class ProviderSetupRequest(BaseModel):
-    enabled_providers: list[str] = Field(default_factory=list)
-    default_provider: str | None = None
-
-
 class ProviderConfigRequest(BaseModel):
     enabled: bool = True
     default: bool = False
     profile: str | None = None
     fallback_profile: str | None = None
     model: str | None = None
+    language: str | None = None
     device: str | None = None
     compute_type: str | None = None
     warm_model: bool | None = None
     warm_models: list[str] = Field(default_factory=list)
     default_voice: str | None = None
     default_wakeword: str | None = None
+    threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
+class ProviderSetupRequest(BaseModel):
+    enabled_providers: list[str] = Field(default_factory=list)
+    default_provider: str | None = None
+    provider_configs: dict[str, ProviderConfigRequest] = Field(default_factory=dict)
 
 
 class ProviderSetupResponse(BaseModel):

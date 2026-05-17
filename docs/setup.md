@@ -148,6 +148,9 @@ Provider/runtime setup is exposed at `/setup/providers` and backed by
 `/api/setup/providers/apply`. The status endpoint reports provider selection,
 runtime service health, provider states, and blockers so the UI can poll during
 downloads, restarts, and health checks.
+Step 5 includes STT, TTS, and wake configuration controls for model/profile,
+CPU or CUDA mode, language, default Piper voice, wake model, threshold, preload
+lists, and runtime socket/port/health details.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,
