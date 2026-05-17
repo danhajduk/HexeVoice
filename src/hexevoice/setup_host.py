@@ -354,7 +354,7 @@ class SetupHostReadinessService:
     def _enrollment_token_url(core_base_url: str | None) -> str | None:
         if not core_base_url:
             return None
-        return f"{core_base_url.rstrip('/')}/system/supervisors/enrollment-tokens"
+        return f"{core_base_url.rstrip('/')}/api/system/supervisors/enrollment-tokens"
 
     def _supervisor_installer(self) -> Path | None:
         for local in (

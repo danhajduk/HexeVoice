@@ -454,7 +454,7 @@ Supervisor install inputs:
   - requires Supervisor ID
   - should receive a Core one-time enrollment token
   - Core creates one-time enrollment tokens with `POST /api/system/supervisors/enrollment-tokens`
-  - setup UI should provide an `Open Core enrollment token` button when joined
+  - setup UI should provide a `Copy token API command` button when joined
     Supervisor is selected
   - the button should open the Core enrollment-token page/flow for the selected
     Core URL

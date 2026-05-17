@@ -18,6 +18,15 @@ function defaultSupervisorId(readiness) {
   return `${hostname}-hexe-supervisor`;
 }
 
+function enrollmentTokenApiUrl(form, readiness) {
+  const fromReadiness = readiness?.enrollment_token_url;
+  if (fromReadiness) {
+    return fromReadiness;
+  }
+  const base = form.core_base_url?.trim();
+  return base ? `${base.replace(/\/$/, "")}/api/system/supervisors/enrollment-tokens` : "";
+}
+
 export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness }) {
   const [localReadiness, setLocalReadiness] = useState(null);
   const [form, setForm] = useState({
@@ -102,11 +111,20 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
     }
   }
 
-  function openEnrollmentToken() {
-    const base = form.core_base_url || activeReadiness?.enrollment_token_url?.replace(/\/system\/supervisors\/enrollment-tokens$/, "");
-    const url = activeReadiness?.enrollment_token_url || (base ? `${base.replace(/\/$/, "")}/system/supervisors/enrollment-tokens` : "");
-    if (url) {
-      window.open(url, "_blank", "noopener,noreferrer");
+  async function copyEnrollmentTokenCommand() {
+    const url = enrollmentTokenApiUrl(form, activeReadiness);
+    if (!url) {
+      setError("core_url_required");
+      return;
+    }
+    const body = JSON.stringify({ supervisor_id: form.supervisor_id || defaultSupervisorId(activeReadiness) });
+    const command = `curl -fsS -X POST ${url} -H "Content-Type: application/json" -H "X-Admin-Token: <admin-token>" -d '${body}'`;
+    try {
+      await navigator.clipboard.writeText(command);
+      setNotice("Core enrollment token command copied.");
+      setError("");
+    } catch {
+      window.prompt("Copy Core enrollment token command", command);
     }
   }
 
@@ -159,8 +177,8 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
             <span className="field-label">Enrollment token</span>
             <input className="field-input" value={form.enrollment_token} onChange={(event) => update("enrollment_token", event.target.value)} />
           </label>
-          <button className="btn btn-secondary" type="button" onClick={openEnrollmentToken} disabled={!form.core_base_url && !activeReadiness?.enrollment_token_url}>
-            Open Core enrollment token
+          <button className="btn btn-secondary" type="button" onClick={copyEnrollmentTokenCommand} disabled={!form.core_base_url && !activeReadiness?.enrollment_token_url}>
+            Copy token API command
           </button>
         </div>
       ) : null}
