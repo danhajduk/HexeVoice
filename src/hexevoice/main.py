@@ -2142,7 +2142,13 @@ def create_app(
             if not provider_target or provider_target in seen_targets:
                 continue
             seen_targets.add(provider_target)
-            for provider_action in ("install", "start"):
+            if action in {"download-model", "download-models", "sync-models"}:
+                provider_actions = ("download-models",)
+            elif action == "preload":
+                provider_actions = ("preload",)
+            else:
+                provider_actions = ("install", "start")
+            for provider_action in provider_actions:
                 result = await asyncio.to_thread(service.service_action, target=provider_target, action=provider_action)
                 actions.append(result.model_dump(mode="json"))
                 if not result.accepted:

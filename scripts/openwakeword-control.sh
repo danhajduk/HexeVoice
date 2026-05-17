@@ -45,8 +45,76 @@ list_models() {
   find "$target_dir" -maxdepth 1 -type f \( -name '*.tflite' -o -name '*.onnx' \) -printf '%f\n' | sort
 }
 
+apply_saved_openwakeword_provider_config() {
+  local exports
+  if exports="$(PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" - "$ROOT_DIR" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import os
+import shlex
+import sys
+
+from hexevoice.config.settings import Settings
+
+root_dir = Path(sys.argv[1])
+runtime_dir = Path(os.environ.get("RUNTIME_DIR") or root_dir / "runtime")
+try:
+    settings = Settings(runtime_dir=runtime_dir)
+    state = json.loads(settings.resolved_onboarding_state_path().read_text(encoding="utf-8"))
+    configs = state.get("provider_setup", {}).get("provider_configs", {})
+except Exception:
+    raise SystemExit(0)
+
+provider_config = {}
+if isinstance(configs, dict):
+    for key in ("supervised_openwakeword", "openwakeword", "wake"):
+        value = configs.get(key)
+        if isinstance(value, dict) and value:
+            provider_config = value
+            break
+
+default_model = str(provider_config.get("default_wakeword") or provider_config.get("model") or "").strip()
+warm_models = provider_config.get("warm_models")
+if not isinstance(warm_models, list):
+    warm_models = []
+models = [str(item).strip() for item in warm_models if str(item).strip()]
+if default_model and default_model not in models:
+    models.insert(0, default_model)
+
+exports = {}
+if default_model:
+    exports["OPENWAKEWORD_DEFAULT_MODEL"] = default_model
+if models:
+    exports["OPENWAKEWORD_REQUESTED_MODELS"] = ",".join(models)
+
+for key, value in exports.items():
+    print(f"export {key}={shlex.quote(str(value))}")
+PY
+  )"; then
+    if [[ -n "$exports" ]]; then
+      eval "$exports"
+    fi
+  fi
+}
+
+model_exists() {
+  local target_dir requested stem lower_requested lower_stem
+  target_dir="$1"
+  requested="$2"
+  lower_requested="$(printf '%s' "${requested%.*}" | tr '[:upper:]' '[:lower:]')"
+  while IFS= read -r stem; do
+    lower_stem="$(printf '%s' "${stem%.*}" | tr '[:upper:]' '[:lower:]')"
+    if [[ "$lower_stem" == "$lower_requested" ]]; then
+      return 0
+    fi
+  done < <(list_models)
+  [[ -f "$target_dir/${requested}" || -f "$target_dir/${requested}.tflite" || -f "$target_dir/${requested}.onnx" ]]
+}
+
 sync_models() {
-  local target_dir source_default legacy_hexa copied
+  local target_dir source_default legacy_hexa copied requested missing requested_models
   target_dir="$(model_dir_abs)"
   source_default="$ROOT_DIR/runtime/openwakeword/models/hexe.tflite"
   legacy_hexa="$ROOT_DIR/runtime/vioce_models/Hexa.tflite"
@@ -74,6 +142,24 @@ sync_models() {
 
   if [[ "$copied" -eq 0 ]]; then
     echo "No wake models found. Put hexe.tflite, .tflite, or .onnx files in $target_dir." >&2
+    return 1
+  fi
+
+  missing=0
+  requested_models="${OPENWAKEWORD_DEFAULT_MODEL:-Hexe},${OPENWAKEWORD_REQUESTED_MODELS:-}"
+  IFS=',' read -r -a requested_list <<< "$requested_models"
+  for requested in "${requested_list[@]}"; do
+    requested="${requested## }"
+    requested="${requested%% }"
+    if [[ -z "$requested" ]]; then
+      continue
+    fi
+    if ! model_exists "$target_dir" "$requested"; then
+      echo "requested wake model missing: $requested" >&2
+      missing=1
+    fi
+  done
+  if [[ "$missing" -ne 0 ]]; then
     return 1
   fi
 
@@ -183,9 +269,11 @@ doctor() {
 ACTION="${1:-status}"
 case "$ACTION" in
   install|sync-models|preload)
+    apply_saved_openwakeword_provider_config
     sync_models
     ;;
   start)
+    apply_saved_openwakeword_provider_config
     sync_models >/dev/null
     compose up -d
     ;;
@@ -193,6 +281,7 @@ case "$ACTION" in
     compose stop
     ;;
   restart)
+    apply_saved_openwakeword_provider_config
     sync_models >/dev/null
     compose up -d --force-recreate
     ;;
@@ -206,11 +295,13 @@ case "$ACTION" in
     wait_for_health
     ;;
   ready)
+    apply_saved_openwakeword_provider_config
     sync_models
     compose up -d
     wait_for_health
     ;;
   doctor)
+    apply_saved_openwakeword_provider_config
     doctor
     ;;
   logs)

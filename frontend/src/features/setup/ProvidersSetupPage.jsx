@@ -205,11 +205,11 @@ export function ProvidersSetupPage() {
   }
 
   async function apply(target, action = "install") {
-    setBusy(target || "apply");
+    setBusy(target || (action === "install" ? "apply" : action));
     setError("");
     setNotice("");
     try {
-      await applySetupProviders(target ? { target, action } : {});
+      await applySetupProviders(target ? { target, action } : { action });
       setNotice("Provider action queued.");
       await refresh();
     } catch (err) {
@@ -393,6 +393,9 @@ export function ProvidersSetupPage() {
         </button>
         <button className="btn btn-primary" type="button" onClick={() => apply()} disabled={busy !== ""}>
           {busy === "apply" ? "Applying..." : "Apply enabled"}
+        </button>
+        <button className="btn btn-secondary" type="button" onClick={() => apply(null, "download-models")} disabled={busy !== ""}>
+          {busy === "download-models" ? "Downloading..." : "Download selected models"}
         </button>
       </div>
 

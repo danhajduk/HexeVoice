@@ -26,6 +26,7 @@ def test_openwakeword_control_sync_models_copies_default_hexe_model(tmp_path):
         env={
             "PATH": "/usr/bin:/bin",
             "PYTHON_BIN": sys.executable,
+            "RUNTIME_DIR": str(tmp_path / "runtime"),
             "OPENWAKEWORD_ENV_FILE": str(tmp_path / "missing.env"),
             "OPENWAKEWORD_MODEL_DIR": str(model_dir),
             "OPENWAKEWORD_LEGACY_MODEL_DIR": str(tmp_path / "missing-legacy"),
@@ -64,6 +65,7 @@ def test_openwakeword_control_ready_syncs_starts_and_waits_for_health(tmp_path):
                 "PYTHON_BIN": sys.executable,
                 "DOCKER_BIN": str(fake_docker),
                 "DOCKER_LOG": str(docker_log),
+                "RUNTIME_DIR": str(tmp_path / "runtime"),
                 "OPENWAKEWORD_ENV_FILE": str(tmp_path / "missing.env"),
                 "OPENWAKEWORD_MODEL_DIR": str(model_dir),
                 "OPENWAKEWORD_LEGACY_MODEL_DIR": str(tmp_path / "missing-legacy"),

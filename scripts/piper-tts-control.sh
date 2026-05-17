@@ -47,6 +47,60 @@ service_url() {
   printf '%s' "${PIPER_TTS_SERVICE_URL%/}"
 }
 
+apply_saved_piper_provider_config() {
+  local exports
+  if exports="$(PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" - "$ROOT_DIR" <<'PY'
+from __future__ import annotations
+
+from pathlib import Path
+import json
+import os
+import shlex
+import sys
+
+from hexevoice.config.settings import Settings
+
+root_dir = Path(sys.argv[1])
+runtime_dir = Path(os.environ.get("RUNTIME_DIR") or root_dir / "runtime")
+try:
+    settings = Settings(runtime_dir=runtime_dir)
+    state = json.loads(settings.resolved_onboarding_state_path().read_text(encoding="utf-8"))
+    provider_config = (
+        state.get("provider_setup", {})
+        .get("provider_configs", {})
+        .get("piper", {})
+    )
+except Exception:
+    raise SystemExit(0)
+
+if not isinstance(provider_config, dict):
+    raise SystemExit(0)
+
+default_voice = str(provider_config.get("default_voice") or provider_config.get("model") or "").strip()
+warm_voices = provider_config.get("warm_models")
+if not isinstance(warm_voices, list):
+    warm_voices = []
+voices = [str(item).strip() for item in warm_voices if str(item).strip()]
+if default_voice and default_voice not in voices:
+    voices.insert(0, default_voice)
+
+exports = {}
+if default_voice:
+    exports["PIPER_TTS_MODEL_PATH"] = f"/models/{default_voice}.onnx"
+if voices:
+    exports["PIPER_TTS_WARM_VOICES"] = ",".join(voices)
+    exports["PIPER_TTS_DOWNLOAD_VOICES"] = ",".join(voices)
+
+for key, value in exports.items():
+    print(f"export {key}={shlex.quote(str(value))}")
+PY
+  )"; then
+    if [[ -n "$exports" ]]; then
+      eval "$exports"
+    fi
+  fi
+}
+
 http_request() {
   local method="$1"
   local path="$2"
@@ -240,9 +294,11 @@ doctor() {
 ACTION="${1:-status}"
 case "$ACTION" in
   install|download-models)
+    apply_saved_piper_provider_config
     download_models
     ;;
   start)
+    apply_saved_piper_provider_config
     mkdir -p "$(model_dir_abs)" "$HEXEVOICE_SOCKET_DIR"
     rm -f "$PIPER_TTS_SOCKET_PATH"
     compose up -d --build
@@ -251,6 +307,7 @@ case "$ACTION" in
     compose stop
     ;;
   restart)
+    apply_saved_piper_provider_config
     mkdir -p "$(model_dir_abs)" "$HEXEVOICE_SOCKET_DIR"
     rm -f "$PIPER_TTS_SOCKET_PATH"
     compose up -d --force-recreate piper_tts
@@ -265,9 +322,11 @@ case "$ACTION" in
     wait_for_health
     ;;
   preload)
+    apply_saved_piper_provider_config
     http_request PUT /config
     ;;
   ready)
+    apply_saved_piper_provider_config
     download_models
     mkdir -p "$(model_dir_abs)" "$HEXEVOICE_SOCKET_DIR"
     rm -f "$PIPER_TTS_SOCKET_PATH"
@@ -276,6 +335,7 @@ case "$ACTION" in
     http_request PUT /config
     ;;
   doctor)
+    apply_saved_piper_provider_config
     doctor
     ;;
   logs)

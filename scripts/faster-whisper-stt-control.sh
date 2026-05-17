@@ -104,7 +104,7 @@ except Exception:
 
 if not isinstance(provider_config, dict):
     raise SystemExit(0)
-if not any(provider_config.get(key) not in (None, "", []) for key in ("profile", "model", "device", "compute_type", "warm_model")):
+if not any(provider_config.get(key) not in (None, "", []) for key in ("profile", "model", "device", "compute_type", "language", "warm_model", "warm_models")):
     raise SystemExit(0)
 
 try:
@@ -116,9 +116,13 @@ exports = {
     "VOICE_STT_FASTER_WHISPER_MODEL": profile.model,
     "VOICE_STT_FASTER_WHISPER_DEVICE": profile.device,
     "VOICE_STT_FASTER_WHISPER_COMPUTE_TYPE": profile.compute_type,
+    "VOICE_STT_FASTER_WHISPER_LANGUAGE": profile.language,
 }
 if provider_config.get("warm_model") is not None:
     exports["VOICE_STT_PRELOAD"] = "true" if provider_config.get("warm_model") else "false"
+warm_models = provider_config.get("warm_models")
+if isinstance(warm_models, list):
+    exports["VOICE_STT_DOWNLOAD_MODELS"] = ",".join(str(item).strip() for item in warm_models if str(item).strip())
 
 for key, value in exports.items():
     if value is not None:
@@ -362,11 +366,19 @@ from pathlib import Path
 
 from faster_whisper import WhisperModel
 
-model = os.environ.get("VOICE_STT_FASTER_WHISPER_MODEL", "base")
+models = []
+default_model = os.environ.get("VOICE_STT_FASTER_WHISPER_MODEL", "base")
+if default_model:
+    models.append(default_model)
+for model in os.environ.get("VOICE_STT_DOWNLOAD_MODELS", "").split(","):
+    model = model.strip()
+    if model and model not in models:
+        models.append(model)
 cache_dir = Path(os.environ["HEXEVOICE_STT_CACHE_DIR"])
 cache_dir.mkdir(parents=True, exist_ok=True)
-WhisperModel(model, device="cpu", compute_type="int8", download_root=str(cache_dir))
-print(f"downloaded {model} to {cache_dir}")
+for model in models:
+    WhisperModel(model, device="cpu", compute_type="int8", download_root=str(cache_dir))
+    print(f"downloaded {model} to {cache_dir}")
 PY
 }
 

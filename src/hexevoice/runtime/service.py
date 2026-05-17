@@ -1115,7 +1115,7 @@ class NodeRuntimeService:
             normalized_target = self._settings.piper_tts_service_id
         if normalized_target in {"stt", "stt_engine"} and self._external_stt_enabled():
             normalized_target = self._settings.voice_stt_service_id
-        if normalized_action not in {"install", "start", "stop", "restart"}:
+        if normalized_action not in {"install", "start", "stop", "restart", "download-model", "download-models", "sync-models", "preload"}:
             log.warning(
                 "Rejected service action for unsupported action: target=%s action=%s",
                 normalized_target,
@@ -1126,7 +1126,7 @@ class NodeRuntimeService:
                 action=normalized_action,
                 accepted=False,
                 status="unsupported_action",
-                detail="Supported actions are install, start, stop, and restart.",
+                detail="Supported actions are install, start, stop, restart, download-models, sync-models, and preload.",
             )
         if normalized_target == "backend":
             if normalized_action != "restart":
@@ -1181,6 +1181,17 @@ class NodeRuntimeService:
                 status="unsupported_service",
                 detail="Supported services are backend, openwakeword, piper_tts when enabled, and faster_whisper_stt when enabled.",
             )
+        script_action = normalized_action
+        if normalized_action == "download-models":
+            if normalized_target == self._settings.voice_stt_service_id:
+                script_action = "download-model"
+            elif normalized_target == self._settings.openwakeword_service_id:
+                script_action = "sync-models"
+        if normalized_action == "download-model":
+            if normalized_target == self._settings.piper_tts_service_id:
+                script_action = "download-models"
+            elif normalized_target == self._settings.openwakeword_service_id:
+                script_action = "sync-models"
         script = service_scripts[normalized_target]()
         if not script.exists():
             log.error("Service control script missing: target=%s path=%s", normalized_target, script)
@@ -1191,8 +1202,8 @@ class NodeRuntimeService:
                 status="control_script_missing",
                 detail=str(script),
             )
-        log.info("Running service action: target=%s action=%s script=%s", normalized_target, normalized_action, script)
-        result = self._service_command_runner([str(script), normalized_action])
+        log.info("Running service action: target=%s action=%s script=%s", normalized_target, script_action, script)
+        result = self._service_command_runner([str(script), script_action])
         if result.returncode != 0:
             log.error(
                 "Service action failed: target=%s action=%s returncode=%s detail=%s",

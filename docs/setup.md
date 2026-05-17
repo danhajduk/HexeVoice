@@ -151,6 +151,11 @@ downloads, restarts, and health checks.
 Step 5 includes STT, TTS, and wake configuration controls for model/profile,
 CPU or CUDA mode, language, default Piper voice, wake model, threshold, preload
 lists, and runtime socket/port/health details.
+The Step 5 apply endpoint accepts `action: "download-models"` to download or
+sync selected provider assets before containers are started: faster-whisper
+downloads the default model plus configured warm models, Piper downloads the
+default voice plus warm voices, and openWakeWord syncs the default Hexe model
+plus any selected local wake models.
 Capability and governance setup is exposed at `/setup/capabilities` and backed
 by `/api/setup/capabilities/status`,
 `/api/setup/capabilities/selection`,
