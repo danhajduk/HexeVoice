@@ -20,9 +20,107 @@ SETUP_TTS="${HEXEVOICE_SETUP_TTS:-false}"
 SETUP_WAKE="${HEXEVOICE_SETUP_WAKE:-false}"
 SETUP_FIRMWARE="${HEXEVOICE_SETUP_FIRMWARE:-false}"
 SETUP_HOST_ALIAS="${HEXEVOICE_SETUP_HOST_ALIAS:-false}"
+INSTALL_SYSTEM_PACKAGES="${HEXEVOICE_INSTALL_SYSTEM_PACKAGES:-auto}"
+PRINT_PREREQ_COMMANDS="${HEXEVOICE_PRINT_PREREQ_COMMANDS:-false}"
+MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
+APT_UPDATED=false
 
 log() {
   printf '[hexevoice-install] %s\n' "$*"
+}
+
+truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+system_package_install_enabled() {
+  case "$INSTALL_SYSTEM_PACKAGES" in
+    0|false|FALSE|no|NO|off|OFF|print|PRINT) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+print_prereq_commands() {
+  cat <<'EOF'
+# Debian/Ubuntu prerequisite install for HexeVoice:
+sudo apt-get update
+sudo apt-get install -y git python3 python3-venv ca-certificates curl gnupg
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+printf 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main\n' \
+  | sudo tee /etc/apt/sources.list.d/nodesource.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y nodejs
+EOF
+}
+
+run_privileged() {
+  if [[ "$(id -u)" == "0" ]]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    return 127
+  fi
+}
+
+apt_install_packages() {
+  if ! command -v apt-get >/dev/null 2>&1; then
+    return 1
+  fi
+  if [[ "$APT_UPDATED" != "true" ]]; then
+    log "Updating apt package metadata"
+    run_privileged env DEBIAN_FRONTEND=noninteractive apt-get update
+    APT_UPDATED=true
+  fi
+  log "Installing system packages: $*"
+  run_privileged env DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
+}
+
+install_node_runtime() {
+  if ! system_package_install_enabled; then
+    return 1
+  fi
+  if command -v apt-get >/dev/null 2>&1; then
+    apt_install_packages ca-certificates curl gnupg
+    run_privileged install -d -m 0755 /etc/apt/keyrings
+    run_privileged rm -f /etc/apt/keyrings/nodesource.gpg
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+      | run_privileged gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
+    printf 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main\n' \
+      | run_privileged tee /etc/apt/sources.list.d/nodesource.list >/dev/null
+    APT_UPDATED=false
+    apt_install_packages nodejs
+    return 0
+  fi
+  return 1
+}
+
+ensure_command() {
+  local command_name="$1"
+  shift
+  if command -v "$command_name" >/dev/null 2>&1; then
+    return 0
+  fi
+  if system_package_install_enabled && [[ "$#" -gt 0 ]] && apt_install_packages "$@"; then
+    command -v "$command_name" >/dev/null 2>&1 && return 0
+  fi
+  printf 'Missing required command: %s\n' "$command_name" >&2
+  if ! system_package_install_enabled; then
+    printf 'Automatic system package install is disabled by HEXEVOICE_INSTALL_SYSTEM_PACKAGES=%s\n' "$INSTALL_SYSTEM_PACKAGES" >&2
+    printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+  elif ! command -v apt-get >/dev/null 2>&1; then
+    printf 'Automatic install currently supports apt-get based hosts only.\n' >&2
+    printf 'Show Debian/Ubuntu prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+  else
+    printf 'Install it manually or rerun with sudo available.\n' >&2
+    printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+  fi
+  exit 1
 }
 
 require_command() {
@@ -32,16 +130,63 @@ require_command() {
   fi
 }
 
-require_command git
-require_command python3
-require_command npm
-
-truthy() {
-  case "${1:-}" in
-    1|true|TRUE|yes|YES|on|ON) return 0 ;;
-    *) return 1 ;;
-  esac
+ensure_python_venv() {
+  local temp_dir
+  temp_dir="$(mktemp -d)"
+  if python3 -m venv "$temp_dir/venv" >/dev/null 2>&1; then
+    rm -rf "$temp_dir"
+    return 0
+  fi
+  rm -rf "$temp_dir"
+  if system_package_install_enabled && apt_install_packages python3-venv; then
+    temp_dir="$(mktemp -d)"
+    if python3 -m venv "$temp_dir/venv" >/dev/null 2>&1; then
+      rm -rf "$temp_dir"
+      return 0
+    fi
+    rm -rf "$temp_dir"
+  fi
+  printf 'Python venv support is required. Install python3-venv and rerun the installer.\n' >&2
+  printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+  exit 1
 }
+
+ensure_node_runtime() {
+  local node_major=""
+  if command -v node >/dev/null 2>&1; then
+    node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  fi
+  if [[ -z "$node_major" || "$node_major" -lt "$MIN_NODE_MAJOR" ]] || ! command -v npm >/dev/null 2>&1; then
+    install_node_runtime || true
+  fi
+  if ! command -v node >/dev/null 2>&1; then
+    printf 'Missing required command: node\n' >&2
+    printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+    exit 1
+  fi
+  if ! command -v npm >/dev/null 2>&1; then
+    printf 'Missing required command: npm\n' >&2
+    printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+    exit 1
+  fi
+  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
+  if [[ -z "$node_major" || "$node_major" -lt "$MIN_NODE_MAJOR" ]]; then
+    printf 'Node.js %s+ is required; found %s.\n' "$MIN_NODE_MAJOR" "$(node --version 2>/dev/null || printf 'unknown')" >&2
+    printf 'Install a newer Node.js runtime and rerun the installer.\n' >&2
+    printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
+    exit 1
+  fi
+}
+
+if truthy "$PRINT_PREREQ_COMMANDS" || [[ "$INSTALL_SYSTEM_PACKAGES" == "print" || "$INSTALL_SYSTEM_PACKAGES" == "PRINT" ]]; then
+  print_prereq_commands
+  exit 0
+fi
+
+ensure_command git git
+ensure_command python3 python3
+ensure_python_venv
+ensure_node_runtime
 
 bootstrap_status_update() {
   local phase="$1"

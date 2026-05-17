@@ -48,6 +48,14 @@ Once changes are hosted on the default branch, install the node into
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | bash
 ```
 
+On Debian/Ubuntu hosts the installer will try to install missing system
+prerequisites with `apt`, including Git, Python venv support, and Node.js/npm.
+To print the prerequisite commands without installing anything, run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash
+```
+
 To also render and restart the user services after `scripts/stack.env` is
 created, run:
 
