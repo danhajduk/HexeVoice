@@ -174,3 +174,4 @@ Task 160: Make the temporary install UI match the production setup UI shell, inc
 Task 161: Strengthen Step 1 production handoff validation so temp UI redirects only after production backend/frontend, runtime dirs, required default assets, and setup health are ready - Completed on 05/16/2026 21:43
 Task 163: Expand Step 2 Host and Node Setup with node identity fields: node display name, node type/role, hostname, LAN identity, final API URL, and final UI URL - Completed on 05/16/2026 21:52
 Task 164: Make the setup sidebar adapt to setup mode so new-node installs hide migration/re-auth steps and migration installs show migration plus re-auth - Completed on 05/16/2026 21:56
+Task 165: Update Step 2 handoff so supervisor/service registration waits until node identity/name is set, then registers backend/frontend/STT/TTS/wake/docker services before production redirect - Completed on 05/16/2026 22:05

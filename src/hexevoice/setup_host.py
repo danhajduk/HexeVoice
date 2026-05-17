@@ -58,7 +58,12 @@ class SetupHostReadinessService:
         production_setup_url = f"{ui_base_url.rstrip('/')}/setup/host"
         temporary_setup_url = f"http://{lan_host}:8180/setup"
         node_identity = self._node_identity(api_base_url=api_base_url, ui_base_url=ui_base_url, hostname=hostname, lan_host=lan_host)
-        checks = self._checks(lan_host=lan_host, api_base_url=api_base_url, ui_base_url=ui_base_url)
+        checks = self._checks(
+            lan_host=lan_host,
+            api_base_url=api_base_url,
+            ui_base_url=ui_base_url,
+            node_identity=node_identity,
+        )
         blockers = [check.id for check in checks if check.required and check.status == "fail"]
         warnings = [check.id for check in checks if check.status == "warn"]
         core_url = self._normalize_core_base_url(state.get("core_base_url") or self._core_url_from_state())
@@ -194,7 +199,14 @@ class SetupHostReadinessService:
             readiness=self.readiness_payload(),
         )
 
-    def _checks(self, *, lan_host: str, api_base_url: str, ui_base_url: str) -> list[SetupHostReadinessCheck]:
+    def _checks(
+        self,
+        *,
+        lan_host: str,
+        api_base_url: str,
+        ui_base_url: str,
+        node_identity: dict[str, Any],
+    ) -> list[SetupHostReadinessCheck]:
         checks: list[SetupHostReadinessCheck] = []
 
         def add(
@@ -219,6 +231,22 @@ class SetupHostReadinessService:
 
         add("backend", "Backend API", "pass", "Backend API is serving host readiness.", required=True)
         add("lan_url", "LAN URL", "pass" if lan_host else "fail", f"LAN host is {lan_host}.", required=True)
+        add(
+            "node_identity",
+            "Node identity",
+            "pass" if node_identity.get("configured") else "fail",
+            "Node identity is saved."
+            if node_identity.get("configured")
+            else "Node display name and nonce must be saved before production handoff.",
+            required=True,
+            detail={
+                "node_name": node_identity.get("node_name"),
+                "node_type": node_identity.get("node_type"),
+                "node_id": node_identity.get("node_id"),
+                "api_base_url": node_identity.get("api_base_url"),
+                "ui_endpoint": node_identity.get("ui_endpoint"),
+            },
+        )
 
         runtime_missing = [path for path in self._runtime_dirs() if not (self._settings.runtime_dir / path).is_dir()]
         add(
@@ -248,6 +276,15 @@ class SetupHostReadinessService:
             "pass" if self._supervisor_detected() else "warn",
             "Supervisor socket is visible." if self._supervisor_detected() else "Supervisor socket was not detected.",
             detail={"socket": os.environ.get("HEXE_SUPERVISOR_API_SOCKET", "/run/hexe/supervisor.sock")},
+        )
+        add(
+            "supervisor_registration",
+            "Supervisor registration",
+            *self._supervisor_registration_status(node_identity),
+            detail={
+                "node_id": node_identity.get("node_id"),
+                "deferred_until_trusted": not bool(node_identity.get("node_id")),
+            },
         )
         add(
             "host_alias",
@@ -405,6 +442,13 @@ class SetupHostReadinessService:
     @staticmethod
     def _supervisor_detected() -> bool:
         return Path(os.environ.get("HEXE_SUPERVISOR_API_SOCKET", "/run/hexe/supervisor.sock")).exists()
+
+    def _supervisor_registration_status(self, node_identity: dict[str, Any]) -> tuple[str, str]:
+        if not self._supervisor_detected():
+            return ("warn", "Supervisor registration is unavailable until a Supervisor socket is detected.")
+        if not node_identity.get("node_id"):
+            return ("warn", "Supervisor runtime registration is deferred until Core trust provides a node ID.")
+        return ("pass", "Supervisor runtime registration can use the trusted node ID.")
 
     @staticmethod
     def _default_supervisor_id() -> str:

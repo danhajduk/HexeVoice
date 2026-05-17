@@ -190,6 +190,12 @@ added.
 The setup sidebar adapts to setup mode: new-node setup hides migration and
 re-auth, while migration setup replaces node onboarding with migration import
 and migration re-auth.
+Production handoff requires the local node identity check to pass before the
+temporary runner redirects. The runner also calls
+`POST /api/setup/supervisor/register-runtime` on the production backend before
+redirect. That endpoint forces the existing Supervisor heartbeat/registration
+path; if Core trust has not issued a `node_id` yet, registration is reported as
+deferred and the backend heartbeat loop completes it after trust activation.
 
 Runtime files are local state and should normally stay uncommitted. See
 `docs/runtime-state-policy.md` for the tracking policy and run

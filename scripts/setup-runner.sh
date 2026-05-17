@@ -14,7 +14,7 @@ SETUP_RUNNER_PRODUCTION_TIMEOUT_S="${SETUP_RUNNER_PRODUCTION_TIMEOUT_S:-600}"
 SETUP_RUNNER_POLL_INTERVAL_S="${SETUP_RUNNER_POLL_INTERVAL_S:-3}"
 SETUP_RUNNER_HANDOFF_MODE="${SETUP_RUNNER_HANDOFF_MODE:-none}"
 SETUP_RUNNER_OPEN_BROWSER="${SETUP_RUNNER_OPEN_BROWSER:-false}"
-SETUP_RUNNER_REQUIRED_HOST_CHECKS="${SETUP_RUNNER_REQUIRED_HOST_CHECKS:-runtime_dirs,stt_model,tts_model,wake_model}"
+SETUP_RUNNER_REQUIRED_HOST_CHECKS="${SETUP_RUNNER_REQUIRED_HOST_CHECKS:-node_identity,runtime_dirs,stt_model,tts_model,wake_model}"
 SETUP_BOOTSTRAP_STATUS_PATH="${SETUP_BOOTSTRAP_STATUS_PATH:-$ROOT_DIR/runtime/setup/bootstrap-status.json}"
 SETUP_HOST_STATE_PATH="${SETUP_HOST_STATE_PATH:-$ROOT_DIR/runtime/setup/host-state.json}"
 SUPERVISOR_SOCKET="${HEXE_SUPERVISOR_API_SOCKET:-/run/hexe/supervisor.sock}"
@@ -207,6 +207,7 @@ TEMP_SETUP_URL="http://${LAN_HOST}:${TEMP_FRONTEND_PORT}/setup"
 PRODUCTION_SETUP_URL="${SETUP_RUNNER_PRODUCTION_URL:-http://${LAN_HOST}:${PRODUCTION_FRONTEND_PORT}/setup}"
 PRODUCTION_API_HEALTH_URL="${SETUP_RUNNER_PRODUCTION_API_HEALTH_URL:-http://${LAN_HOST}:9004/api/health}"
 PRODUCTION_HOST_READINESS_URL="${SETUP_RUNNER_PRODUCTION_HOST_READINESS_URL:-http://${LAN_HOST}:9004/api/setup/host-readiness}"
+PRODUCTION_SUPERVISOR_REGISTER_URL="${SETUP_RUNNER_PRODUCTION_SUPERVISOR_REGISTER_URL:-http://${LAN_HOST}:9004/api/setup/supervisor/register-runtime}"
 
 require_file "$ROOT_DIR/.venv/bin/python" "Missing backend virtualenv at $ROOT_DIR/.venv/bin/python"
 require_file "$ROOT_DIR/frontend/node_modules" "Missing frontend dependencies at $ROOT_DIR/frontend/node_modules"
@@ -371,6 +372,42 @@ production_ready() {
   if ! production_host_readiness_ready >/dev/null 2>&1; then
     return 1
   fi
+  if ! production_supervisor_registration_ready; then
+    return 1
+  fi
+  return 0
+}
+
+production_supervisor_registration_ready() {
+  local payload detail
+  if ! payload="$(curl -fsS --max-time 8 -X POST "$PRODUCTION_SUPERVISOR_REGISTER_URL" 2>/dev/null)"; then
+    write_status "running" "waiting-for-supervisor-registration" "" "supervisor_registration_unavailable" "Production backend could not run Supervisor registration at ${PRODUCTION_SUPERVISOR_REGISTER_URL}." "true"
+    return 1
+  fi
+  if ! detail="$(
+    SUPERVISOR_REGISTRATION_PAYLOAD="$payload" "$ROOT_DIR/.venv/bin/python" - <<'PY'
+from __future__ import annotations
+
+import json
+import os
+
+payload = json.loads(os.environ["SUPERVISOR_REGISTRATION_PAYLOAD"])
+status = str(payload.get("status") or "").strip()
+reason = str(payload.get("reason") or "").strip()
+
+if status == "ok":
+    print("supervisor_registration_ok")
+    raise SystemExit(0)
+if status == "skipped" and reason in {"missing_node_id", "supervisor_client_not_configured"}:
+    print(f"supervisor_registration_deferred:{reason}")
+    raise SystemExit(0)
+raise SystemExit(f"supervisor_registration_not_ready:{status or 'unknown'}:{reason or 'unknown'}")
+PY
+  )"; then
+    write_status "running" "waiting-for-supervisor-registration" "" "supervisor_registration_not_ready" "${detail:-Supervisor runtime registration is not ready.}" "true"
+    return 1
+  fi
+  write_status "running" "production-supervisor-registration-checked" "supervisor-registration-checked"
   return 0
 }
 

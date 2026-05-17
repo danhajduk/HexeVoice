@@ -26,6 +26,7 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
     runtime_check = next(check for check in payload["checks"] if check["id"] == "runtime_dirs")
     assert runtime_check["status"] == "fail"
     assert "runtime_dirs" in payload["blockers"]
+    assert "node_identity" in payload["blockers"]
     stt_check = next(check for check in payload["checks"] if check["id"] == "stt_model")
     assert stt_check["detail"]["action"] == "download-default-stt-model"
 
@@ -99,6 +100,17 @@ def test_setup_host_readiness_includes_saved_node_identity(tmp_path):
     assert identity["hostname"] == "hexe-ai"
     assert identity["api_base_url"] == "http://voice.local:9004/"
     assert identity["ui_endpoint"] == "http://voice.local:8084/"
+    identity_check = next(check for check in response.json()["checks"] if check["id"] == "node_identity")
+    assert identity_check["status"] == "pass"
+
+
+def test_setup_supervisor_register_runtime_skips_without_supervisor_client(tmp_path):
+    client = TestClient(create_app(Settings(runtime_dir=tmp_path / "runtime", api_port=9004)))
+
+    response = client.post("/api/setup/supervisor/register-runtime")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "skipped", "reason": "supervisor_client_not_configured"}
 
 
 def test_setup_host_joined_supervisor_requires_token(tmp_path):

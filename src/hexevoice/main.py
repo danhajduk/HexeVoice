@@ -596,6 +596,13 @@ def create_app(
     async def api_health() -> ApiHealthResponse:
         return service.api_health_payload()
 
+    @app.post("/api/setup/supervisor/register-runtime")
+    async def setup_supervisor_register_runtime() -> dict[str, object]:
+        result = await service.supervisor_heartbeat_once()
+        if result is None:
+            return {"status": "skipped", "reason": "supervisor_unavailable"}
+        return result
+
     @app.post("/api/engines/heartbeat")
     async def engine_heartbeat(payload: dict[str, object]) -> dict[str, object]:
         engine_id = str(payload.get("engine_id") or payload.get("service_id") or "").strip()
