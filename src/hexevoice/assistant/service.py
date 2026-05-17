@@ -143,6 +143,59 @@ class AiNodeAssistantAdapter:
         self._fallback = fallback
         self._http_client = http_client
         self._last_error: str | None = None
+        self._last_error_code: str | None = None
+        self._last_latency_ms: float | None = None
+
+    def _fallback_response(
+        self,
+        payload: AssistantTurnRequest,
+        *,
+        session_id: str,
+        context: Sequence[ConversationTurn],
+        reason: str,
+        detail: str | None = None,
+    ) -> AssistantTurnResponse:
+        self._last_error_code = reason
+        self._last_error = detail or reason
+        fallback = self._fallback.handle_turn(payload, session_id=session_id, context=context)
+        return fallback.model_copy(
+            update={
+                "fallback_used": True,
+                "fallback_reason": reason,
+                "error": reason,
+                "provider_metadata": {
+                    "primary_provider": "ai_node",
+                    "fallback_provider": fallback.provider_id,
+                    "error": {"code": reason, "message": self._last_error},
+                },
+            }
+        )
+
+    def _metadata_from_response(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        metadata: dict[str, Any] = {}
+        raw_metadata = data.get("provider_metadata") or data.get("metadata")
+        if isinstance(raw_metadata, dict):
+            metadata.update(raw_metadata)
+        for key in ("provider_id", "provider", "model", "model_provider", "model_id", "request_id"):
+            value = data.get(key)
+            if value not in (None, ""):
+                metadata[key] = value
+        metadata["ai_node"] = {
+            "turn_path": self._turn_path,
+            "contract_version": "voice.ai_node.turn.v1",
+        }
+        return metadata or None
+
+    def _error_code(self, exc: Exception) -> str:
+        if isinstance(exc, httpx.TimeoutException):
+            return "ai_node_timeout"
+        if isinstance(exc, httpx.HTTPStatusError):
+            return "ai_node_http_error"
+        if isinstance(exc, ValueError):
+            return "ai_node_invalid_response"
+        if isinstance(exc, httpx.HTTPError):
+            return "ai_node_request_failed"
+        return "ai_node_error"
 
     def handle_turn(
         self,
@@ -152,14 +205,21 @@ class AiNodeAssistantAdapter:
         context: Sequence[ConversationTurn] = (),
     ) -> AssistantTurnResponse:
         if not self._base_url:
-            self._last_error = "missing_ai_node_base_url"
-            return self._fallback.handle_turn(payload, session_id=session_id, context=context)
+            return self._fallback_response(
+                payload,
+                session_id=session_id,
+                context=context,
+                reason="missing_ai_node_base_url",
+            )
 
         client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        started_at = time.perf_counter()
         try:
             response = client.post(
                 f"{self._base_url}{self._turn_path}",
                 json={
+                    "contract_version": "voice.ai_node.turn.v1",
+                    "source_node_type": "voice-node",
                     "endpoint_id": payload.endpoint_id,
                     "session_id": session_id,
                     "text": payload.text,
@@ -179,6 +239,7 @@ class AiNodeAssistantAdapter:
             text = str(data.get("reply_text") or data.get("spoken_text") or data.get("text") or "").strip()
             if not text:
                 raise ValueError("empty_ai_node_reply")
+            provider_latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
             heard_text = str(data.get("heard_text") or payload.text).strip()
             device_state = (
                 data.get("device_state")
@@ -186,6 +247,9 @@ class AiNodeAssistantAdapter:
                 else "speaking"
             )
             self._last_error = None
+            self._last_error_code = None
+            self._last_latency_ms = provider_latency_ms
+            provider_id = str(data.get("provider_id") or data.get("provider") or "ai_node")
             return AssistantTurnResponse(
                 endpoint_id=str(data.get("endpoint_id") or payload.endpoint_id),
                 session_id=str(data.get("session_id") or session_id),
@@ -195,14 +259,23 @@ class AiNodeAssistantAdapter:
                 handled_locally=bool(data.get("handled_locally", False)),
                 command=data.get("command") if isinstance(data.get("command"), str) else None,
                 device_state=device_state,
-                provider_id="ai_node",
+                provider_id=provider_id,
                 model=str(data.get("model")) if data.get("model") else None,
                 error=None,
+                provider_latency_ms=provider_latency_ms,
+                provider_metadata=self._metadata_from_response(data),
             )
         except Exception as exc:
-            self._last_error = str(exc)
-            log.warning("AI Node assistant turn failed; using local echo fallback: error=%s", self._last_error)
-            return self._fallback.handle_turn(payload, session_id=session_id, context=context)
+            error_code = self._error_code(exc)
+            self._last_latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            log.warning("AI Node assistant turn failed; using local echo fallback: code=%s error=%s", error_code, exc)
+            return self._fallback_response(
+                payload,
+                session_id=session_id,
+                context=context,
+                reason=error_code,
+                detail=str(exc),
+            )
         finally:
             if self._http_client is None:
                 client.close()
@@ -215,6 +288,9 @@ class AiNodeAssistantAdapter:
             "base_url": self._base_url,
             "turn_path": self._turn_path,
             "last_error": self._last_error,
+            "last_error_code": self._last_error_code,
+            "last_latency_ms": self._last_latency_ms,
+            "contract_version": "voice.ai_node.turn.v1",
             "fallback": self._fallback.status(),
         }
 

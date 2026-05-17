@@ -147,9 +147,12 @@ The backend persists onboarding, trust, provider, capability, governance, and op
 
 ## Device Conversation Stub
 
-There is now a minimal local device conversation route at `POST /api/assistant/turn`.
+There is now a device conversation route at `POST /api/assistant/turn`.
 
-This is meant as a lightweight firmware target while the full wake/STT/TTS pipeline is still under construction.
+This route is used by firmware bring-up and the voice loop. Set
+`VOICE_ASSISTANT_PROVIDER=ai_node` with `VOICE_ASSISTANT_AI_NODE_BASE_URL` to
+route turns to AI Node; local registered intents still run first, and local echo
+remains the fallback for smoke tests and degraded mode.
 
 Example request:
 
@@ -160,7 +163,9 @@ Example request:
 }
 ```
 
-The route currently supports simple local commands like `status`, `repeat`, and `stop`, and otherwise returns a deterministic fallback reply so the device can validate request/response flow end to end.
+Assistant responses include provider/model metadata, adapter latency, fallback
+reason, and structured error fields when AI Node is unavailable or returns an
+invalid response.
 
 ## Current Voice Boundary
 

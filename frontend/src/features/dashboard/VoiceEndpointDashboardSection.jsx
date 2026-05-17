@@ -151,7 +151,11 @@ function VoicePipelinePanel({ voiceStatus }) {
         </div>
         <div>
           <dt>Assistant</dt>
-          <dd>{valueOrEmpty(assistant.provider_id)}</dd>
+          <dd>{assistant.fallback_used ? `${valueOrEmpty(assistant.provider_id)} fallback` : valueOrEmpty(assistant.provider_id)}</dd>
+        </div>
+        <div>
+          <dt>Assistant detail</dt>
+          <dd>{assistant.fallback_used ? valueOrEmpty(assistant.fallback_reason) : valueOrEmpty(assistant.model, "ready")}</dd>
         </div>
         <div>
           <dt>TTS stream</dt>

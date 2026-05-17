@@ -1314,6 +1314,8 @@ def test_assistant_turn_can_route_to_configured_ai_node():
                 "handled_locally": False,
                 "command": None,
                 "device_state": "speaking",
+                "model": "assistant-model-a",
+                "provider_metadata": {"model_provider": "test-provider"},
             },
         )
 
@@ -1331,11 +1333,19 @@ def test_assistant_turn_can_route_to_configured_ai_node():
     )
 
     assert captured["url"] == "https://ai-node.test/api/assistant/turn"
-    assert b"turn on the lights" in captured["json"]
+    request_json = json.loads(captured["json"])
+    assert request_json["text"] == "turn on the lights"
+    assert request_json["contract_version"] == "voice.ai_node.turn.v1"
+    assert request_json["source_node_type"] == "voice-node"
     assert response.reply_text == "AI Node heard turn on the lights."
     assert response.heard_text == "turn on the lights"
     assert response.provider_id == "ai_node"
+    assert response.model == "assistant-model-a"
+    assert response.provider_latency_ms is not None
+    assert response.provider_metadata["model_provider"] == "test-provider"
+    assert response.provider_metadata["ai_node"]["contract_version"] == "voice.ai_node.turn.v1"
     assert adapter.status()["healthy"] is True
+    assert adapter.status()["last_latency_ms"] is not None
 
 
 def test_assistant_ai_node_adapter_falls_back_to_local_echo_when_unconfigured():
@@ -1352,8 +1362,39 @@ def test_assistant_ai_node_adapter_falls_back_to_local_echo_when_unconfigured():
     )
 
     assert response.reply_text == "I heard turn on the lights"
+    assert response.fallback_used is True
+    assert response.fallback_reason == "missing_ai_node_base_url"
+    assert response.error == "missing_ai_node_base_url"
     assert adapter.status()["healthy"] is False
     assert adapter.status()["last_error"] == "missing_ai_node_base_url"
+    assert adapter.status()["last_error_code"] == "missing_ai_node_base_url"
+
+
+def test_assistant_ai_node_adapter_falls_back_on_timeout():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("timed out", request=request)
+
+    adapter = AiNodeAssistantAdapter(
+        base_url="https://ai-node.test",
+        turn_path="/api/assistant/turn",
+        timeout_s=0.01,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    response = adapter.handle_turn(
+        AssistantTurnRequest(endpoint_id="box-9", session_id="session-abc", text="turn on the lights"),
+        session_id="session-abc",
+    )
+
+    assert response.reply_text == "I heard turn on the lights"
+    assert response.provider_id == "local_echo"
+    assert response.fallback_used is True
+    assert response.fallback_reason == "ai_node_timeout"
+    assert response.provider_metadata["primary_provider"] == "ai_node"
+    assert response.provider_metadata["fallback_provider"] == "local_echo"
+    assert adapter.status()["healthy"] is False
+    assert adapter.status()["last_error_code"] == "ai_node_timeout"
 
 
 def test_assistant_turn_service_keeps_rolling_context(tmp_path):

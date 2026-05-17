@@ -22,14 +22,16 @@ The initial backend exposes the standard starter route groups for health, node s
 
 The backend also registers the trusted node runtime with Core Supervisor when supervisor integration is enabled. The current integration uses the local Unix socket at `/run/hexe/supervisor.sock`, calls `POST /api/supervisor/runtimes/register` once after a trusted `node_id` is available, and then calls `POST /api/supervisor/runtimes/heartbeat` on the backend heartbeat loop. Supervisor lifecycle ownership is separate from Core onboarding and trust.
 
-For firmware bring-up, the backend also now exposes a minimal local assistant turn route:
+For firmware bring-up and the Phase 2 voice loop, the backend exposes an assistant turn route:
 
 - `POST /api/assistant/turn`
 
-This route is intentionally lightweight. It gives endpoint firmware a stable request/response contract before the full wake, STT, upstream reasoning, and TTS pipeline is implemented. The current behavior supports:
+This route gives endpoint firmware and the voice pipeline a stable request/response contract. The current behavior supports:
 
 - registered local intents from the Voice Node intent registry, seeded with `timer.create`
-- deterministic fallback replies for arbitrary text turns
+- AI Node routing when `VOICE_ASSISTANT_PROVIDER=ai_node` and `VOICE_ASSISTANT_AI_NODE_BASE_URL` are configured
+- deterministic local echo fallback for smoke tests, degraded mode, unconfigured AI Node, timeouts, and invalid AI Node responses
+- AI Node model/provider metadata, adapter latency, fallback reason, and structured error fields on assistant responses
 - endpoint-scoped session ids so device-side integration can start immediately
 
 Registered intent management lives under:

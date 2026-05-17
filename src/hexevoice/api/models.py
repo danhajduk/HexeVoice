@@ -35,6 +35,10 @@ class AssistantTurnResponse(BaseModel):
     provider_id: str = "local_echo"
     model: str | None = None
     error: str | None = None
+    provider_latency_ms: float | None = None
+    provider_metadata: dict[str, Any] | None = None
+    fallback_used: bool = False
+    fallback_reason: str | None = None
     intent_latency_ms: float | None = None
     conversation_followup: dict[str, Any] | None = None
 

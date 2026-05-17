@@ -1157,6 +1157,10 @@ class VoiceSessionManager:
                 "text_chars": len(turn.assistant_response.spoken_text or ""),
                 "error": turn.assistant_response.error,
                 "handled_locally": turn.assistant_response.handled_locally,
+                "provider_latency_ms": turn.assistant_response.provider_latency_ms,
+                "provider_metadata": turn.assistant_response.provider_metadata,
+                "fallback_used": turn.assistant_response.fallback_used,
+                "fallback_reason": turn.assistant_response.fallback_reason,
                 "intent_latency_ms": turn.assistant_response.intent_latency_ms,
                 "conversation_followup": turn.assistant_response.conversation_followup,
             }
