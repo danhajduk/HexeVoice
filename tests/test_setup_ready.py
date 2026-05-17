@@ -102,6 +102,10 @@ def test_setup_ready_status_blocks_before_smoke_test(tmp_path):
     assert payload["final_summary"]["node_id"] == "node-voice-123"
     assert payload["final_summary"]["core_base_url"] == "http://core.test:9001"
     assert payload["final_summary"]["runtime_dirs"]["missing"] == []
+    recovery_actions = {action["id"]: action for action in payload["recovery_actions"]["actions"]}
+    assert recovery_actions["run-full-smoke-test"]["endpoint"] == "/api/setup/ready/actions/run-full-smoke-test"
+    assert recovery_actions["open-core-node-page"]["url"] == "http://core.test:9001/system/nodes/node-voice-123"
+    assert recovery_actions["return-to-failed-step"]["disabled"] is True
 
 
 def test_setup_ready_smoke_test_and_complete(tmp_path, monkeypatch):
@@ -142,6 +146,25 @@ def test_setup_ready_smoke_test_and_complete(tmp_path, monkeypatch):
     assert checks["governance_currency"]["status"] == "pass"
     assert checks["supervisor_registration"]["status"] == "warn"
     assert smoke_payload["status"]["warning_acknowledgement"]["required"] is True
+    assert smoke_payload["status"]["recovery_actions"]["failed_step_route"] == "/setup/providers"
+
+    provider_recovery = client.post("/api/setup/ready/actions/rerun-provider-health")
+    assert provider_recovery.status_code == 200
+    assert provider_recovery.json()["accepted"] is True
+    assert "provider_status" in provider_recovery.json()["result"]
+
+    failed_step_recovery = client.post("/api/setup/ready/actions/return-to-failed-step")
+    assert failed_step_recovery.status_code == 200
+    assert failed_step_recovery.json()["result"]["route"] == "/setup/providers"
+
+    open_core_recovery = client.post("/api/setup/ready/actions/open-core-node-page")
+    assert open_core_recovery.status_code == 200
+    assert open_core_recovery.json()["result"]["url"] == "http://core.test:9001/system/nodes/node-voice-123"
+
+    export_recovery = client.post("/api/setup/ready/actions/export-setup-bundle")
+    assert export_recovery.status_code == 200
+    assert export_recovery.json()["accepted"] is True
+    assert export_recovery.json()["result"]["export"]["download_url"] == "/api/setup/ready/export/download"
 
     complete = client.post("/api/setup/ready/complete")
     assert complete.json()["accepted"] is False

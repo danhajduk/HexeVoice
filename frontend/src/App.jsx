@@ -838,7 +838,7 @@ export default function App() {
                 ) : setupSection === "ready" ? (
                   <>
                     <SetupHealthCard readiness={setupReadiness} />
-                    <ReadySetupPage onRefresh={refresh} />
+                    <ReadySetupPage onRefresh={refresh} onOpenSetupSection={openSetupSection} />
                   </>
                 ) : (
                   <>

@@ -2992,6 +2992,105 @@ def create_app(
         write_setup_ready_state(ready_state)
         return payload
 
+    def setup_ready_failed_step_route(last_smoke: dict | None, provider_status: dict, capability_status: dict) -> str:
+        checks = (last_smoke or {}).get("checks", []) if isinstance(last_smoke, dict) else []
+        check_routes = {
+            "backend": "/setup/host",
+            "frontend": "/setup/host",
+            "runtime_dirs": "/setup/host",
+            "firmware": "/setup/host",
+            "lan_urls": "/setup/host",
+            "host_alias": "/setup/host",
+            "trust": "/setup/trust",
+            "core_node_visibility": "/setup/trust",
+            "core_trust_visibility": "/setup/trust",
+            "stt_provider_response": "/setup/providers",
+            "tts_provider_response": "/setup/providers",
+            "wake_provider_response": "/setup/providers",
+            "backend_provider_calls": "/setup/providers",
+            "supervisor_registration": "/setup/providers",
+            "core_capability_visibility": "/setup/capabilities",
+            "governance_currency": "/setup/capabilities",
+        }
+        for check in checks:
+            if not isinstance(check, dict) or check.get("status") not in {"fail", "warn"}:
+                continue
+            route = check_routes.get(str(check.get("id") or ""))
+            if route:
+                return route
+        if provider_status.get("continue_blocked"):
+            return "/setup/providers"
+        if capability_status.get("continue_blocked"):
+            return "/setup/capabilities"
+        return "/setup/ready"
+
+    def setup_ready_recovery_actions(
+        ready_state: dict,
+        last_smoke: dict | None,
+        provider_status: dict,
+        capability_status: dict,
+        state,
+    ) -> dict:
+        core_base_url = (state.pre_trust.core_base_url or "").rstrip("/")
+        node_id = state.trust_activation.node_id or ""
+        core_node_url = f"{core_base_url}/system/nodes/{node_id}" if core_base_url and node_id else None
+        failed_step_route = setup_ready_failed_step_route(last_smoke, provider_status, capability_status)
+        return {
+            "failed_step_route": failed_step_route,
+            "core_node_url": core_node_url,
+            "last_action": ready_state.get("last_recovery_action"),
+            "last_action_at": ready_state.get("last_recovery_action_at"),
+            "last_action_result": ready_state.get("last_recovery_action_result"),
+            "actions": [
+                {
+                    "id": "run-full-smoke-test",
+                    "label": "Run full smoke test",
+                    "kind": "api",
+                    "endpoint": "/api/setup/ready/actions/run-full-smoke-test",
+                },
+                {
+                    "id": "rerun-provider-health",
+                    "label": "Re-run provider health",
+                    "kind": "api",
+                    "endpoint": "/api/setup/ready/actions/rerun-provider-health",
+                },
+                {
+                    "id": "sync-governance",
+                    "label": "Sync governance",
+                    "kind": "api",
+                    "endpoint": "/api/setup/ready/actions/sync-governance",
+                    "disabled": not bool(core_base_url and node_id),
+                },
+                {
+                    "id": "redeclare-capabilities",
+                    "label": "Re-declare capabilities",
+                    "kind": "api",
+                    "endpoint": "/api/setup/ready/actions/redeclare-capabilities",
+                    "disabled": not bool(core_base_url and node_id),
+                },
+                {
+                    "id": "export-setup-bundle",
+                    "label": "Export setup bundle",
+                    "kind": "api",
+                    "endpoint": "/api/setup/ready/actions/export-setup-bundle",
+                },
+                {
+                    "id": "open-core-node-page",
+                    "label": "Open Core node page",
+                    "kind": "external_url",
+                    "url": core_node_url,
+                    "disabled": not bool(core_node_url),
+                },
+                {
+                    "id": "return-to-failed-step",
+                    "label": "Return to failed step",
+                    "kind": "setup_route",
+                    "route": failed_step_route,
+                    "disabled": failed_step_route == "/setup/ready",
+                },
+            ],
+        }
+
     def setup_ready_status_payload() -> dict:
         ready_state = read_setup_ready_state()
         state = onboarding_state_store.load()
@@ -3052,6 +3151,13 @@ def create_app(
                 "acknowledged_ids": sorted(acknowledged_warning_ids),
                 "active_warning_ids": sorted(active_warning_ids),
             },
+            "recovery_actions": setup_ready_recovery_actions(
+                ready_state,
+                last_smoke,
+                provider_status,
+                capability_status,
+                state,
+            ),
             "setup_root_redirect_active": not completed,
             "dashboard_url": (app_settings.public_ui_base_url or setup_host_readiness_service.readiness_payload().ui_base_url).rstrip("/") + "/",
         }
@@ -3127,6 +3233,60 @@ def create_app(
             "message": "warnings_acknowledged",
             "status": await asyncio.to_thread(setup_ready_status_payload),
         }
+
+    @app.post("/api/setup/ready/actions/{action}")
+    async def setup_ready_recovery_action(action: str) -> dict:
+        normalized = action.strip().lower()
+        ready_state = await asyncio.to_thread(read_setup_ready_state)
+        try:
+            if normalized in {"run-full-smoke-test", "full-smoke-test", "run-smoke-test"}:
+                result = {"smoke": await asyncio.to_thread(setup_ready_smoke_payload)}
+            elif normalized in {"rerun-provider-health", "provider-health"}:
+                result = {"provider_status": await asyncio.to_thread(setup_provider_status_payload)}
+            elif normalized in {"sync-governance", "governance-sync"}:
+                governance_result = await asyncio.to_thread(governance_service.refresh)
+                result = {"governance": governance_result.model_dump(mode="json")}
+            elif normalized in {"redeclare-capabilities", "capability-redeclare", "declare-capabilities"}:
+                declaration_result = await asyncio.to_thread(capability_service.declare)
+                result = {"capability_declaration": declaration_result.model_dump(mode="json")}
+            elif normalized in {"export-setup-bundle", "export"}:
+                result = {"export": await asyncio.to_thread(setup_final_export_payload)}
+            elif normalized == "return-to-failed-step":
+                status = await asyncio.to_thread(setup_ready_status_payload)
+                result = {"route": status.get("recovery_actions", {}).get("failed_step_route") or "/setup/ready"}
+            elif normalized == "open-core-node-page":
+                status = await asyncio.to_thread(setup_ready_status_payload)
+                result = {"url": status.get("recovery_actions", {}).get("core_node_url")}
+            else:
+                return {
+                    "accepted": False,
+                    "action": normalized,
+                    "message": "unsupported_ready_recovery_action",
+                    "status": await asyncio.to_thread(setup_ready_status_payload),
+                }
+            ready_state = await asyncio.to_thread(read_setup_ready_state)
+            ready_state["last_recovery_action"] = normalized
+            ready_state["last_recovery_action_at"] = datetime.now(UTC).isoformat()
+            ready_state["last_recovery_action_result"] = {key: value for key, value in result.items() if key in {"route", "url"}}
+            await asyncio.to_thread(write_setup_ready_state, ready_state)
+            return {
+                "accepted": True,
+                "action": normalized,
+                "result": result,
+                "status": await asyncio.to_thread(setup_ready_status_payload),
+            }
+        except (HTTPException, httpx.HTTPError) as exc:
+            detail = exc.detail if isinstance(exc, HTTPException) else str(exc)
+            ready_state["last_recovery_action"] = normalized
+            ready_state["last_recovery_action_at"] = datetime.now(UTC).isoformat()
+            ready_state["last_recovery_action_result"] = {"error": str(detail)}
+            await asyncio.to_thread(write_setup_ready_state, ready_state)
+            return {
+                "accepted": False,
+                "action": normalized,
+                "message": str(detail),
+                "status": await asyncio.to_thread(setup_ready_status_payload),
+            }
 
     @app.post("/api/setup/ready/export")
     async def setup_ready_export() -> dict:

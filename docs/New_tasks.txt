@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 203: Add Step 7 recovery actions for full smoke test rerun, provider health rerun, governance sync, capability redeclare, opening Core node page, exporting setup bundle, and returning to failed setup steps
 [TODO] Task 204: Verify Step 7 post-complete lifecycle so production backend/frontend, Docker providers, supervisor/systemd units, and temp runner shutdown survive restart
 
 **********************************************************************************************

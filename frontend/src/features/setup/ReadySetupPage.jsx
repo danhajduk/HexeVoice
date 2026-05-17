@@ -4,6 +4,7 @@ import {
   completeSetupReady,
   exportSetupReadyBundle,
   getSetupReadyStatus,
+  runSetupReadyAction,
   runSetupReadySmokeTest,
 } from "../../api/client";
 
@@ -14,7 +15,14 @@ function toneForCheck(status) {
   return "neutral";
 }
 
-export function ReadySetupPage({ onRefresh }) {
+function setupSectionFromRoute(route) {
+  if (route === "/setup/trust/reauth") return "reauth";
+  if (route === "/setup/trust") return "onboard";
+  if (route?.startsWith("/setup/")) return route.replace("/setup/", "") || "host";
+  return "ready";
+}
+
+export function ReadySetupPage({ onRefresh, onOpenSetupSection }) {
   const [status, setStatus] = useState(null);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -110,10 +118,51 @@ export function ReadySetupPage({ onRefresh }) {
     }
   }
 
+  async function runRecoveryAction(action) {
+    if (!action || action.disabled) {
+      return;
+    }
+    if (action.kind === "external_url") {
+      if (typeof window !== "undefined" && action.url) {
+        window.open(action.url, "_blank", "noopener,noreferrer");
+      }
+      return;
+    }
+    if (action.kind === "setup_route") {
+      if (onOpenSetupSection) {
+        onOpenSetupSection(setupSectionFromRoute(action.route));
+      } else if (typeof window !== "undefined" && action.route) {
+        window.history.pushState(null, "", action.route);
+      }
+      return;
+    }
+    setBusy(action.id);
+    setError("");
+    setNotice("");
+    try {
+      const payload = await runSetupReadyAction(action.id);
+      setStatus(payload.status);
+      if (payload.accepted) {
+        setNotice(`${action.label || action.id} complete.`);
+        if (action.id === "export-setup-bundle" && payload.result?.export?.download_url && typeof window !== "undefined") {
+          window.open(payload.result.export.download_url, "_blank", "noopener,noreferrer");
+        }
+      } else {
+        setError(payload.message || `${action.label || action.id} did not complete.`);
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   const smoke = status?.last_smoke;
   const checks = smoke?.checks || [];
   const finalSummary = status?.final_summary || {};
   const warningAck = status?.warning_acknowledgement || {};
+  const recovery = status?.recovery_actions || {};
+  const recoveryActions = recovery.actions || [];
 
   return (
     <article className="card stack">
@@ -234,6 +283,31 @@ export function ReadySetupPage({ onRefresh }) {
           {busy === "export" ? "Exporting..." : "Export setup bundle"}
         </button>
       </div>
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Recovery Actions</h3>
+          <span className="status-pill status-pill-neutral">{recovery.failed_step_route || "/setup/ready"}</span>
+        </div>
+        <div className="form-actions">
+          {recoveryActions.map((action) => (
+            <button
+              className={action.id === "run-full-smoke-test" ? "btn btn-primary" : "btn btn-secondary"}
+              type="button"
+              key={action.id}
+              onClick={() => runRecoveryAction(action)}
+              disabled={busy !== "" || action.disabled}
+            >
+              {busy === action.id ? "Running..." : action.label || action.id}
+            </button>
+          ))}
+        </div>
+        {recovery.last_action ? (
+          <div className="callout">
+            Last recovery action: {recovery.last_action} {recovery.last_action_at || ""}
+          </div>
+        ) : null}
+      </section>
 
       <div className="fact-grid">
         {checks.map((check) => (

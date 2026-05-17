@@ -239,6 +239,10 @@ export async function acknowledgeSetupReadyWarnings() {
   return sendJson("/api/setup/ready/acknowledge-warnings", { body: {} });
 }
 
+export async function runSetupReadyAction(action) {
+  return sendJson(`/api/setup/ready/actions/${encodeURIComponent(action)}`, { body: {} });
+}
+
 export async function exportSetupReadyBundle() {
   return sendJson("/api/setup/ready/export", { body: {} });
 }

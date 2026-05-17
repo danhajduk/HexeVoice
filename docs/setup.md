@@ -223,7 +223,10 @@ identity, Core/local URLs, provider health, capability/governance state,
 lifecycle mode, runtime directory state, and accepted smoke-test warnings. The
 ready endpoint requires non-blocking smoke-test warnings to be acknowledged via
 `/api/setup/ready/acknowledge-warnings` before `/api/setup/ready/complete` is
-accepted.
+accepted. Step 7 recovery actions are exposed through
+`/api/setup/ready/actions/{action}` for a full smoke rerun, provider health
+refresh, governance sync, capability redeclaration, Core node page opening,
+setup bundle export, and routing the UI back to the failed setup step.
 smoke test checks backend/frontend reachability,
 trust, provider STT/TTS/wake health, backend provider routing, Core
 trust/capability visibility, governance currency, Supervisor registration,
