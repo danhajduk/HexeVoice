@@ -20,6 +20,15 @@ const defaultAssetChecks = [
   { id: "firmware", action: "download-firmware", label: "Firmware artifacts", button: "Download FW" },
 ];
 
+const recoveryActions = [
+  { action: "redetect-lan-ip", label: "Re-detect LAN" },
+  { action: "recheck-supervisor", label: "Re-check Supervisor" },
+  { action: "restart-production-services", label: "Restart production" },
+  { action: "rerun-supervisor-registration", label: "Retry registration" },
+  { action: "rebuild-systemd-services", label: "Rebuild services" },
+  { action: "restart-temporary-services", label: "Restart temp UI" },
+];
+
 function defaultSupervisorId(readiness) {
   const hostname = readiness?.hostname || "hexevoice";
   return `${hostname}-hexe-supervisor`;
@@ -433,6 +442,26 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
               </div>
             );
           })}
+        </div>
+      </section>
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Recovery actions</h3>
+          <span className="status-pill status-pill-neutral">Step 2</span>
+        </div>
+        <div className="form-actions">
+          {recoveryActions.map((item) => (
+            <button
+              className="btn btn-ghost"
+              key={item.action}
+              type="button"
+              onClick={() => runAction(item.action)}
+              disabled={busyAction !== "" || !supportedActions.has(item.action)}
+            >
+              {busyAction === item.action ? "Working..." : item.label}
+            </button>
+          ))}
         </div>
       </section>
 

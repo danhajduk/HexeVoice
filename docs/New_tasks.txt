@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 167: Add Step 2 recovery actions for re-detect LAN IP, restart temp services, restart production services, re-run service registration, re-check supervisor, and rebuild systemd/supervisor service definitions
 [TODO] Task 168: Normalize setup URLs so temp uses /setup/host on port 8180 and production uses /setup/host on port 8084 without duplicate /setup path segments
 [TODO] Task 169: Harden LAN identity detection so loopback addresses are never selected as the LAN host and the detected LAN IP is exposed as setup readiness data
 [TODO] Task 170: Expand Step 3 Core Connection to fetch and display Core identity, version, registration support, re-auth support, supervisor enrollment support, and capability/governance support

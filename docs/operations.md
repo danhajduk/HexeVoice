@@ -201,6 +201,11 @@ API URL, LAN identity, node identity, runtime directories, and disk space are
 hard blockers. Supervisor is a hard blocker only when the selected lifecycle
 mode requires Supervisor. Docker, systemd, firmware, CUDA, host alias, default
 assets, and deferred Supervisor registration remain warnings at this step.
+Step 2 recovery actions are exposed through the same Host Setup action API:
+re-detect LAN identity, re-check Supervisor, restart production services,
+re-run Supervisor service registration, rebuild systemd service definitions, and
+report that temporary setup services must be restarted by the setup runner
+instead of from inside the temporary API itself.
 
 Runtime files are local state and should normally stay uncommitted. See
 `docs/runtime-state-policy.md` for the tracking policy and run

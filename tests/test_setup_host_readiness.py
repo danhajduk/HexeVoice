@@ -23,6 +23,8 @@ def test_setup_host_readiness_reports_required_runtime_dirs(tmp_path):
     assert payload["production_setup_url"].endswith(":8084/setup/host")
     assert "continue" in payload["supported_actions"]
     assert "download-default-stt-model" in payload["supported_actions"]
+    assert "redetect-lan-ip" in payload["supported_actions"]
+    assert "rerun-supervisor-registration" in payload["supported_actions"]
     runtime_check = next(check for check in payload["checks"] if check["id"] == "runtime_dirs")
     assert runtime_check["status"] == "fail"
     assert runtime_check["detail"]["policy"]["severity"] == "hard_blocker"
@@ -173,6 +175,74 @@ def test_setup_host_actions_run_helpers_from_project_root(monkeypatch, tmp_path)
     assert response.accepted is True
     assert recorded["cwd"] == ROOT
     assert recorded["command"][1] == str(ROOT / "scripts" / "hostname-alias-control.sh")
+
+
+def test_setup_host_recovery_actions_report_current_state(monkeypatch, tmp_path):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
+
+    monkeypatch.setattr(SetupHostReadinessService, "_lan_host", staticmethod(lambda: "10.0.0.55"))
+    monkeypatch.setattr(SetupHostReadinessService, "_supervisor_detected", staticmethod(lambda: True))
+
+    lan_response = service.run_action("redetect-lan-ip", SetupHostReadinessActionRequest())
+    supervisor_response = service.run_action("recheck-supervisor", SetupHostReadinessActionRequest())
+    temp_response = service.run_action("restart-temporary-services", SetupHostReadinessActionRequest())
+
+    assert lan_response.accepted is True
+    assert lan_response.message == "lan_host:10.0.0.55"
+    assert supervisor_response.accepted is True
+    assert supervisor_response.message == "supervisor_detected"
+    assert temp_response.accepted is False
+    assert temp_response.message == "temporary_service_restart_requires_restarting_setup_runner"
+
+
+def test_setup_host_recovery_actions_use_stack_scripts(monkeypatch, tmp_path):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    recorded = []
+    service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
+
+    monkeypatch.setattr(SetupHostReadinessService, "_lan_host", staticmethod(lambda: "10.0.0.55"))
+
+    def fake_run(command, **kwargs):
+        recorded.append({"command": command, "timeout": kwargs.get("timeout"), "cwd": kwargs.get("cwd")})
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("hexevoice.setup_host.subprocess.run", fake_run)
+
+    restart_response = service.run_action("restart-production-services", SetupHostReadinessActionRequest())
+    rebuild_response = service.run_action("rebuild-systemd-services", SetupHostReadinessActionRequest())
+
+    assert restart_response.accepted is True
+    assert rebuild_response.accepted is True
+    assert recorded[0]["command"] == ["bash", str(ROOT / "scripts" / "restart-stack.sh")]
+    assert recorded[1]["command"] == ["bash", str(ROOT / "scripts" / "bootstrap.sh")]
+    assert all(item["timeout"] == 180 for item in recorded)
+    assert all(item["cwd"] == ROOT for item in recorded)
+
+
+def test_setup_host_supervisor_registration_recovery_uses_local_api(monkeypatch, tmp_path):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
+    called = {}
+
+    def fake_registration(action):
+        called["action"] = action
+        return SetupHostReadinessActionResponse(
+            accepted=True,
+            action=action,
+            message="ok",
+            readiness=service.readiness_payload(),
+        )
+
+    monkeypatch.setattr(service, "_post_supervisor_registration", fake_registration)
+
+    response = service.run_action("rerun-supervisor-registration", SetupHostReadinessActionRequest())
+
+    assert response.accepted is True
+    assert called["action"] == "rerun-supervisor-registration"
 
 
 def test_setup_host_default_asset_actions_use_control_scripts(monkeypatch, tmp_path):

@@ -9,6 +9,8 @@ import shutil
 import socket
 import subprocess
 from typing import Any
+import urllib.error
+import urllib.request
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from hexevoice.api.models import (
@@ -27,6 +29,12 @@ SUPPORTED_ACTIONS = [
     "download-default-wake-model",
     "download-firmware",
     "check-cuda",
+    "redetect-lan-ip",
+    "recheck-supervisor",
+    "restart-temporary-services",
+    "restart-production-services",
+    "rerun-supervisor-registration",
+    "rebuild-systemd-services",
     "install-host-alias",
     "install-standalone-supervisor",
     "install-joined-supervisor",
@@ -171,6 +179,38 @@ class SetupHostReadinessService:
             )
         if action == "check-cuda":
             return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "faster-whisper-stt-control.sh"), "cuda-preflight"])
+        if action == "redetect-lan-ip":
+            lan_host = self._lan_host()
+            return SetupHostReadinessActionResponse(
+                accepted=True,
+                action=action,
+                message=f"lan_host:{lan_host}",
+                retryable=False,
+                readiness=self.readiness_payload(),
+            )
+        if action == "recheck-supervisor":
+            detected = self._supervisor_detected()
+            return SetupHostReadinessActionResponse(
+                accepted=True,
+                action=action,
+                message="supervisor_detected" if detected else "supervisor_not_detected",
+                retryable=not detected,
+                readiness=self.readiness_payload(),
+            )
+        if action == "restart-temporary-services":
+            return SetupHostReadinessActionResponse(
+                accepted=False,
+                action=action,
+                message="temporary_service_restart_requires_restarting_setup_runner",
+                retryable=True,
+                readiness=self.readiness_payload(),
+            )
+        if action == "restart-production-services":
+            return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "restart-stack.sh")], timeout_s=180)
+        if action == "rerun-supervisor-registration":
+            return self._post_supervisor_registration(action)
+        if action == "rebuild-systemd-services":
+            return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "bootstrap.sh")], timeout_s=180)
         if action == "install-host-alias":
             env = {"HEXEVOICE_ENABLE_HOST_ALIAS": "true"}
             return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "hostname-alias-control.sh"), "install"], extra_env=env)
@@ -639,5 +679,58 @@ class SetupHostReadinessService:
             action=action,
             message=output or ("ok" if completed.returncode == 0 else f"exit_code_{completed.returncode}"),
             retryable=completed.returncode != 0,
+            readiness=self.readiness_payload(),
+        )
+
+    def _post_supervisor_registration(self, action: str) -> SetupHostReadinessActionResponse:
+        lan_host = self._lan_host()
+        api_base_url = self._settings.public_api_base_url or f"http://{lan_host}:{self._settings.api_port}"
+        url = f"{api_base_url.rstrip('/')}/api/setup/supervisor/register-runtime"
+        request = urllib.request.Request(
+            url,
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=8) as response:
+                body = response.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            return SetupHostReadinessActionResponse(
+                accepted=False,
+                action=action,
+                message=body or f"http_error_{exc.code}",
+                retryable=True,
+                readiness=self.readiness_payload(),
+            )
+        except Exception as exc:
+            return SetupHostReadinessActionResponse(
+                accepted=False,
+                action=action,
+                message=str(exc),
+                retryable=True,
+                readiness=self.readiness_payload(),
+            )
+
+        accepted = True
+        retryable = False
+        message = body.strip() or "supervisor_registration_requested"
+        try:
+            payload = json.loads(body or "{}")
+            status = str(payload.get("status") or "")
+            reason = str(payload.get("reason") or "")
+            if status and status not in {"ok", "skipped"}:
+                accepted = False
+                retryable = True
+            message = reason or status or message
+        except json.JSONDecodeError:
+            pass
+
+        return SetupHostReadinessActionResponse(
+            accepted=accepted,
+            action=action,
+            message=message,
+            retryable=retryable,
             readiness=self.readiness_payload(),
         )
