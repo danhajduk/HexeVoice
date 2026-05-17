@@ -16,6 +16,7 @@ import {
   refreshRegistrationMetadata,
   refreshGovernance,
   reviewVoiceIntent,
+  runSetupTrustAction,
   saveCoreConnection,
   saveCapabilitySelection,
   saveProviderConfig,
@@ -365,6 +366,7 @@ function renderStageBody({
   onStartSession,
   onPollSession,
   onFinalizeTrustActivation,
+  onTrustRecovery,
   providerSetup,
   capabilities,
   governanceCurrent,
@@ -458,6 +460,20 @@ function renderStageBody({
             Finalize outcome: {onboarding.session_state}. Start a fresh onboarding session after reviewing the current approval state in Core.
           </div>
         ) : null}
+        <div className="form-actions">
+          <button className="btn btn-secondary" type="button" onClick={() => onTrustRecovery("reopen-core-approval")} disabled={busyState !== "" || !onboarding?.approval_url}>
+            Open Core approval
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => onTrustRecovery("repoll-approval")} disabled={busyState !== "" || !onboarding?.session_id}>
+            Re-poll approval
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => onTrustRecovery("clear-expired-sessions")} disabled={busyState !== ""}>
+            Clear expired session
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => onTrustRecovery("restart-onboarding")} disabled={busyState !== ""}>
+            Restart onboarding
+          </button>
+        </div>
       </>
     );
   }
@@ -496,6 +512,20 @@ function renderStageBody({
           onSecondaryClick={onPollSession}
           secondaryDisabled={busyState !== ""}
         />
+        <div className="form-actions">
+          <button className="btn btn-secondary" type="button" onClick={() => onTrustRecovery("retry-trust-finalize")} disabled={busyState !== ""}>
+            Retry trust finalize
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => onTrustRecovery("repoll-approval")} disabled={busyState !== "" || !onboarding?.session_id}>
+            Re-poll approval
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => onTrustRecovery("recheck-core-trust-support")} disabled={busyState !== ""}>
+            Re-check Core support
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={() => onTrustRecovery("restart-onboarding")} disabled={busyState !== ""}>
+            Restart onboarding
+          </button>
+        </div>
       </>
     );
   }
@@ -1310,6 +1340,31 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
     }
   }
 
+  async function handleTrustRecovery(action) {
+    setBusyState(`trust-recovery-${action}`);
+    setStageError("");
+    setStageNotice("");
+    try {
+      const payload = await runSetupTrustAction(action);
+      await refreshSetupPanels();
+      if (payload.approval_url && action === "reopen-core-approval") {
+        window.open(payload.approval_url, "_blank", "noopener,noreferrer");
+      }
+      if (!payload.accepted) {
+        setStageError(payload.message);
+        return;
+      }
+      const supportSummary = Object.entries(payload.core_support || {})
+        .map(([key, value]) => `${key}:${value?.supported ? "supported" : "blocked"}`)
+        .join(", ");
+      setStageNotice(supportSummary ? `${payload.message} (${supportSummary})` : payload.message);
+    } catch (error) {
+      setStageError(String(error.message || error));
+    } finally {
+      setBusyState("");
+    }
+  }
+
   async function handleRegistrationMetadataRefresh() {
     setBusyState("registration-metadata-refresh");
     setStageError("");
@@ -1743,6 +1798,7 @@ export function OnboardingPanel({ status, onboarding, onRefresh }) {
           onStartSession: handleSessionStart,
           onPollSession: handleSessionPoll,
           onFinalizeTrustActivation: handleTrustFinalize,
+          onTrustRecovery: handleTrustRecovery,
           providerSetup,
           capabilities,
           governanceCurrent,

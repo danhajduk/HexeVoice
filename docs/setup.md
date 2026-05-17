@@ -137,6 +137,10 @@ rejected, expired, trust finalized, node ID received, and ready-to-continue.
 It also surfaces Step 4 blockers for required migrated re-auth, Core
 unreachable, unsupported re-auth, rejected or expired sessions, missing node
 identity, and local trust activation failure.
+Step 4 recovery actions are available from the trust screens and
+`POST /api/setup/trust/actions/{action}`. Supported actions restart onboarding,
+reopen the Core approval URL, re-poll approval, retry trust finalization, clear
+expired terminal sessions, and re-check Core onboarding/re-auth support.
 When re-auth finalize returns an approved node identity, setup refreshes local
 state and automatically advances to `/setup/providers`.
 Provider/runtime setup is exposed at `/setup/providers` and backed by

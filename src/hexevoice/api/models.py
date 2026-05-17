@@ -640,6 +640,19 @@ class SetupReauthFinalizeResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class SetupTrustRecoveryActionResponse(BaseModel):
+    accepted: bool
+    action: str
+    message: str
+    retryable: bool = True
+    session_state: str | None = None
+    node_id: str | None = None
+    trust_state: str | None = None
+    approval_url: str | None = None
+    core_support: dict[str, Any] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
+
+
 class BootstrapAdvertisementRequest(BaseModel):
     topic: str
     api_base: str | None = None

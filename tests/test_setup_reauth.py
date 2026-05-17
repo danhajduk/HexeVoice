@@ -2,6 +2,8 @@ import httpx
 
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.setup_reauth import SetupReauthService
+from hexevoice.setup_trust import SetupTrustRecoveryService
+from hexevoice.config.settings import Settings
 
 
 class FakeCoreClient:
@@ -85,3 +87,96 @@ def test_setup_reauth_core_offline_returns_retryable_status(tmp_path):
     assert started.status == "core_unreachable"
     assert started.warnings
     assert store.load().trust_activation.trust_status == "reauth_required"
+
+
+def test_setup_trust_recovery_clears_terminal_session(tmp_path):
+    store = OnboardingStateStore(path=tmp_path / "onboarding-state.json")
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "node_name": "voice-node",
+                    "protocol_version": "1.0",
+                    "node_nonce": "nonce",
+                    "core_base_url": "http://core.local:9001",
+                },
+                "bootstrap_discovery": {"advertisement_valid": True},
+                "onboarding_session": {
+                    "session_id": "session-1",
+                    "approval_url": "http://core.local/approve",
+                    "session_state": "expired",
+                    "last_terminal_outcome": "expired",
+                },
+                "resume": {"current_step_id": "approval", "last_completed_step_id": "registration"},
+            }
+        )
+    )
+    service = SetupTrustRecoveryService(
+        settings=Settings(onboarding_state_path=tmp_path / "onboarding-state.json"),
+        onboarding_state_store=store,
+    )
+
+    response = service.run_action("clear-expired-sessions")
+
+    assert response.accepted is True
+    assert response.message == "expired_session_cleared"
+    persisted = store.load()
+    assert persisted.onboarding_session.session_id is None
+    assert persisted.resume.current_step_id == "registration"
+
+
+def test_setup_trust_recovery_restarts_onboarding_without_losing_core_setup(tmp_path):
+    store = OnboardingStateStore(path=tmp_path / "onboarding-state.json")
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "node_name": "voice-node",
+                    "protocol_version": "1.0",
+                    "node_nonce": "nonce",
+                    "core_base_url": "http://core.local:9001",
+                },
+                "bootstrap_discovery": {"advertisement_valid": True},
+                "onboarding_session": {"session_id": "session-1", "session_state": "pending"},
+                "trust_activation": {"node_id": "node-old", "trust_status": "reauth_required"},
+                "resume": {"current_step_id": "approval", "last_completed_step_id": "registration"},
+            }
+        )
+    )
+    service = SetupTrustRecoveryService(
+        settings=Settings(onboarding_state_path=tmp_path / "onboarding-state.json"),
+        onboarding_state_store=store,
+    )
+
+    response = service.run_action("restart-onboarding")
+
+    assert response.accepted is True
+    persisted = store.load()
+    assert persisted.pre_trust.core_base_url == "http://core.local:9001"
+    assert persisted.onboarding_session.session_id is None
+    assert persisted.trust_activation.trust_status == "untrusted"
+    assert persisted.resume.current_step_id == "registration"
+
+
+def test_setup_trust_recovery_reopens_core_approval(tmp_path):
+    store = OnboardingStateStore(path=tmp_path / "onboarding-state.json")
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "onboarding_session": {
+                    "session_id": "session-1",
+                    "approval_url": "http://core.local/approve",
+                    "session_state": "pending",
+                },
+            }
+        )
+    )
+    service = SetupTrustRecoveryService(
+        settings=Settings(onboarding_state_path=tmp_path / "onboarding-state.json"),
+        onboarding_state_store=store,
+    )
+
+    response = service.run_action("reopen-core-approval")
+
+    assert response.accepted is True
+    assert response.approval_url == "http://core.local/approve"

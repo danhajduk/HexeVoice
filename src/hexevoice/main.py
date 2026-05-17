@@ -90,6 +90,7 @@ from hexevoice.api.models import (
     SetupCoreConnectionResponse,
     SetupReauthFinalizeResponse,
     SetupReauthStartResponse,
+    SetupTrustRecoveryActionResponse,
     ProviderSetupRequest,
     ProviderSetupResponse,
     ServiceStatusResponse,
@@ -121,6 +122,7 @@ from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.setup_bootstrap import SetupBootstrapStatusService
 from hexevoice.setup_host import SetupHostReadinessService
 from hexevoice.setup_reauth import SetupReauthService
+from hexevoice.setup_trust import SetupTrustRecoveryService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
@@ -356,6 +358,13 @@ def create_app(
         onboarding_state_store=onboarding_state_store,
     )
     trust_activation_service = TrustActivationService(onboarding_state_store=onboarding_state_store)
+    setup_trust_recovery_service = SetupTrustRecoveryService(
+        settings=app_settings,
+        onboarding_state_store=onboarding_state_store,
+        approval_service=approval_service,
+        trust_activation_service=trust_activation_service,
+        reauth_service=setup_reauth_service,
+    )
     trust_status_service = TrustStatusService(onboarding_state_store=onboarding_state_store)
     registration_metadata_refresh_service = RegistrationMetadataRefreshService(
         settings=app_settings,
@@ -2016,6 +2025,10 @@ def create_app(
     @app.post("/api/setup/trust/reauth/finalize", response_model=SetupReauthFinalizeResponse)
     async def setup_reauth_finalize() -> SetupReauthFinalizeResponse:
         return setup_reauth_service.finalize()
+
+    @app.post("/api/setup/trust/actions/{action}", response_model=SetupTrustRecoveryActionResponse)
+    async def setup_trust_recovery_action(action: str) -> SetupTrustRecoveryActionResponse:
+        return setup_trust_recovery_service.run_action(action)
 
     @app.get("/api/onboarding/bootstrap-discovery", response_model=BootstrapDiscoveryResponse)
     async def bootstrap_discovery_status() -> BootstrapDiscoveryResponse:

@@ -135,6 +135,10 @@ export async function finalizeSetupReauth() {
   return sendJson("/api/setup/trust/reauth/finalize", { body: {} });
 }
 
+export async function runSetupTrustAction(action) {
+  return sendJson(`/api/setup/trust/actions/${encodeURIComponent(action)}`, { body: {} });
+}
+
 export async function getSetupProvidersStatus() {
   return fetchJson("/api/setup/providers/status");
 }

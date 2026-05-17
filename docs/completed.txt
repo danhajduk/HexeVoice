@@ -191,3 +191,4 @@ Task 178: Harden Step 4 routing so new-node setup never enters migration re-auth
 Task 179: Expand Step 4 onboarding/re-auth status tracking to show waiting, approved, rejected, expired, trust finalized, node ID/name received, and ready-to-continue states - Completed on 05/16/2026 22:13
 Task 180: Make Step 4 continue automatically after Core approval, local trust activation, node ID/name persistence, and setup-state save all succeed - Completed on 05/16/2026 22:14
 Task 181: Add Step 4 blocker policy for Core unreachable, unsupported onboarding/re-auth, rejected or expired sessions, local trust activation failure, missing node identity, and required migrated re-auth - Completed on 05/16/2026 22:16
+Task 182: Add Step 4 recovery actions to restart onboarding, reopen Core approval, re-poll approval, retry trust finalize, clear expired sessions, and re-check Core trust support - Completed on 05/16/2026 22:22
