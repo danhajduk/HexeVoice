@@ -1437,9 +1437,22 @@ select.field-input {
   text-align: left;
 }
 
+.choice-card:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
 .choice-card-selected {
   border-color: color-mix(in oklab, var(--accent) 45%, transparent);
   background: color-mix(in oklab, var(--accent) 10%, transparent);
+}
+
+.provider-choice-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.provider-choice-card {
+  min-height: 96px;
 }
 
 .choice-check {
