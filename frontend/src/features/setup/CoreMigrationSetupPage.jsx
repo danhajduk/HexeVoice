@@ -136,10 +136,57 @@ export function MigrationSetupPage() {
       const parsed = JSON.parse(await file.text());
       setBundle(parsed);
       setSummary(parsed?.source?.node_name || file.name);
+      setBusy("auto-preflight");
+      const payload = compactPayload({ bundle: parsed, ...form, dry_run: true });
+      setResult(await preflightSetupMigration(payload));
     } catch (err) {
       setBundle(null);
       setSummary("");
       setError(String(err.message || err));
+      setResult(null);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function migrationResultLabel(payload) {
+    if (!payload) return "";
+    if (payload.ok === false) return "blocked";
+    if (payload.imported) return "imported";
+    return "ready";
+  }
+
+  function migrationSummaryText(payload) {
+    if (!payload) return "Upload a migration bundle to preview the import.";
+    const writes = payload.planned_writes || payload.files_imported || [];
+    const errors = payload.errors || [];
+    const warnings = payload.warnings || [];
+    if (errors.length) return errors.join(", ");
+    if (writes.length) return `Planned writes: ${writes.join(", ")}`;
+    if (warnings.length) return `Warnings: ${warnings.join(", ")}`;
+    return "Preflight completed with no planned writes.";
+  }
+
+  function importDisabled() {
+    if (busy !== "" || !bundle) return true;
+    if (!result) return true;
+    return result.ok === false;
+  }
+
+  async function rerunPreflight(currentBundle = bundle) {
+    if (!currentBundle) {
+      setError("migration_bundle_required");
+      return;
+    }
+    setBusy("preflight");
+    setError("");
+    try {
+      const payload = compactPayload({ bundle: currentBundle, ...form, dry_run: true });
+      setResult(await preflightSetupMigration(payload));
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
     }
   }
 
@@ -174,8 +221,11 @@ export function MigrationSetupPage() {
       <div className="callout callout-warning">Migration bundles with trust tokens are rejected. Core re-auth is required after import.</div>
       <label className="field">
         <span className="field-label">Migration bundle</span>
-        <input className="field-input" type="file" accept="application/json,.json" onChange={handleFile} />
+        <input className="field-input" type="file" accept="application/json,.json" onChange={handleFile} disabled={busy !== ""} />
       </label>
+      <div className={`callout callout-${result?.ok === false ? "danger" : result ? "success" : "neutral"}`}>
+        {busy === "auto-preflight" ? "Checking migration bundle..." : migrationSummaryText(result)}
+      </div>
       <div className="form-grid">
         {Object.keys(form).map((field) => (
           <label className="field" key={field}>
@@ -185,10 +235,10 @@ export function MigrationSetupPage() {
         ))}
       </div>
       <div className="form-actions">
-        <button className="btn btn-secondary" type="button" onClick={() => run("preflight")} disabled={busy !== "" || !bundle}>
+        <button className="btn btn-secondary" type="button" onClick={() => rerunPreflight()} disabled={busy !== "" || !bundle}>
           {busy === "preflight" ? "Checking..." : "Preflight"}
         </button>
-        <button className="btn btn-primary" type="button" onClick={() => run("import")} disabled={busy !== "" || !bundle}>
+        <button className="btn btn-primary" type="button" onClick={() => run("import")} disabled={importDisabled()}>
           {busy === "import" ? "Importing..." : "Import"}
         </button>
       </div>
@@ -196,7 +246,7 @@ export function MigrationSetupPage() {
         <div className="fact-grid">
           <div className="fact-grid-item">
             <span className="fact-grid-label">Result</span>
-            <span className="fact-grid-value">{result.ok === false ? "blocked" : result.imported ? "imported" : "checked"}</span>
+            <span className="fact-grid-value">{migrationResultLabel(result)}</span>
           </div>
           <div className="fact-grid-item">
             <span className="fact-grid-label">Writes</span>

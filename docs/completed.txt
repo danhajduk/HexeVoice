@@ -181,3 +181,4 @@ Task 168: Normalize setup URLs so temp uses /setup/host on port 8180 and product
 Task 169: Harden LAN identity detection so loopback addresses are never selected as the LAN host and the detected LAN IP is exposed as setup readiness data - Completed on 05/16/2026 21:54
 Task 170: Expand Step 3 Core Connection to fetch and display Core identity, version, registration support, re-auth support, supervisor enrollment support, and capability/governance support - Completed on 05/16/2026 21:58
 Task 171: Clean up Step 3 Core URL handling so the UI clearly separates Core base URL, API URL, UI URL, LAN/public URL, and the exact endpoint tested - Completed on 05/16/2026 22:01
+Task 172: Add automatic migration preflight after migration file upload, with visible summary before import - Completed on 05/16/2026 22:02

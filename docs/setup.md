@@ -110,8 +110,9 @@ capability profiles, and governance endpoints. The response separates the
 operator-entered LAN/public URL, Core API URL, Core UI URL, and exact tested
 endpoints so hosts with UI on port 80 and API on port 9001 are understandable.
 The migration setup
-routes wrap the node migration preflight/import APIs and continue to reject any
-bundle containing trust tokens.
+routes wrap the node migration preflight/import APIs, automatically run a dry
+preflight when a bundle is uploaded, show planned writes/errors before import,
+and continue to reject any bundle containing trust tokens.
 Migrated nodes continue through `/setup/trust/reauth`, which starts Core
 re-auth with `POST /api/system/nodes/reauth/sessions`, opens the returned Core
 approval URL, finalizes the session, and saves the fresh activation payload.
