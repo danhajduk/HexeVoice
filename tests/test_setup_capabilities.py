@@ -2,6 +2,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
+from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -175,6 +176,59 @@ def test_setup_capabilities_status_blocks_invalid_manifest(tmp_path):
     assert payload["manifest_validation"]["valid"] is False
     assert "node_id_missing" in payload["manifest_validation"]["errors"]
     assert "invalid_manifest:node_id_missing" in payload["blockers"]
+
+
+def test_local_capability_manifest_schema_rejects_core_incompatible_payload():
+    payload = {
+        "manifest_version": "1.0",
+        "node": {
+            "node_id": "node-voice-123",
+            "node_type": "voice-node",
+            "node_name": "kitchen",
+            "node_software_version": "0.1.0",
+        },
+        "declared_task_families": ["voice.inference"],
+        "declared_capabilities": ["voice.tts.synthesize"],
+        "capability_endpoints": {},
+        "supported_providers": ["voice"],
+        "enabled_providers": ["external_faster_whisper"],
+        "node_features": {"telemetry": True},
+        "environment_hints": {"network_tier": "lan"},
+    }
+
+    try:
+        validate_capability_declaration(payload)
+    except CapabilityManifestValidationError as exc:
+        assert "declared_capabilities_must_match_declared_task_families" in str(exc)
+    else:
+        raise AssertionError("Expected local manifest schema validation to reject incompatible payload.")
+
+
+def test_setup_capabilities_declare_rejects_invalid_manifest_before_core_call(tmp_path, monkeypatch):
+    settings = trusted_capability_settings(tmp_path)
+    store = OnboardingStateStore(path=settings.onboarding_state_path)
+    state = store.load()
+    store.save(
+        state.model_copy(
+            update={
+                "trust_activation": state.trust_activation.model_copy(update={"node_id": "voice-123"}),
+            }
+        )
+    )
+    client = TestClient(create_app(settings))
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        raise AssertionError("Core should not be called for an invalid local manifest.")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+
+    response = client.post("/api/setup/capabilities/declare")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["accepted"] is False
+    assert payload["status_code"] == 400
+    assert "capability_manifest_invalid" in payload["error"]
 
 
 def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):

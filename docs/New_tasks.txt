@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 197: Validate Step 6 capability manifests locally against the Core-compatible schema before sending them to Core
 [TODO] Task 198: Expand Step 7 smoke tests to verify STT/TTS/wake provider responses, backend provider calls, Core trust/capability visibility, governance currency, and supervisor service registration
 [TODO] Task 199: Add Step 7 final backup/export support with a setup summary, recovery bundle, migration/import receipt, and downloadable endpoint
 [TODO] Task 200: Add a richer Step 7 final summary showing node name/ID, Core URL, local UI/API URLs, provider health, capability/governance status, lifecycle mode, runtime dirs, and accepted warnings

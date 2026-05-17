@@ -4,6 +4,7 @@ import httpx
 from fastapi import HTTPException
 
 from hexevoice.api.models import CapabilityDeclarationResponse, CapabilitySelectionRequest, CapabilitySummaryResponse
+from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.config.settings import Settings
 from hexevoice.core.client import CoreOnboardingClient
 from hexevoice.persistence import OnboardingStateStore
@@ -46,6 +47,10 @@ class CapabilityDeclarationService:
         declared_task_families = self._selected_capabilities(state)
         enabled_providers = self._enabled_providers(state)
         payload = self.capability_declaration_payload(state)
+        try:
+            payload["manifest"] = validate_capability_declaration(payload["manifest"])
+        except CapabilityManifestValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         try:
             response = self._core_client.submit_capability_declaration(
                 core_base_url=state.pre_trust.core_base_url,

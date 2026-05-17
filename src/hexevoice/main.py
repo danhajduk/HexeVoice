@@ -104,6 +104,7 @@ from hexevoice.api.models import (
 )
 from hexevoice.assistant import AssistantTurnService, LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.capabilities.service import CapabilityDeclarationService
+from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
 from hexevoice.endpoint.service import EndpointHeartbeatService
 from hexevoice.engine_http import async_client_for_engine
@@ -2365,6 +2366,10 @@ def create_app(
                 errors.append("enabled_providers_missing")
             if not isinstance(manifest.get("capability_endpoints"), dict):
                 errors.append("capability_endpoints_invalid")
+            try:
+                validate_capability_declaration(manifest)
+            except CapabilityManifestValidationError as exc:
+                errors.append(str(exc))
             return errors
 
         def provider_health_blockers(selected_capabilities: set[str]) -> list[str]:
