@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { applySetupProviders, getSetupProvidersStatus, registerSetupSupervisorRuntime, saveSetupProvidersConfig } from "../../api/client";
 
 const providerMetadata = {
-  voice: { label: "Voice", role: "Pipeline" },
+  voice: { label: "Voice pipeline", role: "Required voice runtime" },
   faster_whisper: { label: "STT", role: "Speech to text" },
   external_faster_whisper: { label: "STT", role: "Speech to text" },
   piper: { label: "TTS", role: "Text to speech" },
@@ -11,6 +11,12 @@ const providerMetadata = {
 };
 
 const fallbackProviderChoices = ["voice", "external_faster_whisper", "piper", "openwakeword"];
+const providerSteps = [
+  { id: "providers", label: "Choose providers" },
+  { id: "stt", label: "Setup STT" },
+  { id: "tts", label: "Setup TTS" },
+  { id: "wake", label: "Setup wake" },
+];
 const requiredProviderId = "voice";
 const providerAliasGroups = [["openwakeword", "supervised_openwakeword"]];
 const sttProfileOptions = ["cpu_default", "cuda_fast_intent", "cuda_accurate_fallback"];
@@ -73,6 +79,14 @@ function normalizedEnabledProviders(providers) {
     next.push(provider);
   }
   return next;
+}
+
+function initialEnabledProviders(status) {
+  const saved = status?.provider_setup?.enabled_providers || [];
+  if (status?.provider_setup?.configured && saved.length) {
+    return normalizedEnabledProviders(saved);
+  }
+  return normalizedEnabledProviders(providerChoicesFor(status).map((provider) => provider.id));
 }
 
 function defaultProviderConfigs() {
@@ -159,11 +173,65 @@ function providerStateFor(status, providerId) {
   return (status?.provider_states || []).find((provider) => provider.provider_id === providerId) || null;
 }
 
+function assetMatchesProvider(asset, providerId) {
+  return aliasesForProvider(providerId).includes(asset.provider_id);
+}
+
+function busyKeyFor(target, action) {
+  return target ? `${target}:${action}` : action === "install" ? "apply" : action;
+}
+
+function EngineActions({ state, busy, onAction }) {
+  const target = state?.target;
+  const disabled = !target || busy !== "";
+  const actions = [
+    ["download-models", "Download models"],
+    ["preload", "Preload models"],
+    ["restart", "Restart"],
+    ["install", "Rebuild container"],
+  ];
+  return (
+    <div className="engine-card-actions">
+      {actions.map(([action, label]) => (
+        <button className="btn btn-secondary" type="button" key={action} onClick={() => onAction(target, action)} disabled={disabled}>
+          {busy === busyKeyFor(target, action) ? "Working..." : label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ProviderAssets({ status, providerId, busy }) {
+  const assets = (status?.asset_progress || []).filter((asset) => assetMatchesProvider(asset, providerId));
+  return (
+    <div className="fact-grid">
+      {assets.map((asset) => {
+        const assetState = busy === busyKeyFor(providerStateFor(status, providerId)?.target, "download-models") && asset.state === "missing"
+          ? "downloading"
+          : asset.state;
+        return (
+          <div className="fact-grid-item" key={`${asset.provider_id}:${asset.asset_type}:${asset.asset_id}`}>
+            <span className="fact-grid-label">{asset.asset_type}</span>
+            <span className={`status-pill status-pill-${stateTone(assetState)}`}>{assetState}</span>
+            <span className="fact-grid-value">{asset.asset_id}</span>
+          </div>
+        );
+      })}
+      {!assets.length ? (
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Assets</span>
+          <span className="fact-grid-value">Save this step to build the asset list.</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function ProvidersSetupPage() {
   const [status, setStatus] = useState(null);
   const [enabled, setEnabled] = useState([requiredProviderId]);
-  const [defaultProvider, setDefaultProvider] = useState(requiredProviderId);
   const [providerConfigs, setProviderConfigs] = useState(defaultProviderConfigs);
+  const [providerStep, setProviderStep] = useState("providers");
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -171,9 +239,9 @@ export function ProvidersSetupPage() {
   async function refresh() {
     const payload = await getSetupProvidersStatus();
     setStatus(payload);
-    setEnabled(normalizedEnabledProviders(payload.provider_setup?.enabled_providers?.length ? payload.provider_setup.enabled_providers : [requiredProviderId]));
-    setDefaultProvider(requiredProviderId);
+    setEnabled(initialEnabledProviders(payload));
     setProviderConfigs(providerConfigsFromStatus(payload));
+    return payload;
   }
 
   useEffect(() => {
@@ -182,8 +250,7 @@ export function ProvidersSetupPage() {
       .then((payload) => {
         if (!mounted) return;
         setStatus(payload);
-        setEnabled(normalizedEnabledProviders(payload.provider_setup?.enabled_providers?.length ? payload.provider_setup.enabled_providers : [requiredProviderId]));
-        setDefaultProvider(requiredProviderId);
+        setEnabled(initialEnabledProviders(payload));
         setProviderConfigs(providerConfigsFromStatus(payload));
       })
       .catch((err) => {
@@ -198,22 +265,41 @@ export function ProvidersSetupPage() {
     };
   }, []);
 
+  const providerChoices = providerChoicesFor(status);
+  const sttProviderId = providerChoices.some((provider) => provider.id === "external_faster_whisper")
+    ? "external_faster_whisper"
+    : providerChoices.some((provider) => provider.id === "faster_whisper")
+      ? "faster_whisper"
+      : "";
+  const wakeProviderId = providerChoices.some((provider) => provider.id === "supervised_openwakeword")
+    ? "supervised_openwakeword"
+    : providerChoices.some((provider) => provider.id === "openwakeword")
+      ? "openwakeword"
+      : "";
+  const sttState = sttProviderId ? providerStateFor(status, sttProviderId) : null;
+  const ttsState = providerStateFor(status, "piper");
+  const wakeState = wakeProviderId ? providerStateFor(status, wakeProviderId) : null;
+  const cudaProfile = status?.cuda_profile || {};
+  const enabledSteps = providerSteps.filter((step) => {
+    if (step.id === "stt") return sttProviderId && providerSelected(enabled, sttProviderId);
+    if (step.id === "tts") return providerSelected(enabled, "piper");
+    if (step.id === "wake") return wakeProviderId && providerSelected(enabled, wakeProviderId);
+    return true;
+  });
+
+  function nextStepAfter(stepId) {
+    const index = enabledSteps.findIndex((step) => step.id === stepId);
+    return enabledSteps[index + 1]?.id || "";
+  }
+
   function toggleProvider(providerId) {
     if (providerId === requiredProviderId) return;
     setEnabled((current) => {
       if (providerSelected(current, providerId)) {
         const aliases = aliasesForProvider(providerId);
-        const next = current.filter((item) => !aliases.includes(item));
-        if (defaultProvider === providerId) {
-          setDefaultProvider(requiredProviderId);
-        }
-        return normalizedEnabledProviders(next);
+        return normalizedEnabledProviders(current.filter((item) => !aliases.includes(item)));
       }
-      const next = normalizedEnabledProviders([...current, providerId]);
-      if (!defaultProvider || !next.includes(defaultProvider)) {
-        setDefaultProvider(requiredProviderId);
-      }
-      return next;
+      return normalizedEnabledProviders([...current, providerId]);
     });
   }
 
@@ -227,7 +313,7 @@ export function ProvidersSetupPage() {
     }));
   }
 
-  function buildSavePayload(configs = providerConfigs, enabledProviders = enabled, defaultProviderId = defaultProvider) {
+  function buildSavePayload(configs = providerConfigs, enabledProviders = enabled) {
     const normalizedEnabled = normalizedEnabledProviders(enabledProviders);
     return {
       enabled_providers: normalizedEnabled,
@@ -236,14 +322,41 @@ export function ProvidersSetupPage() {
     };
   }
 
+  async function persistProviderConfig(configs = providerConfigs, enabledProviders = enabled) {
+    const payload = await saveSetupProvidersConfig(buildSavePayload(configs, enabledProviders));
+    setStatus((current) => ({ ...(current || {}), provider_setup: payload }));
+    await refresh();
+    return payload;
+  }
+
   async function saveConfig() {
     setBusy("config");
     setError("");
     setNotice("");
     try {
-      const payload = await saveSetupProvidersConfig(buildSavePayload());
-      setStatus((current) => ({ ...(current || {}), provider_setup: payload }));
+      await persistProviderConfig();
       setNotice("Provider configuration saved.");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function continueSetup() {
+    const nextStep = nextStepAfter(providerStep);
+    setBusy(`continue-${providerStep}`);
+    setError("");
+    setNotice("");
+    try {
+      await persistProviderConfig();
+      if (!nextStep) {
+        await applySetupProviders({ action: "install" });
+        setNotice("Provider setup saved and runtime install queued.");
+      } else {
+        setProviderStep(nextStep);
+        setNotice("Provider setup saved.");
+      }
       await refresh();
     } catch (err) {
       setError(String(err.message || err));
@@ -253,10 +366,11 @@ export function ProvidersSetupPage() {
   }
 
   async function apply(target, action = "install") {
-    setBusy(target || (action === "install" ? "apply" : action));
+    setBusy(busyKeyFor(target, action));
     setError("");
     setNotice("");
     try {
+      await persistProviderConfig();
       await applySetupProviders(target ? { target, action } : { action });
       setNotice("Provider action queued.");
       await refresh();
@@ -288,10 +402,8 @@ export function ProvidersSetupPage() {
     setError("");
     setNotice("");
     try {
-      const payload = await saveSetupProvidersConfig(buildSavePayload(nextConfigs));
-      setStatus((current) => ({ ...(current || {}), provider_setup: payload }));
+      await persistProviderConfig(nextConfigs);
       setNotice(`${mode === "cuda" ? "CUDA" : "CPU"} provider profile saved.`);
-      await refresh();
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -314,22 +426,6 @@ export function ProvidersSetupPage() {
     }
   }
 
-  const providerChoices = providerChoicesFor(status);
-  const sttProviderId = providerChoices.some((provider) => provider.id === "external_faster_whisper")
-    ? "external_faster_whisper"
-    : providerChoices.some((provider) => provider.id === "faster_whisper")
-      ? "faster_whisper"
-      : "";
-  const wakeProviderId = providerChoices.some((provider) => provider.id === "supervised_openwakeword")
-    ? "supervised_openwakeword"
-    : providerChoices.some((provider) => provider.id === "openwakeword")
-      ? "openwakeword"
-      : "";
-  const sttState = sttProviderId ? providerStateFor(status, sttProviderId) : null;
-  const ttsState = providerStateFor(status, "piper");
-  const wakeState = wakeProviderId ? providerStateFor(status, wakeProviderId) : null;
-  const cudaProfile = status?.cuda_profile || {};
-
   return (
     <article className="card stack">
       <div className="section-heading">
@@ -338,53 +434,72 @@ export function ProvidersSetupPage() {
           {status?.continue_blocked ? "blocked" : "ready"}
         </span>
       </div>
+
+      <div className="setup-substep-list">
+        {providerSteps.map((step, index) => {
+          const enabledStep = enabledSteps.some((enabledStepItem) => enabledStepItem.id === step.id);
+          const active = providerStep === step.id;
+          const complete = enabledSteps.findIndex((enabledStepItem) => enabledStepItem.id === providerStep) > enabledSteps.findIndex((enabledStepItem) => enabledStepItem.id === step.id);
+          return (
+            <button
+              className={`setup-substep-pill ${active ? "setup-substep-pill-active" : ""} ${complete ? "setup-substep-pill-complete" : ""}`}
+              type="button"
+              key={step.id}
+              onClick={() => enabledStep && setProviderStep(step.id)}
+              disabled={!enabledStep}
+            >
+              <span>{index + 1}</span>
+              {step.label}
+            </button>
+          );
+        })}
+      </div>
+
       {notice ? <div className="callout callout-success">{notice}</div> : null}
       {error ? <div className="callout callout-danger">{error}</div> : null}
       {status?.blockers?.length ? <div className="callout callout-warning">Blockers: {status.blockers.join(", ")}</div> : null}
 
-      <section className="stack">
-        <div className="section-heading-inline">
-          <div>
-            <p className="panel-kicker">Provider Engines</p>
-            <h3 className="section-title">Choose runtime blocks</h3>
-          </div>
-          <span className="status-pill status-pill-success">Primary: Voice</span>
-        </div>
-        <div className="choice-list provider-choice-list">
-          {providerChoices.map((provider) => {
-            const selected = providerSelected(enabled, provider.id);
-            const required = provider.id === requiredProviderId;
-            return (
-              <button
-                className={`choice-card provider-choice-card ${selected ? "choice-card-selected" : ""}`}
-                type="button"
-                key={provider.id}
-                onClick={() => toggleProvider(provider.id)}
-                disabled={required}
-              >
-                <span className="choice-check">{selected ? "✓" : ""}</span>
-                <span className="choice-copy">
-                  <strong>{provider.id === requiredProviderId ? "Voice pipeline" : provider.label}</strong>
-                  <span>{provider.id}</span>
-                  <span>{required ? "Required" : provider.role}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="stack">
-        <div className="section-heading-inline">
-          <div>
-            <p className="panel-kicker">Model Choices</p>
-            <h3 className="section-title">STT, TTS, and wake assets</h3>
-          </div>
-        </div>
-      </section>
-
-      {sttProviderId ? (
+      {providerStep === "providers" ? (
         <section className="stack">
+          <div className="section-heading-inline">
+            <div>
+              <p className="panel-kicker">Provider Engines</p>
+              <h3 className="section-title">Choose runtime blocks</h3>
+            </div>
+            <span className="status-pill status-pill-success">All supported providers start selected</span>
+          </div>
+          <div className="choice-list provider-choice-list">
+            {providerChoices.map((provider) => {
+              const selected = providerSelected(enabled, provider.id);
+              const required = provider.id === requiredProviderId;
+              return (
+                <button
+                  className={`choice-card provider-choice-card ${selected ? "choice-card-selected" : ""}`}
+                  type="button"
+                  key={provider.id}
+                  onClick={() => toggleProvider(provider.id)}
+                  disabled={required}
+                >
+                  <span className="choice-check">{selected ? "✓" : ""}</span>
+                  <span className="choice-copy">
+                    <strong>{provider.label}</strong>
+                    <span>{provider.id}</span>
+                    <span>{required ? "Required" : provider.role}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="form-actions">
+            <button className="btn btn-primary" type="button" onClick={continueSetup} disabled={busy !== ""}>
+              {busy === "continue-providers" ? "Saving..." : "Continue"}
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {providerStep === "stt" && sttProviderId ? (
+        <section className="stack engine-setup-card">
           <div className="section-heading-inline">
             <div>
               <p className="panel-kicker">STT Engine</p>
@@ -394,7 +509,7 @@ export function ProvidersSetupPage() {
           </div>
           <div className="form-grid">
             <label className="field">
-              <span className="field-label">Profile</span>
+              <span className="field-label">Runtime preset</span>
               <select className="field-input" value={providerConfigs[sttProviderId]?.profile || "cpu_default"} onChange={(event) => updateProviderConfig(sttProviderId, "profile", event.target.value)}>
                 {sttProfileOptions.map((profile) => <option key={profile} value={profile}>{profile}</option>)}
               </select>
@@ -434,18 +549,11 @@ export function ProvidersSetupPage() {
               <span className="field-label">Language</span>
               <input className="field-input" value={providerConfigs[sttProviderId]?.language || ""} onChange={(event) => updateProviderConfig(sttProviderId, "language", event.target.value)} />
             </label>
-            <label className="field">
-              <span className="field-label">Fallback profile</span>
-              <select className="field-input" value={providerConfigs[sttProviderId]?.fallback_profile || ""} onChange={(event) => updateProviderConfig(sttProviderId, "fallback_profile", event.target.value)}>
-                <option value="">None</option>
-                {sttProfileOptions.map((profile) => <option key={profile} value={profile}>{profile}</option>)}
-              </select>
+            <label className="field field-span-2">
+              <span className="field-label">Additional models to download/preload</span>
+              <input className="field-input" value={providerConfigs[sttProviderId]?.warm_models_text || ""} onChange={(event) => updateProviderConfig(sttProviderId, "warm_models_text", event.target.value)} placeholder="base.en, small.en" />
             </label>
           </div>
-          <label className="field">
-            <span className="field-label">Preload/download models</span>
-            <input className="field-input" value={providerConfigs[sttProviderId]?.warm_models_text || ""} onChange={(event) => updateProviderConfig(sttProviderId, "warm_models_text", event.target.value)} placeholder="base.en, small.en" />
-          </label>
           <div className="fact-grid">
             <div className="fact-grid-item">
               <span className="fact-grid-label">CUDA recommendation</span>
@@ -461,16 +569,27 @@ export function ProvidersSetupPage() {
             </div>
           </div>
           {cudaProfile.warning ? <div className="callout callout-warning">{cudaProfile.warning}</div> : null}
+          <ProviderAssets status={status} providerId={sttProviderId} busy={busy} />
+          <EngineActions state={sttState} busy={busy} onAction={apply} />
           <div className="form-actions">
             <button className="btn btn-secondary" type="button" onClick={() => apply(sttState?.target, "cuda-preflight")} disabled={busy !== "" || !sttState?.target}>
-              {busy === sttState?.target ? "Checking..." : "Validate CUDA"}
+              {busy === busyKeyFor(sttState?.target, "cuda-preflight") ? "Checking..." : "Validate CUDA"}
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={() => switchCudaProfile("cpu")} disabled={busy !== ""}>
+              {busy === "profile-cpu" ? "Saving..." : "Force CPU profile"}
+            </button>
+            <button className="btn btn-secondary" type="button" onClick={() => switchCudaProfile("cuda")} disabled={busy !== ""}>
+              {busy === "profile-cuda" ? "Saving..." : "Force CUDA profile"}
+            </button>
+            <button className="btn btn-primary" type="button" onClick={continueSetup} disabled={busy !== ""}>
+              {busy === "continue-stt" ? "Saving..." : "Continue"}
             </button>
           </div>
         </section>
       ) : null}
 
-      {providerChoices.some((provider) => provider.id === "piper") ? (
-        <section className="stack">
+      {providerStep === "tts" && providerSelected(enabled, "piper") ? (
+        <section className="stack engine-setup-card">
           <div className="section-heading-inline">
             <div>
               <p className="panel-kicker">TTS Engine</p>
@@ -493,15 +612,22 @@ export function ProvidersSetupPage() {
               <input className="field-input" value={providerConfigs.piper?.language || "en_US"} onChange={(event) => updateProviderConfig("piper", "language", event.target.value)} />
             </label>
             <label className="field field-span-2">
-              <span className="field-label">Preload/download voices</span>
+              <span className="field-label">Additional voices to download/preload</span>
               <input className="field-input" value={providerConfigs.piper?.warm_models_text || ""} onChange={(event) => updateProviderConfig("piper", "warm_models_text", event.target.value)} placeholder="en_US-kathleen-low" />
             </label>
+          </div>
+          <ProviderAssets status={status} providerId="piper" busy={busy} />
+          <EngineActions state={ttsState} busy={busy} onAction={apply} />
+          <div className="form-actions">
+            <button className="btn btn-primary" type="button" onClick={continueSetup} disabled={busy !== ""}>
+              {busy === "continue-tts" ? "Saving..." : "Continue"}
+            </button>
           </div>
         </section>
       ) : null}
 
-      {wakeProviderId ? (
-        <section className="stack">
+      {providerStep === "wake" && wakeProviderId ? (
+        <section className="stack engine-setup-card">
           <div className="section-heading-inline">
             <div>
               <p className="panel-kicker">Wake Word</p>
@@ -524,57 +650,22 @@ export function ProvidersSetupPage() {
               <input className="field-input" type="number" min="0" max="1" step="0.05" value={providerConfigs[wakeProviderId]?.threshold ?? 0.5} onChange={(event) => updateProviderConfig(wakeProviderId, "threshold", Number(event.target.value))} />
             </label>
             <label className="field field-span-2">
-              <span className="field-label">Preload/download wake models</span>
+              <span className="field-label">Additional wake models to download/preload</span>
               <input className="field-input" value={providerConfigs[wakeProviderId]?.warm_models_text || ""} onChange={(event) => updateProviderConfig(wakeProviderId, "warm_models_text", event.target.value)} placeholder="Hexe" />
             </label>
           </div>
+          <ProviderAssets status={status} providerId={wakeProviderId} busy={busy} />
+          <EngineActions state={wakeState} busy={busy} onAction={apply} />
+          <div className="form-actions">
+            <button className="btn btn-secondary" type="button" onClick={saveConfig} disabled={busy !== ""}>
+              {busy === "config" ? "Saving..." : "Save config"}
+            </button>
+            <button className="btn btn-primary" type="button" onClick={continueSetup} disabled={busy !== ""}>
+              {busy === "continue-wake" ? "Applying..." : "Continue"}
+            </button>
+          </div>
         </section>
       ) : null}
-
-      <section className="stack">
-        <div className="section-heading-inline">
-          <div>
-            <p className="panel-kicker">Apply Plan</p>
-            <h3 className="section-title">Provider setup actions</h3>
-          </div>
-        </div>
-        <div className="fact-grid">
-          {(status?.apply_plan || []).map((item) => (
-            <div className="fact-grid-item" key={item.id}>
-              <span className="fact-grid-label">{item.label}</span>
-              <span className={`status-pill status-pill-${stateTone(item.status)}`}>{item.status}</span>
-              <span className="fact-grid-value">{item.items?.length ? item.items.join(", ") : item.detail}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="stack">
-        <div className="section-heading-inline">
-          <div>
-            <p className="panel-kicker">Provider Assets</p>
-            <h3 className="section-title">Model download and preload state</h3>
-          </div>
-        </div>
-        <div className="fact-grid">
-          {(status?.asset_progress || []).map((asset) => {
-            const assetState = busy === "download-models" && asset.state === "missing" ? "downloading" : asset.state;
-            return (
-              <div className="fact-grid-item" key={`${asset.provider_id}:${asset.asset_type}:${asset.asset_id}`}>
-                <span className="fact-grid-label">{asset.provider_id}</span>
-                <span className={`status-pill status-pill-${stateTone(assetState)}`}>{assetState}</span>
-                <span className="fact-grid-value">{asset.asset_id}</span>
-              </div>
-            );
-          })}
-          {!(status?.asset_progress || []).length ? (
-            <div className="fact-grid-item">
-              <span className="fact-grid-label">Assets</span>
-              <span className="fact-grid-value">Save provider selections to build the asset list.</span>
-            </div>
-          ) : null}
-        </div>
-      </section>
 
       <section className="stack">
         <div className="section-heading-inline">
@@ -610,65 +701,24 @@ export function ProvidersSetupPage() {
       <section className="stack">
         <div className="section-heading-inline">
           <div>
-            <p className="panel-kicker">Recovery Actions</p>
-            <h3 className="section-title">Provider repair tools</h3>
+            <p className="panel-kicker">Provider State</p>
+            <h3 className="section-title">Selected runtime health</h3>
           </div>
         </div>
-        <div className="form-actions">
-          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "download-models")} disabled={busy !== ""}>
-            {busy === "download-models" ? "Downloading..." : "Download selected models"}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "preload")} disabled={busy !== ""}>
-            {busy === "preload" ? "Preloading..." : "Preload selected models"}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "restart")} disabled={busy !== ""}>
-            {busy === "restart" ? "Restarting..." : "Restart providers"}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "recreate")} disabled={busy !== ""}>
-            {busy === "recreate" ? "Recreating..." : "Recreate containers"}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => apply(null, "rebuild-env")} disabled={busy !== ""}>
-            {busy === "rebuild-env" ? "Rebuilding..." : "Rebuild env"}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => switchCudaProfile("cpu")} disabled={busy !== "" || !sttProviderId}>
-            {busy === "profile-cpu" ? "Saving..." : "Force CPU profile"}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={() => switchCudaProfile("cuda")} disabled={busy !== "" || !sttProviderId}>
-            {busy === "profile-cuda" ? "Saving..." : "Force CUDA profile"}
-          </button>
-          <button className="btn btn-secondary" type="button" onClick={registerSupervisor} disabled={busy !== "" || status?.supervisor_registration?.blocked}>
-            {busy === "supervisor-registration" ? "Registering..." : "Re-register services"}
-          </button>
+        <div className="fact-grid">
+          {(status?.provider_states || []).map((provider) => (
+            <div className="fact-grid-item" key={provider.provider_id}>
+              <span className="fact-grid-label">{provider.provider_id}</span>
+              <span className={`status-pill status-pill-${stateTone(provider.state)}`}>{provider.state}</span>
+              <span className="fact-grid-value">{provider.component?.model_display_name || provider.component?.model || provider.component?.provider || "configured"}</span>
+              <span className="fact-grid-label">
+                {provider.component?.socket_path || provider.component?.base_url || provider.component?.host || "local"}
+                {provider.component?.port ? `:${provider.component.port}` : ""}
+              </span>
+            </div>
+          ))}
         </div>
       </section>
-
-      <div className="form-actions">
-        <button className="btn btn-secondary" type="button" onClick={saveConfig} disabled={busy !== ""}>
-          {busy === "config" ? "Saving..." : "Save config"}
-        </button>
-        <button className="btn btn-primary" type="button" onClick={() => apply()} disabled={busy !== ""}>
-          {busy === "apply" ? "Applying..." : "Apply enabled"}
-        </button>
-      </div>
-
-      <div className="fact-grid">
-        {(status?.provider_states || []).map((provider) => (
-          <div className="fact-grid-item" key={provider.provider_id}>
-            <span className="fact-grid-label">{provider.provider_id}</span>
-            <span className={`status-pill status-pill-${stateTone(provider.state)}`}>{provider.state}</span>
-            <span className="fact-grid-value">{provider.component?.model_display_name || provider.component?.model || provider.component?.provider || "configured"}</span>
-            <span className="fact-grid-label">
-              {provider.component?.socket_path || provider.component?.base_url || provider.component?.host || "local"}
-              {provider.component?.port ? `:${provider.component.port}` : ""}
-            </span>
-            {provider.target ? (
-              <button className="btn btn-ghost" type="button" onClick={() => apply(provider.target, "restart")} disabled={busy !== ""}>
-                Restart
-              </button>
-            ) : null}
-          </div>
-        ))}
-      </div>
     </article>
   );
 }

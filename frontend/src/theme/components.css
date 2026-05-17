@@ -1455,6 +1455,62 @@ select.field-input {
   min-height: 96px;
 }
 
+.setup-substep-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.setup-substep-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--sx-radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  color: hsl(var(--sx-text-muted));
+  font-weight: 700;
+}
+
+.setup-substep-pill span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: hsl(var(--sx-text));
+}
+
+.setup-substep-pill-active {
+  border-color: color-mix(in oklab, var(--accent) 55%, transparent);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  color: hsl(var(--sx-text));
+}
+
+.setup-substep-pill-complete {
+  border-color: hsl(var(--sx-success) / 0.35);
+  color: hsl(var(--sx-success));
+}
+
+.setup-substep-pill:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.engine-setup-card {
+  padding-top: 4px;
+}
+
+.engine-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .choice-check {
   display: inline-flex;
   align-items: center;
