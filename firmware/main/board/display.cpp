@@ -35,6 +35,9 @@ constexpr size_t kFlushBufferBytes = kWidth * kFlushRows * sizeof(uint16_t);
 constexpr size_t kMaxSpriteBytes = 512 * 1024;
 constexpr size_t kMaxSceneSprites = 8;
 constexpr size_t kSceneManifestBytes = 4096;
+constexpr size_t kMaxUiPages = 8;
+constexpr char kDefaultSceneManifest[] = "ui_manifest.json";
+constexpr char kPagesManifest[] = "ui_pages_manifest.json";
 esp_lcd_panel_handle_t g_panel = nullptr;
 uint16_t *g_framebuffer = nullptr;
 uint16_t *g_lcd_flush_buffer = nullptr;
@@ -375,6 +378,9 @@ struct ComposedScene {
 };
 
 ComposedScene g_scene = {};
+char g_ui_page_manifests[kMaxUiPages][64] = {};
+size_t g_ui_page_count = 0;
+size_t g_active_ui_page = 0;
 
 int clock_tick_signature(UiAssetId id) {
   if (id != UiAssetId::kClock || !g_scene.clock.enabled) {
@@ -547,6 +553,15 @@ bool build_media_path(char *target, size_t target_size, const char *directory, c
   }
   const int written = std::snprintf(target, target_size, "%s/%s", directory, filename);
   return written >= 0 && written < static_cast<int>(target_size);
+}
+
+void reset_ui_pages() {
+  g_ui_page_count = 1;
+  g_active_ui_page = 0;
+  std::snprintf(g_ui_page_manifests[0], sizeof(g_ui_page_manifests[0]), "%s", kDefaultSceneManifest);
+  for (size_t index = 1; index < kMaxUiPages; ++index) {
+    g_ui_page_manifests[index][0] = '\0';
+  }
 }
 
 void *load_binary_asset(const char *path, size_t expected_bytes, size_t max_bytes) {
@@ -1000,13 +1015,16 @@ void draw_ota_progress() {
   }
 }
 
-bool load_composed_scene() {
+bool load_composed_scene(const char *manifest_filename) {
   if (!hexe::board::sd_card_mounted()) {
     return false;
   }
   char manifest_path[256] = {};
-  const int written = std::snprintf(manifest_path, sizeof(manifest_path), "%s/ui_manifest.json", hexe::board::sd_card_sprites_path());
-  if (written < 0 || written >= static_cast<int>(sizeof(manifest_path))) {
+  if (!build_media_path(
+          manifest_path,
+          sizeof(manifest_path),
+          hexe::board::sd_card_sprites_path(),
+          (manifest_filename == nullptr || manifest_filename[0] == '\0') ? kDefaultSceneManifest : manifest_filename)) {
     return false;
   }
   char *manifest = allocate_text_buffer(kSceneManifestBytes);
@@ -1131,7 +1149,8 @@ bool load_composed_scene() {
   g_scene.loaded = true;
   ESP_LOGI(
       kTag,
-      "Loaded composited UI scene type=%s background=%s sprites=%u",
+      "Loaded composited UI scene manifest=%s type=%s background=%s sprites=%u",
+      manifest_path,
       g_scene.type,
       g_scene.background.pixels == nullptr ? "missing" : "loaded",
       static_cast<unsigned>(g_scene.sprite_count));
@@ -1155,12 +1174,73 @@ bool draw_composed_scene(UiAssetId id) {
   return true;
 }
 
+bool add_ui_page_manifest(const char *manifest_filename) {
+  if (g_ui_page_count >= kMaxUiPages || !is_safe_sprite_filename(manifest_filename)) {
+    return false;
+  }
+  std::snprintf(g_ui_page_manifests[g_ui_page_count], sizeof(g_ui_page_manifests[g_ui_page_count]), "%s", manifest_filename);
+  ++g_ui_page_count;
+  return true;
+}
+
+void load_ui_pages_manifest() {
+  const size_t previous_active_page = g_active_ui_page;
+  reset_ui_pages();
+  char pages_path[256] = {};
+  if (!build_media_path(pages_path, sizeof(pages_path), hexe::board::sd_card_sprites_path(), kPagesManifest)) {
+    return;
+  }
+
+  char *manifest = allocate_text_buffer(kSceneManifestBytes);
+  if (manifest == nullptr) {
+    return;
+  }
+  if (!read_small_text_file(pages_path, manifest, kSceneManifestBytes)) {
+    heap_caps_free(manifest);
+    return;
+  }
+
+  cJSON *root = cJSON_Parse(manifest);
+  heap_caps_free(manifest);
+  if (root == nullptr) {
+    ESP_LOGW(kTag, "Invalid UI pages manifest: %s", pages_path);
+    return;
+  }
+
+  g_ui_page_count = 0;
+  cJSON *pages = cJSON_GetObjectItem(root, "pages");
+  if (cJSON_IsArray(pages)) {
+    cJSON *page = nullptr;
+    cJSON_ArrayForEach(page, pages) {
+      const char *filename = nullptr;
+      if (cJSON_IsString(page)) {
+        filename = page->valuestring;
+      } else if (cJSON_IsObject(page)) {
+        cJSON *manifest_item = cJSON_GetObjectItem(page, "manifest");
+        filename = cJSON_IsString(manifest_item) ? manifest_item->valuestring : nullptr;
+      }
+      add_ui_page_manifest(filename);
+    }
+  }
+  cJSON_Delete(root);
+
+  if (g_ui_page_count == 0) {
+    reset_ui_pages();
+  } else if (previous_active_page < g_ui_page_count) {
+    g_active_ui_page = previous_active_page;
+  } else {
+    g_active_ui_page = 0;
+  }
+  ESP_LOGI(kTag, "Loaded UI pages manifest: pages=%u active=%u", static_cast<unsigned>(g_ui_page_count), static_cast<unsigned>(g_active_ui_page));
+}
+
 void load_sd_ui_assets() {
   free_composed_scene(g_scene);
   if (!hexe::board::sd_card_mounted()) {
     return;
   }
-  load_composed_scene();
+  load_ui_pages_manifest();
+  load_composed_scene(g_ui_page_manifests[g_active_ui_page]);
 }
 
 UiAssetId asset_id_for_display(hexe::AppPhase phase) {
@@ -1270,6 +1350,34 @@ int display_height() {
 
 const char *display_pixel_format() {
   return "rgb565";
+}
+
+bool show_next_ui_page() {
+  if (!display_ready() || g_ui_page_count <= 1) {
+    return false;
+  }
+  g_active_ui_page = (g_active_ui_page + 1) % g_ui_page_count;
+  g_display_assets_reload_requested.store(true, std::memory_order_relaxed);
+  ESP_LOGI(
+      kTag,
+      "Switching to next UI page: %u/%u",
+      static_cast<unsigned>(g_active_ui_page + 1),
+      static_cast<unsigned>(g_ui_page_count));
+  return true;
+}
+
+bool show_previous_ui_page() {
+  if (!display_ready() || g_ui_page_count <= 1) {
+    return false;
+  }
+  g_active_ui_page = g_active_ui_page == 0 ? (g_ui_page_count - 1) : (g_active_ui_page - 1);
+  g_display_assets_reload_requested.store(true, std::memory_order_relaxed);
+  ESP_LOGI(
+      kTag,
+      "Switching to previous UI page: %u/%u",
+      static_cast<unsigned>(g_active_ui_page + 1),
+      static_cast<unsigned>(g_ui_page_count));
+  return true;
 }
 
 void request_display_assets_reload() {

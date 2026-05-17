@@ -1,6 +1,7 @@
 #include "board/touch.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "app_state.h"
 #include "board/display.h"
@@ -18,12 +19,18 @@ constexpr char kTag[] = "hexe_touch";
 constexpr int kVolumeStepPercent = 10;
 constexpr int64_t kTapDebounceUs = 250 * 1000;
 constexpr int64_t kReadErrorLogIntervalUs = 5 * 1000 * 1000;
+constexpr int kMaxTapMovementPx = 30;
+constexpr int kSwipeThresholdPx = 80;
 
 esp_lcd_touch_handle_t g_touch = nullptr;
 bool g_touch_ready = false;
 bool g_touch_pressed = false;
 int64_t g_last_tap_us = 0;
 int64_t g_last_read_error_log_us = 0;
+int g_touch_start_x = 0;
+int g_touch_start_y = 0;
+int g_touch_last_x = 0;
+int g_touch_last_y = 0;
 
 enum class TouchAction {
   kNone,
@@ -82,6 +89,26 @@ void apply_touch_action(TouchAction action) {
       return;
   }
 }
+
+void handle_touch_release(int x, int y) {
+  const int delta_x = x - g_touch_start_x;
+  const int delta_y = y - g_touch_start_y;
+  const int abs_x = std::abs(delta_x);
+  const int abs_y = std::abs(delta_y);
+  if (abs_x >= kSwipeThresholdPx && abs_x > abs_y * 2) {
+    const bool moved = delta_x < 0 ? hexe::board::show_next_ui_page() : hexe::board::show_previous_ui_page();
+    if (moved) {
+      ESP_LOGI(kTag, "Touch swipe page navigation: dx=%d dy=%d", delta_x, delta_y);
+    }
+    return;
+  }
+
+  const int64_t now_us = esp_timer_get_time();
+  if (abs_x <= kMaxTapMovementPx && abs_y <= kMaxTapMovementPx && now_us - g_last_tap_us >= kTapDebounceUs) {
+    g_last_tap_us = now_us;
+    apply_touch_action(action_for_point(g_touch_start_x, g_touch_start_y));
+  }
+}
 }
 
 namespace hexe::board {
@@ -127,25 +154,28 @@ void update_touch() {
     return;
   }
 
-  const bool pressed = point_count > 0;
-  if (!pressed) {
-    g_touch_pressed = false;
-    return;
-  }
-
-  const int64_t now_us = esp_timer_get_time();
-  if (g_touch_pressed || now_us - g_last_tap_us < kTapDebounceUs) {
-    return;
-  }
-
-  g_touch_pressed = true;
-  g_last_tap_us = now_us;
-
   const int max_x = std::max(0, hexe::board::display_width() - 1);
   const int max_y = std::max(0, hexe::board::display_height() - 1);
   const int x = std::clamp(static_cast<int>(point.x), 0, max_x);
   const int y = std::clamp(static_cast<int>(point.y), 0, max_y);
-  apply_touch_action(action_for_point(x, y));
+  const bool pressed = point_count > 0;
+  if (!pressed) {
+    if (g_touch_pressed) {
+      handle_touch_release(g_touch_last_x, g_touch_last_y);
+    }
+    g_touch_pressed = false;
+    return;
+  }
+
+  g_touch_last_x = x;
+  g_touch_last_y = y;
+  if (g_touch_pressed) {
+    return;
+  }
+
+  g_touch_pressed = true;
+  g_touch_start_x = x;
+  g_touch_start_y = y;
 }
 
 }  // namespace hexe::board

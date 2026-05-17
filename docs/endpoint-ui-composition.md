@@ -20,6 +20,26 @@ The first composited UI manifest is:
 
 `/sdcard/hexe/sprites/ui_manifest.json`
 
+Optional touchscreen page navigation uses a separate pages manifest:
+
+`/sdcard/hexe/sprites/ui_pages_manifest.json`
+
+If this file is missing, firmware loads only `ui_manifest.json`. If present,
+its `pages` array lists scene manifest files under `/sdcard/hexe/sprites`; a
+left swipe advances to the next page and a right swipe returns to the previous
+page. Keep visible button art around 40 px inside roughly 56 px touch targets so
+touch regions stay comfortable on the 320x240 panel.
+
+```json
+{
+  "schema_version": 1,
+  "pages": [
+    { "id": "home", "manifest": "ui_manifest.json" },
+    { "id": "settings", "manifest": "settings_page.json" }
+  ]
+}
+```
+
 Minimal voice-scene example:
 
 ```json
