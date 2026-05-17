@@ -230,3 +230,4 @@ Task 101: Add optional GPU/CUDA STT configuration and status reporting when hard
 Task 102: Tune endpoint utterance capture duration and silence detection to reduce audio sent to STT - Completed on 05/17/2026 00:16
 Task 109: Refactor VoiceSessionManager for multiple simultaneous ESP endpoints with per-endpoint WebSockets, active sessions, status, command routing, OTA/media delivery, and replay controls - Completed on 05/17/2026 00:30
 Task 110: Play a short ding sound on the PE endpoint when wake word is accepted - Completed on 05/17/2026 00:34
+Task 141: Evaluate alternative neural TTS engines, including GPU-capable options - Completed on 05/17/2026 00:34
