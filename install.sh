@@ -214,47 +214,299 @@ HTML = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HexeVoice Setup</title>
   <style>
-    :root { color-scheme: dark; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #101418; color: #ecf2f8; }
-    main { width: min(680px, calc(100vw - 32px)); }
-    h1 { margin: 0 0 12px; font-size: clamp(28px, 5vw, 46px); font-weight: 680; letter-spacing: 0; }
-    p { margin: 0; color: #b5c1cc; line-height: 1.6; font-size: 17px; }
-    .panel { border: 1px solid #2c3742; border-radius: 8px; padding: 28px; background: #151b21; box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24); }
-    .status { margin-top: 24px; display: grid; gap: 10px; }
-    .bar { height: 8px; overflow: hidden; border-radius: 999px; background: #26313b; }
-    .bar span { display: block; width: 42%; height: 100%; border-radius: inherit; background: #40c4aa; animation: pulse 1.6s ease-in-out infinite; }
-    .label { font-size: 14px; color: #d7e1ea; }
-    .detail { min-height: 22px; font-size: 13px; color: #93a3b2; overflow-wrap: anywhere; }
-    @keyframes pulse { 0% { transform: translateX(-80%); } 50% { transform: translateX(65%); } 100% { transform: translateX(180%); } }
+    :root {
+      color-scheme: dark;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: #020817;
+      --panel: #111827;
+      --panel-soft: #172033;
+      --border: #2b3448;
+      --text: #f8fafc;
+      --muted: #9fb0c7;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --accent: #8b5cf6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 30%),
+        linear-gradient(135deg, #050816 0%, #08111e 55%, #06151a 100%);
+      color: var(--text);
+    }
+    .shell {
+      width: min(1680px, calc(100vw - 48px));
+      margin: 32px auto;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+      gap: 24px;
+      align-items: start;
+    }
+    .card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.92);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22);
+    }
+    .stack { display: grid; gap: 16px; }
+    .sidebar { padding: 20px; position: sticky; top: 24px; }
+    .main { display: grid; gap: 24px; }
+    .hero, .panel { padding: 24px; }
+    .section-heading {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(32px, 5vw, 44px); line-height: 1.05; letter-spacing: 0; }
+    h2 { font-size: 20px; letter-spacing: 0; }
+    h3 { font-size: 15px; letter-spacing: 0; }
+    p { color: var(--muted); line-height: 1.55; max-width: 72ch; }
+    .eyebrow {
+      width: fit-content;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 5px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 34px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 7px 12px;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.035);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+    .pill-success { color: var(--success); border-color: rgba(34, 197, 94, 0.45); background: rgba(34, 197, 94, 0.14); }
+    .pill-warning { color: var(--warning); border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.14); }
+    .pill-danger { color: var(--danger); border-color: rgba(239, 68, 68, 0.45); background: rgba(239, 68, 68, 0.14); }
+    .flow-steps { display: grid; gap: 10px; }
+    .flow-step {
+      display: grid;
+      grid-template-columns: 36px minmax(0, 1fr);
+      align-items: center;
+      gap: 12px;
+      min-height: 58px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .flow-step.is-current { border-color: rgba(245, 158, 11, 0.65); background: rgba(245, 158, 11, 0.10); }
+    .flow-step.is-done { border-color: rgba(34, 197, 94, 0.65); background: rgba(34, 197, 94, 0.10); }
+    .flow-step-index {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: #0d1526;
+      font-weight: 700;
+    }
+    .flow-step strong { display: block; font-size: 14px; }
+    .flow-step span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+    .fact-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .fact {
+      min-height: 74px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 13px 14px;
+      background: rgba(255, 255, 255, 0.03);
+    }
+    .fact-label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .fact-value {
+      display: block;
+      color: var(--text);
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .status-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 16px;
+      align-items: center;
+    }
+    .bar { height: 8px; overflow: hidden; border-radius: 999px; background: #273247; }
+    .bar span {
+      display: block;
+      width: 42%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #14b8a6, var(--accent));
+      animation: pulse 1.6s ease-in-out infinite;
+    }
+    .detail { min-height: 22px; color: var(--muted); overflow-wrap: anywhere; }
+    .redirect { color: var(--muted); font-size: 13px; }
+    a { color: #a78bfa; text-decoration: none; }
+    @keyframes pulse {
+      0% { transform: translateX(-80%); }
+      50% { transform: translateX(65%); }
+      100% { transform: translateX(180%); }
+    }
+    @media (max-width: 900px) {
+      .shell { grid-template-columns: 1fr; width: min(100vw - 28px, 720px); margin: 14px auto; }
+      .sidebar { position: static; }
+      .fact-grid { grid-template-columns: 1fr; }
+      .status-panel { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
-  <main class="panel">
-    <h1>HexeVoice setup is preparing</h1>
-    <p>The installer is getting this host ready. This page will hand off to the setup flow when the runtime is available.</p>
-    <section class="status" aria-live="polite">
-      <div class="bar"><span></span></div>
-      <div id="message" class="label">Starting installer...</div>
-      <div id="detail" class="detail"></div>
+  <main class="shell">
+    <aside class="card sidebar stack">
+      <div class="section-heading">
+        <h2>Setup Flow</h2>
+        <span class="pill" id="phase-pill">Preparing</span>
+      </div>
+      <div class="flow-steps" id="flow-steps"></div>
+    </aside>
+
+    <section class="main">
+      <section class="card hero stack">
+        <span class="eyebrow">Hexe Voice Node</span>
+        <h1>HexeVoice setup is preparing</h1>
+        <p>The installer is getting this host ready. This temporary UI will hand off to the production setup flow when the runtime is available.</p>
+      </section>
+
+      <section class="card panel stack">
+        <div class="section-heading">
+          <h2>Setup Health</h2>
+          <span class="pill pill-warning" id="overall-pill">Working</span>
+        </div>
+        <div class="pill-row" id="health-strip"></div>
+        <div class="fact-grid">
+          <div class="fact">
+            <span class="fact-label">Current</span>
+            <span class="fact-value" id="message">Starting installer...</span>
+          </div>
+          <div class="fact">
+            <span class="fact-label">Detail</span>
+            <span class="fact-value" id="detail">Waiting for installer status.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card panel stack status-panel" aria-live="polite">
+        <div class="stack">
+          <h2>Install Progress</h2>
+          <div class="bar"><span></span></div>
+          <p class="redirect" id="redirect">Production setup URL will appear when it is ready.</p>
+        </div>
+        <span class="pill" id="updated-at">No update yet</span>
+      </section>
     </section>
   </main>
+
   <script>
+    const stages = [
+      { id: 'requirements', label: 'Host requirements', match: ['Checking host requirements', 'Installing host requirements'] },
+      { id: 'source', label: 'Source checkout', match: ['Downloading HexeVoice', 'Updating HexeVoice checkout', 'Preparing bundled documentation'] },
+      { id: 'backend', label: 'Backend runtime', match: ['Preparing Python runtime', 'Installing Python requirements'] },
+      { id: 'frontend', label: 'Frontend build', match: ['Installing frontend requirements', 'Building frontend'] },
+      { id: 'runtime', label: 'Runtime dirs', match: ['Preparing runtime directories'] },
+      { id: 'handoff', label: 'Setup handoff', match: ['Opening HexeVoice setup', 'Setup runner skipped'] },
+    ];
     let redirectScheduled = false;
+
+    function stageIndex(status) {
+      const message = String(status.message || '');
+      const detail = String(status.detail || '');
+      const text = `${message} ${detail}`;
+      const matched = stages.findIndex((stage) => stage.match.some((needle) => text.includes(needle)));
+      if (status.redirect_url || status.phase === 'handoff') return stages.length - 1;
+      return matched >= 0 ? matched : 0;
+    }
+
+    function toneForStage(index, currentIndex, status) {
+      if (status.phase === 'failed') return 'danger';
+      if (index < currentIndex) return 'success';
+      if (index === currentIndex) return 'warning';
+      return '';
+    }
+
+    function renderFlow(status) {
+      const currentIndex = stageIndex(status);
+      const flow = document.getElementById('flow-steps');
+      flow.innerHTML = stages.map((stage, index) => {
+        const state = index < currentIndex ? 'is-done' : index === currentIndex ? 'is-current' : '';
+        const detail = index < currentIndex ? 'Complete' : index === currentIndex ? 'In progress' : 'Pending';
+        return `<div class="flow-step ${state}"><div class="flow-step-index">${index + 1}</div><div><strong>${stage.label}</strong><span>${detail}</span></div></div>`;
+      }).join('');
+      document.getElementById('phase-pill').textContent = status.phase || 'running';
+    }
+
+    function renderHealth(status) {
+      const currentIndex = stageIndex(status);
+      const strip = document.getElementById('health-strip');
+      strip.innerHTML = stages.map((stage, index) => {
+        const tone = toneForStage(index, currentIndex, status);
+        const state = index < currentIndex ? 'Pass' : index === currentIndex ? 'Working' : 'Pending';
+        return `<span class="pill ${tone ? `pill-${tone}` : ''}">${stage.label}: ${state}</span>`;
+      }).join('');
+      const overall = document.getElementById('overall-pill');
+      overall.textContent = status.redirect_url ? 'Ready' : status.phase === 'failed' ? 'Failed' : 'Working';
+      overall.className = `pill ${status.redirect_url ? 'pill-success' : status.phase === 'failed' ? 'pill-danger' : 'pill-warning'}`;
+    }
+
+    function scheduleRedirect(status) {
+      if (status.redirect_url && !redirectScheduled) {
+        redirectScheduled = true;
+        const delay = Math.max(1000, Number(status.redirect_delay_ms || 5000));
+        const redirect = document.getElementById('redirect');
+        redirect.textContent = 'Production setup is ready. Redirecting to ';
+        const link = document.createElement('a');
+        link.href = status.redirect_url;
+        link.textContent = status.redirect_url;
+        redirect.appendChild(link);
+        redirect.appendChild(document.createTextNode('.'));
+        window.setTimeout(() => {
+          window.location.assign(status.redirect_url);
+        }, delay);
+      }
+    }
+
     async function refresh() {
       try {
         const response = await fetch('/status.json', { cache: 'no-store' });
         const status = await response.json();
         document.getElementById('message').textContent = status.message || 'Preparing HexeVoice.';
         document.getElementById('detail').textContent = status.detail || '';
-        if (status.redirect_url && !redirectScheduled) {
-          redirectScheduled = true;
-          const delay = Number(status.redirect_delay_ms || 5000);
-          window.setTimeout(() => {
-            window.location.assign(status.redirect_url);
-          }, Math.max(1000, delay));
-        }
+        document.getElementById('updated-at').textContent = status.updated_at ? `Updated ${status.updated_at}` : 'Updating';
+        renderFlow(status);
+        renderHealth(status);
+        scheduleRedirect(status);
       } catch (error) {
-        document.getElementById('message').textContent = 'Waiting for installer status...';
+        const fallback = { phase: 'running', message: 'Waiting for installer status...', detail: '' };
+        document.getElementById('message').textContent = fallback.message;
+        document.getElementById('detail').textContent = '';
+        renderFlow(fallback);
+        renderHealth(fallback);
       }
     }
     refresh();

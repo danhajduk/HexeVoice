@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 160: Make the temporary install UI match the production setup UI shell, including the setup health strip and clear install-prep progress states
 [TODO] Task 161: Strengthen Step 1 production handoff validation so temp UI redirects only after production backend/frontend, runtime dirs, required default assets, and setup health are ready
 [TODO] Task 163: Expand Step 2 Host and Node Setup with node identity fields: node display name, node type/role, hostname, LAN identity, final API URL, and final UI URL
 [TODO] Task 164: Make the setup sidebar adapt to setup mode so new-node installs hide migration/re-auth steps and migration installs show migration plus re-auth

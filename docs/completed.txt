@@ -170,3 +170,4 @@ Task 154: Implement provider/runtime setup status, config, apply, and polling fl
 Task 155: Implement capability declaration and governance setup step - Completed on 05/16/2026 16:55
 Task 156: Implement final smoke-test ready step and setup-mode root redirect - Completed on 05/16/2026 17:00
 Task 159: Add setup-visible Step 1 actions/status for default asset downloads: STT base model, TTS en_US-kathleen-low.onnx, Wake Hexe model, and firmware artifact - Completed on 05/16/2026 21:29
+Task 160: Make the temporary install UI match the production setup UI shell, including the setup health strip and clear install-prep progress states - Completed on 05/16/2026 21:36

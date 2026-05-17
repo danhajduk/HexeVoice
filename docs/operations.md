@@ -174,6 +174,11 @@ Step 1 assets: `download-default-stt-model`, `download-default-tts-model`,
 current readiness check for each default asset and calls the same control
 scripts used by hosted install.
 
+During hosted install, the temporary status UI uses the same setup-shell shape
+as the production setup flow: a setup-flow sidebar, setup health strip, current
+install action, and redirect handoff status. It is served before the frontend
+build is available and remains intentionally self-contained inside `install.sh`.
+
 Runtime files are local state and should normally stay uncommitted. See
 `docs/runtime-state-policy.md` for the tracking policy and run
 `./scripts/runtime-state-status.sh` to separate source changes from generated
