@@ -39,7 +39,7 @@ import { MigrationDashboardSection } from "./features/dashboard/MigrationDashboa
 const SETUP_FLOW_STEPS = [
   { id: "host", label: "Host and Node Setup" },
   { id: "core", label: "Core Connection" },
-  { id: "onboard", label: "Node Onboarding" },
+  { id: "onboard", label: "New Node Onboarding" },
   { id: "migration", label: "Migration Import" },
   { id: "reauth", label: "Migration Re-auth" },
   { id: "providers", label: "Provider Setup" },

@@ -125,9 +125,10 @@ paths are explicitly supported.
 After a successful migration import, setup routes migrated bundles with a
 preserved node ID to `/setup/trust/reauth`; bundles without a previous node ID
 continue through the normal onboarding/provider path.
-Migrated nodes continue through `/setup/trust/reauth`, which starts Core
-re-auth with `POST /api/system/nodes/reauth/sessions`, opens the returned Core
-approval URL, finalizes the session, and saves the fresh activation payload.
+New nodes continue through `/setup/trust` as new-node onboarding. Migrated nodes
+continue through `/setup/trust/reauth`, which starts Core re-auth with
+`POST /api/system/nodes/reauth/sessions`, opens the returned Core approval URL,
+finalizes the session, and saves the fresh activation payload.
 Provider/runtime setup is exposed at `/setup/providers` and backed by
 `/api/setup/providers/status`, `/api/setup/providers/config`, and
 `/api/setup/providers/apply`. The status endpoint reports provider selection,

@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 177: Clarify Step 4 trust routes so new-node onboarding and migration re-auth have distinct URLs and labels that match setup mode
 [TODO] Task 178: Harden Step 4 routing so new-node setup never enters migration re-auth and migrated-node setup cannot skip required re-auth
 [TODO] Task 179: Expand Step 4 onboarding/re-auth status tracking to show waiting, approved, rejected, expired, trust finalized, node ID/name received, and ready-to-continue states
 [TODO] Task 180: Make Step 4 continue automatically after Core approval, local trust activation, node ID/name persistence, and setup-state save all succeed

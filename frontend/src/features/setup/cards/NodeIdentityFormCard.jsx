@@ -79,7 +79,7 @@ export function NodeIdentityFormCard({
           {saving ? "Saving..." : "Save"}
         </button>
         <button className="btn btn-primary" type="button" onClick={startOnboarding} disabled={starting}>
-          {starting ? "Starting..." : "Start Onboarding"}
+          {starting ? "Starting..." : "Start new-node onboarding"}
         </button>
       </div>
       {notice ? <div className="callout callout-success">{notice}</div> : null}

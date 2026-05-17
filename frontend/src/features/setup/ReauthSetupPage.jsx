@@ -38,7 +38,7 @@ export function ReauthSetupPage() {
   return (
     <article className="card stack">
       <div className="section-heading">
-        <h2>Node Re-auth</h2>
+        <h2>Migration Re-auth</h2>
         <span className={`status-pill status-pill-${finalizeResult?.approved ? "success" : "warning"}`}>
           {finalizeResult?.approved ? "trusted" : session?.status || "not started"}
         </span>
@@ -47,7 +47,7 @@ export function ReauthSetupPage() {
       {session?.warnings?.length ? <div className="callout callout-warning">{session.warnings.join(", ")}</div> : null}
       {finalizeResult?.warnings?.length ? <div className="callout callout-warning">{finalizeResult.warnings.join(", ")}</div> : null}
       <div className="callout callout-warning">
-        Migration does not import trust secrets. Approve this node in Core, then finalize to save fresh trust material.
+        Migration re-auth uses `/setup/trust/reauth`. Migration does not import trust secrets. Approve this node in Core, then finalize to save fresh trust material.
       </div>
       <div className="fact-grid">
         <div className="fact-grid-item">
@@ -65,7 +65,7 @@ export function ReauthSetupPage() {
       </div>
       <div className="form-actions">
         <button className="btn btn-secondary" type="button" onClick={start} disabled={busy !== ""}>
-          {busy === "start" ? "Starting..." : "Start re-auth"}
+          {busy === "start" ? "Starting..." : "Start migration re-auth"}
         </button>
         {session?.approval_url ? (
           <button className="btn btn-ghost" type="button" onClick={() => window.open(session.approval_url, "_blank", "noopener,noreferrer")}>
