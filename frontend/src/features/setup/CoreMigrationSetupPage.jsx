@@ -167,6 +167,11 @@ export function MigrationSetupPage() {
     return "Preflight completed with no planned writes.";
   }
 
+  function providerPlanLabel(provider) {
+    if (!provider?.present) return "not included";
+    return [provider.provider, provider.model || provider.default_voice || provider.default_wakeword, provider.device].filter(Boolean).join(" / ") || "included";
+  }
+
   function importDisabled() {
     if (busy !== "" || !bundle) return true;
     if (!result) return true;
@@ -243,15 +248,55 @@ export function MigrationSetupPage() {
         </button>
       </div>
       {result ? (
-        <div className="fact-grid">
-          <div className="fact-grid-item">
-            <span className="fact-grid-label">Result</span>
-            <span className="fact-grid-value">{migrationResultLabel(result)}</span>
+        <div className="stack">
+          <div className="fact-grid">
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Result</span>
+              <span className="fact-grid-value">{migrationResultLabel(result)}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Writes</span>
+              <span className="fact-grid-value">{(result.planned_writes || result.files_imported || []).join(", ") || "none"}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Voice intents</span>
+              <span className="fact-grid-value">
+                {result.import_plan?.voice_intents?.present ? `${result.import_plan.voice_intents.count || 0} included` : "not included"}
+              </span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Re-auth</span>
+              <span className="fact-grid-value">{result.import_plan?.required_reauth ? "required" : "not required"}</span>
+            </div>
           </div>
-          <div className="fact-grid-item">
-            <span className="fact-grid-label">Writes</span>
-            <span className="fact-grid-value">{(result.planned_writes || result.files_imported || []).join(", ") || "none"}</span>
+          <div className="fact-grid">
+            {(result.import_plan?.imported_data || []).map((item) => (
+              <div className="fact-grid-item" key={item.id}>
+                <span className="fact-grid-label">{item.label}</span>
+                <span className="fact-grid-value">{item.will_import ? "will import" : item.present ? "present but blocked" : "not included"}</span>
+              </div>
+            ))}
           </div>
+          <div className="fact-grid">
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">STT</span>
+              <span className="fact-grid-value">{providerPlanLabel(result.import_plan?.provider_settings?.stt)}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">TTS</span>
+              <span className="fact-grid-value">{providerPlanLabel(result.import_plan?.provider_settings?.tts)}</span>
+            </div>
+            <div className="fact-grid-item">
+              <span className="fact-grid-label">Wake</span>
+              <span className="fact-grid-value">{providerPlanLabel(result.import_plan?.provider_settings?.wake)}</span>
+            </div>
+          </div>
+          {result.import_plan?.skipped_secrets?.length ? (
+            <div className="callout callout-neutral">Skipped secrets/tokens: {result.import_plan.skipped_secrets.join(", ")}</div>
+          ) : null}
+          {result.import_plan?.runtime_asset_expectations?.length ? (
+            <div className="callout callout-warning">{result.import_plan.runtime_asset_expectations.join(" ")}</div>
+          ) : null}
         </div>
       ) : null}
     </article>

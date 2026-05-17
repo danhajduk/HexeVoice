@@ -114,6 +114,44 @@ def test_setup_migration_preflight_uses_node_migration_validation(tmp_path):
     payload = response.json()
     assert payload["ok"] is False
     assert "unsupported_migration_schema_version" in " ".join(payload["errors"])
+    assert payload["import_plan"]["required_reauth"] is True
+
+
+def test_setup_migration_preflight_reports_import_plan(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "onboarding-state.json",
+                endpoint_registry_path=tmp_path / "endpoint-registry.json",
+                voice_intent_registry_path=tmp_path / "voice-intents.json",
+                voice_tts_runtime_config_path=tmp_path / "voice-tts-settings.json",
+            )
+        )
+    )
+    bundle = {
+        "schema_version": 1,
+        "contains_trust_secrets": False,
+        "state_files": {
+            "onboarding_state": {},
+            "voice_intents": {"intents": [{"intent_id": "lights.on"}]},
+            "voice_stt_settings": {"provider": "faster_whisper", "model": "base", "device": "cpu"},
+            "voice_tts_provider_settings": {"provider": "piper", "model": "en_US-kathleen-low", "default_voice": "Kathleen"},
+            "voice_wake_settings": {"provider": "openwakeword", "model": "Hexe", "default_wakeword": "Hexe"},
+        },
+    }
+
+    response = client.post("/api/setup/migration/preflight", json={"bundle": bundle})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["import_plan"]["voice_intents"] == {"present": True, "count": 1}
+    assert payload["import_plan"]["provider_settings"]["stt"]["provider"] == "faster_whisper"
+    assert payload["import_plan"]["provider_settings"]["tts"]["provider"] == "piper"
+    assert payload["import_plan"]["provider_settings"]["wake"]["provider"] == "openwakeword"
+    assert "node_trust_token" in payload["import_plan"]["skipped_secrets"]
+    assert payload["import_plan"]["required_reauth"] is True
+    assert payload["import_plan"]["runtime_asset_expectations"]
 
 
 def test_setup_migration_import_rejects_trust_secret_bundle(tmp_path):

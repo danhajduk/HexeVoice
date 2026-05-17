@@ -494,6 +494,7 @@ class NodeMigrationPreflightResponse(BaseModel):
     ok: bool
     dry_run: bool = True
     planned_writes: list[str] = Field(default_factory=list)
+    import_plan: dict[str, Any] = Field(default_factory=dict)
     checks: list[dict[str, object]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)

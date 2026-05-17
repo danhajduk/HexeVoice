@@ -322,6 +322,7 @@ class NodeMigrationService:
         warnings: list[str] = []
         errors: list[str] = []
         planned_writes: list[str] = []
+        import_plan: dict[str, Any] = {}
 
         def check(check_id: str, ok: bool, message: str, *, required: bool = True, detail: object | None = None) -> None:
             status = "pass" if ok else ("fail" if required else "warn")
@@ -341,10 +342,12 @@ class NodeMigrationService:
             plan = self._dry_run_import_plan(payload)
             planned_writes = plan["files_imported"]
             warnings.extend(plan["warnings"])
+            import_plan = self._migration_import_plan(payload.bundle, plan)
             check("bundle_schema", True, "Migration bundle schema is valid.")
         except NodeMigrationError as exc:
             check("bundle_schema", False, str(exc))
             plan = {"state_files": {}}
+            import_plan = self._migration_import_plan(payload.bundle if isinstance(payload.bundle, dict) else {}, plan)
 
         docker = shutil.which("docker")
         check("docker", bool(docker), "Docker is available." if docker else "Docker executable was not found.")
@@ -417,9 +420,93 @@ class NodeMigrationService:
             "ok": ok,
             "dry_run": True,
             "planned_writes": planned_writes,
+            "import_plan": import_plan,
             "checks": checks,
             "warnings": warnings,
             "errors": errors,
+        }
+
+    @staticmethod
+    def _state_file_summary(state_files: dict[str, Any], planned_writes: list[str]) -> list[dict[str, Any]]:
+        labels = {
+            "onboarding_state": "Onboarding/Core connection state",
+            "endpoint_registry": "Endpoint registry",
+            "voice_intents": "Voice intents",
+            "voice_tts_settings": "TTS runtime settings",
+            "voice_tts_provider_settings": "TTS provider settings",
+            "voice_stt_settings": "STT provider settings",
+            "voice_wake_settings": "Wake word settings",
+        }
+        return [
+            {
+                "id": key,
+                "label": label,
+                "present": key in state_files,
+                "will_import": key in planned_writes,
+            }
+            for key, label in labels.items()
+        ]
+
+    @staticmethod
+    def _voice_intent_count(payload: Any) -> int:
+        if not isinstance(payload, dict):
+            return 0
+        for key in ("intents", "registered_intents", "items"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return len(value)
+            if isinstance(value, dict):
+                return len(value)
+        return 0
+
+    def _migration_import_plan(self, bundle: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
+        state_files = plan.get("state_files") if isinstance(plan, dict) else {}
+        state_files = state_files if isinstance(state_files, dict) else {}
+        planned_writes = plan.get("files_imported") if isinstance(plan, dict) else []
+        planned_writes = [str(item) for item in planned_writes] if isinstance(planned_writes, list) else []
+        stt_settings = state_files.get("voice_stt_settings") if isinstance(state_files.get("voice_stt_settings"), dict) else {}
+        tts_settings = state_files.get("voice_tts_provider_settings") if isinstance(state_files.get("voice_tts_provider_settings"), dict) else {}
+        wake_settings = state_files.get("voice_wake_settings") if isinstance(state_files.get("voice_wake_settings"), dict) else {}
+        return {
+            "imported_data": self._state_file_summary(state_files, planned_writes),
+            "skipped_secrets": [
+                "node_trust_token",
+                "operational_mqtt_token",
+                "Core admin tokens",
+                "Supervisor reporting tokens",
+            ],
+            "contains_trust_secrets": bool(bundle.get("contains_trust_secrets")) if isinstance(bundle, dict) else False,
+            "required_reauth": True,
+            "voice_intents": {
+                "present": "voice_intents" in state_files,
+                "count": self._voice_intent_count(state_files.get("voice_intents")),
+            },
+            "provider_settings": {
+                "stt": {
+                    "present": "voice_stt_settings" in state_files,
+                    "provider": stt_settings.get("provider"),
+                    "model": stt_settings.get("model"),
+                    "device": stt_settings.get("device"),
+                },
+                "tts": {
+                    "present": "voice_tts_provider_settings" in state_files or "voice_tts_settings" in state_files,
+                    "provider": tts_settings.get("provider"),
+                    "model": tts_settings.get("model"),
+                    "default_voice": tts_settings.get("default_voice"),
+                },
+                "wake": {
+                    "present": "voice_wake_settings" in state_files,
+                    "provider": wake_settings.get("provider"),
+                    "model": wake_settings.get("model"),
+                    "default_wakeword": wake_settings.get("default_wakeword"),
+                },
+            },
+            "runtime_asset_expectations": [
+                "STT model cache under runtime/stt/faster-whisper is not bundled.",
+                "Piper voice ONNX/JSON files under runtime/piper-tts/models are not bundled.",
+                "Wake models under runtime/openwakeword/models are not bundled.",
+                "Firmware artifacts, endpoint media, generated TTS audio, logs, and service env files are not bundled.",
+            ],
         }
 
     def _dry_run_import_plan(self, payload: NodeMigrationImportRequest) -> dict[str, Any]:
