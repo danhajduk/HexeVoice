@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 from typing import Any
+from urllib.parse import urlencode
 
 from hexevoice.api.models import (
     SetupHostReadinessActionRequest,
@@ -67,6 +68,10 @@ class SetupHostReadinessService:
             warnings=warnings,
             supported_actions=SUPPORTED_ACTIONS,
             enrollment_token_url=self._enrollment_token_url(core_url),
+            enrollment_page_url=self._enrollment_page_url(
+                core_url,
+                supervisor_id=str(state.get("supervisor_id") or self._default_supervisor_id()),
+            ),
             updated_at=_utc_now(),
         )
 
@@ -355,6 +360,16 @@ class SetupHostReadinessService:
         if not core_base_url:
             return None
         return f"{core_base_url.rstrip('/')}/api/system/supervisors/enrollment-tokens"
+
+    @staticmethod
+    def _enrollment_page_url(core_base_url: str | None, *, supervisor_id: str | None = None) -> str | None:
+        if not core_base_url:
+            return None
+        base = f"{core_base_url.rstrip('/')}/system/supervisors/enrollment"
+        supervisor_id = str(supervisor_id or "").strip()
+        if not supervisor_id:
+            return base
+        return f"{base}?{urlencode({'supervisor_id': supervisor_id})}"
 
     def _supervisor_installer(self) -> Path | None:
         for local in (

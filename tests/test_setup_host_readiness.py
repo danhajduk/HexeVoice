@@ -49,6 +49,7 @@ def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
     assert payload["readiness"]["setup_mode"] == "migrate_existing"
     assert payload["readiness"]["lifecycle_mode"] == "joined_supervisor"
     assert payload["readiness"]["enrollment_token_url"] == "http://10.0.0.100:9001/api/system/supervisors/enrollment-tokens"
+    assert payload["readiness"]["enrollment_page_url"] == "http://10.0.0.100:9001/system/supervisors/enrollment?supervisor_id=lab-supervisor"
 
 
 def test_setup_host_joined_supervisor_requires_token(tmp_path):

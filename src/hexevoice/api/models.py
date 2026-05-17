@@ -581,6 +581,7 @@ class SetupHostReadinessResponse(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     supported_actions: list[str] = Field(default_factory=list)
     enrollment_token_url: str | None = None
+    enrollment_page_url: str | None = None
     updated_at: str | None = None
 
 
