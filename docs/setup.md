@@ -190,6 +190,10 @@ preview contains the Core declaration payload, node identity, enabled providers,
 provider models/configs, selected capabilities, runtime URLs or sockets, budget
 metadata, and current governance metadata so the operator can inspect the exact
 shape before declaring to Core.
+It also exposes a Core-visible summary for STT, TTS, and wake services,
+available models, enabled capabilities, disabled capabilities, and enabled
+provider states so the setup UI can show the high-level declaration outcome
+without forcing operators to read raw JSON.
 When Step 5 provider selections or model config change after Core has accepted
 capabilities, the local capability state moves to `manifest_stale`, governance
 returns to `pending_capability`, and operational readiness is cleared until the

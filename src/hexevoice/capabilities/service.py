@@ -147,6 +147,8 @@ class CapabilityDeclarationService:
         declaration_payload = self.capability_declaration_payload(state)
         enabled_providers = self._enabled_providers(state)
         node_id = state.trust_activation.node_id or ""
+        provider_models = self._provider_model_preview(enabled_providers, state.provider_setup.provider_configs)
+        runtime = self._runtime_preview(declaration_payload["manifest"]["capability_endpoints"])
         return {
             "declaration_payload": declaration_payload,
             "budget_declaration": self._budget_declaration_payload(
@@ -161,13 +163,13 @@ class CapabilityDeclarationService:
                 "enabled": enabled_providers,
                 "default_provider": state.provider_setup.default_provider,
                 "configs": dict(state.provider_setup.provider_configs),
-                "models": self._provider_model_preview(enabled_providers, state.provider_setup.provider_configs),
+                "models": provider_models,
             },
             "capabilities": {
                 "selected": declaration_payload["manifest"]["declared_capabilities"],
                 "endpoints": declaration_payload["manifest"]["capability_endpoints"],
             },
-            "runtime": self._runtime_preview(declaration_payload["manifest"]["capability_endpoints"]),
+            "runtime": runtime,
             "governance": {
                 "capability_profile_id": state.capability_declaration.capability_profile_id,
                 "governance_version": state.governance_sync.governance_version
@@ -177,6 +179,11 @@ class CapabilityDeclarationService:
                 "refresh_interval_s": state.governance_sync.refresh_interval_s,
                 "last_refresh_request_at": state.governance_sync.last_refresh_request_at,
             },
+            "core_visible_summary": self._core_visible_summary(
+                declaration_payload=declaration_payload,
+                provider_models=provider_models,
+                runtime=runtime,
+            ),
         }
 
     def capability_declaration_payload(self, state=None) -> dict:
@@ -257,6 +264,7 @@ class CapabilityDeclarationService:
         previews: list[dict] = []
         for provider_id in enabled_providers:
             config = dict(provider_configs.get(provider_id) or {})
+            role = self._provider_role(provider_id)
             if provider_id in {"external_faster_whisper", "faster_whisper"}:
                 model = config.get("model") or self._settings.voice_stt_faster_whisper_model
             elif provider_id == "piper":
@@ -268,6 +276,7 @@ class CapabilityDeclarationService:
             previews.append(
                 {
                     "provider_id": provider_id,
+                    "role": role,
                     "model": str(model or provider_id),
                     "warm_models": config.get("warm_models") or [],
                     "profile": config.get("profile"),
@@ -308,6 +317,83 @@ class CapabilityDeclarationService:
                 },
             },
         }
+
+    def _core_visible_summary(self, *, declaration_payload: dict, provider_models: list[dict], runtime: dict) -> dict:
+        manifest = declaration_payload["manifest"]
+        selected = list(manifest["declared_capabilities"])
+        disabled = [capability for capability in VOICE_NODE_CAPABILITIES if capability not in set(selected)]
+        models_by_provider = {str(item.get("provider_id")): item for item in provider_models}
+        service_specs = [
+            {
+                "service_id": "stt",
+                "label": "STT",
+                "role": "stt",
+                "provider_id": self._provider_for_role(provider_models, "stt") or self._settings.voice_stt_provider,
+                "enabled": "voice.inference" in selected,
+                "capabilities": [capability for capability in selected if capability == "voice.inference"],
+                "runtime": runtime.get("providers", {}).get("stt") or {},
+            },
+            {
+                "service_id": "tts",
+                "label": "TTS",
+                "role": "tts",
+                "provider_id": self._provider_for_role(provider_models, "tts") or self._settings.voice_tts_provider,
+                "enabled": any(capability in selected for capability in {"voice.tts.synthesize", "voice.tts.audio_url"}),
+                "capabilities": [capability for capability in selected if capability.startswith("voice.tts.")],
+                "runtime": runtime.get("providers", {}).get("tts") or {},
+            },
+            {
+                "service_id": "wake",
+                "label": "Wake",
+                "role": "wake",
+                "provider_id": self._provider_for_role(provider_models, "wake") or self._settings.voice_wake_provider,
+                "enabled": bool(self._provider_for_role(provider_models, "wake")),
+                "capabilities": [],
+                "runtime": runtime.get("providers", {}).get("wake") or {},
+            },
+        ]
+        for service in service_specs:
+            model = models_by_provider.get(str(service["provider_id"])) or {}
+            service["models"] = [item for item in [model.get("model"), *model.get("warm_models", [])] if item]
+        available_models = []
+        for model in provider_models:
+            model_ids = [model.get("model"), *model.get("warm_models", [])]
+            for model_id in model_ids:
+                if not model_id:
+                    continue
+                available_models.append(
+                    {
+                        "provider_id": model.get("provider_id"),
+                        "role": model.get("role"),
+                        "model_id": model_id,
+                        "enabled": model.get("provider_id") in manifest["enabled_providers"],
+                    }
+                )
+        return {
+            "node_id": manifest["node"].get("node_id"),
+            "provided_services": service_specs,
+            "available_models": available_models,
+            "enabled_capabilities": selected,
+            "disabled_capabilities": disabled,
+            "enabled_providers": manifest["enabled_providers"],
+        }
+
+    @staticmethod
+    def _provider_role(provider_id: str) -> str:
+        if provider_id in {"external_faster_whisper", "faster_whisper"}:
+            return "stt"
+        if provider_id == "piper":
+            return "tts"
+        if provider_id in {"openwakeword", "supervised_openwakeword"}:
+            return "wake"
+        return "pipeline"
+
+    @staticmethod
+    def _provider_for_role(provider_models: list[dict], role: str) -> str | None:
+        for model in provider_models:
+            if model.get("role") == role:
+                return str(model.get("provider_id") or "")
+        return None
 
     def _provider_intelligence(self, enabled_providers: list[str]) -> list[dict]:
         providers = {provider.strip().lower() for provider in enabled_providers if provider and provider.strip()}

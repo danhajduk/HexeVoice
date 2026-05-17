@@ -110,6 +110,15 @@ def test_setup_capabilities_status_includes_manifest_preview(tmp_path):
     assert models["piper"]["model"] == "en_US-kathleen-low"
     assert models["openwakeword"]["model"] == "Hexe"
     assert preview["budget_declaration"]["node_id"] == "node-voice-123"
+    summary = preview["core_visible_summary"]
+    services = {item["service_id"]: item for item in summary["provided_services"]}
+    assert services["stt"]["provider_id"] == "external_faster_whisper"
+    assert services["stt"]["models"] == ["small.en"]
+    assert services["tts"]["provider_id"] == "piper"
+    assert services["wake"]["provider_id"] == "openwakeword"
+    assert "voice.inference" in summary["enabled_capabilities"]
+    assert summary["disabled_capabilities"] == []
+    assert {"provider_id": "external_faster_whisper", "role": "stt", "model_id": "small.en", "enabled": True} in summary["available_models"]
 
 
 def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):

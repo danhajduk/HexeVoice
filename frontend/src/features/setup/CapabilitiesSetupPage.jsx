@@ -101,6 +101,7 @@ export function CapabilitiesSetupPage() {
   const capabilities = status?.capabilities || {};
   const governance = status?.governance || {};
   const manifestPreview = status?.manifest_preview || {};
+  const coreSummary = manifestPreview.core_visible_summary || {};
   const available = capabilities.available || [];
   const declared = capabilities.declared || [];
   const providerModels = manifestPreview.providers?.models || [];
@@ -140,6 +141,43 @@ export function CapabilitiesSetupPage() {
           <span className="fact-grid-value">{governance.governance_version || capabilities.governance_version || "pending"}</span>
         </div>
       </div>
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Core-Visible Summary</h3>
+          <span className={`status-pill status-pill-${toneForStatus(status?.capability_current)}`}>
+            {status?.capability_current ? "declared" : "pending"}
+          </span>
+        </div>
+        <div className="fact-grid">
+          {(coreSummary.provided_services || []).map((service) => (
+            <div className="fact-grid-item" key={service.service_id}>
+              <span className="fact-grid-label">{service.label}</span>
+              <span className={`status-pill status-pill-${toneForStatus(service.enabled)}`}>
+                {service.enabled ? "enabled" : "disabled"}
+              </span>
+              <span className="fact-grid-value">{service.provider_id || "pending"}</span>
+              <span className="fact-grid-label">{joinList(service.models)}</span>
+            </div>
+          ))}
+        </div>
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Available models</span>
+            <span className="fact-grid-value">
+              {joinList((coreSummary.available_models || []).map((model) => `${model.provider_id}:${model.model_id}`))}
+            </span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Enabled capabilities</span>
+            <span className="fact-grid-value">{joinList(coreSummary.enabled_capabilities)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Disabled capabilities</span>
+            <span className="fact-grid-value">{joinList(coreSummary.disabled_capabilities)}</span>
+          </div>
+        </div>
+      </section>
 
       <section className="stack">
         <div className="section-heading">
