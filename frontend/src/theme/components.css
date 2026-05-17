@@ -1044,6 +1044,32 @@
   color: var(--text);
 }
 
+select.field-input {
+  color-scheme: dark;
+  background-color: hsl(var(--sx-panel-alt));
+}
+
+.field-input option,
+.endpoint-media-form select option,
+.endpoint-media-actions select option {
+  color: hsl(var(--sx-text));
+  background-color: hsl(var(--sx-panel));
+}
+
+.field-input option:checked,
+.endpoint-media-form select option:checked,
+.endpoint-media-actions select option:checked {
+  color: hsl(var(--sx-text));
+  background-color: hsl(var(--sx-accent) / 0.55);
+}
+
+.field-input option:disabled,
+.endpoint-media-form select option:disabled,
+.endpoint-media-actions select option:disabled {
+  color: hsl(var(--sx-text-muted));
+  background-color: hsl(var(--sx-panel));
+}
+
 .field-input:focus {
   outline: 2px solid color-mix(in oklab, var(--accent) 60%, transparent);
   outline-offset: 2px;
@@ -1312,6 +1338,11 @@
   background: hsl(var(--sx-panel));
   color: hsl(var(--sx-text));
   padding: 10px 12px;
+}
+
+.endpoint-media-form select,
+.endpoint-media-actions select {
+  color-scheme: dark;
 }
 
 .endpoint-media-size {
