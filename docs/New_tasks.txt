@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 204: Verify Step 7 post-complete lifecycle so production backend/frontend, Docker providers, supervisor/systemd units, and temp runner shutdown survive restart
 
 **********************************************************************************************
 * Future TODO listing

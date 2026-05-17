@@ -235,6 +235,11 @@ node visibility before setup can be completed. While setup is incomplete, the
 frontend redirects `8084/` into the current `/setup/*` route; after completion,
 `8084/` stays on the dashboard/fallback surface and completed `/setup/*`
 requests are normalized back to the dashboard route instead of forcing setup.
+After completing setup, run `scripts/verify-post-complete-lifecycle.py` to
+verify the production backend/frontend, provider runtimes, Supervisor
+registration, systemd units, and temporary setup runner state. Add
+`--restart-stack` when you want the script to restart the production services
+first and confirm the completed lifecycle survives the restart.
 
 ```bash
 ./scripts/setup-runner.sh --handoff none
