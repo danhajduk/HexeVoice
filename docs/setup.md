@@ -106,7 +106,10 @@ Core connection and migration setup are split into `/setup/core` and
 temporarily offline and reports reachability as a warning. When Core is
 reachable, it also reports Core identity/version metadata and route-support
 probes for node registration, migration re-auth, Supervisor enrollment,
-capability profiles, and governance endpoints. The migration setup
+capability profiles, and governance endpoints. The response separates the
+operator-entered LAN/public URL, Core API URL, Core UI URL, and exact tested
+endpoints so hosts with UI on port 80 and API on port 9001 are understandable.
+The migration setup
 routes wrap the node migration preflight/import APIs and continue to reject any
 bundle containing trust tokens.
 Migrated nodes continue through `/setup/trust/reauth`, which starts Core

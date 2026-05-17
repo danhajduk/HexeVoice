@@ -5,7 +5,7 @@ function compactPayload(payload) {
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== "" && value !== null && value !== undefined));
 }
 
-function normalizedCoreBaseUrl(raw) {
+function normalizedCorePublicUrl(raw) {
   const trimmed = String(raw || "").trim();
   if (!trimmed) {
     return "";
@@ -13,15 +13,28 @@ function normalizedCoreBaseUrl(raw) {
   try {
     const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
     const url = new URL(withScheme);
-    if (!url.port && url.protocol === "http:") {
-      url.port = "9001";
-    }
     url.pathname = url.pathname.replace(/\/$/, "");
     url.search = "";
     url.hash = "";
     return url.toString().replace(/\/$/, "");
   } catch {
     return trimmed.replace(/\/$/, "");
+  }
+}
+
+function normalizedCoreApiUrl(raw) {
+  const normalized = normalizedCorePublicUrl(raw);
+  if (!normalized) {
+    return "";
+  }
+  try {
+    const url = new URL(normalized);
+    if (!url.port && url.protocol === "http:") {
+      url.port = "9001";
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return normalized;
   }
 }
 
@@ -35,7 +48,7 @@ export function CoreSetupPage({ onContinue }) {
     setBusy(true);
     setError("");
     try {
-      const normalized = normalizedCoreBaseUrl(coreUrl);
+      const normalized = normalizedCorePublicUrl(coreUrl);
       setCoreUrl(normalized);
       const payload = await saveSetupCoreConnection({ core_base_url: normalized });
       setResult(payload);
@@ -48,10 +61,15 @@ export function CoreSetupPage({ onContinue }) {
   }
 
   const coreIdentity = result?.core_identity || {};
+  const testedEndpoint = result?.tested_endpoints?.[0]?.url || result?.metadata?.probes?.registration?.url || normalizedCoreApiUrl(coreUrl);
   const supportFacts = result
     ? [
         ["Core identity", coreIdentity.core_name || coreIdentity.platform_name || coreIdentity.core_id || "pending"],
         ["Core version", result.core_version || "unknown"],
+        ["LAN/public URL", result.core_public_url || "pending"],
+        ["API URL", result.core_api_url || result.core_base_url || "pending"],
+        ["UI URL", result.core_ui_url || result.core_public_url || "pending"],
+        ["Endpoint tested", testedEndpoint || "pending"],
         ["Registration support", result.registration_supported ? "detected" : "pending"],
         ["Re-auth support", result.reauth_supported ? "detected" : "pending"],
         ["Supervisor enrollment", result.supervisor_enrollment_supported ? "detected" : "pending"],
@@ -70,11 +88,14 @@ export function CoreSetupPage({ onContinue }) {
       {error ? <div className="callout callout-danger">{error}</div> : null}
       {result?.warnings?.length ? <div className="callout callout-warning">{result.warnings.join(", ")}</div> : null}
       <label className="field">
-        <span className="field-label">Core base URL</span>
-        <input className="field-input" value={coreUrl} onChange={(event) => setCoreUrl(event.target.value)} placeholder="http://10.0.0.100:9001" />
+        <span className="field-label">Core LAN/public URL</span>
+        <input className="field-input" value={coreUrl} onChange={(event) => setCoreUrl(event.target.value)} placeholder="http://10.0.0.100" />
       </label>
-      {coreUrl && normalizedCoreBaseUrl(coreUrl) !== coreUrl.replace(/\/$/, "") ? (
-        <div className="callout callout-warning">Using normalized Core URL: {normalizedCoreBaseUrl(coreUrl)}</div>
+      {coreUrl && normalizedCorePublicUrl(coreUrl) !== coreUrl.replace(/\/$/, "") ? (
+        <div className="callout callout-warning">Using normalized Core URL: {normalizedCorePublicUrl(coreUrl)}</div>
+      ) : null}
+      {coreUrl ? (
+        <div className="callout callout-neutral">Core API will be checked at {normalizedCoreApiUrl(coreUrl) || "pending"}.</div>
       ) : null}
       <div className="form-actions">
         <button className="btn btn-primary" type="button" onClick={save} disabled={busy || !coreUrl}>

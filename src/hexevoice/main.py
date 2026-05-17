@@ -1889,10 +1889,12 @@ def create_app(
     @app.put("/api/setup/core", response_model=SetupCoreConnectionResponse)
     async def setup_core_connection(payload: CoreConnectionSetupRequest) -> SetupCoreConnectionResponse:
         normalized_core_base_url = setup_host_readiness_service._normalize_core_base_url(payload.core_base_url) or str(payload.core_base_url).rstrip("/")
+        normalized_core_public_url = setup_host_readiness_service._normalize_core_public_url(payload.core_base_url) or normalized_core_base_url
         normalized_payload = payload.model_copy(update={"core_base_url": normalized_core_base_url})
         saved = onboarding_state_service.save_core_connection(normalized_payload)
         warnings: list[str] = []
         metadata: dict[str, object] = {}
+        tested_endpoints: list[dict[str, object]] = []
         reachable = False
         core_identity: dict[str, object] = {}
         core_version: str | None = None
@@ -1907,20 +1909,27 @@ def create_app(
             try:
                 response = await client.request(method, url)
             except Exception as exc:
-                return {"path": path, "method": method, "supported": False, "error": str(exc)}
+                result = {"path": path, "url": url, "method": method, "supported": False, "error": str(exc)}
+                tested_endpoints.append(result)
+                return result
             supported = response.status_code not in {404, 501}
-            return {
+            result = {
                 "path": path,
+                "url": url,
                 "method": method,
                 "status_code": response.status_code,
                 "supported": supported,
             }
+            tested_endpoints.append(result)
+            return result
 
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
-                response = await client.get(f"{core_base}/api/health")
+                health_url = f"{core_base}/api/health"
+                response = await client.get(health_url)
                 reachable = response.status_code < 500
                 metadata["health_status_code"] = response.status_code
+                tested_endpoints.append({"path": "/api/health", "url": health_url, "method": "GET", "status_code": response.status_code})
                 if response.headers.get("content-type", "").lower().startswith("application/json"):
                     try:
                         health_payload = response.json()
@@ -1935,8 +1944,12 @@ def create_app(
                             or ""
                         ).strip() or None
 
-                platform_response = await client.get(f"{core_base}/api/system/platform")
+                platform_url = f"{core_base}/api/system/platform"
+                platform_response = await client.get(platform_url)
                 metadata["platform_status_code"] = platform_response.status_code
+                tested_endpoints.append(
+                    {"path": "/api/system/platform", "url": platform_url, "method": "GET", "status_code": platform_response.status_code}
+                )
                 if platform_response.status_code < 500 and platform_response.headers.get("content-type", "").lower().startswith("application/json"):
                     try:
                         platform_payload = platform_response.json()
@@ -1968,6 +1981,9 @@ def create_app(
         return SetupCoreConnectionResponse(
             configured=saved.configured,
             core_base_url=saved.core_base_url,
+            core_public_url=normalized_core_public_url,
+            core_api_url=normalized_core_base_url,
+            core_ui_url=normalized_core_public_url,
             reachable=reachable,
             core_identity=core_identity,
             core_version=core_version,
@@ -1975,6 +1991,7 @@ def create_app(
             reauth_supported=reauth_supported,
             supervisor_enrollment_supported=supervisor_enrollment_supported,
             capability_governance_supported=capability_governance_supported,
+            tested_endpoints=tested_endpoints,
             metadata=metadata,
             warnings=warnings,
         )

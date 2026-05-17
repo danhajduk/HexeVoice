@@ -636,6 +636,34 @@ class SetupHostReadinessService:
         return urlunsplit((parsed.scheme, netloc, parsed.path.rstrip("/"), "", "")).rstrip("/")
 
     @staticmethod
+    def _normalize_core_public_url(core_base_url: object) -> str | None:
+        raw = str(core_base_url or "").strip().rstrip("/")
+        if not raw:
+            return None
+        if "://" not in raw:
+            raw = f"http://{raw}"
+        try:
+            parsed = urlsplit(raw)
+        except ValueError:
+            return raw
+        if not parsed.hostname:
+            return raw
+        host = parsed.hostname
+        if ":" in host and not host.startswith("["):
+            host = f"[{host}]"
+        auth = ""
+        if parsed.username:
+            auth = parsed.username
+            if parsed.password:
+                auth += f":{parsed.password}"
+            auth += "@"
+        port = parsed.port
+        netloc = f"{auth}{host}"
+        if port is not None and port != 9001:
+            netloc = f"{netloc}:{port}"
+        return urlunsplit((parsed.scheme, netloc, parsed.path.rstrip("/"), "", "")).rstrip("/")
+
+    @staticmethod
     def _enrollment_token_url(core_base_url: str | None) -> str | None:
         if not core_base_url:
             return None

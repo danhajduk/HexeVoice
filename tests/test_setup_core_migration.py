@@ -78,6 +78,9 @@ def test_setup_core_reports_core_metadata_and_supported_paths(monkeypatch, tmp_p
     assert response.status_code == 200
     payload = response.json()
     assert payload["core_base_url"] == "http://10.0.0.100:9001"
+    assert payload["core_public_url"] == "http://10.0.0.100"
+    assert payload["core_api_url"] == "http://10.0.0.100:9001"
+    assert payload["core_ui_url"] == "http://10.0.0.100"
     assert payload["reachable"] is True
     assert payload["core_version"] == "1.2.3"
     assert payload["core_identity"]["core_id"] == "core-123"
@@ -86,6 +89,7 @@ def test_setup_core_reports_core_metadata_and_supported_paths(monkeypatch, tmp_p
     assert payload["reauth_supported"] is True
     assert payload["supervisor_enrollment_supported"] is True
     assert payload["capability_governance_supported"] is True
+    assert payload["tested_endpoints"][0]["url"] == "http://10.0.0.100:9001/api/health"
     assert payload["metadata"]["probes"]["registration"]["status_code"] == 401
 
 

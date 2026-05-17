@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 171: Clean up Step 3 Core URL handling so the UI clearly separates Core base URL, API URL, UI URL, LAN/public URL, and the exact endpoint tested
 [TODO] Task 172: Add automatic migration preflight after migration file upload, with visible summary before import
 [TODO] Task 173: Add a detailed Step 3 migration import plan showing imported data, skipped secrets/tokens, voice intents, provider settings, STT/TTS/wake settings, runtime asset expectations, and required re-auth
 [TODO] Task 174: Add Step 3 migration source options for uploaded file, old-node/Core fetch when supported, and local migration path/schema-version review
