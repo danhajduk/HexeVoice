@@ -155,6 +155,26 @@ def test_setup_capabilities_status_summarizes_governance_bundle(tmp_path):
     assert summary["local_required_changes"] == [{"id": "enable-audit-log"}]
 
 
+def test_setup_capabilities_status_blocks_invalid_manifest(tmp_path):
+    settings = trusted_capability_settings(tmp_path)
+    store = OnboardingStateStore(path=settings.onboarding_state_path)
+    state = store.load()
+    store.save(
+        state.model_copy(
+            update={
+                "trust_activation": state.trust_activation.model_copy(update={"node_id": ""}),
+            }
+        )
+    )
+    client = TestClient(create_app(settings))
+
+    payload = client.get("/api/setup/capabilities/status").json()
+
+    assert payload["manifest_validation"]["valid"] is False
+    assert "node_id_missing" in payload["manifest_validation"]["errors"]
+    assert "invalid_manifest:node_id_missing" in payload["blockers"]
+
+
 def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):
     client = TestClient(create_app(trusted_capability_settings(tmp_path)))
 
@@ -235,3 +255,5 @@ def test_setup_capabilities_declare_core_offline_is_retryable(tmp_path, monkeypa
     assert payload["status_code"] == 502
     assert "capability_declaration_request_failed" in payload["error"]
     assert payload["status"]["continue_blocked"] is True
+    assert "core_declaration_rejected" in payload["status"]["blockers"]
+    assert "core_unavailable" in payload["status"]["blockers"]

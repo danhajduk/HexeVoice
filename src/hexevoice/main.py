@@ -2337,6 +2337,7 @@ def create_app(
         capabilities = service.capabilities_payload()
         readiness = service.readiness_payload()
         provider_setup = provider_setup_service.status_payload()
+        manifest_preview = capability_service.manifest_preview()
         selected = set(capabilities.selected)
         declared = set(capabilities.declared)
         capability_current = (
@@ -2350,13 +2351,64 @@ def create_app(
             and bool(state.governance_sync.governance_bundle)
         )
 
+        def manifest_validation_errors(preview: dict) -> list[str]:
+            manifest = preview.get("declaration_payload", {}).get("manifest", {})
+            node = manifest.get("node") if isinstance(manifest, dict) else {}
+            errors: list[str] = []
+            if not node.get("node_id"):
+                errors.append("node_id_missing")
+            if not node.get("node_name"):
+                errors.append("node_name_missing")
+            if not manifest.get("declared_capabilities"):
+                errors.append("capabilities_missing")
+            if not manifest.get("enabled_providers"):
+                errors.append("enabled_providers_missing")
+            if not isinstance(manifest.get("capability_endpoints"), dict):
+                errors.append("capability_endpoints_invalid")
+            return errors
+
+        def provider_health_blockers(selected_capabilities: set[str]) -> list[str]:
+            try:
+                services = service.service_status_payload()
+            except Exception as exc:
+                return [f"provider_health_unavailable:{exc}"]
+            components = {component.get("component_id"): component for component in services.model_dump(mode="json").get("components", [])}
+            requirements = {
+                "voice.inference": "stt",
+                "voice.tts.synthesize": "tts",
+                "voice.tts.audio_url": "tts",
+            }
+            health_blockers: list[str] = []
+            for capability, component_id in requirements.items():
+                if capability not in selected_capabilities:
+                    continue
+                component = components.get(component_id)
+                if component and component.get("healthy") is False:
+                    health_blockers.append(f"selected_capability_provider_unhealthy:{capability}:{component_id}")
+            return health_blockers
+
+        manifest_errors = manifest_validation_errors(manifest_preview)
         blockers: list[str] = []
         if state.trust_activation.trust_status != "trusted":
-            blockers.append("trust_not_configured")
+            blockers.append("untrusted_node")
         if not state.pre_trust.core_base_url:
             blockers.append("core_connection_not_configured")
         if not provider_setup.declaration_allowed:
             blockers.extend(provider_setup.blocking_reasons or ["provider_setup_incomplete"])
+            blockers.append("provider_setup_incomplete")
+        for error in manifest_errors:
+            blockers.append(f"invalid_manifest:{error}")
+        capability_error = state.capability_declaration.last_error or ""
+        governance_error = state.governance_sync.last_error or ""
+        if capability_error:
+            blockers.append("core_declaration_rejected")
+            if "core" in capability_error.lower():
+                blockers.append("core_unavailable")
+        if governance_error:
+            blockers.append("governance_sync_failed")
+            if "core" in governance_error.lower():
+                blockers.append("core_unavailable")
+        blockers.extend(provider_health_blockers(selected))
         if not capabilities.selected:
             blockers.append("capability_selection_required")
         if not capability_current:
@@ -2400,7 +2452,11 @@ def create_app(
 
         return {
             "capabilities": capabilities.model_dump(mode="json"),
-            "manifest_preview": capability_service.manifest_preview(),
+            "manifest_preview": manifest_preview,
+            "manifest_validation": {
+                "valid": not manifest_errors,
+                "errors": manifest_errors,
+            },
             "provider_setup": provider_setup.model_dump(mode="json"),
             "governance": {
                 "governance_sync_status": state.governance_sync.governance_sync_status,
@@ -2433,6 +2489,33 @@ def create_app(
         elif isinstance(exc, httpx.HTTPError):
             status_code = 502
             detail = f"core_request_failed: {exc}"
+        state = onboarding_state_store.load()
+        if action == "declare":
+            onboarding_state_store.save(
+                state.model_copy(
+                    update={
+                        "capability_declaration": state.capability_declaration.model_copy(
+                            update={
+                                "capability_status": "rejected" if status_code < 500 else state.capability_declaration.capability_status,
+                                "last_error": detail,
+                            }
+                        )
+                    }
+                )
+            )
+        elif action == "sync-governance":
+            onboarding_state_store.save(
+                state.model_copy(
+                    update={
+                        "governance_sync": state.governance_sync.model_copy(
+                            update={
+                                "governance_sync_status": "failed",
+                                "last_error": detail,
+                            }
+                        )
+                    }
+                )
+            )
         return {
             "accepted": False,
             "action": action,

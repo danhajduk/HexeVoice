@@ -197,6 +197,10 @@ without forcing operators to read raw JSON.
 Governance sync status includes a summary of Core-returned accepted, denied,
 pending, and locally required changes. The setup UI renders those fields from
 the stored governance bundle while still preserving the raw bundle in status.
+Step 6 blockers include untrusted node state, missing Core connection, provider
+setup incompleteness, local manifest validation errors, persisted Core
+declaration rejection, governance sync failure, Core request failures, and
+selected voice capabilities whose local providers are unhealthy.
 When Step 5 provider selections or model config change after Core has accepted
 capabilities, the local capability state moves to `manifest_stale`, governance
 returns to `pending_capability`, and operational readiness is cleared until the
