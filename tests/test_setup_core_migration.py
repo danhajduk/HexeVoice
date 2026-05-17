@@ -23,10 +23,10 @@ def test_setup_core_saves_url_when_core_is_unreachable(tmp_path):
     assert response.status_code == 200
     payload = response.json()
     assert payload["configured"] is True
-    assert payload["core_base_url"] == "http://127.0.0.1:9/"
+    assert payload["core_base_url"] == "http://127.0.0.1:9"
     assert payload["reachable"] is False
     assert payload["warnings"]
-    assert OnboardingStateStore(path=state_path).load().pre_trust.core_base_url == "http://127.0.0.1:9/"
+    assert OnboardingStateStore(path=state_path).load().pre_trust.core_base_url == "http://127.0.0.1:9"
 
 
 def test_setup_migration_preflight_uses_node_migration_validation(tmp_path):

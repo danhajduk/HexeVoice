@@ -663,7 +663,7 @@ export default function App() {
                 ) : setupSection === "core" ? (
                   <>
                     <SetupHealthCard readiness={setupReadiness} />
-                    <CoreSetupPage />
+                    <CoreSetupPage onContinue={() => openSetupSection("migration")} />
                   </>
                 ) : setupSection === "migration" ? (
                   <>

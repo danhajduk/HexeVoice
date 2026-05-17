@@ -5,7 +5,27 @@ function compactPayload(payload) {
   return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== "" && value !== null && value !== undefined));
 }
 
-export function CoreSetupPage() {
+function normalizedCoreBaseUrl(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+    const url = new URL(withScheme);
+    if (!url.port && url.protocol === "http:") {
+      url.port = "9001";
+    }
+    url.pathname = url.pathname.replace(/\/$/, "");
+    url.search = "";
+    url.hash = "";
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return trimmed.replace(/\/$/, "");
+  }
+}
+
+export function CoreSetupPage({ onContinue }) {
   const [coreUrl, setCoreUrl] = useState("");
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -15,7 +35,11 @@ export function CoreSetupPage() {
     setBusy(true);
     setError("");
     try {
-      setResult(await saveSetupCoreConnection({ core_base_url: coreUrl }));
+      const normalized = normalizedCoreBaseUrl(coreUrl);
+      setCoreUrl(normalized);
+      const payload = await saveSetupCoreConnection({ core_base_url: normalized });
+      setResult(payload);
+      onContinue?.();
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -37,9 +61,12 @@ export function CoreSetupPage() {
         <span className="field-label">Core base URL</span>
         <input className="field-input" value={coreUrl} onChange={(event) => setCoreUrl(event.target.value)} placeholder="http://10.0.0.100:9001" />
       </label>
+      {coreUrl && normalizedCoreBaseUrl(coreUrl) !== coreUrl.replace(/\/$/, "") ? (
+        <div className="callout callout-warning">Using normalized Core URL: {normalizedCoreBaseUrl(coreUrl)}</div>
+      ) : null}
       <div className="form-actions">
         <button className="btn btn-primary" type="button" onClick={save} disabled={busy || !coreUrl}>
-          {busy ? "Saving..." : "Save Core"}
+          {busy ? "Saving..." : "Save & Continue"}
         </button>
       </div>
       {result ? (

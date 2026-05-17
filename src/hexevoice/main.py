@@ -1881,18 +1881,20 @@ def create_app(
 
     @app.put("/api/setup/core", response_model=SetupCoreConnectionResponse)
     async def setup_core_connection(payload: CoreConnectionSetupRequest) -> SetupCoreConnectionResponse:
-        saved = onboarding_state_service.save_core_connection(payload)
+        normalized_core_base_url = setup_host_readiness_service._normalize_core_base_url(payload.core_base_url) or str(payload.core_base_url).rstrip("/")
+        normalized_payload = payload.model_copy(update={"core_base_url": normalized_core_base_url})
+        saved = onboarding_state_service.save_core_connection(normalized_payload)
         warnings: list[str] = []
         metadata: dict[str, object] = {}
         reachable = False
         registration_supported = False
-        core_base = str(payload.core_base_url).rstrip("/")
+        core_base = normalized_core_base_url.rstrip("/")
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
-                response = await client.get(core_base)
+                response = await client.get(f"{core_base}/api/health")
                 reachable = response.status_code < 500
-                metadata["root_status_code"] = response.status_code
-                registration_supported = reachable
+                metadata["health_status_code"] = response.status_code
+                registration_supported = response.status_code == 200
         except Exception as exc:
             warnings.append(f"core_unreachable:{exc}")
         return SetupCoreConnectionResponse(
