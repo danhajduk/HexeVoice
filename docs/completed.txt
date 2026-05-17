@@ -173,3 +173,4 @@ Task 159: Add setup-visible Step 1 actions/status for default asset downloads: S
 Task 160: Make the temporary install UI match the production setup UI shell, including the setup health strip and clear install-prep progress states - Completed on 05/16/2026 21:36
 Task 161: Strengthen Step 1 production handoff validation so temp UI redirects only after production backend/frontend, runtime dirs, required default assets, and setup health are ready - Completed on 05/16/2026 21:43
 Task 163: Expand Step 2 Host and Node Setup with node identity fields: node display name, node type/role, hostname, LAN identity, final API URL, and final UI URL - Completed on 05/16/2026 21:52
+Task 164: Make the setup sidebar adapt to setup mode so new-node installs hide migration/re-auth steps and migration installs show migration plus re-auth - Completed on 05/16/2026 21:56

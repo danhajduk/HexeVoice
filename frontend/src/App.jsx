@@ -37,11 +37,11 @@ import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDas
 import { MigrationDashboardSection } from "./features/dashboard/MigrationDashboardSection";
 
 const SETUP_FLOW_STEPS = [
-  { id: "host", label: "Host Preparation" },
+  { id: "host", label: "Host and Node Setup" },
   { id: "core", label: "Core Connection" },
   { id: "onboard", label: "Node Onboarding" },
   { id: "migration", label: "Migration Import" },
-  { id: "reauth", label: "Trust Re-auth" },
+  { id: "reauth", label: "Migration Re-auth" },
   { id: "providers", label: "Provider Setup" },
   { id: "capabilities", label: "Capabilities & Governance" },
   { id: "ready", label: "Ready Check" },
@@ -241,9 +241,20 @@ function setupFlowStepsForMode(setupMode) {
   return SETUP_FLOW_STEPS.filter((step) => !MIGRATION_ONLY_SETUP_STEPS.has(step.id));
 }
 
+function visibleSetupStepIdForMode(stepId, setupMode) {
+  if (setupMode === "migrate_existing" && NEW_ONLY_SETUP_STEPS.has(stepId)) {
+    return "reauth";
+  }
+  if (setupMode !== "migrate_existing" && MIGRATION_ONLY_SETUP_STEPS.has(stepId)) {
+    return "onboard";
+  }
+  return stepId;
+}
+
 function buildSetupFlow(onboarding, status, setupSection, setupMode) {
   const operationalReady = Boolean(status?.operational_ready || onboarding?.operational_ready);
-  const currentStepId = operationalReady ? "ready" : setupFlowStepForSection(setupSection, onboarding, status);
+  const rawCurrentStepId = operationalReady ? "ready" : setupFlowStepForSection(setupSection, onboarding, status);
+  const currentStepId = visibleSetupStepIdForMode(rawCurrentStepId, setupMode);
   const steps = setupFlowStepsForMode(setupMode);
   const currentStepIndex = steps.findIndex((step) => step.id === currentStepId);
 
@@ -251,6 +262,8 @@ function buildSetupFlow(onboarding, status, setupSection, setupMode) {
 
   return {
     current: current ? { id: current.id, label: current.label } : null,
+    mode: setupMode === "migrate_existing" ? "migration" : "new_node",
+    modeLabel: setupMode === "migrate_existing" ? "Migration setup" : "New voice node",
     steps: steps.map((step, index) => {
       return {
         id: step.id,

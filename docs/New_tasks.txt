@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 164: Make the setup sidebar adapt to setup mode so new-node installs hide migration/re-auth steps and migration installs show migration plus re-auth
 [TODO] Task 165: Update Step 2 handoff so supervisor/service registration waits until node identity/name is set, then registers backend/frontend/STT/TTS/wake/docker services before production redirect
 [TODO] Task 166: Define and enforce Step 2 readiness policy with explicit hard blockers versus warnings for runtime dirs, LAN identity, backend/frontend, Docker, supervisor, firmware, CUDA, host alias, and default assets
 [TODO] Task 167: Add Step 2 recovery actions for re-detect LAN IP, restart temp services, restart production services, re-run service registration, re-check supervisor, and rebuild systemd/supervisor service definitions

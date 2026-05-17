@@ -36,6 +36,7 @@ export function SetupSidebar({ flow }) {
         <h2>Setup Flow</h2>
         <span className="pill">{flow.current?.label || "Idle"}</span>
       </div>
+      <span className="status-pill status-pill-neutral">{flow.modeLabel || "New voice node"}</span>
       <div className="flow-steps">
         {flow.steps.map((step, index) => {
           const state = step.complete ? "success" : step.current ? "warning" : "neutral";

@@ -187,6 +187,9 @@ Step 2 Host Setup also writes the local node identity through
 requested node ID, hostname, final API URL, and final UI URL. Node type is
 shown from runtime settings until a dedicated node-type configuration path is
 added.
+The setup sidebar adapts to setup mode: new-node setup hides migration and
+re-auth, while migration setup replaces node onboarding with migration import
+and migration re-auth.
 
 Runtime files are local state and should normally stay uncommitted. See
 `docs/runtime-state-policy.md` for the tracking policy and run
