@@ -547,7 +547,18 @@ export default function App() {
     }
     const trustState = status?.trust_state || onboarding?.trust_state;
     const stepId = onboarding?.current_step_id || status?.current_step_id;
-    if (trustState === "trusted" && stepId === "provider_setup") {
+    if (trustState !== "trusted") {
+      return;
+    }
+    if (stepId === "capability_declaration" || stepId === "governance_sync") {
+      openSetupSection("capabilities");
+      return;
+    }
+    if (stepId === "ready") {
+      openSetupSection("ready");
+      return;
+    }
+    if (stepId !== "approval" && stepId !== "trust_activation") {
       openSetupSection("providers");
     }
   }, [showSetupPage, setupSection, status?.trust_state, status?.current_step_id, onboarding?.trust_state, onboarding?.current_step_id]);
