@@ -31,7 +31,7 @@ Optional install flags:
 - `HEXEVOICE_SETUP_TTS=true` runs the Piper TTS ready path.
 - `HEXEVOICE_SETUP_WAKE=true` runs the openWakeWord ready path.
 - `HEXEVOICE_SETUP_FIRMWARE=true` downloads firmware artifacts.
-- `HEXEVOICE_SETUP_HOST_ALIAS=true` adds the optional local `HexeVoice` host alias.
+- `HEXEVOICE_SKIP_HOST_ALIAS=true` skips the default local `HexeVoice` host alias.
 
 Runtime directory setup:
 

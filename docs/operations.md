@@ -119,15 +119,16 @@ runtime directories, and optional Docker visibility:
 The command is read-only except for normal health probes and returns a non-zero
 exit code when any required check fails.
 
-To make the new host answer to `HexeVoice` through local name resolution, run
-the optional host alias helper. It appends `HexeVoice` and `HexeVoice.local` to
-the current hostname in `/etc/hosts`, creates a timestamped hosts-file backup,
-and only writes when explicitly enabled:
+By default, install tries to make the new host answer to `HexeVoice` through
+local name resolution. The host alias helper appends `HexeVoice` and
+`HexeVoice.local` to the current hostname in `/etc/hosts`, creates a timestamped
+hosts-file backup, and only writes when explicitly enabled internally. Use
+`HEXEVOICE_SKIP_HOST_ALIAS=true ./install.sh` to opt out, or run the helper
+manually for troubleshooting:
 
 ```bash
 ./scripts/hostname-alias-control.sh dry-run
 HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install
-HEXEVOICE_SETUP_HOST_ALIAS=true ./install.sh
 ```
 
 ## Recovery Signals

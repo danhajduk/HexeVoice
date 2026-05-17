@@ -21,7 +21,8 @@ SETUP_STT="${HEXEVOICE_SETUP_STT:-false}"
 SETUP_TTS="${HEXEVOICE_SETUP_TTS:-false}"
 SETUP_WAKE="${HEXEVOICE_SETUP_WAKE:-false}"
 SETUP_FIRMWARE="${HEXEVOICE_SETUP_FIRMWARE:-false}"
-SETUP_HOST_ALIAS="${HEXEVOICE_SETUP_HOST_ALIAS:-false}"
+SETUP_HOST_ALIAS="${HEXEVOICE_SETUP_HOST_ALIAS:-true}"
+SKIP_HOST_ALIAS="${HEXEVOICE_SKIP_HOST_ALIAS:-false}"
 INSTALL_SYSTEM_PACKAGES="${HEXEVOICE_INSTALL_SYSTEM_PACKAGES:-ask}"
 PRINT_PREREQ_COMMANDS="${HEXEVOICE_PRINT_PREREQ_COMMANDS:-false}"
 INSTALL_STATUS_UI="${HEXEVOICE_INSTALL_STATUS_UI:-true}"
@@ -954,9 +955,13 @@ if truthy "$DOWNLOAD_FIRMWARE"; then
       ./scripts/firmware-artifacts-control.sh download
 fi
 
-if truthy "$SETUP_HOST_ALIAS"; then
-  log "Installing optional local hostname alias"
-  HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install
+if truthy "$SETUP_HOST_ALIAS" && ! truthy "$SKIP_HOST_ALIAS"; then
+  log "Installing local hostname alias"
+  if ! HEXEVOICE_ENABLE_HOST_ALIAS=true ./scripts/hostname-alias-control.sh install; then
+    log "Host alias setup did not complete; continue in setup UI or rerun with sudo."
+  fi
+else
+  log "Skipping local hostname alias setup"
 fi
 
 if truthy "$RUN_BOOTSTRAP"; then
@@ -1007,6 +1012,6 @@ else
   printf '  ./scripts/piper-tts-control.sh ready            # optional: download/start/warm Piper TTS\n'
   printf '  ./scripts/openwakeword-control.sh ready         # optional: sync/start/check wake word\n'
   printf '  ./scripts/firmware-artifacts-control.sh download # optional: fetch endpoint firmware artifacts\n'
-  printf '  HEXEVOICE_SETUP_HOST_ALIAS=true ./install.sh    # optional: add HexeVoice host alias\n'
+  printf '  HEXEVOICE_SKIP_HOST_ALIAS=true ./install.sh     # optional: skip HexeVoice host alias\n'
   printf '  ./scripts/bootstrap.sh\n'
 fi

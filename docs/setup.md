@@ -44,9 +44,9 @@ Optional overrides:
 - `HEXEVOICE_SETUP_DEFAULT_ARTIFACTS=false` skips default artifact downloads.
 - `HEXEVOICE_DEFAULT_STT_MODEL=base`, `HEXEVOICE_DEFAULT_PIPER_VOICE=en_US-kathleen-low`,
   and `HEXEVOICE_DEFAULT_WAKE_MODEL=Hexe` override default model choices.
-- `HEXEVOICE_SETUP_HOST_ALIAS=true` adds optional local `/etc/hosts` aliases
+- `HEXEVOICE_SKIP_HOST_ALIAS=true` skips the default local `/etc/hosts` aliases
   for `HexeVoice` and `HexeVoice.local` after checkout. The alias helper backs
-  up the hosts file first and requires the explicit enable flag before writing.
+  up the hosts file first and requires its explicit write flag internally.
 
 Preview or apply the host alias manually:
 
