@@ -18,6 +18,15 @@ export function ReauthSetupPage({ onContinue }) {
     { label: "Node ID received", complete: Boolean(nodeId) },
     { label: "Ready to continue", complete: trustFinalized && Boolean(nodeId) },
   ];
+  const blockers = [
+    !session?.started && !trustFinalized ? "required_migrated_reauth" : "",
+    currentStatus === "core_unreachable" ? "core_unreachable" : "",
+    currentStatus === "unsupported" ? "unsupported_reauth" : "",
+    currentStatus === "rejected" ? "reauth_rejected" : "",
+    currentStatus === "expired" ? "reauth_expired" : "",
+    session?.started && !nodeId ? "missing_node_identity" : "",
+    finalizeResult && !finalizeResult.approved ? "local_trust_activation_failure" : "",
+  ].filter(Boolean);
 
   async function start() {
     setBusy("start");
@@ -60,6 +69,7 @@ export function ReauthSetupPage({ onContinue }) {
         </span>
       </div>
       {error ? <div className="callout callout-danger">{error}</div> : null}
+      {blockers.length ? <div className="callout callout-danger">Blockers: {blockers.join(", ")}</div> : null}
       {session?.warnings?.length ? <div className="callout callout-warning">{session.warnings.join(", ")}</div> : null}
       {finalizeResult?.warnings?.length ? <div className="callout callout-warning">{finalizeResult.warnings.join(", ")}</div> : null}
       <div className="callout callout-warning">

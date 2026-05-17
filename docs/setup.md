@@ -134,6 +134,9 @@ migration setup out of new-node onboarding unless no migrated node identity has
 been imported yet.
 The migration re-auth page shows explicit status flags for waiting, approved,
 rejected, expired, trust finalized, node ID received, and ready-to-continue.
+It also surfaces Step 4 blockers for required migrated re-auth, Core
+unreachable, unsupported re-auth, rejected or expired sessions, missing node
+identity, and local trust activation failure.
 When re-auth finalize returns an approved node identity, setup refreshes local
 state and automatically advances to `/setup/providers`.
 Provider/runtime setup is exposed at `/setup/providers` and backed by
