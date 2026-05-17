@@ -90,7 +90,7 @@ function coreUrlWarning(form, readiness) {
   return "";
 }
 
-export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness }) {
+export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness, onContinue }) {
   const [localReadiness, setLocalReadiness] = useState(null);
   const [form, setForm] = useState({
     setup_mode: "new_node",
@@ -170,6 +170,9 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
         setError(payload.message || "setup_host_action_failed");
       } else {
         setNotice(payload.message || "Action completed.");
+        if (action === "continue") {
+          onContinue?.();
+        }
       }
     } catch (err) {
       setError(String(err.message || err));

@@ -142,6 +142,16 @@ function setDashboardHashRoute(section = "overview") {
   }
 }
 
+function setSetupPathRoute(section = "host") {
+  if (typeof window === "undefined") {
+    return;
+  }
+  const path = section === "reauth" ? "/setup/trust/reauth" : `/setup/${section}`;
+  if (window.location.pathname !== path) {
+    window.history.pushState(null, "", path);
+  }
+}
+
 function requiredSetupInputs(status) {
   const missing = [];
   if (!status?.node_name || status.node_name === "hexevoice") {
@@ -539,6 +549,12 @@ export default function App() {
     setRouteView("setup");
   }
 
+  function openSetupSection(section) {
+    setSetupPathRoute(section);
+    setRouteView("setup");
+    setSetupSection(section);
+  }
+
   function openDashboardSection(section) {
     setDashboardHashRoute(section);
     setRouteView("dashboard");
@@ -641,6 +657,7 @@ export default function App() {
                       readiness={setupReadiness}
                       onReadinessChange={setSetupReadiness}
                       onRefreshReadiness={refreshSetupReadiness}
+                      onContinue={() => openSetupSection("core")}
                     />
                   </>
                 ) : setupSection === "core" ? (
