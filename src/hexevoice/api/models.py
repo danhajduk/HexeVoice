@@ -604,7 +604,12 @@ class SetupCoreConnectionResponse(BaseModel):
     configured: bool
     core_base_url: str | None = None
     reachable: bool = False
+    core_identity: dict[str, Any] = Field(default_factory=dict)
+    core_version: str | None = None
     registration_supported: bool = False
+    reauth_supported: bool = False
+    supervisor_enrollment_supported: bool = False
+    capability_governance_supported: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
 

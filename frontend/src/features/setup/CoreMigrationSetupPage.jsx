@@ -47,6 +47,18 @@ export function CoreSetupPage({ onContinue }) {
     }
   }
 
+  const coreIdentity = result?.core_identity || {};
+  const supportFacts = result
+    ? [
+        ["Core identity", coreIdentity.core_name || coreIdentity.platform_name || coreIdentity.core_id || "pending"],
+        ["Core version", result.core_version || "unknown"],
+        ["Registration support", result.registration_supported ? "detected" : "pending"],
+        ["Re-auth support", result.reauth_supported ? "detected" : "pending"],
+        ["Supervisor enrollment", result.supervisor_enrollment_supported ? "detected" : "pending"],
+        ["Capability/governance", result.capability_governance_supported ? "detected" : "pending"],
+      ]
+    : [];
+
   return (
     <article className="card stack">
       <div className="section-heading">
@@ -75,10 +87,12 @@ export function CoreSetupPage({ onContinue }) {
             <span className="fact-grid-label">Configured</span>
             <span className="fact-grid-value">{result.configured ? "yes" : "no"}</span>
           </div>
-          <div className="fact-grid-item">
-            <span className="fact-grid-label">Registration support</span>
-            <span className="fact-grid-value">{result.registration_supported ? "detected" : "pending"}</span>
-          </div>
+          {supportFacts.map(([label, value]) => (
+            <div className="fact-grid-item" key={label}>
+              <span className="fact-grid-label">{label}</span>
+              <span className="fact-grid-value">{value}</span>
+            </div>
+          ))}
         </div>
       ) : null}
     </article>

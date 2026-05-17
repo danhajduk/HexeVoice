@@ -103,7 +103,10 @@ CUDA preflight, host alias setup, Supervisor handoff, and saving the selected
 new-node or migration setup mode.
 Core connection and migration setup are split into `/setup/core` and
 `/setup/migration`. `/api/setup/core` saves the Core URL even when Core is
-temporarily offline and reports reachability as a warning. The migration setup
+temporarily offline and reports reachability as a warning. When Core is
+reachable, it also reports Core identity/version metadata and route-support
+probes for node registration, migration re-auth, Supervisor enrollment,
+capability profiles, and governance endpoints. The migration setup
 routes wrap the node migration preflight/import APIs and continue to reject any
 bundle containing trust tokens.
 Migrated nodes continue through `/setup/trust/reauth`, which starts Core

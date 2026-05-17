@@ -1894,21 +1894,87 @@ def create_app(
         warnings: list[str] = []
         metadata: dict[str, object] = {}
         reachable = False
+        core_identity: dict[str, object] = {}
+        core_version: str | None = None
         registration_supported = False
+        reauth_supported = False
+        supervisor_enrollment_supported = False
+        capability_governance_supported = False
         core_base = normalized_core_base_url.rstrip("/")
+
+        async def probe(client: httpx.AsyncClient, path: str, *, method: str = "HEAD") -> dict[str, object]:
+            url = f"{core_base}{path}"
+            try:
+                response = await client.request(method, url)
+            except Exception as exc:
+                return {"path": path, "method": method, "supported": False, "error": str(exc)}
+            supported = response.status_code not in {404, 501}
+            return {
+                "path": path,
+                "method": method,
+                "status_code": response.status_code,
+                "supported": supported,
+            }
+
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
                 response = await client.get(f"{core_base}/api/health")
                 reachable = response.status_code < 500
                 metadata["health_status_code"] = response.status_code
-                registration_supported = response.status_code == 200
+                if response.headers.get("content-type", "").lower().startswith("application/json"):
+                    try:
+                        health_payload = response.json()
+                    except ValueError:
+                        health_payload = {}
+                    if isinstance(health_payload, dict):
+                        metadata["health"] = health_payload
+                        core_version = str(
+                            health_payload.get("version")
+                            or health_payload.get("core_version")
+                            or health_payload.get("app_version")
+                            or ""
+                        ).strip() or None
+
+                platform_response = await client.get(f"{core_base}/api/system/platform")
+                metadata["platform_status_code"] = platform_response.status_code
+                if platform_response.status_code < 500 and platform_response.headers.get("content-type", "").lower().startswith("application/json"):
+                    try:
+                        platform_payload = platform_response.json()
+                    except ValueError:
+                        platform_payload = {}
+                    if isinstance(platform_payload, dict):
+                        core_identity = {
+                            key: value
+                            for key, value in platform_payload.items()
+                            if key in {"core_id", "platform_name", "platform_short", "platform_domain", "core_name", "supervisor_name"}
+                        }
+
+                probes = {
+                    "registration": await probe(client, "/api/system/nodes/onboarding/sessions"),
+                    "reauth": await probe(client, "/api/system/nodes/reauth/sessions"),
+                    "supervisor_enrollment": await probe(client, "/api/system/supervisors/enrollment-tokens"),
+                    "capability_profiles": await probe(client, "/api/system/nodes/capabilities/profiles", method="GET"),
+                    "governance": await probe(client, "/api/system/nodes/governance/current", method="GET"),
+                }
+                metadata["probes"] = probes
+                registration_supported = bool(probes["registration"].get("supported"))
+                reauth_supported = bool(probes["reauth"].get("supported"))
+                supervisor_enrollment_supported = bool(probes["supervisor_enrollment"].get("supported"))
+                capability_governance_supported = bool(
+                    probes["capability_profiles"].get("supported") and probes["governance"].get("supported")
+                )
         except Exception as exc:
             warnings.append(f"core_unreachable:{exc}")
         return SetupCoreConnectionResponse(
             configured=saved.configured,
             core_base_url=saved.core_base_url,
             reachable=reachable,
+            core_identity=core_identity,
+            core_version=core_version,
             registration_supported=registration_supported,
+            reauth_supported=reauth_supported,
+            supervisor_enrollment_supported=supervisor_enrollment_supported,
+            capability_governance_supported=capability_governance_supported,
             metadata=metadata,
             warnings=warnings,
         )
