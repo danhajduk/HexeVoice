@@ -29,7 +29,7 @@ def test_provider_setup_status_reports_blocker_until_provider_selected(tmp_path)
 
     assert response.configured is False
     assert response.supported_providers == ["voice", "openwakeword"]
-    assert response.blocking_reasons == ["provider_selection_required"]
+    assert response.blocking_reasons == ["provider_selection_required", "wake_provider_required"]
     assert response.declaration_allowed is False
 
 
@@ -99,8 +99,48 @@ def test_provider_setup_save_advances_to_capability_declaration(tmp_path):
 
     assert response.configured is True
     assert response.enabled_providers == ["voice"]
-    assert response.declaration_allowed is True
+    assert response.declaration_allowed is False
+    assert response.blocking_reasons == ["wake_provider_required"]
     assert persisted.provider_setup.default_provider == "voice"
+    assert persisted.resume.current_step_id == "provider_setup"
+    assert persisted.resume.last_completed_step_id == "trust_activation"
+
+
+def test_provider_setup_save_advances_after_required_runtime_providers_selected(tmp_path):
+    store = OnboardingStateStore(path=tmp_path / "onboarding-state.json")
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "trust_status": "trusted",
+                },
+                "resume": {
+                    "current_step_id": "provider_setup",
+                    "last_completed_step_id": "trust_activation",
+                },
+            }
+        )
+    )
+    settings = Settings(
+        onboarding_state_path=tmp_path / "onboarding-state.json",
+        voice_stt_provider="external_faster_whisper",
+        voice_tts_provider="piper",
+        voice_wake_provider="supervised_openwakeword",
+    )
+    service = ProviderSetupService(settings=settings, onboarding_state_store=store)
+
+    response = service.save_setup(
+        payload=ProviderSetupRequest(
+            enabled_providers=["voice", "external_faster_whisper", "piper", "openwakeword"],
+            default_provider="voice",
+        )
+    )
+    persisted = store.load()
+
+    assert response.declaration_allowed is True
+    assert response.blocking_reasons == []
+    assert response.enabled_providers == ["voice", "external_faster_whisper", "piper", "supervised_openwakeword"]
     assert persisted.resume.current_step_id == "capability_declaration"
     assert persisted.resume.last_completed_step_id == "provider_setup"
 

@@ -529,6 +529,17 @@ export default function App() {
   }, [showSetupPage, setupSection, setupReadiness?.setup_mode, status?.trust_state, onboarding?.trust_state]);
 
   useEffect(() => {
+    if (!showSetupPage || setupSection === "providers") {
+      return;
+    }
+    const trustState = status?.trust_state || onboarding?.trust_state;
+    if (trustState !== "trusted" || providerSetup?.declaration_allowed !== false) {
+      return;
+    }
+    openSetupSection("providers");
+  }, [showSetupPage, setupSection, status?.trust_state, onboarding?.trust_state, providerSetup?.declaration_allowed]);
+
+  useEffect(() => {
     if (!showSetupPage || !setupReadiness?.setup_mode) {
       return;
     }

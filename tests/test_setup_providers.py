@@ -82,6 +82,49 @@ def test_setup_provider_config_saves_selection(tmp_path):
     payload = response.json()
     assert payload["configured"] is True
     assert payload["enabled_providers"] == ["voice"]
+    assert payload["declaration_allowed"] is False
+    assert "wake_provider_required" in payload["blocking_reasons"]
+
+
+def test_setup_provider_config_requires_selected_stt_tts_wake_when_runtime_enabled(tmp_path):
+    settings = trusted_settings(tmp_path).model_copy(
+        update={
+            "voice_stt_provider": "external_faster_whisper",
+            "voice_tts_provider": "piper",
+            "voice_wake_provider": "supervised_openwakeword",
+        }
+    )
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/api/setup/providers/config",
+        json={"enabled_providers": ["voice"], "default_provider": "voice"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["declaration_allowed"] is False
+    assert payload["blocking_reasons"] == ["stt_provider_required", "tts_provider_required", "wake_provider_required"]
+
+
+def test_setup_provider_config_normalizes_openwakeword_alias(tmp_path):
+    settings = trusted_settings(tmp_path).model_copy(update={"voice_wake_provider": "supervised_openwakeword"})
+    client = TestClient(create_app(settings))
+
+    response = client.post(
+        "/api/setup/providers/config",
+        json={
+            "enabled_providers": ["voice", "openwakeword"],
+            "default_provider": "voice",
+            "provider_configs": {"openwakeword": {"default_wakeword": "Hexe", "threshold": 0.65}},
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "supervised_openwakeword" in payload["enabled_providers"]
+    assert "wake_provider_required" not in payload["blocking_reasons"]
+    assert payload["provider_configs"]["supervised_openwakeword"]["threshold"] == 0.65
 
 
 def test_setup_provider_apply_supports_targeted_action(tmp_path):

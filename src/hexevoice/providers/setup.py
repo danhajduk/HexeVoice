@@ -13,6 +13,25 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _provider_matches(provider_id: str, candidates: set[str]) -> bool:
+    if provider_id in candidates:
+        return True
+    if provider_id in {"openwakeword", "supervised_openwakeword"}:
+        return bool(candidates & {"openwakeword", "supervised_openwakeword"})
+    return False
+
+
+def _normalize_provider_id(provider_id: str, supported_providers: list[str]) -> str:
+    value = str(provider_id or "").strip()
+    if value in supported_providers:
+        return value
+    if value in {"openwakeword", "supervised_openwakeword"}:
+        for candidate in ("supervised_openwakeword", "openwakeword"):
+            if candidate in supported_providers:
+                return candidate
+    return value
+
+
 def voice_provider_ids(settings: Settings) -> list[str]:
     provider_ids = [settings.provider_id]
     if settings.voice_stt_provider != "deterministic":
@@ -61,7 +80,11 @@ class ProviderSetupService:
             raise HTTPException(status_code=400, detail="trust_not_ready_for_provider_setup")
 
         supported_providers = self._supported_providers(state)
-        enabled_providers = [provider_id for provider_id in payload.enabled_providers if provider_id in supported_providers]
+        selected = {
+            _normalize_provider_id(provider_id, supported_providers)
+            for provider_id in payload.enabled_providers
+        }
+        enabled_providers = [provider_id for provider_id in supported_providers if provider_id in selected]
         default_provider = payload.default_provider or (enabled_providers[0] if enabled_providers else None)
         if default_provider and default_provider not in enabled_providers:
             raise HTTPException(status_code=400, detail="default_provider_not_enabled")
@@ -76,7 +99,7 @@ class ProviderSetupService:
 
         provider_configs = dict(state.provider_setup.provider_configs)
         for provider_id, provider_config in payload.provider_configs.items():
-            normalized_provider_id = str(provider_id or "").strip()
+            normalized_provider_id = _normalize_provider_id(provider_id, supported_providers)
             if normalized_provider_id in supported_providers:
                 provider_configs[normalized_provider_id] = self._provider_config_payload(provider_config)
 
@@ -157,7 +180,7 @@ class ProviderSetupService:
     def save_provider_setup(self, provider_id: str, payload: ProviderConfigRequest) -> ProviderSetupResponse:
         state = self._store.load()
         supported_providers = self._supported_providers(state)
-        normalized_provider_id = str(provider_id or "").strip()
+        normalized_provider_id = _normalize_provider_id(provider_id, supported_providers)
         if normalized_provider_id not in supported_providers:
             raise HTTPException(status_code=404, detail="provider_not_supported")
 
@@ -256,4 +279,11 @@ class ProviderSetupService:
             blockers.append("trusted_identity_missing")
         if not enabled_providers:
             blockers.append("provider_selection_required")
+        enabled = {provider_id for provider_id in enabled_providers if provider_id}
+        if self._settings.voice_stt_provider != "deterministic" and not _provider_matches(self._settings.voice_stt_provider, enabled):
+            blockers.append("stt_provider_required")
+        if self._settings.voice_tts_provider != "deterministic" and not _provider_matches(self._settings.voice_tts_provider, enabled):
+            blockers.append("tts_provider_required")
+        if self._settings.voice_wake_provider != "deterministic" and not _provider_matches(self._settings.voice_wake_provider, enabled):
+            blockers.append("wake_provider_required")
         return blockers
