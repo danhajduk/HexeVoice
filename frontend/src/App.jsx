@@ -8,6 +8,7 @@ import {
   getOperationalStatus,
   getProviderSetup,
   getServicesStatus,
+  getSetupBootstrapStatus,
   getSetupHostReadiness,
   getTtsSettings,
   getVoiceIntents,
@@ -53,6 +54,7 @@ const VOICE_ENDPOINT_REFRESH_MS = 2000;
 const VOICE_INTENTS_REFRESH_MS = 5000;
 const RUNTIME_REFRESH_MS = 2000;
 const SETUP_HEALTH_REFRESH_MS = 5000;
+const SETUP_BOOTSTRAP_REFRESH_MS = 3000;
 
 function isSetupStage(onboarding, status) {
   const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
@@ -273,6 +275,7 @@ export default function App() {
   const [ttsSettings, setTtsSettings] = useState(null);
   const [endpointStatus, setEndpointStatus] = useState(null);
   const [setupReadiness, setSetupReadiness] = useState(null);
+  const [setupBootstrapStatus, setSetupBootstrapStatus] = useState(null);
   const [error, setError] = useState("");
   const [restartingSetup, setRestartingSetup] = useState(false);
   const [routeView, setRouteView] = useState(() =>
@@ -407,6 +410,49 @@ export default function App() {
       window.clearInterval(timer);
     };
   }, [refreshSetupReadiness, showSetupPage]);
+
+  useEffect(() => {
+    if (!showSetupPage) {
+      return undefined;
+    }
+
+    let mounted = true;
+    const refreshBootstrapStatus = () => {
+      getSetupBootstrapStatus()
+        .then((payload) => {
+          if (!mounted) {
+            return;
+          }
+          setSetupBootstrapStatus(payload);
+        })
+        .catch(() => {
+          if (mounted) {
+            setSetupBootstrapStatus(null);
+          }
+        });
+    };
+
+    refreshBootstrapStatus();
+    const timer = window.setInterval(refreshBootstrapStatus, SETUP_BOOTSTRAP_REFRESH_MS);
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [showSetupPage]);
+
+  useEffect(() => {
+    if (!setupBootstrapStatus?.final_redirect_url || typeof window === "undefined") {
+      return;
+    }
+    try {
+      const target = new URL(setupBootstrapStatus.final_redirect_url, window.location.href);
+      if (target.href !== window.location.href) {
+        window.location.assign(target.href);
+      }
+    } catch {
+      // Ignore malformed handoff URLs and keep the current setup page active.
+    }
+  }, [setupBootstrapStatus?.final_redirect_url]);
 
   useEffect(() => {
     if (typeof window === "undefined") {

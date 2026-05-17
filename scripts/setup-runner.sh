@@ -15,6 +15,8 @@ SETUP_RUNNER_POLL_INTERVAL_S="${SETUP_RUNNER_POLL_INTERVAL_S:-3}"
 SETUP_RUNNER_HANDOFF_MODE="${SETUP_RUNNER_HANDOFF_MODE:-none}"
 SETUP_RUNNER_OPEN_BROWSER="${SETUP_RUNNER_OPEN_BROWSER:-false}"
 SETUP_BOOTSTRAP_STATUS_PATH="${SETUP_BOOTSTRAP_STATUS_PATH:-$ROOT_DIR/runtime/setup/bootstrap-status.json}"
+SETUP_HOST_STATE_PATH="${SETUP_HOST_STATE_PATH:-$ROOT_DIR/runtime/setup/host-state.json}"
+SUPERVISOR_SOCKET="${HEXE_SUPERVISOR_API_SOCKET:-/run/hexe/supervisor.sock}"
 DEFAULT_CORE_SUPERVISOR_INSTALLER="$ROOT_DIR/docs/Core-Documents/scripts/install-supervisor.sh"
 if [[ ! -x "$DEFAULT_CORE_SUPERVISOR_INSTALLER" ]]; then
   DEFAULT_CORE_SUPERVISOR_INSTALLER="install-supervisor.sh"
@@ -29,6 +31,7 @@ TEMP_FRONTEND_PID=""
 REDIRECT_PID=""
 HANDOFF_PID=""
 PRODUCTION_READY="false"
+HANDOFF_STARTED="false"
 
 usage() {
   cat <<USAGE
@@ -201,6 +204,7 @@ LAN_HOST="${LAN_HOST:-127.0.0.1}"
 TEMP_API_BASE_URL="http://${LAN_HOST}:${TEMP_BACKEND_PORT}"
 TEMP_SETUP_URL="http://${LAN_HOST}:${TEMP_FRONTEND_PORT}/setup"
 PRODUCTION_SETUP_URL="${SETUP_RUNNER_PRODUCTION_URL:-http://${LAN_HOST}:${PRODUCTION_FRONTEND_PORT}/setup}"
+PRODUCTION_API_HEALTH_URL="${SETUP_RUNNER_PRODUCTION_API_HEALTH_URL:-http://${LAN_HOST}:9004/api/health}"
 
 require_file "$ROOT_DIR/.venv/bin/python" "Missing backend virtualenv at $ROOT_DIR/.venv/bin/python"
 require_file "$ROOT_DIR/frontend/node_modules" "Missing frontend dependencies at $ROOT_DIR/frontend/node_modules"
@@ -253,8 +257,10 @@ run_handoff() {
       write_status "running" "waiting-for-production-handoff"
       ;;
     existing-supervisor)
-      log "Existing Supervisor mode selected; waiting for production setup URL."
-      write_status "running" "waiting-for-existing-supervisor" "existing-supervisor-selected"
+      log "Existing Supervisor mode selected; starting production services through scripts/bootstrap.sh"
+      write_status "running" "starting-production-services" "existing-supervisor-selected"
+      "$ROOT_DIR/scripts/bootstrap.sh" &
+      HANDOFF_PID=$!
       ;;
     systemd)
       log "Starting unsupervised systemd user services through scripts/bootstrap.sh"
@@ -301,7 +307,73 @@ run_handoff() {
 }
 
 production_ready() {
-  curl -fsS --max-time 2 "$PRODUCTION_SETUP_URL" >/dev/null 2>&1
+  curl -fsS --max-time 2 "$PRODUCTION_API_HEALTH_URL" >/dev/null 2>&1 &&
+    curl -fsS --max-time 2 "$PRODUCTION_SETUP_URL" >/dev/null 2>&1
+}
+
+host_state_lifecycle_mode() {
+  STATE_PATH="$SETUP_HOST_STATE_PATH" "$ROOT_DIR/.venv/bin/python" - <<'PY'
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+path = Path(os.environ["STATE_PATH"])
+if not path.exists():
+    raise SystemExit(1)
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except (OSError, json.JSONDecodeError):
+    raise SystemExit(1)
+mode = payload.get("lifecycle_mode") if isinstance(payload, dict) else None
+if isinstance(mode, str) and mode.strip():
+    print(mode.strip())
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+handoff_mode_for_lifecycle() {
+  case "$1" in
+    unsupervised_systemd)
+      printf 'systemd\n'
+      ;;
+    existing_supervisor|joined_supervisor|standalone_supervisor)
+      printf 'existing-supervisor\n'
+      ;;
+    *)
+      printf '\n'
+      ;;
+  esac
+}
+
+maybe_start_handoff_from_host_state() {
+  if [[ "$HANDOFF_STARTED" == "true" || "$SETUP_RUNNER_HANDOFF_MODE" != "none" ]]; then
+    return
+  fi
+
+  local lifecycle_mode handoff_mode
+  lifecycle_mode="$(host_state_lifecycle_mode 2>/dev/null || true)"
+  if [[ -z "$lifecycle_mode" ]]; then
+    return
+  fi
+
+  handoff_mode="$(handoff_mode_for_lifecycle "$lifecycle_mode")"
+  if [[ -z "$handoff_mode" ]]; then
+    write_status "running" "waiting-for-production-handoff" "" "unsupported_lifecycle_mode" "Unsupported lifecycle mode: ${lifecycle_mode}" "true"
+    return
+  fi
+
+  if [[ "$handoff_mode" == "existing-supervisor" && ! -S "$SUPERVISOR_SOCKET" ]]; then
+    write_status "running" "waiting-for-supervisor" "" "supervisor_not_ready" "Waiting for Supervisor socket at ${SUPERVISOR_SOCKET}." "true"
+    return
+  fi
+
+  SETUP_RUNNER_HANDOFF_MODE="$handoff_mode"
+  HANDOFF_STARTED="true"
+  write_status "running" "starting-production-handoff" "host-selection-saved"
+  run_handoff
 }
 
 start_redirect_server() {
@@ -341,10 +413,16 @@ start_temp_frontend
 log "Temporary setup URL: ${TEMP_SETUP_URL}"
 log "Temporary backend API: ${TEMP_API_BASE_URL}"
 open_browser
-run_handoff
+if [[ "$SETUP_RUNNER_HANDOFF_MODE" != "none" ]]; then
+  HANDOFF_STARTED="true"
+  run_handoff
+else
+  run_handoff
+fi
 
 deadline=$((SECONDS + SETUP_RUNNER_PRODUCTION_TIMEOUT_S))
 while (( SECONDS < deadline )); do
+  maybe_start_handoff_from_host_state
   if production_ready; then
     PRODUCTION_READY="true"
     break
