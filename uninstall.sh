@@ -275,6 +275,7 @@ main() {
   remove_host_alias
   remove_app_dir
   log "Uninstall cleanup complete."
+  cd ~/hexe/ || true
 }
 
 main
