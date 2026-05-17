@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getSetupHostReadiness, runSetupHostReadinessAction } from "../../api/client";
+import { getSetupHostReadiness, runSetupHostReadinessAction, saveNodeIdentity } from "../../api/client";
 
 const setupModes = [
   { value: "new_node", label: "New Voice Node" },
@@ -51,6 +51,18 @@ function normalizedCoreBaseUrl(raw) {
   } catch {
     return trimmed.replace(/\/$/, "");
   }
+}
+
+function generateNodeNonce() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `voice-node-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function optionalField(value) {
+  const trimmed = String(value || "").trim();
+  return trimmed || undefined;
 }
 
 function enrollmentPageUrl(form, readiness) {
@@ -105,6 +117,15 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
     core_base_url: "",
     supervisor_id: "",
     enrollment_token: "",
+    node_name: "",
+    node_type: "voice-node",
+    requested_node_id: "",
+    hostname: "",
+    lan_host: "",
+    api_base_url: "",
+    ui_endpoint: "",
+    protocol_version: "1.0",
+    node_nonce: "",
   });
   const [busyAction, setBusyAction] = useState("");
   const [notice, setNotice] = useState("");
@@ -113,6 +134,7 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
   const activeReadiness = readiness || localReadiness;
 
   function syncFormFromReadiness(payload) {
+    const identity = payload.node_identity || {};
     setReadinessSynced(true);
     setForm((current) => ({
       ...current,
@@ -120,6 +142,15 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
       lifecycle_mode: payload.lifecycle_mode || current.lifecycle_mode,
       core_base_url: current.core_base_url || payload.core_base_url || "",
       supervisor_id: current.supervisor_id || defaultSupervisorId(payload),
+      node_name: current.node_name || identity.node_name || payload.hostname || "",
+      node_type: identity.node_type || current.node_type || "voice-node",
+      requested_node_id: current.requested_node_id || identity.requested_node_id || "",
+      hostname: current.hostname || identity.hostname || payload.hostname || "",
+      lan_host: identity.lan_host || payload.lan_host || current.lan_host || "",
+      api_base_url: current.api_base_url || identity.api_base_url || payload.api_base_url || "",
+      ui_endpoint: current.ui_endpoint || identity.ui_endpoint || payload.ui_base_url || "",
+      protocol_version: current.protocol_version || identity.protocol_version || "1.0",
+      node_nonce: current.node_nonce || identity.node_nonce || "",
     }));
   }
 
@@ -163,6 +194,9 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
     setNotice("");
     setError("");
     try {
+      if (action === "continue") {
+        await saveIdentity({ quiet: true });
+      }
       const actionForm = {
         ...form,
         core_base_url: normalizedCoreBaseUrl(form.core_base_url) || form.core_base_url,
@@ -181,6 +215,51 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
           onContinue?.();
         }
       }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function saveIdentity({ quiet = false } = {}) {
+    const nodeName = form.node_name.trim();
+    if (!nodeName) {
+      throw new Error("node_name_required");
+    }
+    const identityPayload = {
+      node_name: nodeName,
+      protocol_version: form.protocol_version || "1.0",
+      node_nonce: form.node_nonce || generateNodeNonce(),
+      requested_node_id: optionalField(form.requested_node_id),
+      hostname: optionalField(form.hostname),
+      api_base_url: optionalField(form.api_base_url),
+      ui_endpoint: optionalField(form.ui_endpoint),
+    };
+    const saved = await saveNodeIdentity(identityPayload);
+    setForm((current) => ({
+      ...current,
+      protocol_version: saved.protocol_version || identityPayload.protocol_version,
+      node_nonce: saved.node_nonce || identityPayload.node_nonce,
+      requested_node_id: saved.requested_node_id || "",
+      hostname: saved.hostname || current.hostname,
+      api_base_url: saved.api_base_url || current.api_base_url,
+      ui_endpoint: saved.ui_endpoint || current.ui_endpoint,
+    }));
+    await refresh();
+    if (!quiet) {
+      setNotice("Node identity saved.");
+      setError("");
+    }
+    return saved;
+  }
+
+  async function handleSaveIdentity() {
+    setBusyAction("save-node-identity");
+    setNotice("");
+    setError("");
+    try {
+      await saveIdentity();
     } catch (err) {
       setError(String(err.message || err));
     } finally {
@@ -234,6 +313,38 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
 
       <div className="form-grid">
         <label className="field">
+          <span className="field-label">Node display name</span>
+          <input className="field-input" value={form.node_name} onChange={(event) => update("node_name", event.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">Node type</span>
+          <input className="field-input" value={form.node_type} readOnly />
+        </label>
+        <label className="field">
+          <span className="field-label">Requested node ID</span>
+          <input className="field-input" value={form.requested_node_id} onChange={(event) => update("requested_node_id", event.target.value)} placeholder="optional" />
+        </label>
+        <label className="field">
+          <span className="field-label">Hostname</span>
+          <input className="field-input" value={form.hostname} onChange={(event) => update("hostname", event.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">LAN identity</span>
+          <input className="field-input" value={form.lan_host} readOnly />
+        </label>
+        <label className="field">
+          <span className="field-label">Final API URL</span>
+          <input className="field-input" value={form.api_base_url} onChange={(event) => update("api_base_url", event.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">Final UI URL</span>
+          <input className="field-input" value={form.ui_endpoint} onChange={(event) => update("ui_endpoint", event.target.value)} />
+        </label>
+        <label className="field">
+          <span className="field-label">Node nonce</span>
+          <input className="field-input" value={form.node_nonce} onChange={(event) => update("node_nonce", event.target.value)} placeholder="generated on save" />
+        </label>
+        <label className="field">
           <span className="field-label">Setup mode</span>
           <select className="field-input" value={form.setup_mode} onChange={(event) => update("setup_mode", event.target.value)}>
             {setupModes.map((mode) => (
@@ -262,6 +373,12 @@ export function HostSetupPage({ readiness, onReadinessChange, onRefreshReadiness
             placeholder={defaultSupervisorId(activeReadiness)}
           />
         </label>
+      </div>
+
+      <div className="form-actions">
+        <button className="btn btn-secondary" type="button" onClick={handleSaveIdentity} disabled={busyAction !== "" || !form.node_name.trim()}>
+          {busyAction === "save-node-identity" ? "Saving..." : "Save node identity"}
+        </button>
       </div>
 
       {form.lifecycle_mode === "joined_supervisor" ? (

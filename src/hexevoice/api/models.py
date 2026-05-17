@@ -569,6 +569,7 @@ class SetupHostReadinessResponse(BaseModel):
     ok: bool
     hostname: str
     lan_host: str
+    node_identity: dict[str, Any] = Field(default_factory=dict)
     temporary_setup_url: str | None = None
     production_setup_url: str
     api_base_url: str

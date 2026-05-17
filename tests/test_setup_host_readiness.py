@@ -70,6 +70,37 @@ def test_setup_host_continue_saves_setup_and_lifecycle_mode(tmp_path):
     assert payload["readiness"]["enrollment_page_url"] == "http://10.0.0.100:9001/system/supervisors/enrollment?supervisor_id=lab-supervisor"
 
 
+def test_setup_host_readiness_includes_saved_node_identity(tmp_path):
+    runtime_dir = tmp_path / "runtime"
+    client = TestClient(create_app(Settings(runtime_dir=runtime_dir, api_port=9004, public_ui_base_url="http://voice.local:8084")))
+
+    identity_response = client.put(
+        "/api/onboarding/local-setup/node-identity",
+        json={
+            "node_name": "kitchen-voice",
+            "protocol_version": "1.0",
+            "node_nonce": "nonce-123",
+            "requested_node_id": "node-kitchen-voice",
+            "hostname": "hexe-ai",
+            "api_base_url": "http://voice.local:9004",
+            "ui_endpoint": "http://voice.local:8084",
+        },
+    )
+    assert identity_response.status_code == 200
+
+    response = client.get("/api/setup/host-readiness")
+
+    assert response.status_code == 200
+    identity = response.json()["node_identity"]
+    assert identity["configured"] is True
+    assert identity["node_name"] == "kitchen-voice"
+    assert identity["node_type"] == "voice-node"
+    assert identity["requested_node_id"] == "node-kitchen-voice"
+    assert identity["hostname"] == "hexe-ai"
+    assert identity["api_base_url"] == "http://voice.local:9004/"
+    assert identity["ui_endpoint"] == "http://voice.local:8084/"
+
+
 def test_setup_host_joined_supervisor_requires_token(tmp_path):
     client = TestClient(create_app(Settings(runtime_dir=tmp_path / "runtime")))
 

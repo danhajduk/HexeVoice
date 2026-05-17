@@ -57,6 +57,7 @@ class SetupHostReadinessService:
         ui_base_url = self._settings.public_ui_base_url or f"http://{lan_host}:8084"
         production_setup_url = f"{ui_base_url.rstrip('/')}/setup/host"
         temporary_setup_url = f"http://{lan_host}:8180/setup"
+        node_identity = self._node_identity(api_base_url=api_base_url, ui_base_url=ui_base_url, hostname=hostname, lan_host=lan_host)
         checks = self._checks(lan_host=lan_host, api_base_url=api_base_url, ui_base_url=ui_base_url)
         blockers = [check.id for check in checks if check.required and check.status == "fail"]
         warnings = [check.id for check in checks if check.status == "warn"]
@@ -65,6 +66,7 @@ class SetupHostReadinessService:
             ok=not blockers,
             hostname=hostname,
             lan_host=lan_host,
+            node_identity=node_identity,
             temporary_setup_url=temporary_setup_url,
             production_setup_url=production_setup_url,
             api_base_url=api_base_url,
@@ -428,6 +430,31 @@ class SetupHostReadinessService:
         if isinstance(pre_trust, dict) and pre_trust.get("core_base_url"):
             return str(pre_trust["core_base_url"])
         return None
+
+    def _node_identity(self, *, api_base_url: str, ui_base_url: str, hostname: str, lan_host: str) -> dict[str, Any]:
+        try:
+            payload = json.loads(self._settings.resolved_onboarding_state_path().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            payload = {}
+        payload = payload if isinstance(payload, dict) else {}
+        pre_trust = payload.get("pre_trust") if isinstance(payload.get("pre_trust"), dict) else {}
+        trust_activation = payload.get("trust_activation") if isinstance(payload.get("trust_activation"), dict) else {}
+        node_name = str(pre_trust.get("node_name") or self._settings.node_name or hostname)
+        protocol_version = str(pre_trust.get("protocol_version") or "1.0")
+        node_nonce = str(pre_trust.get("node_nonce") or "")
+        return {
+            "configured": bool(pre_trust.get("node_name") and protocol_version and node_nonce),
+            "node_name": node_name,
+            "node_type": trust_activation.get("node_type") or self._settings.node_type,
+            "node_id": trust_activation.get("node_id"),
+            "protocol_version": protocol_version,
+            "node_nonce": node_nonce,
+            "requested_node_id": pre_trust.get("requested_node_id") or "",
+            "hostname": pre_trust.get("hostname") or hostname,
+            "lan_host": lan_host,
+            "api_base_url": pre_trust.get("api_base_url") or api_base_url,
+            "ui_endpoint": pre_trust.get("ui_endpoint") or ui_base_url,
+        }
 
     @staticmethod
     def _normalize_core_base_url(core_base_url: object) -> str | None:
