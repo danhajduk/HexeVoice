@@ -684,6 +684,11 @@ export default function App() {
     openSetupSection(trustState === "trusted" ? "providers" : "onboard");
   }
 
+  async function handleTrustComplete() {
+    await refresh();
+    openSetupSection("providers");
+  }
+
   function openDashboardSection(section) {
     setDashboardHashRoute(section);
     setRouteView("dashboard");
@@ -807,7 +812,7 @@ export default function App() {
                 ) : setupSection === "reauth" ? (
                   <>
                     <SetupHealthCard readiness={setupReadiness} />
-                    <ReauthSetupPage />
+                    <ReauthSetupPage onContinue={handleTrustComplete} />
                   </>
                 ) : setupSection === "providers" ? (
                   <>

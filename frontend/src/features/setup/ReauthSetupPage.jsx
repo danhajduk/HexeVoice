@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { finalizeSetupReauth, startSetupReauth } from "../../api/client";
 
-export function ReauthSetupPage() {
+export function ReauthSetupPage({ onContinue }) {
   const [session, setSession] = useState(null);
   const [finalizeResult, setFinalizeResult] = useState(null);
   const [busy, setBusy] = useState("");
@@ -39,7 +39,11 @@ export function ReauthSetupPage() {
     setBusy("finalize");
     setError("");
     try {
-      setFinalizeResult(await finalizeSetupReauth());
+      const payload = await finalizeSetupReauth();
+      setFinalizeResult(payload);
+      if (payload.approved && payload.node_id) {
+        onContinue?.(payload);
+      }
     } catch (err) {
       setError(String(err.message || err));
     } finally {

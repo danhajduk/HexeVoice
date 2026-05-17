@@ -1,6 +1,5 @@
 [STOP]
 [TODO] Task 070: Update Phase 2 operator docs and release checklist
-[TODO] Task 180: Make Step 4 continue automatically after Core approval, local trust activation, node ID/name persistence, and setup-state save all succeed
 [TODO] Task 181: Add Step 4 blocker policy for Core unreachable, unsupported onboarding/re-auth, rejected or expired sessions, local trust activation failure, missing node identity, and required migrated re-auth
 [TODO] Task 182: Add Step 4 recovery actions to restart onboarding, reopen Core approval, re-poll approval, retry trust finalize, clear expired sessions, and re-check Core trust support
 [TODO] Task 183: Expand Step 5 provider setup UI with STT model/profile/CPU-GPU mode, TTS voice/model/language, wakeword model/threshold, and provider socket/port/health fields

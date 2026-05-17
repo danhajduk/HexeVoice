@@ -134,6 +134,8 @@ migration setup out of new-node onboarding unless no migrated node identity has
 been imported yet.
 The migration re-auth page shows explicit status flags for waiting, approved,
 rejected, expired, trust finalized, node ID received, and ready-to-continue.
+When re-auth finalize returns an approved node identity, setup refreshes local
+state and automatically advances to `/setup/providers`.
 Provider/runtime setup is exposed at `/setup/providers` and backed by
 `/api/setup/providers/status`, `/api/setup/providers/config`, and
 `/api/setup/providers/apply`. The status endpoint reports provider selection,
