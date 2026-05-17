@@ -271,7 +271,12 @@ Actions:
      - failures/retry controls
 
 7. Download default firmware and default models:
-   - firmware artifacts should download during Step 1
+   - firmware artifacts should download during Step 1 from the configured
+     firmware release source; default source is latest GitHub release from
+     `danhajduk/HexeFirmware`
+   - if firmware artifacts are not available from the configured source, try
+     local `firmware/build.sh build` as a retryable fallback when ESP-IDF is
+     available
    - default STT model should download during Step 1: `base`
    - default Piper TTS voice/model should download during Step 1: `en_US-kathleen-low.onnx`
    - default wake model should be present during Step 1: `Hexe`

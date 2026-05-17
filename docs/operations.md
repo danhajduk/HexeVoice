@@ -176,7 +176,31 @@ runtime state when the working tree looks noisy.
 Firmware OTA artifacts can be populated during hosted install with
 `HEXEVOICE_SETUP_FIRMWARE=true`, or later with the firmware artifact control
 script. The source is intentionally configurable so firmware can move to a
-separate repository or release feed:
+separate repository or release feed. By default, hosted install looks for the
+latest GitHub release in `danhajduk/HexeFirmware`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | bash
+```
+
+Override the release repo or tag when testing another artifact feed:
+
+```bash
+HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY=danhajduk/HexeFirmware \
+HEXEVOICE_FIRMWARE_RELEASE_TAG=latest \
+./scripts/firmware-artifacts-control.sh download
+```
+
+When the default release is unavailable, `download` falls back to
+`firmware/build.sh build` if `HEXEVOICE_FIRMWARE_BUILD_FALLBACK=true` (the
+default). The build fallback requires ESP-IDF on the target host. Disable it
+for download-only installs with:
+
+```bash
+HEXEVOICE_FIRMWARE_BUILD_FALLBACK=false ./scripts/firmware-artifacts-control.sh download
+```
+
+Other supported source modes:
 
 ```bash
 HEXEVOICE_SETUP_FIRMWARE=true \

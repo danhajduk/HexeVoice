@@ -7,6 +7,10 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 export HEXEVOICE_FIRMWARE_ARTIFACT_DIR="${HEXEVOICE_FIRMWARE_ARTIFACT_DIR:-${FIRMWARE_ARTIFACT_DIR:-$ROOT_DIR/runtime/firmware}}"
 export HEXEVOICE_FIRMWARE_SOURCE="${HEXEVOICE_FIRMWARE_SOURCE:-auto}"
 export HEXEVOICE_FIRMWARE_REF="${HEXEVOICE_FIRMWARE_REF:-main}"
+export HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY="${HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY:-danhajduk/HexeFirmware}"
+export HEXEVOICE_FIRMWARE_RELEASE_TAG="${HEXEVOICE_FIRMWARE_RELEASE_TAG:-latest}"
+export HEXEVOICE_FIRMWARE_BUILD_FALLBACK="${HEXEVOICE_FIRMWARE_BUILD_FALLBACK:-true}"
+export HEXEVOICE_PROJECT_ROOT="${HEXEVOICE_PROJECT_ROOT:-$ROOT_DIR}"
 export HEXEVOICE_FIRMWARE_REPO_ARTIFACT_DIR="${HEXEVOICE_FIRMWARE_REPO_ARTIFACT_DIR:-runtime/firmware}"
 export HEXEVOICE_FIRMWARE_ARTIFACTS="${HEXEVOICE_FIRMWARE_ARTIFACTS:-hexe_firmware.bin,hexe_firmware_esp_box_3.bin,hexe_firmware_ha_voice_pe.bin,manifest.json,manifest-esp_box_3.json,manifest-ha_voice_pe.json,SHA256SUMS}"
 export HEXEVOICE_FIRMWARE_REQUIRED_PROFILES="${HEXEVOICE_FIRMWARE_REQUIRED_PROFILES:-esp_box_3,ha_voice_pe}"
@@ -25,6 +29,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import urllib.error
 import urllib.request
 
 
@@ -158,8 +163,13 @@ def source_from_github_release() -> list[Artifact]:
     token = os.environ.get("GITHUB_TOKEN")
     if token:
         request.add_header("Authorization", f"Bearer {token}")
-    with urllib.request.urlopen(request, timeout=30) as response:
-        release = json.loads(response.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            release = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raise SystemExit(f"firmware_github_release_unavailable:{slug}:{tag}:http_{exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise SystemExit(f"firmware_github_release_unavailable:{slug}:{tag}:{exc.reason}") from exc
     wanted = set(artifact_names())
     artifacts = [
         Artifact(name=str(asset["name"]), url=str(asset["browser_download_url"]))
@@ -193,7 +203,7 @@ def selected_source() -> list[Artifact]:
         if not base_url:
             raise SystemExit("firmware_artifact_base_url_not_configured")
         return source_from_base_url(base_url)
-    if mode == "github-release":
+    if mode == "github-release" or (mode == "auto" and os.environ.get("HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY")):
         return source_from_github_release()
     if mode == "git" or (mode == "auto" and repo_url):
         if not repo_url:
@@ -204,6 +214,31 @@ def selected_source() -> list[Artifact]:
         "HEXEVOICE_FIRMWARE_ARTIFACT_URLS, HEXEVOICE_FIRMWARE_ARTIFACT_BASE_URL, "
         "or HEXEVOICE_FIRMWARE_REPO_URL"
     )
+
+
+def build_fallback_allowed() -> bool:
+    enabled = os.environ.get("HEXEVOICE_FIRMWARE_BUILD_FALLBACK", "true").lower() in {"1", "true", "yes", "on"}
+    if not enabled:
+        return False
+    mode = os.environ.get("HEXEVOICE_FIRMWARE_SOURCE", "auto")
+    return mode in {"auto", "github-release", "build"}
+
+
+def build_firmware_artifacts(reason: str) -> None:
+    if not build_fallback_allowed():
+        raise SystemExit(reason)
+    root = Path(os.environ["HEXEVOICE_PROJECT_ROOT"]).expanduser().resolve()
+    build_script = root / "firmware" / "build.sh"
+    if not build_script.exists():
+        raise SystemExit(f"{reason}\nfirmware_build_fallback_missing:{build_script}")
+    print(f"firmware_download_unavailable:{reason}")
+    print(f"firmware_build_fallback: running {build_script}")
+    env = os.environ.copy()
+    env["RUNTIME_FIRMWARE_DIR"] = str(artifact_dir())
+    try:
+        subprocess.run([str(build_script), "build"], cwd=build_script.parent, text=True, check=True, env=env)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(f"firmware_build_fallback_failed:exit_{exc.returncode}") from exc
 
 
 def install_artifacts(artifacts: list[Artifact], target: Path) -> list[str]:
@@ -314,9 +349,12 @@ def doctor() -> None:
 action = sys.argv[1] if len(sys.argv) > 1 else "list"
 target = artifact_dir()
 if action in {"download", "sync", "install"}:
-    artifacts = selected_source()
-    if artifacts:
-        install_artifacts(artifacts, target)
+    try:
+        artifacts = selected_source()
+        if artifacts:
+            install_artifacts(artifacts, target)
+    except SystemExit as exc:
+        build_firmware_artifacts(str(exc))
     verify_required_profiles(target)
     verify_checksums(target)
 elif action == "verify":

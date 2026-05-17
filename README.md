@@ -20,7 +20,8 @@ It includes:
 - `frontend/`
   Starter UI for onboarding, readiness, providers, and diagnostics
 - `firmware/`
-  Native Hexe standalone firmware for the ESP32-S3 Box track
+  Native Hexe standalone firmware source; install-time firmware artifacts are
+  pulled from the release feed documented in `docs/firmware-release-artifacts.md`
 - `scripts/`
   Environment-driven run and service-control scripts
   including `scripts/systemd/hexevoice-backend.service.in`, `scripts/systemd/hexevoice-stt.service.in`, and `scripts/systemd/hexevoice-frontend.service.in`

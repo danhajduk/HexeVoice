@@ -15,6 +15,8 @@ DOWNLOAD_FIRMWARE="${HEXEVOICE_DOWNLOAD_FIRMWARE:-$SETUP_DEFAULT_ARTIFACTS}"
 DEFAULT_STT_MODEL="${HEXEVOICE_DEFAULT_STT_MODEL:-base}"
 DEFAULT_PIPER_VOICE="${HEXEVOICE_DEFAULT_PIPER_VOICE:-en_US-kathleen-low}"
 DEFAULT_WAKE_MODEL="${HEXEVOICE_DEFAULT_WAKE_MODEL:-Hexe}"
+FIRMWARE_GITHUB_REPOSITORY="${HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY:-danhajduk/HexeFirmware}"
+FIRMWARE_RELEASE_TAG="${HEXEVOICE_FIRMWARE_RELEASE_TAG:-latest}"
 SETUP_STT="${HEXEVOICE_SETUP_STT:-false}"
 SETUP_TTS="${HEXEVOICE_SETUP_TTS:-false}"
 SETUP_WAKE="${HEXEVOICE_SETUP_WAKE:-false}"
@@ -694,7 +696,10 @@ if truthy "$DOWNLOAD_WAKE_MODEL"; then
 fi
 
 if truthy "$DOWNLOAD_FIRMWARE"; then
-  run_artifact_step "firmware" "Downloading firmware artifacts" ./scripts/firmware-artifacts-control.sh download
+  run_artifact_step "firmware" "Downloading firmware artifacts from ${FIRMWARE_GITHUB_REPOSITORY}@${FIRMWARE_RELEASE_TAG}" \
+    env HEXEVOICE_FIRMWARE_GITHUB_REPOSITORY="$FIRMWARE_GITHUB_REPOSITORY" \
+      HEXEVOICE_FIRMWARE_RELEASE_TAG="$FIRMWARE_RELEASE_TAG" \
+      ./scripts/firmware-artifacts-control.sh download
 fi
 
 if truthy "$SETUP_HOST_ALIAS"; then
