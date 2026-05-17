@@ -121,6 +121,9 @@ export function CoreSetupPage({ onContinue }) {
 }
 
 export function MigrationSetupPage() {
+  const [sourceMode, setSourceMode] = useState("upload");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [localPath, setLocalPath] = useState("");
   const [bundle, setBundle] = useState(null);
   const [summary, setSummary] = useState("");
   const [form, setForm] = useState({ destination_core_base_url: "", destination_api_base_url: "", destination_ui_endpoint: "", destination_hostname: "" });
@@ -170,6 +173,11 @@ export function MigrationSetupPage() {
   function providerPlanLabel(provider) {
     if (!provider?.present) return "not included";
     return [provider.provider, provider.model || provider.default_voice || provider.default_wakeword, provider.device].filter(Boolean).join(" / ") || "included";
+  }
+
+  function bundleSchemaLabel() {
+    if (!bundle) return "pending";
+    return bundle.schema_version ? `schema ${bundle.schema_version}` : "schema missing";
   }
 
   function importDisabled() {
@@ -225,9 +233,54 @@ export function MigrationSetupPage() {
       {error ? <div className="callout callout-danger">{error}</div> : null}
       <div className="callout callout-warning">Migration bundles with trust tokens are rejected. Core re-auth is required after import.</div>
       <label className="field">
+        <span className="field-label">Migration source</span>
+        <select className="field-input" value={sourceMode} onChange={(event) => setSourceMode(event.target.value)}>
+          <option value="upload">Upload bundle</option>
+          <option value="local">Local backup path</option>
+          <option value="core">Old node/Core fetch</option>
+        </select>
+      </label>
+      {sourceMode === "local" ? (
+        <div className="stack">
+          <label className="field">
+            <span className="field-label">Local migration path</span>
+            <input
+              className="field-input"
+              value={localPath}
+              onChange={(event) => setLocalPath(event.target.value)}
+              placeholder="runtime/migration/backups/<backup-id>/migration-bundle.json"
+            />
+          </label>
+          <div className="callout callout-neutral">Local path loading is held until setup has a constrained backend read path. Upload the file to review it now.</div>
+        </div>
+      ) : null}
+      {sourceMode === "core" ? (
+        <div className="stack">
+          <label className="field">
+            <span className="field-label">Old node/Core export URL</span>
+            <input className="field-input" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="http://old-node:9004" />
+          </label>
+          <div className="callout callout-neutral">Fetch is disabled until the old node/Core advertises a supported redacted migration export path.</div>
+        </div>
+      ) : null}
+      <label className="field">
         <span className="field-label">Migration bundle</span>
         <input className="field-input" type="file" accept="application/json,.json" onChange={handleFile} disabled={busy !== ""} />
       </label>
+      <div className="fact-grid">
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Bundle schema</span>
+          <span className="fact-grid-value">{bundleSchemaLabel()}</span>
+        </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Source node</span>
+          <span className="fact-grid-value">{bundle?.source?.node_name || bundle?.source?.node_id || "pending"}</span>
+        </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Trust secrets</span>
+          <span className="fact-grid-value">{bundle?.contains_trust_secrets ? "present - blocked" : bundle ? "not included" : "pending"}</span>
+        </div>
+      </div>
       <div className={`callout callout-${result?.ok === false ? "danger" : result ? "success" : "neutral"}`}>
         {busy === "auto-preflight" ? "Checking migration bundle..." : migrationSummaryText(result)}
       </div>
