@@ -148,6 +148,20 @@ def test_setup_ready_smoke_test_and_complete(tmp_path, monkeypatch):
     assert persisted.resume.current_step_id == "ready"
     assert persisted.operational_status.operational_ready is True
 
+    export = client.post("/api/setup/ready/export")
+    assert export.status_code == 200
+    export_payload = export.json()
+    assert export_payload["setup_summary"]["node_id"] == "node-voice-123"
+    assert export_payload["recovery_bundle"]["migration_bundle"]["contains_trust_secrets"] is False
+    trust_payload = export_payload["recovery_bundle"]["migration_bundle"]["state_files"]["onboarding_state"]["trust_activation"]
+    assert trust_payload.get("node_trust_token") is None
+    assert export_payload["migration_import_receipt"]["receipt"] is None
+    assert export_payload["download_url"] == "/api/setup/ready/export/download"
+
+    download = client.get("/api/setup/ready/export/download")
+    assert download.status_code == 200
+    assert download.json()["setup_summary"]["node_id"] == "node-voice-123"
+
 
 def test_setup_ready_smoke_test_blocks_when_core_is_not_visible(tmp_path, monkeypatch):
     client = TestClient(create_app(ready_settings(tmp_path)))

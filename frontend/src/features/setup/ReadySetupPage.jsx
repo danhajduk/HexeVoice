@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { completeSetupReady, getSetupReadyStatus, runSetupReadySmokeTest } from "../../api/client";
+import { completeSetupReady, exportSetupReadyBundle, getSetupReadyStatus, runSetupReadySmokeTest } from "../../api/client";
 
 function toneForCheck(status) {
   if (status === "pass") return "success";
@@ -72,6 +72,23 @@ export function ReadySetupPage({ onRefresh }) {
     }
   }
 
+  async function exportBundle() {
+    setBusy("export");
+    setError("");
+    setNotice("");
+    try {
+      const payload = await exportSetupReadyBundle();
+      setNotice("Final setup export created.");
+      if (typeof window !== "undefined" && payload.download_url) {
+        window.open(payload.download_url, "_blank", "noopener,noreferrer");
+      }
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   const smoke = status?.last_smoke;
   const checks = smoke?.checks || [];
 
@@ -117,6 +134,9 @@ export function ReadySetupPage({ onRefresh }) {
         </button>
         <button className="btn btn-secondary" type="button" onClick={completeSetup} disabled={busy !== "" || status?.continue_blocked}>
           {busy === "complete" ? "Completing..." : "Complete setup"}
+        </button>
+        <button className="btn btn-secondary" type="button" onClick={exportBundle} disabled={busy !== ""}>
+          {busy === "export" ? "Exporting..." : "Export setup bundle"}
         </button>
       </div>
 

@@ -215,7 +215,10 @@ returns to `pending_capability`, and operational readiness is cleared until the
 manifest is declared again.
 The final setup gate is `/setup/ready`, backed by
 `/api/setup/ready/status`, `/api/setup/ready/run-smoke-test`, and
-`/api/setup/ready/complete`. The smoke test checks backend/frontend reachability,
+`/api/setup/ready/complete`. Final setup export is available through
+`/api/setup/ready/export` and `/api/setup/ready/export/download`; it writes a
+redacted setup summary, recovery bundle, migration bundle, and migration import
+receipt when one exists. The smoke test checks backend/frontend reachability,
 trust, provider STT/TTS/wake health, backend provider routing, Core
 trust/capability visibility, governance currency, Supervisor registration,
 firmware, runtime directories, sockets, LAN URLs, host alias state, and Core

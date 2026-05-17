@@ -2033,9 +2033,24 @@ def create_app(
     @app.post("/api/setup/migration/import", response_model=NodeMigrationImportResponse)
     async def setup_migration_import(payload: NodeMigrationImportRequest) -> NodeMigrationImportResponse:
         try:
-            return node_migration_service.import_bundle(payload)
+            response = node_migration_service.import_bundle(payload)
         except NodeMigrationError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        receipt_path = app_settings.runtime_dir / "setup" / "migration-import-receipt.json"
+        receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        receipt_path.write_text(
+            json.dumps(
+                {
+                    "recorded_at": datetime.now(UTC).isoformat(),
+                    "dry_run": payload.dry_run,
+                    "receipt": response.model_dump(mode="json"),
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        return response
 
     @app.post("/api/setup/trust/reauth/start", response_model=SetupReauthStartResponse)
     async def setup_reauth_start() -> SetupReauthStartResponse:
@@ -2589,12 +2604,25 @@ def create_app(
     def setup_ready_state_path() -> Path:
         return app_settings.runtime_dir / "setup" / "ready-state.json"
 
+    def setup_final_export_path() -> Path:
+        return app_settings.runtime_dir / "setup" / "final-setup-export.json"
+
+    def setup_migration_import_receipt_path() -> Path:
+        return app_settings.runtime_dir / "setup" / "migration-import-receipt.json"
+
     def read_setup_ready_state() -> dict:
         try:
             payload = json.loads(setup_ready_state_path().read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             return {}
         return payload if isinstance(payload, dict) else {}
+
+    def read_setup_migration_import_receipt() -> dict:
+        try:
+            payload = json.loads(setup_migration_import_receipt_path().read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {"recorded_at": None, "dry_run": None, "receipt": None}
+        return payload if isinstance(payload, dict) else {"recorded_at": None, "dry_run": None, "receipt": None}
 
     def write_setup_ready_state(payload: dict) -> None:
         payload["updated_at"] = datetime.now(UTC).isoformat()
@@ -2603,6 +2631,47 @@ def create_app(
         temp_path = path.with_suffix(f"{path.suffix}.tmp")
         temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
         temp_path.replace(path)
+
+    def setup_final_export_payload() -> dict:
+        state = onboarding_state_store.load()
+        ready_state = read_setup_ready_state()
+        host_status = setup_host_readiness_service.readiness_payload().model_dump(mode="json")
+        provider_status = setup_provider_status_payload()
+        capability_status = setup_capabilities_status_payload()
+        migration_bundle = node_migration_service.export_bundle(NodeMigrationExportRequest())
+        payload = {
+            "schema_version": 1,
+            "exported_at": datetime.now(UTC).isoformat(),
+            "setup_summary": {
+                "node_name": state.pre_trust.node_name or app_settings.node_name,
+                "node_id": state.trust_activation.node_id,
+                "node_type": state.trust_activation.node_type or app_settings.node_type,
+                "core_base_url": state.pre_trust.core_base_url,
+                "api_base_url": state.pre_trust.api_base_url or app_settings.public_api_base_url,
+                "ui_endpoint": state.pre_trust.ui_endpoint or app_settings.public_ui_base_url,
+                "completed_at": ready_state.get("completed_at"),
+                "last_smoke_summary": (ready_state.get("last_smoke") or {}).get("summary")
+                if isinstance(ready_state.get("last_smoke"), dict)
+                else None,
+            },
+            "recovery_bundle": {
+                "migration_bundle": migration_bundle,
+                "ready_state": ready_state,
+                "host_status": host_status,
+                "provider_status": provider_status,
+                "capability_status": capability_status,
+            },
+            "migration_import_receipt": read_setup_migration_import_receipt(),
+            "download_url": "/api/setup/ready/export/download",
+            "warnings": [
+                *migration_bundle.get("warnings", []),
+                "Final setup export is redacted and does not include trust secrets.",
+            ],
+        }
+        path = setup_final_export_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        return payload
 
     def setup_ready_check(
         check_id: str,
@@ -2979,6 +3048,21 @@ def create_app(
             "message": "setup_complete",
             "status": await asyncio.to_thread(setup_ready_status_payload),
         }
+
+    @app.post("/api/setup/ready/export")
+    async def setup_ready_export() -> dict:
+        return await asyncio.to_thread(setup_final_export_payload)
+
+    @app.get("/api/setup/ready/export/download")
+    async def setup_ready_export_download() -> FileResponse:
+        path = setup_final_export_path()
+        if not path.exists():
+            await asyncio.to_thread(setup_final_export_payload)
+        return FileResponse(
+            path,
+            media_type="application/json",
+            filename="hexevoice-final-setup-export.json",
+        )
 
     @app.put("/api/providers/setup", response_model=ProviderSetupResponse)
     async def provider_setup_save(payload: ProviderSetupRequest) -> ProviderSetupResponse:

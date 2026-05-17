@@ -208,3 +208,4 @@ Task 195: Define and enforce Step 6 blockers for untrusted node, Core unavailabl
 Task 196: Add Step 6 recovery actions to rebuild manifest, re-declare capabilities, re-sync governance, re-check provider health, re-run trust check, and open Core governance pages - Completed on 05/16/2026 23:02
 Task 197: Validate Step 6 capability manifests locally against the Core-compatible schema before sending them to Core - Completed on 05/16/2026 23:05
 Task 198: Expand Step 7 smoke tests to verify STT/TTS/wake provider responses, backend provider calls, Core trust/capability visibility, governance currency, and supervisor service registration - Completed on 05/16/2026 23:08
+Task 199: Add Step 7 final backup/export support with a setup summary, recovery bundle, migration/import receipt, and downloadable endpoint - Completed on 05/16/2026 23:12
