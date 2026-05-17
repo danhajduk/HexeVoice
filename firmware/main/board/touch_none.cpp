@@ -12,6 +12,9 @@ void init_touch() {
   ESP_LOGI(kTag, "Touch disabled for this board profile");
 }
 
+void update_touch() {
+}
+
 bool touch_ready() {
   return false;
 }

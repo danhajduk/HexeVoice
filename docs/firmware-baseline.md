@@ -18,6 +18,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Persisted endpoint settings for output volume and mute state: `firmware/main/system/settings.cpp`.
 - Wi-Fi station startup and reconnect handling using local firmware secrets: `firmware/main/board/wifi.cpp`.
 - Button handling for mute/config interactions: `firmware/main/board/buttons.cpp`.
+- ESP-BOX-3 touchscreen polling for local volume down/up and mute toggles, reusing persisted endpoint settings and the normal backend heartbeat status.
 - Microphone initialization and simple energy-threshold VAD task: `firmware/main/board/audio.cpp`.
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
 - Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
