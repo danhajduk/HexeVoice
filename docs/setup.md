@@ -94,7 +94,8 @@ The runner writes progress to `runtime/setup/bootstrap-status.json`. The
 temporary or production backend exposes the same state at
 `GET /api/setup/bootstrap/status`, including current action, completed actions,
 pending downloads, retryable failures, lifecycle mode, and final redirect URL.
-The first production setup page is available at `/setup/host`; it polls
+The first production setup page is available at `/setup/host`; `/setup` opens
+that same host preparation page. It polls
 `GET /api/setup/host-readiness` for host checks and uses targeted
 `/api/setup/host-readiness/actions/<action>` calls for runtime directory prep,
 CUDA preflight, host alias setup, Supervisor handoff, and saving the selected
@@ -158,20 +159,19 @@ CORE_SUPERVISOR_ENROLLMENT_TOKEN=<one-time-token> \
 
 ## Operator Flow
 
-HexeVoice now presents the full canonical 10-step onboarding flow in the frontend:
+HexeVoice now presents the install/setup/migration flow in the frontend:
 
-1. Node Identity
+1. Host Preparation
 2. Core Connection
-3. Bootstrap Discovery
-4. Registration
-5. Approval
-6. Trust Activation
-7. Provider Setup
-8. Capability Declaration
-9. Governance Sync
-10. Ready
+3. Migration Import
+4. Trust Authorization
+5. Provider Setup
+6. Capabilities & Governance
+7. Ready Check
 
-The onboarding card is the setup surface.
+The onboarding card remains available as a deeper legacy/canonical lifecycle
+surface when needed, but the main setup shell leads with the install and
+migration path.
 The right-side overview panels are the post-setup/operator summary surface.
 
 After trust activation, HexeVoice should register its runtime with Core Supervisor over `/run/hexe/supervisor.sock` and continue sending Supervisor heartbeats while running.

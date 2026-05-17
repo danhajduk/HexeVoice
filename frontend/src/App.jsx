@@ -34,17 +34,14 @@ import { RuntimeDashboardSection } from "./features/dashboard/RuntimeDashboardSe
 import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDashboardSection";
 import { MigrationDashboardSection } from "./features/dashboard/MigrationDashboardSection";
 
-const CANONICAL_SETUP_STEPS = [
-  { id: "node_identity", label: "Node Identity" },
-  { id: "core_connection", label: "Core Connection" },
-  { id: "bootstrap_discovery", label: "Bootstrap Discovery" },
-  { id: "registration", label: "Registration" },
-  { id: "approval", label: "Approval" },
-  { id: "trust_activation", label: "Trust Activation" },
-  { id: "provider_setup", label: "Provider Setup" },
-  { id: "capability_declaration", label: "Capability Declaration" },
-  { id: "governance_sync", label: "Governance Sync" },
-  { id: "ready", label: "Ready" },
+const SETUP_FLOW_STEPS = [
+  { id: "host", label: "Host Preparation" },
+  { id: "core", label: "Core Connection" },
+  { id: "migration", label: "Migration Import" },
+  { id: "reauth", label: "Trust Authorization" },
+  { id: "providers", label: "Provider Setup" },
+  { id: "capabilities", label: "Capabilities & Governance" },
+  { id: "ready", label: "Ready Check" },
 ];
 
 const VOICE_ENDPOINT_REFRESH_MS = 2000;
@@ -72,7 +69,13 @@ function parseSetupSection(location) {
   if (!location) {
     return "flow";
   }
-  if (location.pathname === "/setup/host" || location.hash === "#/setup/host") {
+  if (
+    location.pathname === "/setup" ||
+    location.pathname === "/setup/" ||
+    location.pathname === "/setup/host" ||
+    location.hash === "#/setup" ||
+    location.hash === "#/setup/host"
+  ) {
     return "host";
   }
   if (location.pathname === "/setup/core" || location.hash === "#/setup/core") {
@@ -180,26 +183,45 @@ function statusTone(status) {
   return "neutral";
 }
 
-function buildSetupFlow(onboarding, status) {
-  const stepMap = new Map((onboarding?.steps || []).map((step) => [step.step_id, step]));
-  const operationalReady = Boolean(status?.operational_ready || onboarding?.operational_ready);
-  const currentStepId = operationalReady
-    ? "ready"
-    : onboarding?.steps?.find((step) => step.current)?.step_id ||
-      onboarding?.current_step_id ||
-      "node_identity";
+function setupFlowStepForSection(setupSection, onboarding, status) {
+  if (setupSection && setupSection !== "flow") {
+    return setupSection;
+  }
+  const trustState = status?.trust_state || onboarding?.trust_state;
+  if (trustState === "reauth_required") {
+    return "reauth";
+  }
+  const stepId = onboarding?.current_step_id || status?.current_step_id || "node_identity";
+  if (stepId === "core_connection") {
+    return "core";
+  }
+  if (stepId === "provider_setup") {
+    return "providers";
+  }
+  if (stepId === "capability_declaration" || stepId === "governance_sync") {
+    return "capabilities";
+  }
+  if (stepId === "ready") {
+    return "ready";
+  }
+  return "host";
+}
 
-  const current = CANONICAL_SETUP_STEPS.find((step) => step.id === currentStepId) || CANONICAL_SETUP_STEPS[0];
+function buildSetupFlow(onboarding, status, setupSection) {
+  const operationalReady = Boolean(status?.operational_ready || onboarding?.operational_ready);
+  const currentStepId = operationalReady ? "ready" : setupFlowStepForSection(setupSection, onboarding, status);
+  const currentStepIndex = SETUP_FLOW_STEPS.findIndex((step) => step.id === currentStepId);
+
+  const current = SETUP_FLOW_STEPS.find((step) => step.id === currentStepId) || SETUP_FLOW_STEPS[0];
 
   return {
     current: current ? { id: current.id, label: current.label } : null,
-    steps: CANONICAL_SETUP_STEPS.map((step) => {
-      const payload = stepMap.get(step.id);
+    steps: SETUP_FLOW_STEPS.map((step, index) => {
       return {
         id: step.id,
-        label: payload?.label || step.label,
-        current: payload?.current || step.id === currentStepId,
-        complete: payload?.complete || (operationalReady && step.id === "ready") || false,
+        label: step.label,
+        current: step.id === currentStepId,
+        complete: operationalReady || (currentStepIndex > -1 && index < currentStepIndex),
       };
     }),
   };
@@ -230,7 +252,7 @@ export default function App() {
   );
   const setupComplete = !isSetupStage(onboarding, status);
   const showSetupPage = !setupComplete || routeView === "setup";
-  const setupFlow = buildSetupFlow(onboarding, status);
+  const setupFlow = buildSetupFlow(onboarding, status, setupSection);
   const inSetup = showSetupPage;
   const nodeState = nodeStateFromStatus(status, onboarding);
   const requiredInputs = requiredSetupInputs(status);

@@ -663,7 +663,7 @@ bootstrap_status_update "running" "starting-setup" "" "" "" "true" "$pending_dow
 
 if truthy "$START_SETUP_RUNNER"; then
   mkdir -p runtime/logs
-  setup_handoff_url="http://$(install_public_host):${INSTALL_STATUS_UI_PORT}/setup"
+  setup_handoff_url="http://$(install_public_host):${INSTALL_STATUS_UI_PORT}/setup/host"
   install_status_update "handoff" "Opening HexeVoice setup." "The setup UI is starting now." "$setup_handoff_url"
   sleep 2
   stop_install_status_ui
