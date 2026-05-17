@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
+import subprocess
 
 from fastapi.testclient import TestClient
 
+from hexevoice.api.models import SetupHostReadinessActionRequest
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
 
@@ -78,3 +80,25 @@ def test_setup_host_lan_host_ignores_loopback_alias(monkeypatch):
     )
 
     assert SetupHostReadinessService._lan_host() == "10.0.0.55"
+
+
+def test_setup_host_actions_run_helpers_from_project_root(monkeypatch, tmp_path):
+    from hexevoice.setup_host import SetupHostReadinessService
+
+    recorded = {}
+    service = SetupHostReadinessService(settings=Settings(runtime_dir=tmp_path / "runtime"))
+
+    monkeypatch.setattr(SetupHostReadinessService, "_lan_host", staticmethod(lambda: "10.0.0.55"))
+
+    def fake_run(command, **kwargs):
+        recorded["command"] = command
+        recorded["cwd"] = kwargs.get("cwd")
+        return subprocess.CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr("hexevoice.setup_host.subprocess.run", fake_run)
+
+    response = service.run_action("install-host-alias", SetupHostReadinessActionRequest())
+
+    assert response.accepted is True
+    assert recorded["cwd"] == ROOT
+    assert recorded["command"][1] == str(ROOT / "scripts" / "hostname-alias-control.sh")

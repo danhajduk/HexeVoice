@@ -36,6 +36,7 @@ def _utc_now() -> str:
 class SetupHostReadinessService:
     def __init__(self, *, settings: Settings) -> None:
         self._settings = settings
+        self._project_root = self._find_project_root()
         self._state_path = settings.runtime_dir / "setup" / "host-state.json"
 
     def readiness_payload(self) -> SetupHostReadinessResponse:
@@ -89,12 +90,12 @@ class SetupHostReadinessService:
             )
 
         if action == "prepare-runtime-dirs":
-            return self._run_helper(action, ["bash", "scripts/prepare-runtime-dirs.sh"])
+            return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "prepare-runtime-dirs.sh")])
         if action == "check-cuda":
-            return self._run_helper(action, ["bash", "scripts/faster-whisper-stt-control.sh", "cuda-preflight"])
+            return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "faster-whisper-stt-control.sh"), "cuda-preflight"])
         if action == "install-host-alias":
             env = {"HEXEVOICE_ENABLE_HOST_ALIAS": "true"}
-            return self._run_helper(action, ["bash", "scripts/hostname-alias-control.sh", "install"], extra_env=env)
+            return self._run_helper(action, ["bash", str(self._project_root / "scripts" / "hostname-alias-control.sh"), "install"], extra_env=env)
         if action == "install-standalone-supervisor":
             installer = self._supervisor_installer()
             if installer is None:
@@ -242,7 +243,7 @@ class SetupHostReadinessService:
         return ("pass", f"{path} is present.")
 
     def _runtime_dirs(self) -> list[str]:
-        config_path = Path("config/runtime-dirs.json")
+        config_path = self._project_root / "config" / "runtime-dirs.json"
         try:
             payload = json.loads(config_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -348,13 +349,31 @@ class SetupHostReadinessService:
             return None
         return f"{core_base_url.rstrip('/')}/system/supervisors/enrollment-tokens"
 
-    @staticmethod
-    def _supervisor_installer() -> Path | None:
-        local = Path("docs/Core-Documents/scripts/install-supervisor.sh")
-        if local.exists() and os.access(local, os.X_OK):
-            return local
+    def _supervisor_installer(self) -> Path | None:
+        for local in (
+            self._project_root / "docs" / "Core-Documents" / "core" / "scripts" / "install-supervisor.sh",
+            self._project_root / "docs" / "Core-Documents" / "supervisor" / "scripts" / "install-supervisor.sh",
+            self._project_root / "docs" / "Core-Documents" / "scripts" / "install-supervisor.sh",
+        ):
+            if local.exists() and os.access(local, os.X_OK):
+                return local
         found = shutil.which("install-supervisor.sh")
         return Path(found) if found else None
+
+    @staticmethod
+    def _find_project_root() -> Path:
+        env_root = os.environ.get("HEXEVOICE_PROJECT_ROOT")
+        if env_root:
+            return Path(env_root).expanduser().resolve()
+
+        package_root = Path(__file__).resolve().parents[2]
+        if (package_root / "scripts").is_dir():
+            return package_root
+
+        try:
+            return Path.cwd()
+        except OSError:
+            return package_root
 
     def _run_helper(
         self,
@@ -374,6 +393,7 @@ class SetupHostReadinessService:
                 timeout=120,
                 check=False,
                 env=env,
+                cwd=self._project_root,
             )
         except Exception as exc:
             return SetupHostReadinessActionResponse(
