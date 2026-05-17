@@ -8,7 +8,8 @@ import {
 
 function toneForStatus(value) {
   if (value === true || value === "accepted" || value === "issued" || value === "fresh") return "success";
-  if (value === false || value === "missing" || value === "pending_capability") return "warning";
+  if (value === "denied" || value === "rejected" || value === "failed") return "danger";
+  if (value === false || value === "missing" || value === "pending" || value === "pending_capability") return "warning";
   return "neutral";
 }
 
@@ -20,6 +21,23 @@ function normalizeSelection(status) {
 
 function joinList(value) {
   return Array.isArray(value) && value.length ? value.join(", ") : "pending";
+}
+
+function formatSummaryItems(value) {
+  if (!Array.isArray(value) || !value.length) {
+    return "none";
+  }
+  return value
+    .map((item) => {
+      if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+        return String(item);
+      }
+      if (item && typeof item === "object") {
+        return item.id || item.name || item.key || item.status || JSON.stringify(item);
+      }
+      return String(item);
+    })
+    .join(", ");
 }
 
 export function CapabilitiesSetupPage() {
@@ -100,6 +118,7 @@ export function CapabilitiesSetupPage() {
 
   const capabilities = status?.capabilities || {};
   const governance = status?.governance || {};
+  const governanceSummary = status?.governance_summary || {};
   const manifestPreview = status?.manifest_preview || {};
   const coreSummary = manifestPreview.core_visible_summary || {};
   const available = capabilities.available || [];
@@ -236,6 +255,33 @@ export function CapabilitiesSetupPage() {
           ))}
         </div>
         <pre className="code-panel">{JSON.stringify(manifestPreview.declaration_payload || {}, null, 2)}</pre>
+      </section>
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Governance Sync</h3>
+          <span className={`status-pill status-pill-${toneForStatus(governanceSummary.status)}`}>
+            {governanceSummary.status || "pending"}
+          </span>
+        </div>
+        <div className="fact-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Accepted</span>
+            <span className="fact-grid-value">{formatSummaryItems(governanceSummary.accepted)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Denied</span>
+            <span className="fact-grid-value">{formatSummaryItems(governanceSummary.denied)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Pending</span>
+            <span className="fact-grid-value">{formatSummaryItems(governanceSummary.pending)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Local required changes</span>
+            <span className="fact-grid-value">{formatSummaryItems(governanceSummary.local_required_changes)}</span>
+          </div>
+        </div>
       </section>
 
       <div className="stack">

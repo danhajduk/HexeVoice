@@ -2364,6 +2364,40 @@ def create_app(
         if not governance_current:
             blockers.append("governance_not_current")
 
+        def governance_items(bundle: dict, keys: tuple[str, ...]) -> list:
+            for key in keys:
+                value = bundle.get(key)
+                if value is None:
+                    continue
+                if isinstance(value, list):
+                    return value
+                return [value]
+            return []
+
+        governance_bundle = state.governance_sync.governance_bundle or {}
+        governance_summary = {
+            "status": governance_bundle.get("status")
+            or governance_bundle.get("governance_status")
+            or state.governance_sync.governance_sync_status,
+            "accepted": governance_items(
+                governance_bundle,
+                ("accepted", "accepted_changes", "accepted_requirements", "active_requirements"),
+            ),
+            "denied": governance_items(
+                governance_bundle,
+                ("denied", "denied_changes", "denied_requirements", "rejected", "rejected_requirements"),
+            ),
+            "pending": governance_items(
+                governance_bundle,
+                ("pending", "pending_changes", "pending_requirements", "review_required"),
+            ),
+            "local_required_changes": governance_items(
+                governance_bundle,
+                ("local_required_changes", "required_local_changes", "node_required_changes", "required_changes"),
+            ),
+            "raw_bundle_present": bool(governance_bundle),
+        }
+
         return {
             "capabilities": capabilities.model_dump(mode="json"),
             "manifest_preview": capability_service.manifest_preview(),
@@ -2378,6 +2412,7 @@ def create_app(
                 "governance_outdated": state.governance_sync.governance_outdated,
                 "last_refresh_request_at": state.governance_sync.last_refresh_request_at,
             },
+            "governance_summary": governance_summary,
             "operational": state.operational_status.model_dump(mode="json"),
             "readiness": readiness.model_dump(mode="json"),
             "capability_current": capability_current,

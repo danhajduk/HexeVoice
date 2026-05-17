@@ -203,3 +203,4 @@ Task 190: Add Step 5 provider recovery actions for downloading selected models, 
 Task 191: Add Step 6 capability manifest preview before declaration, including node identity, providers, models, enabled capabilities, runtime URLs/sockets, and governance metadata - Completed on 05/16/2026 22:51
 Task 192: Link Step 6 capability declaration tightly to Step 5 provider config so provider/model changes mark the capability manifest stale - Completed on 05/16/2026 22:53
 Task 193: Add a Step 6 Core-visible capability summary showing provided STT/TTS/wake services, available models, enabled states, and disabled capabilities - Completed on 05/16/2026 22:56
+Task 194: Expand Step 6 governance sync UI to show accepted, denied, pending, and locally required changes returned from Core - Completed on 05/16/2026 22:57

@@ -121,6 +121,40 @@ def test_setup_capabilities_status_includes_manifest_preview(tmp_path):
     assert {"provider_id": "external_faster_whisper", "role": "stt", "model_id": "small.en", "enabled": True} in summary["available_models"]
 
 
+def test_setup_capabilities_status_summarizes_governance_bundle(tmp_path):
+    settings = trusted_capability_settings(tmp_path)
+    store = OnboardingStateStore(path=settings.onboarding_state_path)
+    state = store.load()
+    store.save(
+        state.model_copy(
+            update={
+                "governance_sync": state.governance_sync.model_copy(
+                    update={
+                        "governance_sync_status": "issued",
+                        "governance_version": "gov-1",
+                        "governance_bundle": {
+                            "status": "pending",
+                            "accepted_changes": [{"id": "telemetry"}],
+                            "denied_requirements": ["cloud-audio"],
+                            "pending_requirements": ["budget-review"],
+                            "local_required_changes": [{"id": "enable-audit-log"}],
+                        },
+                    }
+                )
+            }
+        )
+    )
+    client = TestClient(create_app(settings))
+
+    summary = client.get("/api/setup/capabilities/status").json()["governance_summary"]
+
+    assert summary["status"] == "pending"
+    assert summary["accepted"] == [{"id": "telemetry"}]
+    assert summary["denied"] == ["cloud-audio"]
+    assert summary["pending"] == ["budget-review"]
+    assert summary["local_required_changes"] == [{"id": "enable-audit-log"}]
+
+
 def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):
     client = TestClient(create_app(trusted_capability_settings(tmp_path)))
 

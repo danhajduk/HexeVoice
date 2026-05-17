@@ -194,6 +194,9 @@ It also exposes a Core-visible summary for STT, TTS, and wake services,
 available models, enabled capabilities, disabled capabilities, and enabled
 provider states so the setup UI can show the high-level declaration outcome
 without forcing operators to read raw JSON.
+Governance sync status includes a summary of Core-returned accepted, denied,
+pending, and locally required changes. The setup UI renders those fields from
+the stored governance bundle while still preserving the raw bundle in status.
 When Step 5 provider selections or model config change after Core has accepted
 capabilities, the local capability state moves to `manifest_stale`, governance
 returns to `pending_capability`, and operational readiness is cleared until the
