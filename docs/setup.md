@@ -201,6 +201,10 @@ Step 6 blockers include untrusted node state, missing Core connection, provider
 setup incompleteness, local manifest validation errors, persisted Core
 declaration rejection, governance sync failure, Core request failures, and
 selected voice capabilities whose local providers are unhealthy.
+Step 6 recovery actions can rebuild the manifest preview, re-declare
+capabilities, re-sync governance, re-check provider health, re-run the Core
+trust support check, and open the Core governance page for the node when Core
+URLs are known.
 When Step 5 provider selections or model config change after Core has accepted
 capabilities, the local capability state moves to `manifest_stale`, governance
 returns to `pending_capability`, and operational readiness is cleared until the

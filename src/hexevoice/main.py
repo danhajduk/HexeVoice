@@ -2449,6 +2449,19 @@ def create_app(
             ),
             "raw_bundle_present": bool(governance_bundle),
         }
+        core_base_url = (state.pre_trust.core_base_url or "").rstrip("/")
+        node_id = state.trust_activation.node_id or ""
+        recovery_actions = {
+            "rebuild_manifest": True,
+            "redeclaration": True,
+            "governance_sync": True,
+            "provider_health_check": True,
+            "trust_recheck": True,
+            "core_governance_url": f"{core_base_url}/system/governance" if core_base_url else None,
+            "core_node_governance_url": f"{core_base_url}/system/nodes/{node_id}/governance"
+            if core_base_url and node_id
+            else None,
+        }
 
         return {
             "capabilities": capabilities.model_dump(mode="json"),
@@ -2469,6 +2482,7 @@ def create_app(
                 "last_refresh_request_at": state.governance_sync.last_refresh_request_at,
             },
             "governance_summary": governance_summary,
+            "recovery_actions": recovery_actions,
             "operational": state.operational_status.model_dump(mode="json"),
             "readiness": readiness.model_dump(mode="json"),
             "capability_current": capability_current,

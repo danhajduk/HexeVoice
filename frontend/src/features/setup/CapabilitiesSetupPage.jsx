@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   declareSetupCapabilities,
   getSetupCapabilitiesStatus,
+  runSetupTrustAction,
   saveSetupCapabilitySelection,
   syncSetupGovernance,
 } from "../../api/client";
@@ -116,9 +117,38 @@ export function CapabilitiesSetupPage() {
     }
   }
 
+  async function recover(action) {
+    setBusy(`recovery-${action}`);
+    setError("");
+    setNotice("");
+    try {
+      if (action === "rebuild-manifest" || action === "recheck-provider-health") {
+        await refresh({ syncSelection: true });
+      } else if (action === "rerun-trust-check") {
+        const payload = await runSetupTrustAction("recheck-core-trust-support");
+        if (payload?.accepted === false) {
+          throw new Error(payload.detail || payload.status || "Trust check did not complete.");
+        }
+        await refresh({ syncSelection: true });
+      } else if (action === "open-core-governance") {
+        const url = status?.recovery_actions?.core_node_governance_url || status?.recovery_actions?.core_governance_url;
+        if (!url) {
+          throw new Error("Core governance URL is not available.");
+        }
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+      setNotice("Recovery action complete.");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   const capabilities = status?.capabilities || {};
   const governance = status?.governance || {};
   const governanceSummary = status?.governance_summary || {};
+  const recoveryActions = status?.recovery_actions || {};
   const manifestPreview = status?.manifest_preview || {};
   const coreSummary = manifestPreview.core_visible_summary || {};
   const available = capabilities.available || [];
@@ -319,6 +349,35 @@ export function CapabilitiesSetupPage() {
           {busy === "sync-governance" ? "Syncing..." : "Sync governance"}
         </button>
       </div>
+
+      <section className="stack">
+        <div className="section-heading">
+          <h3>Recovery Actions</h3>
+          <span className={`status-pill status-pill-${status?.continue_blocked ? "warning" : "success"}`}>
+            {status?.continue_blocked ? "available" : "ready"}
+          </span>
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-secondary" type="button" onClick={() => recover("rebuild-manifest")} disabled={busy !== ""}>
+            {busy === "recovery-rebuild-manifest" ? "Rebuilding..." : "Rebuild manifest"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => runAction("declare")} disabled={busy !== ""}>
+            {busy === "declare" ? "Declaring..." : "Re-declare capabilities"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => runAction("sync-governance")} disabled={busy !== ""}>
+            {busy === "sync-governance" ? "Syncing..." : "Re-sync governance"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => recover("recheck-provider-health")} disabled={busy !== ""}>
+            {busy === "recovery-recheck-provider-health" ? "Checking..." : "Re-check provider health"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => recover("rerun-trust-check")} disabled={busy !== ""}>
+            {busy === "recovery-rerun-trust-check" ? "Checking..." : "Re-run trust check"}
+          </button>
+          <button className="btn btn-secondary" type="button" onClick={() => recover("open-core-governance")} disabled={busy !== "" || !(recoveryActions.core_node_governance_url || recoveryActions.core_governance_url)}>
+            Open Core governance
+          </button>
+        </div>
+      </section>
 
       <div className="fact-grid">
         <div className="fact-grid-item">

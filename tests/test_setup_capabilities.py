@@ -119,6 +119,8 @@ def test_setup_capabilities_status_includes_manifest_preview(tmp_path):
     assert "voice.inference" in summary["enabled_capabilities"]
     assert summary["disabled_capabilities"] == []
     assert {"provider_id": "external_faster_whisper", "role": "stt", "model_id": "small.en", "enabled": True} in summary["available_models"]
+    assert payload["recovery_actions"]["core_governance_url"] == "http://core.test:9001/system/governance"
+    assert payload["recovery_actions"]["core_node_governance_url"] == "http://core.test:9001/system/nodes/node-voice-123/governance"
 
 
 def test_setup_capabilities_status_summarizes_governance_bundle(tmp_path):

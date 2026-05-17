@@ -205,3 +205,4 @@ Task 192: Link Step 6 capability declaration tightly to Step 5 provider config s
 Task 193: Add a Step 6 Core-visible capability summary showing provided STT/TTS/wake services, available models, enabled states, and disabled capabilities - Completed on 05/16/2026 22:56
 Task 194: Expand Step 6 governance sync UI to show accepted, denied, pending, and locally required changes returned from Core - Completed on 05/16/2026 22:57
 Task 195: Define and enforce Step 6 blockers for untrusted node, Core unavailable, provider setup incomplete, invalid manifest, Core declaration rejection, governance sync failure, and selected capability without healthy provider - Completed on 05/16/2026 23:00
+Task 196: Add Step 6 recovery actions to rebuild manifest, re-declare capabilities, re-sync governance, re-check provider health, re-run trust check, and open Core governance pages - Completed on 05/16/2026 23:02
