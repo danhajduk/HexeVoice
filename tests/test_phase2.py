@@ -219,7 +219,7 @@ def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypa
     assert piper["provider"] == "piper"
     models = {model["model_id"]: model for model in piper["available_models"]}
     assert sorted(models) == ["en_US-kathleen-low", "en_US-lessac-medium"]
-    assert models["en_US-lessac-medium"]["display_name"] == "Lessac"
+    assert "display_name" not in models["en_US-lessac-medium"]
     assert captured["budget_json"]["supported_providers"] == ["piper", "voice"]
 
 

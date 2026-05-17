@@ -7,7 +7,6 @@ from hexevoice.api.models import CapabilityDeclarationResponse, CapabilitySelect
 from hexevoice.config.settings import Settings
 from hexevoice.core.client import CoreOnboardingClient
 from hexevoice.persistence import OnboardingStateStore
-from hexevoice.piper_models import piper_model_display_name, read_piper_model_config
 from hexevoice.providers.setup import voice_provider_ids
 
 
@@ -213,21 +212,10 @@ class CapabilityDeclarationService:
         models: list[dict] = []
         for model_path in sorted(model_dir.glob("*.onnx")) if model_dir.exists() else []:
             model_id = model_path.stem
-            config = read_piper_model_config(model_path)
-            models.append(
-                {
-                    "model_id": model_id,
-                    "display_name": piper_model_display_name(config, fallback=model_id),
-                }
-            )
+            models.append({"model_id": model_id})
         configured_voice = str(self._settings.voice_tts_piper_voice or "").strip()
         if configured_voice and configured_voice not in {str(model.get("model_id")) for model in models}:
-            models.append(
-                {
-                    "model_id": configured_voice,
-                    "display_name": configured_voice,
-                }
-            )
+            models.append({"model_id": configured_voice})
         return sorted(models, key=lambda item: str(item.get("model_id") or "").lower())
 
     def save_selection(self, payload: CapabilitySelectionRequest) -> CapabilitySummaryResponse:
