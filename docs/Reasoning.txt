@@ -381,3 +381,10 @@ Verification: `python3 -m py_compile scripts/provider-lifecycle-validation.py` p
 #############
 All Tasks completed 08/22/2026 21:23:49
 #############
+###########
+Task #212
+Step objective: Reconcile stale Voice Node documentation and retain the feature report intentionally.
+Issue cause: The node feature report was untracked, and older architecture/firmware docs still described implemented backend voice and firmware TTS paths as pending or missing.
+Chosen fix: Commit the feature report as an audit artifact, add cross-links to canonical docs and follow-up tasks, and narrow stale wording in the canonical architecture and firmware baseline docs.
+What changed: Updated `docs/architecture.md` to reflect implemented STT/assistant/TTS/session-history backend paths, updated `docs/firmware-baseline.md` to distinguish implemented TTS playback from remaining device validation/integrity hardening, and retained `docs/node-feature-report.md` with follow-up task links.
+Verification: Text checks confirmed the stale pending/missing phrases no longer appear in current docs except historical `docs/Reasoning.txt`; cross-link checks found the new report and canonical-doc references.

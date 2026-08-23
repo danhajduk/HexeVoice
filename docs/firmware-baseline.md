@@ -22,10 +22,10 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Microphone initialization and simple energy-threshold VAD task: `firmware/main/board/audio.cpp`.
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
 - Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
-- Backend heartbeat and voice WebSocket client scaffold: `firmware/main/voice/backend_client.cpp`.
+- Backend heartbeat and voice WebSocket client: `firmware/main/voice/backend_client.cpp`.
 - Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, command controls, firmware build metadata, and TTS playback lifecycle diagnostics.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
-- TTS-ready playback scaffold and stop handling in `firmware/main/voice/tts_player.cpp`.
+- TTS-ready download/playback and stop handling in `firmware/main/voice/tts_player.cpp`, with profile-specific speaker support where available.
 - Selectable board profile support in `firmware/main/CMakeLists.txt`. `esp_box_3` remains the default profile, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input, AIC3204/I2S TTS output, center-button wake/cancel controls, and hardware-mute controls.
 - Home Assistant Voice PE LED ring hardware contract: `docs/voice-pe-led-ring.md`.
 - Firmware LED ring board API with a no-op non-PE fallback and an RMT-backed `ha_voice_pe` driver for `off`, `set_solid`, and visual-frame rendering.
@@ -37,6 +37,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 
 - VAD updates local app state and display phase, reports `vad.speech_started` with a firmware timestamp when speech begins, queues microphone frames for the backend voice WebSocket, and sends `audio.end` on VAD silence. Raw backend events drive UI phases, and TTS-ready events can download and play WAV output on supported board speaker paths.
 - The `ha_voice_pe` profile is headless and reports display, touchscreen, and SD media storage as unavailable. Local TTS playback is available through the onboard AIC3204 speaker path, but SD media playback remains unavailable because this profile has no mounted media storage. The LED ring now covers voice-state, diagnostic, volume, and color-selection affordances.
+- TTS playback exists for supported speaker paths, but still needs physical-device validation across profiles for download timing, sample-rate handling, post-playback microphone cooldown, and reconnect/session boundaries.
 - Wi-Fi connects with compile-time local credentials, but provisioning is not implemented.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
 - Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.
@@ -51,7 +52,6 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 
 ## Missing
 
-- Real TTS audio download or stream playback path.
 - Settings/provisioning UI.
 - Firmware-side SHA-256 enforcement and signed manifest validation for OTA.
 
@@ -86,6 +86,8 @@ Automatic endpoint discovery is deferred until after the first single-endpoint v
 
 Firmware implementation should follow the task queue in `docs/New_tasks.txt`:
 
-1. Use the backend voice event/session contract.
-2. Replace TTS-ready scaffold logging with real audio download or stream playback.
-3. Harden reconnect/session-boundary behavior after device testing.
+1. Add firmware provisioning and endpoint settings UI.
+2. Add automatic endpoint discovery and pairing.
+3. Harden OTA checksum/signature validation.
+4. Complete physical reconnect/session-boundary validation.
+5. Replace or explicitly retire remaining scaffold modules.

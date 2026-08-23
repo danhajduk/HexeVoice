@@ -48,7 +48,6 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 212: Reconcile stale Voice Node docs and decide the node feature report disposition
 [TODO] Task 213: Add firmware provisioning and endpoint settings UI flow
 [TODO] Task 214: Add automatic endpoint discovery and pairing for firmware endpoints
 [TODO] Task 215: Harden firmware OTA integrity with checksum enforcement and signed manifest validation
