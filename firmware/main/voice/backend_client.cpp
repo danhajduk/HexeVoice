@@ -36,8 +36,13 @@
 #include "psa/crypto.h"
 #include "system/clock.h"
 #include "system/ota.h"
+#include "system/power.h"
 #include "system/settings.h"
+#include "system/telemetry.h"
+#include "voice/assistant_client.h"
+#include "voice/stt_stream.h"
 #include "voice/tts_player.h"
+#include "voice/wake_word.h"
 
 namespace {
 constexpr char kTag[] = "hexe_backend";
@@ -1013,6 +1018,23 @@ bool send_ws_text(const std::string &message) {
   return sent;
 }
 
+void add_module_status(
+    cJSON *modules,
+    const char *name,
+    const char *owner,
+    const char *mode,
+    bool local_available,
+    const char *state = "intentional_noop") {
+  cJSON *module = cJSON_AddObjectToObject(modules, name);
+  if (module == nullptr) {
+    return;
+  }
+  cJSON_AddStringToObject(module, "state", state);
+  cJSON_AddStringToObject(module, "owner", owner);
+  cJSON_AddStringToObject(module, "mode", mode);
+  cJSON_AddBoolToObject(module, "local_available", local_available);
+}
+
 std::string endpoint_capabilities_json() {
   const auto &state = hexe::state();
   const esp_app_desc_t *app = esp_app_get_description();
@@ -1106,6 +1128,43 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(ota, "signature_key_id", hexe::config::kEndpointOtaManifestKeyId);
   cJSON_AddBoolToObject(ota, "checksum_required", true);
   cJSON_AddBoolToObject(ota, "signature_required", true);
+  cJSON *modules = cJSON_AddObjectToObject(firmware, "modules");
+  if (modules != nullptr) {
+    add_module_status(
+        modules,
+        "wake_word",
+        hexe::voice::wake_word_backend_owned() ? "backend" : "firmware",
+        hexe::voice::wake_word_runtime_mode(),
+        hexe::voice::wake_word_on_device_available());
+    add_module_status(
+        modules,
+        "stt_stream",
+        hexe::voice::stt_stream_backend_owned() ? "backend" : "firmware",
+        hexe::voice::stt_stream_runtime_mode(),
+        hexe::voice::stt_stream_local_decoder_available());
+    add_module_status(
+        modules,
+        "assistant_client",
+        hexe::voice::assistant_client_backend_owned() ? "backend" : "firmware",
+        hexe::voice::assistant_client_runtime_mode(),
+        hexe::voice::assistant_client_local_llm_available());
+    add_module_status(
+        modules,
+        "telemetry",
+        hexe::system::telemetry_heartbeat_owned() ? "heartbeat" : "firmware",
+        hexe::system::telemetry_runtime_mode(),
+        hexe::system::telemetry_dedicated_channel_enabled());
+    add_module_status(
+        modules,
+        "power",
+        "board",
+        hexe::system::power_runtime_mode(),
+        hexe::system::power_low_power_mode_available());
+    cJSON *power = cJSON_GetObjectItem(modules, "power");
+    if (cJSON_IsObject(power)) {
+      cJSON_AddBoolToObject(power, "shutdown_command_available", hexe::system::power_shutdown_command_available());
+    }
+  }
 
   char *rendered = cJSON_PrintUnformatted(root);
   std::string result = rendered == nullptr ? "{}" : rendered;

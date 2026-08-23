@@ -416,3 +416,10 @@ Issue cause: Reconnect/session behavior had automated backend coverage and manua
 Chosen fix: Add a stdlib field-validation runner that records pass/fail/blocked results per profile and scenario, seed a structured release-review artifact, and link the firmware validation matrix to the procedure and results.
 What changed: Added `scripts/firmware-reconnect-session-validation.py`, `docs/firmware-reconnect-session-validation.md`, and `docs/firmware-reconnect-session-results.json`; updated the validation matrix JSON/docs; added tests for an all-pass simulated bench run and the blocked seed artifact. Because no physical endpoints were attached, the seed artifact is intentionally `blocked` and Task 218 tracks the bench run that must replace it with operator pass/fail evidence.
 Verification: `tests/test_firmware_reconnect_session_validation.py`, `tests/test_firmware_validation_matrix.py`, and `python3 -m py_compile scripts/firmware-reconnect-session-validation.py` passed.
+###########
+Task #217
+Step objective: Replace or explicitly retire scaffold firmware modules for wake word, STT stream, assistant client, telemetry, and power.
+Issue cause: Five firmware modules were still source-level scaffolds that only logged readiness, which made ownership unclear even though backend/session code already owns wake, STT, assistant turns, telemetry projection, and most power behavior.
+Chosen fix: Retain the modules as intentional no-op/status providers with explicit mode, owner, and local-availability accessors; expose those decisions through heartbeat capabilities under `firmware.modules`.
+What changed: Wake, STT, assistant, telemetry, and power modules now report backend/heartbeat/board ownership instead of scaffold readiness; boot and animator logs no longer describe scaffolds; heartbeat capabilities expose module state; firmware baseline and feature report docs describe each retained intentional no-op.
+Verification: `tests/test_firmware_voice_envelope.py` passed and `./firmware/build.sh` built both `esp_box_3` and `ha_voice_pe` successfully.

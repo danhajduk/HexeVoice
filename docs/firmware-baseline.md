@@ -43,12 +43,17 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
 - Backend endpoint connection settings are generated from YAML at build time and can be replaced by LAN UDP discovery when enabled.
 
-## Scaffold
+## Intentional No-Op Ownership Modules
 
-- `firmware/main/voice/wake_word.cpp` logs scaffold readiness only.
-- `firmware/main/voice/stt_stream.cpp` logs scaffold readiness only.
-- `firmware/main/voice/assistant_client.cpp` logs scaffold readiness only.
-- `firmware/main/system/telemetry.cpp` and `firmware/main/system/power.cpp` are initialization scaffolds.
+These files remain compiled so firmware has stable ownership/status hooks, but
+they are no longer ambiguous scaffolds:
+
+- `firmware/main/voice/wake_word.cpp` reports `backend_streaming`; on-device wake is intentionally unavailable because backend voice streaming owns wake acceptance.
+- `firmware/main/voice/stt_stream.cpp` reports `backend_pcm_stream`; firmware captures and sends PCM while backend STT owns decoding.
+- `firmware/main/voice/assistant_client.cpp` reports `backend_voice_pipeline`; firmware consumes backend events while assistant turns run on the node.
+- `firmware/main/system/telemetry.cpp` reports `heartbeat_capabilities`; endpoint telemetry is carried in heartbeat capabilities rather than a separate firmware telemetry channel.
+- `firmware/main/system/power.cpp` reports `board_defaults`; low-power and shutdown commands are intentionally unavailable until a safe per-board power contract exists.
+- Heartbeat capabilities expose these decisions under `capabilities.firmware.modules` with `state: "intentional_noop"`, owner, mode, and local availability fields.
 - `firmware/main/system/ota.cpp` implements the manual OTA path from backend-pushed, signed `ota.update` events and verifies downloaded bytes before finishing OTA.
 
 ## Missing
@@ -94,4 +99,4 @@ is true. Static config remains available for constrained networks.
 Firmware implementation should follow the task queue in `docs/New_tasks.txt`:
 
 1. Complete physical reconnect/session-boundary validation.
-2. Replace or explicitly retire remaining scaffold modules.
+2. Run physical reconnect/session-boundary bench validation and replace blocked release artifact results.

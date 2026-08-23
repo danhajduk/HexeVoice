@@ -34,7 +34,7 @@ constexpr int kIdleRenderDelayMs = 25;
 
 extern "C" void app_main(void) {
   const esp_app_desc_t *app = esp_app_get_description();
-  ESP_LOGI(kTag, "Starting Hexe native firmware scaffold");
+  ESP_LOGI(kTag, "Starting Hexe native firmware runtime");
   ESP_LOGI(kTag, "Firmware project=%s version=%s", app->project_name, app->version);
 
   hexe::board::init_storage();
@@ -65,7 +65,7 @@ extern "C" void app_main(void) {
   hexe::system::init_telemetry();
   hexe::system::init_ota();
 
-  ESP_LOGI(kTag, "Hexe scaffold initialized for build %s", app->version);
+  ESP_LOGI(kTag, "Hexe firmware runtime initialized for build %s", app->version);
 
   while (true) {
     auto &state = hexe::state();

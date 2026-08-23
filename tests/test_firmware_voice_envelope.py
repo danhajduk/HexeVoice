@@ -101,6 +101,59 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     assert "kEndpointBoardProfile" in backend_source
 
 
+def test_firmware_scaffold_modules_are_explicit_status_providers():
+    app_main = FIRMWARE_APP_MAIN.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    module_sources = {
+        "wake_word": Path("firmware/main/voice/wake_word.cpp").read_text(),
+        "stt_stream": Path("firmware/main/voice/stt_stream.cpp").read_text(),
+        "assistant_client": Path("firmware/main/voice/assistant_client.cpp").read_text(),
+        "telemetry": Path("firmware/main/system/telemetry.cpp").read_text(),
+        "power": Path("firmware/main/system/power.cpp").read_text(),
+    }
+    header_sources = {
+        "wake_word": Path("firmware/main/voice/wake_word.h").read_text(),
+        "stt_stream": Path("firmware/main/voice/stt_stream.h").read_text(),
+        "assistant_client": Path("firmware/main/voice/assistant_client.h").read_text(),
+        "telemetry": Path("firmware/main/system/telemetry.h").read_text(),
+        "power": Path("firmware/main/system/power.h").read_text(),
+    }
+
+    assert "Starting Hexe native firmware runtime" in app_main
+    assert "Hexe firmware runtime initialized" in app_main
+    assert "scaffold initialized" not in app_main.lower()
+
+    assert "wake_word_runtime_mode" in module_sources["wake_word"]
+    assert "wake_word_on_device_available" in header_sources["wake_word"]
+    assert '"backend_streaming"' in module_sources["wake_word"]
+    assert "on-device wake engine is intentionally disabled" in module_sources["wake_word"]
+
+    assert "stt_stream_runtime_mode" in module_sources["stt_stream"]
+    assert "stt_stream_local_decoder_available" in header_sources["stt_stream"]
+    assert '"backend_pcm_stream"' in module_sources["stt_stream"]
+
+    assert "assistant_client_runtime_mode" in module_sources["assistant_client"]
+    assert "assistant_client_local_llm_available" in header_sources["assistant_client"]
+    assert '"backend_voice_pipeline"' in module_sources["assistant_client"]
+
+    assert "telemetry_runtime_mode" in module_sources["telemetry"]
+    assert "telemetry_dedicated_channel_enabled" in header_sources["telemetry"]
+    assert '"heartbeat_capabilities"' in module_sources["telemetry"]
+
+    assert "power_runtime_mode" in module_sources["power"]
+    assert "power_low_power_mode_available" in header_sources["power"]
+    assert "power_shutdown_command_available" in header_sources["power"]
+    assert '"board_defaults"' in module_sources["power"]
+
+    assert '"modules"' in backend_source
+    assert '"intentional_noop"' in backend_source
+    assert '"wake_word"' in backend_source
+    assert '"stt_stream"' in backend_source
+    assert '"assistant_client"' in backend_source
+    assert '"telemetry"' in backend_source
+    assert '"power"' in backend_source
+
+
 def test_firmware_vad_keeps_listening_window_after_wake_word():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     source = FIRMWARE_AUDIO.read_text()

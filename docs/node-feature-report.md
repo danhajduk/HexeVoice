@@ -111,7 +111,7 @@ The strongest implemented areas are the backend API surface, setup/readiness lif
 - ESP-BOX-3 touch controls for volume and mute.
 - Microphone initialization and energy-threshold VAD task.
 - YAML endpoint config template and build-time config generation.
-- Backend heartbeat and voice WebSocket client scaffold.
+- Backend heartbeat and voice WebSocket client with reconnect, command, media, OTA, provisioning, discovery, and event-to-UX handling.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events.
 - TTS playback lifecycle tracking and reporting.
 - Selectable board profile support: `esp_box_3` default and experimental `ha_voice_pe`.
@@ -141,7 +141,7 @@ The strongest implemented areas are the backend API surface, setup/readiness lif
 - Firmware provisioning and automatic endpoint discovery are implemented, but still need physical-device soak validation across supported profiles.
 - Firmware-side settings UI remains backend/dashboard-driven rather than local touchscreen-driven.
 - Firmware-side OTA validates signed metadata, target profile/version policy, download size, and SHA-256 before finishing updates.
-- Some firmware modules remain scaffolds, including firmware-side wake word, STT stream, assistant client, telemetry, and power modules.
+- Former firmware scaffold modules are now explicit intentional no-op/status providers: wake, STT, and assistant ownership is backend-side; telemetry is carried through heartbeat capabilities; power uses board defaults until a safe per-board contract exists.
 - Device-tested reconnect/session-boundary behavior remains listed as next firmware work.
 - Existing docs disagree in places: `README.md` still says `/api/voice/ws`, STT/TTS adapters, firmware TTS playback, and live endpoint telemetry are not implemented, while source and newer docs show those backend surfaces now exist. Treat `docs/voice-node-roadmap.md`, `docs/firmware-baseline.md`, and source as more current for voice runtime status.
 
