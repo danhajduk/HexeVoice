@@ -38,7 +38,7 @@ fi
 
 if [[ ! -d "$ROOT_DIR/frontend/node_modules" ]]; then
   echo "Missing frontend dependencies at $ROOT_DIR/frontend/node_modules"
-  echo "Install them with: cd frontend && npm install"
+  echo "Install them with Node.js ^20.19.0 || >=22.12.0: cd frontend && npm install"
   exit 1
 fi
 

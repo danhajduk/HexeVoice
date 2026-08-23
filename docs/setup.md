@@ -259,16 +259,17 @@ CORE_SUPERVISOR_ENROLLMENT_TOKEN=<one-time-token> \
 
 ## Manual Setup
 
-1. Create the repo-local virtual environment with `python3 -m venv .venv`.
-2. Install backend requirements with `.venv/bin/pip install -r requirements.txt`.
-3. Install frontend dependencies from `frontend/` with `npm install`.
-4. Copy `scripts/stack.env.example` to `scripts/stack.env`.
-5. Update backend and frontend commands if needed, keeping Python commands on `.venv/bin/...`.
-6. Keep `HEXE_SUPERVISOR_ENABLED=true`, `HEXE_SUPERVISOR_API_TRANSPORT=socket`, and `HEXE_SUPERVISOR_API_SOCKET=/run/hexe/supervisor.sock` when this node should register with Core Supervisor.
-7. Start the backend with `API_HOST=0.0.0.0 API_PORT=9004 PYTHONPATH=src .venv/bin/python -m hexevoice.main`.
-8. Build the frontend with `scripts/rebuild-ui.sh`, then start it from `frontend/` with `VITE_PROXY_TARGET=http://127.0.0.1:9004 npm run preview -- --host 0.0.0.0 --port 8084`.
-9. Run backend tests with `PYTHONPATH=src .venv/bin/pytest`.
-10. Run the frontend production validation with `cd frontend && npm run build`.
+1. Use Node.js `^20.19.0 || >=22.12.0` for frontend install, build, and preview commands.
+2. Create the repo-local virtual environment with `python3 -m venv .venv`.
+3. Install backend requirements with `.venv/bin/pip install -r requirements.txt`.
+4. Install frontend dependencies from `frontend/` with `npm install`.
+5. Copy `scripts/stack.env.example` to `scripts/stack.env`.
+6. Update backend and frontend commands if needed, keeping Python commands on `.venv/bin/...`.
+7. Keep `HEXE_SUPERVISOR_ENABLED=true`, `HEXE_SUPERVISOR_API_TRANSPORT=socket`, and `HEXE_SUPERVISOR_API_SOCKET=/run/hexe/supervisor.sock` when this node should register with Core Supervisor.
+8. Start the backend with `API_HOST=0.0.0.0 API_PORT=9004 PYTHONPATH=src .venv/bin/python -m hexevoice.main`.
+9. Build the frontend with `scripts/rebuild-ui.sh`, then start it from `frontend/` with `VITE_PROXY_TARGET=http://127.0.0.1:9004 npm run preview -- --host 0.0.0.0 --port 8084`.
+10. Run backend tests with `PYTHONPATH=src .venv/bin/pytest`.
+11. Run the frontend production validation with `cd frontend && npm run build`.
 
 ## Operator Flow
 

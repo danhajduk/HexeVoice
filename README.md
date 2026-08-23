@@ -53,6 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh
 
 On Debian/Ubuntu hosts the installer asks before installing missing system
 prerequisites with `apt`, including Git, Python venv support, and Node.js/npm.
+The frontend toolchain requires Node.js `^20.19.0 || >=22.12.0`.
 To allow prerequisite install without a prompt, run with
 `HEXEVOICE_INSTALL_SYSTEM_PACKAGES=true`. To print the prerequisite commands
 without installing anything, run:
@@ -98,6 +99,8 @@ The uninstall script stops temporary setup runners, disables/removes generated
 and then removes the app directory when `--remove-app-dir` is supplied.
 
 ## Frontend Start
+
+Use Node.js `^20.19.0 || >=22.12.0` for frontend development.
 
 ```bash
 cd frontend

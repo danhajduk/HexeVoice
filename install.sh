@@ -35,7 +35,7 @@ INSTALL_STATUS_UI_TERMINAL_LINK="${HEXEVOICE_INSTALL_STATUS_UI_TERMINAL_LINK:-fa
 INSTALL_STATUS_UI_HANDOFF_DELAY_S="${HEXEVOICE_INSTALL_STATUS_UI_HANDOFF_DELAY_S:-5}"
 INSTALL_QUIET="${HEXEVOICE_INSTALL_QUIET:-true}"
 INSTALL_LOG_PATH="${HEXEVOICE_INSTALL_LOG_PATH:-/tmp/hexevoice-install-$(id -u).log}"
-MIN_NODE_MAJOR="${HEXEVOICE_MIN_NODE_MAJOR:-18}"
+REQUIRED_NODE_RANGE="${HEXEVOICE_REQUIRED_NODE_RANGE:-^20.19.0 || >=22.12.0}"
 APT_UPDATED=false
 SYSTEM_PACKAGE_INSTALL_APPROVED=false
 INSTALL_STATUS_UI_PID=""
@@ -610,7 +610,7 @@ sudo apt-get install -y git python3 python3-venv ca-certificates curl gnupg
 sudo install -d -m 0755 /etc/apt/keyrings
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
   | sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-printf 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main\n' \
+printf 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main\n' \
   | sudo tee /etc/apt/sources.list.d/nodesource.list >/dev/null
 sudo apt-get update
 sudo apt-get install -y nodejs
@@ -652,7 +652,7 @@ install_node_runtime() {
     run_privileged rm -f /etc/apt/keyrings/nodesource.gpg
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
       | run_privileged gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-    printf 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main\n' \
+    printf 'deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main\n' \
       | run_privileged tee /etc/apt/sources.list.d/nodesource.list >/dev/null
     APT_UPDATED=false
     apt_install_packages nodejs
@@ -691,6 +691,18 @@ require_command() {
   fi
 }
 
+node_runtime_supported() {
+  command -v node >/dev/null 2>&1 || return 1
+  node - <<'NODE' >/dev/null 2>&1
+const [major, minor, patch] = process.versions.node.split(".").map(Number);
+const ok =
+  (major === 20 && (minor > 19 || (minor === 19 && patch >= 0))) ||
+  (major === 22 && (minor > 12 || (minor === 12 && patch >= 0))) ||
+  major > 22;
+process.exit(ok ? 0 : 1);
+NODE
+}
+
 ensure_python_venv() {
   local temp_dir
   temp_dir="$(mktemp -d)"
@@ -713,11 +725,7 @@ ensure_python_venv() {
 }
 
 ensure_node_runtime() {
-  local node_major=""
-  if command -v node >/dev/null 2>&1; then
-    node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
-  fi
-  if [[ -z "$node_major" || "$node_major" -lt "$MIN_NODE_MAJOR" ]] || ! command -v npm >/dev/null 2>&1; then
+  if ! node_runtime_supported || ! command -v npm >/dev/null 2>&1; then
     install_node_runtime || true
   fi
   if ! command -v node >/dev/null 2>&1; then
@@ -730,9 +738,8 @@ ensure_node_runtime() {
     printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
     exit 1
   fi
-  node_major="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || true)"
-  if [[ -z "$node_major" || "$node_major" -lt "$MIN_NODE_MAJOR" ]]; then
-    printf 'Node.js %s+ is required; found %s.\n' "$MIN_NODE_MAJOR" "$(node --version 2>/dev/null || printf 'unknown')" >&2
+  if ! node_runtime_supported; then
+    printf 'Node.js %s is required; found %s.\n' "$REQUIRED_NODE_RANGE" "$(node --version 2>/dev/null || printf 'unknown')" >&2
     printf 'Install a newer Node.js runtime and rerun the installer.\n' >&2
     printf 'Show prerequisite commands with: curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_PRINT_PREREQ_COMMANDS=true bash\n' >&2
     exit 1
@@ -749,7 +756,7 @@ start_install_status_ui
 if [[ -n "$INSTALL_STATUS_UI_PID" ]]; then
   quiet_redirect_output
 fi
-install_status_update "running" "Checking host requirements." "Verifying Git, Python venv support, Node.js, and npm."
+install_status_update "running" "Checking host requirements." "Verifying Git, Python venv support, Node.js $REQUIRED_NODE_RANGE, and npm."
 ensure_command git git
 ensure_python_venv
 ensure_node_runtime
