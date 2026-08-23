@@ -497,15 +497,19 @@ std::string time_url() {
 }
 
 std::string websocket_url() {
-  char buffer[192];
+  char buffer[256];
+  const char *voice_ws_path = hexe::config::kEndpointVoiceWsPath;
+  const char *query_separator = std::strchr(voice_ws_path, '?') == nullptr ? "?" : "&";
   std::snprintf(
       buffer,
       sizeof(buffer),
-      "%s://%s:%d%s",
+      "%s://%s:%d%s%sendpoint_id=%s",
       scheme_ws(),
       hexe::system::endpoint_backend_host(),
       hexe::system::endpoint_ws_port(),
-      hexe::config::kEndpointVoiceWsPath);
+      voice_ws_path,
+      query_separator,
+      hexe::system::endpoint_id());
   return std::string(buffer);
 }
 

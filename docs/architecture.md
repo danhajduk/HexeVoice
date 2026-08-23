@@ -50,6 +50,7 @@ The backend voice protocol contract lives in `src/hexevoice/voice/contracts.py`.
 Current voice WebSocket API:
 
 - `GET /api/voice/ws` as a WebSocket upgrade route
+- `GET /api/voice/ws?endpoint_id=<endpoint_id>` binds an idle endpoint to its WebSocket during connection so status, OTA, and endpoint commands can target the device before its first voice event.
 
 The WebSocket is implemented by `src/hexevoice/voice/session_manager.py`. It supports multiple connected endpoints, with each endpoint bound to its own WebSocket runtime, active session state, audio buffers, replay metadata, and command route. It accepts `session.start`, `audio.chunk`, `audio.end`, `vad.speech_started`, `session.cancel`, `session.ping`, `command.ack`, `command.error`, and endpoint TTS playback acknowledgement events through the versioned `VoiceEventEnvelope`, and returns `wake.accepted`, `session.state`, `session.completed`, `session.cancelled`, or `session.error` events through the same envelope. The envelope contract and JSON schema/examples live in `docs/voice-event-envelope.md` and `docs/voice-event-envelope/`.
 

@@ -142,6 +142,37 @@ def test_voice_websocket_routes_commands_to_multiple_connected_endpoints(tmp_pat
     assert status["endpoints"]["esp-pe-1"]["active_session"]["session_id"] == "pe-session"
 
 
+def test_voice_websocket_binds_endpoint_from_query_before_voice_event(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as first_socket:
+        with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as second_socket:
+            status = client.get("/api/voice/status").json()
+
+            volume_response = client.post(
+                "/api/endpoint/volume",
+                json={"endpoint_id": "esp-pe-1", "volume_percent": 42},
+            )
+            pe_command = second_socket.receive_json()
+
+            mute_response = client.post(
+                "/api/endpoint/mute",
+                json={"endpoint_id": "esp-box-1", "muted": True},
+            )
+            box_command = first_socket.receive_json()
+
+    assert status["connection_count"] == 2
+    assert status["connected_endpoint_ids"] == ["esp-box-1", "esp-pe-1"]
+    assert volume_response.status_code == 200
+    assert volume_response.json()["accepted"] is True
+    assert pe_command["endpoint_id"] == "esp-pe-1"
+    assert pe_command["event_type"] == "endpoint.volume"
+    assert mute_response.status_code == 200
+    assert mute_response.json()["accepted"] is True
+    assert box_command["endpoint_id"] == "esp-box-1"
+    assert box_command["event_type"] == "endpoint.mute"
+
+
 def test_voice_websocket_routes_endpoint_provisioning_commands(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 

@@ -244,6 +244,8 @@ def test_firmware_supports_persisted_endpoint_provisioning_contract():
     assert "hexe::system::endpoint_http_port()" in backend_source
     assert "hexe::system::endpoint_ws_port()" in backend_source
     assert "hexe::system::endpoint_id()" in backend_source
+    assert '"%s://%s:%d%s%sendpoint_id=%s"' in backend_source
+    assert "query_separator" in backend_source
     assert '"endpoint.provisioning.apply"' in backend_source
     assert '"endpoint.provisioning.reset"' in backend_source
     assert '"provisioning"' in backend_source

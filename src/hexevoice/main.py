@@ -1334,7 +1334,10 @@ def create_app(
 
     @app.websocket("/api/voice/ws")
     async def voice_websocket(websocket: WebSocket) -> None:
-        await voice_session_manager.handle_websocket(websocket)
+        await voice_session_manager.handle_websocket(
+            websocket,
+            endpoint_id=websocket.query_params.get("endpoint_id"),
+        )
 
     @app.get("/api/voice/status")
     async def voice_status() -> dict:

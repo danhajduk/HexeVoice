@@ -256,12 +256,28 @@ class VoiceSessionManager:
             "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
         }
 
-    async def handle_websocket(self, websocket: WebSocket) -> None:
+    async def handle_websocket(self, websocket: WebSocket, *, endpoint_id: str | None = None) -> None:
         await websocket.accept()
+        initial_endpoint_id = endpoint_id.strip() if endpoint_id else None
         runtime = EndpointSessionRuntime(connection_active=True, websocket=websocket)
         token = self._runtime_context.set(runtime)
         self._connection_active = True
         self._websocket = websocket
+        if initial_endpoint_id:
+            if self._runtime_for_endpoint(initial_endpoint_id) is not None:
+                await websocket.send_json(
+                    self._error_event(
+                        endpoint_id=initial_endpoint_id,
+                        session_id=None,
+                        code="endpoint_already_connected",
+                        message="This endpoint already has an active WebSocket.",
+                        recoverable=False,
+                    ).model_dump(mode="json")
+                )
+                await websocket.close(code=1008)
+                return
+            self._connected_endpoint_id = initial_endpoint_id
+            log.info("Voice endpoint bound to WebSocket: endpoint_id=%s source=query", initial_endpoint_id)
         log.info("Voice WebSocket connected")
         try:
             while True:
