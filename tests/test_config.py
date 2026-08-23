@@ -10,7 +10,7 @@ from hexevoice.voice.records import record_voice_event
 def test_settings_defaults():
     settings = Settings()
     assert settings.node_name == "hexevoice"
-    assert settings.api_port == 9000
+    assert settings.api_port == 9004
     assert settings.provider_id == "voice"
 
 

@@ -256,7 +256,7 @@ function renderPreTrustStage({
           </label>
           <label className="field">
             <span className="field-label">API base URL</span>
-            <input className="field-input" value={identityForm.api_base_url} onChange={(event) => onIdentityChange("api_base_url", event.target.value)} placeholder="http://10.0.0.22:9000" />
+            <input className="field-input" value={identityForm.api_base_url} onChange={(event) => onIdentityChange("api_base_url", event.target.value)} placeholder="http://10.0.0.22:9004" />
           </label>
           <label className="field field-span-2">
             <span className="field-label">UI endpoint</span>

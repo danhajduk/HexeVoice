@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     node_type: str = Field(default="voice-node", alias="NODE_TYPE")
     node_software_version: str = Field(default="0.1.0", alias="NODE_SOFTWARE_VERSION")
     api_host: str = Field(default="127.0.0.1", alias="API_HOST")
-    api_port: int = Field(default=9000, alias="API_PORT")
+    api_port: int = Field(default=9004, alias="API_PORT")
     public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
     core_admin_token: str | None = Field(
