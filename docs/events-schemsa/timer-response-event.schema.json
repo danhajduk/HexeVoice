@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/events-schemsa/timer-response-event.schema.json",
+  "title": "Timer Node Required Response Event",
+  "description": "Response, status, and lifecycle events timer-owning nodes should publish for HexeVoice.",
+  "type": "object",
+  "required": ["schema_version", "event_id", "event_type", "source", "subject", "data"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "event_id": {
+      "$ref": "timer-common.schema.json#/$defs/event_id"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "timer.create_succeeded",
+        "timer.status_succeeded",
+        "timer.stop_succeeded",
+        "timer.cancel_succeeded",
+        "timer.adjust_time_succeeded",
+        "timer.create_failed",
+        "timer.status_failed",
+        "timer.stop_failed",
+        "timer.cancel_failed",
+        "timer.adjust_time_failed",
+        "timer.completed"
+      ]
+    },
+    "promoted_event_type": {
+      "type": "string",
+      "enum": [
+        "timer.create_succeeded",
+        "timer.status_succeeded",
+        "timer.stop_succeeded",
+        "timer.cancel_succeeded",
+        "timer.adjust_time_succeeded",
+        "timer.create_failed",
+        "timer.status_failed",
+        "timer.stop_failed",
+        "timer.cancel_failed",
+        "timer.adjust_time_failed",
+        "timer.completed"
+      ]
+    },
+    "occurred_at": {
+      "$ref": "timer-common.schema.json#/$defs/timestamp"
+    },
+    "received_at": {
+      "$ref": "timer-common.schema.json#/$defs/timestamp"
+    },
+    "promoted_at": {
+      "$ref": "timer-common.schema.json#/$defs/timestamp"
+    },
+    "source": {
+      "$ref": "timer-common.schema.json#/$defs/source"
+    },
+    "core": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "subject": {
+      "$ref": "timer-common.schema.json#/$defs/subject"
+    },
+    "routing": {
+      "$ref": "timer-common.schema.json#/$defs/routing"
+    },
+    "data": {
+      "$ref": "#/$defs/response_data"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "response_data": {
+      "type": "object",
+      "required": ["endpoint_id"],
+      "properties": {
+        "endpoint_id": {
+          "$ref": "timer-common.schema.json#/$defs/endpoint_id"
+        },
+        "device_id": {
+          "$ref": "timer-common.schema.json#/$defs/endpoint_id"
+        },
+        "session_id": {
+          "type": ["string", "null"]
+        },
+        "timer_id": {
+          "$ref": "timer-common.schema.json#/$defs/timer_id"
+        },
+        "state": {
+          "$ref": "timer-common.schema.json#/$defs/timer_state"
+        },
+        "title": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_hhmmss": {
+          "type": "string",
+          "pattern": "^[0-9]{2,}:[0-9]{2}:[0-9]{2}$"
+        },
+        "remaining_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remaining_hhmmss": {
+          "type": "string",
+          "pattern": "^[0-9]{2,}:[0-9]{2}:[0-9]{2}$"
+        },
+        "remaining_text": {
+          "type": "string"
+        },
+        "started_at": {
+          "$ref": "timer-common.schema.json#/$defs/timestamp"
+        },
+        "due_at": {
+          "$ref": "timer-common.schema.json#/$defs/timestamp"
+        },
+        "completed_at": {
+          "$ref": "timer-common.schema.json#/$defs/timestamp"
+        },
+        "cancelled_at": {
+          "$ref": "timer-common.schema.json#/$defs/timestamp"
+        },
+        "stopped_at": {
+          "$ref": "timer-common.schema.json#/$defs/timestamp"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["create", "status", "stop", "cancel", "adjust_time"]
+        },
+        "delta_seconds": {
+          "type": "integer"
+        },
+        "delta_hhmmss": {
+          "type": "string",
+          "pattern": "^[0-9]{2,}:[0-9]{2}:[0-9]{2}$"
+        },
+        "delta_text": {
+          "type": "string"
+        },
+        "direction": {
+          "type": "string",
+          "enum": ["add", "remove"]
+        },
+        "correlation_id": {
+          "type": "string"
+        },
+        "request_event_id": {
+          "type": "string"
+        },
+        "requester_node_id": {
+          "$ref": "timer-common.schema.json#/$defs/node_id"
+        },
+        "requester_node_component": {
+          "type": "string"
+        },
+        "requester_node_type": {
+          "type": "string"
+        },
+        "timers": {
+          "type": "array",
+          "items": {
+            "$ref": "timer-common.schema.json#/$defs/timer_snapshot"
+          }
+        },
+        "alarm_status": {
+          "type": "string",
+          "enum": ["idle", "pending", "playing", "acknowledged", "stopped", "failed"]
+        },
+        "error": {
+          "type": "object",
+          "required": ["code", "message"],
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            },
+            "candidates": {
+              "type": "array",
+              "items": {
+                "$ref": "timer-common.schema.json#/$defs/timer_snapshot"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

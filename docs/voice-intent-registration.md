@@ -148,6 +148,11 @@ Operator diagnostics are exposed under `/api/voice/status` at
 id, endpoint target, remaining time, state, due time, last event, and alarm
 status.
 
+The JSON Schema contracts for timer request and response events live in
+`docs/events-schemsa/`. `timer-request-event.schema.json` covers events
+published by HexeVoice, and `timer-response-event.schema.json` covers the
+responses timer-owning nodes should publish back.
+
 Timer expiry is event-driven. HexeVoice subscribes to the promoted
 `hexe/events/timer/completed` event stream and resolves the target endpoint from
 `data.endpoint_id`, falling back to `data.device_id` only when present. A valid

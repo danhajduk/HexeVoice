@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/events-schemsa/timer-common.schema.json",
+  "title": "Hexe Timer Event Common Definitions",
+  "type": "object",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "endpoint_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timer_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "timer_scope": {
+      "type": "string",
+      "enum": ["active_for_endpoint", "timer_id", "all_for_endpoint", "all"]
+    },
+    "timer_state": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "inactive",
+        "cancelled",
+        "canceled",
+        "cleared",
+        "completed",
+        "done",
+        "expired",
+        "none",
+        "not_found",
+        "stopped"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": ["node_id", "component"],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "node_id": {
+          "$ref": "#/$defs/node_id"
+        },
+        "component": {
+          "type": "string",
+          "minLength": 1
+        },
+        "node_type": {
+          "type": ["string", "null"]
+        },
+        "topic": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "subject": {
+      "type": "object",
+      "required": ["family", "record_id"],
+      "properties": {
+        "family": {
+          "const": "timer"
+        },
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "domain_topic": {
+          "type": "string"
+        },
+        "source_topic": {
+          "type": "string"
+        },
+        "dedupe_key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "timer_snapshot": {
+      "type": "object",
+      "required": ["timer_id"],
+      "properties": {
+        "timer_id": {
+          "$ref": "#/$defs/timer_id"
+        },
+        "endpoint_id": {
+          "$ref": "#/$defs/endpoint_id"
+        },
+        "device_id": {
+          "$ref": "#/$defs/endpoint_id"
+        },
+        "session_id": {
+          "$ref": "#/$defs/session_id"
+        },
+        "state": {
+          "$ref": "#/$defs/timer_state"
+        },
+        "title": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_hhmmss": {
+          "type": "string",
+          "pattern": "^[0-9]{2,}:[0-9]{2}:[0-9]{2}$"
+        },
+        "remaining_seconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "remaining_hhmmss": {
+          "type": "string",
+          "pattern": "^[0-9]{2,}:[0-9]{2}:[0-9]{2}$"
+        },
+        "remaining_text": {
+          "type": "string"
+        },
+        "started_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "due_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "owner_node_id": {
+          "$ref": "#/$defs/node_id"
+        },
+        "requester_node_id": {
+          "$ref": "#/$defs/node_id"
+        },
+        "requester_node_component": {
+          "type": "string"
+        },
+        "requester_node_type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
