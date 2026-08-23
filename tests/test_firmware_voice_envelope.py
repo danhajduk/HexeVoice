@@ -177,6 +177,18 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert "micro_vad_chunk_active = false" in pe_source
 
 
+def test_firmware_audio_queue_waits_for_connected_websocket_transport():
+    source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert "bool voice_transport_ready()" in source
+    assert "backend_ready_for_voice() && g_ws_client != nullptr && g_ws_connected" in source
+    assert "esp_websocket_client_is_connected(g_ws_client)" in source
+    assert "samples == nullptr || sample_count == 0 || !voice_transport_ready()" in source
+    assert "if (!voice_transport_ready()) {\n    app_state.phase = hexe::idle_or_connecting_phase();" in source
+    assert "if (!voice_transport_ready()) {\n    return false;" in source
+    assert 'ESP_LOGW(kTag, "Dropping audio frame because transport queue is full");' in source
+
+
 def test_firmware_heartbeat_reports_network_metadata():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
     app_state_source = FIRMWARE_APP_STATE.read_text()

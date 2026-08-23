@@ -159,6 +159,7 @@ bool sync_backend_time(const std::string &url);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
+bool voice_transport_ready();
 bool wake_source_is_local_acceptance(const char *wake_source);
 bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
 void resume_audio_stream_for_followup();
@@ -179,6 +180,11 @@ void set_audio_streaming(bool streaming) {
 bool backend_ready_for_voice() {
   const auto &state = hexe::state();
   return state.wifi_connected && (state.backend_connected || state.voice_ws_connected || g_ws_connected) && !state.ota_active;
+}
+
+bool voice_transport_ready() {
+  return backend_ready_for_voice() && g_ws_client != nullptr && g_ws_connected &&
+         esp_websocket_client_is_connected(g_ws_client);
 }
 
 void mark_voice_socket_disconnected() {
@@ -1681,7 +1687,7 @@ bool ensure_session_started(const char *wake_source) {
   if (g_session_started) {
     return true;
   }
-  if (!g_ws_connected || !backend_ready_for_voice()) {
+  if (!voice_transport_ready()) {
     return false;
   }
   if (hexe::voice::post_tts_input_cooldown_active() && !wake_source_is_local_acceptance(wake_source)) {
@@ -2318,7 +2324,7 @@ bool submit_audio_frame(
     uint32_t level,
     bool vad_speaking,
     const MicroVadFrameState *micro_vad) {
-  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !backend_ready_for_voice()) {
+  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !voice_transport_ready()) {
     return false;
   }
   if (post_tts_input_cooldown_active()) {
@@ -2350,7 +2356,7 @@ bool start_voice_session(const char *wake_source) {
   if (app_state.muted || app_state.ota_active) {
     return false;
   }
-  if (!backend_ready_for_voice() || !g_ws_connected) {
+  if (!voice_transport_ready()) {
     app_state.phase = hexe::idle_or_connecting_phase();
     return false;
   }

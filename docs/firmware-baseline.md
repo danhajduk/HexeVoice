@@ -36,7 +36,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 
 ## Partial
 
-- VAD updates local app state and display phase, reports `vad.speech_started` with a firmware timestamp when speech begins, queues microphone frames for the backend voice WebSocket, and sends `audio.end` on VAD silence. Raw backend events drive UI phases, and TTS-ready events can download and play WAV output on supported board speaker paths.
+- VAD updates local app state and display phase, reports `vad.speech_started` with a firmware timestamp when speech begins, queues microphone frames only after the backend voice WebSocket transport is connected, and sends `audio.end` on VAD silence. Raw backend events drive UI phases, and TTS-ready events can download and play WAV output on supported board speaker paths.
 - The `ha_voice_pe` profile is headless and reports display, touchscreen, and SD media storage as unavailable. Local TTS playback is available through the onboard AIC3204 speaker path, but SD media playback remains unavailable because this profile has no mounted media storage. The LED ring now covers voice-state, diagnostic, volume, and color-selection affordances.
 - TTS playback exists for supported speaker paths, but still needs physical-device validation across profiles for download timing, sample-rate handling, post-playback microphone cooldown, and reconnect/session boundaries.
 - Runtime endpoint provisioning is available through backend command envelopes and the operator dashboard; network/backend route changes apply after reboot or reconnect.
