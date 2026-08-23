@@ -1,3 +1,53 @@
+Workflow skill: implementation workflow
+
+## Codex Execution Directive
+
+You are acting as the Hexe development agent.
+
+Your job is to implement tasks listed in this file sequentially.
+
+Rules:
+
+1. Work through tasks in numerical order.
+2. Continue executing tasks until ALL tasks are completed.
+3. Do not stop after partial implementation.
+4. Do not return summaries unless every task is finished.
+5. If a task cannot be completed:
+   - document the blocker
+   - implement everything else that is possible
+   - continue to the next task.
+
+Execution behavior:
+
+- Read the repository before modifying code.
+- Follow existing architecture and coding conventions.
+- Update or create files as required.
+- Run tests or validation where possible.
+- Commit after each completed task.
+
+Completion criteria:
+
+A task is considered complete only when:
+- implementation exists in the codebase
+- it compiles or runs without breaking existing features
+- any required documentation is updated
+
+Persistence rule:
+
+Continue working autonomously until all tasks in this document are completed.
+Do not stop early.
+
+if there is missing data for the task check in the @Core-Documents folder.for core documentation
+if it is not present and should be core-owned create a ticket for the req. data in the core dodc
+if it is not present and should be node-owned create a file with the new data in the core docs
+
+Standards reference:
+- Main standard entrypoint: `/home/dan/Projects/Hexe/docs/standards/Node/README.md`
+- Detailed standards folder: `/home/dan/Projects/Hexe/docs/standards/Node/`
+
+Do not edit above this line:
+#######################################################################
+
 [TODO] Task 206: Upgrade frontend toolchain to a supported Node and Vite security baseline
 [TODO] Task 207: Migrate FastAPI startup and shutdown hooks to lifespan handlers
 [TODO] Task 208: Add a repo migration preflight command for backend, frontend, and audit checks
