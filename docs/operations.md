@@ -159,6 +159,11 @@ service as it is handled. Each `systemctl --user` operation is bounded by
 machine needs a longer model unload/load window, for example
 `STACK_CONTROL_TIMEOUT_S=90 scripts/restart-stack.sh`.
 
+If the backend or frontend user service is missing, `scripts/stack-control.sh`
+stops before issuing restart commands and prints the required
+`scripts/bootstrap.sh` install/start step. Use `scripts/run-from-env.sh backend`
+and `scripts/run-from-env.sh frontend` only for temporary foreground runs.
+
 Hosted install runs `scripts/prepare-runtime-dirs.sh` to create the runtime
 directory skeleton idempotently from `config/runtime-dirs.json`. Run it directly
 after manual checkouts or after changing `RUNTIME_DIR`:
