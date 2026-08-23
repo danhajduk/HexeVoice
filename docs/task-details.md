@@ -1922,3 +1922,6 @@ Original task details:
   - Saying `stop` while an endpoint timer alarm is playing stops playback locally without waiting for backend STT.
   - The feature does not re-enable general wake/STT capture during playback unless explicitly configured.
   - Unsupported profiles report a clear capability/diagnostic instead of pretending local stop-word detection is available.
+- Current blocker:
+  - Firmware does not include an embedded keyword recognizer such as ESP-SR/MultiNet or a trained local command model for `stop`.
+  - Task 225 currently exposes heartbeat diagnostics for this unsupported state and preserves the `playback.stop`/`voice_stop` contract; true local detection requires adding and validating the keyword engine dependency first.

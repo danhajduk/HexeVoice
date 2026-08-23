@@ -48,7 +48,7 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 225: Add true on-device stop-word detection during endpoint playback
+[WIP] Task 225: Add true on-device stop-word detection during endpoint playback
 
 [STOP]
 

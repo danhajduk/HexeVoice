@@ -24,4 +24,20 @@ bool wake_word_backend_owned() {
   return true;
 }
 
+const char *playback_stop_word_runtime_mode() {
+  return "unavailable";
+}
+
+bool playback_stop_word_on_device_available() {
+  return false;
+}
+
+bool playback_stop_word_active() {
+  return false;
+}
+
+const char *playback_stop_word_unavailable_reason() {
+  return "missing_on_device_keyword_engine";
+}
+
 }  // namespace hexe::voice

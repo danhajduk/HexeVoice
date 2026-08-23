@@ -162,6 +162,26 @@ def test_firmware_scaffold_modules_are_explicit_status_providers():
     assert '"power"' in backend_source
 
 
+def test_firmware_reports_playback_stop_word_capability_blocker():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    tts_sources = FIRMWARE_TTS_PLAYER.read_text() + FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+
+    assert "playback_stop_word_runtime_mode" in wake_header
+    assert "playback_stop_word_on_device_available" in wake_header
+    assert "playback_stop_word_active" in wake_header
+    assert "playback_stop_word_unavailable_reason" in wake_header
+    assert '"missing_on_device_keyword_engine"' in wake_source
+    assert '"playback_interrupt"' in backend_source
+    assert '"playback_stop_word"' in backend_source
+    assert '"stop_word", "stop"' in backend_source
+    assert '"stop_event_type", "playback.stop"' in backend_source
+    assert '"stop_reason", "voice_stop"' in backend_source
+    assert 'stop_playback("voice_stop")' not in tts_sources
+    assert 'send_playback_event(\n        "playback.stop"' in tts_sources
+
+
 def test_firmware_vad_keeps_listening_window_after_wake_word():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     source = FIRMWARE_AUDIO.read_text()

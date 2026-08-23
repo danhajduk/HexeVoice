@@ -1106,6 +1106,16 @@ std::string endpoint_capabilities_json() {
   cJSON_AddNumberToObject(micro_vad, "pause_ms", hexe::system::micro_vad_pause_ms());
   cJSON_AddNumberToObject(micro_vad, "min_pause_ms", 80);
   cJSON_AddNumberToObject(micro_vad, "max_pause_ms", 3000);
+  cJSON *playback_interrupt = cJSON_AddObjectToObject(input, "playback_interrupt");
+  cJSON_AddBoolToObject(playback_interrupt, "available", hexe::voice::playback_stop_word_on_device_available());
+  cJSON_AddBoolToObject(playback_interrupt, "active", hexe::voice::playback_stop_word_active());
+  cJSON_AddStringToObject(playback_interrupt, "mode", hexe::voice::playback_stop_word_runtime_mode());
+  cJSON_AddStringToObject(playback_interrupt, "stop_word", "stop");
+  cJSON_AddStringToObject(playback_interrupt, "stop_event_type", "playback.stop");
+  cJSON_AddStringToObject(playback_interrupt, "stop_reason", "voice_stop");
+  if (!hexe::voice::playback_stop_word_on_device_available()) {
+    cJSON_AddStringToObject(playback_interrupt, "reason", hexe::voice::playback_stop_word_unavailable_reason());
+  }
   cJSON *output = cJSON_AddObjectToObject(audio, "output");
   cJSON_AddBoolToObject(output, "available", hexe::board::audio_output_ready());
   cJSON_AddNumberToObject(output, "volume_percent", state.output_volume_percent);
@@ -1163,6 +1173,20 @@ std::string endpoint_capabilities_json() {
         hexe::voice::wake_word_backend_owned() ? "backend" : "firmware",
         hexe::voice::wake_word_runtime_mode(),
         hexe::voice::wake_word_on_device_available());
+    add_module_status(
+        modules,
+        "playback_stop_word",
+        "firmware",
+        hexe::voice::playback_stop_word_runtime_mode(),
+        hexe::voice::playback_stop_word_on_device_available(),
+        hexe::voice::playback_stop_word_active() ? "active" : "blocked");
+    cJSON *playback_stop_word = cJSON_GetObjectItem(modules, "playback_stop_word");
+    if (cJSON_IsObject(playback_stop_word)) {
+      cJSON_AddStringToObject(playback_stop_word, "stop_word", "stop");
+      cJSON_AddStringToObject(playback_stop_word, "unavailable_reason", hexe::voice::playback_stop_word_unavailable_reason());
+      cJSON_AddStringToObject(playback_stop_word, "stop_event_type", "playback.stop");
+      cJSON_AddStringToObject(playback_stop_word, "stop_reason", "voice_stop");
+    }
     add_module_status(
         modules,
         "stt_stream",

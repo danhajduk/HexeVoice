@@ -480,6 +480,13 @@ Chosen fix: Treat Task 224 as already satisfied by the Task 219 implementation a
 What changed: No runtime changes were needed; the task queue and completion log were reconciled after verification.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_timer_announcements.py tests/test_voice_websocket.py::test_voice_session_manager_pushes_play_sound_audio_url_to_endpoint tests/test_voice_websocket.py::test_voice_session_manager_play_sound_can_synthesize_kiosk_text tests/test_voice_websocket.py::test_voice_websocket_records_playback_stop_events` passed.
 ###########
+Task #225
+Step objective: Add true on-device stop-word detection during endpoint playback.
+Issue cause: Source-agnostic playback stop plumbing exists, but firmware has no on-device keyword recognizer dependency and both board profiles still rely on backend-owned wake/STT for spoken commands.
+Chosen fix: Expose explicit stop-word capability diagnostics and keep the local `playback.stop`/`voice_stop` contract ready while the recognizer dependency remains unresolved.
+What changed: Added firmware heartbeat/module diagnostics for `playback_stop_word` and `audio.input.playback_interrupt`, reporting `missing_on_device_keyword_engine` instead of claiming support. Updated firmware docs and task details with the blocker.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_voice_websocket.py::test_voice_websocket_records_playback_stop_events` passed; `./firmware/build.sh` built `esp_box_3` and `ha_voice_pe`.
+###########
 Task #222
 Step objective: Add timer adjust-time voice intent that publishes MQTT domain events.
 Issue cause: Timer create/status/stop/cancel controls exist, but there is no first-class voice command for adding or removing time from an active timer.
