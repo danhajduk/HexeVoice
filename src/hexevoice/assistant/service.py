@@ -554,7 +554,16 @@ class AssistantTurnService:
     def _wake_words(self) -> list[str]:
         configured = self._settings.voice_wake_models or ""
         wake_words = [item.strip() for item in configured.split(",") if item.strip()]
-        return wake_words or ["Hexe"]
+        aliases = ["Hexe", "Hexa"]
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for wake_word in [*wake_words, *aliases]:
+            key = wake_word.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(wake_word)
+        return normalized
 
     def _build_adapter(self) -> AssistantAdapter:
         fallback = LocalEchoAssistantAdapter()

@@ -174,14 +174,12 @@ Implemented today:
 - Core onboarding, trust activation, provider setup, capability declaration, governance sync, and operational readiness.
 - Supervisor runtime registration and heartbeat through the Unix socket.
 - Backend health/status/readiness APIs.
-- A text-only assistant turn route for firmware bring-up.
-- Native firmware boot/display/buttons/Wi-Fi/microphone VAD baseline.
+- Device assistant turns at `POST /api/assistant/turn`, including local intents and AI Node fallback routing.
+- Voice WebSocket transport at `/api/voice/ws` with endpoint/session state, audio chunk handling, wake detection, STT/TTS turn flow, and TTS artifact replay routes under `/api/voice/tts/`.
+- Local/provider-backed STT, TTS, wake-word, timer intent, endpoint telemetry, and Node UI operational surfaces.
+- Native firmware boot/display/buttons/Wi-Fi/microphone VAD, audio streaming, and TTS playback baseline.
 
 Not implemented yet:
 
-- `/api/voice/ws`.
-- Backend wake detection.
-- Audio streaming from firmware to backend.
-- STT/TTS adapters.
-- Firmware TTS playback.
-- Live endpoint/session dashboard telemetry.
+- Full production hardening of the voice loop across all target hardware profiles.
+- Long-running field validation for provider health, model warmup, and firmware media/artifact lifecycle.

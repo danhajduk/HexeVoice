@@ -14,6 +14,25 @@ class Settings(BaseSettings):
         populate_by_name=True,
     )
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls,
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        file_secret_settings,
+    ):
+        return init_settings, env_settings, dotenv_settings, file_secret_settings
+
+    def __init__(self, **values):
+        normalized = dict(values)
+        for field_name, field_info in self.__class__.model_fields.items():
+            alias = field_info.alias
+            if alias and field_name in normalized and alias not in normalized:
+                normalized[alias] = normalized.pop(field_name)
+        super().__init__(**normalized)
+
     node_name: str = Field(default="hexevoice", alias="NODE_NAME")
     node_type: str = Field(default="voice-node", alias="NODE_TYPE")
     node_software_version: str = Field(default="0.1.0", alias="NODE_SOFTWARE_VERSION")

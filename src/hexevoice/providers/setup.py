@@ -57,11 +57,15 @@ class ProviderSetupService:
         self._settings = settings
         self._store = onboarding_state_store
 
-    def status_payload(self) -> ProviderSetupResponse:
+    def status_payload(self, *, require_runtime_providers: bool = True) -> ProviderSetupResponse:
         state = self._store.load()
         supported_providers = self._supported_providers(state)
         enabled_providers = [provider_id for provider_id in state.provider_setup.enabled_providers if provider_id in supported_providers]
-        blocking_reasons = self._blocking_reasons(state, enabled_providers)
+        blocking_reasons = self._blocking_reasons(
+            state,
+            enabled_providers,
+            require_runtime_providers=require_runtime_providers,
+        )
         declaration_allowed = len(blocking_reasons) == 0
 
         return ProviderSetupResponse(
@@ -74,7 +78,7 @@ class ProviderSetupService:
             blocking_reasons=blocking_reasons,
         )
 
-    def save_setup(self, payload: ProviderSetupRequest) -> ProviderSetupResponse:
+    def save_setup(self, payload: ProviderSetupRequest, *, require_runtime_providers: bool = True) -> ProviderSetupResponse:
         state = self._store.load()
         if state.trust_activation.trust_status != "trusted":
             raise HTTPException(status_code=400, detail="trust_not_ready_for_provider_setup")
@@ -89,7 +93,11 @@ class ProviderSetupService:
         if default_provider and default_provider not in enabled_providers:
             raise HTTPException(status_code=400, detail="default_provider_not_enabled")
 
-        blocking_reasons = self._blocking_reasons(state, enabled_providers)
+        blocking_reasons = self._blocking_reasons(
+            state,
+            enabled_providers,
+            require_runtime_providers=require_runtime_providers,
+        )
         declaration_allowed = len(blocking_reasons) == 0
         current_step_id = "provider_setup"
         last_completed_step_id = state.resume.last_completed_step_id
@@ -131,7 +139,7 @@ class ProviderSetupService:
         update_payload.update(self._manifest_stale_updates(state, provider_changed))
         updated = state.model_copy(update=update_payload)
         self._store.save(updated)
-        return self.status_payload()
+        return self.status_payload(require_runtime_providers=require_runtime_providers)
 
     def _provider_setup_changed(
         self,
@@ -271,7 +279,7 @@ class ProviderSetupService:
             supported.append(provider_id)
         return supported
 
-    def _blocking_reasons(self, state, enabled_providers: list[str]) -> list[str]:
+    def _blocking_reasons(self, state, enabled_providers: list[str], *, require_runtime_providers: bool = True) -> list[str]:
         blockers: list[str] = []
         if state.trust_activation.trust_status != "trusted":
             blockers.append("trust_not_trusted")
@@ -279,6 +287,8 @@ class ProviderSetupService:
             blockers.append("trusted_identity_missing")
         if not enabled_providers:
             blockers.append("provider_selection_required")
+        if not require_runtime_providers:
+            return blockers
         enabled = {provider_id for provider_id in enabled_providers if provider_id}
         if self._settings.voice_stt_provider != "deterministic" and not _provider_matches(self._settings.voice_stt_provider, enabled):
             blockers.append("stt_provider_required")

@@ -1302,6 +1302,10 @@ bool load_composed_scene(const char *manifest_filename) {
   return true;
 }
 
+bool load_composed_scene() {
+  return load_composed_scene(kDefaultSceneManifest);
+}
+
 bool draw_composed_scene(UiAssetId id) {
   if (!g_scene.loaded) {
     return false;

@@ -741,7 +741,7 @@ def provider_setup_section(
     supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
     enabled = [text(item) for item in provider_setup.get("enabled_providers") or [] if item]
     default_provider = text(provider_setup.get("default_provider"), "")
-    candidate_ids = [provider_id, text(provider_name, ""), *(enabled_aliases or [])]
+    candidate_ids = [*(enabled_aliases or []), provider_id, text(provider_name, "")]
     candidate_set = set(candidate_ids)
     setup_provider_id, saved_config = provider_setup_target(provider_id, provider_name, provider_setup, enabled_aliases=enabled_aliases)
     is_enabled = any(candidate in enabled for candidate in candidate_ids if candidate)
@@ -806,7 +806,7 @@ def provider_setup_target(
     enabled_aliases: list[str] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     supported = [text(item) for item in provider_setup.get("supported_providers") or [] if item]
-    candidate_ids = [provider_id, text(provider_name, ""), *(enabled_aliases or [])]
+    candidate_ids = [*(enabled_aliases or []), provider_id, text(provider_name, "")]
     setup_provider_id = next((candidate for candidate in candidate_ids if candidate in supported), text(provider_name or provider_id))
     provider_configs = provider_setup.get("provider_configs") if isinstance(provider_setup.get("provider_configs"), dict) else {}
     saved_config = provider_configs.get(setup_provider_id) if isinstance(provider_configs.get(setup_provider_id), dict) else {}

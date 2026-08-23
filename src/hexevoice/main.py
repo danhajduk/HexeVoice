@@ -1478,6 +1478,23 @@ def create_app(
 
     def node_ui_provider_config_context(tts_settings: dict) -> dict:
         stt_profile = resolve_stt_model_profile(app_settings)
+        tts_model_options = [
+            {"value": model.get("model_id"), "label": model.get("display_name") or node_ui.labelize(model.get("model_id"))}
+            for model in tts_settings.get("models", [])
+            if isinstance(model, dict) and model.get("model_id")
+        ]
+        if not tts_model_options:
+            warm_voices = tts_settings.get("warm_voices") if isinstance(tts_settings.get("warm_voices"), list) else []
+            tts_model_options = node_ui_model_options(
+                [
+                    tts_settings.get("default_voice"),
+                    *warm_voices,
+                    app_settings.voice_tts_piper_voice,
+                    "en_US-kathleen-low",
+                    "en_US-lessac-medium",
+                    "en_US-jenny-high",
+                ]
+            )
         return {
             "stt": {
                 "kind": "stt",
@@ -1510,11 +1527,7 @@ def create_app(
                 "kind": "tts",
                 "default_voice": tts_settings.get("default_voice") or app_settings.voice_tts_piper_voice,
                 "warm_models": tts_settings.get("warm_voices") if isinstance(tts_settings.get("warm_voices"), list) else [],
-                "model_options": [
-                    {"value": model.get("model_id"), "label": model.get("display_name") or node_ui.labelize(model.get("model_id"))}
-                    for model in tts_settings.get("models", [])
-                    if isinstance(model, dict) and model.get("model_id")
-                ],
+                "model_options": tts_model_options,
             },
             "wake": {
                 "kind": "wake",
@@ -2174,11 +2187,11 @@ def create_app(
 
     @app.get("/api/providers/setup", response_model=ProviderSetupResponse)
     async def provider_setup_status() -> ProviderSetupResponse:
-        return provider_setup_service.status_payload()
+        return provider_setup_service.status_payload(require_runtime_providers=False)
 
-    def setup_provider_status_payload() -> dict:
+    def setup_provider_status_payload(*, require_runtime_providers: bool = True) -> dict:
         state = onboarding_state_store.load()
-        provider_setup = provider_setup_service.status_payload()
+        provider_setup = provider_setup_service.status_payload(require_runtime_providers=require_runtime_providers)
         services = service.service_status_payload()
         component_by_target = {
             str(component.get("restart_target") or component.get("service_id") or ""): component
@@ -2467,7 +2480,7 @@ def create_app(
         state = onboarding_state_store.load()
         capabilities = service.capabilities_payload()
         readiness = service.readiness_payload()
-        provider_setup = provider_setup_service.status_payload()
+        provider_setup = provider_setup_service.status_payload(require_runtime_providers=False)
         manifest_preview = capability_service.manifest_preview()
         selected = set(capabilities.selected)
         declared = set(capabilities.declared)
@@ -2751,7 +2764,7 @@ def create_app(
         state = onboarding_state_store.load()
         ready_state = read_setup_ready_state()
         host_status = setup_host_readiness_service.readiness_payload().model_dump(mode="json")
-        provider_status = setup_provider_status_payload()
+        provider_status = setup_provider_status_payload(require_runtime_providers=False)
         capability_status = setup_capabilities_status_payload()
         migration_bundle = node_migration_service.export_bundle(NodeMigrationExportRequest())
         payload = {
@@ -2828,7 +2841,7 @@ def create_app(
     def setup_ready_smoke_payload() -> dict:
         checks: list[dict] = []
         state = onboarding_state_store.load()
-        provider_status = setup_provider_status_payload()
+        provider_status = setup_provider_status_payload(require_runtime_providers=False)
         capability_status = setup_capabilities_status_payload()
         host_status = setup_host_readiness_service.readiness_payload()
         service_status = service.service_status_payload().model_dump(mode="json")
@@ -3212,7 +3225,7 @@ def create_app(
         last_smoke = ready_state.get("last_smoke") if isinstance(ready_state.get("last_smoke"), dict) else None
         completed = bool(ready_state.get("completed_at"))
         host_status = setup_host_readiness_service.readiness_payload()
-        provider_status = setup_provider_status_payload()
+        provider_status = setup_provider_status_payload(require_runtime_providers=False)
         capability_status = setup_capabilities_status_payload()
         runtime_missing = setup_ready_runtime_missing()
         smoke_warnings = [
@@ -3420,7 +3433,7 @@ def create_app(
 
     @app.put("/api/providers/setup", response_model=ProviderSetupResponse)
     async def provider_setup_save(payload: ProviderSetupRequest) -> ProviderSetupResponse:
-        return provider_setup_service.save_setup(payload)
+        return provider_setup_service.save_setup(payload, require_runtime_providers=False)
 
     @app.put("/api/node/ui/providers/{provider_id}/setup", response_model=ProviderSetupResponse)
     async def node_ui_provider_setup_save(provider_id: str, payload: ProviderConfigRequest) -> ProviderSetupResponse:
