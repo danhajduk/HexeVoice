@@ -451,6 +451,8 @@ def test_firmware_handles_backend_session_state_events():
     assert '"listen_timeout_ms"' in source
     assert 'std::strcmp(ux_state, "replying") == 0' in source
     assert "hexe::idle_or_connecting_phase()" in source
+    assert 'std::strcmp(type, "endpoint.replay") == 0' in source
+    assert 'g_tts_playback_session_id = session_id->valuestring' in source
 
 
 def test_firmware_ui_assets_are_manifest_driven_not_hardcoded_filenames():

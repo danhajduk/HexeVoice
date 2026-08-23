@@ -549,6 +549,16 @@ def create_app(
             text=announcement.text,
             source_event_id=announcement.event_id,
         ),
+        play_alarm=lambda alarm: voice_session_manager.push_play_sound_command(
+            endpoint_id=alarm.endpoint_id,
+            audio_url=app_settings.voice_timer_completed_alarm_audio_url,
+            stream_id=f"timer-alarm-{alarm.timer_id}" if alarm.timer_id else None,
+            text=None if app_settings.voice_timer_completed_alarm_audio_url else alarm.text,
+            session_id=alarm.session_id,
+            source_event_id=alarm.event_id,
+            interaction_id=alarm.timer_id,
+            metadata=alarm.metadata,
+        ),
     )
     log = logging.getLogger("hexevoice")
 

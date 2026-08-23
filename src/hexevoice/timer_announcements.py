@@ -23,6 +23,18 @@ class TimerAnnouncement:
     topic: str
 
 
+@dataclass(frozen=True)
+class TimerCompletedAlarm:
+    endpoint_id: str
+    session_id: str
+    timer_id: str
+    text: str
+    event_id: str
+    dedupe_key: str
+    topic: str
+    metadata: dict[str, Any]
+
+
 def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnnouncement | None:
     event_type = str(payload.get("event_type") or "").strip()
     if event_type not in {"timer.create_succeeded", "timer.status_succeeded"}:
@@ -56,16 +68,68 @@ def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnno
     )
 
 
+def timer_completed_alarm(topic: str, payload: dict[str, Any], *, default_text: str = "Timer done.") -> TimerCompletedAlarm | None:
+    event_type = str(payload.get("promoted_event_type") or payload.get("event_type") or "").strip()
+    if event_type != "timer.completed":
+        return None
+    subject = payload.get("subject") if isinstance(payload.get("subject"), dict) else {}
+    if str(subject.get("family") or "").strip() not in {"", "timer"}:
+        return None
+    data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+    endpoint_id = str(data.get("endpoint_id") or data.get("device_id") or "").strip()
+    if not endpoint_id:
+        return None
+    timer_id = str(data.get("timer_id") or subject.get("record_id") or "").strip()
+    event_id = str(payload.get("event_id") or "").strip()
+    if not timer_id and not event_id:
+        return None
+    routing = payload.get("routing") if isinstance(payload.get("routing"), dict) else {}
+    dedupe_key = str(routing.get("dedupe_key") or event_id or f"{endpoint_id}:{timer_id}").strip()
+    if not dedupe_key:
+        return None
+    title = str(data.get("title") or data.get("label") or "").strip()
+    text = f"{title} timer is done." if title else str(default_text or "Timer done.").strip()
+    if not text:
+        text = "Timer done."
+    source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+    metadata = {
+        "source": "timer.completed",
+        "timer_id": timer_id or None,
+        "title": title or None,
+        "source_node_id": source.get("node_id") or data.get("requester_node_id"),
+        "source_component": source.get("component"),
+        "source_topic": source.get("topic"),
+        "domain_topic": routing.get("domain_topic"),
+        "dedupe_key": dedupe_key,
+        "completed_at": data.get("completed_at"),
+        "due_at": data.get("due_at"),
+        "started_at": data.get("started_at"),
+        "duration_seconds": data.get("duration_seconds"),
+    }
+    return TimerCompletedAlarm(
+        endpoint_id=endpoint_id,
+        session_id=f"timer-completed-{timer_id or event_id}",
+        timer_id=timer_id,
+        text=text,
+        event_id=event_id,
+        dedupe_key=dedupe_key,
+        topic=str(topic or "").strip(),
+        metadata={key: value for key, value in metadata.items() if value is not None},
+    )
+
+
 class TimerSucceededAnnouncementService:
     def __init__(
         self,
         *,
         settings: Settings,
         announce: Callable[[TimerAnnouncement], Awaitable[dict[str, Any]] | dict[str, Any]],
+        play_alarm: Callable[[TimerCompletedAlarm], Awaitable[dict[str, Any]] | dict[str, Any]] | None = None,
         onboarding_state_store: OnboardingStateStore | None = None,
     ) -> None:
         self._settings = settings
         self._announce = announce
+        self._play_alarm = play_alarm
         self._store = onboarding_state_store or OnboardingStateStore(path=settings.resolved_onboarding_state_path())
         self._client: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -73,6 +137,8 @@ class TimerSucceededAnnouncementService:
         self._last_status = "stopped"
         self._last_reason: str | None = None
         self._last_announcement: dict[str, Any] | None = None
+        self._last_alarm: dict[str, Any] | None = None
+        self._seen_alarm_keys: list[str] = []
 
     def start(self, loop: asyncio.AbstractEventLoop) -> dict[str, Any]:
         self._loop = loop
@@ -154,6 +220,7 @@ class TimerSucceededAnnouncementService:
             "status": self._last_status,
             "reason": self._last_reason,
             "last_announcement": self._last_announcement,
+            "last_alarm": self._last_alarm,
         }
 
     def _on_connect(self, client: Any, userdata: Any, flags: Any, reason_code: Any, properties: Any = None) -> None:
@@ -184,6 +251,34 @@ class TimerSucceededAnnouncementService:
         if not isinstance(payload, dict):
             self._last_reason = "invalid_payload"
             return
+        loop = self._loop
+        if loop is None:
+            self._last_reason = "event_loop_unavailable"
+            return
+        alarm = timer_completed_alarm(
+            str(msg.topic),
+            payload,
+            default_text=self._settings.voice_timer_completed_alarm_text,
+        )
+        if alarm is not None:
+            if alarm.dedupe_key in self._seen_alarm_keys:
+                self._last_reason = "duplicate_timer_completed_ignored"
+                return
+            self._seen_alarm_keys.insert(0, alarm.dedupe_key)
+            del self._seen_alarm_keys[100:]
+            self._last_alarm = {
+                "endpoint_id": alarm.endpoint_id,
+                "session_id": alarm.session_id,
+                "timer_id": alarm.timer_id,
+                "text": alarm.text,
+                "event_id": alarm.event_id,
+                "dedupe_key": alarm.dedupe_key,
+                "topic": alarm.topic,
+                "metadata": alarm.metadata,
+                "status": "queued",
+            }
+            asyncio.run_coroutine_threadsafe(self._play_alarm_async(alarm), loop)
+            return
         announcement = timer_success_announcement(str(msg.topic), payload)
         if announcement is None:
             return
@@ -194,10 +289,6 @@ class TimerSucceededAnnouncementService:
             "event_id": announcement.event_id,
             "topic": announcement.topic,
         }
-        loop = self._loop
-        if loop is None:
-            self._last_reason = "event_loop_unavailable"
-            return
         asyncio.run_coroutine_threadsafe(self._announce_async(announcement), loop)
 
     async def _announce_async(self, announcement: TimerAnnouncement) -> None:
@@ -209,10 +300,33 @@ class TimerSucceededAnnouncementService:
             self._last_reason = "announcement_failed"
             log.warning("Timer announcement failed: error=%s", exc)
 
+    async def _play_alarm_async(self, alarm: TimerCompletedAlarm) -> None:
+        if self._play_alarm is None:
+            self._last_reason = "timer_alarm_callback_unavailable"
+            return
+        try:
+            result = self._play_alarm(alarm)
+            if asyncio.iscoroutine(result):
+                result = await result
+            if isinstance(result, dict):
+                if self._last_alarm is not None and self._last_alarm.get("dedupe_key") == alarm.dedupe_key:
+                    self._last_alarm["status"] = result.get("status") or ("accepted" if result.get("accepted") else "failed")
+                    self._last_alarm["request_id"] = result.get("request_id")
+                    self._last_alarm["reason"] = result.get("reason")
+                if not result.get("accepted", False):
+                    self._last_reason = str(result.get("reason") or "timer_alarm_rejected")
+        except Exception as exc:
+            self._last_reason = "timer_alarm_failed"
+            if self._last_alarm is not None and self._last_alarm.get("dedupe_key") == alarm.dedupe_key:
+                self._last_alarm["status"] = "failed"
+                self._last_alarm["reason"] = "timer_alarm_failed"
+            log.warning("Timer alarm playback failed: error=%s", exc)
+
     def _timer_topics(self) -> list[str]:
         topics = [
             self._settings.voice_timer_success_mqtt_topic,
             self._settings.voice_timer_status_mqtt_topic,
+            self._settings.voice_timer_completed_mqtt_topic,
         ]
         deduped: list[str] = []
         for topic in topics:

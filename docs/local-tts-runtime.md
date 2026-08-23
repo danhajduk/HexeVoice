@@ -180,6 +180,14 @@ The synthesized replay uses the active TTS provider, so with Piper enabled it cr
 
 `POST /api/endpoint/play-sound` and its Interaction Node-facing alias `POST /api/interaction/ui/play-sound` bridge `ui.play_sound` style kiosk commands to endpoint audio playback. The payload can provide an existing `audio_url`/`stream_id`, or provide `text` and optional `voice` so HexeVoice generates a TTS clip first and then sends the resulting endpoint audio URL through the existing `endpoint.replay` firmware command.
 
+Timer completion alarms use the same endpoint playback path. By default,
+HexeVoice listens on `VOICE_TIMER_COMPLETED_MQTT_TOPIC`
+(`hexe/events/timer/completed`) and plays a generated `Timer done.` clip on the
+`data.endpoint_id` from the promoted timer event. Set
+`VOICE_TIMER_COMPLETED_ALARM_AUDIO_URL` to use a dedicated WAV alarm URL instead
+of generated speech; timer id, source node, title, due/completed timestamps, and
+dedupe metadata are attached to the playback command.
+
 Recent voice sessions are also persisted to `runtime/voice_session_history.json` by default. The history record contains session ids, endpoint ids, timestamps, turn timings, wake metadata, a `latency_points` timeline, transcript/assistant/TTS metadata, error state, and replay eligibility. It does not persist raw microphone audio; accepted wake-session WAV capture is controlled separately by the wake recording settings.
 
 The history APIs are:

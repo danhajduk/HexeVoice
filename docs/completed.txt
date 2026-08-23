@@ -245,3 +245,5 @@ Task 214: Add automatic endpoint discovery and pairing for firmware endpoints - 
 Task 215: Harden firmware OTA integrity with checksum enforcement and signed manifest validation - Completed on 08/22/2026 22:23
 Task 216: Validate physical-device reconnect and session-boundary behavior across supported profiles - Completed on 08/22/2026 22:30
 Task 217: Replace or explicitly retire scaffold firmware modules for wake word, STT stream, assistant client, telemetry, and power - Completed on 08/23/2026 09:44
+Task 218: Run physical reconnect/session-boundary bench validation and replace blocked release artifact results - Completed on 08/23/2026 15:36
+Task 219: Play endpoint timer-expired alarm audio and report acknowledgement state - Completed on 08/23/2026 15:45

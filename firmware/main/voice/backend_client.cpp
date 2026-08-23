@@ -841,6 +841,10 @@ void handle_backend_event_json(const std::string &message) {
     send_command_ack(request_id, "endpoint.cancel", "succeeded", "Active session cancelled");
   } else if (std::strcmp(type, "endpoint.replay") == 0) {
     const char *request_id = payload_request_id(payload);
+    cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
+    if (cJSON_IsString(session_id) && session_id->valuestring[0] != '\0') {
+      g_tts_playback_session_id = session_id->valuestring;
+    }
     cJSON *stream_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stream_id") : nullptr;
     cJSON *content_type = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "content_type") : nullptr;
     cJSON *audio_url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "audio_url") : nullptr;

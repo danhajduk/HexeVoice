@@ -444,3 +444,10 @@ Issue cause: The Wyoming openWakeWord service advertises the custom model as `he
 Chosen fix: Set the supervised wake runtime model selector to `hexe`.
 What changed: Updated `scripts/stack.env.example`; the local ignored `scripts/stack.env` was updated on this node as well.
 Verification: Direct Wyoming `describe` returned model `hexe`; after backend restart `/api/voice/status` reports `models=["hexe"]` with supervised openWakeWord healthy/loaded.
+###########
+Task #219
+Step objective: Add event-driven timer expiry playback on the endpoint that started the timer.
+Issue cause: Timer create/status routing exists, but a promoted timer completion event does not yet trigger endpoint alarm playback.
+Chosen fix: Reuse the existing endpoint play-sound command path and add a timer-completed subscriber that resolves `data.endpoint_id`, deduplicates promoted events, and reports lifecycle diagnostics.
+What changed: Added timer-completed alarm parsing and MQTT subscription support, configurable completed-topic/alarm settings, endpoint play-sound alarm routing, command session correlation for replay playback, firmware replay session tagging, and focused regression tests/docs.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_timer_announcements.py tests/test_config.py tests/test_voice_websocket.py tests/test_firmware_voice_envelope.py tests/test_api.py::test_voice_status_reports_tts_warmup_background_task` passed; `./firmware/build.sh` built `esp_box_3` and `ha_voice_pe`.

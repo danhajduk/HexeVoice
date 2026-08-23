@@ -206,6 +206,12 @@ class Settings(BaseSettings):
         default="hexe/events/timer/status_succeeded",
         alias="VOICE_TIMER_STATUS_MQTT_TOPIC",
     )
+    voice_timer_completed_mqtt_topic: str = Field(
+        default="hexe/events/timer/completed",
+        alias="VOICE_TIMER_COMPLETED_MQTT_TOPIC",
+    )
+    voice_timer_completed_alarm_text: str = Field(default="Timer done.", alias="VOICE_TIMER_COMPLETED_ALARM_TEXT")
+    voice_timer_completed_alarm_audio_url: str | None = Field(default=None, alias="VOICE_TIMER_COMPLETED_ALARM_AUDIO_URL")
     voice_tts_provider: Literal["deterministic", "openai", "piper"] = Field(
         default="deterministic",
         alias="VOICE_TTS_PROVIDER",

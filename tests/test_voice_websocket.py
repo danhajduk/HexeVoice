@@ -1529,6 +1529,7 @@ def test_voice_session_manager_pushes_play_sound_audio_url_to_endpoint():
 
     assert result["accepted"] is True
     assert websocket.sent[0]["event_type"] == "endpoint.replay"
+    assert websocket.sent[0]["session_id"] == "esp-box-1-play-sound"
     assert websocket.sent[0]["payload"]["request_id"] == result["request_id"]
     assert websocket.sent[0]["payload"]["command"] == "ui.play_sound"
     assert websocket.sent[0]["payload"]["stream_id"] == "tts-kiosk"
@@ -1580,6 +1581,7 @@ def test_voice_session_manager_play_sound_can_synthesize_kiosk_text():
     assert pipeline.text == "Kiosk speech ready."
     assert pipeline.voice == "en_US-kathleen-low"
     assert websocket.sent[0]["event_type"] == "endpoint.replay"
+    assert websocket.sent[0]["session_id"] == "esp-box-1-play-sound"
     assert websocket.sent[0]["payload"]["command"] == "ui.play_sound"
     assert websocket.sent[0]["payload"]["stream_id"] == "tts-kiosk-speech"
     assert websocket.sent[0]["payload"]["audio_url"] == "/api/voice/tts/tts-kiosk-speech/48k"

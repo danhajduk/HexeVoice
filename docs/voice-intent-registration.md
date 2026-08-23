@@ -105,8 +105,18 @@ phrases such as `how much time is left on the timer`, replies immediately with
 timer topic. The timer-owning node should respond on
 `hexe/events/timer/status_succeeded` with `endpoint_id`, `session_id`,
 `remaining_text` or `remaining_hhmmss`, and a timer `state`; HexeVoice announces
-the remaining time back to the endpoint. Voice Node owned local responses, such
-as `voice.time.query`, answer directly from the backend runtime.
+the remaining time back to the endpoint.
+
+Timer expiry is event-driven. HexeVoice subscribes to the promoted
+`hexe/events/timer/completed` event stream and resolves the target endpoint from
+`data.endpoint_id`, falling back to `data.device_id` only when present. A valid
+timer completion event queues endpoint audio playback with timer metadata,
+including `timer_id`, source node, due/completed timestamps, and Core dedupe
+key. Duplicate promoted events are ignored so a single timer completion does not
+ring twice.
+
+Voice Node owned local responses, such as `voice.time.query`, answer directly
+from the backend runtime.
 
 ## Conversation Follow-Ups
 

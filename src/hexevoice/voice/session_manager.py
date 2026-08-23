@@ -641,6 +641,7 @@ class VoiceSessionManager:
             event_type="endpoint.replay",
             command_type="endpoint.play_sound",
             request_id=f"endpoint_play_sound_{uuid4().hex}",
+            session_id=command_session_id,
             payload={
                 "stream_id": stream_id or (tts.stream_id if tts else None),
                 "content_type": content_type or (tts.content_type if tts else "audio/wav"),
@@ -708,6 +709,7 @@ class VoiceSessionManager:
             event_type="endpoint.replay",
             command_type="endpoint.announcement.timer",
             request_id=f"timer_announcement_{uuid4().hex}",
+            session_id=session_id,
             payload={
                 "stream_id": tts.stream_id,
                 "content_type": tts.content_type,
@@ -788,6 +790,7 @@ class VoiceSessionManager:
         command_type: str,
         payload: dict[str, object],
         request_id: str | None = None,
+        session_id: str | None = None,
     ) -> dict:
         runtime = self._runtime_for_endpoint(endpoint_id)
         if runtime is None or runtime.websocket is None:
@@ -800,7 +803,7 @@ class VoiceSessionManager:
                 event_type=event_type,
                 endpoint_id=endpoint_id,
                 direction="backend_to_endpoint",
-                session_id=self._active_session.session_id if self._active_session else None,
+                session_id=session_id or (self._active_session.session_id if self._active_session else None),
                 sequence=self._next_sequence(),
                 payload={"request_id": request_id, **payload},
             )

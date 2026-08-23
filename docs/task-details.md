@@ -1771,3 +1771,136 @@ Original task details:
   - `docs/firmware-reconnect-session-results.json` has no `blocked` scenarios for supported profiles.
   - Every scenario has operator-recorded observations and pass/fail status for both supported profiles.
   - Any failure has a linked firmware or backend remediation task before release approval.
+
+## Task 219
+Original task details:
+- Title: Play endpoint timer-expired alarm audio and report acknowledgement state
+- Source finding:
+  - Timer creation/status requests can be routed through HexeVoice, but timer expiry playback on the endpoint is not implemented yet.
+  - The user clarified that when a timer reaches zero, the endpoint should sound a timer-out alarm, and the spoken word `stop` should stop that alarm.
+- Scope:
+  - Define the timer-expired event contract from the timer-owning node to the endpoint that should sound.
+  - Add endpoint playback support for a timer-expired sound that is not coupled to TTS session playback.
+  - Track alarm lifecycle state such as queued, playing, stopped, completed, failed, and acknowledged.
+  - Publish acknowledgement/dismissal events so the timer-owning node can clear or update timer state.
+  - Update backend, firmware, and operator docs for timer-expired playback behavior.
+- Acceptance criteria:
+  - A timer expiry causes the intended endpoint to play the configured timer alarm sound.
+  - The backend can see whether the alarm is queued, playing, stopped, completed, failed, or acknowledged.
+  - Timer alarm playback works independently of normal TTS response playback.
+
+## Task 220
+Original task details:
+- Title: Add local voice stop interruption for active endpoint playback
+- Source finding:
+  - Firmware currently pauses/disables the microphone during playback, so the endpoint cannot hear `stop` while TTS or future timer alarm audio is playing.
+  - Existing playback cancellation is TTS-oriented, but timer alarms and future sounds need the same interruption capability.
+- Scope:
+  - Add a source-agnostic playback interruption path for TTS, timer alarms, notification sounds, and future audio.
+  - Keep a lightweight local listener available during interruptible playback for the word `stop`, or document and implement the safest supported board-specific equivalent.
+  - Stop playback locally first for low latency, then report the interruption to the backend.
+  - Replace or wrap narrow `stop_tts_playback` semantics with generic playback stop semantics where appropriate.
+  - Add firmware/backend tests or source checks for interruptible and non-interruptible playback states.
+- Acceptance criteria:
+  - Saying `stop` while a timer alarm is playing stops the endpoint audio without waiting for cloud/backend STT.
+  - The backend receives a source-agnostic playback stop/interrupted event with reason `voice_stop`.
+  - Existing TTS playback cancellation still works.
+
+## Task 221
+Original task details:
+- Title: Add timer stop and timer cancel voice intents with cross-node routing
+- Source finding:
+  - Timer create/status intent support exists, but explicit stop/cancel semantics are not available as first-class intents.
+  - Timer ownership may live on a different node than the voice endpoint, so intents must route to the timer owner rather than assuming local timer state.
+- Scope:
+  - Add `timer.stop` for stopping/dismissing an actively ringing or elapsed timer alarm.
+  - Add `timer.cancel` for cancelling an active timer before it reaches zero.
+  - Define event payloads and MQTT topics for stop/cancel requested, succeeded, failed, and ambiguous cases.
+  - Ensure stop/cancel requests include endpoint id, node id, timer id when known, and correlation/session metadata.
+  - Add spoken replies for success, failure, no active timer, and multiple timer ambiguity.
+- Acceptance criteria:
+  - Phrases such as `stop the timer`, `cancel the timer`, and `dismiss the timer` map to the correct intent based on timer/alarm state.
+  - The timer-owning node receives the request and HexeVoice announces or displays the result.
+  - Ambiguous multi-timer cases do not cancel the wrong timer silently.
+
+## Task 222
+Original task details:
+- Title: Add timer adjust-time voice intent for adding or removing timer duration
+- Source finding:
+  - The user requested an adjust-time intent for phrases like `add 5 minutes` and `remove 2 minutes`.
+  - The timer may live on a different node, so adjustment must be expressed as a routed timer command.
+- Scope:
+  - Add a timer adjustment intent, named consistently with the timer domain, for adding or subtracting duration from an existing timer.
+  - Parse duration amounts and adjustment direction from natural language.
+  - Define event payloads for adjustment requested, succeeded, failed, and ambiguous timer selection.
+  - Include timer id, target node, endpoint id, delta seconds, and correlation/session metadata.
+  - Add tests for add/remove phrasing, invalid durations, no active timer, and multiple timer ambiguity.
+- Acceptance criteria:
+  - Phrases such as `add five minutes to the timer` and `remove two minutes from the timer` publish the expected adjustment request.
+  - The timer-owning node can respond with the updated remaining time.
+  - HexeVoice announces the adjusted timer result or a clear failure/ambiguity message.
+
+## Task 223
+Original task details:
+- Title: Add multi-node timer ownership, status, and disambiguation handling
+- Source finding:
+  - Timer state can live on a different node than the voice endpoint.
+  - Timer commands need consistent ownership discovery, correlation, and user-facing disambiguation when multiple timers exist.
+- Scope:
+  - Maintain a backend-side cache of timer ownership and recent timer events by node, endpoint, timer id, label, and due time.
+  - Reconcile timer create/status/stop/cancel/adjust responses from other nodes into a consistent local view.
+  - Add disambiguation behavior for multiple active timers, such as nearest timer, named timer, room/device-scoped timer, or a follow-up prompt.
+  - Expose concise status in the UI or diagnostics so operators can see which node owns each timer.
+  - Document recommended event contracts for timer-owning nodes.
+- Acceptance criteria:
+  - HexeVoice can answer or route timer commands even when the timer is owned by another node.
+  - Multiple active timers produce deterministic selection or a clear clarification path.
+  - Operator diagnostics show timer owner, timer id, endpoint target, remaining time, and alarm/playback state.
+
+## Task 224
+Original task details:
+- Title: Consume promoted timer.completed events and sound the target endpoint alarm
+- Source finding:
+  - Timer completion should be event-based.
+  - When Core promotes a `timer.completed` event, HexeVoice should sound the timer completed sound on the endpoint that started or owns the timer interaction.
+- Event contract:
+  - Listen for promoted timer completion events with:
+    - `event_type`: `timer.completed`
+    - `promoted_event_type`: `timer.completed`
+    - `routing.domain_topic`: `hexe/events/timer/completed`
+    - `source.topic`: `hexe/nodes/<timer-node-id>/events/timer/completed`
+    - `subject.family`: `timer`
+    - `subject.record_id`: timer id
+    - `data.timer_id`: timer id
+    - `data.endpoint_id`: endpoint to sound
+    - `data.device_id`: device id, usually the same as endpoint id
+    - `data.title`: timer label/title
+    - `data.duration_seconds`, `data.started_at`, `data.due_at`, and `data.completed_at`
+    - `source.node_id` or `data.requester_node_id`: timer-owning/requesting node
+- Sample event:
+  - `schema_version`: `1`
+  - `promotion_id`: `30833afd-aa6a-4208-ad51-97bf5e0ad55e`
+  - `event_id`: `interaction-timer-completed-timer_codex_20_sec_timer_1787524538`
+  - `event_type`: `timer.completed`
+  - `promoted_event_type`: `timer.completed`
+  - `source.node_id`: `node-6812313e6d1efad6`
+  - `source.component`: `hexe.timer`
+  - `routing.domain_topic`: `hexe/events/timer/completed`
+  - `data.endpoint_id`: `esp-pe-1`
+  - `data.device_id`: `esp-pe-1`
+  - `data.timer_id`: `timer_codex_20_sec_timer_1787524538`
+  - `data.title`: `20 seconds`
+  - `data.duration_seconds`: `20`
+- Scope:
+  - Subscribe to the Core-promoted `hexe/events/timer/completed` topic or equivalent backend event stream.
+  - Validate the promoted event shape and ignore non-timer or malformed events with operator-visible diagnostics.
+  - Resolve the target endpoint from `data.endpoint_id`, falling back to `data.device_id` only when safe.
+  - Push a timer alarm playback command to the target endpoint.
+  - Include timer id, title, source node id, due/completed timestamps, and correlation ids in playback state and acknowledgement events.
+  - Deduplicate repeated promoted events using `routing.dedupe_key`, `event_id`, or a stable timer completion key.
+  - Publish/report failures when the target endpoint is offline, unknown, muted, busy, or rejects playback.
+- Acceptance criteria:
+  - A promoted `timer.completed` event for `esp-pe-1` causes only `esp-pe-1` to play the timer completed sound.
+  - Duplicate promoted timer completion events do not cause duplicate alarm playback.
+  - Unknown or offline endpoints produce a clear diagnostic and do not crash the timer subscriber.
+  - The timer alarm lifecycle can later be stopped by the generic playback stop path from Task 220.
