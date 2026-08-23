@@ -298,6 +298,12 @@ Full repo move-readiness preflight:
 ./scripts/repo-migration-preflight.sh
 ```
 
+Long-running provider/model/media lifecycle validation for staging nodes:
+
+```bash
+./scripts/provider-lifecycle-validation.py --cycles 6 --interval-s 300
+```
+
 Backend:
 
 ```bash

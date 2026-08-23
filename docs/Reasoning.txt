@@ -371,3 +371,13 @@ Issue cause: Supported firmware profiles existed in build/test code, but release
 Chosen fix: Add a machine-readable firmware validation matrix plus human docs and tests that keep the matrix aligned with supported build profiles and required categories.
 What changed: Added `docs/firmware-validation-matrix.json`, `docs/firmware-validation-matrix.md`, linked it from firmware docs, and added matrix tests that require every supported profile to declare automated coverage and manual field checks for each required validation category.
 Verification: `tests/test_firmware_validation_matrix.py`, `tests/test_firmware_voice_envelope.py`, `tests/test_voice_loop_integration.py`, and `tests/test_voice_websocket.py` passed; `bash -n firmware/build.sh firmware/export-artifacts.sh` passed. `idf.py` is not installed in this shell, so a real ESP-IDF firmware build was not run.
+###########
+Task #211
+Step objective: Add staging-friendly long-running provider/model/media lifecycle validation.
+Issue cause: Provider health, warmup, cleanup, firmware manifest, and media lifecycle checks were split across smoke tests and manual inspection rather than available as a repeated validation command.
+Chosen fix: Add a stdlib-only lifecycle validator that runs repeated cycles against a local or staging backend, separates warnings from required failures, and supports JSON output for setup/ops automation.
+What changed: Added `scripts/provider-lifecycle-validation.py` with provider health, warm-model, TTS warmup, cleanup, control-script, runtime artifact directory, endpoint media API, and firmware manifest checks; documented the staging command in setup docs; added fake-server tests for repeated success and required failure behavior.
+Verification: `python3 -m py_compile scripts/provider-lifecycle-validation.py` passed; `tests/test_provider_lifecycle_validation_script.py`, `tests/test_post_complete_lifecycle_script.py`, `tests/test_post_install_smoke_test.py`, and `tests/test_api.py::test_voice_status_reports_tts_warmup_background_task` passed.
+#############
+All Tasks completed 08/22/2026 21:23:49
+#############
