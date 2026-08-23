@@ -40,6 +40,38 @@ def test_openwakeword_control_sync_models_copies_default_hexe_model(tmp_path):
     assert (model_dir / "hexe.tflite").exists()
 
 
+def test_openwakeword_control_sync_models_migrates_legacy_local_models(tmp_path):
+    model_dir = tmp_path / "models"
+    legacy_dir = tmp_path / "vioce_models"
+    legacy_dir.mkdir()
+    legacy_model = legacy_dir / "Hexa.tflite"
+    legacy_model.write_bytes(b"legacy wake model")
+
+    result = subprocess.run(
+        ["bash", "scripts/openwakeword-control.sh", "sync-models"],
+        cwd=Path(__file__).resolve().parents[1],
+        env={
+            "PATH": "/usr/bin:/bin",
+            "PYTHON_BIN": sys.executable,
+            "RUNTIME_DIR": str(tmp_path / "runtime"),
+            "OPENWAKEWORD_ENV_FILE": str(tmp_path / "missing.env"),
+            "OPENWAKEWORD_MODEL_DIR": str(model_dir),
+            "OPENWAKEWORD_LEGACY_MODEL_DIR": str(tmp_path / "missing-legacy"),
+            "OPENWAKEWORD_LEGACY_LOCAL_MODEL_DIR": str(legacy_dir),
+            "OPENWAKEWORD_DEFAULT_MODEL": "Hexa",
+        },
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert "Hexa.tflite" in result.stdout
+    assert "Migrated legacy wake model to canonical directory" in result.stderr
+    assert (model_dir / "Hexa.tflite").read_bytes() == b"legacy wake model"
+    assert not legacy_model.exists()
+    assert not legacy_dir.exists()
+
+
 def test_openwakeword_control_ready_syncs_starts_and_waits_for_health(tmp_path):
     repo_root = Path(__file__).resolve().parents[1]
     server = _ThreadedTcpServer(("127.0.0.1", 0), _TcpHandler)

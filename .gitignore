@@ -67,8 +67,6 @@ runtime/voice_tts/*
 !runtime/wake_recordings/
 runtime/wake_recordings/*
 !runtime/wake_recordings/.gitkeep
-runtime/voice_models/
-runtime/vioce_models/
 scripts/stack.env
 scripts/openwakeword.env
 scripts/piper-tts.env

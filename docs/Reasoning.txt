@@ -357,3 +357,10 @@ Issue cause: Fresh repo validation required several manual commands across Pytho
 Chosen fix: Add `scripts/repo-migration-preflight.sh` as the documented canonical preflight, with required checks separated from non-blocking dev-audit review.
 What changed: The script prepares Python/frontend dependencies by default, reports Python/Node/npm/Vite tool versions, runs backend pytest, frontend build, production `npm audit --omit=dev`, and full dev `npm audit`, with logs under `runtime/preflight/`; README and setup docs now point maintainers to the command.
 Verification: `bash -n scripts/repo-migration-preflight.sh` passed; `tests/test_repo_migration_preflight_script.py` passed; with Node v22.12.0 from `/tmp/node-v22.12.0-linux-x64`, `./scripts/repo-migration-preflight.sh` passed with backend suite, frontend build, production audit, and full dev audit clean, logging to `runtime/preflight/repo-migration-20260823T041320Z`.
+###########
+Task #209
+Step objective: Preserve legacy wake-model compatibility while removing the misspelled path as a normal runtime dependency.
+Issue cause: `scripts/openwakeword-control.sh` still directly depended on `runtime/vioce_models/Hexa.tflite` as a fallback, and `.gitignore` explicitly listed legacy wake model directories.
+Chosen fix: Convert the misspelled local directory into a one-time migration source that moves wake model files into `runtime/openwakeword/models/` and removes the old directory when empty.
+What changed: `sync-models` migrates `.tflite`/`.onnx` files from the legacy local directory, preserves conflicting model files with `.legacy-N` names, keeps the old Hexa-to-Hexe compatibility copy after migration, defaults the control script to the repo venv Python when available, removes explicit legacy ignore entries, and documents the compatibility behavior.
+Verification: `bash -n scripts/openwakeword-control.sh` passed; `tests/test_openwakeword_control_script.py` passed; direct legacy migration smoke moved `Hexa.tflite` into a canonical temp model dir and removed the temp misspelled dir; `tests/test_post_install_smoke_test.py::test_post_install_smoke_test_passes_with_healthy_stack` passed.

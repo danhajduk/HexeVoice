@@ -236,3 +236,4 @@ Task 158: Implement the full firmware artifact download/install flow from the se
 Task 206: Upgrade frontend toolchain to a supported Node and Vite security baseline - Completed on 08/22/2026 21:07
 Task 207: Migrate FastAPI startup and shutdown hooks to lifespan handlers - Completed on 08/22/2026 21:11
 Task 208: Add a repo migration preflight command for backend, frontend, and audit checks - Completed on 08/22/2026 21:14
+Task 209: Consolidate legacy wake-model runtime paths and remove misspelled path dependency - Completed on 08/22/2026 21:18

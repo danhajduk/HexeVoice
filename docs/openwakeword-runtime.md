@@ -50,11 +50,17 @@ HexeVoice now owns a local openWakeWord container definition:
 
 The runtime model directory is intentionally gitignored except for `.gitkeep`; trained `.tflite` and `.onnx` model files are local runtime assets. Hosted installs include the default Hexe wake model at `runtime/openwakeword/models/hexe.tflite`.
 
-To prepare wake models from the included Hexe model, the old HomeAssistant-owned directory, or the legacy local `runtime/vioce_models/Hexa.tflite` file:
+To prepare wake models from the included Hexe model, the old HomeAssistant-owned directory, or any legacy local files:
 
 ```bash
 ./scripts/openwakeword-control.sh sync-models
 ```
+
+`sync-models` performs a one-time compatibility migration for the old misspelled
+`runtime/vioce_models/` directory when it exists. Any `.tflite` or `.onnx`
+files are moved into `runtime/openwakeword/models/`, the old directory is
+removed when empty, and new installs should not create or point configuration at
+the misspelled path.
 
 To start, stop, check, or inspect the HexeVoice-owned container:
 

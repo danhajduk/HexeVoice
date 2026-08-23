@@ -5,7 +5,13 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ENV_FILE="${OPENWAKEWORD_ENV_FILE:-$ROOT_DIR/scripts/openwakeword.env}"
 COMPOSE_FILE="$ROOT_DIR/compose.openwakeword.yaml"
 DOCKER_BIN="${DOCKER_BIN:-docker}"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+if [[ -z "${PYTHON_BIN:-}" ]]; then
+  if [[ -x "$ROOT_DIR/.venv/bin/python" ]]; then
+    PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
+  else
+    PYTHON_BIN="python3"
+  fi
+fi
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -19,6 +25,7 @@ export OPENWAKEWORD_CONTAINER_NAME="${OPENWAKEWORD_CONTAINER_NAME:-hexevoice-ope
 export OPENWAKEWORD_PORT="${OPENWAKEWORD_PORT:-10400}"
 export OPENWAKEWORD_MODEL_DIR="${OPENWAKEWORD_MODEL_DIR:-./runtime/openwakeword/models}"
 export OPENWAKEWORD_LEGACY_MODEL_DIR="${OPENWAKEWORD_LEGACY_MODEL_DIR:-/home/dan/Projects/HomeAssistant/openwakeword/models}"
+OPENWAKEWORD_LEGACY_LOCAL_MODEL_DIR="${OPENWAKEWORD_LEGACY_LOCAL_MODEL_DIR:-$ROOT_DIR/runtime/vioce_models}"
 export OPENWAKEWORD_DEFAULT_MODEL="${OPENWAKEWORD_DEFAULT_MODEL:-Hexe}"
 export OPENWAKEWORD_HEALTH_HOST="${OPENWAKEWORD_HEALTH_HOST:-${VOICE_WAKE_SERVICE_HOST:-127.0.0.1}}"
 export OPENWAKEWORD_HEALTH_PORT="${OPENWAKEWORD_HEALTH_PORT:-${VOICE_WAKE_SERVICE_PORT:-$OPENWAKEWORD_PORT}}"
@@ -113,11 +120,48 @@ model_exists() {
   [[ -f "$target_dir/${requested}" || -f "$target_dir/${requested}.tflite" || -f "$target_dir/${requested}.onnx" ]]
 }
 
+migrate_legacy_local_models() {
+  local target_dir legacy_dir found model target_path base ext counter
+  target_dir="$1"
+  legacy_dir="$OPENWAKEWORD_LEGACY_LOCAL_MODEL_DIR"
+  found=0
+  if [[ ! -d "$legacy_dir" ]]; then
+    return 1
+  fi
+  while IFS= read -r -d '' model; do
+    found=1
+    target_path="$target_dir/$(basename "$model")"
+    if [[ -e "$target_path" ]]; then
+      if cmp -s "$model" "$target_path"; then
+        echo "Legacy wake model already exists in canonical directory: $target_path" >&2
+        rm -f "$model"
+        continue
+      fi
+      base="${target_path%.*}"
+      ext="${target_path##*.}"
+      counter=1
+      while [[ -e "${base}.legacy-${counter}.${ext}" ]]; do
+        counter=$((counter + 1))
+      done
+      target_path="${base}.legacy-${counter}.${ext}"
+    fi
+    mv "$model" "$target_path"
+    echo "Migrated legacy wake model to canonical directory: $target_path" >&2
+  done < <(find "$legacy_dir" -maxdepth 1 -type f \( -name '*.tflite' -o -name '*.onnx' \) -print0)
+
+  if [[ -f "$target_dir/Hexa.tflite" && ! -f "$target_dir/hexe.tflite" ]]; then
+    cp -n "$target_dir/Hexa.tflite" "$target_dir/hexe.tflite"
+    echo "Created compatibility default wake model from migrated Hexa.tflite: $target_dir/hexe.tflite" >&2
+  fi
+
+  rmdir "$legacy_dir" 2>/dev/null || true
+  [[ "$found" -eq 1 ]]
+}
+
 sync_models() {
-  local target_dir source_default legacy_hexa copied requested missing requested_models
+  local target_dir source_default copied requested missing requested_models
   target_dir="$(model_dir_abs)"
   source_default="$ROOT_DIR/runtime/openwakeword/models/hexe.tflite"
-  legacy_hexa="$ROOT_DIR/runtime/vioce_models/Hexa.tflite"
   copied=0
   mkdir -p "$target_dir"
 
@@ -135,8 +179,7 @@ sync_models() {
     done < <(find "$OPENWAKEWORD_LEGACY_MODEL_DIR" -maxdepth 1 -type f \( -name '*.tflite' -o -name '*.onnx' \) -print0)
   fi
 
-  if [[ ! -f "$target_dir/hexe.tflite" && -f "$legacy_hexa" ]]; then
-    cp -n "$legacy_hexa" "$target_dir/hexe.tflite"
+  if migrate_legacy_local_models "$target_dir"; then
     copied=1
   fi
 
