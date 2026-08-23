@@ -465,3 +465,10 @@ Issue cause: Timer create/status intents can publish MQTT requests, but stop/can
 Chosen fix: Seed `timer.stop` and `timer.cancel` as built-in local intents and route both through the existing async MQTT domain-event publisher.
 What changed: Added timer control intent definitions/matching, MQTT publisher support for `timer.stop_requested` and `timer.cancel_requested`, assistant dispatch wiring, docs, and tests for matcher/API/pipeline/domain-event behavior.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_domain_events.py tests/test_local_intents.py tests/test_voice_intents.py tests/test_voice_pipeline.py tests/test_intent_regressions.py tests/test_config.py` passed.
+###########
+Task #222
+Step objective: Add timer adjust-time voice intent that publishes MQTT domain events.
+Issue cause: Timer create/status/stop/cancel controls exist, but there is no first-class voice command for adding or removing time from an active timer.
+Chosen fix: Seed `timer.adjust_time` as a built-in local intent and publish signed adjustment requests as MQTT domain events for the timer-owning node to process.
+What changed: Added add/remove timer adjustment phrase matching, disambiguated adjustment utterances from timer creation, added `timer.adjust_time_requested` publisher and assistant dispatch wiring, updated docs, and covered matcher/API/pipeline/domain-event behavior.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_domain_events.py tests/test_local_intents.py tests/test_voice_intents.py tests/test_voice_pipeline.py tests/test_intent_regressions.py tests/test_config.py` passed.

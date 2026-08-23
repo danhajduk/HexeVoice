@@ -113,6 +113,20 @@ class TimerCreateEventPublisher(Protocol):
     ) -> DomainEventPublishDecision:
         ...
 
+    def publish_timer_adjust_request(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        delta_seconds: int,
+        delta_text: str,
+        requested_at: datetime,
+        scope: str = "active_for_endpoint",
+        timer_id: str | None = None,
+    ) -> DomainEventPublishDecision:
+        ...
+
     def status(self) -> dict[str, Any]:
         ...
 
@@ -171,6 +185,20 @@ class NoopTimerCreateEventPublisher:
         endpoint_id: str,
         session_id: str,
         heard_text: str,
+        requested_at: datetime,
+        scope: str = "active_for_endpoint",
+        timer_id: str | None = None,
+    ) -> DomainEventPublishDecision:
+        return DomainEventPublishDecision(status="skipped", reason="domain_events_disabled")
+
+    def publish_timer_adjust_request(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        delta_seconds: int,
+        delta_text: str,
         requested_at: datetime,
         scope: str = "active_for_endpoint",
         timer_id: str | None = None,
@@ -298,6 +326,39 @@ class AsyncDomainEventPublisher:
                 endpoint_id=endpoint_id,
                 session_id=session_id,
                 heard_text=heard_text,
+                requested_at=requested_at,
+                scope=scope,
+                timer_id=timer_id,
+            ),
+            decision,
+        )
+
+    def publish_timer_adjust_request(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        delta_seconds: int,
+        delta_text: str,
+        requested_at: datetime,
+        scope: str = "active_for_endpoint",
+        timer_id: str | None = None,
+    ) -> DomainEventPublishDecision:
+        event_id = f"voice-timer-adjust-{uuid.uuid4().hex}"
+        decision = DomainEventPublishDecision(
+            status="queued",
+            reason="queued_for_async_publish",
+            event_id=event_id,
+            event_type="timer.adjust_time_requested",
+        )
+        return self._enqueue(
+            lambda: self._delegate.publish_timer_adjust_request(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                delta_seconds=delta_seconds,
+                delta_text=delta_text,
                 requested_at=requested_at,
                 scope=scope,
                 timer_id=timer_id,
@@ -685,6 +746,98 @@ class HexeMqttTimerCreateEventPublisher:
             )
         )
 
+    def publish_timer_adjust_request(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        delta_seconds: int,
+        delta_text: str,
+        requested_at: datetime | None = None,
+        scope: str = "active_for_endpoint",
+        timer_id: str | None = None,
+    ) -> DomainEventPublishDecision:
+        event_type = "timer.adjust_time_requested"
+        event_id = f"voice-timer-adjust-{uuid.uuid4().hex}"
+        state = self._store.load()
+        trust = state.trust_activation
+        node_id = str(trust.node_id or "").strip()
+        topic = domain_event_topic(node_id, event_type) if node_id else None
+
+        if not self._settings.voice_domain_events_enabled:
+            return self._record(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
+        if state.operational_status.operational_ready is not True:
+            return self._record(DomainEventPublishDecision("skipped", "operational_readiness_required", event_id, event_type, topic))
+        if trust.trust_status != "trusted":
+            return self._record(DomainEventPublishDecision("skipped", "trusted_node_required", event_id, event_type, topic))
+        if not node_id or not trust.operational_mqtt_identity or not trust.operational_mqtt_token:
+            return self._record(DomainEventPublishDecision("skipped", "missing_operational_mqtt_credentials", event_id, event_type, topic))
+        if not trust.operational_mqtt_host or not trust.operational_mqtt_port:
+            return self._record(DomainEventPublishDecision("skipped", "missing_operational_mqtt_endpoint", event_id, event_type, topic))
+
+        request_timestamp = requested_at or utc_event_timestamp()
+        requested_at_text = format_event_timestamp(request_timestamp)
+        correlation_id = f"timer-adjust-{uuid.uuid4().hex}"
+        payload = {
+            "schema_version": 1,
+            "event_id": event_id,
+            "event_type": event_type,
+            "occurred_at": requested_at_text,
+            "source": {
+                "node_id": node_id,
+                "component": "hexevoice.assistant.local_intents",
+                "node_type": trust.node_type or self._settings.node_type,
+            },
+            "subject": {
+                "family": "timer",
+                "record_id": timer_id or endpoint_id,
+            },
+            "data": {
+                "intent": "timer.adjust_time",
+                "endpoint_id": endpoint_id,
+                "session_id": session_id,
+                "timer_id": timer_id,
+                "scope": scope,
+                "delta_seconds": int(delta_seconds),
+                "delta_hhmmss": format_duration_hhmmss(abs(int(delta_seconds))),
+                "delta_text": delta_text,
+                "direction": "add" if int(delta_seconds) >= 0 else "remove",
+                "correlation_id": correlation_id,
+                "heard_text": heard_text,
+                "requested_at": requested_at_text,
+            },
+            "severity": "info",
+            "priority": "normal",
+            "safety_critical": False,
+        }
+        try:
+            self._publish(
+                host=trust.operational_mqtt_host,
+                port=int(trust.operational_mqtt_port),
+                identity=trust.operational_mqtt_identity,
+                token=trust.operational_mqtt_token,
+                topic=topic or "",
+                payload=payload,
+                request_timestamp=request_timestamp,
+            )
+        except ModuleNotFoundError:
+            return self._record(DomainEventPublishDecision("failed", "missing_paho_mqtt_dependency", event_id, event_type, topic))
+        except Exception as exc:
+            log.warning("Timer adjust domain event publish failed: error=%s", exc)
+            return self._record(DomainEventPublishDecision("failed", "mqtt_publish_failed", event_id, event_type, topic))
+
+        return self._record(
+            DomainEventPublishDecision(
+                status="published",
+                reason="published",
+                event_id=event_id,
+                event_type=event_type,
+                topic=topic,
+                published_at=datetime.now(UTC).isoformat(),
+            )
+        )
+
     def status(self) -> dict[str, Any]:
         return {
             "provider": "hexe_mqtt",
@@ -694,6 +847,7 @@ class HexeMqttTimerCreateEventPublisher:
                 "timer.status_requested",
                 "timer.stop_requested",
                 "timer.cancel_requested",
+                "timer.adjust_time_requested",
             ],
             "last_decision": self._last_decision.as_dict() if self._last_decision else None,
             "recognition_event_type": "voice.intent.recognized",

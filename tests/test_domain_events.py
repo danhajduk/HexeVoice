@@ -201,6 +201,65 @@ def test_timer_control_publisher_uses_hexecore_node_event_contract(tmp_path, mon
     assert payload["data"]["heard_text"] == "stop the timer"
 
 
+def test_timer_adjust_publisher_uses_hexecore_node_event_contract(tmp_path, monkeypatch):
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-1",
+                    "node_type": "voice-node",
+                    "trust_status": "trusted",
+                    "operational_mqtt_identity": "hn_node-voice-1",
+                    "operational_mqtt_token": "mqtt-token",
+                    "operational_mqtt_host": "10.0.0.100",
+                    "operational_mqtt_port": 1883,
+                },
+                "operational_status": {
+                    "operational_ready": True,
+                },
+            }
+        )
+    )
+    captured = {}
+    settings = Settings(onboarding_state_path=state_path)
+    publisher = HexeMqttTimerCreateEventPublisher(settings=settings)
+
+    def fake_publish(**kwargs):
+        publisher._stamp_mqtt_sent(kwargs["payload"], kwargs["request_timestamp"])
+        captured.update(kwargs)
+
+    monkeypatch.setattr(publisher, "_publish", fake_publish)
+
+    requested_at = datetime(2026, 5, 4, 2, 3, 0, tzinfo=UTC)
+    decision = publisher.publish_timer_adjust_request(
+        endpoint_id="esp-pe-1",
+        session_id="session-adjust-1",
+        heard_text="remove two minutes from the timer",
+        delta_seconds=-120,
+        delta_text="2 minutes",
+        requested_at=requested_at,
+    )
+
+    assert decision.status == "published"
+    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/adjust_time_requested"
+    payload = captured["payload"]
+    assert payload["schema_version"] == 1
+    assert payload["event_type"] == "timer.adjust_time_requested"
+    assert payload["occurred_at"] == "2026-05-04T02:03:00+00:00"
+    assert payload["subject"] == {"family": "timer", "record_id": "esp-pe-1"}
+    assert payload["data"]["intent"] == "timer.adjust_time"
+    assert payload["data"]["endpoint_id"] == "esp-pe-1"
+    assert payload["data"]["session_id"] == "session-adjust-1"
+    assert payload["data"]["scope"] == "active_for_endpoint"
+    assert payload["data"]["delta_seconds"] == -120
+    assert payload["data"]["delta_hhmmss"] == "00:02:00"
+    assert payload["data"]["delta_text"] == "2 minutes"
+    assert payload["data"]["direction"] == "remove"
+    assert payload["data"]["correlation_id"].startswith("timer-adjust-")
+    assert payload["data"]["heard_text"] == "remove two minutes from the timer"
+
+
 def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, monkeypatch):
     state_path = tmp_path / "state.json"
     state_path.write_text(
@@ -294,6 +353,12 @@ def test_async_domain_event_publisher_queues_without_blocking():
                 reason="published",
                 event_type=f"timer.{payload['action']}_requested",
             )
+
+        def publish_timer_adjust_request(self, **payload):
+            time.sleep(0.25)
+            calls.append({"type": "timer_adjust", **payload})
+            published.set()
+            return DomainEventPublishDecision(status="published", reason="published", event_type="timer.adjust_time_requested")
 
         def publish_voice_intent_recognized(self, **payload):
             time.sleep(0.25)

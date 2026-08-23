@@ -53,6 +53,7 @@ class LocalIntentFinder:
                 or self._find_timer_status(normalized, requested_at=extraction_time)
                 or self._find_timer_control(normalized, action="stop", requested_at=extraction_time)
                 or self._find_timer_control(normalized, action="cancel", requested_at=extraction_time)
+                or self._find_timer_adjust_time(normalized, requested_at=extraction_time)
             )
         return None
 
@@ -71,7 +72,7 @@ class LocalIntentFinder:
             "provider": "local_pattern",
             "healthy": True,
             "configured": True,
-            "intents": ["timer.create", "timer.status", "timer.stop", "timer.cancel"],
+            "intents": ["timer.create", "timer.status", "timer.stop", "timer.cancel", "timer.adjust_time"],
         }
 
     def _candidate_intents(self) -> list[dict[str, Any]]:
@@ -167,6 +168,21 @@ class LocalIntentFinder:
         ):
             action = str(matcher.get("action") or command.rsplit(".", 1)[-1]).strip().lower()
             match = self._find_timer_control(text, action=action, requested_at=requested_at)
+            if match is not None:
+                return self._build_registered_match(
+                    intent=intent,
+                    command=command,
+                    slots=match.slots,
+                    requested_at=requested_at,
+                )
+            return None
+
+        if (
+            matcher.get("type") == "builtin_timer_adjust_time"
+            or command == "timer.adjust_time"
+            or intent.get("intent_id") == "timer.adjust_time"
+        ):
+            match = self._find_timer_adjust_time(text, requested_at=requested_at)
             if match is not None:
                 return self._build_registered_match(
                     intent=intent,
@@ -283,6 +299,8 @@ class LocalIntentFinder:
         self._registry.record_usage(intent_id=intent_id, status=status, reason=reason)
 
     def _find_timer_create(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        if _extract_timer_adjustment(text) is not None:
+            return None
         duration_text = _extract_timer_duration_text(text)
         if duration_text is None:
             return None
@@ -358,6 +376,31 @@ class LocalIntentFinder:
                 "requested_at": extraction_time.isoformat(),
             },
             reply_text=reply_text,
+        )
+
+    def _find_timer_adjust_time(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        adjustment = _extract_timer_adjustment(text)
+        if adjustment is None:
+            return None
+        direction, duration_text = adjustment
+        duration_seconds = _parse_duration_seconds(duration_text)
+        if duration_seconds is None:
+            return None
+        signed_seconds = duration_seconds if direction == "add" else -duration_seconds
+        formatted_duration = _format_duration(duration_seconds)
+        extraction_time = requested_at or datetime.now(UTC)
+        return LocalIntentMatch(
+            intent="timer.adjust_time",
+            command="timer.adjust_time",
+            slots={
+                "delta_seconds": signed_seconds,
+                "delta_hhmmss": _format_duration_hhmmss(duration_seconds),
+                "delta_text": formatted_duration,
+                "direction": direction,
+                "scope": "active_for_endpoint",
+                "requested_at": extraction_time.isoformat(),
+            },
+            reply_text="Updating the timer.",
         )
 
 
@@ -462,6 +505,20 @@ def _extract_timer_duration_text(text: str) -> str | None:
         match = re.match(pattern, text)
         if match:
             return _trim_duration_tail(match.group("duration"))
+    return None
+
+
+def _extract_timer_adjustment(text: str) -> tuple[str, str] | None:
+    patterns: list[tuple[str, str]] = [
+        ("add", r"^(?:please\s+)?extend\s+(?:the\s+)?timer\s+by\s+(?P<duration>.+)$"),
+        ("add", r"^(?:please\s+)?add\s+(?P<duration>.+?)(?:\s+(?:to|onto)\s+(?:the\s+)?timer)?$"),
+        ("remove", r"^(?:please\s+)?(?:remove|subtract)\s+(?P<duration>.+?)(?:\s+from\s+(?:the\s+)?timer)?$"),
+        ("remove", r"^(?:please\s+)?take\s+(?P<duration>.+?)\s+off\s+(?:the\s+)?timer$"),
+    ]
+    for direction, pattern in patterns:
+        match = re.match(pattern, text)
+        if match:
+            return direction, _trim_duration_tail(match.group("duration"))
     return None
 
 

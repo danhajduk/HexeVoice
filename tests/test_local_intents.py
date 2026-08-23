@@ -60,6 +60,28 @@ def test_local_intent_finder_detects_timer_stop_and_cancel():
     assert cancel.reply_text == "Cancelling the timer."
 
 
+def test_local_intent_finder_detects_timer_adjust_time():
+    finder = LocalIntentFinder()
+
+    add = finder.find("add five minutes to the timer")
+    remove = finder.find("remove 2 minutes from the timer")
+
+    assert add is not None
+    assert add.intent == "timer.adjust_time"
+    assert add.command == "timer.adjust_time"
+    assert add.slots["delta_seconds"] == 300
+    assert add.slots["delta_hhmmss"] == "00:05:00"
+    assert add.slots["delta_text"] == "5 minutes"
+    assert add.slots["direction"] == "add"
+    assert add.slots["scope"] == "active_for_endpoint"
+    assert add.reply_text == "Updating the timer."
+    assert remove is not None
+    assert remove.command == "timer.adjust_time"
+    assert remove.slots["delta_seconds"] == -120
+    assert remove.slots["delta_hhmmss"] == "00:02:00"
+    assert remove.slots["direction"] == "remove"
+
+
 def test_local_intent_finder_ignores_non_timer_text():
     finder = LocalIntentFinder()
 

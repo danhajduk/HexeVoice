@@ -22,6 +22,7 @@ Seeded built-ins:
 - `timer.status`: publishes a timer status request domain event.
 - `timer.stop`: publishes a timer stop request domain event.
 - `timer.cancel`: publishes a timer cancel request domain event.
+- `timer.adjust_time`: publishes a signed timer adjustment request domain event.
 - `voice.time.query`: Voice Node owned local response for "What is the time?" without an external dispatch side effect. Its reply uses spoken-form clock text, such as `four oh five PM`, so TTS does not read leading-zero minutes literally.
 - `voice.debug.followup`: Voice Node owned follow-up test intent. Say "test follow up" to make the backend ask `Should I complete the follow-up test?`, then answer "yes" or "no" to exercise the follow-up listening path.
 - `voice.confirm.yes` and `voice.confirm.no`: contextual Voice Node owned responses for pending follow-ups. They only match while the endpoint or session has an active follow-up; standalone "yes" or "no" is ignored by the local intent matcher.
@@ -120,6 +121,15 @@ recognizes phrases such as `cancel the timer`, `delete the timer`, and
 `endpoint_id`, `session_id`, `scope`, `heard_text`, `requested_at`, and a
 correlation id. The timer-owning node remains responsible for selecting,
 stopping, cancelling, or rejecting ambiguous timers.
+
+`timer.adjust_time` recognizes phrases such as `add five minutes to the timer`,
+`extend the timer by ten minutes`, `remove two minutes from the timer`, and
+`take two minutes off the timer`. It publishes `timer.adjust_time_requested` to
+`hexe/nodes/<voice-node-id>/events/timer/adjust_time_requested` with
+`delta_seconds` signed positive for add and negative for remove, plus
+`delta_hhmmss`, `delta_text`, `direction`, `endpoint_id`, `session_id`, `scope`,
+`heard_text`, `requested_at`, and a correlation id. The timer-owning node applies
+the delta to the active timer for that endpoint or rejects ambiguous requests.
 
 Timer expiry is event-driven. HexeVoice subscribes to the promoted
 `hexe/events/timer/completed` event stream and resolves the target endpoint from

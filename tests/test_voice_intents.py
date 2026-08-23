@@ -17,8 +17,8 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
 
     snapshot = registry.snapshot()
 
-    assert snapshot["registered_count"] == 8
-    assert snapshot["active_count"] == 8
+    assert snapshot["registered_count"] == 9
+    assert snapshot["active_count"] == 9
     assert snapshot["intents"][0]["intent_id"] == "timer.create"
     assert snapshot["intents"][1]["intent_id"] == "timer.status"
     assert snapshot["intents"][1]["constraints"]["dispatch_side_effect"] == "timer.status_requested"
@@ -26,19 +26,21 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
     assert snapshot["intents"][2]["constraints"]["dispatch_side_effect"] == "timer.stop_requested"
     assert snapshot["intents"][3]["intent_id"] == "timer.cancel"
     assert snapshot["intents"][3]["constraints"]["dispatch_side_effect"] == "timer.cancel_requested"
-    assert snapshot["intents"][4]["intent_id"] == "voice.time.query"
-    assert snapshot["intents"][4]["owner_service"] == "hexevoice"
-    assert snapshot["intents"][4]["metadata"]["owned_by"] == "voice_node"
-    assert snapshot["intents"][5]["intent_id"] == "voice.debug.followup"
-    assert snapshot["intents"][5]["metadata"]["family"] == "debug"
-    assert snapshot["intents"][6]["intent_id"] == "voice.confirm.yes"
-    assert snapshot["intents"][7]["intent_id"] == "voice.confirm.no"
+    assert snapshot["intents"][4]["intent_id"] == "timer.adjust_time"
+    assert snapshot["intents"][4]["constraints"]["dispatch_side_effect"] == "timer.adjust_time_requested"
+    assert snapshot["intents"][5]["intent_id"] == "voice.time.query"
+    assert snapshot["intents"][5]["owner_service"] == "hexevoice"
+    assert snapshot["intents"][5]["metadata"]["owned_by"] == "voice_node"
+    assert snapshot["intents"][6]["intent_id"] == "voice.debug.followup"
+    assert snapshot["intents"][6]["metadata"]["family"] == "debug"
+    assert snapshot["intents"][7]["intent_id"] == "voice.confirm.yes"
+    assert snapshot["intents"][8]["intent_id"] == "voice.confirm.no"
 
     registry.transition_intent(intent_id="timer.create", status="disabled", reason="unit_test")
     reloaded = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
 
     assert reloaded.get_intent(intent_id="timer.create")["status"] == "disabled"
-    assert reloaded.snapshot()["active_count"] == 7
+    assert reloaded.snapshot()["active_count"] == 8
 
 
 def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
@@ -98,6 +100,27 @@ def test_registered_intent_finder_matches_timer_stop_and_cancel(tmp_path):
     assert cancel.command == "timer.cancel"
     assert cancel.slots["action"] == "cancel"
     assert cancel.reply_text == "Cancelling the timer."
+
+
+def test_registered_intent_finder_matches_timer_adjust_time(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    finder = LocalIntentFinder(registry=registry)
+    requested_at = datetime(2026, 5, 9, 18, 34, tzinfo=UTC)
+
+    add = finder.find("extend the timer by ten minutes", requested_at=requested_at)
+    remove = finder.find("take 2 minutes off the timer", requested_at=requested_at)
+
+    assert add is not None
+    assert add.command == "timer.adjust_time"
+    assert add.provider_id == "registered_intent"
+    assert add.slots["delta_seconds"] == 600
+    assert add.slots["direction"] == "add"
+    assert add.slots["requested_at"] == requested_at.isoformat()
+    assert add.reply_text == "Updating the timer."
+    assert remove is not None
+    assert remove.command == "timer.adjust_time"
+    assert remove.slots["delta_seconds"] == -120
+    assert remove.slots["direction"] == "remove"
 
 
 def test_confirmation_intents_require_pending_followup(tmp_path):
@@ -172,7 +195,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     )
 
     assert registered.status_code == 200
-    assert registered.json()["registered_count"] == 9
+    assert registered.json()["registered_count"] == 10
 
     dispatch = client.post(
         "/api/voice/intents/dispatch",
@@ -194,7 +217,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
         json={"status": "disabled", "reason": "unit_test"},
     )
     assert disabled.status_code == 200
-    assert disabled.json()["active_count"] == 8
+    assert disabled.json()["active_count"] == 9
 
     dispatch_after_disable = client.post(
         "/api/voice/intents/dispatch",
@@ -295,6 +318,48 @@ def test_voice_intent_invoke_dispatches_timer_cancel_request(tmp_path):
     assert payload["slots"]["action"] == "cancel"
     assert payload["reply_text"] == "Cancelling the timer."
     assert payload["dispatch_event"]["event_type"] == "timer.cancel_requested"
+
+
+def test_voice_intent_invoke_dispatches_timer_adjust_add_request(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/voice/intents/invoke",
+        json={"endpoint_id": "box-1", "text": "Add 5 minutes to the timer"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["matched"] is True
+    assert payload["intent_id"] == "timer.adjust_time"
+    assert payload["command"] == "timer.adjust_time"
+    assert payload["slots"]["delta_seconds"] == 300
+    assert payload["slots"]["delta_hhmmss"] == "00:05:00"
+    assert payload["slots"]["delta_text"] == "5 minutes"
+    assert payload["slots"]["direction"] == "add"
+    assert payload["reply_text"] == "Updating the timer."
+    assert payload["dispatch_event"]["event_type"] == "timer.adjust_time_requested"
+
+
+def test_voice_intent_invoke_dispatches_timer_adjust_remove_request(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/voice/intents/invoke",
+        json={"endpoint_id": "box-1", "text": "Remove two minutes from the timer"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["matched"] is True
+    assert payload["intent_id"] == "timer.adjust_time"
+    assert payload["command"] == "timer.adjust_time"
+    assert payload["slots"]["delta_seconds"] == -120
+    assert payload["slots"]["delta_hhmmss"] == "00:02:00"
+    assert payload["slots"]["delta_text"] == "2 minutes"
+    assert payload["slots"]["direction"] == "remove"
+    assert payload["reply_text"] == "Updating the timer."
+    assert payload["dispatch_event"]["event_type"] == "timer.adjust_time_requested"
 
 
 def test_assistant_turn_uses_registered_timer_intent_in_app(tmp_path):

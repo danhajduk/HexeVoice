@@ -250,6 +250,88 @@ def built_in_timer_control_intent(*, action: str) -> dict[str, Any]:
     }
 
 
+def timer_adjust_time_intent_definition() -> dict[str, Any]:
+    return {
+        "utterance_examples": [
+            "add 5 minutes to the timer",
+            "add five minutes",
+            "remove 2 minutes from the timer",
+            "take two minutes off the timer",
+            "extend the timer by 10 minutes",
+        ],
+        "patterns": [
+            r"^(?:please\s+)?extend\s+(?:the\s+)?timer\s+by\s+(?P<duration>.+)$",
+            r"^(?:please\s+)?add\s+(?P<duration>.+?)(?:\s+(?:to|onto)\s+(?:the\s+)?timer)?$",
+            r"^(?:please\s+)?(?:remove|subtract)\s+(?P<duration>.+?)(?:\s+from\s+(?:the\s+)?timer)?$",
+            r"^(?:please\s+)?take\s+(?P<duration>.+?)\s+off\s+(?:the\s+)?timer$",
+        ],
+        "slots": {
+            "delta_seconds": {"type": "integer"},
+            "delta_text": {"type": "string"},
+            "delta_hhmmss": {"type": "string"},
+            "direction": {"type": "string"},
+            "scope": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "required": {
+                "delta_seconds": {"type": "integer", "source": "delta_seconds"},
+                "delta_text": {"type": "string", "source": "delta_text"},
+                "delta_hhmmss": {"type": "string", "source": "delta_hhmmss"},
+                "direction": {"type": "string", "source": "direction"},
+                "scope": {"type": "string", "source": "scope"},
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "domain_event",
+            "command": "timer.adjust_time",
+            "event_type": "timer.adjust_time_requested",
+        },
+        "response": {
+            "reply_template": "Updating the timer.",
+        },
+        "reply": {
+            "text_template": "Updating the timer.",
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "builtin_timer_adjust_time",
+        },
+    }
+
+
+def built_in_timer_adjust_time_intent() -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": "timer.adjust_time",
+        "intent_name": "Adjust timer time",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": timer_adjust_time_intent_definition(),
+        "constraints": {
+            "requires_operational_mqtt": True,
+            "dispatch_side_effect": "timer.adjust_time_requested",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "timer",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def time_query_intent_definition() -> dict[str, Any]:
     return {
         "utterance_examples": [
@@ -569,6 +651,7 @@ class VoiceIntentStateStore:
                     VoiceIntentRecord.model_validate(built_in_timer_status_intent()),
                     VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="stop")),
                     VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="cancel")),
+                    VoiceIntentRecord.model_validate(built_in_timer_adjust_time_intent()),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
                     VoiceIntentRecord.model_validate(built_in_test_followup_intent()),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")),
@@ -606,6 +689,9 @@ class VoiceIntentStateStore:
             seeded = True
         if "timer.cancel" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="cancel")))
+            seeded = True
+        if "timer.adjust_time" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_adjust_time_intent()))
             seeded = True
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))

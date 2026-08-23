@@ -55,6 +55,14 @@ class FakeTimerEventPublisher:
             topic=f"hexe/nodes/node-1/events/timer/{payload['action']}_requested",
         )
 
+    def publish_timer_adjust_request(self, **payload):
+        self.calls.append(payload)
+        return DomainEventPublishDecision(
+            status="published",
+            reason="published",
+            topic="hexe/nodes/node-1/events/timer/adjust_time_requested",
+        )
+
     def status(self):
         return {"provider": "fake", "enabled": True, "last_decision": None}
 
@@ -86,6 +94,12 @@ class SlowRecognitionPublisher:
             reason="published",
             event_type=f"timer.{payload['action']}_requested",
         )
+
+    def publish_timer_adjust_request(self, **payload):
+        time.sleep(self.delay_s)
+        self.calls.append({"type": "timer_adjust", **payload})
+        self.published.set()
+        return DomainEventPublishDecision(status="published", reason="published", event_type="timer.adjust_time_requested")
 
     def publish_voice_intent_recognized(self, **payload):
         time.sleep(self.delay_s)
@@ -304,6 +318,39 @@ def test_voice_turn_pipeline_handles_timer_stop_intent_locally(tmp_path):
             "endpoint_id": "esp-pe-1",
             "session_id": "voice-session-stop",
             "heard_text": "stop the timer",
+            "scope": "active_for_endpoint",
+            "timer_id": None,
+            "requested_at": publisher.calls[0]["requested_at"],
+        }
+    ]
+
+
+def test_voice_turn_pipeline_handles_timer_adjust_time_intent_locally(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    publisher = FakeTimerEventPublisher()
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime, timer_event_publisher=publisher)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, add five minutes to the timer"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-pe-1", session_id="voice-session-adjust", chunk_count=1)
+    )
+
+    assert result.transcript.text == "add five minutes to the timer"
+    assert result.assistant_response.handled_locally is True
+    assert result.assistant_response.command == "timer.adjust_time"
+    assert result.assistant_response.spoken_text == "Updating the timer."
+    assert publisher.calls == [
+        {
+            "endpoint_id": "esp-pe-1",
+            "session_id": "voice-session-adjust",
+            "heard_text": "add five minutes to the timer",
+            "delta_seconds": 300,
+            "delta_text": "5 minutes",
             "scope": "active_for_endpoint",
             "timer_id": None,
             "requested_at": publisher.calls[0]["requested_at"],
