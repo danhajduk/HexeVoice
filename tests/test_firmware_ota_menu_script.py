@@ -45,3 +45,43 @@ def test_firmware_ota_menu_lists_running_ota_status(tmp_path):
     assert "esp-box-1" in result.stdout
     assert "running:42%" in result.stdout
     assert "new/esp_box_3" in result.stdout
+
+
+def test_firmware_ota_menu_clear_calls_clear_endpoint(tmp_path):
+    curl = tmp_path / "curl"
+    calls = tmp_path / "calls.txt"
+    curl.write_text(
+        textwrap.dedent(
+            f"""\
+            #!/usr/bin/env bash
+            set -euo pipefail
+            url="${{@: -1}}"
+            printf '%s\\n' "$url" >> {calls}
+            case "$url" in
+              */api/firmware/ota/clear)
+                cat <<'JSON'
+            {{"cleared":2,"endpoint_id":null}}
+            JSON
+                ;;
+              *)
+                echo "unexpected URL: $url" >&2
+                exit 2
+                ;;
+            esac
+            """
+        ),
+        encoding="utf-8",
+    )
+    curl.chmod(0o755)
+
+    env = {**os.environ, "PATH": f"{tmp_path}:{os.environ['PATH']}", "API_BASE_URL": "http://hexe.local:9004"}
+    result = subprocess.run(
+        ["bash", "scripts/firmware-ota-menu.sh", "--clear"],
+        check=True,
+        text=True,
+        capture_output=True,
+        env=env,
+    )
+
+    assert "Cleared 2 OTA command record(s)." in result.stdout
+    assert calls.read_text(encoding="utf-8").splitlines() == ["http://hexe.local:9004/api/firmware/ota/clear"]

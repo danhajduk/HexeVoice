@@ -83,6 +83,7 @@ from hexevoice.api.models import (
     EndpointVolumeStatusResponse,
     FirmwareOtaPushRequest,
     FirmwareOtaPushResponse,
+    FirmwareOtaClearResponse,
     OnboardingSessionPollResponse,
     OnboardingSessionStartResponse,
     OnboardingStatusResponse,
@@ -1330,6 +1331,13 @@ def create_app(
             signature_key_id=signature["signature_key_id"],
             manifest_signature=signature["manifest_signature"],
             reason=result.get("reason"),
+        )
+
+    @app.post("/api/firmware/ota/clear", response_model=FirmwareOtaClearResponse)
+    async def firmware_ota_clear(endpoint_id: str | None = None) -> FirmwareOtaClearResponse:
+        return FirmwareOtaClearResponse(
+            cleared=voice_session_manager.clear_ota_commands(endpoint_id=endpoint_id),
+            endpoint_id=endpoint_id,
         )
 
     @app.websocket("/api/voice/ws")

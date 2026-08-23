@@ -367,6 +367,17 @@ class VoiceSessionManager:
         finally:
             self._runtime_context.reset(token)
 
+    def clear_ota_commands(self, *, endpoint_id: str | None = None) -> int:
+        request_ids = [
+            request_id
+            for request_id, record in self._command_records.items()
+            if record.get("command_type") == "ota.update"
+            and (endpoint_id is None or record.get("endpoint_id") == endpoint_id)
+        ]
+        for request_id in request_ids:
+            del self._command_records[request_id]
+        return len(request_ids)
+
     async def push_volume_command(self, *, endpoint_id: str, volume_percent: int) -> dict:
         result = await self._push_endpoint_command(
             endpoint_id=endpoint_id,

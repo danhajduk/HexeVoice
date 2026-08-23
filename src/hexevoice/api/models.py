@@ -418,6 +418,11 @@ class FirmwareOtaPushResponse(BaseModel):
     reason: str | None = None
 
 
+class FirmwareOtaClearResponse(BaseModel):
+    cleared: int
+    endpoint_id: str | None = None
+
+
 class NodeStatusResponse(BaseModel):
     node_name: str
     node_type: str

@@ -512,7 +512,9 @@ reported endpoint firmware version differs from the latest exported artifact.
 For terminal-driven updates, `scripts/firmware-ota-menu.sh` lists endpoints from
 `http://hexe.local:9004` by default and offers individual or bulk OTA pushes for
 endpoints with available firmware updates. The menu also shows each endpoint's
-reported OTA status when firmware heartbeat exposes OTA activity.
+reported OTA status when firmware heartbeat exposes OTA activity, and can clear
+remembered OTA command history from the node when stale command results should
+be hidden from the terminal view.
 
 - expected public node API: `http://10.0.0.100:9004`
 

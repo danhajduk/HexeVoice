@@ -8,7 +8,7 @@ HTTP_TIMEOUT_S="${HTTP_TIMEOUT_S:-20}"
 
 usage() {
   cat <<'USAGE'
-Usage: scripts/firmware-ota-menu.sh [--list|--all]
+Usage: scripts/firmware-ota-menu.sh [--list|--all|--clear]
 
 Lists HexeVoice endpoints, shows their firmware versions and update status,
 then opens a menu to OTA one endpoint or every endpoint with an available update.
@@ -23,6 +23,7 @@ Examples:
   scripts/firmware-ota-menu.sh
   scripts/firmware-ota-menu.sh --list
   scripts/firmware-ota-menu.sh --all
+  scripts/firmware-ota-menu.sh --clear
   API_BASE_URL=http://127.0.0.1:9004 scripts/firmware-ota-menu.sh
 USAGE
 }
@@ -36,6 +37,12 @@ curl_json() {
 
 fetch_endpoints() {
   curl_json "${API_BASE_URL%/}/api/endpoints"
+}
+
+clear_screen() {
+  if [[ -t 1 ]] && command -v clear >/dev/null 2>&1; then
+    clear
+  fi
 }
 
 load_endpoint_rows() {
@@ -232,14 +239,27 @@ push_all_updates() {
   echo "Bulk OTA complete: pushed=${pushed} skipped=${skipped}"
 }
 
+clear_ota_history() {
+  curl_json -X POST "${API_BASE_URL%/}/api/firmware/ota/clear" | python3 -c '
+import json
+import sys
+
+payload = json.load(sys.stdin)
+cleared = payload.get("cleared", 0)
+print(f"Cleared {cleared} OTA command record(s).")
+'
+}
+
 menu() {
   while true; do
+    clear_screen
     load_endpoint_rows
     print_endpoints
     cat <<'MENU'
 Menu:
   number  OTA one endpoint
   a       OTA all endpoints with an available update
+  c       Clear OTA command history
   r       Refresh endpoint list
   q       Quit
 MENU
@@ -247,6 +267,14 @@ MENU
     case "${choice}" in
       a|A|all|ALL)
         push_all_updates
+        read -r -p "Press Enter to continue..." _
+        ;;
+      c|C|clear|CLEAR)
+        read -r -p "Clear remembered OTA command status from the node? [y/N] " confirm
+        case "${confirm}" in
+          y|Y|yes|YES) clear_ota_history ;;
+          *) echo "Clear skipped." ;;
+        esac
         read -r -p "Press Enter to continue..." _
         ;;
       r|R|refresh|REFRESH)
@@ -275,6 +303,9 @@ case "${1:-}" in
     load_endpoint_rows
     print_endpoints
     push_all_updates
+    ;;
+  --clear|clear)
+    clear_ota_history
     ;;
   "")
     menu

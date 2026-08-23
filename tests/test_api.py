@@ -346,6 +346,46 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     ).hexdigest()
 
 
+def test_firmware_ota_clear_removes_ota_command_records(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    (firmware_dir / "hexe_firmware.bin").write_bytes(b"firmware-bin")
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "endpoint_id": "esp-box-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-box-1-1",
+                "payload": {"firmware_version": "0.1.0"},
+            }
+        )
+        websocket.receive_json()
+        client.post(
+            "/api/firmware/ota/push",
+            json={"endpoint_id": "esp-box-1", "version": "0.1.1"},
+        )
+        websocket.receive_json()
+
+    assert len(client.get("/api/voice/status").json()["commands"]) == 1
+
+    response = client.post("/api/firmware/ota/clear")
+
+    assert response.status_code == 200
+    assert response.json() == {"cleared": 1, "endpoint_id": None}
+    assert client.get("/api/voice/status").json()["commands"] == []
+
+
 def test_endpoint_volume_command_sends_event_to_connected_endpoint(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
