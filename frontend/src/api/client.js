@@ -342,6 +342,10 @@ export async function getEndpointStatus() {
   return fetchJson("/api/endpoint/status");
 }
 
+export async function getEndpointRegistry() {
+  return fetchJson("/api/endpoints");
+}
+
 export async function pushFirmwareOta({ endpointId, filename, version }) {
   return sendJson("/api/firmware/ota/push", {
     body: {

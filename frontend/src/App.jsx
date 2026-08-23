@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getCapabilities,
+  getEndpointRegistry,
   getEndpointStatus,
   getGovernanceCurrent,
   getNodeStatus,
@@ -287,6 +288,7 @@ export default function App() {
   const [voiceIntents, setVoiceIntents] = useState(null);
   const [ttsSettings, setTtsSettings] = useState(null);
   const [endpointStatus, setEndpointStatus] = useState(null);
+  const [endpointRegistry, setEndpointRegistry] = useState(null);
   const [setupReadiness, setSetupReadiness] = useState(null);
   const [setupBootstrapStatus, setSetupBootstrapStatus] = useState(null);
   const [error, setError] = useState("");
@@ -326,6 +328,7 @@ export default function App() {
       voiceIntentPayload,
       ttsSettingsPayload,
       endpointPayload,
+      endpointRegistryPayload,
     ] = await Promise.all([
       getNodeStatus(),
       getOnboardingStatus(),
@@ -338,6 +341,7 @@ export default function App() {
       getVoiceIntents().catch(() => null),
       getTtsSettings().catch(() => null),
       getEndpointStatus().catch(() => null),
+      getEndpointRegistry().catch(() => null),
     ]);
     setStatus(statusPayload);
     setOnboarding(onboardingPayload);
@@ -350,6 +354,7 @@ export default function App() {
     setVoiceIntents(voiceIntentPayload);
     setTtsSettings(ttsSettingsPayload);
     setEndpointStatus(endpointPayload);
+    setEndpointRegistry(endpointRegistryPayload);
     setError("");
   }, []);
 
@@ -367,6 +372,7 @@ export default function App() {
       getVoiceIntents().catch(() => null),
       getTtsSettings().catch(() => null),
       getEndpointStatus().catch(() => null),
+      getEndpointRegistry().catch(() => null),
     ])
       .then(
         ([
@@ -381,6 +387,7 @@ export default function App() {
           voiceIntentPayload,
           ttsSettingsPayload,
           endpointPayload,
+          endpointRegistryPayload,
         ]) => {
         if (!mounted) {
           return;
@@ -396,6 +403,7 @@ export default function App() {
         setVoiceIntents(voiceIntentPayload);
         setTtsSettings(ttsSettingsPayload);
         setEndpointStatus(endpointPayload);
+        setEndpointRegistry(endpointRegistryPayload);
       })
       .catch((err) => {
         if (mounted) {
@@ -583,15 +591,17 @@ export default function App() {
 
     async function refreshVisibleEndpoint() {
       try {
-        const [voicePayload, endpointPayload] = await Promise.all([
+        const [voicePayload, endpointPayload, endpointRegistryPayload] = await Promise.all([
           getVoiceStatus().catch(() => null),
           getEndpointStatus().catch(() => null),
+          getEndpointRegistry().catch(() => null),
         ]);
         if (!mounted) {
           return;
         }
         setVoiceStatus(voicePayload);
         setEndpointStatus(endpointPayload);
+        setEndpointRegistry(endpointRegistryPayload);
       } catch (err) {
         if (mounted) {
           setError(String(err.message || err));
@@ -737,6 +747,7 @@ export default function App() {
           capabilities={capabilities}
           voiceStatus={voiceStatus}
           endpointStatus={endpointStatus}
+          endpointRegistry={endpointRegistry}
           onRefresh={refresh}
         />
       );

@@ -91,9 +91,14 @@ function readFileAsBase64(file) {
   });
 }
 
-function endpointHealth(voiceStatus) {
-  const connected = voiceStatus?.connection_state === "connected";
-  const online = voiceStatus?.transport_health === "online";
+function endpointDisplayName(endpointStatus) {
+  const provisioning = endpointCapabilities(endpointStatus).provisioning || {};
+  return endpointStatus?.display_name || provisioning.display_name || "none";
+}
+
+function endpointHealthForProjection(projection, endpointStatus) {
+  const connected = projection.connection_state === "connected";
+  const online = projection.transport_health === "online" || endpointStatus?.connection_state === "online";
   if (connected && online) {
     return "green";
   }
@@ -109,6 +114,23 @@ function voiceStateProjection(voiceStatus) {
     ux_state: voiceStatus?.ux_state || voiceStatus?.active_session?.ux_state || "idle",
     session_state: voiceStatus?.session_state || voiceStatus?.active_session?.session_state || "none",
     transport_health: voiceStatus?.transport_health || "offline",
+  };
+}
+
+function voiceStateProjectionForEndpoint(voiceStatus, endpointId) {
+  const endpointVoice = endpointId ? voiceStatus?.endpoints?.[endpointId] : null;
+  if (endpointVoice) {
+    return {
+      connection_state: endpointVoice.connection_state || "offline",
+      ux_state: endpointVoice.ux_state || endpointVoice.active_session?.ux_state || "idle",
+      session_state: endpointVoice.session_state || endpointVoice.active_session?.session_state || "none",
+      transport_health: endpointVoice.transport_health || "offline",
+      active_session: endpointVoice.active_session || null,
+    };
+  }
+  return {
+    ...voiceStateProjection(voiceStatus),
+    active_session: voiceStatus?.active_session || null,
   };
 }
 
@@ -188,23 +210,32 @@ function VoicePipelinePanel({ voiceStatus }) {
   );
 }
 
-function EndpointStatusTable({ voiceStatus, endpointStatus, onPushFirmwareUpdate, firmwareUpdateBusy }) {
+function EndpointStatusTable({ voiceStatus, endpointStatus, endpointRegistry, onPushFirmwareUpdate, firmwareUpdateBusy }) {
   const [selectedEndpoint, setSelectedEndpoint] = useState(null);
-  const session = voiceStatus?.active_session;
-  const projection = voiceStateProjection(voiceStatus);
-  const storage = endpointCapabilities(endpointStatus).storage || {};
   const timings = voiceStatus?.last_turn_timings || {};
-  const endpointRows = [
-    {
-      health: endpointHealth(voiceStatus),
-      endpointId: endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected",
-      displayName: endpointStatus?.display_name || "none",
-      zoneId: endpointStatus?.zone_id || "none",
-      firmwareVersion: endpointStatus?.firmware_version || "unknown",
-      deviceState: endpointStatus?.device_state || "unknown",
-      connectionState: endpointStatus?.connection_state || "unknown",
+  const endpointStatuses = Array.isArray(endpointRegistry?.endpoints) && endpointRegistry.endpoints.length
+    ? endpointRegistry.endpoints
+    : endpointStatus
+      ? [endpointStatus]
+      : [];
+  const endpointRows = (endpointStatuses.length ? endpointStatuses : [null]).map((currentEndpointStatus) => {
+    const endpointId = currentEndpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected";
+    const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
+    const storage = endpointCapabilities(currentEndpointStatus).storage || {};
+    const session = projection.active_session || (
+      voiceStatus?.active_session?.endpoint_id === endpointId ? voiceStatus.active_session : null
+    );
+    const endpointVoice = endpointId ? voiceStatus?.endpoints?.[endpointId] : null;
+    return {
+      health: endpointHealthForProjection(projection, currentEndpointStatus),
+      endpointId,
+      displayName: endpointDisplayName(currentEndpointStatus),
+      zoneId: currentEndpointStatus?.zone_id || "none",
+      firmwareVersion: currentEndpointStatus?.firmware_version || "unknown",
+      deviceState: currentEndpointStatus?.device_state || "unknown",
+      connectionState: currentEndpointStatus?.connection_state || "unknown",
       fileTransfer: storage.media_transfer_active ? "downloading file" : storage.media_transfer_status || "idle",
-      lastSeenAt: formatLocalDateTime(endpointStatus?.last_seen_at),
+      lastSeenAt: formatLocalDateTime(currentEndpointStatus?.last_seen_at),
       voiceConnection: projection.connection_state,
       uxState: projection.ux_state,
       sessionState: projection.session_state || "none",
@@ -212,22 +243,23 @@ function EndpointStatusTable({ voiceStatus, endpointStatus, onPushFirmwareUpdate
       sessionId: session?.session_id || "none",
       sttLatency: formatMs(timings.stt_ms),
       totalLatency: formatMs(timings.total_ms),
-      firmwareUpdate: endpointStatus?.firmware_update || {},
+      firmwareUpdate: currentEndpointStatus?.firmware_update || {},
       raw: {
-        endpointStatus,
+        endpointStatus: currentEndpointStatus,
         voiceStatus: {
-          endpoint_id: voiceStatus?.endpoint_id,
-          connection_state: voiceStatus?.connection_state,
-          transport_health: voiceStatus?.transport_health,
-          active_session: voiceStatus?.active_session,
-          state_projection: voiceStatus?.state_projection,
+          endpoint_id: endpointId,
+          endpoint_voice: endpointVoice,
+          connection_state: projection.connection_state,
+          transport_health: projection.transport_health,
+          active_session: session,
+          state_projection: projection,
           last_turn_timings: voiceStatus?.last_turn_timings,
-          last_event_type: voiceStatus?.last_event_type,
+          last_event_type: endpointVoice?.last_event_type || voiceStatus?.last_event_type,
           last_error: voiceStatus?.last_error,
         },
       },
-    },
-  ];
+    };
+  });
   const selectedDetailRows = selectedEndpoint
     ? [
         ["Endpoint", selectedEndpoint.endpointId],
@@ -1237,6 +1269,7 @@ function VoiceSessionHistoryPanel({
 export function VoiceEndpointDashboardSection({
   voiceStatus,
   endpointStatus,
+  endpointRegistry,
   onRefresh,
 }) {
   const [actionMessage, setActionMessage] = useState("");
@@ -1575,6 +1608,7 @@ export function VoiceEndpointDashboardSection({
       <EndpointStatusTable
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
+        endpointRegistry={endpointRegistry}
         onPushFirmwareUpdate={handlePushFirmwareUpdate}
         firmwareUpdateBusy={firmwareUpdateBusy}
       />

@@ -496,9 +496,10 @@ resource usage. External faster-whisper STT and Piper TTS report Docker
 container usage when enabled. The same status payload includes process IDs for
 monitored services where available.
 
-The Voice Endpoint runtime page shows endpoint status as summary cards. Selecting
-an endpoint opens a blurred-background detail popup with the full registry,
-voice-state, latency, session, and raw debug payload for that endpoint.
+The Voice Endpoint runtime page shows all registered endpoint statuses as
+summary cards. Selecting an endpoint opens a blurred-background detail popup
+with the full registry, voice-state, latency, session, and raw debug payload for
+that endpoint.
 
 Registered short utterance intents such as `yes`, `no`, `stop`, `ok`, and
 `okay` are treated as follow-up-scoped by default so they do not accidentally
