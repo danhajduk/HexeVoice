@@ -90,6 +90,8 @@ def render_header(data: dict[str, dict[str, object]], board_profile: str = "esp_
     reconnect_backoff_ms = required(data, "behavior", "reconnect_backoff_ms")
     discovery_enabled = required(data, "behavior", "discovery_enabled")
     discovery_udp_port = optional(data, "behavior", "discovery_udp_port", 9134)
+    ota_manifest_key_id = optional(data, "ota", "manifest_key_id", "hexevoice-dev-v1")
+    ota_manifest_signing_key = optional(data, "ota", "manifest_signing_key", "hexevoice-local-dev-ota-signing-key")
     log_stream_enabled = optional(data, "debug_log", "enabled", False)
     log_stream_host = optional(data, "debug_log", "host", host)
     log_stream_port = optional(data, "debug_log", "udp_port", 9010)
@@ -102,6 +104,7 @@ def render_header(data: dict[str, dict[str, object]], board_profile: str = "esp_
 namespace hexe::config {{
 
 constexpr const char *kEndpointId = {string_literal(endpoint_id)};
+constexpr const char *kEndpointBoardProfile = {string_literal(board_profile)};
 constexpr const char *kEndpointBackendHost = {string_literal(host)};
 constexpr int kEndpointHttpPort = {int(http_port)};
 constexpr int kEndpointWsPort = {int(ws_port)};
@@ -116,6 +119,8 @@ constexpr int kEndpointHeartbeatIntervalMs = {int(heartbeat_interval_ms)};
 constexpr int kEndpointReconnectBackoffMs = {int(reconnect_backoff_ms)};
 constexpr bool kEndpointDiscoveryEnabled = {bool_literal(discovery_enabled)};
 constexpr int kEndpointDiscoveryUdpPort = {int(discovery_udp_port)};
+constexpr const char *kEndpointOtaManifestKeyId = {string_literal(ota_manifest_key_id)};
+constexpr const char *kEndpointOtaManifestSigningKey = {string_literal(ota_manifest_signing_key)};
 constexpr bool kEndpointLogStreamEnabled = {bool_literal(log_stream_enabled)};
 constexpr const char *kEndpointLogStreamHost = {string_literal(log_stream_host)};
 constexpr int kEndpointLogStreamUdpPort = {int(log_stream_port)};

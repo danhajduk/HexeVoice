@@ -21,6 +21,7 @@ def test_endpoint_config_generator_uses_yaml_contract(tmp_path):
 
     header = output.read_text(encoding="utf-8")
     assert 'constexpr const char *kEndpointId = "esp-box-1";' in header
+    assert 'constexpr const char *kEndpointBoardProfile = "esp_box_3";' in header
     assert "kEndpointFirmwareVersion" not in header
     assert 'constexpr const char *kEndpointBackendHost = "10.0.0.22";' in header
     assert 'constexpr const char *kEndpointHeartbeatPath = "/api/endpoint/heartbeat";' in header
@@ -29,6 +30,8 @@ def test_endpoint_config_generator_uses_yaml_contract(tmp_path):
     assert "constexpr int kEndpointAudioChunkSamples = 320;" in header
     assert "constexpr bool kEndpointDiscoveryEnabled = true;" in header
     assert "constexpr int kEndpointDiscoveryUdpPort = 9134;" in header
+    assert 'constexpr const char *kEndpointOtaManifestKeyId = "hexevoice-dev-v1";' in header
+    assert 'constexpr const char *kEndpointOtaManifestSigningKey = "hexevoice-local-dev-ota-signing-key";' in header
     assert "constexpr bool kEndpointLogStreamEnabled = false;" in header
     assert 'constexpr const char *kEndpointLogStreamHost = "10.0.0.22";' in header
     assert "constexpr int kEndpointLogStreamUdpPort = 9010;" in header
@@ -54,3 +57,4 @@ def test_endpoint_config_generator_uses_pe_profile_endpoint_id(tmp_path):
 
     header = output.read_text(encoding="utf-8")
     assert 'constexpr const char *kEndpointId = "esp-pe-1";' in header
+    assert 'constexpr const char *kEndpointBoardProfile = "ha_voice_pe";' in header

@@ -1,5 +1,7 @@
 import base64
 from datetime import datetime
+import hashlib
+import hmac
 import io
 import json
 import os
@@ -11,7 +13,16 @@ import httpx
 from hexevoice.api.models import AssistantTurnRequest
 from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
 from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
-from hexevoice.main import _seconds_until_next_local_midnight, _tts_warmup_voices, cleanup_voice_artifacts_once, create_app
+from hexevoice.main import (
+    OTA_MANIFEST_SIGNATURE_ALGORITHM,
+    _seconds_until_next_local_midnight,
+    _tts_warmup_voices,
+    cleanup_voice_artifacts_once,
+    create_app,
+    ota_manifest_key_id,
+    ota_manifest_signature_payload,
+    ota_manifest_signing_key,
+)
 from hexevoice.config.settings import Settings
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 from hexevoice.runtime.service import NodeRuntimeService
@@ -169,8 +180,26 @@ def test_firmware_manifest_serves_runtime_artifact(tmp_path):
     artifact = client.get("/api/firmware/artifacts/hexe_firmware.bin")
 
     assert manifest.status_code == 200
-    assert manifest.json()["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware.bin"
-    assert manifest.json()["size_bytes"] == len(b"firmware-bin")
+    manifest_payload = manifest.json()
+    assert manifest_payload["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware.bin"
+    assert manifest_payload["size_bytes"] == len(b"firmware-bin")
+    assert manifest_payload["profile"] == "esp_box_3"
+    assert manifest_payload["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
+    assert manifest_payload["signature_key_id"] == ota_manifest_key_id()
+    signed_payload = ota_manifest_signature_payload(
+        profile=manifest_payload["profile"],
+        url=manifest_payload["url"],
+        version=None,
+        sha256=manifest_payload["sha256"],
+        size_bytes=manifest_payload["size_bytes"],
+        signature_algorithm=manifest_payload["signature_algorithm"],
+        signature_key_id=manifest_payload["signature_key_id"],
+    )
+    assert manifest_payload["manifest_signature"] == hmac.new(
+        ota_manifest_signing_key().encode("utf-8"),
+        signed_payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
     assert artifact.status_code == 200
     assert artifact.content == b"firmware-bin"
 
@@ -220,7 +249,12 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     assert firmware_update["update_available"] is True
     assert firmware_update["filename"] == "hexe_firmware_ha_voice_pe.bin"
     assert firmware_update["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware_ha_voice_pe.bin"
-    assert firmware_update["sha256"] == "abc123"
+    assert firmware_update["sha256"] == hashlib.sha256(b"pe-firmware").hexdigest()
+    assert firmware_update["profile"] == "ha_voice_pe"
+    assert firmware_update["size_bytes"] == len(b"pe-firmware")
+    assert firmware_update["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
+    assert firmware_update["signature_key_id"] == ota_manifest_key_id()
+    assert len(firmware_update["manifest_signature"]) == 64
 
 
 def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
@@ -260,7 +294,24 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     assert event["endpoint_id"] == "esp-box-1"
     assert event["payload"]["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware.bin"
     assert event["payload"]["version"] == "0.1.1"
+    assert event["payload"]["profile"] == "esp_box_3"
     assert event["payload"]["size_bytes"] == len(b"firmware-bin")
+    assert event["payload"]["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
+    assert event["payload"]["signature_key_id"] == ota_manifest_key_id()
+    signed_payload = ota_manifest_signature_payload(
+        profile=event["payload"]["profile"],
+        url=event["payload"]["url"],
+        version=event["payload"]["version"],
+        sha256=event["payload"]["sha256"],
+        size_bytes=event["payload"]["size_bytes"],
+        signature_algorithm=event["payload"]["signature_algorithm"],
+        signature_key_id=event["payload"]["signature_key_id"],
+    )
+    assert event["payload"]["manifest_signature"] == hmac.new(
+        ota_manifest_signing_key().encode("utf-8"),
+        signed_payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def test_endpoint_volume_command_sends_event_to_connected_endpoint(tmp_path):

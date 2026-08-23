@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
+import hmac
 import json
 import logging
 from logging.handlers import TimedRotatingFileHandler
@@ -141,6 +142,11 @@ from hexevoice.voice.pipeline import build_voice_turn_pipeline
 from hexevoice.stt_profiles import resolve_stt_model_profile
 from hexevoice.stt_profiles import stt_profile_options
 from hexevoice.voice.wake import build_wake_detector
+
+
+OTA_MANIFEST_SIGNATURE_ALGORITHM = "hmac-sha256"
+DEFAULT_OTA_MANIFEST_KEY_ID = "hexevoice-dev-v1"
+DEFAULT_OTA_MANIFEST_SIGNING_KEY = "hexevoice-local-dev-ota-signing-key"
 
 
 def setup_provider_action_sequence(action: str) -> tuple[str, ...]:
@@ -309,6 +315,75 @@ def endpoint_board_profile(endpoint_status: EndpointStatusResponse) -> str:
     return "esp_box_3"
 
 
+def firmware_profile_for_filename(filename: str) -> str:
+    normalized = filename.lower()
+    if "ha_voice_pe" in normalized:
+        return "ha_voice_pe"
+    return "esp_box_3"
+
+
+def ota_manifest_key_id() -> str:
+    return os.getenv("HEXEVOICE_OTA_MANIFEST_KEY_ID", DEFAULT_OTA_MANIFEST_KEY_ID)
+
+
+def ota_manifest_signing_key() -> str:
+    return os.getenv("HEXEVOICE_OTA_MANIFEST_SIGNING_KEY", DEFAULT_OTA_MANIFEST_SIGNING_KEY)
+
+
+def ota_manifest_signature_payload(
+    *,
+    profile: str,
+    url: str,
+    version: str | None,
+    sha256: str,
+    size_bytes: int,
+    signature_algorithm: str,
+    signature_key_id: str,
+) -> str:
+    return "\n".join(
+        [
+            profile,
+            url,
+            version or "",
+            sha256,
+            str(size_bytes),
+            signature_algorithm,
+            signature_key_id,
+        ]
+    )
+
+
+def sign_ota_manifest_metadata(
+    *,
+    profile: str,
+    url: str,
+    version: str | None,
+    sha256: str,
+    size_bytes: int,
+) -> dict:
+    signature_key_id = ota_manifest_key_id()
+    payload = ota_manifest_signature_payload(
+        profile=profile,
+        url=url,
+        version=version,
+        sha256=sha256,
+        size_bytes=size_bytes,
+        signature_algorithm=OTA_MANIFEST_SIGNATURE_ALGORITHM,
+        signature_key_id=signature_key_id,
+    )
+    signature = hmac.new(
+        ota_manifest_signing_key().encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return {
+        "profile": profile,
+        "signature_algorithm": OTA_MANIFEST_SIGNATURE_ALGORITHM,
+        "signature_key_id": signature_key_id,
+        "manifest_signature": signature,
+    }
+
+
 def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusResponse) -> dict:
     profile = endpoint_board_profile(endpoint_status)
     artifact_dir = settings.resolved_firmware_artifact_dir()
@@ -340,6 +415,17 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
         reason = "up_to_date"
     else:
         reason = "update_available"
+    artifact_sha256 = hashlib.sha256(path.read_bytes()).hexdigest() if artifact_available else None
+    artifact_size = path.stat().st_size if artifact_available else None
+    signed_metadata = {}
+    if artifact_available and artifact_sha256 is not None and artifact_size is not None:
+        signed_metadata = sign_ota_manifest_metadata(
+            profile=profile,
+            url=firmware_public_url_for_settings(settings, filename),
+            version=latest_version,
+            sha256=artifact_sha256,
+            size_bytes=artifact_size,
+        )
     return {
         "board_profile": profile,
         "current_version": current_version,
@@ -348,7 +434,9 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
         "artifact_available": artifact_available,
         "filename": filename if artifact_available else None,
         "url": firmware_public_url_for_settings(settings, filename) if artifact_available else None,
-        "sha256": manifest.get("sha256"),
+        "sha256": artifact_sha256,
+        "size_bytes": artifact_size,
+        **signed_metadata,
         "created_at_utc": manifest.get("created_at_utc"),
         "reason": reason,
     }
@@ -1187,32 +1275,60 @@ def create_app(
     @app.get("/api/firmware/manifest")
     async def firmware_manifest(filename: str = "hexe_firmware.bin") -> dict:
         path = firmware_artifact_path(filename)
+        sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        size_bytes = path.stat().st_size
+        profile = firmware_profile_for_filename(path.name)
+        signature = sign_ota_manifest_metadata(
+            profile=profile,
+            url=firmware_public_url(path.name),
+            version=None,
+            sha256=sha256,
+            size_bytes=size_bytes,
+        )
         return {
             "filename": path.name,
             "url": firmware_public_url(path.name),
-            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            "size_bytes": path.stat().st_size,
+            "sha256": sha256,
+            "size_bytes": size_bytes,
+            **signature,
         }
 
     @app.post("/api/firmware/ota/push", response_model=FirmwareOtaPushResponse)
     async def firmware_ota_push(payload: FirmwareOtaPushRequest) -> FirmwareOtaPushResponse:
         path = firmware_artifact_path(payload.filename)
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        size_bytes = path.stat().st_size
         url = firmware_public_url(path.name)
+        profile = payload.profile or firmware_profile_for_filename(path.name)
+        signature = sign_ota_manifest_metadata(
+            profile=profile,
+            url=url,
+            version=payload.version,
+            sha256=sha256,
+            size_bytes=size_bytes,
+        )
         result = await voice_session_manager.push_ota_update(
             endpoint_id=payload.endpoint_id,
             firmware_url=url,
             version=payload.version,
+            profile=profile,
             sha256=sha256,
-            size_bytes=path.stat().st_size,
+            size_bytes=size_bytes,
+            signature_algorithm=signature["signature_algorithm"],
+            signature_key_id=signature["signature_key_id"],
+            manifest_signature=signature["manifest_signature"],
         )
         return FirmwareOtaPushResponse(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             firmware_url=url,
             version=payload.version,
+            profile=profile,
             sha256=sha256,
-            size_bytes=path.stat().st_size,
+            size_bytes=size_bytes,
+            signature_algorithm=signature["signature_algorithm"],
+            signature_key_id=signature["signature_key_id"],
+            manifest_signature=signature["manifest_signature"],
             reason=result.get("reason"),
         )
 

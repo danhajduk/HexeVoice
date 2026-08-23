@@ -49,11 +49,11 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - `firmware/main/voice/stt_stream.cpp` logs scaffold readiness only.
 - `firmware/main/voice/assistant_client.cpp` logs scaffold readiness only.
 - `firmware/main/system/telemetry.cpp` and `firmware/main/system/power.cpp` are initialization scaffolds.
-- `firmware/main/system/ota.cpp` implements the first manual OTA path from backend-pushed `ota.update` events.
+- `firmware/main/system/ota.cpp` implements the manual OTA path from backend-pushed, signed `ota.update` events and verifies downloaded bytes before finishing OTA.
 
 ## Missing
 
-- Firmware-side SHA-256 enforcement and signed manifest validation for OTA.
+- Physical-device reconnect and session-boundary validation across supported profiles.
 
 ## Current Endpoint Config Contract
 
@@ -93,6 +93,5 @@ is true. Static config remains available for constrained networks.
 
 Firmware implementation should follow the task queue in `docs/New_tasks.txt`:
 
-1. Harden OTA checksum/signature validation.
-2. Complete physical reconnect/session-boundary validation.
-3. Replace or explicitly retire remaining scaffold modules.
+1. Complete physical reconnect/session-boundary validation.
+2. Replace or explicitly retire remaining scaffold modules.

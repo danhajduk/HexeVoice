@@ -401,6 +401,7 @@ class FirmwareOtaPushRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     filename: str = "hexe_firmware.bin"
     version: str | None = None
+    profile: str | None = None
 
 
 class FirmwareOtaPushResponse(BaseModel):
@@ -408,8 +409,12 @@ class FirmwareOtaPushResponse(BaseModel):
     endpoint_id: str
     firmware_url: str
     version: str | None = None
+    profile: str | None = None
     sha256: str | None = None
     size_bytes: int | None = None
+    signature_algorithm: str | None = None
+    signature_key_id: str | None = None
+    manifest_signature: str | None = None
     reason: str | None = None
 
 

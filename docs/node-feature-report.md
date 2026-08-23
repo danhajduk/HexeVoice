@@ -16,7 +16,7 @@ state should be reconciled against `docs/architecture.md`,
 
 HexeVoice is no longer just a starter node. The repo contains a working Hexe voice-node backend with Core onboarding, trust, provider setup, capability/governance readiness, endpoint registry, voice WebSocket transport, backend-owned wake/STT/assistant/TTS pipeline boundaries, endpoint command routing, TTS artifact serving, local rendered Node UI APIs, and native ESP-IDF firmware tracks for ESP-BOX-3 plus an experimental Home Assistant Voice PE profile.
 
-The strongest implemented areas are the backend API surface, setup/readiness lifecycle, voice session manager, intent registry, provider controls, and endpoint registry/commands. The most important partial areas are physical-device completeness, especially firmware-side provisioning, final hardened TTS playback/download paths, OTA signature validation, and device-tested reconnect/session behavior.
+The strongest implemented areas are the backend API surface, setup/readiness lifecycle, voice session manager, intent registry, provider controls, endpoint registry/commands, firmware provisioning/discovery, and signed OTA integrity enforcement. The most important partial areas are physical-device completeness, especially final hardened TTS playback/download paths and device-tested reconnect/session behavior.
 
 ## Implemented Backend Features
 
@@ -138,10 +138,9 @@ The strongest implemented areas are the backend API surface, setup/readiness lif
 ## Partial Or Scaffolded Areas
 
 - Firmware VAD can update local state, send speech-start/audio chunks/audio-end, and react to backend events, but it is still documented as partial pending device hardening.
-- Firmware provisioning UI is not implemented; Wi-Fi uses compile-time/local credentials.
-- Automatic endpoint discovery is deferred.
-- Firmware-side settings UI is not implemented.
-- Firmware-side SHA-256 enforcement and signed manifest validation for OTA are missing.
+- Firmware provisioning and automatic endpoint discovery are implemented, but still need physical-device soak validation across supported profiles.
+- Firmware-side settings UI remains backend/dashboard-driven rather than local touchscreen-driven.
+- Firmware-side OTA validates signed metadata, target profile/version policy, download size, and SHA-256 before finishing updates.
 - Some firmware modules remain scaffolds, including firmware-side wake word, STT stream, assistant client, telemetry, and power modules.
 - Device-tested reconnect/session-boundary behavior remains listed as next firmware work.
 - Existing docs disagree in places: `README.md` still says `/api/voice/ws`, STT/TTS adapters, firmware TTS playback, and live endpoint telemetry are not implemented, while source and newer docs show those backend surfaces now exist. Treat `docs/voice-node-roadmap.md`, `docs/firmware-baseline.md`, and source as more current for voice runtime status.

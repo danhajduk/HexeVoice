@@ -402,3 +402,10 @@ Issue cause: Firmware still needed a static backend host/port from endpoint YAML
 Chosen fix: Add a LAN UDP discovery offer flow backed by the endpoint registry, with duplicate-online rejection, stale pairing recovery, HTTP simulation fallback, and firmware persistence through the existing provisioning settings layer.
 What changed: Added endpoint discovery settings, API models, backend discovery service, UDP listener, and HTTP offer route; generated firmware discovery config now includes an enabled flag and UDP port; firmware broadcasts discovery after Wi-Fi, persists accepted offers, reports discovery status in heartbeat capabilities, and initializes the voice WebSocket after discovered settings are active; dashboard and docs show discovery state and recovery paths.
 Verification: `tests/test_endpoint_discovery.py`, firmware endpoint config/source tests, endpoint registry/API checks, frontend Vite build with Node v22.21.1, and `./firmware/build.sh` for both `esp_box_3` and `ha_voice_pe` passed.
+###########
+Task #215
+Step objective: Harden firmware OTA integrity with checksum enforcement and signed manifest validation.
+Issue cause: The backend sent OTA URL, version, size, and checksum metadata, but firmware accepted unsigned metadata and did not compare the downloaded image bytes to the advertised SHA-256 before finishing OTA.
+Chosen fix: Sign the exact pushed OTA metadata with HMAC-SHA256, generate matching endpoint trust constants, validate profile/version/signature/checksum metadata before download, and hash OTA stream bytes before `esp_https_ota_finish()`.
+What changed: Firmware OTA now rejects missing/invalid signatures, unknown signing keys, wrong board profiles, same/lower versions, malformed checksums, size mismatches, and checksum mismatches; backend manifest/status/push APIs include signed metadata; endpoint capabilities and discovery expose board profile and OTA integrity policy; docs define the trust model and failure codes.
+Verification: `tests/test_api.py`, `tests/test_voice_websocket.py`, firmware endpoint config/source tests, and `./firmware/build.sh` for both `esp_box_3` and `ha_voice_pe` passed.

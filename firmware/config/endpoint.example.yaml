@@ -28,6 +28,11 @@ behavior:
   discovery_enabled: true
   discovery_udp_port: 9134
 
+ota:
+  # Local development default. Use a deployment-specific value in endpoint.yaml.
+  manifest_key_id: hexevoice-dev-v1
+  manifest_signing_key: hexevoice-local-dev-ota-signing-key
+
 debug_log:
   enabled: false
   host: 10.0.0.22

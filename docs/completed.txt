@@ -242,3 +242,4 @@ Task 211: Add long-running provider health, model warmup, and firmware media lif
 Task 212: Reconcile stale Voice Node docs and decide the node feature report disposition - Completed on 08/22/2026 21:46
 Task 213: Add firmware provisioning and endpoint settings UI flow - Completed on 08/22/2026 22:01
 Task 214: Add automatic endpoint discovery and pairing for firmware endpoints - Completed on 08/22/2026 22:09
+Task 215: Harden firmware OTA integrity with checksum enforcement and signed manifest validation - Completed on 08/22/2026 22:23

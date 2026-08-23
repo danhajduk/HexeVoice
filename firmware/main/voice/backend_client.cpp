@@ -576,11 +576,12 @@ bool try_endpoint_discovery() {
       request,
       sizeof(request),
       "{\"schema_version\":\"%s\",\"endpoint_id\":\"%s\",\"display_name\":\"%s\","
-      "\"firmware_version\":\"%s\",\"capabilities\":{\"profile\":\"firmware\"}}",
+      "\"firmware_version\":\"%s\",\"capabilities\":{\"profile\":\"firmware\",\"firmware\":{\"board_profile\":\"%s\"}}}",
       kDiscoverySchemaVersion,
       hexe::system::endpoint_id(),
       hexe::system::endpoint_display_name(),
-      firmware_version());
+      firmware_version(),
+      hexe::config::kEndpointBoardProfile);
   const int sent = sendto(
       sock,
       request,
@@ -757,16 +758,30 @@ void handle_backend_event_json(const std::string &message) {
         cJSON_IsString(content_type) ? content_type->valuestring : nullptr,
         cJSON_IsString(audio_url) ? audio_url->valuestring : nullptr);
   } else if (std::strcmp(type, "ota.update") == 0) {
+    const char *request_id = payload_request_id(payload);
     cJSON *url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "url") : nullptr;
     cJSON *version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "version") : nullptr;
+    cJSON *profile = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "profile") : nullptr;
     cJSON *sha256 = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "sha256") : nullptr;
     cJSON *size_bytes = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "size_bytes") : nullptr;
-    if (hexe::system::start_ota_update(
-            cJSON_IsString(url) ? url->valuestring : nullptr,
-            cJSON_IsString(version) ? version->valuestring : nullptr,
-            cJSON_IsString(sha256) ? sha256->valuestring : nullptr,
-            cJSON_IsNumber(size_bytes) ? size_bytes->valueint : 0)) {
+    cJSON *signature_algorithm = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "signature_algorithm") : nullptr;
+    cJSON *signature_key_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "signature_key_id") : nullptr;
+    cJSON *manifest_signature = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "manifest_signature") : nullptr;
+    char ota_error_code[48] = {};
+    hexe::system::OtaUpdateManifest manifest = {};
+    manifest.request_id = request_id;
+    manifest.url = cJSON_IsString(url) ? url->valuestring : nullptr;
+    manifest.version = cJSON_IsString(version) ? version->valuestring : nullptr;
+    manifest.profile = cJSON_IsString(profile) ? profile->valuestring : nullptr;
+    manifest.sha256 = cJSON_IsString(sha256) ? sha256->valuestring : nullptr;
+    manifest.size_bytes = cJSON_IsNumber(size_bytes) ? size_bytes->valueint : 0;
+    manifest.signature_algorithm = cJSON_IsString(signature_algorithm) ? signature_algorithm->valuestring : nullptr;
+    manifest.signature_key_id = cJSON_IsString(signature_key_id) ? signature_key_id->valuestring : nullptr;
+    manifest.manifest_signature = cJSON_IsString(manifest_signature) ? manifest_signature->valuestring : nullptr;
+    if (hexe::system::start_ota_update(manifest, ota_error_code, sizeof(ota_error_code))) {
       app_state.phase = hexe::AppPhase::kUpdating;
+    } else {
+      send_command_error(request_id, "ota.update", ota_error_code, "OTA update rejected by endpoint integrity policy");
     }
   } else if (std::strcmp(type, "endpoint.volume") == 0) {
     const char *request_id = payload_request_id(payload);
@@ -1082,9 +1097,15 @@ std::string endpoint_capabilities_json() {
   cJSON *firmware = cJSON_AddObjectToObject(root, "firmware");
   cJSON_AddStringToObject(firmware, "project_name", app == nullptr ? "unknown" : app->project_name);
   cJSON_AddStringToObject(firmware, "version", app == nullptr ? firmware_version() : app->version);
+  cJSON_AddStringToObject(firmware, "board_profile", hexe::config::kEndpointBoardProfile);
   cJSON_AddStringToObject(firmware, "build_date", app == nullptr ? "unknown" : app->date);
   cJSON_AddStringToObject(firmware, "build_time", app == nullptr ? "unknown" : app->time);
   cJSON_AddStringToObject(firmware, "idf_version", app == nullptr ? "unknown" : app->idf_ver);
+  cJSON *ota = cJSON_AddObjectToObject(firmware, "ota");
+  cJSON_AddStringToObject(ota, "signature_algorithm", "hmac-sha256");
+  cJSON_AddStringToObject(ota, "signature_key_id", hexe::config::kEndpointOtaManifestKeyId);
+  cJSON_AddBoolToObject(ota, "checksum_required", true);
+  cJSON_AddBoolToObject(ota, "signature_required", true);
 
   char *rendered = cJSON_PrintUnformatted(root);
   std::string result = rendered == nullptr ? "{}" : rendered;

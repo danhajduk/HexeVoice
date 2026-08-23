@@ -118,21 +118,23 @@ Later you can add:
 - staged rollout channels
 - beta/stable streams
 - forced critical updates
-- signed manifests
 - signed binaries
 
 ## Security Notes
 
-For the first version:
+For local development:
 
+- backend-pushed metadata is signed with HMAC-SHA256
+- firmware verifies the signed metadata before download
+- firmware verifies downloaded size and SHA-256 before finishing OTA
+- HTTP is allowed for local Voice Node artifact hosting
+
+For production deployments:
+
+- add release signing
 - use HTTPS only
 - host firmware on a trusted Hexe domain
-- prefer SHA-256 verification from the manifest
-
-For a later hardened version:
-
-- add signed manifests
-- add release signing
+- rotate deployment signing keys when firmware moves to a new trust domain
 - pin trust roots or server certificates if needed
 
 ## What To Host
@@ -196,7 +198,31 @@ Push payload:
 }
 ```
 
-The backend sends an `ota.update` event to the connected endpoint WebSocket with the firmware URL, version, size, and SHA-256. The endpoint downloads the image with ESP-IDF OTA and reboots on success.
+The backend sends an `ota.update` event to the connected endpoint WebSocket with the firmware URL, version, board profile, size, SHA-256, signature algorithm, signature key id, and manifest signature. The endpoint validates the signed metadata before downloading, hashes the downloaded image bytes while ESP-IDF OTA streams them, and only calls `esp_https_ota_finish()` when the downloaded size and SHA-256 match.
+
+The pushed metadata is signed as HMAC-SHA256 over this canonical payload:
+
+```text
+profile
+url
+version
+sha256
+size_bytes
+signature_algorithm
+signature_key_id
+```
+
+Local development uses `HEXEVOICE_OTA_MANIFEST_KEY_ID=hexevoice-dev-v1` and `HEXEVOICE_OTA_MANIFEST_SIGNING_KEY=hexevoice-local-dev-ota-signing-key` by default. Firmware receives the same key id and signing key from `firmware/config/endpoint.yaml` through the generated `endpoint_config.h`; production deployments should set deployment-specific values before building firmware and running the backend.
+
+Endpoint integrity policy:
+
+- reject missing or malformed checksums before download
+- reject missing, invalid, unsupported, or unknown-key signatures before download
+- reject artifacts whose `profile` does not match the compiled board profile
+- reject empty, same, or lower target versions as downgrade/replay attempts
+- reject downloaded images whose byte count or SHA-256 differs from signed metadata
+
+The endpoint reports OTA integrity failures through `command.error` with exact codes such as `missing_signature`, `invalid_signature`, `unsupported_profile`, `downgrade_or_replay`, `missing_checksum`, `invalid_checksum`, `invalid_size`, and `checksum_mismatch`.
 
 `firmware/export-artifacts.sh` copies the app binary to:
 
@@ -231,14 +257,12 @@ cd firmware/export
 ./flash-esptool.sh /dev/ttyACM0
 ```
 
-Development OTA allows HTTP for local Voice Node hosting. Production OTA should move to HTTPS-only and signed manifests before wider deployment.
+Development OTA allows HTTP for local Voice Node hosting because metadata signing and firmware-side checksum enforcement protect the artifact identity. Production OTA should still move to HTTPS-only and rotate deployment signing keys when firmware is rebuilt for a new trust domain.
 
 ## Future Repo Work
 
 The firmware track should later gain:
 
-- signed update manifest format
-- firmware checksum verification in firmware before reboot
 - release packaging script
 
 ## Practical Next Step

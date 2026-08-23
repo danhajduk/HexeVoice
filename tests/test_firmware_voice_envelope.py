@@ -16,6 +16,8 @@ FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
 FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/main/board/storage_nvs_only.cpp")
 FIRMWARE_SETTINGS = Path("firmware/main/system/settings.cpp")
 FIRMWARE_SETTINGS_HEADER = Path("firmware/main/system/settings.h")
+FIRMWARE_OTA = Path("firmware/main/system/ota.cpp")
+FIRMWARE_OTA_HEADER = Path("firmware/main/system/ota.h")
 FIRMWARE_WIFI = Path("firmware/main/board/wifi.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
 FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/main/voice/tts_player_ha_voice_pe.cpp")
@@ -67,6 +69,36 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
     assert 'send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");' in source
     assert 'return "endpoint.volume.set";' in source
     assert 'return "endpoint.micro_vad.set";' in source
+
+
+def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
+    ota_source = FIRMWARE_OTA.read_text()
+    ota_header = FIRMWARE_OTA_HEADER.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert "struct OtaUpdateManifest" in ota_header
+    assert "verify_ota_manifest_signature" in ota_source
+    assert "hmac-sha256" in ota_source
+    assert "inner_pad" in ota_source
+    assert "outer_pad" in ota_source
+    assert "kEndpointOtaManifestSigningKey" in ota_source
+    assert "kEndpointOtaManifestKeyId" in ota_source
+    assert "unsupported_profile" in ota_source
+    assert "downgrade_or_replay" in ota_source
+    assert "missing_signature" in ota_source
+    assert "invalid_signature" in ota_source
+    assert "missing_checksum" in ota_source
+    assert "checksum_mismatch" in ota_source
+    assert "HTTP_EVENT_ON_DATA" in ota_source
+    assert "mbedtls_md_update" in ota_source
+    assert "esp_https_ota_finish" in ota_source
+    assert "constant_time_equal(calculated_sha256, request.sha256)" in ota_source
+
+    assert '"signature_algorithm"' in backend_source
+    assert '"signature_key_id"' in backend_source
+    assert '"manifest_signature"' in backend_source
+    assert "send_command_error(request_id, \"ota.update\", ota_error_code" in backend_source
+    assert "kEndpointBoardProfile" in backend_source
 
 
 def test_firmware_vad_keeps_listening_window_after_wake_word():

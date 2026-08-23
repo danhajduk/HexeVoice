@@ -300,8 +300,12 @@ class VoiceSessionManager:
         endpoint_id: str,
         firmware_url: str,
         version: str | None,
+        profile: str | None,
         sha256: str | None,
         size_bytes: int | None,
+        signature_algorithm: str | None,
+        signature_key_id: str | None,
+        manifest_signature: str | None,
     ) -> dict:
         runtime = self._runtime_for_endpoint(endpoint_id)
         if runtime is None:
@@ -327,8 +331,12 @@ class VoiceSessionManager:
                     "request_id": request_id,
                     "url": firmware_url,
                     "version": version,
+                    "profile": profile,
                     "sha256": sha256,
                     "size_bytes": size_bytes,
+                    "signature_algorithm": signature_algorithm,
+                    "signature_key_id": signature_key_id,
+                    "manifest_signature": manifest_signature,
                 },
             )
             await runtime.websocket.send_json(event.model_dump(mode="json"))
