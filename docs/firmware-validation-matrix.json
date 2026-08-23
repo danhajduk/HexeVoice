@@ -9,6 +9,12 @@
     "mute_volume",
     "reconnect_behavior"
   ],
+  "field_validation": {
+    "reconnect_session_procedure": "docs/firmware-reconnect-session-validation.md",
+    "reconnect_session_results": "docs/firmware-reconnect-session-results.json",
+    "runner": "scripts/firmware-reconnect-session-validation.py",
+    "release_gate": "All reconnect/session-boundary scenarios must be pass for every supported profile before release approval."
+  },
   "profiles": [
     {
       "id": "esp_box_3",

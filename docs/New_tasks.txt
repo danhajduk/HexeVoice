@@ -48,8 +48,8 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 216: Validate physical-device reconnect and session-boundary behavior across supported profiles
 [TODO] Task 217: Replace or explicitly retire scaffold firmware modules for wake word, STT stream, assistant client, telemetry, and power
+[TODO] Task 218: Run physical reconnect/session-boundary bench validation and replace blocked release artifact results
 
 [STOP]
 

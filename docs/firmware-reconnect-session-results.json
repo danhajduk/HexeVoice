@@ -1,0 +1,375 @@
+{
+  "backend_url": "http://127.0.0.1:9004",
+  "follow_up_policy": "Create or link a repo task for every fail or blocked scenario before release approval.",
+  "generated_at_utc": "2026-08-23T05:28:20.755394+00:00",
+  "operator": "codex",
+  "overall_status": "blocked",
+  "profiles": [
+    {
+      "endpoint_id": "esp-box-1",
+      "profile": "esp_box_3",
+      "scenarios": [
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Endpoint returns online with the same endpoint id, firmware version, and board profile.",
+          "id": "backend_restart_idle",
+          "operator_step": "Restart the backend while the endpoint is idle, then wait for heartbeat and voice WebSocket recovery.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Backend restart while endpoint is idle",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Endpoint returns online with the expected board profile and no stale active session.",
+          "id": "endpoint_power_cycle",
+          "operator_step": "Power-cycle the endpoint and wait for heartbeat, capabilities, and firmware version to return.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Endpoint power cycle",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Endpoint reconnects using configured backoff and reports RSSI/IP metadata after rejoin.",
+          "id": "wifi_loss_rejoin",
+          "operator_step": "Temporarily block or disable Wi-Fi for the endpoint, restore Wi-Fi, then wait for backend reconnect.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Wi-Fi loss and rejoin",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Backend cancels or finalizes the interrupted session and the endpoint can start a fresh session.",
+          "id": "active_session_disconnect",
+          "operator_step": "Start a voice session, interrupt the endpoint or backend connection mid-session, then restore it.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Active session disconnect",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Speaker tail does not start duplicate capture; a later local wake retry succeeds.",
+          "id": "post_tts_cooldown",
+          "operator_step": "Complete a TTS response near the microphone and try to trigger capture during the cooldown window.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Post-TTS cooldown",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Rejected wake does not leave the endpoint stuck; valid retry starts exactly one session.",
+          "id": "wake_retry",
+          "operator_step": "Perform a below-threshold or rejected wake, then perform a valid wake.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Wake retry after rejected wake",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Only one active session is accepted and stale/duplicate session state is cleared after reconnect.",
+          "id": "duplicate_session_prevention",
+          "operator_step": "Attempt overlapping local/backend session starts from the same endpoint.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Duplicate session prevention",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        }
+      ],
+      "status": "blocked"
+    },
+    {
+      "endpoint_id": "esp-pe-1",
+      "profile": "ha_voice_pe",
+      "scenarios": [
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Endpoint returns online with the same endpoint id, firmware version, and board profile.",
+          "id": "backend_restart_idle",
+          "operator_step": "Restart the backend while the endpoint is idle, then wait for heartbeat and voice WebSocket recovery.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Backend restart while endpoint is idle",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Endpoint returns online with the expected board profile and no stale active session.",
+          "id": "endpoint_power_cycle",
+          "operator_step": "Power-cycle the endpoint and wait for heartbeat, capabilities, and firmware version to return.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Endpoint power cycle",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Endpoint reconnects using configured backoff and reports RSSI/IP metadata after rejoin.",
+          "id": "wifi_loss_rejoin",
+          "operator_step": "Temporarily block or disable Wi-Fi for the endpoint, restore Wi-Fi, then wait for backend reconnect.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Wi-Fi loss and rejoin",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Backend cancels or finalizes the interrupted session and the endpoint can start a fresh session.",
+          "id": "active_session_disconnect",
+          "operator_step": "Start a voice session, interrupt the endpoint or backend connection mid-session, then restore it.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Active session disconnect",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Speaker tail does not start duplicate capture; a later local wake retry succeeds.",
+          "id": "post_tts_cooldown",
+          "operator_step": "Complete a TTS response near the microphone and try to trigger capture during the cooldown window.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Post-TTS cooldown",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Rejected wake does not leave the endpoint stuck; valid retry starts exactly one session.",
+          "id": "wake_retry",
+          "operator_step": "Perform a below-threshold or rejected wake, then perform a valid wake.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Wake retry after rejected wake",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        },
+        {
+          "endpoint_observation": {
+            "connection_state": null,
+            "device_state": null,
+            "endpoint_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "endpoint_status_code": 0,
+            "firmware_version": null,
+            "online": false,
+            "profile_matches": false,
+            "reported_board_profile": null
+          },
+          "expected": "Only one active session is accepted and stale/duplicate session state is cleared after reconnect.",
+          "id": "duplicate_session_prevention",
+          "operator_step": "Attempt overlapping local/backend session starts from the same endpoint.",
+          "reason": "non_interactive_run_requires_physical_operator_result",
+          "status": "blocked",
+          "title": "Duplicate session prevention",
+          "voice_observation": {
+            "connected_endpoint_ids": null,
+            "connection_count": null,
+            "session_state": null,
+            "voice_query_error": "<urlopen error [Errno 111] Connection refused>",
+            "voice_status_code": 0
+          }
+        }
+      ],
+      "status": "blocked"
+    }
+  ],
+  "release_id": "task-216-initial",
+  "schema_version": 1
+}

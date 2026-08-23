@@ -409,3 +409,10 @@ Issue cause: The backend sent OTA URL, version, size, and checksum metadata, but
 Chosen fix: Sign the exact pushed OTA metadata with HMAC-SHA256, generate matching endpoint trust constants, validate profile/version/signature/checksum metadata before download, and hash OTA stream bytes before `esp_https_ota_finish()`.
 What changed: Firmware OTA now rejects missing/invalid signatures, unknown signing keys, wrong board profiles, same/lower versions, malformed checksums, size mismatches, and checksum mismatches; backend manifest/status/push APIs include signed metadata; endpoint capabilities and discovery expose board profile and OTA integrity policy; docs define the trust model and failure codes.
 Verification: `tests/test_api.py`, `tests/test_voice_websocket.py`, firmware endpoint config/source tests, and `./firmware/build.sh` for both `esp_box_3` and `ha_voice_pe` passed.
+###########
+Task #216
+Step objective: Validate physical-device reconnect and session-boundary behavior across supported profiles.
+Issue cause: Reconnect/session behavior had automated backend coverage and manual matrix notes, but no repeatable field procedure or release artifact for physical endpoint evidence.
+Chosen fix: Add a stdlib field-validation runner that records pass/fail/blocked results per profile and scenario, seed a structured release-review artifact, and link the firmware validation matrix to the procedure and results.
+What changed: Added `scripts/firmware-reconnect-session-validation.py`, `docs/firmware-reconnect-session-validation.md`, and `docs/firmware-reconnect-session-results.json`; updated the validation matrix JSON/docs; added tests for an all-pass simulated bench run and the blocked seed artifact. Because no physical endpoints were attached, the seed artifact is intentionally `blocked` and Task 218 tracks the bench run that must replace it with operator pass/fail evidence.
+Verification: `tests/test_firmware_reconnect_session_validation.py`, `tests/test_firmware_validation_matrix.py`, and `python3 -m py_compile scripts/firmware-reconnect-session-validation.py` passed.

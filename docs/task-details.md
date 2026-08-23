@@ -1757,3 +1757,17 @@ Original task details:
 - Acceptance criteria:
   - No scaffold module is left ambiguous: each is implemented, removed, or documented as an intentional no-op with capability reporting.
   - Firmware source/tests/docs agree on the state of wake word, STT stream, assistant client, telemetry, and power ownership.
+
+## Task 218
+Original task details:
+- Title: Run physical reconnect/session-boundary bench validation and replace blocked release artifact results
+- Source finding:
+  - Task 216 added the repeatable field-validation rig and seed release artifact, but no physical `esp_box_3` or `ha_voice_pe` endpoints were attached during the repo-side run.
+- Scope:
+  - Run `scripts/firmware-reconnect-session-validation.py` against physical `esp_box_3` and `ha_voice_pe` devices connected to a live backend.
+  - Exercise backend restart, endpoint power-cycle, Wi-Fi loss/rejoin, active-session disconnect, post-TTS cooldown, wake retry, and duplicate-session prevention for both profiles.
+  - Replace `docs/firmware-reconnect-session-results.json` with operator-recorded `pass` or `fail` results and link follow-up tasks for every failure.
+- Acceptance criteria:
+  - `docs/firmware-reconnect-session-results.json` has no `blocked` scenarios for supported profiles.
+  - Every scenario has operator-recorded observations and pass/fail status for both supported profiles.
+  - Any failure has a linked firmware or backend remediation task before release approval.
