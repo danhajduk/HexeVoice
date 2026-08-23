@@ -437,3 +437,10 @@ Issue cause: Supervised openWakeWord can receive and count pre-wake audio while 
 Chosen fix: Allow same-endpoint `idle` sessions with no accepted wake record to be superseded, even after pre-wake chunks were observed; keep the active-session rejection once the session has accepted wake and moved into capture.
 What changed: `VoiceSessionManager` now centralizes active-session replacement eligibility and distinguishes pre-wake audio from post-wake/capturing audio. WebSocket regression tests cover both replacement and rejection paths.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_websocket.py` passed.
+###########
+Operational fix
+Step objective: Align supervised openWakeWord runtime model selection with the installed Wyoming model name.
+Issue cause: The Wyoming openWakeWord service advertises the custom model as `hexe`, while `scripts/stack.env.example` and the live `scripts/stack.env` requested `VOICE_WAKE_MODELS=Hexe`. The service was reachable and the model file existed, but the backend filtered detection requests by a non-advertised model name.
+Chosen fix: Set the supervised wake runtime model selector to `hexe`.
+What changed: Updated `scripts/stack.env.example`; the local ignored `scripts/stack.env` was updated on this node as well.
+Verification: Direct Wyoming `describe` returned model `hexe`; after backend restart `/api/voice/status` reports `models=["hexe"]` with supervised openWakeWord healthy/loaded.
