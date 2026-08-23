@@ -11,16 +11,20 @@ Profiles:
   pe   Pull firmware/export-ha-voice-pe from the HexeVoice machine.
 
 Environment:
-  NODE_HOST    SSH host for the HexeVoice machine. Default: dan@10.0.0.100
-  REMOTE_ROOT  Remote firmware directory. Default: /home/dan/Projects/HexeVoice/firmware
+  NODE_HOST    SSH target for the HexeVoice machine. Default: $USER@hexe.local
+  REMOTE_HOST  SSH hostname used when NODE_HOST is unset. Default: hexe.local
+  REMOTE_USER  SSH user used when NODE_HOST is unset. Default: $USER
+  REMOTE_ROOT  Remote firmware directory. Default: /home/dan/hexe/HexeVoice/firmware
   IDF_EXPORT   ESP-IDF export script. Default: $HOME/esp-idf/export.sh
   MONITOR      Start serial monitor after flashing. Default: 1
   BAUD         Flash baud passed through to flash-esptool.sh. Default: 460800
 EOF
 }
 
-NODE_HOST="${NODE_HOST:-dan@10.0.0.100}"
-REMOTE_ROOT="${REMOTE_ROOT:-/home/dan/Projects/HexeVoice/firmware}"
+REMOTE_HOST="${REMOTE_HOST:-hexe.local}"
+REMOTE_USER="${REMOTE_USER:-${USER:-dan}}"
+NODE_HOST="${NODE_HOST:-${REMOTE_USER}@${REMOTE_HOST}}"
+REMOTE_ROOT="${REMOTE_ROOT:-/home/dan/hexe/HexeVoice/firmware}"
 IDF_EXPORT="${IDF_EXPORT:-$HOME/esp-idf/export.sh}"
 MONITOR="${MONITOR:-1}"
 

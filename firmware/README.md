@@ -102,12 +102,19 @@ This writes flashable artifacts to `firmware/export-ha-voice-pe`. The `ha_voice_
 To flash the Home Assistant Voice device from another PC, pull that profile-specific export folder:
 
 ```bash
-NODE_HOST=dan@10.0.0.100 \
-REMOTE_EXPORT=/home/dan/Projects/HexeVoice/firmware/export-ha-voice-pe \
+NODE_HOST=dan@hexe.local \
+REMOTE_EXPORT=/home/dan/hexe/HexeVoice/firmware/export-ha-voice-pe \
 ./flash.sh /dev/ttyACM0
 ```
 
-Or use the maintained helper script with an explicit profile selector:
+Or download the current exports from the HexeVoice host:
+
+```bash
+./tools/download-remote-export.sh all
+```
+
+Then use the maintained helper script with an explicit profile selector when you
+want to download and flash in one step:
 
 ```bash
 # Home Assistant Voice Preview Edition
