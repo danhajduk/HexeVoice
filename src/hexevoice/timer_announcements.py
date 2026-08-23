@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import json
 import logging
 from typing import Any
@@ -33,6 +34,161 @@ class TimerCompletedAlarm:
     dedupe_key: str
     topic: str
     metadata: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class TimerOwnerRecord:
+    timer_id: str
+    endpoint_id: str
+    owner_node_id: str | None
+    title: str | None
+    state: str
+    due_at: str | None
+    remaining_seconds: int | None
+    remaining_text: str | None
+    alarm_status: str | None
+    last_event_type: str
+    last_event_id: str | None
+    last_seen_at: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "timer_id": self.timer_id,
+            "endpoint_id": self.endpoint_id,
+            "owner_node_id": self.owner_node_id,
+            "title": self.title,
+            "state": self.state,
+            "due_at": self.due_at,
+            "remaining_seconds": self.remaining_seconds,
+            "remaining_text": self.remaining_text,
+            "alarm_status": self.alarm_status,
+            "last_event_type": self.last_event_type,
+            "last_event_id": self.last_event_id,
+            "last_seen_at": self.last_seen_at,
+        }
+
+
+class TimerOwnershipCache:
+    def __init__(self, *, max_records: int = 100) -> None:
+        self._max_records = max(10, max_records)
+        self._records: dict[str, TimerOwnerRecord] = {}
+
+    def update_from_event(self, topic: str, payload: dict[str, Any]) -> list[TimerOwnerRecord]:
+        event_type = str(payload.get("promoted_event_type") or payload.get("event_type") or "").strip()
+        if not event_type.startswith("timer."):
+            return []
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        timer_items = data.get("timers") if isinstance(data.get("timers"), list) else None
+        if timer_items:
+            updated: list[TimerOwnerRecord] = []
+            for item in timer_items:
+                if isinstance(item, dict):
+                    merged = dict(data)
+                    merged.update(item)
+                    updated.extend(self._update_one(topic, payload, merged, event_type))
+            return updated
+        return self._update_one(topic, payload, data, event_type)
+
+    def select_timer(self, endpoint_id: str) -> dict[str, Any]:
+        candidates = self.active_for_endpoint(endpoint_id)
+        if not candidates:
+            return {"status": "unknown", "endpoint_id": endpoint_id, "candidates": []}
+        if len(candidates) == 1:
+            return {
+                "status": "selected",
+                "strategy": "single_active",
+                "endpoint_id": endpoint_id,
+                "timer": candidates[0].as_dict(),
+                "candidates": [candidates[0].as_dict()],
+            }
+        due_candidates = [(record, _parse_event_datetime(record.due_at)) for record in candidates]
+        due_candidates = [(record, due_at) for record, due_at in due_candidates if due_at is not None]
+        if due_candidates:
+            due_candidates.sort(key=lambda item: item[1])
+            if len(due_candidates) == 1 or due_candidates[0][1] < due_candidates[1][1]:
+                return {
+                    "status": "selected",
+                    "strategy": "nearest_due",
+                    "endpoint_id": endpoint_id,
+                    "timer": due_candidates[0][0].as_dict(),
+                    "candidates": [record.as_dict() for record in candidates],
+                }
+        return {
+            "status": "ambiguous",
+            "endpoint_id": endpoint_id,
+            "candidate_count": len(candidates),
+            "candidates": [record.as_dict() for record in candidates],
+        }
+
+    def active_for_endpoint(self, endpoint_id: str) -> list[TimerOwnerRecord]:
+        normalized_endpoint = str(endpoint_id or "").strip()
+        records = [
+            record
+            for record in self._records.values()
+            if record.endpoint_id == normalized_endpoint and _is_active_timer_state(record.state)
+        ]
+        return sorted(records, key=lambda record: (_parse_event_datetime(record.due_at) or datetime.max.replace(tzinfo=UTC), record.timer_id))
+
+    def status(self) -> dict[str, Any]:
+        records = sorted(
+            self._records.values(),
+            key=lambda record: (record.endpoint_id, _parse_event_datetime(record.due_at) or datetime.max.replace(tzinfo=UTC), record.timer_id),
+        )
+        active = [record for record in records if _is_active_timer_state(record.state)]
+        return {
+            "record_count": len(records),
+            "active_count": len(active),
+            "records": [record.as_dict() for record in records[: self._max_records]],
+        }
+
+    def _update_one(
+        self,
+        topic: str,
+        payload: dict[str, Any],
+        data: dict[str, Any],
+        event_type: str,
+    ) -> list[TimerOwnerRecord]:
+        subject = payload.get("subject") if isinstance(payload.get("subject"), dict) else {}
+        timer_id = str(data.get("timer_id") or subject.get("record_id") or "").strip()
+        endpoint_id = str(data.get("endpoint_id") or data.get("device_id") or "").strip()
+        if not timer_id or not endpoint_id:
+            return []
+        source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+        existing = self._records.get(timer_id)
+        state = _timer_state_from_event(event_type, data)
+        owner_node_id = str(source.get("node_id") or data.get("requester_node_id") or "").strip() or None
+        title = str(data.get("title") or data.get("label") or "").strip() or (existing.title if existing else None)
+        due_at = str(data.get("due_at") or "").strip() or (existing.due_at if existing else None)
+        remaining_text = str(data.get("remaining_text") or data.get("remaining_hhmmss") or "").strip() or (
+            existing.remaining_text if existing else None
+        )
+        remaining_seconds = _optional_int(data.get("remaining_seconds"))
+        if remaining_seconds is None and existing is not None:
+            remaining_seconds = existing.remaining_seconds
+        alarm_status = _alarm_status_from_event(event_type, data) or (existing.alarm_status if existing else None)
+        record = TimerOwnerRecord(
+            timer_id=timer_id,
+            endpoint_id=endpoint_id,
+            owner_node_id=owner_node_id or (existing.owner_node_id if existing else None),
+            title=title,
+            state=state,
+            due_at=due_at,
+            remaining_seconds=remaining_seconds,
+            remaining_text=remaining_text,
+            alarm_status=alarm_status,
+            last_event_type=event_type,
+            last_event_id=str(payload.get("event_id") or "").strip() or None,
+            last_seen_at=datetime.now(UTC).isoformat(),
+        )
+        self._records[timer_id] = record
+        self._trim()
+        return [record]
+
+    def _trim(self) -> None:
+        if len(self._records) <= self._max_records:
+            return
+        records = sorted(self._records.values(), key=lambda record: record.last_seen_at, reverse=True)
+        self._records = {record.timer_id: record for record in records[: self._max_records]}
 
 
 def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnnouncement | None:
@@ -126,6 +282,7 @@ class TimerSucceededAnnouncementService:
         announce: Callable[[TimerAnnouncement], Awaitable[dict[str, Any]] | dict[str, Any]],
         play_alarm: Callable[[TimerCompletedAlarm], Awaitable[dict[str, Any]] | dict[str, Any]] | None = None,
         onboarding_state_store: OnboardingStateStore | None = None,
+        ownership_cache: TimerOwnershipCache | None = None,
     ) -> None:
         self._settings = settings
         self._announce = announce
@@ -139,6 +296,7 @@ class TimerSucceededAnnouncementService:
         self._last_announcement: dict[str, Any] | None = None
         self._last_alarm: dict[str, Any] | None = None
         self._seen_alarm_keys: list[str] = []
+        self._ownership_cache = ownership_cache or TimerOwnershipCache()
 
     def start(self, loop: asyncio.AbstractEventLoop) -> dict[str, Any]:
         self._loop = loop
@@ -221,6 +379,7 @@ class TimerSucceededAnnouncementService:
             "reason": self._last_reason,
             "last_announcement": self._last_announcement,
             "last_alarm": self._last_alarm,
+            "ownership": self._ownership_cache.status(),
         }
 
     def _on_connect(self, client: Any, userdata: Any, flags: Any, reason_code: Any, properties: Any = None) -> None:
@@ -255,6 +414,7 @@ class TimerSucceededAnnouncementService:
         if loop is None:
             self._last_reason = "event_loop_unavailable"
             return
+        self._ownership_cache.update_from_event(str(msg.topic), payload)
         alarm = timer_completed_alarm(
             str(msg.topic),
             payload,
@@ -327,6 +487,7 @@ class TimerSucceededAnnouncementService:
             self._settings.voice_timer_success_mqtt_topic,
             self._settings.voice_timer_status_mqtt_topic,
             self._settings.voice_timer_completed_mqtt_topic,
+            "hexe/events/timer/+",
         ]
         deduped: list[str] = []
         for topic in topics:
@@ -334,3 +495,65 @@ class TimerSucceededAnnouncementService:
             if normalized and normalized not in deduped:
                 deduped.append(normalized)
         return deduped
+
+
+def _timer_state_from_event(event_type: str, data: dict[str, Any]) -> str:
+    explicit = str(data.get("state") or "").strip().lower()
+    if explicit:
+        return explicit
+    if event_type == "timer.completed":
+        return "completed"
+    if event_type.startswith("timer.cancel"):
+        return "cancelled"
+    if event_type.startswith("timer.stop"):
+        return "stopped"
+    if event_type.startswith(("timer.create", "timer.status", "timer.adjust_time")):
+        return "active"
+    return "unknown"
+
+
+def _alarm_status_from_event(event_type: str, data: dict[str, Any]) -> str | None:
+    explicit = str(data.get("alarm_status") or data.get("playback_state") or "").strip().lower()
+    if explicit:
+        return explicit
+    if event_type == "timer.completed":
+        return "pending"
+    return None
+
+
+def _is_active_timer_state(state: str) -> bool:
+    return str(state or "").strip().lower() not in {
+        "",
+        "inactive",
+        "cancelled",
+        "canceled",
+        "cleared",
+        "completed",
+        "done",
+        "expired",
+        "none",
+        "not_found",
+        "stopped",
+        "unknown",
+    }
+
+
+def _optional_int(value: Any) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_event_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed

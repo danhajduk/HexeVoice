@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 import logging
 import re
@@ -17,11 +17,13 @@ from hexevoice.assistant.intents import LocalIntentFinder
 from hexevoice.config.settings import Settings
 from hexevoice.domain_events import (
     AsyncDomainEventPublisher,
+    DomainEventPublishDecision,
     HexeMqttTimerCreateEventPublisher,
     TimerCreateEventPublisher,
     utc_event_timestamp,
 )
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.timer_announcements import TimerOwnershipCache
 
 
 log = logging.getLogger(__name__)
@@ -304,6 +306,7 @@ class AssistantTurnService:
         adapter: AssistantAdapter | None = None,
         intent_finder: LocalIntentFinder | None = None,
         timer_event_publisher: TimerCreateEventPublisher | None = None,
+        timer_ownership_cache: TimerOwnershipCache | None = None,
     ) -> None:
         self._settings = settings
         self._runtime_service = runtime_service
@@ -319,6 +322,7 @@ class AssistantTurnService:
         self._pending_followups_by_endpoint: dict[str, PendingConversationFollowup] = {}
         self._pending_followups_by_session: dict[str, PendingConversationFollowup] = {}
         self._last_intent_latency: dict[str, Any] | None = None
+        self._timer_ownership_cache = timer_ownership_cache
 
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
         heard_text = self._strip_wake_words(payload.text)
@@ -332,6 +336,7 @@ class AssistantTurnService:
             pending_followup=pending_followup.as_dict() if pending_followup else None,
         )
         if intent is not None:
+            intent = self._resolve_timer_context(intent, endpoint_id=payload.endpoint_id)
             self._publish_intent_recognized_event(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
@@ -397,6 +402,7 @@ class AssistantTurnService:
             **self._adapter.status(),
             "local_intents": self._intent_finder.status(),
             "domain_events": self._timer_event_publisher.status(),
+            "timer_ownership": self._timer_ownership_cache.status() if self._timer_ownership_cache else None,
             "last_intent_latency": self._last_intent_latency,
             "context_turn_limit": self._context_limit,
             "endpoint_contexts": {endpoint_id: len(turns) for endpoint_id, turns in self._context_by_endpoint.items()},
@@ -455,6 +461,7 @@ class AssistantTurnService:
                 latency_ms=intent_latency_ms,
             )
         recognized_event_id = f"voice-intent-{uuid4().hex}"
+        intent = self._resolve_timer_context(intent, endpoint_id=endpoint_id)
         reply_audio = self._synthesize_intent_reply_audio(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
@@ -677,6 +684,12 @@ class AssistantTurnService:
         intent,
         requested_at: datetime,
     ):
+        if self._timer_selection_blocks_dispatch(intent):
+            return DomainEventPublishDecision(
+                status="skipped",
+                reason="ambiguous_timer_selection",
+                event_type=f"{intent.command}_requested",
+            )
         if intent.command == "timer.create":
             return self._publish_timer_create_event(
                 endpoint_id=endpoint_id,
@@ -710,6 +723,38 @@ class AssistantTurnService:
                 requested_at=requested_at,
             )
         return None
+
+    def _resolve_timer_context(self, intent, *, endpoint_id: str):
+        if intent.command not in {"timer.status", "timer.stop", "timer.cancel", "timer.adjust_time"}:
+            return intent
+        if self._timer_ownership_cache is None:
+            return intent
+        selection = self._timer_ownership_cache.select_timer(endpoint_id)
+        slots = dict(intent.slots)
+        slots["timer_selection_status"] = selection.get("status")
+        if selection.get("status") == "selected":
+            timer = selection.get("timer") if isinstance(selection.get("timer"), dict) else {}
+            timer_id = str(timer.get("timer_id") or "").strip()
+            if timer_id:
+                slots["timer_id"] = timer_id
+            for source_key, slot_key in (
+                ("owner_node_id", "timer_owner_node_id"),
+                ("title", "timer_title"),
+                ("due_at", "timer_due_at"),
+            ):
+                if timer.get(source_key):
+                    slots[slot_key] = timer.get(source_key)
+            slots["timer_selection_strategy"] = selection.get("strategy")
+            return replace(intent, slots=slots)
+        if selection.get("status") == "ambiguous":
+            candidates = selection.get("candidates") if isinstance(selection.get("candidates"), list) else []
+            slots["timer_candidates"] = candidates
+            slots["timer_candidate_count"] = len(candidates)
+            return replace(intent, slots=slots, reply_text=_timer_ambiguity_reply(candidates))
+        return replace(intent, slots=slots)
+
+    def _timer_selection_blocks_dispatch(self, intent) -> bool:
+        return intent.slots.get("timer_selection_status") == "ambiguous"
 
     def _pending_followup(
         self,
@@ -916,3 +961,17 @@ class AssistantTurnService:
             command,
             latency_ms,
         )
+
+
+def _timer_ambiguity_reply(candidates: list[dict[str, Any]]) -> str:
+    labels: list[str] = []
+    for candidate in candidates[:3]:
+        title = str(candidate.get("title") or "").strip()
+        remaining = str(candidate.get("remaining_text") or "").strip()
+        timer_id = str(candidate.get("timer_id") or "").strip()
+        label = title or remaining or timer_id
+        if label:
+            labels.append(label)
+    if labels:
+        return f"I found multiple active timers: {', '.join(labels)}. Please say which timer."
+    return "I found multiple active timers. Please say which timer."

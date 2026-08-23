@@ -3,7 +3,12 @@ import json
 from types import SimpleNamespace
 
 from hexevoice.config.settings import Settings
-from hexevoice.timer_announcements import TimerSucceededAnnouncementService, timer_completed_alarm, timer_success_announcement
+from hexevoice.timer_announcements import (
+    TimerOwnershipCache,
+    TimerSucceededAnnouncementService,
+    timer_completed_alarm,
+    timer_success_announcement,
+)
 
 
 def test_timer_success_announcement_uses_success_payload_title():
@@ -130,6 +135,110 @@ def test_timer_completed_alarm_uses_promoted_event_endpoint_and_dedupe_key():
 
 def test_timer_completed_alarm_requires_target_endpoint():
     assert timer_completed_alarm("hexe/events/timer/completed", {"event_type": "timer.completed", "data": {}}) is None
+
+
+def test_timer_ownership_cache_tracks_owner_and_selects_single_active_timer():
+    cache = TimerOwnershipCache()
+
+    cache.update_from_event(
+        "hexe/events/timer/create_succeeded",
+        {
+            "event_id": "timer-create-1",
+            "event_type": "timer.create_succeeded",
+            "source": {"node_id": "node-timer-1"},
+            "subject": {"family": "timer", "record_id": "timer-1"},
+            "data": {
+                "endpoint_id": "esp-box-1",
+                "timer_id": "timer-1",
+                "title": "tea",
+                "due_at": "2026-08-23T23:00:00+00:00",
+                "remaining_seconds": 300,
+                "remaining_text": "5 minutes",
+            },
+        },
+    )
+
+    selection = cache.select_timer("esp-box-1")
+
+    assert selection["status"] == "selected"
+    assert selection["strategy"] == "single_active"
+    assert selection["timer"]["timer_id"] == "timer-1"
+    assert selection["timer"]["owner_node_id"] == "node-timer-1"
+    assert selection["timer"]["title"] == "tea"
+    assert cache.status()["active_count"] == 1
+
+
+def test_timer_ownership_cache_marks_completed_timer_inactive():
+    cache = TimerOwnershipCache()
+    cache.update_from_event(
+        "hexe/events/timer/status_succeeded",
+        {
+            "event_id": "timer-status-1",
+            "event_type": "timer.status_succeeded",
+            "source": {"node_id": "node-timer-1"},
+            "subject": {"family": "timer", "record_id": "timer-1"},
+            "data": {"endpoint_id": "esp-box-1", "timer_id": "timer-1", "state": "active"},
+        },
+    )
+
+    cache.update_from_event(
+        "hexe/events/timer/completed",
+        {
+            "event_id": "timer-completed-1",
+            "event_type": "timer.completed",
+            "source": {"node_id": "node-timer-1"},
+            "subject": {"family": "timer", "record_id": "timer-1"},
+            "data": {"endpoint_id": "esp-box-1", "timer_id": "timer-1"},
+        },
+    )
+
+    assert cache.select_timer("esp-box-1")["status"] == "unknown"
+    assert cache.status()["records"][0]["state"] == "completed"
+    assert cache.status()["records"][0]["alarm_status"] == "pending"
+
+
+def test_timer_ownership_cache_selects_nearest_due_timer_or_reports_ambiguity():
+    cache = TimerOwnershipCache()
+    cache.update_from_event(
+        "hexe/events/timer/status_succeeded",
+        {
+            "event_id": "timer-status-list",
+            "event_type": "timer.status_succeeded",
+            "source": {"node_id": "node-timer-1"},
+            "data": {
+                "endpoint_id": "esp-box-1",
+                "timers": [
+                    {"timer_id": "timer-later", "state": "active", "due_at": "2026-08-23T23:10:00+00:00"},
+                    {"timer_id": "timer-sooner", "state": "active", "due_at": "2026-08-23T23:05:00+00:00"},
+                ],
+            },
+        },
+    )
+
+    selection = cache.select_timer("esp-box-1")
+
+    assert selection["status"] == "selected"
+    assert selection["strategy"] == "nearest_due"
+    assert selection["timer"]["timer_id"] == "timer-sooner"
+
+    ambiguous = TimerOwnershipCache()
+    ambiguous.update_from_event(
+        "hexe/events/timer/status_succeeded",
+        {
+            "event_id": "timer-status-list-2",
+            "event_type": "timer.status_succeeded",
+            "source": {"node_id": "node-timer-1"},
+            "data": {
+                "endpoint_id": "esp-box-1",
+                "timers": [
+                    {"timer_id": "timer-a", "state": "active"},
+                    {"timer_id": "timer-b", "state": "active"},
+                ],
+            },
+        },
+    )
+
+    assert ambiguous.select_timer("esp-box-1")["status"] == "ambiguous"
 
 
 def test_timer_service_queues_timer_completed_alarm_once():

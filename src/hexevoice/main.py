@@ -134,7 +134,7 @@ from hexevoice.setup_host import SetupHostReadinessService
 from hexevoice.setup_reauth import SetupReauthService
 from hexevoice.setup_trust import SetupTrustRecoveryService
 from hexevoice.supervisor.client import SupervisorApiClient
-from hexevoice.timer_announcements import TimerSucceededAnnouncementService
+from hexevoice.timer_announcements import TimerOwnershipCache, TimerSucceededAnnouncementService
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.tts import TtsAudioService
 from hexevoice.tts.runtime_settings import TtsRuntimeSettingsService
@@ -509,10 +509,12 @@ def create_app(
         supervisor_client=supervisor_client,
         engine_heartbeat_fetcher=lambda: engine_heartbeats,
     )
+    timer_ownership_cache = TimerOwnershipCache()
     assistant_service = AssistantTurnService(
         settings=app_settings,
         runtime_service=service,
         intent_finder=LocalIntentFinder(registry=voice_intent_registry),
+        timer_ownership_cache=timer_ownership_cache,
     )
     voice_turn_pipeline = build_voice_turn_pipeline(settings=app_settings, assistant_service=assistant_service)
     tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
@@ -559,6 +561,7 @@ def create_app(
             interaction_id=alarm.timer_id,
             metadata=alarm.metadata,
         ),
+        ownership_cache=timer_ownership_cache,
     )
     log = logging.getLogger("hexevoice")
 

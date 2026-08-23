@@ -13,6 +13,7 @@ from hexevoice.assistant import AssistantTurnService
 from hexevoice.config.settings import Settings
 from hexevoice.domain_events import AsyncDomainEventPublisher, DomainEventPublishDecision
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.timer_announcements import TimerOwnershipCache
 from hexevoice.voice import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
@@ -323,6 +324,88 @@ def test_voice_turn_pipeline_handles_timer_stop_intent_locally(tmp_path):
             "requested_at": publisher.calls[0]["requested_at"],
         }
     ]
+
+
+def test_voice_turn_pipeline_adds_selected_timer_id_to_timer_control(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    publisher = FakeTimerEventPublisher()
+    cache = TimerOwnershipCache()
+    cache.update_from_event(
+        "hexe/events/timer/create_succeeded",
+        {
+            "event_id": "timer-create-1",
+            "event_type": "timer.create_succeeded",
+            "source": {"node_id": "node-timer-1"},
+            "subject": {"family": "timer", "record_id": "timer-1"},
+            "data": {
+                "endpoint_id": "esp-pe-1",
+                "timer_id": "timer-1",
+                "title": "tea",
+                "due_at": "2026-08-23T23:00:00+00:00",
+            },
+        },
+    )
+    assistant = AssistantTurnService(
+        settings=settings,
+        runtime_service=runtime,
+        timer_event_publisher=publisher,
+        timer_ownership_cache=cache,
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, stop the timer"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-pe-1", session_id="voice-session-stop", chunk_count=1)
+    )
+
+    assert result.assistant_response.command == "timer.stop"
+    assert result.assistant_response.spoken_text == "Stopping the timer."
+    assert publisher.calls[0]["timer_id"] == "timer-1"
+
+
+def test_voice_turn_pipeline_skips_ambiguous_timer_command(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    publisher = FakeTimerEventPublisher()
+    cache = TimerOwnershipCache()
+    cache.update_from_event(
+        "hexe/events/timer/status_succeeded",
+        {
+            "event_id": "timer-status-list",
+            "event_type": "timer.status_succeeded",
+            "source": {"node_id": "node-timer-1"},
+            "data": {
+                "endpoint_id": "esp-pe-1",
+                "timers": [
+                    {"timer_id": "timer-a", "state": "active", "title": "tea"},
+                    {"timer_id": "timer-b", "state": "active", "title": "laundry"},
+                ],
+            },
+        },
+    )
+    assistant = AssistantTurnService(
+        settings=settings,
+        runtime_service=runtime,
+        timer_event_publisher=publisher,
+        timer_ownership_cache=cache,
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, cancel the timer"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-pe-1", session_id="voice-session-cancel", chunk_count=1)
+    )
+
+    assert result.assistant_response.command == "timer.cancel"
+    assert result.assistant_response.spoken_text == "I found multiple active timers: tea, laundry. Please say which timer."
+    assert publisher.calls == []
 
 
 def test_voice_turn_pipeline_handles_timer_adjust_time_intent_locally(tmp_path):

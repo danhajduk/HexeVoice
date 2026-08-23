@@ -131,6 +131,23 @@ stopping, cancelling, or rejecting ambiguous timers.
 `heard_text`, `requested_at`, and a correlation id. The timer-owning node applies
 the delta to the active timer for that endpoint or rejects ambiguous requests.
 
+HexeVoice keeps a small in-memory ownership cache from promoted timer events so
+commands can include a concrete `timer_id` when a timer is already known. Timer
+nodes should include `endpoint_id`, `timer_id`, `state`, optional `title`,
+`due_at`, `remaining_seconds`, and `remaining_text` on `timer.create_succeeded`,
+`timer.status_succeeded`, `timer.stop_succeeded`, `timer.cancel_succeeded`,
+`timer.adjust_time_succeeded`, and `timer.completed` events. A status event can
+also return `data.timers` as a list of timer objects for the endpoint. When
+HexeVoice has exactly one active timer for an endpoint, it adds that `timer_id`
+to stop, cancel, status, and adjust requests. With multiple active timers it
+selects the unique nearest `due_at`; if there is no safe deterministic choice,
+it skips the command and asks the user to identify the timer.
+
+Operator diagnostics are exposed under `/api/voice/status` at
+`timer_announcements.ownership`, including each cached timer owner node, timer
+id, endpoint target, remaining time, state, due time, last event, and alarm
+status.
+
 Timer expiry is event-driven. HexeVoice subscribes to the promoted
 `hexe/events/timer/completed` event stream and resolves the target endpoint from
 `data.endpoint_id`, falling back to `data.device_id` only when present. A valid
