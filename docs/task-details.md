@@ -1580,3 +1580,90 @@ Definition of done:
 - Overview, runtime, endpoint, TTS, and intent surfaces expose lightweight Core card payloads with explicit refresh policy.
 - Operator actions remain backed by existing node-side authorization and validation.
 - Tests prove new Core-rendered endpoints do not break current Voice dashboard, onboarding, provider setup, endpoint, intent, TTS, or service-control APIs.
+
+## Task 206
+Original task details:
+- Title: Upgrade frontend toolchain to a supported Node and Vite security baseline
+- Source finding:
+  - `npm audit` reports dev-tooling vulnerabilities through Vite/esbuild/PostCSS/Babel.
+  - The available Vite fix is a major upgrade that requires Node `^20.19.0 || >=22.12.0`; current local validation was on Node `18.20.4`.
+- Scope:
+  - Decide and enforce the new minimum Node runtime for HexeVoice frontend development and install/bootstrap flows.
+  - Upgrade Vite and matching React plugin/dev tooling to versions that clear the audit finding.
+  - Update install/bootstrap checks, docs, and any system package guidance that currently assumes older Node.
+  - Verify production build and dev-server behavior after upgrade.
+- Acceptance criteria:
+  - `npm run build` passes on the supported Node baseline.
+  - `npm audit` has no unresolved actionable Vite/esbuild/PostCSS/Babel findings.
+  - Installer and setup docs clearly state the Node version requirement.
+
+## Task 207
+Original task details:
+- Title: Migrate FastAPI startup and shutdown hooks to lifespan handlers
+- Source finding:
+  - Full backend suite passes but emits FastAPI deprecation warnings for `@app.on_event("startup")` and `@app.on_event("shutdown")` in backend, STT, and TTS services.
+- Scope:
+  - Replace deprecated event hooks in `src/hexevoice/main.py`, `src/stt/service.py`, and `src/tts/service.py` with lifespan handlers.
+  - Preserve existing startup warmup, cleanup, scheduler, and shutdown behavior.
+  - Keep tests isolated so repeated TestClient startup/shutdown still behaves deterministically.
+- Acceptance criteria:
+  - Targeted service tests and full pytest suite pass.
+  - FastAPI event-hook deprecation warnings are eliminated or reduced to third-party-only warnings.
+
+## Task 208
+Original task details:
+- Title: Add a repo migration preflight command for backend, frontend, and audit checks
+- Source finding:
+  - Manual repo-health validation required multiple separate commands: Python dependency install, full pytest, frontend build, production audit, and full dev audit review.
+- Scope:
+  - Add a script or Make target that runs the canonical move-readiness checks from one command.
+  - Include backend tests, frontend production build, production `npm audit --omit=dev`, and a clearly reported dev-audit section.
+  - Report Python, Node, npm, and key tool versions.
+  - Make failures actionable with concise summaries and log pointers.
+- Acceptance criteria:
+  - A fresh maintainer can run one documented command to validate the repo after moving/cloning.
+  - The command exits nonzero on required backend/frontend/production-audit failures.
+  - Dev-tooling audit findings are reported distinctly from production-blocking findings.
+
+## Task 209
+Original task details:
+- Title: Consolidate legacy wake-model runtime paths and remove misspelled path dependency
+- Source finding:
+  - The repo intentionally carries a legacy `runtime/vioce_models/Hexa.tflite` compatibility path, and `.gitignore` still ignores both `runtime/voice_models/` and `runtime/vioce_models/`.
+- Scope:
+  - Audit current wake-model sync behavior and any deployed migration dependency on the misspelled path.
+  - Add a one-time migration or compatibility warning that moves legacy assets into `runtime/openwakeword/models/`.
+  - Remove the misspelled path dependency only after compatibility is preserved.
+  - Update docs/tests to make the legacy behavior explicit until it is safe to remove.
+- Acceptance criteria:
+  - Existing legacy wake model installs still sync correctly.
+  - New installs do not create or require `runtime/vioce_models/`.
+  - Tests cover legacy-path migration and canonical wake-model path behavior.
+
+## Task 210
+Original task details:
+- Title: Harden voice-loop validation across target firmware hardware profiles
+- Source finding:
+  - README now marks full production hardening across target hardware profiles as remaining work.
+- Scope:
+  - Define the supported firmware hardware profiles and the minimum validation matrix for audio streaming, wake acceptance, TTS playback, display state, OTA/media, mute/volume, and reconnect behavior.
+  - Add automated or semi-automated checks where possible without requiring physical hardware for every test.
+  - Document any manual field-validation steps that remain hardware-bound.
+- Acceptance criteria:
+  - Each target profile has a clear validation checklist and automated coverage where feasible.
+  - Voice WebSocket, audio upload, STT/TTS response, and firmware playback regressions are caught before release.
+  - Unsupported or unvalidated profile states are visible to operators.
+
+## Task 211
+Original task details:
+- Title: Add long-running provider health, model warmup, and firmware media lifecycle validation
+- Source finding:
+  - Repo-health review identified long-running provider health, model warmup, and firmware media/artifact lifecycle as remaining production-hardening work.
+- Scope:
+  - Add soak or lifecycle tests for STT/TTS/wake provider health over restart, warmup, reload, and degraded states.
+  - Validate generated TTS artifact cleanup, wake recording cleanup, endpoint media delivery, firmware artifact install, and OTA/media inventory over repeated cycles.
+  - Expose concise pass/fail summaries suitable for setup ready checks or operations docs.
+- Acceptance criteria:
+  - Long-running validation can be run locally or on a staging node without manual log spelunking.
+  - Provider/model/media lifecycle failures produce actionable diagnostics.
+  - Existing fast test suite remains practical for day-to-day development.
