@@ -7,6 +7,7 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
 - [`docs/archive/esphome/Expressif box.yaml`](/home/dan/Projects/HexeVoice/docs/archive/esphome/Expressif%20box.yaml)
 - [`docs/firmware-baseline.md`](/home/dan/Projects/HexeVoice/docs/firmware-baseline.md)
 - [`docs/firmware-migration-plan.md`](/home/dan/Projects/HexeVoice/docs/firmware-migration-plan.md)
+- [`docs/firmware-discovery.md`](/home/dan/Projects/HexeVoice/docs/firmware-discovery.md)
 - [`docs/firmware-ota.md`](/home/dan/Projects/HexeVoice/docs/firmware-ota.md)
 - [`docs/firmware-provisioning.md`](/home/dan/Projects/HexeVoice/docs/firmware-provisioning.md)
 
@@ -44,6 +45,10 @@ credentials can be persisted through the operator dashboard/API provisioning
 commands. Build-time YAML and Wi-Fi secrets remain the recovery fallback after a
 provisioning reset. See
 [`docs/firmware-provisioning.md`](../docs/firmware-provisioning.md).
+
+When `behavior.discovery_enabled` is true, firmware first tries LAN UDP
+discovery and persists the node's offer before using the static YAML host. See
+[`docs/firmware-discovery.md`](../docs/firmware-discovery.md).
 
 ## SPI microSD Media Storage
 

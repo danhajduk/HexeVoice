@@ -25,7 +25,8 @@ audio:
 behavior:
   heartbeat_interval_ms: 5000
   reconnect_backoff_ms: 1000
-  discovery_enabled: false
+  discovery_enabled: true
+  discovery_udp_port: 9134
 
 debug_log:
   enabled: false

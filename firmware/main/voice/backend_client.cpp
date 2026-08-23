@@ -30,6 +30,8 @@
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "lwip/inet.h"
+#include "lwip/sockets.h"
 #include "mbedtls/base64.h"
 #include "psa/crypto.h"
 #include "system/clock.h"
@@ -61,6 +63,8 @@ constexpr int kVoiceWsSendTimeoutMs = 3000;
 constexpr int kVoiceWsSendRetryDelayMs = 50;
 constexpr int kVoiceWsSendAttempts = 3;
 constexpr int64_t kPostTtsInputIgnoreUs = 800000;
+constexpr int kDiscoveryTimeoutMs = 1200;
+constexpr char kDiscoverySchemaVersion[] = "hexevoice.endpoint.discovery.v1";
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
 
 struct AudioFrame {
@@ -91,6 +95,8 @@ bool g_vad_speech_started_reported = false;
 bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
 bool g_ws_started = false;
+bool g_discovery_attempted = false;
+const char *g_discovery_status = "not_attempted";
 bool g_preroll_drained = false;
 bool g_media_transfer_active = false;
 int64_t g_last_clock_sync_us = 0;
@@ -490,6 +496,128 @@ std::string websocket_url() {
       hexe::system::endpoint_ws_port(),
       hexe::config::kEndpointVoiceWsPath);
   return std::string(buffer);
+}
+
+void copy_discovery_string(char *target, size_t target_size, const char *value) {
+  if (target == nullptr || target_size == 0) {
+    return;
+  }
+  const char *source = value == nullptr ? "" : value;
+  std::strncpy(target, source, target_size - 1);
+  target[target_size - 1] = '\0';
+}
+
+bool apply_discovery_offer(cJSON *root) {
+  if (!cJSON_IsObject(root)) {
+    return false;
+  }
+  cJSON *accepted = cJSON_GetObjectItem(root, "accepted");
+  if (!cJSON_IsBool(accepted) || !cJSON_IsTrue(accepted)) {
+    cJSON *reason = cJSON_GetObjectItem(root, "reason");
+    g_discovery_status = "rejected";
+    ESP_LOGW(kTag, "Endpoint discovery rejected: %s", cJSON_IsString(reason) ? reason->valuestring : "unknown");
+    return false;
+  }
+  cJSON *backend_host = cJSON_GetObjectItem(root, "backend_host");
+  cJSON *http_port = cJSON_GetObjectItem(root, "http_port");
+  cJSON *ws_port = cJSON_GetObjectItem(root, "ws_port");
+  cJSON *use_tls = cJSON_GetObjectItem(root, "use_tls");
+  if (!cJSON_IsString(backend_host) || backend_host->valuestring[0] == '\0' || !cJSON_IsNumber(http_port) ||
+      !cJSON_IsNumber(ws_port) || !cJSON_IsBool(use_tls)) {
+    g_discovery_status = "invalid_offer";
+    ESP_LOGW(kTag, "Endpoint discovery offer missing backend settings");
+    return false;
+  }
+
+  hexe::system::EndpointProvisioningSettings settings = hexe::system::endpoint_provisioning_settings();
+  cJSON *endpoint_id = cJSON_GetObjectItem(root, "endpoint_id");
+  if (cJSON_IsString(endpoint_id) && endpoint_id->valuestring[0] != '\0') {
+    copy_discovery_string(settings.endpoint_id, sizeof(settings.endpoint_id), endpoint_id->valuestring);
+  }
+  copy_discovery_string(settings.backend_host, sizeof(settings.backend_host), backend_host->valuestring);
+  settings.http_port = http_port->valueint;
+  settings.ws_port = ws_port->valueint;
+  settings.use_tls = cJSON_IsTrue(use_tls);
+  if (!hexe::system::save_endpoint_provisioning(settings)) {
+    g_discovery_status = "persist_failed";
+    return false;
+  }
+  g_discovery_status = "paired";
+  return true;
+}
+
+bool try_endpoint_discovery() {
+  if (!hexe::config::kEndpointDiscoveryEnabled || hexe::system::provisioning_configured() || g_discovery_attempted) {
+    return false;
+  }
+  g_discovery_attempted = true;
+
+  const int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+  if (sock < 0) {
+    g_discovery_status = "socket_failed";
+    ESP_LOGW(kTag, "Endpoint discovery socket creation failed");
+    return false;
+  }
+
+  const int broadcast = 1;
+  setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &broadcast, sizeof(broadcast));
+  timeval timeout = {};
+  timeout.tv_sec = kDiscoveryTimeoutMs / 1000;
+  timeout.tv_usec = (kDiscoveryTimeoutMs % 1000) * 1000;
+  setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+
+  sockaddr_in destination = {};
+  destination.sin_family = AF_INET;
+  destination.sin_port = htons(hexe::config::kEndpointDiscoveryUdpPort);
+  destination.sin_addr.s_addr = inet_addr("255.255.255.255");
+
+  char request[384];
+  std::snprintf(
+      request,
+      sizeof(request),
+      "{\"schema_version\":\"%s\",\"endpoint_id\":\"%s\",\"display_name\":\"%s\","
+      "\"firmware_version\":\"%s\",\"capabilities\":{\"profile\":\"firmware\"}}",
+      kDiscoverySchemaVersion,
+      hexe::system::endpoint_id(),
+      hexe::system::endpoint_display_name(),
+      firmware_version());
+  const int sent = sendto(
+      sock,
+      request,
+      std::strlen(request),
+      0,
+      reinterpret_cast<sockaddr *>(&destination),
+      sizeof(destination));
+  if (sent < 0) {
+    g_discovery_status = "send_failed";
+    ESP_LOGW(kTag, "Endpoint discovery broadcast failed");
+    close(sock);
+    return false;
+  }
+
+  char response[512];
+  sockaddr_in source = {};
+  socklen_t source_len = sizeof(source);
+  const int received = recvfrom(sock, response, sizeof(response) - 1, 0, reinterpret_cast<sockaddr *>(&source), &source_len);
+  close(sock);
+  if (received <= 0) {
+    g_discovery_status = "timed_out";
+    ESP_LOGW(kTag, "Endpoint discovery timed out");
+    return false;
+  }
+  response[received] = '\0';
+  cJSON *root = cJSON_ParseWithLength(response, received);
+  if (root == nullptr) {
+    g_discovery_status = "invalid_json";
+    ESP_LOGW(kTag, "Endpoint discovery received invalid JSON");
+    return false;
+  }
+  const bool applied = apply_discovery_offer(root);
+  cJSON_Delete(root);
+  if (applied) {
+    ESP_LOGI(kTag, "Endpoint discovery paired with %s:%d", hexe::system::endpoint_backend_host(), hexe::system::endpoint_http_port());
+  }
+  return applied;
 }
 
 std::string base64_audio(const int16_t *samples, size_t sample_count) {
@@ -945,6 +1073,11 @@ std::string endpoint_capabilities_json() {
   cJSON_AddBoolToObject(provisioning, "use_tls", hexe::system::endpoint_use_tls());
   cJSON_AddBoolToObject(provisioning, "wifi_configured", hexe::system::wifi_ssid()[0] != '\0');
   cJSON_AddBoolToObject(provisioning, "runtime_configurable", true);
+  cJSON *discovery = cJSON_AddObjectToObject(provisioning, "discovery");
+  cJSON_AddBoolToObject(discovery, "enabled", hexe::config::kEndpointDiscoveryEnabled);
+  cJSON_AddNumberToObject(discovery, "udp_port", hexe::config::kEndpointDiscoveryUdpPort);
+  cJSON_AddBoolToObject(discovery, "attempted", g_discovery_attempted);
+  cJSON_AddStringToObject(discovery, "status", g_discovery_status);
 
   cJSON *firmware = cJSON_AddObjectToObject(root, "firmware");
   cJSON_AddStringToObject(firmware, "project_name", app == nullptr ? "unknown" : app->project_name);
@@ -1845,8 +1978,6 @@ bool sync_backend_time(const std::string &url) {
 
 void heartbeat_task(void *arg) {
   (void)arg;
-  const std::string url = heartbeat_url();
-  const std::string clock_url = time_url();
 
   while (true) {
     if (!hexe::state().wifi_connected) {
@@ -1859,11 +1990,14 @@ void heartbeat_task(void *arg) {
       vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
       continue;
     }
+    try_endpoint_discovery();
     if (hexe::state().media_transfer_active) {
       vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
       continue;
     }
 
+    const std::string url = heartbeat_url();
+    const std::string clock_url = time_url();
     std::string session_json = "null";
     if (g_session_started) {
       session_json = "\"" + g_session_id + "\"";
@@ -1940,17 +2074,6 @@ void heartbeat_task(void *arg) {
 
 void websocket_task(void *arg) {
   (void)arg;
-  const std::string uri = websocket_url();
-  esp_websocket_client_config_t config = {};
-  config.uri = uri.c_str();
-  config.reconnect_timeout_ms = hexe::config::kEndpointReconnectBackoffMs;
-  g_ws_client = esp_websocket_client_init(&config);
-  if (g_ws_client == nullptr) {
-    ESP_LOGE(kTag, "Failed to initialize voice WebSocket client");
-    vTaskDelete(nullptr);
-    return;
-  }
-  esp_websocket_register_events(g_ws_client, WEBSOCKET_EVENT_ANY, websocket_event_handler, nullptr);
 
   AudioFrame frame = {};
   while (true) {
@@ -1988,6 +2111,19 @@ void websocket_task(void *arg) {
     }
 
     if (!g_ws_started) {
+      if (g_ws_client == nullptr) {
+        const std::string uri = websocket_url();
+        esp_websocket_client_config_t config = {};
+        config.uri = uri.c_str();
+        config.reconnect_timeout_ms = hexe::config::kEndpointReconnectBackoffMs;
+        g_ws_client = esp_websocket_client_init(&config);
+        if (g_ws_client == nullptr) {
+          ESP_LOGE(kTag, "Failed to initialize voice WebSocket client");
+          vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+          continue;
+        }
+        esp_websocket_register_events(g_ws_client, WEBSOCKET_EVENT_ANY, websocket_event_handler, nullptr);
+      }
       ESP_LOGI(kTag, "Starting voice WebSocket after Wi-Fi and backend heartbeat are ready");
       esp_websocket_client_start(g_ws_client);
       g_ws_started = true;

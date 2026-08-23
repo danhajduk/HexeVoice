@@ -58,6 +58,8 @@ from hexevoice.api.models import (
     EndpointHeartbeatResponse,
     EndpointCommandRequest,
     EndpointCommandResponse,
+    EndpointDiscoveryRequest,
+    EndpointDiscoveryResponse,
     EndpointLedSimulateCommandRequest,
     EndpointMetadataUpdateRequest,
     EndpointMicroVadCommandRequest,
@@ -108,6 +110,7 @@ from hexevoice.api.models import (
 from hexevoice.assistant import AssistantTurnService, LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
+from hexevoice.endpoint.discovery import EndpointDiscoveryService, EndpointDiscoveryUdpProtocol
 from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
 from hexevoice.endpoint.service import EndpointHeartbeatService
 from hexevoice.engine_http import async_client_for_engine
@@ -402,6 +405,11 @@ def create_app(
         endpoint_registry_store=endpoint_registry_store,
         stale_after_seconds=app_settings.endpoint_stale_after_seconds,
     )
+    endpoint_discovery_service = EndpointDiscoveryService(
+        settings=app_settings,
+        endpoint_registry_store=endpoint_registry_store,
+        stale_after_seconds=app_settings.endpoint_stale_after_seconds,
+    )
     endpoint_media_service = EndpointMediaService(media_dir=app_settings.resolved_endpoint_media_dir())
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
@@ -475,10 +483,28 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.voice_background_tasks = []
+        app.state.endpoint_discovery_transport = None
 
         def track_background_task(task: asyncio.Task) -> asyncio.Task:
             app.state.voice_background_tasks.append(task)
             return task
+
+        if app_settings.endpoint_discovery_udp_enabled:
+            try:
+                loop = asyncio.get_running_loop()
+                transport, _ = await loop.create_datagram_endpoint(
+                    lambda: EndpointDiscoveryUdpProtocol(service=endpoint_discovery_service),
+                    local_addr=(app_settings.endpoint_discovery_udp_host, app_settings.endpoint_discovery_udp_port),
+                    allow_broadcast=True,
+                )
+                app.state.endpoint_discovery_transport = transport
+                log.info(
+                    "Endpoint discovery UDP listener started on %s:%s",
+                    app_settings.endpoint_discovery_udp_host,
+                    app_settings.endpoint_discovery_udp_port,
+                )
+            except OSError:
+                log.warning("Endpoint discovery UDP listener could not start", exc_info=True)
 
         if app_settings.voice_wake_preload:
             voice_session_manager.preload_wake_detector()
@@ -586,6 +612,9 @@ def create_app(
         try:
             yield
         finally:
+            discovery_transport = getattr(app.state, "endpoint_discovery_transport", None)
+            if discovery_transport is not None:
+                discovery_transport.close()
             timer_announcement_service.stop()
             tasks = list(getattr(app.state, "voice_background_tasks", []))
             for task in tasks:
@@ -769,6 +798,12 @@ def create_app(
     @app.post("/api/endpoint/heartbeat", response_model=EndpointHeartbeatResponse)
     async def endpoint_heartbeat(payload: EndpointHeartbeatRequest) -> EndpointHeartbeatResponse:
         response = endpoint_service.record_heartbeat(payload)
+        node_ui_page_cache.invalidate()
+        return response
+
+    @app.post("/api/endpoint/discovery/offer", response_model=EndpointDiscoveryResponse)
+    async def endpoint_discovery_offer(payload: EndpointDiscoveryRequest) -> EndpointDiscoveryResponse:
+        response = endpoint_discovery_service.offer(payload)
         node_ui_page_cache.invalidate()
         return response
 

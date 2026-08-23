@@ -182,6 +182,30 @@ class EndpointHeartbeatResponse(BaseModel):
     last_seen_at: str
 
 
+class EndpointDiscoveryRequest(BaseModel):
+    schema_version: str = "hexevoice.endpoint.discovery.v1"
+    endpoint_id: str = Field(min_length=1, max_length=63)
+    display_name: str | None = Field(default=None, max_length=63)
+    firmware_version: str | None = Field(default=None, max_length=80)
+    pairing_nonce: str | None = Field(default=None, max_length=80)
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+
+
+class EndpointDiscoveryResponse(BaseModel):
+    accepted: bool
+    schema_version: str = "hexevoice.endpoint.discovery.v1"
+    endpoint_id: str
+    pairing_state: Literal["paired", "stale_recovered", "duplicate_online", "invalid_request"]
+    backend_host: str | None = None
+    http_port: int | None = None
+    ws_port: int | None = None
+    use_tls: bool = False
+    heartbeat_path: str = "/api/endpoint/heartbeat"
+    voice_ws_path: str = "/api/voice/ws"
+    reason: str | None = None
+    server_time: str
+
+
 class EndpointTimeResponse(BaseModel):
     server_time: str
     server_unix_ms: int

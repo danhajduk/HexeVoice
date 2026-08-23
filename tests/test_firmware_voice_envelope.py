@@ -148,7 +148,23 @@ def test_firmware_supports_persisted_endpoint_provisioning_contract():
     assert '"endpoint.provisioning.reset"' in backend_source
     assert '"provisioning"' in backend_source
     assert '"runtime_configurable", true' in backend_source
+    assert '"discovery"' in backend_source
     assert "hexe::system::endpoint_backend_host()" in tts_sources
+
+
+def test_firmware_supports_udp_endpoint_discovery_and_pairing():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert "kDiscoverySchemaVersion" in backend_source
+    assert "try_endpoint_discovery" in backend_source
+    assert "SO_BROADCAST" in backend_source
+    assert "255.255.255.255" in backend_source
+    assert "g_discovery_status" in backend_source
+    assert "kEndpointDiscoveryUdpPort" in backend_source
+    assert "hexe::config::kEndpointDiscoveryEnabled" in backend_source
+    assert "apply_discovery_offer" in backend_source
+    assert "save_endpoint_provisioning(settings)" in backend_source
+    assert '"discovery"' in backend_source
 
 
 def test_operator_dashboard_exposes_endpoint_provisioning_flow():
@@ -166,6 +182,8 @@ def test_operator_dashboard_exposes_endpoint_provisioning_flow():
     assert "Endpoint Settings" in dashboard_source
     assert "Apply Settings" in dashboard_source
     assert "Reset Settings" in dashboard_source
+    assert "Discovery port" in dashboard_source
+    assert "Discovery status" in dashboard_source
 
 
 def test_firmware_media_transfer_uses_temp_file_checksum_and_cleanup():

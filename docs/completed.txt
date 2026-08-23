@@ -241,3 +241,4 @@ Task 210: Harden voice-loop validation across target firmware hardware profiles 
 Task 211: Add long-running provider health, model warmup, and firmware media lifecycle validation - Completed on 08/22/2026 21:23
 Task 212: Reconcile stale Voice Node docs and decide the node feature report disposition - Completed on 08/22/2026 21:46
 Task 213: Add firmware provisioning and endpoint settings UI flow - Completed on 08/22/2026 22:01
+Task 214: Add automatic endpoint discovery and pairing for firmware endpoints - Completed on 08/22/2026 22:09

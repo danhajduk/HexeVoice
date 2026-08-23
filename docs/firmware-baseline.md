@@ -22,6 +22,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Microphone initialization and simple energy-threshold VAD task: `firmware/main/board/audio.cpp`.
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
 - Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
+- LAN UDP endpoint discovery and pairing with static YAML fallback: `docs/firmware-discovery.md`.
 - Backend heartbeat and voice WebSocket client: `firmware/main/voice/backend_client.cpp`.
 - Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, provisioning state, command controls, firmware build metadata, and TTS playback lifecycle diagnostics.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
@@ -40,7 +41,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - TTS playback exists for supported speaker paths, but still needs physical-device validation across profiles for download timing, sample-rate handling, post-playback microphone cooldown, and reconnect/session boundaries.
 - Runtime endpoint provisioning is available through backend command envelopes and the operator dashboard; network/backend route changes apply after reboot or reconnect.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
-- Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.
+- Backend endpoint connection settings are generated from YAML at build time and can be replaced by LAN UDP discovery when enabled.
 
 ## Scaffold
 
@@ -85,14 +86,13 @@ Current expected HexeVoice node backend values:
 - `audio.channels`: `1`.
 - `audio.chunk_samples`: microphone chunk size sent to the backend.
 
-Automatic endpoint discovery is deferred until after the first single-endpoint voice loop works.
+Automatic endpoint discovery uses UDP offers when `behavior.discovery_enabled`
+is true. Static config remains available for constrained networks.
 
 ## Next Firmware Work
 
 Firmware implementation should follow the task queue in `docs/New_tasks.txt`:
 
-1. Add firmware provisioning and endpoint settings UI.
-2. Add automatic endpoint discovery and pairing.
-3. Harden OTA checksum/signature validation.
-4. Complete physical reconnect/session-boundary validation.
-5. Replace or explicitly retire remaining scaffold modules.
+1. Harden OTA checksum/signature validation.
+2. Complete physical reconnect/session-boundary validation.
+3. Replace or explicitly retire remaining scaffold modules.

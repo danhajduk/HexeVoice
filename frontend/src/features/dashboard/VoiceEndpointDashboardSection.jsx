@@ -505,6 +505,7 @@ function EndpointCapabilitiesPanel({ endpointStatus }) {
 function EndpointProvisioningPanel({ endpointStatus, voiceStatus, onRefresh, setActionMessage }) {
   const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
   const provisioning = endpointCapabilities(endpointStatus).provisioning || {};
+  const discovery = provisioning.discovery || {};
   const [provisionedEndpointId, setProvisionedEndpointId] = useState(provisioning.endpoint_id || endpointId);
   const [displayName, setDisplayName] = useState(provisioning.display_name || endpointStatus?.display_name || "");
   const [backendHost, setBackendHost] = useState(provisioning.backend_host || "");
@@ -682,6 +683,20 @@ function EndpointProvisioningPanel({ endpointStatus, voiceStatus, onRefresh, set
           Reset Settings
         </button>
       </form>
+      <dl className="facts">
+        <div>
+          <dt>Discovery</dt>
+          <dd>{discovery.enabled ? "enabled" : "disabled"}</dd>
+        </div>
+        <div>
+          <dt>Discovery port</dt>
+          <dd>{discovery.udp_port || "unknown"}</dd>
+        </div>
+        <div>
+          <dt>Discovery status</dt>
+          <dd>{discovery.status || "unknown"}</dd>
+        </div>
+      </dl>
     </section>
   );
 }
