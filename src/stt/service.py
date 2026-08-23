@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from contextlib import asynccontextmanager
 import logging
 import os
 from pathlib import Path
@@ -61,7 +62,6 @@ def _build_adapter(
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
     adapter = _build_adapter(app_settings)
-    app = FastAPI(title="HexeVoice STT")
 
     def service_status() -> dict[str, Any]:
         status = adapter.status()
@@ -75,23 +75,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "stt_profile": profile.as_dict(),
         }
 
-    @app.on_event("startup")
-    async def preload_on_startup() -> None:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
         if not app_settings.voice_stt_preload:
+            yield
             return
-        log.info(
-            "Preloading external faster-whisper STT model: model=%s device=%s compute_type=%s",
-            adapter.status().get("model"),
-            adapter.status().get("device"),
-            adapter.status().get("compute_type"),
-        )
-        result = await asyncio.to_thread(adapter.preload)
-        log.info(
-            "External faster-whisper STT preload complete: loaded=%s duration_ms=%s error=%s",
-            result.get("loaded"),
-            result.get("duration_ms"),
-            result.get("error"),
-        )
+        try:
+            log.info(
+                "Preloading external faster-whisper STT model: model=%s device=%s compute_type=%s",
+                adapter.status().get("model"),
+                adapter.status().get("device"),
+                adapter.status().get("compute_type"),
+            )
+            result = await asyncio.to_thread(adapter.preload)
+            log.info(
+                "External faster-whisper STT preload complete: loaded=%s duration_ms=%s error=%s",
+                result.get("loaded"),
+                result.get("duration_ms"),
+                result.get("error"),
+            )
+            yield
+        finally:
+            pass
+
+    app = FastAPI(title="HexeVoice STT", lifespan=lifespan)
 
     @app.get("/health")
     async def health() -> dict[str, Any]:

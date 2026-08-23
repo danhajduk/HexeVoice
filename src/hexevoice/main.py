@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -451,46 +452,38 @@ def create_app(
             source_event_id=announcement.event_id,
         ),
     )
-    app = FastAPI(title="HexeVoice")
-    node_ui_page_cache = node_ui.PageSnapshotCache(
-        cache_dir=app_settings.resolved_onboarding_state_path().parent / "rendered_node_ui_pages"
-    )
-    app.state.node_ui_page_cache = node_ui_page_cache
-    app.state.timer_announcement_service = timer_announcement_service
-    app.state.voice_artifact_cleanup_status = {
-        "name": "every_5_minutes",
-        "interval_seconds": 300,
-        "last_run_at": None,
-        "last_error": None,
-        "last_result": None,
-    }
-    app.state.voice_tts_warmup_status = {
-        "name": "every_10_minutes",
-        "interval_seconds": 600,
-        "enabled": app_settings.voice_tts_provider == "piper",
-        "text": "hello",
-        "voices": _tts_warmup_voices(app_settings),
-        "last_run_at": None,
-        "last_error": None,
-        "last_results": [],
-    }
-    app.state.voice_orphan_cleanup_status = {
-        "name": "daily_midnight",
-        "scheduled_time_local": "00:00",
-        "min_age_seconds": 600,
-        "last_run_at": None,
-        "last_error": None,
-        "last_deleted_count": 0,
-    }
     log = logging.getLogger("hexevoice")
 
-    @app.on_event("startup")
-    async def start_supervisor_heartbeat():
+    async def cancel_background_task(task: asyncio.Task) -> None:
+        if task.done():
+            try:
+                task.result()
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                log.debug("Background task failed before shutdown", exc_info=True)
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.debug("Background task failed during shutdown", exc_info=True)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        app.state.voice_background_tasks = []
+
+        def track_background_task(task: asyncio.Task) -> asyncio.Task:
+            app.state.voice_background_tasks.append(task)
+            return task
+
         if app_settings.voice_wake_preload:
             voice_session_manager.preload_wake_detector()
         if app_settings.voice_stt_preload:
-            asyncio.create_task(asyncio.to_thread(voice_session_manager.preload_turn_pipeline))
-        asyncio.create_task(reconcile_external_stt_provider_config())
+            track_background_task(asyncio.create_task(asyncio.to_thread(voice_session_manager.preload_turn_pipeline)))
+        track_background_task(asyncio.create_task(reconcile_external_stt_provider_config()))
         timer_announcement_service.start(asyncio.get_running_loop())
 
         async def loop():
@@ -499,7 +492,7 @@ def create_app(
                 await asyncio.sleep(5)
 
         if supervisor_enabled:
-            asyncio.create_task(loop())
+            track_background_task(asyncio.create_task(loop()))
 
         async def cleanup_generated_voice_artifacts_every_5_minutes():
             while True:
@@ -518,7 +511,9 @@ def create_app(
                     log.exception("Generated voice artifact cleanup failed")
                 await asyncio.sleep(300)
 
-        app.state.voice_artifact_cleanup_task = asyncio.create_task(cleanup_generated_voice_artifacts_every_5_minutes())
+        app.state.voice_artifact_cleanup_task = track_background_task(
+            asyncio.create_task(cleanup_generated_voice_artifacts_every_5_minutes())
+        )
 
         async def cleanup_orphaned_voice_artifacts_daily_at_midnight():
             while True:
@@ -535,7 +530,9 @@ def create_app(
                     app.state.voice_orphan_cleanup_status["last_error"] = "orphan_cleanup_failed"
                     log.exception("Generated voice orphan cleanup failed")
 
-        app.state.voice_orphan_cleanup_task = asyncio.create_task(cleanup_orphaned_voice_artifacts_daily_at_midnight())
+        app.state.voice_orphan_cleanup_task = track_background_task(
+            asyncio.create_task(cleanup_orphaned_voice_artifacts_daily_at_midnight())
+        )
 
         async def refresh_piper_tts_warmup_voices() -> list[str | None]:
             discovered_voices = await _discover_piper_warm_voices(app_settings)
@@ -576,42 +573,55 @@ def create_app(
                     log.exception("Piper TTS warmup failed")
 
         if app_settings.voice_tts_provider == "piper":
-            asyncio.create_task(refresh_piper_tts_warmup_voices())
-            app.state.voice_tts_warmup_task = asyncio.create_task(warm_piper_tts_every_10_minutes())
+            track_background_task(asyncio.create_task(refresh_piper_tts_warmup_voices()))
+            app.state.voice_tts_warmup_task = track_background_task(
+                asyncio.create_task(warm_piper_tts_every_10_minutes())
+            )
 
-        app.state.node_ui_page_refresh_task = asyncio.create_task(node_ui_page_cache.maintain_registered_pages())
+        app.state.node_ui_page_refresh_task = track_background_task(
+            asyncio.create_task(node_ui_page_cache.maintain_registered_pages())
+        )
 
-    @app.on_event("shutdown")
-    async def stop_background_services():
-        timer_announcement_service.stop()
-        page_refresh_task = getattr(app.state, "node_ui_page_refresh_task", None)
-        if page_refresh_task is not None:
-            page_refresh_task.cancel()
-            try:
-                await page_refresh_task
-            except asyncio.CancelledError:
-                pass
-        cleanup_task = getattr(app.state, "voice_artifact_cleanup_task", None)
-        if cleanup_task is not None:
-            cleanup_task.cancel()
-            try:
-                await cleanup_task
-            except asyncio.CancelledError:
-                pass
-        orphan_cleanup_task = getattr(app.state, "voice_orphan_cleanup_task", None)
-        if orphan_cleanup_task is not None:
-            orphan_cleanup_task.cancel()
-            try:
-                await orphan_cleanup_task
-            except asyncio.CancelledError:
-                pass
-        warmup_task = getattr(app.state, "voice_tts_warmup_task", None)
-        if warmup_task is not None:
-            warmup_task.cancel()
-            try:
-                await warmup_task
-            except asyncio.CancelledError:
-                pass
+        try:
+            yield
+        finally:
+            timer_announcement_service.stop()
+            tasks = list(getattr(app.state, "voice_background_tasks", []))
+            for task in tasks:
+                await cancel_background_task(task)
+            app.state.voice_background_tasks = []
+
+    app = FastAPI(title="HexeVoice", lifespan=lifespan)
+    node_ui_page_cache = node_ui.PageSnapshotCache(
+        cache_dir=app_settings.resolved_onboarding_state_path().parent / "rendered_node_ui_pages"
+    )
+    app.state.node_ui_page_cache = node_ui_page_cache
+    app.state.timer_announcement_service = timer_announcement_service
+    app.state.voice_artifact_cleanup_status = {
+        "name": "every_5_minutes",
+        "interval_seconds": 300,
+        "last_run_at": None,
+        "last_error": None,
+        "last_result": None,
+    }
+    app.state.voice_tts_warmup_status = {
+        "name": "every_10_minutes",
+        "interval_seconds": 600,
+        "enabled": app_settings.voice_tts_provider == "piper",
+        "text": "hello",
+        "voices": _tts_warmup_voices(app_settings),
+        "last_run_at": None,
+        "last_error": None,
+        "last_results": [],
+    }
+    app.state.voice_orphan_cleanup_status = {
+        "name": "daily_midnight",
+        "scheduled_time_local": "00:00",
+        "min_age_seconds": 600,
+        "last_run_at": None,
+        "last_error": None,
+        "last_deleted_count": 0,
+    }
 
     @app.get("/health/live")
     async def health_live():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import io
 import os
 from pathlib import Path
@@ -15,7 +16,18 @@ from pydantic import BaseModel, Field
 import uvicorn
 
 
-app = FastAPI(title="HexeVoice Piper TTS")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    for worker in _warm_workers().values():
+        worker.start()
+    try:
+        yield
+    finally:
+        for worker in _warm_workers().values():
+            worker.stop()
+
+
+app = FastAPI(title="HexeVoice Piper TTS", lifespan=lifespan)
 _WARM_WORKERS: dict[Path, "WarmPiperWorker"] = {}
 _WARM_WORKERS_LOCK = threading.Lock()
 
@@ -262,18 +274,6 @@ def synthesize_wav(*, text: str, voice: str | None = None) -> bytes:
         return output_path.read_bytes()
     finally:
         output_path.unlink(missing_ok=True)
-
-
-@app.on_event("startup")
-def warm_configured_voices() -> None:
-    for worker in _warm_workers().values():
-        worker.start()
-
-
-@app.on_event("shutdown")
-def stop_warm_voices() -> None:
-    for worker in _warm_workers().values():
-        worker.stop()
 
 
 @app.get("/health")

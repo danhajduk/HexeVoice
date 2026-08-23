@@ -343,3 +343,10 @@ Issue cause: The current Vite 5/esbuild chain could not clear npm audit findings
 Chosen fix: Make the new Node range an explicit frontend engine contract, enforce it in npm and repo bootstrap scripts, and have Debian/Ubuntu installer guidance install NodeSource 22.x.
 What changed: Updated Vite/plugin-react and the lockfile, added frontend `engine-strict`, added installer/rebuild Node version checks, documented the baseline in README/setup docs, and updated local dependency install hints.
 Verification: With Node v22.12.0 from `/tmp/node-v22.12.0-linux-x64`, `npm install`, `npm run build`, `npm audit`, `./scripts/rebuild-ui.sh`, and a Vite dev-server curl smoke test passed; `bash -n install.sh scripts/rebuild-ui.sh scripts/start-dev-stack.sh` passed.
+###########
+Task #207
+Step objective: Migrate FastAPI startup/shutdown hooks to lifespan handlers.
+Issue cause: `@app.on_event("startup")` and `@app.on_event("shutdown")` are deprecated and were still used by the backend, external STT service, and Piper TTS service.
+Chosen fix: Replace deprecated event decorators with `lifespan=` context managers while preserving warmup, scheduler, and cleanup behavior.
+What changed: Backend startup tasks now start inside lifespan and are tracked for deterministic shutdown; STT preload runs inside its app lifespan; Piper warm workers start and stop from the service lifespan.
+Verification: `rg -n "on_event\\(" src tests` found no remaining calls; compile checks passed for the three touched modules; `tests/test_stt_service.py`, `tests/test_piper_tts_service.py`, `tests/test_api.py`, `tests/test_node_ui_pilot.py`, two voice websocket restart tests, and `PYTHONWARNINGS='error::DeprecationWarning'` import smoke passed; full backend suite passed with 418 tests.
