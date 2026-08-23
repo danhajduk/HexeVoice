@@ -473,6 +473,13 @@ Chosen fix: Add an in-memory timer ownership cache fed by promoted timer events 
 What changed: Added timer owner records/cache/status diagnostics, wildcard promoted timer event consumption, single/nearest-due timer selection, ambiguous-selection spoken replies with dispatch skipped, shared app cache wiring, docs, and focused tests.
 Verification: `python -m py_compile src/hexevoice/timer_announcements.py src/hexevoice/assistant/service.py src/hexevoice/main.py && PYTHONPATH=src .venv/bin/pytest -q tests/test_timer_announcements.py tests/test_voice_pipeline.py tests/test_voice_intents.py tests/test_domain_events.py tests/test_config.py` passed.
 ###########
+Task #224
+Step objective: Verify promoted `timer.completed` events sound the target endpoint alarm.
+Issue cause: The queue still contains the timer-completed alarm task, but the implementation was already delivered under Task 219 when the same event-based requirement was added.
+Chosen fix: Treat Task 224 as already satisfied by the Task 219 implementation and verify the promoted event, endpoint play-sound command, and playback stop diagnostics paths.
+What changed: No runtime changes were needed; the task queue and completion log were reconciled after verification.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_timer_announcements.py tests/test_voice_websocket.py::test_voice_session_manager_pushes_play_sound_audio_url_to_endpoint tests/test_voice_websocket.py::test_voice_session_manager_play_sound_can_synthesize_kiosk_text tests/test_voice_websocket.py::test_voice_websocket_records_playback_stop_events` passed.
+###########
 Task #222
 Step objective: Add timer adjust-time voice intent that publishes MQTT domain events.
 Issue cause: Timer create/status/stop/cancel controls exist, but there is no first-class voice command for adding or removing time from an active timer.

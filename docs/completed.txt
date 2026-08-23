@@ -251,3 +251,4 @@ Task 220: Add local voice stop interruption for active endpoint playback - Compl
 Task 221: Add timer stop and timer cancel voice intents with cross-node routing - Completed on 08/23/2026 15:58
 Task 222: Add timer adjust-time voice intent for adding or removing timer duration - Completed on 08/23/2026 16:04
 Task 223: Add multi-node timer ownership, status, and disambiguation handling - Completed on 08/23/2026 16:09
+Task 224: Consume promoted timer.completed events and sound the target endpoint alarm - Completed on 08/23/2026 16:10
