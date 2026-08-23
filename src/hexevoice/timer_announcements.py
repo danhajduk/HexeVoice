@@ -24,16 +24,29 @@ class TimerAnnouncement:
 
 
 def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnnouncement | None:
-    if str(payload.get("event_type") or "").strip() != "timer.create_succeeded":
+    event_type = str(payload.get("event_type") or "").strip()
+    if event_type not in {"timer.create_succeeded", "timer.status_succeeded"}:
         return None
     data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
     endpoint_id = str(data.get("endpoint_id") or "").strip()
     if not endpoint_id:
         return None
-    session_id = str(payload.get("subject", {}).get("record_id") or data.get("session_id") or "timer-announcement").strip()
+    subject = payload.get("subject") if isinstance(payload.get("subject"), dict) else {}
+    session_source = data.get("session_id") if event_type == "timer.status_succeeded" else None
+    session_id = str(session_source or subject.get("record_id") or data.get("session_id") or "timer-announcement").strip()
     event_id = str(payload.get("event_id") or "").strip()
-    label = str(data.get("title") or data.get("duration_text") or data.get("duration_hhmmss") or "").strip()
-    text = f"Timer is on for {label}." if label else "Timer is on."
+    if event_type == "timer.status_succeeded":
+        state = str(data.get("state") or "").strip().lower()
+        label = str(data.get("remaining_text") or data.get("remaining_hhmmss") or "").strip()
+        if label:
+            text = f"{label} left on the timer."
+        elif state in {"inactive", "cancelled", "canceled", "cleared", "none", "not_found"}:
+            text = "No active timer."
+        else:
+            text = "I could not read the timer remaining time."
+    else:
+        label = str(data.get("title") or data.get("duration_text") or data.get("duration_hhmmss") or "").strip()
+        text = f"Timer is on for {label}." if label else "Timer is on."
     return TimerAnnouncement(
         endpoint_id=endpoint_id,
         session_id=session_id,
@@ -137,6 +150,7 @@ class TimerSucceededAnnouncementService:
             "provider": "hexe_mqtt",
             "enabled": self._settings.voice_timer_announcements_enabled,
             "topic": self._settings.voice_timer_success_mqtt_topic,
+            "topics": self._timer_topics(),
             "status": self._last_status,
             "reason": self._last_reason,
             "last_announcement": self._last_announcement,
@@ -152,10 +166,11 @@ class TimerSucceededAnnouncementService:
             self._last_status = "failed"
             self._last_reason = f"connect_rc:{rc_int}"
             return
-        client.subscribe(self._settings.voice_timer_success_mqtt_topic, qos=1)
+        for topic in self._timer_topics():
+            client.subscribe(topic, qos=1)
         self._last_status = "connected"
         self._last_reason = None
-        log.info("Timer announcement subscriber connected: topic=%s", self._settings.voice_timer_success_mqtt_topic)
+        log.info("Timer announcement subscriber connected: topics=%s", ",".join(self._timer_topics()))
 
     def _on_disconnect(self, client: Any, userdata: Any, disconnect_flags: Any, reason_code: Any, properties: Any = None) -> None:
         self._last_status = "disconnected"
@@ -193,3 +208,15 @@ class TimerSucceededAnnouncementService:
         except Exception as exc:
             self._last_reason = "announcement_failed"
             log.warning("Timer announcement failed: error=%s", exc)
+
+    def _timer_topics(self) -> list[str]:
+        topics = [
+            self._settings.voice_timer_success_mqtt_topic,
+            self._settings.voice_timer_status_mqtt_topic,
+        ]
+        deduped: list[str] = []
+        for topic in topics:
+            normalized = str(topic or "").strip()
+            if normalized and normalized not in deduped:
+                deduped.append(normalized)
+        return deduped

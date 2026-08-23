@@ -17,22 +17,24 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
 
     snapshot = registry.snapshot()
 
-    assert snapshot["registered_count"] == 5
-    assert snapshot["active_count"] == 5
+    assert snapshot["registered_count"] == 6
+    assert snapshot["active_count"] == 6
     assert snapshot["intents"][0]["intent_id"] == "timer.create"
-    assert snapshot["intents"][1]["intent_id"] == "voice.time.query"
-    assert snapshot["intents"][1]["owner_service"] == "hexevoice"
-    assert snapshot["intents"][1]["metadata"]["owned_by"] == "voice_node"
-    assert snapshot["intents"][2]["intent_id"] == "voice.debug.followup"
-    assert snapshot["intents"][2]["metadata"]["family"] == "debug"
-    assert snapshot["intents"][3]["intent_id"] == "voice.confirm.yes"
-    assert snapshot["intents"][4]["intent_id"] == "voice.confirm.no"
+    assert snapshot["intents"][1]["intent_id"] == "timer.status"
+    assert snapshot["intents"][1]["constraints"]["dispatch_side_effect"] == "timer.status_requested"
+    assert snapshot["intents"][2]["intent_id"] == "voice.time.query"
+    assert snapshot["intents"][2]["owner_service"] == "hexevoice"
+    assert snapshot["intents"][2]["metadata"]["owned_by"] == "voice_node"
+    assert snapshot["intents"][3]["intent_id"] == "voice.debug.followup"
+    assert snapshot["intents"][3]["metadata"]["family"] == "debug"
+    assert snapshot["intents"][4]["intent_id"] == "voice.confirm.yes"
+    assert snapshot["intents"][5]["intent_id"] == "voice.confirm.no"
 
     registry.transition_intent(intent_id="timer.create", status="disabled", reason="unit_test")
     reloaded = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
 
     assert reloaded.get_intent(intent_id="timer.create")["status"] == "disabled"
-    assert reloaded.snapshot()["active_count"] == 4
+    assert reloaded.snapshot()["active_count"] == 5
 
 
 def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
@@ -59,6 +61,20 @@ def test_registered_intent_finder_answers_voice_node_time_query(tmp_path):
     assert match.slots["time_text"]
     assert match.slots["requested_at"] == requested_at.isoformat()
     assert match.reply_text.startswith("It is ")
+
+
+def test_registered_intent_finder_matches_timer_status_query(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    finder = LocalIntentFinder(registry=registry)
+    requested_at = datetime(2026, 5, 9, 18, 34, tzinfo=UTC)
+
+    match = finder.find("How long left on the timer?", requested_at=requested_at)
+
+    assert match.command == "timer.status"
+    assert match.provider_id == "registered_intent"
+    assert match.slots["scope"] == "active_for_endpoint"
+    assert match.slots["requested_at"] == requested_at.isoformat()
+    assert match.reply_text == "Checking the timer."
 
 
 def test_confirmation_intents_require_pending_followup(tmp_path):
@@ -133,7 +149,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     )
 
     assert registered.status_code == 200
-    assert registered.json()["registered_count"] == 6
+    assert registered.json()["registered_count"] == 7
 
     dispatch = client.post(
         "/api/voice/intents/dispatch",
@@ -155,7 +171,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
         json={"status": "disabled", "reason": "unit_test"},
     )
     assert disabled.status_code == 200
-    assert disabled.json()["active_count"] == 5
+    assert disabled.json()["active_count"] == 6
 
     dispatch_after_disable = client.post(
         "/api/voice/intents/dispatch",
@@ -204,6 +220,24 @@ def test_voice_intent_invoke_executes_real_path_and_reports_events(tmp_path):
     assert payload["latency_ms"] >= 0
 
 
+def test_voice_intent_invoke_dispatches_timer_status_request(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/voice/intents/invoke",
+        json={"endpoint_id": "box-1", "text": "How much time is left on the timer?"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["matched"] is True
+    assert payload["intent_id"] == "timer.status"
+    assert payload["command"] == "timer.status"
+    assert payload["slots"]["scope"] == "active_for_endpoint"
+    assert payload["reply_text"] == "Checking the timer."
+    assert payload["dispatch_event"]["event_type"] == "timer.status_requested"
+
+
 def test_assistant_turn_uses_registered_timer_intent_in_app(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")))
 
@@ -218,6 +252,23 @@ def test_assistant_turn_uses_registered_timer_intent_in_app(tmp_path):
     assert payload["command"] == "timer.create"
     assert payload["provider_id"] == "registered_intent"
     assert payload["spoken_text"] == "Setting timer for 2 minutes."
+    assert payload["intent_latency_ms"] >= 0
+
+
+def test_assistant_turn_uses_registered_timer_status_intent_in_app(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")))
+
+    response = client.post(
+        "/api/assistant/turn",
+        json={"endpoint_id": "box-1", "text": "Hexa, timer status"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["handled_locally"] is True
+    assert payload["command"] == "timer.status"
+    assert payload["provider_id"] == "registered_intent"
+    assert payload["spoken_text"] == "Checking the timer."
     assert payload["intent_latency_ms"] >= 0
 
 

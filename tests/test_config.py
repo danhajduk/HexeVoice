@@ -95,6 +95,7 @@ def test_assistant_settings_default_to_local_echo():
     assert settings.voice_domain_events_mqtt_timeout_s == 5.0
     assert settings.voice_timer_announcements_enabled is True
     assert settings.voice_timer_success_mqtt_topic == "hexe/events/timer/create_succeeded"
+    assert settings.voice_timer_status_mqtt_topic == "hexe/events/timer/status_succeeded"
 
 
 def test_piper_tts_settings_default_to_supervised_local_service():

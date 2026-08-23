@@ -598,6 +598,26 @@ class AssistantTurnService:
             requested_at=requested_at,
         )
 
+    def _publish_timer_status_request_event(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        slots: dict,
+        requested_at: datetime,
+    ):
+        scope = str(slots.get("scope") or "active_for_endpoint").strip() or "active_for_endpoint"
+        timer_id = str(slots.get("timer_id") or "").strip() or None
+        return self._timer_event_publisher.publish_timer_status_request(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text=heard_text,
+            requested_at=requested_at,
+            scope=scope,
+            timer_id=timer_id,
+        )
+
     def _dispatch_intent(
         self,
         *,
@@ -609,6 +629,14 @@ class AssistantTurnService:
     ):
         if intent.command == "timer.create":
             return self._publish_timer_create_event(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                slots=intent.slots,
+                requested_at=requested_at,
+            )
+        if intent.command == "timer.status":
+            return self._publish_timer_status_request_event(
                 endpoint_id=endpoint_id,
                 session_id=session_id,
                 heard_text=heard_text,

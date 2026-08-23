@@ -31,6 +31,7 @@ def _registry_and_finder(tmp_path) -> tuple[VoiceIntentRegistry, LocalIntentFind
     [
         IntentCase("set a timer for 5 minutes", "timer.create", {"duration_seconds": 300}),
         IntentCase("Five minutes timer.", "timer.create", {"duration_hhmmss": "00:05:00"}),
+        IntentCase("How much time is left on the timer?", "timer.status", {"scope": "active_for_endpoint"}),
         IntentCase("What is the time?", "voice.time.query"),
         IntentCase("test follow up", "voice.debug.followup"),
         IntentCase("yes", None),

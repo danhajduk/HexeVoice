@@ -91,6 +91,61 @@ def test_timer_event_publisher_uses_hexecore_node_event_contract(tmp_path, monke
     assert payload["data"]["request_to_mqtt_latency_ms"] >= 0
 
 
+def test_timer_status_publisher_uses_hexecore_node_event_contract(tmp_path, monkeypatch):
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-1",
+                    "node_type": "voice-node",
+                    "trust_status": "trusted",
+                    "operational_mqtt_identity": "hn_node-voice-1",
+                    "operational_mqtt_token": "mqtt-token",
+                    "operational_mqtt_host": "10.0.0.100",
+                    "operational_mqtt_port": 1883,
+                },
+                "operational_status": {
+                    "operational_ready": True,
+                },
+            }
+        )
+    )
+    captured = {}
+    settings = Settings(onboarding_state_path=state_path)
+    publisher = HexeMqttTimerCreateEventPublisher(settings=settings)
+
+    def fake_publish(**kwargs):
+        publisher._stamp_mqtt_sent(kwargs["payload"], kwargs["request_timestamp"])
+        captured.update(kwargs)
+
+    monkeypatch.setattr(publisher, "_publish", fake_publish)
+
+    requested_at = datetime(2026, 5, 4, 1, 59, 0, tzinfo=UTC)
+    decision = publisher.publish_timer_status_request(
+        endpoint_id="esp-box-1",
+        session_id="session-2",
+        heard_text="how much time is left on the timer",
+        requested_at=requested_at,
+    )
+
+    assert decision.status == "published"
+    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/status_requested"
+    payload = captured["payload"]
+    assert payload["schema_version"] == 1
+    assert payload["event_type"] == "timer.status_requested"
+    assert payload["occurred_at"] == "2026-05-04T01:59:00+00:00"
+    assert payload["source"]["node_id"] == "node-voice-1"
+    assert payload["subject"] == {"family": "timer", "record_id": "esp-box-1"}
+    assert payload["data"]["intent"] == "timer.status"
+    assert payload["data"]["endpoint_id"] == "esp-box-1"
+    assert payload["data"]["session_id"] == "session-2"
+    assert payload["data"]["scope"] == "active_for_endpoint"
+    assert payload["data"]["correlation_id"].startswith("timer-status-")
+    assert payload["data"]["heard_text"] == "how much time is left on the timer"
+    assert payload["data"]["requested_at"] == "2026-05-04T01:59:00+00:00"
+
+
 def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, monkeypatch):
     state_path = tmp_path / "state.json"
     state_path.write_text(
@@ -168,6 +223,12 @@ def test_async_domain_event_publisher_queues_without_blocking():
             calls.append({"type": "timer", **payload})
             published.set()
             return DomainEventPublishDecision(status="published", reason="published", event_type="timer.create_requested")
+
+        def publish_timer_status_request(self, **payload):
+            time.sleep(0.25)
+            calls.append({"type": "timer_status", **payload})
+            published.set()
+            return DomainEventPublishDecision(status="published", reason="published", event_type="timer.status_requested")
 
         def publish_voice_intent_recognized(self, **payload):
             time.sleep(0.25)

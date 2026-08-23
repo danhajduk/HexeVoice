@@ -95,6 +95,78 @@ def built_in_timer_intent() -> dict[str, Any]:
     }
 
 
+def timer_status_intent_definition() -> dict[str, Any]:
+    return {
+        "utterance_examples": [
+            "how much time is left on the timer",
+            "how long left on the timer",
+            "what is the timer status",
+            "timer status",
+        ],
+        "patterns": [
+            r"^(?:please\s+)?(?:how\s+much\s+time|how\s+long)\s+(?:is\s+)?left\s+(?:on|for)\s+(?:the\s+)?timer$",
+            r"^(?:please\s+)?(?:what(?:'s|\s+is)\s+)?(?:the\s+)?timer\s+status$",
+            r"^(?:please\s+)?(?:time\s+left|remaining\s+time)\s+(?:on|for)\s+(?:the\s+)?timer$",
+        ],
+        "slots": {
+            "scope": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "required": {
+                "scope": {"type": "string", "source": "scope"},
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "domain_event",
+            "command": "timer.status",
+            "event_type": "timer.status_requested",
+        },
+        "response": {
+            "reply_template": "Checking the timer.",
+        },
+        "reply": {
+            "text_template": "Checking the timer.",
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "builtin_timer_status",
+        },
+    }
+
+
+def built_in_timer_status_intent() -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": "timer.status",
+        "intent_name": "Timer status",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": timer_status_intent_definition(),
+        "constraints": {
+            "requires_operational_mqtt": True,
+            "dispatch_side_effect": "timer.status_requested",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "timer",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def time_query_intent_definition() -> dict[str, Any]:
     return {
         "utterance_examples": [
@@ -411,6 +483,7 @@ class VoiceIntentStateStore:
             state = VoiceIntentState(
                 intents=[
                     VoiceIntentRecord.model_validate(built_in_timer_intent()),
+                    VoiceIntentRecord.model_validate(built_in_timer_status_intent()),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
                     VoiceIntentRecord.model_validate(built_in_test_followup_intent()),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")),
@@ -439,6 +512,9 @@ class VoiceIntentStateStore:
         seeded = False
         if "timer.create" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_intent()))
+            seeded = True
+        if "timer.status" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_status_intent()))
             seeded = True
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))

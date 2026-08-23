@@ -48,7 +48,10 @@ class LocalIntentFinder:
             if match is not None:
                 return match
         if self._registry is None:
-            return self._find_timer_create(normalized, requested_at=extraction_time)
+            return self._find_timer_create(normalized, requested_at=extraction_time) or self._find_timer_status(
+                normalized,
+                requested_at=extraction_time,
+            )
         return None
 
     def status(self) -> dict[str, Any]:
@@ -131,6 +134,21 @@ class LocalIntentFinder:
             or intent.get("intent_id") == "voice.time.query"
         ):
             match = self._find_time_query(text, requested_at=requested_at)
+            if match is not None:
+                return self._build_registered_match(
+                    intent=intent,
+                    command=command,
+                    slots=match.slots,
+                    requested_at=requested_at,
+                )
+            return None
+
+        if (
+            matcher.get("type") == "builtin_timer_status"
+            or command == "timer.status"
+            or intent.get("intent_id") == "timer.status"
+        ):
+            match = self._find_timer_status(text, requested_at=requested_at)
             if match is not None:
                 return self._build_registered_match(
                     intent=intent,
@@ -286,6 +304,20 @@ class LocalIntentFinder:
             reply_text=f"It is {time_text}.",
         )
 
+    def _find_timer_status(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        if not _is_timer_status_query(text):
+            return None
+        extraction_time = requested_at or datetime.now(UTC)
+        return LocalIntentMatch(
+            intent="timer.status",
+            command="timer.status",
+            slots={
+                "scope": "active_for_endpoint",
+                "requested_at": extraction_time.isoformat(),
+            },
+            reply_text="Checking the timer.",
+        )
+
 
 def _normalize_text(text: str) -> str:
     normalized = text.strip().lower()
@@ -400,6 +432,17 @@ def _is_time_query(text: str) -> bool:
     return bool(
         re.match(
             r"^(?:please\s+)?(?:what\s+is\s+the\s+time|what\s+time\s+is\s+it|tell\s+me\s+the\s+time|current\s+time)$",
+            text,
+        )
+    )
+
+
+def _is_timer_status_query(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:(?:how\s+much\s+time|how\s+long)\s+(?:is\s+)?left\s+(?:on|for)\s+(?:the\s+)?timer|"
+            r"(?:what(?:'s|\s+is)\s+)?(?:the\s+)?timer\s+status|"
+            r"(?:time\s+left|remaining\s+time)\s+(?:on|for)\s+(?:the\s+)?timer)$",
             text,
         )
     )

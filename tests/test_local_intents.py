@@ -28,6 +28,19 @@ def test_local_intent_finder_detects_timer_create_with_words_and_compound_durati
     assert match.slots["duration_text"] == "1 hour and 30 minutes"
 
 
+def test_local_intent_finder_detects_timer_status_query():
+    finder = LocalIntentFinder()
+
+    match = finder.find("how much time is left on the timer")
+
+    assert match is not None
+    assert match.intent == "timer.status"
+    assert match.command == "timer.status"
+    assert match.slots["scope"] == "active_for_endpoint"
+    assert datetime.fromisoformat(match.slots["requested_at"])
+    assert match.reply_text == "Checking the timer."
+
+
 def test_local_intent_finder_ignores_non_timer_text():
     finder = LocalIntentFinder()
 

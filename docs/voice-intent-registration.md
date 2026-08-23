@@ -96,7 +96,17 @@ Response:
 }
 ```
 
-Assistant turns use the same registered-intent matcher. The timer intent still queues the existing MQTT timer request, including request and sent timestamps, but MQTT publication runs off the voice response path so it does not block STT, intent handling, or TTS. Voice Node owned local responses, such as `voice.time.query`, answer directly from the backend runtime.
+Assistant turns use the same registered-intent matcher. The timer create intent
+queues the existing MQTT `timer.create_requested` request, including request and
+sent timestamps, but MQTT publication runs off the voice response path so it
+does not block STT, intent handling, or TTS. The timer status intent recognizes
+phrases such as `how much time is left on the timer`, replies immediately with
+`Checking the timer.`, and publishes `timer.status_requested` to the node-scoped
+timer topic. The timer-owning node should respond on
+`hexe/events/timer/status_succeeded` with `endpoint_id`, `session_id`,
+`remaining_text` or `remaining_hhmmss`, and a timer `state`; HexeVoice announces
+the remaining time back to the endpoint. Voice Node owned local responses, such
+as `voice.time.query`, answer directly from the backend runtime.
 
 ## Conversation Follow-Ups
 

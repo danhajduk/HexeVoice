@@ -202,6 +202,10 @@ class Settings(BaseSettings):
         default="hexe/events/timer/create_succeeded",
         alias="VOICE_TIMER_SUCCESS_MQTT_TOPIC",
     )
+    voice_timer_status_mqtt_topic: str = Field(
+        default="hexe/events/timer/status_succeeded",
+        alias="VOICE_TIMER_STATUS_MQTT_TOPIC",
+    )
     voice_tts_provider: Literal["deterministic", "openai", "piper"] = Field(
         default="deterministic",
         alias="VOICE_TTS_PROVIDER",
