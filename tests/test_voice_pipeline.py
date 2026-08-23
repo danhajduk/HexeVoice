@@ -47,6 +47,14 @@ class FakeTimerEventPublisher:
         self.calls.append(payload)
         return DomainEventPublishDecision(status="published", reason="published", topic="hexe/nodes/node-1/events/timer/status_requested")
 
+    def publish_timer_control_request(self, **payload):
+        self.calls.append(payload)
+        return DomainEventPublishDecision(
+            status="published",
+            reason="published",
+            topic=f"hexe/nodes/node-1/events/timer/{payload['action']}_requested",
+        )
+
     def status(self):
         return {"provider": "fake", "enabled": True, "last_decision": None}
 
@@ -68,6 +76,16 @@ class SlowRecognitionPublisher:
         self.calls.append({"type": "timer_status", **payload})
         self.published.set()
         return DomainEventPublishDecision(status="published", reason="published", event_type="timer.status_requested")
+
+    def publish_timer_control_request(self, **payload):
+        time.sleep(self.delay_s)
+        self.calls.append({"type": "timer_control", **payload})
+        self.published.set()
+        return DomainEventPublishDecision(
+            status="published",
+            reason="published",
+            event_type=f"timer.{payload['action']}_requested",
+        )
 
     def publish_voice_intent_recognized(self, **payload):
         time.sleep(self.delay_s)
@@ -254,6 +272,38 @@ def test_voice_turn_pipeline_handles_timer_status_intent_locally(tmp_path):
             "endpoint_id": "esp-box-1",
             "session_id": "voice-session-1",
             "heard_text": "how much time is left on the timer",
+            "scope": "active_for_endpoint",
+            "timer_id": None,
+            "requested_at": publisher.calls[0]["requested_at"],
+        }
+    ]
+
+
+def test_voice_turn_pipeline_handles_timer_stop_intent_locally(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    publisher = FakeTimerEventPublisher()
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime, timer_event_publisher=publisher)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, stop the timer"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-pe-1", session_id="voice-session-stop", chunk_count=1)
+    )
+
+    assert result.transcript.text == "stop the timer"
+    assert result.assistant_response.handled_locally is True
+    assert result.assistant_response.command == "timer.stop"
+    assert result.assistant_response.spoken_text == "Stopping the timer."
+    assert publisher.calls == [
+        {
+            "action": "stop",
+            "endpoint_id": "esp-pe-1",
+            "session_id": "voice-session-stop",
+            "heard_text": "stop the timer",
             "scope": "active_for_endpoint",
             "timer_id": None,
             "requested_at": publisher.calls[0]["requested_at"],

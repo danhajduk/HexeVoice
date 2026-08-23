@@ -458,3 +458,10 @@ Issue cause: The firmware playback stack can stop TTS playback, but the command/
 Chosen fix: Add a generic playback stop command/event path now, route existing mute/touch controls through it, and create Task 225 for true on-device stop-word detection because firmware currently has no local keyword engine.
 What changed: Added firmware `stop_playback(reason)`, `playback.stop` command handling and event reporting, backend `push_playback_stop_command`, `/api/endpoint/playback/stop`, inbound `playback.stop` history handling, docs, and Task 225 for the local keyword detector dependency.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_websocket.py tests/test_api.py tests/test_firmware_voice_envelope.py tests/test_config.py tests/test_timer_announcements.py` passed; `./firmware/build.sh` built `esp_box_3` and `ha_voice_pe`.
+###########
+Task #221
+Step objective: Add timer stop/cancel voice intents that publish MQTT domain events.
+Issue cause: Timer create/status intents can publish MQTT requests, but stop/cancel timer controls are not registered as first-class voice intents.
+Chosen fix: Seed `timer.stop` and `timer.cancel` as built-in local intents and route both through the existing async MQTT domain-event publisher.
+What changed: Added timer control intent definitions/matching, MQTT publisher support for `timer.stop_requested` and `timer.cancel_requested`, assistant dispatch wiring, docs, and tests for matcher/API/pipeline/domain-event behavior.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_domain_events.py tests/test_local_intents.py tests/test_voice_intents.py tests/test_voice_pipeline.py tests/test_intent_regressions.py tests/test_config.py` passed.

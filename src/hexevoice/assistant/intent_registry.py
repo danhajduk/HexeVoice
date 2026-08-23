@@ -167,6 +167,89 @@ def built_in_timer_status_intent() -> dict[str, Any]:
     }
 
 
+def timer_control_intent_definition(*, action: str) -> dict[str, Any]:
+    if action == "stop":
+        examples = ["stop the timer", "stop timer", "dismiss the timer", "turn off the timer alarm", "stop"]
+        patterns = [
+            r"^(?:please\s+)?(?:stop|dismiss|silence)\s+(?:the\s+)?timer(?:\s+alarm)?$",
+            r"^(?:please\s+)?turn\s+off\s+(?:the\s+)?timer(?:\s+alarm)?$",
+            r"^stop$",
+        ]
+        reply = "Stopping the timer."
+    else:
+        examples = ["cancel the timer", "cancel timer", "delete the timer", "clear the timer"]
+        patterns = [
+            r"^(?:please\s+)?(?:cancel|delete|clear)\s+(?:the\s+)?timer$",
+            r"^(?:please\s+)?(?:cancel|delete|clear)\s+my\s+timer$",
+        ]
+        reply = "Cancelling the timer."
+    event_type = f"timer.{action}_requested"
+    return {
+        "utterance_examples": examples,
+        "patterns": patterns,
+        "slots": {
+            "action": {"type": "string"},
+            "scope": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "required": {
+                "action": {"type": "string", "source": "action"},
+                "scope": {"type": "string", "source": "scope"},
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "domain_event",
+            "command": f"timer.{action}",
+            "event_type": event_type,
+        },
+        "response": {
+            "reply_template": reply,
+        },
+        "reply": {
+            "text_template": reply,
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "builtin_timer_control",
+            "action": action,
+        },
+    }
+
+
+def built_in_timer_control_intent(*, action: str) -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": f"timer.{action}",
+        "intent_name": f"{action.title()} timer",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": timer_control_intent_definition(action=action),
+        "constraints": {
+            "requires_operational_mqtt": True,
+            "dispatch_side_effect": f"timer.{action}_requested",
+            "short_intent_scope": "global" if action == "stop" else "followup",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "timer",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def time_query_intent_definition() -> dict[str, Any]:
     return {
         "utterance_examples": [
@@ -484,6 +567,8 @@ class VoiceIntentStateStore:
                 intents=[
                     VoiceIntentRecord.model_validate(built_in_timer_intent()),
                     VoiceIntentRecord.model_validate(built_in_timer_status_intent()),
+                    VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="stop")),
+                    VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="cancel")),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
                     VoiceIntentRecord.model_validate(built_in_test_followup_intent()),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")),
@@ -515,6 +600,12 @@ class VoiceIntentStateStore:
             seeded = True
         if "timer.status" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_status_intent()))
+            seeded = True
+        if "timer.stop" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="stop")))
+            seeded = True
+        if "timer.cancel" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="cancel")))
             seeded = True
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))

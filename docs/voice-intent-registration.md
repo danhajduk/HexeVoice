@@ -19,6 +19,9 @@ The registry is stored at `VOICE_INTENT_REGISTRY_PATH`, or `voice_intents.json` 
 Seeded built-ins:
 
 - `timer.create`: publishes the existing timer create domain event.
+- `timer.status`: publishes a timer status request domain event.
+- `timer.stop`: publishes a timer stop request domain event.
+- `timer.cancel`: publishes a timer cancel request domain event.
 - `voice.time.query`: Voice Node owned local response for "What is the time?" without an external dispatch side effect. Its reply uses spoken-form clock text, such as `four oh five PM`, so TTS does not read leading-zero minutes literally.
 - `voice.debug.followup`: Voice Node owned follow-up test intent. Say "test follow up" to make the backend ask `Should I complete the follow-up test?`, then answer "yes" or "no" to exercise the follow-up listening path.
 - `voice.confirm.yes` and `voice.confirm.no`: contextual Voice Node owned responses for pending follow-ups. They only match while the endpoint or session has an active follow-up; standalone "yes" or "no" is ignored by the local intent matcher.
@@ -106,6 +109,17 @@ timer topic. The timer-owning node should respond on
 `hexe/events/timer/status_succeeded` with `endpoint_id`, `session_id`,
 `remaining_text` or `remaining_hhmmss`, and a timer `state`; HexeVoice announces
 the remaining time back to the endpoint.
+
+Timer stop and cancel intents follow the same MQTT request pattern. `timer.stop`
+recognizes phrases such as `stop the timer`, `dismiss the timer`, and the short
+global utterance `stop`; it publishes `timer.stop_requested` to
+`hexe/nodes/<voice-node-id>/events/timer/stop_requested`. `timer.cancel`
+recognizes phrases such as `cancel the timer`, `delete the timer`, and
+`clear the timer`; it publishes `timer.cancel_requested` to
+`hexe/nodes/<voice-node-id>/events/timer/cancel_requested`. Both events include
+`endpoint_id`, `session_id`, `scope`, `heard_text`, `requested_at`, and a
+correlation id. The timer-owning node remains responsible for selecting,
+stopping, cancelling, or rejecting ambiguous timers.
 
 Timer expiry is event-driven. HexeVoice subscribes to the promoted
 `hexe/events/timer/completed` event stream and resolves the target endpoint from

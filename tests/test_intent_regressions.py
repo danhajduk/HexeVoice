@@ -32,6 +32,8 @@ def _registry_and_finder(tmp_path) -> tuple[VoiceIntentRegistry, LocalIntentFind
         IntentCase("set a timer for 5 minutes", "timer.create", {"duration_seconds": 300}),
         IntentCase("Five minutes timer.", "timer.create", {"duration_hhmmss": "00:05:00"}),
         IntentCase("How much time is left on the timer?", "timer.status", {"scope": "active_for_endpoint"}),
+        IntentCase("Stop the timer.", "timer.stop", {"action": "stop"}),
+        IntentCase("Cancel my timer.", "timer.cancel", {"action": "cancel"}),
         IntentCase("What is the time?", "voice.time.query"),
         IntentCase("test follow up", "voice.debug.followup"),
         IntentCase("yes", None),
@@ -79,6 +81,7 @@ def test_transcript_to_intent_regressions(tmp_path, case: IntentCase):
 
 def test_short_registered_intents_are_ignored_without_followup_or_global_scope(tmp_path):
     registry, finder = _registry_and_finder(tmp_path)
+    registry.transition_intent(intent_id="timer.stop", status="disabled", reason="unit_test")
     registry.register_intent(
         intent_id="debug.ok",
         intent_name="Debug OK",

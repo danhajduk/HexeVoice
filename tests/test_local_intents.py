@@ -41,6 +41,25 @@ def test_local_intent_finder_detects_timer_status_query():
     assert match.reply_text == "Checking the timer."
 
 
+def test_local_intent_finder_detects_timer_stop_and_cancel():
+    finder = LocalIntentFinder()
+
+    stop = finder.find("stop the timer")
+    cancel = finder.find("cancel my timer")
+
+    assert stop is not None
+    assert stop.intent == "timer.stop"
+    assert stop.command == "timer.stop"
+    assert stop.slots["action"] == "stop"
+    assert stop.slots["scope"] == "active_for_endpoint"
+    assert stop.reply_text == "Stopping the timer."
+    assert cancel is not None
+    assert cancel.intent == "timer.cancel"
+    assert cancel.command == "timer.cancel"
+    assert cancel.slots["action"] == "cancel"
+    assert cancel.reply_text == "Cancelling the timer."
+
+
 def test_local_intent_finder_ignores_non_timer_text():
     finder = LocalIntentFinder()
 

@@ -48,7 +48,6 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 221: Add timer stop and timer cancel voice intents with cross-node routing
 [TODO] Task 222: Add timer adjust-time voice intent for adding or removing timer duration
 [TODO] Task 223: Add multi-node timer ownership, status, and disambiguation handling
 [TODO] Task 224: Consume promoted timer.completed events and sound the target endpoint alarm

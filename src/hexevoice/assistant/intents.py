@@ -48,9 +48,11 @@ class LocalIntentFinder:
             if match is not None:
                 return match
         if self._registry is None:
-            return self._find_timer_create(normalized, requested_at=extraction_time) or self._find_timer_status(
-                normalized,
-                requested_at=extraction_time,
+            return (
+                self._find_timer_create(normalized, requested_at=extraction_time)
+                or self._find_timer_status(normalized, requested_at=extraction_time)
+                or self._find_timer_control(normalized, action="stop", requested_at=extraction_time)
+                or self._find_timer_control(normalized, action="cancel", requested_at=extraction_time)
             )
         return None
 
@@ -69,7 +71,7 @@ class LocalIntentFinder:
             "provider": "local_pattern",
             "healthy": True,
             "configured": True,
-            "intents": ["timer.create"],
+            "intents": ["timer.create", "timer.status", "timer.stop", "timer.cancel"],
         }
 
     def _candidate_intents(self) -> list[dict[str, Any]]:
@@ -149,6 +151,22 @@ class LocalIntentFinder:
             or intent.get("intent_id") == "timer.status"
         ):
             match = self._find_timer_status(text, requested_at=requested_at)
+            if match is not None:
+                return self._build_registered_match(
+                    intent=intent,
+                    command=command,
+                    slots=match.slots,
+                    requested_at=requested_at,
+                )
+            return None
+
+        if (
+            matcher.get("type") == "builtin_timer_control"
+            or command in {"timer.stop", "timer.cancel"}
+            or intent.get("intent_id") in {"timer.stop", "timer.cancel"}
+        ):
+            action = str(matcher.get("action") or command.rsplit(".", 1)[-1]).strip().lower()
+            match = self._find_timer_control(text, action=action, requested_at=requested_at)
             if match is not None:
                 return self._build_registered_match(
                     intent=intent,
@@ -318,6 +336,30 @@ class LocalIntentFinder:
             reply_text="Checking the timer.",
         )
 
+    def _find_timer_control(self, text: str, *, action: str, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        normalized_action = str(action or "").strip().lower()
+        if normalized_action == "stop":
+            if not _is_timer_stop_request(text):
+                return None
+            reply_text = "Stopping the timer."
+        elif normalized_action == "cancel":
+            if not _is_timer_cancel_request(text):
+                return None
+            reply_text = "Cancelling the timer."
+        else:
+            return None
+        extraction_time = requested_at or datetime.now(UTC)
+        return LocalIntentMatch(
+            intent=f"timer.{normalized_action}",
+            command=f"timer.{normalized_action}",
+            slots={
+                "action": normalized_action,
+                "scope": "active_for_endpoint",
+                "requested_at": extraction_time.isoformat(),
+            },
+            reply_text=reply_text,
+        )
+
 
 def _normalize_text(text: str) -> str:
     normalized = text.strip().lower()
@@ -443,6 +485,25 @@ def _is_timer_status_query(text: str) -> bool:
             r"^(?:please\s+)?(?:(?:how\s+much\s+time|how\s+long)\s+(?:is\s+)?left\s+(?:on|for)\s+(?:the\s+)?timer|"
             r"(?:what(?:'s|\s+is)\s+)?(?:the\s+)?timer\s+status|"
             r"(?:time\s+left|remaining\s+time)\s+(?:on|for)\s+(?:the\s+)?timer)$",
+            text,
+        )
+    )
+
+
+def _is_timer_stop_request(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:(?:stop|dismiss|silence)\s+(?:the\s+)?timer(?:\s+alarm)?|"
+            r"turn\s+off\s+(?:the\s+)?timer(?:\s+alarm)?|stop)$",
+            text,
+        )
+    )
+
+
+def _is_timer_cancel_request(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:cancel|delete|clear)\s+(?:(?:the|my)\s+)?timer$",
             text,
         )
     )
