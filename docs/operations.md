@@ -509,6 +509,10 @@ Endpoint status also includes firmware comparison metadata. The backend infers
 the endpoint board profile, checks the matching `runtime/firmware/manifest-*.json`
 and binary artifact, and the endpoint detail popup exposes `Send OTA` when the
 reported endpoint firmware version differs from the latest exported artifact.
+For terminal-driven updates, `scripts/firmware-ota-menu.sh` lists endpoints from
+`http://hexe.local:9004` by default and offers individual or bulk OTA pushes for
+endpoints with available firmware updates.
+
 - expected public node API: `http://10.0.0.100:9004`
 
 Backend logs are written to `runtime/logs/hexevoice-backend.log`. The active file is archived at local midnight each day and retained for `BACKEND_LOG_BACKUP_DAYS` days, defaulting to 14. Set `BACKEND_LOG_LEVEL=DEBUG` in the backend environment when deeper voice transport, supervisor heartbeat, OTA, or service-control traces are needed.
