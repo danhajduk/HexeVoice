@@ -21,6 +21,7 @@ class TimerAnnouncement:
     session_id: str
     text: str
     event_id: str
+    dedupe_key: str
     topic: str
 
 
@@ -215,11 +216,18 @@ def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnno
     else:
         label = str(data.get("title") or data.get("duration_text") or data.get("duration_hhmmss") or "").strip()
         text = f"Timer is on for {label}." if label else "Timer is on."
+    routing = payload.get("routing") if isinstance(payload.get("routing"), dict) else {}
+    dedupe_key = str(
+        routing.get("dedupe_key")
+        or event_id
+        or f"{event_type}:{endpoint_id}:{session_id}:{text}"
+    ).strip()
     return TimerAnnouncement(
         endpoint_id=endpoint_id,
         session_id=session_id,
         text=text,
         event_id=event_id,
+        dedupe_key=dedupe_key,
         topic=str(topic or "").strip(),
     )
 
@@ -295,6 +303,7 @@ class TimerSucceededAnnouncementService:
         self._last_reason: str | None = None
         self._last_announcement: dict[str, Any] | None = None
         self._last_alarm: dict[str, Any] | None = None
+        self._seen_announcement_keys: list[str] = []
         self._seen_alarm_keys: list[str] = []
         self._ownership_cache = ownership_cache or TimerOwnershipCache()
 
@@ -442,11 +451,17 @@ class TimerSucceededAnnouncementService:
         announcement = timer_success_announcement(str(msg.topic), payload)
         if announcement is None:
             return
+        if announcement.dedupe_key in self._seen_announcement_keys:
+            self._last_reason = "duplicate_timer_announcement_ignored"
+            return
+        self._seen_announcement_keys.insert(0, announcement.dedupe_key)
+        del self._seen_announcement_keys[100:]
         self._last_announcement = {
             "endpoint_id": announcement.endpoint_id,
             "session_id": announcement.session_id,
             "text": announcement.text,
             "event_id": announcement.event_id,
+            "dedupe_key": announcement.dedupe_key,
             "topic": announcement.topic,
         }
         asyncio.run_coroutine_threadsafe(self._announce_async(announcement), loop)

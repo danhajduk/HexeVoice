@@ -241,6 +241,42 @@ def test_timer_ownership_cache_selects_nearest_due_timer_or_reports_ambiguity():
     assert ambiguous.select_timer("esp-box-1")["status"] == "ambiguous"
 
 
+def test_timer_service_queues_timer_success_announcement_once():
+    async def run() -> None:
+        calls = []
+
+        async def announce(announcement):
+            calls.append(announcement)
+            return {"accepted": True, "request_id": "announcement-1", "status": "sent"}
+
+        service = TimerSucceededAnnouncementService(
+            settings=Settings(),
+            announce=announce,
+            play_alarm=lambda alarm: None,
+        )
+        service._loop = asyncio.get_running_loop()
+        payload = {
+            "event_id": "timer-create-succeeded-1",
+            "event_type": "timer.create_succeeded",
+            "subject": {"family": "timer", "record_id": "timer-1"},
+            "data": {"endpoint_id": "esp-box-1", "timer_id": "timer-1", "title": "2 minutes"},
+        }
+        msg = SimpleNamespace(topic="hexe/events/timer/create_succeeded", payload=json.dumps(payload).encode("utf-8"))
+
+        service._on_message(None, None, msg)
+        await asyncio.sleep(0.01)
+        service._on_message(None, None, msg)
+        await asyncio.sleep(0.01)
+
+        assert len(calls) == 1
+        assert service.status()["last_announcement"]["endpoint_id"] == "esp-box-1"
+        assert service.status()["last_announcement"]["text"] == "Timer is on for 2 minutes."
+        assert service.status()["last_announcement"]["dedupe_key"] == "timer-create-succeeded-1"
+        assert service.status()["reason"] == "duplicate_timer_announcement_ignored"
+
+    asyncio.run(run())
+
+
 def test_timer_service_queues_timer_completed_alarm_once():
     async def run() -> None:
         calls = []
