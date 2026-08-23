@@ -423,3 +423,10 @@ Issue cause: Five firmware modules were still source-level scaffolds that only l
 Chosen fix: Retain the modules as intentional no-op/status providers with explicit mode, owner, and local-availability accessors; expose those decisions through heartbeat capabilities under `firmware.modules`.
 What changed: Wake, STT, assistant, telemetry, and power modules now report backend/heartbeat/board ownership instead of scaffold readiness; boot and animator logs no longer describe scaffolds; heartbeat capabilities expose module state; firmware baseline and feature report docs describe each retained intentional no-op.
 Verification: `tests/test_firmware_voice_envelope.py` passed and `./firmware/build.sh` built both `esp_box_3` and `ha_voice_pe` successfully.
+###########
+Task #218
+Step objective: Add a guided one-device-at-a-time physical bench runner.
+Issue cause: The first physical bench attempt needed safer operator flow: Wi-Fi loss/rejoin was intentionally skipped, and manual wake/session-boundary testing needed explicit per-scenario pass/fail/blocked recording without driving the lower-level Python runner directly.
+Chosen fix: Add a shell wrapper that selects one endpoint profile, prompts for each physical scenario, waits for operator completion, collects backend observations, asks for pass/fail/blocked, and merges only that profile into the release artifact.
+What changed: Added `scripts/firmware-reconnect-session-bench.sh`; added explicit skip support to the Python runner; updated the reconnect/session validation procedure; added regression coverage for interactive skip recording and the guided shell runner.
+Verification: `bash -n scripts/firmware-reconnect-session-bench.sh scripts/firmware-ota-menu.sh` and `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_reconnect_session_validation.py` passed.

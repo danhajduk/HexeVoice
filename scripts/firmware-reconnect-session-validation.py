@@ -149,11 +149,13 @@ def scenario_result(
     non_interactive: bool,
     override: tuple[str, str | None] | None,
 ) -> dict:
+    skipped = False
     if not non_interactive and override is None:
         print(f"\n[{profile}] {scenario['title']}")
         print(f"Step: {scenario['operator_step']}")
         print(f"Expected: {scenario['expected']}")
-        input("Perform the step, then press Enter to collect backend observations...")
+        choice = input("Perform the step, then press Enter to collect backend observations, or type s to skip... ")
+        skipped = choice.strip().lower() in {"s", "skip"}
 
     endpoint = endpoint_observation(base_url, endpoint_id, profile, timeout_s)
     voice = voice_observation(base_url, timeout_s)
@@ -161,6 +163,9 @@ def scenario_result(
     if override is not None:
         status, note = override
         reason = note or "operator_recorded_result"
+    elif skipped:
+        status = "blocked"
+        reason = "operator_skipped_physical_step"
     elif non_interactive:
         status = "blocked"
         reason = "non_interactive_run_requires_physical_operator_result"

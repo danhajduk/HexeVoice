@@ -48,7 +48,7 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 218: Run physical reconnect/session-boundary bench validation and replace blocked release artifact results
+[WIP] Task 218: Run physical reconnect/session-boundary bench validation and replace blocked release artifact results
 
 [STOP]
 

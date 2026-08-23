@@ -10,6 +10,7 @@ import threading
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT_DIR / "scripts" / "firmware-reconnect-session-validation.py"
+BENCH_SCRIPT_PATH = ROOT_DIR / "scripts" / "firmware-reconnect-session-bench.sh"
 RESULTS_PATH = ROOT_DIR / "docs" / "firmware-reconnect-session-results.json"
 PROCEDURE_PATH = ROOT_DIR / "docs" / "firmware-reconnect-session-validation.md"
 MATRIX_PATH = ROOT_DIR / "docs" / "firmware-validation-matrix.json"
@@ -113,6 +114,85 @@ def test_firmware_reconnect_session_runner_records_passing_field_results(tmp_pat
         assert {scenario["id"] for scenario in profile["scenarios"]} == set(SCENARIOS)
         assert {scenario["status"] for scenario in profile["scenarios"]} == {"pass"}
         assert all(scenario["endpoint_observation"]["online"] for scenario in profile["scenarios"])
+
+
+def test_firmware_reconnect_session_runner_records_interactive_skips(tmp_path):
+    server = _ThreadedTcpServer(("127.0.0.1", 0), _ReconnectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT_PATH),
+                "--backend-url",
+                f"http://127.0.0.1:{server.server_address[1]}",
+                "--profile",
+                "esp_box_3=esp-box-1",
+                "--json",
+            ],
+            cwd=ROOT_DIR,
+            text=True,
+            input="s\n" * (len(SCENARIOS) * 2),
+            capture_output=True,
+            check=False,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout[result.stdout.index("{") :])
+    assert payload["overall_status"] == "blocked"
+    profile = next(item for item in payload["profiles"] if item["profile"] == "esp_box_3")
+    assert {scenario["status"] for scenario in profile["scenarios"]} == {"blocked"}
+    assert {scenario["reason"] for scenario in profile["scenarios"]} == {"operator_skipped_physical_step"}
+
+
+def test_firmware_reconnect_session_bench_script_records_one_profile(tmp_path):
+    server = _ThreadedTcpServer(("127.0.0.1", 0), _ReconnectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    output_path = tmp_path / "bench-results.json"
+    try:
+        result = subprocess.run(
+            [
+                "bash",
+                str(BENCH_SCRIPT_PATH),
+                "--backend-url",
+                f"http://127.0.0.1:{server.server_address[1]}",
+                "--profile",
+                "esp_box_3=esp-box-1",
+                "--operator",
+                "test-operator",
+                "--release-id",
+                "test-release",
+                "--output",
+                str(output_path),
+            ],
+            cwd=ROOT_DIR,
+            text=True,
+            input="\np\n" * len(SCENARIOS),
+            capture_output=True,
+            check=True,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+    assert "esp_box_3/esp-box-1: pass" in result.stdout
+    assert payload["overall_status"] == "pass"
+    assert payload["operator"] == "test-operator"
+    assert payload["release_id"] == "test-release"
+    assert len(payload["profiles"]) == 1
+    profile = payload["profiles"][0]
+    assert profile["profile"] == "esp_box_3"
+    assert profile["endpoint_id"] == "esp-box-1"
+    assert profile["status"] == "pass"
+    assert {scenario["id"] for scenario in profile["scenarios"]} == set(SCENARIOS)
+    assert {scenario["status"] for scenario in profile["scenarios"]} == {"pass"}
+    assert all(scenario["endpoint_observation"]["online"] for scenario in profile["scenarios"])
 
 
 def test_firmware_reconnect_session_seed_artifact_is_release_gating():
