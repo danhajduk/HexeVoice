@@ -959,11 +959,7 @@ class VoiceSessionManager:
 
     def _handle_session_start(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         if self._active_session is not None:
-            if (
-                self._active_session.endpoint_id == event.endpoint_id
-                and self._active_session.session_state in {"idle", "wake_detected", "listening"}
-                and self._chunk_count == 0
-            ):
+            if self._can_replace_active_session(event):
                 log.info(
                     "Replacing stale pre-audio voice session: endpoint_id=%s stale_session_id=%s incoming_session_id=%s stale_state=%s",
                     event.endpoint_id,
@@ -1097,6 +1093,16 @@ class VoiceSessionManager:
             self._set_session_state("listening")
             return [wake_event, self._state_event("session.state", self._active_session)]
         return [self._state_event("session.state", self._active_session)]
+
+    def _can_replace_active_session(self, event: VoiceEventEnvelope) -> bool:
+        if self._active_session is None or self._active_session.endpoint_id != event.endpoint_id:
+            return False
+        if self._active_session.session_state == "idle":
+            wake = self._active_session_history.get("wake") if self._active_session_history else None
+            return not (isinstance(wake, dict) and wake.get("outcome") == "accepted")
+        if self._active_session.session_state in {"wake_detected", "listening"}:
+            return self._chunk_count == 0
+        return False
 
     def _handle_audio_chunk(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         session = self._require_active_session(event)

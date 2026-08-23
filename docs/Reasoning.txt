@@ -430,3 +430,10 @@ Issue cause: The first physical bench attempt needed safer operator flow: Wi-Fi 
 Chosen fix: Add a shell wrapper that selects one endpoint profile, prompts for each physical scenario, waits for operator completion, collects backend observations, asks for pass/fail/blocked, and merges only that profile into the release artifact.
 What changed: Added `scripts/firmware-reconnect-session-bench.sh`; added explicit skip support to the Python runner; updated the reconnect/session validation procedure; added regression coverage for interactive skip recording and the guided shell runner.
 Verification: `bash -n scripts/firmware-reconnect-session-bench.sh scripts/firmware-ota-menu.sh` and `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_reconnect_session_validation.py` passed.
+###########
+Operational fix
+Step objective: Recover wake invocation when repeated endpoint session starts leave the UI in `session_conflict`.
+Issue cause: Supervised openWakeWord can receive and count pre-wake audio while the active backend session is still `idle`. The replacement guard treated any observed chunk as an active turn, so later endpoint `session.start` events were rejected and their audio produced repeated `session_conflict` diagnostics.
+Chosen fix: Allow same-endpoint `idle` sessions with no accepted wake record to be superseded, even after pre-wake chunks were observed; keep the active-session rejection once the session has accepted wake and moved into capture.
+What changed: `VoiceSessionManager` now centralizes active-session replacement eligibility and distinguishes pre-wake audio from post-wake/capturing audio. WebSocket regression tests cover both replacement and rejection paths.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_websocket.py` passed.
