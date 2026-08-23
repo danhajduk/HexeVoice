@@ -48,7 +48,6 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 208: Add a repo migration preflight command for backend, frontend, and audit checks
 [TODO] Task 209: Consolidate legacy wake-model runtime paths and remove misspelled path dependency
 [TODO] Task 210: Harden voice-loop validation across target firmware hardware profiles
 [TODO] Task 211: Add long-running provider health, model warmup, and firmware media lifecycle validation

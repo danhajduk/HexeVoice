@@ -350,3 +350,10 @@ Issue cause: `@app.on_event("startup")` and `@app.on_event("shutdown")` are depr
 Chosen fix: Replace deprecated event decorators with `lifespan=` context managers while preserving warmup, scheduler, and cleanup behavior.
 What changed: Backend startup tasks now start inside lifespan and are tracked for deterministic shutdown; STT preload runs inside its app lifespan; Piper warm workers start and stop from the service lifespan.
 Verification: `rg -n "on_event\\(" src tests` found no remaining calls; compile checks passed for the three touched modules; `tests/test_stt_service.py`, `tests/test_piper_tts_service.py`, `tests/test_api.py`, `tests/test_node_ui_pilot.py`, two voice websocket restart tests, and `PYTHONWARNINGS='error::DeprecationWarning'` import smoke passed; full backend suite passed with 418 tests.
+###########
+Task #208
+Step objective: Add a one-command repo move-readiness preflight.
+Issue cause: Fresh repo validation required several manual commands across Python dependency setup, backend tests, frontend build, and npm audits.
+Chosen fix: Add `scripts/repo-migration-preflight.sh` as the documented canonical preflight, with required checks separated from non-blocking dev-audit review.
+What changed: The script prepares Python/frontend dependencies by default, reports Python/Node/npm/Vite tool versions, runs backend pytest, frontend build, production `npm audit --omit=dev`, and full dev `npm audit`, with logs under `runtime/preflight/`; README and setup docs now point maintainers to the command.
+Verification: `bash -n scripts/repo-migration-preflight.sh` passed; `tests/test_repo_migration_preflight_script.py` passed; with Node v22.12.0 from `/tmp/node-v22.12.0-linux-x64`, `./scripts/repo-migration-preflight.sh` passed with backend suite, frontend build, production audit, and full dev audit clean, logging to `runtime/preflight/repo-migration-20260823T041320Z`.

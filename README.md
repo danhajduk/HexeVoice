@@ -108,6 +108,18 @@ npm install
 npm run dev -- --host 0.0.0.0 --port 8084
 ```
 
+## Repo Preflight
+
+After moving or cloning the repo, run the canonical readiness checks with:
+
+```bash
+./scripts/repo-migration-preflight.sh
+```
+
+The preflight installs Python and frontend dependencies by default, runs the
+backend suite, builds the frontend, runs required production `npm audit
+--omit=dev`, and reports a separate full dev-audit review.
+
 ## Start Both Together
 
 To launch both services together for local development on your requested ports:

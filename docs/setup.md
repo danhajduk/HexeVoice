@@ -292,6 +292,12 @@ After trust activation, HexeVoice should register its runtime with Core Supervis
 
 ## Verification Commands
 
+Full repo move-readiness preflight:
+
+```bash
+./scripts/repo-migration-preflight.sh
+```
+
 Backend:
 
 ```bash
