@@ -1667,3 +1667,93 @@ Original task details:
   - Long-running validation can be run locally or on a staging node without manual log spelunking.
   - Provider/model/media lifecycle failures produce actionable diagnostics.
   - Existing fast test suite remains practical for day-to-day development.
+
+## Task 212
+Original task details:
+- Title: Reconcile stale Voice Node docs and decide the node feature report disposition
+- Source finding:
+  - `docs/node-feature-report.md` remains untracked after the repo-health review.
+  - `docs/architecture.md` still states STT, TTS, assistant routing, and persistent session history are pending even though source/tests show those paths now exist.
+  - `docs/firmware-baseline.md` still lists real TTS playback as missing, while current firmware/tests indicate playback exists but remains profile/device-hardening work.
+- Scope:
+  - Decide whether `docs/node-feature-report.md` should be committed as an audit artifact, converted into canonical docs, or removed.
+  - Update stale architecture and firmware baseline language so implemented, partial, scaffold, and missing states match current source/tests.
+  - Cross-link the current roadmap, firmware validation matrix, provider lifecycle validation, and feature report if retained.
+- Acceptance criteria:
+  - No untracked node feature report remains without an explicit decision.
+  - Docs no longer claim implemented backend voice/STT/TTS/session-history surfaces are pending.
+  - Firmware docs distinguish implemented TTS playback from remaining physical validation and integrity hardening.
+
+## Task 213
+Original task details:
+- Title: Add firmware provisioning and endpoint settings UI flow
+- Source finding:
+  - Firmware Wi-Fi/backend connection still relies on compile-time or local YAML/secrets configuration.
+  - Firmware-side settings UI is not implemented.
+- Scope:
+  - Define the provisioning contract for Wi-Fi, backend host/ports, endpoint id/display name, audio defaults, and recovery/reset behavior.
+  - Add a firmware-accessible setup/settings surface appropriate to each supported profile, with a fallback path for headless devices.
+  - Persist settings safely and keep existing build-time config as a development fallback.
+  - Update setup/operator docs and tests for provisioning state transitions and recovery.
+- Acceptance criteria:
+  - A fresh endpoint can be configured without editing firmware source or local secrets headers for normal operation.
+  - Settings survive reboot and can be reset or re-entered safely.
+  - Headless and display-capable profiles have documented setup paths.
+
+## Task 214
+Original task details:
+- Title: Add automatic endpoint discovery and pairing for firmware endpoints
+- Source finding:
+  - Automatic endpoint discovery is deferred; endpoint YAML currently points firmware at a fixed backend host/port.
+- Scope:
+  - Choose a discovery mechanism compatible with the Hexe/Core node standards, such as mDNS, LAN broadcast, Core-mediated enrollment, or a documented hybrid.
+  - Implement endpoint discovery/pairing so firmware can locate the HexeVoice node and register a stable endpoint identity.
+  - Keep static YAML/manual host configuration as an explicit fallback.
+  - Add backend and firmware tests or simulations for discovery success, timeout, duplicate endpoint identity, and stale pairing recovery.
+- Acceptance criteria:
+  - New firmware endpoints can find and pair with the node without hardcoded backend IPs in the common path.
+  - Operators can see discovery/pairing state and actionable failures.
+  - Static config remains available for constrained or locked-down networks.
+
+## Task 215
+Original task details:
+- Title: Harden firmware OTA integrity with checksum enforcement and signed manifest validation
+- Source finding:
+  - Firmware artifact serving and OTA push exist, but firmware-side SHA-256 enforcement and signed manifest validation remain missing.
+- Scope:
+  - Define the OTA manifest trust model, signature format, key distribution/rotation expectations, and downgrade/replay policy.
+  - Enforce SHA-256 verification on downloaded firmware before applying OTA.
+  - Validate signed manifests or signed artifact metadata before accepting backend-pushed updates.
+  - Add tests for checksum mismatch, missing signature, invalid signature, unsupported profile artifact, downgrade/replay, and happy path.
+- Acceptance criteria:
+  - Firmware rejects corrupted, unsigned, invalidly signed, wrong-profile, or replayed OTA artifacts.
+  - Backend/operator diagnostics name the exact OTA integrity failure.
+  - Valid signed artifacts still update through the existing OTA push flow.
+
+## Task 216
+Original task details:
+- Title: Validate physical-device reconnect and session-boundary behavior across supported profiles
+- Source finding:
+  - Device-tested reconnect/session-boundary behavior remains listed as hardening work even though automated WebSocket/session coverage exists.
+- Scope:
+  - Turn the firmware validation matrix manual reconnect/session checks into a repeatable field-validation procedure or semi-automated rig.
+  - Validate backend restart, endpoint power-cycle, Wi-Fi loss/rejoin, active-session disconnect, post-TTS cooldown, wake retry, and duplicate-session prevention for `esp_box_3` and `ha_voice_pe`.
+  - Capture results in a structured artifact suitable for release review.
+- Acceptance criteria:
+  - Each supported profile has recorded pass/fail reconnect and session-boundary results.
+  - Failures produce actionable firmware/backend follow-up tasks.
+  - Release docs clearly show which profile states are validated, partial, or blocked.
+
+## Task 217
+Original task details:
+- Title: Replace or explicitly retire scaffold firmware modules for wake word, STT stream, assistant client, telemetry, and power
+- Source finding:
+  - `firmware/main/voice/wake_word.cpp`, `firmware/main/voice/stt_stream.cpp`, `firmware/main/voice/assistant_client.cpp`, `firmware/main/system/telemetry.cpp`, and `firmware/main/system/power.cpp` remain scaffold-style modules.
+- Scope:
+  - Audit whether each scaffold is still needed, should move behind an explicit no-op interface, should be implemented, or should be removed.
+  - For retained no-op modules, expose clear capability/status semantics so operators are not misled.
+  - For implemented modules, add source-level tests or firmware build checks that pin behavior.
+  - Update firmware baseline docs to reflect the decision for each module.
+- Acceptance criteria:
+  - No scaffold module is left ambiguous: each is implemented, removed, or documented as an intentional no-op with capability reporting.
+  - Firmware source/tests/docs agree on the state of wake word, STT stream, assistant client, telemetry, and power ownership.
