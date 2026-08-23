@@ -1,0 +1,201 @@
+{
+  "schema_version": 1,
+  "required_categories": [
+    "audio_streaming",
+    "wake_acceptance",
+    "tts_playback",
+    "display_state",
+    "ota_media",
+    "mute_volume",
+    "reconnect_behavior"
+  ],
+  "profiles": [
+    {
+      "id": "esp_box_3",
+      "display_name": "ESP-BOX-3",
+      "support_state": "supported",
+      "validation_state": "partial",
+      "operator_summary": "Primary touchscreen/display target. Automated source/API coverage exists; physical audio, speaker, display, SD media, and OTA field validation are still required before release.",
+      "automated_checks": [
+        "tests/test_firmware_voice_envelope.py",
+        "tests/test_voice_loop_integration.py",
+        "tests/test_voice_websocket.py",
+        "tests/test_api.py"
+      ],
+      "checks": {
+        "audio_streaming": {
+          "state": "partial",
+          "automated": [
+            "tests/test_voice_loop_integration.py",
+            "tests/test_voice_websocket.py",
+            "tests/test_firmware_voice_envelope.py::test_firmware_heartbeat_reports_network_metadata"
+          ],
+          "manual": [
+            "Capture at least one wake-to-STT turn from the built firmware and confirm audio chunks reach `/api/voice/ws` with the expected endpoint id.",
+            "Confirm no duplicated post-TTS capture during the firmware cooldown window."
+          ]
+        },
+        "wake_acceptance": {
+          "state": "partial",
+          "automated": [
+            "tests/test_voice_websocket.py::test_voice_websocket_accepts_wake_audio_chunks_and_completion",
+            "tests/test_voice_websocket.py::test_voice_websocket_cancels_audio_end_when_wake_was_not_detected"
+          ],
+          "manual": [
+            "Say the configured wake word from idle and confirm the endpoint enters listening/capturing.",
+            "Confirm a below-threshold wake attempt is reported without starting STT."
+          ]
+        },
+        "tts_playback": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_firmware_voice_events_emit_full_v1_envelope",
+            "tests/test_voice_websocket.py::test_voice_session_history_replays_cached_tts_after_restart"
+          ],
+          "manual": [
+            "Complete a voice turn and confirm audible playback starts, finishes, and emits playback completion telemetry.",
+            "Replay a cached TTS artifact from the UI/API and confirm endpoint playback."
+          ]
+        },
+        "display_state": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_firmware_composited_ui_supports_manifest_alpha_and_clock_scene",
+            "tests/test_firmware_voice_envelope.py::test_firmware_handles_backend_session_state_events"
+          ],
+          "manual": [
+            "Verify idle, listening, thinking, replying, error, and OTA display states on the panel.",
+            "Verify media-delivered UI assets render from the SD card after reboot."
+          ]
+        },
+        "ota_media": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_firmware_media_transfer_uses_temp_file_checksum_and_cleanup",
+            "tests/test_firmware_voice_envelope.py::test_firmware_build_exports_profile_specific_ota_artifacts",
+            "tests/test_api.py::test_endpoint_media_upload_validates_and_serves_picture_rgb565"
+          ],
+          "manual": [
+            "Run an OTA push for the `esp_box_3` artifact and confirm the endpoint returns on the same id.",
+            "Deliver picture, sprite, sound, and manifest assets to SD media and verify inventory reports them after reconnect."
+          ]
+        },
+        "mute_volume": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_firmware_backend_commands_acknowledge_receipt_with_ok"
+          ],
+          "manual": [
+            "Send backend mute, unmute, and volume commands and confirm firmware state/telemetry changes.",
+            "Use local controls, if present on the device build, and confirm they do not conflict with backend commands."
+          ]
+        },
+        "reconnect_behavior": {
+          "state": "partial",
+          "automated": [
+            "tests/test_voice_loop_integration.py",
+            "tests/test_firmware_voice_envelope.py::test_firmware_heartbeat_reports_network_metadata"
+          ],
+          "manual": [
+            "Restart the backend during idle and active voice states and confirm the endpoint reconnects using the configured backoff.",
+            "Power-cycle the endpoint and confirm heartbeat, capabilities, and firmware version return in the operator UI."
+          ]
+        }
+      }
+    },
+    {
+      "id": "ha_voice_pe",
+      "display_name": "Home Assistant Voice Preview Edition",
+      "support_state": "supported",
+      "validation_state": "partial",
+      "operator_summary": "Audio/LED-ring target with no display and NVS-only media storage. Automated source coverage exists for the PE board profile; physical XMOS audio, codec playback, LED ring, controls, and OTA field validation are still required before release.",
+      "automated_checks": [
+        "tests/test_firmware_voice_envelope.py::test_firmware_supports_home_assistant_voice_pe_profile",
+        "tests/test_firmware_voice_envelope.py::test_voice_pe_led_ring_driver_contract_and_priority",
+        "tests/test_firmware_voice_envelope.py::test_voice_pe_rotary_dial_led_affordances_do_not_trigger_center_action",
+        "tests/test_voice_websocket.py"
+      ],
+      "checks": {
+        "audio_streaming": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_firmware_supports_home_assistant_voice_pe_profile",
+            "tests/test_voice_websocket.py"
+          ],
+          "manual": [
+            "Capture a wake-to-STT turn from the PE microphone and confirm speech reaches the backend.",
+            "Confirm micro-VAD does not stream while the hardware mute is active."
+          ]
+        },
+        "wake_acceptance": {
+          "state": "partial",
+          "automated": [
+            "tests/test_voice_websocket.py::test_voice_websocket_accepts_wake_audio_chunks_and_completion",
+            "tests/test_firmware_voice_envelope.py::test_firmware_supports_home_assistant_voice_pe_profile"
+          ],
+          "manual": [
+            "Say the configured wake word and confirm the LED ring enters the wake/listening pattern.",
+            "Press the center button and confirm it starts a button wake session."
+          ]
+        },
+        "tts_playback": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_firmware_supports_home_assistant_voice_pe_profile",
+            "tests/test_firmware_voice_envelope.py::test_firmware_sound_transfer_can_activate_sd_playback"
+          ],
+          "manual": [
+            "Complete a voice turn and confirm codec output at the PE speaker sample rate.",
+            "Confirm the wake accepted ding plays without replacing the following TTS response."
+          ]
+        },
+        "display_state": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_voice_pe_led_ring_driver_contract_and_priority"
+          ],
+          "manual": [
+            "Confirm boot, idle, listening, capturing, thinking, replying, completed, muted, disconnected, and OTA ring patterns.",
+            "Confirm no panel display is expected for this profile and the operator UI labels the profile accordingly."
+          ]
+        },
+        "ota_media": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_firmware_build_exports_profile_specific_ota_artifacts",
+            "tests/test_firmware_voice_envelope.py::test_firmware_supports_home_assistant_voice_pe_profile"
+          ],
+          "manual": [
+            "Run an OTA push for the `ha_voice_pe` artifact and confirm the endpoint returns on the same id.",
+            "Confirm media/SD features are reported as unsupported or NVS-only rather than silently failing."
+          ]
+        },
+        "mute_volume": {
+          "state": "partial",
+          "automated": [
+            "tests/test_firmware_voice_envelope.py::test_voice_pe_rotary_dial_led_affordances_do_not_trigger_center_action",
+            "tests/test_firmware_voice_envelope.py::test_firmware_supports_home_assistant_voice_pe_profile"
+          ],
+          "manual": [
+            "Toggle hardware mute and confirm microphone streaming stops and LED state changes.",
+            "Rotate volume and color controls, including center-held color selection, and confirm they do not trigger voice sessions."
+          ]
+        },
+        "reconnect_behavior": {
+          "state": "partial",
+          "automated": [
+            "tests/test_voice_loop_integration.py",
+            "tests/test_firmware_voice_envelope.py::test_firmware_heartbeat_reports_network_metadata"
+          ],
+          "manual": [
+            "Restart the backend during idle and active voice states and confirm the PE reconnects using the configured backoff.",
+            "Power-cycle the PE and confirm heartbeat, capabilities, profile, and firmware version return in the operator UI."
+          ]
+        }
+      }
+    }
+  ],
+  "unsupported_profiles": {
+    "operator_behavior": "Profiles not listed here are unvalidated. `firmware/build.sh` must reject unsupported `HEXE_BOARD_PROFILE` values before build or OTA push."
+  }
+}

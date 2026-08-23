@@ -364,3 +364,10 @@ Issue cause: `scripts/openwakeword-control.sh` still directly depended on `runti
 Chosen fix: Convert the misspelled local directory into a one-time migration source that moves wake model files into `runtime/openwakeword/models/` and removes the old directory when empty.
 What changed: `sync-models` migrates `.tflite`/`.onnx` files from the legacy local directory, preserves conflicting model files with `.legacy-N` names, keeps the old Hexa-to-Hexe compatibility copy after migration, defaults the control script to the repo venv Python when available, removes explicit legacy ignore entries, and documents the compatibility behavior.
 Verification: `bash -n scripts/openwakeword-control.sh` passed; `tests/test_openwakeword_control_script.py` passed; direct legacy migration smoke moved `Hexa.tflite` into a canonical temp model dir and removed the temp misspelled dir; `tests/test_post_install_smoke_test.py::test_post_install_smoke_test_passes_with_healthy_stack` passed.
+###########
+Task #210
+Step objective: Make firmware hardware-profile validation explicit and test-enforced.
+Issue cause: Supported firmware profiles existed in build/test code, but release readiness across audio streaming, wake, TTS playback, display/LED state, OTA/media, mute/volume, and reconnect behavior was not captured as an operator-visible matrix.
+Chosen fix: Add a machine-readable firmware validation matrix plus human docs and tests that keep the matrix aligned with supported build profiles and required categories.
+What changed: Added `docs/firmware-validation-matrix.json`, `docs/firmware-validation-matrix.md`, linked it from firmware docs, and added matrix tests that require every supported profile to declare automated coverage and manual field checks for each required validation category.
+Verification: `tests/test_firmware_validation_matrix.py`, `tests/test_firmware_voice_envelope.py`, `tests/test_voice_loop_integration.py`, and `tests/test_voice_websocket.py` passed; `bash -n firmware/build.sh firmware/export-artifacts.sh` passed. `idf.py` is not installed in this shell, so a real ESP-IDF firmware build was not run.
