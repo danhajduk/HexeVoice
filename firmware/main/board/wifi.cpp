@@ -8,7 +8,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "esp_wifi.h"
-#include "secrets/wifi_secrets.h"
+#include "system/settings.h"
 
 namespace {
 constexpr char kTag[] = "hexe_wifi";
@@ -16,7 +16,7 @@ bool g_wifi_initialized = false;
 char g_ip_address[16] = "0.0.0.0";
 
 bool has_wifi_credentials() {
-  return hexe::secrets::kWifiSsid[0] != '\0';
+  return hexe::system::wifi_ssid()[0] != '\0';
 }
 
 void update_rssi_from_ap_info() {
@@ -94,10 +94,10 @@ void init_wifi() {
 
   wifi_config_t wifi_config = {};
   std::strncpy(
-      reinterpret_cast<char *>(wifi_config.sta.ssid), hexe::secrets::kWifiSsid, sizeof(wifi_config.sta.ssid) - 1);
+      reinterpret_cast<char *>(wifi_config.sta.ssid), hexe::system::wifi_ssid(), sizeof(wifi_config.sta.ssid) - 1);
   std::strncpy(
       reinterpret_cast<char *>(wifi_config.sta.password),
-      hexe::secrets::kWifiPassword,
+      hexe::system::wifi_password(),
       sizeof(wifi_config.sta.password) - 1);
   wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
   wifi_config.sta.pmf_cfg.capable = true;
@@ -107,7 +107,7 @@ void init_wifi() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  ESP_LOGI(kTag, "Wi-Fi init complete, waiting for connection to SSID '%s'", hexe::secrets::kWifiSsid);
+  ESP_LOGI(kTag, "Wi-Fi init complete, waiting for connection to SSID '%s'", hexe::system::wifi_ssid());
 }
 
 void refresh_wifi_status() {

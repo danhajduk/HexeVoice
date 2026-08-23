@@ -70,6 +70,7 @@ from hexevoice.api.models import (
     EndpointMediaListResponse,
     EndpointMediaUploadRequest,
     EndpointPlaySoundCommandRequest,
+    EndpointProvisioningApplyRequest,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
     EndpointSpeakCommandRequest,
@@ -851,6 +852,33 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             command_type="endpoint.micro_vad.set",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/provisioning/apply", response_model=EndpointCommandResponse)
+    async def endpoint_provisioning_apply(payload: EndpointProvisioningApplyRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_endpoint_provisioning_apply_command(
+            endpoint_id=payload.endpoint_id,
+            provisioning=payload.model_dump(exclude={"endpoint_id"}),
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.provisioning.apply",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/provisioning/reset", response_model=EndpointCommandResponse)
+    async def endpoint_provisioning_reset(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_endpoint_provisioning_reset_command(endpoint_id=payload.endpoint_id)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.provisioning.reset",
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),

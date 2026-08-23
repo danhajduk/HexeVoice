@@ -71,7 +71,7 @@ void send_playback_event(const char *event_type, const PlaybackRequest &request,
 }
 
 const char *scheme_http() {
-  return hexe::config::kEndpointUseTls ? "https" : "http";
+  return hexe::system::endpoint_use_tls() ? "https" : "http";
 }
 
 uint16_t read_le16(const uint8_t *bytes) {
@@ -97,8 +97,8 @@ std::string resolve_audio_url(const char *audio_url) {
       sizeof(buffer),
       "%s://%s:%d%s",
       scheme_http(),
-      hexe::config::kEndpointBackendHost,
-      hexe::config::kEndpointHttpPort,
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port(),
       url.c_str());
   return std::string(buffer);
 }

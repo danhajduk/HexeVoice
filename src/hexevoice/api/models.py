@@ -246,6 +246,18 @@ class EndpointMicroVadCommandRequest(BaseModel):
     pause_ms: int = Field(ge=80, le=3000)
 
 
+class EndpointProvisioningApplyRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    provisioned_endpoint_id: str | None = Field(default=None, min_length=1, max_length=63)
+    display_name: str | None = Field(default=None, max_length=63)
+    backend_host: str | None = Field(default=None, min_length=1, max_length=95)
+    http_port: int | None = Field(default=None, ge=1, le=65535)
+    ws_port: int | None = Field(default=None, ge=1, le=65535)
+    use_tls: bool | None = None
+    wifi_ssid: str | None = Field(default=None, max_length=32)
+    wifi_password: str | None = Field(default=None, max_length=64)
+
+
 class EndpointCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
 

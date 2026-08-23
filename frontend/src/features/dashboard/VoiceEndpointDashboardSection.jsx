@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  applyEndpointProvisioning,
   cancelEndpointSession,
   deleteEndpointMedia,
   deleteEndpointVoiceArtifacts,
@@ -14,6 +15,7 @@ import {
   muteEndpoint,
   pushFirmwareOta,
   reformatEndpointStorage,
+  resetEndpointProvisioning,
   replayEndpointResponse,
   replayVoiceSession,
   setEndpointVolume,
@@ -496,6 +498,190 @@ function EndpointCapabilitiesPanel({ endpointStatus }) {
           <dd>{controlLabels || "unknown"}</dd>
         </div>
       </dl>
+    </section>
+  );
+}
+
+function EndpointProvisioningPanel({ endpointStatus, voiceStatus, onRefresh, setActionMessage }) {
+  const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
+  const provisioning = endpointCapabilities(endpointStatus).provisioning || {};
+  const [provisionedEndpointId, setProvisionedEndpointId] = useState(provisioning.endpoint_id || endpointId);
+  const [displayName, setDisplayName] = useState(provisioning.display_name || endpointStatus?.display_name || "");
+  const [backendHost, setBackendHost] = useState(provisioning.backend_host || "");
+  const [httpPort, setHttpPort] = useState(provisioning.http_port || 9004);
+  const [wsPort, setWsPort] = useState(provisioning.ws_port || 9004);
+  const [useTls, setUseTls] = useState(Boolean(provisioning.use_tls));
+  const [wifiSsid, setWifiSsid] = useState("");
+  const [wifiPassword, setWifiPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setProvisionedEndpointId(provisioning.endpoint_id || endpointId);
+    setDisplayName(provisioning.display_name || endpointStatus?.display_name || "");
+    setBackendHost(provisioning.backend_host || "");
+    setHttpPort(provisioning.http_port || 9004);
+    setWsPort(provisioning.ws_port || 9004);
+    setUseTls(Boolean(provisioning.use_tls));
+    setWifiSsid("");
+    setWifiPassword("");
+  }, [
+    endpointId,
+    endpointStatus?.display_name,
+    provisioning.backend_host,
+    provisioning.display_name,
+    provisioning.endpoint_id,
+    provisioning.http_port,
+    provisioning.use_tls,
+    provisioning.ws_port,
+  ]);
+
+  async function handleApply(event) {
+    event.preventDefault();
+    if (!endpointId) {
+      setActionMessage("Provisioning skipped: endpoint is not connected.");
+      return;
+    }
+
+    const payload = {
+      provisioned_endpoint_id: provisionedEndpointId,
+      display_name: displayName,
+      backend_host: backendHost,
+      http_port: Number(httpPort),
+      ws_port: Number(wsPort),
+      use_tls: useTls,
+    };
+    if (wifiSsid) {
+      payload.wifi_ssid = wifiSsid;
+    }
+    if (wifiPassword) {
+      payload.wifi_password = wifiPassword;
+    }
+
+    setBusy(true);
+    try {
+      const result = await applyEndpointProvisioning(endpointId, payload);
+      setActionMessage(result.accepted ? `Provisioning sent (${result.status}, ${result.request_id}).` : `Provisioning skipped: ${result.reason}`);
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReset() {
+    if (!endpointId) {
+      setActionMessage("Provisioning reset skipped: endpoint is not connected.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await resetEndpointProvisioning(endpointId);
+      setActionMessage(result.accepted ? `Provisioning reset sent (${result.status}, ${result.request_id}).` : `Provisioning reset skipped: ${result.reason}`);
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="voice-endpoint-panel stack">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Endpoint Settings</p>
+          <h2 className="panel-title">Provisioning</h2>
+        </div>
+        <span className="status-pill status-pill-neutral">{provisioning.configured ? "persisted" : "build defaults"}</span>
+      </div>
+      <form className="endpoint-metadata-form" onSubmit={handleApply}>
+        <label>
+          <span>Endpoint ID</span>
+          <input
+            type="text"
+            value={provisionedEndpointId}
+            maxLength={63}
+            onChange={(event) => setProvisionedEndpointId(event.target.value)}
+            disabled={busy || !endpointId}
+          />
+        </label>
+        <label>
+          <span>Display name</span>
+          <input
+            type="text"
+            value={displayName}
+            maxLength={63}
+            onChange={(event) => setDisplayName(event.target.value)}
+            disabled={busy || !endpointId}
+          />
+        </label>
+        <label>
+          <span>Backend host</span>
+          <input
+            type="text"
+            value={backendHost}
+            maxLength={95}
+            onChange={(event) => setBackendHost(event.target.value)}
+            disabled={busy || !endpointId}
+          />
+        </label>
+        <label>
+          <span>HTTP port</span>
+          <input
+            type="number"
+            min="1"
+            max="65535"
+            value={httpPort}
+            onChange={(event) => setHttpPort(event.target.value)}
+            disabled={busy || !endpointId}
+          />
+        </label>
+        <label>
+          <span>WS port</span>
+          <input
+            type="number"
+            min="1"
+            max="65535"
+            value={wsPort}
+            onChange={(event) => setWsPort(event.target.value)}
+            disabled={busy || !endpointId}
+          />
+        </label>
+        <label className="endpoint-media-check">
+          <input type="checkbox" checked={useTls} onChange={(event) => setUseTls(event.target.checked)} disabled={busy || !endpointId} />
+          <span>TLS</span>
+        </label>
+        <label>
+          <span>Wi-Fi SSID</span>
+          <input
+            type="text"
+            value={wifiSsid}
+            maxLength={32}
+            placeholder={provisioning.wifi_configured ? "unchanged" : ""}
+            onChange={(event) => setWifiSsid(event.target.value)}
+            disabled={busy || !endpointId}
+          />
+        </label>
+        <label>
+          <span>Wi-Fi password</span>
+          <input
+            type="password"
+            value={wifiPassword}
+            maxLength={64}
+            placeholder={provisioning.wifi_configured ? "unchanged" : ""}
+            onChange={(event) => setWifiPassword(event.target.value)}
+            disabled={busy || !endpointId}
+          />
+        </label>
+        <button className="btn btn-secondary" type="submit" disabled={busy || !endpointId || !provisionedEndpointId || !backendHost}>
+          Apply Settings
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={handleReset} disabled={busy || !endpointId}>
+          Reset Settings
+        </button>
+      </form>
     </section>
   );
 }
@@ -1378,6 +1564,12 @@ export function VoiceEndpointDashboardSection({
         firmwareUpdateBusy={firmwareUpdateBusy}
       />
       <EndpointCapabilitiesPanel endpointStatus={endpointStatus} />
+      <EndpointProvisioningPanel
+        voiceStatus={voiceStatus}
+        endpointStatus={endpointStatus}
+        onRefresh={onRefresh}
+        setActionMessage={setActionMessage}
+      />
       <EndpointMediaManagerPanel
         endpointId={endpointId}
         onRefresh={onRefresh}

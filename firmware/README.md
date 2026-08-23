@@ -8,6 +8,7 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
 - [`docs/firmware-baseline.md`](/home/dan/Projects/HexeVoice/docs/firmware-baseline.md)
 - [`docs/firmware-migration-plan.md`](/home/dan/Projects/HexeVoice/docs/firmware-migration-plan.md)
 - [`docs/firmware-ota.md`](/home/dan/Projects/HexeVoice/docs/firmware-ota.md)
+- [`docs/firmware-provisioning.md`](/home/dan/Projects/HexeVoice/docs/firmware-provisioning.md)
 
 ## Goals
 
@@ -37,6 +38,12 @@ Then edit `firmware/config/endpoint.yaml` so `node.host`, `node.http_port`, and 
 During the ESP-IDF build, `main/CMakeLists.txt` runs `tools/generate_endpoint_config.py` and generates `endpoint_config.h` from `config/endpoint.yaml` when present, otherwise from `config/endpoint.example.yaml`. Firmware source consumes that generated header instead of hardcoding a node IP address.
 
 The runtime firmware version is not read from endpoint YAML. Heartbeats, voice session starts, and firmware capabilities report the ESP-IDF app/project version embedded in the build.
+
+At runtime, endpoint id, display name, backend host/ports, TLS mode, and Wi-Fi
+credentials can be persisted through the operator dashboard/API provisioning
+commands. Build-time YAML and Wi-Fi secrets remain the recovery fallback after a
+provisioning reset. See
+[`docs/firmware-provisioning.md`](../docs/firmware-provisioning.md).
 
 ## SPI microSD Media Storage
 

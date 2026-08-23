@@ -223,7 +223,7 @@ void append_event_header(
       event_type,
       event_id,
       kVoiceEventSchemaVersion,
-      hexe::config::kEndpointId);
+      hexe::system::endpoint_id());
   message.append(prefix);
   if (session_id == nullptr || session_id[0] == '\0') {
     message.append("null");
@@ -396,11 +396,11 @@ bool drain_preroll_frames() {
 }
 
 const char *scheme_http() {
-  return hexe::config::kEndpointUseTls ? "https" : "http";
+  return hexe::system::endpoint_use_tls() ? "https" : "http";
 }
 
 const char *scheme_ws() {
-  return hexe::config::kEndpointUseTls ? "wss" : "ws";
+  return hexe::system::endpoint_use_tls() ? "wss" : "ws";
 }
 
 const char *firmware_version() {
@@ -461,8 +461,8 @@ std::string heartbeat_url() {
       sizeof(buffer),
       "%s://%s:%d%s",
       scheme_http(),
-      hexe::config::kEndpointBackendHost,
-      hexe::config::kEndpointHttpPort,
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port(),
       hexe::config::kEndpointHeartbeatPath);
   return std::string(buffer);
 }
@@ -474,8 +474,8 @@ std::string time_url() {
       sizeof(buffer),
       "%s://%s:%d/api/endpoint/time",
       scheme_http(),
-      hexe::config::kEndpointBackendHost,
-      hexe::config::kEndpointHttpPort);
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port());
   return std::string(buffer);
 }
 
@@ -486,8 +486,8 @@ std::string websocket_url() {
       sizeof(buffer),
       "%s://%s:%d%s",
       scheme_ws(),
-      hexe::config::kEndpointBackendHost,
-      hexe::config::kEndpointWsPort,
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_ws_port(),
       hexe::config::kEndpointVoiceWsPath);
   return std::string(buffer);
 }
@@ -520,6 +520,8 @@ bool is_backend_command_event(const char *event_type);
 void acknowledge_command_received(const char *event_type, cJSON *payload);
 bool queue_media_transfer(cJSON *payload);
 void handle_endpoint_timer(cJSON *payload);
+void handle_endpoint_provisioning_apply(cJSON *payload);
+void handle_endpoint_provisioning_reset(cJSON *payload);
 
 void handle_backend_event_json(const std::string &message) {
   cJSON *root = cJSON_ParseWithLength(message.c_str(), message.size());
@@ -694,6 +696,10 @@ void handle_backend_event_json(const std::string &message) {
     queue_media_transfer(payload);
   } else if (std::strcmp(type, "endpoint.timer") == 0) {
     handle_endpoint_timer(payload);
+  } else if (std::strcmp(type, "endpoint.provisioning.apply") == 0) {
+    handle_endpoint_provisioning_apply(payload);
+  } else if (std::strcmp(type, "endpoint.provisioning.reset") == 0) {
+    handle_endpoint_provisioning_reset(payload);
   } else if (std::strcmp(type, "endpoint.storage.reformat") == 0) {
     const char *request_id = payload_request_id(payload);
     send_command_ack(request_id, "endpoint.storage.reformat", "started", "Reformatting SD media folders");
@@ -929,6 +935,17 @@ std::string endpoint_capabilities_json() {
   cJSON_AddBoolToObject(controls, "restart", false);
   cJSON_AddBoolToObject(controls, "reconnect", false);
 
+  cJSON *provisioning = cJSON_AddObjectToObject(root, "provisioning");
+  cJSON_AddBoolToObject(provisioning, "configured", hexe::system::provisioning_configured());
+  cJSON_AddStringToObject(provisioning, "endpoint_id", hexe::system::endpoint_id());
+  cJSON_AddStringToObject(provisioning, "display_name", hexe::system::endpoint_display_name());
+  cJSON_AddStringToObject(provisioning, "backend_host", hexe::system::endpoint_backend_host());
+  cJSON_AddNumberToObject(provisioning, "http_port", hexe::system::endpoint_http_port());
+  cJSON_AddNumberToObject(provisioning, "ws_port", hexe::system::endpoint_ws_port());
+  cJSON_AddBoolToObject(provisioning, "use_tls", hexe::system::endpoint_use_tls());
+  cJSON_AddBoolToObject(provisioning, "wifi_configured", hexe::system::wifi_ssid()[0] != '\0');
+  cJSON_AddBoolToObject(provisioning, "runtime_configurable", true);
+
   cJSON *firmware = cJSON_AddObjectToObject(root, "firmware");
   cJSON_AddStringToObject(firmware, "project_name", app == nullptr ? "unknown" : app->project_name);
   cJSON_AddStringToObject(firmware, "version", app == nullptr ? firmware_version() : app->version);
@@ -1018,6 +1035,92 @@ void acknowledge_command_received(const char *event_type, cJSON *payload) {
     return;
   }
   send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");
+}
+
+bool copy_optional_string_field(cJSON *payload, const char *key, char *target, size_t target_size) {
+  cJSON *field = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, key) : nullptr;
+  if (field == nullptr) {
+    return true;
+  }
+  if (!cJSON_IsString(field)) {
+    return false;
+  }
+  std::strncpy(target, field->valuestring == nullptr ? "" : field->valuestring, target_size - 1);
+  target[target_size - 1] = '\0';
+  return true;
+}
+
+bool assign_optional_int_field(cJSON *payload, const char *key, int *target) {
+  cJSON *field = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, key) : nullptr;
+  if (field == nullptr) {
+    return true;
+  }
+  if (!cJSON_IsNumber(field)) {
+    return false;
+  }
+  *target = field->valueint;
+  return true;
+}
+
+bool assign_optional_bool_field(cJSON *payload, const char *key, bool *target) {
+  cJSON *field = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, key) : nullptr;
+  if (field == nullptr) {
+    return true;
+  }
+  if (!cJSON_IsBool(field)) {
+    return false;
+  }
+  *target = cJSON_IsTrue(field);
+  return true;
+}
+
+void handle_endpoint_provisioning_apply(cJSON *payload) {
+  const char *request_id = payload_request_id(payload);
+  hexe::system::EndpointProvisioningSettings settings = hexe::system::endpoint_provisioning_settings();
+  if (!copy_optional_string_field(payload, "endpoint_id", settings.endpoint_id, sizeof(settings.endpoint_id)) ||
+      !copy_optional_string_field(payload, "display_name", settings.display_name, sizeof(settings.display_name)) ||
+      !copy_optional_string_field(payload, "backend_host", settings.backend_host, sizeof(settings.backend_host)) ||
+      !copy_optional_string_field(payload, "wifi_ssid", settings.wifi_ssid, sizeof(settings.wifi_ssid)) ||
+      !copy_optional_string_field(payload, "wifi_password", settings.wifi_password, sizeof(settings.wifi_password)) ||
+      !assign_optional_int_field(payload, "http_port", &settings.http_port) ||
+      !assign_optional_int_field(payload, "ws_port", &settings.ws_port) ||
+      !assign_optional_bool_field(payload, "use_tls", &settings.use_tls)) {
+    send_command_error(
+        request_id,
+        "endpoint.provisioning.apply",
+        "invalid_payload",
+        "Provisioning fields must match the declared types");
+    return;
+  }
+
+  if (settings.display_name[0] == '\0') {
+    std::strncpy(settings.display_name, settings.endpoint_id, sizeof(settings.display_name) - 1);
+    settings.display_name[sizeof(settings.display_name) - 1] = '\0';
+  }
+
+  if (hexe::system::save_endpoint_provisioning(settings)) {
+    send_command_ack(
+        request_id,
+        "endpoint.provisioning.apply",
+        "succeeded",
+        "Provisioning saved; reboot or reconnect to apply network changes");
+  } else {
+    send_command_error(
+        request_id,
+        "endpoint.provisioning.apply",
+        "invalid_payload",
+        "endpoint_id, backend_host, http_port, and ws_port must be valid");
+  }
+}
+
+void handle_endpoint_provisioning_reset(cJSON *payload) {
+  const char *request_id = payload_request_id(payload);
+  hexe::system::reset_endpoint_provisioning();
+  send_command_ack(
+      request_id,
+      "endpoint.provisioning.reset",
+      "succeeded",
+      "Provisioning reset to build-time defaults; reboot or reconnect to apply network changes");
 }
 
 void send_command_ack(const char *request_id, const char *command_type, const char *status, const char *message) {
@@ -1388,7 +1491,7 @@ bool ensure_session_started(const char *wake_source) {
       session_buffer,
       sizeof(session_buffer),
       "%s-%" PRIu32,
-      hexe::config::kEndpointId,
+      hexe::system::endpoint_id(),
       g_session_counter);
   g_session_id = session_buffer;
 
@@ -1769,7 +1872,7 @@ void heartbeat_task(void *arg) {
     std::string body;
     body.reserve(capabilities.size() + 256);
     body.append("{\"endpoint_id\":\"");
-    body.append(hexe::config::kEndpointId);
+    body.append(hexe::system::endpoint_id());
     body.append("\",\"device_state\":\"");
     body.append(device_state());
     body.append("\",\"session_id\":");
@@ -1938,8 +2041,8 @@ void init_backend_client() {
   ESP_LOGI(
       kTag,
       "Backend client configured for %s:%d voice path %s",
-      hexe::config::kEndpointBackendHost,
-      hexe::config::kEndpointWsPort,
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_ws_port(),
       hexe::config::kEndpointVoiceWsPath);
 }
 

@@ -15,15 +15,15 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - ESP-BOX-3 BSP display initialization and framebuffer rendering: `firmware/main/board/display.cpp`.
 - Branded RGB565 assets for boot, idle, listening, thinking, and error states: `firmware/main/assets/`.
 - NVS initialization: `firmware/main/board/storage.cpp`.
-- Persisted endpoint settings for output volume and mute state: `firmware/main/system/settings.cpp`.
-- Wi-Fi station startup and reconnect handling using local firmware secrets: `firmware/main/board/wifi.cpp`.
+- Persisted endpoint settings for output volume, mute state, micro VAD pause, endpoint identity, backend host/ports, TLS mode, and optional Wi-Fi credentials: `firmware/main/system/settings.cpp`.
+- Wi-Fi station startup and reconnect handling using persisted provisioning settings with local firmware secrets as fallback: `firmware/main/board/wifi.cpp`.
 - Button handling for mute/config interactions: `firmware/main/board/buttons.cpp`.
 - ESP-BOX-3 touchscreen polling for local volume down/up and mute toggles, reusing persisted endpoint settings and the normal backend heartbeat status.
 - Microphone initialization and simple energy-threshold VAD task: `firmware/main/board/audio.cpp`.
 - Endpoint-to-node YAML config template: `firmware/config/endpoint.example.yaml`.
 - Build-time endpoint config generation from YAML: `firmware/tools/generate_endpoint_config.py` and `firmware/main/CMakeLists.txt`.
 - Backend heartbeat and voice WebSocket client: `firmware/main/voice/backend_client.cpp`.
-- Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, command controls, firmware build metadata, and TTS playback lifecycle diagnostics.
+- Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, provisioning state, command controls, firmware build metadata, and TTS playback lifecycle diagnostics.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/main/voice/backend_client.cpp`.
 - TTS-ready download/playback and stop handling in `firmware/main/voice/tts_player.cpp`, with profile-specific speaker support where available.
 - Selectable board profile support in `firmware/main/CMakeLists.txt`. `esp_box_3` remains the default profile, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input, AIC3204/I2S TTS output, center-button wake/cancel controls, and hardware-mute controls.
@@ -38,7 +38,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - VAD updates local app state and display phase, reports `vad.speech_started` with a firmware timestamp when speech begins, queues microphone frames for the backend voice WebSocket, and sends `audio.end` on VAD silence. Raw backend events drive UI phases, and TTS-ready events can download and play WAV output on supported board speaker paths.
 - The `ha_voice_pe` profile is headless and reports display, touchscreen, and SD media storage as unavailable. Local TTS playback is available through the onboard AIC3204 speaker path, but SD media playback remains unavailable because this profile has no mounted media storage. The LED ring now covers voice-state, diagnostic, volume, and color-selection affordances.
 - TTS playback exists for supported speaker paths, but still needs physical-device validation across profiles for download timing, sample-rate handling, post-playback microphone cooldown, and reconnect/session boundaries.
-- Wi-Fi connects with compile-time local credentials, but provisioning is not implemented.
+- Runtime endpoint provisioning is available through backend command envelopes and the operator dashboard; network/backend route changes apply after reboot or reconnect.
 - Display states render from native assets, but the UI is still a lightweight state renderer rather than a complete product UI.
 - Backend endpoint connection settings are generated from YAML at build time. Automatic discovery is still deferred.
 
@@ -52,7 +52,6 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 
 ## Missing
 
-- Settings/provisioning UI.
 - Firmware-side SHA-256 enforcement and signed manifest validation for OTA.
 
 ## Current Endpoint Config Contract
@@ -66,6 +65,12 @@ cp firmware/config/endpoint.example.yaml firmware/config/endpoint.yaml
 The local `endpoint.yaml` is gitignored because it contains machine-specific host and port choices.
 
 Firmware version is intentionally not part of endpoint YAML. The firmware reports the ESP-IDF app/project version embedded in the build.
+
+Runtime provisioning can override endpoint identity, display name, backend
+host/ports, TLS mode, and Wi-Fi credentials. Reset removes the persisted
+provisioning keys and returns to generated endpoint YAML plus local Wi-Fi
+secrets. The provisioning flow is documented in
+`docs/firmware-provisioning.md`.
 
 Current expected HexeVoice node backend values:
 

@@ -14,12 +14,17 @@ FIRMWARE_LED_RING = Path("firmware/main/board/led_ring.cpp")
 FIRMWARE_LED_RING_HA_VOICE_PE = Path("firmware/main/board/led_ring_ha_voice_pe.cpp")
 FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
 FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/main/board/storage_nvs_only.cpp")
+FIRMWARE_SETTINGS = Path("firmware/main/system/settings.cpp")
+FIRMWARE_SETTINGS_HEADER = Path("firmware/main/system/settings.h")
+FIRMWARE_WIFI = Path("firmware/main/board/wifi.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
 FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/main/voice/tts_player_ha_voice_pe.cpp")
 FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
 FIRMWARE_APP_MAIN = Path("firmware/main/app_main.cpp")
 FIRMWARE_APP_STATE = Path("firmware/main/app_state.h")
+FRONTEND_API_CLIENT = Path("frontend/src/api/client.js")
+FRONTEND_ENDPOINT_DASHBOARD = Path("frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx")
 
 
 def test_firmware_voice_events_emit_full_v1_envelope():
@@ -109,6 +114,58 @@ def test_firmware_heartbeat_reports_network_metadata():
     assert "mic_paused_for_playback = false" in pe_audio_source
     assert "current_ip_address()" in source
     assert "wifi_rssi" in source
+
+
+def test_firmware_supports_persisted_endpoint_provisioning_contract():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    settings_source = FIRMWARE_SETTINGS.read_text()
+    settings_header = FIRMWARE_SETTINGS_HEADER.read_text()
+    wifi_source = FIRMWARE_WIFI.read_text()
+    tts_sources = FIRMWARE_TTS_PLAYER.read_text() + FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+
+    assert "struct EndpointProvisioningSettings" in settings_header
+    assert "endpoint_id[64]" in settings_header
+    assert "backend_host[96]" in settings_header
+    assert "wifi_ssid[33]" in settings_header
+    assert "save_endpoint_provisioning" in settings_header
+    assert "reset_endpoint_provisioning" in settings_header
+    assert "provisioning_configured" in settings_header
+    assert "kEndpointIdKey" in settings_source
+    assert "kBackendHostKey" in settings_source
+    assert "kWifiSsidKey" in settings_source
+    assert "kProvisionedKey" in settings_source
+    assert "hexe::config::kEndpointBackendHost" in settings_source
+    assert "hexe::secrets::kWifiSsid" in settings_source
+    assert "nvs_set_str(handle, kBackendHostKey" in settings_source
+    assert "nvs_erase_key(handle, kProvisionedKey)" in settings_source
+    assert "hexe::system::wifi_ssid()" in wifi_source
+    assert "hexe::system::wifi_password()" in wifi_source
+    assert "hexe::system::endpoint_backend_host()" in backend_source
+    assert "hexe::system::endpoint_http_port()" in backend_source
+    assert "hexe::system::endpoint_ws_port()" in backend_source
+    assert "hexe::system::endpoint_id()" in backend_source
+    assert '"endpoint.provisioning.apply"' in backend_source
+    assert '"endpoint.provisioning.reset"' in backend_source
+    assert '"provisioning"' in backend_source
+    assert '"runtime_configurable", true' in backend_source
+    assert "hexe::system::endpoint_backend_host()" in tts_sources
+
+
+def test_operator_dashboard_exposes_endpoint_provisioning_flow():
+    api_source = FRONTEND_API_CLIENT.read_text()
+    dashboard_source = FRONTEND_ENDPOINT_DASHBOARD.read_text()
+
+    assert "applyEndpointProvisioning" in api_source
+    assert '"/api/endpoint/provisioning/apply"' in api_source
+    assert "resetEndpointProvisioning" in api_source
+    assert '"/api/endpoint/provisioning/reset"' in api_source
+    assert "function EndpointProvisioningPanel" in dashboard_source
+    assert "applyEndpointProvisioning(endpointId, payload)" in dashboard_source
+    assert "resetEndpointProvisioning(endpointId)" in dashboard_source
+    assert "provisioned_endpoint_id" in dashboard_source
+    assert "Endpoint Settings" in dashboard_source
+    assert "Apply Settings" in dashboard_source
+    assert "Reset Settings" in dashboard_source
 
 
 def test_firmware_media_transfer_uses_temp_file_checksum_and_cleanup():

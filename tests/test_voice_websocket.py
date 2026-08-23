@@ -142,6 +142,53 @@ def test_voice_websocket_routes_commands_to_multiple_connected_endpoints(tmp_pat
     assert status["endpoints"]["esp-pe-1"]["active_session"]["session_id"] == "pe-session"
 
 
+def test_voice_websocket_routes_endpoint_provisioning_commands(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start", endpoint_id="esp-box-1", session_id="box-session"))
+        assert websocket.receive_json()["endpoint_id"] == "esp-box-1"
+
+        apply_response = client.post(
+            "/api/endpoint/provisioning/apply",
+            json={
+                "endpoint_id": "esp-box-1",
+                "provisioned_endpoint_id": "kitchen-voice-1",
+                "display_name": "Kitchen Voice",
+                "backend_host": "hexevoice.local",
+                "http_port": 9004,
+                "ws_port": 9004,
+                "use_tls": False,
+                "wifi_ssid": "HexeLab",
+                "wifi_password": "secret-pass",
+            },
+        )
+        apply_command = websocket.receive_json()
+
+        reset_response = client.post(
+            "/api/endpoint/provisioning/reset",
+            json={"endpoint_id": "esp-box-1"},
+        )
+        reset_command = websocket.receive_json()
+
+    assert apply_response.status_code == 200
+    assert apply_response.json()["accepted"] is True
+    assert apply_command["event_type"] == "endpoint.provisioning.apply"
+    assert apply_command["endpoint_id"] == "esp-box-1"
+    assert apply_command["payload"]["endpoint_id"] == "kitchen-voice-1"
+    assert apply_command["payload"]["display_name"] == "Kitchen Voice"
+    assert apply_command["payload"]["backend_host"] == "hexevoice.local"
+    assert apply_command["payload"]["http_port"] == 9004
+    assert apply_command["payload"]["ws_port"] == 9004
+    assert apply_command["payload"]["use_tls"] is False
+    assert apply_command["payload"]["wifi_ssid"] == "HexeLab"
+    assert apply_command["payload"]["wifi_password"] == "secret-pass"
+    assert reset_response.status_code == 200
+    assert reset_response.json()["accepted"] is True
+    assert reset_command["event_type"] == "endpoint.provisioning.reset"
+    assert reset_command["payload"]["request_id"]
+
+
 def test_voice_websocket_replaces_stale_idle_session_from_same_endpoint(tmp_path):
     history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
     manager = VoiceSessionManager(

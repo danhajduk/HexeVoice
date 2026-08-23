@@ -371,6 +371,42 @@ class VoiceSessionManager:
             payload={"pause_ms": pause_ms},
         )
 
+    async def push_endpoint_provisioning_apply_command(
+        self,
+        *,
+        endpoint_id: str,
+        provisioning: dict[str, object | None],
+    ) -> dict:
+        payload: dict[str, object] = {}
+        field_map = {
+            "provisioned_endpoint_id": "endpoint_id",
+            "display_name": "display_name",
+            "backend_host": "backend_host",
+            "http_port": "http_port",
+            "ws_port": "ws_port",
+            "use_tls": "use_tls",
+            "wifi_ssid": "wifi_ssid",
+            "wifi_password": "wifi_password",
+        }
+        for source_key, target_key in field_map.items():
+            value = provisioning.get(source_key)
+            if value is not None:
+                payload[target_key] = value
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.provisioning.apply",
+            command_type="endpoint.provisioning.apply",
+            payload=payload,
+        )
+
+    async def push_endpoint_provisioning_reset_command(self, *, endpoint_id: str) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.provisioning.reset",
+            command_type="endpoint.provisioning.reset",
+            payload={},
+        )
+
     async def push_cancel_command(self, *, endpoint_id: str, reason: str = "operator_cancelled") -> dict:
         runtime = self._runtime_for_endpoint(endpoint_id)
         result = await self._push_endpoint_command(

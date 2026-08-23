@@ -421,6 +421,23 @@ export async function muteEndpoint(endpointId, muted) {
   });
 }
 
+export async function applyEndpointProvisioning(endpointId, provisioning) {
+  return sendJson("/api/endpoint/provisioning/apply", {
+    body: {
+      endpoint_id: endpointId,
+      ...provisioning,
+    },
+  });
+}
+
+export async function resetEndpointProvisioning(endpointId) {
+  return sendJson("/api/endpoint/provisioning/reset", {
+    body: {
+      endpoint_id: endpointId,
+    },
+  });
+}
+
 export async function cancelEndpointSession(endpointId) {
   return sendJson("/api/endpoint/session/cancel", {
     body: {

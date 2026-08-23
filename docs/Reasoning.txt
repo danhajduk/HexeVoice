@@ -388,3 +388,10 @@ Issue cause: The node feature report was untracked, and older architecture/firmw
 Chosen fix: Commit the feature report as an audit artifact, add cross-links to canonical docs and follow-up tasks, and narrow stale wording in the canonical architecture and firmware baseline docs.
 What changed: Updated `docs/architecture.md` to reflect implemented STT/assistant/TTS/session-history backend paths, updated `docs/firmware-baseline.md` to distinguish implemented TTS playback from remaining device validation/integrity hardening, and retained `docs/node-feature-report.md` with follow-up task links.
 Verification: Text checks confirmed the stale pending/missing phrases no longer appear in current docs except historical `docs/Reasoning.txt`; cross-link checks found the new report and canonical-doc references.
+###########
+Task #213
+Step objective: Add firmware provisioning and endpoint settings UI flow.
+Issue cause: Endpoint identity, backend host/ports, TLS mode, and Wi-Fi credentials were still effectively build-time/local-file settings, leaving normal endpoint provisioning dependent on source edits or local secrets.
+Chosen fix: Extend the existing firmware settings module as the NVS-backed source of active endpoint provisioning, route Wi-Fi/backend/TTS runtime consumers through it, and expose apply/reset commands through the existing WebSocket command path and operator dashboard.
+What changed: Firmware now persists endpoint id, display name, backend host, HTTP/WebSocket ports, TLS mode, and optional Wi-Fi credentials with generated YAML/secrets fallback; heartbeat capabilities report provisioning state; backend API routes and VoiceSessionManager can send provisioning apply/reset commands; the dashboard includes an Endpoint Settings provisioning panel; docs capture the contract and recovery behavior.
+Verification: Targeted provisioning tests passed; firmware voice-envelope tests passed; endpoint command WebSocket tests passed; voice contract/API route checks passed; frontend Vite build passed with Node v22.21.1; `./firmware/build.sh` built both `esp_box_3` and `ha_voice_pe` profiles successfully.
