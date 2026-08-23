@@ -141,6 +141,12 @@ cd firmware
 ./export-artifacts.sh
 ```
 
+Each flash export includes `provisioning.env.example`. Copy it to
+`provisioning.env`, set the node address and Wi-Fi values, then run
+`flash-esptool.sh`. The helper flashes that text file as an NVS image at
+`0x9000`, so the endpoint can boot with the intended Wi-Fi, backend host, and
+identity even after a full erase.
+
 ## Wi-Fi Log Monitor
 
 The firmware can mirror ESP logs over UDP while keeping USB serial output enabled.

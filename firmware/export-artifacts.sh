@@ -18,6 +18,7 @@ APP_SRC="${BUILD_DIR}/hexe_firmware.bin"
 ELF_SRC="${BUILD_DIR}/hexe_firmware.elf"
 FLASH_ARGS_SRC="${BUILD_DIR}/flasher_args.json"
 PROJECT_DESC_SRC="${BUILD_DIR}/project_description.json"
+PROVISIONING_CSV_TOOL_SRC="${ROOT_DIR}/tools/provisioning-env-to-nvs-csv.py"
 
 require_file() {
   local path="$1"
@@ -33,6 +34,7 @@ require_file "${PARTITION_SRC}"
 require_file "${OTA_DATA_SRC}"
 require_file "${APP_SRC}"
 require_file "${PROJECT_DESC_SRC}"
+require_file "${PROVISIONING_CSV_TOOL_SRC}"
 
 mkdir -p "${EXPORT_DIR}"
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
@@ -44,6 +46,7 @@ cp "${PARTITION_SRC}" "${EXPORT_DIR}/partition-table.bin"
 cp "${OTA_DATA_SRC}" "${EXPORT_DIR}/ota_data_initial.bin"
 cp "${APP_SRC}" "${EXPORT_DIR}/hexe_firmware.bin"
 cp "${APP_SRC}" "${EXPORT_DIR}/${PROFILE_APP_FILENAME}"
+cp "${PROVISIONING_CSV_TOOL_SRC}" "${EXPORT_DIR}/provisioning-env-to-nvs-csv.py"
 mkdir -p "${COMMON_EXPORT_DIR}"
 cp "${APP_SRC}" "${COMMON_EXPORT_DIR}/${PROFILE_APP_FILENAME}"
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
@@ -65,6 +68,35 @@ VERSION="$(awk -F'"' '/"project_version"/ {print $4; exit}' "${PROJECT_DESC_SRC}
 TARGET="$(awk -F'"' '/"target"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
 PROJECT_NAME="$(awk -F'"' '/"project_name"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
 CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+GENERATED_CONFIG_SRC="${BUILD_DIR}/generated/endpoint_config.h"
+
+config_string() {
+  local name="$1"
+  awk -F'"' -v name="${name}" '$0 ~ ("constexpr const char \\*" name " =") {print $2; exit}' "${GENERATED_CONFIG_SRC}" 2>/dev/null || true
+}
+
+config_int() {
+  local name="$1"
+  awk -v name="${name}" '$0 ~ ("constexpr int " name " =") {value=$NF; gsub(/;/, "", value); print value; exit}' "${GENERATED_CONFIG_SRC}" 2>/dev/null || true
+}
+
+config_bool() {
+  local name="$1"
+  awk -v name="${name}" '$0 ~ ("constexpr bool " name " =") {value=$NF; gsub(/;/, "", value); print value; exit}' "${GENERATED_CONFIG_SRC}" 2>/dev/null || true
+}
+
+DEFAULT_ENDPOINT_ID="$(config_string kEndpointId)"
+DEFAULT_BACKEND_HOST="$(config_string kEndpointBackendHost)"
+DEFAULT_HTTP_PORT="$(config_int kEndpointHttpPort)"
+DEFAULT_WS_PORT="$(config_int kEndpointWsPort)"
+DEFAULT_USE_TLS="$(config_bool kEndpointUseTls)"
+
+DEFAULT_ENDPOINT_ID="${DEFAULT_ENDPOINT_ID:-${BOARD_PROFILE}}"
+DEFAULT_DISPLAY_NAME="${DEFAULT_ENDPOINT_ID}"
+DEFAULT_BACKEND_HOST="${DEFAULT_BACKEND_HOST:-10.0.0.100}"
+DEFAULT_HTTP_PORT="${DEFAULT_HTTP_PORT:-9004}"
+DEFAULT_WS_PORT="${DEFAULT_WS_PORT:-9004}"
+DEFAULT_USE_TLS="${DEFAULT_USE_TLS:-false}"
 
 (
   cd "${EXPORT_DIR}"
@@ -105,6 +137,23 @@ app_offset=0x10000
 profile_app=${PROFILE_APP_FILENAME}
 EOF
 
+cat > "${EXPORT_DIR}/provisioning.env.example" <<EOF
+# Copy this file to provisioning.env before flashing, then edit the values.
+# The flash script converts provisioning.env to an ESP-IDF NVS image and
+# writes it to the firmware NVS partition at 0x9000.
+#
+# provisioning.env may contain Wi-Fi credentials. Do not commit or share it.
+
+ENDPOINT_ID=${DEFAULT_ENDPOINT_ID}
+DISPLAY_NAME=${DEFAULT_DISPLAY_NAME}
+BACKEND_HOST=${DEFAULT_BACKEND_HOST}
+HTTP_PORT=${DEFAULT_HTTP_PORT}
+WS_PORT=${DEFAULT_WS_PORT}
+USE_TLS=${DEFAULT_USE_TLS}
+WIFI_SSID=
+WIFI_PASSWORD=
+EOF
+
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
   cat > "${RUNTIME_FIRMWARE_DIR}/${PROFILE_MANIFEST_FILENAME}" <<EOF
 {
@@ -126,23 +175,64 @@ cat > "${EXPORT_DIR}/flash-esptool.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${SCRIPT_DIR}"
+
 PORT="${1:-/dev/ttyACM0}"
 BAUD="${BAUD:-460800}"
+PROVISIONING_ENV="${PROVISIONING_ENV:-provisioning.env}"
+PROVISIONING_WORKDIR=""
 
 if [[ -z "${IDF_PATH:-}" ]]; then
   echo "IDF_PATH is not set. Run '. ~/esp-idf/export.sh' first." >&2
   exit 1
 fi
 
+cleanup() {
+  if [[ -n "${PROVISIONING_WORKDIR}" && -d "${PROVISIONING_WORKDIR}" ]]; then
+    rm -rf "${PROVISIONING_WORKDIR}"
+  fi
+}
+trap cleanup EXIT
+
+for artifact in bootloader.bin partition-table.bin ota_data_initial.bin hexe_firmware.bin; do
+  if [[ ! -f "${artifact}" ]]; then
+    echo "Missing required flash artifact: ${SCRIPT_DIR}/${artifact}" >&2
+    exit 1
+  fi
+done
+
+FLASH_ARGS=(
+  0x0 bootloader.bin
+  0x8000 partition-table.bin
+)
+
+if [[ -f "${PROVISIONING_ENV}" ]]; then
+  echo "Building provisioning NVS image from ${PROVISIONING_ENV}"
+  PROVISIONING_WORKDIR="$(mktemp -d)"
+  PROVISIONING_CSV="${PROVISIONING_WORKDIR}/provisioning.csv"
+  PROVISIONING_BIN="${PROVISIONING_WORKDIR}/provisioning.bin"
+
+  python provisioning-env-to-nvs-csv.py "${PROVISIONING_ENV}" "${PROVISIONING_CSV}"
+
+  python "${IDF_PATH}/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py" \
+    generate "${PROVISIONING_CSV}" "${PROVISIONING_BIN}" 0x4000
+  FLASH_ARGS+=(0x9000 "${PROVISIONING_BIN}")
+else
+  echo "No ${PROVISIONING_ENV} found; flashing firmware without provisioning NVS image."
+fi
+
+FLASH_ARGS+=(
+  0xd000 ota_data_initial.bin
+  0x10000 hexe_firmware.bin
+)
+
 python "${IDF_PATH}/components/esptool_py/esptool/esptool.py" \
   --chip esp32s3 \
   -p "${PORT}" \
   -b "${BAUD}" \
   write_flash -z \
-  0x0 bootloader.bin \
-  0x8000 partition-table.bin \
-  0xd000 ota_data_initial.bin \
-  0x10000 hexe_firmware.bin
+  "${FLASH_ARGS[@]}"
 EOF
 chmod +x "${EXPORT_DIR}/flash-esptool.sh"
 
@@ -161,6 +251,8 @@ This folder contains the files needed to flash Hexe firmware on another machine.
 - \`SHA256SUMS\`
 - \`manifest.txt\`
 - \`flash-esptool.sh\`
+- \`provisioning.env.example\`
+- \`provisioning-env-to-nvs-csv.py\`
 
 ## Flash With ESP-IDF Environment Loaded
 
@@ -170,10 +262,22 @@ cd firmware/export
 ./flash-esptool.sh /dev/ttyACM0
 \`\`\`
 
+## Optional Provisioning Text File
+
+Copy \`provisioning.env.example\` to \`provisioning.env\`, edit the values, and
+then run \`flash-esptool.sh\`. The flash script converts \`provisioning.env\`
+to an ESP-IDF NVS image and writes it to \`0x9000\`, so the firmware reads the
+endpoint id, display name, backend host/ports, TLS flag, and Wi-Fi credentials
+on boot.
+
+\`provisioning.env\` can contain Wi-Fi credentials. Keep it local and do not
+commit or share it.
+
 ## Flash Offsets
 
 - \`0x0\` bootloader
 - \`0x8000\` partition table
+- \`0x9000\` optional provisioning NVS
 - \`0xd000\` OTA data
 - \`0x10000\` app
 

@@ -1,9 +1,12 @@
+import csv
+import subprocess
 from pathlib import Path
 
 
 FIRMWARE_BACKEND_CLIENT = Path("firmware/main/voice/backend_client.cpp")
 FIRMWARE_BUILD_SCRIPT = Path("firmware/build.sh")
 FIRMWARE_EXPORT_SCRIPT = Path("firmware/export-artifacts.sh")
+FIRMWARE_PROVISIONING_CSV_TOOL = Path("firmware/tools/provisioning-env-to-nvs-csv.py")
 FIRMWARE_CMAKE = Path("firmware/main/CMakeLists.txt")
 FIRMWARE_AUDIO = Path("firmware/main/board/audio.cpp")
 FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/main/board/audio_ha_voice_pe.cpp")
@@ -235,6 +238,68 @@ def test_firmware_supports_persisted_endpoint_provisioning_contract():
     assert '"runtime_configurable", true' in backend_source
     assert '"discovery"' in backend_source
     assert "hexe::system::endpoint_backend_host()" in tts_sources
+
+
+def test_firmware_export_can_flash_text_provisioning_file_to_nvs():
+    export_source = FIRMWARE_EXPORT_SCRIPT.read_text()
+    partitions = Path("firmware/partitions.csv").read_text()
+
+    assert "provisioning.env.example" in export_source
+    assert "provisioning-env-to-nvs-csv.py" in export_source
+    assert 'PROVISIONING_ENV="${PROVISIONING_ENV:-provisioning.env}"' in export_source
+    assert "nvs_partition_gen.py" in export_source
+    assert 'generate "${PROVISIONING_CSV}" "${PROVISIONING_BIN}" 0x4000' in export_source
+    assert 'FLASH_ARGS+=(0x9000 "${PROVISIONING_BIN}")' in export_source
+    assert 'cd "${SCRIPT_DIR}"' in export_source
+    for key in (
+        "ENDPOINT_ID",
+        "DISPLAY_NAME",
+        "BACKEND_HOST",
+        "HTTP_PORT",
+        "WS_PORT",
+        "USE_TLS",
+        "WIFI_SSID",
+        "WIFI_PASSWORD",
+    ):
+        assert key in export_source
+    assert "nvs,        data, nvs,     0x9000,   16K," in partitions
+
+
+def test_provisioning_env_to_nvs_csv_writes_firmware_settings(tmp_path):
+    env_path = tmp_path / "provisioning.env"
+    csv_path = tmp_path / "provisioning.csv"
+    env_path.write_text(
+        "\n".join(
+            [
+                "ENDPOINT_ID=esp-box-1",
+                "DISPLAY_NAME=Kitchen Box",
+                "BACKEND_HOST=10.0.0.100",
+                "HTTP_PORT=9004",
+                "WS_PORT=9004",
+                "USE_TLS=false",
+                "WIFI_SSID=HexeNet",
+                "WIFI_PASSWORD='pass,with,commas'",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    subprocess.run(["python", str(FIRMWARE_PROVISIONING_CSV_TOOL), str(env_path), str(csv_path)], check=True)
+
+    with csv_path.open(encoding="utf-8", newline="") as handle:
+        rows = list(csv.reader(handle))
+
+    assert rows[0] == ["key", "type", "encoding", "value"]
+    assert ["hexe_settings", "namespace", "", ""] in rows
+    assert ["endpoint_id", "data", "string", "esp-box-1"] in rows
+    assert ["display_name", "data", "string", "Kitchen Box"] in rows
+    assert ["backend_host", "data", "string", "10.0.0.100"] in rows
+    assert ["http_port", "data", "i32", "9004"] in rows
+    assert ["ws_port", "data", "i32", "9004"] in rows
+    assert ["use_tls", "data", "u8", "0"] in rows
+    assert ["wifi_ssid", "data", "string", "HexeNet"] in rows
+    assert ["wifi_password", "data", "string", "pass,with,commas"] in rows
+    assert ["provisioned", "data", "u8", "1"] in rows
 
 
 def test_firmware_supports_udp_endpoint_discovery_and_pairing():

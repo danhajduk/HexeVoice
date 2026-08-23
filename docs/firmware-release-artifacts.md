@@ -27,6 +27,16 @@ manifest-ha_voice_pe.json
 SHA256SUMS
 ```
 
+Flash export folders also include `flash-esptool.sh` and
+`provisioning.env.example`. To pre-provision a device during USB flashing, copy
+the example to `provisioning.env` inside the export folder and set the endpoint
+id, display name, backend host/ports, TLS flag, and Wi-Fi credentials. The flash
+helper converts that local text file into an ESP-IDF NVS image and writes it to
+the firmware NVS partition at `0x9000`, which the firmware reads on boot.
+
+`provisioning.env` can contain Wi-Fi credentials and must stay local. Do not
+publish it as a release asset.
+
 Build/export from the firmware source tree, then publish the contents of
 `runtime/firmware` as release assets:
 
