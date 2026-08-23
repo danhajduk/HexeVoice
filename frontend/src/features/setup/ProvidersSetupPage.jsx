@@ -227,7 +227,7 @@ function ProviderAssets({ status, providerId, busy }) {
   );
 }
 
-export function ProvidersSetupPage() {
+export function ProvidersSetupPage({ onContinue }) {
   const [status, setStatus] = useState(null);
   const [enabled, setEnabled] = useState([requiredProviderId]);
   const [providerConfigs, setProviderConfigs] = useState(defaultProviderConfigs);
@@ -353,6 +353,7 @@ export function ProvidersSetupPage() {
       if (!nextStep) {
         await applySetupProviders({ action: "install" });
         setNotice("Provider setup saved and runtime install queued.");
+        onContinue?.();
       } else {
         setProviderStep(nextStep);
         setNotice("Provider setup saved.");

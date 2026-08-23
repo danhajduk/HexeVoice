@@ -850,7 +850,7 @@ export default function App() {
                 ) : setupSection === "providers" ? (
                   <>
                     <SetupHealthCard readiness={setupReadiness} />
-                    <ProvidersSetupPage />
+                    <ProvidersSetupPage onContinue={() => openSetupSection("capabilities")} />
                   </>
                 ) : setupSection === "capabilities" ? (
                   <>
