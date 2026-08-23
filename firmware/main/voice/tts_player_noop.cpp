@@ -20,7 +20,8 @@ void init_tts_player() {
 void prewarm_tts_output() {
 }
 
-void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url) {
+void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url, bool loop) {
+  (void)loop;
   ESP_LOGW(
       kTag,
       "Ignoring TTS output stream=%s content_type=%s url=%s because local speaker output is not enabled",

@@ -47,6 +47,10 @@ Endpoint TTS playback acknowledgements use `tts.playback.download_started`, `tts
 optional `byte_count`, and failure `reason`/`message` when applicable. The backend exposes the latest event as
 `last_tts_playback` and a short `tts_playback_history` list in `/api/voice/status`.
 
+Backend `endpoint.replay` commands may include `payload.loop: true` for alarm-style WAV playback. Firmware downloads
+the audio once, repeats the local buffer without additional node commands, and stops the loop on `playback.stop` or a
+local playback-stop button/mute control.
+
 Voice PE firmware starts a short post-playback microphone ignore window after `tts.playback.completed`.
 During that window the endpoint keeps updating its local noise floor but suppresses VAD, wake prediction,
 micro-VAD chunking, and audio transport so speaker tail audio cannot start a duplicate voice session.

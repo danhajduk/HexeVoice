@@ -1538,6 +1538,37 @@ def test_voice_session_manager_pushes_play_sound_audio_url_to_endpoint():
     assert websocket.sent[0]["payload"]["interaction_id"] == "kiosk-1"
 
 
+def test_voice_session_manager_can_mark_play_sound_audio_url_as_looping():
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    websocket = FakeWebSocket()
+    manager = VoiceSessionManager()
+    manager._connection_active = True
+    manager._websocket = websocket
+    manager._connected_endpoint_id = "esp-box-1"
+
+    result = asyncio.run(
+        manager.push_play_sound_command(
+            endpoint_id="esp-box-1",
+            stream_id="timer-alarm-timer-1",
+            audio_url="/api/endpoint/media/files/timer_alarm",
+            session_id="timer-completed-timer-1",
+            loop=True,
+        )
+    )
+
+    assert result["accepted"] is True
+    assert websocket.sent[0]["event_type"] == "endpoint.replay"
+    assert websocket.sent[0]["session_id"] == "timer-completed-timer-1"
+    assert websocket.sent[0]["payload"]["audio_url"] == "/api/endpoint/media/files/timer_alarm"
+    assert websocket.sent[0]["payload"]["loop"] is True
+
+
 def test_voice_session_manager_play_sound_can_synthesize_kiosk_text():
     class PlaySoundPipeline:
         def __init__(self):

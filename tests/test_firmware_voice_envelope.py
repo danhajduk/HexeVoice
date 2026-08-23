@@ -10,6 +10,7 @@ FIRMWARE_PROVISIONING_CSV_TOOL = Path("firmware/tools/provisioning-env-to-nvs-cs
 FIRMWARE_CMAKE = Path("firmware/main/CMakeLists.txt")
 FIRMWARE_AUDIO = Path("firmware/main/board/audio.cpp")
 FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/main/board/audio_ha_voice_pe.cpp")
+FIRMWARE_BUTTONS = Path("firmware/main/board/buttons.cpp")
 FIRMWARE_BUTTONS_HA_VOICE_PE = Path("firmware/main/board/buttons_ha_voice_pe.cpp")
 FIRMWARE_DISPLAY = Path("firmware/main/board/display.cpp")
 FIRMWARE_DISPLAY_NONE = Path("firmware/main/board/display_none.cpp")
@@ -489,6 +490,37 @@ def test_firmware_has_source_agnostic_playback_stop_events():
         assert '"playback.stop"' in player_source
         assert 'reason == nullptr ? "operator_stop" : reason' in player_source
         assert 'stop_playback("tts_stop")' in player_source
+
+
+def test_firmware_replay_can_loop_audio_until_playback_stop():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    header = FIRMWARE_TTS_PLAYER_HEADER.read_text()
+    box_player = FIRMWARE_TTS_PLAYER.read_text()
+    pe_player = FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    player_sources = box_player + pe_player
+
+    assert "bool loop = false" in header
+    assert 'cJSON_GetObjectItem(payload, "loop")' in backend_source
+    assert "cJSON_IsBool(loop) && cJSON_IsTrue(loop)" in backend_source
+    assert "bool loop{false};" in player_sources
+    assert "request.loop = loop" in player_sources
+    assert "while (request.loop && played && !g_stop_requested" in box_player
+    assert "while (loaded && !g_stop_requested && !state.muted)" in pe_player
+    assert 'played && !request.loop ? hexe::PlaybackLifecycleState::kFinished' in player_sources
+
+
+def test_firmware_buttons_stop_active_playback():
+    box_buttons = FIRMWARE_BUTTONS.read_text()
+    pe_buttons = FIRMWARE_BUTTONS_HA_VOICE_PE.read_text()
+
+    assert '#include "voice/tts_player.h"' in box_buttons
+    assert 'hexe::voice::stop_playback("config_button")' in box_buttons
+    assert 'hexe::voice::stop_playback("mute_button")' in box_buttons
+    assert 'hexe::voice::tts_playback_active() || app_state.phase' in box_buttons
+    assert 'hexe::voice::stop_playback("voice_pe_center_button")' in pe_buttons
+    assert 'hexe::voice::stop_playback("voice_pe_center_long_press")' in pe_buttons
+    assert 'hexe::voice::stop_playback("hardware_mute_switch")' in pe_buttons
+    assert 'hexe::voice::tts_playback_active() || state.phase' in pe_buttons
 
 
 def test_firmware_ui_assets_are_manifest_driven_not_hardcoded_filenames():

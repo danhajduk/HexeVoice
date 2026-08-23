@@ -560,6 +560,7 @@ def create_app(
             source_event_id=alarm.event_id,
             interaction_id=alarm.timer_id,
             metadata=alarm.metadata,
+            loop=bool(app_settings.voice_timer_completed_alarm_audio_url),
         ),
         ownership_cache=timer_ownership_cache,
     )

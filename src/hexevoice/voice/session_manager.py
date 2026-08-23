@@ -587,6 +587,7 @@ class VoiceSessionManager:
         source_event_id: str | None = None,
         interaction_id: str | None = None,
         metadata: dict[str, Any] | None = None,
+        loop: bool = False,
     ) -> dict:
         runtime = self._runtime_switch_for_endpoint(endpoint_id)
         if runtime is not None:
@@ -603,6 +604,7 @@ class VoiceSessionManager:
                     source_event_id=source_event_id,
                     interaction_id=interaction_id,
                     metadata=metadata,
+                    loop=loop,
                 )
             finally:
                 self._runtime_context.reset(token)
@@ -642,24 +644,28 @@ class VoiceSessionManager:
             spoken_text=spoken_text or None,
             source_event_id=source_event_id,
             interaction_id=interaction_id,
+            loop=loop,
             metadata=metadata or {},
         )
+        payload: dict[str, Any] = {
+            "stream_id": stream_id or (tts.stream_id if tts else None),
+            "content_type": content_type or (tts.content_type if tts else "audio/wav"),
+            "audio_url": requested_audio_url,
+            "text": spoken_text or None,
+            "source_event_id": source_event_id,
+            "interaction_id": interaction_id,
+            "command": "ui.play_sound",
+            "metadata": metadata or {},
+        }
+        if loop:
+            payload["loop"] = True
         return await self._push_endpoint_command(
             endpoint_id=endpoint_id,
             event_type="endpoint.replay",
             command_type="endpoint.play_sound",
             request_id=f"endpoint_play_sound_{uuid4().hex}",
             session_id=command_session_id,
-            payload={
-                "stream_id": stream_id or (tts.stream_id if tts else None),
-                "content_type": content_type or (tts.content_type if tts else "audio/wav"),
-                "audio_url": requested_audio_url,
-                "text": spoken_text or None,
-                "source_event_id": source_event_id,
-                "interaction_id": interaction_id,
-                "command": "ui.play_sound",
-                "metadata": metadata or {},
-            },
+            payload=payload,
         )
 
     async def push_timer_announcement(

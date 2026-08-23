@@ -186,7 +186,12 @@ HexeVoice listens on `VOICE_TIMER_COMPLETED_MQTT_TOPIC`
 `data.endpoint_id` from the promoted timer event. Set
 `VOICE_TIMER_COMPLETED_ALARM_AUDIO_URL` to use a dedicated WAV alarm URL instead
 of generated speech; timer id, source node, title, due/completed timestamps, and
-dedupe metadata are attached to the playback command.
+dedupe metadata are attached to the playback command. The local stack example
+uses `/api/endpoint/media/files/timer_alarm`; stage that file through
+`POST /api/endpoint/media` with `media_type=sound` and `asset_id=timer_alarm`.
+For WAV alarms the node sends a single looped replay command; firmware repeats
+the downloaded audio locally until it receives `playback.stop` or a local
+button/mute control stops playback.
 
 Playback interruption is source-agnostic. `POST /api/endpoint/playback/stop`
 sends a `playback.stop` command to the endpoint, and firmware reports

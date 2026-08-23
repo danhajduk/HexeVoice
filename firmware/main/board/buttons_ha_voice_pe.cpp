@@ -98,6 +98,7 @@ void apply_hardware_mute(bool muted) {
   auto &state = hexe::state();
   hexe::system::set_muted(muted);
   if (state.muted) {
+    hexe::voice::stop_playback("hardware_mute_switch");
     hexe::voice::cancel_active_session("hardware_mute_switch");
   }
   state.phase = state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
@@ -113,14 +114,16 @@ void handle_center_release(int64_t duration_us) {
   }
 
   if (duration_us >= kLongPressUs) {
+    hexe::voice::stop_playback("voice_pe_center_long_press");
     hexe::voice::cancel_active_session("voice_pe_center_long_press");
     state.phase = state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
     ESP_LOGI(kTag, "Center button long press cancelled active session");
     return;
   }
 
-  if (state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
+  if (hexe::voice::tts_playback_active() || state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
       state.phase == hexe::AppPhase::kReplying) {
+    hexe::voice::stop_playback("voice_pe_center_button");
     hexe::voice::cancel_active_session("voice_pe_center_button");
     state.phase = state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
   } else if (!state.muted) {

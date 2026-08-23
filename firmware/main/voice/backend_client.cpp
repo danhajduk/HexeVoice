@@ -853,11 +853,13 @@ void handle_backend_event_json(const std::string &message) {
     cJSON *stream_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stream_id") : nullptr;
     cJSON *content_type = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "content_type") : nullptr;
     cJSON *audio_url = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "audio_url") : nullptr;
+    cJSON *loop = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "loop") : nullptr;
     if (cJSON_IsString(stream_id) || cJSON_IsString(audio_url)) {
       hexe::voice::handle_tts_ready(
           cJSON_IsString(stream_id) ? stream_id->valuestring : nullptr,
           cJSON_IsString(content_type) ? content_type->valuestring : nullptr,
-          cJSON_IsString(audio_url) ? audio_url->valuestring : nullptr);
+          cJSON_IsString(audio_url) ? audio_url->valuestring : nullptr,
+          cJSON_IsBool(loop) && cJSON_IsTrue(loop));
       send_command_ack(request_id, "endpoint.replay", "succeeded", "Replay queued");
     } else {
       send_command_error(request_id, "endpoint.replay", "invalid_payload", "Replay requires stream_id or audio_url");

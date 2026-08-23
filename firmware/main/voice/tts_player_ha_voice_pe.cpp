@@ -94,6 +94,7 @@ struct PlaybackRequest {
   char content_type[32];
   char audio_url[192];
   char file_path[256];
+  bool loop{false};
 };
 
 struct HttpBuffer {
@@ -649,7 +650,7 @@ int16_t interpolate_pcm16(int16_t first, int16_t second, uint64_t numerator, uin
   return static_cast<int16_t>(std::clamp<int64_t>(scaled, -32768, 32767));
 }
 
-bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request) {
+bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request, bool report_first_frame = true) {
   WavView wav;
   if (!parse_wav(audio, &wav)) {
     ESP_LOGW(kTag, "TTS audio is not supported WAV PCM");
@@ -713,7 +714,7 @@ bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request)
         disable_i2s_output();
         return false;
       }
-      if (!first_frame_reported) {
+      if (report_first_frame && !first_frame_reported) {
         send_playback_event("tts.playback.first_audio_frame", request, nullptr, wav.pcm_size);
         first_frame_reported = true;
       }
@@ -724,7 +725,7 @@ bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request)
   if (flushed && output_frame_count > 0) {
     flushed = write_silence_drain();
   }
-  if (flushed && !first_frame_reported && output_frame_count > 0 && !g_stop_requested) {
+  if (report_first_frame && flushed && !first_frame_reported && output_frame_count > 0 && !g_stop_requested) {
     send_playback_event("tts.playback.first_audio_frame", request, nullptr, wav.pcm_size);
   }
   disable_i2s_output();
@@ -1037,23 +1038,43 @@ void playback_task(void *arg) {
       byte_count = (kSpeakerSampleRate * kWakeDingDurationMs * sizeof(int16_t)) / 1000;
     } else if (request.file_path[0] == '\0') {
       send_playback_event("tts.playback.download_started", request);
-      const StreamPlaybackResult streamed = stream_http_wav(url, request, &byte_count);
-      if (streamed == StreamPlaybackResult::kPlayed) {
-        loaded = true;
-        played = true;
-      } else if (streamed == StreamPlaybackResult::kFallback) {
-        ESP_LOGI(kTag, "Falling back to full-buffer TTS playback");
+      if (request.loop) {
         loaded = fetch_audio(url, &audio);
-        played = loaded && play_wav(audio, request);
         byte_count = audio.size();
+        bool report_first_frame = true;
+        while (loaded && !g_stop_requested && !state.muted) {
+          played = play_wav(audio, request, report_first_frame);
+          report_first_frame = false;
+          if (!played) {
+            break;
+          }
+        }
       } else {
-        loaded = false;
-        played = false;
+        const StreamPlaybackResult streamed = stream_http_wav(url, request, &byte_count);
+        if (streamed == StreamPlaybackResult::kPlayed) {
+          loaded = true;
+          played = true;
+        } else if (streamed == StreamPlaybackResult::kFallback) {
+          ESP_LOGI(kTag, "Falling back to full-buffer TTS playback");
+          loaded = fetch_audio(url, &audio);
+          played = loaded && play_wav(audio, request);
+          byte_count = audio.size();
+        } else {
+          loaded = false;
+          played = false;
+        }
       }
     } else {
       loaded = read_audio_file(request.file_path, &audio);
-      played = loaded && play_wav(audio, request);
       byte_count = audio.size();
+      bool report_first_frame = true;
+      while (loaded && !g_stop_requested && !state.muted) {
+        played = play_wav(audio, request, report_first_frame);
+        report_first_frame = false;
+        if (!request.loop || !played) {
+          break;
+        }
+      }
     }
     if (mic_paused) {
       hexe::board::resume_microphone_after_playback();
@@ -1063,18 +1084,18 @@ void playback_task(void *arg) {
           "tts.playback.failed",
           request,
           request.file_path[0] == '\0' ? "download_failed" : "file_read_failed");
-    } else if (played) {
+    } else if (played && !request.loop) {
       send_playback_event("tts.playback.completed", request, nullptr, byte_count);
-    } else {
+    } else if (!request.loop || !g_stop_requested) {
       send_playback_event("tts.playback.failed", request, g_stop_requested ? "stopped" : "playback_failed", byte_count);
     }
-    if (played && !state.muted && !wake_ding) {
+    if ((played || g_stop_requested) && !state.muted && !wake_ding) {
       state.phase = hexe::idle_or_connecting_phase();
     } else if (!state.muted && state.phase == hexe::AppPhase::kReplying && !wake_ding) {
       state.phase = hexe::AppPhase::kError;
     }
     set_playback_lifecycle(
-        played ? hexe::PlaybackLifecycleState::kFinished
+        played && !request.loop ? hexe::PlaybackLifecycleState::kFinished
                : (g_stop_requested ? hexe::PlaybackLifecycleState::kStopped : hexe::PlaybackLifecycleState::kFailed),
         false);
     g_current_playback_request_valid = false;
@@ -1132,7 +1153,7 @@ void prewarm_tts_output() {
   xTaskNotifyGive(g_prewarm_task);
 }
 
-void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url) {
+void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url, bool loop) {
   auto &state = hexe::state();
   if (state.muted) {
     ESP_LOGI(kTag, "Ignoring TTS while muted");
@@ -1159,6 +1180,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   copy_field(request.stream_id, sizeof(request.stream_id), stream_id);
   copy_field(request.content_type, sizeof(request.content_type), content_type);
   copy_field(request.audio_url, sizeof(request.audio_url), audio_url);
+  request.loop = loop;
   if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping TTS playback request because queue is unavailable");
     send_playback_event("tts.playback.failed", request, "queue_unavailable");
