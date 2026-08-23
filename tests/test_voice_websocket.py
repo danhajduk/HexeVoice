@@ -1588,6 +1588,28 @@ def test_voice_session_manager_play_sound_can_synthesize_kiosk_text():
     assert websocket.sent[0]["payload"]["text"] == "Kiosk speech ready."
 
 
+def test_voice_session_manager_pushes_playback_stop_command_to_endpoint():
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    websocket = FakeWebSocket()
+    manager = VoiceSessionManager()
+    manager._connection_active = True
+    manager._websocket = websocket
+    manager._connected_endpoint_id = "esp-box-1"
+
+    result = asyncio.run(manager.push_playback_stop_command(endpoint_id="esp-box-1", reason="voice_stop"))
+
+    assert result["accepted"] is True
+    assert websocket.sent[0]["event_type"] == "playback.stop"
+    assert websocket.sent[0]["payload"]["request_id"] == result["request_id"]
+    assert websocket.sent[0]["payload"]["reason"] == "voice_stop"
+
+
 def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
     class FailingSttPipeline:
         def status(self):
@@ -1875,6 +1897,24 @@ def test_voice_websocket_records_tts_playback_failures_as_diagnostics(tmp_path):
     assert status["last_tts_playback"]["event_type"] == "tts.playback.failed"
     assert status["last_tts_playback"]["reason"] == "download_failed"
     assert status["event_diagnostics"][0]["code"] == "download_failed"
+
+
+def test_voice_websocket_records_playback_stop_events(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "playback.stop",
+                session_id="timer-completed-timer-1",
+                payload={"stream_id": "timer-alarm", "reason": "voice_stop", "message": "voice_stop"},
+            )
+        )
+        status = client.get("/api/voice/status").json()
+
+    assert status["last_tts_playback"]["event_type"] == "playback.stop"
+    assert status["last_tts_playback"]["session_id"] == "timer-completed-timer-1"
+    assert status["last_tts_playback"]["reason"] == "voice_stop"
 
 
 def test_voice_websocket_rejects_malformed_command_acknowledgement(tmp_path):

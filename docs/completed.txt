@@ -247,3 +247,4 @@ Task 216: Validate physical-device reconnect and session-boundary behavior acros
 Task 217: Replace or explicitly retire scaffold firmware modules for wake word, STT stream, assistant client, telemetry, and power - Completed on 08/23/2026 09:44
 Task 218: Run physical reconnect/session-boundary bench validation and replace blocked release artifact results - Completed on 08/23/2026 15:36
 Task 219: Play endpoint timer-expired alarm audio and report acknowledgement state - Completed on 08/23/2026 15:45
+Task 220: Add local voice stop interruption for active endpoint playback - Completed on 08/23/2026 15:52

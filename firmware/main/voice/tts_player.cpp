@@ -54,6 +54,8 @@ TaskHandle_t g_playback_task = nullptr;
 esp_codec_dev_handle_t g_speaker_codec = nullptr;
 volatile bool g_stop_requested = false;
 volatile bool g_playback_active = false;
+PlaybackRequest g_current_playback_request = {};
+bool g_current_playback_request_valid = false;
 
 void set_playback_lifecycle(hexe::PlaybackLifecycleState playback_state, bool active) {
   g_playback_active = active;
@@ -270,11 +272,14 @@ void playback_task(void *arg) {
     }
 
     g_stop_requested = false;
+    g_current_playback_request = request;
+    g_current_playback_request_valid = true;
     auto &state = hexe::state();
     if (state.muted) {
       ESP_LOGI(kTag, "Skipping playback request while muted");
       send_playback_event("tts.playback.failed", request, "muted");
       set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
+      g_current_playback_request_valid = false;
       continue;
     }
 
@@ -311,6 +316,7 @@ void playback_task(void *arg) {
         played ? hexe::PlaybackLifecycleState::kFinished
                : (g_stop_requested ? hexe::PlaybackLifecycleState::kStopped : hexe::PlaybackLifecycleState::kFailed),
         false);
+    g_current_playback_request_valid = false;
   }
 }
 
@@ -425,14 +431,24 @@ void play_sd_sound(const char *filename) {
   }
 }
 
-void stop_tts_playback() {
-  ESP_LOGI(kTag, "Stopping TTS playback");
+void stop_playback(const char *reason) {
+  ESP_LOGI(kTag, "Stopping playback");
   g_stop_requested = true;
+  if (g_playback_active && g_current_playback_request_valid) {
+    send_playback_event(
+        "playback.stop",
+        g_current_playback_request,
+        reason == nullptr ? "operator_stop" : reason);
+  }
   set_playback_lifecycle(hexe::PlaybackLifecycleState::kStopped, false);
   auto &state = hexe::state();
   if (!state.muted) {
     state.phase = hexe::idle_or_connecting_phase();
   }
+}
+
+void stop_tts_playback() {
+  stop_playback("tts_stop");
 }
 
 void set_output_volume(int volume_percent) {

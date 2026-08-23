@@ -576,6 +576,8 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
             },
         )
         play_sound_event = websocket.receive_json()
+        playback_stop_response = client.post("/api/endpoint/playback/stop", json={"endpoint_id": "esp-box-1"})
+        playback_stop_event = websocket.receive_json()
         led_response = client.post(
             "/api/endpoint/led/simulate",
             json={"endpoint_id": "esp-box-1", "pattern": "all", "duration_ms": 900},
@@ -618,6 +620,11 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
     assert play_sound_event["payload"]["stream_id"] == "tts-kiosk"
     assert play_sound_event["payload"]["audio_url"] == "/api/voice/tts/tts-kiosk/48k"
     assert play_sound_event["payload"]["source_event_id"] == "interaction-ui-play-sound-1"
+    assert playback_stop_response.status_code == 200
+    assert playback_stop_response.json()["command_type"] == "playback.stop"
+    assert playback_stop_event["event_type"] == "playback.stop"
+    assert playback_stop_event["payload"]["request_id"] == playback_stop_response.json()["request_id"]
+    assert playback_stop_event["payload"]["reason"] == "operator_stop"
     assert led_response.status_code == 200
     assert led_response.json()["command_type"] == "endpoint.led.simulate"
     assert led_event["event_type"] == "endpoint.led.simulate"

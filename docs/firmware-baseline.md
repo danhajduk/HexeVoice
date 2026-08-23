@@ -33,6 +33,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Voice PE LED ring voice-state and diagnostic patterns for boot, Wi-Fi/backend connection, disconnected, idle/off, wake/listening, capturing, thinking, replying, completed, muted/privacy, speaker-silent volume, OTA progress, and error states.
 - Voice PE rotary dial support: normal rotation adjusts endpoint volume and shows a temporary LED meter; center-held rotation changes the active LED accent color and suppresses the center-button wake/cancel action on release.
 - Firmware tracks TTS playback lifecycle as `idle`, `queued`, `started`, `finished`, `failed`, or `stopped`, and reports whether the microphone is currently paused for playback in endpoint heartbeat audio capabilities.
+- Firmware has a source-agnostic `stop_playback(reason)` path and accepts backend `playback.stop` commands. True spoken `stop` during playback is not available yet because on-device wake/keyword detection is intentionally disabled and backend-owned.
 
 ## Partial
 

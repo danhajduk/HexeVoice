@@ -90,6 +90,7 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
         "tts.playback.first_audio_frame",
         "tts.playback.completed",
         "tts.playback.failed",
+        "playback.stop",
     }
 )
 

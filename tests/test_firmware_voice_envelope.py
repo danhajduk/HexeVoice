@@ -23,6 +23,7 @@ FIRMWARE_OTA = Path("firmware/main/system/ota.cpp")
 FIRMWARE_OTA_HEADER = Path("firmware/main/system/ota.h")
 FIRMWARE_WIFI = Path("firmware/main/board/wifi.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
+FIRMWARE_TTS_PLAYER_HEADER = Path("firmware/main/voice/tts_player.h")
 FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/main/voice/tts_player_ha_voice_pe.cpp")
 FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
@@ -453,6 +454,21 @@ def test_firmware_handles_backend_session_state_events():
     assert "hexe::idle_or_connecting_phase()" in source
     assert 'std::strcmp(type, "endpoint.replay") == 0' in source
     assert 'g_tts_playback_session_id = session_id->valuestring' in source
+    assert 'std::strcmp(type, "playback.stop") == 0' in source
+    assert "hexe::voice::stop_playback" in source
+
+
+def test_firmware_has_source_agnostic_playback_stop_events():
+    source = FIRMWARE_TTS_PLAYER.read_text()
+    pe_source = FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    header = FIRMWARE_TTS_PLAYER_HEADER.read_text()
+
+    assert "void stop_playback(const char *reason);" in header
+    for player_source in (source, pe_source):
+        assert "g_current_playback_request" in player_source
+        assert '"playback.stop"' in player_source
+        assert 'reason == nullptr ? "operator_stop" : reason' in player_source
+        assert 'stop_playback("tts_stop")' in player_source
 
 
 def test_firmware_ui_assets_are_manifest_driven_not_hardcoded_filenames():

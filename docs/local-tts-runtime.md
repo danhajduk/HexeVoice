@@ -188,6 +188,14 @@ HexeVoice listens on `VOICE_TIMER_COMPLETED_MQTT_TOPIC`
 of generated speech; timer id, source node, title, due/completed timestamps, and
 dedupe metadata are attached to the playback command.
 
+Playback interruption is source-agnostic. `POST /api/endpoint/playback/stop`
+sends a `playback.stop` command to the endpoint, and firmware reports
+`playback.stop` back with the active stream and stop reason when playback is
+interrupted. Existing mute/cancel controls use the same stop path. Current
+firmware wake detection is backend-owned, so true spoken `stop` during playback
+requires a future on-device stop-word detector before it can work without
+backend STT or speaker echo risk.
+
 Recent voice sessions are also persisted to `runtime/voice_session_history.json` by default. The history record contains session ids, endpoint ids, timestamps, turn timings, wake metadata, a `latency_points` timeline, transcript/assistant/TTS metadata, error state, and replay eligibility. It does not persist raw microphone audio; accepted wake-session WAV capture is controlled separately by the wake recording settings.
 
 The history APIs are:

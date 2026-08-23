@@ -78,7 +78,7 @@ void apply_touch_action(TouchAction action) {
     case TouchAction::kToggleMute: {
       hexe::system::set_muted(!app_state.muted);
       if (app_state.muted) {
-        hexe::voice::stop_tts_playback();
+        hexe::voice::stop_playback("touch_mute");
         hexe::voice::cancel_active_session("touch_mute");
       }
       app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();

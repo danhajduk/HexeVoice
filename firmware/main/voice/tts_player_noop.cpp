@@ -42,13 +42,18 @@ void play_sd_sound(const char *filename) {
   ESP_LOGW(kTag, "Ignoring SD sound %s because local speaker output is not enabled", filename == nullptr ? "none" : filename);
 }
 
-void stop_tts_playback() {
+void stop_playback(const char *reason) {
+  (void)reason;
   auto &state = hexe::state();
   state.tts_playback_active = false;
   state.tts_playback_state = hexe::PlaybackLifecycleState::kStopped;
   if (!state.muted) {
     state.phase = hexe::idle_or_connecting_phase();
   }
+}
+
+void stop_tts_playback() {
+  stop_playback("tts_stop");
 }
 
 void set_output_volume(int volume_percent) {

@@ -467,6 +467,14 @@ class VoiceSessionManager:
                 self._runtime_context.reset(token)
         return result
 
+    async def push_playback_stop_command(self, *, endpoint_id: str, reason: str = "operator_stop") -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="playback.stop",
+            command_type="playback.stop",
+            payload={"reason": reason},
+        )
+
     async def push_replay_command(self, *, endpoint_id: str) -> dict:
         runtime = self._runtime_switch_for_endpoint(endpoint_id)
         if runtime is not None:
@@ -958,6 +966,7 @@ class VoiceSessionManager:
             "tts.playback.first_audio_frame": self._handle_tts_playback_event,
             "tts.playback.completed": self._handle_tts_playback_event,
             "tts.playback.failed": self._handle_tts_playback_event,
+            "playback.stop": self._handle_tts_playback_event,
         }
         return handlers[event.event_type](event)
 

@@ -817,7 +817,7 @@ void handle_backend_event_json(const std::string &message) {
     if (cJSON_IsBool(muted)) {
       hexe::system::set_muted(cJSON_IsTrue(muted));
       if (app_state.muted) {
-        hexe::voice::stop_tts_playback();
+        hexe::voice::stop_playback("backend_mute_command");
         hexe::voice::cancel_active_session("backend_mute_command");
       }
       app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
@@ -839,6 +839,11 @@ void handle_backend_event_json(const std::string &message) {
     hexe::voice::cancel_active_session("backend_cancel_command");
     app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
     send_command_ack(request_id, "endpoint.cancel", "succeeded", "Active session cancelled");
+  } else if (std::strcmp(type, "playback.stop") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *reason = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "reason") : nullptr;
+    hexe::voice::stop_playback(cJSON_IsString(reason) ? reason->valuestring : "backend_stop_command");
+    send_command_ack(request_id, "playback.stop", "succeeded", "Playback stop requested");
   } else if (std::strcmp(type, "endpoint.replay") == 0) {
     const char *request_id = payload_request_id(payload);
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");

@@ -451,3 +451,10 @@ Issue cause: Timer create/status routing exists, but a promoted timer completion
 Chosen fix: Reuse the existing endpoint play-sound command path and add a timer-completed subscriber that resolves `data.endpoint_id`, deduplicates promoted events, and reports lifecycle diagnostics.
 What changed: Added timer-completed alarm parsing and MQTT subscription support, configurable completed-topic/alarm settings, endpoint play-sound alarm routing, command session correlation for replay playback, firmware replay session tagging, and focused regression tests/docs.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_timer_announcements.py tests/test_config.py tests/test_voice_websocket.py tests/test_firmware_voice_envelope.py tests/test_api.py::test_voice_status_reports_tts_warmup_background_task` passed; `./firmware/build.sh` built `esp_box_3` and `ha_voice_pe`.
+###########
+Task #220
+Step objective: Add source-agnostic playback interruption and identify the safe path for spoken `stop` during playback.
+Issue cause: The firmware playback stack can stop TTS playback, but the command/event naming is TTS-specific and both board profiles pause mic capture while playback is active.
+Chosen fix: Add a generic playback stop command/event path now, route existing mute/touch controls through it, and create Task 225 for true on-device stop-word detection because firmware currently has no local keyword engine.
+What changed: Added firmware `stop_playback(reason)`, `playback.stop` command handling and event reporting, backend `push_playback_stop_command`, `/api/endpoint/playback/stop`, inbound `playback.stop` history handling, docs, and Task 225 for the local keyword detector dependency.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_voice_websocket.py tests/test_api.py tests/test_firmware_voice_envelope.py tests/test_config.py tests/test_timer_announcements.py` passed; `./firmware/build.sh` built `esp_box_3` and `ha_voice_pe`.

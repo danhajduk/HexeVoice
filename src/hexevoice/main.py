@@ -1030,6 +1030,18 @@ def create_app(
             reason=result.get("reason"),
         )
 
+    @app.post("/api/endpoint/playback/stop", response_model=EndpointCommandResponse)
+    async def endpoint_playback_stop(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_playback_stop_command(endpoint_id=payload.endpoint_id)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="playback.stop",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
     @app.post("/api/endpoint/replay", response_model=EndpointCommandResponse)
     async def endpoint_replay(payload: EndpointCommandRequest) -> EndpointCommandResponse:
         result = await voice_session_manager.push_replay_command(endpoint_id=payload.endpoint_id)

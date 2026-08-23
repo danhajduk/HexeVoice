@@ -1904,3 +1904,21 @@ Original task details:
   - Duplicate promoted timer completion events do not cause duplicate alarm playback.
   - Unknown or offline endpoints produce a clear diagnostic and do not crash the timer subscriber.
   - The timer alarm lifecycle can later be stopped by the generic playback stop path from Task 220.
+
+## Task 225
+Original task details:
+- Title: Add true on-device stop-word detection during endpoint playback
+- Source finding:
+  - Task 220 added source-agnostic playback stop plumbing, but the current firmware does not include an on-device keyword recognizer.
+  - `firmware/main/voice/wake_word.cpp` explicitly reports backend-owned wake detection and `wake_word_on_device_available() == false`.
+  - Both board profiles pause or disable microphone capture during playback to avoid self-triggering on speaker output.
+- Scope:
+  - Select a firmware-compatible local keyword detection strategy for the single word `stop`, including memory, CPU, license, and model delivery constraints.
+  - Keep detection active only during interruptible playback, with echo/false-positive controls appropriate for timer alarm audio.
+  - Call the generic `stop_playback("voice_stop")` path locally when the stop word is detected.
+  - Report a source-agnostic `playback.stop` event to the backend with reason `voice_stop`.
+  - Document board-specific support for `esp_box_3` and `ha_voice_pe`.
+- Acceptance criteria:
+  - Saying `stop` while an endpoint timer alarm is playing stops playback locally without waiting for backend STT.
+  - The feature does not re-enable general wake/STT capture during playback unless explicitly configured.
+  - Unsupported profiles report a clear capability/diagnostic instead of pretending local stop-word detection is available.
