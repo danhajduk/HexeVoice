@@ -440,6 +440,11 @@ HEXEVOICE_SETUP_WAKE=true ./install.sh
 ./scripts/openwakeword-control.sh health
 ```
 
+The backend keeps a just-created pre-audio voice session for a short grace
+window before allowing a replacement from the same endpoint. This prevents rapid
+duplicate `session.start` events from stealing the active wake stream and
+surfacing as `session_conflict` before STT has a chance to run.
+
 STT and TTS images include `python -m hexevoice.engine_health_ping`, a small
 container helper that can post engine identity, hostname, config summary, health
 state, and last error to `/api/engines/heartbeat` through either

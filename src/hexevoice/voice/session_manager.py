@@ -44,6 +44,7 @@ from hexevoice.voice.wake_recordings import WakeRecordingService
 
 log = logging.getLogger(__name__)
 FOLLOWUP_LISTEN_TIMEOUT_S = 10.0
+PRE_AUDIO_SESSION_REPLACEMENT_GRACE_MS = 750
 
 LATENCY_POINT_ORDER = {
     "vad_voice_detected": 0,
@@ -1018,6 +1019,8 @@ class VoiceSessionManager:
             session_state="idle",
             connection_state="connected",
             ux_state="wake_armed",
+            started_at=event.timestamp,
+            last_updated_at=event.timestamp,
             wake_source=payload.wake_source,
         )
         self._chunk_count = 0
@@ -1096,6 +1099,9 @@ class VoiceSessionManager:
 
     def _can_replace_active_session(self, event: VoiceEventEnvelope) -> bool:
         if self._active_session is None or self._active_session.endpoint_id != event.endpoint_id:
+            return False
+        active_age_ms = (event.timestamp - self._active_session.started_at).total_seconds() * 1000
+        if self._chunk_count == 0 and active_age_ms < PRE_AUDIO_SESSION_REPLACEMENT_GRACE_MS:
             return False
         if self._active_session.session_state == "idle":
             wake = self._active_session_history.get("wake") if self._active_session_history else None

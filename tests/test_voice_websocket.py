@@ -1,5 +1,6 @@
 import asyncio
 import base64
+from datetime import UTC, datetime, timedelta
 import json
 import wave
 
@@ -34,6 +35,12 @@ def voice_event(event_type, *, endpoint_id="esp-box-1", session_id="voice-sessio
         "session_id": session_id,
         "payload": payload or {},
     }
+
+
+def voice_event_at(event_type, timestamp, *, endpoint_id="esp-box-1", session_id="voice-session-1", payload=None):
+    event = voice_event(event_type, endpoint_id=endpoint_id, session_id=session_id, payload=payload)
+    event["timestamp"] = timestamp.isoformat()
+    return event
 
 
 def recorded_name(path: str) -> str:
@@ -227,12 +234,15 @@ def test_voice_websocket_replaces_stale_idle_session_from_same_endpoint(tmp_path
         session_history_store=history_store,
     )
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+    started_at = datetime(2026, 5, 9, 20, 51, 36, tzinfo=UTC)
 
     with client.websocket_connect("/api/voice/ws") as websocket:
-        websocket.send_json(voice_event("session.start", session_id="stale-session"))
+        websocket.send_json(voice_event_at("session.start", started_at, session_id="stale-session"))
         stale_response = websocket.receive_json()
 
-        websocket.send_json(voice_event("session.start", session_id="fresh-session"))
+        websocket.send_json(
+            voice_event_at("session.start", started_at + timedelta(seconds=2), session_id="fresh-session")
+        )
         fresh_response = websocket.receive_json()
 
     assert stale_response["event_type"] == "session.state"
@@ -244,6 +254,35 @@ def test_voice_websocket_replaces_stale_idle_session_from_same_endpoint(tmp_path
     stale = next(session for session in sessions if session["session_id"] == "stale-session")
     assert stale["session_state"] == "cancelled"
     assert stale["completion_reason"] == "superseded_by_new_session"
+
+
+def test_voice_websocket_rejects_rapid_duplicate_pre_audio_session_start(tmp_path):
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        session_history_store=history_store,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+    started_at = datetime(2026, 5, 9, 20, 51, 36, tzinfo=UTC)
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event_at("session.start", started_at, session_id="first-session"))
+        first_response = websocket.receive_json()
+
+        websocket.send_json(
+            voice_event_at(
+                "session.start",
+                started_at + timedelta(milliseconds=50),
+                session_id="duplicate-session",
+            )
+        )
+        duplicate_response = websocket.receive_json()
+
+    assert first_response["event_type"] == "session.state"
+    assert duplicate_response["event_type"] == "session.error"
+    assert duplicate_response["session_id"] == "duplicate-session"
+    assert duplicate_response["payload"]["code"] == "active_session_exists"
+    assert client.get("/api/voice/status").json()["active_session"] is None
 
 
 def test_voice_websocket_replaces_idle_session_with_pre_wake_audio(tmp_path):
@@ -322,11 +361,13 @@ def test_voice_websocket_replaces_pre_audio_button_session_from_same_endpoint(tm
         session_history_store=history_store,
     )
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+    started_at = datetime(2026, 5, 9, 20, 51, 36, tzinfo=UTC)
 
     with client.websocket_connect("/api/voice/ws") as websocket:
         websocket.send_json(
-            voice_event(
+            voice_event_at(
                 "session.start",
+                started_at,
                 session_id="button-session",
                 payload={"wake_source": "button", "audio_format": {"sample_rate_hz": 16000}},
             )
@@ -335,8 +376,9 @@ def test_voice_websocket_replaces_pre_audio_button_session_from_same_endpoint(tm
         assert websocket.receive_json()["event_type"] == "session.state"
 
         websocket.send_json(
-            voice_event(
+            voice_event_at(
                 "session.start",
+                started_at + timedelta(seconds=2),
                 session_id="fresh-session",
                 payload={"wake_source": "button", "audio_format": {"sample_rate_hz": 16000}},
             )
