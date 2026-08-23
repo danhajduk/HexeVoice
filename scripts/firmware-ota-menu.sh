@@ -40,15 +40,32 @@ fetch_endpoints() {
 
 load_endpoint_rows() {
   mapfile -t ENDPOINT_ROWS < <(
-    fetch_endpoints | python3 -c '
+    {
+      fetch_endpoints
+      echo
+      curl_json "${API_BASE_URL%/}/api/voice/status" || echo "{}"
+    } | python3 -c '
 import json
 import sys
 
-payload = json.load(sys.stdin)
-for endpoint in payload.get("endpoints", []):
+raw = sys.stdin.read().splitlines()
+endpoint_payload = json.loads(raw[0]) if raw else {}
+voice_payload = json.loads(raw[1]) if len(raw) > 1 and raw[1].strip() else {}
+
+latest_ota_commands = {}
+for command in voice_payload.get("commands", []):
+    if command.get("command_type") != "ota.update":
+        continue
+    endpoint_id = command.get("endpoint_id") or ""
+    existing = latest_ota_commands.get(endpoint_id)
+    if existing is None or str(command.get("created_at") or "") > str(existing.get("created_at") or ""):
+        latest_ota_commands[endpoint_id] = command
+
+for endpoint in endpoint_payload.get("endpoints", []):
     capabilities = endpoint.get("capabilities") or {}
     provisioning = capabilities.get("provisioning") or {}
     firmware = capabilities.get("firmware") or {}
+    ota = firmware.get("ota") or {}
     update = endpoint.get("firmware_update") or {}
     endpoint_id = endpoint.get("endpoint_id") or ""
     name = endpoint.get("display_name") or provisioning.get("display_name") or endpoint_id
@@ -58,8 +75,20 @@ for endpoint in payload.get("endpoints", []):
     profile = update.get("profile") or update.get("board_profile") or firmware.get("board_profile") or ""
     connection_state = endpoint.get("connection_state") or "unknown"
     update_available = "yes" if update.get("update_available") else "no"
+    device_state = endpoint.get("device_state") or ""
+    ota_command = latest_ota_commands.get(endpoint_id) or {}
+    ota_status = "idle"
+    if ota.get("active") is True or ota.get("status") == "running" or device_state == "ota":
+        progress = ota.get("progress_percent")
+        ota_status = f"running:{progress}%" if isinstance(progress, int) else "running"
+    elif ota_command and not ota_command.get("terminal") and ota_command.get("status") in {"pending", "accepted"}:
+        ota_status = str(ota_command.get("status") or "pending")
+    elif device_state == "thinking" and ota_command and ota_command.get("status") in {"pending", "accepted"}:
+        ota_status = "running?"
+    elif ota_command:
+        ota_status = "last:" + str(ota_command.get("status") or "unknown")
     reason = update.get("reason") or ""
-    print("\t".join([endpoint_id, name, version, latest, update_available, filename, profile, connection_state, reason]))
+    print("\t".join([endpoint_id, name, version, latest, update_available, filename, profile, connection_state, ota_status, reason]))
 '
   )
 }
@@ -71,21 +100,21 @@ print_endpoints() {
     return
   fi
 
-  printf '%-4s %-24s %-24s %-10s %-10s %-12s %s\n' \
-    "#" "Endpoint" "Name" "Version" "Update" "State" "Latest/Profile"
-  printf '%-4s %-24s %-24s %-10s %-10s %-12s %s\n' \
-    "---" "--------" "----" "-------" "------" "-----" "--------------"
+  printf '%-4s %-24s %-24s %-10s %-10s %-12s %-12s %s\n' \
+    "#" "Endpoint" "Name" "Version" "Update" "State" "OTA" "Latest/Profile"
+  printf '%-4s %-24s %-24s %-10s %-10s %-12s %-12s %s\n' \
+    "---" "--------" "----" "-------" "------" "-----" "---" "--------------"
 
   local index=1
-  local row endpoint_id name version latest update_available filename profile connection_state reason
+  local row endpoint_id name version latest update_available filename profile connection_state ota_status reason
   for row in "${ENDPOINT_ROWS[@]}"; do
-    IFS=$'\t' read -r endpoint_id name version latest update_available filename profile connection_state reason <<<"${row}"
+    IFS=$'\t' read -r endpoint_id name version latest update_available filename profile connection_state ota_status reason <<<"${row}"
     local target="${latest:-none}"
     if [[ -n "${profile}" ]]; then
       target="${target}/${profile}"
     fi
-    printf '%-4s %-24s %-24s %-10s %-10s %-12s %s\n' \
-      "${index}" "${endpoint_id}" "${name}" "${version}" "${update_available}" "${connection_state}" "${target}"
+    printf '%-4s %-24s %-24s %-10s %-10s %-12s %-12s %s\n' \
+      "${index}" "${endpoint_id}" "${name}" "${version}" "${update_available}" "${connection_state}" "${ota_status}" "${target}"
     ((index += 1))
   done
   echo
@@ -153,9 +182,17 @@ push_one_by_index() {
     return 1
   fi
 
-  local row endpoint_id name version latest update_available filename profile connection_state reason
+  local row endpoint_id name version latest update_available filename profile connection_state ota_status reason
   row="${ENDPOINT_ROWS[$((selection - 1))]}"
-  IFS=$'\t' read -r endpoint_id name version latest update_available filename profile connection_state reason <<<"${row}"
+  IFS=$'\t' read -r endpoint_id name version latest update_available filename profile connection_state ota_status reason <<<"${row}"
+
+  if [[ "${ota_status}" == "running"* || "${ota_status}" == "pending" || "${ota_status}" == "accepted" ]]; then
+    read -r -p "${endpoint_id} already reports OTA status '${ota_status}'. Send another OTA anyway? [y/N] " confirm
+    case "${confirm}" in
+      y|Y|yes|YES) ;;
+      *) echo "Skipped ${endpoint_id}."; return 0 ;;
+    esac
+  fi
 
   if [[ "${update_available}" != "yes" ]]; then
     read -r -p "${endpoint_id} does not report an available update. Send OTA anyway? [y/N] " confirm
@@ -171,10 +208,15 @@ push_one_by_index() {
 push_all_updates() {
   local pushed=0
   local skipped=0
-  local row endpoint_id name version latest update_available filename profile connection_state reason
+  local row endpoint_id name version latest update_available filename profile connection_state ota_status reason
 
   for row in "${ENDPOINT_ROWS[@]}"; do
-    IFS=$'\t' read -r endpoint_id name version latest update_available filename profile connection_state reason <<<"${row}"
+    IFS=$'\t' read -r endpoint_id name version latest update_available filename profile connection_state ota_status reason <<<"${row}"
+    if [[ "${ota_status}" == "running"* || "${ota_status}" == "pending" || "${ota_status}" == "accepted" ]]; then
+      echo "${endpoint_id}: OTA already ${ota_status}; skipping."
+      ((skipped += 1))
+      continue
+    fi
     if [[ "${update_available}" != "yes" || -z "${filename}" ]]; then
       echo "${endpoint_id}: no available OTA update; skipping."
       ((skipped += 1))

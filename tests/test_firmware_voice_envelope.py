@@ -102,6 +102,10 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     assert '"manifest_signature"' in backend_source
     assert "send_command_error(request_id, \"ota.update\", ota_error_code" in backend_source
     assert "kEndpointBoardProfile" in backend_source
+    assert 'return "ota";' in backend_source
+    assert 'cJSON_AddBoolToObject(ota, "active", state.ota_active)' in backend_source
+    assert 'cJSON_AddStringToObject(ota, "status", state.ota_active ? "running" : "idle")' in backend_source
+    assert 'cJSON_AddNumberToObject(ota, "progress_percent", state.ota_progress_percent)' in backend_source
 
 
 def test_firmware_scaffold_modules_are_explicit_status_providers():

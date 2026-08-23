@@ -438,6 +438,9 @@ const char *normalized_wake_source(const char *wake_source) {
 
 const char *device_state() {
   const auto &state = hexe::state();
+  if (state.ota_active) {
+    return "ota";
+  }
   switch (state.phase) {
     case hexe::AppPhase::kListening:
       return "listening";
@@ -1134,6 +1137,11 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(firmware, "build_time", app == nullptr ? "unknown" : app->time);
   cJSON_AddStringToObject(firmware, "idf_version", app == nullptr ? "unknown" : app->idf_ver);
   cJSON *ota = cJSON_AddObjectToObject(firmware, "ota");
+  cJSON_AddBoolToObject(ota, "active", state.ota_active);
+  cJSON_AddStringToObject(ota, "status", state.ota_active ? "running" : "idle");
+  cJSON_AddNumberToObject(ota, "progress_percent", state.ota_progress_percent);
+  cJSON_AddNumberToObject(ota, "bytes_read", state.ota_bytes_read);
+  cJSON_AddNumberToObject(ota, "size_bytes", state.ota_size_bytes);
   cJSON_AddStringToObject(ota, "signature_algorithm", "hmac-sha256");
   cJSON_AddStringToObject(ota, "signature_key_id", hexe::config::kEndpointOtaManifestKeyId);
   cJSON_AddBoolToObject(ota, "checksum_required", true);

@@ -165,7 +165,7 @@ class TtsSynthesizeResponse(BaseModel):
 
 class EndpointHeartbeatRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
-    device_state: Literal["idle", "listening", "thinking", "speaking", "offline"] = "idle"
+    device_state: Literal["idle", "listening", "thinking", "speaking", "ota", "offline"] = "idle"
     session_id: str | None = None
     firmware_version: str | None = None
     ip_address: str | None = None
@@ -176,7 +176,7 @@ class EndpointHeartbeatRequest(BaseModel):
 class EndpointHeartbeatResponse(BaseModel):
     accepted: bool = True
     endpoint_id: str
-    device_state: Literal["idle", "listening", "thinking", "speaking", "offline"]
+    device_state: Literal["idle", "listening", "thinking", "speaking", "ota", "offline"]
     session_id: str | None = None
     server_time: str
     last_seen_at: str
@@ -218,7 +218,7 @@ class EndpointStatusResponse(BaseModel):
     endpoint_id: str
     display_name: str | None = None
     zone_id: str | None = None
-    device_state: Literal["idle", "listening", "thinking", "speaking", "offline"]
+    device_state: Literal["idle", "listening", "thinking", "speaking", "ota", "offline"]
     session_id: str | None = None
     firmware_version: str | None = None
     ip_address: str | None = None

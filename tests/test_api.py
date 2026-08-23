@@ -113,6 +113,38 @@ def test_endpoint_heartbeat_records_latest_status(tmp_path):
     assert status_payload["rssi_dbm"] == -58
 
 
+def test_endpoint_heartbeat_accepts_ota_device_state(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    heartbeat = client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-box-1",
+            "device_state": "ota",
+            "capabilities": {
+                "firmware": {
+                    "ota": {
+                        "active": True,
+                        "status": "running",
+                        "progress_percent": 42,
+                    }
+                }
+            },
+        },
+    )
+
+    assert heartbeat.status_code == 200
+    assert heartbeat.json()["device_state"] == "ota"
+
+    status = client.get("/api/endpoint/status/esp-box-1")
+    assert status.status_code == 200
+    payload = status.json()
+    assert payload["device_state"] == "ota"
+    assert payload["capabilities"]["firmware"]["ota"]["active"] is True
+    assert payload["capabilities"]["firmware"]["ota"]["progress_percent"] == 42
+
+
 def test_endpoint_time_returns_clock_sync_payload(tmp_path):
     state_path = tmp_path / "onboarding-state.json"
     client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
