@@ -515,7 +515,9 @@ For terminal-driven updates, `scripts/firmware-ota-menu.sh` lists endpoints from
 endpoints with available firmware updates. The menu also shows each endpoint's
 reported OTA status when firmware heartbeat exposes OTA activity, and can clear
 remembered OTA command history from the node when stale command results should
-be hidden from the terminal view.
+be hidden from the terminal view. In interactive terminals, menu actions are
+single-key commands and the endpoint list uses compact cards to avoid wrapping
+on narrower consoles.
 
 - expected public node API: `http://10.0.0.100:9004`
 

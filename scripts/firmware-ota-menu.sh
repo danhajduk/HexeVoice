@@ -5,6 +5,17 @@ NODE_HOST="${NODE_HOST:-hexe.local}"
 API_BASE_URL="${API_BASE_URL:-http://${NODE_HOST}:9004}"
 CONNECT_TIMEOUT_S="${CONNECT_TIMEOUT_S:-5}"
 HTTP_TIMEOUT_S="${HTTP_TIMEOUT_S:-20}"
+BOLD=""
+DIM=""
+RESET=""
+CYAN=""
+
+if [[ -t 1 ]] && [[ -z "${NO_COLOR:-}" ]] && command -v tput >/dev/null 2>&1; then
+  BOLD="$(tput bold || true)"
+  DIM="$(tput dim || true)"
+  RESET="$(tput sgr0 || true)"
+  CYAN="$(tput setaf 6 || true)"
+fi
 
 usage() {
   cat <<'USAGE'
@@ -18,6 +29,7 @@ Environment:
   API_BASE_URL      Backend URL, default: http://hexe.local:9004
   CONNECT_TIMEOUT_S Curl connect timeout, default: 5
   HTTP_TIMEOUT_S    Curl total request timeout, default: 20
+  NO_COLOR          Disable terminal colors when set
 
 Examples:
   scripts/firmware-ota-menu.sh
@@ -43,6 +55,35 @@ clear_screen() {
   if [[ -t 1 ]] && command -v clear >/dev/null 2>&1; then
     clear
   fi
+}
+
+shorten() {
+  local value="$1"
+  local max="$2"
+  if ((${#value} > max)); then
+    printf '%s~' "${value:0:$((max - 1))}"
+  else
+    printf '%s' "${value}"
+  fi
+}
+
+pause_for_key() {
+  if [[ -t 0 ]]; then
+    read -r -s -n 1 -p "Press any key to continue..." _
+    printf '\n'
+  fi
+}
+
+read_choice() {
+  local choice
+  if [[ -t 0 ]]; then
+    printf '%sChoose key: %s' "${BOLD}" "${RESET}" > /dev/tty
+    IFS= read -r -s -n 1 choice
+    printf '%s\n' "${choice}" > /dev/tty
+  else
+    IFS= read -r choice
+  fi
+  MENU_CHOICE="${choice}"
 }
 
 load_endpoint_rows() {
@@ -101,16 +142,14 @@ for endpoint in endpoint_payload.get("endpoints", []):
 }
 
 print_endpoints() {
-  printf '\nNode API: %s\n\n' "${API_BASE_URL%/}"
+  printf '\n%sHexeVoice OTA Manager%s\n' "${BOLD}" "${RESET}"
+  printf '%sAPI:%s %s\n\n' "${DIM}" "${RESET}" "${API_BASE_URL%/}"
   if ((${#ENDPOINT_ROWS[@]} == 0)); then
     echo "No endpoints reported by the node."
     return
   fi
 
-  printf '%-4s %-24s %-24s %-10s %-10s %-12s %-12s %s\n' \
-    "#" "Endpoint" "Name" "Version" "Update" "State" "OTA" "Latest/Profile"
-  printf '%-4s %-24s %-24s %-10s %-10s %-12s %-12s %s\n' \
-    "---" "--------" "----" "-------" "------" "-----" "---" "--------------"
+  printf '%sDevices%s\n' "${BOLD}" "${RESET}"
 
   local index=1
   local row endpoint_id name version latest update_available filename profile connection_state ota_status reason
@@ -120,8 +159,16 @@ print_endpoints() {
     if [[ -n "${profile}" ]]; then
       target="${target}/${profile}"
     fi
-    printf '%-4s %-24s %-24s %-10s %-10s %-12s %-12s %s\n' \
-      "${index}" "${endpoint_id}" "${name}" "${version}" "${update_available}" "${connection_state}" "${ota_status}" "${target}"
+    printf '  %s[%s]%s %-20s %-18s %s/%s\n' \
+      "${CYAN}" "${index}" "${RESET}" \
+      "$(shorten "${endpoint_id}" 20)" \
+      "$(shorten "${name}" 18)" \
+      "${connection_state}" \
+      "${ota_status}"
+    printf '      FW %-8s  update %-3s  target %s\n' \
+      "$(shorten "${version}" 8)" \
+      "${update_available}" \
+      "${target}"
     ((index += 1))
   done
   echo
@@ -194,19 +241,13 @@ push_one_by_index() {
   IFS=$'\t' read -r endpoint_id name version latest update_available filename profile connection_state ota_status reason <<<"${row}"
 
   if [[ "${ota_status}" == "running"* || "${ota_status}" == "pending" || "${ota_status}" == "accepted" ]]; then
-    read -r -p "${endpoint_id} already reports OTA status '${ota_status}'. Send another OTA anyway? [y/N] " confirm
-    case "${confirm}" in
-      y|Y|yes|YES) ;;
-      *) echo "Skipped ${endpoint_id}."; return 0 ;;
-    esac
+    echo "${endpoint_id}: OTA already ${ota_status}; skipping."
+    return 0
   fi
 
-  if [[ "${update_available}" != "yes" ]]; then
-    read -r -p "${endpoint_id} does not report an available update. Send OTA anyway? [y/N] " confirm
-    case "${confirm}" in
-      y|Y|yes|YES) ;;
-      *) echo "Skipped ${endpoint_id}."; return 0 ;;
-    esac
+  if [[ "${update_available}" != "yes" || -z "${filename}" ]]; then
+    echo "${endpoint_id}: no available OTA update; skipping."
+    return 0
   fi
 
   push_ota "${endpoint_id}" "${filename}" "${latest}" "${profile}"
@@ -255,36 +296,28 @@ menu() {
     clear_screen
     load_endpoint_rows
     print_endpoints
-    cat <<'MENU'
-Menu:
-  number  OTA one endpoint
-  a       OTA all endpoints with an available update
-  c       Clear OTA command history
-  r       Refresh endpoint list
-  q       Quit
-MENU
-    read -r -p "Choose: " choice
+    printf '%sActions%s\n' "${BOLD}" "${RESET}"
+    printf '  %s1-9%s OTA endpoint   %sa%s OTA all   %sc%s clear history   %sr%s refresh   %sq%s quit\n\n' \
+      "${CYAN}" "${RESET}" "${CYAN}" "${RESET}" "${CYAN}" "${RESET}" "${CYAN}" "${RESET}" "${CYAN}" "${RESET}"
+    read_choice
+    choice="${MENU_CHOICE}"
     case "${choice}" in
-      a|A|all|ALL)
+      a|A)
         push_all_updates
-        read -r -p "Press Enter to continue..." _
+        pause_for_key
         ;;
-      c|C|clear|CLEAR)
-        read -r -p "Clear remembered OTA command status from the node? [y/N] " confirm
-        case "${confirm}" in
-          y|Y|yes|YES) clear_ota_history ;;
-          *) echo "Clear skipped." ;;
-        esac
-        read -r -p "Press Enter to continue..." _
+      c|C)
+        clear_ota_history
+        pause_for_key
         ;;
-      r|R|refresh|REFRESH)
+      r|R)
         ;;
-      q|Q|quit|QUIT)
+      q|Q)
         return 0
         ;;
       *)
         push_one_by_index "${choice}" || true
-        read -r -p "Press Enter to continue..." _
+        pause_for_key
         ;;
     esac
   done
