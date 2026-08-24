@@ -1210,10 +1210,11 @@ std::string endpoint_capabilities_json() {
         "playback_stop_word",
         "backend",
         "backend_stt_interrupt",
-        true,
+        hexe::voice::playback_stop_word_on_device_available(),
         state.tts_playback_active && !state.mic_paused_for_playback ? "active" : "ready");
     cJSON *playback_stop_word = cJSON_GetObjectItem(modules, "playback_stop_word");
     if (cJSON_IsObject(playback_stop_word)) {
+      cJSON_AddBoolToObject(playback_stop_word, "backend_available", true);
       cJSON_AddStringToObject(playback_stop_word, "stop_word", "stop");
       cJSON_AddStringToObject(playback_stop_word, "stop_event_type", "playback.stop");
       cJSON_AddStringToObject(playback_stop_word, "stop_reason", "voice_stop");

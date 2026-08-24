@@ -194,6 +194,7 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert '"stop_word", "stop"' in backend_source
     assert '"stop_event_type", "playback.stop"' in backend_source
     assert '"stop_reason", "voice_stop"' in backend_source
+    assert '"backend_available", true' in backend_source
     assert '"local_keyword_available"' in backend_source
     assert '"local_keyword_reason"' in backend_source
     assert '"reason", hexe::voice::playback_stop_word_unavailable_reason()' not in backend_source
