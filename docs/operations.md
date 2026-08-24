@@ -523,6 +523,9 @@ The built-in local endpoint controls include `playback.stop`,
 `endpoint.mute`, `endpoint.unmute`, and `endpoint.identify`. These commands
 target the endpoint that spoke the request and queue the matching backend
 endpoint command when the voice session manager is active.
+Timer alarms can also be snoozed with `timer.snooze`, which publishes
+`timer.snooze_requested` with the active timer scope and requested snooze
+duration.
 Endpoint status also includes firmware comparison metadata. The backend infers
 the endpoint board profile, checks the matching `runtime/firmware/manifest-*.json`
 and binary artifact, and the endpoint detail popup exposes `Send OTA` when the

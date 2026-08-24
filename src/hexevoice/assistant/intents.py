@@ -54,6 +54,7 @@ class LocalIntentFinder:
                 or self._find_timer_control(normalized, action="stop", requested_at=extraction_time)
                 or self._find_timer_control(normalized, action="cancel", requested_at=extraction_time)
                 or self._find_timer_adjust_time(normalized, requested_at=extraction_time)
+                or self._find_timer_snooze(normalized, requested_at=extraction_time)
                 or self._find_endpoint_control(normalized, command="playback.stop", requested_at=extraction_time)
                 or self._find_endpoint_control(normalized, command="playback.repeat", requested_at=extraction_time)
                 or self._find_endpoint_control(normalized, command="endpoint.volume.set", requested_at=extraction_time)
@@ -85,6 +86,7 @@ class LocalIntentFinder:
                 "timer.stop",
                 "timer.cancel",
                 "timer.adjust_time",
+                "timer.snooze",
                 "playback.stop",
                 "playback.repeat",
                 "endpoint.volume.set",
@@ -203,6 +205,21 @@ class LocalIntentFinder:
             or intent.get("intent_id") == "timer.adjust_time"
         ):
             match = self._find_timer_adjust_time(text, requested_at=requested_at)
+            if match is not None:
+                return self._build_registered_match(
+                    intent=intent,
+                    command=command,
+                    slots=match.slots,
+                    requested_at=requested_at,
+                )
+            return None
+
+        if (
+            matcher.get("type") == "builtin_timer_snooze"
+            or command == "timer.snooze"
+            or intent.get("intent_id") == "timer.snooze"
+        ):
+            match = self._find_timer_snooze(text, requested_at=requested_at)
             if match is not None:
                 return self._build_registered_match(
                     intent=intent,
@@ -442,6 +459,28 @@ class LocalIntentFinder:
             reply_text="Updating the timer.",
         )
 
+    def _find_timer_snooze(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        duration_text = _extract_timer_snooze_duration_text(text)
+        if duration_text is None:
+            return None
+        duration_seconds = _parse_duration_seconds(duration_text)
+        if duration_seconds is None:
+            return None
+        formatted_duration = _format_duration(duration_seconds)
+        extraction_time = requested_at or datetime.now(UTC)
+        return LocalIntentMatch(
+            intent="timer.snooze",
+            command="timer.snooze",
+            slots={
+                "duration_seconds": duration_seconds,
+                "duration_hhmmss": _format_duration_hhmmss(duration_seconds),
+                "duration_text": formatted_duration,
+                "scope": "active_for_endpoint",
+                "requested_at": extraction_time.isoformat(),
+            },
+            reply_text=f"Snoozing timer for {formatted_duration}.",
+        )
+
     def _find_endpoint_control(self, text: str, *, command: str, requested_at: datetime | None = None) -> LocalIntentMatch | None:
         extraction_time = requested_at or datetime.now(UTC)
         slots: dict[str, Any] = {"requested_at": extraction_time.isoformat()}
@@ -605,6 +644,18 @@ def _extract_timer_adjustment(text: str) -> tuple[str, str] | None:
         match = re.match(pattern, text)
         if match:
             return direction, _trim_duration_tail(match.group("duration"))
+    return None
+
+
+def _extract_timer_snooze_duration_text(text: str) -> str | None:
+    patterns = [
+        r"^(?:please\s+)?snooze(?:\s+(?:the\s+)?(?:timer|alarm))?(?:\s+for)?\s+(?P<duration>.+)$",
+        r"^(?:please\s+)?remind\s+me\s+again\s+in\s+(?P<duration>.+)$",
+    ]
+    for pattern in patterns:
+        match = re.match(pattern, text)
+        if match:
+            return _trim_duration_tail(match.group("duration"))
     return None
 
 

@@ -64,6 +64,14 @@ class FakeTimerEventPublisher:
             topic="hexe/nodes/node-1/events/timer/adjust_time_requested",
         )
 
+    def publish_timer_snooze_request(self, **payload):
+        self.calls.append(payload)
+        return DomainEventPublishDecision(
+            status="published",
+            reason="published",
+            topic="hexe/nodes/node-1/events/timer/snooze_requested",
+        )
+
     def status(self):
         return {"provider": "fake", "enabled": True, "last_decision": None}
 
@@ -115,6 +123,12 @@ class SlowRecognitionPublisher:
         self.calls.append({"type": "timer_adjust", **payload})
         self.published.set()
         return DomainEventPublishDecision(status="published", reason="published", event_type="timer.adjust_time_requested")
+
+    def publish_timer_snooze_request(self, **payload):
+        time.sleep(self.delay_s)
+        self.calls.append({"type": "timer_snooze", **payload})
+        self.published.set()
+        return DomainEventPublishDecision(status="published", reason="published", event_type="timer.snooze_requested")
 
     def publish_voice_intent_recognized(self, **payload):
         time.sleep(self.delay_s)
@@ -486,6 +500,38 @@ def test_voice_turn_pipeline_dispatches_endpoint_volume_intent_locally(tmp_path)
                 "requested_at": dispatcher.calls[0]["slots"]["requested_at"],
                 "volume_percent": 60,
             },
+        }
+    ]
+
+
+def test_voice_turn_pipeline_handles_timer_snooze_intent_locally(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    publisher = FakeTimerEventPublisher()
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime, timer_event_publisher=publisher)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, snooze the timer for five minutes"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-pe-1", session_id="voice-session-snooze", chunk_count=1)
+    )
+
+    assert result.assistant_response.handled_locally is True
+    assert result.assistant_response.command == "timer.snooze"
+    assert result.assistant_response.spoken_text == "Snoozing timer for 5 minutes."
+    assert publisher.calls == [
+        {
+            "endpoint_id": "esp-pe-1",
+            "session_id": "voice-session-snooze",
+            "heard_text": "snooze the timer for five minutes",
+            "duration_seconds": 300,
+            "duration_text": "5 minutes",
+            "scope": "active_for_endpoint",
+            "timer_id": None,
+            "requested_at": publisher.calls[0]["requested_at"],
         }
     ]
 

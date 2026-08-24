@@ -341,6 +341,83 @@ def built_in_timer_adjust_time_intent() -> dict[str, Any]:
     }
 
 
+def timer_snooze_intent_definition() -> dict[str, Any]:
+    return {
+        "utterance_examples": [
+            "snooze five minutes",
+            "snooze the timer for 10 minutes",
+            "snooze alarm for two minutes",
+            "remind me again in five minutes",
+        ],
+        "patterns": [
+            r"^(?:please\s+)?snooze(?:\s+(?:the\s+)?(?:timer|alarm))?(?:\s+for)?\s+(?P<duration>.+)$",
+            r"^(?:please\s+)?remind\s+me\s+again\s+in\s+(?P<duration>.+)$",
+        ],
+        "slots": {
+            "duration_seconds": {"type": "integer", "minimum": 1},
+            "duration_text": {"type": "string"},
+            "duration_hhmmss": {"type": "string"},
+            "scope": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "required": {
+                "duration_seconds": {"type": "integer", "source": "duration_seconds", "minimum": 1},
+                "duration_text": {"type": "string", "source": "duration_text"},
+                "duration_hhmmss": {"type": "string", "source": "duration_hhmmss"},
+                "scope": {"type": "string", "source": "scope"},
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "domain_event",
+            "command": "timer.snooze",
+            "event_type": "timer.snooze_requested",
+        },
+        "response": {
+            "reply_template": "Snoozing timer for {duration_text}.",
+        },
+        "reply": {
+            "text_template": "Snoozing timer for {duration_text}.",
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "builtin_timer_snooze",
+        },
+    }
+
+
+def built_in_timer_snooze_intent() -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": "timer.snooze",
+        "intent_name": "Snooze timer",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": timer_snooze_intent_definition(),
+        "constraints": {
+            "requires_operational_mqtt": True,
+            "dispatch_side_effect": "timer.snooze_requested",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "timer",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def time_query_intent_definition() -> dict[str, Any]:
     return {
         "utterance_examples": [
@@ -814,6 +891,7 @@ class VoiceIntentStateStore:
                     VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="stop")),
                     VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="cancel")),
                     VoiceIntentRecord.model_validate(built_in_timer_adjust_time_intent()),
+                    VoiceIntentRecord.model_validate(built_in_timer_snooze_intent()),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
                     *[
                         VoiceIntentRecord.model_validate(built_in_endpoint_control_intent(intent_id=intent_id))
@@ -858,6 +936,9 @@ class VoiceIntentStateStore:
             seeded = True
         if "timer.adjust_time" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_adjust_time_intent()))
+            seeded = True
+        if "timer.snooze" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_snooze_intent()))
             seeded = True
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))

@@ -19,7 +19,8 @@
         "timer.status_requested",
         "timer.stop_requested",
         "timer.cancel_requested",
-        "timer.adjust_time_requested"
+        "timer.adjust_time_requested",
+        "timer.snooze_requested"
       ]
     },
     "occurred_at": {
@@ -44,6 +45,9 @@
         },
         {
           "$ref": "#/$defs/adjust_request_data"
+        },
+        {
+          "$ref": "#/$defs/snooze_request_data"
         }
       ]
     },
@@ -194,6 +198,34 @@
             "direction": {
               "type": "string",
               "enum": ["add", "remove"]
+            }
+          }
+        }
+      ]
+    },
+    "snooze_request_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_request_data"
+        },
+        {
+          "type": "object",
+          "required": ["duration_seconds", "duration_hhmmss", "duration_text", "correlation_id"],
+          "properties": {
+            "intent": {
+              "const": "timer.snooze"
+            },
+            "duration_seconds": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "duration_hhmmss": {
+              "type": "string",
+              "pattern": "^[0-9]{2,}:[0-9]{2}:[0-9]{2}$"
+            },
+            "duration_text": {
+              "type": "string",
+              "minLength": 1
             }
           }
         }

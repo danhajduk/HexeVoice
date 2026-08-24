@@ -765,6 +765,32 @@ class AssistantTurnService:
             timer_id=timer_id,
         )
 
+    def _publish_timer_snooze_request_event(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        slots: dict,
+        requested_at: datetime,
+    ):
+        duration_seconds = slots.get("duration_seconds")
+        duration_text = slots.get("duration_text")
+        if not isinstance(duration_seconds, int) or not isinstance(duration_text, str):
+            return None
+        scope = str(slots.get("scope") or "active_for_endpoint").strip() or "active_for_endpoint"
+        timer_id = str(slots.get("timer_id") or "").strip() or None
+        return self._timer_event_publisher.publish_timer_snooze_request(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text=heard_text,
+            duration_seconds=duration_seconds,
+            duration_text=duration_text,
+            requested_at=requested_at,
+            scope=scope,
+            timer_id=timer_id,
+        )
+
     def _dispatch_intent(
         self,
         *,
@@ -812,6 +838,14 @@ class AssistantTurnService:
                 slots=intent.slots,
                 requested_at=requested_at,
             )
+        if intent.command == "timer.snooze":
+            return self._publish_timer_snooze_request_event(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                slots=intent.slots,
+                requested_at=requested_at,
+            )
         if intent.command in {
             "playback.stop",
             "playback.repeat",
@@ -832,7 +866,7 @@ class AssistantTurnService:
         return None
 
     def _resolve_timer_context(self, intent, *, endpoint_id: str):
-        if intent.command not in {"timer.status", "timer.stop", "timer.cancel", "timer.adjust_time"}:
+        if intent.command not in {"timer.status", "timer.stop", "timer.cancel", "timer.adjust_time", "timer.snooze"}:
             return intent
         if self._timer_ownership_cache is None:
             return intent

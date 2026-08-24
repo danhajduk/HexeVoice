@@ -260,6 +260,66 @@ def test_timer_adjust_publisher_uses_hexecore_node_event_contract(tmp_path, monk
     assert payload["data"]["heard_text"] == "remove two minutes from the timer"
 
 
+def test_timer_snooze_publisher_uses_hexecore_node_event_contract(tmp_path, monkeypatch):
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "trust_activation": {
+                    "node_id": "node-voice-1",
+                    "node_type": "voice-node",
+                    "trust_status": "trusted",
+                    "operational_mqtt_identity": "hn_node-voice-1",
+                    "operational_mqtt_token": "mqtt-token",
+                    "operational_mqtt_host": "10.0.0.100",
+                    "operational_mqtt_port": 1883,
+                },
+                "operational_status": {
+                    "operational_ready": True,
+                },
+            }
+        )
+    )
+    captured = {}
+    settings = Settings(onboarding_state_path=state_path)
+    publisher = HexeMqttTimerCreateEventPublisher(settings=settings)
+
+    def fake_publish(**kwargs):
+        publisher._stamp_mqtt_sent(kwargs["payload"], kwargs["request_timestamp"])
+        captured.update(kwargs)
+
+    monkeypatch.setattr(publisher, "_publish", fake_publish)
+
+    requested_at = datetime(2026, 5, 4, 2, 5, 0, tzinfo=UTC)
+    decision = publisher.publish_timer_snooze_request(
+        endpoint_id="esp-pe-1",
+        session_id="session-snooze-1",
+        heard_text="snooze the timer for five minutes",
+        duration_seconds=300,
+        duration_text="5 minutes",
+        requested_at=requested_at,
+        timer_id="timer-1",
+    )
+
+    assert decision.status == "published"
+    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/snooze_requested"
+    payload = captured["payload"]
+    assert payload["schema_version"] == 1
+    assert payload["event_type"] == "timer.snooze_requested"
+    assert payload["occurred_at"] == "2026-05-04T02:05:00+00:00"
+    assert payload["subject"] == {"family": "timer", "record_id": "timer-1"}
+    assert payload["data"]["intent"] == "timer.snooze"
+    assert payload["data"]["endpoint_id"] == "esp-pe-1"
+    assert payload["data"]["session_id"] == "session-snooze-1"
+    assert payload["data"]["timer_id"] == "timer-1"
+    assert payload["data"]["scope"] == "active_for_endpoint"
+    assert payload["data"]["duration_seconds"] == 300
+    assert payload["data"]["duration_hhmmss"] == "00:05:00"
+    assert payload["data"]["duration_text"] == "5 minutes"
+    assert payload["data"]["correlation_id"].startswith("timer-snooze-")
+    assert payload["data"]["heard_text"] == "snooze the timer for five minutes"
+
+
 def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, monkeypatch):
     state_path = tmp_path / "state.json"
     state_path.write_text(
@@ -359,6 +419,12 @@ def test_async_domain_event_publisher_queues_without_blocking():
             calls.append({"type": "timer_adjust", **payload})
             published.set()
             return DomainEventPublishDecision(status="published", reason="published", event_type="timer.adjust_time_requested")
+
+        def publish_timer_snooze_request(self, **payload):
+            time.sleep(0.25)
+            calls.append({"type": "timer_snooze", **payload})
+            published.set()
+            return DomainEventPublishDecision(status="published", reason="published", event_type="timer.snooze_requested")
 
         def publish_voice_intent_recognized(self, **payload):
             time.sleep(0.25)

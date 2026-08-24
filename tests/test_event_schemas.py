@@ -28,15 +28,19 @@ def test_timer_request_schema_lists_published_event_types():
         "timer.stop_requested",
         "timer.cancel_requested",
         "timer.adjust_time_requested",
+        "timer.snooze_requested",
     ]
     base_required = schema["$defs"]["base_request_data"]["required"]
     assert "correlation_id" not in base_required
     assert "correlation_id" in schema["$defs"]["status_request_data"]["allOf"][1]["required"]
     assert "correlation_id" in schema["$defs"]["control_request_data"]["allOf"][1]["required"]
     assert "correlation_id" in schema["$defs"]["adjust_request_data"]["allOf"][1]["required"]
+    assert "correlation_id" in schema["$defs"]["snooze_request_data"]["allOf"][1]["required"]
     adjust_props = schema["$defs"]["adjust_request_data"]["allOf"][1]["properties"]
     assert adjust_props["delta_seconds"]["not"]["const"] == 0
     assert adjust_props["direction"]["enum"] == ["add", "remove"]
+    snooze_props = schema["$defs"]["snooze_request_data"]["allOf"][1]["properties"]
+    assert snooze_props["duration_seconds"]["minimum"] == 1
 
 
 def test_timer_response_schema_lists_required_response_events():

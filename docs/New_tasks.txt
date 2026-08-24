@@ -48,7 +48,6 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 231: Add timer snooze voice intent for completed timer alarms
 [STOP]
 
 **********************************************************************************************
