@@ -1942,3 +1942,39 @@ Original task details:
   - Saying or pressing `stop` during a looped timer alarm stops playback without waiting for the current WAV loop to finish.
   - Firmware sends exactly one `playback.stop` event with the stop reason.
   - Playback lifecycle reports `stopped`, microphone state is restored correctly, and no partial write leaves the audio driver wedged.
+
+## Task 227
+Original task details:
+- Title: Add UDP node beacon advertising HexeVoice API and UI LAN IP endpoints
+- Source request:
+  - Add option #3 from the local discovery discussion: keep existing request/offer discovery, add UDP beacons, and add mDNS.
+  - The advertised host must be the node's LAN IP address, not `hexe.local`.
+- Scope:
+  - Add a configurable UDP broadcast beacon from the node on the local network.
+  - Include schema/version, node identity, node type, API URL, UI URL, API port, UI port, TLS flag, heartbeat path, voice WebSocket path, and advertised LAN IP.
+  - Reuse or align with the existing endpoint discovery schema where practical without breaking firmware request/offer discovery.
+  - Resolve the advertised address from explicit config first, then from a safe LAN interface probe; do not emit loopback, `0.0.0.0`, or `hexe.local` as the advertised host.
+  - Add operator-visible diagnostics for beacon enabled/disabled state, selected IP, port, interval, and last send error.
+- Acceptance criteria:
+  - A listener on the LAN can discover the node API as `http://<lan-ip>:9004` and UI as `http://<lan-ip>:8084`.
+  - Beacon payload never advertises `hexe.local` when LAN IP mode is selected.
+  - Existing endpoint UDP discovery request/offer continues to work.
+  - Tests cover payload construction, LAN IP selection fallback, disabled mode, and invalid/loopback host rejection.
+
+## Task 228
+Original task details:
+- Title: Add mDNS service advertisement for HexeVoice API and UI using LAN IP endpoint metadata
+- Source request:
+  - Add option #3 from the local discovery discussion: support both UDP beaconing and mDNS service advertisement.
+  - Keep the advertised endpoint metadata as IP-based rather than `hexe.local`.
+- Scope:
+  - Advertise HexeVoice services over mDNS, for example `_hexevoice._tcp.local`, with API and UI ports discoverable by operator tools.
+  - Include TXT metadata for API URL, UI URL, API port, UI port, node id, node type, TLS flag, and advertised LAN IP.
+  - Ensure TXT endpoint URLs use `http://<lan-ip>:9004` and `http://<lan-ip>:8084` unless TLS/ports are explicitly configured otherwise.
+  - Decide whether to use a Python mDNS library, Avahi integration, or optional platform adapter; document dependencies and fallback behavior.
+  - Keep mDNS optional so locked-down hosts can disable it independently from UDP discovery and UDP beaconing.
+- Acceptance criteria:
+  - LAN clients can discover the HexeVoice API and UI through mDNS service browsing.
+  - Service metadata contains IP-based URLs, not `hexe.local` URLs.
+  - Failure to start mDNS does not prevent the backend API from starting; it surfaces a diagnostic.
+  - Tests cover service metadata generation and disabled/error states; manual validation documents the expected `avahi-browse` or equivalent output.

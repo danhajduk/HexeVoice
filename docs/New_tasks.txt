@@ -48,13 +48,13 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[WIP] Task 225: Add true on-device stop-word detection during endpoint playback
-
+[FUTURE TODO] Task 228: Add mDNS service advertisement for HexeVoice API and UI using LAN IP endpoint metadata
 [STOP]
 
 **********************************************************************************************
 * Future TODO listing
 **********************************************************************************************
 
-[FUTURE TODO] Task 157: Add LAN-wide HexeVoice naming via mDNS/Avahi or local DNS, with optional reverse proxy support for no-port setup access
 [FUTURE TODO] Task 205: Add an optional experimental Kokoro TTS provider with Docker/Unix-socket runtime, CPU/CUDA mode, voice selection, WAV artifact normalization, and Piper-compatible fallback behavior
+[FUTURE TODO] Task 225: Add true on-device stop-word detection during endpoint playback
+[FUTURE TODO] Task 227: Add UDP node beacon advertising HexeVoice API and UI LAN IP endpoints
