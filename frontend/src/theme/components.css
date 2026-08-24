@@ -766,6 +766,52 @@
   gap: 14px;
 }
 
+.speaker-endpoint-capture {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.025);
+}
+
+.speaker-prompt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.speaker-prompt-card {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.03);
+}
+
+.speaker-capture-list {
+  display: grid;
+  gap: 8px;
+}
+
+.speaker-capture-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.03);
+}
+
+.speaker-capture-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .speaker-profile-card {
   display: grid;
   gap: 14px;
@@ -1886,6 +1932,7 @@ select.field-input {
   .endpoint-detail-inline .endpoint-detail-grid,
   .tts-model-detail-grid,
   .speaker-id-dashboard-grid,
+  .speaker-capture-row,
   .speaker-profile-card-facts,
   .form-grid {
     grid-template-columns: 1fr;

@@ -873,6 +873,72 @@ def create_app(
     async def speaker_id_delete_profile(profile_id: str) -> dict[str, object]:
         return await speaker_id_proxy("DELETE", f"/profiles/{profile_id}")
 
+    @app.get("/api/speaker-id/enrollment-captures")
+    async def speaker_id_enrollment_captures(
+        endpoint_id: str | None = None,
+        since: str | None = None,
+        limit: int = 20,
+    ) -> dict[str, object]:
+        since_dt: datetime | None = None
+        if since:
+            try:
+                since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
+                if since_dt.tzinfo is None:
+                    since_dt = since_dt.replace(tzinfo=UTC)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid_since") from exc
+
+        bounded_limit = max(1, min(limit, 50))
+        sessions = voice_session_manager.list_session_history(limit=200, endpoint_id=endpoint_id)
+        captures: list[dict[str, object]] = []
+        for session in sessions:
+            wake_recording = session.get("wake_recording") if isinstance(session.get("wake_recording"), dict) else None
+            if not wake_recording:
+                continue
+            recorded_at = str(wake_recording.get("recorded_at") or session.get("completed_at") or "")
+            if since_dt and recorded_at:
+                try:
+                    recorded_dt = datetime.fromisoformat(recorded_at.replace("Z", "+00:00"))
+                    if recorded_dt.tzinfo is None:
+                        recorded_dt = recorded_dt.replace(tzinfo=UTC)
+                except ValueError:
+                    recorded_dt = None
+                if recorded_dt and recorded_dt < since_dt:
+                    continue
+            recording_id = str(wake_recording.get("recording_id") or "").strip()
+            if not recording_id:
+                continue
+            audio_format = wake_recording.get("audio_format") if isinstance(wake_recording.get("audio_format"), dict) else {}
+            transcript = session.get("transcript") if isinstance(session.get("transcript"), dict) else None
+            captures.append(
+                {
+                    "recording_id": recording_id,
+                    "session_id": session.get("session_id"),
+                    "endpoint_id": session.get("endpoint_id"),
+                    "recorded_at": recorded_at or None,
+                    "completed_at": session.get("completed_at"),
+                    "duration_ms": wake_recording.get("duration_ms"),
+                    "audio_url": wake_recording.get("audio_url") or f"/api/voice/wake-recordings/{recording_id}",
+                    "sample_rate_hz": audio_format.get("sample_rate_hz"),
+                    "channels": audio_format.get("channels"),
+                    "byte_count": wake_recording.get("byte_count"),
+                    "transcript": {
+                        "text": transcript.get("text"),
+                        "provider_id": transcript.get("provider_id"),
+                    }
+                    if transcript
+                    else None,
+                }
+            )
+            if len(captures) >= bounded_limit:
+                break
+        return {
+            "schema_version": 1,
+            "endpoint_id": endpoint_id,
+            "since": since,
+            "captures": captures,
+        }
+
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
         response = assistant_service.handle_turn(payload)

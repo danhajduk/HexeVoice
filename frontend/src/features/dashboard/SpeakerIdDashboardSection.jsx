@@ -3,9 +3,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deleteSpeakerIdProfile,
   enrollSpeakerIdProfile,
+  getEndpointRegistry,
+  getSpeakerIdEnrollmentCaptures,
   getSpeakerIdProfiles,
   getSpeakerIdStatus,
   updateSpeakerIdConfig,
+  wakeRecordingAudioUrl,
 } from "../../api/client";
 
 const PROVIDERS = [
@@ -27,6 +30,14 @@ const DEFAULT_ENROLLMENT = {
   pastedAudioBase64: "",
   samples: [],
 };
+
+const ENROLLMENT_PROMPTS = [
+  "Hexe, this is my local voice profile. I am speaking clearly from the same room.",
+  "The morning light is bright, the kitchen is quiet, and my voice should sound natural.",
+  "Please remember this voice for local speaker identification on this device.",
+  "I can speak a little softer, then a little louder, while staying close to the microphone.",
+  "My voice profile should work for short commands, timers, questions, and home control.",
+];
 
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : String(value);
@@ -79,6 +90,14 @@ function outcomeText(outcome) {
   return [outcome?.status, speaker, outcome?.reason].filter(Boolean).join(" / ") || "none";
 }
 
+function formatDurationMs(value) {
+  const duration = Number(value);
+  if (!Number.isFinite(duration)) {
+    return "unknown";
+  }
+  return `${(duration / 1000).toFixed(1)} sec`;
+}
+
 function fileToSample(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -93,6 +112,19 @@ function fileToSample(file) {
     };
     reader.onerror = () => reject(reader.error || new Error("file_read_failed"));
     reader.readAsDataURL(file);
+  });
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const [, base64 = result] = result.split(",");
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error || new Error("blob_read_failed"));
+    reader.readAsDataURL(blob);
   });
 }
 
@@ -182,6 +214,10 @@ function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, o
 export function SpeakerIdDashboardSection({ onRefresh }) {
   const [status, setStatus] = useState(null);
   const [profiles, setProfiles] = useState([]);
+  const [endpoints, setEndpoints] = useState([]);
+  const [selectedEndpointId, setSelectedEndpointId] = useState("esp-pe-1");
+  const [captureStartedAt, setCaptureStartedAt] = useState("");
+  const [captureCandidates, setCaptureCandidates] = useState([]);
   const [config, setConfig] = useState({
     enabled: false,
     provider: "deterministic_signal",
@@ -204,6 +240,25 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const lowConfidenceCount = outcomes.filter((outcome) => outcome?.reason === "low_confidence").length;
   const unavailable = !status;
   const samples = enrollment.samples;
+  const endpointOptions = useMemo(() => {
+    const seen = new Set();
+    const options = [];
+    endpoints.forEach((endpoint) => {
+      const endpointId = String(endpoint?.endpoint_id || "").trim();
+      if (!endpointId || seen.has(endpointId)) {
+        return;
+      }
+      seen.add(endpointId);
+      options.push({
+        endpoint_id: endpointId,
+        display_name: endpoint.display_name || endpoint.name || endpointId,
+      });
+    });
+    if (!seen.has("esp-pe-1")) {
+      options.unshift({ endpoint_id: "esp-pe-1", display_name: "esp-pe-1" });
+    }
+    return options;
+  }, [endpoints]);
   const canEnroll =
     !unavailable &&
     enrollment.displayName.trim() &&
@@ -250,6 +305,29 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     };
   }, [load]);
 
+  useEffect(() => {
+    let mounted = true;
+    getEndpointRegistry()
+      .then((payload) => {
+        if (!mounted) {
+          return;
+        }
+        const nextEndpoints = Array.isArray(payload?.endpoints) ? payload.endpoints : [];
+        setEndpoints(nextEndpoints);
+        if (!selectedEndpointId && nextEndpoints[0]?.endpoint_id) {
+          setSelectedEndpointId(nextEndpoints[0].endpoint_id);
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setEndpoints([]);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [selectedEndpointId]);
+
   function updateEnrollment(field, value) {
     setEnrollment((current) => ({ ...current, [field]: value }));
   }
@@ -269,6 +347,64 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     } finally {
       setBusy("");
       event.target.value = "";
+    }
+  }
+
+  async function loadCaptureCandidates({ since = captureStartedAt } = {}) {
+    setBusy("captures");
+    setError("");
+    try {
+      const payload = await getSpeakerIdEnrollmentCaptures({
+        endpointId: selectedEndpointId,
+        since,
+        limit: 12,
+      });
+      setCaptureCandidates(Array.isArray(payload.captures) ? payload.captures : []);
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleStartCaptureWindow() {
+    const startedAt = new Date().toISOString();
+    setCaptureStartedAt(startedAt);
+    setCaptureCandidates([]);
+    await loadCaptureCandidates({ since: startedAt });
+  }
+
+  async function handleAddCaptureSample(capture) {
+    const sampleId = `endpoint-${capture.recording_id}`;
+    if (samples.some((sample) => sample.sample_id === sampleId)) {
+      setNotice("Capture already added as an enrollment sample.");
+      return;
+    }
+    setBusy(sampleId);
+    setNotice("");
+    setError("");
+    try {
+      const response = await fetch(wakeRecordingAudioUrl(capture.recording_id));
+      if (!response.ok) {
+        throw new Error(`capture_fetch_failed_${response.status}`);
+      }
+      const audioBase64 = await blobToBase64(await response.blob());
+      setEnrollment((current) => ({
+        ...current,
+        samples: [
+          ...current.samples,
+          {
+            sample_id: sampleId,
+            audio_base64: audioBase64,
+            encoding: "audio/wav",
+          },
+        ],
+      }));
+      setNotice("Endpoint capture added as an enrollment sample.");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
     }
   }
 
@@ -631,6 +767,88 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
                 onChange={(event) => updateEnrollment("consentedBy", event.target.value)}
               />
             </label>
+            <div className="field field-span-2 speaker-endpoint-capture">
+              <div className="section-heading">
+                <div>
+                  <p className="panel-kicker">Voice PE Capture</p>
+                  <h4 className="section-title">Read-Aloud Samples</h4>
+                </div>
+                <span className={`status-pill status-pill-${captureStartedAt ? "success" : "neutral"}`}>
+                  {captureStartedAt ? "capture window" : "ready"}
+                </span>
+              </div>
+              <label className="field">
+                <span className="field-label">Endpoint</span>
+                <select
+                  className="field-input"
+                  value={selectedEndpointId}
+                  disabled={unavailable || busy === "enroll"}
+                  onChange={(event) => setSelectedEndpointId(event.target.value)}
+                >
+                  {endpointOptions.map((endpoint) => (
+                    <option key={endpoint.endpoint_id} value={endpoint.endpoint_id}>
+                      {endpoint.display_name} / {endpoint.endpoint_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="speaker-prompt-grid">
+                {ENROLLMENT_PROMPTS.map((prompt, index) => (
+                  <div className="speaker-prompt-card" key={prompt}>
+                    <span className="fact-grid-label">Phrase {index + 1}</span>
+                    <span className="fact-grid-value">{prompt}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="actions">
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={unavailable || busy === "captures"}
+                  onClick={handleStartCaptureWindow}
+                >
+                  Start Capture Window
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  disabled={unavailable || busy === "captures"}
+                  onClick={() => loadCaptureCandidates()}
+                >
+                  {busy === "captures" ? "Refreshing..." : "Refresh Captures"}
+                </button>
+              </div>
+              {captureStartedAt ? (
+                <div className="callout callout-neutral">
+                  Capture window started at {formatLocalDateTime(captureStartedAt)} for {selectedEndpointId}.
+                </div>
+              ) : null}
+              {captureCandidates.length ? (
+                <div className="speaker-capture-list">
+                  {captureCandidates.map((capture) => (
+                    <div className="speaker-capture-row" key={capture.recording_id}>
+                      <div>
+                        <span className="fact-grid-label">{formatLocalDateTime(capture.recorded_at)}</span>
+                        <span className="fact-grid-value">
+                          {capture.recording_id} / {formatDurationMs(capture.duration_ms)}
+                        </span>
+                        {capture.transcript?.text ? <span className="muted">{capture.transcript.text}</span> : null}
+                      </div>
+                      <button
+                        className="btn btn-secondary btn-compact"
+                        type="button"
+                        disabled={busy === `endpoint-${capture.recording_id}`}
+                        onClick={() => handleAddCaptureSample(capture)}
+                      >
+                        {busy === `endpoint-${capture.recording_id}` ? "Adding..." : "Add Sample"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : captureStartedAt ? (
+                <div className="callout callout-neutral">No endpoint captures found for this window.</div>
+              ) : null}
+            </div>
             <label className="field field-span-2">
               <span className="field-label">Upload WAV Samples</span>
               <input

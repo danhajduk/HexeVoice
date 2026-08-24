@@ -1273,6 +1273,84 @@ def test_endpoint_voice_artifact_delete_route_removes_history_referenced_files(t
     assert not list(wake_dir.glob("wake-endpoint*"))
 
 
+def test_speaker_id_enrollment_captures_list_recent_endpoint_wake_recordings(tmp_path):
+    history_path = tmp_path / "voice_session_history.json"
+    history_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "updated_at": "2026-08-24T12:00:00+00:00",
+                "sessions": [
+                    {
+                        "session_id": "voice-session-new",
+                        "endpoint_id": "esp-pe-1",
+                        "completed_at": "2026-08-24T12:00:10+00:00",
+                        "transcript": {"text": "my voice is my local key", "provider_id": "test-stt"},
+                        "wake_recording": {
+                            "recording_id": "wake-new",
+                            "recorded_at": "2026-08-24T12:00:09+00:00",
+                            "duration_ms": 4200,
+                            "audio_url": "/api/voice/wake-recordings/wake-new",
+                            "byte_count": 134400,
+                            "audio_format": {
+                                "encoding": "pcm_s16le",
+                                "sample_rate_hz": 16000,
+                                "channels": 1,
+                            },
+                            "wav_path": "/private/wake-new.wav",
+                        },
+                    },
+                    {
+                        "session_id": "voice-session-old",
+                        "endpoint_id": "esp-pe-1",
+                        "completed_at": "2026-08-24T11:59:00+00:00",
+                        "wake_recording": {
+                            "recording_id": "wake-old",
+                            "recorded_at": "2026-08-24T11:59:00+00:00",
+                            "audio_url": "/api/voice/wake-recordings/wake-old",
+                        },
+                    },
+                    {
+                        "session_id": "voice-session-box",
+                        "endpoint_id": "esp-box-1",
+                        "completed_at": "2026-08-24T12:00:11+00:00",
+                        "wake_recording": {
+                            "recording_id": "wake-box",
+                            "recorded_at": "2026-08-24T12:00:11+00:00",
+                            "audio_url": "/api/voice/wake-recordings/wake-box",
+                        },
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_session_history_path=history_path,
+            )
+        )
+    )
+
+    response = client.get(
+        "/api/speaker-id/enrollment-captures",
+        params={"endpoint_id": "esp-pe-1", "since": "2026-08-24T12:00:00+00:00"},
+    )
+
+    assert response.status_code == 200
+    captures = response.json()["captures"]
+    assert len(captures) == 1
+    capture = captures[0]
+    assert capture["recording_id"] == "wake-new"
+    assert capture["endpoint_id"] == "esp-pe-1"
+    assert capture["sample_rate_hz"] == 16000
+    assert capture["transcript"]["text"] == "my voice is my local key"
+    assert "wav_path" not in capture
+
+
 def test_tts_warmup_voice_selection_prefers_configured_warm_voices():
     settings = Settings(
         voice_tts_provider="piper",

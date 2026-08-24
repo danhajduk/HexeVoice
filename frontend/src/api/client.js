@@ -283,6 +283,18 @@ export async function getSpeakerIdProfiles() {
   return fetchJson("/api/speaker-id/profiles");
 }
 
+export async function getSpeakerIdEnrollmentCaptures({ endpointId, since, limit = 12 } = {}) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (endpointId) {
+    params.set("endpoint_id", endpointId);
+  }
+  if (since) {
+    params.set("since", since);
+  }
+  return fetchJson(`/api/speaker-id/enrollment-captures?${params.toString()}`);
+}
+
 export async function enrollSpeakerIdProfile(payload) {
   return sendJson("/api/speaker-id/enroll", { body: payload });
 }

@@ -153,6 +153,7 @@ The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-i
 
 - Configuration controls show helper health, enabled state, provider, model metadata, transport, thresholds, and raw-audio retention state.
 - Enrollment accepts local WAV uploads or pasted WAV base64, records explicit consent metadata, and stores local biometric templates with `retention_policy=embeddings_only`.
+- Voice PE enrollment capture lets an operator select an endpoint, start a capture window, read suggested phrases, and add recent accepted wake-session WAV captures as enrollment samples.
 - Profile cards show display name, public speaker id, sample count, provider/model, version, labels, updated time, and metadata export.
 - Profile deletion uses a confirmation step and removes the local template from future identification candidates.
 - Diagnostics show provider status, last error, unknown/low-confidence outcome counts, and the most recent privacy-safe identify/verify outcomes.
