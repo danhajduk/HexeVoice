@@ -21,6 +21,9 @@ class AssistantTurnRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     text: str = Field(min_length=1)
     session_id: str | None = None
+    speaker_identity: dict[str, Any] | None = None
+    speaker_identity_policy: Literal["not_required", "use_if_ready", "required", "forbidden"] = "not_required"
+    speaker_personalization_enabled: bool = False
 
 
 class AssistantTurnResponse(BaseModel):

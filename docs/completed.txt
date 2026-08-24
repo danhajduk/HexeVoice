@@ -260,3 +260,4 @@ Task 231: Add timer snooze voice intent for completed timer alarms - Completed o
 Task 232: Define the HexeVoice Speaker ID service contract, Core capability names, privacy policy, and event schemas - Completed on 08/24/2026 03:32
 Task 233: Build the HexeVoice Speaker ID runtime adapter layer with benchmark support for SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio, and NVIDIA NeMo - Completed on 08/24/2026 04:40
 Task 234: Implement the HexeVoice Speaker ID Unix-socket service APIs for enrollment, verification, identification, profile management, and health reporting - Completed on 08/24/2026 04:49
+Task 235: Integrate the HexeVoice Speaker ID service into per-turn speaker lookup, speaker-aware events, and safe fallback behavior - Completed on 08/24/2026 04:57

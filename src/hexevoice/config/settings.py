@@ -223,6 +223,15 @@ class Settings(BaseSettings):
         ge=0.0,
         le=1.0,
     )
+    voice_speaker_id_policy_default: Literal["not_required", "use_if_ready", "required", "forbidden"] = Field(
+        default="use_if_ready",
+        alias="VOICE_SPEAKER_ID_POLICY_DEFAULT",
+    )
+    voice_speaker_id_endpoint_scope: str = Field(default="", alias="VOICE_SPEAKER_ID_ENDPOINT_SCOPE")
+    voice_speaker_id_personalization_enabled: bool = Field(
+        default=False,
+        alias="VOICE_SPEAKER_ID_PERSONALIZATION_ENABLED",
+    )
     voice_speaker_id_service_id: str = Field(default="speaker_id", alias="VOICE_SPEAKER_ID_SERVICE_ID")
     voice_speaker_id_service_name: str = Field(
         default="hexevoice-speaker-id.service",
@@ -384,6 +393,13 @@ class Settings(BaseSettings):
         if self.voice_speaker_id_profiles_path is not None:
             return self.voice_speaker_id_profiles_path
         return self.runtime_dir / "speaker_id" / "profiles.json"
+
+    def resolved_voice_speaker_id_endpoint_scope(self) -> list[str]:
+        return [
+            endpoint_id.strip()
+            for endpoint_id in self.voice_speaker_id_endpoint_scope.split(",")
+            if endpoint_id.strip()
+        ]
 
     def resolved_voice_wake_recording_dir(self) -> Path:
         if self.voice_wake_recording_dir is not None:

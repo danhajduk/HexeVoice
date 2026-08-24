@@ -101,6 +101,16 @@ def test_assistant_settings_default_to_local_echo():
     assert settings.voice_timer_completed_alarm_audio_url is None
 
 
+def test_speaker_id_turn_policy_settings_default_to_safe_local_mode():
+    settings = Settings()
+
+    assert settings.voice_speaker_id_enabled is False
+    assert settings.voice_speaker_id_policy_default == "use_if_ready"
+    assert settings.voice_speaker_id_endpoint_scope == ""
+    assert settings.resolved_voice_speaker_id_endpoint_scope() == []
+    assert settings.voice_speaker_id_personalization_enabled is False
+
+
 def test_piper_tts_settings_default_to_supervised_local_service():
     settings = Settings(voice_tts_provider="piper", voice_tts_conversion_sample_rates="48000,16000")
 

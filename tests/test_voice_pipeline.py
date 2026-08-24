@@ -9,6 +9,7 @@ import wave
 
 import httpx
 
+from hexevoice.api.models import AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.config.settings import Settings
 from hexevoice.domain_events import AsyncDomainEventPublisher, DomainEventPublishDecision
@@ -88,6 +89,42 @@ class FakeEndpointCommandDispatcher:
             event_id="endpoint-command-1",
             event_type=payload["command"],
         )
+
+
+class SlowSpeakerIdClient:
+    def __init__(self, *, delay_s: float = 0.5, response: dict | None = None) -> None:
+        self.delay_s = delay_s
+        self.response = response or {"schema_version": 1, "status": "unknown", "reason": "no_profiles", "match": None}
+        self.calls = []
+
+    def identify(self, payload):
+        self.calls.append(payload)
+        time.sleep(self.delay_s)
+        return self.response
+
+
+class SpyAssistantService:
+    def __init__(self, *, spoken_text: str = "handled") -> None:
+        self.spoken_text = spoken_text
+        self.requests = []
+
+    def handle_turn(self, payload):
+        self.requests.append(payload)
+        return AssistantTurnResponse(
+            endpoint_id=payload.endpoint_id,
+            session_id=payload.session_id,
+            heard_text=payload.text,
+            reply_text=self.spoken_text,
+            spoken_text=self.spoken_text,
+            handled_locally=False,
+            command=None,
+            device_state="speaking",
+            provider_id="spy",
+            provider_metadata={"speaker_identity_policy": payload.speaker_identity_policy},
+        )
+
+    def status(self):
+        return {"provider": "spy", "healthy": True, "configured": True}
 
 
 class SlowRecognitionPublisher:
@@ -195,6 +232,120 @@ def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     assert result.timings.assistant_ms >= 0
     assert result.timings.tts_ms >= 0
     assert result.timings.total_ms >= 0
+
+
+def test_voice_turn_pipeline_does_not_wait_for_speaker_id_when_not_required(tmp_path):
+    runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
+    assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)
+    speaker_id = SlowSpeakerIdClient(delay_s=0.4)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="hello"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+    )
+
+    started_at = time.perf_counter()
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+    elapsed = time.perf_counter() - started_at
+
+    assert elapsed < 0.3
+    assert result.assistant_response.spoken_text == "I heard hello"
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.status == "pending"
+    assert result.speaker_identity.policy == "use_if_ready"
+    assert speaker_id.calls
+
+
+def test_voice_turn_pipeline_blocks_personal_route_when_speaker_unknown(tmp_path):
+    assistant = SpyAssistantService()
+    speaker_id = SlowSpeakerIdClient(delay_s=0.0)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="what's on my calendar"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+
+    assert assistant.requests == []
+    assert result.assistant_response.command == "speaker.identity.required"
+    assert result.assistant_response.spoken_text == "Who is this?"
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.status == "unknown"
+    assert result.speaker_identity.policy == "required"
+
+
+def test_voice_turn_pipeline_passes_identified_speaker_to_required_route(tmp_path):
+    assistant = SpyAssistantService(spoken_text="Opening your calendar.")
+    speaker_id = SlowSpeakerIdClient(
+        delay_s=0.0,
+        response={
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": "speaker_dan",
+                "display_name": "Dan",
+                "confidence": 0.91,
+                "score": 0.91,
+                "score_margin": 0.2,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+            },
+        },
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="what's on my calendar"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+
+    assert result.assistant_response.spoken_text == "Opening your calendar."
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.speaker_public_id == "speaker_dan"
+    assert assistant.requests[0].speaker_identity["speaker_public_id"] == "speaker_dan"
+    assert assistant.requests[0].speaker_identity_policy == "required"
 
 
 def test_voice_turn_pipeline_can_select_voice_by_endpoint(tmp_path):

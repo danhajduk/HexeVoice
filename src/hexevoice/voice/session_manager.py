@@ -1481,6 +1481,8 @@ class VoiceSessionManager:
                 "text_chars": len(turn.transcript.text or ""),
                 "error": turn.transcript.error,
             }
+            if turn.speaker_identity is not None:
+                self._last_transcript_metadata["speaker_identity"] = turn.speaker_identity.as_context()
             transcript_metadata = {**self._last_transcript_metadata, "text": turn.transcript.text}
             self._last_turn_timings = {
                 "stt_ms": turn.timings.stt_ms,
@@ -1525,6 +1527,7 @@ class VoiceSessionManager:
                 assistant_ms=turn.timings.assistant_ms,
                 tts_ms=turn.timings.tts_ms,
                 total_ms=turn.timings.total_ms,
+                speaker_identity=turn.speaker_identity.as_context() if turn.speaker_identity else None,
             )
             if turn.transcript.error:
                 error = self._error_event(
@@ -1584,6 +1587,8 @@ class VoiceSessionManager:
                 "intent_latency_ms": turn.assistant_response.intent_latency_ms,
                 "conversation_followup": turn.assistant_response.conversation_followup,
             }
+            if turn.speaker_identity is not None:
+                self._last_assistant["speaker_identity"] = turn.speaker_identity.as_context()
             self._update_active_session_history(assistant=self._last_assistant)
             self._set_session_state("responding")
             self._last_tts = tts_synthesis_metadata(turn.tts)

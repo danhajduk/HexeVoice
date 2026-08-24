@@ -7,12 +7,16 @@ from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
 from contextlib import ExitStack
+from concurrent.futures import Future
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 import base64
 import io
 import importlib.util
 import json
 import logging
 from pathlib import Path
+import re
 import tempfile
 import threading
 import time
@@ -30,6 +34,7 @@ import soxr
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.engine_http import client_for_engine
+from hexevoice.speaker_id.client import SpeakerIdServiceClient
 from hexevoice.voice.records import record_voice_event
 from hexevoice.stt_profiles import SttModelProfile
 from hexevoice.stt_profiles import get_stt_model_profile
@@ -116,6 +121,41 @@ class VoiceTurnTimings:
     assistant_ms: float
     tts_ms: float
     total_ms: float
+    speaker_id_ms: float | None = None
+
+
+@dataclass(frozen=True)
+class SpeakerIdentityResult:
+    status: str
+    policy: str
+    active: bool = False
+    speaker_public_id: str | None = None
+    display_name: str | None = None
+    confidence: float | None = None
+    score: float | None = None
+    score_margin: float | None = None
+    provider: str | None = None
+    model_id: str | None = None
+    reason: str | None = None
+    duration_ms: float | None = None
+    error: str | None = None
+
+    def as_context(self) -> dict[str, object]:
+        return {
+            "status": self.status,
+            "policy": self.policy,
+            "active": self.active,
+            "speaker_public_id": self.speaker_public_id,
+            "display_name": self.display_name,
+            "confidence": self.confidence,
+            "score": self.score,
+            "score_margin": self.score_margin,
+            "provider": self.provider,
+            "model_id": self.model_id,
+            "reason": self.reason,
+            "duration_ms": self.duration_ms,
+            "error": self.error,
+        }
 
 
 @dataclass(frozen=True)
@@ -124,6 +164,7 @@ class VoiceTurnResult:
     assistant_response: AssistantTurnResponse
     tts: TtsSynthesis
     timings: VoiceTurnTimings
+    speaker_identity: SpeakerIdentityResult | None = None
 
 
 class SpeechToTextAdapter(Protocol):
@@ -1652,17 +1693,37 @@ class VoiceTurnPipeline:
         stt_adapter: SpeechToTextAdapter | None = None,
         tts_adapter: TextToSpeechAdapter | None = None,
         endpoint_voices: dict[str, str] | None = None,
+        speaker_id_client: SpeakerIdServiceClient | None = None,
+        speaker_id_enabled: bool = False,
+        speaker_id_timeout_s: float = 5.0,
+        speaker_id_policy_default: str = "use_if_ready",
+        speaker_id_endpoint_scope: list[str] | None = None,
+        speaker_id_personalization_enabled: bool = False,
     ) -> None:
         self._assistant_service = assistant_service
         self._stt_adapter = stt_adapter or DeterministicSpeechToTextAdapter()
         self._tts_adapter = tts_adapter or DeterministicTextToSpeechAdapter()
         self._endpoint_voices = dict(endpoint_voices or {})
+        self._speaker_id_client = speaker_id_client
+        self._speaker_id_enabled = speaker_id_enabled
+        self._speaker_id_timeout_s = speaker_id_timeout_s
+        self._speaker_id_policy_default = _normalize_speaker_identity_policy(speaker_id_policy_default)
+        self._speaker_id_endpoint_scope = set(speaker_id_endpoint_scope or [])
+        self._speaker_id_personalization_enabled = speaker_id_personalization_enabled
 
     def complete_turn(self, audio: VoiceTurnAudioSummary) -> VoiceTurnResult:
         turn_started_at = time.perf_counter()
-        stt_started_at = time.perf_counter()
-        transcript = self._stt_adapter.transcribe(audio)
-        stt_ms = round((time.perf_counter() - stt_started_at) * 1000, 2)
+        speaker_identity: SpeakerIdentityResult | None = None
+        speaker_future: Future[SpeakerIdentityResult] | None = None
+        executor = ThreadPoolExecutor(max_workers=2)
+        try:
+            speaker_future = self._start_speaker_identity(audio, executor)
+            stt_started_at = time.perf_counter()
+            stt_future = executor.submit(self._stt_adapter.transcribe, audio)
+            transcript = stt_future.result()
+            stt_ms = round((time.perf_counter() - stt_started_at) * 1000, 2)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=False)
         record_voice_event(
             "stt.failed" if transcript.error else "stt.completed",
             endpoint_id=audio.endpoint_id,
@@ -1678,17 +1739,32 @@ class VoiceTurnPipeline:
             stt_ms=stt_ms,
         )
         assistant_started_at = time.perf_counter()
-        assistant_response = self._assistant_service.handle_turn(
-            AssistantTurnRequest(
-                endpoint_id=audio.endpoint_id,
-                session_id=audio.session_id,
-                text=transcript.text or " ",
+        speaker_policy = self._speaker_identity_policy(text=transcript.text, command=None, metadata=None)
+        speaker_identity = self._speaker_identity_for_policy(
+            audio=audio,
+            future=speaker_future,
+            policy=speaker_policy,
+            current=speaker_identity,
+        )
+        if self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
+            assistant_response = self._speaker_identity_clarification_response(
+                audio=audio,
+                transcript_text=transcript.text,
+                speaker_identity=speaker_identity,
             )
+        else:
+            assistant_response = self._assistant_service.handle_turn(
+                self._assistant_request(
+                    audio=audio,
+                    text=transcript.text or " ",
+                    speaker_policy=speaker_policy,
+                    speaker_identity=speaker_identity,
+                )
             )
         if assistant_response.heard_text != transcript.text:
             transcript = replace(transcript, text=assistant_response.heard_text)
         fallback_transcribe = getattr(self._stt_adapter, "maybe_fallback_transcribe", None)
-        if callable(fallback_transcribe):
+        if callable(fallback_transcribe) and not self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
             fallback_started_at = time.perf_counter()
             fallback = fallback_transcribe(
                 audio,
@@ -1714,16 +1790,50 @@ class VoiceTurnPipeline:
                     primary_text=transcript.text,
                 )
                 transcript = fallback
-                assistant_response = self._assistant_service.handle_turn(
-                    AssistantTurnRequest(
-                        endpoint_id=audio.endpoint_id,
-                        session_id=audio.session_id,
-                        text=transcript.text or " ",
-                    )
+                speaker_policy = self._speaker_identity_policy(text=transcript.text, command=None, metadata=None)
+                speaker_identity = self._speaker_identity_for_policy(
+                    audio=audio,
+                    future=speaker_future,
+                    policy=speaker_policy,
+                    current=speaker_identity,
                 )
+                if self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
+                    assistant_response = self._speaker_identity_clarification_response(
+                        audio=audio,
+                        transcript_text=transcript.text,
+                        speaker_identity=speaker_identity,
+                    )
+                else:
+                    assistant_response = self._assistant_service.handle_turn(
+                        self._assistant_request(
+                            audio=audio,
+                            text=transcript.text or " ",
+                            speaker_policy=speaker_policy,
+                            speaker_identity=speaker_identity,
+                        )
+                    )
                 if assistant_response.heard_text != transcript.text:
                     transcript = replace(transcript, text=assistant_response.heard_text)
                 stt_ms = round(stt_ms + fallback_ms, 2)
+        final_policy = self._speaker_identity_policy(
+            text=transcript.text,
+            command=assistant_response.command,
+            metadata=assistant_response.provider_metadata,
+        )
+        if final_policy != speaker_policy:
+            speaker_policy = final_policy
+            speaker_identity = self._speaker_identity_for_policy(
+                audio=audio,
+                future=speaker_future,
+                policy=speaker_policy,
+                current=speaker_identity,
+            )
+            if self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
+                assistant_response = self._speaker_identity_clarification_response(
+                    audio=audio,
+                    transcript_text=transcript.text,
+                    speaker_identity=speaker_identity,
+                )
         assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
         tts_started_at = time.perf_counter()
         tts = self._tts_adapter.synthesize(
@@ -1738,6 +1848,7 @@ class VoiceTurnPipeline:
             assistant_ms=assistant_ms,
             tts_ms=tts_ms,
             total_ms=round((time.perf_counter() - turn_started_at) * 1000, 2),
+            speaker_id_ms=speaker_identity.duration_ms if speaker_identity else None,
         )
         log.info(
             "Voice turn pipeline completed: endpoint_id=%s session_id=%s stt_ms=%s assistant_ms=%s tts_ms=%s total_ms=%s",
@@ -1753,6 +1864,7 @@ class VoiceTurnPipeline:
             assistant_response=assistant_response,
             tts=tts,
             timings=timings,
+            speaker_identity=speaker_identity,
         )
 
     def transcribe_audio(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
@@ -1776,6 +1888,199 @@ class VoiceTurnPipeline:
         )
         return transcript
 
+    def _start_speaker_identity(
+        self,
+        audio: VoiceTurnAudioSummary,
+        executor: ThreadPoolExecutor,
+    ) -> Future[SpeakerIdentityResult] | None:
+        if not self._speaker_id_enabled or self._speaker_id_client is None:
+            return None
+        if self._speaker_id_endpoint_scope and audio.endpoint_id not in self._speaker_id_endpoint_scope:
+            return None
+        return executor.submit(self._identify_speaker, audio)
+
+    def _identify_speaker(self, audio: VoiceTurnAudioSummary) -> SpeakerIdentityResult:
+        started_at = time.perf_counter()
+        if self._speaker_id_client is None:
+            return SpeakerIdentityResult(status="unavailable", policy="forbidden", reason="client_not_configured")
+        wav_bytes = audio_file_bytes(audio)
+        if not wav_bytes:
+            result = SpeakerIdentityResult(
+                status="unavailable",
+                policy=self._speaker_id_policy_default,
+                active=False,
+                reason="no_audio",
+                duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            )
+            self._record_speaker_identity_event(audio, result)
+            return result
+        try:
+            response = self._speaker_id_client.identify(
+                {
+                    "schema_version": 1,
+                    "request_id": f"speaker-identify-{audio.session_id}",
+                    "audio": {
+                        "sample_id": f"{audio.session_id}-turn",
+                        "audio_base64": base64.b64encode(wav_bytes).decode("ascii"),
+                        "sample_rate_hz": audio.sample_rate_hz,
+                        "encoding": "wav",
+                    },
+                }
+            )
+            result = _speaker_identity_result_from_response(
+                response,
+                policy=self._speaker_id_policy_default,
+                duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            )
+            self._record_speaker_identity_event(audio, result)
+            return result
+        except Exception as exc:
+            result = SpeakerIdentityResult(
+                status="unavailable",
+                policy=self._speaker_id_policy_default,
+                active=False,
+                reason="service_error",
+                duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+                error=str(exc),
+            )
+            self._record_speaker_identity_event(audio, result)
+            return result
+
+    def _speaker_identity_for_policy(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        future: Future[SpeakerIdentityResult] | None,
+        policy: str,
+        current: SpeakerIdentityResult | None,
+    ) -> SpeakerIdentityResult | None:
+        policy = _normalize_speaker_identity_policy(policy)
+        if policy == "forbidden":
+            return SpeakerIdentityResult(status="skipped", policy=policy, reason="policy_forbidden")
+        if not self._speaker_id_enabled:
+            return SpeakerIdentityResult(status="disabled", policy=policy, reason="disabled")
+        if self._speaker_id_endpoint_scope and audio.endpoint_id not in self._speaker_id_endpoint_scope:
+            return SpeakerIdentityResult(status="skipped", policy=policy, reason="endpoint_out_of_scope")
+        if current is not None and current.status not in {"pending"}:
+            return replace(current, policy=policy)
+        if future is None:
+            return SpeakerIdentityResult(status="unavailable", policy=policy, reason="not_started")
+        timeout = self._speaker_id_timeout_s if policy == "required" else 0
+        try:
+            result = future.result(timeout=timeout)
+            return replace(result, policy=policy)
+        except FutureTimeoutError:
+            if policy == "required":
+                return SpeakerIdentityResult(status="timeout", policy=policy, active=True, reason="timeout")
+            return SpeakerIdentityResult(status="pending", policy=policy, active=True, reason="not_ready")
+
+    def _speaker_identity_policy(
+        self,
+        *,
+        text: str | None,
+        command: str | None,
+        metadata: dict[str, Any] | None,
+    ) -> str:
+        if not self._speaker_id_enabled:
+            return "forbidden"
+        if isinstance(metadata, dict):
+            raw_policy = metadata.get("speaker_identity_policy")
+            if isinstance(raw_policy, str):
+                return _normalize_speaker_identity_policy(raw_policy)
+        normalized_command = str(command or "").strip().lower()
+        if normalized_command.startswith(("timer.", "endpoint.", "playback.")) or normalized_command in {"voice.time.query"}:
+            return "not_required"
+        normalized_text = re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+        if _text_requires_speaker_identity(normalized_text):
+            return "required"
+        return self._speaker_id_policy_default
+
+    def _speaker_identity_blocks_required_policy(
+        self,
+        policy: str,
+        speaker_identity: SpeakerIdentityResult | None,
+    ) -> bool:
+        if policy != "required":
+            return False
+        if speaker_identity is None:
+            return True
+        return speaker_identity.status not in {"identified", "verified"} or not speaker_identity.speaker_public_id
+
+    def _speaker_identity_clarification_response(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        transcript_text: str | None,
+        speaker_identity: SpeakerIdentityResult | None,
+    ) -> AssistantTurnResponse:
+        reason = speaker_identity.reason if speaker_identity else "speaker_identity_required"
+        return AssistantTurnResponse(
+            endpoint_id=audio.endpoint_id,
+            session_id=audio.session_id,
+            heard_text=transcript_text or "",
+            reply_text="Who is this?",
+            spoken_text="Who is this?",
+            handled_locally=True,
+            command="speaker.identity.required",
+            device_state="speaking",
+            provider_id="speaker_id_policy",
+            provider_metadata={
+                "speaker_identity_policy": "required",
+                "speaker_identity_status": speaker_identity.status if speaker_identity else "missing",
+                "speaker_identity_reason": reason,
+            },
+            conversation_followup={
+                "type": "speaker_identity_required",
+                "status": speaker_identity.status if speaker_identity else "missing",
+                "reason": reason,
+            },
+        )
+
+    def _assistant_request(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        text: str,
+        speaker_policy: str,
+        speaker_identity: SpeakerIdentityResult | None,
+    ) -> AssistantTurnRequest:
+        include_speaker = (
+            speaker_identity is not None
+            and speaker_identity.status in {"identified", "verified"}
+            and speaker_policy != "forbidden"
+            and (speaker_policy == "required" or self._speaker_id_personalization_enabled)
+        )
+        return AssistantTurnRequest(
+            endpoint_id=audio.endpoint_id,
+            session_id=audio.session_id,
+            text=text,
+            speaker_identity=speaker_identity.as_context() if include_speaker else None,
+            speaker_identity_policy=speaker_policy,
+            speaker_personalization_enabled=self._speaker_id_personalization_enabled,
+        )
+
+    def _record_speaker_identity_event(self, audio: VoiceTurnAudioSummary, result: SpeakerIdentityResult) -> None:
+        record_voice_event(
+            "speaker_id.identified" if result.status in {"identified", "verified"} else "speaker_id.unavailable",
+            endpoint_id=audio.endpoint_id,
+            session_id=audio.session_id,
+            status=result.status,
+            policy=result.policy,
+            speaker_public_id=result.speaker_public_id,
+            display_name=result.display_name,
+            confidence=result.confidence,
+            score=result.score,
+            score_margin=result.score_margin,
+            provider=result.provider,
+            model_id=result.model_id,
+            reason=result.reason,
+            duration_ms=result.duration_ms,
+            error=result.error,
+            privacy_class="biometric",
+            contains_biometric_template=False,
+            contains_raw_audio=False,
+        )
+
     def status(self) -> dict:
         stt_status = self._stt_adapter.status()
         tts_status = self._tts_adapter.status()
@@ -1796,6 +2101,13 @@ class VoiceTurnPipeline:
                 fallback_implementation=str(tts_status.get("provider") or "unknown"),
             ),
             "endpoint_voices": dict(self._endpoint_voices),
+            "speaker_id": {
+                "enabled": self._speaker_id_enabled,
+                "policy_default": self._speaker_id_policy_default,
+                "endpoint_scope": sorted(self._speaker_id_endpoint_scope),
+                "personalization_enabled": self._speaker_id_personalization_enabled,
+                "configured": self._speaker_id_client is not None,
+            },
         }
 
     def synthesize_reply(
@@ -1844,6 +2156,67 @@ def _engine_status(*, role: str, status: dict, fallback_implementation: str) -> 
     enriched["implementation"] = provider
     enriched["implementation_health"] = health
     return enriched
+
+
+def _speaker_identity_result_from_response(
+    response: dict[str, object],
+    *,
+    policy: str,
+    duration_ms: float,
+) -> SpeakerIdentityResult:
+    status = str(response.get("status") or "unknown").strip().lower()
+    match = response.get("match") if isinstance(response.get("match"), dict) else {}
+    assert isinstance(match, dict)
+    return SpeakerIdentityResult(
+        status=status,
+        policy=policy,
+        active=True,
+        speaker_public_id=str(match.get("speaker_public_id")) if match.get("speaker_public_id") else None,
+        display_name=str(match.get("display_name")) if match.get("display_name") else None,
+        confidence=_optional_float(match.get("confidence")),
+        score=_optional_float(match.get("score")),
+        score_margin=_optional_float(match.get("score_margin")),
+        provider=str(match.get("provider")) if match.get("provider") else None,
+        model_id=str(match.get("model_id")) if match.get("model_id") else None,
+        reason=str(response.get("reason")) if response.get("reason") else None,
+        duration_ms=duration_ms,
+    )
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_speaker_identity_policy(value: str | None) -> str:
+    policy = str(value or "").strip().lower()
+    if policy in {"not_required", "use_if_ready", "required", "forbidden"}:
+        return policy
+    return "use_if_ready"
+
+
+def _text_requires_speaker_identity(normalized_text: str) -> bool:
+    if not normalized_text:
+        return False
+    required_phrases = (
+        "my calendar",
+        "my schedule",
+        "my email",
+        "my emails",
+        "my inbox",
+        "my messages",
+        "my reminders",
+        "my account",
+        "my profile",
+        "my personal",
+        "what is on my calendar",
+        "whats on my calendar",
+    )
+    return any(phrase in normalized_text for phrase in required_phrases)
 
 
 def _faster_whisper_stt_adapter_for_profile(*, settings: "Settings", profile: SttModelProfile) -> SpeechToTextAdapter:
@@ -1946,4 +2319,16 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
         stt_adapter=stt_adapter,
         tts_adapter=tts_adapter,
         endpoint_voices=settings.resolved_voice_tts_endpoint_voices(),
+        speaker_id_client=SpeakerIdServiceClient(
+            base_url=settings.resolved_voice_speaker_id_base_url(),
+            socket_path=settings.resolved_voice_speaker_id_socket_path(),
+            timeout_s=settings.voice_speaker_id_timeout_s,
+        )
+        if settings.voice_speaker_id_enabled
+        else None,
+        speaker_id_enabled=settings.voice_speaker_id_enabled,
+        speaker_id_timeout_s=settings.voice_speaker_id_timeout_s,
+        speaker_id_policy_default=settings.voice_speaker_id_policy_default,
+        speaker_id_endpoint_scope=settings.resolved_voice_speaker_id_endpoint_scope(),
+        speaker_id_personalization_enabled=settings.voice_speaker_id_personalization_enabled,
     )

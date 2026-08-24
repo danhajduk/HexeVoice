@@ -59,6 +59,19 @@ Task 234 added the first local helper service implementation.
 
 The helper persists profile metadata and embeddings only. Enrollment audio is decoded for embedding extraction and then discarded by default. HexeVoice exposes the backend proxy endpoints to UI/Core clients; the backend talks to the helper through the configured Unix socket unless an explicit debug base URL is configured.
 
+## Per-Turn Integration
+
+Task 235 integrates Speaker ID into the voice turn pipeline.
+
+- When `VOICE_SPEAKER_ID_ENABLED=true`, HexeVoice starts Speaker ID lookup and STT from the same completed VAD utterance audio in parallel.
+- Default policy is `VOICE_SPEAKER_ID_POLICY_DEFAULT=use_if_ready`, so ordinary turns do not wait for Speaker ID.
+- `VOICE_SPEAKER_ID_ENDPOINT_SCOPE` can limit lookup to a comma-separated set of endpoint IDs.
+- `VOICE_SPEAKER_ID_PERSONALIZATION_ENABLED=false` by default; identified speaker context is sent to assistant routes only when personalization is enabled or when the route requires identity.
+- Local timer, endpoint, playback, and time-query commands use `not_required` policy.
+- Personal route phrases such as calendar, schedule, email, inbox, reminders, account, and profile use `required` policy before assistant routing.
+- Required routes wait up to `VOICE_SPEAKER_ID_TIMEOUT_S`. If the speaker is unknown, low-confidence, unavailable, or timed out, HexeVoice asks "Who is this?" instead of executing the personal route.
+- Voice session history and `transcript.final` events include only redacted speaker metadata such as public ID, display name, confidence, provider, model, status, and reason. They do not include embeddings or raw audio.
+
 ## Voice Capability Declaration
 
 HexeVoice declares these task-family capabilities to Core when Speaker ID is enabled or installable:

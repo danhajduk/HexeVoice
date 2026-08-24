@@ -310,6 +310,9 @@ class AiNodeAssistantAdapter:
                     "endpoint_id": payload.endpoint_id,
                     "session_id": session_id,
                     "text": payload.text,
+                    "speaker_identity": payload.speaker_identity,
+                    "speaker_identity_policy": payload.speaker_identity_policy,
+                    "speaker_personalization_enabled": payload.speaker_personalization_enabled,
                     "context": [
                         {
                             "endpoint_id": turn.endpoint_id,
