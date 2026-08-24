@@ -585,6 +585,8 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
                 "audio_url": "/api/voice/tts/tts-kiosk/48k",
                 "stream_id": "tts-kiosk",
                 "source_event_id": "interaction-ui-play-sound-1",
+                "loop": True,
+                "mic_mode": "interrupt_only",
             },
         )
         play_sound_event = websocket.receive_json()
@@ -632,6 +634,8 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
     assert play_sound_event["payload"]["stream_id"] == "tts-kiosk"
     assert play_sound_event["payload"]["audio_url"] == "/api/voice/tts/tts-kiosk/48k"
     assert play_sound_event["payload"]["source_event_id"] == "interaction-ui-play-sound-1"
+    assert play_sound_event["payload"]["loop"] is True
+    assert play_sound_event["payload"]["mic_mode"] == "interrupt_only"
     assert playback_stop_response.status_code == 200
     assert playback_stop_response.json()["command_type"] == "playback.stop"
     assert playback_stop_event["event_type"] == "playback.stop"

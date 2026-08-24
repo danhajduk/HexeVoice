@@ -328,6 +328,8 @@ class EndpointPlaySoundCommandRequest(BaseModel):
     source_event_id: str | None = Field(default=None, max_length=160)
     interaction_id: str | None = Field(default=None, max_length=160)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    loop: bool = False
+    mic_mode: Literal["pause_for_playback", "interrupt_only"] = "pause_for_playback"
 
 
 class EndpointCommandResponse(BaseModel):

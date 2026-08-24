@@ -599,6 +599,7 @@ class VoiceSessionManager:
         interaction_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         loop: bool = False,
+        mic_mode: str = "pause_for_playback",
     ) -> dict:
         runtime = self._runtime_switch_for_endpoint(endpoint_id)
         if runtime is not None:
@@ -616,11 +617,13 @@ class VoiceSessionManager:
                     interaction_id=interaction_id,
                     metadata=metadata,
                     loop=loop,
+                    mic_mode=mic_mode,
                 )
             finally:
                 self._runtime_context.reset(token)
         requested_audio_url = str(audio_url or "").strip()
         spoken_text = str(text or "").strip()
+        playback_mic_mode = mic_mode if mic_mode in {"pause_for_playback", "interrupt_only"} else "pause_for_playback"
         command_session_id = session_id or f"{endpoint_id}-play-sound"
         tts: TtsSynthesis | None = None
         if not requested_audio_url and spoken_text:
@@ -656,6 +659,7 @@ class VoiceSessionManager:
             source_event_id=source_event_id,
             interaction_id=interaction_id,
             loop=loop,
+            mic_mode=playback_mic_mode,
             metadata=metadata or {},
         )
         payload: dict[str, Any] = {
@@ -667,6 +671,7 @@ class VoiceSessionManager:
             "interaction_id": interaction_id,
             "command": "ui.play_sound",
             "metadata": metadata or {},
+            "mic_mode": playback_mic_mode,
         }
         if loop:
             payload["loop"] = True

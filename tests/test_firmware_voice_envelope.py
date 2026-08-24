@@ -503,10 +503,16 @@ def test_firmware_replay_can_loop_audio_until_playback_stop():
     player_sources = box_player + pe_player
 
     assert "bool loop = false" in header
+    assert "bool keep_microphone_open = false" in header
     assert 'cJSON_GetObjectItem(payload, "loop")' in backend_source
+    assert 'cJSON_GetObjectItem(payload, "mic_mode")' in backend_source
     assert "cJSON_IsBool(loop) && cJSON_IsTrue(loop)" in backend_source
+    assert '"interrupt_only"' in backend_source
     assert "bool loop{false};" in player_sources
+    assert "bool keep_microphone_open{false};" in player_sources
     assert "request.loop = loop" in player_sources
+    assert "request.keep_microphone_open = keep_microphone_open" in player_sources
+    assert "request.keep_microphone_open ? false : hexe::board::pause_microphone_for_playback()" in player_sources
     assert "while (request.loop && played && !g_stop_requested" in box_player
     assert "while (loaded && !g_stop_requested && !state.muted)" in pe_player
     assert 'played && !request.loop ? hexe::PlaybackLifecycleState::kFinished' in player_sources

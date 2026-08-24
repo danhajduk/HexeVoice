@@ -49,7 +49,9 @@ optional `byte_count`, and failure `reason`/`message` when applicable. The backe
 
 Backend `endpoint.replay` commands may include `payload.loop: true` for alarm-style WAV playback. Firmware downloads
 the audio once, repeats the local buffer without additional node commands, and stops the loop on `playback.stop` or a
-local playback-stop button/mute control.
+local playback-stop button/mute control. Commands may also include `payload.mic_mode: "interrupt_only"` to keep the
+endpoint microphone open during playback; omitted or `payload.mic_mode: "pause_for_playback"` preserves the normal
+mic-pause behavior.
 
 Voice PE firmware starts a short post-playback microphone ignore window after `tts.playback.completed`.
 During that window the endpoint keeps updating its local noise floor but suppresses VAD, wake prediction,

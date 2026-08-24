@@ -1559,6 +1559,7 @@ def test_voice_session_manager_can_mark_play_sound_audio_url_as_looping():
             audio_url="/api/endpoint/media/files/timer_alarm",
             session_id="timer-completed-timer-1",
             loop=True,
+            mic_mode="interrupt_only",
         )
     )
 
@@ -1567,6 +1568,7 @@ def test_voice_session_manager_can_mark_play_sound_audio_url_as_looping():
     assert websocket.sent[0]["session_id"] == "timer-completed-timer-1"
     assert websocket.sent[0]["payload"]["audio_url"] == "/api/endpoint/media/files/timer_alarm"
     assert websocket.sent[0]["payload"]["loop"] is True
+    assert websocket.sent[0]["payload"]["mic_mode"] == "interrupt_only"
 
 
 def test_voice_session_manager_play_sound_can_synthesize_kiosk_text():

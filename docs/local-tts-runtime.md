@@ -201,6 +201,12 @@ firmware wake detection is backend-owned, so true spoken `stop` during playback
 requires a future on-device stop-word detector before it can work without
 backend STT or speaker echo risk.
 
+Play-sound commands accept `mic_mode: "interrupt_only"` to request playback
+without pausing the endpoint microphone. The default remains
+`"pause_for_playback"` for normal TTS/replay. Timer-completed WAV alarms use
+interrupt-only mode so the endpoint can keep streaming candidate stop audio
+while the firmware loops the alarm locally.
+
 Recent voice sessions are also persisted to `runtime/voice_session_history.json` by default. The history record contains session ids, endpoint ids, timestamps, turn timings, wake metadata, a `latency_points` timeline, transcript/assistant/TTS metadata, error state, and replay eligibility. It does not persist raw microphone audio; accepted wake-session WAV capture is controlled separately by the wake recording settings.
 
 The history APIs are:

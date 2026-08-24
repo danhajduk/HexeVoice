@@ -95,6 +95,7 @@ struct PlaybackRequest {
   char audio_url[192];
   char file_path[256];
   bool loop{false};
+  bool keep_microphone_open{false};
 };
 
 struct HttpBuffer {
@@ -1027,7 +1028,7 @@ void playback_task(void *arg) {
     set_playback_lifecycle(hexe::PlaybackLifecycleState::kStarted, true);
 
     std::vector<uint8_t> audio;
-    const bool mic_paused = hexe::board::pause_microphone_for_playback();
+    const bool mic_paused = request.keep_microphone_open ? false : hexe::board::pause_microphone_for_playback();
     const std::string url = resolve_audio_url(request.audio_url);
     bool loaded = false;
     bool played = false;
@@ -1153,7 +1154,12 @@ void prewarm_tts_output() {
   xTaskNotifyGive(g_prewarm_task);
 }
 
-void handle_tts_ready(const char *stream_id, const char *content_type, const char *audio_url, bool loop) {
+void handle_tts_ready(
+    const char *stream_id,
+    const char *content_type,
+    const char *audio_url,
+    bool loop,
+    bool keep_microphone_open) {
   auto &state = hexe::state();
   if (state.muted) {
     ESP_LOGI(kTag, "Ignoring TTS while muted");
@@ -1181,6 +1187,7 @@ void handle_tts_ready(const char *stream_id, const char *content_type, const cha
   copy_field(request.content_type, sizeof(request.content_type), content_type);
   copy_field(request.audio_url, sizeof(request.audio_url), audio_url);
   request.loop = loop;
+  request.keep_microphone_open = keep_microphone_open;
   if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
     ESP_LOGW(kTag, "Dropping TTS playback request because queue is unavailable");
     send_playback_event("tts.playback.failed", request, "queue_unavailable");
