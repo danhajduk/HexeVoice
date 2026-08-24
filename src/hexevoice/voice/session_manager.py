@@ -1027,6 +1027,14 @@ class VoiceSessionManager:
 
     def _handle_session_start(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         if self._active_session is not None:
+            if self._can_merge_playback_interrupt_event(event):
+                log.debug(
+                    "Reusing active playback interrupt session: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
+                    event.endpoint_id,
+                    self._active_session.session_id,
+                    event.session_id,
+                )
+                return [self._state_event("session.state", self._active_session)]
             if self._can_replace_active_session(event):
                 log.info(
                     "Replacing stale pre-audio voice session: endpoint_id=%s stale_session_id=%s incoming_session_id=%s stale_state=%s",
@@ -1176,6 +1184,15 @@ class VoiceSessionManager:
         if self._active_session.session_state in {"wake_detected", "listening"}:
             return self._chunk_count == 0
         return False
+
+    def _can_merge_playback_interrupt_event(self, event: VoiceEventEnvelope) -> bool:
+        return (
+            self._active_session is not None
+            and self._active_session.endpoint_id == event.endpoint_id
+            and self._active_session.session_state == "idle"
+            and self._active_playback_interrupt(event.endpoint_id) is not None
+            and event.event_type in {"session.start", "vad.speech_started", "audio.chunk", "audio.end"}
+        )
 
     def _handle_audio_chunk(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         session = self._require_active_session(event)
@@ -2547,6 +2564,8 @@ class VoiceSessionManager:
             )
 
         if event.session_id is not None and event.session_id != self._active_session.session_id:
+            if self._can_merge_playback_interrupt_event(event):
+                return self._active_session
             log.warning(
                 "Voice session conflict: endpoint_id=%s active_session_id=%s incoming_session_id=%s event_type=%s",
                 event.endpoint_id,
