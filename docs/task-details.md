@@ -2033,33 +2033,34 @@ Original task details:
 
 ## Task 232
 Original task details:
-- Title: Define the Speaker ID node service contract, Core capability names, privacy policy, and event schemas
+- Title: Define the HexeVoice Speaker ID service contract, Core capability names, privacy policy, and event schemas
 - Source request:
-  - Create a new Speaker ID node service.
+  - Add Speaker ID as part of the Voice node provider stack, like STT, TTS, and wake services.
   - Candidate engines/models include SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio, and NVIDIA NeMo speaker models.
 - Scope:
-  - Define Core-visible capabilities such as `voice.speaker.identify`, `voice.speaker.verify`, `voice.speaker.enroll`, and `voice.speaker.profile.manage`.
-  - Define the request/response contracts for enrollment, verification, closed-set identification, open-set unknown-speaker handling, profile deletion, and health/status.
+  - Define Voice-declared Core capabilities such as `voice.speaker.identify`, `voice.speaker.verify`, `voice.speaker.enroll`, and `voice.speaker.profile.manage`.
+  - Define the HexeVoice local API request/response contracts for enrollment, verification, closed-set identification, open-set unknown-speaker handling, profile deletion, and health/status.
   - Define MQTT/domain events for speaker enrollment started/completed/failed, speaker identified, speaker verification completed, profile deleted, and low-confidence/unknown outcomes.
   - Specify biometric privacy rules: explicit enrollment consent, local-only profile storage by default, no raw audio retention unless enabled, redacted event payloads, profile export/delete controls, and audit logging.
-  - Define how Voice Node should call the service through Core service resolution rather than hardcoded host/port configuration.
+  - Define Speaker ID as a HexeVoice-managed service/helper, not a separate Core node or Core-resolved external service.
 - Acceptance criteria:
   - Docs include exact JSON request/response examples and event schemas.
-  - The capability names align with Core service-resolution conventions.
+  - The capability names align with Core capability declaration conventions for Voice.
   - Privacy and deletion requirements are explicit enough to implement without guessing.
   - The contract supports at least enrolled-speaker identification and one-to-one verification.
 
 ## Task 233
 Original task details:
-- Title: Build the Speaker ID runtime adapter layer with benchmark support for SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio, and NVIDIA NeMo
+- Title: Build the HexeVoice Speaker ID runtime adapter layer with benchmark support for SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio, and NVIDIA NeMo
 - Source request:
   - Evaluate Speaker ID engines/models including SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio, and NVIDIA NeMo speaker models.
 - Scope:
-  - Create a provider adapter boundary that normalizes audio input, embedding extraction, similarity scoring, thresholds, model metadata, and hardware requirements.
+  - Create a HexeVoice-owned provider adapter boundary that normalizes audio input, embedding extraction, similarity scoring, thresholds, model metadata, and hardware requirements.
   - Add adapters or benchmark stubs for SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio speaker embedding/diarization paths, and NVIDIA NeMo speaker models.
   - Support CPU-first operation and optional CUDA acceleration where available.
   - Track model license, download size, memory usage, latency, embedding dimensions, sample-rate requirements, and enrollment quality constraints.
   - Add a benchmark command that runs the same local sample set against enabled providers and emits a JSON comparison artifact.
+  - Follow the existing Voice local service patterns used by STT/TTS, including import-safe optional dependencies and local runtime diagnostics.
 - Acceptance criteria:
   - A single adapter API can extract embeddings and score two utterances across provider implementations.
   - Benchmark output compares latency, memory, confidence/separation, and model metadata.
@@ -2068,44 +2069,45 @@ Original task details:
 
 ## Task 234
 Original task details:
-- Title: Implement the Speaker ID node service APIs for enrollment, verification, identification, profile management, and health reporting
+- Title: Implement the HexeVoice Speaker ID service APIs for enrollment, verification, identification, profile management, and health reporting
 - Source request:
-  - Create a new Speaker ID node service.
+  - Add Speaker ID as a Voice-owned managed service like STT/TTS/wake.
 - Scope:
-  - Create the service runtime with FastAPI endpoints for health, provider status, enrollment, identify, verify, profile list/detail/delete, and model/provider settings.
+  - Create the HexeVoice service runtime with FastAPI endpoints for provider status, enrollment, identify, verify, profile list/detail/delete, and model/provider settings.
   - Persist speaker profiles as local embeddings plus metadata, not raw audio by default.
   - Support multi-sample enrollment with quality checks and profile versioning.
   - Return `unknown` when confidence or score margin is below configured thresholds.
-  - Register the node/service with Core and declare Speaker ID capabilities, provider intelligence, model metadata, and service endpoints.
-  - Add supervisor/systemd or runtime scripts matching the existing Hexe node service patterns.
+  - Register the local Speaker ID service with Core Supervisor when it runs as an external helper process/container.
+  - Add Speaker ID capability declaration metadata, provider intelligence, model metadata, and service endpoints to the Voice node declaration.
+  - Add supervisor/systemd or runtime scripts matching the existing HexeVoice STT/TTS service patterns.
 - Acceptance criteria:
   - The service can enroll a named speaker from one or more WAV samples and identify that speaker from a later sample.
   - Profile deletion removes embeddings and metadata from local storage.
-  - `/api/health` and status endpoints report selected provider, loaded model, thresholds, profile count, and last error.
-  - Core can resolve the Speaker ID capabilities to the service.
+  - HexeVoice status endpoints report selected provider, loaded model, thresholds, profile count, and last error.
+  - Core sees Speaker ID capabilities on the Voice node capability declaration; no separate Speaker ID node registration is required.
 
 ## Task 235
 Original task details:
-- Title: Integrate HexeVoice with the Speaker ID node service for per-turn speaker lookup, speaker-aware events, and safe fallback behavior
+- Title: Integrate the HexeVoice Speaker ID service into per-turn speaker lookup, speaker-aware events, and safe fallback behavior
 - Source request:
-  - Speaker ID should be usable by the voice system as a node service.
+  - Speaker ID should be usable by the voice system as a local Voice provider service.
 - Scope:
-  - Add a HexeVoice Speaker ID client that resolves `voice.speaker.identify` through Core service resolution and calls the selected service.
+  - Add a HexeVoice Speaker ID client/service facade that calls the configured local adapter/helper service.
   - Send completed utterance audio or a privacy-approved derived clip to Speaker ID after STT capture, before assistant routing when latency budget allows.
   - Attach speaker result metadata to voice session history, assistant turn context, and reusable voice events without exposing raw biometric embeddings.
   - Keep voice turns functional when Speaker ID is unavailable, slow, unauthorized, or returns unknown/low-confidence.
   - Add configuration for enable/disable, timeout, confidence threshold, per-endpoint scope, and whether speaker identity can affect personalization.
 - Acceptance criteria:
   - A voice turn can include `speaker_id`, display name, confidence, model/provider, and unknown/low-confidence reason when available.
-  - Core service-resolution failure does not block STT, local intents, timers, or assistant routing.
+  - Speaker ID provider/helper failure does not block STT, local intents, timers, or assistant routing.
   - Speaker metadata is redacted from public logs/events unless explicitly allowed.
-  - Tests cover success, unknown speaker, service unavailable, timeout, and unauthorized resolution.
+  - Tests cover success, unknown speaker, service unavailable, timeout, and disabled/unauthorized local policy.
 
 ## Task 236
 Original task details:
 - Title: Add Speaker ID operator UI controls for consent, enrollment, profile review, deletion, diagnostics, and model/provider selection
 - Source request:
-  - Speaker ID should be operable as a local node service.
+  - Speaker ID should be operable as a HexeVoice local service.
 - Scope:
   - Add dashboard/setup controls for enabling Speaker ID, selecting provider/model, tuning thresholds, and viewing service health.
   - Add an enrollment workflow that records or uploads sample utterances, shows quality checks, asks for explicit consent, and creates a profile.
@@ -2124,7 +2126,7 @@ Original task details:
 - Source request:
   - Speaker ID should be reliable enough for local voice personalization and should not weaken privacy.
 - Scope:
-  - Add unit, API, and integration tests for enrollment, identify, verify, profile deletion, Core resolution, Voice integration, and event schemas.
+  - Add unit, API, and integration tests for enrollment, identify, verify, profile deletion, Voice capability declaration, Voice integration, and event schemas.
   - Add benchmark fixtures and scripts that can be run with local sample audio, with raw audio excluded from git by default.
   - Measure latency and memory on CPU and optional CUDA paths for the candidate providers.
   - Validate multi-endpoint behavior so speaker identity follows the speaker/audio, not the endpoint id.

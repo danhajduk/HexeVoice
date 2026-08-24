@@ -1,6 +1,8 @@
-# Speaker ID Node Service Contract
+# Speaker ID Service Contract
 
-Task 232 defines the first contract for a local Speaker ID node service. This service is separate from HexeVoice: HexeVoice captures voice turns, asks Core to resolve a Speaker ID capability, and calls the selected node service when policy allows it.
+Task 232 defines the first contract for a local Speaker ID service owned by HexeVoice. Speaker ID is part of the Voice node provider stack, like STT, TTS, and wake-word services. It can run in-process or as a locally managed helper process/container, but it is not a separate trusted node.
+
+Core sees Speaker ID through the Voice node capability declaration. HexeVoice owns the runtime configuration, service lifecycle, profile storage, local APIs, event publication, and per-turn integration.
 
 Speaker ID handles biometric voice data. The default posture is local-only processing, explicit enrollment consent, no raw-audio retention, redacted events, and operator-controlled deletion.
 
@@ -11,13 +13,15 @@ Speaker ID handles biometric voice data. The default posture is local-only proce
 - Enroll and manage speaker profiles with explicit consent.
 - Keep HexeVoice functional when Speaker ID is disabled, unavailable, unauthorized, slow, or uncertain.
 - Support multiple model/provider backends behind one service contract.
+- Register Speaker ID with the same local supervisor/runtime patterns used by STT, TTS, and wake providers.
 
 ## Non-Goals
 
 - Do not use speaker identity as authentication for security-sensitive actions in the first implementation.
 - Do not store raw enrollment or turn audio by default.
 - Do not publish speaker embeddings, voiceprints, or raw biometric features to MQTT, Core, logs, or UI payloads.
-- Do not hardcode Speaker ID host/port in HexeVoice. Use Core service resolution.
+- Do not model Speaker ID as a separate Core node or require Core service resolution for local Voice turns.
+- Do not require endpoint firmware changes for first-pass Speaker ID; backend-captured utterance audio is sufficient.
 
 ## Candidate Engines
 
@@ -32,39 +36,60 @@ The first implementation should benchmark these options behind one adapter API:
 
 Provider selection, dependency installation, model download, license display, and benchmarks are Task 233 scope. This task only defines the common service shape.
 
-## Core Capabilities
+## Voice Capability Declaration
 
-The Speaker ID node declares these task-family capabilities to Core:
+HexeVoice declares these task-family capabilities to Core when Speaker ID is enabled or installable:
 
 - `voice.speaker.identify`
 - `voice.speaker.verify`
 - `voice.speaker.enroll`
 - `voice.speaker.profile.manage`
 
-HexeVoice requests `voice.speaker.identify` through Core:
+Capability metadata should include local Voice API endpoints and provider/model status. Example declaration fragment:
 
 ```json
 {
-  "node_id": "node-voice-123",
-  "task_family": "voice.speaker.identify",
-  "type": "voice",
-  "task_context": {
-    "type": "voice",
-    "endpoint_id": "esp-box-1",
-    "privacy_class": "biometric"
+  "declared_capabilities": [
+    "voice.speaker.identify",
+    "voice.speaker.verify",
+    "voice.speaker.enroll",
+    "voice.speaker.profile.manage"
+  ],
+  "enabled_providers": ["speechbrain_ecapa_tdnn"],
+  "capability_endpoints": {
+    "voice.speaker.identify": {
+      "method": "POST",
+      "path": "/api/speaker-id/identify"
+    },
+    "voice.speaker.verify": {
+      "method": "POST",
+      "path": "/api/speaker-id/verify"
+    },
+    "voice.speaker.enroll": {
+      "method": "POST",
+      "path": "/api/speaker-id/enroll"
+    },
+    "voice.speaker.profile.manage": {
+      "method": "GET",
+      "path": "/api/speaker-id/profiles"
+    }
   },
-  "preferred_provider": "speechbrain"
+  "metadata": {
+    "privacy_class": "biometric",
+    "local_only_profiles": true,
+    "raw_audio_retained_by_default": false
+  }
 }
 ```
 
-Core returns a candidate with `provider_api_base_url`, `execution_endpoint_url`, `auth_mode`, and `required_scopes`. HexeVoice must use the resolved candidate and Core-issued authorization flow when authorization is required.
+HexeVoice does not ask Core to resolve Speaker ID for its own local voice turns. It calls its configured local Speaker ID service directly and reports the capability/provider state to Core as part of the Voice node.
 
 ## Privacy Policy
 
 Speaker ID data is biometric data.
 
 - Enrollment must record explicit consent with `consent_id`, `consent_version`, `consented_at`, and a human-readable consent label.
-- Profiles are local-only by default under the Speaker ID service runtime directory.
+- Profiles are local-only by default under the HexeVoice Speaker ID runtime directory.
 - Profiles store embeddings plus profile metadata; raw audio is deleted after embedding extraction unless `retain_audio=true` is explicitly enabled.
 - Raw audio retention requires a separate operator-visible setting and must be reversible by deletion.
 - MQTT/domain events must not include embeddings, raw audio, storage paths, or full transcripts.
@@ -74,7 +99,7 @@ Speaker ID data is biometric data.
 
 ## API Contract
 
-All endpoints are rooted at the resolved Speaker ID service base URL. Exact paths are intentionally simple and node-local:
+HexeVoice exposes the operator/runtime API under its normal API base URL. If the embedding engine runs as a helper process, these APIs remain the stable public surface and the backend calls the helper over a local socket or base URL.
 
 - `GET /api/health`
 - `GET /api/speaker-id/status`
@@ -131,7 +156,7 @@ All endpoints are rooted at the resolved Speaker ID service base URL. Exact path
 
 ### Enrollment Request
 
-`audio` is either a pullable URL from HexeVoice or multipart upload metadata from a UI workflow. The service implementation may accept multipart upload later, but the JSON contract below is the Core/Voice path.
+`audio` is either a local HexeVoice artifact URL or multipart upload metadata from a UI workflow. The service implementation may accept multipart upload later, but the JSON contract below is the Voice backend path.
 
 ```json
 {
@@ -336,7 +361,7 @@ Machine-readable schemas live in `docs/events-schemsa/`:
 Event topics should follow:
 
 - Domain topic: `hexe/events/speaker/<action>`
-- Source topic: `hexe/events/nodes/{node_id}/speaker/<action>`
+- Source topic: `hexe/events/nodes/{voice_node_id}/speaker/<action>`
 
 Required event types:
 
@@ -359,9 +384,9 @@ Example identified event:
   "occurred_at": "2026-08-24T10:05:00Z",
   "source": {
     "kind": "node",
-    "node_id": "node-speaker-id",
-    "component": "speaker-id.service",
-    "node_type": "speaker-id-node"
+    "node_id": "node-voice-123",
+    "component": "hexevoice.speaker_id",
+    "node_type": "voice-node"
   },
   "subject": {
     "family": "speaker",
@@ -391,12 +416,14 @@ Example identified event:
 
 ## HexeVoice Integration Rules
 
-- Call Speaker ID only when enabled and when Core resolves a candidate for `voice.speaker.identify`.
+- Call Speaker ID only when enabled and when the local provider/helper service is healthy.
 - Run Speaker ID after utterance capture/STT audio preparation and before assistant routing when the latency budget allows.
 - Store only redacted speaker result metadata in voice session history.
 - Include speaker context in assistant requests only when operator policy enables personalization.
 - Never block local intents, timer control, or endpoint safety actions on Speaker ID.
 - Treat `unknown`, `low_confidence`, timeout, unauthorized, and service unavailable as normal degraded states.
+- Expose Speaker ID provider health in the same operational/status surfaces as STT, TTS, and wake.
+- Include Speaker ID capabilities in Voice node capability declarations and governance refreshes when enabled or available.
 
 ## Open Decisions For Later Tasks
 

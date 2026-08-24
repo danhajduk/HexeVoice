@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://hexe.local/docs/events-schemsa/speaker-id-event.schema.json",
-  "title": "Hexe Speaker ID Domain Event",
-  "description": "MQTT/domain events produced by a Speaker ID node service and consumed by HexeVoice or other trusted nodes.",
+  "title": "HexeVoice Speaker ID Domain Event",
+  "description": "MQTT/domain events produced by the HexeVoice-owned Speaker ID service.",
   "type": "object",
   "required": ["schema_version", "event_id", "event_type", "occurred_at", "source", "subject", "data", "privacy"],
   "properties": {

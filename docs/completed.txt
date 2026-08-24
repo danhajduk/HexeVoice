@@ -257,4 +257,4 @@ Task 229: Redesign voice endpoint dashboard for multiple endpoints and productio
 Task 227: Add UDP node beacon advertising HexeVoice API and UI LAN IP endpoints - Completed on 08/23/2026 18:56
 Task 230: Add local playback and endpoint control voice intents - Completed on 08/23/2026 19:00
 Task 231: Add timer snooze voice intent for completed timer alarms - Completed on 08/23/2026 19:05
-Task 232: Define the Speaker ID node service contract, Core capability names, privacy policy, and event schemas - Completed on 08/24/2026 03:32
+Task 232: Define the HexeVoice Speaker ID service contract, Core capability names, privacy policy, and event schemas - Completed on 08/24/2026 03:32
