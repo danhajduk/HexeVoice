@@ -755,6 +755,94 @@
   gap: 10px;
 }
 
+.speaker-id-dashboard-grid {
+  grid-template-columns: minmax(340px, 0.95fr) minmax(340px, 1.05fr);
+  align-items: start;
+}
+
+.speaker-profile-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.speaker-profile-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.03);
+}
+
+.speaker-profile-card-header,
+.speaker-outcome-row,
+.speaker-sample-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.speaker-profile-title-block {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.speaker-profile-title-block h3 {
+  margin: 0;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.speaker-profile-card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.speaker-profile-card-facts span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.speaker-profile-card-facts strong {
+  color: hsl(var(--sx-text-muted));
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.speaker-outcome-list,
+.speaker-sample-list {
+  display: grid;
+  gap: 8px;
+}
+
+.speaker-outcome-row,
+.speaker-sample-row {
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.025);
+}
+
+.speaker-outcome-row > span:nth-child(2),
+.speaker-sample-row > span:first-child {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.speaker-id-audio-textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
 .intent-example-list {
   display: grid;
   gap: 5px;
@@ -1797,6 +1885,8 @@ select.field-input {
   .endpoint-overview-layout,
   .endpoint-detail-inline .endpoint-detail-grid,
   .tts-model-detail-grid,
+  .speaker-id-dashboard-grid,
+  .speaker-profile-card-facts,
   .form-grid {
     grid-template-columns: 1fr;
   }

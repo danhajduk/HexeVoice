@@ -118,6 +118,35 @@ def test_speaker_id_service_returns_unknown_without_profiles(tmp_path):
     assert response.json()["reason"] == "no_profiles"
 
 
+def test_speaker_id_service_config_and_recent_outcomes(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=False)
+    audio = wav_base64(tmp_path / "unknown.wav")
+
+    with TestClient(create_app(settings)) as client:
+        config = client.put(
+            "/config",
+            json={
+                "enabled": True,
+                "provider": "deterministic_signal",
+                "identify_min_confidence": 0.5,
+                "identify_min_margin": 0.01,
+                "verify_min_score": 0.5,
+            },
+        )
+        identified = client.post("/identify", json=identify_payload(audio))
+        status = client.get("/status")
+
+    assert config.status_code == 200
+    assert config.json()["enabled"] is True
+    assert config.json()["thresholds"]["identify_min_confidence"] == 0.5
+    assert identified.status_code == 200
+    assert identified.json()["status"] == "unknown"
+    outcomes = status.json()["recent_identification_outcomes"]
+    assert outcomes[0]["kind"] == "identify"
+    assert outcomes[0]["status"] == "unknown"
+    assert "audio_base64" not in outcomes[0]
+
+
 def test_speaker_id_service_client_can_call_unix_socket(tmp_path):
     socket_path = tmp_path / "speaker-id.sock"
     runtime_dir = tmp_path / "runtime"

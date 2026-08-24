@@ -75,6 +75,7 @@ class SpeakerVerifyRequest(BaseModel):
 
 
 class SpeakerIdConfigRequest(BaseModel):
+    enabled: bool | None = None
     provider: str | None = None
     identify_min_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     identify_min_margin: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -142,7 +143,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         verify_min_score=app_settings.voice_speaker_id_verify_min_score,
     )
     adapter = create_speaker_id_adapter(app_settings.voice_speaker_id_provider)
+    enabled = app_settings.voice_speaker_id_enabled
     last_error: str | None = None
+    recent_identification_outcomes: list[dict[str, Any]] = []
 
     def service_status() -> dict[str, Any]:
         status = adapter.status()
@@ -152,7 +155,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "ready": bool(status.get("available")) or adapter.metadata.provider_id == "deterministic_signal",
             "healthy": bool(status.get("healthy")) or adapter.metadata.provider_id == "deterministic_signal",
             "configured": True,
-            "enabled": app_settings.voice_speaker_id_enabled,
+            "enabled": enabled,
             "version": app_settings.node_software_version,
             "service": "hexevoice-speaker-id",
             "provider": adapter.metadata.provider_id,
@@ -176,7 +179,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "profiles_count": len(store.profiles()),
             "last_error": last_error,
             "provider_status": status,
+            "recent_identification_outcomes": list(recent_identification_outcomes),
         }
+
+    def record_identification_outcome(kind: str, request_id: str | None, result: dict[str, Any]) -> None:
+        outcome = {
+            "kind": kind,
+            "request_id": request_id,
+            "status": result.get("status"),
+            "reason": result.get("reason"),
+            "recorded_at": datetime.now(UTC).isoformat(),
+        }
+        match = result.get("match")
+        if isinstance(match, dict):
+            outcome["match"] = {
+                key: match.get(key)
+                for key in (
+                    "profile_id",
+                    "speaker_public_id",
+                    "display_name",
+                    "confidence",
+                    "score",
+                    "score_margin",
+                    "provider",
+                    "model_id",
+                )
+            }
+        recent_identification_outcomes.insert(0, outcome)
+        del recent_identification_outcomes[12:]
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -210,7 +240,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.put("/config")
     async def update_config(payload: SpeakerIdConfigRequest) -> dict[str, Any]:
-        nonlocal adapter, thresholds, last_error
+        nonlocal adapter, thresholds, enabled, last_error
+        if payload.enabled is not None:
+            enabled = payload.enabled
         if payload.provider:
             adapter = create_speaker_id_adapter(payload.provider)
         thresholds = SpeakerThresholds(
@@ -248,6 +280,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/identify")
     async def identify(payload: SpeakerIdentifyRequest) -> dict[str, Any]:
         nonlocal last_error
+        if not enabled:
+            result = {"status": "disabled", "match": None, "reason": "service_disabled"}
+            record_identification_outcome("identify", payload.request_id, result)
+            return {"schema_version": 1, "request_id": payload.request_id, **result}
         try:
             candidate = _embedding_from_sample(payload.audio)
             result = _identify_embedding(candidate, store.profiles(), _thresholds_from_payload(payload.thresholds, thresholds))
@@ -255,11 +291,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             last_error = str(exc)
             raise _http_error_for_exception(exc) from exc
         last_error = None
+        record_identification_outcome("identify", payload.request_id, result)
         return {"schema_version": 1, "request_id": payload.request_id, **result}
 
     @app.post("/verify")
     async def verify(payload: SpeakerVerifyRequest) -> dict[str, Any]:
         nonlocal last_error
+        if not enabled:
+            result = {"status": "disabled", "verified": False, "reason": "service_disabled", "match": None}
+            record_identification_outcome("verify", payload.request_id, result)
+            return {"schema_version": 1, "request_id": payload.request_id, **result}
         try:
             candidate = _embedding_from_sample(payload.audio)
             result = _verify_embedding(candidate, store.profiles(), payload, _thresholds_from_payload(payload.thresholds, thresholds))
@@ -267,6 +308,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             last_error = str(exc)
             raise _http_error_for_exception(exc) from exc
         last_error = None
+        record_identification_outcome("verify", payload.request_id, result)
         return {"schema_version": 1, "request_id": payload.request_id, **result}
 
     @app.get("/profiles")

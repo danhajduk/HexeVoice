@@ -54,7 +54,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 236: Add Speaker ID operator UI controls for consent, enrollment, profile review, deletion, diagnostics, and model/provider selection
 [TODO] Task 237: Validate Speaker ID accuracy, latency, privacy, and multi-endpoint behavior with tests, docs, and benchmark artifacts
 
 **********************************************************************************************

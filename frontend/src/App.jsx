@@ -32,6 +32,7 @@ import { NodeHealthStripCard } from "./features/dashboard/cards/NodeHealthStripC
 import { OverviewDashboardSection } from "./features/dashboard/OverviewDashboardSection";
 import { VoiceEndpointDashboardSection } from "./features/dashboard/VoiceEndpointDashboardSection";
 import { VoiceIntentsDashboardSection } from "./features/dashboard/VoiceIntentsDashboardSection";
+import { SpeakerIdDashboardSection } from "./features/dashboard/SpeakerIdDashboardSection";
 import { TtsProviderDashboardSection } from "./features/dashboard/TtsProviderDashboardSection";
 import { RuntimeDashboardSection } from "./features/dashboard/RuntimeDashboardSection";
 import { PlaceholderDashboardSection } from "./features/dashboard/PlaceholderDashboardSection";
@@ -755,6 +756,10 @@ export default function App() {
 
     if (dashboardSection === "intents") {
       return <VoiceIntentsDashboardSection voiceIntents={voiceIntents} onRefresh={refresh} />;
+    }
+
+    if (dashboardSection === "speaker-id") {
+      return <SpeakerIdDashboardSection onRefresh={refresh} />;
     }
 
     if (dashboardSection === "providers") {

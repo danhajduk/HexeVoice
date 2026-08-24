@@ -25,6 +25,13 @@ export function DashboardSidebarCard({ dashboardSection, openDashboard }) {
         </button>
         <button
           type="button"
+          className={`btn operational-nav-btn ${dashboardSection === "speaker-id" ? "btn-primary" : ""}`}
+          onClick={() => openDashboard("speaker-id")}
+        >
+          Speaker ID
+        </button>
+        <button
+          type="button"
           className={`btn operational-nav-btn ${dashboardSection === "providers" ? "btn-primary" : ""}`}
           onClick={() => openDashboard("providers")}
         >

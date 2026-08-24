@@ -139,12 +139,23 @@ HexeVoice exposes the operator/runtime API under its normal API base URL. If the
 
 - `GET /api/health`
 - `GET /api/speaker-id/status`
+- `PUT /api/speaker-id/config`
 - `POST /api/speaker-id/enroll`
 - `POST /api/speaker-id/identify`
 - `POST /api/speaker-id/verify`
 - `GET /api/speaker-id/profiles`
 - `GET /api/speaker-id/profiles/{profile_id}`
 - `DELETE /api/speaker-id/profiles/{profile_id}`
+
+## Operator UI
+
+The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-id`.
+
+- Configuration controls show helper health, enabled state, provider, model metadata, transport, thresholds, and raw-audio retention state.
+- Enrollment accepts local WAV uploads or pasted WAV base64, records explicit consent metadata, and stores local biometric templates with `retention_policy=embeddings_only`.
+- Profile cards show display name, public speaker id, sample count, provider/model, version, labels, updated time, and metadata export.
+- Profile deletion uses a confirmation step and removes the local template from future identification candidates.
+- Diagnostics show provider status, last error, unknown/low-confidence outcome counts, and the most recent privacy-safe identify/verify outcomes.
 
 ## Service Transport
 

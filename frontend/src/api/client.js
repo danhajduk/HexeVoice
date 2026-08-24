@@ -271,6 +271,26 @@ export async function getVoiceStatus() {
   return fetchJson("/api/voice/status");
 }
 
+export async function getSpeakerIdStatus() {
+  return fetchJson("/api/speaker-id/status");
+}
+
+export async function updateSpeakerIdConfig(payload) {
+  return sendJson("/api/speaker-id/config", { method: "PUT", body: payload });
+}
+
+export async function getSpeakerIdProfiles() {
+  return fetchJson("/api/speaker-id/profiles");
+}
+
+export async function enrollSpeakerIdProfile(payload) {
+  return sendJson("/api/speaker-id/enroll", { body: payload });
+}
+
+export async function deleteSpeakerIdProfile(profileId) {
+  return sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" });
+}
+
 export async function getTtsSettings() {
   return fetchJson("/api/tts/settings");
 }
