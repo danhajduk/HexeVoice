@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/events-schemsa/speaker-id-common.schema.json",
+  "title": "Hexe Speaker ID Event Common Definitions",
+  "type": "object",
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "endpoint_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profile_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "speaker_public_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "provider": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "score": {
+      "type": "number"
+    },
+    "speaker_status": {
+      "type": "string",
+      "enum": ["started", "enrolled", "failed", "identified", "verified", "rejected", "unknown", "low_confidence", "deleted"]
+    },
+    "unknown_reason": {
+      "type": "string",
+      "enum": [
+        "below_min_confidence",
+        "below_min_margin",
+        "no_profiles",
+        "no_voice_detected",
+        "poor_audio_quality",
+        "service_unavailable",
+        "unauthorized",
+        "timeout",
+        "unknown"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": ["node_id", "component"],
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "node_id": {
+          "$ref": "#/$defs/node_id"
+        },
+        "component": {
+          "type": "string",
+          "minLength": 1
+        },
+        "node_type": {
+          "type": ["string", "null"]
+        },
+        "topic": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "subject": {
+      "type": "object",
+      "required": ["family", "record_id"],
+      "properties": {
+        "family": {
+          "const": "speaker"
+        },
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "domain_topic": {
+          "type": "string"
+        },
+        "source_topic": {
+          "type": "string"
+        },
+        "dedupe_key": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["classification", "redaction", "contains_biometric_template", "contains_raw_audio"],
+      "properties": {
+        "classification": {
+          "const": "biometric"
+        },
+        "redaction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contains_biometric_template": {
+          "const": false
+        },
+        "contains_raw_audio": {
+          "const": false
+        },
+        "contains_transcript": {
+          "type": "boolean"
+        },
+        "retention_policy": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,340 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/docs/events-schemsa/speaker-id-event.schema.json",
+  "title": "Hexe Speaker ID Domain Event",
+  "description": "MQTT/domain events produced by a Speaker ID node service and consumed by HexeVoice or other trusted nodes.",
+  "type": "object",
+  "required": ["schema_version", "event_id", "event_type", "occurred_at", "source", "subject", "data", "privacy"],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "event_id": {
+      "$ref": "speaker-id-common.schema.json#/$defs/event_id"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "speaker.enrollment.started",
+        "speaker.enrollment.completed",
+        "speaker.enrollment.failed",
+        "speaker.identified",
+        "speaker.verification.completed",
+        "speaker.profile.deleted",
+        "speaker.unknown",
+        "speaker.low_confidence"
+      ]
+    },
+    "occurred_at": {
+      "$ref": "speaker-id-common.schema.json#/$defs/timestamp"
+    },
+    "source": {
+      "$ref": "speaker-id-common.schema.json#/$defs/source"
+    },
+    "subject": {
+      "$ref": "speaker-id-common.schema.json#/$defs/subject"
+    },
+    "routing": {
+      "$ref": "speaker-id-common.schema.json#/$defs/routing"
+    },
+    "data": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/enrollment_started_data"
+        },
+        {
+          "$ref": "#/$defs/enrollment_completed_data"
+        },
+        {
+          "$ref": "#/$defs/enrollment_failed_data"
+        },
+        {
+          "$ref": "#/$defs/identified_data"
+        },
+        {
+          "$ref": "#/$defs/verification_completed_data"
+        },
+        {
+          "$ref": "#/$defs/profile_deleted_data"
+        },
+        {
+          "$ref": "#/$defs/unknown_data"
+        },
+        {
+          "$ref": "#/$defs/low_confidence_data"
+        }
+      ]
+    },
+    "privacy": {
+      "$ref": "speaker-id-common.schema.json#/$defs/privacy"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "warning", "error"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "normal", "high"]
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "base_data": {
+      "type": "object",
+      "required": ["request_id", "status", "provider", "model_id"],
+      "properties": {
+        "request_id": {
+          "$ref": "speaker-id-common.schema.json#/$defs/request_id"
+        },
+        "endpoint_id": {
+          "$ref": "speaker-id-common.schema.json#/$defs/endpoint_id"
+        },
+        "session_id": {
+          "$ref": "speaker-id-common.schema.json#/$defs/session_id"
+        },
+        "status": {
+          "$ref": "speaker-id-common.schema.json#/$defs/speaker_status"
+        },
+        "provider": {
+          "$ref": "speaker-id-common.schema.json#/$defs/provider"
+        },
+        "model_id": {
+          "$ref": "speaker-id-common.schema.json#/$defs/model_id"
+        },
+        "latency_ms": {
+          "type": "number",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "profile_fields": {
+      "type": "object",
+      "required": ["profile_id", "speaker_public_id"],
+      "properties": {
+        "profile_id": {
+          "$ref": "speaker-id-common.schema.json#/$defs/profile_id"
+        },
+        "speaker_public_id": {
+          "$ref": "speaker-id-common.schema.json#/$defs/speaker_public_id"
+        },
+        "display_name": {
+          "$ref": "speaker-id-common.schema.json#/$defs/display_name"
+        }
+      },
+      "additionalProperties": true
+    },
+    "score_fields": {
+      "type": "object",
+      "properties": {
+        "confidence": {
+          "$ref": "speaker-id-common.schema.json#/$defs/confidence"
+        },
+        "score": {
+          "$ref": "speaker-id-common.schema.json#/$defs/score"
+        },
+        "score_margin": {
+          "type": "number"
+        },
+        "threshold": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "enrollment_started_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "$ref": "#/$defs/profile_fields"
+        },
+        {
+          "type": "object",
+          "required": ["status", "consent_id", "sample_count"],
+          "properties": {
+            "status": {
+              "const": "started"
+            },
+            "consent_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "sample_count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    },
+    "enrollment_completed_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "$ref": "#/$defs/profile_fields"
+        },
+        {
+          "type": "object",
+          "required": ["status", "sample_count"],
+          "properties": {
+            "status": {
+              "const": "enrolled"
+            },
+            "sample_count": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      ]
+    },
+    "enrollment_failed_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "type": "object",
+          "required": ["status", "reason"],
+          "properties": {
+            "status": {
+              "const": "failed"
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "identified_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "$ref": "#/$defs/profile_fields"
+        },
+        {
+          "$ref": "#/$defs/score_fields"
+        },
+        {
+          "type": "object",
+          "required": ["endpoint_id", "session_id", "status", "confidence"],
+          "properties": {
+            "status": {
+              "const": "identified"
+            }
+          }
+        }
+      ]
+    },
+    "verification_completed_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "$ref": "#/$defs/score_fields"
+        },
+        {
+          "type": "object",
+          "required": ["status", "claimed_profile_id", "matched", "confidence"],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["verified", "rejected"]
+            },
+            "claimed_profile_id": {
+              "$ref": "speaker-id-common.schema.json#/$defs/profile_id"
+            },
+            "matched": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "profile_deleted_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "type": "object",
+          "required": ["status", "profile_id", "deleted_at"],
+          "properties": {
+            "status": {
+              "const": "deleted"
+            },
+            "profile_id": {
+              "$ref": "speaker-id-common.schema.json#/$defs/profile_id"
+            },
+            "speaker_public_id": {
+              "$ref": "speaker-id-common.schema.json#/$defs/speaker_public_id"
+            },
+            "deleted_at": {
+              "$ref": "speaker-id-common.schema.json#/$defs/timestamp"
+            },
+            "deleted_items": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      ]
+    },
+    "unknown_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "$ref": "#/$defs/score_fields"
+        },
+        {
+          "type": "object",
+          "required": ["endpoint_id", "session_id", "status", "unknown_reason"],
+          "properties": {
+            "status": {
+              "const": "unknown"
+            },
+            "unknown_reason": {
+              "$ref": "speaker-id-common.schema.json#/$defs/unknown_reason"
+            }
+          }
+        }
+      ]
+    },
+    "low_confidence_data": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/base_data"
+        },
+        {
+          "$ref": "#/$defs/score_fields"
+        },
+        {
+          "type": "object",
+          "required": ["endpoint_id", "session_id", "status", "unknown_reason", "confidence"],
+          "properties": {
+            "status": {
+              "const": "low_confidence"
+            },
+            "unknown_reason": {
+              "$ref": "speaker-id-common.schema.json#/$defs/unknown_reason"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

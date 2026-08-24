@@ -5,10 +5,12 @@ from pathlib import Path
 EVENT_SCHEMA_DIR = Path("docs/events-schemsa")
 
 
-def test_timer_event_schemas_are_valid_json_documents():
+def test_event_schemas_are_valid_json_documents():
     schema_paths = sorted(EVENT_SCHEMA_DIR.glob("*.schema.json"))
 
     assert {path.name for path in schema_paths} == {
+        "speaker-id-common.schema.json",
+        "speaker-id-event.schema.json",
         "timer-common.schema.json",
         "timer-request-event.schema.json",
         "timer-response-event.schema.json",
@@ -68,3 +70,33 @@ def test_timer_snapshot_allows_parent_endpoint_on_status_lists():
     schema = json.loads((EVENT_SCHEMA_DIR / "timer-common.schema.json").read_text(encoding="utf-8"))
 
     assert schema["$defs"]["timer_snapshot"]["required"] == ["timer_id"]
+
+
+def test_speaker_id_event_schema_lists_required_event_types():
+    schema = json.loads((EVENT_SCHEMA_DIR / "speaker-id-event.schema.json").read_text(encoding="utf-8"))
+
+    assert schema["properties"]["event_type"]["enum"] == [
+        "speaker.enrollment.started",
+        "speaker.enrollment.completed",
+        "speaker.enrollment.failed",
+        "speaker.identified",
+        "speaker.verification.completed",
+        "speaker.profile.deleted",
+        "speaker.unknown",
+        "speaker.low_confidence",
+    ]
+    assert schema["properties"]["privacy"]["$ref"] == "speaker-id-common.schema.json#/$defs/privacy"
+    identified_required = schema["$defs"]["identified_data"]["allOf"][3]["required"]
+    assert "endpoint_id" in identified_required
+    assert "session_id" in identified_required
+    assert "confidence" in identified_required
+
+
+def test_speaker_id_common_schema_forbids_biometric_payload_leakage_flags():
+    schema = json.loads((EVENT_SCHEMA_DIR / "speaker-id-common.schema.json").read_text(encoding="utf-8"))
+
+    privacy = schema["$defs"]["privacy"]
+    assert privacy["required"] == ["classification", "redaction", "contains_biometric_template", "contains_raw_audio"]
+    assert privacy["properties"]["classification"]["const"] == "biometric"
+    assert privacy["properties"]["contains_biometric_template"]["const"] is False
+    assert privacy["properties"]["contains_raw_audio"]["const"] is False
