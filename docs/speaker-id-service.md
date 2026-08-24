@@ -417,7 +417,7 @@ Example identified event:
 ## HexeVoice Integration Rules
 
 - Call Speaker ID only when enabled and when the local provider/helper service is healthy.
-- Run Speaker ID after utterance capture/STT audio preparation and before assistant routing when the latency budget allows.
+- Run Speaker ID and STT in parallel from the same completed VAD/utterance audio.
 - Store only redacted speaker result metadata in voice session history.
 - Include speaker context in assistant requests only when operator policy enables personalization.
 - Never block local intents, timer control, or endpoint safety actions on Speaker ID.
@@ -425,13 +425,51 @@ Example identified event:
 - Expose Speaker ID provider health in the same operational/status surfaces as STT, TTS, and wake.
 - Include Speaker ID capabilities in Voice node capability declarations and governance refreshes when enabled or available.
 
+## Parallel Turn Flow
+
+Speaker ID must not sit in front of STT. After microphone capture and VAD produce a completed utterance audio segment, HexeVoice fans the same audio out to Speaker ID and STT at the same time:
+
+```text
+                   Speaker ID -> Dan / 0.91
+                  /
+Mic -> VAD -> audio
+                  \
+                   STT -> "turn on my office lights"
+
+                both results enter
+
+              Interaction Router
+                    |
+        speaker=Dan + transcribed text
+```
+
+The interaction router decides whether to wait for Speaker ID based on the matched intent, assistant route, or tool/action policy.
+
+| Utterance | STT Result | Speaker ID Need | Router Behavior |
+| --- | --- | --- | --- |
+| "What is the time?" | `voice.time.query` | Not required | Execute the local intent as soon as STT identifies it. Speaker ID may finish later and be recorded as diagnostic metadata only. |
+| "Turn on my office lights" | `home.office_lights.on` | Optional or policy-driven | Execute if policy allows household/endpoint context without identity; include speaker metadata if it is already available. |
+| "What's on my calendar?" | personal assistant/calendar route | Required | Wait for Speaker ID up to the configured timeout. If identified, call the personal route with `speaker=Dan`. If unknown, ask a follow-up such as "Who is this?" |
+| "Stop" during playback | `playback.stop` | Never required | Execute immediately and do not wait for Speaker ID. |
+
+Speaker requirement is an explicit policy value, not inferred only from text:
+
+- `speaker_identity_policy: "not_required"`: never wait for Speaker ID.
+- `speaker_identity_policy: "use_if_ready"`: do not block, but attach speaker metadata if the result is already available.
+- `speaker_identity_policy: "required"`: wait until Speaker ID returns identified/verified or timeout/unknown.
+- `speaker_identity_policy: "forbidden"`: do not call or attach Speaker ID for this turn.
+
+If Speaker ID is required and the result is `unknown`, `low_confidence`, timed out, disabled, or unauthorized, the router must not execute the personal action. It should enter a clarification state and ask who is speaking, then either start an enrollment/verification flow or fail closed according to policy.
+
+The STT result remains authoritative for intent selection. Speaker ID only supplies speaker context and policy gating for routes that require identity.
+
 ## Open Decisions For Later Tasks
 
 - Which provider becomes the default after local benchmark results.
 - Whether profile embeddings should be encrypted at rest by default.
 - Whether enrollment should require multiple samples before a profile becomes active.
-- Whether speaker identity may influence assistant personalization automatically or only after operator opt-in.
 - Whether diarization should be part of the first runtime or remain a pyannote-specific later extension.
+- Exact default mapping from built-in intents and AI Node routes to `speaker_identity_policy`.
 
 ## External References
 

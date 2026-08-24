@@ -2093,15 +2093,22 @@ Original task details:
   - Speaker ID should be usable by the voice system as a local Voice provider service.
 - Scope:
   - Add a HexeVoice Speaker ID client/service facade that calls the configured local adapter/helper service.
-  - Send completed utterance audio or a privacy-approved derived clip to Speaker ID after STT capture, before assistant routing when latency budget allows.
+  - Fan completed VAD/utterance audio out to STT and Speaker ID in parallel.
+  - Add an interaction-router join step that combines transcribed text and speaker identity only when the matched intent, assistant route, or tool/action policy requires it.
+  - Add `speaker_identity_policy` handling with at least `not_required`, `use_if_ready`, `required`, and `forbidden`.
+  - Execute intents/routes that do not require speaker identity without waiting for Speaker ID.
+  - Wait for Speaker ID only for identity-gated routes such as personal calendar access; if the speaker is unknown or low confidence, ask who is speaking instead of executing the personal route.
   - Attach speaker result metadata to voice session history, assistant turn context, and reusable voice events without exposing raw biometric embeddings.
   - Keep voice turns functional when Speaker ID is unavailable, slow, unauthorized, or returns unknown/low-confidence.
   - Add configuration for enable/disable, timeout, confidence threshold, per-endpoint scope, and whether speaker identity can affect personalization.
 - Acceptance criteria:
   - A voice turn can include `speaker_id`, display name, confidence, model/provider, and unknown/low-confidence reason when available.
+  - STT and Speaker ID are launched from the same completed utterance audio without serializing STT behind Speaker ID.
+  - `voice.time.query` and other non-personal/local intents execute without waiting for Speaker ID.
+  - Identity-gated requests such as personal calendar access wait for Speaker ID and ask a follow-up when the speaker is unknown.
   - Speaker ID provider/helper failure does not block STT, local intents, timers, or assistant routing.
   - Speaker metadata is redacted from public logs/events unless explicitly allowed.
-  - Tests cover success, unknown speaker, service unavailable, timeout, and disabled/unauthorized local policy.
+  - Tests cover parallel STT/Speaker ID execution, not-required policy, use-if-ready policy, required-known speaker, required-unknown speaker, service unavailable, timeout, and disabled/unauthorized local policy.
 
 ## Task 236
 Original task details:
