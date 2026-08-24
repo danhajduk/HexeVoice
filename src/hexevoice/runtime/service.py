@@ -298,6 +298,8 @@ class NodeRuntimeService:
     def service_status_payload(self) -> ServiceStatusResponse:
         openwakeword_state = self._openwakeword_state()
         piper_tts_state = self._piper_tts_state() if self._piper_tts_enabled() else "disabled"
+        speaker_id_health = self._speaker_id_health_payload() if self._speaker_id_enabled() else {}
+        speaker_id_state = self._speaker_id_state() if self._speaker_id_enabled() else "disabled"
         stt_health = self._external_stt_health_payload() if self._external_stt_enabled() else {}
         raw_stt_state = self._external_stt_state() if self._external_stt_enabled() else self._settings.voice_stt_provider
         stt_state = self._external_stt_effective_state(raw_stt_state, stt_health) if self._external_stt_enabled() else raw_stt_state
@@ -404,6 +406,33 @@ class NodeRuntimeService:
                     else "TTS currently runs in the backend process.",
                     "resource_scope": "docker_container" if self._piper_tts_enabled() else "backend_process",
                     "resource_usage": piper_usage if self._piper_tts_enabled() else backend_usage,
+                },
+                {
+                    "component_id": "speaker_id",
+                    "label": "Speaker ID",
+                    "status": speaker_id_state if self._speaker_id_enabled() else "disabled",
+                    "healthy": bool(speaker_id_health.get("ready"))
+                    if self._speaker_id_enabled()
+                    else False,
+                    "provider": self._settings.voice_speaker_id_provider,
+                    "service_id": self._settings.voice_speaker_id_service_id,
+                    "base_url": self._settings.resolved_voice_speaker_id_base_url()
+                    if self._speaker_id_enabled()
+                    else None,
+                    "socket_path": str(self._settings.resolved_voice_speaker_id_socket_path())
+                    if self._speaker_id_enabled()
+                    and self._settings.resolved_voice_speaker_id_socket_path() is not None
+                    else None,
+                    "port": self._settings.voice_speaker_id_service_port if self._speaker_id_enabled() else None,
+                    "model": speaker_id_health.get("model_id") or self._settings.voice_speaker_id_provider,
+                    "profiles_count": speaker_id_health.get("profiles_count"),
+                    "restart_target": self._settings.voice_speaker_id_service_id,
+                    "restart_supported": self._speaker_id_enabled(),
+                    "restart_detail": "Speaker ID is supervisor-proxied."
+                    if self._speaker_id_enabled()
+                    else "Speaker ID is disabled.",
+                    "resource_scope": "systemd_user_service" if self._speaker_id_enabled() else "disabled",
+                    "warm_model_health": speaker_id_health if self._speaker_id_enabled() else None,
                 },
             ],
             resource_usage=backend_usage,
@@ -755,6 +784,9 @@ class NodeRuntimeService:
     def _stt_control_script(self) -> Path:
         return self._resolve_control_script(self._settings.voice_stt_control_script)
 
+    def _speaker_id_control_script(self) -> Path:
+        return self._resolve_control_script(self._settings.voice_speaker_id_control_script)
+
     def _resolve_control_script(self, script: Path) -> Path:
         if script.is_absolute():
             return script
@@ -811,6 +843,9 @@ class NodeRuntimeService:
     def _external_stt_enabled(self) -> bool:
         return self._settings.voice_stt_provider == "external_faster_whisper"
 
+    def _speaker_id_enabled(self) -> bool:
+        return self._settings.voice_speaker_id_enabled
+
     def _piper_tts_state(self) -> str:
         return self._docker_container_state(
             container_name=self._settings.piper_tts_container_name,
@@ -819,6 +854,16 @@ class NodeRuntimeService:
 
     def _external_stt_state(self) -> str:
         script = self._stt_control_script()
+        if not script.exists():
+            return "control_script_missing"
+        result = self._service_command_runner([str(script), "status"])
+        if result.returncode != 0:
+            return "unknown"
+        state = (result.stdout or "").strip().splitlines()
+        return (state[0].strip().lower() if state else "") or "unknown"
+
+    def _speaker_id_state(self) -> str:
+        script = self._speaker_id_control_script()
         if not script.exists():
             return "control_script_missing"
         result = self._service_command_runner([str(script), "status"])
@@ -913,6 +958,19 @@ class NodeRuntimeService:
         payload["reload_reason"] = "config_mismatch" if payload["reload_required"] else None
         return payload
 
+    def _speaker_id_health_payload(self) -> dict[str, object]:
+        try:
+            with client_for_engine(
+                timeout=min(self._settings.voice_speaker_id_timeout_s, 2.0),
+                socket_path=self._settings.resolved_voice_speaker_id_socket_path(),
+            ) as client:
+                response = client.get(f"{self._settings.resolved_voice_speaker_id_base_url()}/health")
+                response.raise_for_status()
+                payload = response.json()
+        except Exception as exc:
+            return {"ready": False, "configured": True, "last_error": str(exc)}
+        return payload if isinstance(payload, dict) else {"ready": False, "configured": True, "last_error": "invalid_health_payload"}
+
     def _piper_tts_service_summary(self) -> dict[str, object]:
         state = self._piper_tts_state()
         process = self._docker_container_process_payload(self._settings.piper_tts_container_name)
@@ -969,6 +1027,31 @@ class NodeRuntimeService:
             "reload_required": health.get("reload_required"),
             "reload_reason": health.get("reload_reason"),
             "engine_heartbeat": heartbeat,
+            **self._service_process_fields(process),
+        }
+
+    def _speaker_id_service_summary(self) -> dict[str, object]:
+        health = self._speaker_id_health_payload()
+        state = self._speaker_id_state()
+        process = self._systemd_service_process_payload(self._settings.voice_speaker_id_service_name)
+        return {
+            "service_id": self._settings.voice_speaker_id_service_id,
+            "service_name": "Speaker ID",
+            "state": state,
+            "boot_order": 19,
+            "managed_by": "core_supervisor_service_action_proxy",
+            "systemd_service": self._settings.voice_speaker_id_service_name,
+            "systemd_scope": "user",
+            "control_script": str(self._settings.voice_speaker_id_control_script),
+            "install_supported": True,
+            "install_action": "install",
+            "base_url": self._settings.resolved_voice_speaker_id_base_url(),
+            "socket_path": str(self._settings.resolved_voice_speaker_id_socket_path())
+            if self._settings.resolved_voice_speaker_id_socket_path() is not None
+            else None,
+            "provider": self._settings.voice_speaker_id_provider,
+            "profiles_count": health.get("profiles_count"),
+            "implementation_health": health,
             **self._service_process_fields(process),
         }
 
@@ -1115,6 +1198,8 @@ class NodeRuntimeService:
             normalized_target = self._settings.piper_tts_service_id
         if normalized_target in {"stt", "stt_engine"} and self._external_stt_enabled():
             normalized_target = self._settings.voice_stt_service_id
+        if normalized_target in {"speaker", "speaker_id", "speaker-id"} and self._speaker_id_enabled():
+            normalized_target = self._settings.voice_speaker_id_service_id
         if normalized_action not in {"install", "start", "stop", "restart", "download-model", "download-models", "sync-models", "preload", "cuda-preflight", "preflight"}:
             log.warning(
                 "Rejected service action for unsupported action: target=%s action=%s",
@@ -1168,6 +1253,9 @@ class NodeRuntimeService:
         if self._external_stt_enabled():
             service_scripts[self._settings.voice_stt_service_id] = self._stt_control_script
             service_states[self._settings.voice_stt_service_id] = self._external_stt_state
+        if self._speaker_id_enabled():
+            service_scripts[self._settings.voice_speaker_id_service_id] = self._speaker_id_control_script
+            service_states[self._settings.voice_speaker_id_service_id] = self._speaker_id_state
         if normalized_target not in service_scripts:
             log.warning(
                 "Rejected service action for unsupported target: target=%s action=%s",
@@ -1263,6 +1351,8 @@ class NodeRuntimeService:
                 backend_process=backend_process,
             ),
         ]
+        if self._speaker_id_enabled():
+            services.append(self._speaker_id_service_summary())
         services.append(
             {
                 "service_id": "frontend",

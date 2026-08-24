@@ -193,6 +193,45 @@ class Settings(BaseSettings):
         default=None,
         alias="VOICE_STT_FASTER_WHISPER_TEMP_DIR",
     )
+    voice_speaker_id_enabled: bool = Field(default=False, alias="VOICE_SPEAKER_ID_ENABLED")
+    voice_speaker_id_provider: str = Field(default="deterministic_signal", alias="VOICE_SPEAKER_ID_PROVIDER")
+    voice_speaker_id_transport: Literal["unix", "tcp"] = Field(default="unix", alias="VOICE_SPEAKER_ID_TRANSPORT")
+    voice_speaker_id_base_url: str | None = Field(default=None, alias="VOICE_SPEAKER_ID_BASE_URL")
+    voice_speaker_id_service_host: str = Field(default="127.0.0.1", alias="VOICE_SPEAKER_ID_SERVICE_HOST")
+    voice_speaker_id_service_port: int = Field(default=10350, alias="VOICE_SPEAKER_ID_SERVICE_PORT")
+    voice_speaker_id_socket_path: Path | None = Field(
+        default=None,
+        validation_alias=AliasChoices("VOICE_SPEAKER_ID_SOCKET_PATH", "VOICE_SPEAKER_ID_SOCKET"),
+    )
+    voice_speaker_id_profiles_path: Path | None = Field(default=None, alias="VOICE_SPEAKER_ID_PROFILES_PATH")
+    voice_speaker_id_timeout_s: float = Field(default=5.0, alias="VOICE_SPEAKER_ID_TIMEOUT_S", gt=0)
+    voice_speaker_id_identify_min_confidence: float = Field(
+        default=0.72,
+        alias="VOICE_SPEAKER_ID_IDENTIFY_MIN_CONFIDENCE",
+        ge=0.0,
+        le=1.0,
+    )
+    voice_speaker_id_identify_min_margin: float = Field(
+        default=0.08,
+        alias="VOICE_SPEAKER_ID_IDENTIFY_MIN_MARGIN",
+        ge=0.0,
+        le=1.0,
+    )
+    voice_speaker_id_verify_min_score: float = Field(
+        default=0.75,
+        alias="VOICE_SPEAKER_ID_VERIFY_MIN_SCORE",
+        ge=0.0,
+        le=1.0,
+    )
+    voice_speaker_id_service_id: str = Field(default="speaker_id", alias="VOICE_SPEAKER_ID_SERVICE_ID")
+    voice_speaker_id_service_name: str = Field(
+        default="hexevoice-speaker-id.service",
+        alias="VOICE_SPEAKER_ID_SERVICE_NAME",
+    )
+    voice_speaker_id_control_script: Path = Field(
+        default=Path("scripts/speaker-id-control.sh"),
+        alias="VOICE_SPEAKER_ID_CONTROL_SCRIPT",
+    )
     voice_assistant_provider: Literal["local_echo", "ai_node"] = Field(
         default="local_echo",
         alias="VOICE_ASSISTANT_PROVIDER",
@@ -324,6 +363,27 @@ class Settings(BaseSettings):
         if self.voice_stt_service_socket_path is not None:
             return self.voice_stt_service_socket_path
         return self.runtime_dir / "sockets" / "stt.sock"
+
+    def resolved_voice_speaker_id_base_url(self) -> str:
+        if self.voice_speaker_id_base_url is not None:
+            return self.voice_speaker_id_base_url.rstrip("/")
+        if self.voice_speaker_id_transport == "unix":
+            return "http://hexevoice-speaker-id"
+        return f"http://{self.voice_speaker_id_service_host}:{self.voice_speaker_id_service_port}"
+
+    def resolved_voice_speaker_id_socket_path(self) -> Path | None:
+        if self.voice_speaker_id_base_url is not None:
+            return None
+        if self.voice_speaker_id_transport != "unix":
+            return None
+        if self.voice_speaker_id_socket_path is not None:
+            return self.voice_speaker_id_socket_path
+        return self.runtime_dir / "sockets" / "speaker-id.sock"
+
+    def resolved_voice_speaker_id_profiles_path(self) -> Path:
+        if self.voice_speaker_id_profiles_path is not None:
+            return self.voice_speaker_id_profiles_path
+        return self.runtime_dir / "speaker_id" / "profiles.json"
 
     def resolved_voice_wake_recording_dir(self) -> Path:
         if self.voice_wake_recording_dir is not None:

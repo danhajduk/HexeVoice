@@ -46,6 +46,19 @@ Task 233 added the first Speaker ID runtime boundary under `src/hexevoice/speake
 - Missing optional providers report `missing_optional_dependency` through `status()` and raise `SpeakerIdProviderUnavailable` during embedding extraction instead of failing at import time.
 - `scripts/benchmark-speaker-id.py` runs the same clips through selected providers and emits JSON with provider metadata, per-clip latency, embedding dimensions, and pairwise verification scores.
 
+## Helper Service Runtime
+
+Task 234 added the first local helper service implementation.
+
+- Runtime module: `python -m hexevoice.speaker_id.service`
+- Control script: `scripts/speaker-id-control.sh`
+- User systemd template: `scripts/systemd/hexevoice-speaker-id.service.in`
+- Default helper socket: `runtime/sockets/speaker-id.sock`
+- Default profile store: `runtime/speaker_id/profiles.json`
+- Backend proxy API: `/api/speaker-id/*`
+
+The helper persists profile metadata and embeddings only. Enrollment audio is decoded for embedding extraction and then discarded by default. HexeVoice exposes the backend proxy endpoints to UI/Core clients; the backend talks to the helper through the configured Unix socket unless an explicit debug base URL is configured.
+
 ## Voice Capability Declaration
 
 HexeVoice declares these task-family capabilities to Core when Speaker ID is enabled or installable:

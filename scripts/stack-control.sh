@@ -12,6 +12,7 @@ fi
 . "$ENV_FILE"
 
 STT_SERVICE_NAME="${STT_SERVICE_NAME:-hexevoice-stt.service}"
+SPEAKER_ID_SERVICE_NAME="${SPEAKER_ID_SERVICE_NAME:-hexevoice-speaker-id.service}"
 STACK_CONTROL_TIMEOUT_S="${STACK_CONTROL_TIMEOUT_S:-45}"
 
 services=("$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME")
@@ -24,6 +25,12 @@ if systemd_service_exists "$STT_SERVICE_NAME"; then
   services=("$BACKEND_SERVICE_NAME" "$STT_SERVICE_NAME" "$FRONTEND_SERVICE_NAME")
 else
   echo "Skipping $STT_SERVICE_NAME: not installed. Supervisor should install it with POST /api/services/install target=stt."
+fi
+
+if systemd_service_exists "$SPEAKER_ID_SERVICE_NAME"; then
+  services=("${services[@]:0:${#services[@]}-1}" "$SPEAKER_ID_SERVICE_NAME" "${services[-1]}")
+else
+  echo "Skipping $SPEAKER_ID_SERVICE_NAME: not installed. Supervisor should install it with POST /api/services/install target=speaker_id."
 fi
 
 require_core_services() {

@@ -781,6 +781,32 @@ def create_app(
         "last_deleted_count": 0,
     }
 
+    async def speaker_id_proxy(method: str, path: str, payload: dict | None = None) -> dict[str, object]:
+        try:
+            async with async_client_for_engine(
+                timeout=app_settings.voice_speaker_id_timeout_s,
+                socket_path=app_settings.resolved_voice_speaker_id_socket_path(),
+            ) as client:
+                response = await client.request(
+                    method,
+                    f"{app_settings.resolved_voice_speaker_id_base_url()}{path}",
+                    json=payload,
+                )
+                response.raise_for_status()
+                data = response.json()
+                return data if isinstance(data, dict) else {"payload": data}
+        except httpx.HTTPStatusError as exc:
+            detail: object = exc.response.text
+            try:
+                parsed = exc.response.json()
+                if isinstance(parsed, dict):
+                    detail = parsed.get("detail") or parsed
+            except ValueError:
+                pass
+            raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail=f"speaker_id_service_unavailable: {exc}") from exc
+
     @app.get("/health/live")
     async def health_live():
         return {"live": True}
@@ -803,13 +829,49 @@ def create_app(
     @app.post("/api/engines/heartbeat")
     async def engine_heartbeat(payload: dict[str, object]) -> dict[str, object]:
         engine_id = str(payload.get("engine_id") or payload.get("service_id") or "").strip()
-        if engine_id not in {"faster_whisper_stt", "piper_tts"}:
+        if engine_id not in {"faster_whisper_stt", "piper_tts", "speaker_id"}:
             raise HTTPException(status_code=400, detail="unsupported_engine_id")
         recorded = dict(payload)
         recorded["engine_id"] = engine_id
         recorded["received_at"] = datetime.now(UTC).isoformat()
         engine_heartbeats[engine_id] = recorded
         return {"ok": True, "engine_id": engine_id}
+
+    @app.get("/api/speaker-id/health")
+    async def speaker_id_health() -> dict[str, object]:
+        return await speaker_id_proxy("GET", "/health")
+
+    @app.get("/api/speaker-id/status")
+    async def speaker_id_status() -> dict[str, object]:
+        return await speaker_id_proxy("GET", "/status")
+
+    @app.put("/api/speaker-id/config")
+    async def speaker_id_config(payload: dict[str, object]) -> dict[str, object]:
+        return await speaker_id_proxy("PUT", "/config", dict(payload))
+
+    @app.post("/api/speaker-id/enroll")
+    async def speaker_id_enroll(payload: dict[str, object]) -> dict[str, object]:
+        return await speaker_id_proxy("POST", "/enroll", dict(payload))
+
+    @app.post("/api/speaker-id/identify")
+    async def speaker_id_identify(payload: dict[str, object]) -> dict[str, object]:
+        return await speaker_id_proxy("POST", "/identify", dict(payload))
+
+    @app.post("/api/speaker-id/verify")
+    async def speaker_id_verify(payload: dict[str, object]) -> dict[str, object]:
+        return await speaker_id_proxy("POST", "/verify", dict(payload))
+
+    @app.get("/api/speaker-id/profiles")
+    async def speaker_id_profiles() -> dict[str, object]:
+        return await speaker_id_proxy("GET", "/profiles")
+
+    @app.get("/api/speaker-id/profiles/{profile_id}")
+    async def speaker_id_profile(profile_id: str) -> dict[str, object]:
+        return await speaker_id_proxy("GET", f"/profiles/{profile_id}")
+
+    @app.delete("/api/speaker-id/profiles/{profile_id}")
+    async def speaker_id_delete_profile(profile_id: str) -> dict[str, object]:
+        return await speaker_id_proxy("DELETE", f"/profiles/{profile_id}")
 
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:

@@ -40,6 +40,7 @@ def voice_provider_ids(settings: Settings) -> list[str]:
         provider_ids.append(settings.voice_tts_provider)
     if settings.voice_wake_provider != "deterministic":
         provider_ids.append(settings.voice_wake_provider)
+    provider_ids.append(settings.voice_speaker_id_service_id)
 
     normalized: list[str] = []
     seen: set[str] = set()
@@ -296,4 +297,6 @@ class ProviderSetupService:
             blockers.append("tts_provider_required")
         if self._settings.voice_wake_provider != "deterministic" and not _provider_matches(self._settings.voice_wake_provider, enabled):
             blockers.append("wake_provider_required")
+        if self._settings.voice_speaker_id_enabled and self._settings.voice_speaker_id_service_id not in enabled:
+            blockers.append("speaker_id_provider_required")
         return blockers

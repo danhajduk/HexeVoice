@@ -9,6 +9,7 @@ from hexevoice.speaker_id.adapters import SpeakerThresholds
 from hexevoice.speaker_id.adapters import available_provider_ids
 from hexevoice.speaker_id.adapters import create_speaker_id_adapter
 from hexevoice.speaker_id.adapters import load_wav_audio
+from hexevoice.speaker_id.client import SpeakerIdServiceClient
 
 __all__ = [
     "DeterministicSignalSpeakerIdAdapter",
@@ -19,6 +20,7 @@ __all__ = [
     "SpeakerProviderMetadata",
     "SpeakerScore",
     "SpeakerThresholds",
+    "SpeakerIdServiceClient",
     "available_provider_ids",
     "create_speaker_id_adapter",
     "load_wav_audio",

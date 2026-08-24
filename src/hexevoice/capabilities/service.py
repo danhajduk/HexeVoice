@@ -18,6 +18,10 @@ VOICE_NODE_CAPABILITIES = [
     "voice.intent.register",
     "voice.intent.list",
     "voice.intent.dispatch",
+    "voice.speaker.identify",
+    "voice.speaker.verify",
+    "voice.speaker.enroll",
+    "voice.speaker.profile.manage",
 ]
 
 
@@ -276,6 +280,8 @@ class CapabilityDeclarationService:
                 model = config.get("default_voice") or self._settings.voice_tts_piper_voice or self._settings.voice_tts_model
             elif provider_id in {"openwakeword", "supervised_openwakeword"}:
                 model = config.get("default_wakeword") or self._settings.voice_wake_models or "Hexe"
+            elif provider_id == "speaker_id":
+                model = config.get("model") or self._settings.voice_speaker_id_provider
             else:
                 model = config.get("model") or provider_id
             previews.append(
@@ -320,6 +326,15 @@ class CapabilityDeclarationService:
                     "host": self._settings.voice_wake_service_host,
                     "port": self._settings.voice_wake_service_port,
                 },
+                "speaker_id": {
+                    "provider": self._settings.voice_speaker_id_provider,
+                    "base_url": self._settings.resolved_voice_speaker_id_base_url(),
+                    "socket_path": str(self._settings.resolved_voice_speaker_id_socket_path())
+                    if self._settings.resolved_voice_speaker_id_socket_path() is not None
+                    else None,
+                    "port": self._settings.voice_speaker_id_service_port,
+                    "profiles_path": str(self._settings.resolved_voice_speaker_id_profiles_path()),
+                },
             },
         }
 
@@ -356,6 +371,16 @@ class CapabilityDeclarationService:
                 "capabilities": [],
                 "runtime": runtime.get("providers", {}).get("wake") or {},
             },
+            {
+                "service_id": "speaker_id",
+                "label": "Speaker ID",
+                "role": "speaker_id",
+                "provider_id": self._provider_for_role(provider_models, "speaker_id")
+                or self._settings.voice_speaker_id_provider,
+                "enabled": any(capability.startswith("voice.speaker.") for capability in selected),
+                "capabilities": [capability for capability in selected if capability.startswith("voice.speaker.")],
+                "runtime": runtime.get("providers", {}).get("speaker_id") or {},
+            },
         ]
         for service in service_specs:
             model = models_by_provider.get(str(service["provider_id"])) or {}
@@ -391,6 +416,8 @@ class CapabilityDeclarationService:
             return "tts"
         if provider_id in {"openwakeword", "supervised_openwakeword"}:
             return "wake"
+        if provider_id == "speaker_id":
+            return "speaker_id"
         return "pipeline"
 
     @staticmethod
@@ -530,6 +557,42 @@ class CapabilityDeclarationService:
                 "request_schema": "VoiceIntentDispatchRequest",
                 "response_schema": "VoiceIntentDispatchResponse",
                 "side_effects": "dry_run_match_only",
+            },
+            "voice.speaker.identify": {
+                "transport": "http",
+                "method": "POST",
+                "path": "/api/speaker-id/identify",
+                "url": f"{base_url}/api/speaker-id/identify",
+                "request_schema": "SpeakerIdentifyRequest",
+                "response_schema": "SpeakerIdentifyResponse",
+                "privacy_class": "biometric",
+            },
+            "voice.speaker.verify": {
+                "transport": "http",
+                "method": "POST",
+                "path": "/api/speaker-id/verify",
+                "url": f"{base_url}/api/speaker-id/verify",
+                "request_schema": "SpeakerVerifyRequest",
+                "response_schema": "SpeakerVerifyResponse",
+                "privacy_class": "biometric",
+            },
+            "voice.speaker.enroll": {
+                "transport": "http",
+                "method": "POST",
+                "path": "/api/speaker-id/enroll",
+                "url": f"{base_url}/api/speaker-id/enroll",
+                "request_schema": "SpeakerEnrollRequest",
+                "response_schema": "SpeakerEnrollResponse",
+                "privacy_class": "biometric",
+                "requires_explicit_consent": True,
+            },
+            "voice.speaker.profile.manage": {
+                "transport": "http",
+                "method": "GET",
+                "path": "/api/speaker-id/profiles",
+                "url": f"{base_url}/api/speaker-id/profiles",
+                "delete_path": "/api/speaker-id/profiles/{profile_id}",
+                "privacy_class": "biometric",
             },
         }
         return {

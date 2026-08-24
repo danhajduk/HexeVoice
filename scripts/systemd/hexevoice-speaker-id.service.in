@@ -1,0 +1,7 @@
+[Unit]
+Description=HexeVoice Speaker ID
+
+[Service]
+WorkingDirectory=__ROOT_DIR__
+LimitNOFILE=65536
+ExecStart=/bin/bash -lc 'source "__ENV_FILE__"; cd "__ROOT_DIR__"; VOICE_SPEAKER_ID_ENABLED=true SPEAKER_ID_SOCKET_PATH="${SPEAKER_ID_SOCKET_PATH:-${VOICE_SPEAKER_ID_SOCKET_PATH:-runtime/sockets/speaker-id.sock}}" PYTHONPATH=src .venv/bin/python -m hexevoice.speaker_id.service'
