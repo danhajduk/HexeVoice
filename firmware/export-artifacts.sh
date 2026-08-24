@@ -70,6 +70,12 @@ PROJECT_NAME="$(awk -F'"' '/"project_name"/ {print $4; exit}' "${PROJECT_DESC_SR
 CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 GENERATED_CONFIG_SRC="${BUILD_DIR}/generated/endpoint_config.h"
 
+if [[ "${VERSION}" == *dirty* ]]; then
+  echo "Refusing to export dirty firmware version: ${VERSION}" >&2
+  echo "Commit or stash changes before building OTA/runtime firmware artifacts." >&2
+  exit 1
+fi
+
 config_string() {
   local name="$1"
   awk -F'"' -v name="${name}" '$0 ~ ("constexpr const char \\*" name " =") {print $2; exit}' "${GENERATED_CONFIG_SRC}" 2>/dev/null || true

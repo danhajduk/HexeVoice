@@ -80,6 +80,7 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     ota_source = FIRMWARE_OTA.read_text()
     ota_header = FIRMWARE_OTA_HEADER.read_text()
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    export_script = FIRMWARE_EXPORT_SCRIPT.read_text()
 
     assert "struct OtaUpdateManifest" in ota_header
     assert "verify_ota_manifest_signature" in ota_source
@@ -108,6 +109,9 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     assert 'cJSON_AddBoolToObject(ota, "active", state.ota_active)' in backend_source
     assert 'cJSON_AddStringToObject(ota, "status", state.ota_active ? "running" : "idle")' in backend_source
     assert 'cJSON_AddNumberToObject(ota, "progress_percent", state.ota_progress_percent)' in backend_source
+
+    assert '[[ "${VERSION}" == *dirty* ]]' in export_script
+    assert "Refusing to export dirty firmware version" in export_script
 
 
 def test_firmware_scaffold_modules_are_explicit_status_providers():
