@@ -53,6 +53,13 @@ required board profiles plus `SHA256SUMS` when present. A missing release should
 be treated as a retryable setup failure, not a reason to block the rest of node
 setup.
 
+`firmware/build.sh` stamps OTA artifacts with an ESP-IDF project version shaped
+like `zYYYYMMDDHHMMSS-<git-sha>`. The leading `z` and fixed UTC timestamp keep
+versions lexically sortable for firmware OTA downgrade/replay checks, including
+devices that were previously flashed with raw git-hash versions. The build
+script refuses tracked uncommitted changes by default so runtime/OTA artifacts
+do not carry `_dirty` versions.
+
 If the configured release is unavailable, `download` falls back to building the
 firmware locally with `firmware/build.sh build` when
 `HEXEVOICE_FIRMWARE_BUILD_FALLBACK=true`, which is the default. The fallback

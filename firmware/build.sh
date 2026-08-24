@@ -25,6 +25,8 @@ Environment:
   COMMON_EXPORT_DIR  Folder that receives profile-named binaries for all builds. Default: firmware/export.
   OTA_API_BASE   Backend API base URL for push mode. Default: ${OTA_API_BASE}
   ENDPOINT_ID    Endpoint id for push mode. Default: endpoint.id from config YAML.
+  FIRMWARE_PROJECT_VERSION  Explicit ESP-IDF project version. Default: zYYYYMMDDHHMMSS-<git-sha>.
+  ALLOW_DIRTY_FIRMWARE_BUILD=1  Allow building from tracked uncommitted changes. Export still rejects dirty versions.
 EOF
 }
 
@@ -88,6 +90,33 @@ profile_manifest_path() {
   echo "${RUNTIME_FIRMWARE_DIR}/manifest-${1}.json"
 }
 
+git_short_sha() {
+  git -C "${ROOT_DIR}/.." rev-parse --short HEAD 2>/dev/null || echo "nogit"
+}
+
+git_has_tracked_changes() {
+  ! git -C "${ROOT_DIR}/.." diff-index --quiet HEAD -- 2>/dev/null
+}
+
+ota_safe_project_version() {
+  if [[ -n "${FIRMWARE_PROJECT_VERSION:-}" ]]; then
+    echo "${FIRMWARE_PROJECT_VERSION}"
+    return
+  fi
+  printf 'z%s-%s\n' "$(date -u +"%Y%m%d%H%M%S")" "$(git_short_sha)"
+}
+
+require_clean_firmware_source() {
+  if [[ "${ALLOW_DIRTY_FIRMWARE_BUILD:-0}" == "1" ]]; then
+    return
+  fi
+  if git_has_tracked_changes; then
+    echo "Refusing to build OTA firmware from tracked uncommitted changes." >&2
+    echo "Commit or stash changes first, or set ALLOW_DIRTY_FIRMWARE_BUILD=1 for a local non-release build." >&2
+    exit 1
+  fi
+}
+
 validate_profile() {
   case "$1" in
     esp_box_3|ha_voice_pe)
@@ -110,8 +139,8 @@ build_profile() {
   export_dir="$(profile_export_dir "${profile}")"
   profile_app="$(profile_app_filename "${profile}")"
 
-  echo "Building firmware profile ${profile}"
-  idf.py -B "${build_dir}" -D "HEXE_BOARD_PROFILE=${profile}" build
+  echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"
+  idf.py -B "${build_dir}" -D "HEXE_BOARD_PROFILE=${profile}" -D "PROJECT_VER=${PROJECT_VERSION}" build
 
   if [[ "${EXPORT_AFTER_BUILD}" == "1" ]]; then
     HEXE_BOARD_PROFILE="${profile}" \
@@ -180,6 +209,9 @@ if [[ -z "${IDF_PATH:-}" ]]; then
 fi
 
 cd "${ROOT_DIR}"
+
+require_clean_firmware_source
+PROJECT_VERSION="$(ota_safe_project_version)"
 
 if [[ ! -f "${ROOT_DIR}/sdkconfig" ]]; then
   idf.py set-target "${TARGET}"

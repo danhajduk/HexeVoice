@@ -234,6 +234,13 @@ runtime/firmware/hexe_firmware_ha_voice_pe.bin
 
 `hexe_firmware.bin` remains the default ESP-BOX OTA artifact for compatibility. Profile-specific OTA pushes can target `hexe_firmware_esp_box_3.bin` or `hexe_firmware_ha_voice_pe.bin`. Runtime firmware binaries and generated manifests are intentionally ignored by git; `runtime/firmware/.gitkeep` keeps the directory present.
 
+OTA versions must be lexically newer than the endpoint's current version. The
+standard `firmware/build.sh` path therefore injects a timestamped project
+version such as `zYYYYMMDDHHMMSS-<git-sha>` instead of using raw git hashes.
+This avoids rejecting valid updates when a newer commit hash happens to sort
+lower than the currently installed hash. Dirty tracked worktree changes are
+blocked before OTA/runtime export so `_dirty` firmware versions are not served.
+
 Fresh hosted installs can populate `runtime/firmware` from a local export,
 artifact base URL, git repository, or GitHub release without building firmware
 on the Voice Node host:

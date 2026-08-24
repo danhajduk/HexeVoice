@@ -114,6 +114,15 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     assert "Refusing to export dirty firmware version" in export_script
 
 
+def test_firmware_build_uses_ota_safe_project_versions():
+    build_script = FIRMWARE_BUILD_SCRIPT.read_text()
+
+    assert 'printf \'z%s-%s\\n\'' in build_script
+    assert 'PROJECT_VERSION="$(ota_safe_project_version)"' in build_script
+    assert '-D "PROJECT_VER=${PROJECT_VERSION}"' in build_script
+    assert "Refusing to build OTA firmware from tracked uncommitted changes." in build_script
+
+
 def test_firmware_scaffold_modules_are_explicit_status_providers():
     app_main = FIRMWARE_APP_MAIN.read_text()
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
