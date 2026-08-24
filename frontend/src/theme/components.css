@@ -517,6 +517,28 @@
   font-size: 15px;
 }
 
+.intent-group-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.intent-group {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.018);
+}
+
+.intent-group-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
 .intent-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

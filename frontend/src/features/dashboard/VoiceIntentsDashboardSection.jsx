@@ -63,6 +63,49 @@ function formatUsage(intent) {
   return String(count);
 }
 
+const INTENT_GROUP_ORDER = ["timer", "endpoint", "playback", "voice", "other"];
+
+function groupKeyForIntent(intent) {
+  const intentPrefix = String(intent?.intent_id || "").split(".")[0]?.trim().toLowerCase();
+  const metadataFamily = String(intent?.metadata?.family || "").trim().toLowerCase();
+  const group = intentPrefix || metadataFamily || "other";
+  return group || "other";
+}
+
+function formatIntentGroupLabel(groupKey) {
+  if (!groupKey || groupKey === "other") {
+    return "Other";
+  }
+  return groupKey
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function groupIntents(intents) {
+  const groupsByKey = new Map();
+
+  intents.forEach((intent) => {
+    const key = groupKeyForIntent(intent);
+    if (!groupsByKey.has(key)) {
+      groupsByKey.set(key, { key, label: formatIntentGroupLabel(key), intents: [] });
+    }
+    groupsByKey.get(key).intents.push(intent);
+  });
+
+  return Array.from(groupsByKey.values()).sort((left, right) => {
+    const leftIndex = INTENT_GROUP_ORDER.indexOf(left.key);
+    const rightIndex = INTENT_GROUP_ORDER.indexOf(right.key);
+    const normalizedLeft = leftIndex === -1 ? INTENT_GROUP_ORDER.length : leftIndex;
+    const normalizedRight = rightIndex === -1 ? INTENT_GROUP_ORDER.length : rightIndex;
+    if (normalizedLeft !== normalizedRight) {
+      return normalizedLeft - normalizedRight;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
 function MetadataList({ intent }) {
   const metadata = intent?.metadata || {};
   const flags = [
@@ -298,6 +341,7 @@ function IntentActionResult({ result, error, mode }) {
 
 export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
   const intents = Array.isArray(voiceIntents?.intents) ? voiceIntents.intents : [];
+  const groupedIntents = groupIntents(intents);
   const registeredCount = voiceIntents?.registered_count ?? intents.length;
   const activeCount = voiceIntents?.active_count ?? intents.filter((intent) => intent.status === "active").length;
   const [testText, setTestText] = useState("set a timer for 5 minutes");
@@ -433,9 +477,24 @@ export function VoiceIntentsDashboardSection({ voiceIntents, onRefresh }) {
         {intents.length === 0 ? (
           <div className="callout callout-neutral">No registered intents found.</div>
         ) : (
-          <div className="intent-card-grid">
-            {intents.map((intent) => (
-              <IntentCard key={intent.intent_id} intent={intent} onOpen={setSelectedIntent} />
+          <div className="intent-group-stack">
+            {groupedIntents.map((group) => (
+              <section className="intent-group" key={group.key}>
+                <div className="intent-group-header">
+                  <div>
+                    <p className="panel-kicker">Intent Group</p>
+                    <h3 className="section-title">{group.label}</h3>
+                  </div>
+                  <span className="status-pill status-pill-neutral">
+                    {group.intents.filter((intent) => intent.status === "active").length}/{group.intents.length} active
+                  </span>
+                </div>
+                <div className="intent-card-grid">
+                  {group.intents.map((intent) => (
+                    <IntentCard key={intent.intent_id} intent={intent} onOpen={setSelectedIntent} />
+                  ))}
+                </div>
+              </section>
             ))}
           </div>
         )}
