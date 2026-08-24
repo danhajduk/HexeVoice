@@ -1978,3 +1978,23 @@ Original task details:
   - Service metadata contains IP-based URLs, not `hexe.local` URLs.
   - Failure to start mDNS does not prevent the backend API from starting; it surfaces a diagnostic.
   - Tests cover service metadata generation and disabled/error states; manual validation documents the expected `avahi-browse` or equivalent output.
+
+## Task 229
+Original task details:
+- Title: Redesign voice endpoint dashboard for multiple endpoints and production-built UI
+- Source request:
+  - Redesign `http://10.0.0.100:8084/#/dashboard/voice-endpoint` to support multiple endpoint devices.
+  - The UI should be built and served as the production build, not run through the Vite dev server.
+- Scope:
+  - Update the voice endpoint dashboard so it treats multiple endpoints as a first-class workflow.
+  - Show all known endpoints with online/offline state, display name/endpoint id, firmware version/update state, board profile, active session/playback state, volume/mute state, and last heartbeat metadata.
+  - Let the operator select an endpoint and view endpoint-specific detail without hiding the rest of the fleet.
+  - Ensure endpoint actions target the selected endpoint only, including volume, mute, replay, cancel/stop, OTA, media, and diagnostics where supported.
+  - Preserve useful single-endpoint behavior while avoiding UI assumptions that only one voice WebSocket endpoint exists.
+  - Build the frontend production bundle and serve/validate the production UI on port `8084`; do not rely on `npm run dev` or Vite dev-only behavior.
+- Acceptance criteria:
+  - The dashboard route renders more than one endpoint at the same time when multiple endpoints are registered.
+  - Selecting one endpoint updates detail panels and actions for that endpoint without losing fleet visibility.
+  - Offline endpoints remain visible with stale/update diagnostics and safe disabled actions.
+  - Production build succeeds, and the served UI at `http://10.0.0.100:8084/#/dashboard/voice-endpoint` reflects the built assets.
+  - Tests or targeted UI validation cover multi-endpoint rendering, endpoint selection, and action scoping.
