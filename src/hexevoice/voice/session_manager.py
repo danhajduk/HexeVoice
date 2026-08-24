@@ -363,6 +363,7 @@ class VoiceSessionManager:
                 endpoint_id=endpoint_id,
                 command_type="ota.update",
                 event_type="ota.update",
+                timeout_s=180.0,
             )
             return {"accepted": True, "request_id": request_id, "status": record["status"]}
         finally:
@@ -2557,8 +2558,10 @@ class VoiceSessionManager:
         endpoint_id: str,
         command_type: str,
         event_type: str,
+        timeout_s: float | None = None,
     ) -> dict[str, object]:
         now = datetime.now(UTC)
+        timeout_seconds = timeout_s if timeout_s is not None else self._command_timeout_s
         record: dict[str, object] = {
             "request_id": request_id,
             "endpoint_id": endpoint_id,
@@ -2568,7 +2571,7 @@ class VoiceSessionManager:
             "terminal": False,
             "created_at": now.isoformat(),
             "updated_at": now.isoformat(),
-            "timeout_at": (now.timestamp() + self._command_timeout_s),
+            "timeout_at": (now.timestamp() + timeout_seconds),
         }
         self._command_records[request_id] = record
         return record

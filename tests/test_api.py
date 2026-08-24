@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 import hashlib
 import hmac
 import io
@@ -319,6 +319,7 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
             json={"endpoint_id": "esp-box-1", "version": "0.1.1"},
         )
         event = websocket.receive_json()
+        status = client.get("/api/voice/status").json()
 
     assert response.status_code == 200
     assert response.json()["accepted"] is True
@@ -344,6 +345,10 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
         signed_payload.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
+    command = next(command for command in status["commands"] if command["command_type"] == "ota.update")
+    timeout_at = datetime.fromtimestamp(command["timeout_at"], tz=timezone.utc)
+    created_at = datetime.fromisoformat(command["created_at"])
+    assert (timeout_at - created_at).total_seconds() >= 170
 
 
 def test_firmware_ota_clear_removes_ota_command_records(tmp_path):

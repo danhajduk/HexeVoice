@@ -241,6 +241,11 @@ This avoids rejecting valid updates when a newer commit hash happens to sort
 lower than the currently installed hash. Dirty tracked worktree changes are
 blocked before OTA/runtime export so `_dirty` firmware versions are not served.
 
+OTA command records use a longer backend timeout than normal endpoint commands
+because downloading, flashing, and rebooting commonly takes more than 10
+seconds. A device can be offline briefly during reboot and still complete the
+update successfully.
+
 Fresh hosted installs can populate `runtime/firmware` from a local export,
 artifact base URL, git repository, or GitHub release without building firmware
 on the Voice Node host:
