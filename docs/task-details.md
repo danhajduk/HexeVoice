@@ -2061,6 +2061,7 @@ Original task details:
   - Track model license, download size, memory usage, latency, embedding dimensions, sample-rate requirements, and enrollment quality constraints.
   - Add a benchmark command that runs the same local sample set against enabled providers and emits a JSON comparison artifact.
   - Follow the existing Voice local service patterns used by STT/TTS, including import-safe optional dependencies and local runtime diagnostics.
+  - Keep the adapter import-safe and callable both in-process and through the Speaker ID helper service that is reached over the local Unix socket.
 - Acceptance criteria:
   - A single adapter API can extract embeddings and score two utterances across provider implementations.
   - Benchmark output compares latency, memory, confidence/separation, and model metadata.
@@ -2069,11 +2070,15 @@ Original task details:
 
 ## Task 234
 Original task details:
-- Title: Implement the HexeVoice Speaker ID service APIs for enrollment, verification, identification, profile management, and health reporting
+- Title: Implement the HexeVoice Speaker ID Unix-socket service APIs for enrollment, verification, identification, profile management, and health reporting
 - Source request:
   - Add Speaker ID as a Voice-owned managed service like STT/TTS/wake.
 - Scope:
   - Create the HexeVoice service runtime with FastAPI endpoints for provider status, enrollment, identify, verify, profile list/detail/delete, and model/provider settings.
+  - Run the helper as HTTP/JSON over a Unix domain socket by default, using `runtime/sockets/speaker-id.sock` or `VOICE_SPEAKER_ID_SOCKET_PATH`.
+  - Keep `VOICE_SPEAKER_ID_BASE_URL` as an explicit debug/fallback setting only; do not open a Speaker ID TCP listener by default.
+  - Add a HexeVoice backend client that uses `httpx` Unix-socket transport for local Speaker ID helper calls.
+  - Create the socket directory with owner-only permissions and clean up stale socket files on helper startup.
   - Persist speaker profiles as local embeddings plus metadata, not raw audio by default.
   - Support multi-sample enrollment with quality checks and profile versioning.
   - Return `unknown` when confidence or score margin is below configured thresholds.
@@ -2084,6 +2089,8 @@ Original task details:
   - The service can enroll a named speaker from one or more WAV samples and identify that speaker from a later sample.
   - Profile deletion removes embeddings and metadata from local storage.
   - HexeVoice status endpoints report selected provider, loaded model, thresholds, profile count, and last error.
+  - HexeVoice can call helper health, identify, verify, enroll, and profile APIs over the configured Unix socket without any Speaker ID TCP port.
+  - Status and health responses report the active transport mode and socket path.
   - Core sees Speaker ID capabilities on the Voice node capability declaration; no separate Speaker ID node registration is required.
 
 ## Task 235
@@ -2092,7 +2099,7 @@ Original task details:
 - Source request:
   - Speaker ID should be usable by the voice system as a local Voice provider service.
 - Scope:
-  - Add a HexeVoice Speaker ID client/service facade that calls the configured local adapter/helper service.
+  - Add a HexeVoice Speaker ID client/service facade that calls the configured local adapter/helper service through the Unix socket by default.
   - Fan completed VAD/utterance audio out to STT and Speaker ID in parallel.
   - Add an interaction-router join step that combines transcribed text and speaker identity only when the matched intent, assistant route, or tool/action policy requires it.
   - Add `speaker_identity_policy` handling with at least `not_required`, `use_if_ready`, `required`, and `forbidden`.

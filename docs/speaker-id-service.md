@@ -99,7 +99,7 @@ Speaker ID data is biometric data.
 
 ## API Contract
 
-HexeVoice exposes the operator/runtime API under its normal API base URL. If the embedding engine runs as a helper process, these APIs remain the stable public surface and the backend calls the helper over a local socket or base URL.
+HexeVoice exposes the operator/runtime API under its normal API base URL. If the embedding engine runs as a helper process, these APIs remain the stable public surface and the backend calls the helper over a Unix domain socket by default. A localhost TCP base URL is allowed only as an explicit debug/fallback mode.
 
 - `GET /api/health`
 - `GET /api/speaker-id/status`
@@ -110,6 +110,20 @@ HexeVoice exposes the operator/runtime API under its normal API base URL. If the
 - `GET /api/speaker-id/profiles/{profile_id}`
 - `DELETE /api/speaker-id/profiles/{profile_id}`
 
+## Service Transport
+
+The default backend-to-helper transport is HTTP/JSON over a Unix domain socket.
+
+- Default socket path: `runtime/sockets/speaker-id.sock`
+- Config override: `VOICE_SPEAKER_ID_SOCKET_PATH`
+- Debug fallback config: `VOICE_SPEAKER_ID_BASE_URL`
+- Debug fallback default: disabled
+- Socket directory permissions: owner-only, mode `0700`
+- Stale socket behavior: remove stale socket files on helper startup before binding
+- LAN exposure: none by default; the helper must not open a TCP listener unless explicitly configured for diagnostics
+
+The Voice backend remains the only normal public API surface. UI, setup, Core capability declarations, and operator scripts talk to HexeVoice on the node API; HexeVoice calls the local Speaker ID helper through the socket. If the helper later runs in Docker/Podman, the socket directory is bind-mounted into the container instead of exposing a service port.
+
 ### Health Response
 
 ```json
@@ -119,6 +133,8 @@ HexeVoice exposes the operator/runtime API under its normal API base URL. If the
   "version": "0.1.0",
   "provider": "speechbrain_ecapa_tdnn",
   "model_id": "speechbrain/spkrec-ecapa-voxceleb",
+  "transport": "unix_socket",
+  "socket_path": "runtime/sockets/speaker-id.sock",
   "profiles_count": 3,
   "last_error": null
 }
@@ -143,6 +159,11 @@ HexeVoice exposes the operator/runtime API under its normal API base URL. If the
     "identify_min_confidence": 0.72,
     "identify_min_margin": 0.08,
     "verify_min_score": 0.75
+  },
+  "transport": {
+    "mode": "unix_socket",
+    "socket_path": "runtime/sockets/speaker-id.sock",
+    "http_fallback_enabled": false
   },
   "privacy": {
     "retain_audio": false,
@@ -417,6 +438,7 @@ Example identified event:
 ## HexeVoice Integration Rules
 
 - Call Speaker ID only when enabled and when the local provider/helper service is healthy.
+- Use the Unix socket helper transport by default; do not require or advertise a Speaker ID TCP port for normal local operation.
 - Run Speaker ID and STT in parallel from the same completed VAD/utterance audio.
 - Store only redacted speaker result metadata in voice session history.
 - Include speaker context in assistant requests only when operator policy enables personalization.
