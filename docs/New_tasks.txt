@@ -51,6 +51,17 @@ Do not edit above this line:
 [STOP]
 
 **********************************************************************************************
+* TODO listing
+**********************************************************************************************
+
+[TODO] Task 232: Define the Speaker ID node service contract, Core capability names, privacy policy, and event schemas
+[TODO] Task 233: Build the Speaker ID runtime adapter layer with benchmark support for SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio, and NVIDIA NeMo
+[TODO] Task 234: Implement the Speaker ID node service APIs for enrollment, verification, identification, profile management, and health reporting
+[TODO] Task 235: Integrate HexeVoice with the Speaker ID node service for per-turn speaker lookup, speaker-aware events, and safe fallback behavior
+[TODO] Task 236: Add Speaker ID operator UI controls for consent, enrollment, profile review, deletion, diagnostics, and model/provider selection
+[TODO] Task 237: Validate Speaker ID accuracy, latency, privacy, and multi-endpoint behavior with tests, docs, and benchmark artifacts
+
+**********************************************************************************************
 * Future TODO listing
 **********************************************************************************************
 
