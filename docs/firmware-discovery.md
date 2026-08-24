@@ -52,6 +52,11 @@ Backend environment:
 - `ENDPOINT_DISCOVERY_UDP_PORT=9134`
 - `ENDPOINT_DISCOVERY_ADVERTISE_HOST=<lan-host>`
 - `ENDPOINT_DISCOVERY_USE_TLS=false`
+- `ENDPOINT_BEACON_UDP_ENABLED=true`
+- `ENDPOINT_BEACON_UDP_HOST=255.255.255.255`
+- `ENDPOINT_BEACON_UDP_PORT=9135`
+- `ENDPOINT_BEACON_INTERVAL_SECONDS=5`
+- `ENDPOINT_BEACON_ADVERTISE_HOST=<lan-ip>`
 - `ENDPOINT_MDNS_ENABLED=true`
 - `ENDPOINT_MDNS_SERVICE_NAME=HexeVoice`
 - `ENDPOINT_MDNS_SERVICE_TYPE=_hexevoice._tcp.local.`
@@ -111,4 +116,40 @@ Manual validation:
 ```bash
 avahi-browse -rt _hexevoice._tcp
 curl http://10.0.0.100:9004/api/endpoint/discovery/status
+```
+
+## UDP Node Beacon
+
+The node also emits an optional broadcast beacon to
+`255.255.255.255:9135` by default. The beacon schema is
+`hexevoice.node.beacon.v1` and includes:
+
+- `node.node_id`
+- `node.node_name`
+- `node.node_type`
+- `network.advertised_ip`
+- `network.tls`
+- `api.url`
+- `api.port`
+- `api.heartbeat_path`
+- `api.voice_ws_path`
+- `ui.url`
+- `ui.port`
+
+Beacon URLs use the LAN IP address, not `hexe.local`. Set
+`ENDPOINT_BEACON_ADVERTISE_HOST` to pin the address. Loopback,
+`0.0.0.0`, and hostnames are rejected so listeners do not learn an unusable
+endpoint.
+
+Manual listener:
+
+```bash
+python - <<'PY'
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind(("", 9135))
+while True:
+    data, addr = s.recvfrom(8192)
+    print(addr, data.decode())
+PY
 ```

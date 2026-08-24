@@ -48,6 +48,8 @@ def build_endpoint_mdns_metadata(
     lan_ip = advertised_ip or resolve_advertised_lan_ip(settings)
     if lan_ip is None:
         raise ValueError("advertised_lan_ip_unavailable")
+    if not _is_usable_ip(lan_ip):
+        raise ValueError("invalid_advertised_lan_ip")
 
     scheme = "https" if settings.endpoint_discovery_use_tls else "http"
     api_port = _port_from_url(settings.public_api_base_url, default=settings.api_port)

@@ -1998,3 +1998,35 @@ Original task details:
   - Offline endpoints remain visible with stale/update diagnostics and safe disabled actions.
   - Production build succeeds, and the served UI at `http://10.0.0.100:8084/#/dashboard/voice-endpoint` reflects the built assets.
   - Tests or targeted UI validation cover multi-endpoint rendering, endpoint selection, and action scoping.
+
+## Task 230
+Original task details:
+- Title: Add local playback and endpoint control voice intents
+- Source request:
+  - User asked to add tasks for suggested local intents and implement them.
+  - Existing timer intents already cover `timer.status`, `timer.stop`, `timer.cancel`, and `timer.adjust_time`; do not duplicate them.
+- Scope:
+  - Add built-in local voice intents for `playback.stop`, `playback.repeat`, `endpoint.volume.set`, `endpoint.volume.adjust`, `endpoint.mute`, `endpoint.unmute`, and `endpoint.identify`.
+  - Parse natural language examples such as `stop playback`, `repeat that`, `set volume to 60 percent`, `turn it up`, `lower volume by 10`, `mute yourself`, `unmute`, and `identify this device`.
+  - Dispatch matched intents to the selected/current endpoint command path where the backend already supports it.
+  - Keep dangerous short utterances follow-up scoped except for the existing interrupt-mode stop behavior.
+- Acceptance criteria:
+  - Intent registry seeds the new built-ins for fresh and existing registry files.
+  - Local intent matching extracts volume slots and endpoint control commands.
+  - Voice turn invocation returns a dispatch result for endpoint command handling.
+  - Tests cover matching and dispatch for the new controls.
+
+## Task 231
+Original task details:
+- Title: Add timer snooze voice intent for completed timer alarms
+- Source request:
+  - User asked for suggested local intents to be added and implemented.
+- Scope:
+  - Add a `timer.snooze` local intent for phrases such as `snooze five minutes` and `snooze the timer for ten minutes`.
+  - Dispatch the snooze as a timer adjustment/create-style MQTT domain event that can be handled by the timer-owning node.
+  - Reuse active timer ownership selection when possible.
+- Acceptance criteria:
+  - Intent registry seeds `timer.snooze`.
+  - Matching extracts snooze duration and scope.
+  - Dispatch publishes a routed timer snooze request event.
+  - Tests cover intent matching and event payload.

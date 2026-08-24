@@ -112,6 +112,7 @@ from hexevoice.api.models import (
 from hexevoice.assistant import AssistantTurnService, LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
+from hexevoice.endpoint.beacon import EndpointBeaconService
 from hexevoice.endpoint.discovery import EndpointDiscoveryService, EndpointDiscoveryUdpProtocol
 from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser
 from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
@@ -509,6 +510,10 @@ def create_app(
         settings=app_settings,
         node_id_provider=current_advertised_node_id,
     )
+    endpoint_beacon_service = EndpointBeaconService(
+        settings=app_settings,
+        node_id_provider=current_advertised_node_id,
+    )
     endpoint_media_service = EndpointMediaService(media_dir=app_settings.resolved_endpoint_media_dir())
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
@@ -599,6 +604,7 @@ def create_app(
         app.state.voice_background_tasks = []
         app.state.endpoint_discovery_transport = None
         app.state.endpoint_mdns_advertiser = endpoint_mdns_advertiser
+        app.state.endpoint_beacon_service = endpoint_beacon_service
 
         def track_background_task(task: asyncio.Task) -> asyncio.Task:
             app.state.voice_background_tasks.append(task)
@@ -622,6 +628,7 @@ def create_app(
                 log.warning("Endpoint discovery UDP listener could not start", exc_info=True)
 
         await asyncio.to_thread(endpoint_mdns_advertiser.start)
+        await endpoint_beacon_service.start()
 
         if app_settings.voice_wake_preload:
             voice_session_manager.preload_wake_detector()
@@ -732,6 +739,7 @@ def create_app(
             discovery_transport = getattr(app.state, "endpoint_discovery_transport", None)
             if discovery_transport is not None:
                 discovery_transport.close()
+            await endpoint_beacon_service.stop()
             await asyncio.to_thread(endpoint_mdns_advertiser.stop)
             timer_announcement_service.stop()
             tasks = list(getattr(app.state, "voice_background_tasks", []))
@@ -936,6 +944,7 @@ def create_app(
                 "use_tls": app_settings.endpoint_discovery_use_tls,
             },
             "mdns": endpoint_mdns_advertiser.status(),
+            "beacon": endpoint_beacon_service.status(),
         }
 
     @app.get("/api/endpoint/time", response_model=EndpointTimeResponse)

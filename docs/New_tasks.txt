@@ -48,6 +48,8 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
+[TODO] Task 230: Add local playback and endpoint control voice intents
+[TODO] Task 231: Add timer snooze voice intent for completed timer alarms
 [STOP]
 
 **********************************************************************************************
@@ -56,4 +58,3 @@ Do not edit above this line:
 
 [FUTURE TODO] Task 205: Add an optional experimental Kokoro TTS provider with Docker/Unix-socket runtime, CPU/CUDA mode, voice selection, WAV artifact normalization, and Piper-compatible fallback behavior
 [FUTURE TODO] Task 225: Add true on-device stop-word detection during endpoint playback
-[FUTURE TODO] Task 227: Add UDP node beacon advertising HexeVoice API and UI LAN IP endpoints

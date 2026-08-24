@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from hexevoice.api.models import EndpointDiscoveryRequest
 from hexevoice.config.settings import Settings
+from hexevoice.endpoint.beacon import EndpointBeaconService, build_endpoint_beacon_payload
 from hexevoice.endpoint.discovery import EndpointDiscoveryService
 from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser, build_endpoint_mdns_metadata
 from hexevoice.main import create_app
@@ -182,3 +183,74 @@ def test_endpoint_mdns_import_failure_does_not_block_api(tmp_path, monkeypatch):
     assert status.status_code == 200
     assert status.json()["mdns"]["active"] is False
     assert status.json()["mdns"]["last_error"] == "zeroconf_not_installed"
+
+
+def test_endpoint_beacon_payload_uses_ip_based_api_and_ui_urls():
+    payload = build_endpoint_beacon_payload(
+        Settings(
+            api_port=9004,
+            public_api_base_url="http://hexe.local:9004",
+            public_ui_base_url="http://hexe.local:8084",
+            endpoint_beacon_advertise_host="10.0.0.100",
+        ),
+        node_id="node-voice-123",
+    )
+
+    assert payload["schema_version"] == "hexevoice.node.beacon.v1"
+    assert payload["node"]["node_id"] == "node-voice-123"
+    assert payload["node"]["node_type"] == "voice-node"
+    assert payload["network"]["advertised_ip"] == "10.0.0.100"
+    assert payload["network"]["tls"] is False
+    assert payload["api"] == {
+        "url": "http://10.0.0.100:9004",
+        "port": 9004,
+        "heartbeat_path": "/api/endpoint/heartbeat",
+        "voice_ws_path": "/api/voice/ws",
+    }
+    assert payload["ui"] == {"url": "http://10.0.0.100:8084", "port": 8084}
+
+
+def test_endpoint_beacon_disabled_status_is_diagnostic_only():
+    service = EndpointBeaconService(settings=Settings(endpoint_beacon_udp_enabled=False))
+
+    assert service.status()["enabled"] is False
+    assert service.status()["active"] is False
+    assert service.status()["status"] == "disabled"
+
+
+def test_endpoint_beacon_rejects_loopback_or_hostname_advertised_host():
+    for advertised_host in ("127.0.0.1", "0.0.0.0", "hexe.local"):
+        settings = Settings(endpoint_beacon_advertise_host=advertised_host)
+        try:
+            build_endpoint_beacon_payload(settings)
+        except ValueError as exc:
+            assert str(exc) == "invalid_advertised_lan_ip"
+        else:
+            raise AssertionError(f"{advertised_host} should have been rejected")
+
+
+def test_endpoint_discovery_status_includes_beacon_diagnostics(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        endpoint_discovery_udp_enabled=False,
+        endpoint_mdns_enabled=False,
+        endpoint_beacon_udp_enabled=False,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        response = client.get("/api/endpoint/discovery/status")
+
+    assert response.status_code == 200
+    assert response.json()["beacon"] == {
+        "enabled": False,
+        "active": False,
+        "status": "disabled",
+        "host": "255.255.255.255",
+        "port": 9135,
+        "interval_seconds": 5.0,
+        "advertised_ip": None,
+        "api_url": None,
+        "ui_url": None,
+        "last_sent_at": None,
+        "last_error": None,
+    }
