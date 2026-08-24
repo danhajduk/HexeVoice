@@ -19,6 +19,8 @@ void set_muted(bool muted);
 void set_output_volume_percent(int volume_percent);
 int micro_vad_pause_ms();
 void set_micro_vad_pause_ms(int pause_ms);
+int micro_vad_energy_threshold();
+void set_micro_vad_energy_threshold(int threshold);
 const EndpointProvisioningSettings &endpoint_provisioning_settings();
 const char *endpoint_id();
 const char *endpoint_display_name();

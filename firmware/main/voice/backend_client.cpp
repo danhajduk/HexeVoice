@@ -828,11 +828,33 @@ void handle_backend_event_json(const std::string &message) {
   } else if (std::strcmp(type, "endpoint.micro_vad") == 0) {
     const char *request_id = payload_request_id(payload);
     cJSON *pause_ms = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "pause_ms") : nullptr;
-    if (cJSON_IsNumber(pause_ms)) {
-      hexe::system::set_micro_vad_pause_ms(pause_ms->valueint);
-      send_command_ack(request_id, "endpoint.micro_vad.set", "succeeded", "Micro VAD pause updated");
+    cJSON *energy_threshold = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "energy_threshold") : nullptr;
+    if ((pause_ms != nullptr && !cJSON_IsNumber(pause_ms)) ||
+        (energy_threshold != nullptr && !cJSON_IsNumber(energy_threshold))) {
+      send_command_error(
+          request_id,
+          "endpoint.micro_vad.set",
+          "invalid_payload",
+          "pause_ms and energy_threshold must be numeric when provided");
     } else {
-      send_command_error(request_id, "endpoint.micro_vad.set", "invalid_payload", "pause_ms must be numeric");
+      bool updated = false;
+      if (pause_ms != nullptr) {
+        hexe::system::set_micro_vad_pause_ms(pause_ms->valueint);
+        updated = true;
+      }
+      if (energy_threshold != nullptr) {
+        hexe::system::set_micro_vad_energy_threshold(energy_threshold->valueint);
+        updated = true;
+      }
+      if (updated) {
+        send_command_ack(request_id, "endpoint.micro_vad.set", "succeeded", "Micro VAD settings updated");
+      } else {
+        send_command_error(
+            request_id,
+            "endpoint.micro_vad.set",
+            "invalid_payload",
+            "pause_ms or energy_threshold must be numeric");
+      }
     }
   } else if (std::strcmp(type, "endpoint.cancel") == 0) {
     const char *request_id = payload_request_id(payload);
@@ -1108,6 +1130,9 @@ std::string endpoint_capabilities_json() {
   cJSON_AddNumberToObject(micro_vad, "pause_ms", hexe::system::micro_vad_pause_ms());
   cJSON_AddNumberToObject(micro_vad, "min_pause_ms", 80);
   cJSON_AddNumberToObject(micro_vad, "max_pause_ms", 3000);
+  cJSON_AddNumberToObject(micro_vad, "energy_threshold", hexe::system::micro_vad_energy_threshold());
+  cJSON_AddNumberToObject(micro_vad, "min_energy_threshold", 50);
+  cJSON_AddNumberToObject(micro_vad, "max_energy_threshold", 20000);
   cJSON *playback_interrupt = cJSON_AddObjectToObject(input, "playback_interrupt");
   cJSON_AddBoolToObject(playback_interrupt, "available", hexe::voice::playback_stop_word_on_device_available());
   cJSON_AddBoolToObject(playback_interrupt, "active", hexe::voice::playback_stop_word_active());

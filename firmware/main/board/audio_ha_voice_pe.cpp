@@ -86,6 +86,14 @@ uint32_t micro_vad_pause_frames() {
   return std::max<uint32_t>(1, hexe::system::micro_vad_pause_ms() / kFrameDurationMs);
 }
 
+uint32_t micro_vad_start_threshold() {
+  return static_cast<uint32_t>(hexe::system::micro_vad_energy_threshold());
+}
+
+uint32_t micro_vad_continue_threshold(uint32_t start_threshold) {
+  return std::max<uint32_t>(1, (start_threshold * kVadContinueEnergyThreshold) / kVadStartEnergyThreshold);
+}
+
 hexe::voice::MicroVadFrameState micro_vad_frame_state(
     bool frame_has_voice,
     uint32_t &chunk_index,
@@ -402,10 +410,12 @@ void vad_task(void *arg) {
       continue;
     }
     const bool was_speaking = hexe::state().vad_speaking;
+    const uint32_t configured_start_threshold = micro_vad_start_threshold();
+    const uint32_t configured_continue_threshold = micro_vad_continue_threshold(configured_start_threshold);
     const uint32_t start_threshold =
-        std::max(kVadStartEnergyThreshold, (noise_floor * kVadStartNoiseMultiplier) + kVadNoiseMargin);
+        std::max(configured_start_threshold, (noise_floor * kVadStartNoiseMultiplier) + kVadNoiseMargin);
     const uint32_t continue_threshold =
-        std::max(kVadContinueEnergyThreshold, (noise_floor * kVadContinueNoiseMultiplier) + kVadNoiseMargin);
+        std::max(configured_continue_threshold, (noise_floor * kVadContinueNoiseMultiplier) + kVadNoiseMargin);
     const uint32_t release_threshold = speech_peak_level == 0
         ? continue_threshold
         : std::max(continue_threshold, (speech_peak_level * kVadReleasePeakPercent) / 100);

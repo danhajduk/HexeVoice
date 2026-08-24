@@ -985,6 +985,7 @@ def create_app(
         result = await voice_session_manager.push_micro_vad_command(
             endpoint_id=payload.endpoint_id,
             pause_ms=payload.pause_ms,
+            energy_threshold=payload.energy_threshold,
         )
         return EndpointCommandResponse(
             accepted=bool(result.get("accepted")),

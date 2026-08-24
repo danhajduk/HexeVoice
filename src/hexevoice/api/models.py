@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, Field, model_validator
 
 
 class OnboardingStepResponse(BaseModel):
@@ -267,7 +267,14 @@ class EndpointMuteCommandRequest(BaseModel):
 
 class EndpointMicroVadCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
-    pause_ms: int = Field(ge=80, le=3000)
+    pause_ms: int | None = Field(default=None, ge=80, le=3000)
+    energy_threshold: int | None = Field(default=None, ge=50, le=20000)
+
+    @model_validator(mode="after")
+    def require_setting(self) -> "EndpointMicroVadCommandRequest":
+        if self.pause_ms is None and self.energy_threshold is None:
+            raise ValueError("at least one micro-VAD setting is required")
+        return self
 
 
 class EndpointProvisioningApplyRequest(BaseModel):

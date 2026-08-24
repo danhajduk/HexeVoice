@@ -90,7 +90,7 @@ The strongest implemented areas are the backend API surface, setup/readiness lif
 - Endpoint status routes for latest, per-endpoint, and all endpoints.
 - Operator metadata updates for display name and zone.
 - Online/stale/offline connection projection based on heartbeat freshness.
-- Endpoint commands routed through the active WebSocket: volume, mute, micro-VAD pause, cancel, replay, speak, play sound, storage reformat, LED simulation, media transfer, and OTA update.
+- Endpoint commands routed through the active WebSocket: volume, mute, micro-VAD pause/sensitivity, cancel, replay, speak, play sound, storage reformat, LED simulation, media transfer, and OTA update.
 - Firmware update availability is projected from runtime firmware artifacts and endpoint version metadata.
 
 ### Endpoint Media And Firmware Artifacts

@@ -449,7 +449,7 @@ def test_endpoint_micro_vad_command_sends_event_to_connected_endpoint(tmp_path):
         websocket.receive_json()
         response = client.post(
             "/api/endpoint/micro-vad",
-            json={"endpoint_id": "esp-box-1", "pause_ms": 2200},
+            json={"endpoint_id": "esp-box-1", "pause_ms": 2200, "energy_threshold": 300},
         )
         event = websocket.receive_json()
 
@@ -461,6 +461,7 @@ def test_endpoint_micro_vad_command_sends_event_to_connected_endpoint(tmp_path):
     assert event["endpoint_id"] == "esp-box-1"
     assert event["payload"]["request_id"] == response.json()["request_id"]
     assert event["payload"]["pause_ms"] == 2200
+    assert event["payload"]["energy_threshold"] == 300
 
 
 def test_endpoint_micro_vad_command_requires_valid_pause(tmp_path):
@@ -469,6 +470,17 @@ def test_endpoint_micro_vad_command_requires_valid_pause(tmp_path):
     response = client.post(
         "/api/endpoint/micro-vad",
         json={"endpoint_id": "esp-box-1", "pause_ms": 20},
+    )
+
+    assert response.status_code == 422
+
+
+def test_endpoint_micro_vad_command_requires_a_setting(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post(
+        "/api/endpoint/micro-vad",
+        json={"endpoint_id": "esp-box-1"},
     )
 
     assert response.status_code == 422

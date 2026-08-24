@@ -399,12 +399,23 @@ class VoiceSessionManager:
             payload={"muted": muted},
         )
 
-    async def push_micro_vad_command(self, *, endpoint_id: str, pause_ms: int) -> dict:
+    async def push_micro_vad_command(
+        self,
+        *,
+        endpoint_id: str,
+        pause_ms: int | None = None,
+        energy_threshold: int | None = None,
+    ) -> dict:
+        payload: dict[str, int] = {}
+        if pause_ms is not None:
+            payload["pause_ms"] = pause_ms
+        if energy_threshold is not None:
+            payload["energy_threshold"] = energy_threshold
         return await self._push_endpoint_command(
             endpoint_id=endpoint_id,
             event_type="endpoint.micro_vad",
             command_type="endpoint.micro_vad.set",
-            payload={"pause_ms": pause_ms},
+            payload=payload,
         )
 
     async def push_endpoint_provisioning_apply_command(

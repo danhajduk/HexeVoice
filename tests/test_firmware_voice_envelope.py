@@ -199,6 +199,9 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert "play_wake_accepted_sound();" in backend_source
     assert '"micro_vad"' in backend_source
     assert '"max_pause_ms", 3000' in backend_source
+    assert '"energy_threshold", hexe::system::micro_vad_energy_threshold()' in backend_source
+    assert '"max_energy_threshold", 20000' in backend_source
+    assert "set_micro_vad_energy_threshold" in backend_source
     assert "hexe::voice::post_tts_input_cooldown_active()" in pe_source
     assert "micro_vad_chunk_active = false" in pe_source
 

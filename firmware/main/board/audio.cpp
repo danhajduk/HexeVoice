@@ -47,6 +47,14 @@ uint32_t micro_vad_pause_frames() {
   return std::max<uint32_t>(1, hexe::system::micro_vad_pause_ms() / kFrameDurationMs);
 }
 
+uint32_t micro_vad_start_threshold() {
+  return static_cast<uint32_t>(hexe::system::micro_vad_energy_threshold());
+}
+
+uint32_t micro_vad_continue_threshold(uint32_t start_threshold) {
+  return std::max<uint32_t>(1, (start_threshold * kVadContinueEnergyThreshold) / kVadStartEnergyThreshold);
+}
+
 hexe::voice::MicroVadFrameState micro_vad_frame_state(
     bool frame_has_voice,
     uint32_t &chunk_index,
@@ -165,7 +173,8 @@ void vad_task(void *arg) {
 
     const uint32_t level = estimate_level(samples, kFrameSamples);
     const bool was_speaking = hexe::state().vad_speaking;
-    const uint32_t threshold = was_speaking ? kVadContinueEnergyThreshold : kVadStartEnergyThreshold;
+    const uint32_t start_threshold = micro_vad_start_threshold();
+    const uint32_t threshold = was_speaking ? micro_vad_continue_threshold(start_threshold) : start_threshold;
     const bool frame_has_voice = level >= threshold;
     const hexe::voice::MicroVadFrameState micro_vad = micro_vad_frame_state(
         frame_has_voice,

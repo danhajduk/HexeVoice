@@ -132,14 +132,19 @@ VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS=1
 
 Micro-VAD chunk recording is disabled by default. When temporarily enabled for debugging, the backend buffers firmware-marked micro-VAD chunks and writes them to `runtime/micro_vad_chunks` only after the wake word is accepted for that session. Sessions without an accepted wake word are discarded. Each kept chunk is saved as a PCM WAV with a JSON sidecar that includes endpoint, session, firmware micro-VAD chunk index, pause duration, audio format, duration, and expiration metadata. These files are debug artifacts only and are not exposed in the UI.
 
-The firmware micro-VAD pause threshold defaults to `190` ms and is persisted on the endpoint. It can be adjusted without UI through:
+The firmware micro-VAD pause threshold defaults to `190` ms and the energy threshold defaults to `900`. Both values
+are persisted on the endpoint and can be adjusted without UI through:
 
 ```bash
 curl -X POST http://127.0.0.1:9004/api/endpoint/micro-vad \
   -H "Content-Type: application/json" \
-  -d '{"endpoint_id":"esp-pe-1","pause_ms":2200}'
+  -d '{"endpoint_id":"esp-pe-1","pause_ms":2200,"energy_threshold":300}'
 ```
 
-The backend accepts values from `80` to `3000` ms. Short values around the old `190` ms default can end the stream before enough post-wake speech reaches STT on slower wake-word turns; `2200` ms is a useful diagnostic value when STT only hears the start of a command.
+The backend accepts `pause_ms` values from `80` to `3000` ms and `energy_threshold` values from `50` to `20000`.
+Short pause values around the old `190` ms default can end the stream before enough post-wake speech reaches STT on
+slower wake-word turns; `2200` ms is a useful diagnostic value when STT only hears the start of a command. Lower energy
+threshold values make firmware micro-VAD more sensitive. The Voice PE profile still applies its adaptive noise-floor
+gate above that configured minimum.
 
 Validation notes are captured in `docs/supervised-openwakeword-validation.md`.

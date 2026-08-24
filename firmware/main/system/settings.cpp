@@ -25,6 +25,7 @@ constexpr char kNamespace[] = "hexe_settings";
 constexpr char kVolumeKey[] = "volume_percent";
 constexpr char kMutedKey[] = "muted";
 constexpr char kMicroVadPauseMsKey[] = "micro_vad_pause_ms";
+constexpr char kMicroVadEnergyThresholdKey[] = "micro_vad_energy_threshold";
 constexpr char kEndpointIdKey[] = "endpoint_id";
 constexpr char kDisplayNameKey[] = "display_name";
 constexpr char kBackendHostKey[] = "backend_host";
@@ -38,6 +39,9 @@ constexpr int kDefaultVolumePercent = 70;
 constexpr int kDefaultMicroVadPauseMs = 190;
 constexpr int kMinMicroVadPauseMs = 80;
 constexpr int kMaxMicroVadPauseMs = 3000;
+constexpr int kDefaultMicroVadEnergyThreshold = 900;
+constexpr int kMinMicroVadEnergyThreshold = 50;
+constexpr int kMaxMicroVadEnergyThreshold = 20000;
 
 hexe::system::EndpointProvisioningSettings g_endpoint_settings = {};
 
@@ -47,6 +51,10 @@ int normalize_volume(int volume_percent) {
 
 int normalize_micro_vad_pause_ms(int pause_ms) {
   return std::clamp(pause_ms, kMinMicroVadPauseMs, kMaxMicroVadPauseMs);
+}
+
+int normalize_micro_vad_energy_threshold(int threshold) {
+  return std::clamp(threshold, kMinMicroVadEnergyThreshold, kMaxMicroVadEnergyThreshold);
 }
 
 bool valid_port(int port) {
@@ -169,6 +177,7 @@ void init_settings() {
   app_state.output_volume_percent = kDefaultVolumePercent;
   app_state.muted = false;
   app_state.micro_vad_pause_ms = kDefaultMicroVadPauseMs;
+  app_state.micro_vad_energy_threshold = kDefaultMicroVadEnergyThreshold;
   load_endpoint_defaults();
 
   nvs_handle_t handle = 0;
@@ -207,15 +216,24 @@ void init_settings() {
     ESP_LOGW(kTag, "Failed to read persisted micro VAD pause: %s", esp_err_to_name(err));
   }
 
+  int32_t persisted_micro_vad_energy_threshold = kDefaultMicroVadEnergyThreshold;
+  err = nvs_get_i32(handle, kMicroVadEnergyThresholdKey, &persisted_micro_vad_energy_threshold);
+  if (err == ESP_OK) {
+    app_state.micro_vad_energy_threshold = normalize_micro_vad_energy_threshold(persisted_micro_vad_energy_threshold);
+  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(kTag, "Failed to read persisted micro VAD energy threshold: %s", esp_err_to_name(err));
+  }
+
   load_endpoint_provisioning(handle);
 
   nvs_close(handle);
   ESP_LOGI(
       kTag,
-      "Endpoint settings loaded: volume=%d muted=%s micro_vad_pause_ms=%d endpoint=%s backend=%s:%d",
+      "Endpoint settings loaded: volume=%d muted=%s micro_vad_pause_ms=%d micro_vad_energy_threshold=%d endpoint=%s backend=%s:%d",
       app_state.output_volume_percent,
       app_state.muted ? "true" : "false",
       app_state.micro_vad_pause_ms,
+      app_state.micro_vad_energy_threshold,
       g_endpoint_settings.endpoint_id,
       g_endpoint_settings.backend_host,
       g_endpoint_settings.http_port);
@@ -242,6 +260,17 @@ void set_micro_vad_pause_ms(int pause_ms) {
   const int clamped = normalize_micro_vad_pause_ms(pause_ms);
   hexe::state().micro_vad_pause_ms = clamped;
   save_i32(kMicroVadPauseMsKey, clamped);
+}
+
+int micro_vad_energy_threshold() {
+  const int threshold = hexe::state().micro_vad_energy_threshold;
+  return normalize_micro_vad_energy_threshold(threshold == 0 ? kDefaultMicroVadEnergyThreshold : threshold);
+}
+
+void set_micro_vad_energy_threshold(int threshold) {
+  const int clamped = normalize_micro_vad_energy_threshold(threshold);
+  hexe::state().micro_vad_energy_threshold = clamped;
+  save_i32(kMicroVadEnergyThresholdKey, clamped);
 }
 
 const EndpointProvisioningSettings &endpoint_provisioning_settings() {

@@ -58,6 +58,7 @@ struct AppState {
   int loading_frame{0};
   int output_volume_percent{70};
   int micro_vad_pause_ms{190};
+  int micro_vad_energy_threshold{900};
   bool ota_active{false};
   int ota_progress_percent{0};
   int ota_bytes_read{0};
