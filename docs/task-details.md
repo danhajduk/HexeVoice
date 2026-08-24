@@ -1925,3 +1925,20 @@ Original task details:
 - Current blocker:
   - Firmware does not include an embedded keyword recognizer such as ESP-SR/MultiNet or a trained local command model for `stop`.
   - Task 225 currently exposes heartbeat diagnostics for this unsupported state and preserves the `playback.stop`/`voice_stop` contract; true local detection requires adding and validating the keyword engine dependency first.
+
+## Task 226
+Original task details:
+- Title: Interrupt active WAV playback immediately when `stop_playback()` is requested
+- Source finding:
+  - Backend `playback.stop` with reason `voice_stop` now reaches the endpoint and stops the timer alarm.
+  - Current firmware behavior waits until the active WAV loop pass finishes before playback fully stops.
+  - This is acceptable for the current implementation, but it should be improved later so stop feels instant.
+- Scope:
+  - Update `stop_playback()` and the board-specific WAV playback loops to abort the current audio write promptly.
+  - Preserve the existing source-agnostic `playback.stop` event and acknowledgement contract.
+  - Ensure looped timer alarms, TTS playback, and SD/file playback all settle into the correct stopped lifecycle state.
+  - Validate behavior on both `esp_box_3` and `ha_voice_pe` speaker paths.
+- Acceptance criteria:
+  - Saying or pressing `stop` during a looped timer alarm stops playback without waiting for the current WAV loop to finish.
+  - Firmware sends exactly one `playback.stop` event with the stop reason.
+  - Playback lifecycle reports `stopped`, microphone state is restored correctly, and no partial write leaves the audio driver wedged.
