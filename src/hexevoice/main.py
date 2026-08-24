@@ -113,6 +113,7 @@ from hexevoice.assistant import AssistantTurnService, LocalIntentFinder, VoiceIn
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.endpoint.discovery import EndpointDiscoveryService, EndpointDiscoveryUdpProtocol
+from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser
 from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
 from hexevoice.endpoint.service import EndpointHeartbeatService
 from hexevoice.engine_http import async_client_for_engine
@@ -499,6 +500,15 @@ def create_app(
         endpoint_registry_store=endpoint_registry_store,
         stale_after_seconds=app_settings.endpoint_stale_after_seconds,
     )
+
+    def current_advertised_node_id() -> str:
+        state = onboarding_state_store.load()
+        return state.trust_activation.node_id or state.pre_trust.requested_node_id or app_settings.node_name
+
+    endpoint_mdns_advertiser = EndpointMdnsAdvertiser(
+        settings=app_settings,
+        node_id_provider=current_advertised_node_id,
+    )
     endpoint_media_service = EndpointMediaService(media_dir=app_settings.resolved_endpoint_media_dir())
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
@@ -588,6 +598,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         app.state.voice_background_tasks = []
         app.state.endpoint_discovery_transport = None
+        app.state.endpoint_mdns_advertiser = endpoint_mdns_advertiser
 
         def track_background_task(task: asyncio.Task) -> asyncio.Task:
             app.state.voice_background_tasks.append(task)
@@ -609,6 +620,8 @@ def create_app(
                 )
             except OSError:
                 log.warning("Endpoint discovery UDP listener could not start", exc_info=True)
+
+        await asyncio.to_thread(endpoint_mdns_advertiser.start)
 
         if app_settings.voice_wake_preload:
             voice_session_manager.preload_wake_detector()
@@ -719,6 +732,7 @@ def create_app(
             discovery_transport = getattr(app.state, "endpoint_discovery_transport", None)
             if discovery_transport is not None:
                 discovery_transport.close()
+            await asyncio.to_thread(endpoint_mdns_advertiser.stop)
             timer_announcement_service.stop()
             tasks = list(getattr(app.state, "voice_background_tasks", []))
             for task in tasks:
@@ -910,6 +924,19 @@ def create_app(
         response = endpoint_discovery_service.offer(payload)
         node_ui_page_cache.invalidate()
         return response
+
+    @app.get("/api/endpoint/discovery/status")
+    async def endpoint_discovery_status() -> dict[str, object]:
+        return {
+            "udp": {
+                "enabled": app_settings.endpoint_discovery_udp_enabled,
+                "host": app_settings.endpoint_discovery_udp_host,
+                "port": app_settings.endpoint_discovery_udp_port,
+                "advertise_host": app_settings.endpoint_discovery_advertise_host,
+                "use_tls": app_settings.endpoint_discovery_use_tls,
+            },
+            "mdns": endpoint_mdns_advertiser.status(),
+        }
 
     @app.get("/api/endpoint/time", response_model=EndpointTimeResponse)
     async def endpoint_time() -> EndpointTimeResponse:

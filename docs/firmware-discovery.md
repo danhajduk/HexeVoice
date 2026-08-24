@@ -52,6 +52,10 @@ Backend environment:
 - `ENDPOINT_DISCOVERY_UDP_PORT=9134`
 - `ENDPOINT_DISCOVERY_ADVERTISE_HOST=<lan-host>`
 - `ENDPOINT_DISCOVERY_USE_TLS=false`
+- `ENDPOINT_MDNS_ENABLED=true`
+- `ENDPOINT_MDNS_SERVICE_NAME=HexeVoice`
+- `ENDPOINT_MDNS_SERVICE_TYPE=_hexevoice._tcp.local.`
+- `ENDPOINT_MDNS_ADVERTISE_HOST=<lan-ip>`
 
 Firmware endpoint YAML:
 
@@ -75,3 +79,36 @@ fields in the Endpoint Settings panel.
 
 For simulation and constrained networks, `POST /api/endpoint/discovery/offer`
 exposes the same offer logic over HTTP.
+
+## mDNS Service Advertisement
+
+The node can also publish an optional mDNS service for operator tooling:
+`_hexevoice._tcp.local.`. The mDNS service port is the API port. TXT metadata
+includes:
+
+- `api_url`
+- `ui_url`
+- `api_port`
+- `ui_port`
+- `node_id`
+- `node_type`
+- `tls`
+- `advertised_ip`
+
+The advertised `api_url` and `ui_url` are always built with a LAN IP address,
+not `hexe.local`, so tools can connect directly to the node at values such as
+`http://10.0.0.100:9004` and `http://10.0.0.100:8084`. Set
+`ENDPOINT_MDNS_ADVERTISE_HOST` to pin the address; otherwise the backend tries
+`ENDPOINT_DISCOVERY_ADVERTISE_HOST`, `PUBLIC_API_BASE_URL`, and finally the
+host's active LAN address.
+
+mDNS uses the optional Python `zeroconf` package. If `zeroconf` is missing or
+the multicast registration fails, the backend API continues to start and
+reports the failure at `GET /api/endpoint/discovery/status`.
+
+Manual validation:
+
+```bash
+avahi-browse -rt _hexevoice._tcp
+curl http://10.0.0.100:9004/api/endpoint/discovery/status
+```

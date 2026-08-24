@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta, timezone
+import sys
 
 from fastapi.testclient import TestClient
 
 from hexevoice.api.models import EndpointDiscoveryRequest
 from hexevoice.config.settings import Settings
 from hexevoice.endpoint.discovery import EndpointDiscoveryService
+from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser, build_endpoint_mdns_metadata
 from hexevoice.main import create_app
 from hexevoice.persistence import EndpointRegistryRecord, EndpointRegistryStore, PersistedEndpointRegistry
 
@@ -125,3 +127,58 @@ def test_endpoint_discovery_offer_validates_required_endpoint_id(tmp_path):
     response = client.post("/api/endpoint/discovery/offer", json={"endpoint_id": ""})
 
     assert response.status_code == 422
+
+
+def test_endpoint_mdns_metadata_uses_ip_based_api_and_ui_urls():
+    metadata = build_endpoint_mdns_metadata(
+        Settings(
+            api_port=9004,
+            public_api_base_url="http://hexe.local:9004",
+            public_ui_base_url="http://hexe.local:8084",
+            endpoint_mdns_advertise_host="10.0.0.100",
+        ),
+        node_id="node-voice-123",
+    )
+
+    assert metadata.service_type == "_hexevoice._tcp.local."
+    assert metadata.api_url == "http://10.0.0.100:9004"
+    assert metadata.ui_url == "http://10.0.0.100:8084"
+    assert metadata.txt_properties() == {
+        "api_url": "http://10.0.0.100:9004",
+        "ui_url": "http://10.0.0.100:8084",
+        "api_port": "9004",
+        "ui_port": "8084",
+        "node_id": "node-voice-123",
+        "node_type": "voice-node",
+        "tls": "false",
+        "advertised_ip": "10.0.0.100",
+    }
+
+
+def test_endpoint_mdns_disabled_status_is_diagnostic_only():
+    advertiser = EndpointMdnsAdvertiser(settings=Settings(endpoint_mdns_enabled=False))
+
+    advertiser.start()
+
+    assert advertiser.status()["enabled"] is False
+    assert advertiser.status()["active"] is False
+    assert advertiser.status()["status"] == "disabled"
+
+
+def test_endpoint_mdns_import_failure_does_not_block_api(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "zeroconf", None)
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        endpoint_discovery_udp_enabled=False,
+        endpoint_mdns_enabled=True,
+        endpoint_mdns_advertise_host="10.0.0.100",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        health = client.get("/health/live")
+        status = client.get("/api/endpoint/discovery/status")
+
+    assert health.status_code == 200
+    assert status.status_code == 200
+    assert status.json()["mdns"]["active"] is False
+    assert status.json()["mdns"]["last_error"] == "zeroconf_not_installed"
