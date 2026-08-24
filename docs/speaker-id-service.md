@@ -34,7 +34,17 @@ The first implementation should benchmark these options behind one adapter API:
 | pyannote.audio | Diarization plus speaker embedding workflows | Useful when we later need diarization or multi-speaker segmentation. Some pretrained pipelines require gated model access even when the toolkit is open source. |
 | NVIDIA NeMo | Speaker recognition on GPU-capable hosts | Good candidate for CUDA-capable deployments. NeMo Speech documents speaker identification and verification workflows. |
 
-Provider selection, dependency installation, model download, license display, and benchmarks are Task 233 scope. This task only defines the common service shape.
+Provider selection, dependency installation, model download, license display, and benchmarks are implemented incrementally. The current adapter layer is intentionally import-safe: planned third-party engines appear in the catalog and report dependency/model metadata, but they do not import heavy optional packages until their runtime adapters are enabled.
+
+## Runtime Adapter Layer
+
+Task 233 added the first Speaker ID runtime boundary under `src/hexevoice/speaker_id/`.
+
+- `hexevoice.speaker_id.adapters` defines normalized WAV loading, `SpeakerAudio`, `SpeakerEmbedding`, `SpeakerScore`, `SpeakerThresholds`, provider metadata, and the adapter protocol.
+- `deterministic_signal` is the built-in CPU-only test adapter. It extracts a deterministic signal fingerprint from local 16-bit PCM WAV audio and can score two embeddings without external dependencies.
+- `speechbrain_ecapa_tdnn`, `wespeaker`, `pyannote_audio`, and `nvidia_nemo_speaker` are cataloged as optional provider stubs with model, license, size, memory, CPU/CUDA, sample-rate, and enrollment-quality metadata.
+- Missing optional providers report `missing_optional_dependency` through `status()` and raise `SpeakerIdProviderUnavailable` during embedding extraction instead of failing at import time.
+- `scripts/benchmark-speaker-id.py` runs the same clips through selected providers and emits JSON with provider metadata, per-clip latency, embedding dimensions, and pairwise verification scores.
 
 ## Voice Capability Declaration
 
