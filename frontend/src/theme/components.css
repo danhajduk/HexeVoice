@@ -196,6 +196,13 @@
   gap: 14px;
 }
 
+.endpoint-overview-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(360px, 1.05fr);
+  gap: 18px;
+  align-items: start;
+}
+
 .endpoint-status-card {
   display: grid;
   gap: 14px;
@@ -215,6 +222,11 @@
   border-color: hsl(var(--sx-accent) / 0.7);
   background: hsl(var(--sx-text) / 0.055);
   outline: none;
+}
+
+.endpoint-status-card-selected {
+  border-color: hsl(var(--sx-accent) / 0.85);
+  background: hsl(var(--sx-accent) / 0.12);
 }
 
 .endpoint-status-card-header,
@@ -304,6 +316,18 @@
 
 .endpoint-detail-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.endpoint-detail-inline {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.035);
+}
+
+.endpoint-detail-inline .endpoint-detail-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .endpoint-detail-section {
@@ -1748,6 +1772,8 @@ select.field-input {
   .intent-audio-result,
   .intent-detail-grid,
   .endpoint-detail-grid,
+  .endpoint-overview-layout,
+  .endpoint-detail-inline .endpoint-detail-grid,
   .tts-model-detail-grid,
   .form-grid {
     grid-template-columns: 1fr;

@@ -507,9 +507,11 @@ container usage when enabled. The same status payload includes process IDs for
 monitored services where available.
 
 The Voice Endpoint runtime page shows all registered endpoint statuses as
-summary cards. Selecting an endpoint opens a blurred-background detail popup
-with the full registry, voice-state, latency, session, and raw debug payload for
-that endpoint.
+summary cards. Selecting an endpoint pins it as the active operator target and
+updates the inline detail panel, voice controls, provisioning, media delivery,
+metadata, OTA action, and history filters for that endpoint. The production UI
+is served from the built frontend bundle on port `8084`; use `npm run build`
+from `frontend/` before restarting or previewing the frontend service.
 
 Registered short utterance intents such as `yes`, `no`, `stop`, `ok`, and
 `okay` are treated as follow-up-scoped by default so they do not accidentally

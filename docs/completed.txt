@@ -253,3 +253,4 @@ Task 222: Add timer adjust-time voice intent for adding or removing timer durati
 Task 223: Add multi-node timer ownership, status, and disambiguation handling - Completed on 08/23/2026 16:09
 Task 224: Consume promoted timer.completed events and sound the target endpoint alarm - Completed on 08/23/2026 16:10
 Task 228: Add mDNS service advertisement for HexeVoice API and UI using LAN IP endpoint metadata - Completed on 08/23/2026 18:34
+Task 229: Redesign voice endpoint dashboard for multiple endpoints and production-built UI - Completed on 08/23/2026 18:38

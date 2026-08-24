@@ -48,7 +48,6 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[TODO] Task 229: Redesign voice endpoint dashboard for multiple endpoints and production-built UI
 [STOP]
 
 **********************************************************************************************

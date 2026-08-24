@@ -134,6 +134,56 @@ function voiceStateProjectionForEndpoint(voiceStatus, endpointId) {
   };
 }
 
+function endpointStatusesFromRegistry(endpointStatus, endpointRegistry) {
+  if (Array.isArray(endpointRegistry?.endpoints) && endpointRegistry.endpoints.length) {
+    return endpointRegistry.endpoints;
+  }
+  return endpointStatus ? [endpointStatus] : [];
+}
+
+function endpointStatusById(endpointStatuses, endpointId) {
+  return endpointStatuses.find((status) => status?.endpoint_id === endpointId) || endpointStatuses[0] || null;
+}
+
+function selectedVoiceStatus(voiceStatus, endpointId) {
+  const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
+  const endpointVoice = endpointId ? voiceStatus?.endpoints?.[endpointId] : null;
+  return {
+    ...voiceStatus,
+    endpoint_id: endpointId || voiceStatus?.endpoint_id,
+    connection_state: projection.connection_state,
+    transport_health: projection.transport_health,
+    ux_state: projection.ux_state,
+    session_state: projection.session_state,
+    active_session: projection.active_session,
+    state_projection: projection,
+    commands: endpointVoice?.commands || voiceStatus?.commands || [],
+    last_event_type: endpointVoice?.last_event_type || voiceStatus?.last_event_type,
+  };
+}
+
+function endpointBoardProfile(endpointStatus) {
+  if (!endpointStatus) {
+    return "unknown";
+  }
+  const firmware = endpointCapabilities(endpointStatus).firmware || {};
+  if (firmware.board_profile || firmware.profile) {
+    return firmware.board_profile || firmware.profile;
+  }
+  const endpointId = String(endpointStatus?.endpoint_id || "").toLowerCase();
+  return endpointId.includes("pe") ? "ha_voice_pe" : "esp_box_3";
+}
+
+function firmwareUpdateLabel(update) {
+  if (!update) {
+    return "unknown";
+  }
+  if (update.update_available) {
+    return "update ready";
+  }
+  return update.reason || "current";
+}
+
 function VoicePipelinePanel({ voiceStatus }) {
   const [visibleTranscript, setVisibleTranscript] = useState("");
 
@@ -210,18 +260,22 @@ function VoicePipelinePanel({ voiceStatus }) {
   );
 }
 
-function EndpointStatusTable({ voiceStatus, endpointStatus, endpointRegistry, onPushFirmwareUpdate, firmwareUpdateBusy }) {
-  const [selectedEndpoint, setSelectedEndpoint] = useState(null);
+function EndpointStatusTable({
+  voiceStatus,
+  endpointStatus,
+  endpointRegistry,
+  selectedEndpointId,
+  onSelectEndpoint,
+  onPushFirmwareUpdate,
+  firmwareUpdateBusy,
+}) {
   const timings = voiceStatus?.last_turn_timings || {};
-  const endpointStatuses = Array.isArray(endpointRegistry?.endpoints) && endpointRegistry.endpoints.length
-    ? endpointRegistry.endpoints
-    : endpointStatus
-      ? [endpointStatus]
-      : [];
+  const endpointStatuses = endpointStatusesFromRegistry(endpointStatus, endpointRegistry);
   const endpointRows = (endpointStatuses.length ? endpointStatuses : [null]).map((currentEndpointStatus) => {
     const endpointId = currentEndpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected";
     const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
     const storage = endpointCapabilities(currentEndpointStatus).storage || {};
+    const output = endpointCapabilities(currentEndpointStatus).audio?.output || {};
     const session = projection.active_session || (
       voiceStatus?.active_session?.endpoint_id === endpointId ? voiceStatus.active_session : null
     );
@@ -232,9 +286,12 @@ function EndpointStatusTable({ voiceStatus, endpointStatus, endpointRegistry, on
       displayName: endpointDisplayName(currentEndpointStatus),
       zoneId: currentEndpointStatus?.zone_id || "none",
       firmwareVersion: currentEndpointStatus?.firmware_version || "unknown",
+      boardProfile: endpointBoardProfile(currentEndpointStatus),
       deviceState: currentEndpointStatus?.device_state || "unknown",
       connectionState: currentEndpointStatus?.connection_state || "unknown",
       fileTransfer: storage.media_transfer_active ? "downloading file" : storage.media_transfer_status || "idle",
+      volume: typeof output.volume_percent === "number" ? `${output.volume_percent}%` : "unknown",
+      muted: typeof output.muted === "boolean" ? (output.muted ? "muted" : "live") : "unknown",
       lastSeenAt: formatLocalDateTime(currentEndpointStatus?.last_seen_at),
       voiceConnection: projection.connection_state,
       uxState: projection.ux_state,
@@ -260,18 +317,22 @@ function EndpointStatusTable({ voiceStatus, endpointStatus, endpointRegistry, on
       },
     };
   });
+  const selectedEndpoint = endpointRows.find((row) => row.endpointId === selectedEndpointId) || endpointRows[0] || null;
   const selectedDetailRows = selectedEndpoint
     ? [
         ["Endpoint", selectedEndpoint.endpointId],
         ["Name", selectedEndpoint.displayName],
         ["Zone", selectedEndpoint.zoneId],
+        ["Board", selectedEndpoint.boardProfile],
         ["Firmware", selectedEndpoint.firmwareVersion],
         ["Latest firmware", selectedEndpoint.firmwareUpdate.latest_version || "unknown"],
         ["Firmware artifact", selectedEndpoint.firmwareUpdate.filename || "none"],
-        ["Firmware update", selectedEndpoint.firmwareUpdate.reason || "unknown"],
+        ["Firmware update", firmwareUpdateLabel(selectedEndpoint.firmwareUpdate)],
         ["Device state", selectedEndpoint.deviceState],
         ["Registry state", selectedEndpoint.connectionState],
         ["File transfer", selectedEndpoint.fileTransfer],
+        ["Volume", selectedEndpoint.volume],
+        ["Mute", selectedEndpoint.muted],
         ["Last heartbeat", selectedEndpoint.lastSeenAt],
         ["Voice connection", selectedEndpoint.voiceConnection],
         ["UX state", selectedEndpoint.uxState],
@@ -288,71 +349,63 @@ function EndpointStatusTable({ voiceStatus, endpointStatus, endpointRegistry, on
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Endpoint Status</p>
-          <h2 className="panel-title">Device Data</h2>
+          <h2 className="panel-title">Connected Devices</h2>
         </div>
-        <span className="status-pill status-pill-neutral">{valueOrEmpty(voiceStatus?.connection_state, "offline")}</span>
+        <span className="status-pill status-pill-neutral">{`${endpointStatuses.length} endpoint${endpointStatuses.length === 1 ? "" : "s"}`}</span>
       </div>
-      <div className="endpoint-card-grid">
-        {endpointRows.map((row) => (
-          <button
-            key={row.endpointId}
-            className="endpoint-status-card"
-            type="button"
-            onClick={() => setSelectedEndpoint(row)}
-          >
-            <div className="endpoint-status-card-header">
-              <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
-              <div className="endpoint-status-card-title-block">
-                <h3>{valueOrEmpty(row.endpointId)}</h3>
-                <span>{valueOrEmpty(row.displayName)}</span>
+      <div className="endpoint-overview-layout">
+        <div className="endpoint-card-grid">
+          {endpointRows.map((row) => (
+            <button
+              key={row.endpointId}
+              className={`endpoint-status-card${row.endpointId === selectedEndpoint?.endpointId ? " endpoint-status-card-selected" : ""}`}
+              type="button"
+              aria-pressed={row.endpointId === selectedEndpoint?.endpointId}
+              onClick={() => onSelectEndpoint?.(row.endpointId)}
+            >
+              <div className="endpoint-status-card-header">
+                <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
+                <div className="endpoint-status-card-title-block">
+                  <h3>{valueOrEmpty(row.displayName, row.endpointId)}</h3>
+                  <span>{valueOrEmpty(row.endpointId)}</span>
+                </div>
+                <span className={`status-pill ${row.firmwareUpdate?.update_available ? "status-pill-warning" : "status-pill-neutral"}`}>
+                  {firmwareUpdateLabel(row.firmwareUpdate)}
+                </span>
               </div>
-              <span className="status-pill status-pill-neutral">{valueOrEmpty(row.connectionState)}</span>
-            </div>
-            <div className="endpoint-status-card-facts">
-              <span>
-                <strong>Device</strong>
-                {valueOrEmpty(row.deviceState)}
-              </span>
-              <span>
-                <strong>Voice</strong>
-                {valueOrEmpty(row.voiceConnection)}
-              </span>
-              <span>
-                <strong>UX</strong>
-                {valueOrEmpty(row.uxState)}
-              </span>
-              <span>
-                <strong>Total</strong>
-                {valueOrEmpty(row.totalLatency)}
-              </span>
-            </div>
-            <div className="endpoint-status-card-footer">
-              <span>
-                FW {valueOrEmpty(row.firmwareVersion)}
-                {row.firmwareUpdate?.update_available ? " -> " + valueOrEmpty(row.firmwareUpdate.latest_version) : ""}
-              </span>
-              <span>{valueOrEmpty(row.lastSeenAt)}</span>
-            </div>
-          </button>
-        ))}
-      </div>
-      {selectedEndpoint ? (
-        <div className="endpoint-detail-backdrop" role="presentation" onClick={() => setSelectedEndpoint(null)}>
-          <section
-            className="endpoint-detail-popout"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${selectedEndpoint.endpointId} endpoint details`}
-            onClick={(event) => event.stopPropagation()}
-          >
+              <div className="endpoint-status-card-facts">
+                <span>
+                  <strong>State</strong>
+                  {valueOrEmpty(row.deviceState)}
+                </span>
+                <span>
+                  <strong>Voice</strong>
+                  {valueOrEmpty(row.voiceConnection)}
+                </span>
+                <span>
+                  <strong>Board</strong>
+                  {valueOrEmpty(row.boardProfile)}
+                </span>
+                <span>
+                  <strong>Volume</strong>
+                  {`${valueOrEmpty(row.volume)} / ${valueOrEmpty(row.muted)}`}
+                </span>
+              </div>
+              <div className="endpoint-status-card-footer">
+                <span>FW {valueOrEmpty(row.firmwareVersion)}</span>
+                <span>{valueOrEmpty(row.lastSeenAt)}</span>
+              </div>
+            </button>
+          ))}
+        </div>
+        {selectedEndpoint ? (
+          <section className="endpoint-detail-inline stack" aria-label={`${selectedEndpoint.endpointId} endpoint details`}>
             <div className="section-heading">
               <div>
                 <p className="panel-kicker">Endpoint Detail</p>
-                <h2 className="panel-title">{valueOrEmpty(selectedEndpoint.endpointId)}</h2>
+                <h2 className="panel-title">{valueOrEmpty(selectedEndpoint.displayName, selectedEndpoint.endpointId)}</h2>
               </div>
-              <button className="btn btn-ghost" type="button" onClick={() => setSelectedEndpoint(null)}>
-                Close
-              </button>
+              <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
             </div>
             <div className="endpoint-detail-summary">
               <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
@@ -370,10 +423,6 @@ function EndpointStatusTable({ voiceStatus, endpointStatus, endpointRegistry, on
                 </div>
               ))}
             </dl>
-            <div className="endpoint-detail-section">
-              <h3 className="subsection-title">Raw Data</h3>
-              <pre className="json-preview">{JSON.stringify(selectedEndpoint.raw, null, 2)}</pre>
-            </div>
             <div className="actions">
               <button
                 className="btn btn-primary"
@@ -385,8 +434,8 @@ function EndpointStatusTable({ voiceStatus, endpointStatus, endpointRegistry, on
               </button>
             </div>
           </section>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -1272,6 +1321,8 @@ export function VoiceEndpointDashboardSection({
   endpointRegistry,
   onRefresh,
 }) {
+  const endpointStatuses = endpointStatusesFromRegistry(endpointStatus, endpointRegistry);
+  const [selectedEndpointId, setSelectedEndpointId] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [volumePercent, setVolumePercent] = useState(70);
   const [muted, setMuted] = useState(false);
@@ -1281,9 +1332,21 @@ export function VoiceEndpointDashboardSection({
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState("");
   const [firmwareUpdateBusy, setFirmwareUpdateBusy] = useState(false);
-  const projection = voiceStateProjection(voiceStatus);
-  const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
-  const reportedOutput = endpointCapabilities(endpointStatus).audio?.output || {};
+  const selectedEndpointStatus = endpointStatusById(endpointStatuses, selectedEndpointId);
+  const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
+  const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
+  const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
+  const reportedOutput = endpointCapabilities(selectedEndpointStatus).audio?.output || {};
+
+  useEffect(() => {
+    if (!endpointStatuses.length) {
+      return;
+    }
+    const hasSelected = selectedEndpointId && endpointStatuses.some((status) => status?.endpoint_id === selectedEndpointId);
+    if (!hasSelected) {
+      setSelectedEndpointId(endpointStatuses[0]?.endpoint_id || "");
+    }
+  }, [endpointStatuses, selectedEndpointId]);
 
   useEffect(() => {
     if (typeof reportedOutput.volume_percent === "number") {
@@ -1376,8 +1439,7 @@ export function VoiceEndpointDashboardSection({
 
   async function handleTestTurn() {
     try {
-      const endpointId = voiceStatus?.endpoint_id || "dashboard-test";
-      const result = await testAssistantTurn(endpointId);
+      const result = await testAssistantTurn(endpointId || "dashboard-test");
       setActionMessage(`Test reply: ${result.reply_text}`);
       await onRefresh();
     } catch (err) {
@@ -1563,9 +1625,9 @@ export function VoiceEndpointDashboardSection({
   return (
     <section className="card stack panel voice-endpoint-main-card">
       <div className="voice-endpoint-top">
-        <VoicePipelinePanel voiceStatus={voiceStatus} />
+        <VoicePipelinePanel voiceStatus={scopedVoiceStatus} />
         <VoiceEndpointActionsCard
-          voiceStatus={voiceStatus}
+          voiceStatus={scopedVoiceStatus}
           onRefresh={onRefresh}
           onTestTurn={handleTestTurn}
           onStopSession={handleStopSession}
@@ -1609,13 +1671,15 @@ export function VoiceEndpointDashboardSection({
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
         endpointRegistry={endpointRegistry}
+        selectedEndpointId={endpointId}
+        onSelectEndpoint={setSelectedEndpointId}
         onPushFirmwareUpdate={handlePushFirmwareUpdate}
         firmwareUpdateBusy={firmwareUpdateBusy}
       />
-      <EndpointCapabilitiesPanel endpointStatus={endpointStatus} />
+      <EndpointCapabilitiesPanel endpointStatus={selectedEndpointStatus} />
       <EndpointProvisioningPanel
-        voiceStatus={voiceStatus}
-        endpointStatus={endpointStatus}
+        voiceStatus={scopedVoiceStatus}
+        endpointStatus={selectedEndpointStatus}
         onRefresh={onRefresh}
         setActionMessage={setActionMessage}
       />
@@ -1641,8 +1705,8 @@ export function VoiceEndpointDashboardSection({
         onRefreshHistory={refreshVoiceSessions}
       />
       <EndpointMetadataPanel
-        voiceStatus={voiceStatus}
-        endpointStatus={endpointStatus}
+        voiceStatus={scopedVoiceStatus}
+        endpointStatus={selectedEndpointStatus}
         onRefresh={onRefresh}
         setActionMessage={setActionMessage}
       />
