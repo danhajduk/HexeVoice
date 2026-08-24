@@ -12,6 +12,15 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 VOICE_INTENT_SCHEMA_VERSION = "1.0"
 ACTIVE_INTENT_STATES = {"active"}
 KNOWN_INTENT_STATES = {"active", "restricted", "review_due", "probation", "disabled", "retired", "expired"}
+BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS = (
+    "playback.stop",
+    "playback.repeat",
+    "endpoint.volume.set",
+    "endpoint.volume.adjust",
+    "endpoint.mute",
+    "endpoint.unmute",
+    "endpoint.identify",
+)
 
 
 def utc_now_iso() -> str:
@@ -474,6 +483,159 @@ def built_in_time_query_intent() -> dict[str, Any]:
     }
 
 
+def endpoint_control_intent_definition(*, intent_id: str) -> dict[str, Any]:
+    definitions: dict[str, dict[str, Any]] = {
+        "playback.stop": {
+            "name": "Stop playback",
+            "examples": ["stop playback", "stop talking", "silence yourself", "stop audio"],
+            "patterns": [
+                r"^(?:please\s+)?(?:stop|silence)\s+(?:playback|talking|audio|sound)$",
+                r"^(?:please\s+)?be\s+quiet$",
+            ],
+            "command": "playback.stop",
+            "reply": "Stopping playback.",
+        },
+        "playback.repeat": {
+            "name": "Repeat playback",
+            "examples": ["repeat that", "say that again", "replay response"],
+            "patterns": [
+                r"^(?:please\s+)?(?:repeat\s+that|say\s+that\s+again|replay\s+(?:that|response))$",
+            ],
+            "command": "playback.repeat",
+            "reply": "Repeating that.",
+        },
+        "endpoint.volume.set": {
+            "name": "Set endpoint volume",
+            "examples": ["set volume to 60 percent", "volume 40", "set your volume to fifty percent"],
+            "patterns": [
+                r"^(?:please\s+)?(?:set\s+)?(?:your\s+)?volume\s+(?:to\s+)?(?P<volume_text>.+?)(?:\s+percent)?$",
+            ],
+            "command": "endpoint.volume.set",
+            "reply": "Setting volume to {volume_percent} percent.",
+        },
+        "endpoint.volume.adjust": {
+            "name": "Adjust endpoint volume",
+            "examples": ["turn it up", "turn volume down", "lower volume by 10", "raise volume 5"],
+            "patterns": [
+                r"^(?:please\s+)?(?P<direction>turn\s+it\s+up|turn\s+it\s+down|turn\s+volume\s+up|turn\s+volume\s+down)$",
+                r"^(?:please\s+)?(?P<direction>raise|lower|increase|decrease|volume\s+up|volume\s+down)(?:\s+(?:volume\s+)?(?:by\s+)?(?P<delta_text>.+?))?$",
+            ],
+            "command": "endpoint.volume.adjust",
+            "reply": "Adjusting volume.",
+        },
+        "endpoint.mute": {
+            "name": "Mute endpoint",
+            "examples": ["mute yourself", "mute endpoint", "mute speaker"],
+            "patterns": [r"^(?:please\s+)?mute(?:\s+(?:yourself|endpoint|speaker))?$"],
+            "command": "endpoint.mute",
+            "reply": "Muting.",
+        },
+        "endpoint.unmute": {
+            "name": "Unmute endpoint",
+            "examples": ["unmute yourself", "unmute endpoint", "turn sound back on"],
+            "patterns": [
+                r"^(?:please\s+)?unmute(?:\s+(?:yourself|endpoint|speaker))?$",
+                r"^(?:please\s+)?turn\s+(?:the\s+)?sound\s+back\s+on$",
+            ],
+            "command": "endpoint.unmute",
+            "reply": "Unmuting.",
+        },
+        "endpoint.identify": {
+            "name": "Identify endpoint",
+            "examples": ["identify yourself", "identify this device", "flash the device"],
+            "patterns": [
+                r"^(?:please\s+)?identify(?:\s+(?:yourself|this\s+device|endpoint))?$",
+                r"^(?:please\s+)?flash\s+(?:the\s+)?(?:device|endpoint)$",
+            ],
+            "command": "endpoint.identify",
+            "reply": "Identifying this endpoint.",
+        },
+    }
+    config = definitions[intent_id]
+    slots = {
+        "requested_at": {"type": "datetime"},
+    }
+    extraction = {
+        "optional": {
+            "requested_at": {"type": "datetime", "source": "system_time"},
+        }
+    }
+    if intent_id == "endpoint.volume.set":
+        slots["volume_percent"] = {"type": "integer", "minimum": 0, "maximum": 100}
+        extraction["required"] = {"volume_percent": {"type": "integer", "source": "volume_percent", "minimum": 0}}
+    if intent_id == "endpoint.volume.adjust":
+        slots["delta_percent"] = {"type": "integer"}
+        slots["direction"] = {"type": "string"}
+        extraction["required"] = {
+            "delta_percent": {"type": "integer", "source": "delta_percent"},
+            "direction": {"type": "string", "source": "direction"},
+        }
+    return {
+        "utterance_examples": config["examples"],
+        "patterns": config["patterns"],
+        "slots": slots,
+        "extraction": extraction,
+        "dispatch": {
+            "type": "local_endpoint_command",
+            "command": config["command"],
+        },
+        "response": {
+            "reply_template": config["reply"],
+        },
+        "reply": {
+            "text_template": config["reply"],
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "builtin_endpoint_control",
+            "command": config["command"],
+        },
+    }
+
+
+def built_in_endpoint_control_intent(*, intent_id: str) -> dict[str, Any]:
+    now = utc_now_iso()
+    definition = endpoint_control_intent_definition(intent_id=intent_id)
+    command = definition["dispatch"]["command"]
+    return {
+        "intent_id": intent_id,
+        "intent_name": {
+            "playback.stop": "Stop playback",
+            "playback.repeat": "Repeat playback",
+            "endpoint.volume.set": "Set endpoint volume",
+            "endpoint.volume.adjust": "Adjust endpoint volume",
+            "endpoint.mute": "Mute endpoint",
+            "endpoint.unmute": "Unmute endpoint",
+            "endpoint.identify": "Identify endpoint",
+        }[intent_id],
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": definition,
+        "constraints": {
+            "requires_operational_mqtt": False,
+            "dispatch_side_effect": command,
+            "short_intent_scope": "followup",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "endpoint" if command.startswith("endpoint.") else "playback",
+            "owned_by": "voice_node",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def test_followup_intent_definition() -> dict[str, Any]:
     return {
         "utterance_examples": [
@@ -653,6 +815,10 @@ class VoiceIntentStateStore:
                     VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="cancel")),
                     VoiceIntentRecord.model_validate(built_in_timer_adjust_time_intent()),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
+                    *[
+                        VoiceIntentRecord.model_validate(built_in_endpoint_control_intent(intent_id=intent_id))
+                        for intent_id in BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS
+                    ],
                     VoiceIntentRecord.model_validate(built_in_test_followup_intent()),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="no")),
@@ -696,6 +862,10 @@ class VoiceIntentStateStore:
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))
             seeded = True
+        for intent_id in BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS:
+            if intent_id not in existing_ids:
+                state.intents.append(VoiceIntentRecord.model_validate(built_in_endpoint_control_intent(intent_id=intent_id)))
+                seeded = True
         if "voice.debug.followup" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_test_followup_intent()))
             seeded = True

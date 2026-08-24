@@ -110,6 +110,7 @@ from hexevoice.api.models import (
     OperationalStatusResponse,
 )
 from hexevoice.assistant import AssistantTurnService, LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
+from hexevoice.assistant.service import QueuedEndpointCommandDispatcher
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.endpoint.beacon import EndpointBeaconService
@@ -558,6 +559,7 @@ def create_app(
         micro_vad_chunk_recorder=micro_vad_chunk_recorder,
         session_history_store=voice_session_history_store,
     )
+    assistant_service.set_endpoint_command_dispatcher(QueuedEndpointCommandDispatcher(voice_session_manager))
     timer_announcement_service = TimerSucceededAnnouncementService(
         settings=app_settings,
         announce=lambda announcement: voice_session_manager.push_timer_announcement(

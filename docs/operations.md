@@ -518,6 +518,11 @@ Registered short utterance intents such as `yes`, `no`, `stop`, `ok`, and
 fire as global commands. A registered intent can explicitly opt into global
 matching with `constraints.short_intent_scope: "global"` when that behavior is
 intentional.
+The built-in local endpoint controls include `playback.stop`,
+`playback.repeat`, `endpoint.volume.set`, `endpoint.volume.adjust`,
+`endpoint.mute`, `endpoint.unmute`, and `endpoint.identify`. These commands
+target the endpoint that spoke the request and queue the matching backend
+endpoint command when the voice session manager is active.
 Endpoint status also includes firmware comparison metadata. The backend infers
 the endpoint board profile, checks the matching `runtime/firmware/manifest-*.json`
 and binary artifact, and the endpoint detail popup exposes `Send OTA` when the

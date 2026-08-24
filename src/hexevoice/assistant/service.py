@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
+import asyncio
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 import logging
@@ -86,6 +87,90 @@ class IntentInvocationResult:
     reply_audio: dict[str, Any] | None = None
     conversation_followup: dict[str, Any] | None = None
     latency_ms: float | None = None
+
+
+class EndpointCommandDispatcher(Protocol):
+    def dispatch_endpoint_command(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        command: str,
+        slots: dict[str, Any],
+    ) -> DomainEventPublishDecision:
+        ...
+
+
+class QueuedEndpointCommandDispatcher:
+    def __init__(self, manager: Any) -> None:
+        self._manager = manager
+
+    def dispatch_endpoint_command(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        command: str,
+        slots: dict[str, Any],
+    ) -> DomainEventPublishDecision:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return DomainEventPublishDecision(status="skipped", reason="endpoint_command_loop_unavailable", event_type=command)
+        event_id = f"voice-endpoint-command-{uuid4().hex}"
+        loop.create_task(self._run(endpoint_id=endpoint_id, session_id=session_id, command=command, slots=slots, event_id=event_id))
+        return DomainEventPublishDecision(
+            status="queued",
+            reason="endpoint_command_queued",
+            event_id=event_id,
+            event_type=command,
+            published_at=utc_event_timestamp().isoformat(),
+        )
+
+    async def _run(self, *, endpoint_id: str, session_id: str, command: str, slots: dict[str, Any], event_id: str) -> None:
+        try:
+            if command == "playback.stop":
+                result = await self._manager.push_playback_stop_command(endpoint_id=endpoint_id, reason="voice_intent")
+            elif command == "playback.repeat":
+                result = await self._manager.push_replay_command(endpoint_id=endpoint_id)
+            elif command == "endpoint.mute":
+                result = await self._manager.push_mute_command(endpoint_id=endpoint_id, muted=True)
+            elif command == "endpoint.unmute":
+                result = await self._manager.push_mute_command(endpoint_id=endpoint_id, muted=False)
+            elif command == "endpoint.volume.set":
+                result = await self._manager.push_volume_command(endpoint_id=endpoint_id, volume_percent=int(slots["volume_percent"]))
+            elif command == "endpoint.volume.adjust":
+                current = self._manager.volume_status(endpoint_id).get("volume_percent")
+                current_volume = int(current) if isinstance(current, int) else 70
+                next_volume = max(0, min(100, current_volume + int(slots["delta_percent"])))
+                result = await self._manager.push_volume_command(endpoint_id=endpoint_id, volume_percent=next_volume)
+            elif command == "endpoint.identify":
+                result = await self._manager.push_led_simulation_command(
+                    endpoint_id=endpoint_id,
+                    pattern="identify",
+                    duration_ms=3000,
+                )
+            else:
+                result = {"accepted": False, "reason": "unsupported_endpoint_intent", "status": "failed"}
+            log.info(
+                "Endpoint voice intent command dispatched: endpoint_id=%s session_id=%s command=%s event_id=%s accepted=%s status=%s reason=%s",
+                endpoint_id,
+                session_id,
+                command,
+                event_id,
+                result.get("accepted"),
+                result.get("status"),
+                result.get("reason"),
+            )
+        except Exception:
+            log.warning(
+                "Endpoint voice intent command failed: endpoint_id=%s session_id=%s command=%s event_id=%s",
+                endpoint_id,
+                session_id,
+                command,
+                event_id,
+                exc_info=True,
+            )
 
 
 class AssistantAdapter(Protocol):
@@ -307,6 +392,7 @@ class AssistantTurnService:
         intent_finder: LocalIntentFinder | None = None,
         timer_event_publisher: TimerCreateEventPublisher | None = None,
         timer_ownership_cache: TimerOwnershipCache | None = None,
+        endpoint_command_dispatcher: EndpointCommandDispatcher | None = None,
     ) -> None:
         self._settings = settings
         self._runtime_service = runtime_service
@@ -323,6 +409,10 @@ class AssistantTurnService:
         self._pending_followups_by_session: dict[str, PendingConversationFollowup] = {}
         self._last_intent_latency: dict[str, Any] | None = None
         self._timer_ownership_cache = timer_ownership_cache
+        self._endpoint_command_dispatcher = endpoint_command_dispatcher
+
+    def set_endpoint_command_dispatcher(self, dispatcher: EndpointCommandDispatcher | None) -> None:
+        self._endpoint_command_dispatcher = dispatcher
 
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
         heard_text = self._strip_wake_words(payload.text)
@@ -721,6 +811,23 @@ class AssistantTurnService:
                 heard_text=heard_text,
                 slots=intent.slots,
                 requested_at=requested_at,
+            )
+        if intent.command in {
+            "playback.stop",
+            "playback.repeat",
+            "endpoint.volume.set",
+            "endpoint.volume.adjust",
+            "endpoint.mute",
+            "endpoint.unmute",
+            "endpoint.identify",
+        }:
+            if self._endpoint_command_dispatcher is None:
+                return DomainEventPublishDecision(status="skipped", reason="endpoint_dispatcher_unavailable", event_type=intent.command)
+            return self._endpoint_command_dispatcher.dispatch_endpoint_command(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                command=intent.command,
+                slots=intent.slots,
             )
         return None
 

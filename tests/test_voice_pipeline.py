@@ -68,6 +68,20 @@ class FakeTimerEventPublisher:
         return {"provider": "fake", "enabled": True, "last_decision": None}
 
 
+class FakeEndpointCommandDispatcher:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def dispatch_endpoint_command(self, **payload):
+        self.calls.append(payload)
+        return DomainEventPublishDecision(
+            status="queued",
+            reason="endpoint_command_queued",
+            event_id="endpoint-command-1",
+            event_type=payload["command"],
+        )
+
+
 class SlowRecognitionPublisher:
     def __init__(self, delay_s: float = 0.3) -> None:
         self.delay_s = delay_s
@@ -437,6 +451,41 @@ def test_voice_turn_pipeline_handles_timer_adjust_time_intent_locally(tmp_path):
             "scope": "active_for_endpoint",
             "timer_id": None,
             "requested_at": publisher.calls[0]["requested_at"],
+        }
+    ]
+
+
+def test_voice_turn_pipeline_dispatches_endpoint_volume_intent_locally(tmp_path):
+    settings = Settings(onboarding_state_path=tmp_path / "state.json", voice_wake_models="Hexa")
+    runtime = NodeRuntimeService(settings=settings)
+    dispatcher = FakeEndpointCommandDispatcher()
+    assistant = AssistantTurnService(
+        settings=settings,
+        runtime_service=runtime,
+        endpoint_command_dispatcher=dispatcher,
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="Hexa, set volume to 60 percent"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-box-1", session_id="voice-session-volume", chunk_count=1)
+    )
+
+    assert result.assistant_response.handled_locally is True
+    assert result.assistant_response.command == "endpoint.volume.set"
+    assert result.assistant_response.spoken_text == "Setting volume to 60 percent."
+    assert dispatcher.calls == [
+        {
+            "endpoint_id": "esp-box-1",
+            "session_id": "voice-session-volume",
+            "command": "endpoint.volume.set",
+            "slots": {
+                "requested_at": dispatcher.calls[0]["slots"]["requested_at"],
+                "volume_percent": 60,
+            },
         }
     ]
 

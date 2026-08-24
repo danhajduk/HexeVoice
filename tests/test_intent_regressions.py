@@ -37,6 +37,14 @@ def _registry_and_finder(tmp_path) -> tuple[VoiceIntentRegistry, LocalIntentFind
         IntentCase("Add five minutes to the timer.", "timer.adjust_time", {"delta_seconds": 300, "direction": "add"}),
         IntentCase("Remove two minutes from the timer.", "timer.adjust_time", {"delta_seconds": -120, "direction": "remove"}),
         IntentCase("What is the time?", "voice.time.query"),
+        IntentCase("Stop playback.", "playback.stop"),
+        IntentCase("Repeat that.", "playback.repeat"),
+        IntentCase("Set volume to sixty percent.", "endpoint.volume.set", {"volume_percent": 60}),
+        IntentCase("Turn it up.", "endpoint.volume.adjust", {"delta_percent": 10, "direction": "up"}),
+        IntentCase("Lower volume by ten.", "endpoint.volume.adjust", {"delta_percent": -10, "direction": "down"}),
+        IntentCase("Mute yourself.", "endpoint.mute"),
+        IntentCase("Unmute.", "endpoint.unmute"),
+        IntentCase("Identify this device.", "endpoint.identify"),
         IntentCase("test follow up", "voice.debug.followup"),
         IntentCase("yes", None),
         IntentCase(
@@ -153,3 +161,18 @@ def test_short_registered_intents_can_be_declared_global(tmp_path):
 
     assert match is not None
     assert match.command == "debug.ok.global"
+
+
+def test_existing_registry_files_are_seeded_with_endpoint_control_intents(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    intent_ids = {intent["intent_id"] for intent in registry.snapshot()["intents"]}
+
+    assert {
+        "playback.stop",
+        "playback.repeat",
+        "endpoint.volume.set",
+        "endpoint.volume.adjust",
+        "endpoint.mute",
+        "endpoint.unmute",
+        "endpoint.identify",
+    }.issubset(intent_ids)

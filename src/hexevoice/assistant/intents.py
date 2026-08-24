@@ -54,6 +54,13 @@ class LocalIntentFinder:
                 or self._find_timer_control(normalized, action="stop", requested_at=extraction_time)
                 or self._find_timer_control(normalized, action="cancel", requested_at=extraction_time)
                 or self._find_timer_adjust_time(normalized, requested_at=extraction_time)
+                or self._find_endpoint_control(normalized, command="playback.stop", requested_at=extraction_time)
+                or self._find_endpoint_control(normalized, command="playback.repeat", requested_at=extraction_time)
+                or self._find_endpoint_control(normalized, command="endpoint.volume.set", requested_at=extraction_time)
+                or self._find_endpoint_control(normalized, command="endpoint.volume.adjust", requested_at=extraction_time)
+                or self._find_endpoint_control(normalized, command="endpoint.mute", requested_at=extraction_time)
+                or self._find_endpoint_control(normalized, command="endpoint.unmute", requested_at=extraction_time)
+                or self._find_endpoint_control(normalized, command="endpoint.identify", requested_at=extraction_time)
             )
         return None
 
@@ -72,7 +79,20 @@ class LocalIntentFinder:
             "provider": "local_pattern",
             "healthy": True,
             "configured": True,
-            "intents": ["timer.create", "timer.status", "timer.stop", "timer.cancel", "timer.adjust_time"],
+            "intents": [
+                "timer.create",
+                "timer.status",
+                "timer.stop",
+                "timer.cancel",
+                "timer.adjust_time",
+                "playback.stop",
+                "playback.repeat",
+                "endpoint.volume.set",
+                "endpoint.volume.adjust",
+                "endpoint.mute",
+                "endpoint.unmute",
+                "endpoint.identify",
+            ],
         }
 
     def _candidate_intents(self) -> list[dict[str, Any]]:
@@ -183,6 +203,25 @@ class LocalIntentFinder:
             or intent.get("intent_id") == "timer.adjust_time"
         ):
             match = self._find_timer_adjust_time(text, requested_at=requested_at)
+            if match is not None:
+                return self._build_registered_match(
+                    intent=intent,
+                    command=command,
+                    slots=match.slots,
+                    requested_at=requested_at,
+                )
+            return None
+
+        if matcher.get("type") == "builtin_endpoint_control" or command in {
+            "playback.stop",
+            "playback.repeat",
+            "endpoint.volume.set",
+            "endpoint.volume.adjust",
+            "endpoint.mute",
+            "endpoint.unmute",
+            "endpoint.identify",
+        }:
+            match = self._find_endpoint_control(text, command=command, requested_at=requested_at)
             if match is not None:
                 return self._build_registered_match(
                     intent=intent,
@@ -403,6 +442,53 @@ class LocalIntentFinder:
             reply_text="Updating the timer.",
         )
 
+    def _find_endpoint_control(self, text: str, *, command: str, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        extraction_time = requested_at or datetime.now(UTC)
+        slots: dict[str, Any] = {"requested_at": extraction_time.isoformat()}
+        reply_text = ""
+        if command == "playback.stop":
+            if not _is_playback_stop_request(text):
+                return None
+            reply_text = "Stopping playback."
+        elif command == "playback.repeat":
+            if not _is_playback_repeat_request(text):
+                return None
+            reply_text = "Repeating that."
+        elif command == "endpoint.volume.set":
+            volume = _extract_volume_percent(text)
+            if volume is None:
+                return None
+            slots["volume_percent"] = volume
+            reply_text = f"Setting volume to {volume} percent."
+        elif command == "endpoint.volume.adjust":
+            adjustment = _extract_volume_delta(text)
+            if adjustment is None:
+                return None
+            direction, delta = adjustment
+            slots["direction"] = direction
+            slots["delta_percent"] = delta
+            reply_text = "Adjusting volume."
+        elif command == "endpoint.mute":
+            if not _is_mute_request(text):
+                return None
+            reply_text = "Muting."
+        elif command == "endpoint.unmute":
+            if not _is_unmute_request(text):
+                return None
+            reply_text = "Unmuting."
+        elif command == "endpoint.identify":
+            if not _is_identify_request(text):
+                return None
+            reply_text = "Identifying this endpoint."
+        else:
+            return None
+        return LocalIntentMatch(
+            intent=command,
+            command=command,
+            slots=slots,
+            reply_text=reply_text,
+        )
+
 
 def _normalize_text(text: str) -> str:
     normalized = text.strip().lower()
@@ -561,6 +647,99 @@ def _is_timer_cancel_request(text: str) -> bool:
     return bool(
         re.match(
             r"^(?:please\s+)?(?:cancel|delete|clear)\s+(?:(?:the|my)\s+)?timer$",
+            text,
+        )
+    )
+
+
+def _is_playback_stop_request(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:(?:stop|silence)\s+(?:playback|talking|audio|sound)|be\s+quiet)$",
+            text,
+        )
+    )
+
+
+def _is_playback_repeat_request(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:repeat\s+that|say\s+that\s+again|replay\s+(?:that|response))$",
+            text,
+        )
+    )
+
+
+def _extract_volume_percent(text: str) -> int | None:
+    match = re.match(
+        r"^(?:please\s+)?(?:set\s+)?(?:your\s+)?volume\s+(?:to\s+)?(?P<volume_text>.+?)(?:\s+percent)?$",
+        text,
+    )
+    if not match:
+        return None
+    value = _parse_volume_number(match.group("volume_text"))
+    if value is None:
+        return None
+    return max(0, min(100, value))
+
+
+def _extract_volume_delta(text: str) -> tuple[str, int] | None:
+    if re.match(r"^(?:please\s+)?(?:turn\s+it\s+up|turn\s+volume\s+up|volume\s+up)$", text):
+        return "up", 10
+    if re.match(r"^(?:please\s+)?(?:turn\s+it\s+down|turn\s+volume\s+down|volume\s+down)$", text):
+        return "down", -10
+    match = re.match(
+        r"^(?:please\s+)?(?P<direction>raise|lower|increase|decrease)(?:\s+volume)?(?:\s+by)?(?:\s+(?P<delta_text>.+?))?$",
+        text,
+    )
+    if not match:
+        return None
+    direction_text = match.group("direction")
+    direction = "down" if direction_text in {"lower", "decrease"} else "up"
+    delta = _parse_volume_number(match.group("delta_text") or "10") or 10
+    return direction, delta if direction == "up" else -delta
+
+
+def _parse_volume_number(text: str) -> int | None:
+    cleaned = re.sub(r"\bpercent\b", "", str(text or "").strip().lower()).strip()
+    if not cleaned:
+        return None
+    if cleaned.isdigit():
+        return int(cleaned)
+    return _parse_number_words(cleaned)
+
+
+def _parse_number_words(text: str) -> int | None:
+    total = 0.0
+    consumed = False
+    for token in re.split(r"\s+", text.strip()):
+        if token in {"and", "a"}:
+            continue
+        value = _NUMBER_WORDS.get(token)
+        if value is None:
+            return None
+        total += value
+        consumed = True
+    return int(total) if consumed else None
+
+
+def _is_mute_request(text: str) -> bool:
+    return bool(re.match(r"^(?:please\s+)?mute(?:\s+(?:yourself|endpoint|speaker))?$", text))
+
+
+def _is_unmute_request(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:unmute(?:\s+(?:yourself|endpoint|speaker))?|turn\s+(?:the\s+)?sound\s+back\s+on)$",
+            text,
+        )
+    )
+
+
+def _is_identify_request(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:identify(?:\s+(?:yourself|this\s+device|endpoint))?|flash\s+(?:the\s+)?(?:device|endpoint))$",
             text,
         )
     )
