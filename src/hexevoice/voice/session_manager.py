@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any
 from uuid import uuid4
 
@@ -57,6 +58,33 @@ LATENCY_POINT_ORDER = {
     "tts_end": 7,
     "session_end": 8,
 }
+
+PLAYBACK_INTERRUPT_STOP_PHRASES = {
+    "stop",
+    "stop it",
+    "stop timer",
+    "stop the timer",
+    "stop alarm",
+    "stop the alarm",
+    "silence timer",
+    "silence the timer",
+    "dismiss timer",
+    "dismiss the timer",
+    "turn off timer",
+    "turn off the timer",
+    "turn off alarm",
+    "turn off the alarm",
+}
+
+
+def _normalize_playback_interrupt_text(text: str) -> str:
+    normalized = re.sub(r"[^a-z0-9 ]+", " ", str(text or "").lower())
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _is_playback_stop_phrase(text: str) -> bool:
+    normalized = _normalize_playback_interrupt_text(text)
+    return normalized in PLAYBACK_INTERRUPT_STOP_PHRASES
 
 
 def tts_synthesis_metadata(tts: TtsSynthesis) -> dict[str, Any]:
@@ -112,6 +140,8 @@ class EndpointSessionRuntime:
     last_tts: dict | None = None
     last_tts_playback: dict | None = None
     tts_playback_history: list[dict[str, object]] = field(default_factory=list)
+    active_playbacks: dict[str, dict[str, object]] = field(default_factory=dict)
+    last_playback_interrupt: dict | None = None
     last_assistant: dict | None = None
     last_turn_timings: dict | None = None
     last_event_type: str | None = None
@@ -155,6 +185,8 @@ class VoiceSessionManager:
     _last_tts = _runtime_property("last_tts")
     _last_tts_playback = _runtime_property("last_tts_playback")
     _tts_playback_history = _runtime_property("tts_playback_history")
+    _active_playbacks = _runtime_property("active_playbacks")
+    _last_playback_interrupt = _runtime_property("last_playback_interrupt")
     _last_assistant = _runtime_property("last_assistant")
     _last_turn_timings = _runtime_property("last_turn_timings")
     _last_event_type = _runtime_property("last_event_type")
@@ -1202,6 +1234,12 @@ class VoiceSessionManager:
                 audio_format=payload.audio_format,
                 audio_bytes=audio_bytes,
             )
+        if (
+            audio_bytes is not None
+            and session.session_state == "idle"
+            and self._active_playback_interrupt(event.endpoint_id) is not None
+        ):
+            self._audio_chunks.append(audio_bytes)
         detection = (
             self._wake_detector.inspect_chunk(
                 endpoint_id=event.endpoint_id,
@@ -1329,8 +1367,10 @@ class VoiceSessionManager:
             return [session]
 
         if session.session_state == "idle":
+            playback_stop = self._playback_interrupt_stop_event(session)
+            completion_reason = "playback_interrupt_stop" if playback_stop is not None else "wake_not_detected"
             self._set_session_state("cancelled")
-            session.cancel_reason = "wake_not_detected"
+            session.cancel_reason = completion_reason
             wake_status = self._wake_detector.status().get("last_detection") or {}
             self._record_wake_history(
                 {
@@ -1340,7 +1380,7 @@ class VoiceSessionManager:
                     "session_id": session.session_id,
                     "model": wake_status.get("model"),
                     "confidence": wake_status.get("confidence"),
-                    "reason": wake_status.get("reason") or "wake_not_detected",
+                    "reason": wake_status.get("reason") or completion_reason,
                     "chunk_count": self._chunk_count,
                 }
             )
@@ -1350,7 +1390,7 @@ class VoiceSessionManager:
                     "detected": False,
                     "model": wake_status.get("model"),
                     "confidence": wake_status.get("confidence"),
-                    "reason": wake_status.get("reason") or "wake_not_detected",
+                    "reason": wake_status.get("reason") or completion_reason,
                     "chunk_count": self._chunk_count,
                 }
             )
@@ -1366,17 +1406,17 @@ class VoiceSessionManager:
                 session_id=session.session_id,
                 model=wake_status.get("model"),
                 confidence=wake_status.get("confidence"),
-                reason=wake_status.get("reason") or "wake_not_detected",
+                reason=wake_status.get("reason") or completion_reason,
                 chunk_count=self._chunk_count,
             )
             cancelled = self._state_event("session.cancelled", session)
             self._persist_active_session_history(
                 session,
-                completion_reason="wake_not_detected",
+                completion_reason=completion_reason,
             )
             self._release_active_session_wake_stream()
             self._clear_active_session_runtime()
-            return [cancelled]
+            return ([playback_stop] if playback_stop is not None else []) + [cancelled]
 
         if session.session_state == "wake_detected":
             self._set_session_state("listening")
@@ -1670,6 +1710,8 @@ class VoiceSessionManager:
                 "last_tts": self._last_tts,
                 "last_tts_playback": self._last_tts_playback,
                 "tts_playback_history": list(self._tts_playback_history),
+                "active_playbacks": list(self._active_playbacks.values()),
+                "last_playback_interrupt": self._last_playback_interrupt,
                 "last_error": self._last_error,
                 "last_command_ack": self._last_command_ack,
                 "last_command_error": self._last_command_error,
@@ -2261,6 +2303,7 @@ class VoiceSessionManager:
         self._last_tts_playback = record
         self._tts_playback_history.insert(0, record)
         del self._tts_playback_history[20:]
+        self._track_playback_lifecycle(event.event_type, record)
         self._last_event_type = event.event_type
         self._update_active_session_history(tts_playback=record)
         if event.session_id:
@@ -2313,6 +2356,92 @@ class VoiceSessionManager:
         if event.event_type == "tts.playback.failed" and self._pending_session_followup and self._active_session:
             return [self._cancel_active_followup_session(reason="tts_playback_failed")]
         return [self._state_event("session.state", self._active_session)] if self._active_session else []
+
+    def _track_playback_lifecycle(self, event_type: str, record: dict[str, object]) -> None:
+        stream_id = str(record.get("stream_id") or "").strip()
+        if not stream_id:
+            return
+        if event_type in {"tts.playback.download_started", "tts.playback.first_audio_frame"}:
+            self._active_playbacks[stream_id] = record
+            return
+        if event_type in {"tts.playback.completed", "tts.playback.failed", "playback.stop"}:
+            self._active_playbacks.pop(stream_id, None)
+
+    def _active_playback_interrupt(self, endpoint_id: str) -> dict[str, object] | None:
+        for record in self._active_playbacks.values():
+            if record.get("endpoint_id") != endpoint_id:
+                continue
+            stream_id = str(record.get("stream_id") or "")
+            audio_url = str(record.get("audio_url") or "")
+            session_id = str(record.get("session_id") or "")
+            if (
+                stream_id.startswith("timer-alarm-")
+                or "timer_alarm" in audio_url
+                or session_id.startswith("timer-completed-")
+            ):
+                return record
+        return None
+
+    def _playback_interrupt_stop_event(self, session: VoiceSessionSnapshot) -> VoiceEventEnvelope | None:
+        active_playback = self._active_playback_interrupt(session.endpoint_id)
+        transcribe_audio = getattr(self._turn_pipeline, "transcribe_audio", None)
+        if active_playback is None or not callable(transcribe_audio) or not self._audio_chunks:
+            return None
+
+        audio = VoiceTurnAudioSummary(
+            endpoint_id=session.endpoint_id,
+            session_id=session.session_id,
+            chunk_count=self._chunk_count,
+            sample_rate_hz=self._audio_format.sample_rate_hz if self._audio_format else None,
+            encoding=self._audio_format.encoding if self._audio_format else None,
+            channels=self._audio_format.channels if self._audio_format else 1,
+            audio_bytes=b"".join(self._audio_chunks),
+        )
+        transcript = transcribe_audio(audio)
+        transcript_text = transcript.text or ""
+        matched = not transcript.error and _is_playback_stop_phrase(transcript_text)
+        interrupt_record = {
+            "endpoint_id": session.endpoint_id,
+            "session_id": session.session_id,
+            "playback_session_id": active_playback.get("session_id"),
+            "stream_id": active_playback.get("stream_id"),
+            "provider_id": transcript.provider_id,
+            "model": transcript.model,
+            "confidence": transcript.confidence,
+            "duration_ms": transcript.duration_ms,
+            "text": transcript_text,
+            "text_chars": len(transcript_text),
+            "matched": matched,
+            "error": transcript.error,
+            "received_at": datetime.now(UTC).isoformat(),
+        }
+        self._last_playback_interrupt = interrupt_record
+        record_voice_event(
+            "playback.interrupt.transcript",
+            **interrupt_record,
+        )
+        if not matched:
+            return None
+
+        request_id = f"playback_interrupt_stop_{uuid4().hex}"
+        self._record_command(
+            request_id=request_id,
+            endpoint_id=session.endpoint_id,
+            command_type="playback.stop",
+            event_type="playback.stop",
+        )
+        return VoiceEventEnvelope(
+            event_type="playback.stop",
+            endpoint_id=session.endpoint_id,
+            direction="backend_to_endpoint",
+            session_id=str(active_playback.get("session_id") or session.session_id),
+            sequence=self._next_sequence(),
+            payload={
+                "request_id": request_id,
+                "reason": "voice_stop",
+                "stream_id": active_playback.get("stream_id"),
+            },
+        )
 
     def _should_open_followup_window(self, event: VoiceEventEnvelope) -> bool:
         return (

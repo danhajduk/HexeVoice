@@ -33,8 +33,8 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Voice PE LED ring voice-state and diagnostic patterns for boot, Wi-Fi/backend connection, disconnected, idle/off, wake/listening, capturing, thinking, replying, completed, muted/privacy, speaker-silent volume, OTA progress, and error states.
 - Voice PE rotary dial support: normal rotation adjusts endpoint volume and shows a temporary LED meter; center-held rotation changes the active LED accent color and suppresses the center-button wake/cancel action on release.
 - Firmware tracks TTS playback lifecycle as `idle`, `queued`, `started`, `finished`, `failed`, or `stopped`, and reports whether the microphone is currently paused for playback in endpoint heartbeat audio capabilities.
-- Firmware has a source-agnostic `stop_playback(reason)` path and accepts backend `playback.stop` commands. Endpoint heartbeats now expose `capabilities.audio.input.playback_interrupt` and `capabilities.firmware.modules.playback_stop_word` so operators can see whether spoken `stop` during playback is available.
-- True spoken `stop` during playback is still blocked because the firmware has no on-device keyword recognizer dependency. Current profiles report `missing_on_device_keyword_engine` instead of pretending local stop-word detection is available.
+- Firmware has a source-agnostic `stop_playback(reason)` path and accepts backend `playback.stop` commands. Endpoint heartbeats now expose `capabilities.audio.input.playback_interrupt` as `backend_stt_interrupt`, which keeps the microphone open during interruptible playback and lets the backend send `playback.stop` with reason `voice_stop` when stop-only STT matches.
+- Firmware still has no local on-device stop-word recognizer. Current profiles report that detail as `local_keyword_reason: missing_on_device_keyword_engine` while keeping the backend-owned interrupt mode available.
 
 ## Partial
 

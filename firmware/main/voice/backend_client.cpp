@@ -1138,14 +1138,15 @@ std::string endpoint_capabilities_json() {
   cJSON_AddNumberToObject(micro_vad, "min_energy_threshold", 50);
   cJSON_AddNumberToObject(micro_vad, "max_energy_threshold", 20000);
   cJSON *playback_interrupt = cJSON_AddObjectToObject(input, "playback_interrupt");
-  cJSON_AddBoolToObject(playback_interrupt, "available", hexe::voice::playback_stop_word_on_device_available());
-  cJSON_AddBoolToObject(playback_interrupt, "active", hexe::voice::playback_stop_word_active());
-  cJSON_AddStringToObject(playback_interrupt, "mode", hexe::voice::playback_stop_word_runtime_mode());
+  cJSON_AddBoolToObject(playback_interrupt, "available", true);
+  cJSON_AddBoolToObject(playback_interrupt, "active", state.tts_playback_active && !state.mic_paused_for_playback);
+  cJSON_AddStringToObject(playback_interrupt, "mode", "backend_stt_interrupt");
   cJSON_AddStringToObject(playback_interrupt, "stop_word", "stop");
   cJSON_AddStringToObject(playback_interrupt, "stop_event_type", "playback.stop");
   cJSON_AddStringToObject(playback_interrupt, "stop_reason", "voice_stop");
+  cJSON_AddBoolToObject(playback_interrupt, "local_keyword_available", hexe::voice::playback_stop_word_on_device_available());
   if (!hexe::voice::playback_stop_word_on_device_available()) {
-    cJSON_AddStringToObject(playback_interrupt, "reason", hexe::voice::playback_stop_word_unavailable_reason());
+    cJSON_AddStringToObject(playback_interrupt, "local_keyword_reason", hexe::voice::playback_stop_word_unavailable_reason());
   }
   cJSON *output = cJSON_AddObjectToObject(audio, "output");
   cJSON_AddBoolToObject(output, "available", hexe::board::audio_output_ready());
@@ -1207,16 +1208,17 @@ std::string endpoint_capabilities_json() {
     add_module_status(
         modules,
         "playback_stop_word",
-        "firmware",
-        hexe::voice::playback_stop_word_runtime_mode(),
-        hexe::voice::playback_stop_word_on_device_available(),
-        hexe::voice::playback_stop_word_active() ? "active" : "blocked");
+        "backend",
+        "backend_stt_interrupt",
+        true,
+        state.tts_playback_active && !state.mic_paused_for_playback ? "active" : "ready");
     cJSON *playback_stop_word = cJSON_GetObjectItem(modules, "playback_stop_word");
     if (cJSON_IsObject(playback_stop_word)) {
       cJSON_AddStringToObject(playback_stop_word, "stop_word", "stop");
-      cJSON_AddStringToObject(playback_stop_word, "unavailable_reason", hexe::voice::playback_stop_word_unavailable_reason());
       cJSON_AddStringToObject(playback_stop_word, "stop_event_type", "playback.stop");
       cJSON_AddStringToObject(playback_stop_word, "stop_reason", "voice_stop");
+      cJSON_AddBoolToObject(playback_stop_word, "local_keyword_available", hexe::voice::playback_stop_word_on_device_available());
+      cJSON_AddStringToObject(playback_stop_word, "local_keyword_reason", hexe::voice::playback_stop_word_unavailable_reason());
     }
     add_module_status(
         modules,

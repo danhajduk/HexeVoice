@@ -1643,6 +1643,95 @@ def test_voice_session_manager_pushes_playback_stop_command_to_endpoint():
     assert websocket.sent[0]["payload"]["reason"] == "voice_stop"
 
 
+def test_voice_websocket_stops_active_timer_alarm_from_interrupt_transcript(tmp_path):
+    class InterruptPipeline:
+        def __init__(self):
+            self.audio = None
+
+        def transcribe_audio(self, audio):
+            self.audio = audio
+            return SpeechTranscript(text="stop", provider_id="stt-test", model="interrupt-test")
+
+        def status(self):
+            return {"stt": {"provider": "stt-test", "healthy": True}}
+
+    pipeline = InterruptPipeline()
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        turn_pipeline=pipeline,
+    )
+    client = TestClient(
+        create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager)
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as websocket:
+        websocket.send_json(
+            voice_event(
+                "tts.playback.first_audio_frame",
+                endpoint_id="esp-pe-1",
+                session_id="timer-completed-timer-1",
+                payload={
+                    "stream_id": "timer-alarm-timer-1",
+                    "audio_url": "/api/endpoint/media/files/timer_alarm.wav",
+                    "byte_count": 4096,
+                },
+            )
+        )
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                endpoint_id="esp-pe-1",
+                session_id="interrupt-1",
+                payload={
+                    "wake_source": "openwakeword",
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                endpoint_id="esp-pe-1",
+                session_id="interrupt-1",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": base64.b64encode(b"stop audio").decode("ascii"),
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.end",
+                endpoint_id="esp-pe-1",
+                session_id="interrupt-1",
+                payload={"reason": "vad_silence"},
+            )
+        )
+        stop_event = websocket.receive_json()
+        cancelled = websocket.receive_json()
+
+    assert stop_event["event_type"] == "playback.stop"
+    assert stop_event["endpoint_id"] == "esp-pe-1"
+    assert stop_event["session_id"] == "timer-completed-timer-1"
+    assert stop_event["payload"]["reason"] == "voice_stop"
+    assert stop_event["payload"]["stream_id"] == "timer-alarm-timer-1"
+    assert stop_event["payload"]["request_id"].startswith("playback_interrupt_stop_")
+    assert cancelled["event_type"] == "session.cancelled"
+    assert cancelled["payload"]["snapshot"]["session_state"] == "cancelled"
+    assert cancelled["payload"]["snapshot"]["cancel_reason"] == "playback_interrupt_stop"
+    assert pipeline.audio is not None
+    assert pipeline.audio.endpoint_id == "esp-pe-1"
+    assert pipeline.audio.session_id == "interrupt-1"
+    assert pipeline.audio.audio_bytes == b"stop audio"
+    status = client.get("/api/voice/status").json()
+    assert status["last_playback_interrupt"]["matched"] is True
+    assert status["last_playback_interrupt"]["text"] == "stop"
+    assert status["commands"][0]["request_id"] == stop_event["payload"]["request_id"]
+
+
 def test_voice_websocket_surfaces_stt_provider_errors(tmp_path):
     class FailingSttPipeline:
         def status(self):

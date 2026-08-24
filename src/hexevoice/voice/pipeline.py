@@ -1755,6 +1755,27 @@ class VoiceTurnPipeline:
             timings=timings,
         )
 
+    def transcribe_audio(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:
+        stt_started_at = time.perf_counter()
+        transcript = self._stt_adapter.transcribe(audio)
+        stt_ms = round((time.perf_counter() - stt_started_at) * 1000, 2)
+        record_voice_event(
+            "stt.failed" if transcript.error else "stt.completed",
+            endpoint_id=audio.endpoint_id,
+            session_id=audio.session_id,
+            provider_id=transcript.provider_id,
+            model=transcript.model,
+            confidence=transcript.confidence,
+            duration_ms=transcript.duration_ms,
+            text_chars=len(transcript.text or ""),
+            transcript_text=transcript.text,
+            error=transcript.error,
+            chunk_count=audio.chunk_count,
+            stt_ms=stt_ms,
+            interrupt_only=True,
+        )
+        return transcript
+
     def status(self) -> dict:
         stt_status = self._stt_adapter.status()
         tts_status = self._tts_adapter.status()

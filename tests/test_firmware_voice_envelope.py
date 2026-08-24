@@ -189,9 +189,14 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert '"missing_on_device_keyword_engine"' in wake_source
     assert '"playback_interrupt"' in backend_source
     assert '"playback_stop_word"' in backend_source
+    assert '"available", true' in backend_source
+    assert '"backend_stt_interrupt"' in backend_source
     assert '"stop_word", "stop"' in backend_source
     assert '"stop_event_type", "playback.stop"' in backend_source
     assert '"stop_reason", "voice_stop"' in backend_source
+    assert '"local_keyword_available"' in backend_source
+    assert '"local_keyword_reason"' in backend_source
+    assert '"reason", hexe::voice::playback_stop_word_unavailable_reason()' not in backend_source
     assert 'stop_playback("voice_stop")' not in tts_sources
     assert 'send_playback_event(\n        "playback.stop"' in tts_sources
 
@@ -250,7 +255,7 @@ def test_firmware_heartbeat_reports_network_metadata():
     assert "playback_lifecycle_state_name" in source
     assert "set_playback_lifecycle(hexe::PlaybackLifecycleState::kQueued, true)" in tts_source
     assert "set_playback_lifecycle(hexe::PlaybackLifecycleState::kStarted, true)" in pe_tts_source
-    assert "played ? hexe::PlaybackLifecycleState::kFinished" in pe_tts_source
+    assert "played && !request.loop ? hexe::PlaybackLifecycleState::kFinished" in pe_tts_source
     assert "set_playback_lifecycle(hexe::PlaybackLifecycleState::kStopped, false)" in pe_tts_source
     assert "mic_paused_for_playback = true" in audio_source
     assert "mic_paused_for_playback = false" in pe_audio_source
@@ -418,7 +423,7 @@ def test_firmware_sound_transfer_can_activate_sd_playback():
     assert "hexe::voice::play_sd_sound(request.filename)" in backend_source
     assert "read_audio_file" in player_source
     assert "sd_card_sounds_path()" in player_source
-    assert "play_wav(audio, request)" in player_source
+    assert "play_wav(audio, request, report_first_frame)" in player_source
     assert "tts.playback.first_audio_frame" in player_source
     assert "tts.playback.completed" in player_source
     assert "tts.playback.failed" in player_source

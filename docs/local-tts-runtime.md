@@ -197,9 +197,10 @@ Playback interruption is source-agnostic. `POST /api/endpoint/playback/stop`
 sends a `playback.stop` command to the endpoint, and firmware reports
 `playback.stop` back with the active stream and stop reason when playback is
 interrupted. Existing mute/cancel controls use the same stop path. Current
-firmware wake detection is backend-owned, so true spoken `stop` during playback
-requires a future on-device stop-word detector before it can work without
-backend STT or speaker echo risk.
+firmware wake detection is backend-owned, so `mic_mode: "interrupt_only"` lets
+the backend run a stop-only STT pass over no-wake audio during active timer alarm
+playback. A future on-device stop-word detector can remove the backend STT and
+speaker echo dependency.
 
 Play-sound commands accept `mic_mode: "interrupt_only"` to request playback
 without pausing the endpoint microphone. The default remains
