@@ -505,3 +505,12 @@ Step objective: Implement Track 1 audio-quality diagnostics for accepted voice t
 Chosen fix: Add a lightweight in-memory PCM analyzer and attach only redacted metrics to existing turn results, events, and session history.
 What changed: Added `hexevoice.voice.audio_quality`, integrated audio-quality metadata into `VoiceTurnPipeline`, `stt.completed`, `transcript.final`, and session history, changed raw wake/debug recording default retention to one day, and documented that Track 1 is diagnostic-only.
 Verification: `.venv/bin/pytest tests/test_audio_quality.py tests/test_voice_pipeline.py tests/test_config.py tests/test_voice_websocket.py` passed; no `scripts/rebuild.sh` exists.
+###########
+Task #239
+Step objective: Define stable local schemas for voice quality, identity, enrollment, validation, placement, and observation metrics.
+Chosen fix: Add executable Pydantic schema models plus a recursive redaction guard, and document the local compatibility/privacy policy.
+What changed: Added `hexevoice.voice.metric_schemas`, exported the metric models/helpers, added schema version and confidence tier to speaker identity context, documented the schema source in `docs/voice-metric-schemas.md`, and linked it from architecture docs.
+Verification: `.venv/bin/pytest tests/test_voice_metric_schemas.py tests/test_audio_quality.py tests/test_voice_pipeline.py tests/test_voice_websocket.py::test_voice_session_history_persists_turn_metadata_and_survives_restart` passed; no `scripts/rebuild.sh` exists.
+#############
+All Tasks completed 08/27/2026 08:31:31
+#############

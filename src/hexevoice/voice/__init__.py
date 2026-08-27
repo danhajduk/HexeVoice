@@ -32,6 +32,18 @@ from hexevoice.voice.contracts import (
 from hexevoice.voice.session_manager import VoiceSessionManager
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.audio_quality import AudioQualityResult, analyze_pcm_s16le_audio
+from hexevoice.voice.metric_schemas import (
+    AmbientSnrMetric,
+    AudioQualityMetric,
+    EnrollmentReadinessMetric,
+    IdentityPolicyDecisionMetric,
+    PlacementMetric,
+    SpeakerIdentityMetric,
+    ValidationPhraseScoreMetric,
+    VoiceQualityObservationRecord,
+    assert_metric_payload_redacted,
+    speaker_confidence_tier,
+)
 from hexevoice.voice.pipeline import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
@@ -102,6 +114,16 @@ __all__ = [
     "MicroVadChunkRecordingService",
     "AudioQualityResult",
     "analyze_pcm_s16le_audio",
+    "AmbientSnrMetric",
+    "AudioQualityMetric",
+    "EnrollmentReadinessMetric",
+    "IdentityPolicyDecisionMetric",
+    "PlacementMetric",
+    "SpeakerIdentityMetric",
+    "ValidationPhraseScoreMetric",
+    "VoiceQualityObservationRecord",
+    "assert_metric_payload_redacted",
+    "speaker_confidence_tier",
     "DeterministicSpeechToTextAdapter",
     "DeterministicTextToSpeechAdapter",
     "ExternalFasterWhisperSpeechToTextAdapter",

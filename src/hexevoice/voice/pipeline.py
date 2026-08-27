@@ -37,6 +37,8 @@ from hexevoice.engine_http import client_for_engine
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
 from hexevoice.voice.audio_quality import AudioQualityResult
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
+from hexevoice.voice.metric_schemas import VOICE_METRIC_SCHEMA_VERSION
+from hexevoice.voice.metric_schemas import speaker_confidence_tier
 from hexevoice.voice.records import record_voice_event
 from hexevoice.stt_profiles import SttModelProfile
 from hexevoice.stt_profiles import get_stt_model_profile
@@ -144,12 +146,14 @@ class SpeakerIdentityResult:
 
     def as_context(self) -> dict[str, object]:
         return {
+            "schema_version": VOICE_METRIC_SCHEMA_VERSION,
             "status": self.status,
             "policy": self.policy,
             "active": self.active,
             "speaker_public_id": self.speaker_public_id,
             "display_name": self.display_name,
             "confidence": self.confidence,
+            "confidence_tier": speaker_confidence_tier(self.confidence),
             "score": self.score,
             "score_margin": self.score_margin,
             "provider": self.provider,
