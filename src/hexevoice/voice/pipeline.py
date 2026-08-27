@@ -69,6 +69,7 @@ class VoiceTurnAudioSummary:
     encoding: str | None = None
     channels: int = 1
     audio_bytes: bytes | None = None
+    ambient_audio_bytes: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -1727,6 +1728,7 @@ class VoiceTurnPipeline:
             sample_rate_hz=audio.sample_rate_hz,
             channels=audio.channels,
             encoding=audio.encoding,
+            ambient_audio_bytes=audio.ambient_audio_bytes,
         )
         executor = ThreadPoolExecutor(max_workers=2)
         try:

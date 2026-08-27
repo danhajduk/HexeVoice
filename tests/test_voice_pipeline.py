@@ -290,6 +290,40 @@ def test_voice_turn_pipeline_attaches_audio_quality_without_blocking(monkeypatch
     assert "audio_bytes" not in stt_event["audio_quality"]
 
 
+def test_voice_turn_pipeline_attaches_ambient_snr_metadata(monkeypatch, tmp_path):
+    events = []
+    monkeypatch.setattr("hexevoice.voice.pipeline.record_voice_event", lambda event_type, **fields: events.append({"event_type": event_type, **fields}))
+    runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
+    assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="status"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-snr",
+            chunk_count=4,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+            ambient_audio_bytes=(100).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.audio_quality is not None
+    assert result.audio_quality.snr_status == "ok"
+    assert result.audio_quality.snr_db is not None and result.audio_quality.snr_db >= 15
+    assert result.audio_quality.ambient_duration_ms == 1000
+    assert result.audio_quality.speech_duration_ms == 1000
+    stt_event = next(event for event in events if event["event_type"] == "stt.completed")
+    assert stt_event["audio_quality"]["snr_status"] == "ok"
+    assert "ambient_audio_bytes" not in stt_event["audio_quality"]
+
+
 def test_voice_turn_pipeline_does_not_wait_for_speaker_id_when_not_required(tmp_path):
     runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
     assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)

@@ -265,3 +265,4 @@ Task 236: Add Speaker ID operator UI controls for consent, enrollment, profile r
 Task 237: Validate Speaker ID accuracy, latency, privacy, and multi-endpoint behavior with tests, docs, and benchmark artifacts - Completed on 08/26/2026 20:46
 Task 238: Implement Track 1 audio-quality foundation for accepted voice turns - Completed on 08/26/2026 20:51
 Task 239: Define versioned voice quality, identity, enrollment, and placement metric schemas - Completed on 08/27/2026 08:30
+Task 240: Implement Track 2 pre-roll ambient reference and per-turn SNR metadata - Completed on 08/27/2026 09:29

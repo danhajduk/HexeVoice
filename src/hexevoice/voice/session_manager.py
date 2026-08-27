@@ -130,6 +130,7 @@ class EndpointSessionRuntime:
     active_session: VoiceSessionSnapshot | None = None
     chunk_count: int = 0
     audio_chunks: list[bytes] = field(default_factory=list)
+    ambient_audio_chunks: list[bytes] = field(default_factory=list)
     audio_format: Any = None
     sequence: int = 0
     active_session_history: dict[str, Any] | None = None
@@ -175,6 +176,7 @@ class VoiceSessionManager:
     _active_session = _runtime_property("active_session")
     _chunk_count = _runtime_property("chunk_count")
     _audio_chunks = _runtime_property("audio_chunks")
+    _ambient_audio_chunks = _runtime_property("ambient_audio_chunks")
     _audio_format = _runtime_property("audio_format")
     _sequence = _runtime_property("sequence")
     _active_session_history = _runtime_property("active_session_history")
@@ -1100,6 +1102,7 @@ class VoiceSessionManager:
         )
         self._chunk_count = 0
         self._audio_chunks = []
+        self._ambient_audio_chunks = []
         self._audio_format = payload.audio_format
         self._begin_active_session_history(
             session=self._active_session,
@@ -1267,6 +1270,8 @@ class VoiceSessionManager:
             else WakeDetectionResult(detected=False, reason="wake_already_detected")
         )
         wake_accepted = detection.detected and session.session_state == "idle"
+        if audio_bytes is not None and not wake_accepted and self._is_ambient_reference_chunk(session):
+            self._ambient_audio_chunks.append(audio_bytes)
         self._record_wake_confidence(
             endpoint_id=event.endpoint_id,
             session_id=session.session_id,
@@ -1463,6 +1468,7 @@ class VoiceSessionManager:
                     encoding=self._audio_format.encoding if self._audio_format else None,
                     channels=self._audio_format.channels if self._audio_format else 1,
                     audio_bytes=b"".join(self._audio_chunks),
+                    ambient_audio_bytes=b"".join(self._ambient_audio_chunks) or None,
                 )
             )
             stt_ended_at = stt_started_at + timedelta(milliseconds=turn.timings.stt_ms)
@@ -1931,6 +1937,16 @@ class VoiceSessionManager:
         )
         self._active_session_history["audio"] = audio
 
+    def _is_ambient_reference_chunk(self, session: VoiceSessionSnapshot) -> bool:
+        if self._active_playback_interrupt(session.endpoint_id) is not None:
+            return False
+        if session.session_state == "idle":
+            return True
+        vad = self._active_session_history.get("vad") if self._active_session_history else None
+        return session.session_state in {"wake_detected", "listening"} and not (
+            isinstance(vad, dict) and vad.get("speech_started_at")
+        )
+
     def _set_active_session_wake(self, wake: dict[str, Any]) -> None:
         if self._active_session_history is None:
             return
@@ -2053,6 +2069,7 @@ class VoiceSessionManager:
             {
                 "chunk_count": self._chunk_count,
                 "captured_chunk_count": len(self._audio_chunks),
+                "ambient_reference_chunk_count": len(self._ambient_audio_chunks),
                 "raw_audio_persisted": False,
             }
         )
@@ -2143,6 +2160,7 @@ class VoiceSessionManager:
         self._active_session = None
         self._chunk_count = 0
         self._audio_chunks = []
+        self._ambient_audio_chunks = []
         self._audio_format = None
         self._active_session_history = None
         self._pending_session_followup = None
@@ -2421,6 +2439,7 @@ class VoiceSessionManager:
             encoding=self._audio_format.encoding if self._audio_format else None,
             channels=self._audio_format.channels if self._audio_format else 1,
             audio_bytes=b"".join(self._audio_chunks),
+            ambient_audio_bytes=b"".join(self._ambient_audio_chunks) or None,
         )
         transcript = transcribe_audio(audio)
         transcript_text = transcript.text or ""
@@ -2480,6 +2499,7 @@ class VoiceSessionManager:
         if self._active_session is None or self._pending_session_followup is None:
             raise RuntimeError("followup_window_requires_active_session")
         self._audio_chunks = []
+        self._ambient_audio_chunks = []
         self._chunk_count = 0
         followup = {
             **self._pending_session_followup,

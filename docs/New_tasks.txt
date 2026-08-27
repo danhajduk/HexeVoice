@@ -53,7 +53,6 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 240: Implement Track 2 pre-roll ambient reference and per-turn SNR metadata
 [TODO] Task 241: Add endpoint ambient metric reporting for pre-roll and noise-floor quality analysis
 [STOP]
 [TODO] Task 242: Enable the lowest-resource production Speaker ID provider path

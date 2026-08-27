@@ -24,7 +24,13 @@ class AudioQualityResult:
     silence_ratio: float | None
     speech_rms: float | None
     ambient_rms: float | None = None
+    ambient_peak: float | None = None
+    ambient_duration_ms: int = 0
+    speech_peak: float | None = None
+    speech_duration_ms: int = 0
     snr_db: float | None = None
+    snr_status: str = "unavailable"
+    snr_reason: str | None = "missing_ambient"
 
     def as_context(self) -> dict[str, object]:
         return asdict(self)
@@ -36,6 +42,7 @@ def analyze_pcm_s16le_audio(
     sample_rate_hz: int | None,
     channels: int = 1,
     encoding: str | None = "pcm_s16le",
+    ambient_audio_bytes: bytes | None = None,
 ) -> AudioQualityResult:
     sample_rate = int(sample_rate_hz or 0)
     channel_count = max(1, int(channels or 1))
@@ -90,6 +97,18 @@ def analyze_pcm_s16le_audio(
     if clipping_ratio >= 0.01:
         warnings.append("clipped")
 
+    ambient_metrics = _ambient_snr_metrics(
+        ambient_audio_bytes,
+        sample_rate_hz=sample_rate_hz,
+        channels=channel_count,
+        encoding=encoding,
+        speech_rms=speech_rms,
+        speech_peak=peak,
+        speech_duration_ms=duration_ms,
+    )
+    if ambient_metrics["snr_status"] == "low_snr":
+        warnings.append("low_snr")
+
     status = _status_from_warnings(warnings)
     return AudioQualityResult(
         schema_version=1,
@@ -107,7 +126,64 @@ def analyze_pcm_s16le_audio(
         active_audio_ratio=round(active_audio_ratio, 6),
         silence_ratio=round(silence_ratio, 6),
         speech_rms=round(speech_rms, 6) if speech_rms is not None else None,
+        **ambient_metrics,
     )
+
+
+def _ambient_snr_metrics(
+    ambient_audio_bytes: bytes | None,
+    *,
+    sample_rate_hz: int | None,
+    channels: int,
+    encoding: str | None,
+    speech_rms: float | None,
+    speech_peak: float | None,
+    speech_duration_ms: int,
+) -> dict[str, object]:
+    base = {
+        "ambient_rms": None,
+        "ambient_peak": None,
+        "ambient_duration_ms": 0,
+        "speech_peak": round(speech_peak, 6) if speech_peak is not None else None,
+        "speech_duration_ms": speech_duration_ms,
+        "snr_db": None,
+        "snr_status": "unavailable",
+        "snr_reason": "missing_ambient",
+    }
+    if not ambient_audio_bytes:
+        return base
+    if encoding != "pcm_s16le":
+        return {**base, "snr_reason": "unsupported_ambient_audio"}
+    sample_rate = int(sample_rate_hz or 0)
+    raw = ambient_audio_bytes
+    usable_length = len(raw) - (len(raw) % 2)
+    samples = [sample / 32768.0 for (sample,) in struct.iter_unpack("<h", raw[:usable_length])]
+    if not samples or sample_rate <= 0:
+        return {**base, "snr_reason": "short_ambient"}
+    frame_count = len(samples) // max(1, channels)
+    ambient_duration_ms = int(round((frame_count / sample_rate) * 1000))
+    abs_samples = [abs(sample) for sample in samples]
+    ambient_rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+    ambient_peak = max(abs_samples)
+    measured = {
+        **base,
+        "ambient_rms": round(ambient_rms, 6),
+        "ambient_peak": round(ambient_peak, 6),
+        "ambient_duration_ms": ambient_duration_ms,
+    }
+    if ambient_duration_ms < 300:
+        return {**measured, "snr_reason": "short_ambient"}
+    if speech_rms is None:
+        return {**measured, "snr_reason": "missing_speech"}
+    if ambient_rms <= 0:
+        return {**measured, "snr_reason": "ambient_silent"}
+    snr_db = 20 * math.log10(max(speech_rms, 1e-12) / ambient_rms)
+    return {
+        **measured,
+        "snr_db": round(snr_db, 2),
+        "snr_status": "ok" if snr_db >= 15 else "low_snr",
+        "snr_reason": None,
+    }
 
 
 def _empty_result(
@@ -134,11 +210,13 @@ def _empty_result(
         active_audio_ratio=None,
         silence_ratio=None,
         speech_rms=None,
+        speech_duration_ms=0,
+        snr_reason=warning if warning in {"missing_audio", "unsupported_audio", "short_audio"} else "missing_ambient",
     )
 
 
 def _status_from_warnings(warnings: list[str]) -> str:
-    for status in ("silent", "clipped", "short_audio", "low_level"):
+    for status in ("silent", "clipped", "short_audio", "low_level", "low_snr"):
         if status in warnings:
             return status
     return "ok"

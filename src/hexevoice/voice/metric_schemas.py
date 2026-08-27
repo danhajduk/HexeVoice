@@ -46,7 +46,13 @@ class AudioQualityMetric(VoiceMetricModel):
     silence_ratio: float | None = Field(default=None, ge=0, le=1)
     speech_rms: float | None = Field(default=None, ge=0)
     ambient_rms: float | None = Field(default=None, ge=0)
+    ambient_peak: float | None = Field(default=None, ge=0)
+    ambient_duration_ms: int = Field(default=0, ge=0)
+    speech_peak: float | None = Field(default=None, ge=0)
+    speech_duration_ms: int = Field(default=0, ge=0)
     snr_db: float | None = None
+    snr_status: str = "unavailable"
+    snr_reason: str | None = None
 
 
 class AmbientSnrMetric(VoiceMetricModel):
