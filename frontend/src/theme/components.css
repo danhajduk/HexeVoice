@@ -283,6 +283,23 @@
   text-transform: uppercase;
 }
 
+.audio-quality-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.audio-quality-inline > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.audio-quality-fact-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .endpoint-status-card-footer {
   display: flex;
   flex-wrap: wrap;
@@ -2045,6 +2062,7 @@ select.field-input {
   .intent-audio-result,
   .intent-detail-grid,
   .endpoint-detail-grid,
+  .audio-quality-fact-grid,
   .endpoint-overview-layout,
   .endpoint-detail-inline .endpoint-detail-grid,
   .tts-model-detail-grid,

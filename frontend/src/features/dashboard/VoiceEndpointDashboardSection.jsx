@@ -66,6 +66,13 @@ function formatPercent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
+function formatNumber(value, digits = 3) {
+  if (typeof value !== "number") {
+    return "none";
+  }
+  return value.toFixed(digits);
+}
+
 function formatYesNo(value) {
   if (typeof value !== "boolean") {
     return "unknown";
@@ -184,7 +191,71 @@ function firmwareUpdateLabel(update) {
   return update.reason || "current";
 }
 
-function VoicePipelinePanel({ voiceStatus }) {
+function audioQualityTone(audioQuality) {
+  const status = String(audioQuality?.status || "").toLowerCase();
+  if (!status) {
+    return "neutral";
+  }
+  if (status === "ok") {
+    return "success";
+  }
+  if (status === "clipped" || status === "silent" || status === "unsupported_audio") {
+    return "danger";
+  }
+  return "warning";
+}
+
+function audioQualitySummary(audioQuality) {
+  if (!audioQuality) {
+    return "none";
+  }
+  const warnings = Array.isArray(audioQuality.warnings) ? audioQuality.warnings.filter(Boolean) : [];
+  return warnings.length ? `${audioQuality.status}: ${warnings.join(", ")}` : String(audioQuality.status || "unknown");
+}
+
+function audioQualityDetailRows(audioQuality) {
+  if (!audioQuality) {
+    return [];
+  }
+  return [
+    ["Status", audioQuality.status],
+    ["Warnings", Array.isArray(audioQuality.warnings) && audioQuality.warnings.length ? audioQuality.warnings.join(", ") : "none"],
+    ["Duration", formatMs(audioQuality.duration_ms)],
+    ["RMS", formatNumber(audioQuality.rms)],
+    ["Peak", formatNumber(audioQuality.peak)],
+    ["Clipping", `${valueOrEmpty(audioQuality.clipping_count, 0)} / ${formatPercent(audioQuality.clipping_ratio)}`],
+    ["Active audio", formatPercent(audioQuality.active_audio_ratio)],
+    ["Silence", formatPercent(audioQuality.silence_ratio)],
+    ["Speech RMS", formatNumber(audioQuality.speech_rms)],
+  ];
+}
+
+function AudioQualityBadge({ audioQuality }) {
+  return (
+    <span className={`status-pill status-pill-${audioQualityTone(audioQuality)}`}>
+      {audioQuality?.status || "no quality"}
+    </span>
+  );
+}
+
+function AudioQualityFacts({ audioQuality }) {
+  const rows = audioQualityDetailRows(audioQuality);
+  if (!rows.length) {
+    return <div className="callout callout-neutral">No audio-quality metrics were recorded for this turn.</div>;
+  }
+  return (
+    <dl className="fact-grid audio-quality-fact-grid">
+      {rows.map(([label, value]) => (
+        <div className="fact-grid-item" key={label}>
+          <dt className="fact-grid-label">{label}</dt>
+          <dd className="fact-grid-value">{valueOrEmpty(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function VoicePipelinePanel({ voiceStatus, latestSession }) {
   const [visibleTranscript, setVisibleTranscript] = useState("");
 
   useEffect(() => {
@@ -204,6 +275,7 @@ function VoicePipelinePanel({ voiceStatus }) {
 
   const timings = voiceStatus?.last_turn_timings || {};
   const assistant = voiceStatus?.last_assistant || {};
+  const audioQuality = latestSession?.transcript?.audio_quality || voiceStatus?.last_transcript_metadata?.audio_quality || null;
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -252,10 +324,18 @@ function VoicePipelinePanel({ voiceStatus }) {
           <dd>{formatMs(timings.total_ms)}</dd>
         </div>
         <div>
+          <dt>Audio quality</dt>
+          <dd className="audio-quality-inline">
+            <AudioQualityBadge audioQuality={audioQuality} />
+            <span>{audioQualitySummary(audioQuality)}</span>
+          </dd>
+        </div>
+        <div>
           <dt>Last error</dt>
           <dd>{valueOrEmpty(assistant.error || voiceStatus?.last_error?.code, "clear")}</dd>
         </div>
       </dl>
+      <AudioQualityFacts audioQuality={audioQuality} />
     </section>
   );
 }
@@ -1098,6 +1178,7 @@ function VoiceSessionDetailPopout({ session, loading, error, onClose }) {
     return null;
   }
   const points = latencyTimeline(session);
+  const audioQuality = session?.transcript?.audio_quality || null;
   return (
     <div className="voice-history-popout-backdrop" role="presentation" onClick={onClose}>
       <section
@@ -1137,7 +1218,23 @@ function VoiceSessionDetailPopout({ session, loading, error, onClose }) {
                 <dt>Reply</dt>
                 <dd>{valueOrEmpty(session.assistant?.text || session.tts?.spoken_text)}</dd>
               </div>
+              <div>
+                <dt>Audio quality</dt>
+                <dd className="audio-quality-inline">
+                  <AudioQualityBadge audioQuality={audioQuality} />
+                  <span>{audioQualitySummary(audioQuality)}</span>
+                </dd>
+              </div>
             </dl>
+            <section className="stack">
+              <div className="section-heading">
+                <div>
+                  <p className="panel-kicker">Track 1</p>
+                  <h3 className="section-title">Audio Quality</h3>
+                </div>
+              </div>
+              <AudioQualityFacts audioQuality={audioQuality} />
+            </section>
             <div className="voice-history-timeline">
               {points.length ? (
                 points.map((point) => (
@@ -1202,6 +1299,7 @@ function VoiceSessionHistoryPanel({
               <th scope="col">Endpoint</th>
               <th scope="col">State</th>
               <th scope="col">Wake</th>
+              <th scope="col">Quality</th>
               <th scope="col">Transcript</th>
               <th scope="col">Response</th>
               <th scope="col">Total</th>
@@ -1218,6 +1316,7 @@ function VoiceSessionHistoryPanel({
                 const recordingId = wakeRecordingId(session.wake_recording);
                 const streamId = ttsStreamId(session.tts);
                 const ttsUrl = session.tts?.endpoint_audio_url || session.tts?.audio_url || "";
+                const audioQuality = session?.transcript?.audio_quality || null;
                 return (
                   <tr
                     className="voice-history-row"
@@ -1235,6 +1334,9 @@ function VoiceSessionHistoryPanel({
                     <td>{valueOrEmpty(session.endpoint_id)}</td>
                     <td>{valueOrEmpty(session.session_state)}</td>
                     <td>{formatPercent(session.wake?.confidence)}</td>
+                    <td>
+                      <AudioQualityBadge audioQuality={audioQuality} />
+                    </td>
                     <td className="voice-history-text">{valueOrEmpty(session.transcript?.text)}</td>
                     <td className="voice-history-text">{valueOrEmpty(session.assistant?.text)}</td>
                     <td>{formatMs(session.turn_timings?.total_ms ?? session.duration_ms)}</td>
@@ -1291,7 +1393,7 @@ function VoiceSessionHistoryPanel({
               })
             ) : (
               <tr>
-                <td colSpan={10}>none</td>
+                <td colSpan={11}>none</td>
               </tr>
             )}
           </tbody>
@@ -1335,6 +1437,7 @@ export function VoiceEndpointDashboardSection({
   const selectedEndpointStatus = endpointStatusById(endpointStatuses, selectedEndpointId);
   const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
   const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
+  const latestEndpointSession = visibleHistorySessions(voiceSessions)[0] || null;
   const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
   const reportedOutput = endpointCapabilities(selectedEndpointStatus).audio?.output || {};
 
@@ -1625,7 +1728,7 @@ export function VoiceEndpointDashboardSection({
   return (
     <section className="card stack panel voice-endpoint-main-card">
       <div className="voice-endpoint-top">
-        <VoicePipelinePanel voiceStatus={scopedVoiceStatus} />
+        <VoicePipelinePanel voiceStatus={scopedVoiceStatus} latestSession={latestEndpointSession} />
         <VoiceEndpointActionsCard
           voiceStatus={scopedVoiceStatus}
           onRefresh={onRefresh}
