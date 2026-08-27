@@ -25,7 +25,7 @@ Use `assert_metric_payload_redacted()` before writing new metric payloads to log
 
 ## Schema Shapes
 
-`AudioQualityMetric` is the Track 1/2 quality result. It records duration, RMS, peak, clipping count/ratio, active/silence ratio, speech RMS/peak/duration, status, warnings, and Track 2 ambient/SNR metadata. Track 2 fields include `ambient_rms`, `ambient_peak`, `ambient_duration_ms`, `snr_db`, `snr_status`, and `snr_reason`. Missing or insufficient ambient references use `snr_status="unavailable"` plus a reason instead of inventing an SNR value.
+`AudioQualityMetric` is the Track 1/2 quality result. It records duration, RMS, peak, clipping count/ratio, active/silence ratio, speech RMS/peak/duration, status, warnings, and Track 2 ambient/SNR metadata. Track 2 fields include `ambient_rms`, `ambient_peak`, `ambient_duration_ms`, `snr_db`, `snr_status`, `snr_reason`, and `source`. Missing or insufficient ambient references use `snr_status="unavailable"` plus a reason instead of inventing an SNR value. `source` is `endpoint` when endpoint-provided numeric ambient/noise metrics were used, otherwise `backend`.
 
 `AmbientSnrMetric` is the Track 2 ambient/noise result. It records ambient duration, ambient RMS, speech RMS, SNR, optional noise-floor RMS, and optional local classification labels.
 

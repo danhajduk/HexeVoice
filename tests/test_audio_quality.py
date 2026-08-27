@@ -37,6 +37,7 @@ def test_audio_quality_accepts_normal_level_audio():
     assert result.snr_db is None
     assert result.snr_status == "unavailable"
     assert result.snr_reason == "missing_ambient"
+    assert result.source == "backend"
 
 
 def test_audio_quality_detects_clipped_audio():
@@ -80,6 +81,7 @@ def test_audio_quality_reports_normal_snr_with_ambient_reference():
     assert result.ambient_peak is not None
     assert result.speech_peak is not None
     assert result.snr_db is not None and result.snr_db >= 15
+    assert result.source == "backend"
 
 
 def test_audio_quality_reports_short_ambient_reference_as_unavailable():
@@ -129,3 +131,4 @@ def test_audio_quality_prefers_endpoint_ambient_metrics_when_present():
     assert result.ambient_peak == 0.006
     assert result.ambient_duration_ms == 800
     assert result.snr_db is not None and result.snr_db >= 15
+    assert result.source == "endpoint"

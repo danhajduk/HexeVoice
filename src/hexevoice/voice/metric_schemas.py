@@ -53,6 +53,7 @@ class AudioQualityMetric(VoiceMetricModel):
     snr_db: float | None = None
     snr_status: str = "unavailable"
     snr_reason: str | None = None
+    source: Literal["backend", "endpoint"] = "backend"
 
 
 class AmbientSnrMetric(VoiceMetricModel):

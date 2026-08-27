@@ -31,6 +31,7 @@ class AudioQualityResult:
     snr_db: float | None = None
     snr_status: str = "unavailable"
     snr_reason: str | None = "missing_ambient"
+    source: str = "backend"
 
     def as_context(self) -> dict[str, object]:
         return asdict(self)
@@ -152,6 +153,7 @@ def _ambient_snr_metrics(
         "snr_db": None,
         "snr_status": "unavailable",
         "snr_reason": "missing_ambient",
+        "source": "backend",
     }
     endpoint_metrics = _endpoint_ambient_snr_metrics(
         endpoint_audio_metrics,
@@ -221,6 +223,7 @@ def _endpoint_ambient_snr_metrics(
         "snr_db": None,
         "snr_status": "unavailable",
         "snr_reason": "missing_endpoint_ambient",
+        "source": "endpoint",
     }
     if ambient_rms is None:
         return base
@@ -277,6 +280,7 @@ def _empty_result(
         speech_rms=None,
         speech_duration_ms=0,
         snr_reason=warning if warning in {"missing_audio", "unsupported_audio", "short_audio"} else "missing_ambient",
+        source="backend",
     )
 
 

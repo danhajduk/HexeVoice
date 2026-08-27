@@ -27,6 +27,7 @@ def test_audio_quality_result_matches_metric_schema():
     assert metric.ambient_duration_ms == 0
     assert metric.snr_db is None
     assert metric.snr_status == "unavailable"
+    assert metric.source == "backend"
 
 
 def test_speaker_identity_context_matches_metric_schema_and_confidence_tiers():

@@ -256,7 +256,14 @@ function audioQualityDetailRows(audioQuality) {
   const rms = typeof audioQuality.rms === "number" ? audioQuality.rms : null;
   const peak = typeof audioQuality.peak === "number" ? audioQuality.peak : null;
   const speechRms = typeof audioQuality.speech_rms === "number" ? audioQuality.speech_rms : null;
+  const source = String(audioQuality.source || "backend").toLowerCase();
   return [
+    {
+      label: "Source",
+      value: source === "endpoint" ? "endpoint metrics" : "backend analysis",
+      range: "endpoint preferred when available",
+      tone: source === "endpoint" ? "success" : "neutral",
+    },
     {
       label: "Status",
       value: audioQuality.status,
@@ -315,6 +322,7 @@ function audioQualityDetailRows(audioQuality) {
 }
 
 const AUDIO_QUALITY_LEGEND = [
+  ["Source", "Whether the ambient/SNR values came from endpoint-reported numeric metrics or backend analysis of transient pre-roll audio."],
   ["Status", "Overall result from the current checks. Ok means no warning threshold was crossed."],
   ["Warnings", "Specific thresholds that fired, such as low level, clipping, silence, or a very short clip."],
   ["Duration", "Length of the captured speech audio that was analyzed."],
