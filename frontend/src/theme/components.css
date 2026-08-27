@@ -300,6 +300,24 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.audio-quality-popout {
+  width: min(620px, 100%);
+}
+
+.audio-quality-popout-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.audio-quality-popout-summary > span:last-child {
+  min-width: 0;
+  color: hsl(var(--sx-text));
+  overflow-wrap: anywhere;
+}
+
 .endpoint-status-card-footer {
   display: flex;
   flex-wrap: wrap;
@@ -1142,6 +1160,16 @@
   text-transform: capitalize;
   font-size: 13px;
   background: hsl(var(--sx-panel));
+}
+
+.status-pill-button {
+  font: inherit;
+  cursor: pointer;
+}
+
+.status-pill-button:hover,
+.status-pill-button:focus-visible {
+  filter: brightness(1.12);
 }
 
 .pill {

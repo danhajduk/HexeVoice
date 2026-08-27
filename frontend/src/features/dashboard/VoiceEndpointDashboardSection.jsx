@@ -249,6 +249,26 @@ function AudioQualityBadge({ audioQuality }) {
   );
 }
 
+function AudioQualityButton({ audioQuality, onOpen }) {
+  if (!audioQuality) {
+    return null;
+  }
+  return (
+    <button
+      className={`status-pill status-pill-${audioQualityTone(audioQuality)} status-pill-button`}
+      type="button"
+      title="Show audio quality details"
+      onClick={(event) => {
+        event.stopPropagation();
+        onOpen?.();
+      }}
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {audioQuality.status || "audio quality"}
+    </button>
+  );
+}
+
 function AudioQualityFacts({ audioQuality }) {
   const rows = audioQualityDetailRows(audioQuality);
   if (!rows.length) {
@@ -266,8 +286,41 @@ function AudioQualityFacts({ audioQuality }) {
   );
 }
 
+function AudioQualityDetailPopout({ audioQuality, onClose }) {
+  if (!audioQuality) {
+    return null;
+  }
+  return (
+    <div className="voice-history-popout-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="voice-history-popout audio-quality-popout"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Audio quality details"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Track 1</p>
+            <h2 className="panel-title">Audio Quality</h2>
+          </div>
+          <button className="btn btn-ghost btn-compact" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="audio-quality-popout-summary">
+          <AudioQualityBadge audioQuality={audioQuality} />
+          <span>{audioQualitySummary(audioQuality)}</span>
+        </div>
+        <AudioQualityFacts audioQuality={audioQuality} />
+      </section>
+    </div>
+  );
+}
+
 function VoicePipelinePanel({ voiceStatus, latestSession }) {
   const [visibleTranscript, setVisibleTranscript] = useState("");
+  const [audioQualityDetailOpen, setAudioQualityDetailOpen] = useState(false);
 
   useEffect(() => {
     const transcript = voiceStatus?.last_transcript || "";
@@ -339,7 +392,7 @@ function VoicePipelinePanel({ voiceStatus, latestSession }) {
           <div>
             <dt>Audio quality</dt>
             <dd className="audio-quality-inline">
-              <AudioQualityBadge audioQuality={audioQuality} />
+              <AudioQualityButton audioQuality={audioQuality} onOpen={() => setAudioQualityDetailOpen(true)} />
               {audioQualityNote ? <span>{audioQualityNote}</span> : null}
             </dd>
           </div>
@@ -349,6 +402,10 @@ function VoicePipelinePanel({ voiceStatus, latestSession }) {
           <dd>{valueOrEmpty(assistant.error || voiceStatus?.last_error?.code, "clear")}</dd>
         </div>
       </dl>
+      <AudioQualityDetailPopout
+        audioQuality={audioQualityDetailOpen ? audioQuality : null}
+        onClose={() => setAudioQualityDetailOpen(false)}
+      />
     </section>
   );
 }
@@ -1294,6 +1351,7 @@ function VoiceSessionHistoryPanel({
 }) {
   const visibleSessions = visibleHistorySessions(sessions);
   const storedCount = typeof historyStatus?.stored_count === "number" ? historyStatus.stored_count : sessions.length;
+  const [audioQualityDetail, setAudioQualityDetail] = useState(null);
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -1347,7 +1405,7 @@ function VoiceSessionHistoryPanel({
                     <td>
                       <div className="voice-history-status-cell">
                         <span>{valueOrEmpty(session.session_state)}</span>
-                        {audioQuality ? <AudioQualityBadge audioQuality={audioQuality} /> : null}
+                        <AudioQualityButton audioQuality={audioQuality} onOpen={() => setAudioQualityDetail(audioQuality)} />
                       </div>
                     </td>
                     <td>{formatPercent(session.wake?.confidence)}</td>
@@ -1427,6 +1485,7 @@ function VoiceSessionHistoryPanel({
         error={detailError}
         onClose={onCloseSessionDetail}
       />
+      <AudioQualityDetailPopout audioQuality={audioQualityDetail} onClose={() => setAudioQualityDetail(null)} />
     </section>
   );
 }
