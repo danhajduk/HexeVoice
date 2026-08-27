@@ -224,20 +224,93 @@ function audioQualityCompactSummary(audioQuality) {
   return warnings.length === 1 ? warnings[0] : `${warnings.length} warnings`;
 }
 
+function audioQualityWarnings(audioQuality) {
+  return new Set(Array.isArray(audioQuality?.warnings) ? audioQuality.warnings.filter(Boolean) : []);
+}
+
+function audioQualityStatusTone(status) {
+  const normalized = String(status || "").toLowerCase();
+  if (!normalized) {
+    return "neutral";
+  }
+  if (normalized === "ok") {
+    return "success";
+  }
+  if (normalized === "silent" || normalized === "clipped" || normalized === "missing_audio" || normalized === "unsupported_audio") {
+    return "danger";
+  }
+  return "warning";
+}
+
 function audioQualityDetailRows(audioQuality) {
   if (!audioQuality) {
     return [];
   }
+  const warnings = audioQualityWarnings(audioQuality);
+  const warningTone = warnings.size
+    ? (warnings.has("silent") || warnings.has("clipped") || warnings.has("missing_audio") || warnings.has("unsupported_audio") ? "danger" : "warning")
+    : "success";
+  const clippingRatio = typeof audioQuality.clipping_ratio === "number" ? audioQuality.clipping_ratio : null;
+  const activeRatio = typeof audioQuality.active_audio_ratio === "number" ? audioQuality.active_audio_ratio : null;
+  const silenceRatio = typeof audioQuality.silence_ratio === "number" ? audioQuality.silence_ratio : null;
+  const rms = typeof audioQuality.rms === "number" ? audioQuality.rms : null;
+  const peak = typeof audioQuality.peak === "number" ? audioQuality.peak : null;
+  const speechRms = typeof audioQuality.speech_rms === "number" ? audioQuality.speech_rms : null;
   return [
-    ["Status", audioQuality.status],
-    ["Warnings", Array.isArray(audioQuality.warnings) && audioQuality.warnings.length ? audioQuality.warnings.join(", ") : "none"],
-    ["Duration", formatMs(audioQuality.duration_ms)],
-    ["RMS", formatNumber(audioQuality.rms)],
-    ["Peak", formatNumber(audioQuality.peak)],
-    ["Clipping", `${valueOrEmpty(audioQuality.clipping_count, 0)} / ${formatPercent(audioQuality.clipping_ratio)}`],
-    ["Active audio", formatPercent(audioQuality.active_audio_ratio)],
-    ["Silence", formatPercent(audioQuality.silence_ratio)],
-    ["Speech RMS", formatNumber(audioQuality.speech_rms)],
+    {
+      label: "Status",
+      value: audioQuality.status,
+      range: "ok preferred",
+      tone: audioQualityStatusTone(audioQuality.status),
+    },
+    {
+      label: "Warnings",
+      value: Array.isArray(audioQuality.warnings) && audioQuality.warnings.length ? audioQuality.warnings.join(", ") : "none",
+      range: "none preferred",
+      tone: warningTone,
+    },
+    {
+      label: "Duration",
+      value: formatMs(audioQuality.duration_ms),
+      range: ">= 300 ms",
+      tone: typeof audioQuality.duration_ms === "number" && audioQuality.duration_ms < 300 ? "warning" : "success",
+    },
+    {
+      label: "RMS",
+      value: formatNumber(audioQuality.rms),
+      range: ">= 0.015, silent <= 0.0005",
+      tone: rms === null ? "neutral" : rms <= 0.0005 ? "danger" : rms < 0.015 ? "warning" : "success",
+    },
+    {
+      label: "Peak",
+      value: formatNumber(audioQuality.peak),
+      range: "0.001 to < 0.999",
+      tone: peak === null ? "neutral" : peak <= 0.001 || peak >= 0.999 ? "danger" : "success",
+    },
+    {
+      label: "Clipping",
+      value: `${valueOrEmpty(audioQuality.clipping_count, 0)} / ${formatPercent(audioQuality.clipping_ratio)}`,
+      range: "< 1%",
+      tone: clippingRatio === null ? "neutral" : clippingRatio >= 0.01 ? "danger" : clippingRatio > 0 ? "warning" : "success",
+    },
+    {
+      label: "Active audio",
+      value: formatPercent(audioQuality.active_audio_ratio),
+      range: "> 10% useful",
+      tone: activeRatio === null ? "neutral" : activeRatio <= 0 ? "danger" : activeRatio < 0.1 ? "warning" : "success",
+    },
+    {
+      label: "Silence",
+      value: formatPercent(audioQuality.silence_ratio),
+      range: "< 90%",
+      tone: silenceRatio === null ? "neutral" : silenceRatio >= 1 ? "danger" : silenceRatio > 0.9 ? "warning" : "success",
+    },
+    {
+      label: "Speech RMS",
+      value: formatNumber(audioQuality.speech_rms),
+      range: ">= 0.015",
+      tone: speechRms === null ? "neutral" : speechRms < 0.015 ? "warning" : "success",
+    },
   ];
 }
 
@@ -288,10 +361,11 @@ function AudioQualityFacts({ audioQuality }) {
   }
   return (
     <dl className="fact-grid audio-quality-fact-grid">
-      {rows.map(([label, value]) => (
-        <div className="fact-grid-item" key={label}>
-          <dt className="fact-grid-label">{label}</dt>
-          <dd className="fact-grid-value">{valueOrEmpty(value)}</dd>
+      {rows.map((row) => (
+        <div className={`fact-grid-item audio-quality-metric audio-quality-metric-${row.tone}`} key={row.label}>
+          <dt className="fact-grid-label">{row.label}</dt>
+          <dd className="fact-grid-value audio-quality-metric-value">{valueOrEmpty(row.value)}</dd>
+          <dd className="audio-quality-metric-range">{row.range}</dd>
         </div>
       ))}
     </dl>

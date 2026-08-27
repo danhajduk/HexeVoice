@@ -300,6 +300,45 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.audio-quality-metric {
+  border-left: 3px solid hsl(var(--sx-border));
+}
+
+.audio-quality-metric-success {
+  border-left-color: hsl(var(--sx-success));
+}
+
+.audio-quality-metric-warning {
+  border-left-color: hsl(var(--sx-warning));
+}
+
+.audio-quality-metric-danger {
+  border-left-color: hsl(var(--sx-danger));
+}
+
+.audio-quality-metric-value {
+  margin-bottom: 4px;
+}
+
+.audio-quality-metric-success .audio-quality-metric-value {
+  color: var(--success);
+}
+
+.audio-quality-metric-warning .audio-quality-metric-value {
+  color: var(--warning);
+}
+
+.audio-quality-metric-danger .audio-quality-metric-value {
+  color: var(--error);
+}
+
+.audio-quality-metric-range {
+  margin: 0;
+  color: hsl(var(--sx-text-muted));
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .audio-quality-popout {
   width: min(620px, 100%);
 }
