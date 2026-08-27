@@ -215,7 +215,7 @@ function audioQualitySummary(audioQuality) {
 
 function audioQualityCompactSummary(audioQuality) {
   if (!audioQuality) {
-    return "not recorded";
+    return "";
   }
   const warnings = Array.isArray(audioQuality.warnings) ? audioQuality.warnings.filter(Boolean) : [];
   if (!warnings.length) {
@@ -335,13 +335,15 @@ function VoicePipelinePanel({ voiceStatus, latestSession }) {
           <dt>Total latency</dt>
           <dd>{formatMs(timings.total_ms)}</dd>
         </div>
-        <div>
-          <dt>Audio quality</dt>
-          <dd className="audio-quality-inline">
-            <AudioQualityBadge audioQuality={audioQuality} />
-            {audioQualityNote ? <span>{audioQualityNote}</span> : null}
-          </dd>
-        </div>
+        {audioQuality ? (
+          <div>
+            <dt>Audio quality</dt>
+            <dd className="audio-quality-inline">
+              <AudioQualityBadge audioQuality={audioQuality} />
+              {audioQualityNote ? <span>{audioQualityNote}</span> : null}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>Last error</dt>
           <dd>{valueOrEmpty(assistant.error || voiceStatus?.last_error?.code, "clear")}</dd>
@@ -1345,7 +1347,7 @@ function VoiceSessionHistoryPanel({
                     <td>
                       <div className="voice-history-status-cell">
                         <span>{valueOrEmpty(session.session_state)}</span>
-                        <AudioQualityBadge audioQuality={audioQuality} />
+                        {audioQuality ? <AudioQualityBadge audioQuality={audioQuality} /> : null}
                       </div>
                     </td>
                     <td>{formatPercent(session.wake?.confidence)}</td>
