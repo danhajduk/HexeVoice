@@ -521,7 +521,7 @@ def test_voice_websocket_suppresses_tts_during_speaker_enrollment_capture(tmp_pa
     history_store = VoiceSessionHistoryStore(path=tmp_path / "voice-session-history.json")
     recorder = WakeRecordingService(recording_dir=tmp_path / "wake-recordings", retention_days=1)
     manager = VoiceSessionManager(
-        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
         turn_pipeline=pipeline,
         wake_recorder=recorder,
         session_history_store=history_store,
@@ -548,7 +548,6 @@ def test_voice_websocket_suppresses_tts_during_speaker_enrollment_capture(tmp_pa
             )
         )
         websocket.receive_json()
-        websocket.receive_json()
         websocket.send_json(voice_event("audio.end"))
         transcript = websocket.receive_json()
         completed = websocket.receive_json()
@@ -565,6 +564,7 @@ def test_voice_websocket_suppresses_tts_during_speaker_enrollment_capture(tmp_pa
     sessions = client.get("/api/voice/sessions").json()["sessions"]
     assert sessions[0]["completion_reason"] == "speaker_enrollment_capture"
     assert sessions[0]["assistant"]["provider_metadata"]["tts_suppressed"] is True
+    assert sessions[0]["wake"]["source"] == "speaker_id_enrollment_capture"
     assert sessions[0]["wake_recording"]["transcript"]["text"] == "Hexe, turn on the lights in the living room."
 
 

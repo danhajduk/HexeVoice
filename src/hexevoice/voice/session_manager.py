@@ -1262,6 +1262,55 @@ class VoiceSessionManager:
                 audio_format=payload.audio_format,
                 audio_bytes=audio_bytes,
             )
+        enrollment_capture_window = self._active_speaker_enrollment_capture_window(event.endpoint_id)
+        enrollment_capture_accepted = (
+            audio_bytes is not None
+            and session.session_state == "idle"
+            and enrollment_capture_window is not None
+        )
+        if enrollment_capture_accepted:
+            if self._wake_recorder is not None:
+                self._wake_recorder.mark_accepted_wake(
+                    endpoint_id=event.endpoint_id,
+                    session_id=session.session_id,
+                    model="speaker_enrollment_capture",
+                    confidence=1.0,
+                    source="speaker_id_enrollment_capture",
+                    chunk_index=payload.chunk_index,
+                    chunk_count=self._chunk_count,
+                )
+            if self._micro_vad_chunk_recorder is not None:
+                self._micro_vad_chunk_recorder.mark_session_accepted(
+                    endpoint_id=event.endpoint_id,
+                    session_id=session.session_id,
+                )
+            self._set_active_session_wake(
+                {
+                    "outcome": "accepted",
+                    "detected": True,
+                    "model": "speaker_enrollment_capture",
+                    "confidence": 1.0,
+                    "detected_at": event.timestamp.isoformat(),
+                    "source": "speaker_id_enrollment_capture",
+                    "chunk_index": payload.chunk_index,
+                    "chunk_count": self._chunk_count,
+                }
+            )
+            self._append_latency_point("wake_word_detected", "Enrollment capture accepted", event.timestamp)
+            log.info(
+                "Speaker enrollment capture accepted without wake: endpoint_id=%s session_id=%s chunk_index=%s",
+                event.endpoint_id,
+                session.session_id,
+                payload.chunk_index,
+            )
+            record_voice_event(
+                "speaker_id.enrollment_capture.started",
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                chunk_index=payload.chunk_index,
+                chunk_count=self._chunk_count,
+            )
+            self._set_session_state("listening")
         if (
             audio_bytes is not None
             and session.session_state == "idle"
@@ -1369,7 +1418,7 @@ class VoiceSessionManager:
 
         if session.session_state in {"listening", "capturing"}:
             self._set_session_state("capturing")
-            if audio_bytes is not None and not wake_accepted:
+            if audio_bytes is not None and not wake_accepted and not enrollment_capture_accepted:
                 self._audio_chunks.append(audio_bytes)
 
         events.append(
