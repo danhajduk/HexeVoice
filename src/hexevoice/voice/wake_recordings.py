@@ -23,7 +23,7 @@ class WakeRecordingService:
         self,
         *,
         recording_dir: Path,
-        retention_days: int = 7,
+        retention_days: int = 1,
         preroll_ms: int = 2000,
     ) -> None:
         self._recording_dir = recording_dir

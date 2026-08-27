@@ -14,6 +14,7 @@ from hexevoice.api.models import AssistantTurnResponse
 from hexevoice.persistence import VoiceSessionHistoryStore
 import hexevoice.voice.session_manager as session_manager_module
 from hexevoice.voice import (
+    AudioQualityResult,
     DeterministicWakeDetector,
     MicroVadChunkRecordingService,
     PiperTextToSpeechAdapter,
@@ -1139,6 +1140,23 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
                     metadata_path=str(tts_sidecar),
                 ),
                 timings=VoiceTurnTimings(stt_ms=11.0, assistant_ms=12.0, tts_ms=13.0, total_ms=36.0),
+                audio_quality=AudioQualityResult(
+                    schema_version=1,
+                    status="ok",
+                    warnings=[],
+                    duration_ms=1000,
+                    sample_rate_hz=16000,
+                    channels=1,
+                    encoding="pcm_s16le",
+                    frame_count=16000,
+                    rms=0.12,
+                    peak=0.24,
+                    clipping_count=0,
+                    clipping_ratio=0.0,
+                    active_audio_ratio=0.91,
+                    silence_ratio=0.09,
+                    speech_rms=0.13,
+                ),
             )
 
     history_path = tmp_path / "voice_session_history.json"
@@ -1202,6 +1220,8 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     assert sessions[0]["wake"]["confidence"] == 1.0
     assert sessions[0]["transcript"]["text"] == "turn on the light"
     assert sessions[0]["transcript"]["provider_id"] == "stt-test"
+    assert sessions[0]["transcript"]["audio_quality"]["status"] == "ok"
+    assert "audio_bytes" not in sessions[0]["transcript"]["audio_quality"]
     assert sessions[0]["assistant"]["provider_id"] == "assistant-test"
     assert sessions[0]["assistant"]["intent_latency_ms"] == 8.5
     assert sessions[0]["turn_timings"]["total_ms"] == 36.0
@@ -1241,6 +1261,7 @@ def test_voice_session_history_persists_turn_metadata_and_survives_restart(tmp_p
     )
     assert wake_metadata["transcript"]["text"] == "turn on the light"
     assert wake_metadata["transcript"]["provider_id"] == "stt-test"
+    assert wake_metadata["transcript"]["audio_quality"]["status"] == "ok"
     tts_metadata = json.loads((tmp_path / "voice_tts" / "tts-history.json").read_text(encoding="utf-8"))
     assert tts_metadata["spoken_text"] == "OK"
     assert tts_metadata["transcript"]["text"] == "turn on the light"

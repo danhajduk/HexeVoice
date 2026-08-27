@@ -259,6 +259,37 @@ def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     assert result.timings.total_ms >= 0
 
 
+def test_voice_turn_pipeline_attaches_audio_quality_without_blocking(monkeypatch, tmp_path):
+    events = []
+    monkeypatch.setattr("hexevoice.voice.pipeline.record_voice_event", lambda event_type, **fields: events.append({"event_type": event_type, **fields}))
+    runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
+    assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="status"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-low",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(300).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.assistant_response.spoken_text == "I heard status"
+    assert result.audio_quality is not None
+    assert result.audio_quality.status == "low_level"
+    stt_event = next(event for event in events if event["event_type"] == "stt.completed")
+    assert stt_event["audio_quality"]["status"] == "low_level"
+    assert "audio_bytes" not in stt_event["audio_quality"]
+
+
 def test_voice_turn_pipeline_does_not_wait_for_speaker_id_when_not_required(tmp_path):
     runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
     assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)

@@ -52,7 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 238: Implement Track 1 audio-quality foundation for accepted voice turns
 [TODO] Task 239: Define versioned voice quality, identity, enrollment, and placement metric schemas
 [STOP]
 [TODO] Task 240: Implement Track 2 pre-roll ambient reference and per-turn SNR metadata

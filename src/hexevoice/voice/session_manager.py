@@ -1483,6 +1483,8 @@ class VoiceSessionManager:
             }
             if turn.speaker_identity is not None:
                 self._last_transcript_metadata["speaker_identity"] = turn.speaker_identity.as_context()
+            if turn.audio_quality is not None:
+                self._last_transcript_metadata["audio_quality"] = turn.audio_quality.as_context()
             transcript_metadata = {**self._last_transcript_metadata, "text": turn.transcript.text}
             self._last_turn_timings = {
                 "stt_ms": turn.timings.stt_ms,
@@ -1528,6 +1530,7 @@ class VoiceSessionManager:
                 tts_ms=turn.timings.tts_ms,
                 total_ms=turn.timings.total_ms,
                 speaker_identity=turn.speaker_identity.as_context() if turn.speaker_identity else None,
+                audio_quality=turn.audio_quality.as_context() if turn.audio_quality else None,
             )
             if turn.transcript.error:
                 error = self._error_event(

@@ -31,6 +31,7 @@ from hexevoice.voice.contracts import (
 )
 from hexevoice.voice.session_manager import VoiceSessionManager
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
+from hexevoice.voice.audio_quality import AudioQualityResult, analyze_pcm_s16le_audio
 from hexevoice.voice.pipeline import (
     DeterministicSpeechToTextAdapter,
     DeterministicTextToSpeechAdapter,
@@ -99,6 +100,8 @@ __all__ = [
     "VoiceVadSpeechStartedPayload",
     "VoiceSessionManager",
     "MicroVadChunkRecordingService",
+    "AudioQualityResult",
+    "analyze_pcm_s16le_audio",
     "DeterministicSpeechToTextAdapter",
     "DeterministicTextToSpeechAdapter",
     "ExternalFasterWhisperSpeechToTextAdapter",

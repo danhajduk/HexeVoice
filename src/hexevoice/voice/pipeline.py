@@ -35,6 +35,8 @@ from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.engine_http import client_for_engine
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
+from hexevoice.voice.audio_quality import AudioQualityResult
+from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
 from hexevoice.voice.records import record_voice_event
 from hexevoice.stt_profiles import SttModelProfile
 from hexevoice.stt_profiles import get_stt_model_profile
@@ -165,6 +167,7 @@ class VoiceTurnResult:
     tts: TtsSynthesis
     timings: VoiceTurnTimings
     speaker_identity: SpeakerIdentityResult | None = None
+    audio_quality: AudioQualityResult | None = None
 
 
 class SpeechToTextAdapter(Protocol):
@@ -1715,6 +1718,12 @@ class VoiceTurnPipeline:
         turn_started_at = time.perf_counter()
         speaker_identity: SpeakerIdentityResult | None = None
         speaker_future: Future[SpeakerIdentityResult] | None = None
+        audio_quality = analyze_pcm_s16le_audio(
+            audio.audio_bytes,
+            sample_rate_hz=audio.sample_rate_hz,
+            channels=audio.channels,
+            encoding=audio.encoding,
+        )
         executor = ThreadPoolExecutor(max_workers=2)
         try:
             speaker_future = self._start_speaker_identity(audio, executor)
@@ -1737,6 +1746,7 @@ class VoiceTurnPipeline:
             error=transcript.error,
             chunk_count=audio.chunk_count,
             stt_ms=stt_ms,
+            audio_quality=audio_quality.as_context(),
         )
         assistant_started_at = time.perf_counter()
         speaker_policy = self._speaker_identity_policy(text=transcript.text, command=None, metadata=None)
@@ -1865,6 +1875,7 @@ class VoiceTurnPipeline:
             tts=tts,
             timings=timings,
             speaker_identity=speaker_identity,
+            audio_quality=audio_quality,
         )
 
     def transcribe_audio(self, audio: VoiceTurnAudioSummary) -> SpeechTranscript:

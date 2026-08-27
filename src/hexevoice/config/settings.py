@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     voice_wake_service_timeout_s: float = Field(default=0.05, alias="VOICE_WAKE_SERVICE_TIMEOUT_S", gt=0)
     voice_wake_recordings_enabled: bool = Field(default=False, alias="VOICE_WAKE_RECORDINGS_ENABLED")
     voice_wake_recording_dir: Path | None = Field(default=None, alias="VOICE_WAKE_RECORDING_DIR")
-    voice_wake_recording_retention_days: int = Field(default=7, alias="VOICE_WAKE_RECORDING_RETENTION_DAYS", ge=1)
+    voice_wake_recording_retention_days: int = Field(default=1, alias="VOICE_WAKE_RECORDING_RETENTION_DAYS", ge=1)
     voice_wake_recording_preroll_ms: int = Field(default=2000, alias="VOICE_WAKE_RECORDING_PREROLL_MS", ge=0)
     voice_micro_vad_chunks_enabled: bool = Field(default=False, alias="VOICE_MICRO_VAD_CHUNKS_ENABLED")
     voice_micro_vad_chunk_dir: Path | None = Field(default=None, alias="VOICE_MICRO_VAD_CHUNK_DIR")

@@ -69,11 +69,11 @@ def test_faster_whisper_stt_settings_defaults():
     assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"
 
 
-def test_wake_recording_settings_default_to_disabled_weekly_retention():
+def test_wake_recording_settings_default_to_disabled_one_day_retention():
     settings = Settings()
 
     assert settings.voice_wake_recordings_enabled is False
-    assert settings.voice_wake_recording_retention_days == 7
+    assert settings.voice_wake_recording_retention_days == 1
     assert settings.voice_wake_recording_preroll_ms == 2000
     assert settings.resolved_voice_wake_recording_dir().as_posix() == "runtime/wake_recordings"
     assert settings.voice_micro_vad_chunks_enabled is False

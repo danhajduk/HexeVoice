@@ -117,11 +117,11 @@ Accepted wake sessions can be recorded for short-term wake-word and STT tuning b
 
 ```env
 VOICE_WAKE_RECORDINGS_ENABLED=true
-VOICE_WAKE_RECORDING_RETENTION_DAYS=7
+VOICE_WAKE_RECORDING_RETENTION_DAYS=1
 VOICE_WAKE_RECORDING_PREROLL_MS=2000
 ```
 
-When enabled, HexeVoice writes accepted wake sessions to `runtime/wake_recordings` by default. Each recording is a PCM WAV containing the wake pre-roll/wake chunk plus the post-wake audio sent to STT, with a JSON sidecar containing endpoint, session, model, confidence, format, duration, and expiration metadata. Cleanup removes `.wav` and `.json` recordings older than the configured retention window.
+When enabled, HexeVoice writes accepted wake sessions to `runtime/wake_recordings` by default. Each recording is a PCM WAV containing the wake pre-roll/wake chunk plus the post-wake audio sent to STT, with a JSON sidecar containing endpoint, session, model, confidence, format, duration, and expiration metadata. Cleanup removes `.wav` and `.json` recordings older than the configured retention window. The default retention is one day because these files are raw debug audio.
 
 Firmware micro-VAD chunk recording can be enabled separately for live-ish STT/debug tuning:
 

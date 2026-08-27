@@ -499,3 +499,9 @@ Step objective: Validate Speaker ID accuracy, privacy, multi-endpoint behavior, 
 Chosen fix: Strengthen existing Speaker ID tests and benchmark output instead of changing the service contract.
 What changed: Added public profile export redaction and persistent deletion assertions, endpoint-independent speaker identity pipeline coverage, speaker capability declaration coverage, per-provider RSS memory telemetry, benchmark run-device labels, and operator validation docs.
 Verification: `.venv/bin/pytest tests/test_speaker_id_service.py tests/test_speaker_id_adapters.py tests/test_voice_pipeline.py::test_voice_turn_pipeline_speaker_identity_follows_audio_not_endpoint tests/test_setup_capabilities.py::test_setup_capabilities_status_includes_manifest_preview` passed; `.venv/bin/python scripts/benchmark-speaker-id.py --generate-fixtures --providers deterministic_signal --repeat 2 --device-label cpu --json-output runtime/speaker_id/benchmarks/task237-cpu.json` passed; no `scripts/rebuild.sh` exists.
+###########
+Task #238
+Step objective: Implement Track 1 audio-quality diagnostics for accepted voice turns.
+Chosen fix: Add a lightweight in-memory PCM analyzer and attach only redacted metrics to existing turn results, events, and session history.
+What changed: Added `hexevoice.voice.audio_quality`, integrated audio-quality metadata into `VoiceTurnPipeline`, `stt.completed`, `transcript.final`, and session history, changed raw wake/debug recording default retention to one day, and documented that Track 1 is diagnostic-only.
+Verification: `.venv/bin/pytest tests/test_audio_quality.py tests/test_voice_pipeline.py tests/test_config.py tests/test_voice_websocket.py` passed; no `scripts/rebuild.sh` exists.
