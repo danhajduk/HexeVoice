@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from dataclasses import dataclass
+import os
+import platform
+import resource
 import statistics
 import time
 from pathlib import Path
@@ -37,6 +40,9 @@ class SpeakerIdProviderBenchmark:
     metadata: dict[str, object]
     clips: list[SpeakerIdClipBenchmark]
     scores: list[dict[str, object]]
+    memory_rss_kb_before: int | None
+    memory_rss_kb_after: int | None
+    memory_rss_kb_delta: int | None
     error: str | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -46,6 +52,9 @@ class SpeakerIdProviderBenchmark:
             "metadata": self.metadata,
             "clips": [clip.to_dict() for clip in self.clips],
             "scores": self.scores,
+            "memory_rss_kb_before": self.memory_rss_kb_before,
+            "memory_rss_kb_after": self.memory_rss_kb_after,
+            "memory_rss_kb_delta": self.memory_rss_kb_delta,
             "error": self.error,
         }
 
@@ -56,6 +65,7 @@ def run_speaker_id_benchmark(
     provider_ids: list[str] | None = None,
     repeat: int = 1,
     threshold: float = 0.75,
+    device_label: str = "default",
 ) -> dict[str, object]:
     selected_provider_ids = provider_ids or available_provider_ids()
     provider_results = []
@@ -70,6 +80,8 @@ def run_speaker_id_benchmark(
         )
     return {
         "schema_version": 1,
+        "device_label": device_label,
+        "runtime": _runtime_metadata(),
         "clip_count": len(clips),
         "providers": [result.to_dict() for result in provider_results],
     }
@@ -87,6 +99,7 @@ def run_provider_benchmark(
     metadata = adapter.metadata.to_dict()
     embeddings: dict[str, SpeakerEmbedding] = {}
     clip_results = []
+    memory_rss_kb_before = _max_rss_kb()
 
     for clip in clips:
         duration_runs = []
@@ -106,6 +119,7 @@ def run_provider_benchmark(
 
     scores = _score_embeddings(embeddings, threshold=threshold)
     provider_error = None
+    memory_rss_kb_after = _max_rss_kb()
     if not embeddings and clip_results:
         provider_error = clip_results[0].error
     return SpeakerIdProviderBenchmark(
@@ -114,6 +128,9 @@ def run_provider_benchmark(
         metadata=metadata,
         clips=clip_results,
         scores=scores,
+        memory_rss_kb_before=memory_rss_kb_before,
+        memory_rss_kb_after=memory_rss_kb_after,
+        memory_rss_kb_delta=_memory_delta(memory_rss_kb_before, memory_rss_kb_after),
         error=provider_error,
     )
 
@@ -155,3 +172,27 @@ def _score_embeddings(embeddings: dict[str, SpeakerEmbedding], *, threshold: flo
 
 def _score_pair(left: SpeakerEmbedding, right: SpeakerEmbedding, *, threshold: float) -> SpeakerScore:
     return score_embedding_pair(left, right, threshold=threshold)
+
+
+def _max_rss_kb() -> int | None:
+    try:
+        rss = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    except Exception:
+        return None
+    if platform.system().lower() == "darwin":
+        return round(rss / 1024)
+    return rss
+
+
+def _memory_delta(before: int | None, after: int | None) -> int | None:
+    if before is None or after is None:
+        return None
+    return max(0, after - before)
+
+
+def _runtime_metadata() -> dict[str, object]:
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "process_id": os.getpid(),
+    }

@@ -44,7 +44,24 @@ Task 233 added the first Speaker ID runtime boundary under `src/hexevoice/speake
 - `deterministic_signal` is the built-in CPU-only test adapter. It extracts a deterministic signal fingerprint from local 16-bit PCM WAV audio and can score two embeddings without external dependencies.
 - `speechbrain_ecapa_tdnn`, `wespeaker`, `pyannote_audio`, and `nvidia_nemo_speaker` are cataloged as optional provider stubs with model, license, size, memory, CPU/CUDA, sample-rate, and enrollment-quality metadata.
 - Missing optional providers report `missing_optional_dependency` through `status()` and raise `SpeakerIdProviderUnavailable` during embedding extraction instead of failing at import time.
-- `scripts/benchmark-speaker-id.py` runs the same clips through selected providers and emits JSON with provider metadata, per-clip latency, embedding dimensions, and pairwise verification scores.
+- `scripts/benchmark-speaker-id.py` runs the same clips through selected providers and emits JSON with provider metadata, per-clip latency, embedding dimensions, RSS memory telemetry, run-device label, and pairwise verification scores.
+
+### Validation Artifacts
+
+Speaker ID validation is covered by targeted tests plus a local benchmark artifact:
+
+- `tests/test_speaker_id_service.py` covers enroll, identify, verify, threshold/config behavior, metadata export redaction, and profile deletion from the persistent biometric store.
+- `tests/test_speaker_id_adapters.py` covers deterministic embeddings, threshold rejection, optional provider import safety, provider catalog coverage, and benchmark JSON metadata.
+- `tests/test_voice_pipeline.py` covers parallel STT/Speaker ID behavior, required-route blocking, speaker context handoff, and multi-endpoint behavior where identity follows the utterance audio rather than the endpoint id.
+- `tests/test_setup_capabilities.py` covers Voice capability declaration surfaces, including the `voice.speaker.*` task families.
+
+Run the benchmark with local WAV clips that are not committed to git:
+
+```bash
+python scripts/benchmark-speaker-id.py --generate-fixtures --providers deterministic_signal --repeat 3 --device-label cpu --json-output runtime/speaker_id/benchmarks/cpu.json
+```
+
+For optional providers, install the provider dependencies locally, pass `--providers speechbrain_ecapa_tdnn,wespeaker,pyannote_audio,nvidia_nemo_speaker`, and save separate CPU/CUDA JSON files with `--device-label cpu` or `--device-label cuda`. The generated JSON includes provider metadata, latency runs, RSS memory deltas, and scores; raw WAV fixtures stay under `runtime/`, which is ignored by git.
 
 ## Helper Service Runtime
 

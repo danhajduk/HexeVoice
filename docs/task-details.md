@@ -2150,3 +2150,732 @@ Original task details:
   - Benchmark docs compare SpeechBrain ECAPA-TDNN, WeSpeaker, pyannote.audio, and NVIDIA NeMo options when installed.
   - Privacy tests verify delete/export/redaction behavior.
   - Operator docs explain how to enable Speaker ID and how to disable/remove all biometric data.
+
+## Task 238
+Original task details:
+- Title: Implement Track 1 audio-quality foundation for accepted voice turns
+- Source request:
+  - Add Track 1 from `docs/temp-roadmap-capability-report.md` as an implementation backlog task.
+- Scope:
+  - Add a backend audio-quality analyzer for in-memory PCM turn audio.
+  - Define a structured audio-quality result with duration, RMS, peak, clipping count/ratio, silence or active-audio ratio, speech-level estimate, optional ambient/SNR placeholders, quality status, and warnings.
+  - Integrate the analyzer into the voice turn pipeline without blocking intent execution.
+  - Attach redacted quality metadata to voice session history, transcript/session diagnostics, and relevant voice events.
+  - Discard raw turn audio immediately after STT, Speaker ID, and audio-quality processing unless explicit debug recording is enabled.
+  - When debug recording is enabled, retain raw debug audio for one day only.
+  - Add focused tests with synthetic PCM for silence, normal-level audio, clipped audio, very short audio, and low-level audio.
+  - Document that first-pass quality analysis is diagnostic only and does not require YAMNet, pyannote, endpoint election, passive calibration, or firmware changes.
+- Acceptance criteria:
+  - Accepted voice turns produce privacy-safe audio-quality metadata from in-memory PCM.
+  - Existing intent execution remains non-blocking when audio-quality analysis reports warnings.
+  - Raw voice-turn audio is not retained after processing unless explicit one-day debug retention is enabled.
+  - Synthetic PCM tests cover silence, normal-level audio, clipped audio, very short audio, and low-level audio.
+  - Documentation reflects that Track 1 is diagnostic-only and excludes heavier environment classifiers, endpoint election, passive calibration, and firmware changes.
+
+
+## Task 239
+Original task details:
+- Title: Define versioned voice quality, identity, enrollment, and placement metric schemas
+- Source request:
+  - Add roadmap improvement for stable shared metric/schema shapes before multiple later tasks invent incompatible fields.
+- Scope:
+  - Define versioned internal schema shapes for:
+    - audio-quality result
+    - ambient/SNR result
+    - Speaker ID result and confidence tier
+    - identity classification/policy decision
+    - enrollment readiness result
+    - validation phrase scoring result
+    - placement test/report metrics
+    - voice quality observation log records
+  - Include schema version fields in persisted/runtime payloads where the data may be stored, exported, or logged.
+  - Keep schemas local/internal unless a Core-facing contract is explicitly needed.
+  - Document field names, redaction/privacy expectations, and compatibility policy.
+  - Add tests or validation helpers for required fields and redaction-sensitive fields.
+- Acceptance criteria:
+  - Later Track 1-6 tasks have a documented schema source to follow.
+  - Persisted/logged diagnostic records include schema version metadata.
+  - Privacy-sensitive fields such as raw audio, embeddings, passcodes, and biometric templates are excluded from schemas intended for logs/status.
+
+
+## Task 240
+Original task details:
+- Title: Implement Track 2 pre-roll ambient reference and per-turn SNR metadata
+- Source request:
+  - Add Track 2 from `docs/temp-roadmap-capability-report.md` as an implementation backlog task after a `[STOP]` gate.
+- Scope:
+  - Extend accepted voice-turn handling so pre-roll or pre-speech audio can be treated as an ambient reference separate from the spoken utterance.
+  - Preserve ambient data in memory by default and avoid raw ambient persistence unless existing debug recording settings explicitly allow it.
+  - When debug recording allows raw ambient/pre-roll retention, expire it after one day.
+  - Compute ambient RMS, ambient peak, ambient duration, speech RMS, speech peak, speech duration, and estimated SNR in dB when enough data is available.
+  - Attach ambient/SNR metadata to the Track 1 audio-quality result and voice session diagnostics.
+  - Represent missing or insufficient pre-roll as an explicit unknown state rather than inventing an SNR value.
+  - Keep first-pass Track 2 diagnostic-only; do not block intent execution on low SNR yet.
+  - Add tests for available ambient pre-roll, missing ambient pre-roll, short ambient pre-roll, low-SNR audio, and normal-SNR audio.
+  - Document privacy behavior and the distinction between ambient metrics and raw ambient audio.
+- Acceptance criteria:
+  - Accepted voice turns can report ambient reference metrics and SNR when pre-roll is available.
+  - Voice turns without usable pre-roll report SNR as unavailable with a clear reason.
+  - Raw ambient audio is not retained by default.
+  - Any debug-retained ambient/pre-roll audio expires after one day.
+  - Existing Track 1 quality analysis continues to work without firmware changes.
+
+
+## Task 241
+Original task details:
+- Title: Add endpoint ambient metric reporting for pre-roll and noise-floor quality analysis
+- Source request:
+  - Add Track 2 endpoint-side support for cleaner ambient/SNR analysis.
+- Scope:
+  - Extend the endpoint-to-backend voice event payloads to carry privacy-safe audio metrics needed for ambient comparison.
+  - Add firmware-side reporting for available pre-roll/noise-floor metrics, such as frame level, noise-floor estimate, speech peak level, pre-roll duration, and whether a chunk contains pre-roll or speech.
+  - Keep reported metrics numeric and non-biometric; do not send environment classifications or raw ambient summaries beyond what is needed for quality analysis.
+  - Preserve compatibility for endpoints that do not report these fields.
+  - Update backend parsing and status/session diagnostics to prefer endpoint-provided ambient metrics when present and fall back to backend-derived metrics otherwise.
+  - Add firmware/backend tests or contract tests for metric fields, backwards compatibility, and missing-field behavior.
+  - Document that TV/music/appliance/background-speech classification remains out of scope for this task.
+- Acceptance criteria:
+  - Newer firmware can report ambient/pre-roll/noise-floor quality metrics to the backend.
+  - Older firmware without the new fields remains compatible.
+  - Backend quality diagnostics can use endpoint-provided metrics when available.
+  - No raw ambient audio retention or environment classification is introduced by this task.
+
+
+## Task 242
+Original task details:
+- Title: Enable the lowest-resource production Speaker ID provider path
+- Source request:
+  - Add Track 3 Speaker ID production-readiness work after a `[STOP]` gate.
+  - For the first production provider, prefer the least resource-heavy option.
+- Provider decision:
+  - Keep `deterministic_signal` as a test/development adapter only.
+  - Use the lowest-resource production-capable catalog option first. Based on the current provider catalog, `speechbrain_ecapa_tdnn` is the preferred first candidate because it has the smallest listed download and memory footprint among the production candidates.
+  - Do not enable pyannote or NeMo as the first production path because they are heavier and/or have more model-access complexity.
+- Scope:
+  - Implement the `speechbrain_ecapa_tdnn` runtime adapter behind the existing Speaker ID adapter protocol.
+  - Keep imports lazy so HexeVoice remains usable when SpeechBrain/Torch dependencies are not installed.
+  - Add setup/status metadata that clearly reports installed, missing dependency, model unavailable, loaded, and implementation error states.
+  - Keep CPU operation supported by default; CUDA can remain optional and should not be required for first-pass use.
+  - Add a safe model download/cache policy consistent with existing runtime/provider patterns.
+  - Preserve local-only biometric storage and avoid raw-audio retention by default.
+  - Enforce raw-audio privacy rules:
+    - discard normal voice-turn recordings immediately after derived processing completes
+    - retain raw recordings only when explicit debug recording is enabled
+    - limit debug raw-audio retention to one day
+    - discard biometric enrollment voice audio immediately after embeddings/training data are extracted
+  - Add targeted tests for adapter availability, missing dependency behavior, status reporting, and deterministic fallback/test behavior.
+  - Document resource expectations, install requirements, and why SpeechBrain is the initial low-resource production candidate.
+- Acceptance criteria:
+  - Operators can select `speechbrain_ecapa_tdnn` and receive actionable status if dependencies or models are missing.
+  - When dependencies and model are available, the adapter can extract embeddings and score candidates through the existing service API.
+  - Missing dependencies do not break backend import, service startup, deterministic tests, or non-Speaker-ID voice turns.
+  - Documentation identifies deterministic as test-only and SpeechBrain as the initial low-resource production candidate.
+
+
+## Task 243
+Original task details:
+- Title: Add resource-aware Speaker ID enrollment readiness and confidence tiers
+- Source request:
+  - Continue Track 3 with low-resource, production-safe Speaker ID hardening before heavier providers are considered.
+- Scope:
+  - Add enrollment readiness checks that do not require heavy environment classifiers:
+    - minimum sample count
+    - minimum total speech duration
+    - minimum per-sample duration
+    - compatible sample rate
+    - non-silent audio
+    - clipping warnings
+    - low-level warnings
+  - Add configurable confidence tier mapping:
+    - high: identify and eligible for future learning candidate workflows
+    - medium: identify for low-risk personalization only, no learning
+    - low/unknown: do not guess; ask or fail closed when identity is required
+  - Preserve the existing score-margin check to reduce profile drift.
+  - Add `learning_eligible=false` by default until explicit profile-learning workflows exist.
+  - Attach tier and readiness metadata to privacy-safe Speaker ID diagnostics without exposing embeddings or raw audio.
+  - Add tests for high, medium, low-confidence, low-margin, short enrollment, silent enrollment, and clipped enrollment behavior.
+  - Document that automatic profile learning remains out of scope.
+  - Enforce biometric training audio disposal:
+    - use enrollment voice audio only long enough to extract accepted embeddings/training data
+    - wipe/discard raw enrollment audio immediately after extraction
+    - never retain raw biometric training voice samples unless a separate explicit debug mode is enabled
+    - when debug retention is enabled, raw enrollment/debug audio expires after one day
+- Enrollment phrase plan:
+  - Use the following 24 phrases as the recommended enrollment phrase pool:
+    1. "Hexe, turn on the lights in the living room."
+    2. "What's the weather going to be like tomorrow morning?"
+    3. "Play some music in the kitchen and set the volume to forty percent."
+    4. "Remind me to call the dentist when I get home."
+    5. "Who is at the front door, and when did they arrive?"
+    6. "The quick brown fox jumps over the lazy dog."
+    7. "Seven people bought fresh coffee, bread, cheese, and apples."
+    8. "I'd like to know what's on my calendar for Friday afternoon."
+    9. "Please turn the bedroom temperature down by two degrees."
+    10. "Sometimes I speak quietly, and sometimes I speak much louder."
+    11. "Hexe, what time is it?"
+    12. "Could you please tell me whether the garage door is still open?"
+    13. "Add tomatoes, pasta, olive oil, and basil to my shopping list."
+    14. "Turn off the downstairs lights after the movie is finished."
+    15. "Tell me how long the drive to the airport will take."
+    16. "Please remind Sarah that the package is beside the front steps."
+    17. "Set the hallway lights to a soft blue color tonight."
+    18. "I need a quiet alarm for six fifteen tomorrow morning."
+    19. "The old wooden clock stopped ticking during the storm."
+    20. "Check whether any windows are open before bedtime."
+    21. "Move my workout reminder from Monday to Wednesday evening."
+    22. "Start a twenty five minute focus timer in the office."
+    23. "Read the last notification from the security camera."
+    24. "A bright yellow scarf was folded inside the small suitcase."
+  - Treat the list as a phrase pool rather than a hard all-or-nothing requirement.
+  - Require a minimum of 8 accepted phrases and recommend 12-16 accepted phrases when practical.
+  - Target roughly 30-60 seconds total accepted speech per speaker profile.
+  - Allow enrollment across multiple short sessions or slightly different positions.
+  - Present enrollment in batches of 3 phrases.
+  - After each batch, suggest that the person slightly change location, posture, direction, or distance from the endpoint before continuing, so the profile gains more natural variability.
+  - Keep the location-change prompt advisory, not mandatory, unless enrollment quality remains poor.
+  - Store one representative embedding per accepted phrase/sample.
+  - Do not execute the spoken command during enrollment.
+  - Include the wake word in only a minority of phrases to avoid overfitting profiles to wake-word audio.
+  - Before starting enrollment capture, sample roughly 1 second of ambient audio or endpoint ambient metrics to verify that the current room condition is suitable.
+  - Use the pre-enrollment ambient sample as a readiness check only by default:
+    - warn or pause enrollment when ambient level is too high
+    - warn when clipping or microphone noise is detected
+    - report SNR readiness once Track 2 ambient/SNR support exists
+    - do not retain raw ambient audio unless an explicit debug setting allows it
+- Post-enrollment validation phrase plan:
+  - Add a separate holdout phrase pool for scoring the completed profile after enrollment.
+  - Do not use holdout validation samples to create or update the profile embeddings during the first implementation.
+  - Randomly select a small subset, such as 5-8 phrases, after enrollment to score:
+    - Speaker ID recognition
+    - STT expected-text accuracy
+    - audio quality
+    - ambient/SNR quality when Track 2 data is available
+  - Enrollment phrases may also be used for STT/audio-quality scoring during capture, but they should not be treated as independent Speaker ID validation because they contributed to the profile.
+  - Reject or mark validation samples as unusable when audio quality is too poor, speech is too short, clipping is high, or ambient/SNR is unacceptable.
+  - Use the following initial holdout phrase pool:
+    1. "Please add blueberries and yogurt to the grocery list."
+    2. "Is the upstairs hallway light still on?"
+    3. "Set a ten minute timer for the pasta."
+    4. "Tell me if the mail has arrived today."
+    5. "Move tomorrow's meeting from nine thirty to ten."
+    6. "Start the coffee maker at seven fifteen in the morning."
+    7. "I left my blue jacket beside the small wooden table."
+    8. "Read the next message from Alex out loud."
+    9. "How long will it take to drive downtown right now?"
+    10. "Dim the porch lights after sunset."
+    11. "Cancel the reminder about watering the plants."
+    12. "The silver train crossed the bridge before sunrise."
+    13. "Please lower the speaker volume in the office."
+    14. "Check whether the back gate was opened today."
+    15. "Add black pepper, rice, lemons, and tea to the list."
+    16. "What appointments do I have after lunch tomorrow?"
+    17. "Turn off the fan when the room gets cooler."
+    18. "The small red notebook is under the kitchen chair."
+    19. "Remind me to charge the camera batteries tonight."
+    20. "Play the latest episode in the living room."
+    21. "How much time is left on the laundry timer?"
+    22. "Please tell me the temperature outside."
+    23. "Wake me up at six forty five on Saturday."
+    24. "The garden hose is coiled beside the garage door."
+- Acceptance criteria:
+  - Speaker profiles can report whether enrollment data is sufficient for production use.
+  - Speaker ID responses include a confidence tier without exposing biometric templates.
+  - Medium confidence does not permit profile learning.
+  - Low confidence or low margin does not guess identity for required personal routes.
+  - All new checks use lightweight local metrics and do not require pyannote, YAMNet, NeMo, or background classification.
+  - Enrollment UI/API guidance exposes the 24-phrase pool, requires at least 8 accepted phrases, recommends 12-16 when practical, and records accepted sample count and total accepted speech duration.
+  - Enrollment flow presents phrases in batches of 3 and prompts for slight position/location variation between batches.
+  - Enrollment capture performs a pre-enrollment ambient compatibility check and warns or pauses when the room is not suitable for profile creation.
+  - Post-enrollment validation can select random holdout phrases, score Speaker ID/STT/audio quality, and avoid using failed-quality samples as profile-learning candidates.
+
+
+## Task 244
+Original task details:
+- Title: Add versioned enrollment and validation phrase set management
+- Source request:
+  - Add roadmap improvement so enrollment and holdout phrase pools can evolve without making old scores ambiguous.
+- Scope:
+  - Store the enrollment phrase pool and holdout validation phrase pool with explicit phrase-set version IDs.
+  - Include phrase-set version in enrollment records, validation reports, placement reports when phrase-based scoring is used, and observation/debug diagnostics where relevant.
+  - Support active phrase-set selection through configuration or local defaults.
+  - Preserve the current 24 enrollment phrases and 24 holdout validation phrases as the initial phrase-set version.
+  - Track which phrases were presented, accepted, skipped, failed quality checks, and used for validation.
+  - Add tests for phrase-set version persistence, random holdout selection, skipped phrases, and report attribution.
+- Acceptance criteria:
+  - Enrollment and validation reports can identify which phrase-set version was used.
+  - Future phrase changes do not invalidate or confuse historical validation scores.
+  - Initial phrase sets match the current roadmap phrase pools.
+
+
+
+## Task 245
+Original task details:
+- Title: Add speaker profile age-band metadata, restrictions, and review cadence
+- Source request:
+  - Add Speaker ID profile age-band metadata so policies can restrict child/teen/admin behavior and recommend more frequent profile review for kids and teens whose voices change more often.
+- Scope:
+  - Add admin/guardian-configured profile metadata; do not infer age from voice.
+  - Prefer broad age bands over exact birthday unless exact age is explicitly needed later:
+    - `child`: under 13
+    - `teen`: 13-17
+    - `adult`: 18+
+    - `unknown`: not set
+  - Add optional profile metadata:
+    - `age_band`
+    - `age_restriction_class`
+    - `guardian_managed`
+    - `profile_review_interval_days`
+    - `last_voice_profile_review_at`
+    - `next_voice_profile_review_at`
+    - `admin_eligible`
+  - Add default review cadence suggestions:
+    - child: every 30-60 days
+    - teen: every 60-90 days
+    - adult: every 180-365 days
+    - unknown: configurable/manual review
+  - Add default admin eligibility rules:
+    - child: never admin eligible
+    - teen: not admin eligible by default
+    - adult: admin eligible only when explicitly enabled in UI
+    - unknown: not admin eligible by default
+  - Let intent/category policy use age band and restriction class for sensitive or age-restricted behavior.
+  - Require operator/guardian review before profile-learning updates for child or teen profiles.
+  - Expose age-band and review cadence in profile UI without storing exact birth date by default.
+  - Add tests for child, teen, adult, and unknown defaults; admin eligibility; review due dates; and guardian-managed profile update restrictions.
+  - Document that age band is operator/guardian supplied and not inferred from voice.
+- Acceptance criteria:
+  - Speaker profiles can store broad age-band metadata without requiring exact birth date.
+  - Child and teen profiles receive more frequent review suggestions than adult profiles.
+  - Child profiles cannot be admin eligible.
+  - Teen and unknown profiles are not admin eligible by default.
+  - Admin intent policy can require adult/admin-eligible profile metadata.
+  - Child/teen profile learning requires operator/guardian review.
+
+
+## Task 246
+Original task details:
+- Title: Add child/teen endpoint audience mode and age-appropriate content restrictions
+- Source request:
+  - Add an endpoint setting for child/teen use so children cannot ask inappropriate things from endpoints intended for minors.
+- Scope:
+  - Add endpoint-level audience mode metadata, configured in UI/setup by an admin/guardian:
+    - `general`
+    - `child_safe`
+    - `teen_safe`
+    - `adult_unrestricted`
+  - Keep endpoint audience mode separate from speaker age band. Apply the stricter policy when either the speaker profile or endpoint mode indicates child/teen restrictions.
+  - Add policy behavior for restricted endpoints:
+    - block explicit adult, sexual, violent, illegal, self-harm-instructional, or otherwise inappropriate content
+    - block admin/debug/privacy/purge/passcode/enrollment actions unless an identified adult/admin explicitly overrides through UI or an approved admin flow
+    - restrict personal-sensitive routes according to guardian/admin settings
+    - provide age-appropriate refusal text without exposing policy internals
+  - Add per-endpoint controls in the operator UI and endpoint registry metadata.
+  - Add an override model for adult/admin use at a restricted endpoint:
+    - require high-confidence adult/admin Speaker ID
+    - require explicit UI/admin setting for which overrides are allowed
+    - require spoken passcode only for admin-maintenance actions
+    - log only privacy-safe derived metadata for override decisions
+  - Add tests for child-safe endpoint, teen-safe endpoint, adult endpoint, unknown speaker on child-safe endpoint, adult override, admin action blocking, and refusal response text.
+  - Document that endpoint audience mode is a local household safety policy, not a substitute for broader platform safety controls.
+- Acceptance criteria:
+  - Endpoints can be configured as child-safe or teen-safe from UI/setup.
+  - Child/teen endpoint mode restricts inappropriate content even when the speaker is unknown.
+  - The stricter of speaker age band and endpoint audience mode wins.
+  - Adult/admin override requires explicit configuration and high-confidence adult/admin Speaker ID.
+  - Restricted responses are age-appropriate and do not reveal sensitive policy internals.
+
+## Task 247
+Original task details:
+- Title: Add explicit speaker-identity policy mapping for registered and built-in intents
+- Source request:
+  - Add Track 4 intent policy work after a `[STOP]` gate.
+- Scope:
+  - Make speaker identity requirements explicit for built-in/local intents and registered Voice intents.
+  - Preserve existing generic/local behavior where timers, endpoint commands, playback commands, and time queries do not require identity.
+  - Support policy values already used by the turn pipeline:
+    - `not_required`
+    - `use_if_ready`
+    - `required`
+    - `forbidden`
+  - Add a human-readable intent identity classification ladder that maps onto runtime policy:
+    - `general`: identity not needed; execute without Speaker ID. Examples: time, simple status, generic household commands.
+    - `household_context`: identity optional/use-if-ready; can use room/household context but must not require a person. Examples: shared lights, shared timers, shared device queries.
+    - `personal_low_risk`: identity preferred or required depending on route; use for low-risk personalization. Examples: music profile, preferred voice, non-sensitive reminders.
+    - `personal_sensitive`: identity required with high confidence. Examples: calendar, email, personal messages, account/profile data.
+    - `admin_maintenance`: admin identity required with very high confidence plus spoken passcode. Examples: debug mode, enrollment, placement calibration, privacy purge, passcode rotation.
+    - `forbidden_identity`: Speaker ID results must not be used or attached. Speaker ID may have already run speculatively in parallel with STT, but the result must be discarded for this turn. Examples: explicitly anonymous/local-only routes or future privacy-sensitive no-person-context modes.
+  - Because Speaker ID runs in parallel with STT before the final intent policy may be known, implement policy as a usage/attachment gate:
+    - `forbidden_identity`: discard Speaker ID result and do not attach it to assistant context, intent logs, observation logs, or public events.
+    - `general`: do not require identity; do not wait for identity; attach only if policy and privacy settings explicitly allow already-ready metadata.
+    - `household_context`: use ready identity only when confidence is acceptable; for low-confidence best matches, ask a lightweight confirmation such as "Is this Dan?" before using person context.
+    - `personal_low_risk`: allow follow-up confirmation for low/medium-confidence identity, such as "Is this Dan?", instead of silently guessing.
+    - `personal_sensitive`: require high-confidence identity and sufficient margin; if not met, reject/fail closed with a response such as "I could not recognize the speaker. If this happens often, retrain the profile."
+    - `admin_maintenance`: require very high-confidence admin identity, strong margin, acceptable audio quality, and correct spoken passcode; otherwise reject/fail closed with the same recognition guidance.
+  - Allow registered intent metadata to declare `speaker_identity_policy` where appropriate.
+  - Allow registered intent metadata to declare `identity_classification` where appropriate, and derive `speaker_identity_policy` from it when explicit policy is absent.
+  - Prefer explicit intent metadata over phrase heuristics when both are available.
+  - Require every built-in and registered intent to expose either an explicit `identity_classification` or an explicit `speaker_identity_policy`.
+  - Keep text heuristics only as a fallback for obvious personal routes until all relevant registered intents provide explicit policy.
+  - Ensure identity-gated routes fail closed when Speaker ID is disabled, unavailable, low confidence, low margin, or unknown.
+  - Add tests for built-in generic intents, personal-route metadata, heuristic fallback, forbidden policy, low-confidence household confirmation, low-confidence personal-low-risk confirmation, sensitive rejection, admin rejection, and disabled Speaker ID behavior.
+  - Document policy ownership and examples.
+- Acceptance criteria:
+  - Built-in generic intents continue to execute without waiting for Speaker ID.
+  - Registered intents can explicitly require, forbid, or optionally use Speaker ID.
+  - Every built-in and registered intent reports an identity classification or policy.
+  - Identity classifications map consistently to runtime Speaker ID policy.
+  - Explicit intent policy wins over heuristic text matching.
+  - `forbidden_identity` never attaches speculative Speaker ID results to intent logs or assistant context.
+  - Household and personal-low-risk classifications can ask for speaker confirmation when identity confidence is low or uncertain.
+  - Personal-sensitive and admin-maintenance classifications reject/fail closed unless confidence and margin requirements are met.
+  - Required identity failures do not execute personal actions.
+
+
+## Task 248
+Original task details:
+- Title: Add safe profile-learning eligibility policy without automatic learning
+- Source request:
+  - Continue Track 4 by defining profile-learning safety policy while keeping actual automatic learning disabled.
+- Scope:
+  - Add a `learning_eligible` or equivalent diagnostic decision to Speaker ID turn metadata.
+  - Keep automatic profile updates disabled by default and out of scope for this task.
+  - Mark a turn as learning-eligible only when all of these are true:
+    - speaker confidence tier is high
+    - score margin is sufficient
+    - audio quality is acceptable
+    - profile consent allows derived biometric updates
+    - intent/route policy does not forbid learning
+    - identity was not obtained from a clarification guess
+  - Mark medium-confidence identity as personalization-only and not learning-eligible.
+  - Mark low-confidence, low-margin, low-SNR, clipped, too-short, or unknown turns as not learning-eligible with a reason.
+  - Attach only privacy-safe eligibility metadata to session diagnostics.
+  - Add tests for eligible, medium-confidence, low-margin, low-SNR, clipped, too-short, forbidden-policy, and missing-consent cases.
+  - Document that this task creates eligibility metadata only; any future profile update workflow requires a separate explicit task.
+- Acceptance criteria:
+  - Voice turn metadata can explain whether a high-confidence identified turn could be considered for future profile learning.
+  - No embeddings or profiles are updated automatically.
+  - Medium and low-confidence turns are not learning-eligible.
+  - Audio-quality warnings can disqualify profile-learning eligibility.
+
+
+## Task 249
+Original task details:
+- Title: Add global voice privacy mode and feature kill switch
+- Source request:
+  - Add roadmap improvement for a single operator control that can disable privacy-sensitive voice features.
+- Scope:
+  - Add a global local privacy mode/off switch for privacy-sensitive voice features.
+  - When enabled, disable or block:
+    - Speaker ID lookup and profile learning eligibility
+    - observation logging
+    - debug raw-audio recording
+    - passive ambient calibration
+    - admin maintenance voice intents
+    - profile enrollment captures
+  - Keep core non-personal voice operation available where possible, such as general/local commands that do not require identity.
+  - Expose state in UI/setup/status and local diagnostics.
+  - Require explicit operator action to disable privacy mode.
+  - Add tests for each blocked feature and for generic voice turns that should still work.
+  - Document guest/privacy use cases and recovery path.
+- Acceptance criteria:
+  - One operator-controlled privacy mode can stop all identity/logging/debug/calibration/admin voice features.
+  - Generic no-identity voice turns can still run when safe.
+  - Blocked features fail closed with clear operator-visible reasons.
+
+
+## Task 250
+Original task details:
+- Title: Add backend wake-candidate election protocol and simulated multi-endpoint arbitration
+- Source request:
+  - Add Track 5 endpoint wake-election work after a `[STOP]` gate.
+- Scope:
+  - Add a backend-first wake election protocol so multiple endpoints hearing the same wake word do not all stream full utterances.
+  - Define a candidate event/payload, such as `wake.candidate`, containing privacy-safe metrics:
+    - wake confidence
+    - speech/frame level
+    - ambient level or SNR when available
+    - endpoint id
+    - session/candidate id
+    - timestamp
+    - optional endpoint audio profile/version
+  - Add a short backend election window, likely 150-300 ms, configurable.
+  - Score candidates by wake confidence and audio quality metrics.
+  - Select one winning endpoint and reject or stand down the rest.
+  - Add backend-to-endpoint events/commands for winner acceptance and loser stand-down, while preserving compatibility for existing endpoints.
+  - Keep existing single-endpoint behavior unchanged.
+  - Add simulated multi-endpoint tests for:
+    - single candidate
+    - clear winner
+    - near tie
+    - late candidate after election closes
+    - missing metrics
+    - disconnected loser endpoint
+  - Document the protocol and first-pass scoring policy.
+- Acceptance criteria:
+  - Backend can elect one endpoint from multiple wake candidates without requiring physical hardware.
+  - Existing endpoints that stream the current way still work.
+  - Election diagnostics explain winner, losers, metrics, score, and reason.
+  - No raw audio is required for candidate election.
+
+
+## Task 251
+Original task details:
+- Title: Implement firmware wake-election candidate and stand-down behavior
+- Source request:
+  - Continue Track 5 after backend protocol validation by adding endpoint firmware support.
+- Scope:
+  - Update firmware to report wake candidate metrics before streaming a full utterance when backend election is enabled.
+  - Include endpoint-side metrics available at wake time:
+    - wake source/confidence where available
+    - frame or speech level
+    - ambient/noise-floor metrics when available
+    - candidate timestamp/session id
+  - Wait for backend winner acceptance before streaming full post-wake utterance, subject to a short timeout/fallback policy.
+  - Honor backend stand-down command by cancelling capture and returning to idle/wake-armed state.
+  - Preserve manual/button wake behavior and existing non-election flow when backend or firmware election is disabled.
+  - Add firmware/backend contract tests or validation scripts for candidate, winner, loser, timeout fallback, and stand-down behavior.
+  - Document firmware configuration, timeout behavior, and known limitations.
+- Acceptance criteria:
+  - Election-capable firmware can send candidate metrics and wait briefly for backend selection.
+  - Losing endpoints stop streaming and return to idle without playing a response.
+  - If election is unavailable or times out, firmware follows a safe fallback that does not permanently block voice turns.
+  - Existing firmware behavior remains compatible when election is disabled.
+
+
+## Task 252
+Original task details:
+- Title: Add active endpoint placement test workflow and placement report
+- Source request:
+  - Add Track 6 placement calibration work after a `[STOP]` gate.
+  - Include the first implementation path before passive/long-window calibration.
+- Scope:
+  - Add a manual active placement test mode for a selected endpoint and room/zone.
+  - Let the operator start a test, speak known phrases from normal room positions, and optionally identify the expected speaker.
+  - Run the full accepted-turn pipeline for active test samples:
+    - STT
+    - Speaker ID when enabled
+    - Track 1 audio quality
+    - Track 2 ambient/SNR when available
+  - Store privacy-safe placement test metrics by default, not raw audio.
+  - Discard placement-test raw audio immediately after STT, Speaker ID, and audio-quality processing unless explicit debug recording is enabled for one-day retention.
+  - Compare expected phrase/speaker with observed transcript and Speaker ID result.
+  - Generate a placement report with:
+    - STT success/accuracy signal
+    - Speaker ID confidence/reliability signal
+    - SNR and audio-quality warnings
+    - clipping/low-level/too-short indicators
+    - response consistency across test positions
+    - overall placement score and recommendation
+  - Add backend APIs and persistence for active placement test sessions/results.
+  - Add operator UI or local Node UI surfaces as appropriate for starting tests and viewing reports.
+  - Add tests for successful active test, failed transcript match, unknown speaker, low SNR, clipped audio, and report scoring.
+  - Document that active placement testing is operator-initiated and may run STT/Speaker ID because the user intentionally starts the test.
+- Acceptance criteria:
+  - Operator can run a manual placement test for one endpoint without editing files.
+  - Placement report combines STT, Speaker ID, and audio-quality metrics into a readable score/recommendation.
+  - Raw audio is not retained by default.
+  - Any debug-retained placement-test raw audio expires after one day.
+  - Active tests are clearly separated from normal voice turns and passive ambient sampling.
+
+
+## Task 253
+Original task details:
+- Title: Add passive ambient placement calibration and long-window placement scoring
+- Source request:
+  - Add the later Track 6 implementation for passive/periodic ambient calibration after the active placement test path exists.
+- Scope:
+  - Add optional passive placement calibration mode for selected endpoints.
+  - Periodically collect privacy-safe ambient metrics, such as every 10 minutes over a 24-48 hour calibration window.
+  - Collect metrics only by default:
+    - ambient RMS/level
+    - peak level
+    - clipping incidence
+    - speech-like activity presence
+    - SNR-related metrics when active test anchors exist
+    - optional lightweight environment labels only if a later approved classifier exists
+  - Do not run STT or Speaker ID on unattended passive samples.
+  - Do not retain raw passive ambient audio by default.
+  - If passive calibration debug capture is explicitly enabled, raw ambient debug audio expires after one day.
+  - Add scheduling, retention, cancellation, and status APIs for passive calibration windows.
+  - Merge passive ambient statistics with active placement test results to produce a long-window placement report:
+    - average ambient noise by time of day
+    - peak noise periods
+    - speech-like/background activity frequency
+    - SNR distribution
+    - active-test STT success
+    - active-test Speaker ID reliability
+    - overall placement score
+  - Add tests for scheduling, metric-only storage, no unattended STT/Speaker ID calls, cancellation, retention cleanup, and report aggregation.
+  - Document privacy behavior, operator controls, and why passive calibration is metric-only.
+- Acceptance criteria:
+  - Passive calibration can run for a configured endpoint/window and store metrics only.
+  - No unattended passive sample is transcribed or sent to Speaker ID.
+  - Raw ambient audio is not retained by default.
+  - Any debug-retained passive ambient audio expires after one day.
+  - Long-window placement reports combine passive ambient trends with active placement test performance.
+
+
+## Task 254
+Original task details:
+- Title: Add optional monthly voice quality observation log
+- Source request:
+  - Add an optional end-of-implementation log that records time, STT, Speaker ID score, ambient/noise detection, and audio quality in its own persistent log.
+  - Retain logs for one calendar month, not 30 days. For example, on August 26, delete records/files before July 26.
+- Scope:
+  - Add an operator-controlled local setting for voice quality observation logging.
+  - Keep this log separate from existing voice session history, wake recordings, micro-VAD recordings, and runtime logs.
+  - Store records in a dedicated runtime directory, preferably as one JSONL file per local date, for example `runtime/voice_quality_observations/YYYY-MM-DD.jsonl`.
+  - Each record should include privacy-safe structured fields:
+    - observed_at timestamp
+    - endpoint_id
+    - session_id
+    - STT transcript text and STT provider/model/confidence when logging is enabled
+    - Speaker ID public id/display name when policy permits
+    - Speaker ID score, confidence, margin, tier, and reason
+    - ambient/noise detection result when available, such as loud TV, multiple people, background speech, music-like audio, or unavailable
+    - audio-quality result, including duration, RMS/level, clipping, silence/active ratio, ambient level, SNR, quality status, and warnings
+    - source feature versions or schema version for future compatibility
+  - Do not store raw audio, embeddings, biometric templates, or model-internal features in this log.
+  - Keep observation logging derived-data only:
+    - do not create a new raw-recording retention path
+    - discard raw audio immediately after STT, Speaker ID, ambient/noise, and audio-quality processing
+    - if debug recording is enabled elsewhere, raw debug recordings expire after one day
+  - Make transcript logging explicit because STT text may contain personal data.
+  - Support a redacted mode if transcript retention is later disabled but quality/Speaker ID summaries should still be kept.
+  - Add calendar-month retention cleanup:
+    - calculate cutoff by subtracting one calendar month from the current local date
+    - delete whole daily files older than the cutoff date when file-per-day storage is used
+    - never use fixed 30-day retention for this log
+  - Add status/diagnostic surface showing logging enabled state, directory, retention policy, latest file, latest cleanup, and record counts where cheap to compute.
+  - Add tests for:
+    - writing a record
+    - disabled logging writes nothing
+    - transcript redaction mode
+    - no raw audio or embedding fields are persisted
+    - calendar-month cutoff behavior, including August 26 deleting before July 26
+    - per-day file cleanup
+  - Document privacy behavior, operator controls, and retention semantics.
+- Acceptance criteria:
+  - When enabled, accepted voice turns can write a structured observation record containing time, STT, Speaker ID score, ambient/noise result, and audio quality.
+  - The observation log is stored separately from normal session history and debug audio recordings.
+  - Logs are retained for one calendar month by date, not for 30 days.
+  - On August 26, records/files before July 26 are removed by cleanup.
+  - No raw audio, embeddings, or biometric templates are written to the observation log.
+
+
+## Task 255
+Original task details:
+- Title: Add admin-gated maintenance voice intents for debug, enrollment, and placement calibration
+- Source request:
+  - Add voice intents for:
+    - start debug
+    - Voice enrollment
+    - start placement analysis, including a 48-hour long analysis and a short phrase-based noise/STT scoring flow
+  - These intents should be active only when requested by an admin person configured in the UI and protected by a spoken 4-digit passcode.
+- Scope:
+  - Add an admin maintenance intent family that is disabled by default.
+  - Add UI/setup controls for:
+    - enabling admin maintenance voice intents
+    - selecting which enrolled speaker profiles are admins
+    - configuring or rotating a 4-digit spoken passcode
+    - selecting which admin intents are enabled
+  - Require all admin maintenance intents to pass:
+    - Speaker ID identifies an enrolled admin profile with very high confidence
+    - admin maintenance intents are enabled in UI/setup
+    - the specific requested intent is enabled
+    - the spoken 4-digit passcode is present and correct
+    - audio quality is acceptable enough for passcode recognition
+  - Use a stricter Speaker ID threshold/tier for spoken PIN acceptance than normal personalization:
+    - require very high confidence
+    - require a strong best-vs-second-speaker margin
+    - reject medium, low, unknown, timed-out, or unavailable Speaker ID results
+    - reject passcode acceptance when audio quality is poor enough to reduce identity confidence
+  - Treat spoken passcode as a local safety gate, not as strong authentication by itself.
+  - Avoid logging the raw spoken passcode in session history, observation logs, runtime logs, MQTT events, or UI diagnostics.
+  - Store passcode using a local protected/hashed representation, not plaintext.
+  - Add replay/overhear mitigations where practical:
+    - require recent live wake/session context
+    - reject low-quality, clipped, or suspiciously short passcode utterances
+    - rate-limit failed passcode attempts
+    - temporarily lock admin voice intents after repeated failures
+    - allow UI override/disable
+  - Add the requested admin intents:
+    - `admin.debug.start`: enable debug mode or debug recording according to existing privacy limits
+    - `admin.enrollment.start`: begin Voice/Speaker enrollment flow
+    - `admin.placement.start_active`: begin short phrase-based placement/noise/STT scoring flow
+    - `admin.placement.start_passive_48h`: begin 48-hour passive placement analysis
+  - Add companion stop/cancel/status intents so admin workflows can be controlled safely:
+    - `admin.debug.stop`
+    - `admin.enrollment.cancel`
+    - `admin.placement.status`
+    - `admin.placement.stop`
+  - Add additional admin intents:
+    - `admin.privacy.status`: report whether debug recording, observation logging, and calibration sampling are enabled
+    - `admin.privacy.purge_debug_audio`: purge debug raw-audio captures; require UI confirmation or second confirmation before destructive action
+    - `admin.voice.quality.status`: summarize recent audio-quality/SNR issues
+    - `admin.speaker.enrollment.status`: report enrollment readiness progress
+    - `admin.passcode.rotate`: start passcode rotation flow; require UI confirmation before accepting a new passcode
+  - Keep destructive or privacy-sensitive actions fail-closed and consider requiring UI confirmation in addition to voice for purge/rotation actions.
+  - Classify all admin maintenance intents as `admin_maintenance` under the Track 4 identity classification ladder.
+  - Add tests for disabled admin intents, non-admin speaker, missing passcode, wrong passcode, correct passcode, failed-attempt lockout, passcode redaction, and each requested admin intent.
+  - Document admin intent setup, privacy behavior, passcode limitations, lockout behavior, and recovery path.
+- Acceptance criteria:
+  - Admin maintenance voice intents are disabled by default.
+  - Enabled admin intents require an identified admin speaker and the correct spoken 4-digit passcode.
+  - All admin maintenance intents are classified as `admin_maintenance`.
+  - Spoken passcode acceptance requires very high-confidence admin Speaker ID with a strong score margin.
+  - Passcodes are never stored or logged in plaintext.
+  - Requested intents can start debug, Voice enrollment, short placement scoring, and 48-hour placement analysis.
+  - Stop/status companion intents exist for debug, enrollment, placement, privacy, voice quality, and passcode workflows.
+  - Non-admin speakers and wrong passcodes fail closed.
+
+
+## Task 256
+Original task details:
+- Title: Add operator-reviewed Speaker ID profile improvement workflow
+- Source request:
+  - Add roadmap improvement for profile learning only after operator review, not automatic updates.
+- Scope:
+  - Consume `learning_eligible` candidates from earlier tasks without automatically updating embeddings.
+  - Provide an operator review queue for candidate profile improvements.
+  - Show privacy-safe evidence:
+    - speaker public id/display name
+    - score/confidence/margin/tier
+    - audio-quality/SNR summary
+    - phrase/intent context when allowed
+    - reason candidate is eligible
+  - Never show or store raw audio unless explicit one-day debug retention is enabled.
+  - Let operator approve, reject, or discard candidates.
+  - On approval, update profile embeddings according to a bounded strategy that avoids profile drift.
+  - Add tests for candidate creation, approval, rejection, drift/margin guardrails, privacy redaction, and profile versioning.
+  - Document that automatic profile learning remains disabled unless a future explicit policy enables it.
+- Acceptance criteria:
+  - Eligible profile-learning candidates require operator approval before profile updates.
+  - Rejected candidates do not alter profiles.
+  - Approved updates increment profile version and preserve privacy constraints.
+
+
+## Task 257
+Original task details:
+- Title: Add user-facing voice failure guidance from quality and identity diagnostics
+- Source request:
+  - Add roadmap improvement so recognition failures explain likely causes instead of only saying the speaker was not recognized.
+- Scope:
+  - Add a guidance layer that converts Speaker ID, STT, ambient/SNR, and audio-quality diagnostics into short user-facing responses.
+  - For personal-sensitive and admin-maintenance failures, prefer safe rejection with helpful cause when known:
+    - speaker not recognized
+    - confidence too low
+    - score margin too close
+    - speech too short
+    - audio clipped
+    - room too noisy / low SNR
+    - multiple speakers or background speech likely
+    - profile may need retraining
+  - Avoid exposing sensitive internal scores unless in admin/operator diagnostics.
+  - Keep normal user prompts concise, for example: "I could not recognize the speaker. The room may be too noisy. If this happens often, retrain the profile."
+  - Add operator diagnostics with more detailed reason codes.
+  - Add tests for each major failure cause and for redaction of sensitive details.
+- Acceptance criteria:
+  - Failed identity-gated actions return clear, safe, concise guidance.
+  - Operator diagnostics expose structured reason codes.
+  - User-facing guidance does not expose private scores or biometric details.

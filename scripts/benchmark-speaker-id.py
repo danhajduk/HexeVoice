@@ -27,6 +27,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--repeat", type=int, default=1, help="Embedding runs per clip.")
     parser.add_argument("--threshold", type=float, default=0.75, help="Verification score threshold.")
+    parser.add_argument(
+        "--device-label",
+        default="default",
+        help="Label this benchmark run, for example 'cpu' or 'cuda', after configuring provider dependencies.",
+    )
     parser.add_argument("--json-output", type=Path, help="Optional path for machine-readable benchmark output.")
     parser.add_argument(
         "--generate-fixtures",
@@ -85,6 +90,11 @@ def print_summary(result: dict[str, object]) -> None:
             f"{metadata.get('embedding_dimensions')}  sample_rate: {metadata.get('sample_rate_hz')}  "
             f"cpu: {metadata.get('cpu_supported')}  cuda: {metadata.get('cuda_supported')}"
         )
+        print(
+            "  memory_rss_kb: "
+            f"before={provider.get('memory_rss_kb_before')} after={provider.get('memory_rss_kb_after')} "
+            f"delta={provider.get('memory_rss_kb_delta')}"
+        )
         if provider.get("error"):
             print(f"  error: {provider['error']}")
             continue
@@ -110,6 +120,7 @@ def main() -> int:
         provider_ids=provider_ids_from_arg(args.providers),
         repeat=args.repeat,
         threshold=args.threshold,
+        device_label=args.device_label,
     )
     print_summary(result)
     if args.json_output:

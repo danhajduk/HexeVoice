@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import math
 import os
 from pathlib import Path
@@ -89,6 +90,7 @@ def test_speaker_id_service_enroll_identify_verify_and_delete(tmp_path):
             },
         )
         profiles = client.get("/profiles")
+        profile_export = client.get("/profiles/speaker_dan")
         deleted = client.delete("/profiles/speaker_dan")
 
     assert health.status_code == 200
@@ -102,8 +104,16 @@ def test_speaker_id_service_enroll_identify_verify_and_delete(tmp_path):
     assert verified.status_code == 200
     assert verified.json()["verified"] is True
     assert profiles.json()["profiles"][0]["audio_retained"] is False
+    exported_profile = profile_export.json()["profile"]
+    public_payload = json.dumps(exported_profile)
+    assert profile_export.status_code == 200
+    assert "embeddings" not in exported_profile
+    assert "values" not in exported_profile
+    assert "audio_base64" not in public_payload
     assert deleted.status_code == 200
     assert client.get("/profiles").json()["profiles"] == []
+    stored_payload = json.loads(settings.resolved_voice_speaker_id_profiles_path().read_text(encoding="utf-8"))
+    assert stored_payload["profiles"] == []
 
 
 def test_speaker_id_service_returns_unknown_without_profiles(tmp_path):

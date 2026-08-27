@@ -93,13 +93,24 @@ def test_optional_provider_status_is_import_safe(tmp_path):
 def test_benchmark_emits_provider_metadata_and_scores(tmp_path):
     clip = write_fixture(tmp_path / "speaker-a.wav")
 
-    result = run_speaker_id_benchmark(clips=[clip], provider_ids=["deterministic_signal"], repeat=2, threshold=0.9)
+    result = run_speaker_id_benchmark(
+        clips=[clip],
+        provider_ids=["deterministic_signal"],
+        repeat=2,
+        threshold=0.9,
+        device_label="cpu",
+    )
 
     assert result["schema_version"] == 1
+    assert result["device_label"] == "cpu"
+    assert result["runtime"]["python"]
     assert result["clip_count"] == 1
     provider = result["providers"][0]
     assert provider["provider_id"] == "deterministic_signal"
     assert provider["metadata"]["embedding_dimensions"] == 32
+    assert provider["memory_rss_kb_before"] is not None
+    assert provider["memory_rss_kb_after"] is not None
+    assert provider["memory_rss_kb_delta"] is not None
     assert provider["clips"][0]["duration_ms_mean"] is not None
     assert provider["clips"][0]["embedding_dimensions"] == 32
     assert provider["scores"][0]["accepted"] is True

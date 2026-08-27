@@ -48,13 +48,37 @@ Standards reference:
 Do not edit above this line:
 #######################################################################
 
-[STOP]
-
 **********************************************************************************************
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 237: Validate Speaker ID accuracy, latency, privacy, and multi-endpoint behavior with tests, docs, and benchmark artifacts
+[TODO] Task 238: Implement Track 1 audio-quality foundation for accepted voice turns
+[TODO] Task 239: Define versioned voice quality, identity, enrollment, and placement metric schemas
+[STOP]
+[TODO] Task 240: Implement Track 2 pre-roll ambient reference and per-turn SNR metadata
+[TODO] Task 241: Add endpoint ambient metric reporting for pre-roll and noise-floor quality analysis
+[STOP]
+[TODO] Task 242: Enable the lowest-resource production Speaker ID provider path
+[TODO] Task 243: Add resource-aware Speaker ID enrollment readiness and confidence tiers
+[TODO] Task 244: Add versioned enrollment and validation phrase set management
+[TODO] Task 245: Add speaker profile age-band metadata, restrictions, and review cadence
+[TODO] Task 246: Add child/teen endpoint audience mode and age-appropriate content restrictions
+[STOP]
+[TODO] Task 247: Add explicit speaker-identity policy mapping for registered and built-in intents
+[TODO] Task 248: Add safe profile-learning eligibility policy without automatic learning
+[TODO] Task 249: Add global voice privacy mode and feature kill switch
+[STOP]
+[TODO] Task 250: Add backend wake-candidate election protocol and simulated multi-endpoint arbitration
+[TODO] Task 251: Implement firmware wake-election candidate and stand-down behavior
+[STOP]
+[TODO] Task 252: Add active endpoint placement test workflow and placement report
+[TODO] Task 253: Add passive ambient placement calibration and long-window placement scoring
+[STOP]
+[TODO] Task 254: Add optional monthly voice quality observation log
+[STOP]
+[TODO] Task 255: Add admin-gated maintenance voice intents for debug, enrollment, and placement calibration
+[TODO] Task 256: Add operator-reviewed Speaker ID profile improvement workflow
+[TODO] Task 257: Add user-facing voice failure guidance from quality and identity diagnostics
 
 **********************************************************************************************
 * Future TODO listing

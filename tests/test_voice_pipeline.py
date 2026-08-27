@@ -103,6 +103,31 @@ class SlowSpeakerIdClient:
         return self.response
 
 
+class AudioFingerprintSpeakerIdClient:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def identify(self, payload):
+        self.calls.append(payload)
+        wav_bytes = base64.b64decode(payload["audio"]["audio_base64"])
+        speaker_public_id = "speaker_alex" if b"\x02\x00" * 32 in wav_bytes else "speaker_dan"
+        display_name = "Alex" if speaker_public_id == "speaker_alex" else "Dan"
+        return {
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": speaker_public_id,
+                "display_name": display_name,
+                "confidence": 0.94,
+                "score": 0.94,
+                "score_margin": 0.22,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+            },
+        }
+
+
 class SpyAssistantService:
     def __init__(self, *, spoken_text: str = "handled") -> None:
         self.spoken_text = spoken_text
@@ -346,6 +371,49 @@ def test_voice_turn_pipeline_passes_identified_speaker_to_required_route(tmp_pat
     assert result.speaker_identity.speaker_public_id == "speaker_dan"
     assert assistant.requests[0].speaker_identity["speaker_public_id"] == "speaker_dan"
     assert assistant.requests[0].speaker_identity_policy == "required"
+
+
+def test_voice_turn_pipeline_speaker_identity_follows_audio_not_endpoint(tmp_path):
+    assistant = SpyAssistantService(spoken_text="Opening your calendar.")
+    speaker_id = AudioFingerprintSpeakerIdClient()
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="what's on my calendar"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_timeout_s=1.0,
+        speaker_id_policy_default="use_if_ready",
+    )
+
+    for endpoint_id, session_id, audio_bytes in (
+        ("esp-kitchen", "voice-session-1", b"\x01\x00" * 1600),
+        ("esp-bedroom", "voice-session-2", b"\x01\x00" * 1600),
+        ("esp-kitchen", "voice-session-3", b"\x02\x00" * 1600),
+    ):
+        pipeline.complete_turn(
+            VoiceTurnAudioSummary(
+                endpoint_id=endpoint_id,
+                session_id=session_id,
+                chunk_count=2,
+                sample_rate_hz=16000,
+                encoding="pcm_s16le",
+                channels=1,
+                audio_bytes=audio_bytes,
+            )
+        )
+
+    assert [request.endpoint_id for request in assistant.requests] == ["esp-kitchen", "esp-bedroom", "esp-kitchen"]
+    assert [request.speaker_identity["speaker_public_id"] for request in assistant.requests] == [
+        "speaker_dan",
+        "speaker_dan",
+        "speaker_alex",
+    ]
+    assert [call["audio"]["sample_id"] for call in speaker_id.calls] == [
+        "voice-session-1-turn",
+        "voice-session-2-turn",
+        "voice-session-3-turn",
+    ]
 
 
 def test_voice_turn_pipeline_can_select_voice_by_endpoint(tmp_path):

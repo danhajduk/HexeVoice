@@ -118,6 +118,12 @@ def test_setup_capabilities_status_includes_manifest_preview(tmp_path):
     assert services["tts"]["provider_id"] == "piper"
     assert services["wake"]["provider_id"] == "openwakeword"
     assert "voice.inference" in summary["enabled_capabilities"]
+    assert {
+        "voice.speaker.identify",
+        "voice.speaker.verify",
+        "voice.speaker.enroll",
+        "voice.speaker.profile.manage",
+    }.issubset(summary["enabled_capabilities"])
     assert summary["disabled_capabilities"] == []
     assert {"provider_id": "external_faster_whisper", "role": "stt", "model_id": "small.en", "enabled": True} in summary["available_models"]
     assert payload["recovery_actions"]["core_governance_url"] == "http://core.test:9001/system/governance"

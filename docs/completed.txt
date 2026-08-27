@@ -262,3 +262,4 @@ Task 233: Build the HexeVoice Speaker ID runtime adapter layer with benchmark su
 Task 234: Implement the HexeVoice Speaker ID Unix-socket service APIs for enrollment, verification, identification, profile management, and health reporting - Completed on 08/24/2026 04:49
 Task 235: Integrate the HexeVoice Speaker ID service into per-turn speaker lookup, speaker-aware events, and safe fallback behavior - Completed on 08/24/2026 04:57
 Task 236: Add Speaker ID operator UI controls for consent, enrollment, profile review, deletion, diagnostics, and model/provider selection - Completed on 08/24/2026 05:06
+Task 237: Validate Speaker ID accuracy, latency, privacy, and multi-endpoint behavior with tests, docs, and benchmark artifacts - Completed on 08/26/2026 20:46
