@@ -70,6 +70,7 @@ class VoiceTurnAudioSummary:
     channels: int = 1
     audio_bytes: bytes | None = None
     ambient_audio_bytes: bytes | None = None
+    endpoint_audio_metrics: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -1729,6 +1730,7 @@ class VoiceTurnPipeline:
             channels=audio.channels,
             encoding=audio.encoding,
             ambient_audio_bytes=audio.ambient_audio_bytes,
+            endpoint_audio_metrics=audio.endpoint_audio_metrics,
         )
         executor = ThreadPoolExecutor(max_workers=2)
         try:

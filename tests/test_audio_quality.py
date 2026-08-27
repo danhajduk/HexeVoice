@@ -108,3 +108,24 @@ def test_audio_quality_reports_low_snr_without_blocking_analysis():
     assert result.snr_status == "low_snr"
     assert result.snr_reason is None
     assert result.snr_db is not None and result.snr_db < 15
+
+
+def test_audio_quality_prefers_endpoint_ambient_metrics_when_present():
+    result = analyze_pcm_s16le_audio(
+        pcm_sine(amplitude=0.2),
+        sample_rate_hz=16000,
+        ambient_audio_bytes=pcm_sine(amplitude=0.18),
+        endpoint_audio_metrics={
+            "noise_floor_rms": 0.004,
+            "pre_roll_peak": 0.006,
+            "pre_roll_duration_ms": 800,
+            "speech_peak": 0.2,
+        },
+    )
+
+    assert result.status == "ok"
+    assert result.snr_status == "ok"
+    assert result.ambient_rms == 0.004
+    assert result.ambient_peak == 0.006
+    assert result.ambient_duration_ms == 800
+    assert result.snr_db is not None and result.snr_db >= 15

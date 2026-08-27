@@ -53,8 +53,6 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 241: Add endpoint ambient metric reporting for pre-roll and noise-floor quality analysis
-[STOP]
 [TODO] Task 242: Enable the lowest-resource production Speaker ID provider path
 [TODO] Task 243: Add resource-aware Speaker ID enrollment readiness and confidence tiers
 [TODO] Task 244: Add versioned enrollment and validation phrase set management

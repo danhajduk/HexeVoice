@@ -181,7 +181,7 @@ void vad_task(void *arg) {
         micro_vad_chunk_index,
         micro_vad_chunk_active,
         micro_vad_silent_frames);
-    hexe::voice::submit_audio_frame(samples, kFrameSamples, level, frame_has_voice, &micro_vad);
+    hexe::voice::submit_audio_frame(samples, kFrameSamples, level, level, level, frame_has_voice, &micro_vad);
 
     if (frame_has_voice) {
       silent_frames = 0;

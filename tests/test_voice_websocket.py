@@ -436,6 +436,10 @@ def test_voice_websocket_treats_button_session_start_as_wake(tmp_path):
                     "chunk_index": 0,
                     "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
                     "payload_base64": "AAECAw==",
+                    "frame_level": 100,
+                    "noise_floor_level": 100,
+                    "pre_roll_duration_ms": 500,
+                    "contains_pre_roll": True,
                 },
             )
         )
@@ -468,6 +472,10 @@ def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
                     "chunk_index": 0,
                     "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
                     "payload_base64": "AAECAw==",
+                    "frame_level": 100,
+                    "noise_floor_level": 100,
+                    "pre_roll_duration_ms": 500,
+                    "contains_pre_roll": True,
                 },
             )
         )
@@ -915,6 +923,10 @@ def test_voice_websocket_passes_transient_audio_to_turn_pipeline(tmp_path):
                     "chunk_index": 0,
                     "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
                     "payload_base64": "AAECAw==",
+                    "frame_level": 100,
+                    "noise_floor_level": 100,
+                    "pre_roll_duration_ms": 500,
+                    "contains_pre_roll": True,
                 },
             )
         )
@@ -938,6 +950,9 @@ def test_voice_websocket_passes_transient_audio_to_turn_pipeline(tmp_path):
                     "chunk_index": 2,
                     "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
                     "payload_base64": "CAkKCw==",
+                    "frame_level": 4000,
+                    "speech_peak_level": 4000,
+                    "contains_speech": True,
                 },
             )
         )
@@ -948,6 +963,10 @@ def test_voice_websocket_passes_transient_audio_to_turn_pipeline(tmp_path):
     assert pipeline.audio is not None
     assert pipeline.audio.audio_bytes == b"\x08\x09\x0a\x0b"
     assert pipeline.audio.ambient_audio_bytes == b"\x00\x01\x02\x03"
+    assert pipeline.audio.endpoint_audio_metrics["noise_floor_level"] == 100
+    assert pipeline.audio.endpoint_audio_metrics["pre_roll_duration_ms"] == 500
+    assert pipeline.audio.endpoint_audio_metrics["contains_pre_roll"] is True
+    assert pipeline.audio.endpoint_audio_metrics["contains_speech"] is True
     assert pipeline.audio.sample_rate_hz == 16000
     assert pipeline.audio.encoding == "pcm_s16le"
     assert pipeline.audio.channels == 1

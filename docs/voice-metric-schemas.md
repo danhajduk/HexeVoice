@@ -31,6 +31,8 @@ Use `assert_metric_payload_redacted()` before writing new metric payloads to log
 
 Task 240 keeps raw ambient/pre-roll audio in memory only for accepted turn analysis. Persisted session history and status payloads store numeric metrics and counts, not raw ambient bytes. Existing debug capture services remain the only raw-audio retention path and retain their one-day debug retention behavior.
 
+Task 241 lets newer endpoints report numeric `audio.chunk` metrics such as frame level, noise-floor level, speech peak level, pre-roll duration, and pre-roll/speech flags. Backend diagnostics prefer those endpoint-provided values when present and fall back to backend-derived in-memory pre-roll analysis for older firmware.
+
 `SpeakerIdentityMetric` is the redacted Speaker ID result. It records status, policy, public speaker id, display name, confidence, confidence tier, score, margin, provider/model, reason, duration, and error. It never contains embeddings or raw audio.
 
 `IdentityPolicyDecisionMetric` records the intent identity requirement decision: policy, allow/reject/follow-up decision, required tier, observed tier, and reason.

@@ -43,6 +43,7 @@ def analyze_pcm_s16le_audio(
     channels: int = 1,
     encoding: str | None = "pcm_s16le",
     ambient_audio_bytes: bytes | None = None,
+    endpoint_audio_metrics: dict[str, object] | None = None,
 ) -> AudioQualityResult:
     sample_rate = int(sample_rate_hz or 0)
     channel_count = max(1, int(channels or 1))
@@ -105,6 +106,7 @@ def analyze_pcm_s16le_audio(
         speech_rms=speech_rms,
         speech_peak=peak,
         speech_duration_ms=duration_ms,
+        endpoint_audio_metrics=endpoint_audio_metrics,
     )
     if ambient_metrics["snr_status"] == "low_snr":
         warnings.append("low_snr")
@@ -139,6 +141,7 @@ def _ambient_snr_metrics(
     speech_rms: float | None,
     speech_peak: float | None,
     speech_duration_ms: int,
+    endpoint_audio_metrics: dict[str, object] | None,
 ) -> dict[str, object]:
     base = {
         "ambient_rms": None,
@@ -150,6 +153,14 @@ def _ambient_snr_metrics(
         "snr_status": "unavailable",
         "snr_reason": "missing_ambient",
     }
+    endpoint_metrics = _endpoint_ambient_snr_metrics(
+        endpoint_audio_metrics,
+        speech_rms=speech_rms,
+        speech_peak=speech_peak,
+        speech_duration_ms=speech_duration_ms,
+    )
+    if endpoint_metrics is not None:
+        return endpoint_metrics
     if not ambient_audio_bytes:
         return base
     if encoding != "pcm_s16le":
@@ -184,6 +195,60 @@ def _ambient_snr_metrics(
         "snr_status": "ok" if snr_db >= 15 else "low_snr",
         "snr_reason": None,
     }
+
+
+def _endpoint_ambient_snr_metrics(
+    endpoint_audio_metrics: dict[str, object] | None,
+    *,
+    speech_rms: float | None,
+    speech_peak: float | None,
+    speech_duration_ms: int,
+) -> dict[str, object] | None:
+    if not endpoint_audio_metrics:
+        return None
+    ambient_rms = _float_or_none(endpoint_audio_metrics.get("noise_floor_rms"))
+    ambient_peak = _float_or_none(endpoint_audio_metrics.get("pre_roll_peak"))
+    ambient_duration_ms = _int_or_zero(endpoint_audio_metrics.get("pre_roll_duration_ms"))
+    endpoint_speech_peak = _float_or_none(endpoint_audio_metrics.get("speech_peak"))
+    base = {
+        "ambient_rms": round(ambient_rms, 6) if ambient_rms is not None else None,
+        "ambient_peak": round(ambient_peak, 6) if ambient_peak is not None else None,
+        "ambient_duration_ms": ambient_duration_ms,
+        "speech_peak": round(endpoint_speech_peak if endpoint_speech_peak is not None else speech_peak, 6)
+        if endpoint_speech_peak is not None or speech_peak is not None
+        else None,
+        "speech_duration_ms": speech_duration_ms,
+        "snr_db": None,
+        "snr_status": "unavailable",
+        "snr_reason": "missing_endpoint_ambient",
+    }
+    if ambient_rms is None:
+        return base
+    if ambient_duration_ms < 300:
+        return {**base, "snr_reason": "short_endpoint_ambient"}
+    if speech_rms is None:
+        return {**base, "snr_reason": "missing_speech"}
+    if ambient_rms <= 0:
+        return {**base, "snr_reason": "endpoint_ambient_silent"}
+    snr_db = 20 * math.log10(max(speech_rms, 1e-12) / ambient_rms)
+    return {
+        **base,
+        "snr_db": round(snr_db, 2),
+        "snr_status": "ok" if snr_db >= 15 else "low_snr",
+        "snr_reason": None,
+    }
+
+
+def _float_or_none(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _int_or_zero(value: object) -> int:
+    if isinstance(value, (int, float)):
+        return max(0, int(value))
+    return 0
 
 
 def _empty_result(

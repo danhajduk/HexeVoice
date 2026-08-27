@@ -21,6 +21,8 @@ bool submit_audio_frame(
     const int16_t *samples,
     size_t sample_count,
     uint32_t level,
+    uint32_t noise_floor_level,
+    uint32_t speech_peak_level,
     bool vad_speaking,
     const MicroVadFrameState *micro_vad = nullptr);
 bool finish_audio_stream(const char *reason);

@@ -64,3 +64,9 @@ the payload carries the measured VAD `level` plus a `source` such as `firmware_v
 `latency_points` timeline for VAD voice detected, wake word detected, VAD silence, STT start/end, intent processing
 done, TTS start/end, and session end. Timeline points carry both `offset_from_vad_ms` and
 `offset_from_previous_ms` when the VAD start timestamp is known.
+
+`audio.chunk` may include optional endpoint-side numeric quality metrics: `frame_level`, `noise_floor_level`,
+`speech_peak_level`, `pre_roll_duration_ms`, `contains_pre_roll`, and `contains_speech`. These fields are
+privacy-safe transport diagnostics, not raw audio or environment classification. Backend quality analysis prefers
+these endpoint-provided ambient/noise-floor metrics when present and falls back to backend-derived in-memory pre-roll
+analysis for older firmware that omits them.

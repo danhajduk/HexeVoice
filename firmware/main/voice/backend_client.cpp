@@ -76,7 +76,10 @@ struct AudioFrame {
   std::array<int16_t, kMaxChunkSamples> samples;
   size_t sample_count;
   uint32_t level;
+  uint32_t noise_floor_level;
+  uint32_t speech_peak_level;
   bool vad_speaking;
+  bool contains_pre_roll;
   bool micro_vad_active;
   bool micro_vad_started;
   bool micro_vad_ended;
@@ -116,6 +119,12 @@ bool g_transport_micro_vad_started = false;
 bool g_transport_micro_vad_ended = false;
 uint32_t g_transport_micro_vad_chunk_index = 0;
 uint32_t g_transport_micro_vad_pause_ms = 0;
+uint32_t g_transport_frame_level_peak = 0;
+uint32_t g_transport_noise_floor_level = 0;
+uint32_t g_transport_speech_peak_level = 0;
+uint32_t g_transport_pre_roll_duration_ms = 0;
+bool g_transport_contains_pre_roll = false;
+bool g_transport_contains_speech = false;
 int64_t g_post_tts_input_ignore_until_us = 0;
 std::string g_session_id;
 std::string g_tts_playback_session_id;
@@ -164,6 +173,7 @@ bool wake_source_is_local_acceptance(const char *wake_source);
 bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
 void resume_audio_stream_for_followup();
 void reset_transport_micro_vad();
+void reset_transport_audio_metrics();
 void start_post_tts_input_cooldown();
 void clear_post_tts_input_cooldown();
 void append_event_header(
@@ -206,7 +216,9 @@ void mark_voice_socket_disconnected() {
 }
 
 void remember_preroll_frame(const AudioFrame &frame) {
-  g_preroll_frames[g_preroll_index] = frame;
+  AudioFrame preroll_frame = frame;
+  preroll_frame.contains_pre_roll = true;
+  g_preroll_frames[g_preroll_index] = preroll_frame;
   g_preroll_index = (g_preroll_index + 1) % g_preroll_frames.size();
   if (g_preroll_count < g_preroll_frames.size()) {
     ++g_preroll_count;
@@ -267,6 +279,16 @@ void reset_transport_micro_vad() {
   g_transport_micro_vad_ended = false;
   g_transport_micro_vad_chunk_index = 0;
   g_transport_micro_vad_pause_ms = 0;
+  reset_transport_audio_metrics();
+}
+
+void reset_transport_audio_metrics() {
+  g_transport_frame_level_peak = 0;
+  g_transport_noise_floor_level = 0;
+  g_transport_speech_peak_level = 0;
+  g_transport_pre_roll_duration_ms = 0;
+  g_transport_contains_pre_roll = false;
+  g_transport_contains_speech = false;
 }
 
 void clear_post_tts_input_cooldown() {
@@ -279,6 +301,7 @@ void start_post_tts_input_cooldown() {
   g_preroll_index = 0;
   g_transport_sample_count = 0;
   reset_transport_micro_vad();
+  reset_transport_audio_metrics();
   ESP_LOGI(kTag, "Ignoring microphone wake/VAD input for %lld us after TTS playback", static_cast<long long>(kPostTtsInputIgnoreUs));
 }
 
@@ -320,6 +343,31 @@ std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
         g_transport_micro_vad_pause_ms);
     payload.append(micro_vad);
   }
+  if (
+      g_transport_frame_level_peak > 0 ||
+      g_transport_noise_floor_level > 0 ||
+      g_transport_speech_peak_level > 0 ||
+      g_transport_pre_roll_duration_ms > 0 ||
+      g_transport_contains_pre_roll ||
+      g_transport_contains_speech) {
+    char metrics[320];
+    std::snprintf(
+        metrics,
+        sizeof(metrics),
+        ",\"frame_level\":%" PRIu32
+        ",\"noise_floor_level\":%" PRIu32
+        ",\"speech_peak_level\":%" PRIu32
+        ",\"pre_roll_duration_ms\":%" PRIu32
+        ",\"contains_pre_roll\":%s"
+        ",\"contains_speech\":%s",
+        g_transport_frame_level_peak,
+        g_transport_noise_floor_level,
+        g_transport_speech_peak_level,
+        g_transport_pre_roll_duration_ms,
+        g_transport_contains_pre_roll ? "true" : "false",
+        g_transport_contains_speech ? "true" : "false");
+    payload.append(metrics);
+  }
   payload.append("}}");
   return payload;
 }
@@ -335,6 +383,7 @@ bool send_transport_chunk(const int16_t *samples, size_t sample_count) {
   if (send_ws_text(payload)) {
     set_audio_streaming(true);
     reset_transport_micro_vad();
+    reset_transport_audio_metrics();
     return true;
   }
 
@@ -370,8 +419,26 @@ void merge_transport_micro_vad(const AudioFrame &frame) {
   }
 }
 
+uint32_t frame_duration_ms(const AudioFrame &frame) {
+  return static_cast<uint32_t>((frame.sample_count * 1000) / hexe::config::kEndpointAudioSampleRateHz);
+}
+
+void merge_transport_audio_metrics(const AudioFrame &frame) {
+  g_transport_frame_level_peak = std::max(g_transport_frame_level_peak, frame.level);
+  if (frame.noise_floor_level > 0) {
+    g_transport_noise_floor_level = frame.noise_floor_level;
+  }
+  g_transport_speech_peak_level = std::max(g_transport_speech_peak_level, frame.speech_peak_level);
+  g_transport_contains_pre_roll = g_transport_contains_pre_roll || frame.contains_pre_roll;
+  g_transport_contains_speech = g_transport_contains_speech || frame.vad_speaking;
+  if (frame.contains_pre_roll) {
+    g_transport_pre_roll_duration_ms += frame_duration_ms(frame);
+  }
+}
+
 bool append_transport_frame(const AudioFrame &frame) {
   merge_transport_micro_vad(frame);
+  merge_transport_audio_metrics(frame);
   size_t offset = 0;
   while (offset < frame.sample_count) {
     const size_t available = g_transport_samples.size() - g_transport_sample_count;
@@ -388,6 +455,7 @@ bool append_transport_frame(const AudioFrame &frame) {
     }
     if (g_transport_sample_count == 0 && offset < frame.sample_count) {
       merge_transport_micro_vad(frame);
+      merge_transport_audio_metrics(frame);
     }
   }
   if (frame.micro_vad_ended && !flush_transport_samples(true)) {
@@ -2401,6 +2469,8 @@ bool submit_audio_frame(
     const int16_t *samples,
     size_t sample_count,
     uint32_t level,
+    uint32_t noise_floor_level,
+    uint32_t speech_peak_level,
     bool vad_speaking,
     const MicroVadFrameState *micro_vad) {
   if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !voice_transport_ready()) {
@@ -2414,6 +2484,8 @@ bool submit_audio_frame(
   frame.sample_count = std::min(sample_count, frame.samples.size());
   std::copy(samples, samples + frame.sample_count, frame.samples.begin());
   frame.level = level;
+  frame.noise_floor_level = noise_floor_level;
+  frame.speech_peak_level = speech_peak_level;
   frame.vad_speaking = vad_speaking;
   if (micro_vad != nullptr) {
     frame.micro_vad_active = micro_vad->active;

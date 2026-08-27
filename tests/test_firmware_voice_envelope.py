@@ -649,6 +649,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     display_source = FIRMWARE_DISPLAY_NONE.read_text()
     storage_source = FIRMWARE_STORAGE_NVS_ONLY.read_text()
     tts_source = FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
 
     assert "HEXE_BOARD_PROFILE" in cmake_source
     assert 'HEXE_BOARD_PROFILE STREQUAL "ha_voice_pe"' in cmake_source
@@ -688,6 +689,10 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "kMaxMicroVadPauseMs = 3000" in FIRMWARE_APP_MAIN.parent.joinpath("system/settings.cpp").read_text()
     assert "speech_peak_level" in audio_source
     assert "update_noise_floor" in audio_source
+    assert "noise_floor_level" in backend_source
+    assert "pre_roll_duration_ms" in backend_source
+    assert "contains_pre_roll" in backend_source
+    assert "contains_speech" in backend_source
     assert "std::array<int32_t, kFrameSamples * 2> g_raw_samples" in audio_source
     assert "std::array<int16_t, kFrameSamples> g_mono_samples" in audio_source
     assert 'xTaskCreate(vad_task, "hexe_vpe_vad", kVadTaskStackBytes' in audio_source

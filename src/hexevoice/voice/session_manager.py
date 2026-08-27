@@ -82,6 +82,12 @@ def _normalize_playback_interrupt_text(text: str) -> str:
     return re.sub(r"\s+", " ", normalized).strip()
 
 
+def _level_to_ratio(value: object) -> float:
+    if isinstance(value, (int, float)):
+        return round(max(0.0, float(value)) / 32768.0, 6)
+    return 0.0
+
+
 def _is_playback_stop_phrase(text: str) -> bool:
     normalized = _normalize_playback_interrupt_text(text)
     return normalized in PLAYBACK_INTERRUPT_STOP_PHRASES
@@ -1469,6 +1475,7 @@ class VoiceSessionManager:
                     channels=self._audio_format.channels if self._audio_format else 1,
                     audio_bytes=b"".join(self._audio_chunks),
                     ambient_audio_bytes=b"".join(self._ambient_audio_chunks) or None,
+                    endpoint_audio_metrics=self._endpoint_audio_metrics(),
                 )
             )
             stt_ended_at = stt_started_at + timedelta(milliseconds=turn.timings.stt_ms)
@@ -1936,6 +1943,7 @@ class VoiceSessionManager:
             }
         )
         self._active_session_history["audio"] = audio
+        self._update_endpoint_audio_metrics(payload)
 
     def _is_ambient_reference_chunk(self, session: VoiceSessionSnapshot) -> bool:
         if self._active_playback_interrupt(session.endpoint_id) is not None:
@@ -1946,6 +1954,58 @@ class VoiceSessionManager:
         return session.session_state in {"wake_detected", "listening"} and not (
             isinstance(vad, dict) and vad.get("speech_started_at")
         )
+
+    def _update_endpoint_audio_metrics(self, payload: VoiceAudioChunkPayload) -> None:
+        if self._active_session_history is None:
+            return
+        has_metrics = any(
+            value is not None
+            for value in (
+                payload.frame_level,
+                payload.noise_floor_level,
+                payload.speech_peak_level,
+                payload.pre_roll_duration_ms,
+            )
+        ) or payload.contains_pre_roll or payload.contains_speech
+        if not has_metrics:
+            return
+        audio = dict(self._active_session_history.get("audio") or {})
+        metrics = dict(audio.get("endpoint_audio_metrics") or {})
+        metrics["schema_version"] = 1
+        metrics["chunk_count"] = int(metrics.get("chunk_count") or 0) + 1
+        if payload.frame_level is not None:
+            metrics["frame_level_peak"] = max(int(metrics.get("frame_level_peak") or 0), payload.frame_level)
+            if payload.contains_pre_roll:
+                current_pre_roll_peak = metrics.get("pre_roll_peak")
+                metrics["pre_roll_peak"] = max(
+                    float(current_pre_roll_peak) if isinstance(current_pre_roll_peak, (int, float)) else 0.0,
+                    _level_to_ratio(payload.frame_level),
+                )
+        if payload.noise_floor_level is not None:
+            metrics["noise_floor_level"] = payload.noise_floor_level
+            metrics["noise_floor_rms"] = _level_to_ratio(payload.noise_floor_level)
+        if payload.speech_peak_level is not None:
+            metrics["speech_peak_level"] = max(int(metrics.get("speech_peak_level") or 0), payload.speech_peak_level)
+            metrics["speech_peak"] = _level_to_ratio(metrics["speech_peak_level"])
+        if payload.pre_roll_duration_ms is not None:
+            metrics["pre_roll_duration_ms"] = int(metrics.get("pre_roll_duration_ms") or 0) + payload.pre_roll_duration_ms
+        if payload.contains_pre_roll:
+            metrics["contains_pre_roll"] = True
+            metrics["pre_roll_chunk_count"] = int(metrics.get("pre_roll_chunk_count") or 0) + 1
+        if payload.contains_speech:
+            metrics["contains_speech"] = True
+            metrics["speech_chunk_count"] = int(metrics.get("speech_chunk_count") or 0) + 1
+        audio["endpoint_audio_metrics"] = metrics
+        self._active_session_history["audio"] = audio
+
+    def _endpoint_audio_metrics(self) -> dict[str, object] | None:
+        if self._active_session_history is None:
+            return None
+        audio = self._active_session_history.get("audio")
+        if not isinstance(audio, dict):
+            return None
+        metrics = audio.get("endpoint_audio_metrics")
+        return dict(metrics) if isinstance(metrics, dict) and metrics else None
 
     def _set_active_session_wake(self, wake: dict[str, Any]) -> None:
         if self._active_session_history is None:
@@ -2440,6 +2500,7 @@ class VoiceSessionManager:
             channels=self._audio_format.channels if self._audio_format else 1,
             audio_bytes=b"".join(self._audio_chunks),
             ambient_audio_bytes=b"".join(self._ambient_audio_chunks) or None,
+            endpoint_audio_metrics=self._endpoint_audio_metrics(),
         )
         transcript = transcribe_audio(audio)
         transcript_text = transcript.text or ""

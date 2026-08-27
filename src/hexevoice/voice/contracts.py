@@ -182,6 +182,12 @@ class VoiceAudioChunkPayload(BaseModel):
     micro_vad_chunk_started: bool = False
     micro_vad_chunk_final: bool = False
     micro_vad_pause_ms: int | None = Field(default=None, ge=0)
+    frame_level: int | None = Field(default=None, ge=0)
+    noise_floor_level: int | None = Field(default=None, ge=0)
+    speech_peak_level: int | None = Field(default=None, ge=0)
+    pre_roll_duration_ms: int | None = Field(default=None, ge=0)
+    contains_pre_roll: bool = False
+    contains_speech: bool = False
 
 
 class VoiceTranscriptPayload(BaseModel):

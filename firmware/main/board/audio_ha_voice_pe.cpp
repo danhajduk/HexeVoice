@@ -437,7 +437,14 @@ void vad_task(void *arg) {
         micro_vad_chunk_index,
         micro_vad_chunk_active,
         micro_vad_silent_frames);
-    hexe::voice::submit_audio_frame(g_mono_samples.data(), stereo_frames, level, frame_has_voice, &micro_vad);
+    hexe::voice::submit_audio_frame(
+        g_mono_samples.data(),
+        stereo_frames,
+        level,
+        noise_floor,
+        speech_peak_level,
+        frame_has_voice,
+        &micro_vad);
 
     if (frame_has_voice) {
       speech_peak_level = std::max(speech_peak_level, level);

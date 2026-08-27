@@ -104,6 +104,12 @@ def test_audio_chunk_payload_keeps_transport_metadata_separate_from_audio_proces
         micro_vad_chunk_started=True,
         micro_vad_chunk_final=True,
         micro_vad_pause_ms=180,
+        frame_level=900,
+        noise_floor_level=120,
+        speech_peak_level=3200,
+        pre_roll_duration_ms=640,
+        contains_pre_roll=True,
+        contains_speech=True,
     )
 
     assert chunk.chunk_index == 4
@@ -113,6 +119,12 @@ def test_audio_chunk_payload_keeps_transport_metadata_separate_from_audio_proces
     assert chunk.micro_vad_chunk_started is True
     assert chunk.micro_vad_chunk_final is True
     assert chunk.micro_vad_pause_ms == 180
+    assert chunk.frame_level == 900
+    assert chunk.noise_floor_level == 120
+    assert chunk.speech_peak_level == 3200
+    assert chunk.pre_roll_duration_ms == 640
+    assert chunk.contains_pre_roll is True
+    assert chunk.contains_speech is True
 
 
 def test_session_snapshot_keeps_backend_endpoint_and_ux_states_separate():
