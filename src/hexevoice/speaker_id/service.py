@@ -251,11 +251,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if payload.enabled is not None:
             enabled = payload.enabled
         if payload.provider:
-            adapter = create_speaker_id_adapter(
+            candidate_adapter = create_speaker_id_adapter(
                 payload.provider,
                 cache_dir=app_settings.resolved_voice_speaker_id_model_cache_dir(),
                 device=app_settings.voice_speaker_id_device,
             )
+            candidate_status = candidate_adapter.status()
+            if candidate_adapter.metadata.provider_id != "deterministic_signal" and not bool(
+                candidate_status.get("configured")
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": _provider_not_installed_message(candidate_status),
+                        "reason": candidate_status.get("reason") or "provider_not_installed",
+                        "provider": candidate_adapter.metadata.provider_id,
+                        "install_hint": candidate_status.get("install_hint"),
+                        "dependencies": candidate_status.get("dependencies"),
+                    },
+                )
+            adapter = candidate_adapter
         thresholds = SpeakerThresholds(
             identify_min_confidence=payload.identify_min_confidence
             if payload.identify_min_confidence is not None
@@ -557,6 +572,17 @@ def _http_error_for_exception(exc: Exception) -> HTTPException:
     if isinstance(exc, ValueError):
         return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=500, detail=str(exc))
+
+
+def _provider_not_installed_message(status: dict[str, Any]) -> str:
+    provider_id = str(status.get("provider_id") or "speaker_id_provider")
+    dependencies = status.get("dependencies")
+    if isinstance(dependencies, dict):
+        missing = [str(name) for name, available in dependencies.items() if not available]
+        if missing:
+            return f"{provider_id} is not installed. Missing: {', '.join(missing)}."
+    reason = str(status.get("reason") or "provider_not_installed")
+    return f"{provider_id} is not ready: {reason}."
 
 
 def main() -> None:

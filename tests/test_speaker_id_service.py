@@ -200,6 +200,27 @@ def test_speaker_id_service_uses_speechbrain_provider_when_available(monkeypatch
     assert after.json()["model"]["loaded"] is True
 
 
+def test_speaker_id_config_rejects_missing_provider_dependencies(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        speaker_adapters,
+        "_speechbrain_dependency_status",
+        lambda: {"speechbrain": False, "torch": True},
+    )
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+
+    with TestClient(create_app(settings)) as client:
+        response = client.put("/config", json={"provider": "speechbrain_ecapa_tdnn"})
+        status = client.get("/status")
+
+    assert response.status_code == 409
+    detail = response.json()["detail"]
+    assert detail["reason"] == "missing_optional_dependency"
+    assert detail["provider"] == "speechbrain_ecapa_tdnn"
+    assert detail["dependencies"] == {"speechbrain": False, "torch": True}
+    assert "Missing: speechbrain" in detail["message"]
+    assert status.json()["provider"] == "deterministic_signal"
+
+
 def test_speaker_id_service_client_can_call_unix_socket(tmp_path):
     socket_path = tmp_path / "speaker-id.sock"
     runtime_dir = tmp_path / "runtime"

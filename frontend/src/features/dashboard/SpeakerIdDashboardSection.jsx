@@ -114,6 +114,33 @@ function providerLabel(providerId) {
   return PROVIDERS.find((provider) => provider.id === providerId)?.label || valueOrEmpty(providerId);
 }
 
+function providerStatusMessage(status) {
+  const providerStatus = status?.provider_status || {};
+  const reason = providerStatus.reason;
+  if (!reason) {
+    return "";
+  }
+  if (reason === "missing_optional_dependency") {
+    const dependencies = providerStatus.dependencies || {};
+    const missing = Object.entries(dependencies)
+      .filter(([, available]) => !available)
+      .map(([name]) => name);
+    return missing.length
+      ? `Missing provider dependency: ${missing.join(", ")}. ${providerStatus.install_hint || ""}`.trim()
+      : providerStatus.install_hint || "Provider dependency is missing.";
+  }
+  if (reason === "model_not_loaded") {
+    return "Provider is installed; the model will load on first enrollment or identification.";
+  }
+  if (reason === "model_load_failed") {
+    return "Provider is installed, but the model failed to load. Check model cache and network access.";
+  }
+  if (reason === "implementation_error") {
+    return "Provider loaded, but embedding extraction failed. Check provider logs.";
+  }
+  return `Provider status: ${reason}`;
+}
+
 function profileLabels(profile) {
   return Array.isArray(profile?.labels) && profile.labels.length ? profile.labels.join(", ") : "none";
 }
@@ -918,6 +945,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   }
 
   function renderAdmin() {
+    const providerMessage = providerStatusMessage(status);
     return (
       <section className="speaker-workflow-grid">
         <form className="panel stack" onSubmit={handleConfigSubmit}>
@@ -930,6 +958,11 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
               {status?.ready ? "ready" : "not ready"}
             </span>
           </div>
+          {providerMessage ? (
+            <div className={`callout ${status?.provider_status?.reason === "missing_optional_dependency" ? "callout-danger" : "callout-warning"}`}>
+              {providerMessage}
+            </div>
+          ) : null}
           <div className="form-grid">
             <label className="field field-span-2">
               <span className="field-label">Service State</span>

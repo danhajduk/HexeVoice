@@ -104,6 +104,8 @@ The helper loads the model lazily on first embedding extraction and stores model
 - `model_load_failed`: dependencies are installed, but model download/load failed.
 - `loaded=true`: the model is loaded in memory and ready to extract embeddings.
 
+Provider selection is preflighted through the helper config endpoint. Choosing a production provider with missing optional dependencies is rejected with `409` and an install hint, leaving the previous provider active.
+
 Enrollment and turn audio are decoded only long enough to extract embeddings. The persisted profile store keeps embeddings and redacted metadata, not raw audio.
 
 ## Per-Turn Integration
