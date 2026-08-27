@@ -760,6 +760,83 @@
   align-items: start;
 }
 
+.speaker-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel-alt));
+}
+
+.speaker-tab {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--sx-radius-sm);
+  color: hsl(var(--sx-text-muted));
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.speaker-tab:hover {
+  color: hsl(var(--sx-text));
+  background: hsl(var(--sx-text) / 0.04);
+}
+
+.speaker-tab-active {
+  color: hsl(var(--sx-text));
+  border-color: hsl(var(--sx-accent) / 0.38);
+  background: hsl(var(--sx-accent) / 0.16);
+}
+
+.speaker-workflow-grid,
+.speaker-enrollment-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 1fr) minmax(320px, 0.72fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.speaker-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.speaker-metric-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.03);
+}
+
+.speaker-metric-card strong {
+  color: hsl(var(--sx-text));
+  font-size: 1.4rem;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.speaker-metric-card-success {
+  border-color: hsl(var(--sx-success) / 0.35);
+}
+
+.speaker-metric-card-warning {
+  border-color: hsl(var(--sx-warning) / 0.38);
+}
+
+.speaker-metric-card-danger {
+  border-color: hsl(var(--sx-danger) / 0.38);
+}
+
 .speaker-profile-card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -777,16 +854,32 @@
 
 .speaker-prompt-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
 .speaker-prompt-card {
   min-width: 0;
+  min-height: 118px;
   padding: 12px;
   border: 1px solid hsl(var(--sx-border));
   border-radius: var(--sx-radius-md);
   background: hsl(var(--sx-text) / 0.03);
+}
+
+.speaker-prompt-card .fact-grid-value {
+  line-height: 1.45;
+}
+
+.speaker-batch-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.speaker-batch-controls .status-pill {
+  justify-self: center;
 }
 
 .speaker-capture-list {
@@ -887,6 +980,30 @@
 .speaker-id-audio-textarea {
   min-height: 112px;
   resize: vertical;
+}
+
+.speaker-enrollment-steps {
+  display: grid;
+  gap: 10px;
+}
+
+.speaker-step {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.025);
+}
+
+.speaker-step strong {
+  color: hsl(var(--sx-text));
+}
+
+.speaker-step-done {
+  border-color: hsl(var(--sx-success) / 0.34);
+  background: hsl(var(--sx-success) / 0.06);
 }
 
 .intent-example-list {

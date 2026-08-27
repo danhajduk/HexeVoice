@@ -168,12 +168,13 @@ HexeVoice exposes the operator/runtime API under its normal API base URL. If the
 
 The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-id`.
 
-- Configuration controls show helper health, enabled state, provider, model metadata, transport, thresholds, and raw-audio retention state.
-- Enrollment accepts local WAV uploads or pasted WAV base64, records explicit consent metadata, and stores local biometric templates with `retention_policy=embeddings_only`.
-- Voice PE enrollment capture lets an operator select an endpoint, start a capture window, read suggested phrases, and add recent accepted wake-session WAV captures as enrollment samples.
-- Profile cards show display name, public speaker id, sample count, provider/model, version, labels, updated time, and metadata export.
+- The UI is organized by workflow: overview, enrollment, profiles, validation, and admin.
+- Configuration controls live under Admin and show helper health, enabled state, provider, model metadata, transport, thresholds, and raw-audio retention state.
+- Enrollment is a live endpoint-capture workflow. Operators select a registered endpoint, capture phrases in batches of three, add accepted endpoint captures as samples, record explicit consent metadata, and store local biometric templates with `retention_policy=embeddings_only`.
+- Normal enrollment does not expose local WAV upload or pasted base64 audio controls. Debug/import paths must remain separate from the operator enrollment flow.
+- Profile cards show display name, public speaker id, sample count, provider/model, version, labels, age/access placeholders, updated time, and metadata export.
 - Profile deletion uses a confirmation step and removes the local template from future identification candidates.
-- Diagnostics show provider status, last error, unknown/low-confidence outcome counts, and the most recent privacy-safe identify/verify outcomes.
+- Overview and validation surfaces show recognition health, recent outcomes, and privacy-safe identify/verify evidence without embeddings or raw audio.
 
 ## Service Transport
 
