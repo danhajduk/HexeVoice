@@ -7,6 +7,7 @@ import {
   getSpeakerIdEnrollmentCaptures,
   getSpeakerIdProfiles,
   getSpeakerIdStatus,
+  installService,
   updateSpeakerIdConfig,
   wakeRecordingAudioUrl,
 } from "../../api/client";
@@ -466,6 +467,24 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
       setStatus(result);
       setNotice("Speaker ID settings saved.");
       await onRefresh?.();
+      await load();
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleInstallProviderDependencies() {
+    setBusy("install-provider");
+    setNotice("");
+    setError("");
+    try {
+      const result = await installService("speaker_id");
+      if (!result.accepted) {
+        throw new Error(result.detail || result.status || "speaker_id_install_failed");
+      }
+      setNotice(result.detail || "Speaker ID provider dependencies installed.");
       await load();
     } catch (err) {
       setError(String(err.message || err));
@@ -946,6 +965,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
 
   function renderAdmin() {
     const providerMessage = providerStatusMessage(status);
+    const canInstallProvider = status?.provider_status?.reason === "missing_optional_dependency";
     return (
       <section className="speaker-workflow-grid">
         <form className="panel stack" onSubmit={handleConfigSubmit}>
@@ -1045,6 +1065,16 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
             <button className="btn btn-primary" type="submit" disabled={unavailable || busy === "config"}>
               {busy === "config" ? "Saving..." : "Save Settings"}
             </button>
+            {canInstallProvider ? (
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={handleInstallProviderDependencies}
+                disabled={Boolean(busy)}
+              >
+                {busy === "install-provider" ? "Installing..." : "Install missing dependencies"}
+              </button>
+            ) : null}
             <button className="btn btn-ghost" type="button" onClick={load} disabled={Boolean(busy)}>
               Refresh
             </button>

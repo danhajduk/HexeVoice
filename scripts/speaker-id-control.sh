@@ -16,6 +16,10 @@ SPEAKER_ID_SERVICE_URL="${SPEAKER_ID_HEALTH_URL:-${VOICE_SPEAKER_ID_BASE_URL:-ht
 SPEAKER_ID_HEALTH_TIMEOUT_S="${SPEAKER_ID_HEALTH_TIMEOUT_S:-30}"
 SPEAKER_ID_HEALTH_INTERVAL_S="${SPEAKER_ID_HEALTH_INTERVAL_S:-1}"
 SPEAKER_ID_SERVICE_NAME="${VOICE_SPEAKER_ID_SERVICE_NAME:-hexevoice-speaker-id.service}"
+SPEAKER_ID_TORCH_INDEX_URL="${SPEAKER_ID_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+SPEAKER_ID_TORCH_PACKAGES="${SPEAKER_ID_TORCH_PACKAGES:-torch torchaudio}"
+SPEAKER_ID_SPEECHBRAIN_PACKAGE="${SPEAKER_ID_SPEECHBRAIN_PACKAGE:-speechbrain}"
+SPEAKER_ID_INSTALL_PACKAGES="${SPEAKER_ID_INSTALL_PACKAGES:-}"
 
 python_with_src() {
   PYTHONPATH="$ROOT_DIR/src${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON_BIN" "$@"
@@ -28,6 +32,26 @@ service_url() {
 prepare_runtime_dirs() {
   mkdir -p "$HEXEVOICE_SOCKET_DIR" "$ROOT_DIR/runtime/speaker_id"
   chmod 700 "$HEXEVOICE_SOCKET_DIR"
+}
+
+install_dependencies() {
+  prepare_runtime_dirs
+  if [[ ! -x "$PYTHON_BIN" ]]; then
+    echo "Python environment not found or not executable: $PYTHON_BIN" >&2
+    return 1
+  fi
+  if [[ -n "$SPEAKER_ID_INSTALL_PACKAGES" ]]; then
+    echo "Installing Speaker ID provider dependencies: $SPEAKER_ID_INSTALL_PACKAGES"
+    # shellcheck disable=SC2086
+    "$PYTHON_BIN" -m pip install $SPEAKER_ID_INSTALL_PACKAGES
+    return
+  fi
+
+  echo "Installing Speaker ID PyTorch dependencies from $SPEAKER_ID_TORCH_INDEX_URL: $SPEAKER_ID_TORCH_PACKAGES"
+  # shellcheck disable=SC2086
+  "$PYTHON_BIN" -m pip install --upgrade --index-url "$SPEAKER_ID_TORCH_INDEX_URL" $SPEAKER_ID_TORCH_PACKAGES
+  echo "Installing Speaker ID provider package: $SPEAKER_ID_SPEECHBRAIN_PACKAGE"
+  "$PYTHON_BIN" -m pip install --upgrade "$SPEAKER_ID_SPEECHBRAIN_PACKAGE"
 }
 
 http_request() {
@@ -118,7 +142,7 @@ wait_for_health() {
 ACTION="${1:-status}"
 case "$ACTION" in
   install|build)
-    prepare_runtime_dirs
+    install_dependencies
     ;;
   start)
     prepare_runtime_dirs

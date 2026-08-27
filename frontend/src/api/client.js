@@ -267,6 +267,10 @@ export async function restartService(target) {
   return sendJson("/api/services/restart", { body: { target } });
 }
 
+export async function installService(target) {
+  return sendJson("/api/services/install", { body: { target } });
+}
+
 export async function getVoiceStatus() {
   return fetchJson("/api/voice/status");
 }

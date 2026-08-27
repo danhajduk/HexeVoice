@@ -94,8 +94,17 @@ VOICE_SPEAKER_ID_MODEL_CACHE_DIR=runtime/speaker_id/models
 SpeechBrain and Torch are optional dependencies so the normal HexeVoice runtime still starts without them. Install them only on nodes that should perform local Speaker ID:
 
 ```bash
-pip install speechbrain torch torchaudio
+.venv/bin/python -m pip install --upgrade --index-url https://download.pytorch.org/whl/cpu torch torchaudio
+.venv/bin/python -m pip install --upgrade speechbrain
 ```
+
+The control script uses the same CPU-safe default when installing from the UI or service supervisor:
+
+```bash
+scripts/speaker-id-control.sh install
+```
+
+Use `SPEAKER_ID_TORCH_INDEX_URL` for CUDA hosts or `SPEAKER_ID_INSTALL_PACKAGES` for a fully custom install command. Keep `torch` and `torchaudio` on matching CPU/CUDA wheel variants; a mixed pair can import successfully at dependency-check time but fail when SpeechBrain loads audio libraries.
 
 The helper loads the model lazily on first embedding extraction and stores model artifacts under `VOICE_SPEAKER_ID_MODEL_CACHE_DIR`, defaulting to `runtime/speaker_id/models`. Status responses expose provider states:
 

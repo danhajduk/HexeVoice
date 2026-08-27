@@ -1572,6 +1572,36 @@ def test_stt_install_service_action_is_exposed_for_supervisor(tmp_path):
     assert calls_path.read_text(encoding="utf-8").splitlines() == ["install", "status"]
 
 
+def test_speaker_id_install_service_action_is_exposed_for_supervisor(tmp_path):
+    calls_path = tmp_path / "speaker-id-control-calls.txt"
+    control_script = tmp_path / "speaker-id-control.sh"
+    control_script.write_text(
+        "#!/usr/bin/env sh\n"
+        f"echo \"$1\" >> {calls_path}\n"
+        "if [ \"$1\" = status ]; then echo active; fi\n"
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    control_script.chmod(0o755)
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_speaker_id_enabled=True,
+                voice_speaker_id_control_script=control_script,
+            )
+        )
+    )
+
+    install = client.post("/api/services/install", json={"target": "speaker_id"})
+
+    assert install.status_code == 200
+    assert install.json()["accepted"] is True
+    assert install.json()["target"] == "speaker_id"
+    assert calls_path.read_text(encoding="utf-8").splitlines() == ["install", "status"]
+
+
 def test_core_normalized_piper_voice_ids_resolve_to_installed_model(tmp_path):
     model_dir = tmp_path / "piper-tts" / "models"
     model_dir.mkdir(parents=True)

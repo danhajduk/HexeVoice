@@ -468,6 +468,7 @@ def create_speaker_id_adapter(
 
 def dependency_available(import_name: str) -> bool:
     try:
+        importlib.invalidate_caches()
         return importlib.util.find_spec(import_name) is not None
     except (ImportError, ModuleNotFoundError, ValueError):
         return False
