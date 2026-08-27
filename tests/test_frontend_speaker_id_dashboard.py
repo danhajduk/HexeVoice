@@ -33,9 +33,12 @@ def test_speaker_id_dashboard_covers_enrollment_profiles_and_diagnostics():
     assert "Three-Phrase Capture" in dashboard_source
     assert "Start Batch Capture" in dashboard_source
     assert "Assistant replies are muted for this capture window." in dashboard_source
+    assert "MIN_ENROLLMENT_SAMPLES = 8" in dashboard_source
+    assert 'RECOMMENDED_ENROLLMENT_SAMPLE_RANGE = "12-16"' in dashboard_source
     assert "Refresh Captures" in dashboard_source
     assert "Add Sample" in dashboard_source
     assert "Hexe, turn on the lights in the living room." in dashboard_source
+    assert "A bright yellow scarf was folded inside the small suitcase." in dashboard_source
     assert "Confirm Delete" in dashboard_source
     assert "Delete removes local Speaker ID templates" in dashboard_source
     assert "Recent Outcomes" in dashboard_source

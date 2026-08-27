@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from io import BytesIO
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC
@@ -12,6 +13,7 @@ from pathlib import Path
 import re
 from typing import Any
 from uuid import uuid4
+import wave
 
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -24,9 +26,19 @@ from hexevoice.speaker_id.adapters import SpeakerEmbedding
 from hexevoice.speaker_id.adapters import SpeakerIdProviderUnavailable
 from hexevoice.speaker_id.adapters import SpeakerThresholds
 from hexevoice.speaker_id.adapters import create_speaker_id_adapter
+from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
+from hexevoice.voice.metric_schemas import speaker_confidence_tier
 
 
 log = logging.getLogger("hexevoice.speaker_id.service")
+
+ENROLLMENT_REQUIRED_SAMPLE_COUNT = 8
+ENROLLMENT_RECOMMENDED_SAMPLE_COUNT_MIN = 12
+ENROLLMENT_RECOMMENDED_SAMPLE_COUNT_MAX = 16
+ENROLLMENT_REQUIRED_TOTAL_DURATION_MS = 8000
+ENROLLMENT_TARGET_TOTAL_DURATION_MS = 30000
+ENROLLMENT_MIN_SAMPLE_DURATION_MS = 700
+ENROLLMENT_FATAL_WARNINGS = {"missing_audio", "unsupported_audio", "short_audio", "silent"}
 
 
 class AudioSampleRequest(BaseModel):
@@ -289,17 +301,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def enroll(payload: SpeakerEnrollRequest) -> dict[str, Any]:
         nonlocal last_error
         try:
-            embeddings = [_embedding_from_sample(sample) for sample in payload.samples]
+            embedding_records = [_embedding_record_from_enrollment_sample(sample) for sample in payload.samples]
+            readiness = _enrollment_readiness(
+                embedding_records,
+                expected_sample_rate_hz=adapter.metadata.sample_rate_hz,
+            )
+            if not readiness["can_enroll"]:
+                raise ValueError(f"enrollment_not_ready:{','.join(readiness['blocking_reasons'])}")
         except Exception as exc:
             last_error = str(exc)
             raise _http_error_for_exception(exc) from exc
-        profile = _profile_from_enrollment(payload, embeddings, store.profiles())
+        profile = _profile_from_enrollment(
+            payload,
+            [record["embedding"] for record in embedding_records],
+            store.profiles(),
+            readiness=readiness,
+            samples=[record["sample"] for record in embedding_records],
+        )
         store.upsert(profile)
         last_error = None
         return {
             "schema_version": 1,
             "status": "enrolled",
             "request_id": payload.request_id,
+            "enrollment_readiness": readiness,
             "profile": _public_profile(profile),
         }
 
@@ -365,6 +390,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise ValueError("invalid_audio_base64") from exc
         return adapter.extract_embedding(audio_bytes)
 
+    def _embedding_record_from_enrollment_sample(sample: AudioSampleRequest) -> dict[str, Any]:
+        try:
+            audio_bytes = base64.b64decode(sample.audio_base64.encode("ascii"), validate=True)
+        except Exception as exc:
+            raise ValueError("invalid_audio_base64") from exc
+        quality = _audio_quality_from_wav_bytes(audio_bytes)
+        if quality["quality"]["status"] in ENROLLMENT_FATAL_WARNINGS:
+            raise ValueError(f"enrollment_sample_unusable:{quality['sample_id'] or sample.sample_id or 'sample'}:{quality['quality']['status']}")
+        try:
+            embedding = adapter.extract_embedding(audio_bytes)
+        finally:
+            del audio_bytes
+        return {
+            "embedding": embedding,
+            "sample": {
+                "sample_id": sample.sample_id,
+                "audio_duration_ms": quality["duration_ms"],
+                "sample_rate_hz": quality["sample_rate_hz"],
+                "channels": quality["channels"],
+                "quality": quality["quality"],
+            },
+        }
+
     return app
 
 
@@ -372,6 +420,9 @@ def _profile_from_enrollment(
     payload: SpeakerEnrollRequest,
     embeddings: list[SpeakerEmbedding],
     existing_profiles: list[dict[str, Any]],
+    *,
+    readiness: dict[str, Any],
+    samples: list[dict[str, Any]],
 ) -> dict[str, Any]:
     now = datetime.now(UTC).isoformat()
     speaker_public_id = _safe_public_id(payload.profile.speaker_public_id or payload.profile.display_name)
@@ -391,6 +442,11 @@ def _profile_from_enrollment(
         "model_id": embeddings[0].model_id,
         "embedding_dimensions": embeddings[0].dimensions,
         "sample_count": len(embeddings),
+        "accepted_sample_count": readiness["accepted_sample_count"],
+        "total_accepted_speech_duration_ms": readiness["total_accepted_speech_duration_ms"],
+        "enrollment_readiness": readiness,
+        "enrollment_samples": samples,
+        "learning_eligible": False,
         "audio_retained": False,
         "embeddings": [_embedding_payload(embedding) for embedding in embeddings],
     }
@@ -485,21 +541,26 @@ def _rank_profiles(candidate: SpeakerEmbedding, profiles: list[dict[str, Any]]) 
                 "score": round(max(scores), 6),
                 "provider_id": candidate.provider_id,
                 "model_id": candidate.model_id,
+                "enrollment_readiness": profile.get("enrollment_readiness"),
             }
         )
     return sorted(ranked, key=lambda item: float(item["score"]), reverse=True)
 
 
 def _match_payload(match: dict[str, Any], score_margin: float) -> dict[str, Any]:
+    confidence = match.get("score")
     return {
         "profile_id": match.get("profile_id"),
         "speaker_public_id": match.get("speaker_public_id"),
         "display_name": match.get("display_name"),
-        "confidence": match.get("score"),
-        "score": match.get("score"),
+        "confidence": confidence,
+        "confidence_tier": speaker_confidence_tier(confidence),
+        "score": confidence,
         "score_margin": score_margin,
         "provider": match.get("provider_id"),
         "model_id": match.get("model_id"),
+        "learning_eligible": False,
+        "profile_readiness": match.get("enrollment_readiness"),
     }
 
 
@@ -519,8 +580,124 @@ def _public_profile(profile: dict[str, Any]) -> dict[str, Any]:
             "model_id",
             "embedding_dimensions",
             "sample_count",
+            "accepted_sample_count",
+            "total_accepted_speech_duration_ms",
+            "enrollment_readiness",
+            "enrollment_samples",
+            "learning_eligible",
             "audio_retained",
         )
+    }
+
+
+def _audio_quality_from_wav_bytes(audio_bytes: bytes) -> dict[str, Any]:
+    try:
+        with wave.open(BytesIO(audio_bytes), "rb") as wav:
+            channels = wav.getnchannels()
+            sample_width = wav.getsampwidth()
+            sample_rate_hz = wav.getframerate()
+            frame_count = wav.getnframes()
+            pcm_bytes = wav.readframes(frame_count)
+    except Exception as exc:
+        raise ValueError("invalid_wav_audio") from exc
+    if sample_width != 2:
+        quality = analyze_pcm_s16le_audio(
+            None,
+            sample_rate_hz=sample_rate_hz,
+            channels=channels,
+            encoding=f"pcm_s{sample_width * 8}le",
+        )
+    else:
+        quality = analyze_pcm_s16le_audio(
+            pcm_bytes,
+            sample_rate_hz=sample_rate_hz,
+            channels=channels,
+            encoding="pcm_s16le",
+        )
+    context = quality.as_context()
+    return {
+        "sample_id": None,
+        "duration_ms": context["duration_ms"],
+        "sample_rate_hz": sample_rate_hz,
+        "channels": channels,
+        "quality": {
+            key: context.get(key)
+            for key in (
+                "status",
+                "warnings",
+                "duration_ms",
+                "sample_rate_hz",
+                "channels",
+                "encoding",
+                "rms",
+                "peak",
+                "clipping_ratio",
+                "active_audio_ratio",
+                "silence_ratio",
+                "snr_db",
+                "snr_status",
+                "snr_reason",
+                "source",
+            )
+        },
+    }
+
+
+def _enrollment_readiness(
+    records: list[dict[str, Any]],
+    *,
+    expected_sample_rate_hz: int,
+) -> dict[str, Any]:
+    samples = [dict(record["sample"]) for record in records]
+    accepted_sample_count = len(samples)
+    total_duration_ms = sum(int(sample.get("audio_duration_ms") or 0) for sample in samples)
+    warnings: list[str] = []
+    blocking_reasons: list[str] = []
+    if accepted_sample_count < ENROLLMENT_REQUIRED_SAMPLE_COUNT:
+        blocking_reasons.append("insufficient_sample_count")
+    if total_duration_ms < ENROLLMENT_REQUIRED_TOTAL_DURATION_MS:
+        blocking_reasons.append("insufficient_total_speech_duration")
+    for index, sample in enumerate(samples, start=1):
+        sample_id = sample.get("sample_id") or f"sample-{index}"
+        duration_ms = int(sample.get("audio_duration_ms") or 0)
+        sample_rate_hz = int(sample.get("sample_rate_hz") or 0)
+        quality = sample.get("quality") if isinstance(sample.get("quality"), dict) else {}
+        sample_warnings = [str(warning) for warning in quality.get("warnings") or []]
+        for warning in sample_warnings:
+            warnings.append(f"{sample_id}:{warning}")
+        if duration_ms < ENROLLMENT_MIN_SAMPLE_DURATION_MS:
+            blocking_reasons.append(f"{sample_id}:short_sample")
+        if expected_sample_rate_hz and sample_rate_hz != expected_sample_rate_hz:
+            blocking_reasons.append(f"{sample_id}:incompatible_sample_rate")
+        if any(warning in ENROLLMENT_FATAL_WARNINGS for warning in sample_warnings):
+            blocking_reasons.append(f"{sample_id}:unusable_audio")
+    can_enroll = not blocking_reasons
+    production_ready = (
+        can_enroll
+        and accepted_sample_count >= ENROLLMENT_REQUIRED_SAMPLE_COUNT
+        and total_duration_ms >= ENROLLMENT_TARGET_TOTAL_DURATION_MS
+        and not warnings
+    )
+    status = "ready" if production_ready else "usable_with_warnings" if can_enroll else "not_ready"
+    return {
+        "schema_version": 1,
+        "status": status,
+        "can_enroll": can_enroll,
+        "production_ready": production_ready,
+        "learning_eligible": False,
+        "sample_count": len(records),
+        "accepted_sample_count": accepted_sample_count,
+        "required_sample_count": ENROLLMENT_REQUIRED_SAMPLE_COUNT,
+        "recommended_sample_count_min": ENROLLMENT_RECOMMENDED_SAMPLE_COUNT_MIN,
+        "recommended_sample_count_max": ENROLLMENT_RECOMMENDED_SAMPLE_COUNT_MAX,
+        "total_accepted_speech_duration_ms": total_duration_ms,
+        "required_total_speech_duration_ms": ENROLLMENT_REQUIRED_TOTAL_DURATION_MS,
+        "target_total_speech_duration_ms": ENROLLMENT_TARGET_TOTAL_DURATION_MS,
+        "minimum_sample_duration_ms": ENROLLMENT_MIN_SAMPLE_DURATION_MS,
+        "expected_sample_rate_hz": expected_sample_rate_hz,
+        "blocking_reasons": sorted(set(blocking_reasons)),
+        "warnings": sorted(set(warnings)),
+        "raw_audio_retained": False,
     }
 
 

@@ -40,6 +40,9 @@ const DEFAULT_ENROLLMENT = {
   samples: [],
 };
 
+const MIN_ENROLLMENT_SAMPLES = 8;
+const RECOMMENDED_ENROLLMENT_SAMPLE_RANGE = "12-16";
+
 const ENROLLMENT_PHRASES = [
   "Hexe, turn on the lights in the living room.",
   "What's the weather going to be like tomorrow morning?",
@@ -53,18 +56,18 @@ const ENROLLMENT_PHRASES = [
   "Sometimes I speak quietly, and sometimes I speak much louder.",
   "Hexe, what time is it?",
   "Could you please tell me whether the garage door is still open?",
-  "Hexe, start a fifteen minute timer for the pasta.",
-  "Turn off the hallway lights after everyone goes upstairs.",
-  "Please add oat milk and blueberries to the shopping list.",
-  "Read the latest reminder from my personal notes.",
-  "Set the living room lights to warm white at thirty percent.",
-  "Pause the music in the office and resume it in ten minutes.",
-  "Tell me if any windows were left open downstairs.",
-  "Hexe, lower the speaker volume just a little bit.",
-  "Schedule a quiet alarm for six thirty tomorrow morning.",
-  "Is the back gate closed, or did someone leave it open?",
-  "Please summarize my next three calendar events.",
-  "The small blue teapot is beside the wooden cutting board.",
+  "Add tomatoes, pasta, olive oil, and basil to my shopping list.",
+  "Turn off the downstairs lights after the movie is finished.",
+  "Tell me how long the drive to the airport will take.",
+  "Please remind Sarah that the package is beside the front steps.",
+  "Set the hallway lights to a soft blue color tonight.",
+  "I need a quiet alarm for six fifteen tomorrow morning.",
+  "The old wooden clock stopped ticking during the storm.",
+  "Check whether any windows are open before bedtime.",
+  "Move my workout reminder from Monday to Wednesday evening.",
+  "Start a twenty five minute focus timer in the office.",
+  "Read the last notification from the security camera.",
+  "A bright yellow scarf was folded inside the small suitcase.",
 ];
 
 function valueOrEmpty(value, fallback = "none") {
@@ -183,6 +186,10 @@ function buildProfileExport(profile) {
       model_id: profile.model_id,
       embedding_dimensions: profile.embedding_dimensions,
       sample_count: profile.sample_count,
+      accepted_sample_count: profile.accepted_sample_count,
+      total_accepted_speech_duration_ms: profile.total_accepted_speech_duration_ms,
+      enrollment_readiness: profile.enrollment_readiness,
+      learning_eligible: profile.learning_eligible,
       audio_retained: profile.audio_retained,
     },
   };
@@ -204,6 +211,8 @@ function SpeakerMetricCard({ label, value, tone = "neutral", detail }) {
 
 function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, onExport }) {
   const confirming = deleteConfirmId === profile.profile_id;
+  const readiness = profile.enrollment_readiness || {};
+  const readinessTone = readiness.production_ready ? "success" : readiness.can_enroll ? "warning" : "danger";
   return (
     <article className="speaker-profile-card">
       <div className="speaker-profile-card-header">
@@ -211,14 +220,18 @@ function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, o
           <h3>{valueOrEmpty(profile.display_name, profile.profile_id)}</h3>
           <code className="inline-code">{valueOrEmpty(profile.speaker_public_id)}</code>
         </div>
-        <span className={`status-pill status-pill-${profile.audio_retained ? "warning" : "success"}`}>
-          {profile.audio_retained ? "audio retained" : "templates only"}
+        <span className={`status-pill status-pill-${readinessTone}`}>
+          {readiness.production_ready ? "production ready" : readiness.can_enroll ? "usable" : "not ready"}
         </span>
       </div>
       <div className="speaker-profile-card-facts">
         <span>
           <strong>Samples</strong>
-          {valueOrEmpty(profile.sample_count, "0")}
+          {valueOrEmpty(profile.accepted_sample_count ?? profile.sample_count, "0")}
+        </span>
+        <span>
+          <strong>Speech</strong>
+          {formatDurationMs(profile.total_accepted_speech_duration_ms)}
         </span>
         <span>
           <strong>Provider</strong>
@@ -243,6 +256,10 @@ function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, o
         <span>
           <strong>Labels</strong>
           {profileLabels(profile)}
+        </span>
+        <span>
+          <strong>Storage</strong>
+          {profile.audio_retained ? "audio retained" : "templates only"}
         </span>
         <span>
           <strong>Updated</strong>
@@ -325,7 +342,10 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     return options;
   }, [endpoints]);
   const canEnroll =
-    !unavailable && enrollment.displayName.trim() && enrollment.consentAccepted && samples.length > 0;
+    !unavailable &&
+    enrollment.displayName.trim() &&
+    enrollment.consentAccepted &&
+    samples.length >= MIN_ENROLLMENT_SAMPLES;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -886,7 +906,13 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
             </div>
             <div className={`speaker-step ${samples.length ? "speaker-step-done" : ""}`}>
               <strong>Samples</strong>
-              <span>{samples.length} accepted</span>
+              <span>
+                {samples.length} / {MIN_ENROLLMENT_SAMPLES} accepted
+              </span>
+            </div>
+            <div className={`speaker-step ${samples.length >= 12 ? "speaker-step-done" : ""}`}>
+              <strong>Recommended</strong>
+              <span>{RECOMMENDED_ENROLLMENT_SAMPLE_RANGE} samples</span>
             </div>
             <div className={`speaker-step ${enrollment.consentAccepted ? "speaker-step-done" : ""}`}>
               <strong>Consent</strong>

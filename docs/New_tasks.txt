@@ -52,8 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[STOP]
-[TODO] Task 243: Add resource-aware Speaker ID enrollment readiness and confidence tiers
 [TODO] Task 244: Add versioned enrollment and validation phrase set management
 [TODO] Task 245: Add speaker profile age-band metadata, restrictions, and review cadence
 [TODO] Task 246: Add child/teen endpoint audience mode and age-appropriate content restrictions

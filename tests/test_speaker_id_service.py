@@ -16,13 +16,13 @@ from fastapi.testclient import TestClient
 from hexevoice.config.settings import Settings
 import hexevoice.speaker_id.adapters as speaker_adapters
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
+from hexevoice.speaker_id.service import _match_payload
 from hexevoice.speaker_id.service import create_app
 
 
-def wav_base64(path: Path, *, frequency_hz: float = 220.0) -> str:
+def wav_base64(path: Path, *, frequency_hz: float = 220.0, duration_ms: int = 1000, amplitude: float = 0.16) -> str:
     sample_rate = 16000
-    frame_count = sample_rate
-    amplitude = 0.16
+    frame_count = max(1, int(sample_rate * (duration_ms / 1000)))
     with wave.open(str(path), "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
@@ -33,6 +33,10 @@ def wav_base64(path: Path, *, frequency_hz: float = 220.0) -> str:
             frames.extend(sample.to_bytes(2, byteorder="little", signed=True))
         wav.writeframes(bytes(frames))
     return base64.b64encode(path.read_bytes()).decode("ascii")
+
+
+def enrollment_samples(audio_base64: str, *, count: int = 8) -> list[dict]:
+    return [{"sample_id": f"sample-{index + 1}", "audio_base64": audio_base64} for index in range(count)]
 
 
 def enroll_payload(audio_base64: str, *, display_name: str = "Dan") -> dict:
@@ -51,7 +55,7 @@ def enroll_payload(audio_base64: str, *, display_name: str = "Dan") -> dict:
             "consented_by": "operator",
             "retention_policy": "embeddings_only",
         },
-        "samples": [{"sample_id": "sample-1", "audio_base64": audio_base64}],
+        "samples": enrollment_samples(audio_base64),
     }
 
 
@@ -98,10 +102,19 @@ def test_speaker_id_service_enroll_identify_verify_and_delete(tmp_path):
     assert health.json()["transport"] == "unix_socket"
     assert enrolled.status_code == 200
     assert enrolled.json()["profile"]["speaker_public_id"] == "speaker_dan"
-    assert enrolled.json()["profile"]["sample_count"] == 1
+    assert enrolled.json()["profile"]["sample_count"] == 8
+    assert enrolled.json()["profile"]["accepted_sample_count"] == 8
+    assert enrolled.json()["profile"]["audio_retained"] is False
+    readiness = enrolled.json()["profile"]["enrollment_readiness"]
+    assert readiness["can_enroll"] is True
+    assert readiness["required_sample_count"] == 8
+    assert readiness["production_ready"] is False
+    assert readiness["learning_eligible"] is False
     assert identified.status_code == 200
     assert identified.json()["status"] == "identified"
     assert identified.json()["match"]["speaker_public_id"] == "speaker_dan"
+    assert identified.json()["match"]["confidence_tier"] == "very_high"
+    assert identified.json()["match"]["learning_eligible"] is False
     assert verified.status_code == 200
     assert verified.json()["verified"] is True
     assert profiles.json()["profiles"][0]["audio_retained"] is False
@@ -115,6 +128,83 @@ def test_speaker_id_service_enroll_identify_verify_and_delete(tmp_path):
     assert client.get("/profiles").json()["profiles"] == []
     stored_payload = json.loads(settings.resolved_voice_speaker_id_profiles_path().read_text(encoding="utf-8"))
     assert stored_payload["profiles"] == []
+
+
+def test_speaker_id_enrollment_rejects_short_or_silent_data(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    short_audio = wav_base64(tmp_path / "short.wav", duration_ms=200)
+    silent_audio = wav_base64(tmp_path / "silent.wav", amplitude=0.0)
+
+    with TestClient(create_app(settings)) as client:
+        short_response = client.post("/enroll", json=enroll_payload(short_audio))
+        silent_response = client.post("/enroll", json=enroll_payload(silent_audio, display_name="Silent"))
+
+    assert short_response.status_code == 400
+    assert "enrollment_sample_unusable" in short_response.json()["detail"]
+    assert silent_response.status_code == 400
+    assert "enrollment_sample_unusable" in silent_response.json()["detail"]
+
+
+def test_speaker_id_enrollment_rejects_insufficient_sample_count(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    audio = wav_base64(tmp_path / "dan.wav")
+    payload = enroll_payload(audio)
+    payload["samples"] = enrollment_samples(audio, count=3)
+
+    with TestClient(create_app(settings)) as client:
+        response = client.post("/enroll", json=payload)
+
+    assert response.status_code == 400
+    assert "insufficient_sample_count" in response.json()["detail"]
+
+
+def test_speaker_id_enrollment_records_clipped_quality_warning(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    clipped_audio = wav_base64(tmp_path / "clipped.wav", amplitude=1.0)
+
+    with TestClient(create_app(settings)) as client:
+        response = client.post("/enroll", json=enroll_payload(clipped_audio))
+
+    assert response.status_code == 200
+    readiness = response.json()["profile"]["enrollment_readiness"]
+    assert readiness["can_enroll"] is True
+    assert readiness["production_ready"] is False
+    assert any("clipped" in warning for warning in readiness["warnings"])
+
+
+def test_speaker_id_confidence_tiers_and_low_margin_metadata_are_redacted(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    audio = wav_base64(tmp_path / "dan.wav")
+    first = enroll_payload(audio, display_name="Dan")
+    second = enroll_payload(audio, display_name="Dana")
+
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/enroll", json=first).status_code == 200
+        assert client.post("/enroll", json=second).status_code == 200
+        low_margin = client.post(
+            "/identify",
+            json={
+                **identify_payload(audio),
+                "thresholds": {"identify_min_confidence": 0.5, "identify_min_margin": 0.2},
+            },
+        )
+
+    assert low_margin.status_code == 200
+    payload = low_margin.json()
+    assert payload["status"] == "unknown"
+    assert payload["reason"] == "low_margin"
+    assert payload["match"]["confidence_tier"] == "very_high"
+    assert payload["match"]["learning_eligible"] is False
+    public_payload = json.dumps(payload)
+    assert "audio_base64" not in public_payload
+    assert "values" not in public_payload
+
+    medium = _match_payload({"score": 0.72}, 0.1)
+    low = _match_payload({"score": 0.4}, 0.1)
+    assert medium["confidence_tier"] == "medium"
+    assert medium["learning_eligible"] is False
+    assert low["confidence_tier"] == "low"
+    assert low["learning_eligible"] is False
 
 
 def test_speaker_id_service_returns_unknown_without_profiles(tmp_path):

@@ -213,10 +213,12 @@ The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-i
 - Configuration controls live under Admin and show helper health, enabled state, provider, model metadata, transport, thresholds, and raw-audio retention state.
 - Enrollment is a live endpoint-capture workflow. Operators select a registered endpoint, capture phrases in batches of three, add accepted endpoint captures as samples, record explicit consent metadata, and store local biometric templates with `retention_policy=embeddings_only`.
 - Starting a batch opens a short endpoint-scoped Speaker ID enrollment capture window. During that operator-started window, endpoint speech is accepted directly for enrollment without requiring a wake-word hit; completed phrases are transcribed and stored as capture candidates, but assistant routing and TTS playback are suppressed so the endpoint does not answer each enrollment phrase with the normal assistant fallback.
+- Enrollment requires at least 8 accepted phrase samples. The UI recommends 12-16 accepted samples when practical, and the service reports total accepted speech duration, per-sample duration, sample-rate compatibility, silence, low-level, clipping, and SNR warnings as redacted readiness metadata.
 - Normal enrollment does not expose local WAV upload or pasted base64 audio controls. Debug/import paths must remain separate from the operator enrollment flow.
-- Profile cards show display name, public speaker id, sample count, provider/model, version, labels, age/access placeholders, updated time, and metadata export.
+- Profile cards show display name, public speaker id, readiness, accepted sample count, accepted speech duration, provider/model, version, labels, age/access placeholders, updated time, and metadata export.
 - Profile deletion uses a confirmation step and removes the local template from future identification candidates.
-- Overview and validation surfaces show recognition health, recent outcomes, and privacy-safe identify/verify evidence without embeddings or raw audio.
+- Overview and validation surfaces show recognition health, recent outcomes, confidence tiers, and privacy-safe identify/verify evidence without embeddings or raw audio.
+- Speaker ID matches include `learning_eligible=false` until a later operator-reviewed profile-learning workflow exists; automatic profile learning remains out of scope.
 
 ## Service Transport
 
@@ -452,12 +454,24 @@ Unknown or low-confidence responses use the same shape:
       "profile_id": "spk_9f3a2d",
       "speaker_public_id": "speaker_dan",
       "display_name": "Dan",
-      "sample_count": 3,
+      "sample_count": 8,
+      "accepted_sample_count": 8,
+      "total_accepted_speech_duration_ms": 8200,
+      "enrollment_readiness": {
+        "status": "usable_with_warnings",
+        "can_enroll": true,
+        "production_ready": false,
+        "learning_eligible": false,
+        "required_sample_count": 8,
+        "recommended_sample_count_min": 12,
+        "recommended_sample_count_max": 16,
+        "warnings": []
+      },
       "provider": "speechbrain_ecapa_tdnn",
       "model_id": "speechbrain/spkrec-ecapa-voxceleb",
       "created_at": "2026-08-24T10:00:05Z",
       "updated_at": "2026-08-24T10:03:12Z",
-      "retained_audio_count": 0
+      "audio_retained": false
     }
   ]
 }
