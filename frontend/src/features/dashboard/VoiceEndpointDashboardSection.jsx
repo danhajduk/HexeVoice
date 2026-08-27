@@ -241,6 +241,18 @@ function audioQualityDetailRows(audioQuality) {
   ];
 }
 
+const AUDIO_QUALITY_LEGEND = [
+  ["Status", "Overall result from the current checks. Ok means no warning threshold was crossed."],
+  ["Warnings", "Specific thresholds that fired, such as low level, clipping, silence, or a very short clip."],
+  ["Duration", "Length of the captured speech audio that was analyzed."],
+  ["RMS", "Average signal level for the whole clip. Very low values usually mean quiet speech or silence."],
+  ["Peak", "Loudest sample level in the clip. Values near 1.0 are close to the digital maximum."],
+  ["Clipping", "Number and percentage of samples at the digital limit, which can sound distorted."],
+  ["Active audio", "Percent of samples above the activity threshold. Higher usually means more speech-like audio."],
+  ["Silence", "Percent of samples below the activity threshold."],
+  ["Speech RMS", "Average level for only the active parts of the clip."],
+];
+
 function AudioQualityBadge({ audioQuality }) {
   return (
     <span className={`status-pill status-pill-${audioQualityTone(audioQuality)}`}>
@@ -286,6 +298,22 @@ function AudioQualityFacts({ audioQuality }) {
   );
 }
 
+function AudioQualityLegend() {
+  return (
+    <details className="audio-quality-legend">
+      <summary>Metric legend</summary>
+      <dl>
+        {AUDIO_QUALITY_LEGEND.map(([label, description]) => (
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{description}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
+  );
+}
+
 function AudioQualityDetailPopout({ audioQuality, onClose }) {
   if (!audioQuality) {
     return null;
@@ -313,6 +341,7 @@ function AudioQualityDetailPopout({ audioQuality, onClose }) {
           <span>{audioQualitySummary(audioQuality)}</span>
         </div>
         <AudioQualityFacts audioQuality={audioQuality} />
+        <AudioQualityLegend />
       </section>
     </div>
   );

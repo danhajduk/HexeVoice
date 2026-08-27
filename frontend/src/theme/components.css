@@ -318,6 +318,44 @@
   overflow-wrap: anywhere;
 }
 
+.audio-quality-legend {
+  border-top: 1px solid hsl(var(--sx-border));
+  padding-top: 12px;
+}
+
+.audio-quality-legend summary {
+  color: hsl(var(--sx-text));
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.audio-quality-legend dl {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.audio-quality-legend div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.audio-quality-legend dt {
+  color: hsl(var(--sx-text-muted));
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.audio-quality-legend dd {
+  margin: 0;
+  color: hsl(var(--sx-text));
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .endpoint-status-card-footer {
   display: flex;
   flex-wrap: wrap;
@@ -2114,6 +2152,11 @@ select.field-input {
 
   .endpoint-status-card-facts {
     grid-template-columns: 1fr;
+  }
+
+  .audio-quality-legend div {
+    grid-template-columns: 1fr;
+    gap: 4px;
   }
 
   .state-row {
