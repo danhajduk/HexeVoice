@@ -1432,6 +1432,16 @@
   gap: 14px;
 }
 
+.settings-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 18px;
+}
+
+.settings-grid-compact {
+  margin-top: -2px;
+}
+
 .status-item,
 .fact-grid-item {
   padding: 14px;

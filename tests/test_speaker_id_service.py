@@ -186,6 +186,52 @@ def test_speaker_id_enrollment_persists_phrase_tracking(tmp_path):
     assert tracking["failed_quality"][0]["phrase_id"] == "enroll-007"
 
 
+def test_speaker_id_enrollment_applies_age_band_policy_defaults(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    audio = wav_base64(tmp_path / "dan.wav")
+
+    child = enroll_payload(audio, display_name="Child")
+    child["profile"].update({"age_band": "child", "admin_eligible": True})
+    teen = enroll_payload(audio, display_name="Teen")
+    teen["profile"].update({"age_band": "teen", "admin_eligible": True})
+    adult = enroll_payload(audio, display_name="Adult")
+    adult["profile"].update({"age_band": "adult", "admin_eligible": True})
+    unknown = enroll_payload(audio, display_name="Unknown")
+
+    with TestClient(create_app(settings)) as client:
+        child_response = client.post("/enroll", json=child)
+        teen_response = client.post("/enroll", json=teen)
+        adult_response = client.post("/enroll", json=adult)
+        unknown_response = client.post("/enroll", json=unknown)
+
+    child_profile = child_response.json()["profile"]
+    teen_profile = teen_response.json()["profile"]
+    adult_profile = adult_response.json()["profile"]
+    unknown_profile = unknown_response.json()["profile"]
+
+    assert child_profile["age_band"] == "child"
+    assert child_profile["guardian_managed"] is True
+    assert child_profile["profile_review_interval_days"] == 45
+    assert child_profile["admin_eligible"] is False
+    assert child_profile["profile_learning_requires_review"] is True
+    assert child_profile["speaker_policy"]["age_inferred_from_voice"] is False
+    assert child_profile["next_voice_profile_review_at"]
+    assert teen_profile["age_band"] == "teen"
+    assert teen_profile["guardian_managed"] is True
+    assert teen_profile["profile_review_interval_days"] == 75
+    assert teen_profile["admin_eligible"] is False
+    assert teen_profile["profile_learning_requires_review"] is True
+    assert adult_profile["age_band"] == "adult"
+    assert adult_profile["profile_review_interval_days"] == 365
+    assert adult_profile["admin_eligible"] is True
+    assert adult_profile["profile_learning_requires_review"] is False
+    assert unknown_profile["age_band"] == "unknown"
+    assert unknown_profile["profile_review_interval_days"] is None
+    assert unknown_profile["next_voice_profile_review_at"] is None
+    assert unknown_profile["admin_eligible"] is False
+    assert "birth" not in json.dumps(unknown_profile).lower()
+
+
 def test_speaker_id_enrollment_rejects_short_or_silent_data(tmp_path):
     settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
     short_audio = wav_base64(tmp_path / "short.wav", duration_ms=200)

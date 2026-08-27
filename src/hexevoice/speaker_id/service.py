@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC
 from datetime import datetime
+from datetime import timedelta
 import json
 import logging
 import os
@@ -42,6 +43,19 @@ ENROLLMENT_REQUIRED_TOTAL_DURATION_MS = 8000
 ENROLLMENT_TARGET_TOTAL_DURATION_MS = 30000
 ENROLLMENT_MIN_SAMPLE_DURATION_MS = 700
 ENROLLMENT_FATAL_WARNINGS = {"missing_audio", "unsupported_audio", "short_audio", "silent"}
+AGE_BANDS = {"child", "teen", "adult", "unknown"}
+AGE_REVIEW_INTERVAL_DAYS = {
+    "child": 45,
+    "teen": 75,
+    "adult": 365,
+    "unknown": None,
+}
+AGE_RESTRICTION_CLASS = {
+    "child": "child",
+    "teen": "teen",
+    "adult": "adult",
+    "unknown": "unknown",
+}
 
 
 class AudioSampleRequest(BaseModel):
@@ -59,6 +73,12 @@ class SpeakerProfileRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=128)
     speaker_public_id: str | None = Field(default=None, max_length=128)
     labels: list[str] = Field(default_factory=list)
+    age_band: str | None = None
+    age_restriction_class: str | None = None
+    guardian_managed: bool | None = None
+    profile_review_interval_days: int | None = Field(default=None, ge=1)
+    last_voice_profile_review_at: str | None = None
+    admin_eligible: bool | None = None
 
 
 class SpeakerConsentRequest(BaseModel):
@@ -447,6 +467,7 @@ def _profile_from_enrollment(
     now = datetime.now(UTC).isoformat()
     speaker_public_id = _safe_public_id(payload.profile.speaker_public_id or payload.profile.display_name)
     phrase_set_version = payload.phrase_set_version or ACTIVE_SPEAKER_PHRASE_SET_VERSION
+    age_policy = _profile_age_policy(payload.profile, now_iso=now)
     existing = _find_profile(existing_profiles, speaker_public_id=speaker_public_id)
     profile_id = str(existing.get("profile_id")) if existing else _unique_profile_id(speaker_public_id, existing_profiles)
     version = int(existing.get("profile_version") or 0) + 1 if existing else 1
@@ -459,6 +480,7 @@ def _profile_from_enrollment(
         "profile_version": version,
         "phrase_set_version": phrase_set_version,
         "phrase_tracking": _phrase_tracking(samples, phrase_set_version=phrase_set_version),
+        **age_policy,
         "created_at": existing.get("created_at") if existing else now,
         "updated_at": now,
         "provider_id": embeddings[0].provider_id,
@@ -599,6 +621,15 @@ def _public_profile(profile: dict[str, Any]) -> dict[str, Any]:
             "profile_version",
             "phrase_set_version",
             "phrase_tracking",
+            "age_band",
+            "age_restriction_class",
+            "guardian_managed",
+            "profile_review_interval_days",
+            "last_voice_profile_review_at",
+            "next_voice_profile_review_at",
+            "admin_eligible",
+            "profile_learning_requires_review",
+            "speaker_policy",
             "created_at",
             "updated_at",
             "provider_id",
@@ -613,6 +644,54 @@ def _public_profile(profile: dict[str, Any]) -> dict[str, Any]:
             "audio_retained",
         )
     }
+
+
+def _profile_age_policy(profile: SpeakerProfileRequest, *, now_iso: str) -> dict[str, Any]:
+    age_band = str(profile.age_band or "unknown").strip().lower()
+    if age_band not in AGE_BANDS:
+        age_band = "unknown"
+    requested_restriction = str(profile.age_restriction_class or "").strip().lower()
+    age_restriction_class = requested_restriction or AGE_RESTRICTION_CLASS[age_band]
+    if age_restriction_class not in {"child", "teen", "adult", "unknown", "guardian_restricted"}:
+        age_restriction_class = AGE_RESTRICTION_CLASS[age_band]
+    default_interval = AGE_REVIEW_INTERVAL_DAYS[age_band]
+    review_interval_days = profile.profile_review_interval_days or default_interval
+    last_review_at = profile.last_voice_profile_review_at or now_iso
+    next_review_at = _next_review_at(last_review_at, review_interval_days)
+    admin_eligible = bool(profile.admin_eligible) and age_band == "adult"
+    profile_learning_requires_review = age_band in {"child", "teen"}
+    guardian_managed = bool(profile.guardian_managed) or age_band in {"child", "teen"}
+    return {
+        "age_band": age_band,
+        "age_restriction_class": age_restriction_class,
+        "guardian_managed": guardian_managed,
+        "profile_review_interval_days": review_interval_days,
+        "last_voice_profile_review_at": last_review_at,
+        "next_voice_profile_review_at": next_review_at,
+        "admin_eligible": admin_eligible,
+        "profile_learning_requires_review": profile_learning_requires_review,
+        "speaker_policy": {
+            "schema_version": 1,
+            "age_band_source": "operator_or_guardian",
+            "age_inferred_from_voice": False,
+            "admin_eligible": admin_eligible,
+            "admin_eligibility_reason": "adult_explicitly_enabled" if admin_eligible else f"{age_band}_not_admin_eligible",
+            "profile_learning_requires_review": profile_learning_requires_review,
+        },
+    }
+
+
+def _next_review_at(last_review_at: str, interval_days: int | None) -> str | None:
+    if not interval_days:
+        return None
+    normalized = last_review_at.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        parsed = datetime.now(UTC)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return (parsed + timedelta(days=interval_days)).isoformat()
 
 
 def payload_phrase_set_version(sample: AudioSampleRequest) -> str:

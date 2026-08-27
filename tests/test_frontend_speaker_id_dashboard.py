@@ -41,6 +41,16 @@ def test_speaker_id_dashboard_covers_enrollment_profiles_and_diagnostics():
     assert "phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION" in dashboard_source
     assert "phrase_tracking: profile.phrase_tracking" in dashboard_source
     assert "<strong>Phrase Set</strong>" in dashboard_source
+    assert "ageBand: \"unknown\"" in dashboard_source
+    assert "guardianManaged: false" in dashboard_source
+    assert "adminEligible: false" in dashboard_source
+    assert "<strong>Review Due</strong>" in dashboard_source
+    assert "age_band: enrollment.ageBand || \"unknown\"" in dashboard_source
+    assert "guardian_managed: enrollment.guardianManaged" in dashboard_source
+    assert "admin_eligible: enrollment.adminEligible" in dashboard_source
+    assert "Child, under 13" in dashboard_source
+    assert "Teen, 13-17" in dashboard_source
+    assert "Adult admin eligible" in dashboard_source
     assert "Refresh Captures" in dashboard_source
     assert "Add Sample" in dashboard_source
     assert "Hexe, turn on the lights in the living room." in dashboard_source

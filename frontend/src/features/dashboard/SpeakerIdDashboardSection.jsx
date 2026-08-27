@@ -34,6 +34,9 @@ const DEFAULT_ENROLLMENT = {
   displayName: "",
   speakerPublicId: "",
   labels: "",
+  ageBand: "unknown",
+  guardianManaged: false,
+  adminEligible: false,
   consentId: "",
   consentVersion: "speaker-id-consent-v1",
   consentedBy: "",
@@ -193,6 +196,15 @@ function buildProfileExport(profile) {
       profile_version: profile.profile_version,
       phrase_set_version: profile.phrase_set_version,
       phrase_tracking: profile.phrase_tracking,
+      age_band: profile.age_band,
+      age_restriction_class: profile.age_restriction_class,
+      guardian_managed: profile.guardian_managed,
+      profile_review_interval_days: profile.profile_review_interval_days,
+      last_voice_profile_review_at: profile.last_voice_profile_review_at,
+      next_voice_profile_review_at: profile.next_voice_profile_review_at,
+      admin_eligible: profile.admin_eligible,
+      profile_learning_requires_review: profile.profile_learning_requires_review,
+      speaker_policy: profile.speaker_policy,
       created_at: profile.created_at,
       updated_at: profile.updated_at,
       provider_id: profile.provider_id,
@@ -267,8 +279,16 @@ function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, o
           {valueOrEmpty(profile.age_band, "not set")}
         </span>
         <span>
-          <strong>Access</strong>
-          {valueOrEmpty(profile.identity_level, "general")}
+          <strong>Restriction</strong>
+          {valueOrEmpty(profile.age_restriction_class, "unknown")}
+        </span>
+        <span>
+          <strong>Admin</strong>
+          {profile.admin_eligible ? "eligible" : "not eligible"}
+        </span>
+        <span>
+          <strong>Review Due</strong>
+          {formatLocalDateTime(profile.next_voice_profile_review_at)}
         </span>
         <span>
           <strong>Labels</strong>
@@ -578,6 +598,9 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
         profile: {
           display_name: enrollment.displayName.trim(),
           speaker_public_id: enrollment.speakerPublicId.trim() || null,
+          age_band: enrollment.ageBand || "unknown",
+          guardian_managed: enrollment.guardianManaged,
+          admin_eligible: enrollment.adminEligible,
           labels: enrollment.labels
             .split(",")
             .map((label) => label.trim())
@@ -765,6 +788,26 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
               />
             </label>
             <label className="field">
+              <span className="field-label">Age Band</span>
+              <select
+                className="field-input"
+                value={enrollment.ageBand}
+                disabled={unavailable || busy === "enroll"}
+                onChange={(event) =>
+                  setEnrollment((current) => ({
+                    ...current,
+                    ageBand: event.target.value,
+                    adminEligible: event.target.value === "adult" ? current.adminEligible : false,
+                  }))
+                }
+              >
+                <option value="unknown">Unknown</option>
+                <option value="child">Child, under 13</option>
+                <option value="teen">Teen, 13-17</option>
+                <option value="adult">Adult, 18+</option>
+              </select>
+            </label>
+            <label className="field">
               <span className="field-label">Endpoint</span>
               <select
                 className="field-input"
@@ -796,6 +839,27 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
                 disabled={unavailable || busy === "enroll"}
                 onChange={(event) => updateEnrollment("consentedBy", event.target.value)}
               />
+            </label>
+          </div>
+
+          <div className="settings-grid settings-grid-compact">
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={enrollment.guardianManaged}
+                disabled={unavailable || busy === "enroll"}
+                onChange={(event) => updateEnrollment("guardianManaged", event.target.checked)}
+              />
+              Guardian managed profile
+            </label>
+            <label className="toggle-row">
+              <input
+                type="checkbox"
+                checked={enrollment.adminEligible}
+                disabled={unavailable || busy === "enroll" || enrollment.ageBand !== "adult"}
+                onChange={(event) => updateEnrollment("adminEligible", event.target.checked)}
+              />
+              Adult admin eligible
             </label>
           </div>
 
