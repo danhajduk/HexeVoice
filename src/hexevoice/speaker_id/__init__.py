@@ -1,5 +1,6 @@
 from hexevoice.speaker_id.adapters import DeterministicSignalSpeakerIdAdapter
 from hexevoice.speaker_id.adapters import OptionalDependencySpeakerIdAdapter
+from hexevoice.speaker_id.adapters import SpeechBrainEcapaTdnnSpeakerIdAdapter
 from hexevoice.speaker_id.adapters import SpeakerAudio
 from hexevoice.speaker_id.adapters import SpeakerEmbedding
 from hexevoice.speaker_id.adapters import SpeakerIdProviderUnavailable
@@ -14,6 +15,7 @@ from hexevoice.speaker_id.client import SpeakerIdServiceClient
 __all__ = [
     "DeterministicSignalSpeakerIdAdapter",
     "OptionalDependencySpeakerIdAdapter",
+    "SpeechBrainEcapaTdnnSpeakerIdAdapter",
     "SpeakerAudio",
     "SpeakerEmbedding",
     "SpeakerIdProviderUnavailable",

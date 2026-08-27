@@ -53,7 +53,6 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 242: Enable the lowest-resource production Speaker ID provider path
 [TODO] Task 243: Add resource-aware Speaker ID enrollment readiness and confidence tiers
 [TODO] Task 244: Add versioned enrollment and validation phrase set management
 [TODO] Task 245: Add speaker profile age-band metadata, restrictions, and review cadence
@@ -74,6 +73,7 @@ Do not edit above this line:
 [TODO] Task 255: Add admin-gated maintenance voice intents for debug, enrollment, and placement calibration
 [TODO] Task 256: Add operator-reviewed Speaker ID profile improvement workflow
 [TODO] Task 257: Add user-facing voice failure guidance from quality and identity diagnostics
+[TODO] Task 258: Add rolling endpoint audio quality statistics and UI summary
 
 **********************************************************************************************
 * Future TODO listing

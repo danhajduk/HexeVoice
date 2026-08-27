@@ -267,3 +267,4 @@ Task 238: Implement Track 1 audio-quality foundation for accepted voice turns - 
 Task 239: Define versioned voice quality, identity, enrollment, and placement metric schemas - Completed on 08/27/2026 08:30
 Task 240: Implement Track 2 pre-roll ambient reference and per-turn SNR metadata - Completed on 08/27/2026 09:29
 Task 241: Add endpoint ambient metric reporting for pre-roll and noise-floor quality analysis - Completed on 08/27/2026 09:39
+Task 242: Enable the lowest-resource production Speaker ID provider path - Completed on 08/27/2026 09:58

@@ -14,6 +14,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from hexevoice.config.settings import Settings
+import hexevoice.speaker_id.adapters as speaker_adapters
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
 from hexevoice.speaker_id.service import create_app
 
@@ -155,6 +156,48 @@ def test_speaker_id_service_config_and_recent_outcomes(tmp_path):
     assert outcomes[0]["kind"] == "identify"
     assert outcomes[0]["status"] == "unknown"
     assert "audio_base64" not in outcomes[0]
+
+
+def test_speaker_id_service_uses_speechbrain_provider_when_available(monkeypatch, tmp_path):
+    class FakeClassifier:
+        @classmethod
+        def from_hparams(cls, **_kwargs):
+            return cls()
+
+    monkeypatch.setattr(
+        speaker_adapters,
+        "_speechbrain_dependency_status",
+        lambda: {"speechbrain": True, "torch": True},
+    )
+    monkeypatch.setattr(speaker_adapters, "_speechbrain_classifier_class", lambda: FakeClassifier)
+    monkeypatch.setattr(
+        speaker_adapters,
+        "_speechbrain_embedding_values",
+        lambda classifier, audio, *, device: (0.1, 0.2, 0.3),
+    )
+    settings = Settings(
+        runtime_dir=tmp_path,
+        voice_speaker_id_enabled=True,
+        voice_speaker_id_provider="speechbrain_ecapa_tdnn",
+    )
+    audio = wav_base64(tmp_path / "dan.wav")
+
+    with TestClient(create_app(settings)) as client:
+        before = client.get("/status")
+        enrolled = client.post("/enroll", json=enroll_payload(audio))
+        identified = client.post("/identify", json=identify_payload(audio))
+        after = client.get("/status")
+
+    assert before.status_code == 200
+    assert before.json()["provider_status"]["reason"] == "model_not_loaded"
+    assert before.json()["model"]["loaded"] is False
+    assert enrolled.status_code == 200
+    assert enrolled.json()["profile"]["provider_id"] == "speechbrain_ecapa_tdnn"
+    assert identified.status_code == 200
+    assert identified.json()["status"] == "identified"
+    assert identified.json()["match"]["provider"] == "speechbrain_ecapa_tdnn"
+    assert after.json()["provider_status"]["loaded"] is True
+    assert after.json()["model"]["loaded"] is True
 
 
 def test_speaker_id_service_client_can_call_unix_socket(tmp_path):

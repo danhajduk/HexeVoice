@@ -7,6 +7,9 @@ from pathlib import Path
 import sys
 import wave
 
+import pytest
+
+import hexevoice.speaker_id.adapters as adapters
 from hexevoice.speaker_id import SpeakerIdProviderUnavailable
 from hexevoice.speaker_id import available_provider_ids
 from hexevoice.speaker_id import create_speaker_id_adapter
@@ -88,6 +91,94 @@ def test_optional_provider_status_is_import_safe(tmp_path):
             pass
         else:
             raise AssertionError("missing optional provider did not fail clearly")
+
+
+def test_speechbrain_provider_reports_missing_dependencies(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        adapters,
+        "_speechbrain_dependency_status",
+        lambda: {"speechbrain": False, "torch": False},
+    )
+    adapter = create_speaker_id_adapter("speechbrain_ecapa_tdnn", cache_dir=tmp_path / "models")
+
+    status = adapter.status()
+
+    assert status["provider_id"] == "speechbrain_ecapa_tdnn"
+    assert status["configured"] is False
+    assert status["available"] is False
+    assert status["loaded"] is False
+    assert status["reason"] == "missing_optional_dependency"
+    with pytest.raises(SpeakerIdProviderUnavailable, match="Missing: speechbrain, torch"):
+        adapter.extract_embedding(write_fixture(tmp_path / "speaker-a.wav"))
+
+
+def test_speechbrain_provider_lazy_loads_model_and_extracts_embedding(monkeypatch, tmp_path):
+    load_calls = []
+
+    class FakeClassifier:
+        @classmethod
+        def from_hparams(cls, **kwargs):
+            load_calls.append(kwargs)
+            return cls()
+
+    monkeypatch.setattr(
+        adapters,
+        "_speechbrain_dependency_status",
+        lambda: {"speechbrain": True, "torch": True},
+    )
+    monkeypatch.setattr(adapters, "_speechbrain_classifier_class", lambda: FakeClassifier)
+    monkeypatch.setattr(
+        adapters,
+        "_speechbrain_embedding_values",
+        lambda classifier, audio, *, device: (0.1, 0.2, 0.3),
+    )
+    clip = write_fixture(tmp_path / "speaker-a.wav")
+    cache_dir = tmp_path / "models"
+    adapter = create_speaker_id_adapter("speechbrain_ecapa_tdnn", cache_dir=cache_dir, device="cpu")
+
+    before = adapter.status()
+    embedding = adapter.extract_embedding(clip)
+    after = adapter.status()
+
+    assert before["reason"] == "model_not_loaded"
+    assert before["loaded"] is False
+    assert after["healthy"] is True
+    assert after["loaded"] is True
+    assert embedding.provider_id == "speechbrain_ecapa_tdnn"
+    assert embedding.model_id == "speechbrain/spkrec-ecapa-voxceleb"
+    assert embedding.values == (0.1, 0.2, 0.3)
+    assert embedding.metadata["source_path"] == clip.as_posix()
+    assert load_calls[0]["source"] == "speechbrain/spkrec-ecapa-voxceleb"
+    assert load_calls[0]["run_opts"] == {"device": "cpu"}
+    assert str(cache_dir) in load_calls[0]["savedir"]
+
+
+def test_speechbrain_provider_reports_runtime_implementation_errors(monkeypatch, tmp_path):
+    class FakeClassifier:
+        @classmethod
+        def from_hparams(cls, **_kwargs):
+            return cls()
+
+    monkeypatch.setattr(
+        adapters,
+        "_speechbrain_dependency_status",
+        lambda: {"speechbrain": True, "torch": True},
+    )
+    monkeypatch.setattr(adapters, "_speechbrain_classifier_class", lambda: FakeClassifier)
+
+    def fail_embedding(_classifier, _audio, *, device):
+        raise RuntimeError("encode failed")
+
+    monkeypatch.setattr(adapters, "_speechbrain_embedding_values", fail_embedding)
+    adapter = create_speaker_id_adapter("speechbrain_ecapa_tdnn", cache_dir=tmp_path / "models")
+
+    with pytest.raises(SpeakerIdProviderUnavailable, match="embedding extraction failed"):
+        adapter.extract_embedding(write_fixture(tmp_path / "speaker-a.wav"))
+
+    status = adapter.status()
+    assert status["loaded"] is True
+    assert status["healthy"] is False
+    assert status["reason"] == "implementation_error"
 
 
 def test_benchmark_emits_provider_metadata_and_scores(tmp_path):

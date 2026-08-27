@@ -142,7 +142,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         identify_min_margin=app_settings.voice_speaker_id_identify_min_margin,
         verify_min_score=app_settings.voice_speaker_id_verify_min_score,
     )
-    adapter = create_speaker_id_adapter(app_settings.voice_speaker_id_provider)
+    adapter = create_speaker_id_adapter(
+        app_settings.voice_speaker_id_provider,
+        cache_dir=app_settings.resolved_voice_speaker_id_model_cache_dir(),
+        device=app_settings.voice_speaker_id_device,
+    )
     enabled = app_settings.voice_speaker_id_enabled
     last_error: str | None = None
     recent_identification_outcomes: list[dict[str, Any]] = []
@@ -150,11 +154,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def service_status() -> dict[str, Any]:
         status = adapter.status()
         active_transport = "unix_socket" if app_settings.resolved_voice_speaker_id_socket_path() is not None else "tcp"
+        is_deterministic = adapter.metadata.provider_id == "deterministic_signal"
+        ready = bool(status.get("loaded")) or adapter.metadata.provider_id == "deterministic_signal"
+        healthy = bool(status.get("healthy")) or adapter.metadata.provider_id == "deterministic_signal"
         return {
             "status": "ok",
-            "ready": bool(status.get("available")) or adapter.metadata.provider_id == "deterministic_signal",
-            "healthy": bool(status.get("healthy")) or adapter.metadata.provider_id == "deterministic_signal",
-            "configured": True,
+            "ready": ready,
+            "healthy": healthy,
+            "configured": bool(status.get("configured")) or is_deterministic,
             "enabled": enabled,
             "version": app_settings.node_software_version,
             "service": "hexevoice-speaker-id",
@@ -164,7 +171,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "model_id": adapter.metadata.model_id,
                 "embedding_dimensions": adapter.metadata.embedding_dimensions,
                 "sample_rate_hz": adapter.metadata.sample_rate_hz,
-                "device": "cpu",
+                "device": str(status.get("device") or app_settings.voice_speaker_id_device),
                 "loaded": bool(status.get("loaded")),
             },
             "thresholds": asdict(thresholds),
@@ -244,7 +251,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if payload.enabled is not None:
             enabled = payload.enabled
         if payload.provider:
-            adapter = create_speaker_id_adapter(payload.provider)
+            adapter = create_speaker_id_adapter(
+                payload.provider,
+                cache_dir=app_settings.resolved_voice_speaker_id_model_cache_dir(),
+                device=app_settings.voice_speaker_id_device,
+            )
         thresholds = SpeakerThresholds(
             identify_min_confidence=payload.identify_min_confidence
             if payload.identify_min_confidence is not None

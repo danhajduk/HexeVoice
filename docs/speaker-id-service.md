@@ -76,6 +76,36 @@ Task 234 added the first local helper service implementation.
 
 The helper persists profile metadata and embeddings only. Enrollment audio is decoded for embedding extraction and then discarded by default. HexeVoice exposes the backend proxy endpoints to UI/Core clients; the backend talks to the helper through the configured Unix socket unless an explicit debug base URL is configured.
 
+## Production Provider
+
+The first production-capable Speaker ID provider path is `speechbrain_ecapa_tdnn`. It uses SpeechBrain ECAPA-TDNN (`speechbrain/spkrec-ecapa-voxceleb`) because it is the lowest-resource production candidate in the current catalog: about 85 MB download, about 600 MB runtime memory, CPU-capable, and CUDA-optional. Heavier catalog entries such as pyannote.audio and NVIDIA NeMo remain planned/cataloged but are not the first production path.
+
+`deterministic_signal` remains the development and test adapter. It should not be used as a real biometric identity provider.
+
+Enable SpeechBrain with:
+
+```bash
+VOICE_SPEAKER_ID_ENABLED=true
+VOICE_SPEAKER_ID_PROVIDER=speechbrain_ecapa_tdnn
+VOICE_SPEAKER_ID_DEVICE=cpu
+VOICE_SPEAKER_ID_MODEL_CACHE_DIR=runtime/speaker_id/models
+```
+
+SpeechBrain and Torch are optional dependencies so the normal HexeVoice runtime still starts without them. Install them only on nodes that should perform local Speaker ID:
+
+```bash
+pip install speechbrain torch torchaudio
+```
+
+The helper loads the model lazily on first embedding extraction and stores model artifacts under `VOICE_SPEAKER_ID_MODEL_CACHE_DIR`, defaulting to `runtime/speaker_id/models`. Status responses expose provider states:
+
+- `missing_optional_dependency`: SpeechBrain or Torch is not installed.
+- `model_not_loaded`: dependencies are installed, but the model has not been loaded yet.
+- `model_load_failed`: dependencies are installed, but model download/load failed.
+- `loaded=true`: the model is loaded in memory and ready to extract embeddings.
+
+Enrollment and turn audio are decoded only long enough to extract embeddings. The persisted profile store keeps embeddings and redacted metadata, not raw audio.
+
 ## Per-Turn Integration
 
 Task 235 integrates Speaker ID into the voice turn pipeline.

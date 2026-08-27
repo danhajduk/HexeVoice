@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from dataclasses import dataclass
 import hashlib
+import importlib
 import importlib.util
 import math
 from pathlib import Path
@@ -249,6 +250,125 @@ class OptionalDependencySpeakerIdAdapter:
         }
 
 
+class SpeechBrainEcapaTdnnSpeakerIdAdapter:
+    def __init__(
+        self,
+        metadata: SpeakerProviderMetadata,
+        *,
+        cache_dir: Path | None = None,
+        device: str = "cpu",
+    ) -> None:
+        self.metadata = metadata
+        self._cache_dir = cache_dir
+        self._device = device.strip() or "cpu"
+        self._classifier: object | None = None
+        self._load_error: str | None = None
+        self._runtime_error: str | None = None
+
+    def extract_embedding(self, audio: SpeakerAudio | Path | bytes | str) -> SpeakerEmbedding:
+        started_at = time.perf_counter()
+        speaker_audio = normalize_speaker_audio(audio)
+        if not speaker_audio.samples:
+            raise ValueError("Cannot extract Speaker ID embedding from empty audio")
+        if speaker_audio.sample_rate_hz != self.metadata.sample_rate_hz:
+            raise ValueError(
+                f"SpeechBrain ECAPA-TDNN expects {self.metadata.sample_rate_hz} Hz mono WAV audio; "
+                f"got {speaker_audio.sample_rate_hz} Hz"
+            )
+
+        classifier = self._load_classifier()
+        try:
+            values = _speechbrain_embedding_values(classifier, speaker_audio, device=self._device)
+            self._runtime_error = None
+        except Exception as exc:
+            self._runtime_error = str(exc)
+            raise SpeakerIdProviderUnavailable(
+                f"{self.metadata.display_name} embedding extraction failed: {exc}"
+            ) from exc
+        return SpeakerEmbedding(
+            provider_id=self.metadata.provider_id,
+            model_id=self.metadata.model_id,
+            values=values,
+            duration_ms=round((time.perf_counter() - started_at) * 1000, 2),
+            sample_rate_hz=speaker_audio.sample_rate_hz,
+            audio_duration_ms=speaker_audio.duration_ms,
+            metadata={
+                "engine": "speechbrain_ecapa_tdnn",
+                "source_path": speaker_audio.source_path,
+                "device": self._device,
+                "cache_dir": self._cache_dir.as_posix() if self._cache_dir is not None else None,
+            },
+        )
+
+    def score_embeddings(
+        self,
+        reference: SpeakerEmbedding,
+        candidate: SpeakerEmbedding,
+        *,
+        threshold: float | None = None,
+    ) -> SpeakerScore:
+        return score_embedding_pair(reference, candidate, threshold=threshold or SpeakerThresholds().verify_min_score)
+
+    def status(self) -> dict[str, object]:
+        dependencies = _speechbrain_dependency_status()
+        dependencies_available = all(dependencies.values())
+        reason = None
+        if not dependencies_available:
+            reason = "missing_optional_dependency"
+        elif self._load_error:
+            reason = "model_load_failed"
+        elif self._runtime_error:
+            reason = "implementation_error"
+        elif self._classifier is None:
+            reason = "model_not_loaded"
+        return {
+            "provider_id": self.metadata.provider_id,
+            "healthy": dependencies_available
+            and self._classifier is not None
+            and self._load_error is None
+            and self._runtime_error is None,
+            "configured": dependencies_available,
+            "available": dependencies_available and self._load_error is None,
+            "loaded": self._classifier is not None,
+            "model_id": self.metadata.model_id,
+            "reason": reason,
+            "optional_dependency": self.metadata.optional_dependency,
+            "install_hint": self.metadata.install_hint,
+            "device": self._device,
+            "cache_dir": self._cache_dir.as_posix() if self._cache_dir is not None else None,
+            "dependencies": dependencies,
+            "metadata": self.metadata.to_dict(),
+        }
+
+    def _load_classifier(self) -> object:
+        dependencies = _speechbrain_dependency_status()
+        if not all(dependencies.values()):
+            missing = ", ".join(name for name, available in dependencies.items() if not available)
+            raise SpeakerIdProviderUnavailable(
+                f"{self.metadata.display_name} is not installed. Missing: {missing}. {self.metadata.install_hint}"
+            )
+        if self._classifier is not None:
+            return self._classifier
+        try:
+            classifier_cls = _speechbrain_classifier_class()
+            kwargs: dict[str, object] = {
+                "source": self.metadata.model_id,
+                "run_opts": {"device": self._device},
+            }
+            if self._cache_dir is not None:
+                savedir = self._cache_dir / _safe_model_cache_name(self.metadata.model_id)
+                savedir.mkdir(parents=True, exist_ok=True)
+                kwargs["savedir"] = savedir.as_posix()
+            self._classifier = classifier_cls.from_hparams(**kwargs)
+            self._load_error = None
+            return self._classifier
+        except Exception as exc:
+            self._load_error = str(exc)
+            raise SpeakerIdProviderUnavailable(
+                f"{self.metadata.display_name} model is unavailable or failed to load: {exc}"
+            ) from exc
+
+
 PROVIDER_CATALOG: dict[str, SpeakerProviderMetadata] = {
     "deterministic_signal": DeterministicSignalSpeakerIdAdapter.metadata,
     "speechbrain_ecapa_tdnn": SpeakerProviderMetadata(
@@ -326,7 +446,12 @@ def available_provider_ids() -> list[str]:
     return list(PROVIDER_CATALOG)
 
 
-def create_speaker_id_adapter(provider_id: str = "deterministic_signal") -> SpeakerIdAdapter:
+def create_speaker_id_adapter(
+    provider_id: str = "deterministic_signal",
+    *,
+    cache_dir: Path | None = None,
+    device: str = "cpu",
+) -> SpeakerIdAdapter:
     normalized = provider_id.strip().lower()
     if normalized == "deterministic":
         normalized = "deterministic_signal"
@@ -336,6 +461,8 @@ def create_speaker_id_adapter(provider_id: str = "deterministic_signal") -> Spea
         raise ValueError(f"Unsupported Speaker ID provider '{provider_id}'. Supported providers: {supported}")
     if normalized == "deterministic_signal":
         return DeterministicSignalSpeakerIdAdapter()
+    if normalized == "speechbrain_ecapa_tdnn":
+        return SpeechBrainEcapaTdnnSpeakerIdAdapter(metadata, cache_dir=cache_dir, device=device)
     return OptionalDependencySpeakerIdAdapter(metadata)
 
 
@@ -344,6 +471,36 @@ def dependency_available(import_name: str) -> bool:
         return importlib.util.find_spec(import_name) is not None
     except (ImportError, ModuleNotFoundError, ValueError):
         return False
+
+
+def _speechbrain_dependency_status() -> dict[str, bool]:
+    return {
+        "speechbrain": dependency_available("speechbrain"),
+        "torch": dependency_available("torch"),
+    }
+
+
+def _speechbrain_classifier_class() -> object:
+    try:
+        module = importlib.import_module("speechbrain.inference.speaker")
+    except ModuleNotFoundError:
+        module = importlib.import_module("speechbrain.pretrained")
+    return module.EncoderClassifier
+
+
+def _speechbrain_embedding_values(classifier: object, audio: SpeakerAudio, *, device: str) -> tuple[float, ...]:
+    torch = importlib.import_module("torch")
+    waveform = torch.tensor(audio.samples, dtype=torch.float32, device=device).unsqueeze(0)
+    with torch.no_grad():
+        embedding = classifier.encode_batch(waveform)
+    values = tuple(float(value) for value in embedding.detach().cpu().flatten().tolist())
+    if not values:
+        raise SpeakerIdProviderUnavailable("SpeechBrain ECAPA-TDNN returned an empty embedding")
+    return values
+
+
+def _safe_model_cache_name(model_id: str) -> str:
+    return model_id.replace("/", "--").replace("\\", "--")
 
 
 def score_embedding_pair(
