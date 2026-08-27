@@ -213,6 +213,17 @@ function audioQualitySummary(audioQuality) {
   return warnings.length ? `${audioQuality.status}: ${warnings.join(", ")}` : String(audioQuality.status || "unknown");
 }
 
+function audioQualityCompactSummary(audioQuality) {
+  if (!audioQuality) {
+    return "not recorded";
+  }
+  const warnings = Array.isArray(audioQuality.warnings) ? audioQuality.warnings.filter(Boolean) : [];
+  if (!warnings.length) {
+    return "";
+  }
+  return warnings.length === 1 ? warnings[0] : `${warnings.length} warnings`;
+}
+
 function audioQualityDetailRows(audioQuality) {
   if (!audioQuality) {
     return [];
@@ -276,6 +287,7 @@ function VoicePipelinePanel({ voiceStatus, latestSession }) {
   const timings = voiceStatus?.last_turn_timings || {};
   const assistant = voiceStatus?.last_assistant || {};
   const audioQuality = latestSession?.transcript?.audio_quality || voiceStatus?.last_transcript_metadata?.audio_quality || null;
+  const audioQualityNote = audioQualityCompactSummary(audioQuality);
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -327,7 +339,7 @@ function VoicePipelinePanel({ voiceStatus, latestSession }) {
           <dt>Audio quality</dt>
           <dd className="audio-quality-inline">
             <AudioQualityBadge audioQuality={audioQuality} />
-            <span>{audioQualitySummary(audioQuality)}</span>
+            {audioQualityNote ? <span>{audioQualityNote}</span> : null}
           </dd>
         </div>
         <div>
@@ -335,7 +347,6 @@ function VoicePipelinePanel({ voiceStatus, latestSession }) {
           <dd>{valueOrEmpty(assistant.error || voiceStatus?.last_error?.code, "clear")}</dd>
         </div>
       </dl>
-      <AudioQualityFacts audioQuality={audioQuality} />
     </section>
   );
 }
@@ -1297,9 +1308,8 @@ function VoiceSessionHistoryPanel({
             <tr>
               <th scope="col">Time</th>
               <th scope="col">Endpoint</th>
-              <th scope="col">State</th>
+              <th scope="col">Status</th>
               <th scope="col">Wake</th>
-              <th scope="col">Quality</th>
               <th scope="col">Transcript</th>
               <th scope="col">Response</th>
               <th scope="col">Total</th>
@@ -1332,11 +1342,13 @@ function VoiceSessionHistoryPanel({
                   >
                     <td>{formatLocalDateTime(session.completed_at || session.updated_at || session.started_at)}</td>
                     <td>{valueOrEmpty(session.endpoint_id)}</td>
-                    <td>{valueOrEmpty(session.session_state)}</td>
-                    <td>{formatPercent(session.wake?.confidence)}</td>
                     <td>
-                      <AudioQualityBadge audioQuality={audioQuality} />
+                      <div className="voice-history-status-cell">
+                        <span>{valueOrEmpty(session.session_state)}</span>
+                        <AudioQualityBadge audioQuality={audioQuality} />
+                      </div>
                     </td>
+                    <td>{formatPercent(session.wake?.confidence)}</td>
                     <td className="voice-history-text">{valueOrEmpty(session.transcript?.text)}</td>
                     <td className="voice-history-text">{valueOrEmpty(session.assistant?.text)}</td>
                     <td>{formatMs(session.turn_timings?.total_ms ?? session.duration_ms)}</td>
@@ -1393,7 +1405,7 @@ function VoiceSessionHistoryPanel({
               })
             ) : (
               <tr>
-                <td colSpan={11}>none</td>
+                <td colSpan={10}>none</td>
               </tr>
             )}
           </tbody>

@@ -394,6 +394,17 @@
   max-width: 240px;
 }
 
+.voice-history-status-cell {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.voice-history-status-cell .status-pill {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 .voice-history-row {
   cursor: pointer;
 }
