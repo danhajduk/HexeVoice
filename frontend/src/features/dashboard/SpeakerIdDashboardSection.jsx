@@ -5,6 +5,7 @@ import {
   enrollSpeakerIdProfile,
   getEndpointRegistry,
   getSpeakerIdEnrollmentCaptures,
+  getSpeakerIdPhraseSets,
   getSpeakerIdProfiles,
   getSpeakerIdStatus,
   installService,
@@ -42,6 +43,7 @@ const DEFAULT_ENROLLMENT = {
 
 const MIN_ENROLLMENT_SAMPLES = 8;
 const RECOMMENDED_ENROLLMENT_SAMPLE_RANGE = "12-16";
+const DEFAULT_PHRASE_SET_VERSION = "speaker-id-phrase-set-v1";
 
 const ENROLLMENT_PHRASES = [
   "Hexe, turn on the lights in the living room.",
@@ -69,6 +71,15 @@ const ENROLLMENT_PHRASES = [
   "Read the last notification from the security camera.",
   "A bright yellow scarf was folded inside the small suitcase.",
 ];
+
+const DEFAULT_ENROLLMENT_PHRASE_SET = {
+  version: DEFAULT_PHRASE_SET_VERSION,
+  enrollment: ENROLLMENT_PHRASES.map((text, index) => ({
+    phrase_id: `enroll-${String(index + 1).padStart(3, "0")}`,
+    text,
+    category: "enrollment",
+  })),
+};
 
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : String(value);
@@ -180,6 +191,8 @@ function buildProfileExport(profile) {
       labels: profile.labels,
       consent: profile.consent,
       profile_version: profile.profile_version,
+      phrase_set_version: profile.phrase_set_version,
+      phrase_tracking: profile.phrase_tracking,
       created_at: profile.created_at,
       updated_at: profile.updated_at,
       provider_id: profile.provider_id,
@@ -246,6 +259,10 @@ function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, o
           {valueOrEmpty(profile.profile_version)}
         </span>
         <span>
+          <strong>Phrase Set</strong>
+          {valueOrEmpty(profile.phrase_set_version, DEFAULT_PHRASE_SET_VERSION)}
+        </span>
+        <span>
           <strong>Age Band</strong>
           {valueOrEmpty(profile.age_band, "not set")}
         </span>
@@ -292,6 +309,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [status, setStatus] = useState(null);
   const [profiles, setProfiles] = useState([]);
+  const [phraseSet, setPhraseSet] = useState(DEFAULT_ENROLLMENT_PHRASE_SET);
   const [endpoints, setEndpoints] = useState([]);
   const [selectedEndpointId, setSelectedEndpointId] = useState("esp-pe-1");
   const [captureStartedAt, setCaptureStartedAt] = useState("");
@@ -320,8 +338,9 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const identifiedOutcomeCount = outcomes.filter((outcome) => outcome?.status === "identified").length;
   const unavailable = !status;
   const samples = enrollment.samples;
-  const batchCount = Math.ceil(ENROLLMENT_PHRASES.length / 3);
-  const activeBatchPhrases = ENROLLMENT_PHRASES.slice(activeBatchIndex * 3, activeBatchIndex * 3 + 3);
+  const enrollmentPhrases = Array.isArray(phraseSet?.enrollment) ? phraseSet.enrollment : DEFAULT_ENROLLMENT_PHRASE_SET.enrollment;
+  const batchCount = Math.ceil(enrollmentPhrases.length / 3);
+  const activeBatchPhrases = enrollmentPhrases.slice(activeBatchIndex * 3, activeBatchIndex * 3 + 3);
   const endpointOptions = useMemo(() => {
     const seen = new Set();
     const options = [];
@@ -350,10 +369,19 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [statusPayload, profilesPayload] = await Promise.all([getSpeakerIdStatus(), getSpeakerIdProfiles()]);
+      const [statusPayload, profilesPayload, phrasePayload] = await Promise.all([
+        getSpeakerIdStatus(),
+        getSpeakerIdProfiles(),
+        getSpeakerIdPhraseSets(),
+      ]);
       const thresholds = statusPayload.thresholds || {};
+      const activeVersion = phrasePayload.active_version || DEFAULT_PHRASE_SET_VERSION;
+      const activePhraseSet =
+        Array.isArray(phrasePayload.phrase_sets) &&
+        phrasePayload.phrase_sets.find((candidate) => candidate?.version === activeVersion);
       setStatus(statusPayload);
       setProfiles(Array.isArray(profilesPayload.profiles) ? profilesPayload.profiles : []);
+      setPhraseSet(activePhraseSet || DEFAULT_ENROLLMENT_PHRASE_SET);
       setConfig({
         enabled: Boolean(statusPayload.enabled),
         provider: statusPayload.provider || "deterministic_signal",
@@ -365,6 +393,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     } catch (err) {
       setStatus(null);
       setProfiles([]);
+      setPhraseSet(DEFAULT_ENROLLMENT_PHRASE_SET);
       setError(String(err.message || err));
     } finally {
       setLoading(false);
@@ -476,6 +505,10 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
             sample_id: sampleId,
             audio_base64: audioBase64,
             encoding: "audio/wav",
+            phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION,
+            phrase_id: enrollmentPhrases[current.samples.length]?.phrase_id || null,
+            phrase_text: enrollmentPhrases[current.samples.length]?.text || null,
+            phrase_status: "accepted",
           },
         ],
       }));
@@ -541,6 +574,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
       await enrollSpeakerIdProfile({
         schema_version: 1,
         request_id: `speaker-enroll-${Date.now()}`,
+        phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION,
         profile: {
           display_name: enrollment.displayName.trim(),
           speaker_public_id: enrollment.speakerPublicId.trim() || null,
@@ -768,7 +802,9 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
           <section className="speaker-endpoint-capture">
             <div className="section-heading">
               <div>
-                <p className="panel-kicker">Batch {activeBatchIndex + 1} of {batchCount}</p>
+                <p className="panel-kicker">
+                  Batch {activeBatchIndex + 1} of {batchCount} / {phraseSet.version || DEFAULT_PHRASE_SET_VERSION}
+                </p>
                 <h4 className="section-title">Three-Phrase Capture</h4>
               </div>
               <span className={`status-pill status-pill-${captureStartedAt ? "success" : "neutral"}`}>
@@ -796,9 +832,9 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
             </div>
             <div className="speaker-prompt-grid">
               {activeBatchPhrases.map((prompt, index) => (
-                <div className="speaker-prompt-card" key={prompt}>
+                <div className="speaker-prompt-card" key={prompt.phrase_id || prompt.text}>
                   <span className="fact-grid-label">Phrase {activeBatchIndex * 3 + index + 1}</span>
-                  <span className="fact-grid-value">{prompt}</span>
+                  <span className="fact-grid-value">{prompt.text}</span>
                 </div>
               ))}
             </div>

@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shutil
 import time
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse
@@ -844,6 +845,15 @@ def create_app(
     @app.get("/api/speaker-id/status")
     async def speaker_id_status() -> dict[str, object]:
         return await speaker_id_proxy("GET", "/status")
+
+    @app.get("/api/speaker-id/phrase-sets")
+    async def speaker_id_phrase_sets() -> dict[str, object]:
+        return await speaker_id_proxy("GET", "/phrase-sets")
+
+    @app.get("/api/speaker-id/phrase-sets/holdout-selection")
+    async def speaker_id_holdout_selection(count: int = 6, seed: str | None = None) -> dict[str, object]:
+        query = urlencode({"count": count, **({"seed": seed} if seed else {})})
+        return await speaker_id_proxy("GET", f"/phrase-sets/holdout-selection?{query}")
 
     @app.put("/api/speaker-id/config")
     async def speaker_id_config(payload: dict[str, object]) -> dict[str, object]:

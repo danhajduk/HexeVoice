@@ -105,6 +105,8 @@ def test_speaker_id_service_enroll_identify_verify_and_delete(tmp_path):
     assert enrolled.json()["profile"]["sample_count"] == 8
     assert enrolled.json()["profile"]["accepted_sample_count"] == 8
     assert enrolled.json()["profile"]["audio_retained"] is False
+    assert enrolled.json()["profile"]["phrase_set_version"] == "speaker-id-phrase-set-v1"
+    assert len(enrolled.json()["profile"]["phrase_tracking"]["accepted"]) == 0
     readiness = enrolled.json()["profile"]["enrollment_readiness"]
     assert readiness["can_enroll"] is True
     assert readiness["required_sample_count"] == 8
@@ -128,6 +130,60 @@ def test_speaker_id_service_enroll_identify_verify_and_delete(tmp_path):
     assert client.get("/profiles").json()["profiles"] == []
     stored_payload = json.loads(settings.resolved_voice_speaker_id_profiles_path().read_text(encoding="utf-8"))
     assert stored_payload["profiles"] == []
+
+
+def test_speaker_id_phrase_sets_and_holdout_selection_are_versioned(tmp_path):
+    with TestClient(create_app(Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True))) as client:
+        phrase_sets = client.get("/phrase-sets")
+        first_selection = client.get("/phrase-sets/holdout-selection", params={"count": 5, "seed": "profile-a"})
+        second_selection = client.get("/phrase-sets/holdout-selection", params={"count": 5, "seed": "profile-a"})
+
+    assert phrase_sets.status_code == 200
+    payload = phrase_sets.json()
+    assert payload["active_version"] == "speaker-id-phrase-set-v1"
+    active = payload["phrase_sets"][0]
+    assert len(active["enrollment"]) == 24
+    assert len(active["holdout_validation"]) == 24
+    assert active["enrollment"][0]["phrase_id"] == "enroll-001"
+    assert active["enrollment"][23]["text"] == "A bright yellow scarf was folded inside the small suitcase."
+    assert active["holdout_validation"][0]["phrase_id"] == "holdout-001"
+    assert first_selection.status_code == 200
+    assert first_selection.json() == second_selection.json()
+    assert first_selection.json()["phrase_set_version"] == "speaker-id-phrase-set-v1"
+    assert len(first_selection.json()["phrases"]) == 5
+
+
+def test_speaker_id_enrollment_persists_phrase_tracking(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    audio = wav_base64(tmp_path / "dan.wav")
+    payload = enroll_payload(audio)
+    payload["phrase_set_version"] = "speaker-id-phrase-set-v1"
+    payload["samples"] = [
+        {
+            "sample_id": f"sample-{index + 1}",
+            "audio_base64": audio,
+            "phrase_set_version": "speaker-id-phrase-set-v1",
+            "phrase_id": f"enroll-{index + 1:03d}",
+            "phrase_text": f"Phrase {index + 1}",
+            "phrase_status": "accepted",
+        }
+        for index in range(8)
+    ]
+    payload["samples"][3]["phrase_status"] = "skipped"
+    payload["samples"][6]["phrase_status"] = "failed_quality"
+
+    with TestClient(create_app(settings)) as client:
+        response = client.post("/enroll", json=payload)
+
+    assert response.status_code == 200
+    profile = response.json()["profile"]
+    assert profile["phrase_set_version"] == "speaker-id-phrase-set-v1"
+    tracking = profile["phrase_tracking"]
+    assert tracking["phrase_set_version"] == "speaker-id-phrase-set-v1"
+    assert len(tracking["presented"]) == 8
+    assert len(tracking["accepted"]) == 6
+    assert tracking["skipped"][0]["phrase_id"] == "enroll-004"
+    assert tracking["failed_quality"][0]["phrase_id"] == "enroll-007"
 
 
 def test_speaker_id_enrollment_rejects_short_or_silent_data(tmp_path):

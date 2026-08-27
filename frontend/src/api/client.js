@@ -279,6 +279,10 @@ export async function getSpeakerIdStatus() {
   return fetchJson("/api/speaker-id/status");
 }
 
+export async function getSpeakerIdPhraseSets() {
+  return fetchJson("/api/speaker-id/phrase-sets");
+}
+
 export async function updateSpeakerIdConfig(payload) {
   return sendJson("/api/speaker-id/config", { method: "PUT", body: payload });
 }

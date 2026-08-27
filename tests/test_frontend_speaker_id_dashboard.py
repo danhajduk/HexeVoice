@@ -12,6 +12,8 @@ def test_speaker_id_dashboard_is_routed_and_calls_api_helpers():
     assert 'openDashboard("speaker-id")' in sidebar_source
     assert "getSpeakerIdStatus" in api_source
     assert 'fetchJson("/api/speaker-id/status")' in api_source
+    assert "getSpeakerIdPhraseSets" in api_source
+    assert 'fetchJson("/api/speaker-id/phrase-sets")' in api_source
     assert "updateSpeakerIdConfig" in api_source
     assert "installService" in api_source
     assert 'sendJson("/api/services/install"' in api_source
@@ -35,6 +37,10 @@ def test_speaker_id_dashboard_covers_enrollment_profiles_and_diagnostics():
     assert "Assistant replies are muted for this capture window." in dashboard_source
     assert "MIN_ENROLLMENT_SAMPLES = 8" in dashboard_source
     assert 'RECOMMENDED_ENROLLMENT_SAMPLE_RANGE = "12-16"' in dashboard_source
+    assert 'DEFAULT_PHRASE_SET_VERSION = "speaker-id-phrase-set-v1"' in dashboard_source
+    assert "phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION" in dashboard_source
+    assert "phrase_tracking: profile.phrase_tracking" in dashboard_source
+    assert "<strong>Phrase Set</strong>" in dashboard_source
     assert "Refresh Captures" in dashboard_source
     assert "Add Sample" in dashboard_source
     assert "Hexe, turn on the lights in the living room." in dashboard_source

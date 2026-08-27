@@ -269,3 +269,4 @@ Task 240: Implement Track 2 pre-roll ambient reference and per-turn SNR metadata
 Task 241: Add endpoint ambient metric reporting for pre-roll and noise-floor quality analysis - Completed on 08/27/2026 09:39
 Task 242: Enable the lowest-resource production Speaker ID provider path - Completed on 08/27/2026 09:58
 Task 243: Add resource-aware Speaker ID enrollment readiness and confidence tiers - Completed on 08/27/2026 15:56
+Task 244: Add versioned enrollment and validation phrase set management - Completed on 08/27/2026 16:01

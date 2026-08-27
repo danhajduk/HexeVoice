@@ -197,6 +197,8 @@ HexeVoice exposes the operator/runtime API under its normal API base URL. If the
 
 - `GET /api/health`
 - `GET /api/speaker-id/status`
+- `GET /api/speaker-id/phrase-sets`
+- `GET /api/speaker-id/phrase-sets/holdout-selection`
 - `PUT /api/speaker-id/config`
 - `POST /api/speaker-id/enroll`
 - `POST /api/speaker-id/identify`
@@ -212,6 +214,7 @@ The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-i
 - The UI is organized by workflow: overview, enrollment, profiles, validation, and admin.
 - Configuration controls live under Admin and show helper health, enabled state, provider, model metadata, transport, thresholds, and raw-audio retention state.
 - Enrollment is a live endpoint-capture workflow. Operators select a registered endpoint, capture phrases in batches of three, add accepted endpoint captures as samples, record explicit consent metadata, and store local biometric templates with `retention_policy=embeddings_only`.
+- Enrollment and holdout validation phrase pools are versioned. The initial active set is `speaker-id-phrase-set-v1`, with 24 enrollment phrases and 24 holdout validation phrases matching the current roadmap. Enrollment samples, profile metadata, exports, and future validation reports carry the phrase-set version plus presented/accepted/skipped/failed-quality phrase tracking.
 - Starting a batch opens a short endpoint-scoped Speaker ID enrollment capture window. During that operator-started window, endpoint speech is accepted directly for enrollment without requiring a wake-word hit; completed phrases are transcribed and stored as capture candidates, but assistant routing and TTS playback are suppressed so the endpoint does not answer each enrollment phrase with the normal assistant fallback.
 - Enrollment requires at least 8 accepted phrase samples. The UI recommends 12-16 accepted samples when practical, and the service reports total accepted speech duration, per-sample duration, sample-rate compatibility, silence, low-level, clipping, and SNR warnings as redacted readiness metadata.
 - Normal enrollment does not expose local WAV upload or pasted base64 audio controls. Debug/import paths must remain separate from the operator enrollment flow.

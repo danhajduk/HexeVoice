@@ -26,6 +26,9 @@ from hexevoice.speaker_id.adapters import SpeakerEmbedding
 from hexevoice.speaker_id.adapters import SpeakerIdProviderUnavailable
 from hexevoice.speaker_id.adapters import SpeakerThresholds
 from hexevoice.speaker_id.adapters import create_speaker_id_adapter
+from hexevoice.speaker_id.phrase_sets import ACTIVE_SPEAKER_PHRASE_SET_VERSION
+from hexevoice.speaker_id.phrase_sets import active_phrase_set_payload
+from hexevoice.speaker_id.phrase_sets import select_holdout_phrases
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
 from hexevoice.voice.metric_schemas import speaker_confidence_tier
 
@@ -46,6 +49,10 @@ class AudioSampleRequest(BaseModel):
     audio_base64: str = Field(min_length=1)
     sample_rate_hz: int | None = None
     encoding: str | None = None
+    phrase_set_version: str | None = None
+    phrase_id: str | None = None
+    phrase_text: str | None = None
+    phrase_status: str | None = "accepted"
 
 
 class SpeakerProfileRequest(BaseModel):
@@ -65,6 +72,7 @@ class SpeakerConsentRequest(BaseModel):
 class SpeakerEnrollRequest(BaseModel):
     schema_version: int = 1
     request_id: str | None = None
+    phrase_set_version: str | None = None
     profile: SpeakerProfileRequest
     consent: SpeakerConsentRequest
     samples: list[AudioSampleRequest] = Field(min_length=1)
@@ -257,6 +265,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def status() -> dict[str, Any]:
         return {"schema_version": 1, **service_status()}
 
+    @app.get("/phrase-sets")
+    async def phrase_sets() -> dict[str, Any]:
+        return active_phrase_set_payload()
+
+    @app.get("/phrase-sets/holdout-selection")
+    async def holdout_selection(count: int = 6, seed: str | None = None) -> dict[str, Any]:
+        return select_holdout_phrases(count=count, seed=seed)
+
     @app.put("/config")
     async def update_config(payload: SpeakerIdConfigRequest) -> dict[str, Any]:
         nonlocal adapter, thresholds, enabled, last_error
@@ -406,6 +422,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "embedding": embedding,
             "sample": {
                 "sample_id": sample.sample_id,
+                "phrase_set_version": sample.phrase_set_version or payload_phrase_set_version(sample),
+                "phrase_id": sample.phrase_id,
+                "phrase_text": sample.phrase_text,
+                "phrase_status": sample.phrase_status or "accepted",
                 "audio_duration_ms": quality["duration_ms"],
                 "sample_rate_hz": quality["sample_rate_hz"],
                 "channels": quality["channels"],
@@ -426,6 +446,7 @@ def _profile_from_enrollment(
 ) -> dict[str, Any]:
     now = datetime.now(UTC).isoformat()
     speaker_public_id = _safe_public_id(payload.profile.speaker_public_id or payload.profile.display_name)
+    phrase_set_version = payload.phrase_set_version or ACTIVE_SPEAKER_PHRASE_SET_VERSION
     existing = _find_profile(existing_profiles, speaker_public_id=speaker_public_id)
     profile_id = str(existing.get("profile_id")) if existing else _unique_profile_id(speaker_public_id, existing_profiles)
     version = int(existing.get("profile_version") or 0) + 1 if existing else 1
@@ -436,6 +457,8 @@ def _profile_from_enrollment(
         "labels": [str(label).strip() for label in payload.profile.labels if str(label).strip()],
         "consent": payload.consent.model_dump(mode="json"),
         "profile_version": version,
+        "phrase_set_version": phrase_set_version,
+        "phrase_tracking": _phrase_tracking(samples, phrase_set_version=phrase_set_version),
         "created_at": existing.get("created_at") if existing else now,
         "updated_at": now,
         "provider_id": embeddings[0].provider_id,
@@ -574,6 +597,8 @@ def _public_profile(profile: dict[str, Any]) -> dict[str, Any]:
             "labels",
             "consent",
             "profile_version",
+            "phrase_set_version",
+            "phrase_tracking",
             "created_at",
             "updated_at",
             "provider_id",
@@ -587,6 +612,44 @@ def _public_profile(profile: dict[str, Any]) -> dict[str, Any]:
             "learning_eligible",
             "audio_retained",
         )
+    }
+
+
+def payload_phrase_set_version(sample: AudioSampleRequest) -> str:
+    return sample.phrase_set_version or ACTIVE_SPEAKER_PHRASE_SET_VERSION
+
+
+def _phrase_tracking(samples: list[dict[str, Any]], *, phrase_set_version: str) -> dict[str, Any]:
+    presented = []
+    accepted = []
+    skipped = []
+    failed_quality = []
+    for sample in samples:
+        phrase = {
+            "phrase_set_version": sample.get("phrase_set_version") or phrase_set_version,
+            "phrase_id": sample.get("phrase_id"),
+            "text": sample.get("phrase_text"),
+            "status": sample.get("phrase_status") or "accepted",
+            "sample_id": sample.get("sample_id"),
+        }
+        if not (phrase["phrase_id"] or phrase["text"]):
+            continue
+        presented.append(phrase)
+        status = str(phrase["status"])
+        if status == "accepted":
+            accepted.append(phrase)
+        elif status == "skipped":
+            skipped.append(phrase)
+        elif status in {"failed_quality", "rejected"}:
+            failed_quality.append(phrase)
+    return {
+        "schema_version": 1,
+        "phrase_set_version": phrase_set_version,
+        "presented": presented,
+        "accepted": accepted,
+        "skipped": skipped,
+        "failed_quality": failed_quality,
+        "used_for_validation": [],
     }
 
 
