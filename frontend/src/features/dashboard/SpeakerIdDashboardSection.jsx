@@ -8,6 +8,7 @@ import {
   getSpeakerIdProfiles,
   getSpeakerIdStatus,
   installService,
+  startSpeakerIdEnrollmentCaptureWindow,
   updateSpeakerIdConfig,
   wakeRecordingAudioUrl,
 } from "../../api/client";
@@ -411,10 +412,25 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   }
 
   async function handleStartCaptureWindow() {
-    const startedAt = new Date().toISOString();
-    setCaptureStartedAt(startedAt);
-    setCaptureCandidates([]);
-    await loadCaptureCandidates({ since: startedAt });
+    setBusy("captures");
+    setNotice("");
+    setError("");
+    try {
+      const payload = await startSpeakerIdEnrollmentCaptureWindow({
+        endpointId: selectedEndpointId,
+        ttlSeconds: 300,
+      });
+      const window = payload.window || {};
+      const startedAt = window.started_at || new Date().toISOString();
+      setCaptureStartedAt(startedAt);
+      setCaptureCandidates([]);
+      setNotice("Endpoint enrollment capture is active. Assistant replies are muted for this capture window.");
+      await loadCaptureCandidates({ since: startedAt });
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
   }
 
   async function handleAddCaptureSample(capture) {

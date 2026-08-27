@@ -37,6 +37,7 @@ from hexevoice.voice.contracts import (
     project_voice_state,
 )
 from hexevoice.voice.pipeline import TtsSynthesis, VoiceTurnAudioSummary, VoiceTurnPipeline
+from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
 from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
@@ -229,6 +230,7 @@ class VoiceSessionManager:
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
+        self._speaker_enrollment_capture_windows: dict[str, dict[str, object]] = {}
 
     def _current_runtime(self) -> EndpointSessionRuntime:
         runtime_context = getattr(self, "_runtime_context", None)
@@ -1462,6 +1464,147 @@ class VoiceSessionManager:
         self._set_session_state("transcribing")
         events: list[VoiceEventEnvelope] = []
         wake_recording = self._record_accepted_wake_session(session)
+        enrollment_capture_window = self._active_speaker_enrollment_capture_window(session.endpoint_id)
+        if enrollment_capture_window is not None and self._turn_pipeline is not None:
+            audio_summary = VoiceTurnAudioSummary(
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+                chunk_count=self._chunk_count,
+                sample_rate_hz=self._audio_format.sample_rate_hz if self._audio_format else None,
+                encoding=self._audio_format.encoding if self._audio_format else None,
+                channels=self._audio_format.channels if self._audio_format else 1,
+                audio_bytes=b"".join(self._audio_chunks),
+                ambient_audio_bytes=b"".join(self._ambient_audio_chunks) or None,
+                endpoint_audio_metrics=self._endpoint_audio_metrics(),
+            )
+            stt_started_at = datetime.now(UTC)
+            self._append_latency_point("stt_start", "STT start", stt_started_at)
+            turn_started_at = datetime.now(UTC)
+            transcript = self._turn_pipeline.transcribe_audio(audio_summary)
+            stt_ended_at = datetime.now(UTC)
+            stt_ms = round((stt_ended_at - stt_started_at).total_seconds() * 1000, 2)
+            audio_quality = analyze_pcm_s16le_audio(
+                audio_summary.audio_bytes,
+                sample_rate_hz=audio_summary.sample_rate_hz,
+                channels=audio_summary.channels,
+                encoding=audio_summary.encoding,
+                ambient_audio_bytes=audio_summary.ambient_audio_bytes,
+                endpoint_audio_metrics=audio_summary.endpoint_audio_metrics,
+            )
+            total_ms = round((datetime.now(UTC) - turn_started_at).total_seconds() * 1000, 2)
+            self._append_latency_point("stt_end", "STT end", stt_ended_at)
+            self._last_transcript_metadata = {
+                "provider_id": transcript.provider_id,
+                "model": transcript.model,
+                "confidence": transcript.confidence,
+                "duration_ms": transcript.duration_ms,
+                "text_chars": len(transcript.text or ""),
+                "error": transcript.error,
+                "audio_quality": audio_quality.as_context(),
+                "speaker_enrollment_capture": {
+                    "mode": enrollment_capture_window.get("mode"),
+                    "started_at": enrollment_capture_window.get("started_at"),
+                    "expires_at": enrollment_capture_window.get("expires_at"),
+                },
+            }
+            transcript_metadata = {**self._last_transcript_metadata, "text": transcript.text}
+            self._last_turn_timings = {
+                "stt_ms": stt_ms,
+                "assistant_ms": 0.0,
+                "tts_ms": 0.0,
+                "total_ms": total_ms,
+            }
+            self._update_active_session_history(
+                transcript=transcript_metadata,
+                turn_timings=self._last_turn_timings,
+                speaker_enrollment_capture={
+                    "mode": enrollment_capture_window.get("mode"),
+                    "started_at": enrollment_capture_window.get("started_at"),
+                    "expires_at": enrollment_capture_window.get("expires_at"),
+                    "tts_suppressed": True,
+                },
+            )
+            wake_recording = self._attach_wake_recording_transcript(
+                wake_recording,
+                transcript=transcript_metadata,
+            )
+            record_voice_event(
+                "speaker_id.enrollment_capture.completed",
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+                provider_id=transcript.provider_id,
+                model=transcript.model,
+                confidence=transcript.confidence,
+                duration_ms=transcript.duration_ms,
+                text_chars=len(transcript.text or ""),
+                transcript_text=transcript.text,
+                error=transcript.error,
+                stt_ms=stt_ms,
+                total_ms=total_ms,
+                audio_quality=audio_quality.as_context(),
+            )
+            if transcript.error:
+                error = self._error_event(
+                    endpoint_id=session.endpoint_id,
+                    session_id=session.session_id,
+                    code="stt_failed",
+                    message=transcript.error,
+                    recoverable=True,
+                )
+                self._set_session_state("failed")
+                self._persist_active_session_history(
+                    session,
+                    completion_reason="stt_failed",
+                    error_state=error.payload,
+                    wake_recording=wake_recording,
+                )
+                self._release_active_session_wake_stream()
+                self._clear_active_session_runtime()
+                return [error]
+            events.append(
+                self._state_event(
+                    "transcript.final",
+                    session,
+                    extra_payload=VoiceTranscriptPayload(
+                        text=transcript.text,
+                        confidence=transcript.confidence,
+                    ).model_dump(mode="json"),
+                )
+            )
+            self._last_transcript = transcript.text
+            self._last_response = "Speaker enrollment capture recorded."
+            self._last_assistant = {
+                "provider_id": "speaker_id_enrollment_capture",
+                "duration_ms": 0.0,
+                "text": self._last_response,
+                "text_chars": len(self._last_response),
+                "error": None,
+                "handled_locally": True,
+                "provider_metadata": {"tts_suppressed": True},
+            }
+            self._last_tts = None
+            self._update_active_session_history(assistant=self._last_assistant)
+            self._set_session_state("local_command")
+            self._set_session_state("completed")
+            events.append(
+                self._state_event(
+                    "session.completed",
+                    session,
+                    extra_payload={
+                        "completion_reason": "speaker_enrollment_capture",
+                        "chunk_count": self._chunk_count,
+                        **({"wake_recording": wake_recording} if wake_recording else {}),
+                    },
+                )
+            )
+            self._persist_active_session_history(
+                session,
+                completion_reason="speaker_enrollment_capture",
+                wake_recording=wake_recording,
+            )
+            self._release_active_session_wake_stream()
+            self._clear_active_session_runtime()
+            return events
         if self._turn_pipeline is not None:
             stt_started_at = datetime.now(UTC)
             self._append_latency_point("stt_start", "STT start", stt_started_at)
@@ -1759,6 +1902,9 @@ class VoiceSessionManager:
                 "wake_history": list(self._wake_history),
                 "wake_confidence_history": list(self._wake_confidence_history),
                 "wake_recordings": self._wake_recorder.status() if self._wake_recorder else {"enabled": False},
+                "speaker_enrollment_capture": {
+                    "active_windows": self.speaker_enrollment_capture_windows(),
+                },
                 "session_history": session_history,
                 "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
                 "supported_actions": {
@@ -1780,6 +1926,49 @@ class VoiceSessionManager:
         if self._session_history_store is None:
             return []
         return self._session_history_store.list_sessions(limit=limit, endpoint_id=endpoint_id)
+
+    def start_speaker_enrollment_capture_window(self, *, endpoint_id: str, ttl_seconds: int = 300) -> dict[str, object]:
+        endpoint_id = str(endpoint_id or "").strip()
+        if not endpoint_id:
+            raise ValueError("endpoint_id_required")
+        ttl_seconds = max(30, min(int(ttl_seconds), 900))
+        now = datetime.now(UTC)
+        window = {
+            "endpoint_id": endpoint_id,
+            "mode": "speaker_id_enrollment",
+            "started_at": now.isoformat(),
+            "expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
+            "ttl_seconds": ttl_seconds,
+            "active": True,
+        }
+        self._speaker_enrollment_capture_windows[endpoint_id] = window
+        return dict(window)
+
+    def speaker_enrollment_capture_windows(self) -> list[dict[str, object]]:
+        self._expire_speaker_enrollment_capture_windows()
+        return [dict(window) for window in self._speaker_enrollment_capture_windows.values()]
+
+    def _expire_speaker_enrollment_capture_windows(self) -> None:
+        now = datetime.now(UTC)
+        expired: list[str] = []
+        for endpoint_id, window in self._speaker_enrollment_capture_windows.items():
+            expires_at = str(window.get("expires_at") or "")
+            try:
+                expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                if expires_dt.tzinfo is None:
+                    expires_dt = expires_dt.replace(tzinfo=UTC)
+            except ValueError:
+                expired.append(endpoint_id)
+                continue
+            if expires_dt <= now:
+                expired.append(endpoint_id)
+        for endpoint_id in expired:
+            self._speaker_enrollment_capture_windows.pop(endpoint_id, None)
+
+    def _active_speaker_enrollment_capture_window(self, endpoint_id: str) -> dict[str, object] | None:
+        self._expire_speaker_enrollment_capture_windows()
+        window = self._speaker_enrollment_capture_windows.get(endpoint_id)
+        return dict(window) if window else None
 
     def get_session_history(self, session_id: str) -> dict[str, Any] | None:
         if self._session_history_store is None:

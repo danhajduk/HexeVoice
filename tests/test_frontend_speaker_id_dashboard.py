@@ -15,6 +15,8 @@ def test_speaker_id_dashboard_is_routed_and_calls_api_helpers():
     assert "updateSpeakerIdConfig" in api_source
     assert "installService" in api_source
     assert 'sendJson("/api/services/install"' in api_source
+    assert "startSpeakerIdEnrollmentCaptureWindow" in api_source
+    assert 'sendJson("/api/speaker-id/enrollment-capture-windows"' in api_source
     assert "getSpeakerIdEnrollmentCaptures" in api_source
     assert 'fetchJson(`/api/speaker-id/enrollment-captures?' in api_source
     assert "enrollSpeakerIdProfile" in api_source
@@ -30,6 +32,7 @@ def test_speaker_id_dashboard_covers_enrollment_profiles_and_diagnostics():
     assert "Live Capture" in dashboard_source
     assert "Three-Phrase Capture" in dashboard_source
     assert "Start Batch Capture" in dashboard_source
+    assert "Assistant replies are muted for this capture window." in dashboard_source
     assert "Refresh Captures" in dashboard_source
     assert "Add Sample" in dashboard_source
     assert "Hexe, turn on the lights in the living room." in dashboard_source

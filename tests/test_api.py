@@ -1351,6 +1351,31 @@ def test_speaker_id_enrollment_captures_list_recent_endpoint_wake_recordings(tmp
     assert "wav_path" not in capture
 
 
+def test_speaker_id_enrollment_capture_window_marks_endpoint_active(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/speaker-id/enrollment-capture-windows",
+        json={"endpoint_id": "esp-pe-1", "ttl_seconds": 120},
+    )
+
+    assert response.status_code == 200
+    window = response.json()["window"]
+    assert window["endpoint_id"] == "esp-pe-1"
+    assert window["mode"] == "speaker_id_enrollment"
+    assert window["ttl_seconds"] == 120
+    assert window["active"] is True
+    status = client.get("/api/voice/status").json()
+    assert status["speaker_enrollment_capture"]["active_windows"][0]["endpoint_id"] == "esp-pe-1"
+
+
 def test_tts_warmup_voice_selection_prefers_configured_warm_voices():
     settings = Settings(
         voice_tts_provider="piper",

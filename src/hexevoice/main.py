@@ -939,6 +939,19 @@ def create_app(
             "captures": captures,
         }
 
+    @app.post("/api/speaker-id/enrollment-capture-windows")
+    async def speaker_id_start_enrollment_capture_window(payload: dict[str, object]) -> dict[str, object]:
+        endpoint_id = str(payload.get("endpoint_id") or "").strip()
+        try:
+            ttl_seconds = int(payload.get("ttl_seconds") or 300)
+            window = voice_session_manager.start_speaker_enrollment_capture_window(
+                endpoint_id=endpoint_id,
+                ttl_seconds=ttl_seconds,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"schema_version": 1, "window": window}
+
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
         response = assistant_service.handle_turn(payload)

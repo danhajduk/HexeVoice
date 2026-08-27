@@ -299,6 +299,12 @@ export async function getSpeakerIdEnrollmentCaptures({ endpointId, since, limit 
   return fetchJson(`/api/speaker-id/enrollment-captures?${params.toString()}`);
 }
 
+export async function startSpeakerIdEnrollmentCaptureWindow({ endpointId, ttlSeconds = 300 }) {
+  return sendJson("/api/speaker-id/enrollment-capture-windows", {
+    body: { endpoint_id: endpointId, ttl_seconds: ttlSeconds },
+  });
+}
+
 export async function enrollSpeakerIdProfile(payload) {
   return sendJson("/api/speaker-id/enroll", { body: payload });
 }
