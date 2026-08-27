@@ -1018,6 +1018,16 @@ class VoiceSessionManager:
             self._connected_endpoint_id = event.endpoint_id
             log.info("Voice endpoint bound to WebSocket: endpoint_id=%s", event.endpoint_id)
 
+        if self._can_merge_speaker_enrollment_event(event):
+            log.debug(
+                "Merging Speaker ID enrollment event into active capture: endpoint_id=%s active_session_id=%s incoming_session_id=%s event_type=%s",
+                event.endpoint_id,
+                self._active_session.session_id if self._active_session else None,
+                event.session_id,
+                event.event_type,
+            )
+            event = event.model_copy(update={"session_id": self._active_session.session_id})
+
         handlers = {
             "session.start": self._handle_session_start,
             "audio.chunk": self._handle_audio_chunk,
@@ -1037,6 +1047,25 @@ class VoiceSessionManager:
 
     def _handle_session_start(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         if self._active_session is not None:
+            if self._should_complete_speaker_enrollment_on_new_session(event):
+                log.info(
+                    "Completing Speaker ID enrollment capture before new session: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
+                    event.endpoint_id,
+                    self._active_session.session_id,
+                    event.session_id,
+                )
+                completed_events = self._handle_audio_end(
+                    event.model_copy(
+                        update={
+                            "event_type": "audio.end",
+                            "session_id": self._active_session.session_id,
+                            "payload": {"reason": "superseded_by_new_enrollment_session"},
+                        }
+                    )
+                )
+                if self._active_session is None:
+                    return completed_events + self._handle_session_start(event)
+                return completed_events
             if self._can_merge_playback_interrupt_event(event):
                 log.debug(
                     "Reusing active playback interrupt session: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
@@ -1203,6 +1232,34 @@ class VoiceSessionManager:
             and self._active_session.session_state == "idle"
             and self._active_playback_interrupt(event.endpoint_id) is not None
             and event.event_type in {"session.start", "vad.speech_started", "audio.chunk", "audio.end"}
+        )
+
+    def _active_session_is_speaker_enrollment_capture(self) -> bool:
+        if self._active_session is None or self._active_session_history is None:
+            return False
+        wake = self._active_session_history.get("wake")
+        return isinstance(wake, dict) and wake.get("source") == "speaker_id_enrollment_capture"
+
+    def _can_merge_speaker_enrollment_event(self, event: VoiceEventEnvelope) -> bool:
+        return (
+            self._active_session is not None
+            and self._active_session.endpoint_id == event.endpoint_id
+            and event.session_id != self._active_session.session_id
+            and self._active_session_is_speaker_enrollment_capture()
+            and self._active_speaker_enrollment_capture_window(event.endpoint_id) is not None
+            and event.event_type in {"vad.speech_started", "audio.chunk", "audio.end", "session.cancel"}
+        )
+
+    def _should_complete_speaker_enrollment_on_new_session(self, event: VoiceEventEnvelope) -> bool:
+        return (
+            self._active_session is not None
+            and self._active_session.endpoint_id == event.endpoint_id
+            and event.session_id != self._active_session.session_id
+            and event.event_type == "session.start"
+            and self._active_session.session_state in {"listening", "capturing"}
+            and self._active_session_is_speaker_enrollment_capture()
+            and self._active_speaker_enrollment_capture_window(event.endpoint_id) is not None
+            and self._chunk_count > 0
         )
 
     def _handle_audio_chunk(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
