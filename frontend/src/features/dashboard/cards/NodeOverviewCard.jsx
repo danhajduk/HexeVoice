@@ -1,6 +1,6 @@
 export function NodeOverviewCard({ status, onboarding, operational }) {
   return (
-    <section className="card stack panel">
+    <section className="card stack panel overview-panel">
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Node Overview</p>

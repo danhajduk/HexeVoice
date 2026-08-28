@@ -1,11 +1,33 @@
-export function CoreConnectionCard({ status, onboarding, governance, operational }) {
+function formatLocalDateTime(value) {
+  if (!value) {
+    return "pending";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function CoreConnectionCard({ status, onboarding, governance, operational, openSetup }) {
+  const issuedAt = formatLocalDateTime(operational?.last_governance_issued_at || governance?.issued_timestamp);
+  const refreshedAt = formatLocalDateTime(operational?.last_governance_refresh_request_at);
+
   return (
-    <section className="card stack panel">
+    <section className="card stack panel overview-panel">
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Core Link</p>
           <h2 className="panel-title">Core And Governance</h2>
         </div>
+        <button className="btn btn-ghost btn-compact" type="button" onClick={openSetup}>
+          Setup
+        </button>
       </div>
       <dl className="facts">
         <div>
@@ -25,14 +47,14 @@ export function CoreConnectionCard({ status, onboarding, governance, operational
           <dd>{operational?.governance_freshness_state || status?.governance_freshness_state || "pending"}</dd>
         </div>
       </dl>
-      <div className="state-grid">
+      <div className="state-grid state-grid-single">
         <div className="state-row">
           <span className="state-label">Last issue</span>
-          <span className="state-value">{operational?.last_governance_issued_at || governance?.issued_timestamp || "pending"}</span>
+          <span className="state-value">{issuedAt}</span>
         </div>
         <div className="state-row">
           <span className="state-label">Last refresh request</span>
-          <span className="state-value">{operational?.last_governance_refresh_request_at || "pending"}</span>
+          <span className="state-value">{refreshedAt}</span>
         </div>
       </div>
     </section>

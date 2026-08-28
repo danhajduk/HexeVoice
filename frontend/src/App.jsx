@@ -53,6 +53,7 @@ const MIGRATION_ONLY_SETUP_STEPS = new Set(["migration", "reauth"]);
 const NEW_ONLY_SETUP_STEPS = new Set(["onboard"]);
 
 const VOICE_ENDPOINT_REFRESH_MS = 2000;
+const OVERVIEW_REFRESH_MS = 3000;
 const VOICE_INTENTS_REFRESH_MS = 5000;
 const RUNTIME_REFRESH_MS = 2000;
 const SETUP_HEALTH_REFRESH_MS = 5000;
@@ -584,6 +585,46 @@ export default function App() {
   }, [showSetupPage, setupSection, status?.trust_state, status?.current_step_id, onboarding?.trust_state, onboarding?.current_step_id]);
 
   useEffect(() => {
+    if (showSetupPage || dashboardSection !== "overview") {
+      return undefined;
+    }
+
+    let mounted = true;
+
+    async function refreshVisibleOverview() {
+      try {
+        const [statusPayload, operationalPayload, voicePayload, endpointPayload] = await Promise.all([
+          getNodeStatus().catch(() => null),
+          getOperationalStatus().catch(() => null),
+          getVoiceStatus().catch(() => null),
+          getEndpointStatus().catch(() => null),
+        ]);
+        if (!mounted) {
+          return;
+        }
+        if (statusPayload) {
+          setStatus(statusPayload);
+        }
+        setOperational(operationalPayload);
+        setVoiceStatus(voicePayload);
+        setEndpointStatus(endpointPayload);
+      } catch (err) {
+        if (mounted) {
+          setError(String(err.message || err));
+        }
+      }
+    }
+
+    refreshVisibleOverview();
+    const timer = window.setInterval(refreshVisibleOverview, OVERVIEW_REFRESH_MS);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(timer);
+    };
+  }, [dashboardSection, showSetupPage]);
+
+  useEffect(() => {
     if (showSetupPage || dashboardSection !== "voice-endpoint") {
       return undefined;
     }
@@ -802,6 +843,8 @@ export default function App() {
         onboarding={onboarding}
         governance={governance}
         operational={operational}
+        voiceStatus={voiceStatus}
+        endpointStatus={endpointStatus}
         openSetup={openSetup}
         openVoiceEndpoint={() => openDashboardSection("voice-endpoint")}
         onRefresh={refresh}
@@ -816,10 +859,12 @@ export default function App() {
           nodeState={nodeState}
           onboarding={onboarding}
           status={status}
+          mode={showSetupPage ? "setup" : "dashboard"}
           restartSetup={handleRestartSetup}
           restartingSetup={restartingSetup}
           dashboardEnabled={setupComplete}
           openDashboard={openDashboard}
+          onRefresh={refresh}
           openProvider={() => {}}
         />
 
