@@ -957,8 +957,29 @@
 
 .intent-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
+}
+
+.intent-main-layout {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 0.36fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.intent-registry-panel,
+.intent-tester-panel,
+.intent-detail-panel {
+  min-width: 0;
+}
+
+.intent-filter-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(180px, 0.24fr);
+  gap: 12px;
+  align-items: end;
 }
 
 .intent-table-wrap {
@@ -1044,7 +1065,7 @@
 
 .intent-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
 }
 
@@ -1052,7 +1073,7 @@
   display: grid;
   gap: 12px;
   width: 100%;
-  min-height: 224px;
+  min-height: 190px;
   padding: 16px;
   color: hsl(var(--sx-text));
   text-align: left;
@@ -1063,7 +1084,8 @@
 }
 
 .intent-card:hover,
-.intent-card:focus-visible {
+.intent-card:focus-visible,
+.intent-card-selected {
   border-color: hsl(var(--sx-accent) / 0.7);
   background: hsl(var(--sx-text) / 0.055);
   outline: none;
@@ -1081,11 +1103,18 @@
 .intent-card-updated {
   color: hsl(var(--sx-text-muted));
   font-size: 12px;
+  text-align: right;
 }
 
 .intent-card-title-block {
   display: grid;
   gap: 6px;
+  min-width: 0;
+}
+
+.intent-card-title-block .inline-code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .intent-card-facts {
@@ -1112,30 +1141,13 @@
 .intent-card-examples {
   color: hsl(var(--sx-text-muted));
   font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
-.intent-detail-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 55;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(8px);
-}
-
-.intent-detail-popout {
-  width: min(980px, 100%);
-  max-height: min(780px, calc(100vh - 48px));
-  overflow: auto;
+.intent-detail-inline {
   display: grid;
   gap: 18px;
-  padding: 22px;
-  border: 1px solid hsl(var(--sx-border));
-  border-radius: var(--sx-radius-lg);
-  background: hsl(var(--sx-panel));
-  box-shadow: var(--sx-shadow-3);
+  min-width: 0;
 }
 
 .intent-detail-summary {
@@ -1144,7 +1156,7 @@
 
 .intent-detail-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -1518,9 +1530,19 @@
 
 .intent-test-form {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) auto auto;
+  grid-template-columns: 1fr;
   gap: 12px;
-  align-items: end;
+}
+
+.intent-test-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.intent-live-invoke-btn {
+  border-color: hsl(var(--sx-warning) / 0.35);
+  color: hsl(var(--sx-warning));
 }
 
 .intent-test-result {
@@ -2590,7 +2612,11 @@ select.field-input {
   .status-grid,
   .fact-grid,
   .intent-summary-grid,
+  .intent-main-layout,
+  .intent-filter-row,
   .intent-test-form,
+  .intent-test-actions,
+  .intent-card-grid,
   .intent-test-result-grid,
   .intent-audio-result,
   .intent-detail-grid,
