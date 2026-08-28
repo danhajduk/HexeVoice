@@ -587,6 +587,9 @@ def _rank_profiles(candidate: SpeakerEmbedding, profiles: list[dict[str, Any]]) 
                 "provider_id": candidate.provider_id,
                 "model_id": candidate.model_id,
                 "enrollment_readiness": profile.get("enrollment_readiness"),
+                "age_band": profile.get("age_band"),
+                "age_restriction_class": profile.get("age_restriction_class"),
+                "admin_eligible": profile.get("admin_eligible"),
             }
         )
     return sorted(ranked, key=lambda item: float(item["score"]), reverse=True)
@@ -604,6 +607,9 @@ def _match_payload(match: dict[str, Any], score_margin: float) -> dict[str, Any]
         "score_margin": score_margin,
         "provider": match.get("provider_id"),
         "model_id": match.get("model_id"),
+        "age_band": match.get("age_band"),
+        "age_restriction_class": match.get("age_restriction_class"),
+        "admin_eligible": bool(match.get("admin_eligible")),
         "learning_eligible": False,
         "profile_readiness": match.get("enrollment_readiness"),
     }

@@ -58,6 +58,7 @@ DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = {
     "48k": 48000,
 }
 PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES
+ENDPOINT_AUDIENCE_MODES = {"general", "child_safe", "teen_safe", "adult_unrestricted"}
 
 
 @dataclass(frozen=True)
@@ -142,6 +143,9 @@ class SpeakerIdentityResult:
     score_margin: float | None = None
     provider: str | None = None
     model_id: str | None = None
+    age_band: str | None = None
+    age_restriction_class: str | None = None
+    admin_eligible: bool = False
     reason: str | None = None
     duration_ms: float | None = None
     error: str | None = None
@@ -160,6 +164,9 @@ class SpeakerIdentityResult:
             "score_margin": self.score_margin,
             "provider": self.provider,
             "model_id": self.model_id,
+            "age_band": self.age_band,
+            "age_restriction_class": self.age_restriction_class,
+            "admin_eligible": self.admin_eligible,
             "reason": self.reason,
             "duration_ms": self.duration_ms,
             "error": self.error,
@@ -1708,6 +1715,8 @@ class VoiceTurnPipeline:
         speaker_id_policy_default: str = "use_if_ready",
         speaker_id_endpoint_scope: list[str] | None = None,
         speaker_id_personalization_enabled: bool = False,
+        endpoint_audience_policies: dict[str, dict[str, Any]] | None = None,
+        endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
     ) -> None:
         self._assistant_service = assistant_service
         self._stt_adapter = stt_adapter or DeterministicSpeechToTextAdapter()
@@ -1719,6 +1728,8 @@ class VoiceTurnPipeline:
         self._speaker_id_policy_default = _normalize_speaker_identity_policy(speaker_id_policy_default)
         self._speaker_id_endpoint_scope = set(speaker_id_endpoint_scope or [])
         self._speaker_id_personalization_enabled = speaker_id_personalization_enabled
+        self._endpoint_audience_policies = dict(endpoint_audience_policies or {})
+        self._endpoint_audience_policy_provider = endpoint_audience_policy_provider
 
     def complete_turn(self, audio: VoiceTurnAudioSummary) -> VoiceTurnResult:
         turn_started_at = time.perf_counter()
@@ -1764,7 +1775,28 @@ class VoiceTurnPipeline:
             policy=speaker_policy,
             current=speaker_identity,
         )
-        if self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
+        speaker_identity = self._speaker_identity_for_audience_override(
+            audio=audio,
+            future=speaker_future,
+            text=transcript.text,
+            command=None,
+            metadata=None,
+            current=speaker_identity,
+        )
+        audience_decision = self._audience_policy_decision(
+            audio=audio,
+            text=transcript.text,
+            command=None,
+            metadata=None,
+            speaker_identity=speaker_identity,
+        )
+        if audience_decision["blocked"]:
+            assistant_response = self._audience_policy_refusal_response(
+                audio=audio,
+                transcript_text=transcript.text,
+                decision=audience_decision,
+            )
+        elif self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
             assistant_response = self._speaker_identity_clarification_response(
                 audio=audio,
                 transcript_text=transcript.text,
@@ -1782,7 +1814,11 @@ class VoiceTurnPipeline:
         if assistant_response.heard_text != transcript.text:
             transcript = replace(transcript, text=assistant_response.heard_text)
         fallback_transcribe = getattr(self._stt_adapter, "maybe_fallback_transcribe", None)
-        if callable(fallback_transcribe) and not self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
+        if (
+            callable(fallback_transcribe)
+            and not audience_decision["blocked"]
+            and not self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity)
+        ):
             fallback_started_at = time.perf_counter()
             fallback = fallback_transcribe(
                 audio,
@@ -1815,7 +1851,28 @@ class VoiceTurnPipeline:
                     policy=speaker_policy,
                     current=speaker_identity,
                 )
-                if self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
+                speaker_identity = self._speaker_identity_for_audience_override(
+                    audio=audio,
+                    future=speaker_future,
+                    text=transcript.text,
+                    command=None,
+                    metadata=None,
+                    current=speaker_identity,
+                )
+                audience_decision = self._audience_policy_decision(
+                    audio=audio,
+                    text=transcript.text,
+                    command=None,
+                    metadata=None,
+                    speaker_identity=speaker_identity,
+                )
+                if audience_decision["blocked"]:
+                    assistant_response = self._audience_policy_refusal_response(
+                        audio=audio,
+                        transcript_text=transcript.text,
+                        decision=audience_decision,
+                    )
+                elif self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity):
                     assistant_response = self._speaker_identity_clarification_response(
                         audio=audio,
                         transcript_text=transcript.text,
@@ -1852,6 +1909,27 @@ class VoiceTurnPipeline:
                     transcript_text=transcript.text,
                     speaker_identity=speaker_identity,
                 )
+        speaker_identity = self._speaker_identity_for_audience_override(
+            audio=audio,
+            future=speaker_future,
+            text=transcript.text,
+            command=assistant_response.command,
+            metadata=assistant_response.provider_metadata,
+            current=speaker_identity,
+        )
+        final_audience_decision = self._audience_policy_decision(
+            audio=audio,
+            text=transcript.text,
+            command=assistant_response.command,
+            metadata=assistant_response.provider_metadata,
+            speaker_identity=speaker_identity,
+        )
+        if final_audience_decision["blocked"]:
+            assistant_response = self._audience_policy_refusal_response(
+                audio=audio,
+                transcript_text=transcript.text,
+                decision=final_audience_decision,
+            )
         assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
         tts_started_at = time.perf_counter()
         tts = self._tts_adapter.synthesize(
@@ -2055,6 +2133,129 @@ class VoiceTurnPipeline:
             },
         )
 
+    def _audience_policy_decision(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        text: str | None,
+        command: str | None,
+        metadata: dict[str, Any] | None,
+        speaker_identity: SpeakerIdentityResult | None,
+    ) -> dict[str, Any]:
+        endpoint_policy = self._endpoint_audience_policy(audio.endpoint_id)
+        audience_class = _stricter_audience_class(endpoint_policy.get("audience_mode"), speaker_identity.age_band if speaker_identity else None)
+        if audience_class == "general":
+            return {
+                "blocked": False,
+                "audience_class": audience_class,
+                "endpoint_audience_mode": endpoint_policy.get("audience_mode", "general"),
+                "override_applied": False,
+            }
+        restricted_reason = _restricted_content_reason(text=text, command=command, metadata=metadata)
+        if not restricted_reason:
+            return {
+                "blocked": False,
+                "audience_class": audience_class,
+                "endpoint_audience_mode": endpoint_policy.get("audience_mode", "general"),
+                "override_applied": False,
+            }
+        if _adult_admin_override_allowed(
+            endpoint_policy,
+            speaker_identity,
+            metadata=metadata,
+            restricted_reason=restricted_reason,
+        ):
+            return {
+                "blocked": False,
+                "audience_class": audience_class,
+                "endpoint_audience_mode": endpoint_policy.get("audience_mode", "general"),
+                "override_applied": True,
+            }
+        return {
+            "blocked": True,
+            "reason": restricted_reason,
+            "audience_class": audience_class,
+            "endpoint_audience_mode": endpoint_policy.get("audience_mode", "general"),
+            "override_applied": False,
+            "speaker_status": speaker_identity.status if speaker_identity else "missing",
+            "speaker_age_band": speaker_identity.age_band if speaker_identity else None,
+        }
+
+    def _endpoint_audience_policy(self, endpoint_id: str) -> dict[str, Any]:
+        if self._endpoint_audience_policy_provider is not None:
+            try:
+                provided = self._endpoint_audience_policy_provider(endpoint_id)
+                if isinstance(provided, dict):
+                    return _normalized_endpoint_audience_policy(provided)
+            except Exception:
+                log.warning("Endpoint audience policy lookup failed for endpoint_id=%s", endpoint_id, exc_info=True)
+        return _normalized_endpoint_audience_policy(self._endpoint_audience_policies.get(endpoint_id) or {})
+
+    def _speaker_identity_for_audience_override(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        future: Future[SpeakerIdentityResult] | None,
+        text: str | None,
+        command: str | None,
+        metadata: dict[str, Any] | None,
+        current: SpeakerIdentityResult | None,
+    ) -> SpeakerIdentityResult | None:
+        endpoint_policy = self._endpoint_audience_policy(audio.endpoint_id)
+        endpoint_mode = endpoint_policy.get("audience_mode")
+        if endpoint_mode not in {"child_safe", "teen_safe"} or not endpoint_policy.get("adult_override_enabled"):
+            return current
+        if not _restricted_content_reason(text=text, command=command, metadata=metadata):
+            return current
+        if current is not None and current.status in {"identified", "verified"}:
+            return current
+        return self._speaker_identity_for_policy(
+            audio=audio,
+            future=future,
+            policy="required",
+            current=current,
+        )
+
+    def _audience_policy_refusal_response(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        transcript_text: str | None,
+        decision: dict[str, Any],
+    ) -> AssistantTurnResponse:
+        audience_class = str(decision.get("audience_class") or "general")
+        reply = (
+            "I can't help with that from this endpoint. Please ask your grown-up to help."
+            if audience_class == "child"
+            else "I can't help with that from this endpoint."
+        )
+        return AssistantTurnResponse(
+            endpoint_id=audio.endpoint_id,
+            session_id=audio.session_id,
+            heard_text=transcript_text or "",
+            reply_text=reply,
+            spoken_text=reply,
+            handled_locally=True,
+            command="voice.audience_policy.refused",
+            device_state="speaking",
+            provider_id="audience_policy",
+            provider_metadata={
+                "audience_policy": {
+                    "schema_version": 1,
+                    "blocked": True,
+                    "reason": decision.get("reason"),
+                    "audience_class": audience_class,
+                    "endpoint_audience_mode": decision.get("endpoint_audience_mode"),
+                    "override_applied": False,
+                }
+            },
+            conversation_followup={
+                "type": "audience_policy_refusal",
+                "reason": decision.get("reason"),
+                "audience_class": audience_class,
+            },
+        )
+
     def _assistant_request(
         self,
         *,
@@ -2127,6 +2328,7 @@ class VoiceTurnPipeline:
                 "personalization_enabled": self._speaker_id_personalization_enabled,
                 "configured": self._speaker_id_client is not None,
             },
+            "endpoint_audience_policies": dict(self._endpoint_audience_policies),
         }
 
     def synthesize_reply(
@@ -2197,6 +2399,9 @@ def _speaker_identity_result_from_response(
         score_margin=_optional_float(match.get("score_margin")),
         provider=str(match.get("provider")) if match.get("provider") else None,
         model_id=str(match.get("model_id")) if match.get("model_id") else None,
+        age_band=str(match.get("age_band")) if match.get("age_band") else None,
+        age_restriction_class=str(match.get("age_restriction_class")) if match.get("age_restriction_class") else None,
+        admin_eligible=bool(match.get("admin_eligible")),
         reason=str(response.get("reason")) if response.get("reason") else None,
         duration_ms=duration_ms,
     )
@@ -2216,6 +2421,104 @@ def _normalize_speaker_identity_policy(value: str | None) -> str:
     if policy in {"not_required", "use_if_ready", "required", "forbidden"}:
         return policy
     return "use_if_ready"
+
+
+def _normalized_endpoint_audience_policy(value: dict[str, Any]) -> dict[str, Any]:
+    mode = str(value.get("audience_mode") or "general").strip().lower()
+    if mode not in ENDPOINT_AUDIENCE_MODES:
+        mode = "general"
+    return {
+        "audience_mode": mode,
+        "adult_override_enabled": bool(value.get("adult_override_enabled")),
+    }
+
+
+def _stricter_audience_class(endpoint_mode: str | None, speaker_age_band: str | None) -> str:
+    endpoint_rank = {
+        "child_safe": "child",
+        "teen_safe": "teen",
+        "general": "general",
+        "adult_unrestricted": "general",
+    }.get(str(endpoint_mode or "general").strip().lower(), "general")
+    speaker_rank = {
+        "child": "child",
+        "teen": "teen",
+        "adult": "general",
+        "unknown": "general",
+    }.get(str(speaker_age_band or "unknown").strip().lower(), "general")
+    ranks = {"general": 0, "teen": 1, "child": 2}
+    return endpoint_rank if ranks[endpoint_rank] >= ranks[speaker_rank] else speaker_rank
+
+
+def _adult_admin_override_allowed(
+    endpoint_policy: dict[str, Any],
+    speaker_identity: SpeakerIdentityResult | None,
+    *,
+    metadata: dict[str, Any] | None,
+    restricted_reason: str | None,
+) -> bool:
+    if not endpoint_policy.get("adult_override_enabled") or speaker_identity is None:
+        return False
+    if speaker_identity.age_band != "adult" or not speaker_identity.admin_eligible:
+        return False
+    if speaker_confidence_tier(speaker_identity.confidence) not in {"high", "very_high"}:
+        return False
+    admin_passcode_required = restricted_reason == "restricted_admin_action" or _metadata_flag(metadata, "admin_maintenance_action")
+    if admin_passcode_required and not _metadata_flag(metadata, "admin_passcode_verified"):
+        return False
+    return True
+
+
+def _restricted_content_reason(
+    *,
+    text: str | None,
+    command: str | None,
+    metadata: dict[str, Any] | None,
+) -> str | None:
+    normalized_command = str(command or "").strip().lower()
+    if normalized_command.startswith(("admin.", "debug.", "privacy.", "profile.purge", "voice.speaker.enroll")):
+        return "restricted_admin_action"
+    if _metadata_flag(metadata, "admin_maintenance_action"):
+        return "restricted_admin_action"
+    normalized_text = re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+    if not normalized_text:
+        return None
+    adult_terms = (" sex ", " sexual ", " porn ", " nude ", " explicit adult ")
+    violent_terms = (" kill ", " murder ", " weapon ", " gun ", " bomb ", " torture ")
+    illegal_terms = (" buy drugs ", " steal ", " break into ", " hack ", " bypass password ")
+    self_harm_terms = (" how to self harm ", " suicide method ", " hurt myself ")
+    admin_terms = (
+        " start debug ",
+        " debug mode ",
+        " voice enrollment ",
+        " voice enrolment ",
+        " purge logs ",
+        " delete logs ",
+        " pass code ",
+        " passcode ",
+        " privacy mode ",
+    )
+    padded = f" {normalized_text} "
+    for reason, terms in (
+        ("restricted_adult_content", adult_terms),
+        ("restricted_violent_content", violent_terms),
+        ("restricted_illegal_content", illegal_terms),
+        ("restricted_self_harm_instruction", self_harm_terms),
+        ("restricted_admin_action", admin_terms),
+    ):
+        if any(term in padded for term in terms):
+            return reason
+    return None
+
+
+def _metadata_flag(metadata: dict[str, Any] | None, key: str) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    value = metadata.get(key)
+    if isinstance(value, bool):
+        return value
+    policy = metadata.get("audience_policy") if isinstance(metadata.get("audience_policy"), dict) else {}
+    return bool(policy.get(key)) if isinstance(policy, dict) else False
 
 
 def _text_requires_speaker_identity(normalized_text: str) -> bool:
@@ -2266,7 +2569,12 @@ def _fallback_profile_for(profile: SttModelProfile) -> SttModelProfile | None:
     return get_stt_model_profile(profile.fallback_profile) if profile.fallback_profile else None
 
 
-def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: AssistantTurnService) -> VoiceTurnPipeline:
+def build_voice_turn_pipeline(
+    *,
+    settings: "Settings",
+    assistant_service: AssistantTurnService,
+    endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
+) -> VoiceTurnPipeline:
     stt_adapter: SpeechToTextAdapter | None = None
     tts_adapter: TextToSpeechAdapter | None = None
     stt_profile = resolve_stt_model_profile(settings)
@@ -2350,4 +2658,5 @@ def build_voice_turn_pipeline(*, settings: "Settings", assistant_service: Assist
         speaker_id_policy_default=settings.voice_speaker_id_policy_default,
         speaker_id_endpoint_scope=settings.resolved_voice_speaker_id_endpoint_scope(),
         speaker_id_personalization_enabled=settings.voice_speaker_id_personalization_enabled,
+        endpoint_audience_policy_provider=endpoint_audience_policy_provider,
     )

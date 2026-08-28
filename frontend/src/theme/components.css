@@ -1722,7 +1722,7 @@ select.field-input {
 
 .endpoint-metadata-form {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(160px, 0.7fr) auto;
+  grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
   gap: 12px;
   align-items: end;
 }
@@ -1736,7 +1736,8 @@ select.field-input {
   font-weight: 700;
 }
 
-.endpoint-metadata-form input {
+.endpoint-metadata-form input,
+.endpoint-metadata-form select {
   width: 100%;
   box-sizing: border-box;
   border: 1px solid hsl(var(--sx-border));

@@ -80,6 +80,14 @@ def test_reconnect_updates_runtime_fields_without_erasing_operator_metadata(tmp_
     assert metadata.json()["display_name"] == "Kitchen Voice"
     assert metadata.json()["zone_id"] == "kitchen"
 
+    audience = client.patch(
+        "/api/endpoints/esp-box-1",
+        json={"audience_mode": "child_safe", "adult_override_enabled": True},
+    )
+    assert audience.status_code == 200
+    assert audience.json()["audience_mode"] == "child_safe"
+    assert audience.json()["adult_override_enabled"] is True
+
     reconnect = client.post(
         "/api/endpoint/heartbeat",
         json={
@@ -95,6 +103,8 @@ def test_reconnect_updates_runtime_fields_without_erasing_operator_metadata(tmp_
     status = client.get("/api/endpoint/status/esp-box-1").json()
     assert status["display_name"] == "Kitchen Voice"
     assert status["zone_id"] == "kitchen"
+    assert status["audience_mode"] == "child_safe"
+    assert status["adult_override_enabled"] is True
     assert status["device_state"] == "listening"
     assert status["session_id"] == "session-2"
     assert status["firmware_version"] == "0.1.0"
@@ -151,3 +161,5 @@ def test_operator_metadata_update_is_partial_and_clearable(tmp_path):
     assert cleared.status_code == 200
     assert cleared.json()["display_name"] == "Counter Voice"
     assert cleared.json()["zone_id"] is None
+    assert cleared.json()["audience_mode"] == "general"
+    assert cleared.json()["adult_override_enabled"] is False

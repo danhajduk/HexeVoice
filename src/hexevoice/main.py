@@ -533,7 +533,22 @@ def create_app(
         intent_finder=LocalIntentFinder(registry=voice_intent_registry),
         timer_ownership_cache=timer_ownership_cache,
     )
-    voice_turn_pipeline = build_voice_turn_pipeline(settings=app_settings, assistant_service=assistant_service)
+
+    def endpoint_audience_policy(endpoint_id: str) -> dict[str, object]:
+        try:
+            endpoint = endpoint_service.status(endpoint_id)
+        except HTTPException:
+            return {"audience_mode": "general", "adult_override_enabled": False}
+        return {
+            "audience_mode": endpoint.audience_mode,
+            "adult_override_enabled": endpoint.adult_override_enabled,
+        }
+
+    voice_turn_pipeline = build_voice_turn_pipeline(
+        settings=app_settings,
+        assistant_service=assistant_service,
+        endpoint_audience_policy_provider=endpoint_audience_policy,
+    )
     tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
     tts_runtime_settings_service = TtsRuntimeSettingsService(settings=app_settings)
     wake_recorder = (

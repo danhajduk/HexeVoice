@@ -705,11 +705,21 @@ function EndpointMetadataPanel({ endpointStatus, voiceStatus, onRefresh, setActi
   const endpointId = endpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "";
   const [displayName, setDisplayName] = useState(endpointStatus?.display_name || "");
   const [zoneId, setZoneId] = useState(endpointStatus?.zone_id || "");
+  const [audienceMode, setAudienceMode] = useState(endpointStatus?.audience_mode || "general");
+  const [adultOverrideEnabled, setAdultOverrideEnabled] = useState(Boolean(endpointStatus?.adult_override_enabled));
 
   useEffect(() => {
     setDisplayName(endpointStatus?.display_name || "");
     setZoneId(endpointStatus?.zone_id || "");
-  }, [endpointStatus?.display_name, endpointStatus?.zone_id, endpointStatus?.endpoint_id]);
+    setAudienceMode(endpointStatus?.audience_mode || "general");
+    setAdultOverrideEnabled(Boolean(endpointStatus?.adult_override_enabled));
+  }, [
+    endpointStatus?.display_name,
+    endpointStatus?.zone_id,
+    endpointStatus?.audience_mode,
+    endpointStatus?.adult_override_enabled,
+    endpointStatus?.endpoint_id,
+  ]);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -722,6 +732,8 @@ function EndpointMetadataPanel({ endpointStatus, voiceStatus, onRefresh, setActi
       const result = await updateEndpointMetadata(endpointId, {
         display_name: displayName,
         zone_id: zoneId,
+        audience_mode: audienceMode,
+        adult_override_enabled: adultOverrideEnabled,
       });
       setActionMessage(`Saved ${result.display_name || result.endpoint_id}.`);
       await onRefresh();
@@ -759,6 +771,33 @@ function EndpointMetadataPanel({ endpointStatus, voiceStatus, onRefresh, setActi
             onChange={(event) => setZoneId(event.target.value)}
             disabled={!endpointId}
           />
+        </label>
+        <label>
+          <span>Audience mode</span>
+          <select
+            value={audienceMode}
+            onChange={(event) => {
+              setAudienceMode(event.target.value);
+              if (event.target.value === "general" || event.target.value === "adult_unrestricted") {
+                setAdultOverrideEnabled(false);
+              }
+            }}
+            disabled={!endpointId}
+          >
+            <option value="general">General</option>
+            <option value="child_safe">Child safe</option>
+            <option value="teen_safe">Teen safe</option>
+            <option value="adult_unrestricted">Adult unrestricted</option>
+          </select>
+        </label>
+        <label className="toggle-row">
+          <input
+            type="checkbox"
+            checked={adultOverrideEnabled}
+            onChange={(event) => setAdultOverrideEnabled(event.target.checked)}
+            disabled={!endpointId || audienceMode === "general" || audienceMode === "adult_unrestricted"}
+          />
+          Adult/admin override
         </label>
         <button className="btn btn-secondary" type="submit" disabled={!endpointId}>
           Save Metadata

@@ -52,7 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 246: Add child/teen endpoint audience mode and age-appropriate content restrictions
 [STOP]
 [TODO] Task 247: Add explicit speaker-identity policy mapping for registered and built-in intents
 [TODO] Task 248: Add safe profile-learning eligibility policy without automatic learning

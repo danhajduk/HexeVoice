@@ -192,7 +192,18 @@ Speaker ID data is biometric data.
 - MQTT/domain events must not include embeddings, raw audio, storage paths, or full transcripts.
 - Public/log payloads use `speaker_public_id` and display labels only when policy permits.
 - Deleting a profile removes embeddings, retained audio, enrollment samples, derived caches, and profile metadata.
-- Speaker identity must not authorize protected actions until a later task defines multi-factor policy.
+- Speaker identity alone must not authorize protected admin actions. Restricted-endpoint adult/admin override requires explicit endpoint configuration, high-confidence adult/admin Speaker ID, and a verified passcode for admin-maintenance commands.
+
+## Endpoint Audience Policy
+
+Endpoint audience mode is a local household safety policy for HexeVoice endpoints. It helps keep shared or child-facing microphones from routing inappropriate requests, but it is not a substitute for broader platform, account, guardian, or network-level safety controls.
+
+- Endpoint modes are `general`, `child_safe`, `teen_safe`, and `adult_unrestricted`.
+- Endpoint mode is stored in local endpoint registry metadata and can be changed from the Voice Endpoint dashboard by an operator/guardian.
+- Speaker age band remains profile metadata. The stricter of endpoint audience mode and identified speaker age band wins.
+- Child/teen restricted endpoints block adult, sexual, violent, illegal, self-harm-instructional, privacy, debug, purge, passcode, and enrollment/admin-maintenance requests even when the speaker is unknown.
+- Refusals use short age-appropriate response text and log only derived policy metadata such as reason code, audience class, endpoint mode, and whether an override was applied.
+- Adult/admin override is available only on restricted endpoints when explicitly enabled, the speaker is identified as an adult/admin at high confidence, and admin-maintenance commands also carry a verified passcode flag.
 
 ## API Contract
 

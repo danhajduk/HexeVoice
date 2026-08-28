@@ -16,6 +16,8 @@ class EndpointRegistryRecord(BaseModel):
     endpoint_id: str
     display_name: str | None = None
     zone_id: str | None = None
+    audience_mode: str = "general"
+    adult_override_enabled: bool = False
     device_state: str = "offline"
     session_id: str | None = None
     firmware_version: str | None = None

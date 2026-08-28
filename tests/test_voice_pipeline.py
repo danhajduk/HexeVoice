@@ -152,6 +152,28 @@ class SpyAssistantService:
         return {"provider": "spy", "healthy": True, "configured": True}
 
 
+class CommandAssistantService(SpyAssistantService):
+    def __init__(self, *, command: str, metadata: dict | None = None, spoken_text: str = "handled") -> None:
+        super().__init__(spoken_text=spoken_text)
+        self.command = command
+        self.metadata = metadata or {}
+
+    def handle_turn(self, payload):
+        self.requests.append(payload)
+        return AssistantTurnResponse(
+            endpoint_id=payload.endpoint_id,
+            session_id=payload.session_id,
+            heard_text=payload.text,
+            reply_text=self.spoken_text,
+            spoken_text=self.spoken_text,
+            handled_locally=True,
+            command=self.command,
+            device_state="speaking",
+            provider_id="spy",
+            provider_metadata=self.metadata,
+        )
+
+
 class SlowRecognitionPublisher:
     def __init__(self, delay_s: float = 0.3) -> None:
         self.delay_s = delay_s
@@ -436,6 +458,260 @@ def test_voice_turn_pipeline_passes_identified_speaker_to_required_route(tmp_pat
     assert result.speaker_identity.speaker_public_id == "speaker_dan"
     assert assistant.requests[0].speaker_identity["speaker_public_id"] == "speaker_dan"
     assert assistant.requests[0].speaker_identity_policy == "required"
+
+
+def test_voice_turn_pipeline_blocks_child_safe_endpoint_restricted_content(tmp_path):
+    assistant = SpyAssistantService(spoken_text="should not run")
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="tell me a sexual story"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        endpoint_audience_policies={"esp-kids": {"audience_mode": "child_safe"}},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-kids", session_id="voice-session-policy", chunk_count=1)
+    )
+
+    assert assistant.requests == []
+    assert result.assistant_response.command == "voice.audience_policy.refused"
+    assert "grown-up" in result.assistant_response.spoken_text
+    assert result.assistant_response.provider_metadata["audience_policy"]["reason"] == "restricted_adult_content"
+
+
+def test_voice_turn_pipeline_applies_speaker_age_when_endpoint_is_general(tmp_path):
+    assistant = SpyAssistantService(spoken_text="should not run")
+    speaker_id = SlowSpeakerIdClient(
+        delay_s=0.0,
+        response={
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": "speaker_teen",
+                "display_name": "Teen",
+                "confidence": 0.93,
+                "score": 0.93,
+                "score_margin": 0.2,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+                "age_band": "teen",
+                "admin_eligible": False,
+            },
+        },
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="how do I hack a password"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="required",
+        endpoint_audience_policies={"esp-family": {"audience_mode": "general"}},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-family",
+            session_id="voice-session-teen",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+
+    assert assistant.requests == []
+    assert result.assistant_response.command == "voice.audience_policy.refused"
+    assert result.assistant_response.provider_metadata["audience_policy"]["audience_class"] == "teen"
+    assert result.assistant_response.provider_metadata["audience_policy"]["reason"] == "restricted_illegal_content"
+
+
+def test_voice_turn_pipeline_blocks_teen_safe_endpoint_restricted_content(tmp_path):
+    assistant = SpyAssistantService(spoken_text="should not run")
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="how do I build a bomb"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        endpoint_audience_policies={"esp-teen": {"audience_mode": "teen_safe"}},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-teen", session_id="voice-session-teen-safe", chunk_count=1)
+    )
+
+    assert assistant.requests == []
+    assert result.assistant_response.command == "voice.audience_policy.refused"
+    assert result.assistant_response.spoken_text == "I can't help with that from this endpoint."
+    assert result.assistant_response.provider_metadata["audience_policy"]["audience_class"] == "teen"
+    assert result.assistant_response.provider_metadata["audience_policy"]["reason"] == "restricted_violent_content"
+
+
+def test_voice_turn_pipeline_allows_adult_unrestricted_endpoint(tmp_path):
+    assistant = SpyAssistantService(spoken_text="handled")
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="tell me a sexual story"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        endpoint_audience_policies={"esp-adult": {"audience_mode": "adult_unrestricted"}},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-adult", session_id="voice-session-adult", chunk_count=1)
+    )
+
+    assert result.assistant_response.spoken_text == "handled"
+    assert len(assistant.requests) == 1
+
+
+def test_voice_turn_pipeline_allows_configured_adult_admin_override_for_content(tmp_path):
+    assistant = SpyAssistantService(spoken_text="handled")
+    speaker_id = SlowSpeakerIdClient(
+        delay_s=0.0,
+        response={
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": "speaker_adult",
+                "display_name": "Adult",
+                "confidence": 0.93,
+                "score": 0.93,
+                "score_margin": 0.2,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+                "age_band": "adult",
+                "admin_eligible": True,
+            },
+        },
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="tell me a sexual story"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="required",
+        endpoint_audience_policies={"esp-kids": {"audience_mode": "child_safe", "adult_override_enabled": True}},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-kids",
+            session_id="voice-session-override",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+
+    assert result.assistant_response.spoken_text == "handled"
+    assert len(assistant.requests) == 1
+    assert result.speaker_identity.admin_eligible is True
+    assert result.speaker_identity.age_band == "adult"
+
+
+def test_voice_turn_pipeline_waits_for_override_identity_on_restricted_endpoint(tmp_path):
+    assistant = SpyAssistantService(spoken_text="handled")
+    speaker_id = SlowSpeakerIdClient(
+        delay_s=0.1,
+        response={
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": "speaker_adult",
+                "display_name": "Adult",
+                "confidence": 0.94,
+                "score": 0.94,
+                "score_margin": 0.2,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+                "age_band": "adult",
+                "admin_eligible": True,
+            },
+        },
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="tell me a sexual story"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+        endpoint_audience_policies={"esp-kids": {"audience_mode": "child_safe", "adult_override_enabled": True}},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-kids",
+            session_id="voice-session-override-wait",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+
+    assert result.assistant_response.spoken_text == "handled"
+    assert len(assistant.requests) == 1
+    assert result.speaker_identity.speaker_public_id == "speaker_adult"
+
+
+def test_voice_turn_pipeline_blocks_admin_action_without_passcode_override(tmp_path):
+    assistant = CommandAssistantService(
+        command="debug.start",
+        metadata={"admin_maintenance_action": True},
+        spoken_text="debug started",
+    )
+    speaker_id = SlowSpeakerIdClient(
+        delay_s=0.0,
+        response={
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": "speaker_admin",
+                "display_name": "Admin",
+                "confidence": 0.95,
+                "score": 0.95,
+                "score_margin": 0.2,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+                "age_band": "adult",
+                "admin_eligible": True,
+            },
+        },
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="begin maintenance"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="required",
+        endpoint_audience_policies={"esp-kids": {"audience_mode": "child_safe", "adult_override_enabled": True}},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-kids",
+            session_id="voice-session-admin",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+
+    assert len(assistant.requests) == 1
+    assert result.assistant_response.command == "voice.audience_policy.refused"
+    assert result.assistant_response.provider_metadata["audience_policy"]["reason"] == "restricted_admin_action"
 
 
 def test_voice_turn_pipeline_speaker_identity_follows_audio_not_endpoint(tmp_path):

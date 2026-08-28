@@ -30,6 +30,8 @@ class EndpointHeartbeatService:
             endpoint_id=payload.endpoint_id,
             display_name=existing.display_name if existing else None,
             zone_id=existing.zone_id if existing else None,
+            audience_mode=existing.audience_mode if existing else "general",
+            adult_override_enabled=existing.adult_override_enabled if existing else False,
             device_state=payload.device_state,
             session_id=payload.session_id,
             firmware_version=payload.firmware_version or (existing.firmware_version if existing else None),
@@ -103,6 +105,10 @@ class EndpointHeartbeatService:
             updates["display_name"] = self._normalized_optional_text(payload.display_name)
         if "zone_id" in payload.model_fields_set:
             updates["zone_id"] = self._normalized_optional_text(payload.zone_id)
+        if "audience_mode" in payload.model_fields_set and payload.audience_mode is not None:
+            updates["audience_mode"] = payload.audience_mode
+        if "adult_override_enabled" in payload.model_fields_set and payload.adult_override_enabled is not None:
+            updates["adult_override_enabled"] = bool(payload.adult_override_enabled)
         updated = record.model_copy(update=updates)
         registry.endpoints[endpoint_id] = updated
         self._store.save(registry)
@@ -114,6 +120,8 @@ class EndpointHeartbeatService:
             endpoint_id=record.endpoint_id,
             display_name=record.display_name,
             zone_id=record.zone_id,
+            audience_mode=self._normalized_audience_mode(record.audience_mode),
+            adult_override_enabled=bool(record.adult_override_enabled),
             device_state=record.device_state,
             session_id=record.session_id,
             firmware_version=record.firmware_version,
@@ -146,3 +154,8 @@ class EndpointHeartbeatService:
             return None
         stripped = value.strip()
         return stripped or None
+
+    @staticmethod
+    def _normalized_audience_mode(value: str | None) -> str:
+        normalized = str(value or "general").strip().lower()
+        return normalized if normalized in {"general", "child_safe", "teen_safe", "adult_unrestricted"} else "general"

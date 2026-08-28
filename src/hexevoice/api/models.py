@@ -221,6 +221,8 @@ class EndpointStatusResponse(BaseModel):
     endpoint_id: str
     display_name: str | None = None
     zone_id: str | None = None
+    audience_mode: Literal["general", "child_safe", "teen_safe", "adult_unrestricted"] = "general"
+    adult_override_enabled: bool = False
     device_state: Literal["idle", "listening", "thinking", "speaking", "ota", "offline"]
     session_id: str | None = None
     firmware_version: str | None = None
@@ -241,6 +243,8 @@ class EndpointRegistryListResponse(BaseModel):
 class EndpointMetadataUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=80)
     zone_id: str | None = Field(default=None, max_length=80)
+    audience_mode: Literal["general", "child_safe", "teen_safe", "adult_unrestricted"] | None = None
+    adult_override_enabled: bool | None = None
 
 
 class EndpointVolumeCommandRequest(BaseModel):

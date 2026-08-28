@@ -271,3 +271,4 @@ Task 242: Enable the lowest-resource production Speaker ID provider path - Compl
 Task 243: Add resource-aware Speaker ID enrollment readiness and confidence tiers - Completed on 08/27/2026 15:56
 Task 244: Add versioned enrollment and validation phrase set management - Completed on 08/27/2026 16:01
 Task 245: Add speaker profile age-band metadata, restrictions, and review cadence - Completed on 08/27/2026 16:04
+Task 246: Add child/teen endpoint audience mode and age-appropriate content restrictions - Completed on 08/28/2026 12:39
