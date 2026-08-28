@@ -1,6 +1,5 @@
 [Unit]
 Description=HexeVoice Piper TTS Runtime
-After=default.target
 
 [Service]
 Type=oneshot
