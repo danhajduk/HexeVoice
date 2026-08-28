@@ -202,6 +202,15 @@ function endpointStatusById(endpointStatuses, endpointId) {
   return endpointStatuses.find((status) => status?.endpoint_id === endpointId) || endpointStatuses[0] || null;
 }
 
+function endpointSortKey(endpointStatus) {
+  return [
+    endpointHardwareId(endpointStatus),
+    endpointStatus?.endpoint_id || "",
+  ]
+    .map((value) => String(value || "").toLowerCase())
+    .join("|");
+}
+
 function selectedVoiceStatus(voiceStatus, endpointId) {
   const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
   const endpointVoice = endpointId ? voiceStatus?.endpoints?.[endpointId] : null;
@@ -579,7 +588,9 @@ function EndpointStatusTable({
   onSelectEndpoint,
 }) {
   const timings = voiceStatus?.last_turn_timings || {};
-  const endpointStatuses = endpointStatusesFromRegistry(endpointStatus, endpointRegistry);
+  const endpointStatuses = [...endpointStatusesFromRegistry(endpointStatus, endpointRegistry)].sort((left, right) => (
+    endpointSortKey(left).localeCompare(endpointSortKey(right), undefined, { numeric: true, sensitivity: "base" })
+  ));
   const endpointRows = (endpointStatuses.length ? endpointStatuses : [null]).map((currentEndpointStatus) => {
     const endpointId = currentEndpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected";
     const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);

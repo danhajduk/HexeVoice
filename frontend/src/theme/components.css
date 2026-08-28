@@ -499,13 +499,13 @@
 
 .endpoint-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
 
 .endpoint-overview-layout {
   display: grid;
-  grid-template-columns: minmax(300px, 0.95fr) minmax(360px, 1.05fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -805,7 +805,7 @@
 }
 
 .endpoint-detail-inline .endpoint-detail-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .endpoint-detail-section {
