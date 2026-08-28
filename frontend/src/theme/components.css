@@ -216,6 +216,15 @@
   grid-column: 1 / -1;
 }
 
+.overview-warning-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.overview-warning-detail .state-row {
+  grid-template-columns: minmax(140px, 0.24fr) minmax(0, 1fr);
+}
+
 .overview-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

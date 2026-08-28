@@ -17,6 +17,12 @@ function formatMs(value) {
   if (typeof value !== "number") {
     return "none";
   }
+  if (value >= 60000) {
+    return `${Math.round(value / 60000)} min`;
+  }
+  if (value >= 10000) {
+    return `${Math.round(value / 1000)} sec`;
+  }
   return `${Math.round(value)} ms`;
 }
 
@@ -31,6 +37,17 @@ function formatText(value, fallback = "none") {
     return value.text || value.message || value.response || value.content || fallback;
   }
   return String(value);
+}
+
+function actionableVoiceIssue(voiceStatus) {
+  const issue = voiceStatus?.last_error;
+  if (!issue) {
+    return "";
+  }
+  if (typeof issue === "object" && issue.recoverable && !voiceStatus?.active_session) {
+    return "";
+  }
+  return formatText(issue, "");
 }
 
 function providerTone(provider) {
@@ -171,7 +188,7 @@ function LiveVoiceCard({ voiceStatus, openVoiceEndpoint, onRefresh }) {
         </div>
         <div>
           <dt>Last issue</dt>
-          <dd>{formatText(voiceStatus?.last_error, "clear")}</dd>
+          <dd>{actionableVoiceIssue(voiceStatus) || "clear"}</dd>
         </div>
       </dl>
       <div className="overview-actions">

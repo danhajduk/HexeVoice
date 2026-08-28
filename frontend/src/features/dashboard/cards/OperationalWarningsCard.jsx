@@ -8,9 +8,20 @@ function warningMessage(value) {
   return value.message || value.code || JSON.stringify(value);
 }
 
+function actionableVoiceIssue(voiceStatus) {
+  const issue = voiceStatus?.last_error;
+  if (!issue) {
+    return "";
+  }
+  if (typeof issue === "object" && issue.recoverable && !voiceStatus?.active_session) {
+    return "";
+  }
+  return warningMessage(issue);
+}
+
 export function OperationalWarningsCard({ status, onboarding, voiceStatus }) {
   const blockers = status?.blocking_reasons || [];
-  const voiceIssue = warningMessage(voiceStatus?.last_error);
+  const voiceIssue = actionableVoiceIssue(voiceStatus);
   const warnings = [...blockers, voiceIssue].filter(Boolean);
 
   if (warnings.length === 0) {
@@ -36,7 +47,7 @@ export function OperationalWarningsCard({ status, onboarding, voiceStatus }) {
       <div className="callout callout-warning">
         {warnings.join(", ")}
       </div>
-      <div className="state-grid">
+      <div className="overview-warning-detail">
         <div className="state-row">
           <span className="state-label">Current step</span>
           <span className="state-value">{onboarding?.current_step_label || status?.current_step_label || "pending"}</span>
