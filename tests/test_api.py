@@ -86,6 +86,7 @@ def test_endpoint_heartbeat_records_latest_status(tmp_path):
         "/api/endpoint/heartbeat",
         json={
             "endpoint_id": "esp-box-1",
+            "hardware_id": "esp32s3-b43a4512ab90",
             "device_state": "listening",
             "session_id": "session-voice-1",
             "firmware_version": "0.1.0",
@@ -106,6 +107,7 @@ def test_endpoint_heartbeat_records_latest_status(tmp_path):
     assert status.status_code == 200
     status_payload = status.json()
     assert status_payload["endpoint_id"] == "esp-box-1"
+    assert status_payload["hardware_id"] == "esp32s3-b43a4512ab90"
     assert status_payload["device_state"] == "listening"
     assert status_payload["session_id"] == "session-voice-1"
     assert status_payload["firmware_version"] == "0.1.0"

@@ -47,6 +47,7 @@ class EndpointDiscoveryService:
         pairing_state = "stale_recovered" if existing is not None and self._connection_state(existing) == "stale" else "paired"
         registry.endpoints[payload.endpoint_id] = EndpointRegistryRecord(
             endpoint_id=payload.endpoint_id,
+            hardware_id=payload.hardware_id or (existing.hardware_id if existing else None),
             display_name=existing.display_name if existing else payload.display_name,
             zone_id=existing.zone_id if existing else None,
             device_state=existing.device_state if existing else "offline",

@@ -142,6 +142,7 @@ You can override the defaults with `BACKEND_PORT`, `FRONTEND_PORT`, `BACKEND_HOS
 - HexeVoice registers and heartbeats to the Core Supervisor over `/run/hexe/supervisor.sock` when `HEXE_SUPERVISOR_ENABLED=true`.
 - The operator UI follows the shared Hexe node visual standard and renders the full canonical 10-step flow plus post-setup operational overview surfaces.
 - The Voice Endpoint dashboard prioritizes selected-device status, clear wake/session wording, everyday controls, recent turns, and collapsed advanced management panels.
+- ESP endpoints report a stable `hardware_id` from the ESP32-S3 eFuse MAC, formatted like `esp32s3-b43a4512ab90`, while `endpoint_id` remains operator-configurable.
 - Local Python workflow should always use the repo-local `.venv` binaries.
 
 ## Implemented Flow

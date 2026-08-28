@@ -23,6 +23,7 @@
 #include "esp_app_desc.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include "esp_mac.h"
 #include "esp_timer.h"
 #include "esp_transport_ws.h"
 #include "esp_websocket_client.h"
@@ -493,6 +494,30 @@ const char *firmware_version() {
   return app == nullptr ? "unknown" : app->version;
 }
 
+const char *hardware_id() {
+  static char buffer[32] = "";
+  if (buffer[0] != '\0') {
+    return buffer;
+  }
+
+  uint8_t mac[6] = {};
+  if (esp_efuse_mac_get_default(mac) != ESP_OK) {
+    std::snprintf(buffer, sizeof(buffer), "esp32s3-unknown");
+    return buffer;
+  }
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "esp32s3-%02x%02x%02x%02x%02x%02x",
+      mac[0],
+      mac[1],
+      mac[2],
+      mac[3],
+      mac[4],
+      mac[5]);
+  return buffer;
+}
+
 const char *normalized_wake_source(const char *wake_source) {
   if (wake_source == nullptr) {
     return "unknown";
@@ -657,16 +682,18 @@ bool try_endpoint_discovery() {
   destination.sin_port = htons(hexe::config::kEndpointDiscoveryUdpPort);
   destination.sin_addr.s_addr = inet_addr("255.255.255.255");
 
-  char request[384];
+  char request[512];
   std::snprintf(
       request,
       sizeof(request),
-      "{\"schema_version\":\"%s\",\"endpoint_id\":\"%s\",\"display_name\":\"%s\","
-      "\"firmware_version\":\"%s\",\"capabilities\":{\"profile\":\"firmware\",\"firmware\":{\"board_profile\":\"%s\"}}}",
+      "{\"schema_version\":\"%s\",\"endpoint_id\":\"%s\",\"hardware_id\":\"%s\",\"display_name\":\"%s\","
+      "\"firmware_version\":\"%s\",\"capabilities\":{\"profile\":\"firmware\",\"identity\":{\"hardware_id\":\"%s\"},\"firmware\":{\"board_profile\":\"%s\"}}}",
       kDiscoverySchemaVersion,
       hexe::system::endpoint_id(),
+      hardware_id(),
       hexe::system::endpoint_display_name(),
       firmware_version(),
+      hardware_id(),
       hexe::config::kEndpointBoardProfile);
   const int sent = sendto(
       sock,
@@ -1161,6 +1188,10 @@ std::string endpoint_capabilities_json() {
   if (root == nullptr) {
     return "{}";
   }
+
+  cJSON *identity = cJSON_AddObjectToObject(root, "identity");
+  cJSON_AddStringToObject(identity, "hardware_id", hardware_id());
+  cJSON_AddStringToObject(identity, "id_source", "esp_efuse_mac");
 
   cJSON *touchscreen = cJSON_AddObjectToObject(root, "touchscreen");
   cJSON_AddBoolToObject(touchscreen, "available", hexe::board::touch_ready());
@@ -2240,6 +2271,8 @@ void heartbeat_task(void *arg) {
     body.reserve(capabilities.size() + 256);
     body.append("{\"endpoint_id\":\"");
     body.append(hexe::system::endpoint_id());
+    body.append("\",\"hardware_id\":\"");
+    body.append(hardware_id());
     body.append("\",\"device_state\":\"");
     body.append(device_state());
     body.append("\",\"session_id\":");

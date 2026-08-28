@@ -168,6 +168,7 @@ class TtsSynthesizeResponse(BaseModel):
 
 class EndpointHeartbeatRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
+    hardware_id: str | None = Field(default=None, max_length=80)
     device_state: Literal["idle", "listening", "thinking", "speaking", "ota", "offline"] = "idle"
     session_id: str | None = None
     firmware_version: str | None = None
@@ -188,6 +189,7 @@ class EndpointHeartbeatResponse(BaseModel):
 class EndpointDiscoveryRequest(BaseModel):
     schema_version: str = "hexevoice.endpoint.discovery.v1"
     endpoint_id: str = Field(min_length=1, max_length=63)
+    hardware_id: str | None = Field(default=None, max_length=80)
     display_name: str | None = Field(default=None, max_length=63)
     firmware_version: str | None = Field(default=None, max_length=80)
     pairing_nonce: str | None = Field(default=None, max_length=80)
@@ -219,6 +221,7 @@ class EndpointTimeResponse(BaseModel):
 
 class EndpointStatusResponse(BaseModel):
     endpoint_id: str
+    hardware_id: str | None = None
     display_name: str | None = None
     zone_id: str | None = None
     audience_mode: Literal["general", "child_safe", "teen_safe", "adult_unrestricted"] = "general"

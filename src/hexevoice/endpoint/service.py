@@ -28,6 +28,7 @@ class EndpointHeartbeatService:
 
         registry.endpoints[payload.endpoint_id] = EndpointRegistryRecord(
             endpoint_id=payload.endpoint_id,
+            hardware_id=payload.hardware_id or (existing.hardware_id if existing else None),
             display_name=existing.display_name if existing else None,
             zone_id=existing.zone_id if existing else None,
             audience_mode=existing.audience_mode if existing else "general",
@@ -118,6 +119,7 @@ class EndpointHeartbeatService:
         connection_state = self._connection_state(record)
         return EndpointStatusResponse(
             endpoint_id=record.endpoint_id,
+            hardware_id=record.hardware_id,
             display_name=record.display_name,
             zone_id=record.zone_id,
             audience_mode=self._normalized_audience_mode(record.audience_mode),

@@ -180,6 +180,7 @@ def test_core_rendered_node_ui_invalidates_page_cache_on_endpoint_updates(tmp_pa
         "/api/endpoint/heartbeat",
         json={
             "endpoint_id": "esp-box-1",
+            "hardware_id": "esp32s3-b43a4512ab90",
             "device_state": "idle",
             "firmware_version": "0.1.0",
             "capabilities": {"storage": {"sd_card_available": True}},
@@ -189,6 +190,7 @@ def test_core_rendered_node_ui_invalidates_page_cache_on_endpoint_updates(tmp_pa
     second = client.get("/api/node/ui/pages/voice/endpoints").json()
     endpoint_card = next(card for card in second["cards"] if card["id"] == "voice.endpoints")
     assert [record["endpoint_id"] for record in endpoint_card["data"]["records"]] == ["esp-box-1"]
+    assert endpoint_card["data"]["records"][0]["hardware_id"] == "esp32s3-b43a4512ab90"
     cache_path = tmp_path / "rendered_node_ui_pages" / "voice.endpoints.json"
     assert json.loads(cache_path.read_text(encoding="utf-8")) == second
 

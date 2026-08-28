@@ -76,6 +76,18 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
     assert 'return "endpoint.micro_vad.set";' in source
 
 
+def test_firmware_reports_stable_hardware_id_from_efuse_mac():
+    source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert '#include "esp_mac.h"' in source
+    assert "esp_efuse_mac_get_default(mac)" in source
+    assert '"esp32s3-%02x%02x%02x%02x%02x%02x"' in source
+    assert '\\"hardware_id\\":\\"%s\\"' in source
+    assert 'body.append("\\",\\"hardware_id\\":\\"");' in source
+    assert 'cJSON_AddStringToObject(identity, "hardware_id", hardware_id())' in source
+    assert 'cJSON_AddStringToObject(identity, "id_source", "esp_efuse_mac")' in source
+
+
 def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     ota_source = FIRMWARE_OTA.read_text()
     ota_header = FIRMWARE_OTA_HEADER.read_text()

@@ -38,7 +38,7 @@ Then edit `firmware/config/endpoint.yaml` so `node.host`, `node.http_port`, and 
 
 During the ESP-IDF build, `main/CMakeLists.txt` runs `tools/generate_endpoint_config.py` and generates `endpoint_config.h` from `config/endpoint.yaml` when present, otherwise from `config/endpoint.example.yaml`. Firmware source consumes that generated header instead of hardcoding a node IP address.
 
-The runtime firmware version is not read from endpoint YAML. Heartbeats, voice session starts, and firmware capabilities report the ESP-IDF app/project version embedded in the build.
+The runtime firmware version is not read from endpoint YAML. Heartbeats, voice session starts, and firmware capabilities report the ESP-IDF app/project version embedded in the build. Firmware heartbeats also report a stable `hardware_id` derived from the ESP32-S3 eFuse MAC, such as `esp32s3-b43a4512ab90`; this is separate from the configurable endpoint id/display name.
 
 At runtime, endpoint id, display name, backend host/ports, TLS mode, and Wi-Fi
 credentials can be persisted through the operator dashboard/API provisioning

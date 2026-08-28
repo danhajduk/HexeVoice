@@ -1021,6 +1021,7 @@ def endpoint_records(endpoints: list[dict[str, Any]], voice_status: dict[str, An
             {
                 "id": text(endpoint.get("endpoint_id")),
                 "endpoint_id": endpoint.get("endpoint_id"),
+                "hardware_id": endpoint.get("hardware_id"),
                 "name": endpoint.get("display_name") or endpoint.get("endpoint_id"),
                 "status": endpoint.get("connection_state"),
                 "device_state": endpoint.get("device_state"),

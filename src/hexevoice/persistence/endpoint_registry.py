@@ -14,6 +14,7 @@ def utc_now_iso() -> str:
 
 class EndpointRegistryRecord(BaseModel):
     endpoint_id: str
+    hardware_id: str | None = None
     display_name: str | None = None
     zone_id: str | None = None
     audience_mode: str = "general"

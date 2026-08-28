@@ -148,6 +148,11 @@ function endpointDisplayName(endpointStatus) {
   return endpointStatus?.display_name || provisioning.display_name || "none";
 }
 
+function endpointHardwareId(endpointStatus) {
+  const identity = endpointCapabilities(endpointStatus).identity || {};
+  return endpointStatus?.hardware_id || identity.hardware_id || "unknown";
+}
+
 function endpointHealthForProjection(projection, endpointStatus) {
   const connected = projection.connection_state === "connected";
   const online = projection.transport_health === "online" || endpointStatus?.connection_state === "online";
@@ -591,6 +596,7 @@ function EndpointStatusTable({
       zoneId: currentEndpointStatus?.zone_id || "none",
       firmwareVersion: currentEndpointStatus?.firmware_version || "unknown",
       boardProfile: endpointBoardProfile(currentEndpointStatus),
+      hardwareId: endpointHardwareId(currentEndpointStatus),
       deviceState: labelizeState(currentEndpointStatus?.device_state, "Unknown"),
       connectionState: labelizeState(currentEndpointStatus?.connection_state, "Unknown"),
       fileTransfer: storage.media_transfer_active ? "downloading file" : storage.media_transfer_status || "idle",
@@ -628,6 +634,7 @@ function EndpointStatusTable({
     ? [
         ["IP address", selectedEndpoint.ipAddress],
         ["Signal", selectedEndpoint.rssi],
+        ["Hardware ID", selectedEndpoint.hardwareId],
         ["Board", selectedEndpoint.boardProfile],
         ["Firmware update", firmwareUpdateLabel(selectedEndpoint.firmwareUpdate)],
         ["Last heartbeat", selectedEndpoint.lastSeenAt],
@@ -847,6 +854,7 @@ function EndpointMetadataPanel({ endpointStatus, voiceStatus, onRefresh, setActi
 
 function EndpointCapabilitiesPanel({ endpointStatus, onPushFirmwareUpdate, firmwareUpdateBusy }) {
   const capabilities = endpointCapabilities(endpointStatus);
+  const identity = capabilities.identity || {};
   const display = capabilities.display || {};
   const audio = capabilities.audio || {};
   const audioInput = audio.input || {};
@@ -881,6 +889,14 @@ function EndpointCapabilitiesPanel({ endpointStatus, onPushFirmwareUpdate, firmw
         <span className="status-pill status-pill-neutral">{endpointStatus?.firmware_version || "unknown FW"}</span>
       </div>
       <dl className="facts">
+        <div>
+          <dt>Hardware ID</dt>
+          <dd>{endpointHardwareId(endpointStatus)}</dd>
+        </div>
+        <div>
+          <dt>ID source</dt>
+          <dd>{identity.id_source || "unknown"}</dd>
+        </div>
         <div>
           <dt>Firmware</dt>
           <dd>{firmware.version || endpointStatus?.firmware_version || "unknown"}</dd>

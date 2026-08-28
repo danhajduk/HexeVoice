@@ -29,6 +29,7 @@ def test_endpoint_discovery_offer_returns_backend_pairing_settings(tmp_path):
         "/api/endpoint/discovery/offer",
         json={
             "endpoint_id": "esp-box-1",
+            "hardware_id": "esp32s3-b43a4512ab90",
             "display_name": "ESP Box 1",
             "firmware_version": "0.1.0",
         },
@@ -45,6 +46,9 @@ def test_endpoint_discovery_offer_returns_backend_pairing_settings(tmp_path):
     assert payload["ws_port"] == 9004
     assert payload["heartbeat_path"] == "/api/endpoint/heartbeat"
     assert payload["voice_ws_path"] == "/api/voice/ws"
+    status = client.get("/api/endpoint/status/esp-box-1")
+    assert status.status_code == 200
+    assert status.json()["hardware_id"] == "esp32s3-b43a4512ab90"
 
 
 def test_endpoint_discovery_rejects_duplicate_online_identity(tmp_path):
@@ -104,13 +108,14 @@ def test_endpoint_discovery_recovers_stale_pairing(tmp_path):
     )
 
     response = service.offer(
-        EndpointDiscoveryRequest(endpoint_id="esp-box-1"),
+        EndpointDiscoveryRequest(endpoint_id="esp-box-1", hardware_id="esp32s3-b43a4512ab90"),
         source_ip="10.0.0.99",
     )
     record = store.load().endpoints["esp-box-1"]
 
     assert response.accepted is True
     assert response.pairing_state == "stale_recovered"
+    assert record.hardware_id == "esp32s3-b43a4512ab90"
     assert record.ip_address == "10.0.0.99"
     assert record.last_seen_at != stale
 

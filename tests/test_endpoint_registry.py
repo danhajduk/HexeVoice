@@ -25,6 +25,7 @@ def test_endpoint_heartbeat_creates_persistent_registry_record(tmp_path):
         "/api/endpoint/heartbeat",
         json={
             "endpoint_id": "esp-box-1",
+            "hardware_id": "esp32s3-b43a4512ab90",
             "device_state": "idle",
             "firmware_version": "0.1.0",
             "ip_address": "10.0.0.55",
@@ -46,6 +47,7 @@ def test_endpoint_heartbeat_creates_persistent_registry_record(tmp_path):
     store = EndpointRegistryStore(path=tmp_path / "endpoint_registry.json")
     persisted = store.load().endpoints["esp-box-1"]
     assert persisted.endpoint_id == "esp-box-1"
+    assert persisted.hardware_id == "esp32s3-b43a4512ab90"
     assert persisted.firmware_version == "0.1.0"
     assert persisted.ip_address == "10.0.0.55"
     assert persisted.rssi_dbm == -58
@@ -56,6 +58,7 @@ def test_endpoint_heartbeat_creates_persistent_registry_record(tmp_path):
     restarted_client = client_for(tmp_path)
     status = restarted_client.get("/api/endpoint/status/esp-box-1")
     assert status.status_code == 200
+    assert status.json()["hardware_id"] == "esp32s3-b43a4512ab90"
     assert status.json()["firmware_version"] == "0.1.0"
     assert status.json()["capabilities"]["audio"]["input"]["sample_rate_hz"] == 16000
     assert status.json()["capabilities"]["audio"]["output"]["muted"] is False
@@ -67,6 +70,7 @@ def test_reconnect_updates_runtime_fields_without_erasing_operator_metadata(tmp_
         "/api/endpoint/heartbeat",
         json={
             "endpoint_id": "esp-box-1",
+            "hardware_id": "esp32s3-b43a4512ab90",
             "firmware_version": "0.1.0",
             "capabilities": {"display": {"resolution": "320x240"}},
         },
@@ -108,6 +112,7 @@ def test_reconnect_updates_runtime_fields_without_erasing_operator_metadata(tmp_
     assert status["device_state"] == "listening"
     assert status["session_id"] == "session-2"
     assert status["firmware_version"] == "0.1.0"
+    assert status["hardware_id"] == "esp32s3-b43a4512ab90"
     assert status["ip_address"] == "10.0.0.56"
     assert status["capabilities"]["display"]["resolution"] == "320x240"
 
