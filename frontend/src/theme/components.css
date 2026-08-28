@@ -1687,6 +1687,19 @@
   word-break: break-word;
 }
 
+.governance-history {
+  display: grid;
+  gap: 12px;
+}
+
+.governance-history .state-row {
+  grid-template-columns: minmax(150px, 0.42fr) minmax(0, 1fr);
+}
+
+.governance-history .state-value {
+  overflow-wrap: anywhere;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

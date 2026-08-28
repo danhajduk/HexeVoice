@@ -48,7 +48,7 @@ export function CoreConnectionCard({ status, onboarding, governance, operational
           <dd>{operational?.governance_freshness_state || status?.governance_freshness_state || "pending"}</dd>
         </div>
       </dl>
-      <div className="state-grid state-grid-single">
+      <div className="governance-history">
         <div className="state-row">
           <span className="state-label">Last issue</span>
           <span className="state-value">{issuedAt}</span>
