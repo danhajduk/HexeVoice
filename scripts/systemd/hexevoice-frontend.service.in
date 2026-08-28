@@ -1,6 +1,13 @@
 [Unit]
 Description=HexeVoice Frontend
+Wants=hexevoice-backend.service
+After=hexevoice-backend.service
 
 [Service]
 WorkingDirectory=__ROOT_DIR__
 ExecStart=/bin/bash -lc 'source "__ENV_FILE__"; cd "__ROOT_DIR__"; eval "$FRONTEND_CMD"'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

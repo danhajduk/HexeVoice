@@ -24,7 +24,7 @@ It includes:
   pulled from the release feed documented in `docs/firmware-release-artifacts.md`
 - `scripts/`
   Environment-driven run and service-control scripts
-  including `scripts/systemd/hexevoice-backend.service.in`, `scripts/systemd/hexevoice-stt.service.in`, and `scripts/systemd/hexevoice-frontend.service.in`
+  including user units for backend, frontend, STT, Speaker ID, openWakeWord, and Piper TTS
 - `docs/`
   Starter architecture, feature spec, setup, operations, and provider notes
   including the Phase 2 operator release checklist at
@@ -75,7 +75,7 @@ hidden after the preparation UI starts; disable that with
 `HEXEVOICE_INSTALL_QUIET=false` or set `HEXEVOICE_INSTALL_LOG_PATH=/path/log`.
 When the real setup UI starts, the preparation page redirects to `/setup/host`.
 
-To also render and restart the user services after `scripts/stack.env` is
+To also render, enable, and start the user services after `scripts/stack.env` is
 created, run:
 
 ```bash

@@ -1,0 +1,17 @@
+[Unit]
+Description=HexeVoice openWakeWord Runtime
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__ROOT_DIR__
+RemainAfterExit=yes
+TimeoutStartSec=180
+TimeoutStopSec=60
+ExecStart=/bin/bash -lc 'cd "__ROOT_DIR__"; ./scripts/openwakeword-control.sh ready'
+ExecStop=/bin/bash -lc 'cd "__ROOT_DIR__"; ./scripts/openwakeword-control.sh stop'
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

@@ -18,11 +18,20 @@ case "${1:-}" in
   stt)
     eval "$STT_CMD"
     ;;
+  speaker-id)
+    eval "${SPEAKER_ID_CMD:-VOICE_SPEAKER_ID_ENABLED=true SPEAKER_ID_SOCKET_PATH=\"${SPEAKER_ID_SOCKET_PATH:-${VOICE_SPEAKER_ID_SOCKET_PATH:-runtime/sockets/speaker-id.sock}}\" PYTHONPATH=src .venv/bin/python -m hexevoice.speaker_id.service}"
+    ;;
+  openwakeword)
+    "$ROOT_DIR/scripts/openwakeword-control.sh" ready
+    ;;
+  piper-tts)
+    "$ROOT_DIR/scripts/piper-tts-control.sh" ready
+    ;;
   frontend)
     eval "$FRONTEND_CMD"
     ;;
   *)
-    echo "Usage: $0 {backend|stt|frontend}"
+    echo "Usage: $0 {backend|stt|speaker-id|openwakeword|piper-tts|frontend}"
     exit 1
     ;;
 esac

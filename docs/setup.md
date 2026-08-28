@@ -16,7 +16,9 @@ browser, and prepares the default install artifacts while setup is visible:
 faster-whisper `base`, Piper `en_US-kathleen-low.onnx`, the `Hexe` wake model,
 and configured firmware artifacts.
 
-Set `HEXEVOICE_RUN_BOOTSTRAP=true` to run `scripts/bootstrap.sh` at the end:
+Set `HEXEVOICE_RUN_BOOTSTRAP=true` to run `scripts/bootstrap.sh` at the end.
+Bootstrap renders, enables, and starts the backend, frontend, STT, and provider
+runtime user services:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/danhajduk/HexeVoice/main/install.sh | HEXEVOICE_RUN_BOOTSTRAP=true bash
@@ -266,10 +268,11 @@ CORE_SUPERVISOR_ENROLLMENT_TOKEN=<one-time-token> \
 5. Copy `scripts/stack.env.example` to `scripts/stack.env`.
 6. Update backend and frontend commands if needed, keeping Python commands on `.venv/bin/...`.
 7. Keep `HEXE_SUPERVISOR_ENABLED=true`, `HEXE_SUPERVISOR_API_TRANSPORT=socket`, and `HEXE_SUPERVISOR_API_SOCKET=/run/hexe/supervisor.sock` when this node should register with Core Supervisor.
-8. Start the backend with `API_HOST=0.0.0.0 API_PORT=9004 PYTHONPATH=src .venv/bin/python -m hexevoice.main`.
-9. Build the frontend with `scripts/rebuild-ui.sh`, then start it from `frontend/` with `VITE_PROXY_TARGET=http://127.0.0.1:9004 npm run preview -- --host 0.0.0.0 --port 8084`.
-10. Run backend tests with `PYTHONPATH=src .venv/bin/pytest`.
-11. Run the frontend production validation with `cd frontend && npm run build`.
+8. Build the frontend with `scripts/rebuild-ui.sh`.
+9. Run `scripts/bootstrap.sh` to render, enable, and start the production user services.
+10. Use `scripts/run-from-env.sh backend` or `scripts/run-from-env.sh frontend` only for temporary foreground debugging.
+11. Run backend tests with `PYTHONPATH=src .venv/bin/pytest`.
+12. Run the frontend production validation with `cd frontend && npm run build`.
 
 ## Operator Flow
 

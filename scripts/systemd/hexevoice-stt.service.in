@@ -5,3 +5,8 @@ Description=HexeVoice faster-whisper STT
 WorkingDirectory=__ROOT_DIR__
 LimitNOFILE=65536
 ExecStart=/bin/bash -lc 'source "__ENV_FILE__"; cd "__ROOT_DIR__"; eval "$STT_CMD"'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

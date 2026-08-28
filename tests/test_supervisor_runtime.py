@@ -125,6 +125,12 @@ def test_supervisor_runtime_registers_before_heartbeat_with_core_contract_fields
     assert registration["health_status"] == "healthy"
     assert registration["running"] is True
     assert "runtime_metadata" in registration
+    assert registration["runtime_metadata"]["systemd_scope"] == "user"
+    assert registration["runtime_metadata"]["systemd_units"] == [
+        "hexevoice-stt.service",
+        "hexevoice-backend.service",
+        "hexevoice-frontend.service",
+    ]
     services = registration["runtime_metadata"]["services"]
     backend = next(service for service in services if service["service_id"] == "backend")
     assert backend["pid"] == os.getpid()

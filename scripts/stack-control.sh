@@ -11,27 +11,46 @@ fi
 
 . "$ENV_FILE"
 
+BACKEND_SERVICE_NAME="${BACKEND_SERVICE_NAME:-hexevoice-backend.service}"
+FRONTEND_SERVICE_NAME="${FRONTEND_SERVICE_NAME:-hexevoice-frontend.service}"
 STT_SERVICE_NAME="${STT_SERVICE_NAME:-hexevoice-stt.service}"
 SPEAKER_ID_SERVICE_NAME="${SPEAKER_ID_SERVICE_NAME:-hexevoice-speaker-id.service}"
+OPENWAKEWORD_SERVICE_NAME="${OPENWAKEWORD_SERVICE_NAME:-hexevoice-openwakeword.service}"
+PIPER_TTS_SERVICE_NAME="${PIPER_TTS_SERVICE_NAME:-hexevoice-piper-tts.service}"
 STACK_CONTROL_TIMEOUT_S="${STACK_CONTROL_TIMEOUT_S:-45}"
 
-services=("$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME")
+services=()
 
 systemd_service_exists() {
   systemctl --user cat "$1" >/dev/null 2>&1
 }
 
+add_optional_service() {
+  local service_name="$1"
+  local install_hint="$2"
+  if systemd_service_exists "$service_name"; then
+    services+=("$service_name")
+  else
+    echo "Skipping $service_name: not installed. $install_hint"
+  fi
+}
+
+add_optional_service "$OPENWAKEWORD_SERVICE_NAME" "Run scripts/bootstrap.sh to install provider runtime units."
+add_optional_service "$PIPER_TTS_SERVICE_NAME" "Run scripts/bootstrap.sh to install provider runtime units."
+
 if systemd_service_exists "$STT_SERVICE_NAME"; then
-  services=("$BACKEND_SERVICE_NAME" "$STT_SERVICE_NAME" "$FRONTEND_SERVICE_NAME")
+  services+=("$STT_SERVICE_NAME")
 else
   echo "Skipping $STT_SERVICE_NAME: not installed. Supervisor should install it with POST /api/services/install target=stt."
 fi
 
 if systemd_service_exists "$SPEAKER_ID_SERVICE_NAME"; then
-  services=("${services[@]:0:${#services[@]}-1}" "$SPEAKER_ID_SERVICE_NAME" "${services[-1]}")
+  services+=("$SPEAKER_ID_SERVICE_NAME")
 else
   echo "Skipping $SPEAKER_ID_SERVICE_NAME: not installed. Supervisor should install it with POST /api/services/install target=speaker_id."
 fi
+
+services+=("$BACKEND_SERVICE_NAME" "$FRONTEND_SERVICE_NAME")
 
 require_core_services() {
   local missing=()

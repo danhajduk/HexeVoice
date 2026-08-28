@@ -1362,10 +1362,19 @@ class NodeRuntimeService:
                 **self._service_process_fields(frontend_process),
             }
         )
+        systemd_units = [
+            self._settings.voice_stt_service_name,
+            self._backend_service_name(),
+            "hexevoice-frontend.service",
+        ]
+        if self._speaker_id_enabled():
+            systemd_units.insert(1, self._settings.voice_speaker_id_service_name)
         runtime_metadata = {
             "node_software_version": self._settings.node_software_version,
             "boot_order": 30,
             "node_dependencies": ["node_type:ai-node", "mqtt"],
+            "systemd_units": systemd_units,
+            "systemd_scope": "user",
             "services": services,
         }
         return {

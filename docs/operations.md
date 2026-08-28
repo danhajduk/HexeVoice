@@ -144,7 +144,7 @@ Operators should treat Core `operational_ready` as the source of truth for final
 
 Use:
 
-- `scripts/bootstrap.sh` to install user services
+- `scripts/bootstrap.sh` to install, enable, and start user services
 - `scripts/run-from-env.sh backend` to launch the backend from `scripts/stack.env`
 - `scripts/run-from-env.sh frontend` to launch the frontend from `scripts/stack.env`
 - `scripts/stack-control.sh` for service control
@@ -452,7 +452,17 @@ state, and last error to `/api/engines/heartbeat` through either
 container stays on Wyoming/container health checks for now because its protocol
 is not an HTTP voice engine API.
 
-Systemd user units are intentionally not enabled for auto-start and do not declare a restart policy. Core Supervisor is the lifecycle authority for managed node runtime behavior.
+Systemd user units are enabled for auto-start by `scripts/bootstrap.sh` so the
+node can come back after a host reboot. The backend, frontend, STT, and optional
+Speaker ID units use `Restart=always`; the openWakeWord and Piper TTS units run
+their control-script readiness paths at boot and retry if Docker is not ready
+yet. Docker provider compose files keep `restart: "no"` so lifecycle intent
+stays in Supervisor/systemd rather than moving into Docker policy.
+
+Core Supervisor remains the lifecycle authority for desired state and operator
+actions. HexeVoice registers top-level `runtime_metadata.systemd_units` plus
+nested service metadata, allowing Supervisor to observe the user-service
+processes and proxy node service actions through the backend when it is online.
 
 When supervisor integration is enabled, the backend registers and heartbeats through the local Unix socket:
 
@@ -460,11 +470,12 @@ When supervisor integration is enabled, the backend registers and heartbeats thr
 - register route: `POST /api/supervisor/runtimes/register`
 - heartbeat route: `POST /api/supervisor/runtimes/heartbeat`
 
-The registration metadata includes stable service entries for `backend`,
-`openwakeword`, `stt_engine`, `tts_engine`, and `frontend`. The STT and TTS
-entries are logical engine wrappers, so Supervisor sees the same service IDs
-whether the active implementation is local, external, in-process, or cloud
-backed. When `VOICE_STT_PROVIDER=external_faster_whisper`, `stt_engine` includes
+The registration metadata includes top-level user-service unit names plus stable
+service entries for `backend`, `openwakeword`, `stt_engine`, `tts_engine`,
+optional `speaker_id`, and `frontend`. The STT and TTS entries are logical
+engine wrappers, so Supervisor sees the same service IDs whether the active
+implementation is local, external, in-process, or cloud backed. When
+`VOICE_STT_PROVIDER=external_faster_whisper`, `stt_engine` includes
 the `faster_whisper_stt` implementation service id, Docker container name,
 control-script path, socket path, and local STT URL. When
 `VOICE_TTS_PROVIDER=piper`, `tts_engine` includes the
@@ -547,6 +558,9 @@ Systemd templates for this node live at:
 
 - `scripts/systemd/hexevoice-backend.service.in`
 - `scripts/systemd/hexevoice-stt.service.in`
+- `scripts/systemd/hexevoice-speaker-id.service.in`
+- `scripts/systemd/hexevoice-openwakeword.service.in`
+- `scripts/systemd/hexevoice-piper-tts.service.in`
 - `scripts/systemd/hexevoice-frontend.service.in`
 
 The backend unit sets `LimitNOFILE=65536` so long-running voice WebSocket, endpoint heartbeat, and supervised wake-word socket activity does not inherit the low shell default of 1024 file descriptors.
