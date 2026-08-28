@@ -13,6 +13,9 @@ export function VoiceEndpointActionsCard({
 }) {
   const actions = voiceStatus?.supported_actions || {};
   const commands = Array.isArray(voiceStatus?.commands) ? voiceStatus.commands.slice(-5).reverse() : [];
+  const activeSessionState = voiceStatus?.active_session?.session_state || voiceStatus?.session_state || "";
+  const recordingStates = new Set(["capturing", "listening", "recording", "transcribing", "processing"]);
+  const hasActiveVoiceSession = recordingStates.has(String(activeSessionState).toLowerCase());
 
   function commandClass(status) {
     if (status === "succeeded") {
@@ -29,28 +32,36 @@ export function VoiceEndpointActionsCard({
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Endpoint Actions</p>
-          <h2 className="panel-title">Voice Controls</h2>
+          <h2 className="panel-title">Everyday Controls</h2>
         </div>
       </div>
-      <div className="actions">
-        <button className="btn btn-ghost" type="button" onClick={onRefresh}>
-          Refresh endpoint
-        </button>
-        <button className="btn btn-ghost" type="button" onClick={onTestTurn}>
-          Test assistant turn
-        </button>
-        <button className="btn btn-ghost" type="button" onClick={onStopSession} disabled={!actions.stop_session}>
-          Stop session
-        </button>
-        <button className="btn btn-ghost" type="button" onClick={onReplayResponse} disabled={!actions.replay_response}>
-          Replay response
-        </button>
-        <button className="btn btn-ghost" type="button" onClick={onMuteEndpoint} disabled={!actions.mute_endpoint}>
-          {muted ? "Unmute endpoint" : "Mute endpoint"}
-        </button>
-        <button className="btn btn-ghost" type="button" disabled={!actions.reconnect}>
-          Reconnect
-        </button>
+      <div className="endpoint-action-group">
+        <p className="endpoint-action-group-label">Routine</p>
+        <div className="actions">
+          <button className="btn btn-ghost" type="button" onClick={onRefresh}>
+            Refresh endpoint
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={onTestTurn}>
+            Test assistant turn
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={onReplayResponse} disabled={!actions.replay_response}>
+            Replay response
+          </button>
+          <button className="btn btn-ghost" type="button" onClick={onMuteEndpoint} disabled={!actions.mute_endpoint}>
+            {muted ? "Unmute endpoint" : "Mute endpoint"}
+          </button>
+        </div>
+      </div>
+      <div className="endpoint-action-group">
+        <p className="endpoint-action-group-label">Session safety</p>
+        <div className="actions">
+          <button className="btn btn-ghost" type="button" onClick={onStopSession} disabled={!actions.stop_session || !hasActiveVoiceSession}>
+            {hasActiveVoiceSession ? "Stop listening" : "No active recording"}
+          </button>
+          <button className="btn btn-ghost" type="button" disabled={!actions.reconnect}>
+            Reconnect
+          </button>
+        </div>
       </div>
       <div className="form-row endpoint-volume-control">
         <label className="field">

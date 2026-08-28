@@ -141,6 +141,7 @@ You can override the defaults with `BACKEND_PORT`, `FRONTEND_PORT`, `BACKEND_HOS
 - Node onboarding is implemented end to end across the backend and frontend shell.
 - HexeVoice registers and heartbeats to the Core Supervisor over `/run/hexe/supervisor.sock` when `HEXE_SUPERVISOR_ENABLED=true`.
 - The operator UI follows the shared Hexe node visual standard and renders the full canonical 10-step flow plus post-setup operational overview surfaces.
+- The Voice Endpoint dashboard prioritizes selected-device status, clear wake/session wording, everyday controls, recent turns, and collapsed advanced management panels.
 - Local Python workflow should always use the repo-local `.venv` binaries.
 
 ## Implemented Flow

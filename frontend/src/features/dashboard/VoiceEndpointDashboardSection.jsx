@@ -56,6 +56,12 @@ function formatMs(value) {
   if (typeof value !== "number") {
     return "none";
   }
+  if (value >= 60000) {
+    return `${Math.round(value / 60000)} min`;
+  }
+  if (value >= 10000) {
+    return `${Math.round(value / 1000)} sec`;
+  }
   return `${Math.round(value)} ms`;
 }
 
@@ -78,6 +84,45 @@ function formatYesNo(value) {
     return "unknown";
   }
   return value ? "yes" : "no";
+}
+
+function labelizeState(value, fallback = "none") {
+  if (!value) {
+    return fallback;
+  }
+  return String(value)
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function uxStateLabel(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (normalized === "wake_armed") {
+    return "Wake word armed";
+  }
+  if (normalized === "listening" || normalized === "capturing" || normalized === "recording") {
+    return "Recording speech";
+  }
+  if (normalized === "speaking" || normalized === "playback") {
+    return "Speaking";
+  }
+  return labelizeState(value, "Idle");
+}
+
+function sessionStateLabel(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (!normalized || normalized === "none") {
+    return "No session";
+  }
+  if (normalized === "idle") {
+    return "Idle";
+  }
+  if (normalized === "capturing" || normalized === "listening" || normalized === "recording") {
+    return "Recording";
+  }
+  return labelizeState(value);
 }
 
 function endpointCapabilities(endpointStatus) {
@@ -186,9 +231,9 @@ function firmwareUpdateLabel(update) {
     return "unknown";
   }
   if (update.update_available) {
-    return "update ready";
+    return "Update ready";
   }
-  return update.reason || "current";
+  return labelizeState(update.reason, "current");
 }
 
 function audioQualityTone(audioQuality) {
@@ -527,8 +572,6 @@ function EndpointStatusTable({
   endpointRegistry,
   selectedEndpointId,
   onSelectEndpoint,
-  onPushFirmwareUpdate,
-  firmwareUpdateBusy,
 }) {
   const timings = voiceStatus?.last_turn_timings || {};
   const endpointStatuses = endpointStatusesFromRegistry(endpointStatus, endpointRegistry);
@@ -548,16 +591,18 @@ function EndpointStatusTable({
       zoneId: currentEndpointStatus?.zone_id || "none",
       firmwareVersion: currentEndpointStatus?.firmware_version || "unknown",
       boardProfile: endpointBoardProfile(currentEndpointStatus),
-      deviceState: currentEndpointStatus?.device_state || "unknown",
-      connectionState: currentEndpointStatus?.connection_state || "unknown",
+      deviceState: labelizeState(currentEndpointStatus?.device_state, "Unknown"),
+      connectionState: labelizeState(currentEndpointStatus?.connection_state, "Unknown"),
       fileTransfer: storage.media_transfer_active ? "downloading file" : storage.media_transfer_status || "idle",
       volume: typeof output.volume_percent === "number" ? `${output.volume_percent}%` : "unknown",
-      muted: typeof output.muted === "boolean" ? (output.muted ? "muted" : "live") : "unknown",
+      muted: typeof output.muted === "boolean" ? (output.muted ? "Muted" : "Live") : "Unknown",
       lastSeenAt: formatLocalDateTime(currentEndpointStatus?.last_seen_at),
-      voiceConnection: projection.connection_state,
-      uxState: projection.ux_state,
-      sessionState: projection.session_state || "none",
-      transportHealth: projection.transport_health,
+      ipAddress: currentEndpointStatus?.ip_address || "unknown",
+      rssi: typeof currentEndpointStatus?.rssi_dbm === "number" ? `${currentEndpointStatus.rssi_dbm} dBm` : "unknown",
+      voiceConnection: labelizeState(projection.connection_state, "Offline"),
+      uxState: uxStateLabel(projection.ux_state),
+      sessionState: sessionStateLabel(projection.session_state),
+      transportHealth: labelizeState(projection.transport_health, "Offline"),
       sessionId: session?.session_id || "none",
       sttLatency: formatMs(timings.stt_ms),
       totalLatency: formatMs(timings.total_ms),
@@ -581,27 +626,12 @@ function EndpointStatusTable({
   const selectedEndpoint = endpointRows.find((row) => row.endpointId === selectedEndpointId) || endpointRows[0] || null;
   const selectedDetailRows = selectedEndpoint
     ? [
-        ["Endpoint", selectedEndpoint.endpointId],
-        ["Name", selectedEndpoint.displayName],
-        ["Zone", selectedEndpoint.zoneId],
+        ["IP address", selectedEndpoint.ipAddress],
+        ["Signal", selectedEndpoint.rssi],
         ["Board", selectedEndpoint.boardProfile],
-        ["Firmware", selectedEndpoint.firmwareVersion],
-        ["Latest firmware", selectedEndpoint.firmwareUpdate.latest_version || "unknown"],
-        ["Firmware artifact", selectedEndpoint.firmwareUpdate.filename || "none"],
         ["Firmware update", firmwareUpdateLabel(selectedEndpoint.firmwareUpdate)],
-        ["Device state", selectedEndpoint.deviceState],
-        ["Registry state", selectedEndpoint.connectionState],
-        ["File transfer", selectedEndpoint.fileTransfer],
-        ["Volume", selectedEndpoint.volume],
-        ["Mute", selectedEndpoint.muted],
         ["Last heartbeat", selectedEndpoint.lastSeenAt],
-        ["Voice connection", selectedEndpoint.voiceConnection],
-        ["UX state", selectedEndpoint.uxState],
-        ["Session state", selectedEndpoint.sessionState],
         ["Transport", selectedEndpoint.transportHealth],
-        ["STT latency", selectedEndpoint.sttLatency],
-        ["Total latency", selectedEndpoint.totalLatency],
-        ["Session", selectedEndpoint.sessionId],
       ]
     : [];
 
@@ -610,10 +640,24 @@ function EndpointStatusTable({
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Endpoint Status</p>
-          <h2 className="panel-title">Connected Devices</h2>
+          <h2 className="panel-title">Selected Endpoint</h2>
         </div>
         <span className="status-pill status-pill-neutral">{`${endpointStatuses.length} endpoint${endpointStatuses.length === 1 ? "" : "s"}`}</span>
       </div>
+      {selectedEndpoint ? (
+        <div className="selected-endpoint-summary">
+          <div>
+            <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
+            <strong>{valueOrEmpty(selectedEndpoint.displayName, selectedEndpoint.endpointId)}</strong>
+            <span>{valueOrEmpty(selectedEndpoint.endpointId)}</span>
+          </div>
+          <span>{selectedEndpoint.connectionState}</span>
+          <span>{selectedEndpoint.sessionState}</span>
+          <span>{selectedEndpoint.uxState}</span>
+          <span>{`${selectedEndpoint.volume} / ${selectedEndpoint.muted}`}</span>
+          <span>{selectedEndpoint.rssi}</span>
+        </div>
+      ) : null}
       <div className="endpoint-overview-layout">
         <div className="endpoint-card-grid">
           {endpointRows.map((row) => (
@@ -642,6 +686,10 @@ function EndpointStatusTable({
                 <span>
                   <strong>Voice</strong>
                   {valueOrEmpty(row.voiceConnection)}
+                </span>
+                <span>
+                  <strong>UX</strong>
+                  {valueOrEmpty(row.uxState)}
                 </span>
                 <span>
                   <strong>Board</strong>
@@ -684,16 +732,6 @@ function EndpointStatusTable({
                 </div>
               ))}
             </dl>
-            <div className="actions">
-              <button
-                className="btn btn-primary"
-                type="button"
-                disabled={!selectedEndpoint.firmwareUpdate?.update_available || firmwareUpdateBusy}
-                onClick={() => onPushFirmwareUpdate?.(selectedEndpoint)}
-              >
-                {firmwareUpdateBusy ? "Sending OTA..." : "Send OTA"}
-              </button>
-            </div>
           </section>
         ) : null}
       </div>
@@ -807,7 +845,7 @@ function EndpointMetadataPanel({ endpointStatus, voiceStatus, onRefresh, setActi
   );
 }
 
-function EndpointCapabilitiesPanel({ endpointStatus }) {
+function EndpointCapabilitiesPanel({ endpointStatus, onPushFirmwareUpdate, firmwareUpdateBusy }) {
   const capabilities = endpointCapabilities(endpointStatus);
   const display = capabilities.display || {};
   const audio = capabilities.audio || {};
@@ -816,6 +854,7 @@ function EndpointCapabilitiesPanel({ endpointStatus }) {
   const firmware = capabilities.firmware || {};
   const controls = capabilities.controls || {};
   const storage = capabilities.storage || {};
+  const firmwareUpdate = endpointStatus?.firmware_update || {};
   const displayResolution = display.resolution || (
     typeof display.width === "number" && typeof display.height === "number"
       ? `${display.width}x${display.height}`
@@ -879,6 +918,19 @@ function EndpointCapabilitiesPanel({ endpointStatus }) {
           <dd>{controlLabels || "unknown"}</dd>
         </div>
       </dl>
+      <div className="actions">
+        <button
+          className="btn btn-primary"
+          type="button"
+          disabled={!endpointStatus?.endpoint_id || !firmwareUpdate.update_available || firmwareUpdateBusy}
+          onClick={() => onPushFirmwareUpdate?.({
+            endpointId: endpointStatus?.endpoint_id,
+            firmwareUpdate,
+          })}
+        >
+          {firmwareUpdateBusy ? "Sending OTA..." : "Send OTA"}
+        </button>
+      </div>
     </section>
   );
 }
@@ -1499,7 +1551,7 @@ function VoiceSessionHistoryPanel({
   onDeleteEndpointArtifacts,
   onRefreshHistory,
 }) {
-  const visibleSessions = visibleHistorySessions(sessions);
+  const visibleSessions = sessions;
   const storedCount = typeof historyStatus?.stored_count === "number" ? historyStatus.stored_count : sessions.length;
   const [audioQualityDetail, setAudioQualityDetail] = useState(null);
 
@@ -1554,7 +1606,7 @@ function VoiceSessionHistoryPanel({
                     <td>{valueOrEmpty(session.endpoint_id)}</td>
                     <td>
                       <div className="voice-history-status-cell">
-                        <span>{valueOrEmpty(session.session_state)}</span>
+                        <span>{sessionStateLabel(session.session_state)}</span>
                         <AudioQualityButton audioQuality={audioQuality} onOpen={() => setAudioQualityDetail(audioQuality)} />
                       </div>
                     </td>
@@ -1640,6 +1692,23 @@ function VoiceSessionHistoryPanel({
   );
 }
 
+function EndpointAdvancedSection({ title, kicker, badge, children }) {
+  return (
+    <details className="endpoint-advanced-section">
+      <summary>
+        <span>
+          <span className="panel-kicker">{kicker}</span>
+          <strong>{title}</strong>
+        </span>
+        <span className="status-pill status-pill-neutral">{badge}</span>
+      </summary>
+      <div className="endpoint-advanced-body">
+        {children}
+      </div>
+    </details>
+  );
+}
+
 export function VoiceEndpointDashboardSection({
   voiceStatus,
   endpointStatus,
@@ -1661,7 +1730,6 @@ export function VoiceEndpointDashboardSection({
   const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
   const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
   const latestEndpointSession = visibleHistorySessions(voiceSessions)[0] || null;
-  const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
   const reportedOutput = endpointCapabilities(selectedEndpointStatus).audio?.output || {};
 
   useEffect(() => {
@@ -1950,6 +2018,13 @@ export function VoiceEndpointDashboardSection({
 
   return (
     <section className="card stack panel voice-endpoint-main-card">
+      <EndpointStatusTable
+        voiceStatus={voiceStatus}
+        endpointStatus={endpointStatus}
+        endpointRegistry={endpointRegistry}
+        selectedEndpointId={endpointId}
+        onSelectEndpoint={setSelectedEndpointId}
+      />
       <div className="voice-endpoint-top">
         <VoicePipelinePanel voiceStatus={scopedVoiceStatus} latestSession={latestEndpointSession} />
         <VoiceEndpointActionsCard
@@ -1966,54 +2041,6 @@ export function VoiceEndpointDashboardSection({
           actionMessage={actionMessage}
         />
       </div>
-      <section className="voice-endpoint-panel stack">
-        <div className="section-heading">
-          <div>
-            <p className="panel-kicker">State Families</p>
-            <h2 className="panel-title">Connection, UX, Session</h2>
-          </div>
-          <span className="status-pill status-pill-neutral">{valueOrEmpty(projection.transport_health, "offline")}</span>
-        </div>
-        <dl className="facts">
-          <div>
-            <dt>Connection</dt>
-            <dd>{valueOrEmpty(projection.connection_state, "offline")}</dd>
-          </div>
-          <div>
-            <dt>UX</dt>
-            <dd>{valueOrEmpty(projection.ux_state, "idle")}</dd>
-          </div>
-          <div>
-            <dt>Session</dt>
-            <dd>{valueOrEmpty(projection.session_state, "none")}</dd>
-          </div>
-          <div>
-            <dt>Transport</dt>
-            <dd>{valueOrEmpty(projection.transport_health, "offline")}</dd>
-          </div>
-        </dl>
-      </section>
-      <EndpointStatusTable
-        voiceStatus={voiceStatus}
-        endpointStatus={endpointStatus}
-        endpointRegistry={endpointRegistry}
-        selectedEndpointId={endpointId}
-        onSelectEndpoint={setSelectedEndpointId}
-        onPushFirmwareUpdate={handlePushFirmwareUpdate}
-        firmwareUpdateBusy={firmwareUpdateBusy}
-      />
-      <EndpointCapabilitiesPanel endpointStatus={selectedEndpointStatus} />
-      <EndpointProvisioningPanel
-        voiceStatus={scopedVoiceStatus}
-        endpointStatus={selectedEndpointStatus}
-        onRefresh={onRefresh}
-        setActionMessage={setActionMessage}
-      />
-      <EndpointMediaManagerPanel
-        endpointId={endpointId}
-        onRefresh={onRefresh}
-        setActionMessage={setActionMessage}
-      />
       <VoiceSessionHistoryPanel
         sessions={voiceSessions}
         historyStatus={historyStatus}
@@ -2030,12 +2057,48 @@ export function VoiceEndpointDashboardSection({
         onDeleteEndpointArtifacts={handleDeleteEndpointArtifacts}
         onRefreshHistory={refreshVoiceSessions}
       />
-      <EndpointMetadataPanel
-        voiceStatus={scopedVoiceStatus}
-        endpointStatus={selectedEndpointStatus}
-        onRefresh={onRefresh}
-        setActionMessage={setActionMessage}
-      />
+      <EndpointAdvancedSection
+        title="Hardware & Firmware"
+        kicker="Endpoint Capabilities"
+        badge={selectedEndpointStatus?.firmware_version || "unknown FW"}
+      >
+        <EndpointCapabilitiesPanel
+          endpointStatus={selectedEndpointStatus}
+          onPushFirmwareUpdate={handlePushFirmwareUpdate}
+          firmwareUpdateBusy={firmwareUpdateBusy}
+        />
+      </EndpointAdvancedSection>
+      <EndpointAdvancedSection
+        title="Provisioning"
+        kicker="Endpoint Settings"
+        badge={endpointCapabilities(selectedEndpointStatus).provisioning?.configured ? "persisted" : "build defaults"}
+      >
+        <EndpointProvisioningPanel
+          voiceStatus={scopedVoiceStatus}
+          endpointStatus={selectedEndpointStatus}
+          onRefresh={onRefresh}
+          setActionMessage={setActionMessage}
+        />
+      </EndpointAdvancedSection>
+      <EndpointAdvancedSection title="SD Asset Manager" kicker="Endpoint Media" badge="advanced">
+        <EndpointMediaManagerPanel
+          endpointId={endpointId}
+          onRefresh={onRefresh}
+          setActionMessage={setActionMessage}
+        />
+      </EndpointAdvancedSection>
+      <EndpointAdvancedSection
+        title="Operator Metadata"
+        kicker="Endpoint Registry"
+        badge={labelizeState(selectedEndpointStatus?.connection_state, "unregistered")}
+      >
+        <EndpointMetadataPanel
+          voiceStatus={scopedVoiceStatus}
+          endpointStatus={selectedEndpointStatus}
+          onRefresh={onRefresh}
+          setActionMessage={setActionMessage}
+        />
+      </EndpointAdvancedSection>
     </section>
   );
 }
