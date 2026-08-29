@@ -1231,21 +1231,22 @@ def test_voice_status_and_operator_cancel_surface_active_session(tmp_path):
     )
 
     with client.websocket_connect("/api/voice/ws") as websocket:
-        websocket.send_json(voice_event("session.start"))
+        websocket.send_json(voice_event("session.start", payload={"wake_source": "button"}))
+        websocket.receive_json()
         websocket.receive_json()
 
         status = client.get("/api/voice/status")
         assert status.status_code == 200
         assert status.json()["connection_state"] == "connected"
-        assert status.json()["session_state"] == "idle"
-        assert status.json()["ux_state"] == "wake_armed"
+        assert status.json()["session_state"] == "listening"
+        assert status.json()["ux_state"] == "listening"
         assert status.json()["state_projection"] == {
             "connection_state": "connected",
-            "ux_state": "wake_armed",
-            "session_state": "idle",
+            "ux_state": "listening",
+            "session_state": "listening",
             "transport_health": "online",
         }
-        assert status.json()["active_session"]["session_state"] == "idle"
+        assert status.json()["active_session"]["session_state"] == "listening"
         assert status.json()["wake_provider"]["provider"] == "deterministic"
         assert status.json()["wake_provider"]["healthy"] is True
         assert status.json()["turn_pipeline"]["stt"]["provider"] == "deterministic"
@@ -2276,8 +2277,8 @@ def test_voice_status_projects_offline_state_after_reconnect_cycle(tmp_path):
         websocket.receive_json()
         connected = client.get("/api/voice/status").json()
         assert connected["state_projection"]["connection_state"] == "connected"
-        assert connected["state_projection"]["session_state"] == "idle"
-        assert connected["state_projection"]["ux_state"] == "wake_armed"
+        assert connected["state_projection"]["session_state"] is None
+        assert connected["state_projection"]["ux_state"] == "idle"
 
     disconnected = client.get("/api/voice/status").json()
     assert disconnected["state_projection"]["connection_state"] == "offline"

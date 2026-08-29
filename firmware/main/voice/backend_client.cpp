@@ -70,6 +70,8 @@ constexpr int kVoiceWsSendRetryDelayMs = 50;
 constexpr int kVoiceWsSendAttempts = 3;
 constexpr int64_t kPostTtsInputIgnoreUs = 800000;
 constexpr int64_t kSessionResetInputIgnoreUs = 2000000;
+constexpr int64_t kPreWakeStreamTimeoutUs = 10000000;
+constexpr int64_t kAcceptedCaptureTimeoutUs = 15000000;
 constexpr int kDiscoveryTimeoutMs = 1200;
 constexpr char kDiscoverySchemaVersion[] = "hexevoice.endpoint.discovery.v1";
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
@@ -111,6 +113,7 @@ bool g_preroll_drained = false;
 bool g_media_transfer_active = false;
 int64_t g_last_clock_sync_us = 0;
 int g_clock_sync_interval_ms = kClockSyncIntervalMs;
+int64_t g_session_started_at_us = 0;
 std::array<AudioFrame, kWakePrerollFrameCount> g_preroll_frames = {};
 size_t g_preroll_index = 0;
 size_t g_preroll_count = 0;
@@ -174,6 +177,7 @@ bool voice_transport_ready();
 bool wake_source_is_local_acceptance(const char *wake_source);
 bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
 void resume_audio_stream_for_followup();
+bool active_audio_stream_timed_out();
 void reset_transport_micro_vad();
 void reset_transport_audio_metrics();
 void start_input_ignore_cooldown(const char *reason, int64_t duration_us);
@@ -211,6 +215,7 @@ void mark_voice_socket_disconnected() {
   g_audio_stream_finished = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  g_session_started_at_us = 0;
   reset_transport_micro_vad();
   g_tts_playback_session_id.clear();
   set_audio_streaming(false);
@@ -1039,6 +1044,7 @@ void handle_backend_event_json(const std::string &message) {
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
+    g_session_started_at_us = 0;
     reset_transport_micro_vad();
     set_audio_streaming(false);
     start_session_reset_input_cooldown();
@@ -1053,6 +1059,7 @@ void handle_backend_event_json(const std::string &message) {
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
+    g_session_started_at_us = 0;
     reset_transport_micro_vad();
     g_tts_playback_session_id.clear();
     set_audio_streaming(false);
@@ -1119,6 +1126,7 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_audio_stream_finished = false;
     g_preroll_drained = false;
     g_transport_sample_count = 0;
+    g_session_started_at_us = 0;
     reset_transport_micro_vad();
     set_audio_streaming(false);
     g_ws_rx_buffer.clear();
@@ -1898,6 +1906,7 @@ bool ensure_session_started(const char *wake_source) {
   g_vad_speech_started_reported = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  g_session_started_at_us = esp_timer_get_time();
   reset_transport_micro_vad();
   g_tts_playback_session_id.clear();
   char session_buffer[96];
@@ -2115,9 +2124,19 @@ void resume_audio_stream_for_followup() {
   g_vad_speech_started_reported = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  g_session_started_at_us = esp_timer_get_time();
   reset_transport_micro_vad();
   set_audio_streaming(true);
   ESP_LOGI(kTag, "Resuming voice audio stream for follow-up window");
+}
+
+bool active_audio_stream_timed_out() {
+  if (!g_session_started || g_audio_stream_finished || g_session_started_at_us <= 0) {
+    return false;
+  }
+  const int64_t elapsed_us = esp_timer_get_time() - g_session_started_at_us;
+  const int64_t timeout_us = g_wake_accepted_for_session ? kAcceptedCaptureTimeoutUs : kPreWakeStreamTimeoutUs;
+  return elapsed_us > timeout_us;
 }
 
 bool send_vad_speech_started_event(uint32_t level) {
@@ -2158,6 +2177,11 @@ void send_audio_frame(const AudioFrame &frame) {
     return;
   }
   if (!g_session_started) {
+    return;
+  }
+  if (active_audio_stream_timed_out()) {
+    ESP_LOGW(kTag, "Ending voice audio stream after local capture timeout");
+    hexe::voice::finish_audio_stream("capture_timeout");
     return;
   }
 
@@ -2621,6 +2645,7 @@ bool cancel_active_session(const char *reason) {
   g_audio_stream_finished = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
+  g_session_started_at_us = 0;
   reset_transport_micro_vad();
   g_tts_playback_session_id.clear();
   set_audio_streaming(false);

@@ -287,10 +287,11 @@ class VoiceSessionManager:
         return self._default_runtime
 
     def _runtime_status_summary(self, state: EndpointSessionRuntime) -> dict[str, Any]:
-        active_snapshot = state.active_session.model_dump(mode="json") if state.active_session else None
+        active_session = self._status_visible_session(state)
+        active_snapshot = active_session.model_dump(mode="json") if active_session else None
         projection = project_voice_state(
             connection_active=state.connection_active,
-            active_session=state.active_session,
+            active_session=active_session,
         ).model_dump(mode="json")
         return {
             "endpoint_id": state.connected_endpoint_id,
@@ -302,6 +303,20 @@ class VoiceSessionManager:
             "last_event_type": state.last_event_type,
             "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
         }
+
+    @staticmethod
+    def _status_visible_session(state: EndpointSessionRuntime) -> VoiceSessionSnapshot | None:
+        session = state.active_session
+        if session is None:
+            return None
+        if session.session_state != "idle":
+            return session
+        wake = state.active_session_history.get("wake") if state.active_session_history else None
+        if isinstance(wake, dict) and wake.get("outcome") == "accepted":
+            return session
+        if session.wake_source in {"button", "manual"}:
+            return session
+        return None
 
     def _active_session_timeout_reason(self, *, now: datetime) -> str | None:
         if self._active_session is None:
@@ -2010,10 +2025,11 @@ class VoiceSessionManager:
         selected_runtime = self._status_runtime()
         token = self._runtime_context.set(selected_runtime)
         try:
-            active_snapshot = self._active_session.model_dump(mode="json") if self._active_session else None
+            active_session = self._status_visible_session(selected_runtime)
+            active_snapshot = active_session.model_dump(mode="json") if active_session else None
             state_projection = project_voice_state(
                 connection_active=self._connection_active,
-                active_session=self._active_session,
+                active_session=active_session,
             ).model_dump(mode="json")
             connected_endpoint_ids = sorted(
                 endpoint_id
@@ -2077,7 +2093,7 @@ class VoiceSessionManager:
                 "supported_actions": {
                     "refresh": True,
                     "test_assistant_turn": True,
-                    "stop_session": self._active_session is not None,
+                    "stop_session": active_session is not None,
                     "replay_response": bool(connected_endpoint_ids)
                     and (self._last_tts is not None or latest_replay_session is not None),
                     "mute_endpoint": bool(connected_endpoint_ids),

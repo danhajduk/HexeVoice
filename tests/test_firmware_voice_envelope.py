@@ -225,6 +225,9 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert "notify_vad_speech_started(level)" in pe_source
     assert "kPostTtsInputIgnoreUs = 800000" in backend_source
     assert "kSessionResetInputIgnoreUs = 2000000" in backend_source
+    assert "kPreWakeStreamTimeoutUs = 10000000" in backend_source
+    assert "kAcceptedCaptureTimeoutUs = 15000000" in backend_source
+    assert 'finish_audio_stream("capture_timeout")' in backend_source
     assert "start_session_reset_input_cooldown();" in backend_source
     assert "start_post_tts_input_cooldown();" in backend_source
     assert "post_tts_input_cooldown_active()" in backend_source
