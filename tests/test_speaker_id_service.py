@@ -290,6 +290,7 @@ def test_speaker_id_confidence_tiers_and_low_margin_metadata_are_redacted(tmp_pa
                 "thresholds": {"identify_min_confidence": 0.5, "identify_min_margin": 0.2},
             },
         )
+        status = client.get("/status")
 
     assert low_margin.status_code == 200
     payload = low_margin.json()
@@ -300,6 +301,10 @@ def test_speaker_id_confidence_tiers_and_low_margin_metadata_are_redacted(tmp_pa
     public_payload = json.dumps(payload)
     assert "audio_base64" not in public_payload
     assert "values" not in public_payload
+    outcomes = status.json()["recent_identification_outcomes"]
+    assert outcomes[0]["match"]["confidence_tier"] == "very_high"
+    assert len(outcomes[0]["candidates"]) == 2
+    assert "values" not in json.dumps(outcomes[0])
 
     medium = _match_payload({"score": 0.72}, 0.1)
     low = _match_payload({"score": 0.4}, 0.1)

@@ -1510,11 +1510,100 @@
   background: hsl(var(--sx-text) / 0.025);
 }
 
+.speaker-outcome-row {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.speaker-outcome-row:hover,
+.speaker-outcome-row:focus-visible {
+  border-color: hsl(var(--sx-accent) / 0.48);
+  background: hsl(var(--sx-accent) / 0.08);
+  outline: none;
+}
+
 .speaker-outcome-row > span:nth-child(2),
 .speaker-sample-row > span:first-child {
   flex: 1 1 180px;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.speaker-outcome-detail-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(8px);
+}
+
+.speaker-outcome-detail-popout {
+  width: min(980px, 100%);
+  max-height: min(780px, calc(100vh - 48px));
+  overflow: auto;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-lg);
+  background: hsl(var(--sx-panel));
+  box-shadow: var(--sx-shadow-3);
+}
+
+.speaker-outcome-detail-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  color: hsl(var(--sx-text-muted));
+}
+
+.speaker-outcome-detail-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.speaker-candidate-list {
+  display: grid;
+  gap: 8px;
+}
+
+.speaker-candidate-row {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 96px 110px;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-text) / 0.025);
+}
+
+.speaker-candidate-row > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.speaker-outcome-json {
+  max-height: 260px;
+  overflow: auto;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel-alt));
+  color: hsl(var(--sx-text-muted));
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .speaker-id-audio-textarea {

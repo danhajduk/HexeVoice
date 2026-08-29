@@ -287,8 +287,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "score_margin",
                     "provider",
                     "model_id",
+                    "confidence_tier",
+                    "age_band",
+                    "age_restriction_class",
+                    "admin_eligible",
+                    "learning_eligible",
                 )
             }
+        candidates = result.get("candidates")
+        if isinstance(candidates, list):
+            outcome["candidates"] = [
+                _match_payload(candidate, 0.0)
+                for candidate in candidates[:3]
+                if isinstance(candidate, dict)
+            ]
+        if "verified" in result:
+            outcome["verified"] = bool(result.get("verified"))
         recent_identification_outcomes.insert(0, outcome)
         del recent_identification_outcomes[12:]
 

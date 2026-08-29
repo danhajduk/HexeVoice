@@ -182,6 +182,124 @@ function outcomeText(outcome) {
   return [outcome?.status, speaker, outcome?.reason].filter(Boolean).join(" / ") || "none";
 }
 
+function formatScore(value) {
+  const score = Number(value);
+  return Number.isFinite(score) ? score.toFixed(3) : "none";
+}
+
+function yesNo(value) {
+  return value ? "yes" : "no";
+}
+
+function candidateLabel(candidate) {
+  return candidate?.display_name || candidate?.speaker_public_id || candidate?.profile_id || "unknown";
+}
+
+function RecognitionOutcomeDetailPopout({ outcome, onClose }) {
+  if (!outcome) {
+    return null;
+  }
+
+  const match = outcome.match || {};
+  const candidates = Array.isArray(outcome.candidates) ? outcome.candidates : [];
+  return (
+    <div className="speaker-outcome-detail-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="speaker-outcome-detail-popout"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Recognition outcome details"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Recognition Stream</p>
+            <h2 className="panel-title">{outcomeText(outcome)}</h2>
+          </div>
+          <button className="btn btn-ghost btn-compact" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <div className="speaker-outcome-detail-summary">
+          <span className={`status-pill status-pill-${outcome.status === "unknown" ? "warning" : "success"}`}>
+            {valueOrEmpty(outcome.status)}
+          </span>
+          <span>{formatLocalDateTime(outcome.recorded_at)}</span>
+        </div>
+        <div className="tts-model-detail-grid">
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Kind</span>
+            <span className="fact-grid-value">{valueOrEmpty(outcome.kind)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Request</span>
+            <span className="fact-grid-value">{valueOrEmpty(outcome.request_id)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Reason</span>
+            <span className="fact-grid-value">{valueOrEmpty(outcome.reason)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Speaker</span>
+            <span className="fact-grid-value">{candidateLabel(match)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Confidence</span>
+            <span className="fact-grid-value">{formatScore(match.confidence ?? match.score)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Tier</span>
+            <span className="fact-grid-value">{valueOrEmpty(match.confidence_tier)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Margin</span>
+            <span className="fact-grid-value">{formatScore(match.score_margin)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Provider</span>
+            <span className="fact-grid-value">{providerLabel(match.provider)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Model</span>
+            <span className="fact-grid-value">{valueOrEmpty(match.model_id)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Age Band</span>
+            <span className="fact-grid-value">{valueOrEmpty(match.age_band)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Admin</span>
+            <span className="fact-grid-value">{yesNo(match.admin_eligible)}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Learning</span>
+            <span className="fact-grid-value">{yesNo(match.learning_eligible)}</span>
+          </div>
+        </div>
+        {candidates.length ? (
+          <div className="speaker-outcome-detail-section">
+            <h3 className="section-title">Candidates</h3>
+            <div className="speaker-candidate-list">
+              {candidates.map((candidate, index) => (
+                <div className="speaker-candidate-row" key={`${candidate.profile_id || candidate.speaker_public_id || "candidate"}-${index}`}>
+                  <span className="muted">#{index + 1}</span>
+                  <span>{candidateLabel(candidate)}</span>
+                  <span>{formatScore(candidate.confidence ?? candidate.score)}</span>
+                  <span className="muted">{valueOrEmpty(candidate.confidence_tier)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="speaker-outcome-detail-section">
+          <h3 className="section-title">Metadata</h3>
+          <pre className="speaker-outcome-json">{JSON.stringify(outcome, null, 2)}</pre>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -360,6 +478,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [selectedOutcome, setSelectedOutcome] = useState(null);
 
   const outcomes = useMemo(
     () => (Array.isArray(status?.recent_identification_outcomes) ? status.recent_identification_outcomes : []),
@@ -794,13 +913,18 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
           ) : (
             <div className="speaker-outcome-list">
               {outcomes.slice(0, 8).map((outcome, index) => (
-                <div className="speaker-outcome-row" key={`${outcome.request_id || "outcome"}-${index}`}>
+                <button
+                  className="speaker-outcome-row"
+                  key={`${outcome.request_id || "outcome"}-${index}`}
+                  type="button"
+                  onClick={() => setSelectedOutcome(outcome)}
+                >
                   <span className={`status-pill status-pill-${outcome.status === "unknown" ? "warning" : "success"}`}>
                     {valueOrEmpty(outcome.status)}
                   </span>
                   <span>{outcomeText(outcome)}</span>
                   <span className="muted">{formatLocalDateTime(outcome.recorded_at)}</span>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -1323,6 +1447,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
       {activeTab === "enrollment" ? renderEnrollment() : null}
       {activeTab === "profiles" ? renderProfiles() : null}
       {activeTab === "admin" ? renderAdmin() : null}
+      <RecognitionOutcomeDetailPopout outcome={selectedOutcome} onClose={() => setSelectedOutcome(null)} />
     </section>
   );
 }

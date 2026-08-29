@@ -62,6 +62,11 @@ def test_speaker_id_dashboard_covers_enrollment_profiles_and_diagnostics():
     assert "Confirm Delete" in dashboard_source
     assert "Delete removes local Speaker ID templates" in dashboard_source
     assert "Recent Outcomes" in dashboard_source
+    assert "RecognitionOutcomeDetailPopout" in dashboard_source
+    assert "setSelectedOutcome(outcome)" in dashboard_source
+    assert "speaker-outcome-detail-popout" in dashboard_source
+    assert "Candidates" in dashboard_source
+    assert "JSON.stringify(outcome, null, 2)" in dashboard_source
     assert 'label="Unknown"' in dashboard_source
     assert "Low Confidence" in dashboard_source
     assert "Export Metadata" in dashboard_source
