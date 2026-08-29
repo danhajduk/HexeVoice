@@ -56,7 +56,7 @@ Do not edit above this line:
 [DONE] Task 251: Implement firmware wake-election candidate and stand-down behavior
 [STOP]
 [DONE] Task 252: Add active endpoint placement test workflow and placement report
-[TODO] Task 253: Add passive ambient placement calibration and long-window placement scoring
+[DONE] Task 253: Add passive ambient placement calibration and long-window placement scoring
 [STOP]
 [TODO] Task 254: Add optional monthly voice quality observation log
 [STOP]

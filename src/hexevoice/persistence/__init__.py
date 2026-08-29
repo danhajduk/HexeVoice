@@ -22,6 +22,10 @@ from hexevoice.persistence.voice_session_history import (
     PersistedVoiceSessionHistory,
     VoiceSessionHistoryStore,
 )
+from hexevoice.persistence.voice_placement_calibration import (
+    PersistedVoicePlacementCalibration,
+    VoicePlacementCalibrationStore,
+)
 
 __all__ = [
     "BootstrapDiscoveryState",
@@ -37,7 +41,9 @@ __all__ = [
     "PreTrustSetupState",
     "ProviderSetupState",
     "PersistedVoiceSessionHistory",
+    "PersistedVoicePlacementCalibration",
     "ResumeState",
     "TrustActivationState",
     "VoiceSessionHistoryStore",
+    "VoicePlacementCalibrationStore",
 ]

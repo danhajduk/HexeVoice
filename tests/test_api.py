@@ -1418,6 +1418,91 @@ def test_voice_placement_test_window_marks_endpoint_active(tmp_path):
     assert status["placement_tests"]["active_windows"][0]["expected_phrase"] == "Hexe turn on the kitchen lights"
 
 
+def test_voice_passive_placement_calibration_api_schedules_records_and_reports(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+            )
+        )
+    )
+
+    start = client.post(
+        "/api/voice/placement-calibrations",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "room": "kitchen",
+            "zone": "north",
+            "duration_hours": 24,
+            "sample_interval_seconds": 600,
+        },
+    )
+
+    assert start.status_code == 200
+    window = start.json()["window"]
+    assert window["mode"] == "passive_ambient"
+    assert window["raw_audio_policy"] == "discard_after_metrics"
+    assert window["metrics_only"] is True
+
+    sample = client.post(
+        f"/api/voice/placement-calibrations/{window['calibration_id']}/samples",
+        json={
+            "metrics": {
+                "ambient_rms": 0.02,
+                "peak": 0.12,
+                "clipping_ratio": 0.0,
+                "speech_like_activity": False,
+                "snr_db": 24,
+                "audio_b64": "ignored",
+            }
+        },
+    )
+
+    assert sample.status_code == 200
+    sample_payload = sample.json()["sample"]
+    assert sample_payload["privacy"]["metrics_only"] is True
+    assert sample_payload["privacy"]["raw_audio"]["persisted"] is False
+    assert sample_payload["privacy"]["stt"]["called"] is False
+    assert sample_payload["privacy"]["speaker_id"]["called"] is False
+    assert "audio_b64" not in sample_payload["metrics"]
+
+    status = client.get("/api/voice/placement-calibrations", params={"endpoint_id": "esp-pe-1"}).json()
+    assert status["calibrations"]["active_windows"][0]["calibration_id"] == window["calibration_id"]
+    assert status["calibrations"]["sample_count"] == 1
+
+    report = client.get(f"/api/voice/placement-calibrations/{window['calibration_id']}/report")
+    assert report.status_code == 200
+    assert report.json()["report"]["sample_count"] == 1
+    assert report.json()["report"]["privacy"]["raw_audio_persisted"] is False
+
+
+def test_voice_passive_placement_calibration_cancel_rejects_samples(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+            )
+        )
+    )
+    window = client.post(
+        "/api/voice/placement-calibrations",
+        json={"endpoint_id": "esp-pe-1", "room": "kitchen"},
+    ).json()["window"]
+
+    cancel = client.post(f"/api/voice/placement-calibrations/{window['calibration_id']}/cancel")
+    assert cancel.status_code == 200
+    assert cancel.json()["window"]["status"] == "cancelled"
+
+    sample = client.post(
+        f"/api/voice/placement-calibrations/{window['calibration_id']}/samples",
+        json={"metrics": {"ambient_rms": 0.02}},
+    )
+    assert sample.status_code == 400
+    assert sample.json()["detail"] == "calibration_not_active"
+
+
 def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
     client = TestClient(
         create_app(
@@ -1445,6 +1530,10 @@ def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
             "expected_phrase": "Hexe turn on the kitchen lights",
         },
     )
+    passive_calibration = client.post(
+        "/api/voice/placement-calibrations",
+        json={"endpoint_id": "esp-box-1", "room": "kitchen"},
+    )
 
     assert status.status_code == 200
     payload = status.json()
@@ -1455,10 +1544,13 @@ def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
     assert payload["turn_pipeline"]["speaker_id"]["blocked_reason"] == "privacy_mode_enabled"
     assert payload["speaker_enrollment_capture"]["blocked"] is True
     assert payload["placement_tests"]["blocked"] is True
+    assert payload["placement_calibrations"]["blocked"] is True
     assert capture.status_code == 400
     assert capture.json()["detail"] == "privacy_mode_enabled"
     assert placement.status_code == 400
     assert placement.json()["detail"] == "privacy_mode_enabled"
+    assert passive_calibration.status_code == 400
+    assert passive_calibration.json()["detail"] == "privacy_mode_enabled"
 
 
 def test_tts_warmup_voice_selection_prefers_configured_warm_voices():

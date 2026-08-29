@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   applyEndpointProvisioning,
   cancelEndpointSession,
+  cancelVoicePlacementCalibration,
   deleteEndpointMedia,
   deleteEndpointVoiceArtifacts,
   deleteVoiceTtsArtifact,
@@ -10,6 +11,8 @@ import {
   getEndpointMediaAssets,
   getEndpointMediaInventory,
   getEndpointVolume,
+  getVoicePlacementCalibrations,
+  getVoicePlacementCalibrationReport,
   getVoicePlacementTests,
   getVoiceSession,
   getVoiceSessions,
@@ -20,6 +23,7 @@ import {
   replayEndpointResponse,
   replayVoiceSession,
   setEndpointVolume,
+  startVoicePlacementCalibration,
   startVoicePlacementTest,
   testAssistantTurn,
   uploadEndpointMedia,
@@ -1748,6 +1752,9 @@ function PlacementTestPanel({
   expectedPhrase,
   expectedSpeakerPublicId,
   busy,
+  passiveCalibrations,
+  passiveReport,
+  passiveBusy,
   onRoomChange,
   onZoneChange,
   onPositionLabelChange,
@@ -1755,12 +1762,20 @@ function PlacementTestPanel({
   onExpectedSpeakerPublicIdChange,
   onStart,
   onRefresh,
+  onStartPassive,
+  onCancelPassive,
+  onRefreshPassive,
 }) {
   const activeWindows = Array.isArray(voiceStatus?.placement_tests?.active_windows)
     ? voiceStatus.placement_tests.active_windows.filter((window) => !endpointId || window.endpoint_id === endpointId)
     : [];
   const visibleReports = reports.length ? reports : voiceStatus?.placement_tests?.recent_reports || [];
   const latestReport = visibleReports[0]?.report || null;
+  const calibrationStatus = passiveCalibrations?.calibrations || voiceStatus?.placement_calibrations || {};
+  const passiveActiveWindows = Array.isArray(calibrationStatus.active_windows)
+    ? calibrationStatus.active_windows.filter((window) => !endpointId || window.endpoint_id === endpointId)
+    : [];
+  const passiveLatest = passiveActiveWindows[0] || calibrationStatus.recent_windows?.[0] || null;
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -1835,6 +1850,49 @@ function PlacementTestPanel({
       ) : (
         <div className="callout callout-neutral">No placement reports yet.</div>
       )}
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Passive</p>
+          <h3 className="panel-title">Ambient Calibration</h3>
+        </div>
+        <span className={`status-pill ${passiveActiveWindows.length ? "status-pill-warning" : "status-pill-neutral"}`}>
+          {passiveActiveWindows.length ? "collecting" : "idle"}
+        </span>
+      </div>
+      <div className="actions">
+        <button className="btn btn-ghost" type="button" onClick={onStartPassive} disabled={passiveBusy || !endpointId}>
+          Start 24h calibration
+        </button>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => onCancelPassive(passiveActiveWindows[0]?.calibration_id)}
+          disabled={passiveBusy || !passiveActiveWindows[0]?.calibration_id}
+        >
+          Cancel calibration
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={onRefreshPassive} disabled={passiveBusy || !endpointId}>
+          Refresh calibration
+        </button>
+      </div>
+      <dl className="facts">
+        <div>
+          <dt>Samples</dt>
+          <dd>{calibrationStatus.sample_count ?? 0}</dd>
+        </div>
+        <div>
+          <dt>Next sample</dt>
+          <dd>{passiveLatest?.next_sample_due_at ? formatLocalDateTime(passiveLatest.next_sample_due_at) : "none"}</dd>
+        </div>
+        <div>
+          <dt>Long score</dt>
+          <dd>{passiveReport?.score ?? "none"}</dd>
+        </div>
+        <div>
+          <dt>Long recommendation</dt>
+          <dd>{labelizeState(passiveReport?.recommendation, "none")}</dd>
+        </div>
+      </dl>
     </section>
   );
 }
@@ -1863,6 +1921,9 @@ export function VoiceEndpointDashboardSection({
   const [placementPosition, setPlacementPosition] = useState("");
   const [placementPhrase, setPlacementPhrase] = useState("Hexe turn on the kitchen lights");
   const [placementSpeaker, setPlacementSpeaker] = useState("");
+  const [placementCalibrations, setPlacementCalibrations] = useState(null);
+  const [placementCalibrationReport, setPlacementCalibrationReport] = useState(null);
+  const [placementPassiveBusy, setPlacementPassiveBusy] = useState(false);
   const selectedEndpointStatus = endpointStatusById(endpointStatuses, selectedEndpointId);
   const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
   const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
@@ -1957,6 +2018,49 @@ export function VoiceEndpointDashboardSection({
     };
   }, [endpointId, voiceStatus?.placement_tests?.recent_reports, voiceStatus?.session_history?.updated_at]);
 
+  useEffect(() => {
+    let active = true;
+    if (!endpointId) {
+      setPlacementCalibrations(null);
+      setPlacementCalibrationReport(null);
+      return () => {
+        active = false;
+      };
+    }
+    getVoicePlacementCalibrations({ endpointId })
+      .then(async (payload) => {
+        if (!active) {
+          return;
+        }
+        setPlacementCalibrations(payload);
+        const status = payload.calibrations || {};
+        const latest = status.active_windows?.[0] || status.recent_windows?.[0] || null;
+        if (!latest?.calibration_id) {
+          setPlacementCalibrationReport(null);
+          return;
+        }
+        try {
+          const reportPayload = await getVoicePlacementCalibrationReport(latest.calibration_id);
+          if (active) {
+            setPlacementCalibrationReport(reportPayload.report || null);
+          }
+        } catch {
+          if (active) {
+            setPlacementCalibrationReport(null);
+          }
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPlacementCalibrations({ calibrations: voiceStatus?.placement_calibrations || {} });
+          setPlacementCalibrationReport(null);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [endpointId, voiceStatus?.placement_calibrations?.updated_at, voiceStatus?.placement_calibrations?.sample_count]);
+
   async function refreshVoiceSessions({ showMessage = true } = {}) {
     try {
       const payload = await getVoiceSessions({ limit: 12, endpointId: endpointId || undefined });
@@ -1975,6 +2079,26 @@ export function VoiceEndpointDashboardSection({
       setPlacementReports(payload.tests || []);
       if (showMessage) {
         setActionMessage("Placement reports refreshed.");
+      }
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
+  async function refreshPlacementCalibrations({ showMessage = true } = {}) {
+    try {
+      const payload = await getVoicePlacementCalibrations({ endpointId });
+      setPlacementCalibrations(payload);
+      const status = payload.calibrations || {};
+      const latest = status.active_windows?.[0] || status.recent_windows?.[0] || null;
+      if (latest?.calibration_id) {
+        const reportPayload = await getVoicePlacementCalibrationReport(latest.calibration_id);
+        setPlacementCalibrationReport(reportPayload.report || null);
+      } else {
+        setPlacementCalibrationReport(null);
+      }
+      if (showMessage) {
+        setActionMessage("Placement calibration refreshed.");
       }
     } catch (err) {
       setActionMessage(String(err.message || err));
@@ -2109,6 +2233,53 @@ export function VoiceEndpointDashboardSection({
       setActionMessage(String(err.message || err));
     } finally {
       setPlacementBusy(false);
+    }
+  }
+
+  async function handleStartPassivePlacementCalibration() {
+    if (!endpointId) {
+      setActionMessage("Placement calibration skipped: endpoint is not connected.");
+      return;
+    }
+    if (!placementRoom.trim()) {
+      setActionMessage("Placement calibration needs a room.");
+      return;
+    }
+    setPlacementPassiveBusy(true);
+    try {
+      const result = await startVoicePlacementCalibration({
+        endpointId,
+        room: placementRoom,
+        zone: placementZone,
+        durationHours: 24,
+        sampleIntervalSeconds: 600,
+        retentionDays: 3,
+      });
+      setActionMessage(`Passive calibration started for ${result.window?.endpoint_id || endpointId}.`);
+      await onRefresh();
+      await refreshPlacementCalibrations({ showMessage: false });
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setPlacementPassiveBusy(false);
+    }
+  }
+
+  async function handleCancelPassivePlacementCalibration(calibrationId) {
+    if (!calibrationId) {
+      setActionMessage("Calibration cancel skipped: no active calibration.");
+      return;
+    }
+    setPlacementPassiveBusy(true);
+    try {
+      await cancelVoicePlacementCalibration(calibrationId);
+      setActionMessage("Passive calibration cancelled.");
+      await onRefresh();
+      await refreshPlacementCalibrations({ showMessage: false });
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setPlacementPassiveBusy(false);
     }
   }
 
@@ -2254,6 +2425,9 @@ export function VoiceEndpointDashboardSection({
         expectedPhrase={placementPhrase}
         expectedSpeakerPublicId={placementSpeaker}
         busy={placementBusy}
+        passiveCalibrations={placementCalibrations}
+        passiveReport={placementCalibrationReport}
+        passiveBusy={placementPassiveBusy}
         onRoomChange={setPlacementRoom}
         onZoneChange={setPlacementZone}
         onPositionLabelChange={setPlacementPosition}
@@ -2261,6 +2435,9 @@ export function VoiceEndpointDashboardSection({
         onExpectedSpeakerPublicIdChange={setPlacementSpeaker}
         onStart={handleStartPlacementTest}
         onRefresh={refreshPlacementTests}
+        onStartPassive={handleStartPassivePlacementCalibration}
+        onCancelPassive={handleCancelPassivePlacementCalibration}
+        onRefreshPassive={refreshPlacementCalibrations}
       />
       <VoiceSessionHistoryPanel
         sessions={voiceSessions}

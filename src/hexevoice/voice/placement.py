@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 import re
+from statistics import mean
 
 
 def normalize_phrase(value: object) -> str:
@@ -123,6 +124,111 @@ def build_active_placement_report(payload: PlacementReportInput) -> dict[str, ob
     }
 
 
+def build_long_window_placement_report(
+    *,
+    window: dict[str, object],
+    passive_samples: list[dict[str, object]],
+    active_reports: list[dict[str, object]],
+) -> dict[str, object]:
+    metrics = [sample.get("metrics") for sample in passive_samples if isinstance(sample.get("metrics"), dict)]
+    ambient_values = _numeric_values(metrics, "ambient_rms")
+    peak_values = _numeric_values(metrics, "peak")
+    clipping_ratios = _numeric_values(metrics, "clipping_ratio")
+    snr_values = _numeric_values(metrics, "snr_db") + _active_snr_values(active_reports)
+    speech_like_count = sum(1 for metric in metrics if _speech_like(metric))
+    total_samples = len(metrics)
+    active_stt = _active_success_rate(active_reports, "stt")
+    active_speaker = _active_success_rate(active_reports, "speaker_id")
+
+    warnings: list[str] = []
+    score = 100
+    average_ambient = mean(ambient_values) if ambient_values else None
+    peak_noise = max(peak_values) if peak_values else None
+    clipping_frequency = _ratio(sum(1 for value in clipping_ratios if value > 0), len(clipping_ratios))
+    speech_like_frequency = _ratio(speech_like_count, total_samples)
+    snr_average = mean(snr_values) if snr_values else None
+
+    if average_ambient is None:
+        warnings.append("missing_passive_ambient")
+        score -= 20
+    elif average_ambient >= 0.08:
+        warnings.append("high_ambient_noise")
+        score -= 20
+    elif average_ambient >= 0.04:
+        warnings.append("elevated_ambient_noise")
+        score -= 10
+    if peak_noise is not None and peak_noise >= 0.85:
+        warnings.append("peak_noise_events")
+        score -= 10
+    if clipping_frequency is not None and clipping_frequency >= 0.05:
+        warnings.append("passive_clipping")
+        score -= 15
+    if speech_like_frequency is not None and speech_like_frequency >= 0.3:
+        warnings.append("frequent_background_speech_like_activity")
+        score -= 10
+    if snr_average is not None and snr_average < 15:
+        warnings.append("low_snr_distribution")
+        score -= 15
+    if active_stt["rate"] is not None and active_stt["rate"] < 0.8:
+        warnings.append("active_stt_inconsistent")
+        score -= 15
+    if active_speaker["rate"] is not None and active_speaker["rate"] < 0.8:
+        warnings.append("active_speaker_id_inconsistent")
+        score -= 10
+
+    score = max(0, min(100, int(round(score))))
+    recommendation = "placement_good"
+    if "missing_passive_ambient" in warnings:
+        recommendation = "collect_more_passive_samples"
+    elif any(warning in warnings for warning in ("high_ambient_noise", "frequent_background_speech_like_activity", "low_snr_distribution")):
+        recommendation = "move_endpoint_or_reduce_background_noise"
+    elif "passive_clipping" in warnings or "peak_noise_events" in warnings:
+        recommendation = "move_endpoint_farther_or_reduce_input_gain"
+    elif any(warning.startswith("active_") for warning in warnings):
+        recommendation = "rerun_active_tests_from_normal_positions"
+
+    return {
+        "schema_version": 1,
+        "mode": "long_window",
+        "calibration_id": window.get("calibration_id"),
+        "endpoint_id": window.get("endpoint_id"),
+        "room": window.get("room"),
+        "zone": window.get("zone"),
+        "sample_count": total_samples,
+        "active_test_count": len(active_reports),
+        "ambient": {
+            "average_rms": _round_or_none(average_ambient),
+            "peak": _round_or_none(peak_noise),
+            "hourly_average_rms": _hourly_ambient(passive_samples),
+            "peak_noise_periods": _peak_noise_periods(passive_samples),
+        },
+        "activity": {
+            "speech_like_count": speech_like_count,
+            "speech_like_frequency": _round_or_none(speech_like_frequency),
+            "clipping_frequency": _round_or_none(clipping_frequency),
+        },
+        "snr": {
+            "count": len(snr_values),
+            "average_db": round(snr_average, 2) if snr_average is not None else None,
+            "minimum_db": round(min(snr_values), 2) if snr_values else None,
+            "maximum_db": round(max(snr_values), 2) if snr_values else None,
+        },
+        "active_tests": {
+            "stt_success": active_stt,
+            "speaker_id_reliability": active_speaker,
+        },
+        "score": score,
+        "recommendation": recommendation,
+        "warnings": warnings,
+        "privacy": {
+            "metrics_only": True,
+            "stt_called_for_passive_samples": False,
+            "speaker_id_called_for_passive_samples": False,
+            "raw_audio_persisted": False,
+        },
+    }
+
+
 def _audio_quality_score(audio_quality: dict[str, object], warnings: list[str]) -> int:
     score = 100
     penalties = {
@@ -201,3 +307,95 @@ def _float_or_none(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _round_or_none(value: float | None) -> float | None:
+    return round(value, 6) if value is not None else None
+
+
+def _numeric_values(metrics: list[object], key: str) -> list[float]:
+    return [
+        float(metric[key])
+        for metric in metrics
+        if isinstance(metric, dict) and isinstance(metric.get(key), (int, float))
+    ]
+
+
+def _ratio(numerator: int, denominator: int) -> float | None:
+    if denominator <= 0:
+        return None
+    return numerator / denominator
+
+
+def _speech_like(metric: object) -> bool:
+    if not isinstance(metric, dict):
+        return False
+    if isinstance(metric.get("speech_like_activity"), bool):
+        return bool(metric["speech_like_activity"])
+    ratio = metric.get("speech_like_activity_ratio")
+    return isinstance(ratio, (int, float)) and float(ratio) > 0.1
+
+
+def _hourly_ambient(samples: list[dict[str, object]]) -> list[dict[str, object]]:
+    buckets: dict[str, list[float]] = {}
+    for sample in samples:
+        metrics = sample.get("metrics")
+        value = metrics.get("ambient_rms") if isinstance(metrics, dict) else None
+        observed_at = str(sample.get("observed_at") or "")
+        if not isinstance(value, (int, float)) or len(observed_at) < 13:
+            continue
+        hour = observed_at[11:13]
+        if not hour.isdigit():
+            continue
+        buckets.setdefault(hour, []).append(float(value))
+    return [
+        {"hour": hour, "average_rms": round(mean(values), 6), "sample_count": len(values)}
+        for hour, values in sorted(buckets.items())
+    ]
+
+
+def _peak_noise_periods(samples: list[dict[str, object]]) -> list[dict[str, object]]:
+    periods: list[dict[str, object]] = []
+    for sample in samples:
+        metrics = sample.get("metrics")
+        if not isinstance(metrics, dict):
+            continue
+        peak = metrics.get("peak")
+        ambient = metrics.get("ambient_rms")
+        value = peak if isinstance(peak, (int, float)) else ambient
+        if not isinstance(value, (int, float)):
+            continue
+        periods.append(
+            {
+                "observed_at": sample.get("observed_at"),
+                "peak": round(float(value), 6),
+                "ambient_rms": _round_or_none(float(ambient)) if isinstance(ambient, (int, float)) else None,
+            }
+        )
+    return sorted(periods, key=lambda item: float(item.get("peak") or 0), reverse=True)[:3]
+
+
+def _active_snr_values(active_reports: list[dict[str, object]]) -> list[float]:
+    values: list[float] = []
+    for report in active_reports:
+        audio_quality = report.get("audio_quality") if isinstance(report.get("audio_quality"), dict) else None
+        value = audio_quality.get("snr_db") if audio_quality else None
+        if isinstance(value, (int, float)):
+            values.append(float(value))
+    return values
+
+
+def _active_success_rate(active_reports: list[dict[str, object]], key: str) -> dict[str, object]:
+    total = 0
+    matched = 0
+    for report in active_reports:
+        details = report.get(key)
+        if not isinstance(details, dict):
+            continue
+        value = details.get("matched")
+        if not isinstance(value, bool):
+            continue
+        total += 1
+        if value:
+            matched += 1
+    return {"matched_count": matched, "total_count": total, "rate": round(matched / total, 3) if total else None}

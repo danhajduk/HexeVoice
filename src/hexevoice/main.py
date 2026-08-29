@@ -130,7 +130,12 @@ from hexevoice.onboarding.registration_metadata import RegistrationMetadataRefre
 from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.onboarding.trust_activation import TrustActivationService
-from hexevoice.persistence import EndpointRegistryStore, OnboardingStateStore, VoiceSessionHistoryStore
+from hexevoice.persistence import (
+    EndpointRegistryStore,
+    OnboardingStateStore,
+    VoicePlacementCalibrationStore,
+    VoiceSessionHistoryStore,
+)
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.setup_bootstrap import SetupBootstrapStatusService
@@ -474,6 +479,9 @@ def create_app(
         path=app_settings.resolved_voice_session_history_path(),
         max_records=app_settings.voice_session_history_limit,
     )
+    voice_placement_calibration_store = VoicePlacementCalibrationStore(
+        path=app_settings.resolved_voice_placement_calibration_path(),
+    )
     voice_intent_registry = VoiceIntentRegistry(store=voice_intent_store)
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     node_migration_service = NodeMigrationService(settings=app_settings)
@@ -588,6 +596,7 @@ def create_app(
         wake_recorder=wake_recorder,
         micro_vad_chunk_recorder=micro_vad_chunk_recorder,
         session_history_store=voice_session_history_store,
+        placement_calibration_store=voice_placement_calibration_store,
         pre_wake_timeout_s=app_settings.voice_session_pre_wake_timeout_s,
         max_active_session_s=app_settings.voice_session_max_active_s,
         privacy_mode_enabled=app_settings.voice_privacy_mode_enabled,
@@ -1035,6 +1044,61 @@ def create_app(
         if placement_test is None:
             raise HTTPException(status_code=404, detail="placement_test_not_found")
         return {"schema_version": 1, "placement_test": placement_test}
+
+    @app.post("/api/voice/placement-calibrations")
+    async def voice_start_passive_placement_calibration(payload: dict[str, object]) -> dict[str, object]:
+        try:
+            window = voice_session_manager.start_passive_placement_calibration(
+                endpoint_id=str(payload.get("endpoint_id") or "").strip(),
+                room=str(payload.get("room") or "").strip(),
+                zone=str(payload.get("zone") or "").strip() or None,
+                duration_hours=float(payload.get("duration_hours") or 24),
+                sample_interval_seconds=int(payload.get("sample_interval_seconds") or 600),
+                retention_days=int(payload.get("retention_days") or 3),
+                debug_record_audio=bool(payload.get("debug_record_audio")),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"schema_version": 1, "window": window}
+
+    @app.get("/api/voice/placement-calibrations")
+    async def voice_passive_placement_calibrations(endpoint_id: str | None = None) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "endpoint_id": endpoint_id,
+            "calibrations": voice_session_manager.passive_placement_calibration_status(endpoint_id=endpoint_id),
+        }
+
+    @app.post("/api/voice/placement-calibrations/cleanup")
+    async def voice_cleanup_passive_placement_calibrations() -> dict[str, object]:
+        return {"schema_version": 1, "cleanup": voice_session_manager.cleanup_passive_placement_calibrations()}
+
+    @app.post("/api/voice/placement-calibrations/{calibration_id}/cancel")
+    async def voice_cancel_passive_placement_calibration(calibration_id: str) -> dict[str, object]:
+        window = voice_session_manager.cancel_passive_placement_calibration(calibration_id)
+        if window is None:
+            raise HTTPException(status_code=404, detail="placement_calibration_not_found")
+        return {"schema_version": 1, "window": window}
+
+    @app.post("/api/voice/placement-calibrations/{calibration_id}/samples")
+    async def voice_record_passive_placement_sample(calibration_id: str, payload: dict[str, object]) -> dict[str, object]:
+        metrics = payload.get("metrics")
+        try:
+            sample = voice_session_manager.record_passive_placement_sample(
+                calibration_id=calibration_id,
+                metrics=metrics if isinstance(metrics, dict) else {},
+                observed_at=str(payload.get("observed_at") or "").strip() or None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"schema_version": 1, "sample": sample}
+
+    @app.get("/api/voice/placement-calibrations/{calibration_id}/report")
+    async def voice_passive_placement_report(calibration_id: str) -> dict[str, object]:
+        report = voice_session_manager.passive_placement_report(calibration_id)
+        if report is None:
+            raise HTTPException(status_code=404, detail="placement_calibration_not_found")
+        return {"schema_version": 1, "report": report}
 
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:

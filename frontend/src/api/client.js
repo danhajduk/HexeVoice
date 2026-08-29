@@ -342,6 +342,44 @@ export async function getVoicePlacementTests({ endpointId, limit = 20 } = {}) {
   return fetchJson(`/api/voice/placement-tests?${params.toString()}`);
 }
 
+export async function startVoicePlacementCalibration({
+  endpointId,
+  room,
+  zone,
+  durationHours = 24,
+  sampleIntervalSeconds = 600,
+  retentionDays = 3,
+  debugRecordAudio = false,
+}) {
+  return sendJson("/api/voice/placement-calibrations", {
+    body: {
+      endpoint_id: endpointId,
+      room,
+      zone,
+      duration_hours: durationHours,
+      sample_interval_seconds: sampleIntervalSeconds,
+      retention_days: retentionDays,
+      debug_record_audio: debugRecordAudio,
+    },
+  });
+}
+
+export async function getVoicePlacementCalibrations({ endpointId } = {}) {
+  const params = new URLSearchParams();
+  if (endpointId) {
+    params.set("endpoint_id", endpointId);
+  }
+  return fetchJson(`/api/voice/placement-calibrations?${params.toString()}`);
+}
+
+export async function cancelVoicePlacementCalibration(calibrationId) {
+  return sendJson(`/api/voice/placement-calibrations/${encodeURIComponent(calibrationId)}/cancel`);
+}
+
+export async function getVoicePlacementCalibrationReport(calibrationId) {
+  return fetchJson(`/api/voice/placement-calibrations/${encodeURIComponent(calibrationId)}/report`);
+}
+
 export async function startEndpointListen(endpointId) {
   return sendJson("/api/endpoint/session/listen", {
     body: {

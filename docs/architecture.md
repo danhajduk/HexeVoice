@@ -60,6 +60,8 @@ The first voice turn pipeline boundary lives in `src/hexevoice/voice/pipeline.py
 
 Active placement testing is an operator-started voice workflow exposed through `/api/voice/placement-tests`. A placement window is scoped to one endpoint and room/zone, the next matching endpoint turn becomes an intentional placement sample, and the backend runs STT, audio-quality/SNR analysis, and Speaker ID when the configured pipeline exposes it. Placement samples suppress assistant routing and TTS, persist only privacy-safe metrics and a score/recommendation in voice session history, and discard raw placement audio by default after analysis.
 
+Passive ambient placement calibration is exposed through `/api/voice/placement-calibrations`. It stores selected endpoint calibration windows and sanitized numeric ambient samples in `voice_placement_calibrations.json`, reports next sample due times for endpoint schedulers, supports cancellation and retention cleanup, and builds long-window placement reports from passive ambient trends plus matching active placement-test results. Passive samples are metrics-only by contract: no unattended STT, no Speaker ID, no environment classification, and no raw ambient audio persistence by default.
+
 Voice observability now has local backend APIs for the dashboard:
 
 - `GET /api/voice/status`

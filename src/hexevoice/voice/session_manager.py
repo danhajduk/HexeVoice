@@ -15,6 +15,7 @@ from uuid import uuid4
 from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from hexevoice.persistence.voice_placement_calibration import VoicePlacementCalibrationStore
 from hexevoice.persistence.voice_session_history import VoiceSessionHistoryStore
 from hexevoice.voice.contracts import (
     ENDPOINT_TO_BACKEND_EVENTS,
@@ -39,7 +40,11 @@ from hexevoice.voice.contracts import (
 )
 from hexevoice.voice.pipeline import TtsSynthesis, VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
-from hexevoice.voice.placement import PlacementReportInput, build_active_placement_report
+from hexevoice.voice.placement import (
+    PlacementReportInput,
+    build_active_placement_report,
+    build_long_window_placement_report,
+)
 from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
@@ -220,6 +225,7 @@ class VoiceSessionManager:
         wake_recorder: WakeRecordingService | None = None,
         micro_vad_chunk_recorder: MicroVadChunkRecordingService | None = None,
         session_history_store: VoiceSessionHistoryStore | None = None,
+        placement_calibration_store: VoicePlacementCalibrationStore | None = None,
         pre_wake_timeout_s: float = 10.0,
         max_active_session_s: float = 60.0,
         privacy_mode_enabled: bool = False,
@@ -236,6 +242,7 @@ class VoiceSessionManager:
         self._wake_recorder = wake_recorder
         self._micro_vad_chunk_recorder = micro_vad_chunk_recorder
         self._session_history_store = session_history_store
+        self._placement_calibration_store = placement_calibration_store
         self._command_records: dict[str, dict[str, object]] = {}
         self._last_volume_percent_by_endpoint: dict[str, int] = {}
         self._command_timeout_s = 10.0
@@ -2598,6 +2605,7 @@ class VoiceSessionManager:
                     "active_windows": self.placement_test_windows(),
                     "recent_reports": self.list_placement_tests(limit=5),
                 },
+                "placement_calibrations": self.passive_placement_calibration_status(),
                 "privacy_mode": {
                     "enabled": self._privacy_mode_enabled,
                     "blocked_features": [
@@ -2749,6 +2757,138 @@ class VoiceSessionManager:
             if report.get("test_id") == target:
                 return report
         return None
+
+    def start_passive_placement_calibration(
+        self,
+        *,
+        endpoint_id: str,
+        room: str,
+        zone: str | None = None,
+        duration_hours: float = 24,
+        sample_interval_seconds: int = 600,
+        retention_days: int = 3,
+        debug_record_audio: bool = False,
+    ) -> dict[str, object]:
+        if self._privacy_mode_enabled:
+            raise ValueError("privacy_mode_enabled")
+        if self._placement_calibration_store is None:
+            raise ValueError("placement_calibration_store_unavailable")
+        window = self._placement_calibration_store.start_window(
+            endpoint_id=endpoint_id,
+            room=room,
+            zone=zone,
+            duration_hours=duration_hours,
+            sample_interval_seconds=sample_interval_seconds,
+            retention_days=retention_days,
+            debug_record_audio=debug_record_audio,
+        )
+        record_voice_event(
+            "placement_calibration.started",
+            endpoint_id=window.get("endpoint_id"),
+            calibration_id=window.get("calibration_id"),
+            room=window.get("room"),
+            zone=window.get("zone"),
+            duration_hours=window.get("duration_hours"),
+            sample_interval_seconds=window.get("sample_interval_seconds"),
+        )
+        return window
+
+    def cancel_passive_placement_calibration(self, calibration_id: str) -> dict[str, object] | None:
+        if self._placement_calibration_store is None:
+            return None
+        window = self._placement_calibration_store.cancel_window(calibration_id)
+        if window is not None:
+            record_voice_event(
+                "placement_calibration.cancelled",
+                endpoint_id=window.get("endpoint_id"),
+                calibration_id=window.get("calibration_id"),
+                room=window.get("room"),
+                zone=window.get("zone"),
+            )
+        return window
+
+    def record_passive_placement_sample(
+        self,
+        *,
+        calibration_id: str,
+        metrics: dict[str, object],
+        observed_at: str | None = None,
+    ) -> dict[str, object]:
+        if self._privacy_mode_enabled:
+            raise ValueError("privacy_mode_enabled")
+        if self._placement_calibration_store is None:
+            raise ValueError("placement_calibration_store_unavailable")
+        sample = self._placement_calibration_store.record_sample(
+            calibration_id=calibration_id,
+            metrics=metrics,
+            observed_at=observed_at,
+        )
+        record_voice_event(
+            "placement_calibration.sample.recorded",
+            endpoint_id=sample.get("endpoint_id"),
+            calibration_id=sample.get("calibration_id"),
+            sample_id=sample.get("sample_id"),
+            metrics=list((sample.get("metrics") or {}).keys()) if isinstance(sample.get("metrics"), dict) else [],
+        )
+        return sample
+
+    def passive_placement_calibration_status(self, *, endpoint_id: str | None = None) -> dict[str, object]:
+        if self._placement_calibration_store is None:
+            return {
+                "enabled": False,
+                "blocked": self._privacy_mode_enabled,
+                "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
+                "active_windows": [],
+                "recent_windows": [],
+                "sample_count": 0,
+            }
+        status = self._placement_calibration_store.status(endpoint_id=endpoint_id)
+        return {
+            **status,
+            "blocked": self._privacy_mode_enabled,
+            "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
+        }
+
+    def passive_placement_report(self, calibration_id: str) -> dict[str, object] | None:
+        if self._placement_calibration_store is None:
+            return None
+        window = self._placement_calibration_store.get_window(calibration_id)
+        if window is None:
+            return None
+        samples = self._placement_calibration_store.list_samples(calibration_id=calibration_id, limit=5000)
+        active_reports = self._active_placement_reports_for_window(window)
+        return build_long_window_placement_report(
+            window=window,
+            passive_samples=samples,
+            active_reports=active_reports,
+        )
+
+    def cleanup_passive_placement_calibrations(self) -> dict[str, object]:
+        if self._placement_calibration_store is None:
+            return {"enabled": False, "status": "unavailable"}
+        before = self._placement_calibration_store.status()
+        after_model = self._placement_calibration_store.cleanup()
+        after = self._placement_calibration_store.status()
+        return {
+            "enabled": True,
+            "status": "ok",
+            "sample_count_before": before.get("sample_count"),
+            "sample_count_after": after.get("sample_count"),
+            "updated_at": after_model.updated_at,
+        }
+
+    def _active_placement_reports_for_window(self, window: dict[str, object]) -> list[dict[str, object]]:
+        endpoint_id = str(window.get("endpoint_id") or "")
+        room = window.get("room")
+        zone = window.get("zone")
+        reports: list[dict[str, object]] = []
+        for placement in self.list_placement_tests(limit=50, endpoint_id=endpoint_id or None):
+            if placement.get("room") != room or placement.get("zone") != zone:
+                continue
+            report = placement.get("report") if isinstance(placement.get("report"), dict) else None
+            if report:
+                reports.append(dict(report))
+        return reports
 
     def _expire_placement_test_windows(self) -> None:
         now = datetime.now(UTC)

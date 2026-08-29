@@ -33,3 +33,46 @@ an explicit operator flag for future bench capture flows, but current backend
 placement reports still persist metrics only and record `raw_audio.persisted:
 false`. Passive unattended placement calibration must remain metric-only and
 must not run STT or Speaker ID.
+
+Passive ambient placement calibration is a separate operator-started mode for
+long-window room analysis. It schedules a selected endpoint for periodic
+privacy-safe ambient metric samples, defaults to a 24-hour window with a
+10-minute sample interval, and supports up to 48-hour windows.
+
+```bash
+curl -X POST http://127.0.0.1:9004/api/voice/placement-calibrations \
+  -H "Content-Type: application/json" \
+  -d '{"endpoint_id":"esp-pe-1","room":"kitchen","zone":"north"}'
+```
+
+Endpoints report numeric samples to the returned calibration ID:
+
+```bash
+curl -X POST http://127.0.0.1:9004/api/voice/placement-calibrations/placement-cal-abc123/samples \
+  -H "Content-Type: application/json" \
+  -d '{"metrics":{"ambient_rms":0.02,"peak":0.12,"clipping_ratio":0,"speech_like_activity":false}}'
+```
+
+Passive samples store only sanitized numeric metrics and boolean
+speech-like-activity presence. Unattended passive samples do not call STT, do
+not call Speaker ID, do not retain raw ambient audio by default, and ignore
+payload fields that look like raw audio or transcript data. `debug_record_audio`
+is accepted as a scheduling flag for future endpoint debug capture, but backend
+sample storage still records `raw_audio.persisted: false`; any future
+debug-retained passive ambient audio must expire after one day.
+
+Status, cancellation, cleanup, and long-window report APIs are:
+
+```bash
+curl "http://127.0.0.1:9004/api/voice/placement-calibrations?endpoint_id=esp-pe-1"
+curl -X POST http://127.0.0.1:9004/api/voice/placement-calibrations/placement-cal-abc123/cancel
+curl -X POST http://127.0.0.1:9004/api/voice/placement-calibrations/cleanup
+curl http://127.0.0.1:9004/api/voice/placement-calibrations/placement-cal-abc123/report
+```
+
+The long-window report combines passive ambient statistics with matching active
+placement test reports for the same endpoint, room, and zone. It reports average
+ambient RMS by hour, peak noise periods, speech-like activity frequency,
+clipping frequency, SNR distribution when samples or active anchors have SNR,
+active-test STT success, active-test Speaker ID reliability, and an overall
+placement score/recommendation.
