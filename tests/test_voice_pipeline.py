@@ -472,7 +472,8 @@ def test_voice_turn_pipeline_blocks_personal_route_when_speaker_unknown(tmp_path
 
     assert assistant.requests == []
     assert result.assistant_response.command == "speaker.identity.required"
-    assert result.assistant_response.spoken_text == "Who is this?"
+    assert result.assistant_response.spoken_text.startswith("I could not recognize the speaker.")
+    assert result.assistant_response.provider_metadata["failure_guidance"]["sensitive_details_redacted"] is True
     assert result.speaker_identity is not None
     assert result.speaker_identity.status == "unknown"
     assert result.speaker_identity.policy == "required"
@@ -522,6 +523,7 @@ def test_voice_turn_pipeline_blocks_registered_required_intent_before_local_hand
 
     assert result.assistant_response.command == "speaker.identity.required"
     assert result.assistant_response.provider_id == "speaker_id_policy"
+    assert result.assistant_response.provider_metadata["failure_guidance"]["reason_codes"]
     assert result.speaker_identity is not None
     assert result.speaker_identity.policy == "required"
     assert assistant.status()["last_intent_latency"] is None
@@ -757,6 +759,7 @@ def test_voice_privacy_mode_blocks_identity_required_turn(tmp_path):
     )
 
     assert result.assistant_response.command == "speaker.identity.required"
+    assert "Please try again." in result.assistant_response.spoken_text
     assert assistant.requests == []
     assert speaker_id.calls == []
     assert result.speaker_identity is not None
@@ -1172,6 +1175,7 @@ def test_voice_turn_pipeline_rejects_admin_maintenance_wrong_passcode_and_redact
     assert result.assistant_response.command == "voice.admin_maintenance.refused"
     assert result.assistant_response.provider_metadata["admin_maintenance"]["allowed"] is False
     assert result.assistant_response.provider_metadata["admin_maintenance"]["reason"] == "admin_passcode_wrong"
+    assert result.assistant_response.provider_metadata["failure_guidance"]["user_cause"] == "passcode_failed"
     assert result.transcript.text == "admin debug start passcode [passcode]"
     assert result.assistant_response.heard_text == "admin debug start passcode [passcode]"
 

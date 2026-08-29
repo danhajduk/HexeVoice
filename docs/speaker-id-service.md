@@ -248,6 +248,12 @@ Automatic profile updates remain disabled. Operators can list candidates through
 
 Approval appends one bounded sample through the helper's `/profiles/{profile_id}/samples` endpoint, which increments the profile version and re-runs enrollment readiness guardrails. Approval is only possible when the candidate includes explicitly retained one-day debug audio; normal turns queue evidence without retained audio and therefore cannot mutate the profile. This keeps routine operation embeddings-only while allowing a deliberate operator-debug workflow for profile improvement.
 
+### Failure Guidance
+
+Identity-gated and admin-maintenance failures return a short user-facing message from the Voice pipeline instead of only asking who is speaking. The guidance layer maps Speaker ID status, low confidence, close score margin, short speech, clipping, and low-SNR/noisy-room diagnostics into concise replies such as "I could not recognize the speaker. The room may be too noisy. If this happens often, retrain the profile." Spoken/user-facing guidance does not include private scores, biometric details, embeddings, or raw audio references.
+
+The same response metadata includes `failure_guidance.operator_diagnostics` with structured reason codes, speaker status, confidence tier, audio-quality status, warnings, and SNR status for operator diagnostics. This gives the dashboard and logs actionable reasons without exposing raw templates or precise biometric scores in normal replies.
+
 ## Service Transport
 
 The default backend-to-helper transport is HTTP/JSON over a Unix domain socket.

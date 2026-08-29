@@ -41,6 +41,7 @@ from hexevoice.persistence.speaker_profile_review import SpeakerProfileReviewSto
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
 from hexevoice.voice.audio_quality import AudioQualityResult
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
+from hexevoice.voice.failure_guidance import voice_failure_guidance
 from hexevoice.voice.metric_schemas import VOICE_METRIC_SCHEMA_VERSION
 from hexevoice.voice.metric_schemas import speaker_confidence_tier
 from hexevoice.voice.records import record_voice_event
@@ -1839,6 +1840,7 @@ class VoiceTurnPipeline:
                 audio=audio,
                 transcript_text=transcript.text,
                 speaker_identity=speaker_identity,
+                audio_quality=audio_quality,
             )
         else:
             assistant_response = self._assistant_service.handle_turn(
@@ -1922,6 +1924,7 @@ class VoiceTurnPipeline:
                         audio=audio,
                         transcript_text=transcript.text,
                         speaker_identity=speaker_identity,
+                        audio_quality=audio_quality,
                     )
                 else:
                     assistant_response = self._assistant_service.handle_turn(
@@ -1953,6 +1956,7 @@ class VoiceTurnPipeline:
                     audio=audio,
                     transcript_text=transcript.text,
                     speaker_identity=speaker_identity,
+                    audio_quality=audio_quality,
                 )
         speaker_identity = self._speaker_identity_for_audience_override(
             audio=audio,
@@ -2227,14 +2231,22 @@ class VoiceTurnPipeline:
         audio: VoiceTurnAudioSummary,
         transcript_text: str | None,
         speaker_identity: SpeakerIdentityResult | None,
+        audio_quality: AudioQualityResult | None,
     ) -> AssistantTurnResponse:
         reason = speaker_identity.reason if speaker_identity else "speaker_identity_required"
+        guidance = voice_failure_guidance(
+            failure_type="speaker_identity",
+            reason=reason,
+            speaker_identity=speaker_identity.as_context() if speaker_identity else None,
+            audio_quality=audio_quality.as_context() if audio_quality else None,
+        )
+        reply = str(guidance["message"])
         return AssistantTurnResponse(
             endpoint_id=audio.endpoint_id,
             session_id=audio.session_id,
             heard_text=transcript_text or "",
-            reply_text="Who is this?",
-            spoken_text="Who is this?",
+            reply_text=reply,
+            spoken_text=reply,
             handled_locally=True,
             command="speaker.identity.required",
             device_state="speaking",
@@ -2243,6 +2255,7 @@ class VoiceTurnPipeline:
                 "speaker_identity_policy": "required",
                 "speaker_identity_status": speaker_identity.status if speaker_identity else "missing",
                 "speaker_identity_reason": reason,
+                "failure_guidance": guidance,
             },
             conversation_followup={
                 "type": "speaker_identity_required",
@@ -2431,7 +2444,8 @@ class VoiceTurnPipeline:
         transcript_text: str | None,
         decision: AdminMaintenanceDecision,
     ) -> AssistantTurnResponse:
-        reply = "Admin maintenance was not allowed."
+        guidance = voice_failure_guidance(failure_type="admin_maintenance", reason=decision.reason)
+        reply = str(guidance["message"])
         return AssistantTurnResponse(
             endpoint_id=audio.endpoint_id,
             session_id=audio.session_id,
@@ -2445,6 +2459,7 @@ class VoiceTurnPipeline:
             provider_metadata={
                 "admin_maintenance": decision.as_metadata(),
                 "admin_passcode_verified": False,
+                "failure_guidance": guidance,
             },
             conversation_followup={
                 "type": "admin_maintenance_refusal",
