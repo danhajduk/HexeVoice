@@ -52,19 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[STOP]
-[DONE] Task 251: Implement firmware wake-election candidate and stand-down behavior
-[STOP]
-[DONE] Task 252: Add active endpoint placement test workflow and placement report
-[DONE] Task 253: Add passive ambient placement calibration and long-window placement scoring
-[STOP]
-[DONE] Task 254: Add optional monthly voice quality observation log
-[STOP]
-[DONE] Task 255: Add admin-gated maintenance voice intents for debug, enrollment, and placement calibration
-[DONE] Task 256: Add operator-reviewed Speaker ID profile improvement workflow
-[DONE] Task 257: Add user-facing voice failure guidance from quality and identity diagnostics
-[DONE] Task 258: Add rolling endpoint audio quality statistics and UI summary
-[STOP]
 [TODO] Task 259: Add experimental endpoint microWakeWord wake provider using the official Alexa model for the initial Hexe-compatible wake path
 [TODO] Task 260: Add experimental on-device Stop keyword detection for playback/session cancellation
 [STOP]
