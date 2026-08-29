@@ -677,6 +677,74 @@ def test_voice_websocket_suppresses_tts_during_speaker_enrollment_capture(tmp_pa
     assert sessions[0]["wake_recording"]["transcript"]["text"] == "Hexe, turn on the lights in the living room."
 
 
+def test_voice_websocket_records_manual_speaker_enrollment_capture(tmp_path):
+    class EnrollmentCapturePipeline:
+        def __init__(self) -> None:
+            self.transcribed_audio = None
+
+        def transcribe_audio(self, audio):
+            self.transcribed_audio = audio
+            return SpeechTranscript(text="The copper lantern hangs beside the blue door.", confidence=0.9, provider_id="test-stt")
+
+        def complete_turn(self, audio):
+            raise AssertionError("speaker enrollment capture should not run assistant turns")
+
+        def status(self):
+            return {"provider": "capture-test", "healthy": True, "configured": True}
+
+    pipeline = EnrollmentCapturePipeline()
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice-session-history.json")
+    recorder = WakeRecordingService(recording_dir=tmp_path / "wake-recordings", retention_days=1)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        turn_pipeline=pipeline,
+        wake_recorder=recorder,
+        session_history_store=history_store,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+    client.post(
+        "/api/speaker-id/enrollment-capture-windows",
+        json={"endpoint_id": "esp-pe-1", "ttl_seconds": 120},
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                endpoint_id="esp-pe-1",
+                session_id="manual-enroll-1",
+                payload={"wake_source": "manual", "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                endpoint_id="esp-pe-1",
+                session_id="manual-enroll-1",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": base64.b64encode(b"\x01\x00\x02\x00").decode("ascii"),
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end", endpoint_id="esp-pe-1", session_id="manual-enroll-1"))
+        transcript = websocket.receive_json()
+        completed = websocket.receive_json()
+
+    assert pipeline.transcribed_audio is not None
+    assert transcript["event_type"] == "transcript.final"
+    assert completed["event_type"] == "session.completed"
+    assert completed["payload"]["completion_reason"] == "speaker_enrollment_capture"
+    assert completed["payload"]["wake_recording"]["recording_id"]
+    captures = client.get("/api/speaker-id/enrollment-captures", params={"endpoint_id": "esp-pe-1"}).json()["captures"]
+    assert captures[0]["recording_id"] == completed["payload"]["wake_recording"]["recording_id"]
+    assert captures[0]["transcript"]["text"] == "The copper lantern hangs beside the blue door."
+
+
 def test_voice_websocket_completes_speaker_enrollment_capture_on_new_session(tmp_path):
     class EnrollmentCapturePipeline:
         def __init__(self) -> None:

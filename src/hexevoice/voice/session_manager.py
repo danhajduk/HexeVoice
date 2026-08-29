@@ -1395,18 +1395,26 @@ class VoiceSessionManager:
                 audio_bytes=audio_bytes,
                 received_at=event.timestamp,
             )
-        if audio_bytes is not None and session.session_state == "idle" and self._wake_recorder is not None:
+        enrollment_capture_window = self._active_speaker_enrollment_capture_window(event.endpoint_id)
+        enrollment_capture_candidate = (
+            audio_bytes is not None
+            and enrollment_capture_window is not None
+            and session.session_state in {"idle", "wake_detected", "listening", "capturing"}
+        )
+        if (
+            audio_bytes is not None
+            and self._wake_recorder is not None
+            and (session.session_state == "idle" or enrollment_capture_candidate)
+        ):
             self._wake_recorder.capture_wake_chunk(
                 endpoint_id=event.endpoint_id,
                 session_id=session.session_id,
                 audio_format=payload.audio_format,
                 audio_bytes=audio_bytes,
             )
-        enrollment_capture_window = self._active_speaker_enrollment_capture_window(event.endpoint_id)
         enrollment_capture_accepted = (
-            audio_bytes is not None
-            and session.session_state == "idle"
-            and enrollment_capture_window is not None
+            enrollment_capture_candidate
+            and not self._active_session_is_speaker_enrollment_capture()
         )
         if enrollment_capture_accepted:
             if self._wake_recorder is not None:
