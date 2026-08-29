@@ -28,6 +28,9 @@ def test_speaker_id_dashboard_is_routed_and_calls_api_helpers():
     assert "appendSpeakerIdProfileSamples" in api_source
     assert 'sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}`' in api_source
     assert 'sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}/samples`' in api_source
+    assert "getSpeakerIdProfileLearningCandidates" in api_source
+    assert "reviewSpeakerIdProfileLearningCandidate" in api_source
+    assert "profile-learning-candidates" in api_source
     assert "deleteSpeakerIdProfile" in api_source
     assert "local biometric Speaker ID templates" in dashboard_source
 
@@ -68,6 +71,10 @@ def test_speaker_id_dashboard_covers_enrollment_profiles_and_diagnostics():
     assert "Edit Speaker Profile" in dashboard_source
     assert "updateSpeakerIdProfile(editingProfileId" in dashboard_source
     assert "appendSpeakerIdProfileSamples(editingProfileId" in dashboard_source
+    assert "Profile Improvement Queue" in dashboard_source
+    assert "Automatic profile learning remains disabled" in dashboard_source
+    assert "reviewSpeakerIdProfileLearningCandidate(candidate.candidate_id" in dashboard_source
+    assert "Retained Audio" in dashboard_source
     assert "New Profile" in dashboard_source
     assert "Delete removes local Speaker ID templates" in dashboard_source
     assert "Recent Outcomes" in dashboard_source

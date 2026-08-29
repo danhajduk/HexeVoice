@@ -6,10 +6,12 @@ import {
   appendSpeakerIdProfileSamples,
   getEndpointRegistry,
   getSpeakerIdEnrollmentCaptures,
+  getSpeakerIdProfileLearningCandidates,
   getSpeakerIdPhraseSets,
   getSpeakerIdProfiles,
   getSpeakerIdStatus,
   installService,
+  reviewSpeakerIdProfileLearningCandidate,
   startEndpointListen,
   startSpeakerIdEnrollmentCaptureWindow,
   updateSpeakerIdProfile,
@@ -29,6 +31,7 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "enrollment", label: "Enrollment" },
   { id: "profiles", label: "Profiles" },
+  { id: "review", label: "Review" },
   { id: "admin", label: "Admin" },
 ];
 
@@ -483,6 +486,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [status, setStatus] = useState(null);
   const [profiles, setProfiles] = useState([]);
+  const [learningCandidates, setLearningCandidates] = useState([]);
   const [phraseSet, setPhraseSet] = useState(DEFAULT_ENROLLMENT_PHRASE_SET);
   const [endpoints, setEndpoints] = useState([]);
   const [selectedEndpointId, setSelectedEndpointId] = useState("esp-pe-1");
@@ -549,10 +553,11 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [statusPayload, profilesPayload, phrasePayload] = await Promise.all([
+      const [statusPayload, profilesPayload, phrasePayload, candidatesPayload] = await Promise.all([
         getSpeakerIdStatus(),
         getSpeakerIdProfiles(),
         getSpeakerIdPhraseSets(),
+        getSpeakerIdProfileLearningCandidates({ status: "pending" }),
       ]);
       const thresholds = statusPayload.thresholds || {};
       const activeVersion = phrasePayload.active_version || DEFAULT_PHRASE_SET_VERSION;
@@ -561,6 +566,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
         phrasePayload.phrase_sets.find((candidate) => candidate?.version === activeVersion);
       setStatus(statusPayload);
       setProfiles(Array.isArray(profilesPayload.profiles) ? profilesPayload.profiles : []);
+      setLearningCandidates(Array.isArray(candidatesPayload.candidates) ? candidatesPayload.candidates : []);
       setPhraseSet(activePhraseSet || DEFAULT_ENROLLMENT_PHRASE_SET);
       setConfig({
         enabled: Boolean(statusPayload.enabled),
@@ -573,6 +579,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     } catch (err) {
       setStatus(null);
       setProfiles([]);
+      setLearningCandidates([]);
       setPhraseSet(DEFAULT_ENROLLMENT_PHRASE_SET);
       setError(String(err.message || err));
     } finally {
@@ -860,6 +867,25 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
       await deleteSpeakerIdProfile(profileId);
       setDeleteConfirmId("");
       setNotice("Speaker profile deleted.");
+      await load();
+      await onRefresh?.();
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function handleReviewCandidate(candidate, decision) {
+    setBusy(`${decision}:${candidate.candidate_id}`);
+    setNotice("");
+    setError("");
+    try {
+      await reviewSpeakerIdProfileLearningCandidate(candidate.candidate_id, {
+        decision,
+        reviewed_by: "operator",
+      });
+      setNotice(decision === "approve" ? "Profile improvement approved." : "Profile improvement reviewed.");
       await load();
       await onRefresh?.();
     } catch (err) {
@@ -1344,6 +1370,107 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     );
   }
 
+  function renderReview() {
+    return (
+      <section className="panel stack">
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Operator Review</p>
+            <h3 className="section-title">Profile Improvement Queue</h3>
+          </div>
+          <span className="status-pill status-pill-neutral">{learningCandidates.length} pending</span>
+        </div>
+        <div className="callout callout-neutral">
+          Automatic profile learning remains disabled. Approval uses retained one-day debug audio only when available.
+        </div>
+        {learningCandidates.length === 0 ? (
+          <div className="speaker-empty-state">
+            <strong>No pending profile improvements</strong>
+            <span>Eligible turns will appear here after Speaker ID review signals are recorded.</span>
+          </div>
+        ) : (
+          <div className="speaker-profile-card-grid">
+            {learningCandidates.map((candidate) => {
+              const evidence = candidate.evidence || {};
+              const reviewBusy = busy.endsWith(`:${candidate.candidate_id}`);
+              return (
+                <article className="speaker-profile-card" key={candidate.candidate_id}>
+                  <div className="speaker-profile-card-header">
+                    <div className="speaker-profile-title-block">
+                      <h3>{candidateLabel(candidate)}</h3>
+                      <code className="inline-code">{candidate.candidate_id}</code>
+                    </div>
+                    <span className="status-pill status-pill-warning">{valueOrEmpty(candidate.status)}</span>
+                  </div>
+                  <div className="speaker-profile-card-facts">
+                    <span>
+                      <strong>Confidence</strong>
+                      {formatScore(evidence.confidence ?? evidence.score)}
+                    </span>
+                    <span>
+                      <strong>Tier</strong>
+                      {valueOrEmpty(evidence.confidence_tier)}
+                    </span>
+                    <span>
+                      <strong>Margin</strong>
+                      {formatScore(evidence.score_margin)}
+                    </span>
+                    <span>
+                      <strong>SNR</strong>
+                      {formatScore(evidence.audio_quality?.snr_db)}
+                    </span>
+                    <span>
+                      <strong>Reason</strong>
+                      {valueOrEmpty(evidence.learning_eligibility_reason)}
+                    </span>
+                    <span>
+                      <strong>Retained Audio</strong>
+                      {candidate.sample?.audio_base64 ? "available" : "not retained"}
+                    </span>
+                    <span>
+                      <strong>Endpoint</strong>
+                      {valueOrEmpty(candidate.endpoint_id)}
+                    </span>
+                    <span>
+                      <strong>Created</strong>
+                      {formatLocalDateTime(candidate.created_at)}
+                    </span>
+                  </div>
+                  <div className="compact-actions">
+                    <button
+                      className="btn btn-primary btn-compact"
+                      type="button"
+                      disabled={reviewBusy || !candidate.sample?.audio_base64}
+                      onClick={() => handleReviewCandidate(candidate, "approve")}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-compact"
+                      type="button"
+                      disabled={reviewBusy}
+                      onClick={() => handleReviewCandidate(candidate, "reject")}
+                    >
+                      Reject
+                    </button>
+                    <button
+                      className="btn btn-ghost btn-compact"
+                      type="button"
+                      disabled={reviewBusy}
+                      onClick={() => handleReviewCandidate(candidate, "discard")}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   function renderAdmin() {
     const providerMessage = providerStatusMessage(status);
     const canInstallProvider = status?.provider_status?.reason === "missing_optional_dependency";
@@ -1527,6 +1654,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
       {activeTab === "overview" ? renderOverview() : null}
       {activeTab === "enrollment" ? renderEnrollment() : null}
       {activeTab === "profiles" ? renderProfiles() : null}
+      {activeTab === "review" ? renderReview() : null}
       {activeTab === "admin" ? renderAdmin() : null}
       <RecognitionOutcomeDetailPopout outcome={selectedOutcome} onClose={() => setSelectedOutcome(null)} />
     </section>

@@ -43,6 +43,9 @@ class SpeakerIdServiceClient:
     def profile(self, profile_id: str) -> dict[str, Any]:
         return self._request("GET", f"/profiles/{profile_id}")
 
+    def append_profile_samples(self, profile_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", f"/profiles/{profile_id}/samples", payload=payload)
+
     def delete_profile(self, profile_id: str) -> dict[str, Any]:
         return self._request("DELETE", f"/profiles/{profile_id}")
 

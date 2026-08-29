@@ -291,6 +291,19 @@ export async function getSpeakerIdProfiles() {
   return fetchJson("/api/speaker-id/profiles");
 }
 
+export async function getSpeakerIdProfileLearningCandidates({ status } = {}) {
+  const params = new URLSearchParams();
+  if (status) {
+    params.set("status", status);
+  }
+  const query = params.toString();
+  return fetchJson(`/api/speaker-id/profile-learning-candidates${query ? `?${query}` : ""}`);
+}
+
+export async function reviewSpeakerIdProfileLearningCandidate(candidateId, payload) {
+  return sendJson(`/api/speaker-id/profile-learning-candidates/${encodeURIComponent(candidateId)}/review`, { body: payload });
+}
+
 export async function getSpeakerIdEnrollmentCaptures({ endpointId, since, limit = 12 } = {}) {
   const params = new URLSearchParams();
   params.set("limit", String(limit));

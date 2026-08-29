@@ -18,6 +18,7 @@ from hexevoice.persistence.onboarding_state import (
     ResumeState,
     TrustActivationState,
 )
+from hexevoice.persistence.speaker_profile_review import SpeakerProfileReviewStore
 from hexevoice.persistence.voice_admin_maintenance import (
     ADMIN_MAINTENANCE_INTENT_IDS,
     VoiceAdminMaintenanceStore,
@@ -51,6 +52,7 @@ __all__ = [
     "PersistedOnboardingState",
     "PreTrustSetupState",
     "ProviderSetupState",
+    "SpeakerProfileReviewStore",
     "PersistedVoiceSessionHistory",
     "PersistedVoicePlacementCalibration",
     "ResumeState",

@@ -37,6 +37,7 @@ from hexevoice.engine_http import client_for_engine
 from hexevoice.persistence.voice_admin_maintenance import AdminMaintenanceDecision
 from hexevoice.persistence.voice_admin_maintenance import VoiceAdminMaintenanceStore
 from hexevoice.persistence.voice_admin_maintenance import redact_spoken_passcodes
+from hexevoice.persistence.speaker_profile_review import SpeakerProfileReviewStore
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
 from hexevoice.voice.audio_quality import AudioQualityResult
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
@@ -148,6 +149,7 @@ class SpeakerIdentityResult:
     status: str
     policy: str
     active: bool = False
+    profile_id: str | None = None
     speaker_public_id: str | None = None
     display_name: str | None = None
     confidence: float | None = None
@@ -172,6 +174,7 @@ class SpeakerIdentityResult:
             "status": self.status,
             "policy": self.policy,
             "active": self.active,
+            "profile_id": self.profile_id,
             "speaker_public_id": self.speaker_public_id,
             "display_name": self.display_name,
             "confidence": self.confidence,
@@ -1739,6 +1742,8 @@ class VoiceTurnPipeline:
         endpoint_audience_policies: dict[str, dict[str, Any]] | None = None,
         endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
         admin_maintenance_store: VoiceAdminMaintenanceStore | None = None,
+        profile_review_store: SpeakerProfileReviewStore | None = None,
+        profile_review_audio_retention_enabled: bool = False,
     ) -> None:
         self._assistant_service = assistant_service
         self._stt_adapter = stt_adapter or DeterministicSpeechToTextAdapter()
@@ -1754,6 +1759,8 @@ class VoiceTurnPipeline:
         self._endpoint_audience_policies = dict(endpoint_audience_policies or {})
         self._endpoint_audience_policy_provider = endpoint_audience_policy_provider
         self._admin_maintenance_store = admin_maintenance_store
+        self._profile_review_store = profile_review_store
+        self._profile_review_audio_retention_enabled = profile_review_audio_retention_enabled
 
     def complete_turn(self, audio: VoiceTurnAudioSummary) -> VoiceTurnResult:
         turn_started_at = time.perf_counter()
@@ -1998,6 +2005,13 @@ class VoiceTurnPipeline:
         transcript = replace(transcript, text=redact_spoken_passcodes(transcript.text))
         if assistant_response.heard_text != transcript.text:
             assistant_response = assistant_response.model_copy(update={"heard_text": transcript.text})
+        self._enqueue_profile_learning_candidate(
+            audio=audio,
+            transcript=transcript,
+            assistant_response=assistant_response,
+            speaker_identity=speaker_identity,
+            audio_quality=audio_quality,
+        )
         assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
         tts_started_at = time.perf_counter()
         tts = self._tts_adapter.synthesize(
@@ -2456,6 +2470,78 @@ class VoiceTurnPipeline:
             }
         )
 
+    def _enqueue_profile_learning_candidate(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        transcript: SpeechTranscript,
+        assistant_response: AssistantTurnResponse,
+        speaker_identity: SpeakerIdentityResult | None,
+        audio_quality: AudioQualityResult | None,
+    ) -> None:
+        if self._profile_review_store is None or speaker_identity is None:
+            return
+        if not speaker_identity.learning_eligible or not speaker_identity.speaker_public_id:
+            return
+        evidence = {
+            "schema_version": 1,
+            "learning_eligible": True,
+            "learning_eligibility_reason": speaker_identity.learning_eligibility_reason,
+            "learning_eligibility": speaker_identity.learning_eligibility,
+            "speaker_public_id": speaker_identity.speaker_public_id,
+            "display_name": speaker_identity.display_name,
+            "profile_id": speaker_identity.profile_id,
+            "confidence": speaker_identity.confidence,
+            "score": speaker_identity.score,
+            "score_margin": speaker_identity.score_margin,
+            "confidence_tier": speaker_confidence_tier(speaker_identity.confidence),
+            "provider": speaker_identity.provider,
+            "model_id": speaker_identity.model_id,
+            "audio_quality": audio_quality.as_context() if audio_quality is not None else None,
+            "intent": {
+                "command": assistant_response.command,
+                "provider_id": assistant_response.provider_id,
+                "handled_locally": assistant_response.handled_locally,
+            },
+            "transcript": {
+                "text": redact_spoken_passcodes(transcript.text),
+                "text_chars": len(transcript.text or ""),
+                "provider_id": transcript.provider_id,
+                "model": transcript.model,
+                "confidence": transcript.confidence,
+            },
+            "automatic_learning_enabled": False,
+            "requires_operator_review": True,
+        }
+        sample = None
+        if self._profile_review_audio_retention_enabled and audio.audio_bytes:
+            sample = {
+                "sample_id": f"{audio.session_id}-profile-learning",
+                "audio_base64": base64.b64encode(audio.audio_bytes).decode("ascii"),
+                "sample_rate_hz": audio.sample_rate_hz,
+                "encoding": audio.encoding,
+                "raw_audio_policy": "debug_retention_one_day",
+                "expires_at": (datetime.now(UTC) + timedelta(days=1)).isoformat(),
+            }
+        try:
+            self._profile_review_store.add_candidate(
+                speaker_public_id=speaker_identity.speaker_public_id,
+                display_name=speaker_identity.display_name,
+                profile_id=speaker_identity.profile_id,
+                session_id=audio.session_id,
+                endpoint_id=audio.endpoint_id,
+                evidence=evidence,
+                sample=sample,
+            )
+        except Exception:
+            log.warning(
+                "Failed to enqueue profile learning candidate: endpoint_id=%s session_id=%s speaker_public_id=%s",
+                audio.endpoint_id,
+                audio.session_id,
+                speaker_identity.speaker_public_id,
+                exc_info=True,
+            )
+
     def _assistant_request(
         self,
         *,
@@ -2534,6 +2620,11 @@ class VoiceTurnPipeline:
                 "configured": self._speaker_id_client is not None,
                 "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
             },
+            "profile_learning_review": {
+                "configured": self._profile_review_store is not None,
+                "automatic_learning_enabled": False,
+                "audio_retention_enabled": self._profile_review_audio_retention_enabled,
+            },
             "privacy_mode": {
                 "enabled": self._privacy_mode_enabled,
                 "speaker_id_lookup_blocked": self._privacy_mode_enabled,
@@ -2603,6 +2694,7 @@ def _speaker_identity_result_from_response(
         status=status,
         policy=policy,
         active=True,
+        profile_id=str(match.get("profile_id")) if match.get("profile_id") else None,
         speaker_public_id=str(match.get("speaker_public_id")) if match.get("speaker_public_id") else None,
         display_name=str(match.get("display_name")) if match.get("display_name") else None,
         confidence=_optional_float(match.get("confidence")),
@@ -2884,6 +2976,7 @@ def build_voice_turn_pipeline(
     assistant_service: AssistantTurnService,
     endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
     admin_maintenance_store: VoiceAdminMaintenanceStore | None = None,
+    profile_review_store: SpeakerProfileReviewStore | None = None,
 ) -> VoiceTurnPipeline:
     stt_adapter: SpeechToTextAdapter | None = None
     tts_adapter: TextToSpeechAdapter | None = None
@@ -2971,4 +3064,10 @@ def build_voice_turn_pipeline(
         privacy_mode_enabled=settings.voice_privacy_mode_enabled,
         endpoint_audience_policy_provider=endpoint_audience_policy_provider,
         admin_maintenance_store=admin_maintenance_store,
+        profile_review_store=profile_review_store,
+        profile_review_audio_retention_enabled=(
+            settings.voice_wake_recordings_enabled
+            and settings.voice_wake_recording_retention_days == 1
+            and not settings.voice_privacy_mode_enabled
+        ),
     )

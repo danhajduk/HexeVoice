@@ -240,6 +240,14 @@ The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-i
 - Overview and validation surfaces show recognition health, recent outcomes, confidence tiers, and privacy-safe identify/verify evidence without embeddings or raw audio.
 - Speaker ID lookup by itself keeps `learning_eligible=false` because the helper does not know the full turn context. Voice turns add a redacted `learning_eligibility` decision after combining Speaker ID confidence, score margin, audio-quality warnings, route policy, and explicit profile consent for derived biometric updates. An eligible turn is only a future operator-review candidate; automatic profile learning remains disabled and out of scope.
 
+### Operator-Reviewed Profile Learning
+
+Profile learning candidates are queued in `runtime/speaker_profile_review.json` or `VOICE_PROFILE_REVIEW_PATH` only after a voice turn is marked `learning_eligible=true` by the Voice pipeline. The queue stores privacy-safe evidence such as public speaker id, display name, confidence tier, score, score margin, audio-quality/SNR summary, route/intent context, and redacted transcript context. It strips raw audio, embeddings, voiceprints, passcodes, and model-internal template values from evidence.
+
+Automatic profile updates remain disabled. Operators can list candidates through `GET /api/speaker-id/profile-learning-candidates` and review one through `POST /api/speaker-id/profile-learning-candidates/{candidate_id}/review` with `approve`, `reject`, or `discard`. Rejected and discarded candidates never call the Speaker ID helper and do not alter profiles.
+
+Approval appends one bounded sample through the helper's `/profiles/{profile_id}/samples` endpoint, which increments the profile version and re-runs enrollment readiness guardrails. Approval is only possible when the candidate includes explicitly retained one-day debug audio; normal turns queue evidence without retained audio and therefore cannot mutate the profile. This keeps routine operation embeddings-only while allowing a deliberate operator-debug workflow for profile improvement.
+
 ## Service Transport
 
 The default backend-to-helper transport is HTTP/JSON over a Unix domain socket.

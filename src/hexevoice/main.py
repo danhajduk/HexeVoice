@@ -134,6 +134,7 @@ from hexevoice.persistence import (
     ADMIN_MAINTENANCE_INTENT_IDS,
     EndpointRegistryStore,
     OnboardingStateStore,
+    SpeakerProfileReviewStore,
     VoiceAdminMaintenanceStore,
     VoicePlacementCalibrationStore,
     VoiceQualityObservationLog,
@@ -510,6 +511,9 @@ def create_app(
     voice_admin_maintenance_store = VoiceAdminMaintenanceStore(
         path=app_settings.resolved_voice_admin_maintenance_path(),
     )
+    speaker_profile_review_store = SpeakerProfileReviewStore(
+        path=app_settings.resolved_voice_profile_review_path(),
+    )
     voice_quality_observation_log = VoiceQualityObservationLog(
         directory=app_settings.resolved_voice_quality_observation_dir(),
         enabled=app_settings.voice_quality_observation_log_enabled and not app_settings.voice_privacy_mode_enabled,
@@ -608,6 +612,7 @@ def create_app(
         assistant_service=assistant_service,
         endpoint_audience_policy_provider=endpoint_audience_policy,
         admin_maintenance_store=voice_admin_maintenance_store,
+        profile_review_store=speaker_profile_review_store,
     )
     tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
     tts_runtime_settings_service = TtsRuntimeSettingsService(settings=app_settings)
@@ -889,6 +894,22 @@ def create_app(
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=503, detail=f"speaker_id_service_unavailable: {exc}") from exc
 
+    async def _speaker_profile_id_for_learning_candidate(candidate: dict[str, object]) -> str:
+        profile_id = str(candidate.get("profile_id") or "").strip()
+        if profile_id:
+            return profile_id
+        speaker_public_id = str(candidate.get("speaker_public_id") or "").strip()
+        profiles_payload = await speaker_id_proxy("GET", "/profiles")
+        profiles = profiles_payload.get("profiles") if isinstance(profiles_payload.get("profiles"), list) else []
+        for profile in profiles:
+            if not isinstance(profile, dict):
+                continue
+            if str(profile.get("speaker_public_id") or "").strip() == speaker_public_id:
+                profile_id = str(profile.get("profile_id") or "").strip()
+                if profile_id:
+                    return profile_id
+        raise HTTPException(status_code=409, detail="profile_learning_candidate_profile_not_found")
+
     @app.get("/health/live")
     async def health_live():
         return {"live": True}
@@ -967,6 +988,77 @@ def create_app(
     @app.post("/api/speaker-id/profiles/{profile_id}/samples")
     async def speaker_id_append_profile_samples(profile_id: str, payload: dict[str, object]) -> dict[str, object]:
         return await speaker_id_proxy("POST", f"/profiles/{profile_id}/samples", dict(payload))
+
+    @app.get("/api/speaker-id/profile-learning-candidates")
+    async def speaker_id_profile_learning_candidates(status: str | None = None) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "candidates": speaker_profile_review_store.list_candidates(status=status),
+        }
+
+    @app.get("/api/speaker-id/profile-learning-candidates/{candidate_id}")
+    async def speaker_id_profile_learning_candidate(candidate_id: str) -> dict[str, object]:
+        try:
+            candidate = speaker_profile_review_store.get_candidate(candidate_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {"schema_version": 1, "candidate": candidate}
+
+    @app.post("/api/speaker-id/profile-learning-candidates/{candidate_id}/review")
+    async def speaker_id_profile_learning_candidate_review(candidate_id: str, payload: dict[str, object]) -> dict[str, object]:
+        decision = str(payload.get("decision") or "").strip().lower()
+        reviewed_by = str(payload.get("reviewed_by") or "").strip() or None
+        reason = str(payload.get("reason") or "").strip() or None
+        try:
+            candidate = speaker_profile_review_store.get_candidate(candidate_id)
+            if decision == "approve":
+                sample = candidate.get("sample") if isinstance(candidate.get("sample"), dict) else None
+                if not sample or not sample.get("audio_base64"):
+                    raise HTTPException(status_code=409, detail="profile_learning_candidate_has_no_retained_audio")
+                profile_id = await _speaker_profile_id_for_learning_candidate(candidate)
+                append_payload = {
+                    "schema_version": 1,
+                    "request_id": candidate_id,
+                    "samples": [
+                        {
+                            "sample_id": sample.get("sample_id"),
+                            "audio_base64": sample.get("audio_base64"),
+                            "sample_rate_hz": sample.get("sample_rate_hz"),
+                            "encoding": sample.get("encoding"),
+                            "phrase_set_version": sample.get("phrase_set_version"),
+                            "phrase_id": sample.get("phrase_id"),
+                            "phrase_text": sample.get("phrase_text"),
+                            "phrase_status": "accepted",
+                        }
+                    ],
+                }
+                result = await speaker_id_proxy("POST", f"/profiles/{profile_id}/samples", append_payload)
+                reviewed = speaker_profile_review_store.mark_reviewed(
+                    candidate_id=candidate_id,
+                    decision="approved",
+                    reviewed_by=reviewed_by,
+                    reason=reason,
+                    result={
+                        "status": result.get("status"),
+                        "profile": result.get("profile") if isinstance(result.get("profile"), dict) else None,
+                    },
+                )
+                node_ui_page_cache.invalidate()
+                return {"schema_version": 1, "candidate": reviewed, "speaker_id_result": result}
+            if decision in {"reject", "discard"}:
+                reviewed = speaker_profile_review_store.mark_reviewed(
+                    candidate_id=candidate_id,
+                    decision="rejected" if decision == "reject" else "discarded",
+                    reviewed_by=reviewed_by,
+                    reason=reason,
+                )
+                node_ui_page_cache.invalidate()
+                return {"schema_version": 1, "candidate": reviewed}
+            raise ValueError("unsupported_profile_learning_review_decision")
+        except HTTPException:
+            raise
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.delete("/api/speaker-id/profiles/{profile_id}")
     async def speaker_id_delete_profile(profile_id: str) -> dict[str, object]:

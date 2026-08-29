@@ -16,6 +16,7 @@ from hexevoice.assistant import VoiceIntentRegistry
 from hexevoice.assistant import VoiceIntentStateStore
 from hexevoice.config.settings import Settings
 from hexevoice.domain_events import AsyncDomainEventPublisher, DomainEventPublishDecision
+from hexevoice.persistence.speaker_profile_review import SpeakerProfileReviewStore
 from hexevoice.persistence.voice_admin_maintenance import VoiceAdminMaintenanceStore
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.timer_announcements import TimerOwnershipCache
@@ -184,12 +185,14 @@ def speaker_id_response(
     score_margin: float = 0.2,
     learning_consent: bool = True,
     status: str = "identified",
+    profile_id: str | None = "profile-dan",
 ) -> dict:
     return {
         "schema_version": 1,
         "status": status,
         "reason": None,
         "match": {
+            "profile_id": profile_id,
             "speaker_public_id": "speaker_dan",
             "display_name": "Dan",
             "confidence": confidence,
@@ -209,6 +212,8 @@ def learning_policy_turn(
     audio_bytes: bytes | None = None,
     ambient_audio_bytes: bytes | None = None,
     assistant=None,
+    profile_review_store=None,
+    profile_review_audio_retention_enabled: bool = False,
 ):
     pipeline = VoiceTurnPipeline(
         assistant_service=assistant or SpyAssistantService(spoken_text="Opening your calendar."),
@@ -217,6 +222,8 @@ def learning_policy_turn(
         speaker_id_client=SlowSpeakerIdClient(delay_s=0.0, response=speaker_response),
         speaker_id_enabled=True,
         speaker_id_policy_default="use_if_ready",
+        profile_review_store=profile_review_store,
+        profile_review_audio_retention_enabled=profile_review_audio_retention_enabled,
     )
     return pipeline.complete_turn(
         VoiceTurnAudioSummary(
@@ -572,10 +579,47 @@ def test_voice_turn_pipeline_marks_high_confidence_turn_learning_eligible_for_re
 
     assert result.speaker_identity is not None
     assert result.speaker_identity.learning_eligible is True
+    assert result.speaker_identity.profile_id == "profile-dan"
     decision = result.speaker_identity.learning_eligibility
     assert decision["reason"] == "eligible_for_operator_review"
     assert decision["automatic_learning_enabled"] is False
     assert decision["requires_operator_review"] is True
+
+
+def test_voice_turn_pipeline_queues_operator_review_candidate_without_raw_audio_by_default(tmp_path):
+    review_store = SpeakerProfileReviewStore(path=tmp_path / "profile_review.json")
+
+    learning_policy_turn(
+        tmp_path,
+        speaker_response=speaker_id_response(),
+        profile_review_store=review_store,
+    )
+
+    candidates = review_store.list_candidates(status="pending")
+    assert len(candidates) == 1
+    candidate = candidates[0]
+    assert candidate["profile_id"] == "profile-dan"
+    assert candidate["speaker_public_id"] == "speaker_dan"
+    assert candidate["evidence"]["learning_eligibility_reason"] == "eligible_for_operator_review"
+    assert candidate["sample"] is None
+    assert "audio_base64" not in json.dumps(candidate)
+    assert "embeddings" not in json.dumps(candidate)
+
+
+def test_voice_turn_pipeline_queues_retained_sample_only_when_debug_retention_enabled(tmp_path):
+    review_store = SpeakerProfileReviewStore(path=tmp_path / "profile_review.json")
+
+    learning_policy_turn(
+        tmp_path,
+        speaker_response=speaker_id_response(),
+        profile_review_store=review_store,
+        profile_review_audio_retention_enabled=True,
+    )
+
+    candidate = review_store.list_candidates(status="pending")[0]
+    assert candidate["sample"]["audio_base64"]
+    assert candidate["sample"]["raw_audio_policy"] == "debug_retention_one_day"
+    assert candidate["sample"]["sample_rate_hz"] == 16000
 
 
 def test_voice_turn_pipeline_marks_medium_confidence_personalization_only_for_learning(tmp_path):
