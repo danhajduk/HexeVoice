@@ -9,6 +9,7 @@ import {
   getSpeakerIdProfiles,
   getSpeakerIdStatus,
   installService,
+  startEndpointListen,
   startSpeakerIdEnrollmentCaptureWindow,
   updateSpeakerIdConfig,
   wakeRecordingAudioUrl,
@@ -513,6 +514,26 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     }
   }
 
+  async function handleCapturePhrase() {
+    if (!captureStartedAt) {
+      await handleStartCaptureWindow();
+    }
+    setBusy("capture-phrase");
+    setNotice("");
+    setError("");
+    try {
+      const result = await startEndpointListen(selectedEndpointId);
+      if (!result.accepted) {
+        throw new Error(result.reason || result.status || "endpoint_listen_failed");
+      }
+      setNotice("Endpoint capture started.");
+    } catch (err) {
+      setError(String(err.message || err));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function handleAddCaptureSample(capture) {
     const sampleId = `endpoint-${capture.recording_id}`;
     if (samples.some((sample) => sample.sample_id === sampleId)) {
@@ -963,6 +984,14 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
                 onClick={handleStartCaptureWindow}
               >
                 Start Batch Capture
+              </button>
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={unavailable || busy === "capture-phrase" || busy === "captures"}
+                onClick={handleCapturePhrase}
+              >
+                {busy === "capture-phrase" ? "Starting..." : "Capture Phrase"}
               </button>
               <button
                 className="btn btn-ghost"

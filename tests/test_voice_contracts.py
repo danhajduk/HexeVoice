@@ -192,6 +192,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "tts.playback.first_audio_frame",
         "tts.playback.completed",
         "tts.playback.failed",
+        "playback.stop",
     }
     assert {
         "session.state",
@@ -201,6 +202,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "tts.ready",
         "session.error",
         "endpoint.micro_vad",
+        "endpoint.listen",
     }.issubset(BACKEND_TO_ENDPOINT_EVENTS)
 
 

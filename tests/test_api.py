@@ -604,6 +604,8 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
             json={"endpoint_id": "esp-box-1", "pattern": "all", "duration_ms": 900},
         )
         led_event = websocket.receive_json()
+        listen_response = client.post("/api/endpoint/session/listen", json={"endpoint_id": "esp-box-1"})
+        listen_event = websocket.receive_json()
 
         websocket.send_json(
             {
@@ -654,6 +656,10 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
     assert led_event["payload"]["request_id"] == led_response.json()["request_id"]
     assert led_event["payload"]["pattern"] == "all"
     assert led_event["payload"]["duration_ms"] == 900
+    assert listen_response.status_code == 200
+    assert listen_response.json()["command_type"] == "endpoint.listen"
+    assert listen_event["event_type"] == "endpoint.listen"
+    assert listen_event["payload"]["request_id"] == listen_response.json()["request_id"]
     assert cancel_response.status_code == 200
     assert cancel_event["event_type"] == "endpoint.cancel"
     assert cancel_event["payload"]["request_id"] == cancel_response.json()["request_id"]

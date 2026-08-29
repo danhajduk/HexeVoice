@@ -592,6 +592,14 @@ class VoiceSessionManager:
                 self._runtime_context.reset(token)
         return result
 
+    async def push_listen_command(self, *, endpoint_id: str, reason: str = "operator_requested") -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.listen",
+            command_type="endpoint.listen",
+            payload={"reason": reason},
+        )
+
     async def push_playback_stop_command(self, *, endpoint_id: str, reason: str = "operator_stop") -> dict:
         return await self._push_endpoint_command(
             endpoint_id=endpoint_id,

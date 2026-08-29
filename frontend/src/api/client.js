@@ -309,6 +309,14 @@ export async function startSpeakerIdEnrollmentCaptureWindow({ endpointId, ttlSec
   });
 }
 
+export async function startEndpointListen(endpointId) {
+  return sendJson("/api/endpoint/session/listen", {
+    body: {
+      endpoint_id: endpointId,
+    },
+  });
+}
+
 export async function enrollSpeakerIdProfile(payload) {
   return sendJson("/api/speaker-id/enroll", { body: payload });
 }
