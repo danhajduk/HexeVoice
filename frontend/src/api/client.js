@@ -321,6 +321,14 @@ export async function enrollSpeakerIdProfile(payload) {
   return sendJson("/api/speaker-id/enroll", { body: payload });
 }
 
+export async function updateSpeakerIdProfile(profileId, payload) {
+  return sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}`, { method: "PATCH", body: payload });
+}
+
+export async function appendSpeakerIdProfileSamples(profileId, payload) {
+  return sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}/samples`, { body: payload });
+}
+
 export async function deleteSpeakerIdProfile(profileId) {
   return sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}`, { method: "DELETE" });
 }

@@ -896,6 +896,14 @@ def create_app(
     async def speaker_id_profile(profile_id: str) -> dict[str, object]:
         return await speaker_id_proxy("GET", f"/profiles/{profile_id}")
 
+    @app.patch("/api/speaker-id/profiles/{profile_id}")
+    async def speaker_id_update_profile(profile_id: str, payload: dict[str, object]) -> dict[str, object]:
+        return await speaker_id_proxy("PATCH", f"/profiles/{profile_id}", dict(payload))
+
+    @app.post("/api/speaker-id/profiles/{profile_id}/samples")
+    async def speaker_id_append_profile_samples(profile_id: str, payload: dict[str, object]) -> dict[str, object]:
+        return await speaker_id_proxy("POST", f"/profiles/{profile_id}/samples", dict(payload))
+
     @app.delete("/api/speaker-id/profiles/{profile_id}")
     async def speaker_id_delete_profile(profile_id: str) -> dict[str, object]:
         return await speaker_id_proxy("DELETE", f"/profiles/{profile_id}")

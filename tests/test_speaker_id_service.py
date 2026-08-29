@@ -132,6 +132,72 @@ def test_speaker_id_service_enroll_identify_verify_and_delete(tmp_path):
     assert stored_payload["profiles"] == []
 
 
+def test_speaker_id_service_updates_profile_metadata(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    audio = wav_base64(tmp_path / "dan.wav")
+
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/enroll", json=enroll_payload(audio)).status_code == 200
+        updated = client.patch(
+            "/profiles/speaker_dan",
+            json={
+                "display_name": "Daniel",
+                "speaker_public_id": "speaker_daniel",
+                "labels": ["office", "adult"],
+                "age_band": "adult",
+                "admin_eligible": True,
+            },
+        )
+        profiles = client.get("/profiles")
+
+    assert updated.status_code == 200
+    profile = updated.json()["profile"]
+    assert profile["profile_id"] == "speaker_dan"
+    assert profile["speaker_public_id"] == "speaker_daniel"
+    assert profile["display_name"] == "Daniel"
+    assert profile["labels"] == ["office", "adult"]
+    assert profile["age_band"] == "adult"
+    assert profile["admin_eligible"] is True
+    assert profile["profile_version"] == 2
+    assert profiles.json()["profiles"][0]["speaker_public_id"] == "speaker_daniel"
+
+
+def test_speaker_id_service_appends_profile_samples(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    first_audio = wav_base64(tmp_path / "dan.wav", frequency_hz=220.0)
+    second_audio = wav_base64(tmp_path / "dan-extra.wav", frequency_hz=224.0)
+
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/enroll", json=enroll_payload(first_audio)).status_code == 200
+        appended = client.post(
+            "/profiles/speaker_dan/samples",
+            json={
+                "request_id": "append-test",
+                "phrase_set_version": "speaker-id-phrase-set-v1",
+                "samples": [
+                    {
+                        "sample_id": "extra-1",
+                        "audio_base64": second_audio,
+                        "phrase_set_version": "speaker-id-phrase-set-v1",
+                        "phrase_id": "enroll-009",
+                        "phrase_text": "I'd like to know what's on my calendar for Friday afternoon.",
+                    }
+                ],
+            },
+        )
+        identified = client.post("/identify", json=identify_payload(second_audio))
+
+    assert appended.status_code == 200
+    profile = appended.json()["profile"]
+    assert profile["sample_count"] == 9
+    assert profile["accepted_sample_count"] == 9
+    assert profile["profile_version"] == 2
+    assert profile["phrase_tracking"]["accepted"][-1]["phrase_id"] == "enroll-009"
+    assert "embeddings" not in profile
+    assert identified.status_code == 200
+    assert identified.json()["status"] == "identified"
+
+
 def test_speaker_id_phrase_sets_and_holdout_selection_are_versioned(tmp_path):
     with TestClient(create_app(Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True))) as client:
         phrase_sets = client.get("/phrase-sets")

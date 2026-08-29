@@ -98,6 +98,25 @@ class SpeakerEnrollRequest(BaseModel):
     samples: list[AudioSampleRequest] = Field(min_length=1)
 
 
+class SpeakerProfileUpdateRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    speaker_public_id: str | None = Field(default=None, max_length=128)
+    labels: list[str] | None = None
+    age_band: str | None = None
+    age_restriction_class: str | None = None
+    guardian_managed: bool | None = None
+    profile_review_interval_days: int | None = Field(default=None, ge=1)
+    last_voice_profile_review_at: str | None = None
+    admin_eligible: bool | None = None
+
+
+class SpeakerProfileSamplesRequest(BaseModel):
+    schema_version: int = 1
+    request_id: str | None = None
+    phrase_set_version: str | None = None
+    samples: list[AudioSampleRequest] = Field(min_length=1)
+
+
 class SpeakerIdentifyRequest(BaseModel):
     schema_version: int = 1
     request_id: str | None = None
@@ -477,6 +496,48 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="profile_not_found")
         return {"schema_version": 1, "profile": _public_profile(profile)}
 
+    @app.patch("/profiles/{profile_id}")
+    async def update_profile(profile_id: str, payload: SpeakerProfileUpdateRequest) -> dict[str, Any]:
+        profiles = store.profiles()
+        profile = _find_profile(profiles, profile_id=profile_id)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="profile_not_found")
+        try:
+            updated_profile = _profile_with_metadata_updates(profile, payload, profiles)
+        except Exception as exc:
+            raise _http_error_for_exception(exc) from exc
+        _replace_profile(store, profiles, updated_profile)
+        return {"schema_version": 1, "status": "updated", "profile": _public_profile(updated_profile)}
+
+    @app.post("/profiles/{profile_id}/samples")
+    async def append_profile_samples(profile_id: str, payload: SpeakerProfileSamplesRequest) -> dict[str, Any]:
+        nonlocal last_error
+        profiles = store.profiles()
+        profile = _find_profile(profiles, profile_id=profile_id)
+        if profile is None:
+            raise HTTPException(status_code=404, detail="profile_not_found")
+        try:
+            new_records = [_embedding_record_from_enrollment_sample(sample) for sample in payload.samples]
+            updated_profile = _profile_with_appended_samples(
+                profile,
+                new_records,
+                expected_sample_rate_hz=adapter.metadata.sample_rate_hz,
+                phrase_set_version=payload.phrase_set_version or str(profile.get("phrase_set_version") or ACTIVE_SPEAKER_PHRASE_SET_VERSION),
+            )
+            if updated_profile.get("provider_id") != adapter.metadata.provider_id:
+                raise ValueError("profile_provider_mismatch")
+        except Exception as exc:
+            last_error = str(exc)
+            raise _http_error_for_exception(exc) from exc
+        _replace_profile(store, profiles, updated_profile)
+        last_error = None
+        return {
+            "schema_version": 1,
+            "status": "samples_added",
+            "request_id": payload.request_id,
+            "profile": _public_profile(updated_profile),
+        }
+
     @app.delete("/profiles/{profile_id}")
     async def delete_profile(profile_id: str) -> dict[str, Any]:
         deleted = store.delete(profile_id)
@@ -560,6 +621,113 @@ def _profile_from_enrollment(
         "audio_retained": False,
         "embeddings": [_embedding_payload(embedding) for embedding in embeddings],
     }
+
+
+def _profile_with_metadata_updates(
+    profile: dict[str, Any],
+    payload: SpeakerProfileUpdateRequest,
+    profiles: list[dict[str, Any]],
+) -> dict[str, Any]:
+    now = datetime.now(UTC).isoformat()
+    display_name = payload.display_name if payload.display_name is not None else str(profile.get("display_name") or "")
+    speaker_public_id = str(profile.get("speaker_public_id") or "")
+    if payload.speaker_public_id is not None:
+        speaker_public_id = _safe_public_id(payload.speaker_public_id)
+        existing = _find_profile(profiles, speaker_public_id=speaker_public_id)
+        if existing is not None and existing.get("profile_id") != profile.get("profile_id"):
+            raise ValueError("speaker_public_id_already_exists")
+    labels = profile.get("labels") if payload.labels is None else payload.labels
+    age_profile = SpeakerProfileRequest(
+        display_name=display_name,
+        speaker_public_id=speaker_public_id,
+        labels=[str(label).strip() for label in labels or [] if str(label).strip()],
+        age_band=payload.age_band if payload.age_band is not None else profile.get("age_band"),
+        age_restriction_class=payload.age_restriction_class
+        if payload.age_restriction_class is not None
+        else profile.get("age_restriction_class"),
+        guardian_managed=payload.guardian_managed if payload.guardian_managed is not None else profile.get("guardian_managed"),
+        profile_review_interval_days=payload.profile_review_interval_days
+        if payload.profile_review_interval_days is not None
+        else profile.get("profile_review_interval_days"),
+        last_voice_profile_review_at=payload.last_voice_profile_review_at
+        if payload.last_voice_profile_review_at is not None
+        else profile.get("last_voice_profile_review_at"),
+        admin_eligible=payload.admin_eligible if payload.admin_eligible is not None else profile.get("admin_eligible"),
+    )
+    updated = dict(profile)
+    updated.update(
+        {
+            "speaker_public_id": speaker_public_id,
+            "display_name": display_name,
+            "labels": age_profile.labels,
+            "updated_at": now,
+            "profile_version": int(profile.get("profile_version") or 0) + 1,
+            **_profile_age_policy(age_profile, now_iso=now),
+        }
+    )
+    return updated
+
+
+def _profile_with_appended_samples(
+    profile: dict[str, Any],
+    new_records: list[dict[str, Any]],
+    *,
+    expected_sample_rate_hz: int,
+    phrase_set_version: str,
+) -> dict[str, Any]:
+    existing_records = _embedding_records_from_profile(profile)
+    all_records = [*existing_records, *new_records]
+    if not all_records:
+        raise ValueError("no_profile_samples")
+    provider_ids = {record["embedding"].provider_id for record in all_records}
+    if len(provider_ids) != 1 or profile.get("provider_id") not in provider_ids:
+        raise ValueError("profile_provider_mismatch")
+    readiness = _enrollment_readiness(all_records, expected_sample_rate_hz=expected_sample_rate_hz)
+    if not readiness["can_enroll"]:
+        raise ValueError(f"enrollment_not_ready:{','.join(readiness['blocking_reasons'])}")
+    embeddings = [record["embedding"] for record in all_records]
+    samples = [record["sample"] for record in all_records]
+    updated = dict(profile)
+    updated.update(
+        {
+            "updated_at": datetime.now(UTC).isoformat(),
+            "profile_version": int(profile.get("profile_version") or 0) + 1,
+            "phrase_set_version": phrase_set_version,
+            "phrase_tracking": _phrase_tracking(samples, phrase_set_version=phrase_set_version),
+            "provider_id": embeddings[0].provider_id,
+            "model_id": embeddings[0].model_id,
+            "embedding_dimensions": embeddings[0].dimensions,
+            "sample_count": len(embeddings),
+            "accepted_sample_count": readiness["accepted_sample_count"],
+            "total_accepted_speech_duration_ms": readiness["total_accepted_speech_duration_ms"],
+            "enrollment_readiness": readiness,
+            "enrollment_samples": samples,
+            "learning_eligible": False,
+            "audio_retained": False,
+            "embeddings": [_embedding_payload(embedding) for embedding in embeddings],
+        }
+    )
+    return updated
+
+
+def _embedding_records_from_profile(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    embeddings = [item for item in profile.get("embeddings") or [] if isinstance(item, dict)]
+    samples = [item for item in profile.get("enrollment_samples") or [] if isinstance(item, dict)]
+    records = []
+    for index, embedding_payload in enumerate(embeddings):
+        sample = samples[index] if index < len(samples) else {"sample_id": f"sample-{index + 1}"}
+        records.append({"embedding": _embedding_from_payload(embedding_payload), "sample": dict(sample)})
+    return records
+
+
+def _replace_profile(store: SpeakerProfileStore, profiles: list[dict[str, Any]], updated_profile: dict[str, Any]) -> None:
+    payload = store.load()
+    profile_id = updated_profile.get("profile_id")
+    payload["profiles"] = [
+        updated_profile if isinstance(profile, dict) and profile.get("profile_id") == profile_id else profile
+        for profile in profiles
+    ]
+    store.save(payload)
 
 
 def _embedding_payload(embedding: SpeakerEmbedding) -> dict[str, Any]:

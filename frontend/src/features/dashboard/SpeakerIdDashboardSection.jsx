@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   deleteSpeakerIdProfile,
   enrollSpeakerIdProfile,
+  appendSpeakerIdProfileSamples,
   getEndpointRegistry,
   getSpeakerIdEnrollmentCaptures,
   getSpeakerIdPhraseSets,
@@ -11,6 +12,7 @@ import {
   installService,
   startEndpointListen,
   startSpeakerIdEnrollmentCaptureWindow,
+  updateSpeakerIdProfile,
   updateSpeakerIdConfig,
   wakeRecordingAudioUrl,
 } from "../../api/client";
@@ -350,6 +352,22 @@ function buildProfileExport(profile) {
   };
 }
 
+function enrollmentFromProfile(profile) {
+  return {
+    displayName: profile.display_name || "",
+    speakerPublicId: profile.speaker_public_id || "",
+    labels: Array.isArray(profile.labels) ? profile.labels.join(", ") : "",
+    ageBand: profile.age_band || "unknown",
+    guardianManaged: Boolean(profile.guardian_managed),
+    adminEligible: Boolean(profile.admin_eligible),
+    consentId: profile.consent?.consent_id || "",
+    consentVersion: profile.consent?.consent_version || "speaker-id-consent-v1",
+    consentedBy: profile.consent?.consented_by || "",
+    consentAccepted: true,
+    samples: [],
+  };
+}
+
 function metricTone(count, warningTone = "warning") {
   return Number(count) > 0 ? warningTone : "success";
 }
@@ -364,7 +382,7 @@ function SpeakerMetricCard({ label, value, tone = "neutral", detail }) {
   );
 }
 
-function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, onExport }) {
+function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, onEdit, onAddPhrases, onExport }) {
   const confirming = deleteConfirmId === profile.profile_id;
   const readiness = profile.enrollment_readiness || {};
   const readinessTone = readiness.production_ready ? "success" : readiness.can_enroll ? "warning" : "danger";
@@ -434,6 +452,12 @@ function SpeakerProfileCard({ profile, deleteConfirmId, busy, onConfirmDelete, o
         </span>
       </div>
       <div className="compact-actions">
+        <button className="btn btn-secondary btn-compact" type="button" onClick={() => onEdit(profile)}>
+          Edit
+        </button>
+        <button className="btn btn-secondary btn-compact" type="button" onClick={() => onAddPhrases(profile)}>
+          Add Phrases
+        </button>
         <button className="btn btn-secondary btn-compact" type="button" onClick={() => onExport(profile)}>
           Export Metadata
         </button>
@@ -473,6 +497,8 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     verify_min_score: 0.86,
   });
   const [enrollment, setEnrollment] = useState(DEFAULT_ENROLLMENT);
+  const [editingProfileId, setEditingProfileId] = useState("");
+  const [editingMode, setEditingMode] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
@@ -492,6 +518,10 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const enrollmentPhrases = Array.isArray(phraseSet?.enrollment) ? phraseSet.enrollment : DEFAULT_ENROLLMENT_PHRASE_SET.enrollment;
   const batchCount = Math.ceil(enrollmentPhrases.length / 3);
   const activeBatchPhrases = enrollmentPhrases.slice(activeBatchIndex * 3, activeBatchIndex * 3 + 3);
+  const editingProfile = profiles.find((profile) => profile.profile_id === editingProfileId) || null;
+  const existingSampleCount = editingProfile
+    ? Number(editingProfile.accepted_sample_count || editingProfile.sample_count || 0)
+    : 0;
   const endpointOptions = useMemo(() => {
     const seen = new Set();
     const options = [];
@@ -514,8 +544,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   const canEnroll =
     !unavailable &&
     enrollment.displayName.trim() &&
-    enrollment.consentAccepted &&
-    samples.length >= MIN_ENROLLMENT_SAMPLES;
+    (editingProfileId ? true : enrollment.consentAccepted && samples.length >= MIN_ENROLLMENT_SAMPLES);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -592,6 +621,43 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
 
   function updateEnrollment(field, value) {
     setEnrollment((current) => ({ ...current, [field]: value }));
+  }
+
+  function handleEditProfile(profile, mode = "edit") {
+    setEditingProfileId(profile.profile_id || "");
+    setEditingMode(mode);
+    setEnrollment(enrollmentFromProfile(profile));
+    setCaptureCandidates([]);
+    setCaptureStartedAt("");
+    setActiveBatchIndex(Math.min(batchCount - 1, Math.floor(Number(profile.accepted_sample_count || profile.sample_count || 0) / 3)));
+    setActiveTab("enrollment");
+    setNotice(mode === "phrases" ? "Record additional phrases, then save this profile." : "Edit profile metadata or add new phrase samples.");
+    setError("");
+  }
+
+  function handleCreateProfileMode() {
+    setEditingProfileId("");
+    setEditingMode("");
+    setEnrollment(DEFAULT_ENROLLMENT);
+    setCaptureCandidates([]);
+    setCaptureStartedAt("");
+    setActiveBatchIndex(0);
+    setNotice("");
+    setError("");
+  }
+
+  function profileMetadataPayload() {
+    return {
+      display_name: enrollment.displayName.trim(),
+      speaker_public_id: enrollment.speakerPublicId.trim() || null,
+      age_band: enrollment.ageBand || "unknown",
+      guardian_managed: enrollment.guardianManaged,
+      admin_eligible: enrollment.adminEligible,
+      labels: enrollment.labels
+        .split(",")
+        .map((label) => label.trim())
+        .filter(Boolean),
+    };
   }
 
   async function loadCaptureCandidates({ since = captureStartedAt } = {}) {
@@ -677,8 +743,8 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
             audio_base64: audioBase64,
             encoding: "audio/wav",
             phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION,
-            phrase_id: enrollmentPhrases[current.samples.length]?.phrase_id || null,
-            phrase_text: enrollmentPhrases[current.samples.length]?.text || null,
+            phrase_id: enrollmentPhrases[existingSampleCount + current.samples.length]?.phrase_id || null,
+            phrase_text: enrollmentPhrases[existingSampleCount + current.samples.length]?.text || null,
             phrase_status: "accepted",
           },
         ],
@@ -742,35 +808,37 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     setNotice("");
     setError("");
     try {
-      await enrollSpeakerIdProfile({
-        schema_version: 1,
-        request_id: `speaker-enroll-${Date.now()}`,
-        phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION,
-        profile: {
-          display_name: enrollment.displayName.trim(),
-          speaker_public_id: enrollment.speakerPublicId.trim() || null,
-          age_band: enrollment.ageBand || "unknown",
-          guardian_managed: enrollment.guardianManaged,
-          admin_eligible: enrollment.adminEligible,
-          labels: enrollment.labels
-            .split(",")
-            .map((label) => label.trim())
-            .filter(Boolean),
-        },
-        consent: {
-          consent_id: enrollment.consentId.trim() || `speaker-id-consent-${Date.now()}`,
-          consent_version: enrollment.consentVersion.trim() || "speaker-id-consent-v1",
-          consented_at: new Date().toISOString(),
-          consented_by: enrollment.consentedBy.trim() || "operator",
-          retention_policy: "embeddings_only",
-        },
-        samples,
-      });
-      setEnrollment(DEFAULT_ENROLLMENT);
+      if (editingProfileId) {
+        await updateSpeakerIdProfile(editingProfileId, profileMetadataPayload());
+        if (samples.length) {
+          await appendSpeakerIdProfileSamples(editingProfileId, {
+            schema_version: 1,
+            request_id: `speaker-samples-${Date.now()}`,
+            phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION,
+            samples,
+          });
+        }
+      } else {
+        await enrollSpeakerIdProfile({
+          schema_version: 1,
+          request_id: `speaker-enroll-${Date.now()}`,
+          phrase_set_version: phraseSet.version || DEFAULT_PHRASE_SET_VERSION,
+          profile: profileMetadataPayload(),
+          consent: {
+            consent_id: enrollment.consentId.trim() || `speaker-id-consent-${Date.now()}`,
+            consent_version: enrollment.consentVersion.trim() || "speaker-id-consent-v1",
+            consented_at: new Date().toISOString(),
+            consented_by: enrollment.consentedBy.trim() || "operator",
+            retention_policy: "embeddings_only",
+          },
+          samples,
+        });
+      }
+      handleCreateProfileMode();
       setCaptureCandidates([]);
       setCaptureStartedAt("");
       setActiveTab("profiles");
-      setNotice("Speaker profile enrolled.");
+      setNotice(editingProfileId ? "Speaker profile updated." : "Speaker profile enrolled.");
       await load();
       await onRefresh?.();
     } catch (err) {
@@ -945,18 +1013,24 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   }
 
   function renderEnrollment() {
+    const totalSampleCount = existingSampleCount + samples.length;
     return (
       <section className="speaker-enrollment-layout">
         <form className="panel stack" onSubmit={handleEnroll}>
           <div className="section-heading">
             <div>
-              <p className="panel-kicker">Live Capture</p>
-              <h3 className="section-title">Endpoint Enrollment</h3>
+              <p className="panel-kicker">{editingProfileId ? "Profile Update" : "Live Capture"}</p>
+              <h3 className="section-title">{editingProfileId ? "Edit Speaker Profile" : "Endpoint Enrollment"}</h3>
             </div>
             <span className={`status-pill status-pill-${samples.length ? "success" : "neutral"}`}>
-              {samples.length} samples
+              {editingProfileId ? `${totalSampleCount} total` : `${samples.length} samples`}
             </span>
           </div>
+          {editingProfileId ? (
+            <div className="callout callout-neutral">
+              {editingMode === "phrases" ? "Adding phrases to" : "Editing"} {editingProfile?.display_name || editingProfileId}. New captures are appended to the existing local template.
+            </div>
+          ) : null}
           <div className="form-grid">
             <label className="field">
               <span className="field-label">Display Name</span>
@@ -1186,8 +1260,13 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
 
           <div className="actions">
             <button className="btn btn-primary" type="submit" disabled={!canEnroll || busy === "enroll"}>
-              {busy === "enroll" ? "Enrolling..." : "Create Profile"}
+              {busy === "enroll" ? "Saving..." : editingProfileId ? (samples.length ? "Save And Add Phrases" : "Save Profile") : "Create Profile"}
             </button>
+            {editingProfileId ? (
+              <button className="btn btn-ghost" type="button" disabled={busy === "enroll"} onClick={handleCreateProfileMode}>
+                New Profile
+              </button>
+            ) : null}
           </div>
         </form>
 
@@ -1213,10 +1292,10 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
             <div className={`speaker-step ${samples.length ? "speaker-step-done" : ""}`}>
               <strong>Samples</strong>
               <span>
-                {samples.length} / {MIN_ENROLLMENT_SAMPLES} accepted
+                {totalSampleCount} / {MIN_ENROLLMENT_SAMPLES} accepted
               </span>
             </div>
-            <div className={`speaker-step ${samples.length >= 12 ? "speaker-step-done" : ""}`}>
+            <div className={`speaker-step ${totalSampleCount >= 12 ? "speaker-step-done" : ""}`}>
               <strong>Recommended</strong>
               <span>{RECOMMENDED_ENROLLMENT_SAMPLE_RANGE} samples</span>
             </div>
@@ -1254,6 +1333,8 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
                 deleteConfirmId={deleteConfirmId}
                 busy={busy === `delete:${profile.profile_id}`}
                 onConfirmDelete={handleConfirmDelete}
+                onEdit={(selectedProfile) => handleEditProfile(selectedProfile, "edit")}
+                onAddPhrases={(selectedProfile) => handleEditProfile(selectedProfile, "phrases")}
                 onExport={handleExportProfile}
               />
             ))}

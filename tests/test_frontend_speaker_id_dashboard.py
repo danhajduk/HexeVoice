@@ -24,6 +24,10 @@ def test_speaker_id_dashboard_is_routed_and_calls_api_helpers():
     assert "getSpeakerIdEnrollmentCaptures" in api_source
     assert 'fetchJson(`/api/speaker-id/enrollment-captures?' in api_source
     assert "enrollSpeakerIdProfile" in api_source
+    assert "updateSpeakerIdProfile" in api_source
+    assert "appendSpeakerIdProfileSamples" in api_source
+    assert 'sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}`' in api_source
+    assert 'sendJson(`/api/speaker-id/profiles/${encodeURIComponent(profileId)}/samples`' in api_source
     assert "deleteSpeakerIdProfile" in api_source
     assert "local biometric Speaker ID templates" in dashboard_source
 
@@ -60,6 +64,11 @@ def test_speaker_id_dashboard_covers_enrollment_profiles_and_diagnostics():
     assert "Hexe, turn on the lights in the living room." in dashboard_source
     assert "A bright yellow scarf was folded inside the small suitcase." in dashboard_source
     assert "Confirm Delete" in dashboard_source
+    assert "Add Phrases" in dashboard_source
+    assert "Edit Speaker Profile" in dashboard_source
+    assert "updateSpeakerIdProfile(editingProfileId" in dashboard_source
+    assert "appendSpeakerIdProfileSamples(editingProfileId" in dashboard_source
+    assert "New Profile" in dashboard_source
     assert "Delete removes local Speaker ID templates" in dashboard_source
     assert "Recent Outcomes" in dashboard_source
     assert "RecognitionOutcomeDetailPopout" in dashboard_source
