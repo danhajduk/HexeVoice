@@ -177,6 +177,60 @@ class CommandAssistantService(SpyAssistantService):
         )
 
 
+def speaker_id_response(
+    *,
+    confidence: float = 0.91,
+    score_margin: float = 0.2,
+    learning_consent: bool = True,
+    status: str = "identified",
+) -> dict:
+    return {
+        "schema_version": 1,
+        "status": status,
+        "reason": None,
+        "match": {
+            "speaker_public_id": "speaker_dan",
+            "display_name": "Dan",
+            "confidence": confidence,
+            "score": confidence,
+            "score_margin": score_margin,
+            "provider": "deterministic_signal",
+            "model_id": "deterministic-signal-v1",
+            "learning_consent": learning_consent,
+        },
+    }
+
+
+def learning_policy_turn(
+    tmp_path,
+    *,
+    speaker_response: dict,
+    audio_bytes: bytes | None = None,
+    ambient_audio_bytes: bytes | None = None,
+    assistant=None,
+):
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant or SpyAssistantService(spoken_text="Opening your calendar."),
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="what's on my calendar"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=SlowSpeakerIdClient(delay_s=0.0, response=speaker_response),
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+    )
+    return pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-learning",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=audio_bytes if audio_bytes is not None else (4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+            ambient_audio_bytes=ambient_audio_bytes,
+        )
+    )
+
+
 class SlowRecognitionPublisher:
     def __init__(self, delay_s: float = 0.3) -> None:
         self.delay_s = delay_s
@@ -510,6 +564,92 @@ def test_voice_turn_pipeline_passes_identified_speaker_to_required_route(tmp_pat
     assert result.speaker_identity.speaker_public_id == "speaker_dan"
     assert assistant.requests[0].speaker_identity["speaker_public_id"] == "speaker_dan"
     assert assistant.requests[0].speaker_identity_policy == "required"
+
+
+def test_voice_turn_pipeline_marks_high_confidence_turn_learning_eligible_for_review(tmp_path):
+    result = learning_policy_turn(tmp_path, speaker_response=speaker_id_response())
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is True
+    decision = result.speaker_identity.learning_eligibility
+    assert decision["reason"] == "eligible_for_operator_review"
+    assert decision["automatic_learning_enabled"] is False
+    assert decision["requires_operator_review"] is True
+
+
+def test_voice_turn_pipeline_marks_medium_confidence_personalization_only_for_learning(tmp_path):
+    result = learning_policy_turn(tmp_path, speaker_response=speaker_id_response(confidence=0.72))
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "confidence_below_high"
+
+
+def test_voice_turn_pipeline_rejects_low_margin_learning_candidate(tmp_path):
+    result = learning_policy_turn(tmp_path, speaker_response=speaker_id_response(score_margin=0.01))
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "score_margin_too_low"
+
+
+def test_voice_turn_pipeline_rejects_low_snr_learning_candidate(tmp_path):
+    loud = (4000).to_bytes(2, byteorder="little", signed=True) * 16000
+
+    result = learning_policy_turn(
+        tmp_path,
+        speaker_response=speaker_id_response(),
+        audio_bytes=loud,
+        ambient_audio_bytes=loud,
+    )
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "audio_quality_low_snr"
+
+
+def test_voice_turn_pipeline_rejects_clipped_learning_candidate(tmp_path):
+    result = learning_policy_turn(
+        tmp_path,
+        speaker_response=speaker_id_response(),
+        audio_bytes=(32767).to_bytes(2, byteorder="little", signed=True) * 16000,
+    )
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "audio_quality_clipped"
+
+
+def test_voice_turn_pipeline_rejects_short_learning_candidate(tmp_path):
+    result = learning_policy_turn(
+        tmp_path,
+        speaker_response=speaker_id_response(),
+        audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 100,
+    )
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "audio_quality_short_audio"
+
+
+def test_voice_turn_pipeline_rejects_forbidden_policy_learning_candidate(tmp_path):
+    result = learning_policy_turn(
+        tmp_path,
+        speaker_response=speaker_id_response(),
+        assistant=CommandAssistantService(command="anonymous.local", metadata={"speaker_identity_policy": "forbidden"}),
+    )
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "route_forbids_learning"
+
+
+def test_voice_turn_pipeline_rejects_missing_consent_learning_candidate(tmp_path):
+    result = learning_policy_turn(tmp_path, speaker_response=speaker_id_response(learning_consent=False))
+
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "missing_learning_consent"
 
 
 def test_voice_turn_pipeline_blocks_child_safe_endpoint_restricted_content(tmp_path):

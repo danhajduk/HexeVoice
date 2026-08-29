@@ -83,6 +83,10 @@ class SpeakerIdentityMetric(VoiceMetricModel):
     age_band: Literal["child", "teen", "adult", "unknown"] | None = None
     age_restriction_class: str | None = None
     admin_eligible: bool = False
+    learning_consent: bool = False
+    learning_eligible: bool = False
+    learning_eligibility_reason: str | None = None
+    learning_eligibility: dict[str, Any] | None = None
     reason: str | None = None
     duration_ms: float | None = Field(default=None, ge=0)
     error: str | None = None

@@ -33,7 +33,14 @@ Task 240 keeps raw ambient/pre-roll audio in memory only for accepted turn analy
 
 Task 241 lets newer endpoints report numeric `audio.chunk` metrics such as frame level, noise-floor level, speech peak level, pre-roll duration, and pre-roll/speech flags. Backend diagnostics prefer those endpoint-provided values when present and fall back to backend-derived in-memory pre-roll analysis for older firmware.
 
-`SpeakerIdentityMetric` is the redacted Speaker ID result. It records status, policy, public speaker id, display name, confidence, confidence tier, score, margin, provider/model, reason, duration, and error. It never contains embeddings or raw audio.
+`SpeakerIdentityMetric` is the redacted Speaker ID result. It records status, policy, public speaker id, display name, confidence, confidence tier, score, margin, provider/model, broad age/access metadata, profile-learning consent, the diagnostic-only learning eligibility decision, reason, duration, and error. It never contains embeddings or raw audio.
+
+Profile-learning eligibility is only a diagnostic candidate marker. Eligible
+means the turn may be shown to an operator-review workflow later; it does not
+permit automatic profile updates. The decision requires identified or verified
+speaker status, `high` or `very_high` confidence, sufficient score margin,
+acceptable audio quality, explicit consent for derived biometric updates, and a
+route policy that does not forbid learning.
 
 `IdentityPolicyDecisionMetric` records the intent identity requirement decision: policy, allow/reject/follow-up decision, required tier, observed tier, and reason.
 

@@ -39,7 +39,7 @@ def enrollment_samples(audio_base64: str, *, count: int = 8) -> list[dict]:
     return [{"sample_id": f"sample-{index + 1}", "audio_base64": audio_base64} for index in range(count)]
 
 
-def enroll_payload(audio_base64: str, *, display_name: str = "Dan") -> dict:
+def enroll_payload(audio_base64: str, *, display_name: str = "Dan", learning_consent: bool = False) -> dict:
     return {
         "schema_version": 1,
         "request_id": "speaker-enroll-test",
@@ -54,6 +54,7 @@ def enroll_payload(audio_base64: str, *, display_name: str = "Dan") -> dict:
             "consented_at": "2026-08-24T10:00:00Z",
             "consented_by": "operator",
             "retention_policy": "embeddings_only",
+            "derived_biometric_updates_allowed": learning_consent,
         },
         "samples": enrollment_samples(audio_base64),
     }
@@ -378,6 +379,23 @@ def test_speaker_id_confidence_tiers_and_low_margin_metadata_are_redacted(tmp_pa
     assert medium["learning_eligible"] is False
     assert low["confidence_tier"] == "low"
     assert low["learning_eligible"] is False
+
+
+def test_speaker_id_identification_reports_learning_consent_without_auto_learning(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=True)
+    audio = wav_base64(tmp_path / "dan.wav")
+
+    with TestClient(create_app(settings)) as client:
+        assert client.post("/enroll", json=enroll_payload(audio, learning_consent=True)).status_code == 200
+        identified = client.post("/identify", json=identify_payload(audio))
+
+    assert identified.status_code == 200
+    match = identified.json()["match"]
+    assert match["learning_consent"] is True
+    assert match["learning_eligible"] is False
+    assert match["learning_eligibility"]["reason"] == "pipeline_turn_policy_not_evaluated"
+    stored_payload = json.loads(settings.resolved_voice_speaker_id_profiles_path().read_text(encoding="utf-8"))
+    assert stored_payload["profiles"][0]["profile_version"] == 1
 
 
 def test_speaker_id_service_returns_unknown_without_profiles(tmp_path):

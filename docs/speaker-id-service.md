@@ -238,7 +238,7 @@ The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-i
 - Profile cards show display name, public speaker id, readiness, accepted sample count, accepted speech duration, provider/model, version, labels, age/access placeholders, updated time, and metadata export.
 - Profile deletion uses a confirmation step and removes the local template from future identification candidates.
 - Overview and validation surfaces show recognition health, recent outcomes, confidence tiers, and privacy-safe identify/verify evidence without embeddings or raw audio.
-- Speaker ID matches include `learning_eligible=false` until a later operator-reviewed profile-learning workflow exists; automatic profile learning remains out of scope.
+- Speaker ID lookup by itself keeps `learning_eligible=false` because the helper does not know the full turn context. Voice turns add a redacted `learning_eligibility` decision after combining Speaker ID confidence, score margin, audio-quality warnings, route policy, and explicit profile consent for derived biometric updates. An eligible turn is only a future operator-review candidate; automatic profile learning remains disabled and out of scope.
 
 ## Service Transport
 
@@ -626,6 +626,20 @@ Speaker requirement is an explicit policy value, not inferred only from text:
 If Speaker ID is required and the result is `unknown`, `low_confidence`, timed out, disabled, or unauthorized, the router must not execute the personal action. It should enter a clarification state and ask who is speaking, then either start an enrollment/verification flow or fail closed according to policy.
 
 The STT result remains authoritative for intent selection. Speaker ID only supplies speaker context and policy gating for routes that require identity.
+
+## Profile Learning Eligibility
+
+Profile learning eligibility is diagnostic-only. HexeVoice does not update
+speaker embeddings, enrollment samples, or profile versions during normal voice
+turns.
+
+A turn is marked eligible only when the speaker is identified or verified, the
+confidence tier is `high` or `very_high`, the score margin is at least `0.08`,
+the turn audio has no disqualifying warnings such as `low_snr`, `clipped`, or
+`short_audio`, the matched profile consent includes
+`derived_biometric_updates_allowed=true`, and the route policy does not forbid
+learning. Medium-confidence matches can be used for low-risk personalization
+when policy allows, but they are not profile-learning candidates.
 
 ## Open Decisions For Later Tasks
 

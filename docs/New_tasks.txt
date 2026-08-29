@@ -53,7 +53,6 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 248: Add safe profile-learning eligibility policy without automatic learning
 [TODO] Task 249: Add global voice privacy mode and feature kill switch
 [STOP]
 [TODO] Task 250: Add backend wake-candidate election protocol and simulated multi-endpoint arbitration

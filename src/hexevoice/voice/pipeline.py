@@ -59,6 +59,15 @@ DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = {
 }
 PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES = DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES
 ENDPOINT_AUDIENCE_MODES = {"general", "child_safe", "teen_safe", "adult_unrestricted"}
+PROFILE_LEARNING_MIN_SCORE_MARGIN = 0.08
+PROFILE_LEARNING_AUDIO_DISQUALIFYING_WARNINGS = {
+    "clipped",
+    "low_snr",
+    "missing_audio",
+    "short_audio",
+    "silent",
+    "unsupported_audio",
+}
 
 
 @dataclass(frozen=True)
@@ -146,6 +155,10 @@ class SpeakerIdentityResult:
     age_band: str | None = None
     age_restriction_class: str | None = None
     admin_eligible: bool = False
+    learning_consent: bool = False
+    learning_eligible: bool = False
+    learning_eligibility_reason: str | None = None
+    learning_eligibility: dict[str, object] | None = None
     reason: str | None = None
     duration_ms: float | None = None
     error: str | None = None
@@ -167,6 +180,10 @@ class SpeakerIdentityResult:
             "age_band": self.age_band,
             "age_restriction_class": self.age_restriction_class,
             "admin_eligible": self.admin_eligible,
+            "learning_consent": self.learning_consent,
+            "learning_eligible": self.learning_eligible,
+            "learning_eligibility_reason": self.learning_eligibility_reason,
+            "learning_eligibility": self.learning_eligibility,
             "reason": self.reason,
             "duration_ms": self.duration_ms,
             "error": self.error,
@@ -1784,6 +1801,12 @@ class VoiceTurnPipeline:
             metadata=None,
             current=speaker_identity,
         )
+        speaker_identity = self._speaker_identity_with_learning_policy(
+            speaker_identity,
+            audio_quality=audio_quality,
+            speaker_policy=speaker_policy,
+            metadata=None,
+        )
         audience_decision = self._audience_policy_decision(
             audio=audio,
             text=transcript.text,
@@ -1861,6 +1884,12 @@ class VoiceTurnPipeline:
                     metadata=None,
                     current=speaker_identity,
                 )
+                speaker_identity = self._speaker_identity_with_learning_policy(
+                    speaker_identity,
+                    audio_quality=audio_quality,
+                    speaker_policy=speaker_policy,
+                    metadata=None,
+                )
                 audience_decision = self._audience_policy_decision(
                     audio=audio,
                     text=transcript.text,
@@ -1918,6 +1947,12 @@ class VoiceTurnPipeline:
             command=assistant_response.command,
             metadata=assistant_response.provider_metadata,
             current=speaker_identity,
+        )
+        speaker_identity = self._speaker_identity_with_learning_policy(
+            speaker_identity,
+            audio_quality=audio_quality,
+            speaker_policy=speaker_policy,
+            metadata=assistant_response.provider_metadata,
         )
         final_audience_decision = self._audience_policy_decision(
             audio=audio,
@@ -2158,6 +2193,29 @@ class VoiceTurnPipeline:
             },
         )
 
+    def _speaker_identity_with_learning_policy(
+        self,
+        speaker_identity: SpeakerIdentityResult | None,
+        *,
+        audio_quality: AudioQualityResult,
+        speaker_policy: str,
+        metadata: dict[str, Any] | None,
+    ) -> SpeakerIdentityResult | None:
+        if speaker_identity is None:
+            return None
+        decision = _profile_learning_eligibility_decision(
+            speaker_identity=speaker_identity,
+            audio_quality=audio_quality,
+            speaker_policy=speaker_policy,
+            metadata=metadata,
+        )
+        return replace(
+            speaker_identity,
+            learning_eligible=bool(decision["eligible"]),
+            learning_eligibility_reason=str(decision["reason"]),
+            learning_eligibility=decision,
+        )
+
     def _audience_policy_decision(
         self,
         *,
@@ -2321,6 +2379,10 @@ class VoiceTurnPipeline:
             reason=result.reason,
             duration_ms=result.duration_ms,
             error=result.error,
+            learning_consent=result.learning_consent,
+            learning_eligible=result.learning_eligible,
+            learning_eligibility_reason=result.learning_eligibility_reason,
+            learning_eligibility=result.learning_eligibility,
             privacy_class="biometric",
             contains_biometric_template=False,
             contains_raw_audio=False,
@@ -2427,6 +2489,12 @@ def _speaker_identity_result_from_response(
         age_band=str(match.get("age_band")) if match.get("age_band") else None,
         age_restriction_class=str(match.get("age_restriction_class")) if match.get("age_restriction_class") else None,
         admin_eligible=bool(match.get("admin_eligible")),
+        learning_consent=bool(match.get("learning_consent")),
+        learning_eligible=bool(match.get("learning_eligible")),
+        learning_eligibility_reason=str(match.get("learning_eligibility_reason"))
+        if match.get("learning_eligibility_reason")
+        else None,
+        learning_eligibility=match.get("learning_eligibility") if isinstance(match.get("learning_eligibility"), dict) else None,
         reason=str(response.get("reason")) if response.get("reason") else None,
         duration_ms=duration_ms,
     )
@@ -2439,6 +2507,56 @@ def _optional_float(value: object) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _profile_learning_eligibility_decision(
+    *,
+    speaker_identity: SpeakerIdentityResult,
+    audio_quality: AudioQualityResult,
+    speaker_policy: str,
+    metadata: dict[str, Any] | None,
+) -> dict[str, object]:
+    reasons: list[str] = []
+    confidence_tier = speaker_confidence_tier(speaker_identity.confidence)
+    audio_warnings = [str(warning) for warning in audio_quality.warnings]
+    disqualifying_audio = [
+        warning for warning in audio_warnings if warning in PROFILE_LEARNING_AUDIO_DISQUALIFYING_WARNINGS
+    ]
+
+    if speaker_policy == "forbidden" or _metadata_flag(metadata, "profile_learning_forbidden"):
+        reasons.append("route_forbids_learning")
+    if speaker_identity.status not in {"identified", "verified"} or not speaker_identity.speaker_public_id:
+        reasons.append("speaker_not_identified")
+    if confidence_tier not in {"high", "very_high"}:
+        reasons.append("confidence_below_high")
+    if speaker_identity.score_margin is None:
+        reasons.append("missing_score_margin")
+    elif speaker_identity.score_margin < PROFILE_LEARNING_MIN_SCORE_MARGIN:
+        reasons.append("score_margin_too_low")
+    if not speaker_identity.learning_consent:
+        reasons.append("missing_learning_consent")
+    if speaker_identity.reason == "clarification_guess":
+        reasons.append("clarification_guess")
+    if disqualifying_audio:
+        reasons.append(f"audio_quality_{disqualifying_audio[0]}")
+
+    eligible = not reasons
+    return {
+        "schema_version": 1,
+        "eligible": eligible,
+        "reason": "eligible_for_operator_review" if eligible else reasons[0],
+        "reasons": reasons,
+        "automatic_learning_enabled": False,
+        "requires_operator_review": True,
+        "confidence_tier": confidence_tier,
+        "required_confidence_tier": "high",
+        "score_margin": speaker_identity.score_margin,
+        "min_score_margin": PROFILE_LEARNING_MIN_SCORE_MARGIN,
+        "consent_allows_learning": speaker_identity.learning_consent,
+        "route_policy": speaker_policy,
+        "audio_quality_status": audio_quality.status,
+        "audio_quality_warnings": audio_warnings,
+    }
 
 
 def _normalize_speaker_identity_policy(value: str | None) -> str:

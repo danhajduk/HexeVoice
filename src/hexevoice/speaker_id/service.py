@@ -87,6 +87,7 @@ class SpeakerConsentRequest(BaseModel):
     consented_at: str | None = None
     consented_by: str | None = None
     retention_policy: str = "embeddings_only"
+    derived_biometric_updates_allowed: bool = False
 
 
 class SpeakerEnrollRequest(BaseModel):
@@ -311,6 +312,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "age_restriction_class",
                     "admin_eligible",
                     "learning_eligible",
+                    "learning_consent",
+                    "learning_eligibility",
                 )
             }
         candidates = result.get("candidates")
@@ -823,6 +826,7 @@ def _rank_profiles(candidate: SpeakerEmbedding, profiles: list[dict[str, Any]]) 
                 "age_band": profile.get("age_band"),
                 "age_restriction_class": profile.get("age_restriction_class"),
                 "admin_eligible": profile.get("admin_eligible"),
+                "learning_consent": _profile_learning_consent(profile),
             }
         )
     return sorted(ranked, key=lambda item: float(item["score"]), reverse=True)
@@ -843,7 +847,15 @@ def _match_payload(match: dict[str, Any], score_margin: float) -> dict[str, Any]
         "age_band": match.get("age_band"),
         "age_restriction_class": match.get("age_restriction_class"),
         "admin_eligible": bool(match.get("admin_eligible")),
+        "learning_consent": bool(match.get("learning_consent")),
         "learning_eligible": False,
+        "learning_eligibility": {
+            "schema_version": 1,
+            "eligible": False,
+            "reason": "pipeline_turn_policy_not_evaluated",
+            "automatic_learning_enabled": False,
+            "consent_allows_learning": bool(match.get("learning_consent")),
+        },
         "profile_readiness": match.get("enrollment_readiness"),
     }
 
@@ -918,6 +930,19 @@ def _profile_age_policy(profile: SpeakerProfileRequest, *, now_iso: str) -> dict
             "profile_learning_requires_review": profile_learning_requires_review,
         },
     }
+
+
+def _profile_learning_consent(profile: dict[str, Any]) -> bool:
+    consent = profile.get("consent") if isinstance(profile.get("consent"), dict) else {}
+    for key in (
+        "derived_biometric_updates_allowed",
+        "profile_learning_allowed",
+        "allow_profile_learning",
+        "learning_allowed",
+    ):
+        if consent.get(key) is True:
+            return True
+    return False
 
 
 def _next_review_at(last_review_at: str, interval_days: int | None) -> str | None:
