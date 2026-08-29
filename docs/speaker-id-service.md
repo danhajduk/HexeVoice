@@ -225,7 +225,8 @@ HexeVoice exposes the operator/runtime API under its normal API base URL. If the
 
 The production dashboard includes Speaker ID controls at `/#/dashboard/speaker-id`.
 
-- The UI is organized by workflow: overview, enrollment, profiles, validation, and admin.
+- The UI is organized by workflow: overview, enrollment, profiles, and admin.
+- Overview shows service readiness, provider/profile/outcome metrics, recent recognition outcomes, and an operator recovery card when the local Speaker ID helper is unavailable.
 - Configuration controls live under Admin and show helper health, enabled state, provider, model metadata, transport, thresholds, and raw-audio retention state.
 - Enrollment is a live endpoint-capture workflow. Operators select a registered endpoint, capture phrases in batches of three, add accepted endpoint captures as samples, record explicit consent metadata, and store local biometric templates with `retention_policy=embeddings_only`.
 - Enrollment and holdout validation phrase pools are versioned. The initial active set is `speaker-id-phrase-set-v1`, with 24 enrollment phrases and 24 holdout validation phrases matching the current roadmap. Enrollment samples, profile metadata, exports, and future validation reports carry the phrase-set version plus presented/accepted/skipped/failed-quality phrase tracking.

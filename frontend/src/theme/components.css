@@ -1323,6 +1323,31 @@
   gap: 10px;
 }
 
+.speaker-overview-metric-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.speaker-recovery-card,
+.speaker-empty-state {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid hsl(var(--sx-warning) / 0.32);
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-warning) / 0.055);
+}
+
+.speaker-empty-state {
+  border-color: hsl(var(--sx-border));
+  background: hsl(var(--sx-text) / 0.025);
+  color: hsl(var(--sx-text-muted));
+}
+
+.speaker-empty-state strong {
+  color: hsl(var(--sx-text));
+}
+
 .speaker-metric-card {
   display: grid;
   gap: 6px;

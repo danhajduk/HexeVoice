@@ -26,7 +26,6 @@ const TABS = [
   { id: "overview", label: "Overview" },
   { id: "enrollment", label: "Enrollment" },
   { id: "profiles", label: "Profiles" },
-  { id: "validation", label: "Validation" },
   { id: "admin", label: "Admin" },
 ];
 
@@ -158,6 +157,18 @@ function providerStatusMessage(status) {
     return "Provider loaded, but embedding extraction failed. Check provider logs.";
   }
   return `Provider status: ${reason}`;
+}
+
+function isSpeakerServiceUnavailable(error) {
+  return String(error || "").includes("speaker_id_service_unavailable");
+}
+
+function speakerServiceErrorDetail(error) {
+  if (!error) {
+    return "No service error recorded.";
+  }
+  const [, detail = error] = String(error).split("speaker_id_service_unavailable:");
+  return detail.trim();
 }
 
 function profileLabels(profile) {
@@ -670,6 +681,7 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
   }
 
   function renderOverview() {
+    const serviceUnavailable = unavailable && isSpeakerServiceUnavailable(error);
     return (
       <section className="speaker-workflow-grid">
         <section className="panel stack">
@@ -682,7 +694,45 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
               {loading ? "loading" : status?.enabled ? "enabled" : unavailable ? "unavailable" : "disabled"}
             </span>
           </div>
-          <div className="speaker-metric-grid">
+          {serviceUnavailable ? (
+            <div className="speaker-recovery-card">
+              <div>
+                <p className="panel-kicker">Recovery</p>
+                <h3 className="section-title">Speaker ID service is not running</h3>
+              </div>
+              <div className="callout callout-warning">
+                Recognition and enrollment are paused until the local Speaker ID service is available.
+              </div>
+              <div className="fact-grid">
+                <div className="fact-grid-item">
+                  <span className="fact-grid-label">Provider</span>
+                  <span className="fact-grid-value">{providerLabel(config.provider)}</span>
+                </div>
+                <div className="fact-grid-item">
+                  <span className="fact-grid-label">Last error</span>
+                  <span className="fact-grid-value">{speakerServiceErrorDetail(error)}</span>
+                </div>
+              </div>
+              <div className="actions">
+                <button className="btn btn-primary" type="button" onClick={() => setActiveTab("admin")}>
+                  Open Admin
+                </button>
+                <button className="btn btn-secondary" type="button" onClick={handleInstallProviderDependencies} disabled={Boolean(busy)}>
+                  {busy === "install-provider" ? "Repairing..." : "Install or Repair"}
+                </button>
+                <button className="btn btn-ghost" type="button" onClick={load} disabled={Boolean(busy)}>
+                  Refresh
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div className="speaker-metric-grid speaker-overview-metric-grid">
+            <SpeakerMetricCard
+              label="Service"
+              value={loading ? "loading" : status?.enabled ? "enabled" : unavailable ? "down" : "disabled"}
+              tone={unavailable ? "danger" : status?.enabled ? "success" : "warning"}
+            />
+            <SpeakerMetricCard label="Provider" value={providerLabel(status?.provider || config.provider)} tone={unavailable ? "warning" : "success"} />
             <SpeakerMetricCard label="Profiles" value={profiles.length} tone={profiles.length ? "success" : "neutral"} />
             <SpeakerMetricCard label="Identified" value={identifiedOutcomeCount} tone="success" />
             <SpeakerMetricCard label="Unknown" value={unknownOutcomeCount} tone={metricTone(unknownOutcomeCount)} />
@@ -716,7 +766,10 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
             </div>
           </div>
           {outcomes.length === 0 ? (
-            <div className="callout callout-neutral">No identify or verify outcomes recorded yet.</div>
+            <div className="speaker-empty-state">
+              <strong>No recognition outcomes</strong>
+              <span>{unavailable ? "The stream will populate after Speaker ID is running." : "Identify and verify results will appear here."}</span>
+            </div>
           ) : (
             <div className="speaker-outcome-list">
               {outcomes.slice(0, 8).map((outcome, index) => (
@@ -1057,54 +1110,6 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
     );
   }
 
-  function renderValidation() {
-    return (
-      <section className="speaker-workflow-grid">
-        <section className="panel stack">
-          <div className="section-heading">
-            <div>
-              <p className="panel-kicker">Validation</p>
-              <h3 className="section-title">Holdout Scoring</h3>
-            </div>
-            <span className="status-pill status-pill-warning">not started</span>
-          </div>
-          <div className="speaker-metric-grid">
-            <SpeakerMetricCard label="Speaker ID" value="pending" tone="neutral" />
-            <SpeakerMetricCard label="STT" value="pending" tone="neutral" />
-            <SpeakerMetricCard label="Audio Quality" value="pending" tone="neutral" />
-            <SpeakerMetricCard label="Ambient" value="pending" tone="neutral" />
-          </div>
-          <div className="callout callout-neutral">
-            Validation uses endpoint-captured random phrases after profile creation.
-          </div>
-        </section>
-        <section className="panel stack">
-          <div className="section-heading">
-            <div>
-              <p className="panel-kicker">Recent Outcomes</p>
-              <h3 className="section-title">Current Evidence</h3>
-            </div>
-          </div>
-          {outcomes.length === 0 ? (
-            <div className="callout callout-neutral">No identify or verify outcomes recorded yet.</div>
-          ) : (
-            <div className="speaker-outcome-list">
-              {outcomes.slice(0, 10).map((outcome, index) => (
-                <div className="speaker-outcome-row" key={`${outcome.request_id || "outcome"}-${index}`}>
-                  <span className={`status-pill status-pill-${outcome.status === "unknown" ? "warning" : "success"}`}>
-                    {valueOrEmpty(outcome.status)}
-                  </span>
-                  <span>{outcomeText(outcome)}</span>
-                  <span className="muted">{formatLocalDateTime(outcome.recorded_at)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </section>
-    );
-  }
-
   function renderAdmin() {
     const providerMessage = providerStatusMessage(status);
     const canInstallProvider = status?.provider_status?.reason === "missing_optional_dependency";
@@ -1282,13 +1287,12 @@ export function SpeakerIdDashboardSection({ onRefresh }) {
       </div>
 
       {status?.last_error ? <div className="callout callout-danger">{status.last_error}</div> : null}
-      {error ? <div className="callout callout-danger">{error}</div> : null}
+      {error && !isSpeakerServiceUnavailable(error) ? <div className="callout callout-danger">{error}</div> : null}
       {notice ? <div className="callout callout-success">{notice}</div> : null}
 
       {activeTab === "overview" ? renderOverview() : null}
       {activeTab === "enrollment" ? renderEnrollment() : null}
       {activeTab === "profiles" ? renderProfiles() : null}
-      {activeTab === "validation" ? renderValidation() : null}
       {activeTab === "admin" ? renderAdmin() : null}
     </section>
   );
