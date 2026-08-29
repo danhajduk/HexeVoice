@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "system/settings.h"
 #include "voice/backend_client.h"
+#include "voice/wake_word.h"
 
 namespace {
 constexpr char kTag[] = "hexe_audio";
@@ -181,6 +182,27 @@ void vad_task(void *arg) {
         micro_vad_chunk_index,
         micro_vad_chunk_active,
         micro_vad_silent_frames);
+    const hexe::voice::LocalKeywordDetection wake_detection = hexe::voice::inspect_wake_word_frame(
+        samples,
+        kFrameSamples,
+        level,
+        level,
+        level,
+        frame_has_voice);
+    if (wake_detection.detected) {
+      hexe::voice::WakeCandidateMetrics candidate;
+      candidate.source = wake_detection.source;
+      candidate.model = wake_detection.model;
+      candidate.confidence = wake_detection.confidence;
+      candidate.chunk_index = micro_vad.chunk_index;
+      candidate.chunk_count = 1;
+      candidate.detection_window_ms = kFrameDurationMs;
+      candidate.frame_level = level;
+      candidate.noise_floor_level = level;
+      candidate.speech_peak_level = level;
+      candidate.endpoint_audio_profile_version = "firmware_audio_v1";
+      hexe::voice::submit_wake_candidate(candidate);
+    }
     hexe::voice::submit_audio_frame(samples, kFrameSamples, level, level, level, frame_has_voice, &micro_vad);
 
     if (frame_has_voice) {

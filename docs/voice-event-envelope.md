@@ -81,14 +81,18 @@ Losing or late candidates receive `wake.election.result` with `stand_down: true`
 Existing endpoints that only stream `audio.chunk` remain compatible.
 
 Current firmware reports wake-election protocol capability in heartbeat capabilities under
-`capabilities.firmware.modules.wake_word`. The module remains `owner: "backend"` and `mode: "backend_streaming"` until a
-local micro wake-word engine is added, but it exposes `candidate_event_type: "wake.candidate"`,
-`stand_down_event_type: "wake.election.result"`, `candidate_source: "endpoint_micro_wake_word"`,
-`backend_fallback: true`, `fallback_source: "backend_openwakeword"`, and a 300 ms
-`stream_after_timeout_backend_fallback` policy. While waiting for election, firmware buffers microphone frames in the
-existing pre-roll ring. If the backend elects this endpoint, `wake.accepted` releases the stream. If the backend sends
-`wake.election.result` with `stand_down: true`, firmware cancels local capture and returns to idle/wake-armed without
-sending full utterance audio.
+`capabilities.firmware.modules.wake_word`. The module exposes an experimental endpoint microWakeWord provider hook with
+the official ESPHome `alexa` v2 model as the primary model and `Hexe` as the local product alias. Heartbeats include the
+model id, manifest URL, TFLite URL, probability cutoff, sliding window, feature step, tensor-arena size, and native
+inference availability. Until the native microWakeWord/TFLM adapter is linked, firmware reports
+`missing_micro_wake_word_inference_engine` and continues `backend_streaming_with_micro_wake_word_manifest` mode.
+
+The wake module still exposes `candidate_event_type: "wake.candidate"`, `stand_down_event_type:
+"wake.election.result"`, `candidate_source: "endpoint_micro_wake_word"`, `backend_fallback: true`, `fallback_source:
+"backend_openwakeword"`, and a 300 ms `stream_after_timeout_backend_fallback` policy. While waiting for election,
+firmware buffers microphone frames in the existing pre-roll ring. If the backend elects this endpoint, `wake.accepted`
+releases the stream. If the backend sends `wake.election.result` with `stand_down: true`, firmware cancels local capture
+and returns to idle/wake-armed without sending full utterance audio.
 
 `audio.chunk` may include optional endpoint-side numeric quality metrics: `frame_level`, `noise_floor_level`,
 `speech_peak_level`, `pre_roll_duration_ms`, `contains_pre_roll`, and `contains_speech`. These fields are

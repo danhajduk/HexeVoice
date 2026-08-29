@@ -1349,6 +1349,8 @@ std::string endpoint_capabilities_json() {
         hexe::voice::wake_word_on_device_available());
     cJSON *wake_word = cJSON_GetObjectItem(modules, "wake_word");
     if (cJSON_IsObject(wake_word)) {
+      const hexe::voice::LocalKeywordModel &wake_model = hexe::voice::wake_word_primary_model();
+      cJSON_AddBoolToObject(wake_word, "experimental_provider_configured", hexe::voice::wake_word_experimental_provider_configured());
       cJSON_AddBoolToObject(wake_word, "election_capable", hexe::voice::wake_word_election_capable());
       cJSON_AddNumberToObject(wake_word, "election_timeout_ms", hexe::voice::wake_word_election_timeout_ms());
       cJSON_AddStringToObject(wake_word, "candidate_event_type", "wake.candidate");
@@ -1357,6 +1359,23 @@ std::string endpoint_capabilities_json() {
       cJSON_AddBoolToObject(wake_word, "backend_fallback", true);
       cJSON_AddStringToObject(wake_word, "fallback_source", "backend_openwakeword");
       cJSON_AddStringToObject(wake_word, "timeout_policy", kWakeElectionFallbackPolicy);
+      cJSON_AddStringToObject(wake_word, "unavailable_reason", hexe::voice::wake_word_unavailable_reason());
+      cJSON *primary_model = cJSON_AddObjectToObject(wake_word, "primary_model");
+      if (primary_model != nullptr) {
+        cJSON_AddStringToObject(primary_model, "id", wake_model.id);
+        cJSON_AddStringToObject(primary_model, "wake_word", wake_model.wake_word);
+        cJSON_AddStringToObject(primary_model, "alias", wake_model.alias);
+        cJSON_AddStringToObject(primary_model, "source", wake_model.source);
+        cJSON_AddStringToObject(primary_model, "manifest_url", wake_model.manifest_url);
+        cJSON_AddStringToObject(primary_model, "tflite_url", wake_model.tflite_url);
+        cJSON_AddStringToObject(primary_model, "trained_languages", wake_model.trained_languages);
+        cJSON_AddStringToObject(primary_model, "author", wake_model.author);
+        cJSON_AddStringToObject(primary_model, "minimum_esphome_version", wake_model.minimum_esphome_version);
+        cJSON_AddNumberToObject(primary_model, "probability_cutoff", wake_model.probability_cutoff);
+        cJSON_AddNumberToObject(primary_model, "sliding_window_size", wake_model.sliding_window_size);
+        cJSON_AddNumberToObject(primary_model, "feature_step_size_ms", wake_model.feature_step_size_ms);
+        cJSON_AddNumberToObject(primary_model, "tensor_arena_size", wake_model.tensor_arena_size);
+      }
     }
     add_module_status(
         modules,

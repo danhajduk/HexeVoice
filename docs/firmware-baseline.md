@@ -35,7 +35,8 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Firmware tracks TTS playback lifecycle as `idle`, `queued`, `started`, `finished`, `failed`, or `stopped`, and reports whether the microphone is currently paused for playback in endpoint heartbeat audio capabilities.
 - Firmware has a source-agnostic `stop_playback(reason)` path and accepts backend `playback.stop` commands. Endpoint heartbeats now expose `capabilities.audio.input.playback_interrupt` as `backend_stt_interrupt`, which keeps the microphone open during interruptible playback and lets the backend send `playback.stop` with reason `voice_stop` when stop-only STT matches.
 - Firmware still has no local on-device stop-word recognizer. Current profiles report that detail as `local_keyword_reason: missing_on_device_keyword_engine` while keeping the backend-owned interrupt mode available.
-- Firmware now understands the backend wake-election protocol. Future on-device wake engines can call `submit_wake_candidate(...)` to send privacy-safe `wake.candidate` metrics, wait up to 300 ms for backend selection, stream buffered audio after `wake.accepted`, stand down on `wake.election.result`, and fall back to backend openWakeWord streaming on timeout.
+- Firmware now has an experimental endpoint microWakeWord provider hook configured for the official ESPHome `alexa` v2 model, treating the spoken wake word `Alexa` as the initial Hexe-compatible local wake path. The native firmware exposes the model manifest/TFLite source, cutoff, sliding window, feature step, and tensor-arena size in heartbeat capabilities. The per-frame audio path calls `inspect_wake_word_frame(...)` and can submit privacy-safe `wake.candidate` metrics through the existing election protocol once a native microWakeWord/TFLM engine adapter is linked.
+- Firmware keeps backend openWakeWord as the fallback wake provider. Until the native inference adapter is linked, the endpoint reports `missing_micro_wake_word_inference_engine` and continues backend streaming behavior.
 
 ## Partial
 
@@ -51,7 +52,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 These files remain compiled so firmware has stable ownership/status hooks, but
 they are no longer ambiguous scaffolds:
 
-- `firmware/main/voice/wake_word.cpp` reports `backend_streaming`; on-device wake is intentionally unavailable because backend voice streaming owns wake acceptance. The wake-election candidate protocol is available as a firmware/backend contract hook for future local wake engines, with backend openWakeWord retained as fallback.
+- `firmware/main/voice/wake_word.cpp` reports `backend_streaming_with_micro_wake_word_manifest` until the native microWakeWord inference engine is linked. The configured primary model is the official ESPHome `alexa` v2 model, exposed as alias `Hexe`, and backend openWakeWord remains the fallback.
 - `firmware/main/voice/stt_stream.cpp` reports `backend_pcm_stream`; firmware captures and sends PCM while backend STT owns decoding.
 - `firmware/main/voice/assistant_client.cpp` reports `backend_voice_pipeline`; firmware consumes backend events while assistant turns run on the node.
 - `firmware/main/system/telemetry.cpp` reports `heartbeat_capabilities`; endpoint telemetry is carried in heartbeat capabilities rather than a separate firmware telemetry channel.

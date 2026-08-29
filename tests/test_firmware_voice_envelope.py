@@ -161,11 +161,18 @@ def test_firmware_scaffold_modules_are_explicit_status_providers():
 
     assert "wake_word_runtime_mode" in module_sources["wake_word"]
     assert "wake_word_on_device_available" in header_sources["wake_word"]
-    assert '"backend_streaming"' in module_sources["wake_word"]
-    assert "on-device wake engine is intentionally disabled" in module_sources["wake_word"]
+    assert '"backend_streaming_with_micro_wake_word_manifest"' in module_sources["wake_word"]
+    assert "Experimental endpoint microWakeWord provider configured" in module_sources["wake_word"]
+    assert "missing_micro_wake_word_inference_engine" in module_sources["wake_word"]
     assert "wake_word_election_capable" in module_sources["wake_word"]
     assert "wake_word_election_timeout_ms" in header_sources["wake_word"]
     assert '"endpoint_micro_wake_word"' in module_sources["wake_word"]
+    assert "wake_word_primary_model" in header_sources["wake_word"]
+    assert '"alexa"' in module_sources["wake_word"]
+    assert '"Alexa"' in module_sources["wake_word"]
+    assert '"Hexe"' in module_sources["wake_word"]
+    assert "github://esphome/micro-wake-word-models/models/v2/alexa.json@main" in module_sources["wake_word"]
+    assert "22348" in module_sources["wake_word"]
 
     assert "stt_stream_runtime_mode" in module_sources["stt_stream"]
     assert "stt_stream_local_decoder_available" in header_sources["stt_stream"]
@@ -287,6 +294,31 @@ def test_firmware_wake_election_candidate_wait_and_fallback_contract():
     assert "wake_word_election_capable" in wake_header
     assert "wake_word_candidate_source" in wake_header
     assert "kWakeElectionTimeoutMs = 300" in wake_source
+
+
+def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    audio_source = FIRMWARE_AUDIO.read_text()
+    pe_audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
+
+    assert "struct LocalKeywordModel" in wake_header
+    assert "struct LocalKeywordDetection" in wake_header
+    assert "inspect_wake_word_frame" in wake_header
+    assert "HEXE_MICRO_WAKE_WORD_ENGINE_LINKED" in wake_source
+    assert '"endpoint_micro_wake_word_experimental"' in wake_source
+    assert '"github://esphome/micro-wake-word-models/models/v2/alexa.tflite@main"' in wake_source
+    assert ".id =" not in wake_source
+    assert 'cJSON_AddStringToObject(primary_model, "id", wake_model.id)' in backend_source
+    assert 'cJSON_AddStringToObject(primary_model, "wake_word", wake_model.wake_word)' in backend_source
+    assert 'cJSON_AddStringToObject(primary_model, "alias", wake_model.alias)' in backend_source
+    assert 'cJSON_AddNumberToObject(primary_model, "tensor_arena_size", wake_model.tensor_arena_size)' in backend_source
+    assert "experimental_provider_configured" in backend_source
+    for source in (audio_source, pe_audio_source):
+        assert "inspect_wake_word_frame" in source
+        assert "WakeCandidateMetrics candidate" in source
+        assert "candidate.endpoint_audio_profile_version = \"firmware_audio_v1\"" in source
 
 
 def test_firmware_honors_wake_election_stand_down_without_command_ack():
