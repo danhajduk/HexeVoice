@@ -291,6 +291,20 @@ def cleanup_voice_artifacts_once(*, tts_audio_service, wake_recorder, micro_vad_
     return result
 
 
+def _voice_privacy_blocked_features(enabled: bool) -> list[str]:
+    if not enabled:
+        return []
+    return [
+        "speaker_id_lookup",
+        "profile_learning_eligibility",
+        "observation_logging",
+        "debug_raw_audio_recording",
+        "passive_ambient_calibration",
+        "admin_maintenance_voice_intents",
+        "profile_enrollment_captures",
+    ]
+
+
 def firmware_artifact_path_for_settings(settings: Settings, filename: str) -> Path:
     artifact_dir = settings.resolved_firmware_artifact_dir().resolve()
     candidate = (artifact_dir / filename).resolve()
@@ -557,7 +571,7 @@ def create_app(
             retention_days=app_settings.voice_wake_recording_retention_days,
             preroll_ms=app_settings.voice_wake_recording_preroll_ms,
         )
-        if app_settings.voice_wake_recordings_enabled
+        if app_settings.voice_wake_recordings_enabled and not app_settings.voice_privacy_mode_enabled
         else None
     )
     micro_vad_chunk_recorder = (
@@ -565,7 +579,7 @@ def create_app(
             recording_dir=app_settings.resolved_voice_micro_vad_chunk_dir(),
             retention_days=app_settings.voice_micro_vad_chunk_retention_days,
         )
-        if app_settings.voice_micro_vad_chunks_enabled
+        if app_settings.voice_micro_vad_chunks_enabled and not app_settings.voice_privacy_mode_enabled
         else None
     )
     voice_session_manager = voice_session_manager or VoiceSessionManager(
@@ -576,6 +590,7 @@ def create_app(
         session_history_store=voice_session_history_store,
         pre_wake_timeout_s=app_settings.voice_session_pre_wake_timeout_s,
         max_active_session_s=app_settings.voice_session_max_active_s,
+        privacy_mode_enabled=app_settings.voice_privacy_mode_enabled,
     )
     assistant_service.set_endpoint_command_dispatcher(QueuedEndpointCommandDispatcher(voice_session_manager))
     timer_announcement_service = TimerSucceededAnnouncementService(
@@ -1606,6 +1621,11 @@ def create_app(
     @app.get("/api/voice/status")
     async def voice_status() -> dict:
         status = voice_session_manager.status()
+        status["privacy_mode"] = {
+            "enabled": app_settings.voice_privacy_mode_enabled,
+            "reason": "operator_enabled" if app_settings.voice_privacy_mode_enabled else None,
+            "blocked_features": _voice_privacy_blocked_features(app_settings.voice_privacy_mode_enabled),
+        }
         status["timer_announcements"] = timer_announcement_service.status()
         status["voice_artifact_cleanup"] = app.state.voice_artifact_cleanup_status
         status["voice_orphan_cleanup"] = app.state.voice_orphan_cleanup_status

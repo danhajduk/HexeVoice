@@ -274,3 +274,4 @@ Task 245: Add speaker profile age-band metadata, restrictions, and review cadenc
 Task 246: Add child/teen endpoint audience mode and age-appropriate content restrictions - Completed on 08/28/2026 12:39
 Task 247: Add explicit speaker-identity policy mapping for registered and built-in intents - Completed on 08/29/2026 14:27
 Task 248: Add safe profile-learning eligibility policy without automatic learning - Completed on 08/29/2026 14:32
+Task 249: Add global voice privacy mode and feature kill switch - Completed on 08/29/2026 14:37

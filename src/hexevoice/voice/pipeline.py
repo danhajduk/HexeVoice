@@ -1732,6 +1732,7 @@ class VoiceTurnPipeline:
         speaker_id_policy_default: str = "use_if_ready",
         speaker_id_endpoint_scope: list[str] | None = None,
         speaker_id_personalization_enabled: bool = False,
+        privacy_mode_enabled: bool = False,
         endpoint_audience_policies: dict[str, dict[str, Any]] | None = None,
         endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
     ) -> None:
@@ -1745,6 +1746,7 @@ class VoiceTurnPipeline:
         self._speaker_id_policy_default = _normalize_speaker_identity_policy(speaker_id_policy_default)
         self._speaker_id_endpoint_scope = set(speaker_id_endpoint_scope or [])
         self._speaker_id_personalization_enabled = speaker_id_personalization_enabled
+        self._privacy_mode_enabled = privacy_mode_enabled
         self._endpoint_audience_policies = dict(endpoint_audience_policies or {})
         self._endpoint_audience_policy_provider = endpoint_audience_policy_provider
 
@@ -2029,6 +2031,8 @@ class VoiceTurnPipeline:
     ) -> Future[SpeakerIdentityResult] | None:
         if not self._speaker_id_enabled or self._speaker_id_client is None:
             return None
+        if self._privacy_mode_enabled:
+            return None
         if self._speaker_id_endpoint_scope and audio.endpoint_id not in self._speaker_id_endpoint_scope:
             return None
         return executor.submit(self._identify_speaker, audio)
@@ -2091,6 +2095,8 @@ class VoiceTurnPipeline:
         policy = _normalize_speaker_identity_policy(policy)
         if policy == "forbidden":
             return SpeakerIdentityResult(status="skipped", policy=policy, reason="policy_forbidden")
+        if self._privacy_mode_enabled:
+            return SpeakerIdentityResult(status="skipped", policy=policy, reason="privacy_mode_enabled")
         if not self._speaker_id_enabled:
             return SpeakerIdentityResult(status="disabled", policy=policy, reason="disabled")
         if self._speaker_id_endpoint_scope and audio.endpoint_id not in self._speaker_id_endpoint_scope:
@@ -2203,12 +2209,19 @@ class VoiceTurnPipeline:
     ) -> SpeakerIdentityResult | None:
         if speaker_identity is None:
             return None
-        decision = _profile_learning_eligibility_decision(
-            speaker_identity=speaker_identity,
-            audio_quality=audio_quality,
-            speaker_policy=speaker_policy,
-            metadata=metadata,
-        )
+        if self._privacy_mode_enabled:
+            decision = _profile_learning_privacy_mode_decision(
+                speaker_identity=speaker_identity,
+                audio_quality=audio_quality,
+                speaker_policy=speaker_policy,
+            )
+        else:
+            decision = _profile_learning_eligibility_decision(
+                speaker_identity=speaker_identity,
+                audio_quality=audio_quality,
+                speaker_policy=speaker_policy,
+                metadata=metadata,
+            )
         return replace(
             speaker_identity,
             learning_eligible=bool(decision["eligible"]),
@@ -2409,11 +2422,18 @@ class VoiceTurnPipeline:
             ),
             "endpoint_voices": dict(self._endpoint_voices),
             "speaker_id": {
-                "enabled": self._speaker_id_enabled,
+                "enabled": self._speaker_id_enabled and not self._privacy_mode_enabled,
+                "configured_enabled": self._speaker_id_enabled,
                 "policy_default": self._speaker_id_policy_default,
                 "endpoint_scope": sorted(self._speaker_id_endpoint_scope),
                 "personalization_enabled": self._speaker_id_personalization_enabled,
                 "configured": self._speaker_id_client is not None,
+                "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
+            },
+            "privacy_mode": {
+                "enabled": self._privacy_mode_enabled,
+                "speaker_id_lookup_blocked": self._privacy_mode_enabled,
+                "profile_learning_eligibility_blocked": self._privacy_mode_enabled,
             },
             "endpoint_audience_policies": dict(self._endpoint_audience_policies),
         }
@@ -2556,6 +2576,30 @@ def _profile_learning_eligibility_decision(
         "route_policy": speaker_policy,
         "audio_quality_status": audio_quality.status,
         "audio_quality_warnings": audio_warnings,
+    }
+
+
+def _profile_learning_privacy_mode_decision(
+    *,
+    speaker_identity: SpeakerIdentityResult,
+    audio_quality: AudioQualityResult,
+    speaker_policy: str,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "eligible": False,
+        "reason": "privacy_mode_enabled",
+        "reasons": ["privacy_mode_enabled"],
+        "automatic_learning_enabled": False,
+        "requires_operator_review": True,
+        "confidence_tier": speaker_confidence_tier(speaker_identity.confidence),
+        "required_confidence_tier": "high",
+        "score_margin": speaker_identity.score_margin,
+        "min_score_margin": PROFILE_LEARNING_MIN_SCORE_MARGIN,
+        "consent_allows_learning": False,
+        "route_policy": speaker_policy,
+        "audio_quality_status": audio_quality.status,
+        "audio_quality_warnings": [str(warning) for warning in audio_quality.warnings],
     }
 
 
@@ -2801,5 +2845,6 @@ def build_voice_turn_pipeline(
         speaker_id_policy_default=settings.voice_speaker_id_policy_default,
         speaker_id_endpoint_scope=settings.resolved_voice_speaker_id_endpoint_scope(),
         speaker_id_personalization_enabled=settings.voice_speaker_id_personalization_enabled,
+        privacy_mode_enabled=settings.voice_privacy_mode_enabled,
         endpoint_audience_policy_provider=endpoint_audience_policy_provider,
     )

@@ -1384,6 +1384,38 @@ def test_speaker_id_enrollment_capture_window_marks_endpoint_active(tmp_path):
     assert status["speaker_enrollment_capture"]["active_windows"][0]["endpoint_id"] == "esp-pe-1"
 
 
+def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_privacy_mode_enabled=True,
+                voice_speaker_id_enabled=True,
+                voice_wake_recordings_enabled=True,
+                voice_micro_vad_chunks_enabled=True,
+            )
+        )
+    )
+
+    status = client.get("/api/voice/status")
+    capture = client.post(
+        "/api/speaker-id/enrollment-capture-windows",
+        json={"endpoint_id": "esp-box-1", "ttl_seconds": 300},
+    )
+
+    assert status.status_code == 200
+    payload = status.json()
+    assert payload["privacy_mode"]["enabled"] is True
+    assert "speaker_id_lookup" in payload["privacy_mode"]["blocked_features"]
+    assert payload["wake_recordings"]["enabled"] is False
+    assert payload["turn_pipeline"]["speaker_id"]["enabled"] is False
+    assert payload["turn_pipeline"]["speaker_id"]["blocked_reason"] == "privacy_mode_enabled"
+    assert payload["speaker_enrollment_capture"]["blocked"] is True
+    assert capture.status_code == 400
+    assert capture.json()["detail"] == "privacy_mode_enabled"
+
+
 def test_tts_warmup_voice_selection_prefers_configured_warm_voices():
     settings = Settings(
         voice_tts_provider="piper",

@@ -72,6 +72,7 @@ def test_faster_whisper_stt_settings_defaults():
 def test_wake_recording_settings_default_to_disabled_one_day_retention():
     settings = Settings()
 
+    assert settings.voice_privacy_mode_enabled is False
     assert settings.voice_wake_recordings_enabled is False
     assert settings.voice_wake_recording_retention_days == 1
     assert settings.voice_wake_recording_preroll_ms == 2000

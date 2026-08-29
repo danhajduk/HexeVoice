@@ -652,6 +652,108 @@ def test_voice_turn_pipeline_rejects_missing_consent_learning_candidate(tmp_path
     assert result.speaker_identity.learning_eligibility_reason == "missing_learning_consent"
 
 
+def test_voice_privacy_mode_skips_speaker_id_and_allows_generic_turn(tmp_path):
+    assistant = SpyAssistantService(spoken_text="Generic response.")
+    speaker_id = SlowSpeakerIdClient(delay_s=0.0, response=speaker_id_response())
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="hello"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+        privacy_mode_enabled=True,
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-privacy",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.assistant_response.spoken_text == "Generic response."
+    assert speaker_id.calls == []
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.reason == "privacy_mode_enabled"
+    assert result.speaker_identity.learning_eligible is False
+    assert result.speaker_identity.learning_eligibility_reason == "privacy_mode_enabled"
+    assert pipeline.status()["privacy_mode"]["enabled"] is True
+
+
+def test_voice_privacy_mode_blocks_identity_required_turn(tmp_path):
+    assistant = SpyAssistantService(spoken_text="Opening your calendar.")
+    speaker_id = SlowSpeakerIdClient(delay_s=0.0, response=speaker_id_response())
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="what's on my calendar"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+        privacy_mode_enabled=True,
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-privacy",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.assistant_response.command == "speaker.identity.required"
+    assert assistant.requests == []
+    assert speaker_id.calls == []
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.reason == "privacy_mode_enabled"
+
+
+def test_voice_privacy_mode_allows_builtin_not_required_intent(tmp_path):
+    runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    assistant = AssistantTurnService(
+        settings=Settings(node_name="lab-voice"),
+        runtime_service=runtime,
+        intent_finder=LocalIntentFinder(registry=registry),
+    )
+    speaker_id = SlowSpeakerIdClient(delay_s=0.0, response=speaker_id_response())
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="timer status"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="required",
+        privacy_mode_enabled=True,
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-privacy",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.assistant_response.command == "timer.status"
+    assert result.assistant_response.provider_metadata["speaker_identity_policy"] == "not_required"
+    assert speaker_id.calls == []
+
+
 def test_voice_turn_pipeline_blocks_child_safe_endpoint_restricted_content(tmp_path):
     assistant = SpyAssistantService(spoken_text="should not run")
     pipeline = VoiceTurnPipeline(

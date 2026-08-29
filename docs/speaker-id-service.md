@@ -641,6 +641,25 @@ the turn audio has no disqualifying warnings such as `low_snr`, `clipped`, or
 learning. Medium-confidence matches can be used for low-risk personalization
 when policy allows, but they are not profile-learning candidates.
 
+## Voice Privacy Mode
+
+`VOICE_PRIVACY_MODE_ENABLED=true` enables a global local privacy mode for guest,
+household, or maintenance situations where privacy-sensitive voice features
+should be unavailable while safe generic voice operation remains available.
+
+When privacy mode is enabled, HexeVoice blocks Speaker ID lookup, profile
+learning eligibility, observation logging, debug raw-audio recording, passive
+ambient calibration, admin maintenance voice intents, and profile enrollment
+capture windows. Wake-to-STT-to-TTS turns can still run when the matched command
+does not require identity, such as timer status, endpoint/playback controls, or
+other `not_required` registered intents.
+
+Privacy mode state is exposed in `/api/voice/status` under `privacy_mode`, and
+blocked features fail closed with `privacy_mode_enabled` where a command path
+exists. Disabling privacy mode requires an explicit operator configuration
+change and service restart so the node does not silently re-enable identity or
+recording features during a guest/private session.
+
 ## Open Decisions For Later Tasks
 
 - Which provider becomes the default after local benchmark results.

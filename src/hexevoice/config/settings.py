@@ -81,6 +81,7 @@ class Settings(BaseSettings):
         default="openwakeword",
         alias="VOICE_WAKE_PROVIDER",
     )
+    voice_privacy_mode_enabled: bool = Field(default=False, alias="VOICE_PRIVACY_MODE_ENABLED")
     voice_wake_threshold: float = Field(default=0.5, alias="VOICE_WAKE_THRESHOLD", ge=0.0, le=1.0)
     voice_wake_models: str | None = Field(default=None, alias="VOICE_WAKE_MODELS")
     voice_wake_auto_download_models: bool = Field(default=False, alias="VOICE_WAKE_AUTO_DOWNLOAD_MODELS")

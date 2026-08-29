@@ -214,6 +214,7 @@ class VoiceSessionManager:
         session_history_store: VoiceSessionHistoryStore | None = None,
         pre_wake_timeout_s: float = 10.0,
         max_active_session_s: float = 60.0,
+        privacy_mode_enabled: bool = False,
     ) -> None:
         self._default_runtime = EndpointSessionRuntime()
         self._runtime_context: contextvars.ContextVar[EndpointSessionRuntime | None] = contextvars.ContextVar(
@@ -231,6 +232,7 @@ class VoiceSessionManager:
         self._command_timeout_s = 10.0
         self._pre_wake_timeout_s = pre_wake_timeout_s
         self._max_active_session_s = max_active_session_s
+        self._privacy_mode_enabled = privacy_mode_enabled
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
@@ -2102,7 +2104,23 @@ class VoiceSessionManager:
                 "wake_confidence_history": list(self._wake_confidence_history),
                 "wake_recordings": self._wake_recorder.status() if self._wake_recorder else {"enabled": False},
                 "speaker_enrollment_capture": {
+                    "blocked": self._privacy_mode_enabled,
+                    "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
                     "active_windows": self.speaker_enrollment_capture_windows(),
+                },
+                "privacy_mode": {
+                    "enabled": self._privacy_mode_enabled,
+                    "blocked_features": [
+                        "speaker_id_lookup",
+                        "profile_learning_eligibility",
+                        "observation_logging",
+                        "debug_raw_audio_recording",
+                        "passive_ambient_calibration",
+                        "admin_maintenance_voice_intents",
+                        "profile_enrollment_captures",
+                    ]
+                    if self._privacy_mode_enabled
+                    else [],
                 },
                 "session_history": session_history,
                 "turn_pipeline": self._turn_pipeline.status() if self._turn_pipeline else None,
@@ -2130,6 +2148,8 @@ class VoiceSessionManager:
         endpoint_id = str(endpoint_id or "").strip()
         if not endpoint_id:
             raise ValueError("endpoint_id_required")
+        if self._privacy_mode_enabled:
+            raise ValueError("privacy_mode_enabled")
         ttl_seconds = max(30, min(int(ttl_seconds), 900))
         now = datetime.now(UTC)
         window = {
