@@ -209,6 +209,7 @@ class Settings(BaseSettings):
     voice_speaker_id_runtime_config_path: Path | None = Field(default=None, alias="VOICE_SPEAKER_ID_RUNTIME_CONFIG_PATH")
     voice_speaker_id_model_cache_dir: Path | None = Field(default=None, alias="VOICE_SPEAKER_ID_MODEL_CACHE_DIR")
     voice_speaker_id_device: str = Field(default="cpu", alias="VOICE_SPEAKER_ID_DEVICE")
+    voice_speaker_id_preload: bool = Field(default=False, alias="VOICE_SPEAKER_ID_PRELOAD")
     voice_speaker_id_timeout_s: float = Field(default=5.0, alias="VOICE_SPEAKER_ID_TIMEOUT_S", gt=0)
     voice_speaker_id_identify_min_confidence: float = Field(
         default=0.72,

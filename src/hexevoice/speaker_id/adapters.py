@@ -91,6 +91,9 @@ class SpeakerScore:
 class SpeakerIdAdapter(Protocol):
     metadata: SpeakerProviderMetadata
 
+    def warm_up(self) -> None:
+        ...
+
     def extract_embedding(self, audio: SpeakerAudio | Path | bytes | str) -> SpeakerEmbedding:
         ...
 
@@ -166,6 +169,9 @@ class DeterministicSignalSpeakerIdAdapter:
         quality_constraints=("16-bit PCM WAV recommended", "non-empty mono audio"),
     )
 
+    def warm_up(self) -> None:
+        return None
+
     def extract_embedding(self, audio: SpeakerAudio | Path | bytes | str) -> SpeakerEmbedding:
         started_at = time.perf_counter()
         speaker_audio = normalize_speaker_audio(audio)
@@ -212,6 +218,9 @@ class DeterministicSignalSpeakerIdAdapter:
 class OptionalDependencySpeakerIdAdapter:
     def __init__(self, metadata: SpeakerProviderMetadata) -> None:
         self.metadata = metadata
+
+    def warm_up(self) -> None:
+        return None
 
     def extract_embedding(self, audio: SpeakerAudio | Path | bytes | str) -> SpeakerEmbedding:
         _audio = normalize_speaker_audio(audio)
@@ -264,6 +273,9 @@ class SpeechBrainEcapaTdnnSpeakerIdAdapter:
         self._classifier: object | None = None
         self._load_error: str | None = None
         self._runtime_error: str | None = None
+
+    def warm_up(self) -> None:
+        self._load_classifier()
 
     def extract_embedding(self, audio: SpeakerAudio | Path | bytes | str) -> SpeakerEmbedding:
         started_at = time.perf_counter()

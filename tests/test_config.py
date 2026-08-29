@@ -110,6 +110,7 @@ def test_speaker_id_turn_policy_settings_default_to_safe_local_mode():
     assert settings.resolved_voice_speaker_id_endpoint_scope() == []
     assert settings.voice_speaker_id_personalization_enabled is False
     assert settings.voice_speaker_id_device == "cpu"
+    assert settings.voice_speaker_id_preload is False
     assert settings.resolved_voice_speaker_id_model_cache_dir().as_posix() == "runtime/speaker_id/models"
 
 

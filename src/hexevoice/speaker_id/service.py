@@ -294,11 +294,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        nonlocal last_error
         socket_path = app_settings.resolved_voice_speaker_id_socket_path()
         if socket_path is not None:
             socket_path.parent.mkdir(parents=True, exist_ok=True)
             socket_path.parent.chmod(0o700)
         store._path.parent.mkdir(parents=True, exist_ok=True)
+        if enabled and app_settings.voice_speaker_id_preload:
+            try:
+                adapter.warm_up()
+                last_error = None
+                log.info(
+                    "Speaker ID provider preloaded: provider=%s model=%s",
+                    adapter.metadata.provider_id,
+                    adapter.metadata.model_id,
+                )
+            except Exception as exc:
+                last_error = str(exc)
+                log.warning("Speaker ID provider preload failed: %s", exc)
         yield
 
     app = FastAPI(title="HexeVoice Speaker ID", lifespan=lifespan)

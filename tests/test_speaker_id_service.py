@@ -422,6 +422,37 @@ def test_speaker_id_service_uses_speechbrain_provider_when_available(monkeypatch
     assert after.json()["model"]["loaded"] is True
 
 
+def test_speaker_id_service_preloads_speechbrain_provider_when_enabled(monkeypatch, tmp_path):
+    load_calls = []
+
+    class FakeClassifier:
+        @classmethod
+        def from_hparams(cls, **kwargs):
+            load_calls.append(kwargs)
+            return cls()
+
+    monkeypatch.setattr(
+        speaker_adapters,
+        "_speechbrain_dependency_status",
+        lambda: {"speechbrain": True, "torch": True},
+    )
+    monkeypatch.setattr(speaker_adapters, "_speechbrain_classifier_class", lambda: FakeClassifier)
+    settings = Settings(
+        runtime_dir=tmp_path,
+        voice_speaker_id_enabled=True,
+        voice_speaker_id_preload=True,
+        voice_speaker_id_provider="speechbrain_ecapa_tdnn",
+    )
+
+    with TestClient(create_app(settings)) as client:
+        status = client.get("/status")
+
+    assert status.status_code == 200
+    assert status.json()["provider_status"]["loaded"] is True
+    assert status.json()["model"]["loaded"] is True
+    assert load_calls
+
+
 def test_speaker_id_config_rejects_missing_provider_dependencies(monkeypatch, tmp_path):
     monkeypatch.setattr(
         speaker_adapters,
