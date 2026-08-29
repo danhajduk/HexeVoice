@@ -32,6 +32,7 @@ from hexevoice.voice.contracts import (
     VoiceTtsPlaybackPayload,
     VoiceTtsReadyPayload,
     VoiceVadSpeechStartedPayload,
+    VoiceWakeCandidatePayload,
     is_valid_voice_session_transition,
     project_ux_state,
     project_voice_state,
@@ -41,6 +42,12 @@ from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
 from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
+from hexevoice.voice.wake_election import (
+    DEFAULT_WAKE_ELECTION_WINDOW_MS,
+    WakeCandidate,
+    WakeCandidateElection,
+    WakeElectionDecision,
+)
 from hexevoice.voice.wake_recordings import WakeRecordingService
 
 
@@ -215,6 +222,7 @@ class VoiceSessionManager:
         pre_wake_timeout_s: float = 10.0,
         max_active_session_s: float = 60.0,
         privacy_mode_enabled: bool = False,
+        wake_election_window_ms: int = DEFAULT_WAKE_ELECTION_WINDOW_MS,
     ) -> None:
         self._default_runtime = EndpointSessionRuntime()
         self._runtime_context: contextvars.ContextVar[EndpointSessionRuntime | None] = contextvars.ContextVar(
@@ -236,6 +244,7 @@ class VoiceSessionManager:
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
+        self._wake_election = WakeCandidateElection(window_ms=wake_election_window_ms)
         self._speaker_enrollment_capture_windows: dict[str, dict[str, object]] = {}
 
     def _current_runtime(self) -> EndpointSessionRuntime:
@@ -289,7 +298,7 @@ class VoiceSessionManager:
         return self._default_runtime
 
     def _runtime_status_summary(self, state: EndpointSessionRuntime) -> dict[str, Any]:
-        active_session = self._status_visible_session(state)
+        active_session = state.active_session
         active_snapshot = active_session.model_dump(mode="json") if active_session else None
         projection = project_voice_state(
             connection_active=state.connection_active,
@@ -1114,6 +1123,7 @@ class VoiceSessionManager:
             "audio.chunk": self._handle_audio_chunk,
             "audio.end": self._handle_audio_end,
             "vad.speech_started": self._handle_vad_speech_started,
+            "wake.candidate": self._handle_wake_candidate,
             "session.cancel": self._handle_session_cancel,
             "session.ping": self._handle_session_ping,
             "command.ack": self._handle_command_ack,
@@ -1125,6 +1135,230 @@ class VoiceSessionManager:
             "playback.stop": self._handle_tts_playback_event,
         }
         return handlers[event.event_type](event)
+
+    def _handle_wake_candidate(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        session = self._require_active_session(event)
+        if isinstance(session, VoiceEventEnvelope):
+            return [session]
+        if session.session_state != "idle":
+            try:
+                payload = VoiceWakeCandidatePayload.model_validate(event.payload)
+            except ValidationError as exc:
+                return [
+                    self._error_event(
+                        endpoint_id=event.endpoint_id,
+                        session_id=event.session_id,
+                        code="invalid_wake_candidate",
+                        message=str(exc.errors()[0]["msg"]),
+                        recoverable=True,
+                    )
+                ]
+            candidate = self._wake_candidate_from_payload(
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                payload=payload,
+                received_at=event.timestamp,
+            )
+            decision = WakeElectionDecision(
+                election_id=f"wake_election_{uuid4().hex}",
+                accepted=False,
+                reason="wake_already_detected",
+                window_ms=self._wake_election.window_ms,
+                candidate=candidate,
+                winner=None,
+                candidates=(candidate,),
+                decided_at=event.timestamp,
+            )
+            return [self._wake_election_event(session=session, decision=decision)]
+
+        try:
+            payload = VoiceWakeCandidatePayload.model_validate(event.payload)
+        except ValidationError as exc:
+            log.warning(
+                "Invalid wake.candidate payload: endpoint_id=%s session_id=%s error=%s",
+                event.endpoint_id,
+                event.session_id,
+                str(exc.errors()[0]["msg"]),
+            )
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_wake_candidate",
+                    message=str(exc.errors()[0]["msg"]),
+                    recoverable=True,
+                )
+            ]
+
+        candidate = self._wake_candidate_from_payload(
+            endpoint_id=event.endpoint_id,
+            session_id=session.session_id,
+            payload=payload,
+            received_at=event.timestamp,
+        )
+        decision = self._wake_election.submit_candidate(candidate)
+        self._record_wake_confidence(
+            endpoint_id=event.endpoint_id,
+            session_id=session.session_id,
+            model=candidate.model,
+            confidence=candidate.confidence,
+            detected=True,
+            accepted=decision.accepted,
+            reason=decision.reason,
+            source=candidate.source,
+            chunk_index=candidate.chunk_index,
+            chunk_count=candidate.chunk_count,
+        )
+        if not decision.accepted:
+            return [self._wake_election_event(session=session, decision=decision)]
+        events = self._accept_wake_candidate(
+            session=session,
+            candidate=candidate,
+            detected_at=event.timestamp,
+            decision=decision,
+        )
+        events.append(
+            self._state_event(
+                "session.state",
+                session,
+                extra_payload={
+                    "wake": {
+                        "detected": True,
+                        "confidence": candidate.confidence,
+                        "model": candidate.model,
+                        "source": candidate.source,
+                        "reason": decision.reason,
+                        "election": decision.model_dump(),
+                    }
+                },
+            )
+        )
+        return events
+
+    def _wake_candidate_from_payload(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        payload: VoiceWakeCandidatePayload,
+        received_at: datetime,
+    ) -> WakeCandidate:
+        metadata = dict(payload.metadata or {})
+        if payload.detection_window_ms is not None:
+            metadata["detection_window_ms"] = payload.detection_window_ms
+        return WakeCandidate(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            source=payload.source,
+            model=payload.model,
+            confidence=payload.confidence,
+            received_at=received_at,
+            detected_at=payload.detected_at,
+            chunk_index=payload.chunk_index,
+            chunk_count=payload.chunk_count,
+            frame_level=payload.frame_level,
+            speech_peak_level=payload.speech_peak_level,
+            noise_floor_level=payload.noise_floor_level,
+            ambient_level=payload.ambient_level,
+            snr_db=payload.snr_db,
+            endpoint_audio_profile_version=payload.endpoint_audio_profile_version,
+            metadata=metadata,
+        )
+
+    def _wake_election_event(
+        self,
+        *,
+        session: VoiceSessionSnapshot,
+        decision: WakeElectionDecision,
+    ) -> VoiceEventEnvelope:
+        return self._state_event(
+            "wake.election.result",
+            session,
+            extra_payload={
+                "election": decision.model_dump(),
+                "stand_down": not decision.accepted,
+                "winner_endpoint_id": decision.winner.endpoint_id if decision.winner else None,
+                "winner_session_id": decision.winner.session_id if decision.winner else None,
+                "reason": decision.reason,
+            },
+        )
+
+    def _accept_wake_candidate(
+        self,
+        *,
+        session: VoiceSessionSnapshot,
+        candidate: WakeCandidate,
+        detected_at: datetime,
+        decision: WakeElectionDecision | None = None,
+    ) -> list[VoiceEventEnvelope]:
+        if self._wake_recorder is not None:
+            self._wake_recorder.mark_accepted_wake(
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+                model=candidate.model,
+                confidence=candidate.confidence,
+                source=candidate.source,
+                chunk_index=candidate.chunk_index,
+                chunk_count=candidate.chunk_count,
+            )
+        if self._micro_vad_chunk_recorder is not None:
+            self._micro_vad_chunk_recorder.mark_session_accepted(
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+            )
+        wake_payload = {
+            "outcome": "accepted",
+            "detected": True,
+            "endpoint_id": session.endpoint_id,
+            "session_id": session.session_id,
+            "model": candidate.model,
+            "confidence": candidate.confidence,
+            "detected_at": detected_at.isoformat(),
+            "source": candidate.source,
+            "chunk_index": candidate.chunk_index,
+            "chunk_count": candidate.chunk_count,
+        }
+        if decision is not None:
+            wake_payload["election_id"] = decision.election_id
+            wake_payload["election"] = decision.model_dump()
+        self._record_wake_history(wake_payload)
+        self._set_active_session_wake(wake_payload)
+        self._append_latency_point("wake_word_detected", "Wake word detected", detected_at)
+        log.info(
+            "Wake accepted: endpoint_id=%s session_id=%s source=%s model=%s confidence=%s chunk_index=%s",
+            session.endpoint_id,
+            session.session_id,
+            candidate.source,
+            candidate.model,
+            candidate.confidence,
+            candidate.chunk_index,
+        )
+        record_voice_event(
+            "wake.accepted",
+            endpoint_id=session.endpoint_id,
+            session_id=session.session_id,
+            model=candidate.model,
+            confidence=candidate.confidence,
+            source=candidate.source,
+            chunk_index=candidate.chunk_index,
+            chunk_count=candidate.chunk_count,
+            election_id=decision.election_id if decision else None,
+        )
+        self._set_session_state("wake_detected")
+        wake_event = self._state_event(
+            "wake.accepted",
+            session,
+            extra_payload={
+                "wake": {
+                    "confidence": candidate.confidence,
+                    "model": candidate.model,
+                    "source": candidate.source,
+                },
+                **({"election": decision.model_dump()} if decision is not None else {}),
+            },
+        )
+        self._set_session_state("listening")
+        return [wake_event]
 
     def _handle_session_start(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         if self._active_session is not None:
@@ -1476,7 +1710,25 @@ class VoiceSessionManager:
             if session.session_state == "idle"
             else WakeDetectionResult(detected=False, reason="wake_already_detected")
         )
-        wake_accepted = detection.detected and session.session_state == "idle"
+        backend_candidate: WakeCandidate | None = None
+        backend_decision: WakeElectionDecision | None = None
+        if detection.detected and session.session_state == "idle":
+            backend_candidate = WakeCandidate(
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                source="backend_openwakeword",
+                model=detection.model,
+                confidence=detection.confidence,
+                received_at=event.timestamp,
+                detected_at=event.timestamp,
+                chunk_index=payload.chunk_index,
+                chunk_count=self._chunk_count,
+                frame_level=payload.frame_level,
+                speech_peak_level=payload.speech_peak_level,
+                noise_floor_level=payload.noise_floor_level,
+            )
+            backend_decision = self._wake_election.submit_candidate(backend_candidate)
+        wake_accepted = bool(backend_decision and backend_decision.accepted and session.session_state == "idle")
         if audio_bytes is not None and not wake_accepted and self._is_ambient_reference_chunk(session):
             self._ambient_audio_chunks.append(audio_bytes)
         self._record_wake_confidence(
@@ -1486,85 +1738,20 @@ class VoiceSessionManager:
             confidence=detection.confidence,
             detected=detection.detected,
             accepted=wake_accepted,
-            reason=detection.reason,
+            reason=backend_decision.reason if backend_decision else detection.reason,
             source="backend_openwakeword",
             chunk_index=payload.chunk_index,
             chunk_count=self._chunk_count,
         )
-        if wake_accepted:
-            if self._wake_recorder is not None:
-                self._wake_recorder.mark_accepted_wake(
-                    endpoint_id=event.endpoint_id,
-                    session_id=session.session_id,
-                    model=detection.model,
-                    confidence=detection.confidence,
-                    source="backend_openwakeword",
-                    chunk_index=payload.chunk_index,
-                    chunk_count=self._chunk_count,
-                )
-            if self._micro_vad_chunk_recorder is not None:
-                self._micro_vad_chunk_recorder.mark_session_accepted(
-                    endpoint_id=event.endpoint_id,
-                    session_id=session.session_id,
-                )
-            self._record_wake_history(
-                {
-                    "outcome": "accepted",
-                    "detected": True,
-                    "endpoint_id": event.endpoint_id,
-                    "session_id": session.session_id,
-                    "model": detection.model,
-                    "confidence": detection.confidence,
-                    "detected_at": event.timestamp.isoformat(),
-                    "chunk_index": payload.chunk_index,
-                    "chunk_count": self._chunk_count,
-                }
-            )
-            self._set_active_session_wake(
-                {
-                    "outcome": "accepted",
-                    "detected": True,
-                    "model": detection.model,
-                    "confidence": detection.confidence,
-                    "detected_at": event.timestamp.isoformat(),
-                    "source": "backend_openwakeword",
-                    "chunk_index": payload.chunk_index,
-                    "chunk_count": self._chunk_count,
-                }
-            )
-            self._append_latency_point("wake_word_detected", "Wake word detected", event.timestamp)
-            log.info(
-                "Wake accepted: endpoint_id=%s session_id=%s model=%s confidence=%s chunk_index=%s",
-                event.endpoint_id,
-                session.session_id,
-                detection.model,
-                detection.confidence,
-                payload.chunk_index,
-            )
-            record_voice_event(
-                "wake.accepted",
-                endpoint_id=event.endpoint_id,
-                session_id=session.session_id,
-                model=detection.model,
-                confidence=detection.confidence,
-                chunk_index=payload.chunk_index,
-                chunk_count=self._chunk_count,
-            )
-            self._set_session_state("wake_detected")
-            events.append(
-                self._state_event(
-                    "wake.accepted",
-                    session,
-                    extra_payload={
-                        "wake": {
-                            "confidence": detection.confidence,
-                            "model": detection.model,
-                            "source": "backend_openwakeword",
-                        }
-                    },
+        if wake_accepted and backend_candidate is not None:
+            events.extend(
+                self._accept_wake_candidate(
+                    session=session,
+                    candidate=backend_candidate,
+                    detected_at=event.timestamp,
+                    decision=backend_decision,
                 )
             )
-            self._set_session_state("listening")
 
         if session.session_state in {"listening", "capturing"}:
             self._set_session_state("capturing")
@@ -1583,7 +1770,9 @@ class VoiceSessionManager:
                         "detected": detection.detected,
                         "confidence": detection.confidence,
                         "model": detection.model,
-                        "reason": detection.reason,
+                        "reason": backend_decision.reason if backend_decision else detection.reason,
+                        "source": "backend_openwakeword",
+                        "election": backend_decision.model_dump() if backend_decision else None,
                     },
                 },
             )
@@ -2100,6 +2289,7 @@ class VoiceSessionManager:
                 "commands": list(self._command_records.values()),
                 "event_diagnostics": list(self._event_diagnostics),
                 "wake_provider": self._wake_detector.status(),
+                "wake_election": self._wake_election.status(),
                 "wake_history": list(self._wake_history),
                 "wake_confidence_history": list(self._wake_confidence_history),
                 "wake_recordings": self._wake_recorder.status() if self._wake_recorder else {"enabled": False},

@@ -591,6 +591,7 @@ def create_app(
         pre_wake_timeout_s=app_settings.voice_session_pre_wake_timeout_s,
         max_active_session_s=app_settings.voice_session_max_active_s,
         privacy_mode_enabled=app_settings.voice_privacy_mode_enabled,
+        wake_election_window_ms=app_settings.voice_wake_election_window_ms,
     )
     assistant_service.set_endpoint_command_dispatcher(QueuedEndpointCommandDispatcher(voice_session_manager))
     timer_announcement_service = TimerSucceededAnnouncementService(

@@ -25,9 +25,17 @@ from hexevoice.voice.contracts import (
     VoiceTtsPlaybackPayload,
     VoiceTtsReadyPayload,
     VoiceVadSpeechStartedPayload,
+    VoiceWakeCandidatePayload,
     is_valid_voice_session_transition,
     project_ux_state,
     project_voice_state,
+)
+from hexevoice.voice.wake_election import (
+    DEFAULT_WAKE_ELECTION_WINDOW_MS,
+    WakeCandidate,
+    WakeCandidateElection,
+    WakeElectionDecision,
+    choose_wake_election_winner,
 )
 from hexevoice.voice.session_manager import VoiceSessionManager
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
@@ -110,6 +118,7 @@ __all__ = [
     "VoiceTtsPlaybackPayload",
     "VoiceTtsReadyPayload",
     "VoiceVadSpeechStartedPayload",
+    "VoiceWakeCandidatePayload",
     "VoiceSessionManager",
     "MicroVadChunkRecordingService",
     "AudioQualityResult",
@@ -145,6 +154,11 @@ __all__ = [
     "VoiceTurnResult",
     "build_voice_turn_pipeline",
     "trim_stt_silence",
+    "DEFAULT_WAKE_ELECTION_WINDOW_MS",
+    "WakeCandidate",
+    "WakeCandidateElection",
+    "WakeElectionDecision",
+    "choose_wake_election_winner",
     "STT_MODEL_PROFILES",
     "SttModelProfile",
     "get_stt_model_profile",

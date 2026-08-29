@@ -17,6 +17,7 @@ from hexevoice.voice import (
     VoiceSessionSnapshot,
     VoiceSessionStartPayload,
     VoiceTtsPlaybackPayload,
+    VoiceWakeCandidatePayload,
     project_ux_state,
     project_voice_state,
     is_valid_voice_session_transition,
@@ -127,6 +128,31 @@ def test_audio_chunk_payload_keeps_transport_metadata_separate_from_audio_proces
     assert chunk.contains_speech is True
 
 
+def test_wake_candidate_payload_supports_endpoint_wake_metadata():
+    payload = VoiceWakeCandidatePayload(
+        source="endpoint_micro_wake_word",
+        model="alexa",
+        confidence=0.93,
+        chunk_index=12,
+        chunk_count=4,
+        detection_window_ms=640,
+        frame_level=1200,
+        speech_peak_level=3400,
+        noise_floor_level=250,
+        snr_db=18.5,
+        endpoint_audio_profile_version="box3-profile-v1",
+        metadata={"wake_word": "Hexe"},
+    )
+
+    assert payload.source == "endpoint_micro_wake_word"
+    assert payload.model == "alexa"
+    assert payload.confidence == 0.93
+    assert payload.speech_peak_level == 3400
+    assert payload.snr_db == 18.5
+    assert payload.endpoint_audio_profile_version == "box3-profile-v1"
+    assert payload.metadata["wake_word"] == "Hexe"
+
+
 def test_session_snapshot_keeps_backend_endpoint_and_ux_states_separate():
     snapshot = VoiceSessionSnapshot(
         session_id="voice-session-1",
@@ -184,6 +210,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "audio.chunk",
         "audio.end",
         "vad.speech_started",
+        "wake.candidate",
         "session.cancel",
         "session.ping",
         "command.ack",
@@ -196,6 +223,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
     }
     assert {
         "session.state",
+        "wake.election.result",
         "transcript.partial",
         "transcript.final",
         "response.text",

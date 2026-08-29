@@ -53,7 +53,6 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 250: Add backend wake-candidate election protocol and simulated multi-endpoint arbitration
 [TODO] Task 251: Implement firmware wake-election candidate and stand-down behavior
 [STOP]
 [TODO] Task 252: Add active endpoint placement test workflow and placement report

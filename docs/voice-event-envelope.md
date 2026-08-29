@@ -65,6 +65,19 @@ the payload carries the measured VAD `level` plus a `source` such as `firmware_v
 done, TTS start/end, and session end. Timeline points carry both `offset_from_vad_ms` and
 `offset_from_previous_ms` when the VAD start timestamp is known.
 
+Endpoint wake election uses `wake.candidate`. Election-capable firmware sends it after `session.start` and before
+streaming the full post-wake utterance. The payload may include `source`, `model`, `confidence`, `chunk_index`,
+`chunk_count`, `detected_at`, `detection_window_ms`, `frame_level`, `speech_peak_level`, `noise_floor_level`,
+`ambient_level`, `snr_db`, `endpoint_audio_profile_version`, and a privacy-safe `metadata` object. The payload must
+not include raw audio, embeddings, or transcripts. Backend `openWakeWord` detections are also converted into
+`backend_openwakeword` candidates so the backend wake path remains a fallback when endpoint wake is absent or disabled.
+
+The backend uses `VOICE_WAKE_ELECTION_WINDOW_MS` to keep a short arbitration window and scores candidates from wake
+confidence plus small bonuses for available audio-quality metrics. It sends `wake.accepted` to the selected endpoint.
+Losing or late candidates receive `wake.election.result` with `stand_down: true`, `winner_endpoint_id`, and an
+`election` diagnostic containing the candidate list, winner, per-candidate score, score breakdown, and reason.
+Existing endpoints that only stream `audio.chunk` remain compatible.
+
 `audio.chunk` may include optional endpoint-side numeric quality metrics: `frame_level`, `noise_floor_level`,
 `speech_peak_level`, `pre_roll_duration_ms`, `contains_pre_roll`, and `contains_speech`. These fields are
 privacy-safe transport diagnostics, not raw audio or environment classification. Backend quality analysis prefers

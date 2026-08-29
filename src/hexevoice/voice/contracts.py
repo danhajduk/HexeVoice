@@ -37,9 +37,11 @@ VoiceEventType = Literal[
     "audio.chunk",
     "audio.end",
     "vad.speech_started",
+    "wake.candidate",
     "session.cancel",
     "session.ping",
     "session.state",
+    "wake.election.result",
     "wake.accepted",
     "capture.started",
     "capture.stopped",
@@ -83,6 +85,7 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
         "audio.chunk",
         "audio.end",
         "vad.speech_started",
+        "wake.candidate",
         "session.cancel",
         "session.ping",
         "command.ack",
@@ -98,6 +101,7 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
 BACKEND_TO_ENDPOINT_EVENTS: frozenset[str] = frozenset(
     {
         "session.state",
+        "wake.election.result",
         "wake.accepted",
         "capture.started",
         "capture.stopped",
@@ -218,6 +222,23 @@ class VoiceTtsPlaybackPayload(BaseModel):
 class VoiceVadSpeechStartedPayload(BaseModel):
     level: int | None = Field(default=None, ge=0)
     source: str | None = None
+
+
+class VoiceWakeCandidatePayload(BaseModel):
+    source: str = Field(default="endpoint_micro_wake_word", min_length=1, max_length=80)
+    model: str | None = Field(default=None, max_length=120)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    chunk_index: int | None = Field(default=None, ge=0)
+    chunk_count: int | None = Field(default=None, ge=0)
+    detected_at: datetime | None = None
+    detection_window_ms: int | None = Field(default=None, ge=0)
+    frame_level: int | None = Field(default=None, ge=0)
+    speech_peak_level: int | None = Field(default=None, ge=0)
+    noise_floor_level: int | None = Field(default=None, ge=0)
+    ambient_level: int | None = Field(default=None, ge=0)
+    snr_db: float | None = None
+    endpoint_audio_profile_version: str | None = Field(default=None, max_length=80)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class VoiceErrorPayload(BaseModel):

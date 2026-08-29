@@ -611,6 +611,76 @@ def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
     assert status["wake_history"][0]["model"] == "deterministic"
 
 
+def test_voice_websocket_arbitrates_endpoint_wake_candidates_and_stands_down_loser(tmp_path):
+    started_at = datetime(2026, 8, 29, 20, 0, tzinfo=UTC)
+    manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None))
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as first_socket:
+        first_socket.send_json(voice_event_at("session.start", started_at, endpoint_id="esp-box-1", session_id="box-session"))
+        assert first_socket.receive_json()["event_type"] == "session.state"
+
+        first_socket.send_json(
+            voice_event_at(
+                "wake.candidate",
+                started_at + timedelta(milliseconds=20),
+                endpoint_id="esp-box-1",
+                session_id="box-session",
+                payload={
+                    "source": "endpoint_micro_wake_word",
+                    "model": "alexa",
+                    "confidence": 0.88,
+                    "chunk_index": 10,
+                    "chunk_count": 3,
+                    "metadata": {"wake_word": "Hexe"},
+                },
+            )
+        )
+        first_wake = first_socket.receive_json()
+        first_state = first_socket.receive_json()
+
+        with client.websocket_connect("/api/voice/ws") as second_socket:
+            second_socket.send_json(
+                voice_event_at(
+                    "session.start",
+                    started_at + timedelta(milliseconds=40),
+                    endpoint_id="esp-pe-1",
+                    session_id="pe-session",
+                )
+            )
+            assert second_socket.receive_json()["event_type"] == "session.state"
+
+            second_socket.send_json(
+                voice_event_at(
+                    "wake.candidate",
+                    started_at + timedelta(milliseconds=120),
+                    endpoint_id="esp-pe-1",
+                    session_id="pe-session",
+                    payload={
+                        "source": "endpoint_micro_wake_word",
+                        "model": "alexa",
+                        "confidence": 0.95,
+                        "chunk_index": 9,
+                        "chunk_count": 2,
+                    },
+                )
+            )
+            second_result = second_socket.receive_json()
+
+    assert first_wake["event_type"] == "wake.accepted"
+    assert first_wake["payload"]["wake"]["source"] == "endpoint_micro_wake_word"
+    assert first_wake["payload"]["election"]["accepted"] is True
+    assert first_state["payload"]["snapshot"]["session_state"] == "listening"
+    assert second_result["event_type"] == "wake.election.result"
+    assert second_result["payload"]["stand_down"] is True
+    assert second_result["payload"]["winner_endpoint_id"] == "esp-box-1"
+    assert second_result["payload"]["election"]["reason"] == "stand_down_existing_winner"
+
+    status = client.get("/api/voice/status").json()
+    assert status["wake_election"]["recent_decisions"][0]["reason"] == "stand_down_existing_winner"
+    assert status["wake_history"][0]["source"] == "endpoint_micro_wake_word"
+
+
 def test_voice_websocket_suppresses_tts_during_speaker_enrollment_capture(tmp_path):
     class EnrollmentCapturePipeline:
         def __init__(self) -> None:
