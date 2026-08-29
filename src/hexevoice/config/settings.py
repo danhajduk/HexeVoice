@@ -109,6 +109,8 @@ class Settings(BaseSettings):
     voice_micro_vad_chunk_retention_days: int = Field(default=1, alias="VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS", ge=1)
     voice_session_history_path: Path | None = Field(default=None, alias="VOICE_SESSION_HISTORY_PATH")
     voice_session_history_limit: int = Field(default=100, alias="VOICE_SESSION_HISTORY_LIMIT", ge=1)
+    voice_session_pre_wake_timeout_s: float = Field(default=10.0, alias="VOICE_SESSION_PRE_WAKE_TIMEOUT_S", gt=0)
+    voice_session_max_active_s: float = Field(default=60.0, alias="VOICE_SESSION_MAX_ACTIVE_S", gt=0)
     voice_stt_provider: Literal["deterministic", "openai", "faster_whisper", "external_faster_whisper"] = Field(
         default="deterministic",
         alias="VOICE_STT_PROVIDER",

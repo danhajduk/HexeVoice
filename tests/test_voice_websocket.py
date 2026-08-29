@@ -257,6 +257,115 @@ def test_voice_websocket_replaces_stale_idle_session_from_same_endpoint(tmp_path
     assert stale["completion_reason"] == "superseded_by_new_session"
 
 
+def test_voice_websocket_cancels_stale_pre_wake_session_on_audio_chunk(tmp_path):
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        session_history_store=history_store,
+        pre_wake_timeout_s=0.5,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+    started_at = datetime(2026, 5, 9, 20, 51, 36, tzinfo=UTC)
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event_at("session.start", started_at, session_id="stale-session"))
+        websocket.receive_json()
+
+        websocket.send_json(
+            voice_event_at(
+                "audio.chunk",
+                started_at + timedelta(seconds=1),
+                session_id="stale-session",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": base64.b64encode(b"\x00\x01").decode("ascii"),
+                },
+            )
+        )
+        cancelled = websocket.receive_json()
+
+    assert cancelled["event_type"] == "session.cancelled"
+    assert cancelled["payload"]["reason"] == "pre_wake_timeout"
+    assert cancelled["payload"]["snapshot"]["session_state"] == "cancelled"
+    assert client.get("/api/voice/status").json()["active_session"] is None
+    sessions = client.get("/api/voice/sessions").json()["sessions"]
+    stale = next(session for session in sessions if session["session_id"] == "stale-session")
+    assert stale["completion_reason"] == "pre_wake_timeout"
+
+
+def test_voice_websocket_cancels_stale_accepted_capture_session_on_audio_chunk(tmp_path):
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        session_history_store=history_store,
+        max_active_session_s=0.5,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+    started_at = datetime(2026, 5, 9, 20, 51, 36, tzinfo=UTC)
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event_at("session.start", started_at, session_id="stale-session"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event_at(
+                "audio.chunk",
+                started_at + timedelta(milliseconds=100),
+                session_id="stale-session",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": base64.b64encode(b"\x00\x01").decode("ascii"),
+                },
+            )
+        )
+        assert websocket.receive_json()["event_type"] == "wake.accepted"
+        assert websocket.receive_json()["payload"]["snapshot"]["session_state"] == "capturing"
+
+        websocket.send_json(
+            voice_event_at(
+                "audio.chunk",
+                started_at + timedelta(seconds=1),
+                session_id="stale-session",
+                payload={
+                    "chunk_index": 1,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": base64.b64encode(b"\x02\x03").decode("ascii"),
+                },
+            )
+        )
+        cancelled = websocket.receive_json()
+
+    assert cancelled["event_type"] == "session.cancelled"
+    assert cancelled["payload"]["reason"] == "active_session_timeout"
+    assert cancelled["payload"]["snapshot"]["session_state"] == "cancelled"
+    sessions = client.get("/api/voice/sessions").json()["sessions"]
+    stale = next(session for session in sessions if session["session_id"] == "stale-session")
+    assert stale["completion_reason"] == "active_session_timeout"
+
+
+def test_voice_status_expires_stale_endpoint_session(tmp_path):
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        pre_wake_timeout_s=0.5,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+    started_at = datetime(2026, 5, 9, 20, 51, 36, tzinfo=UTC)
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        websocket.send_json(voice_event_at("session.start", started_at, session_id="stale-session"))
+        websocket.receive_json()
+
+        status = client.get("/api/voice/status").json()
+
+    assert status["active_session"] is None
+    assert status["session_state"] is None
+    assert status["ux_state"] == "idle"
+    assert status["endpoints"]["esp-box-1"]["active_session"] is None
+    assert status["endpoints"]["esp-box-1"]["session_state"] is None
+    assert status["endpoints"]["esp-box-1"]["ux_state"] == "idle"
+
+
 def test_voice_websocket_rejects_rapid_duplicate_pre_audio_session_start(tmp_path):
     history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
     manager = VoiceSessionManager(

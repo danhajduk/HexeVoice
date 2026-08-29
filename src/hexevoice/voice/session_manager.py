@@ -212,6 +212,8 @@ class VoiceSessionManager:
         wake_recorder: WakeRecordingService | None = None,
         micro_vad_chunk_recorder: MicroVadChunkRecordingService | None = None,
         session_history_store: VoiceSessionHistoryStore | None = None,
+        pre_wake_timeout_s: float = 10.0,
+        max_active_session_s: float = 60.0,
     ) -> None:
         self._default_runtime = EndpointSessionRuntime()
         self._runtime_context: contextvars.ContextVar[EndpointSessionRuntime | None] = contextvars.ContextVar(
@@ -227,6 +229,8 @@ class VoiceSessionManager:
         self._command_records: dict[str, dict[str, object]] = {}
         self._last_volume_percent_by_endpoint: dict[str, int] = {}
         self._command_timeout_s = 10.0
+        self._pre_wake_timeout_s = pre_wake_timeout_s
+        self._max_active_session_s = max_active_session_s
         self._event_diagnostics: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
@@ -298,6 +302,58 @@ class VoiceSessionManager:
             "last_event_type": state.last_event_type,
             "last_session_id": active_snapshot["session_id"] if active_snapshot else None,
         }
+
+    def _active_session_timeout_reason(self, *, now: datetime) -> str | None:
+        if self._active_session is None:
+            return None
+        age_s = (now - self._active_session.started_at).total_seconds()
+        if self._active_session.session_state == "idle" and age_s > self._pre_wake_timeout_s:
+            return "pre_wake_timeout"
+        if (
+            self._active_session.session_state in {"wake_detected", "listening", "capturing"}
+            and age_s > self._max_active_session_s
+        ):
+            return "active_session_timeout"
+        return None
+
+    def _cancel_timed_out_active_session(self, *, reason: str) -> VoiceEventEnvelope | None:
+        if self._active_session is None:
+            return None
+        session = self._active_session
+        self._set_session_state("cancelled")
+        session.cancel_reason = reason
+        cancelled = self._state_event(
+            "session.cancelled",
+            session,
+            extra_payload={
+                "reason": reason,
+                "message": "Active voice session timed out before audio completion.",
+                "timeout_s": self._pre_wake_timeout_s if reason == "pre_wake_timeout" else self._max_active_session_s,
+            },
+        )
+        self._persist_active_session_history(session, completion_reason=reason)
+        self._release_active_session_wake_stream()
+        self._clear_active_session_runtime()
+        return cancelled
+
+    def _expire_stale_active_sessions(self) -> None:
+        now = datetime.now(UTC)
+        for state in list(self._endpoint_runtimes.values()) + [self._default_runtime]:
+            if not state.connection_active or state.active_session is None:
+                continue
+            token = self._runtime_context.set(state)
+            try:
+                timeout_reason = self._active_session_timeout_reason(now=now)
+                if timeout_reason is not None:
+                    log.warning(
+                        "Voice session timed out: endpoint_id=%s session_id=%s reason=%s",
+                        self._active_session.endpoint_id,
+                        self._active_session.session_id,
+                        timeout_reason,
+                    )
+                    self._cancel_timed_out_active_session(reason=timeout_reason)
+            finally:
+                self._runtime_context.reset(token)
 
     async def handle_websocket(self, websocket: WebSocket, *, endpoint_id: str | None = None) -> None:
         await websocket.accept()
@@ -1266,6 +1322,10 @@ class VoiceSessionManager:
         session = self._require_active_session(event)
         if isinstance(session, VoiceEventEnvelope):
             return [session]
+        timeout_reason = self._active_session_timeout_reason(now=event.timestamp)
+        if timeout_reason is not None:
+            cancelled = self._cancel_timed_out_active_session(reason=timeout_reason)
+            return [cancelled] if cancelled is not None else []
 
         try:
             payload = VoiceAudioChunkPayload.model_validate(event.payload)
@@ -1946,6 +2006,7 @@ class VoiceSessionManager:
 
     def status(self) -> dict:
         self._expire_commands()
+        self._expire_stale_active_sessions()
         selected_runtime = self._status_runtime()
         token = self._runtime_context.set(selected_runtime)
         try:

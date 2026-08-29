@@ -574,6 +574,8 @@ def create_app(
         wake_recorder=wake_recorder,
         micro_vad_chunk_recorder=micro_vad_chunk_recorder,
         session_history_store=voice_session_history_store,
+        pre_wake_timeout_s=app_settings.voice_session_pre_wake_timeout_s,
+        max_active_session_s=app_settings.voice_session_max_active_s,
     )
     assistant_service.set_endpoint_command_dispatcher(QueuedEndpointCommandDispatcher(voice_session_manager))
     timer_announcement_service = TimerSucceededAnnouncementService(

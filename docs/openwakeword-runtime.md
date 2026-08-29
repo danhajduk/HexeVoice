@@ -132,6 +132,8 @@ VOICE_MICRO_VAD_CHUNK_RETENTION_DAYS=1
 
 Micro-VAD chunk recording is disabled by default. When temporarily enabled for debugging, the backend buffers firmware-marked micro-VAD chunks and writes them to `runtime/micro_vad_chunks` only after the wake word is accepted for that session. Sessions without an accepted wake word are discarded. Each kept chunk is saved as a PCM WAV with a JSON sidecar that includes endpoint, session, firmware micro-VAD chunk index, pause duration, audio format, duration, and expiration metadata. These files are debug artifacts only and are not exposed in the UI.
 
+Pre-wake voice sessions that do not receive wake acceptance are cancelled by the backend after `VOICE_SESSION_PRE_WAKE_TIMEOUT_S`, which defaults to `10` seconds. Accepted sessions that do not reach `audio.end` are cancelled after `VOICE_SESSION_MAX_ACTIVE_S`, which defaults to `60` seconds. These limits protect the operator UI and voice runtime from a stuck endpoint VAD state that keeps reporting `wake_armed`, `listening`, or `capturing`.
+
 The firmware micro-VAD pause threshold defaults to `190` ms and the energy threshold defaults to `900`. Both values
 are persisted on the endpoint and can be adjusted without UI through:
 
