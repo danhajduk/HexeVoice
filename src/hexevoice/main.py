@@ -1003,6 +1003,39 @@ def create_app(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"schema_version": 1, "window": window}
 
+    @app.post("/api/voice/placement-tests")
+    async def voice_start_placement_test(payload: dict[str, object]) -> dict[str, object]:
+        try:
+            window = voice_session_manager.start_placement_test_window(
+                endpoint_id=str(payload.get("endpoint_id") or "").strip(),
+                room=str(payload.get("room") or "").strip(),
+                zone=str(payload.get("zone") or "").strip() or None,
+                position_label=str(payload.get("position_label") or "").strip() or None,
+                expected_phrase=str(payload.get("expected_phrase") or "").strip(),
+                expected_speaker_public_id=str(payload.get("expected_speaker_public_id") or "").strip() or None,
+                ttl_seconds=int(payload.get("ttl_seconds") or 300),
+                debug_record_audio=bool(payload.get("debug_record_audio")),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"schema_version": 1, "window": window}
+
+    @app.get("/api/voice/placement-tests")
+    async def voice_placement_tests(endpoint_id: str | None = None, limit: int = 20) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "endpoint_id": endpoint_id,
+            "active_windows": voice_session_manager.placement_test_windows(),
+            "tests": voice_session_manager.list_placement_tests(endpoint_id=endpoint_id, limit=limit),
+        }
+
+    @app.get("/api/voice/placement-tests/{test_id}")
+    async def voice_placement_test_detail(test_id: str) -> dict[str, object]:
+        placement_test = voice_session_manager.get_placement_test(test_id)
+        if placement_test is None:
+            raise HTTPException(status_code=404, detail="placement_test_not_found")
+        return {"schema_version": 1, "placement_test": placement_test}
+
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
         response = assistant_service.handle_turn(payload)

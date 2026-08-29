@@ -120,4 +120,5 @@ class VoiceSessionHistoryStore:
             "tts_playback": session.get("tts_playback"),
             "replay": session.get("replay"),
             "wake_recording": session.get("wake_recording"),
+            "placement_test": session.get("placement_test"),
         }

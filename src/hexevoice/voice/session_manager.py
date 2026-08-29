@@ -39,6 +39,7 @@ from hexevoice.voice.contracts import (
 )
 from hexevoice.voice.pipeline import TtsSynthesis, VoiceTurnAudioSummary, VoiceTurnPipeline
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
+from hexevoice.voice.placement import PlacementReportInput, build_active_placement_report
 from hexevoice.voice.records import record_voice_event
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
 from hexevoice.voice.wake import OpenWakeWordWakeDetector, WakeDetectionResult, WakeDetector
@@ -246,6 +247,7 @@ class VoiceSessionManager:
         self._wake_confidence_history: list[dict[str, object]] = []
         self._wake_election = WakeCandidateElection(window_ms=wake_election_window_ms)
         self._speaker_enrollment_capture_windows: dict[str, dict[str, object]] = {}
+        self._active_placement_test_windows: dict[str, dict[str, object]] = {}
 
     def _current_runtime(self) -> EndpointSessionRuntime:
         runtime_context = getattr(self, "_runtime_context", None)
@@ -1108,6 +1110,16 @@ class VoiceSessionManager:
             self._connected_endpoint_id = event.endpoint_id
             log.info("Voice endpoint bound to WebSocket: endpoint_id=%s", event.endpoint_id)
 
+        if self._can_merge_placement_test_event(event):
+            log.debug(
+                "Merging placement-test event into active capture: endpoint_id=%s active_session_id=%s incoming_session_id=%s event_type=%s",
+                event.endpoint_id,
+                self._active_session.session_id if self._active_session else None,
+                event.session_id,
+                event.event_type,
+            )
+            event = event.model_copy(update={"session_id": self._active_session.session_id})
+
         if self._can_merge_speaker_enrollment_event(event):
             log.debug(
                 "Merging Speaker ID enrollment event into active capture: endpoint_id=%s active_session_id=%s incoming_session_id=%s event_type=%s",
@@ -1362,6 +1374,25 @@ class VoiceSessionManager:
 
     def _handle_session_start(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         if self._active_session is not None:
+            if self._should_complete_placement_test_on_new_session(event):
+                log.info(
+                    "Completing placement test before new session: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
+                    event.endpoint_id,
+                    self._active_session.session_id,
+                    event.session_id,
+                )
+                completed_events = self._handle_audio_end(
+                    event.model_copy(
+                        update={
+                            "event_type": "audio.end",
+                            "session_id": self._active_session.session_id,
+                            "payload": {"reason": "superseded_by_new_placement_session"},
+                        }
+                    )
+                )
+                if self._active_session is None:
+                    return completed_events + self._handle_session_start(event)
+                return completed_events
             if self._should_complete_speaker_enrollment_on_new_session(event):
                 log.info(
                     "Completing Speaker ID enrollment capture before new session: endpoint_id=%s active_session_id=%s incoming_session_id=%s",
@@ -1460,6 +1491,15 @@ class VoiceSessionManager:
             session=self._active_session,
             start_payload=payload,
         )
+        placement_window = self._active_placement_test_window(event.endpoint_id)
+        if placement_window is not None:
+            self._update_active_session_history(
+                placement_test={
+                    **placement_window,
+                    "session_id": session_id,
+                    "status": "capturing",
+                }
+            )
         log.info(
             "Voice session started: endpoint_id=%s session_id=%s wake_source=%s sample_rate_hz=%s",
             event.endpoint_id,
@@ -1555,6 +1595,22 @@ class VoiceSessionManager:
         wake = self._active_session_history.get("wake")
         return isinstance(wake, dict) and wake.get("source") == "speaker_id_enrollment_capture"
 
+    def _active_session_is_placement_test(self) -> bool:
+        if self._active_session is None or self._active_session_history is None:
+            return False
+        placement = self._active_session_history.get("placement_test")
+        return isinstance(placement, dict) and placement.get("test_id")
+
+    def _can_merge_placement_test_event(self, event: VoiceEventEnvelope) -> bool:
+        return (
+            self._active_session is not None
+            and self._active_session.endpoint_id == event.endpoint_id
+            and event.session_id != self._active_session.session_id
+            and self._active_session_is_placement_test()
+            and self._active_placement_test_window(event.endpoint_id) is not None
+            and event.event_type in {"vad.speech_started", "audio.chunk", "audio.end", "session.cancel"}
+        )
+
     def _can_merge_speaker_enrollment_event(self, event: VoiceEventEnvelope) -> bool:
         return (
             self._active_session is not None
@@ -1563,6 +1619,18 @@ class VoiceSessionManager:
             and self._active_session_is_speaker_enrollment_capture()
             and self._active_speaker_enrollment_capture_window(event.endpoint_id) is not None
             and event.event_type in {"vad.speech_started", "audio.chunk", "audio.end", "session.cancel"}
+        )
+
+    def _should_complete_placement_test_on_new_session(self, event: VoiceEventEnvelope) -> bool:
+        return (
+            self._active_session is not None
+            and self._active_session.endpoint_id == event.endpoint_id
+            and event.session_id != self._active_session.session_id
+            and event.event_type == "session.start"
+            and self._active_session.session_state in {"listening", "capturing"}
+            and self._active_session_is_placement_test()
+            and self._active_placement_test_window(event.endpoint_id) is not None
+            and self._chunk_count > 0
         )
 
     def _should_complete_speaker_enrollment_on_new_session(self, event: VoiceEventEnvelope) -> bool:
@@ -1623,7 +1691,13 @@ class VoiceSessionManager:
             except ValueError:
                 pass
         events: list[VoiceEventEnvelope] = []
-        if audio_bytes is not None and self._micro_vad_chunk_recorder is not None:
+        placement_test_window = self._active_placement_test_window(event.endpoint_id)
+        placement_debug_audio = bool(placement_test_window and placement_test_window.get("debug_record_audio"))
+        if (
+            audio_bytes is not None
+            and self._micro_vad_chunk_recorder is not None
+            and not (placement_test_window is not None and not placement_debug_audio)
+        ):
             self._micro_vad_chunk_recorder.capture_audio_chunk(
                 endpoint_id=event.endpoint_id,
                 session_id=session.session_id,
@@ -1632,6 +1706,11 @@ class VoiceSessionManager:
                 received_at=event.timestamp,
             )
         enrollment_capture_window = self._active_speaker_enrollment_capture_window(event.endpoint_id)
+        placement_capture_candidate = (
+            audio_bytes is not None
+            and placement_test_window is not None
+            and session.session_state in {"idle", "wake_detected", "listening", "capturing"}
+        )
         enrollment_capture_candidate = (
             audio_bytes is not None
             and enrollment_capture_window is not None
@@ -1641,6 +1720,7 @@ class VoiceSessionManager:
             audio_bytes is not None
             and self._wake_recorder is not None
             and (session.session_state == "idle" or enrollment_capture_candidate)
+            and not (placement_capture_candidate and not placement_debug_audio)
         ):
             self._wake_recorder.capture_wake_chunk(
                 endpoint_id=event.endpoint_id,
@@ -1652,6 +1732,41 @@ class VoiceSessionManager:
             enrollment_capture_candidate
             and not self._active_session_is_speaker_enrollment_capture()
         )
+        placement_capture_accepted = placement_capture_candidate and not self._active_session_is_placement_test()
+        if placement_capture_accepted and placement_test_window is not None:
+            self._set_active_session_wake(
+                {
+                    "outcome": "accepted",
+                    "detected": True,
+                    "model": "placement_test_capture",
+                    "confidence": 1.0,
+                    "detected_at": event.timestamp.isoformat(),
+                    "source": "placement_test_capture",
+                    "chunk_index": payload.chunk_index,
+                    "chunk_count": self._chunk_count,
+                }
+            )
+            self._update_active_session_history(
+                placement_test={
+                    **placement_test_window,
+                    "session_id": session.session_id,
+                    "status": "capturing",
+                    "first_audio_chunk_index": payload.chunk_index,
+                }
+            )
+            self._append_latency_point("wake_word_detected", "Placement test capture accepted", event.timestamp)
+            record_voice_event(
+                "placement_test.capture.started",
+                endpoint_id=event.endpoint_id,
+                session_id=session.session_id,
+                test_id=placement_test_window.get("test_id"),
+                room=placement_test_window.get("room"),
+                zone=placement_test_window.get("zone"),
+                position_label=placement_test_window.get("position_label"),
+                chunk_index=payload.chunk_index,
+                chunk_count=self._chunk_count,
+            )
+            self._set_session_state("listening")
         if enrollment_capture_accepted:
             if self._wake_recorder is not None:
                 self._wake_recorder.mark_accepted_wake(
@@ -1851,6 +1966,9 @@ class VoiceSessionManager:
         self._update_vad_latency("audio_end", event.timestamp)
         self._set_session_state("transcribing")
         events: list[VoiceEventEnvelope] = []
+        placement_test_window = self._active_placement_test_window(session.endpoint_id)
+        if self._active_session_is_placement_test() and self._turn_pipeline is not None:
+            return self._complete_active_placement_test(session=session, event=event, placement_window=placement_test_window)
         wake_recording = self._record_accepted_wake_session(session)
         enrollment_capture_window = self._active_speaker_enrollment_capture_window(session.endpoint_id)
         if enrollment_capture_window is not None and self._turn_pipeline is not None:
@@ -2226,6 +2344,182 @@ class VoiceSessionManager:
         self._clear_active_session_runtime()
         return events
 
+    def _complete_active_placement_test(
+        self,
+        *,
+        session: VoiceSessionSnapshot,
+        event: VoiceEventEnvelope,
+        placement_window: dict[str, object] | None,
+    ) -> list[VoiceEventEnvelope]:
+        transcribe_audio = getattr(self._turn_pipeline, "transcribe_audio", None)
+        if not callable(transcribe_audio):
+            return [
+                self._error_event(
+                    endpoint_id=session.endpoint_id,
+                    session_id=session.session_id,
+                    code="placement_test_pipeline_unavailable",
+                    message="Placement tests require the voice turn pipeline STT path.",
+                    recoverable=True,
+                )
+            ]
+
+        placement_test = dict(self._active_session_history.get("placement_test") or {}) if self._active_session_history else {}
+        if placement_window is not None:
+            placement_test = {**placement_window, **placement_test}
+        audio_summary = VoiceTurnAudioSummary(
+            endpoint_id=session.endpoint_id,
+            session_id=session.session_id,
+            chunk_count=self._chunk_count,
+            sample_rate_hz=self._audio_format.sample_rate_hz if self._audio_format else None,
+            encoding=self._audio_format.encoding if self._audio_format else None,
+            channels=self._audio_format.channels if self._audio_format else 1,
+            audio_bytes=b"".join(self._audio_chunks),
+            ambient_audio_bytes=b"".join(self._ambient_audio_chunks) or None,
+            endpoint_audio_metrics=self._endpoint_audio_metrics(),
+        )
+        stt_started_at = datetime.now(UTC)
+        self._append_latency_point("stt_start", "STT start", stt_started_at)
+        turn_started_at = datetime.now(UTC)
+        transcript = transcribe_audio(audio_summary)
+        stt_ended_at = datetime.now(UTC)
+        self._append_latency_point("stt_end", "STT end", stt_ended_at)
+        audio_quality = analyze_pcm_s16le_audio(
+            audio_summary.audio_bytes,
+            sample_rate_hz=audio_summary.sample_rate_hz,
+            channels=audio_summary.channels,
+            encoding=audio_summary.encoding,
+            ambient_audio_bytes=audio_summary.ambient_audio_bytes,
+            endpoint_audio_metrics=audio_summary.endpoint_audio_metrics,
+        )
+        identify_speaker = getattr(self._turn_pipeline, "identify_speaker", None)
+        speaker_identity = identify_speaker(audio_summary) if callable(identify_speaker) else None
+        speaker_context = (
+            speaker_identity.as_context()
+            if hasattr(speaker_identity, "as_context")
+            else dict(speaker_identity or {"status": "unavailable", "reason": "pipeline_identify_speaker_unavailable"})
+        )
+        transcript_context = {
+            "provider_id": transcript.provider_id,
+            "model": transcript.model,
+            "confidence": transcript.confidence,
+            "duration_ms": transcript.duration_ms,
+            "text_chars": len(transcript.text or ""),
+            "error": transcript.error,
+            "text": transcript.text,
+        }
+        report = build_active_placement_report(
+            PlacementReportInput(
+                test=placement_test,
+                transcript=transcript_context,
+                speaker_identity=speaker_context,
+                audio_quality=audio_quality.as_context(),
+                related_reports=self._related_placement_reports(placement_test),
+            )
+        )
+        completed_at = datetime.now(UTC)
+        debug_requested = bool(placement_test.get("debug_record_audio"))
+        placement_record = {
+            **placement_test,
+            "schema_version": 1,
+            "mode": "active",
+            "status": "completed",
+            "session_id": session.session_id,
+            "endpoint_id": session.endpoint_id,
+            "completed_at": completed_at.isoformat(),
+            "chunk_count": self._chunk_count,
+            "raw_audio": {
+                "persisted": False,
+                "debug_record_audio": debug_requested,
+                "retention_days": 1 if debug_requested else None,
+                "reason": "disabled_by_default" if not debug_requested else "debug_recording_not_configured",
+            },
+            "transcript": transcript_context,
+            "speaker_identity": speaker_context,
+            "audio_quality": audio_quality.as_context(),
+            "report": report,
+        }
+        self._last_transcript = transcript.text
+        self._last_response = "Placement test recorded."
+        self._last_tts = None
+        self._last_turn_timings = {
+            "stt_ms": round((stt_ended_at - stt_started_at).total_seconds() * 1000, 2),
+            "assistant_ms": 0.0,
+            "tts_ms": 0.0,
+            "total_ms": round((completed_at - turn_started_at).total_seconds() * 1000, 2),
+            "speaker_id_ms": speaker_context.get("duration_ms"),
+        }
+        self._last_transcript_metadata = {
+            **{key: value for key, value in transcript_context.items() if key != "text"},
+            "speaker_identity": speaker_context,
+            "audio_quality": audio_quality.as_context(),
+            "placement_test": {
+                "test_id": placement_record.get("test_id"),
+                "room": placement_record.get("room"),
+                "zone": placement_record.get("zone"),
+                "position_label": placement_record.get("position_label"),
+                "score": report.get("score"),
+                "recommendation": report.get("recommendation"),
+            },
+        }
+        self._last_assistant = {
+            "provider_id": "placement_test",
+            "duration_ms": 0.0,
+            "text": self._last_response,
+            "text_chars": len(self._last_response),
+            "error": None,
+            "handled_locally": True,
+            "provider_metadata": {"tts_suppressed": True, "placement_test": placement_record.get("test_id")},
+        }
+        self._update_active_session_history(
+            transcript=transcript_context,
+            turn_timings=self._last_turn_timings,
+            assistant=self._last_assistant,
+            placement_test=placement_record,
+        )
+        record_voice_event(
+            "placement_test.completed",
+            endpoint_id=session.endpoint_id,
+            session_id=session.session_id,
+            test_id=placement_record.get("test_id"),
+            room=placement_record.get("room"),
+            zone=placement_record.get("zone"),
+            position_label=placement_record.get("position_label"),
+            score=report.get("score"),
+            recommendation=report.get("recommendation"),
+            warnings=report.get("warnings"),
+            transcript_text=transcript.text,
+            speaker_identity=speaker_context,
+            audio_quality=audio_quality.as_context(),
+        )
+        self._active_placement_test_windows.pop(session.endpoint_id, None)
+        events = [
+            self._state_event(
+                "transcript.final",
+                session,
+                extra_payload=VoiceTranscriptPayload(
+                    text=transcript.text,
+                    confidence=transcript.confidence,
+                ).model_dump(mode="json"),
+            )
+        ]
+        self._set_session_state("local_command")
+        self._set_session_state("completed")
+        events.append(
+            self._state_event(
+                "session.completed",
+                session,
+                extra_payload={
+                    "completion_reason": "placement_test",
+                    "chunk_count": self._chunk_count,
+                    "placement_test": placement_record,
+                },
+            )
+        )
+        self._persist_active_session_history(session, completion_reason="placement_test")
+        self._release_active_session_wake_stream()
+        self._clear_active_session_runtime()
+        return events
+
     def status(self) -> dict:
         self._expire_commands()
         self._expire_stale_active_sessions()
@@ -2298,6 +2592,12 @@ class VoiceSessionManager:
                     "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
                     "active_windows": self.speaker_enrollment_capture_windows(),
                 },
+                "placement_tests": {
+                    "blocked": self._privacy_mode_enabled,
+                    "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
+                    "active_windows": self.placement_test_windows(),
+                    "recent_reports": self.list_placement_tests(limit=5),
+                },
                 "privacy_mode": {
                     "enabled": self._privacy_mode_enabled,
                     "blocked_features": [
@@ -2305,6 +2605,7 @@ class VoiceSessionManager:
                         "profile_learning_eligibility",
                         "observation_logging",
                         "debug_raw_audio_recording",
+                        "active_placement_tests",
                         "passive_ambient_calibration",
                         "admin_maintenance_voice_intents",
                         "profile_enrollment_captures",
@@ -2378,6 +2679,120 @@ class VoiceSessionManager:
         self._expire_speaker_enrollment_capture_windows()
         window = self._speaker_enrollment_capture_windows.get(endpoint_id)
         return dict(window) if window else None
+
+    def start_placement_test_window(
+        self,
+        *,
+        endpoint_id: str,
+        room: str,
+        zone: str | None = None,
+        position_label: str | None = None,
+        expected_phrase: str,
+        expected_speaker_public_id: str | None = None,
+        ttl_seconds: int = 300,
+        debug_record_audio: bool = False,
+    ) -> dict[str, object]:
+        endpoint_id = str(endpoint_id or "").strip()
+        room = str(room or "").strip()
+        expected_phrase = str(expected_phrase or "").strip()
+        if not endpoint_id:
+            raise ValueError("endpoint_id_required")
+        if not room:
+            raise ValueError("room_required")
+        if not expected_phrase:
+            raise ValueError("expected_phrase_required")
+        if self._privacy_mode_enabled:
+            raise ValueError("privacy_mode_enabled")
+        ttl_seconds = max(30, min(int(ttl_seconds), 900))
+        now = datetime.now(UTC)
+        window = {
+            "schema_version": 1,
+            "test_id": f"placement-{uuid4().hex[:12]}",
+            "endpoint_id": endpoint_id,
+            "room": room,
+            "zone": str(zone or "").strip() or None,
+            "position_label": str(position_label or "").strip() or None,
+            "expected_phrase": expected_phrase,
+            "expected_speaker_public_id": str(expected_speaker_public_id or "").strip() or None,
+            "mode": "active",
+            "started_at": now.isoformat(),
+            "expires_at": (now + timedelta(seconds=ttl_seconds)).isoformat(),
+            "ttl_seconds": ttl_seconds,
+            "active": True,
+            "debug_record_audio": bool(debug_record_audio),
+            "raw_audio_policy": "discard_after_metrics" if not debug_record_audio else "debug_retention_one_day",
+        }
+        self._active_placement_test_windows[endpoint_id] = window
+        return dict(window)
+
+    def placement_test_windows(self) -> list[dict[str, object]]:
+        self._expire_placement_test_windows()
+        return [dict(window) for window in self._active_placement_test_windows.values()]
+
+    def list_placement_tests(self, *, limit: int = 20, endpoint_id: str | None = None) -> list[dict[str, object]]:
+        if self._session_history_store is None:
+            return []
+        tests: list[dict[str, object]] = []
+        for session in self._session_history_store.list_sessions(limit=200, endpoint_id=endpoint_id):
+            placement = session.get("placement_test") if isinstance(session.get("placement_test"), dict) else None
+            if placement and placement.get("report"):
+                tests.append(dict(placement))
+            if len(tests) >= max(1, min(limit, 50)):
+                break
+        return tests
+
+    def get_placement_test(self, test_id: str) -> dict[str, object] | None:
+        target = str(test_id or "").strip()
+        if not target:
+            return None
+        for report in self.list_placement_tests(limit=50):
+            if report.get("test_id") == target:
+                return report
+        return None
+
+    def _expire_placement_test_windows(self) -> None:
+        now = datetime.now(UTC)
+        expired: list[str] = []
+        for endpoint_id, window in self._active_placement_test_windows.items():
+            expires_at = str(window.get("expires_at") or "")
+            try:
+                expires_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                if expires_dt.tzinfo is None:
+                    expires_dt = expires_dt.replace(tzinfo=UTC)
+            except ValueError:
+                expired.append(endpoint_id)
+                continue
+            if expires_dt <= now:
+                expired.append(endpoint_id)
+        for endpoint_id in expired:
+            self._active_placement_test_windows.pop(endpoint_id, None)
+
+    def _active_placement_test_window(self, endpoint_id: str) -> dict[str, object] | None:
+        self._expire_placement_test_windows()
+        window = self._active_placement_test_windows.get(endpoint_id)
+        return dict(window) if window else None
+
+    def _related_placement_reports(self, placement_test: dict[str, object]) -> list[dict[str, object]]:
+        if self._session_history_store is None:
+            return []
+        endpoint_id = str(placement_test.get("endpoint_id") or "")
+        room = placement_test.get("room")
+        zone = placement_test.get("zone")
+        expected_phrase = placement_test.get("expected_phrase")
+        current_test_id = placement_test.get("test_id")
+        reports: list[dict[str, object]] = []
+        for session in self._session_history_store.list_sessions(limit=50, endpoint_id=endpoint_id or None):
+            placement = session.get("placement_test") if isinstance(session.get("placement_test"), dict) else None
+            if not placement or placement.get("test_id") == current_test_id:
+                continue
+            if placement.get("room") != room or placement.get("zone") != zone:
+                continue
+            if placement.get("expected_phrase") != expected_phrase:
+                continue
+            report = placement.get("report") if isinstance(placement.get("report"), dict) else None
+            if report:
+                reports.append(dict(report))
+        return reports
 
     def get_session_history(self, session_id: str) -> dict[str, Any] | None:
         if self._session_history_store is None:

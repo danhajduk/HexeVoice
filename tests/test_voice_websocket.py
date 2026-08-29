@@ -1,4 +1,5 @@
 import asyncio
+from array import array
 import base64
 from datetime import UTC, datetime, timedelta
 import json
@@ -18,6 +19,7 @@ from hexevoice.voice import (
     DeterministicWakeDetector,
     MicroVadChunkRecordingService,
     PiperTextToSpeechAdapter,
+    SpeakerIdentityResult,
     SpeechTranscript,
     TtsSynthesis,
     WakeDetectionResult,
@@ -813,6 +815,114 @@ def test_voice_websocket_records_manual_speaker_enrollment_capture(tmp_path):
     captures = client.get("/api/speaker-id/enrollment-captures", params={"endpoint_id": "esp-pe-1"}).json()["captures"]
     assert captures[0]["recording_id"] == completed["payload"]["wake_recording"]["recording_id"]
     assert captures[0]["transcript"]["text"] == "The copper lantern hangs beside the blue door."
+
+
+def test_voice_websocket_records_active_placement_test_without_raw_audio(tmp_path):
+    class PlacementPipeline:
+        def __init__(self) -> None:
+            self.transcribed_audio = None
+            self.identified_audio = None
+
+        def transcribe_audio(self, audio):
+            self.transcribed_audio = audio
+            return SpeechTranscript(text="Alexa turn on the kitchen lights", confidence=0.93, provider_id="test-stt")
+
+        def identify_speaker(self, audio):
+            self.identified_audio = audio
+            return SpeakerIdentityResult(
+                status="identified",
+                policy="use_if_ready",
+                active=True,
+                speaker_public_id="speaker_dan",
+                confidence=0.9,
+                duration_ms=12.0,
+            )
+
+        def complete_turn(self, audio):
+            raise AssertionError("placement tests should not run assistant turns")
+
+        def status(self):
+            return {"provider": "placement-test", "healthy": True, "configured": True}
+
+    samples = array("h", [1200 if index % 2 == 0 else -1200 for index in range(16000)]).tobytes()
+    pipeline = PlacementPipeline()
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice-session-history.json")
+    recorder = WakeRecordingService(recording_dir=tmp_path / "wake-recordings", retention_days=1)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        turn_pipeline=pipeline,
+        wake_recorder=recorder,
+        session_history_store=history_store,
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    start = client.post(
+        "/api/voice/placement-tests",
+        json={
+            "endpoint_id": "esp-box-1",
+            "room": "kitchen",
+            "position_label": "island",
+            "expected_phrase": "Hexe turn on the kitchen lights",
+            "expected_speaker_public_id": "speaker_dan",
+            "ttl_seconds": 120,
+        },
+    )
+    assert start.status_code == 200
+    test_id = start.json()["window"]["test_id"]
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                payload={
+                    "wake_source": "manual",
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={
+                    "chunk_index": 0,
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                    "payload_base64": base64.b64encode(samples).decode("ascii"),
+                    "frame_level": 1200,
+                    "noise_floor_level": 120,
+                    "speech_peak_level": 1200,
+                    "contains_speech": True,
+                    "pre_roll_duration_ms": 400,
+                },
+            )
+        )
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        transcript = websocket.receive_json()
+        completed = websocket.receive_json()
+
+    assert pipeline.transcribed_audio is not None
+    assert pipeline.identified_audio is not None
+    assert transcript["event_type"] == "transcript.final"
+    assert completed["event_type"] == "session.completed"
+    placement = completed["payload"]["placement_test"]
+    assert completed["payload"]["completion_reason"] == "placement_test"
+    assert placement["test_id"] == test_id
+    assert placement["raw_audio"]["persisted"] is False
+    assert placement["report"]["stt"]["matched"] is True
+    assert placement["report"]["speaker_id"]["matched"] is True
+    assert placement["report"]["score"] >= 80
+    assert "wake_recording" not in completed["payload"]
+
+    status = client.get("/api/voice/status").json()
+    assert status["last_response"] == "Placement test recorded."
+    assert status["last_tts"] is None
+    assert status["placement_tests"]["active_windows"] == []
+    reports = client.get("/api/voice/placement-tests", params={"endpoint_id": "esp-box-1"}).json()["tests"]
+    assert reports[0]["test_id"] == test_id
+    detail = client.get(f"/api/voice/placement-tests/{test_id}").json()["placement_test"]
+    assert detail["report"]["recommendation"] == placement["report"]["recommendation"]
 
 
 def test_voice_websocket_completes_speaker_enrollment_capture_on_new_session(tmp_path):

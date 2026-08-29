@@ -2024,6 +2024,15 @@ class VoiceTurnPipeline:
         )
         return transcript
 
+    def identify_speaker(self, audio: VoiceTurnAudioSummary) -> SpeakerIdentityResult:
+        if not self._speaker_id_enabled:
+            return SpeakerIdentityResult(status="disabled", policy=self._speaker_id_policy_default, reason="disabled")
+        if self._privacy_mode_enabled:
+            return SpeakerIdentityResult(status="skipped", policy=self._speaker_id_policy_default, reason="privacy_mode_enabled")
+        if self._speaker_id_endpoint_scope and audio.endpoint_id not in self._speaker_id_endpoint_scope:
+            return SpeakerIdentityResult(status="skipped", policy=self._speaker_id_policy_default, reason="endpoint_out_of_scope")
+        return self._identify_speaker(audio)
+
     def _start_speaker_identity(
         self,
         audio: VoiceTurnAudioSummary,

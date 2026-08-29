@@ -10,6 +10,7 @@ import {
   getEndpointMediaAssets,
   getEndpointMediaInventory,
   getEndpointVolume,
+  getVoicePlacementTests,
   getVoiceSession,
   getVoiceSessions,
   muteEndpoint,
@@ -19,6 +20,7 @@ import {
   replayEndpointResponse,
   replayVoiceSession,
   setEndpointVolume,
+  startVoicePlacementTest,
   testAssistantTurn,
   uploadEndpointMedia,
   updateEndpointMetadata,
@@ -1736,6 +1738,107 @@ function EndpointAdvancedSection({ title, kicker, badge, children }) {
   );
 }
 
+function PlacementTestPanel({
+  endpointId,
+  voiceStatus,
+  reports,
+  room,
+  zone,
+  positionLabel,
+  expectedPhrase,
+  expectedSpeakerPublicId,
+  busy,
+  onRoomChange,
+  onZoneChange,
+  onPositionLabelChange,
+  onExpectedPhraseChange,
+  onExpectedSpeakerPublicIdChange,
+  onStart,
+  onRefresh,
+}) {
+  const activeWindows = Array.isArray(voiceStatus?.placement_tests?.active_windows)
+    ? voiceStatus.placement_tests.active_windows.filter((window) => !endpointId || window.endpoint_id === endpointId)
+    : [];
+  const visibleReports = reports.length ? reports : voiceStatus?.placement_tests?.recent_reports || [];
+  const latestReport = visibleReports[0]?.report || null;
+
+  return (
+    <section className="voice-endpoint-panel stack">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Placement</p>
+          <h2 className="panel-title">Active Test</h2>
+        </div>
+        <span className={`status-pill ${activeWindows.length ? "status-pill-warning" : "status-pill-neutral"}`}>
+          {activeWindows.length ? "waiting" : "idle"}
+        </span>
+      </div>
+      <div className="form-grid endpoint-provisioning-grid">
+        <label className="field">
+          <span className="field-label">Room</span>
+          <input value={room} onChange={(event) => onRoomChange(event.target.value)} placeholder="kitchen" />
+        </label>
+        <label className="field">
+          <span className="field-label">Zone</span>
+          <input value={zone} onChange={(event) => onZoneChange(event.target.value)} placeholder="north" />
+        </label>
+        <label className="field">
+          <span className="field-label">Position</span>
+          <input value={positionLabel} onChange={(event) => onPositionLabelChange(event.target.value)} placeholder="island" />
+        </label>
+        <label className="field">
+          <span className="field-label">Expected speaker</span>
+          <input value={expectedSpeakerPublicId} onChange={(event) => onExpectedSpeakerPublicIdChange(event.target.value)} placeholder="speaker_dan" />
+        </label>
+        <label className="field field-wide">
+          <span className="field-label">Expected phrase</span>
+          <input value={expectedPhrase} onChange={(event) => onExpectedPhraseChange(event.target.value)} placeholder="Hexe turn on the kitchen lights" />
+        </label>
+      </div>
+      <div className="actions">
+        <button className="btn btn-ghost" type="button" onClick={onStart} disabled={busy || !endpointId}>
+          Start placement test
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={onRefresh} disabled={busy || !endpointId}>
+          Refresh reports
+        </button>
+      </div>
+      {latestReport ? (
+        <dl className="facts">
+          <div>
+            <dt>Score</dt>
+            <dd>{latestReport.score ?? "none"}</dd>
+          </div>
+          <div>
+            <dt>Recommendation</dt>
+            <dd>{labelizeState(latestReport.recommendation, "none")}</dd>
+          </div>
+          <div>
+            <dt>Phrase match</dt>
+            <dd>{formatPercent(latestReport.stt?.similarity)}</dd>
+          </div>
+          <div>
+            <dt>Audio</dt>
+            <dd>{labelizeState(latestReport.audio_quality?.status, "none")}</dd>
+          </div>
+        </dl>
+      ) : null}
+      {visibleReports.length ? (
+        <div className="command-status-list">
+          {visibleReports.slice(0, 5).map((report) => (
+            <div className="command-status-row" key={report.test_id}>
+              <span>{[report.room, report.position_label].filter(Boolean).join(" / ") || report.test_id}</span>
+              <span className="status-pill status-pill-neutral">{report.report?.score ?? "none"}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="callout callout-neutral">No placement reports yet.</div>
+      )}
+    </section>
+  );
+}
+
 export function VoiceEndpointDashboardSection({
   voiceStatus,
   endpointStatus,
@@ -1753,6 +1856,13 @@ export function VoiceEndpointDashboardSection({
   const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
   const [historyDetailError, setHistoryDetailError] = useState("");
   const [firmwareUpdateBusy, setFirmwareUpdateBusy] = useState(false);
+  const [placementReports, setPlacementReports] = useState([]);
+  const [placementBusy, setPlacementBusy] = useState(false);
+  const [placementRoom, setPlacementRoom] = useState("");
+  const [placementZone, setPlacementZone] = useState("");
+  const [placementPosition, setPlacementPosition] = useState("");
+  const [placementPhrase, setPlacementPhrase] = useState("Hexe turn on the kitchen lights");
+  const [placementSpeaker, setPlacementSpeaker] = useState("");
   const selectedEndpointStatus = endpointStatusById(endpointStatuses, selectedEndpointId);
   const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
   const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
@@ -1823,12 +1933,48 @@ export function VoiceEndpointDashboardSection({
     };
   }, [endpointId, voiceStatus?.session_history?.updated_at]);
 
+  useEffect(() => {
+    let active = true;
+    if (!endpointId) {
+      setPlacementReports([]);
+      return () => {
+        active = false;
+      };
+    }
+    getVoicePlacementTests({ endpointId, limit: 8 })
+      .then((payload) => {
+        if (active) {
+          setPlacementReports(payload.tests || []);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setPlacementReports(voiceStatus?.placement_tests?.recent_reports || []);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [endpointId, voiceStatus?.placement_tests?.recent_reports, voiceStatus?.session_history?.updated_at]);
+
   async function refreshVoiceSessions({ showMessage = true } = {}) {
     try {
       const payload = await getVoiceSessions({ limit: 12, endpointId: endpointId || undefined });
       setVoiceSessions(payload.sessions || []);
       if (showMessage) {
         setActionMessage("History refreshed.");
+      }
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    }
+  }
+
+  async function refreshPlacementTests({ showMessage = true } = {}) {
+    try {
+      const payload = await getVoicePlacementTests({ endpointId, limit: 8 });
+      setPlacementReports(payload.tests || []);
+      if (showMessage) {
+        setActionMessage("Placement reports refreshed.");
       }
     } catch (err) {
       setActionMessage(String(err.message || err));
@@ -1933,6 +2079,36 @@ export function VoiceEndpointDashboardSection({
       await onRefresh();
     } catch (err) {
       setActionMessage(String(err.message || err));
+    }
+  }
+
+  async function handleStartPlacementTest() {
+    if (!endpointId) {
+      setActionMessage("Placement test skipped: endpoint is not connected.");
+      return;
+    }
+    if (!placementRoom.trim() || !placementPhrase.trim()) {
+      setActionMessage("Placement test needs a room and expected phrase.");
+      return;
+    }
+    setPlacementBusy(true);
+    try {
+      const result = await startVoicePlacementTest({
+        endpointId,
+        room: placementRoom,
+        zone: placementZone,
+        positionLabel: placementPosition,
+        expectedPhrase: placementPhrase,
+        expectedSpeakerPublicId: placementSpeaker,
+        ttlSeconds: 300,
+      });
+      setActionMessage(`Placement test waiting for ${result.window?.endpoint_id || endpointId}.`);
+      await onRefresh();
+      await refreshPlacementTests({ showMessage: false });
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setPlacementBusy(false);
     }
   }
 
@@ -2068,6 +2244,24 @@ export function VoiceEndpointDashboardSection({
           actionMessage={actionMessage}
         />
       </div>
+      <PlacementTestPanel
+        endpointId={endpointId}
+        voiceStatus={voiceStatus}
+        reports={placementReports}
+        room={placementRoom}
+        zone={placementZone}
+        positionLabel={placementPosition}
+        expectedPhrase={placementPhrase}
+        expectedSpeakerPublicId={placementSpeaker}
+        busy={placementBusy}
+        onRoomChange={setPlacementRoom}
+        onZoneChange={setPlacementZone}
+        onPositionLabelChange={setPlacementPosition}
+        onExpectedPhraseChange={setPlacementPhrase}
+        onExpectedSpeakerPublicIdChange={setPlacementSpeaker}
+        onStart={handleStartPlacementTest}
+        onRefresh={refreshPlacementTests}
+      />
       <VoiceSessionHistoryPanel
         sessions={voiceSessions}
         historyStatus={historyStatus}

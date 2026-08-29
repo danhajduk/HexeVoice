@@ -75,6 +75,7 @@ from hexevoice.voice.pipeline import (
     build_voice_turn_pipeline,
     trim_stt_silence,
 )
+from hexevoice.voice.placement import PlacementReportInput, build_active_placement_report, phrase_similarity
 from hexevoice.stt_profiles import (
     STT_MODEL_PROFILES,
     SttModelProfile,
@@ -152,7 +153,10 @@ __all__ = [
     "VoiceTurnTimings",
     "VoiceTurnPipeline",
     "VoiceTurnResult",
+    "PlacementReportInput",
+    "build_active_placement_report",
     "build_voice_turn_pipeline",
+    "phrase_similarity",
     "trim_stt_silence",
     "DEFAULT_WAKE_ELECTION_WINDOW_MS",
     "WakeCandidate",

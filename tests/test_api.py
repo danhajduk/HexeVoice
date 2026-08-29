@@ -1384,6 +1384,40 @@ def test_speaker_id_enrollment_capture_window_marks_endpoint_active(tmp_path):
     assert status["speaker_enrollment_capture"]["active_windows"][0]["endpoint_id"] == "esp-pe-1"
 
 
+def test_voice_placement_test_window_marks_endpoint_active(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/voice/placement-tests",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "room": "kitchen",
+            "zone": "north",
+            "position_label": "island",
+            "expected_phrase": "Hexe turn on the kitchen lights",
+            "expected_speaker_public_id": "speaker_dan",
+            "ttl_seconds": 120,
+        },
+    )
+
+    assert response.status_code == 200
+    window = response.json()["window"]
+    assert window["endpoint_id"] == "esp-pe-1"
+    assert window["mode"] == "active"
+    assert window["room"] == "kitchen"
+    assert window["raw_audio_policy"] == "discard_after_metrics"
+    status = client.get("/api/voice/status").json()
+    assert status["placement_tests"]["active_windows"][0]["endpoint_id"] == "esp-pe-1"
+    assert status["placement_tests"]["active_windows"][0]["expected_phrase"] == "Hexe turn on the kitchen lights"
+
+
 def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
     client = TestClient(
         create_app(
@@ -1403,6 +1437,14 @@ def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
         "/api/speaker-id/enrollment-capture-windows",
         json={"endpoint_id": "esp-box-1", "ttl_seconds": 300},
     )
+    placement = client.post(
+        "/api/voice/placement-tests",
+        json={
+            "endpoint_id": "esp-box-1",
+            "room": "kitchen",
+            "expected_phrase": "Hexe turn on the kitchen lights",
+        },
+    )
 
     assert status.status_code == 200
     payload = status.json()
@@ -1412,8 +1454,11 @@ def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
     assert payload["turn_pipeline"]["speaker_id"]["enabled"] is False
     assert payload["turn_pipeline"]["speaker_id"]["blocked_reason"] == "privacy_mode_enabled"
     assert payload["speaker_enrollment_capture"]["blocked"] is True
+    assert payload["placement_tests"]["blocked"] is True
     assert capture.status_code == 400
     assert capture.json()["detail"] == "privacy_mode_enabled"
+    assert placement.status_code == 400
+    assert placement.json()["detail"] == "privacy_mode_enabled"
 
 
 def test_tts_warmup_voice_selection_prefers_configured_warm_voices():

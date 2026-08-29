@@ -309,6 +309,39 @@ export async function startSpeakerIdEnrollmentCaptureWindow({ endpointId, ttlSec
   });
 }
 
+export async function startVoicePlacementTest({
+  endpointId,
+  room,
+  zone,
+  positionLabel,
+  expectedPhrase,
+  expectedSpeakerPublicId,
+  ttlSeconds = 300,
+  debugRecordAudio = false,
+}) {
+  return sendJson("/api/voice/placement-tests", {
+    body: {
+      endpoint_id: endpointId,
+      room,
+      zone,
+      position_label: positionLabel,
+      expected_phrase: expectedPhrase,
+      expected_speaker_public_id: expectedSpeakerPublicId,
+      ttl_seconds: ttlSeconds,
+      debug_record_audio: debugRecordAudio,
+    },
+  });
+}
+
+export async function getVoicePlacementTests({ endpointId, limit = 20 } = {}) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (endpointId) {
+    params.set("endpoint_id", endpointId);
+  }
+  return fetchJson(`/api/voice/placement-tests?${params.toString()}`);
+}
+
 export async function startEndpointListen(endpointId) {
   return sendJson("/api/endpoint/session/listen", {
     body: {
