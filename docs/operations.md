@@ -31,7 +31,7 @@ During setup, operators should use the onboarding card in this order:
 9. fetch or refresh Governance
 10. poll operational status until `operational_ready=true`
 
-The post-trust setup card remains available after setup completion. Operators can return to it to adjust provider selection, select/redeclare capabilities, and enable/disable registered Voice Node intents. The operational dashboard also exposes an Intents section for searching and filtering the current registry as domain-grouped compact intent cards, inspecting the selected contract inline, dry-running utterances against registered intent dispatch, and intentionally invoking the live intent path. The Providers section shows Piper models as compact cards with detail popups; operators can mark a model warm from the popup and then save the TTS settings.
+The post-trust setup card remains available after setup completion. Operators can return to it to adjust provider selection, select/redeclare capabilities, and enable/disable registered Voice Node intents. The operational dashboard also exposes an Intents section for searching and filtering the current registry as domain-grouped compact intent cards, inspecting the selected contract inline, dry-running utterances against registered intent dispatch, and intentionally invoking the live intent path. The Voice Stack section shows Piper models as compact cards with detail popups; operators can mark a model warm from the popup and then save the TTS settings.
 
 The setup card also exposes **Refresh Core metadata** after trust activation. Use it when Core has a stale Voice Node `api_base_url` or UI endpoint; the backend requires `CORE_ADMIN_TOKEN` or Core's legacy `SYNTHIA_ADMIN_TOKEN` and patches Core's node registration metadata refresh route.
 
@@ -505,7 +505,7 @@ HexeVoice-owned Docker Compose control script. The `install` action builds the
 image, and `ready` builds/starts the container, waits on the Unix-socket
 `/health` endpoint, and preloads the configured model.
 
-When Piper TTS runtime settings are saved, the provider page marks them as
+When Piper TTS runtime settings are saved, the Voice Stack page marks them as
 restart-required. A successful `tts` or `piper_tts` restart through the service
 proxy clears that flag and records `restart_applied_at` in the runtime settings.
 

@@ -189,8 +189,8 @@ export function TtsProviderDashboardSection({ providerSetup, capabilities, ttsSe
     <section className="voice-endpoint-panel stack">
       <div className="section-heading">
         <div>
-          <p className="panel-kicker">Providers</p>
-          <h2 className="panel-title">TTS Runtime</h2>
+          <p className="panel-kicker">Voice Stack</p>
+          <h2 className="panel-title">Voice Stack Runtime</h2>
         </div>
         <span className={`status-pill status-pill-${ttsSettings?.restart_required ? "warning" : "success"}`}>
           {ttsSettings?.restart_required ? "restart required" : "ready"}
@@ -203,7 +203,7 @@ export function TtsProviderDashboardSection({ providerSetup, capabilities, ttsSe
           <span className="fact-grid-value">{valueOrEmpty(ttsSettings?.provider)}</span>
         </div>
         <div className="fact-grid-item">
-          <span className="fact-grid-label">Enabled Providers</span>
+          <span className="fact-grid-label">Enabled Engines</span>
           <span className="fact-grid-value">{providerSetup?.enabled_providers?.join(", ") || "none"}</span>
         </div>
         <div className="fact-grid-item">
