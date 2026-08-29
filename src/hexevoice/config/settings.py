@@ -204,6 +204,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("VOICE_SPEAKER_ID_SOCKET_PATH", "VOICE_SPEAKER_ID_SOCKET"),
     )
     voice_speaker_id_profiles_path: Path | None = Field(default=None, alias="VOICE_SPEAKER_ID_PROFILES_PATH")
+    voice_speaker_id_runtime_config_path: Path | None = Field(default=None, alias="VOICE_SPEAKER_ID_RUNTIME_CONFIG_PATH")
     voice_speaker_id_model_cache_dir: Path | None = Field(default=None, alias="VOICE_SPEAKER_ID_MODEL_CACHE_DIR")
     voice_speaker_id_device: str = Field(default="cpu", alias="VOICE_SPEAKER_ID_DEVICE")
     voice_speaker_id_timeout_s: float = Field(default=5.0, alias="VOICE_SPEAKER_ID_TIMEOUT_S", gt=0)
@@ -395,6 +396,11 @@ class Settings(BaseSettings):
         if self.voice_speaker_id_profiles_path is not None:
             return self.voice_speaker_id_profiles_path
         return self.runtime_dir / "speaker_id" / "profiles.json"
+
+    def resolved_voice_speaker_id_runtime_config_path(self) -> Path:
+        if self.voice_speaker_id_runtime_config_path is not None:
+            return self.voice_speaker_id_runtime_config_path
+        return self.runtime_dir / "speaker_id" / "config.json"
 
     def resolved_voice_speaker_id_model_cache_dir(self) -> Path:
         if self.voice_speaker_id_model_cache_dir is not None:

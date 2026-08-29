@@ -350,6 +350,36 @@ def test_speaker_id_service_config_and_recent_outcomes(tmp_path):
     assert "audio_base64" not in outcomes[0]
 
 
+def test_speaker_id_service_config_persists_across_restart(tmp_path):
+    settings = Settings(runtime_dir=tmp_path, voice_speaker_id_enabled=False)
+
+    with TestClient(create_app(settings)) as client:
+        config = client.put(
+            "/config",
+            json={
+                "enabled": True,
+                "provider": "deterministic_signal",
+                "identify_min_confidence": 0.5,
+                "identify_min_margin": 0.01,
+                "verify_min_score": 0.5,
+            },
+        )
+
+    assert config.status_code == 200
+    assert (tmp_path / "speaker_id" / "config.json").exists()
+
+    with TestClient(create_app(settings)) as client:
+        status = client.get("/status")
+
+    assert status.status_code == 200
+    payload = status.json()
+    assert payload["enabled"] is True
+    assert payload["provider"] == "deterministic_signal"
+    assert payload["thresholds"]["identify_min_confidence"] == 0.5
+    assert payload["thresholds"]["identify_min_margin"] == 0.01
+    assert payload["thresholds"]["verify_min_score"] == 0.5
+
+
 def test_speaker_id_service_uses_speechbrain_provider_when_available(monkeypatch, tmp_path):
     class FakeClassifier:
         @classmethod

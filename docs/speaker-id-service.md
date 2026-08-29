@@ -71,6 +71,7 @@ Task 234 added the first local helper service implementation.
 - Control script: `scripts/speaker-id-control.sh`
 - User systemd template: `scripts/systemd/hexevoice-speaker-id.service.in`
 - Default helper socket: `runtime/sockets/speaker-id.sock`
+- Default runtime config: `runtime/speaker_id/config.json`
 - Default profile store: `runtime/speaker_id/profiles.json`
 - Backend proxy API: `/api/speaker-id/*`
 
@@ -106,7 +107,7 @@ scripts/speaker-id-control.sh install
 
 Use `SPEAKER_ID_TORCH_INDEX_URL` for CUDA hosts or `SPEAKER_ID_INSTALL_PACKAGES` for a fully custom install command. Keep `torch` and `torchaudio` on matching CPU/CUDA wheel variants; a mixed pair can import successfully at dependency-check time but fail when SpeechBrain loads audio libraries.
 
-The helper loads the model lazily on first embedding extraction and stores model artifacts under `VOICE_SPEAKER_ID_MODEL_CACHE_DIR`, defaulting to `runtime/speaker_id/models`. Status responses expose provider states:
+The helper loads the model lazily on first embedding extraction and stores model artifacts under `VOICE_SPEAKER_ID_MODEL_CACHE_DIR`, defaulting to `runtime/speaker_id/models`. Provider selection, enabled state, and thresholds saved through `/api/speaker-id/config` persist in `runtime/speaker_id/config.json` by default and are reloaded when the helper restarts. Status responses expose provider states:
 
 - `missing_optional_dependency`: SpeechBrain or Torch is not installed.
 - `model_not_loaded`: dependencies are installed, but the model has not been loaded yet.

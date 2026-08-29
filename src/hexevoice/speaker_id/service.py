@@ -174,22 +174,59 @@ class SpeakerProfileStore:
         return True
 
 
+def _load_runtime_config(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _save_runtime_config(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or Settings()
     store = SpeakerProfileStore(app_settings.resolved_voice_speaker_id_profiles_path())
+    runtime_config_path = app_settings.resolved_voice_speaker_id_runtime_config_path()
+    runtime_config = _load_runtime_config(runtime_config_path)
+    saved_thresholds = runtime_config.get("thresholds") if isinstance(runtime_config.get("thresholds"), dict) else {}
     thresholds = SpeakerThresholds(
-        identify_min_confidence=app_settings.voice_speaker_id_identify_min_confidence,
-        identify_min_margin=app_settings.voice_speaker_id_identify_min_margin,
-        verify_min_score=app_settings.voice_speaker_id_verify_min_score,
+        identify_min_confidence=float(
+            saved_thresholds.get("identify_min_confidence", app_settings.voice_speaker_id_identify_min_confidence)
+        ),
+        identify_min_margin=float(
+            saved_thresholds.get("identify_min_margin", app_settings.voice_speaker_id_identify_min_margin)
+        ),
+        verify_min_score=float(
+            saved_thresholds.get("verify_min_score", app_settings.voice_speaker_id_verify_min_score)
+        ),
     )
+    configured_provider = str(runtime_config.get("provider") or app_settings.voice_speaker_id_provider).strip()
     adapter = create_speaker_id_adapter(
-        app_settings.voice_speaker_id_provider,
+        configured_provider,
         cache_dir=app_settings.resolved_voice_speaker_id_model_cache_dir(),
         device=app_settings.voice_speaker_id_device,
     )
-    enabled = app_settings.voice_speaker_id_enabled
+    enabled = bool(runtime_config.get("enabled", app_settings.voice_speaker_id_enabled))
     last_error: str | None = None
     recent_identification_outcomes: list[dict[str, Any]] = []
+
+    def persist_config() -> None:
+        _save_runtime_config(
+            runtime_config_path,
+            {
+                "schema_version": 1,
+                "updated_at": datetime.now(UTC).isoformat(),
+                "enabled": enabled,
+                "provider": adapter.metadata.provider_id,
+                "thresholds": asdict(thresholds),
+            },
+        )
 
     def service_status() -> dict[str, Any]:
         status = adapter.status()
@@ -331,6 +368,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             else thresholds.verify_min_score,
         )
         last_error = None
+        persist_config()
         return {"config_applied": True, **service_status()}
 
     @app.post("/enroll")
