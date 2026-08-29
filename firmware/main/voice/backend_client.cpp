@@ -69,6 +69,7 @@ constexpr int kVoiceWsSendTimeoutMs = 3000;
 constexpr int kVoiceWsSendRetryDelayMs = 50;
 constexpr int kVoiceWsSendAttempts = 3;
 constexpr int64_t kPostTtsInputIgnoreUs = 800000;
+constexpr int64_t kSessionResetInputIgnoreUs = 2000000;
 constexpr int kDiscoveryTimeoutMs = 1200;
 constexpr char kDiscoverySchemaVersion[] = "hexevoice.endpoint.discovery.v1";
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
@@ -175,7 +176,9 @@ bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
 void resume_audio_stream_for_followup();
 void reset_transport_micro_vad();
 void reset_transport_audio_metrics();
+void start_input_ignore_cooldown(const char *reason, int64_t duration_us);
 void start_post_tts_input_cooldown();
+void start_session_reset_input_cooldown();
 void clear_post_tts_input_cooldown();
 void append_event_header(
     std::string &message,
@@ -296,14 +299,26 @@ void clear_post_tts_input_cooldown() {
   g_post_tts_input_ignore_until_us = 0;
 }
 
-void start_post_tts_input_cooldown() {
-  g_post_tts_input_ignore_until_us = esp_timer_get_time() + kPostTtsInputIgnoreUs;
+void start_input_ignore_cooldown(const char *reason, int64_t duration_us) {
+  g_post_tts_input_ignore_until_us = esp_timer_get_time() + duration_us;
   g_preroll_count = 0;
   g_preroll_index = 0;
   g_transport_sample_count = 0;
   reset_transport_micro_vad();
   reset_transport_audio_metrics();
-  ESP_LOGI(kTag, "Ignoring microphone wake/VAD input for %lld us after TTS playback", static_cast<long long>(kPostTtsInputIgnoreUs));
+  ESP_LOGI(
+      kTag,
+      "Ignoring microphone wake/VAD input for %lld us after %s",
+      static_cast<long long>(duration_us),
+      reason == nullptr ? "session reset" : reason);
+}
+
+void start_post_tts_input_cooldown() {
+  start_input_ignore_cooldown("TTS playback", kPostTtsInputIgnoreUs);
+}
+
+void start_session_reset_input_cooldown() {
+  start_input_ignore_cooldown("voice session reset", kSessionResetInputIgnoreUs);
 }
 
 std::string audio_chunk_payload(const int16_t *samples, size_t sample_count) {
@@ -1026,6 +1041,7 @@ void handle_backend_event_json(const std::string &message) {
     g_transport_sample_count = 0;
     reset_transport_micro_vad();
     set_audio_streaming(false);
+    start_session_reset_input_cooldown();
     if (!app_state.muted && !hexe::voice::tts_playback_active()) {
       app_state.phase = hexe::idle_or_connecting_phase();
     }
@@ -1040,6 +1056,7 @@ void handle_backend_event_json(const std::string &message) {
     reset_transport_micro_vad();
     g_tts_playback_session_id.clear();
     set_audio_streaming(false);
+    start_session_reset_input_cooldown();
     if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
       if (!app_state.muted) {
         app_state.phase = hexe::idle_or_connecting_phase();
@@ -2607,6 +2624,7 @@ bool cancel_active_session(const char *reason) {
   reset_transport_micro_vad();
   g_tts_playback_session_id.clear();
   set_audio_streaming(false);
+  start_session_reset_input_cooldown();
   hexe::voice::stop_tts_playback();
   return sent;
 }
