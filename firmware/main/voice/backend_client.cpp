@@ -72,6 +72,7 @@ constexpr int64_t kPostTtsInputIgnoreUs = 800000;
 constexpr int64_t kSessionResetInputIgnoreUs = 2000000;
 constexpr int64_t kPreWakeStreamTimeoutUs = 10000000;
 constexpr int64_t kAcceptedCaptureTimeoutUs = 15000000;
+constexpr const char *kWakeElectionFallbackPolicy = "stream_after_timeout_backend_fallback";
 constexpr int kDiscoveryTimeoutMs = 1200;
 constexpr char kDiscoverySchemaVersion[] = "hexevoice.endpoint.discovery.v1";
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
@@ -110,6 +111,8 @@ bool g_ws_started = false;
 bool g_discovery_attempted = false;
 const char *g_discovery_status = "not_attempted";
 bool g_preroll_drained = false;
+bool g_wake_election_waiting = false;
+int64_t g_wake_election_started_at_us = 0;
 bool g_media_transfer_active = false;
 int64_t g_last_clock_sync_us = 0;
 int g_clock_sync_interval_ms = kClockSyncIntervalMs;
@@ -133,6 +136,7 @@ bool g_transport_contains_speech = false;
 int64_t g_post_tts_input_ignore_until_us = 0;
 std::string g_session_id;
 std::string g_tts_playback_session_id;
+std::string g_wake_candidate_id;
 std::string g_ws_rx_buffer;
 
 struct MediaTransferRequest {
@@ -178,6 +182,12 @@ bool wake_source_is_local_acceptance(const char *wake_source);
 bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
 void resume_audio_stream_for_followup();
 bool active_audio_stream_timed_out();
+bool wake_election_wait_timed_out();
+void reset_wake_election_state();
+void reset_voice_session_state(bool clear_tts_session);
+void stand_down_wake_candidate(const char *reason);
+bool wake_election_result_requests_stand_down(cJSON *payload);
+const char *wake_election_stand_down_reason(cJSON *payload);
 void reset_transport_micro_vad();
 void reset_transport_audio_metrics();
 void start_input_ignore_cooldown(const char *reason, int64_t duration_us);
@@ -205,20 +215,35 @@ bool voice_transport_ready() {
          esp_websocket_client_is_connected(g_ws_client);
 }
 
-void mark_voice_socket_disconnected() {
-  g_ws_connected = false;
-  auto &state = hexe::state();
-  state.voice_ws_connected = false;
+void reset_wake_election_state() {
+  g_wake_election_waiting = false;
+  g_wake_election_started_at_us = 0;
+  g_wake_candidate_id.clear();
+}
+
+void reset_voice_session_state(bool clear_tts_session) {
   g_session_started = false;
   g_wake_accepted_for_session = false;
   g_vad_speech_started_reported = false;
   g_audio_stream_finished = false;
   g_preroll_drained = false;
+  g_preroll_count = 0;
+  g_preroll_index = 0;
   g_transport_sample_count = 0;
   g_session_started_at_us = 0;
   reset_transport_micro_vad();
-  g_tts_playback_session_id.clear();
+  reset_wake_election_state();
+  if (clear_tts_session) {
+    g_tts_playback_session_id.clear();
+  }
   set_audio_streaming(false);
+}
+
+void mark_voice_socket_disconnected() {
+  g_ws_connected = false;
+  auto &state = hexe::state();
+  state.voice_ws_connected = false;
+  reset_voice_session_state(true);
   if (!state.muted && !state.ota_active) {
     state.phase = hexe::idle_or_connecting_phase();
   }
@@ -827,8 +852,16 @@ void handle_backend_event_json(const std::string &message) {
 
   auto &app_state = hexe::state();
   const bool wake_accepted = std::strcmp(type, "wake.accepted") == 0;
+  const bool wake_election_result = std::strcmp(type, "wake.election.result") == 0;
+  if (wake_election_result && wake_election_result_requests_stand_down(payload)) {
+    stand_down_wake_candidate(wake_election_stand_down_reason(payload));
+    cJSON_Delete(root);
+    return;
+  }
   if (wake_accepted) {
     g_wake_accepted_for_session = true;
+    reset_wake_election_state();
+    set_audio_streaming(true);
     hexe::voice::prewarm_tts_output();
     hexe::voice::play_wake_accepted_sound();
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
@@ -876,6 +909,8 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else if (std::strcmp(type, "response.text") == 0) {
     hexe::voice::prewarm_tts_output();
+  } else if (wake_election_result) {
+    ESP_LOGI(kTag, "Wake election result received without stand-down request");
   } else if (std::strcmp(type, "tts.ready") == 0) {
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
     if (cJSON_IsString(session_id) && session_id->valuestring[0] != '\0') {
@@ -1045,31 +1080,14 @@ void handle_backend_event_json(const std::string &message) {
     } else {
       g_tts_playback_session_id.clear();
     }
-    g_session_started = false;
-    g_wake_accepted_for_session = false;
-    g_vad_speech_started_reported = false;
-    g_audio_stream_finished = false;
-    g_preroll_drained = false;
-    g_transport_sample_count = 0;
-    g_session_started_at_us = 0;
-    reset_transport_micro_vad();
-    set_audio_streaming(false);
+    reset_voice_session_state(false);
     start_session_reset_input_cooldown();
     if (!app_state.muted && !hexe::voice::tts_playback_active()) {
       app_state.phase = hexe::idle_or_connecting_phase();
     }
   } else if (std::strcmp(type, "session.error") == 0) {
     cJSON *recoverable = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "recoverable") : nullptr;
-    g_session_started = false;
-    g_wake_accepted_for_session = false;
-    g_vad_speech_started_reported = false;
-    g_audio_stream_finished = false;
-    g_preroll_drained = false;
-    g_transport_sample_count = 0;
-    g_session_started_at_us = 0;
-    reset_transport_micro_vad();
-    g_tts_playback_session_id.clear();
-    set_audio_streaming(false);
+    reset_voice_session_state(true);
     start_session_reset_input_cooldown();
     if (cJSON_IsBool(recoverable) && cJSON_IsTrue(recoverable)) {
       if (!app_state.muted) {
@@ -1128,14 +1146,7 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_ws_connected = true;
     auto &state = hexe::state();
     state.voice_ws_connected = true;
-    g_session_started = false;
-    g_wake_accepted_for_session = false;
-    g_audio_stream_finished = false;
-    g_preroll_drained = false;
-    g_transport_sample_count = 0;
-    g_session_started_at_us = 0;
-    reset_transport_micro_vad();
-    set_audio_streaming(false);
+    reset_voice_session_state(false);
     g_ws_rx_buffer.clear();
     if (!state.muted && !state.ota_active) {
       state.phase = hexe::idle_or_connecting_phase();
@@ -1336,6 +1347,17 @@ std::string endpoint_capabilities_json() {
         hexe::voice::wake_word_backend_owned() ? "backend" : "firmware",
         hexe::voice::wake_word_runtime_mode(),
         hexe::voice::wake_word_on_device_available());
+    cJSON *wake_word = cJSON_GetObjectItem(modules, "wake_word");
+    if (cJSON_IsObject(wake_word)) {
+      cJSON_AddBoolToObject(wake_word, "election_capable", hexe::voice::wake_word_election_capable());
+      cJSON_AddNumberToObject(wake_word, "election_timeout_ms", hexe::voice::wake_word_election_timeout_ms());
+      cJSON_AddStringToObject(wake_word, "candidate_event_type", "wake.candidate");
+      cJSON_AddStringToObject(wake_word, "stand_down_event_type", "wake.election.result");
+      cJSON_AddStringToObject(wake_word, "candidate_source", hexe::voice::wake_word_candidate_source());
+      cJSON_AddBoolToObject(wake_word, "backend_fallback", true);
+      cJSON_AddStringToObject(wake_word, "fallback_source", "backend_openwakeword");
+      cJSON_AddStringToObject(wake_word, "timeout_policy", kWakeElectionFallbackPolicy);
+    }
     add_module_status(
         modules,
         "playback_stop_word",
@@ -1915,6 +1937,7 @@ bool ensure_session_started(const char *wake_source) {
   g_transport_sample_count = 0;
   g_session_started_at_us = esp_timer_get_time();
   reset_transport_micro_vad();
+  reset_wake_election_state();
   g_tts_playback_session_id.clear();
   char session_buffer[96];
   std::snprintf(
@@ -1967,6 +1990,33 @@ bool event_requests_followup_listen(cJSON *payload, const char *ux_state) {
   cJSON *needed = cJSON_GetObjectItem(followup, "needed");
   cJSON *timeout_ms = cJSON_GetObjectItem(followup, "listen_timeout_ms");
   return cJSON_IsTrue(needed) || (cJSON_IsNumber(timeout_ms) && timeout_ms->valueint > 0);
+}
+
+bool wake_election_wait_timed_out() {
+  if (!g_wake_election_waiting || g_wake_election_started_at_us <= 0) {
+    return false;
+  }
+  const int64_t timeout_us = static_cast<int64_t>(hexe::voice::wake_word_election_timeout_ms()) * 1000;
+  return timeout_us <= 0 || (esp_timer_get_time() - g_wake_election_started_at_us) > timeout_us;
+}
+
+bool wake_election_result_requests_stand_down(cJSON *payload) {
+  cJSON *stand_down = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "stand_down") : nullptr;
+  return cJSON_IsBool(stand_down) && cJSON_IsTrue(stand_down);
+}
+
+const char *wake_election_stand_down_reason(cJSON *payload) {
+  cJSON *reason = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "reason") : nullptr;
+  return cJSON_IsString(reason) && reason->valuestring[0] != '\0' ? reason->valuestring : "wake_election_lost";
+}
+
+void stand_down_wake_candidate(const char *reason) {
+  ESP_LOGI(kTag, "Wake election stand-down received: %s", reason == nullptr ? "wake_election_lost" : reason);
+  reset_voice_session_state(false);
+  auto &app_state = hexe::state();
+  if (!app_state.muted && !app_state.ota_active && !hexe::voice::tts_playback_active()) {
+    app_state.phase = hexe::idle_or_connecting_phase();
+  }
 }
 
 bool timer_state_matches(const char *value, const char *expected) {
@@ -2133,6 +2183,7 @@ void resume_audio_stream_for_followup() {
   g_transport_sample_count = 0;
   g_session_started_at_us = esp_timer_get_time();
   reset_transport_micro_vad();
+  reset_wake_election_state();
   set_audio_streaming(true);
   ESP_LOGI(kTag, "Resuming voice audio stream for follow-up window");
 }
@@ -2189,6 +2240,15 @@ void send_audio_frame(const AudioFrame &frame) {
     ESP_LOGW(kTag, "Ending voice audio stream after local capture timeout");
     hexe::voice::finish_audio_stream("capture_timeout");
     return;
+  }
+  if (g_wake_election_waiting && !g_wake_accepted_for_session) {
+    if (!wake_election_wait_timed_out()) {
+      remember_preroll_frame(frame);
+      return;
+    }
+    ESP_LOGW(kTag, "Wake election timed out; streaming buffered audio to backend fallback");
+    reset_wake_election_state();
+    set_audio_streaming(true);
   }
 
   if (!drain_preroll_frames()) {
@@ -2582,6 +2642,105 @@ bool submit_audio_frame(
   return true;
 }
 
+bool submit_wake_candidate(const WakeCandidateMetrics &candidate) {
+  auto &app_state = hexe::state();
+  if (app_state.muted || app_state.ota_active || !hexe::voice::wake_word_election_capable()) {
+    return false;
+  }
+  if (!voice_transport_ready() || hexe::voice::post_tts_input_cooldown_active()) {
+    return false;
+  }
+  if (!ensure_session_started("unknown")) {
+    return false;
+  }
+
+  char candidate_id[128];
+  std::snprintf(
+      candidate_id,
+      sizeof(candidate_id),
+      "wake_%s_%" PRIu32 "_%llu",
+      hexe::system::endpoint_id(),
+      g_session_counter,
+      static_cast<unsigned long long>(esp_timer_get_time()));
+
+  cJSON *payload_root = cJSON_CreateObject();
+  if (payload_root == nullptr) {
+    return false;
+  }
+  const char *source = candidate.source != nullptr && candidate.source[0] != '\0'
+                           ? candidate.source
+                           : hexe::voice::wake_word_candidate_source();
+  cJSON_AddStringToObject(payload_root, "source", source);
+  if (candidate.model != nullptr && candidate.model[0] != '\0') {
+    cJSON_AddStringToObject(payload_root, "model", candidate.model);
+  }
+  cJSON_AddNumberToObject(payload_root, "confidence", std::max(0.0f, std::min(1.0f, candidate.confidence)));
+  if (candidate.chunk_index > 0) {
+    cJSON_AddNumberToObject(payload_root, "chunk_index", candidate.chunk_index);
+  }
+  if (candidate.chunk_count > 0) {
+    cJSON_AddNumberToObject(payload_root, "chunk_count", candidate.chunk_count);
+  }
+  const std::string detected_at = event_timestamp();
+  cJSON_AddStringToObject(payload_root, "detected_at", detected_at.c_str());
+  if (candidate.detection_window_ms > 0) {
+    cJSON_AddNumberToObject(payload_root, "detection_window_ms", candidate.detection_window_ms);
+  }
+  if (candidate.frame_level > 0) {
+    cJSON_AddNumberToObject(payload_root, "frame_level", candidate.frame_level);
+    cJSON_AddNumberToObject(payload_root, "ambient_level", candidate.frame_level);
+  }
+  if (candidate.noise_floor_level > 0) {
+    cJSON_AddNumberToObject(payload_root, "noise_floor_level", candidate.noise_floor_level);
+  }
+  if (candidate.speech_peak_level > 0) {
+    cJSON_AddNumberToObject(payload_root, "speech_peak_level", candidate.speech_peak_level);
+  }
+  if (candidate.speech_peak_level > 0 && candidate.noise_floor_level > 0 &&
+      candidate.speech_peak_level > candidate.noise_floor_level) {
+    cJSON_AddNumberToObject(
+        payload_root,
+        "snr_db",
+        static_cast<double>(candidate.speech_peak_level - candidate.noise_floor_level));
+  }
+  if (candidate.endpoint_audio_profile_version != nullptr && candidate.endpoint_audio_profile_version[0] != '\0') {
+    cJSON_AddStringToObject(payload_root, "endpoint_audio_profile_version", candidate.endpoint_audio_profile_version);
+  }
+  cJSON *metadata = cJSON_AddObjectToObject(payload_root, "metadata");
+  if (metadata != nullptr) {
+    cJSON_AddStringToObject(metadata, "candidate_id", candidate_id);
+    cJSON_AddStringToObject(metadata, "firmware_timeout_policy", kWakeElectionFallbackPolicy);
+    cJSON_AddBoolToObject(metadata, "backend_wake_fallback", true);
+    cJSON_AddStringToObject(metadata, "backend_wake_fallback_source", "backend_openwakeword");
+  }
+
+  char *rendered = cJSON_PrintUnformatted(payload_root);
+  cJSON_Delete(payload_root);
+  if (rendered == nullptr) {
+    return false;
+  }
+  std::string envelope;
+  envelope.reserve(std::strlen(rendered) + 384);
+  append_event_header(envelope, "wake.candidate", g_session_id.c_str(), g_sequence++);
+  envelope.append(rendered);
+  cJSON_free(rendered);
+
+  const bool sent = send_ws_text(envelope);
+  if (sent) {
+    g_wake_candidate_id = candidate_id;
+    g_wake_election_waiting = true;
+    g_wake_election_started_at_us = esp_timer_get_time();
+    set_audio_streaming(false);
+    if (!app_state.muted) {
+      app_state.phase = hexe::AppPhase::kListening;
+    }
+    ESP_LOGI(kTag, "Submitted wake.candidate %s source=%s and waiting for backend election", g_wake_candidate_id.c_str(), source);
+  } else {
+    reset_wake_election_state();
+  }
+  return sent;
+}
+
 bool start_voice_session(const char *wake_source) {
   auto &app_state = hexe::state();
   if (app_state.muted || app_state.ota_active) {
@@ -2605,6 +2764,9 @@ bool notify_vad_speech_started(uint32_t level) {
 
 bool finish_audio_stream(const char *reason) {
   if (hexe::state().ota_active || !g_session_started || g_audio_stream_finished) {
+    return false;
+  }
+  if (g_wake_election_waiting && !g_wake_accepted_for_session) {
     return false;
   }
   if (!flush_transport_samples(true)) {
@@ -2645,16 +2807,7 @@ bool cancel_active_session(const char *reason) {
       reason == nullptr ? "endpoint_cancelled" : reason);
   payload.append(body);
   const bool sent = send_ws_text(payload);
-  g_session_started = false;
-  g_wake_accepted_for_session = false;
-  g_vad_speech_started_reported = false;
-  g_audio_stream_finished = false;
-  g_preroll_drained = false;
-  g_transport_sample_count = 0;
-  g_session_started_at_us = 0;
-  reset_transport_micro_vad();
-  g_tts_playback_session_id.clear();
-  set_audio_streaming(false);
+  reset_voice_session_state(true);
   start_session_reset_input_cooldown();
   hexe::voice::stop_tts_playback();
   return sent;

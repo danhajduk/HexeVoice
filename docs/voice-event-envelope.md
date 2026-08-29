@@ -68,15 +68,27 @@ done, TTS start/end, and session end. Timeline points carry both `offset_from_va
 Endpoint wake election uses `wake.candidate`. Election-capable firmware sends it after `session.start` and before
 streaming the full post-wake utterance. The payload may include `source`, `model`, `confidence`, `chunk_index`,
 `chunk_count`, `detected_at`, `detection_window_ms`, `frame_level`, `speech_peak_level`, `noise_floor_level`,
-`ambient_level`, `snr_db`, `endpoint_audio_profile_version`, and a privacy-safe `metadata` object. The payload must
-not include raw audio, embeddings, or transcripts. Backend `openWakeWord` detections are also converted into
-`backend_openwakeword` candidates so the backend wake path remains a fallback when endpoint wake is absent or disabled.
+`ambient_level`, `snr_db`, `endpoint_audio_profile_version`, and a privacy-safe `metadata` object. Firmware places
+local candidate identifiers and timeout policy details in `metadata`, not as top-level fields, so the backend validator
+can keep a tight event contract. The payload must not include raw audio, embeddings, or transcripts. Backend
+`openWakeWord` detections are also converted into `backend_openwakeword` candidates so the backend wake path remains a
+fallback when endpoint wake is absent, disabled, or the endpoint election wait times out.
 
 The backend uses `VOICE_WAKE_ELECTION_WINDOW_MS` to keep a short arbitration window and scores candidates from wake
 confidence plus small bonuses for available audio-quality metrics. It sends `wake.accepted` to the selected endpoint.
 Losing or late candidates receive `wake.election.result` with `stand_down: true`, `winner_endpoint_id`, and an
 `election` diagnostic containing the candidate list, winner, per-candidate score, score breakdown, and reason.
 Existing endpoints that only stream `audio.chunk` remain compatible.
+
+Current firmware reports wake-election protocol capability in heartbeat capabilities under
+`capabilities.firmware.modules.wake_word`. The module remains `owner: "backend"` and `mode: "backend_streaming"` until a
+local micro wake-word engine is added, but it exposes `candidate_event_type: "wake.candidate"`,
+`stand_down_event_type: "wake.election.result"`, `candidate_source: "endpoint_micro_wake_word"`,
+`backend_fallback: true`, `fallback_source: "backend_openwakeword"`, and a 300 ms
+`stream_after_timeout_backend_fallback` policy. While waiting for election, firmware buffers microphone frames in the
+existing pre-roll ring. If the backend elects this endpoint, `wake.accepted` releases the stream. If the backend sends
+`wake.election.result` with `stand_down: true`, firmware cancels local capture and returns to idle/wake-armed without
+sending full utterance audio.
 
 `audio.chunk` may include optional endpoint-side numeric quality metrics: `frame_level`, `noise_floor_level`,
 `speech_peak_level`, `pre_roll_duration_ms`, `contains_pre_roll`, and `contains_speech`. These fields are

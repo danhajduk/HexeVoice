@@ -46,6 +46,8 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "session.start" in source
     assert 'start_voice_session(const char *wake_source)' in source
     assert 'normalized_wake_source(wake_source)' in source
+    assert "wake.candidate" in source
+    assert "wake.election.result" in source
     assert "audio.chunk" in source
     assert "audio.end" in source
     assert "vad.speech_started" in source
@@ -161,6 +163,9 @@ def test_firmware_scaffold_modules_are_explicit_status_providers():
     assert "wake_word_on_device_available" in header_sources["wake_word"]
     assert '"backend_streaming"' in module_sources["wake_word"]
     assert "on-device wake engine is intentionally disabled" in module_sources["wake_word"]
+    assert "wake_word_election_capable" in module_sources["wake_word"]
+    assert "wake_word_election_timeout_ms" in header_sources["wake_word"]
+    assert '"endpoint_micro_wake_word"' in module_sources["wake_word"]
 
     assert "stt_stream_runtime_mode" in module_sources["stt_stream"]
     assert "stt_stream_local_decoder_available" in header_sources["stt_stream"]
@@ -253,6 +258,62 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert "set_micro_vad_energy_threshold" in backend_source
     assert "hexe::voice::post_tts_input_cooldown_active()" in pe_source
     assert "micro_vad_chunk_active = false" in pe_source
+
+
+def test_firmware_wake_election_candidate_wait_and_fallback_contract():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    backend_header = FIRMWARE_BACKEND_CLIENT.with_suffix(".h").read_text()
+
+    assert "struct WakeCandidateMetrics" in backend_header
+    assert "bool submit_wake_candidate(const WakeCandidateMetrics &candidate);" in backend_header
+    assert "submit_wake_candidate(const WakeCandidateMetrics &candidate)" in backend_source
+    assert 'append_event_header(envelope, "wake.candidate", g_session_id.c_str(), g_sequence++);' in backend_source
+    assert 'ensure_session_started("unknown")' in backend_source
+    assert '"candidate_id"' in backend_source
+    assert '"firmware_timeout_policy"' in backend_source
+    assert "stream_after_timeout_backend_fallback" in backend_source
+    assert '"backend_wake_fallback", true' in backend_source
+    assert '"backend_openwakeword"' in backend_source
+    assert '"ambient_level"' in backend_source
+    assert '"snr_db"' in backend_source
+    assert "g_wake_election_waiting = true" in backend_source
+    assert "set_audio_streaming(false);" in backend_source
+    assert "wake_election_wait_timed_out()" in backend_source
+    assert "Wake election timed out; streaming buffered audio to backend fallback" in backend_source
+    assert "if (g_wake_election_waiting && !g_wake_accepted_for_session) {\n    if (!wake_election_wait_timed_out()) {\n      remember_preroll_frame(frame);" in backend_source
+    assert "reset_wake_election_state();" in backend_source
+    assert "wake_word_election_capable" in wake_header
+    assert "wake_word_candidate_source" in wake_header
+    assert "kWakeElectionTimeoutMs = 300" in wake_source
+
+
+def test_firmware_honors_wake_election_stand_down_without_command_ack():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert 'std::strcmp(type, "wake.election.result") == 0' in backend_source
+    assert "wake_election_result_requests_stand_down(payload)" in backend_source
+    assert 'cJSON_GetObjectItem(payload, "stand_down")' in backend_source
+    assert "stand_down_wake_candidate(wake_election_stand_down_reason(payload));" in backend_source
+    assert "reset_voice_session_state(false);" in backend_source
+    assert "Wake election stand-down received: %s" in backend_source
+    assert "wake.election.result" not in backend_source[
+        backend_source.index("bool is_backend_command_event") : backend_source.index("void acknowledge_command_received")
+    ]
+
+
+def test_firmware_heartbeat_reports_wake_election_capabilities():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert '"election_capable"' in backend_source
+    assert '"election_timeout_ms"' in backend_source
+    assert '"candidate_event_type", "wake.candidate"' in backend_source
+    assert '"stand_down_event_type", "wake.election.result"' in backend_source
+    assert '"candidate_source", hexe::voice::wake_word_candidate_source()' in backend_source
+    assert '"backend_fallback", true' in backend_source
+    assert '"fallback_source", "backend_openwakeword"' in backend_source
+    assert '"timeout_policy", kWakeElectionFallbackPolicy' in backend_source
 
 
 def test_firmware_audio_queue_waits_for_connected_websocket_transport():

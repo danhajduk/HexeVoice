@@ -13,10 +13,24 @@ struct MicroVadFrameState {
   uint32_t pause_ms{0};
 };
 
+struct WakeCandidateMetrics {
+  const char *source{nullptr};
+  const char *model{nullptr};
+  float confidence{0.0f};
+  uint32_t chunk_index{0};
+  uint32_t chunk_count{0};
+  uint32_t detection_window_ms{0};
+  uint32_t frame_level{0};
+  uint32_t noise_floor_level{0};
+  uint32_t speech_peak_level{0};
+  const char *endpoint_audio_profile_version{nullptr};
+};
+
 void init_backend_client();
 bool start_voice_session(const char *wake_source);
 bool notify_vad_speech_started(uint32_t level);
 bool post_tts_input_cooldown_active();
+bool submit_wake_candidate(const WakeCandidateMetrics &candidate);
 bool submit_audio_frame(
     const int16_t *samples,
     size_t sample_count,

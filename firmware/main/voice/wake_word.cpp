@@ -4,12 +4,14 @@
 
 namespace {
 constexpr char kTag[] = "hexe_wake";
+constexpr int kWakeElectionTimeoutMs = 300;
 }
 
 namespace hexe::voice {
 
 void init_wake_word() {
   ESP_LOGI(kTag, "Wake detection is backend-owned; on-device wake engine is intentionally disabled");
+  ESP_LOGI(kTag, "Wake election candidate protocol is available with backend openWakeWord fallback");
 }
 
 const char *wake_word_runtime_mode() {
@@ -22,6 +24,18 @@ bool wake_word_on_device_available() {
 
 bool wake_word_backend_owned() {
   return true;
+}
+
+bool wake_word_election_capable() {
+  return true;
+}
+
+int wake_word_election_timeout_ms() {
+  return kWakeElectionTimeoutMs;
+}
+
+const char *wake_word_candidate_source() {
+  return "endpoint_micro_wake_word";
 }
 
 const char *playback_stop_word_runtime_mode() {
