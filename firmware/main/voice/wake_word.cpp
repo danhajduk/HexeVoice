@@ -32,16 +32,16 @@ constexpr hexe::voice::LocalKeywordModel kStopKeywordModel = {
     "stop",
     "Stop",
     "Stop",
-    "hexe_endpoint_local_keyword",
-    "",
-    "",
+    "kahrendt_microWakeWord_stop_beta_20241017_5",
+    "https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json",
+    "https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.tflite",
     "en",
-    "Hexe",
-    "",
-    0.0f,
-    0,
+    "Kevin Ahrendt",
+    "2024.7.0",
+    0.50f,
+    5,
     10,
-    0,
+    21000,
 };
 }
 
@@ -98,7 +98,7 @@ LocalKeywordDetection inspect_playback_stop_word_frame(
   if (!playback_stop_word_on_device_available()) {
     return {};
   }
-  // The Stop keyword shares the local keyword hook but remains inactive until a trained model is linked.
+  // The Stop keyword shares the local keyword hook but remains inactive until the model asset is bundled.
   return {};
 }
 
@@ -162,7 +162,7 @@ const char *playback_stop_word_unavailable_reason() {
   if (!kMicroWakeWordEngineLinked) {
     return "missing_micro_wake_word_inference_engine";
   }
-  return "missing_stop_keyword_model";
+  return "missing_stop_keyword_model_asset";
 }
 
 }  // namespace hexe::voice

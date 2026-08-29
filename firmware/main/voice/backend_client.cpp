@@ -1401,8 +1401,13 @@ std::string endpoint_capabilities_json() {
         cJSON_AddStringToObject(stop_keyword_model, "wake_word", stop_model.wake_word);
         cJSON_AddStringToObject(stop_keyword_model, "alias", stop_model.alias);
         cJSON_AddStringToObject(stop_keyword_model, "source", stop_model.source);
+        cJSON_AddStringToObject(stop_keyword_model, "manifest_url", stop_model.manifest_url);
+        cJSON_AddStringToObject(stop_keyword_model, "tflite_url", stop_model.tflite_url);
         cJSON_AddStringToObject(stop_keyword_model, "trained_languages", stop_model.trained_languages);
         cJSON_AddStringToObject(stop_keyword_model, "author", stop_model.author);
+        cJSON_AddStringToObject(stop_keyword_model, "minimum_esphome_version", stop_model.minimum_esphome_version);
+        cJSON_AddNumberToObject(stop_keyword_model, "probability_cutoff", stop_model.probability_cutoff);
+        cJSON_AddNumberToObject(stop_keyword_model, "sliding_window_size", stop_model.sliding_window_size);
         cJSON_AddNumberToObject(stop_keyword_model, "feature_step_size_ms", stop_model.feature_step_size_ms);
         cJSON_AddNumberToObject(stop_keyword_model, "tensor_arena_size", stop_model.tensor_arena_size);
       }

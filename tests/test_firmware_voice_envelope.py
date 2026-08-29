@@ -212,7 +212,7 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert "playback_stop_word_unavailable_reason" in wake_header
     assert '"backend_stt_interrupt_with_stop_keyword_manifest"' in wake_source
     assert '"missing_micro_wake_word_inference_engine"' in wake_source
-    assert '"missing_stop_keyword_model"' in wake_source
+    assert '"missing_stop_keyword_model_asset"' in wake_source
     assert '"playback_interrupt"' in backend_source
     assert '"playback_stop_word"' in backend_source
     assert '"available", true' in backend_source
@@ -337,10 +337,21 @@ def test_firmware_has_experimental_stop_keyword_provider_hook():
     assert "playback_stop_word_experimental_provider_configured" in wake_header
     assert '"stop"' in wake_source
     assert '"Stop"' in wake_source
+    assert '"kahrendt_microWakeWord_stop_beta_20241017_5"' in wake_source
+    assert '"https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json"' in wake_source
+    assert '"https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.tflite"' in wake_source
+    assert '"Kevin Ahrendt"' in wake_source
+    assert '"2024.7.0"' in wake_source
+    assert "0.50f" in wake_source
+    assert "21000" in wake_source
     assert '"endpoint_stop_keyword_experimental"' in wake_source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "id", stop_model.id)' in backend_source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "wake_word", stop_model.wake_word)' in backend_source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "alias", stop_model.alias)' in backend_source
+    assert 'cJSON_AddStringToObject(stop_keyword_model, "manifest_url", stop_model.manifest_url)' in backend_source
+    assert 'cJSON_AddStringToObject(stop_keyword_model, "tflite_url", stop_model.tflite_url)' in backend_source
+    assert 'cJSON_AddNumberToObject(stop_keyword_model, "probability_cutoff", stop_model.probability_cutoff)' in backend_source
+    assert 'cJSON_AddNumberToObject(stop_keyword_model, "sliding_window_size", stop_model.sliding_window_size)' in backend_source
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "tensor_arena_size", stop_model.tensor_arena_size)' in backend_source
     for source in (audio_source, pe_audio_source):
         assert "inspect_playback_stop_word_frame" in source

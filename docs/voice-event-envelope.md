@@ -102,6 +102,7 @@ analysis for older firmware that omits them.
 
 Playback interruption remains backend-owned by default through stop-only STT and backend `playback.stop` commands.
 Firmware also exposes an experimental local Stop keyword hook under `capabilities.firmware.modules.playback_stop_word`
-and `capabilities.audio.input.playback_interrupt`. Until a native inference engine and trained Stop model are linked,
-the endpoint reports the local keyword as configured but unavailable, with a `local_keyword_reason`, while keeping
-`backend_stt_interrupt` active.
+and `capabilities.audio.input.playback_interrupt`. The configured local model matches the Kevin Ahrendt microWakeWord
+Stop release used by Home Assistant Voice PE (`stop.json`/`stop.tflite`, cutoff 0.50, sliding window 5, tensor arena
+21000). Until a native inference engine and the Stop model asset are linked, the endpoint reports the local keyword as
+configured but unavailable, with a `local_keyword_reason`, while keeping `backend_stt_interrupt` active.
