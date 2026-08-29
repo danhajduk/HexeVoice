@@ -1769,6 +1769,7 @@ class VoiceTurnPipeline:
         )
         assistant_started_at = time.perf_counter()
         speaker_policy = self._speaker_identity_policy(text=transcript.text, command=None, metadata=None)
+        speaker_policy = self._local_intent_speaker_identity_policy(audio=audio, text=transcript.text) or speaker_policy
         speaker_identity = self._speaker_identity_for_policy(
             audio=audio,
             future=speaker_future,
@@ -1845,6 +1846,7 @@ class VoiceTurnPipeline:
                 )
                 transcript = fallback
                 speaker_policy = self._speaker_identity_policy(text=transcript.text, command=None, metadata=None)
+                speaker_policy = self._local_intent_speaker_identity_policy(audio=audio, text=transcript.text) or speaker_policy
                 speaker_identity = self._speaker_identity_for_policy(
                     audio=audio,
                     future=speaker_future,
@@ -2091,6 +2093,29 @@ class VoiceTurnPipeline:
         if _text_requires_speaker_identity(normalized_text):
             return "required"
         return self._speaker_id_policy_default
+
+    def _local_intent_speaker_identity_policy(self, *, audio: VoiceTurnAudioSummary, text: str | None) -> str | None:
+        if not text:
+            return None
+        matcher = getattr(self._assistant_service, "match_intent", None)
+        if not callable(matcher):
+            return None
+        try:
+            match = matcher(text, endpoint_id=audio.endpoint_id, session_id=audio.session_id)
+        except Exception:
+            log.warning(
+                "Local intent speaker identity policy preview failed: endpoint_id=%s session_id=%s",
+                audio.endpoint_id,
+                audio.session_id,
+                exc_info=True,
+            )
+            return None
+        if match is None:
+            return None
+        policy = getattr(match, "speaker_identity_policy", None)
+        if not isinstance(policy, str) or not policy.strip():
+            return None
+        return _normalize_speaker_identity_policy(policy)
 
     def _speaker_identity_blocks_required_policy(
         self,

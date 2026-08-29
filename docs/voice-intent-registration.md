@@ -52,10 +52,30 @@ Seeded built-ins:
     }
   },
   "metadata": {
-    "source": "setup_ui"
+    "source": "setup_ui",
+    "speaker_identity_policy": "use_if_ready"
   }
 }
 ```
+
+## Speaker Identity Policy
+
+Every registered intent is normalized with `metadata.speaker_identity_policy` so
+the voice pipeline can decide before local intent dispatch whether Speaker ID is
+needed. Supported values are `not_required`, `use_if_ready`, `required`, and
+`forbidden`.
+
+Built-in generic intents, including timer, endpoint control, playback,
+confirmation, follow-up test, and `voice.time.query`, are explicitly
+`not_required`. New registered intents default to `use_if_ready` unless they
+declare a policy in `metadata`, `constraints`, or `definition`. Personal routes
+are normalized to `required` when their privacy class, access scope, service, or
+intent naming marks them as personal, such as calendar, profile, messages,
+contacts, health, or finance.
+
+For local voice turns, HexeVoice previews the matched local intent policy before
+calling the assistant service. If the policy is `required`, the intent does not
+execute until Speaker ID returns an identified or verified speaker.
 
 ## List
 

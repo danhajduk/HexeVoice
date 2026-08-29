@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from hexevoice.assistant.intent_registry import VoiceIntentRegistry
+from hexevoice.assistant.intent_registry import resolve_intent_speaker_identity_policy
 
 @dataclass(frozen=True)
 class LocalIntentMatch:
@@ -21,6 +22,9 @@ class LocalIntentMatch:
     dispatch: dict[str, Any] | None = None
     reply: dict[str, Any] | None = None
     conversation_followup: dict[str, Any] | None = None
+    constraints: dict[str, Any] | None = None
+    metadata: dict[str, Any] | None = None
+    speaker_identity_policy: str | None = None
 
 
 class LocalIntentFinder:
@@ -316,6 +320,9 @@ class LocalIntentFinder:
             definition=definition,
             dispatch=definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else None,
             reply=definition.get("reply") if isinstance(definition.get("reply"), dict) else None,
+            constraints=intent.get("constraints") if isinstance(intent.get("constraints"), dict) else None,
+            metadata=intent.get("metadata") if isinstance(intent.get("metadata"), dict) else None,
+            speaker_identity_policy=resolve_intent_speaker_identity_policy(intent),
         )
 
     def _build_generic_match(self, *, intent: dict[str, Any], command: str, slots: dict[str, Any]) -> LocalIntentMatch:
@@ -347,6 +354,9 @@ class LocalIntentFinder:
             dispatch=definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else None,
             reply=reply,
             conversation_followup=conversation_followup,
+            constraints=intent.get("constraints") if isinstance(intent.get("constraints"), dict) else None,
+            metadata=intent.get("metadata") if isinstance(intent.get("metadata"), dict) else None,
+            speaker_identity_policy=resolve_intent_speaker_identity_policy(intent),
         )
 
     def _record_match(self, intent_id: object, *, status: str, reason: str | None = None) -> None:

@@ -462,6 +462,7 @@ class AssistantTurnService:
                 command=intent.command,
                 device_state="speaking",
                 provider_id=intent.provider_id,
+                provider_metadata=self._intent_provider_metadata(intent),
                 intent_latency_ms=intent_latency_ms,
                 conversation_followup=conversation_followup,
             )
@@ -483,6 +484,9 @@ class AssistantTurnService:
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
                 text=heard_text or " ",
+                speaker_identity=payload.speaker_identity,
+                speaker_identity_policy=payload.speaker_identity_policy,
+                speaker_personalization_enabled=payload.speaker_personalization_enabled,
             ),
             session_id=session_id,
             context=context,
@@ -597,6 +601,7 @@ class AssistantTurnService:
             command=intent.command,
             device_state="speaking",
             provider_id=intent.provider_id,
+            provider_metadata=self._intent_provider_metadata(intent),
             intent_latency_ms=intent_latency_ms,
             conversation_followup=conversation_followup,
         )
@@ -867,6 +872,21 @@ class AssistantTurnService:
                 slots=intent.slots,
             )
         return None
+
+    def _intent_provider_metadata(self, intent) -> dict[str, Any]:
+        metadata = {
+            "voice_intent": {
+                "intent_id": intent.intent,
+                "intent_name": intent.intent_name,
+                "service_id": intent.service_id,
+                "version": intent.version,
+                "provider_id": intent.provider_id,
+                "metadata": dict(intent.metadata or {}),
+                "constraints": dict(intent.constraints or {}),
+            },
+            "speaker_identity_policy": intent.speaker_identity_policy or "use_if_ready",
+        }
+        return metadata
 
     def _resolve_timer_context(self, intent, *, endpoint_id: str):
         if intent.command not in {"timer.status", "timer.stop", "timer.cancel", "timer.adjust_time", "timer.snooze"}:

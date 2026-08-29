@@ -53,7 +53,6 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 247: Add explicit speaker-identity policy mapping for registered and built-in intents
 [TODO] Task 248: Add safe profile-learning eligibility policy without automatic learning
 [TODO] Task 249: Add global voice privacy mode and feature kill switch
 [STOP]

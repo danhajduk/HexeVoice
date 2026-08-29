@@ -17,7 +17,7 @@
     "access_scope": { "type": "string", "default": "service" },
     "definition": { "$ref": "#/$defs/intent_definition" },
     "constraints": { "type": "object" },
-    "metadata": { "type": "object" }
+    "metadata": { "$ref": "#/$defs/intent_metadata" }
   },
   "$defs": {
     "intent_definition": {
@@ -39,6 +39,7 @@
           },
           "additionalProperties": true
         },
+        "speaker_identity_policy": { "$ref": "#/$defs/speaker_identity_policy" },
         "slots": {
           "type": "object",
           "additionalProperties": { "$ref": "#/$defs/field_schema" }
@@ -108,6 +109,17 @@
         "text_template": { "type": "string" },
         "audio": { "$ref": "#/$defs/reply_audio_options" }
       }
+    },
+    "intent_metadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "speaker_identity_policy": { "$ref": "#/$defs/speaker_identity_policy" }
+      }
+    },
+    "speaker_identity_policy": {
+      "type": "string",
+      "enum": ["not_required", "use_if_ready", "required", "forbidden"]
     },
     "field_schema": {
       "type": "object",

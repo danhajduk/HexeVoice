@@ -80,6 +80,9 @@ class SpeakerIdentityMetric(VoiceMetricModel):
     score_margin: float | None = None
     provider: str | None = None
     model_id: str | None = None
+    age_band: Literal["child", "teen", "adult", "unknown"] | None = None
+    age_restriction_class: str | None = None
+    admin_eligible: bool = False
     reason: str | None = None
     duration_ms: float | None = Field(default=None, ge=0)
     error: str | None = None

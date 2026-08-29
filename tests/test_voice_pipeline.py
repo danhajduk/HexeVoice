@@ -11,6 +11,9 @@ import httpx
 
 from hexevoice.api.models import AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
+from hexevoice.assistant import LocalIntentFinder
+from hexevoice.assistant import VoiceIntentRegistry
+from hexevoice.assistant import VoiceIntentStateStore
 from hexevoice.config.settings import Settings
 from hexevoice.domain_events import AsyncDomainEventPublisher, DomainEventPublishDecision
 from hexevoice.runtime.service import NodeRuntimeService
@@ -411,6 +414,55 @@ def test_voice_turn_pipeline_blocks_personal_route_when_speaker_unknown(tmp_path
     assert result.speaker_identity is not None
     assert result.speaker_identity.status == "unknown"
     assert result.speaker_identity.policy == "required"
+
+
+def test_voice_turn_pipeline_blocks_registered_required_intent_before_local_handling(tmp_path):
+    runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    registry.register_intent(
+        intent_id="calendar.today",
+        intent_name="Calendar today",
+        service_id="calendar.node",
+        privacy_class="personal",
+        definition={
+            "utterance_examples": ["calendar today"],
+            "dispatch": {"type": "local_response", "command": "calendar.today"},
+            "response": {"reply_text": "Calendar accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+    assistant = AssistantTurnService(
+        settings=Settings(node_name="lab-voice"),
+        runtime_service=runtime,
+        intent_finder=LocalIntentFinder(registry=registry),
+    )
+    speaker_id = SlowSpeakerIdClient(delay_s=0.0)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="calendar today"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="use_if_ready",
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=2,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 1600,
+        )
+    )
+
+    assert result.assistant_response.command == "speaker.identity.required"
+    assert result.assistant_response.provider_id == "speaker_id_policy"
+    assert result.speaker_identity is not None
+    assert result.speaker_identity.policy == "required"
+    assert assistant.status()["last_intent_latency"] is None
 
 
 def test_voice_turn_pipeline_passes_identified_speaker_to_required_route(tmp_path):

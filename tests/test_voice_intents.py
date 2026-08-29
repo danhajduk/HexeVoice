@@ -5,6 +5,7 @@ import os
 from fastapi.testclient import TestClient
 
 from hexevoice.assistant import LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
+from hexevoice.assistant.intent_registry import resolve_intent_speaker_identity_policy
 from hexevoice.assistant.intents import _format_clock_time
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
@@ -17,30 +18,63 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
 
     snapshot = registry.snapshot()
 
-    assert snapshot["registered_count"] == 9
-    assert snapshot["active_count"] == 9
-    assert snapshot["intents"][0]["intent_id"] == "timer.create"
-    assert snapshot["intents"][1]["intent_id"] == "timer.status"
-    assert snapshot["intents"][1]["constraints"]["dispatch_side_effect"] == "timer.status_requested"
-    assert snapshot["intents"][2]["intent_id"] == "timer.stop"
-    assert snapshot["intents"][2]["constraints"]["dispatch_side_effect"] == "timer.stop_requested"
-    assert snapshot["intents"][3]["intent_id"] == "timer.cancel"
-    assert snapshot["intents"][3]["constraints"]["dispatch_side_effect"] == "timer.cancel_requested"
-    assert snapshot["intents"][4]["intent_id"] == "timer.adjust_time"
-    assert snapshot["intents"][4]["constraints"]["dispatch_side_effect"] == "timer.adjust_time_requested"
-    assert snapshot["intents"][5]["intent_id"] == "voice.time.query"
-    assert snapshot["intents"][5]["owner_service"] == "hexevoice"
-    assert snapshot["intents"][5]["metadata"]["owned_by"] == "voice_node"
-    assert snapshot["intents"][6]["intent_id"] == "voice.debug.followup"
-    assert snapshot["intents"][6]["metadata"]["family"] == "debug"
-    assert snapshot["intents"][7]["intent_id"] == "voice.confirm.yes"
-    assert snapshot["intents"][8]["intent_id"] == "voice.confirm.no"
+    assert snapshot["registered_count"] == 17
+    assert snapshot["active_count"] == 17
+    intents = {intent["intent_id"]: intent for intent in snapshot["intents"]}
+    assert intents["timer.create"]["constraints"]["dispatch_side_effect"] == "timer.create_requested"
+    assert intents["timer.status"]["constraints"]["dispatch_side_effect"] == "timer.status_requested"
+    assert intents["timer.stop"]["constraints"]["dispatch_side_effect"] == "timer.stop_requested"
+    assert intents["timer.cancel"]["constraints"]["dispatch_side_effect"] == "timer.cancel_requested"
+    assert intents["timer.adjust_time"]["constraints"]["dispatch_side_effect"] == "timer.adjust_time_requested"
+    assert intents["voice.time.query"]["owner_service"] == "hexevoice"
+    assert intents["voice.time.query"]["metadata"]["owned_by"] == "voice_node"
+    assert intents["voice.debug.followup"]["metadata"]["family"] == "debug"
+    assert "voice.confirm.yes" in intents
+    assert "voice.confirm.no" in intents
+    assert all(intent["metadata"]["speaker_identity_policy"] == "not_required" for intent in intents.values())
 
     registry.transition_intent(intent_id="timer.create", status="disabled", reason="unit_test")
     reloaded = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
 
     assert reloaded.get_intent(intent_id="timer.create")["status"] == "disabled"
-    assert reloaded.snapshot()["active_count"] == 8
+    assert reloaded.snapshot()["active_count"] == 16
+
+
+def test_registered_intent_speaker_identity_policy_defaults_and_personal_routes(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+
+    registry.register_intent(
+        intent_id="kitchen.status",
+        intent_name="Kitchen status",
+        definition={
+            "utterance_examples": ["kitchen status"],
+            "dispatch": {"type": "local_response", "command": "kitchen.status"},
+            "response": {"reply_text": "Kitchen status accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+    registry.register_intent(
+        intent_id="calendar.today",
+        intent_name="Calendar today",
+        service_id="calendar.node",
+        privacy_class="personal",
+        definition={
+            "utterance_examples": ["calendar today"],
+            "dispatch": {"type": "local_response", "command": "calendar.today"},
+            "response": {"reply_text": "Calendar accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+
+    kitchen = registry.get_intent(intent_id="kitchen.status")
+    calendar = registry.get_intent(intent_id="calendar.today")
+    finder = LocalIntentFinder(registry=registry)
+
+    assert kitchen["metadata"]["speaker_identity_policy"] == "use_if_ready"
+    assert resolve_intent_speaker_identity_policy(kitchen) == "use_if_ready"
+    assert calendar["metadata"]["speaker_identity_policy"] == "required"
+    assert resolve_intent_speaker_identity_policy(calendar) == "required"
+    assert finder.find("calendar today").speaker_identity_policy == "required"
 
 
 def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
@@ -195,7 +229,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     )
 
     assert registered.status_code == 200
-    assert registered.json()["registered_count"] == 10
+    assert registered.json()["registered_count"] == 18
 
     dispatch = client.post(
         "/api/voice/intents/dispatch",
@@ -217,7 +251,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
         json={"status": "disabled", "reason": "unit_test"},
     )
     assert disabled.status_code == 200
-    assert disabled.json()["active_count"] == 9
+    assert disabled.json()["active_count"] == 17
 
     dispatch_after_disable = client.post(
         "/api/voice/intents/dispatch",

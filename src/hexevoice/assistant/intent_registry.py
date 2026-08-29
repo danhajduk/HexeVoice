@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 VOICE_INTENT_SCHEMA_VERSION = "1.0"
 ACTIVE_INTENT_STATES = {"active"}
 KNOWN_INTENT_STATES = {"active", "restricted", "review_due", "probation", "disabled", "retired", "expired"}
+SPEAKER_IDENTITY_POLICIES = {"not_required", "use_if_ready", "required", "forbidden"}
 BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS = (
     "playback.stop",
     "playback.repeat",
@@ -20,6 +21,20 @@ BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS = (
     "endpoint.mute",
     "endpoint.unmute",
     "endpoint.identify",
+)
+PERSONAL_INTENT_PRIVACY_CLASSES = {"personal", "private", "sensitive", "biometric"}
+PERSONAL_INTENT_ACCESS_SCOPES = {"personal", "profile", "user"}
+PERSONAL_INTENT_HINTS = (
+    "calendar",
+    "contact",
+    "contacts",
+    "email",
+    "finance",
+    "health",
+    "message",
+    "messages",
+    "personal",
+    "profile",
 )
 
 
@@ -791,6 +806,78 @@ def built_in_test_followup_intent() -> dict[str, Any]:
     }
 
 
+def normalize_speaker_identity_policy(value: str | None) -> str:
+    policy = str(value or "").strip().lower()
+    if policy in SPEAKER_IDENTITY_POLICIES:
+        return policy
+    return "use_if_ready"
+
+
+def resolve_intent_speaker_identity_policy(intent: dict[str, Any] | "VoiceIntentRecord") -> str:
+    payload = intent.model_dump(mode="json") if isinstance(intent, VoiceIntentRecord) else intent
+    if not isinstance(payload, dict):
+        return "use_if_ready"
+    explicit = _explicit_speaker_identity_policy(payload)
+    if explicit:
+        return explicit
+    metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+    if metadata.get("builtin") is True:
+        return "not_required"
+    command = _intent_command(payload)
+    if command.startswith(("timer.", "endpoint.", "playback.")) or command in {
+        "voice.time.query",
+        "voice.confirm.yes",
+        "voice.confirm.no",
+    }:
+        return "not_required"
+    if _intent_looks_personal(payload):
+        return "required"
+    return "use_if_ready"
+
+
+def _explicit_speaker_identity_policy(payload: dict[str, Any]) -> str | None:
+    containers = [
+        payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+        payload.get("constraints") if isinstance(payload.get("constraints"), dict) else {},
+        payload.get("definition") if isinstance(payload.get("definition"), dict) else {},
+    ]
+    for container in containers:
+        for key in ("speaker_identity_policy", "speaker_policy", "identity_policy"):
+            value = container.get(key)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            normalized = normalize_speaker_identity_policy(value)
+            if normalized == value.strip().lower():
+                return normalized
+    return None
+
+
+def _intent_command(payload: dict[str, Any]) -> str:
+    definition = payload.get("definition") if isinstance(payload.get("definition"), dict) else {}
+    dispatch = definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else {}
+    return str(dispatch.get("command") or payload.get("intent_id") or "").strip().lower()
+
+
+def _intent_looks_personal(payload: dict[str, Any]) -> bool:
+    privacy_class = str(payload.get("privacy_class") or "").strip().lower()
+    if privacy_class in PERSONAL_INTENT_PRIVACY_CLASSES:
+        return True
+    access_scope = str(payload.get("access_scope") or "").strip().lower()
+    if access_scope in PERSONAL_INTENT_ACCESS_SCOPES:
+        return True
+    searchable = " ".join(
+        str(value or "").lower()
+        for value in (
+            payload.get("intent_id"),
+            payload.get("service_id"),
+            payload.get("owner_service"),
+            payload.get("intent_name"),
+            _intent_command(payload),
+        )
+    )
+    return any(hint in searchable for hint in PERSONAL_INTENT_HINTS)
+
+
 class VoiceIntentRecord(BaseModel):
     intent_id: str = Field(min_length=1, max_length=120)
     intent_name: str | None = Field(default=None, max_length=160)
@@ -874,6 +961,13 @@ class VoiceIntentState(BaseModel):
     updated_at: str | None = None
 
 
+def _intent_record_with_speaker_identity_policy(record: VoiceIntentRecord) -> VoiceIntentRecord:
+    policy = resolve_intent_speaker_identity_policy(record)
+    metadata = dict(record.metadata)
+    metadata["speaker_identity_policy"] = policy
+    return record.model_copy(update={"metadata": metadata})
+
+
 class VoiceIntentStateStore:
     def __init__(self, *, path: Path) -> None:
         self._path = path
@@ -903,11 +997,13 @@ class VoiceIntentStateStore:
                 ],
                 updated_at=utc_now_iso(),
             )
+            self._normalize_speaker_identity_policies(state)
             return self.save(state)
         payload = json.loads(self._path.read_text(encoding="utf-8"))
         state = VoiceIntentState.model_validate(payload)
         seeded = self._seed_builtin_intents(state)
-        if seeded:
+        normalized = self._normalize_speaker_identity_policies(state)
+        if seeded or normalized:
             return self.save(state)
         return state
 
@@ -957,6 +1053,18 @@ class VoiceIntentStateStore:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="no")))
             seeded = True
         return seeded
+
+    def _normalize_speaker_identity_policies(self, state: VoiceIntentState) -> bool:
+        changed = False
+        normalized_intents: list[VoiceIntentRecord] = []
+        for record in state.intents:
+            replacement = _intent_record_with_speaker_identity_policy(record)
+            normalized_intents.append(replacement)
+            if replacement.metadata != record.metadata:
+                changed = True
+        if changed:
+            state.intents = normalized_intents
+        return changed
 
 
 class VoiceIntentRegistry:
@@ -1027,7 +1135,7 @@ class VoiceIntentRegistry:
             "created_at": now,
             "updated_at": now,
         }
-        record = VoiceIntentRecord.model_validate(payload)
+        record = _intent_record_with_speaker_identity_policy(VoiceIntentRecord.model_validate(payload))
         if existing is None:
             self._state.intents.append(record)
         else:
@@ -1070,6 +1178,7 @@ class VoiceIntentRegistry:
                 update[key] = value
         replacement = record.model_copy(update=update)
         VoiceIntentRecord.model_validate(replacement.model_dump(mode="json"))
+        replacement = _intent_record_with_speaker_identity_policy(replacement)
         self._replace(replacement)
         self._save()
         return self.snapshot()
