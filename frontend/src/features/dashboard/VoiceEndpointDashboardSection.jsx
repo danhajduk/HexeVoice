@@ -14,6 +14,7 @@ import {
   getVoicePlacementCalibrations,
   getVoicePlacementCalibrationReport,
   getVoicePlacementTests,
+  getVoiceEndpointAudioQualityStats,
   getVoiceSession,
   getVoiceSessions,
   muteEndpoint,
@@ -287,6 +288,24 @@ function audioQualityCompactSummary(audioQuality) {
     return "";
   }
   return warnings.length === 1 ? warnings[0] : `${warnings.length} warnings`;
+}
+
+function endpointAudioQualityById(endpointAudioQuality) {
+  return Object.fromEntries(
+    (endpointAudioQuality?.endpoints || [])
+      .filter((item) => item?.endpoint_id)
+      .map((item) => [String(item.endpoint_id), item]),
+  );
+}
+
+function endpointAudioQualitySummary(quality) {
+  if (!quality || !quality.sample_count) {
+    return "No recent audio";
+  }
+  const latest = quality.latest || {};
+  const warningRate = typeof quality.warning_rate === "number" ? `${Math.round(quality.warning_rate * 100)}% warnings` : "warnings unknown";
+  const snr = quality.snr_db?.available && typeof quality.snr_db.avg === "number" ? `, avg SNR ${quality.snr_db.avg} dB` : "";
+  return `${labelizeState(latest.status, "unknown")} latest, ${quality.sample_count} turns, ${warningRate}${snr}`;
 }
 
 function audioQualityWarnings(audioQuality) {
@@ -590,10 +609,12 @@ function EndpointStatusTable({
   voiceStatus,
   endpointStatus,
   endpointRegistry,
+  endpointAudioQuality,
   selectedEndpointId,
   onSelectEndpoint,
 }) {
   const timings = voiceStatus?.last_turn_timings || {};
+  const qualityByEndpoint = endpointAudioQualityById(endpointAudioQuality || voiceStatus?.endpoint_audio_quality);
   const endpointStatuses = [...endpointStatusesFromRegistry(endpointStatus, endpointRegistry)].sort((left, right) => (
     endpointSortKey(left).localeCompare(endpointSortKey(right), undefined, { numeric: true, sensitivity: "base" })
   ));
@@ -606,6 +627,7 @@ function EndpointStatusTable({
       voiceStatus?.active_session?.endpoint_id === endpointId ? voiceStatus.active_session : null
     );
     const endpointVoice = endpointId ? voiceStatus?.endpoints?.[endpointId] : null;
+    const audioQualityStats = qualityByEndpoint[String(endpointId)] || null;
     return {
       health: endpointHealthForProjection(projection, currentEndpointStatus),
       endpointId,
@@ -627,6 +649,8 @@ function EndpointStatusTable({
       sessionState: sessionStateLabel(projection.session_state),
       transportHealth: labelizeState(projection.transport_health, "Offline"),
       sessionId: session?.session_id || "none",
+      audioQualityStats,
+      audioQualitySummary: endpointAudioQualitySummary(audioQualityStats),
       sttLatency: formatMs(timings.stt_ms),
       totalLatency: formatMs(timings.total_ms),
       firmwareUpdate: currentEndpointStatus?.firmware_update || {},
@@ -656,6 +680,8 @@ function EndpointStatusTable({
         ["Firmware update", firmwareUpdateLabel(selectedEndpoint.firmwareUpdate)],
         ["Last heartbeat", selectedEndpoint.lastSeenAt],
         ["Transport", selectedEndpoint.transportHealth],
+        ["Audio window", selectedEndpoint.audioQualitySummary],
+        ["Audio recommendation", labelizeState(selectedEndpoint.audioQualityStats?.recommendation, "none")],
       ]
     : [];
 
@@ -718,6 +744,10 @@ function EndpointStatusTable({
                 <span>
                   <strong>Board</strong>
                   {valueOrEmpty(row.boardProfile)}
+                </span>
+                <span>
+                  <strong>Audio</strong>
+                  {endpointAudioQualitySummary(row.audioQualityStats)}
                 </span>
                 <span>
                   <strong>Volume</strong>
@@ -1924,6 +1954,7 @@ export function VoiceEndpointDashboardSection({
   const [placementCalibrations, setPlacementCalibrations] = useState(null);
   const [placementCalibrationReport, setPlacementCalibrationReport] = useState(null);
   const [placementPassiveBusy, setPlacementPassiveBusy] = useState(false);
+  const [endpointAudioQuality, setEndpointAudioQuality] = useState(voiceStatus?.endpoint_audio_quality || null);
   const selectedEndpointStatus = endpointStatusById(endpointStatuses, selectedEndpointId);
   const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
   const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
@@ -1974,6 +2005,31 @@ export function VoiceEndpointDashboardSection({
     const status = voiceStatus?.session_history || null;
     setHistoryStatus(status);
   }, [voiceStatus?.session_history]);
+
+  useEffect(() => {
+    if (voiceStatus?.endpoint_audio_quality) {
+      setEndpointAudioQuality(voiceStatus.endpoint_audio_quality);
+    }
+  }, [voiceStatus?.endpoint_audio_quality]);
+
+  useEffect(() => {
+    let active = true;
+    getVoiceEndpointAudioQualityStats({ endpointId: endpointId || undefined, limit: 200 })
+      .then((payload) => {
+        if (active) {
+          setEndpointAudioQuality(payload.stats || null);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setEndpointAudioQuality(voiceStatus?.endpoint_audio_quality || null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [endpointId, voiceStatus?.session_history?.updated_at, voiceStatus?.endpoint_audio_quality]);
 
   useEffect(() => {
     let active = true;
@@ -2396,6 +2452,7 @@ export function VoiceEndpointDashboardSection({
         voiceStatus={voiceStatus}
         endpointStatus={endpointStatus}
         endpointRegistry={endpointRegistry}
+        endpointAudioQuality={endpointAudioQuality}
         selectedEndpointId={endpointId}
         onSelectEndpoint={setSelectedEndpointId}
       />

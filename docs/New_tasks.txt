@@ -63,7 +63,7 @@ Do not edit above this line:
 [DONE] Task 255: Add admin-gated maintenance voice intents for debug, enrollment, and placement calibration
 [DONE] Task 256: Add operator-reviewed Speaker ID profile improvement workflow
 [DONE] Task 257: Add user-facing voice failure guidance from quality and identity diagnostics
-[TODO] Task 258: Add rolling endpoint audio quality statistics and UI summary
+[DONE] Task 258: Add rolling endpoint audio quality statistics and UI summary
 [STOP]
 [TODO] Task 259: Add experimental endpoint microWakeWord wake provider using the official Alexa model for the initial Hexe-compatible wake path
 [TODO] Task 260: Add experimental on-device Stop keyword detection for playback/session cancellation

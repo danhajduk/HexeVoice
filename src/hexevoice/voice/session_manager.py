@@ -2610,6 +2610,7 @@ class VoiceSessionManager:
                 },
                 "placement_calibrations": self.passive_placement_calibration_status(),
                 "voice_quality_observations": self.voice_quality_observation_status(),
+                "endpoint_audio_quality": self.endpoint_audio_quality_stats(),
                 "privacy_mode": {
                     "enabled": self._privacy_mode_enabled,
                     "blocked_features": [
@@ -2646,6 +2647,86 @@ class VoiceSessionManager:
         if self._session_history_store is None:
             return []
         return self._session_history_store.list_sessions(limit=limit, endpoint_id=endpoint_id)
+
+    def endpoint_audio_quality_stats(self, *, limit: int = 200, endpoint_id: str | None = None) -> dict[str, object]:
+        bounded_limit = max(1, min(int(limit), 500))
+        if self._session_history_store is None:
+            return {
+                "schema_version": 1,
+                "enabled": False,
+                "source": "voice_session_history",
+                "window": {"session_limit": bounded_limit, "observed_session_count": 0},
+                "endpoints": [],
+                "endpoint_count": 0,
+            }
+
+        sessions = self._session_history_store.list_sessions(limit=bounded_limit, endpoint_id=endpoint_id)
+        groups: dict[str, dict[str, Any]] = {}
+        observed_count = 0
+        for session in sessions:
+            transcript = session.get("transcript") if isinstance(session.get("transcript"), dict) else {}
+            audio_quality = transcript.get("audio_quality") if isinstance(transcript.get("audio_quality"), dict) else None
+            if audio_quality is None:
+                continue
+            current_endpoint_id = str(session.get("endpoint_id") or "unknown").strip() or "unknown"
+            group = groups.setdefault(
+                current_endpoint_id,
+                {
+                    "endpoint_id": current_endpoint_id,
+                    "sample_count": 0,
+                    "ok_count": 0,
+                    "warning_count": 0,
+                    "status_counts": {},
+                    "warning_counts": {},
+                    "snr_values": [],
+                    "latest_observed_at": None,
+                    "latest_session_id": None,
+                    "latest_status": None,
+                    "latest_warnings": [],
+                },
+            )
+            observed_count += 1
+            group["sample_count"] += 1
+            status = str(audio_quality.get("status") or "unknown")
+            group["status_counts"][status] = int(group["status_counts"].get(status, 0)) + 1
+            warnings = [str(warning) for warning in audio_quality.get("warnings") or [] if warning]
+            if status == "ok" and not warnings:
+                group["ok_count"] += 1
+            if warnings or status not in {"ok", "unknown"}:
+                group["warning_count"] += 1
+            for warning in warnings:
+                group["warning_counts"][warning] = int(group["warning_counts"].get(warning, 0)) + 1
+            snr_db = _float_or_none(audio_quality.get("snr_db"))
+            if snr_db is not None:
+                group["snr_values"].append(snr_db)
+            observed_at = (
+                session.get("completed_at")
+                or session.get("updated_at")
+                or session.get("started_at")
+            )
+            if group["latest_observed_at"] is None or str(observed_at or "") > str(group["latest_observed_at"] or ""):
+                group["latest_observed_at"] = observed_at
+                group["latest_session_id"] = session.get("session_id")
+                group["latest_status"] = status
+                group["latest_warnings"] = warnings
+
+        endpoints = [_endpoint_audio_quality_summary(group) for group in groups.values()]
+        endpoints.sort(
+            key=lambda item: str((item.get("latest") if isinstance(item.get("latest"), dict) else {}).get("observed_at") or ""),
+            reverse=True,
+        )
+        return {
+            "schema_version": 1,
+            "enabled": True,
+            "source": "voice_session_history",
+            "window": {
+                "session_limit": bounded_limit,
+                "scanned_session_count": len(sessions),
+                "observed_session_count": observed_count,
+            },
+            "endpoints": endpoints,
+            "endpoint_count": len(endpoints),
+        }
 
     def voice_quality_observation_status(self) -> dict[str, object]:
         if self._quality_observation_log is None:
@@ -4070,3 +4151,85 @@ class VoiceSessionManager:
             if isinstance(event_type, str) and event_type:
                 return event_type
         return None
+
+
+def _endpoint_audio_quality_summary(group: dict[str, Any]) -> dict[str, object]:
+    sample_count = int(group.get("sample_count") or 0)
+    ok_count = int(group.get("ok_count") or 0)
+    warning_count = int(group.get("warning_count") or 0)
+    snr_values = [value for value in group.get("snr_values") or [] if isinstance(value, float)]
+    warning_counts = dict(sorted((group.get("warning_counts") or {}).items()))
+    status_counts = dict(sorted((group.get("status_counts") or {}).items()))
+    return {
+        "endpoint_id": group.get("endpoint_id"),
+        "sample_count": sample_count,
+        "ok_count": ok_count,
+        "warning_count": warning_count,
+        "ok_rate": _ratio(ok_count, sample_count),
+        "warning_rate": _ratio(warning_count, sample_count),
+        "status_counts": status_counts,
+        "warning_counts": warning_counts,
+        "snr_db": _numeric_summary(snr_values),
+        "latest": {
+            "observed_at": group.get("latest_observed_at"),
+            "session_id": group.get("latest_session_id"),
+            "status": group.get("latest_status"),
+            "warnings": list(group.get("latest_warnings") or []),
+        },
+        "recommendation": _endpoint_audio_quality_recommendation(
+            sample_count=sample_count,
+            ok_count=ok_count,
+            warning_counts=warning_counts,
+            latest_status=str(group.get("latest_status") or ""),
+            latest_warnings=[str(item) for item in group.get("latest_warnings") or []],
+        ),
+    }
+
+
+def _endpoint_audio_quality_recommendation(
+    *,
+    sample_count: int,
+    ok_count: int,
+    warning_counts: dict[str, int],
+    latest_status: str,
+    latest_warnings: list[str],
+) -> str:
+    if sample_count <= 0:
+        return "no_recent_audio"
+    warnings = set(warning_counts)
+    latest = set(latest_warnings)
+    if "clipped" in warnings or latest_status == "clipped":
+        return "check_microphone_gain"
+    if "low_snr" in warnings or "low_snr" in latest:
+        return "reduce_background_noise_or_move_endpoint"
+    if warnings.intersection({"silent", "low_level"}) or latest_status in {"silent", "low_level"}:
+        return "check_microphone_distance_or_gain"
+    if "short_audio" in warnings or "short_audio" in latest:
+        return "check_vad_timeout_or_prompt_length"
+    if _ratio(ok_count, sample_count) >= 0.8:
+        return "audio_path_healthy"
+    return "monitor_endpoint_audio"
+
+
+def _numeric_summary(values: list[float]) -> dict[str, object]:
+    if not values:
+        return {"available": False, "count": 0, "avg": None, "min": None, "max": None}
+    return {
+        "available": True,
+        "count": len(values),
+        "avg": round(sum(values) / len(values), 2),
+        "min": round(min(values), 2),
+        "max": round(max(values), 2),
+    }
+
+
+def _ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 3)
+
+
+def _float_or_none(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None

@@ -1043,28 +1043,46 @@ def provider_status(
 def endpoint_records(endpoints: list[dict[str, Any]], voice_status: dict[str, Any]) -> dict[str, Any]:
     records = []
     active_endpoint_id = voice_status.get("endpoint_id")
+    quality_status = voice_status.get("endpoint_audio_quality") if isinstance(voice_status.get("endpoint_audio_quality"), dict) else {}
+    quality_by_endpoint = {
+        str(item.get("endpoint_id")): item
+        for item in quality_status.get("endpoints", [])
+        if isinstance(item, dict) and item.get("endpoint_id")
+    }
     for endpoint in endpoints:
+        endpoint_id = endpoint.get("endpoint_id")
+        quality = quality_by_endpoint.get(str(endpoint_id)) if endpoint_id else None
+        latest_quality = quality.get("latest") if isinstance(quality, dict) and isinstance(quality.get("latest"), dict) else {}
         records.append(
             {
-                "id": text(endpoint.get("endpoint_id")),
-                "endpoint_id": endpoint.get("endpoint_id"),
+                "id": text(endpoint_id),
+                "endpoint_id": endpoint_id,
                 "hardware_id": endpoint.get("hardware_id"),
-                "name": endpoint.get("display_name") or endpoint.get("endpoint_id"),
+                "name": endpoint.get("display_name") or endpoint_id,
                 "status": endpoint.get("connection_state"),
                 "device_state": endpoint.get("device_state"),
                 "firmware_version": endpoint.get("firmware_version"),
                 "last_seen_at": endpoint.get("last_seen_at"),
-                "active": endpoint.get("endpoint_id") == active_endpoint_id,
+                "audio_quality": latest_quality.get("status") if latest_quality else None,
+                "audio_quality_sample_count": quality.get("sample_count") if isinstance(quality, dict) else 0,
+                "audio_quality_recommendation": quality.get("recommendation") if isinstance(quality, dict) else None,
+                "active": endpoint_id == active_endpoint_id,
                 "tone": tone_for_state(endpoint.get("connection_state")),
-                "detail_ref": {"endpoint": f"/api/endpoint/status/{endpoint.get('endpoint_id')}"},
+                "detail_ref": {"endpoint": f"/api/endpoint/status/{endpoint_id}"},
             }
         )
     card = base_card("record_list", empty=not records)
-    card["summary"] = {"endpoint_count": len(records), "active_endpoint_id": active_endpoint_id}
+    card["summary"] = {
+        "endpoint_count": len(records),
+        "active_endpoint_id": active_endpoint_id,
+        "audio_quality_endpoint_count": quality_status.get("endpoint_count", 0),
+        "audio_quality_window": quality_status.get("window"),
+    }
     card["columns"] = [
         {"id": "name", "label": "Name"},
         {"id": "status", "label": "Status"},
         {"id": "device_state", "label": "Device"},
+        {"id": "audio_quality", "label": "Audio"},
         {"id": "firmware_version", "label": "Firmware"},
         {"id": "last_seen_at", "label": "Last Seen"},
     ]

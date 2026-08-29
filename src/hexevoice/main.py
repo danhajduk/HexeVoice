@@ -1235,6 +1235,16 @@ def create_app(
     async def voice_quality_observations() -> dict[str, object]:
         return {"schema_version": 1, "status": voice_session_manager.voice_quality_observation_status()}
 
+    @app.get("/api/voice/audio-quality/endpoint-stats")
+    async def voice_endpoint_audio_quality_stats(endpoint_id: str | None = None, limit: int = 200) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "stats": voice_session_manager.endpoint_audio_quality_stats(
+                endpoint_id=endpoint_id,
+                limit=limit,
+            ),
+        }
+
     @app.post("/api/voice/quality-observations/cleanup")
     async def voice_quality_observations_cleanup() -> dict[str, object]:
         return {"schema_version": 1, "cleanup": voice_session_manager.cleanup_voice_quality_observations()}

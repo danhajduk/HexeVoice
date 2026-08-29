@@ -434,6 +434,15 @@ export async function getVoiceSessions({ limit = 12, endpointId } = {}) {
   return fetchJson(`/api/voice/sessions?${params.toString()}`);
 }
 
+export async function getVoiceEndpointAudioQualityStats({ endpointId, limit = 200 } = {}) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (endpointId) {
+    params.set("endpoint_id", endpointId);
+  }
+  return fetchJson(`/api/voice/audio-quality/endpoint-stats?${params.toString()}`);
+}
+
 export async function getVoiceSession(sessionId) {
   return fetchJson(`/api/voice/sessions/${encodeURIComponent(sessionId)}`);
 }

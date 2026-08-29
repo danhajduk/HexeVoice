@@ -381,6 +381,40 @@ def test_core_rendered_voice_domain_cards(tmp_path):
     assert media["summary"]["endpoint_count"] == 1
 
 
+def test_node_ui_endpoint_records_include_audio_quality_rollup():
+    card = node_ui.endpoint_records(
+        [
+            {
+                "endpoint_id": "esp-box-1",
+                "display_name": "Kitchen",
+                "connection_state": "online",
+                "device_state": "idle",
+                "firmware_version": "0.1.0",
+            }
+        ],
+        {
+            "endpoint_id": "esp-box-1",
+            "endpoint_audio_quality": {
+                "endpoint_count": 1,
+                "window": {"observed_session_count": 4},
+                "endpoints": [
+                    {
+                        "endpoint_id": "esp-box-1",
+                        "sample_count": 4,
+                        "recommendation": "reduce_background_noise_or_move_endpoint",
+                        "latest": {"status": "low_snr"},
+                    }
+                ],
+            },
+        },
+    )
+
+    assert card["summary"]["audio_quality_endpoint_count"] == 1
+    assert card["records"][0]["audio_quality"] == "low_snr"
+    assert card["records"][0]["audio_quality_sample_count"] == 4
+    assert card["records"][0]["audio_quality_recommendation"] == "reduce_background_noise_or_move_endpoint"
+
+
 def test_core_rendered_node_ui_safe_actions(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
