@@ -228,6 +228,19 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
     assert "kPreWakeStreamTimeoutUs = 10000000" in backend_source
     assert "kAcceptedCaptureTimeoutUs = 15000000" in backend_source
     assert 'finish_audio_stream("capture_timeout")' in backend_source
+    vad_event_body = backend_source[
+        backend_source.index("bool send_vad_speech_started_event") : backend_source.index(
+            "void send_audio_frame"
+        )
+    ]
+    audio_frame_body = backend_source[
+        backend_source.index("void send_audio_frame") : backend_source.index(
+            "bool submit_audio_frame"
+        )
+    ]
+    assert 'ensure_session_started("openwakeword")' not in vad_event_body
+    assert 'ensure_session_started("openwakeword")' not in audio_frame_body
+    assert "if (!g_session_started) {\n    remember_preroll_frame(frame);" in audio_frame_body
     assert "start_session_reset_input_cooldown();" in backend_source
     assert "start_post_tts_input_cooldown();" in backend_source
     assert "post_tts_input_cooldown_active()" in backend_source

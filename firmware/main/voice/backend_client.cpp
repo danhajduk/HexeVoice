@@ -2146,7 +2146,7 @@ bool send_vad_speech_started_event(uint32_t level) {
   if (hexe::voice::post_tts_input_cooldown_active()) {
     return false;
   }
-  if (!ensure_session_started("openwakeword")) {
+  if (!g_session_started || g_audio_stream_finished) {
     return false;
   }
 
@@ -2168,11 +2168,10 @@ bool send_vad_speech_started_event(uint32_t level) {
 }
 
 void send_audio_frame(const AudioFrame &frame) {
-  if (!g_session_started && !frame.vad_speaking) {
+  if (!g_session_started) {
     remember_preroll_frame(frame);
     return;
   }
-  ensure_session_started("openwakeword");
   if (g_audio_stream_finished) {
     return;
   }
