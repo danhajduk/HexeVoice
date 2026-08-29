@@ -2879,3 +2879,62 @@ Original task details:
   - Failed identity-gated actions return clear, safe, concise guidance.
   - Operator diagnostics expose structured reason codes.
   - User-facing guidance does not expose private scores or biometric details.
+
+
+## Task 261
+Original task details:
+- Title: Define portable firmware board-profile config schema for YAML/JSON-driven hardware bring-up
+- Source request:
+  - Add tasks to make the firmware as portable as possible with different hardware types so a new board can work from a simple YAML/JSON config.
+- Scope:
+  - Define a firmware board-profile schema that can be authored as YAML or JSON.
+  - Cover board identity, ESP-IDF target, flash/partition assumptions, audio input, audio output, I2S pins, codec type/address, buttons, mute controls, LEDs, display, touch, rotary controls, SD/media, power behavior, and optional capabilities.
+  - Make unsupported hardware explicit with `disabled`, `not_present`, or `stub` values rather than requiring C++ edits.
+  - Separate portable feature configuration from board-specific driver implementation.
+  - Include validation rules for required fields, mutually exclusive peripherals, pin conflicts, supported sample rates, and capability dependencies.
+  - Add example configs for current supported boards and at least one minimal headless/no-display voice endpoint.
+  - Document how backend endpoint capabilities map to firmware board-profile fields.
+- Acceptance criteria:
+  - A versioned board-profile schema exists for YAML and JSON input.
+  - Current ESP-BOX-3 and HA Voice PE profiles can be represented by the schema.
+  - A minimal new board can declare mic, speaker, buttons, and no display without firmware source edits.
+  - Schema validation catches missing required hardware, invalid pins, and incompatible capability combinations.
+
+
+## Task 262
+Original task details:
+- Title: Refactor firmware board support behind config-driven portable hardware adapters
+- Source request:
+  - Make firmware portable across different hardware types using simple board configs.
+- Scope:
+  - Introduce a portable board hardware abstraction layer that loads generated board-profile constants instead of hard-coding board behavior directly in feature code.
+  - Move board-specific audio input/output, codec, display, touch, button, LED, SD, mute, and rotary setup behind common adapter interfaces.
+  - Preserve existing ESP-BOX-3 and HA Voice PE behavior while reducing compile-time conditionals in voice/session code.
+  - Support graceful no-op adapters for hardware not present on a board.
+  - Ensure endpoint heartbeat/capability reporting is derived from the selected board profile.
+  - Keep wake/STT/assistant ownership boundaries intact: backend wake word remains available as backup, and endpoint microWakeWord remains an optional provider.
+  - Add firmware tests/static checks that verify unsupported board profiles fail early with actionable errors.
+- Acceptance criteria:
+  - Voice/session firmware code consumes portable adapter interfaces instead of directly depending on board-specific modules.
+  - Existing board profiles build and keep their current capabilities.
+  - Missing peripherals degrade to explicit no-op/unsupported states rather than crashes.
+  - Capability heartbeat output matches the configured board profile.
+
+
+## Task 263
+Original task details:
+- Title: Add new-board bring-up generator, examples, validation tests, and docs for config-only firmware ports
+- Source request:
+  - Enable adding a new board through a simple YAML/JSON config whenever the hardware uses supported adapter types.
+- Scope:
+  - Add a generator that converts a board YAML/JSON profile into firmware config headers/source or CMake fragments used by the portable adapters.
+  - Add a `build.sh` or CMake flow for selecting generated board profiles without manually editing firmware source.
+  - Provide a new-board template and bring-up checklist covering pin mapping, codec validation, microphone capture, speaker playback, buttons, LEDs/display optionality, wake transport, TTS playback, OTA, and endpoint heartbeat.
+  - Add CI/local validation for all committed board profiles, including schema validation and compile checks where possible.
+  - Document the boundary: config-only ports work for hardware matching supported adapters; new chips/codecs/peripherals still require adding an adapter implementation.
+  - Include migration notes for converting existing hand-coded board profiles into generated configs.
+- Acceptance criteria:
+  - A new supported-adapter board can be added by creating one YAML/JSON profile and running the generator.
+  - Generated artifacts are deterministic and validated.
+  - Current board profiles build through the generated/config-driven flow.
+  - Docs explain when config is enough and when new firmware adapter code is required.
