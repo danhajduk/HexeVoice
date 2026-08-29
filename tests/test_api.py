@@ -1545,6 +1545,8 @@ def test_voice_privacy_mode_status_blocks_sensitive_voice_features(tmp_path):
     assert payload["speaker_enrollment_capture"]["blocked"] is True
     assert payload["placement_tests"]["blocked"] is True
     assert payload["placement_calibrations"]["blocked"] is True
+    assert payload["voice_quality_observations"]["blocked"] is True
+    assert payload["voice_quality_observations"]["enabled"] is False
     assert capture.status_code == 400
     assert capture.json()["detail"] == "privacy_mode_enabled"
     assert placement.status_code == 400

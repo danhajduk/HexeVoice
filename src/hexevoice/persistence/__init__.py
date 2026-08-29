@@ -26,6 +26,10 @@ from hexevoice.persistence.voice_placement_calibration import (
     PersistedVoicePlacementCalibration,
     VoicePlacementCalibrationStore,
 )
+from hexevoice.persistence.voice_quality_observation_log import (
+    VoiceQualityObservationLog,
+    subtract_one_calendar_month,
+)
 
 __all__ = [
     "BootstrapDiscoveryState",
@@ -46,4 +50,6 @@ __all__ = [
     "TrustActivationState",
     "VoiceSessionHistoryStore",
     "VoicePlacementCalibrationStore",
+    "VoiceQualityObservationLog",
+    "subtract_one_calendar_month",
 ]

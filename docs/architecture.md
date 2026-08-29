@@ -62,6 +62,8 @@ Active placement testing is an operator-started voice workflow exposed through `
 
 Passive ambient placement calibration is exposed through `/api/voice/placement-calibrations`. It stores selected endpoint calibration windows and sanitized numeric ambient samples in `voice_placement_calibrations.json`, reports next sample due times for endpoint schedulers, supports cancellation and retention cleanup, and builds long-window placement reports from passive ambient trends plus matching active placement-test results. Passive samples are metrics-only by contract: no unattended STT, no Speaker ID, no environment classification, and no raw ambient audio persistence by default.
 
+Optional voice quality observation logging is exposed through `/api/voice/quality-observations` and is disabled by default. When `VOICE_QUALITY_OBSERVATION_LOG_ENABLED=true`, accepted completed voice turns append derived diagnostic rows to daily JSONL files under `runtime/voice_quality_observations/` or `VOICE_QUALITY_OBSERVATION_DIR`. Transcript text retention is explicit through `VOICE_QUALITY_OBSERVATION_TRANSCRIPT_MODE=full`; the default `redacted` mode stores transcript character count and STT metadata without text. Observation rows are separate from session history and debug audio recordings, contain no raw audio or embeddings, and clean up by subtracting one calendar month from the local file date rather than using a fixed 30-day interval.
+
 Voice observability now has local backend APIs for the dashboard:
 
 - `GET /api/voice/status`

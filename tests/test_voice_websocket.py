@@ -1381,6 +1381,47 @@ def test_voice_websocket_runs_transcript_assistant_and_tts_pipeline(tmp_path):
     assert status.json()["last_tts"]["stream_id"].startswith("tts-")
 
 
+def test_voice_websocket_writes_quality_observation_for_completed_turn(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                voice_quality_observation_log_enabled=True,
+                voice_quality_observation_transcript_mode="full",
+            ),
+            voice_wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(voice_event("session.start"))
+        websocket.receive_json()
+        websocket.send_json(
+            voice_event(
+                "audio.chunk",
+                payload={"chunk_index": 0, "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.send_json(voice_event("audio.end"))
+        websocket.receive_json()
+        websocket.receive_json()
+        websocket.receive_json()
+        completed = websocket.receive_json()
+
+    assert completed["payload"]["completion_reason"] == "turn_completed"
+    files = list((tmp_path / "voice_quality_observations").glob("*.jsonl"))
+    assert len(files) == 1
+    record = json.loads(files[0].read_text().strip())
+    assert record["session_id"] == "voice-session-1"
+    assert record["stt"]["text"] == "hello"
+    assert record["audio_quality"]["status"]
+    assert record["privacy"]["raw_audio_persisted"] is False
+    assert client.get("/api/voice/status").json()["voice_quality_observations"]["enabled"] is True
+
+
 def test_voice_websocket_passes_transient_audio_to_turn_pipeline(tmp_path):
     class CapturingPipeline:
         def __init__(self) -> None:

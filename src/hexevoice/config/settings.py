@@ -112,6 +112,12 @@ class Settings(BaseSettings):
     voice_session_history_path: Path | None = Field(default=None, alias="VOICE_SESSION_HISTORY_PATH")
     voice_session_history_limit: int = Field(default=100, alias="VOICE_SESSION_HISTORY_LIMIT", ge=1)
     voice_placement_calibration_path: Path | None = Field(default=None, alias="VOICE_PLACEMENT_CALIBRATION_PATH")
+    voice_quality_observation_log_enabled: bool = Field(default=False, alias="VOICE_QUALITY_OBSERVATION_LOG_ENABLED")
+    voice_quality_observation_dir: Path | None = Field(default=None, alias="VOICE_QUALITY_OBSERVATION_DIR")
+    voice_quality_observation_transcript_mode: Literal["redacted", "full"] = Field(
+        default="redacted",
+        alias="VOICE_QUALITY_OBSERVATION_TRANSCRIPT_MODE",
+    )
     voice_session_pre_wake_timeout_s: float = Field(default=10.0, alias="VOICE_SESSION_PRE_WAKE_TIMEOUT_S", gt=0)
     voice_session_max_active_s: float = Field(default=60.0, alias="VOICE_SESSION_MAX_ACTIVE_S", gt=0)
     voice_stt_provider: Literal["deterministic", "openai", "faster_whisper", "external_faster_whisper"] = Field(
@@ -439,6 +445,11 @@ class Settings(BaseSettings):
         if self.voice_placement_calibration_path is not None:
             return self.voice_placement_calibration_path
         return self.runtime_dir / "voice_placement_calibrations.json"
+
+    def resolved_voice_quality_observation_dir(self) -> Path:
+        if self.voice_quality_observation_dir is not None:
+            return self.voice_quality_observation_dir
+        return self.runtime_dir / "voice_quality_observations"
 
     def resolved_voice_tts_runtime_config_path(self) -> Path:
         if self.voice_tts_runtime_config_path is not None:

@@ -16,6 +16,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
 from hexevoice.persistence.voice_placement_calibration import VoicePlacementCalibrationStore
+from hexevoice.persistence.voice_quality_observation_log import VoiceQualityObservationLog
 from hexevoice.persistence.voice_session_history import VoiceSessionHistoryStore
 from hexevoice.voice.contracts import (
     ENDPOINT_TO_BACKEND_EVENTS,
@@ -226,6 +227,7 @@ class VoiceSessionManager:
         micro_vad_chunk_recorder: MicroVadChunkRecordingService | None = None,
         session_history_store: VoiceSessionHistoryStore | None = None,
         placement_calibration_store: VoicePlacementCalibrationStore | None = None,
+        quality_observation_log: VoiceQualityObservationLog | None = None,
         pre_wake_timeout_s: float = 10.0,
         max_active_session_s: float = 60.0,
         privacy_mode_enabled: bool = False,
@@ -243,6 +245,7 @@ class VoiceSessionManager:
         self._micro_vad_chunk_recorder = micro_vad_chunk_recorder
         self._session_history_store = session_history_store
         self._placement_calibration_store = placement_calibration_store
+        self._quality_observation_log = quality_observation_log
         self._command_records: dict[str, dict[str, object]] = {}
         self._last_volume_percent_by_endpoint: dict[str, int] = {}
         self._command_timeout_s = 10.0
@@ -2606,6 +2609,7 @@ class VoiceSessionManager:
                     "recent_reports": self.list_placement_tests(limit=5),
                 },
                 "placement_calibrations": self.passive_placement_calibration_status(),
+                "voice_quality_observations": self.voice_quality_observation_status(),
                 "privacy_mode": {
                     "enabled": self._privacy_mode_enabled,
                     "blocked_features": [
@@ -2642,6 +2646,25 @@ class VoiceSessionManager:
         if self._session_history_store is None:
             return []
         return self._session_history_store.list_sessions(limit=limit, endpoint_id=endpoint_id)
+
+    def voice_quality_observation_status(self) -> dict[str, object]:
+        if self._quality_observation_log is None:
+            return {
+                "enabled": False,
+                "blocked": self._privacy_mode_enabled,
+                "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
+                "retention_policy": "one_calendar_month",
+            }
+        return {
+            **self._quality_observation_log.status(),
+            "blocked": self._privacy_mode_enabled,
+            "blocked_reason": "privacy_mode_enabled" if self._privacy_mode_enabled else None,
+        }
+
+    def cleanup_voice_quality_observations(self) -> dict[str, object]:
+        if self._quality_observation_log is None:
+            return {"enabled": False, "status": "unavailable", "retention_policy": "one_calendar_month"}
+        return {"enabled": self._quality_observation_log.enabled, "status": "ok", **self._quality_observation_log.cleanup()}
 
     def start_speaker_enrollment_capture_window(self, *, endpoint_id: str, ttl_seconds: int = 300) -> dict[str, object]:
         endpoint_id = str(endpoint_id or "").strip()
@@ -3307,6 +3330,11 @@ class VoiceSessionManager:
             self._session_history_store.upsert_session(record)
         except Exception:
             log.exception("Failed to persist voice session history: session_id=%s", session.session_id)
+        if completion_reason == "turn_completed" and self._quality_observation_log is not None:
+            try:
+                self._quality_observation_log.write_session_observation(record)
+            except Exception:
+                log.exception("Failed to write voice quality observation: session_id=%s", session.session_id)
 
     def _replay_metadata(self, tts: dict[str, Any] | None, *, error_state: dict[str, Any] | None) -> dict[str, Any]:
         if error_state is not None:

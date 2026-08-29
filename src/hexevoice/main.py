@@ -134,6 +134,7 @@ from hexevoice.persistence import (
     EndpointRegistryStore,
     OnboardingStateStore,
     VoicePlacementCalibrationStore,
+    VoiceQualityObservationLog,
     VoiceSessionHistoryStore,
 )
 from hexevoice.providers.setup import ProviderSetupService
@@ -482,6 +483,11 @@ def create_app(
     voice_placement_calibration_store = VoicePlacementCalibrationStore(
         path=app_settings.resolved_voice_placement_calibration_path(),
     )
+    voice_quality_observation_log = VoiceQualityObservationLog(
+        directory=app_settings.resolved_voice_quality_observation_dir(),
+        enabled=app_settings.voice_quality_observation_log_enabled and not app_settings.voice_privacy_mode_enabled,
+        transcript_mode=app_settings.voice_quality_observation_transcript_mode,
+    )
     voice_intent_registry = VoiceIntentRegistry(store=voice_intent_store)
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     node_migration_service = NodeMigrationService(settings=app_settings)
@@ -597,6 +603,7 @@ def create_app(
         micro_vad_chunk_recorder=micro_vad_chunk_recorder,
         session_history_store=voice_session_history_store,
         placement_calibration_store=voice_placement_calibration_store,
+        quality_observation_log=voice_quality_observation_log,
         pre_wake_timeout_s=app_settings.voice_session_pre_wake_timeout_s,
         max_active_session_s=app_settings.voice_session_max_active_s,
         privacy_mode_enabled=app_settings.voice_privacy_mode_enabled,
@@ -1099,6 +1106,14 @@ def create_app(
         if report is None:
             raise HTTPException(status_code=404, detail="placement_calibration_not_found")
         return {"schema_version": 1, "report": report}
+
+    @app.get("/api/voice/quality-observations")
+    async def voice_quality_observations() -> dict[str, object]:
+        return {"schema_version": 1, "status": voice_session_manager.voice_quality_observation_status()}
+
+    @app.post("/api/voice/quality-observations/cleanup")
+    async def voice_quality_observations_cleanup() -> dict[str, object]:
+        return {"schema_version": 1, "cleanup": voice_session_manager.cleanup_voice_quality_observations()}
 
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:

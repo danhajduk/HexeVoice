@@ -50,7 +50,7 @@ route policy that does not forbid learning.
 
 `PlacementMetric` records endpoint placement outcomes over active or passive windows: endpoint id, window length, wake success rate, STT score, Speaker ID score, audio-quality status, ambient status, recommendation, and warnings.
 
-`VoiceQualityObservationRecord` is the future monthly diagnostic log row shape. It can include timestamp, endpoint/session ids, transcript text or character count, STT score/provider, Speaker ID metric, audio-quality metric, ambient/SNR metric, and placement metric. Raw audio and biometric templates remain excluded.
+`VoiceQualityObservationRecord` is the optional monthly diagnostic log row shape implemented by `src/hexevoice/persistence/voice_quality_observation_log.py`. It can include timestamp, endpoint/session ids, transcript text or character count depending on `VOICE_QUALITY_OBSERVATION_TRANSCRIPT_MODE`, STT provider/model/confidence, redacted Speaker ID summary when policy permits, audio-quality metrics, ambient/SNR status, and source version fields. Raw audio, embeddings, biometric templates, voiceprints, passcodes, and model-internal features remain excluded. Observation JSONL files use one-calendar-month local-date retention, not fixed 30-day retention.
 
 ## Confidence Tiers
 

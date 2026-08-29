@@ -58,7 +58,7 @@ Do not edit above this line:
 [DONE] Task 252: Add active endpoint placement test workflow and placement report
 [DONE] Task 253: Add passive ambient placement calibration and long-window placement scoring
 [STOP]
-[TODO] Task 254: Add optional monthly voice quality observation log
+[DONE] Task 254: Add optional monthly voice quality observation log
 [STOP]
 [TODO] Task 255: Add admin-gated maintenance voice intents for debug, enrollment, and placement calibration
 [TODO] Task 256: Add operator-reviewed Speaker ID profile improvement workflow
