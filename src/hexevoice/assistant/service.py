@@ -23,6 +23,7 @@ from hexevoice.domain_events import (
     TimerCreateEventPublisher,
     utc_event_timestamp,
 )
+from hexevoice.persistence.voice_admin_maintenance import redact_spoken_passcodes
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.timer_announcements import TimerOwnershipCache
 
@@ -430,10 +431,11 @@ class AssistantTurnService:
         )
         if intent is not None:
             intent = self._resolve_timer_context(intent, endpoint_id=payload.endpoint_id)
+            recorded_heard_text = _recorded_heard_text_for_intent(intent, heard_text)
             self._publish_intent_recognized_event(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
-                heard_text=heard_text,
+                heard_text=recorded_heard_text,
                 intent=intent,
                 requested_at=requested_at,
                 intent_latency_ms=self._elapsed_ms(intent_started_at),
@@ -441,7 +443,7 @@ class AssistantTurnService:
             self._dispatch_intent(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
-                heard_text=heard_text,
+                heard_text=recorded_heard_text,
                 intent=intent,
                 requested_at=requested_at,
             )
@@ -455,7 +457,7 @@ class AssistantTurnService:
             response = AssistantTurnResponse(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
-                heard_text=heard_text,
+                heard_text=recorded_heard_text,
                 reply_text=intent.reply_text,
                 spoken_text=intent.reply_text,
                 handled_locally=True,
@@ -559,18 +561,19 @@ class AssistantTurnService:
             )
         recognized_event_id = f"voice-intent-{uuid4().hex}"
         intent = self._resolve_timer_context(intent, endpoint_id=endpoint_id)
+        recorded_heard_text = _recorded_heard_text_for_intent(intent, heard_text)
         reply_audio = self._synthesize_intent_reply_audio(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
             intent=intent,
             event_id=recognized_event_id,
-            heard_text=heard_text,
+            heard_text=recorded_heard_text,
             reply_audio_factory=reply_audio_factory,
         )
         recognition_decision = self._publish_intent_recognized_event(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
-            heard_text=heard_text,
+            heard_text=recorded_heard_text,
             intent=intent,
             requested_at=requested_at,
             event_id=recognized_event_id,
@@ -580,7 +583,7 @@ class AssistantTurnService:
         dispatch_decision = self._dispatch_intent(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
-            heard_text=heard_text,
+            heard_text=recorded_heard_text,
             intent=intent,
             requested_at=requested_at,
         )
@@ -594,7 +597,7 @@ class AssistantTurnService:
         response = AssistantTurnResponse(
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
-            heard_text=heard_text,
+            heard_text=recorded_heard_text,
             reply_text=intent.reply_text,
             spoken_text=intent.reply_text,
             handled_locally=True,
@@ -619,7 +622,7 @@ class AssistantTurnService:
             matched=True,
             endpoint_id=endpoint_id,
             session_id=resolved_session_id,
-            heard_text=heard_text,
+            heard_text=recorded_heard_text,
             intent_id=intent.intent,
             command=intent.command,
             slots=dict(intent.slots),
@@ -1139,3 +1142,16 @@ def _timer_ambiguity_reply(candidates: list[dict[str, Any]]) -> str:
     if labels:
         return f"I found multiple active timers: {', '.join(labels)}. Please say which timer."
     return "I found multiple active timers. Please say which timer."
+
+
+def _recorded_heard_text_for_intent(intent, heard_text: str) -> str:
+    command = str(getattr(intent, "command", "") or "").strip()
+    metadata = getattr(intent, "metadata", None)
+    constraints = getattr(intent, "constraints", None)
+    if command.startswith("admin."):
+        return redact_spoken_passcodes(heard_text)
+    if isinstance(metadata, dict) and metadata.get("admin_maintenance_action"):
+        return redact_spoken_passcodes(heard_text)
+    if isinstance(constraints, dict) and constraints.get("admin_maintenance_action"):
+        return redact_spoken_passcodes(heard_text)
+    return heard_text

@@ -18,6 +18,12 @@ from hexevoice.persistence.onboarding_state import (
     ResumeState,
     TrustActivationState,
 )
+from hexevoice.persistence.voice_admin_maintenance import (
+    ADMIN_MAINTENANCE_INTENT_IDS,
+    VoiceAdminMaintenanceStore,
+    extract_spoken_passcode,
+    redact_spoken_passcodes,
+)
 from hexevoice.persistence.voice_session_history import (
     PersistedVoiceSessionHistory,
     VoiceSessionHistoryStore,
@@ -33,6 +39,7 @@ from hexevoice.persistence.voice_quality_observation_log import (
 
 __all__ = [
     "BootstrapDiscoveryState",
+    "ADMIN_MAINTENANCE_INTENT_IDS",
     "CapabilityDeclarationState",
     "EndpointRegistryRecord",
     "EndpointRegistryStore",
@@ -50,6 +57,9 @@ __all__ = [
     "TrustActivationState",
     "VoiceSessionHistoryStore",
     "VoicePlacementCalibrationStore",
+    "VoiceAdminMaintenanceStore",
     "VoiceQualityObservationLog",
+    "extract_spoken_passcode",
+    "redact_spoken_passcodes",
     "subtract_one_calendar_month",
 ]

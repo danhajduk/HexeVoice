@@ -16,6 +16,7 @@ from hexevoice.assistant import VoiceIntentRegistry
 from hexevoice.assistant import VoiceIntentStateStore
 from hexevoice.config.settings import Settings
 from hexevoice.domain_events import AsyncDomainEventPublisher, DomainEventPublishDecision
+from hexevoice.persistence.voice_admin_maintenance import VoiceAdminMaintenanceStore
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.timer_announcements import TimerOwnershipCache
 from hexevoice.voice import (
@@ -1006,6 +1007,129 @@ def test_voice_turn_pipeline_blocks_admin_action_without_passcode_override(tmp_p
     assert len(assistant.requests) == 1
     assert result.assistant_response.command == "voice.audience_policy.refused"
     assert result.assistant_response.provider_metadata["audience_policy"]["reason"] == "restricted_admin_action"
+
+
+def test_voice_turn_pipeline_allows_admin_maintenance_with_verified_speaker_passcode_and_good_audio(tmp_path):
+    admin_store = VoiceAdminMaintenanceStore(path=tmp_path / "admin_maintenance.json")
+    admin_store.set_passcode("1234")
+    admin_store.update_settings(
+        enabled=True,
+        admin_speaker_public_ids=["speaker_admin"],
+        enabled_intents={"admin.debug.start": True},
+    )
+    assistant = CommandAssistantService(
+        command="admin.debug.start",
+        metadata={"speaker_identity_policy": "required", "admin_maintenance_action": True},
+        spoken_text="debug started",
+    )
+    speaker_id = SlowSpeakerIdClient(
+        delay_s=0.0,
+        response={
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": "speaker_admin",
+                "display_name": "Admin",
+                "confidence": 0.98,
+                "score": 0.98,
+                "score_margin": 0.22,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+                "age_band": "adult",
+                "admin_eligible": True,
+            },
+        },
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="admin debug start passcode 1234"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="required",
+        admin_maintenance_store=admin_store,
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-admin",
+            session_id="voice-session-admin-ok",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.assistant_response.command == "admin.debug.start"
+    assert result.assistant_response.spoken_text == "debug started"
+    assert result.assistant_response.provider_metadata["admin_maintenance"]["allowed"] is True
+    assert result.assistant_response.provider_metadata["admin_passcode_verified"] is True
+    assert result.transcript.text == "admin debug start passcode [passcode]"
+    assert result.assistant_response.heard_text == "admin debug start passcode [passcode]"
+
+
+def test_voice_turn_pipeline_rejects_admin_maintenance_wrong_passcode_and_redacts(tmp_path):
+    admin_store = VoiceAdminMaintenanceStore(path=tmp_path / "admin_maintenance.json")
+    admin_store.set_passcode("1234")
+    admin_store.update_settings(
+        enabled=True,
+        admin_speaker_public_ids=["speaker_admin"],
+        enabled_intents={"admin.debug.start": True},
+    )
+    assistant = CommandAssistantService(
+        command="admin.debug.start",
+        metadata={"speaker_identity_policy": "required", "admin_maintenance_action": True},
+        spoken_text="debug started",
+    )
+    speaker_id = SlowSpeakerIdClient(
+        delay_s=0.0,
+        response={
+            "schema_version": 1,
+            "status": "identified",
+            "reason": None,
+            "match": {
+                "speaker_public_id": "speaker_admin",
+                "display_name": "Admin",
+                "confidence": 0.98,
+                "score": 0.98,
+                "score_margin": 0.22,
+                "provider": "deterministic_signal",
+                "model_id": "deterministic-signal-v1",
+                "age_band": "adult",
+                "admin_eligible": True,
+            },
+        },
+    )
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="admin debug start passcode 0000"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        speaker_id_client=speaker_id,
+        speaker_id_enabled=True,
+        speaker_id_policy_default="required",
+        admin_maintenance_store=admin_store,
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-admin",
+            session_id="voice-session-admin-denied",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.assistant_response.command == "voice.admin_maintenance.refused"
+    assert result.assistant_response.provider_metadata["admin_maintenance"]["allowed"] is False
+    assert result.assistant_response.provider_metadata["admin_maintenance"]["reason"] == "admin_passcode_wrong"
+    assert result.transcript.text == "admin debug start passcode [passcode]"
+    assert result.assistant_response.heard_text == "admin debug start passcode [passcode]"
 
 
 def test_voice_turn_pipeline_speaker_identity_follows_audio_not_endpoint(tmp_path):

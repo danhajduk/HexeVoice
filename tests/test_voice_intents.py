@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from hexevoice.assistant import LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.assistant.intent_registry import resolve_intent_speaker_identity_policy
+from hexevoice.persistence.voice_admin_maintenance import ADMIN_MAINTENANCE_INTENT_IDS
 from hexevoice.assistant.intents import _format_clock_time
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
@@ -18,7 +19,7 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
 
     snapshot = registry.snapshot()
 
-    assert snapshot["registered_count"] == 17
+    assert snapshot["registered_count"] == 30
     assert snapshot["active_count"] == 17
     intents = {intent["intent_id"]: intent for intent in snapshot["intents"]}
     assert intents["timer.create"]["constraints"]["dispatch_side_effect"] == "timer.create_requested"
@@ -31,7 +32,12 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
     assert intents["voice.debug.followup"]["metadata"]["family"] == "debug"
     assert "voice.confirm.yes" in intents
     assert "voice.confirm.no" in intents
-    assert all(intent["metadata"]["speaker_identity_policy"] == "not_required" for intent in intents.values())
+    admin_intents = {intent_id: intents[intent_id] for intent_id in ADMIN_MAINTENANCE_INTENT_IDS}
+    assert all(intent["status"] == "disabled" for intent in admin_intents.values())
+    assert all(intent["metadata"]["speaker_identity_policy"] == "required" for intent in admin_intents.values())
+    assert all(intent["metadata"]["identity_classification"] == "admin_maintenance" for intent in admin_intents.values())
+    non_admin_intents = [intent for intent_id, intent in intents.items() if intent_id not in ADMIN_MAINTENANCE_INTENT_IDS]
+    assert all(intent["metadata"]["speaker_identity_policy"] == "not_required" for intent in non_admin_intents)
 
     registry.transition_intent(intent_id="timer.create", status="disabled", reason="unit_test")
     reloaded = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
@@ -75,6 +81,64 @@ def test_registered_intent_speaker_identity_policy_defaults_and_personal_routes(
     assert calendar["metadata"]["speaker_identity_policy"] == "required"
     assert resolve_intent_speaker_identity_policy(calendar) == "required"
     assert finder.find("calendar today").speaker_identity_policy == "required"
+
+
+def test_admin_maintenance_intents_are_disabled_until_lifecycle_activation(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    finder = LocalIntentFinder(registry=registry)
+
+    assert finder.find("admin debug start passcode 1234") is None
+
+    registry.transition_intent(intent_id="admin.debug.start", status="active", reason="unit_test")
+    match = finder.find("admin debug start passcode 1234")
+
+    assert match is not None
+    assert match.command == "admin.debug.start"
+    assert match.speaker_identity_policy == "required"
+    assert match.metadata["admin_maintenance_action"] is True
+
+
+def test_admin_maintenance_api_updates_settings_and_syncs_intent_lifecycle(tmp_path):
+    settings = Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        runtime_dir=tmp_path,
+        voice_admin_maintenance_path=tmp_path / "admin_maintenance.json",
+        voice_intent_registry_path=tmp_path / "voice_intents.json",
+    )
+    client = TestClient(create_app(settings=settings))
+
+    assert client.get("/api/voice/admin-maintenance").json()["status"]["enabled"] is False
+
+    passcode_response = client.post("/api/voice/admin-maintenance/passcode", json={"passcode": "1234"})
+    assert passcode_response.status_code == 200
+    assert passcode_response.json()["status"]["passcode_configured"] is True
+    assert "1234" not in (tmp_path / "admin_maintenance.json").read_text()
+
+    response = client.patch(
+        "/api/voice/admin-maintenance",
+        json={
+            "enabled": True,
+            "admin_speaker_public_ids": ["speaker-admin"],
+            "enabled_intents": {"admin.debug.start": True},
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"]["enabled"] is True
+    intents = {intent["intent_id"]: intent for intent in client.get("/api/voice/intents").json()["intents"]}
+    assert intents["admin.debug.start"]["status"] == "active"
+    assert intents["admin.debug.stop"]["status"] == "disabled"
+
+    page = client.get("/api/node/ui/pages/voice/intents").json()
+    cards = {card["id"]: card for card in page["cards"]}
+    admin_card = cards["voice.admin_maintenance"]
+    assert admin_card["data"]["state"]["enabled"] is True
+    assert admin_card["data"]["fields"][-1]["id"] == "passcode"
+    assert admin_card["data"]["fields"][-1]["value"] is None
+    assert {action["endpoint"] for action in admin_card["actions"]} == {
+        "/api/voice/admin-maintenance",
+        "/api/voice/admin-maintenance/passcode",
+    }
 
 
 def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
@@ -229,7 +293,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     )
 
     assert registered.status_code == 200
-    assert registered.json()["registered_count"] == 18
+    assert registered.json()["registered_count"] == 31
 
     dispatch = client.post(
         "/api/voice/intents/dispatch",

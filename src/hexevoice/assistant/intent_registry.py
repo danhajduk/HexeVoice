@@ -4,9 +4,12 @@ from copy import deepcopy
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
+
+from hexevoice.persistence.voice_admin_maintenance import ADMIN_MAINTENANCE_INTENT_IDS
 
 
 VOICE_INTENT_SCHEMA_VERSION = "1.0"
@@ -36,6 +39,22 @@ PERSONAL_INTENT_HINTS = (
     "personal",
     "profile",
 )
+
+ADMIN_MAINTENANCE_INTENT_CONFIG = {
+    "admin.debug.start": ("Start debug", "admin debug start", "Starting admin debug mode."),
+    "admin.debug.stop": ("Stop debug", "admin debug stop", "Stopping admin debug mode."),
+    "admin.enrollment.start": ("Start voice enrollment", "admin enrollment start", "Starting voice enrollment."),
+    "admin.enrollment.cancel": ("Cancel voice enrollment", "admin enrollment cancel", "Cancelling voice enrollment."),
+    "admin.placement.start_active": ("Start active placement test", "admin placement active", "Starting active placement test."),
+    "admin.placement.start_passive_48h": ("Start 48 hour placement calibration", "admin placement forty eight hour", "Starting 48 hour placement calibration."),
+    "admin.placement.status": ("Placement status", "admin placement status", "Checking placement status."),
+    "admin.placement.stop": ("Stop placement calibration", "admin placement stop", "Stopping placement calibration."),
+    "admin.privacy.status": ("Privacy status", "admin privacy status", "Checking privacy status."),
+    "admin.privacy.purge_debug_audio": ("Purge debug audio", "admin purge debug audio", "Debug audio purge requires dashboard confirmation."),
+    "admin.voice.quality.status": ("Voice quality status", "admin voice quality status", "Checking voice quality status."),
+    "admin.speaker.enrollment.status": ("Speaker enrollment status", "admin speaker enrollment status", "Checking speaker enrollment status."),
+    "admin.passcode.rotate": ("Rotate admin passcode", "admin passcode rotate", "Passcode rotation requires dashboard confirmation."),
+}
 
 
 def utc_now_iso() -> str:
@@ -806,6 +825,82 @@ def built_in_test_followup_intent() -> dict[str, Any]:
     }
 
 
+def admin_maintenance_intent_definition(*, intent_id: str) -> dict[str, Any]:
+    _name, example, reply = ADMIN_MAINTENANCE_INTENT_CONFIG[intent_id]
+    action_words = re.escape(example).replace(r"\ ", r"\s+")
+    passcode_suffix = r"(?:\s+(?:pass\s*code|passcode|code)\s+(?:\d{4}|(?:zero|oh|one|two|three|four|for|five|six|seven|eight|ate|nine)(?:\s+(?:zero|oh|one|two|three|four|for|five|six|seven|eight|ate|nine)){3}))?"
+    return {
+        "utterance_examples": [
+            example,
+            f"{example} passcode 1234",
+            f"{example} code one two three four",
+        ],
+        "patterns": [
+            rf"^(?:please\s+)?{action_words}{passcode_suffix}$",
+        ],
+        "slots": {
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "optional": {
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "admin_maintenance",
+            "command": intent_id,
+        },
+        "response": {
+            "reply_template": reply,
+        },
+        "reply": {
+            "text_template": reply,
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "exact_example",
+        },
+    }
+
+
+def built_in_admin_maintenance_intent(*, intent_id: str) -> dict[str, Any]:
+    now = utc_now_iso()
+    intent_name, _example, _reply = ADMIN_MAINTENANCE_INTENT_CONFIG[intent_id]
+    return {
+        "intent_id": intent_id,
+        "intent_name": intent_name,
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "disabled",
+        "privacy_class": "admin_maintenance",
+        "access_scope": "admin",
+        "definition": admin_maintenance_intent_definition(intent_id=intent_id),
+        "constraints": {
+            "requires_operational_mqtt": False,
+            "dispatch_side_effect": intent_id,
+            "speaker_identity_policy": "required",
+            "admin_maintenance_action": True,
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "admin_maintenance",
+            "owned_by": "voice_node",
+            "identity_classification": "admin_maintenance",
+            "speaker_identity_policy": "required",
+            "admin_maintenance_action": True,
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def normalize_speaker_identity_policy(value: str | None) -> str:
     policy = str(value or "").strip().lower()
     if policy in SPEAKER_IDENTITY_POLICIES:
@@ -994,6 +1089,10 @@ class VoiceIntentStateStore:
                     VoiceIntentRecord.model_validate(built_in_test_followup_intent()),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="yes")),
                     VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="no")),
+                    *[
+                        VoiceIntentRecord.model_validate(built_in_admin_maintenance_intent(intent_id=intent_id))
+                        for intent_id in ADMIN_MAINTENANCE_INTENT_IDS
+                    ],
                 ],
                 updated_at=utc_now_iso(),
             )
@@ -1052,6 +1151,10 @@ class VoiceIntentStateStore:
         if "voice.confirm.no" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_confirmation_intent(response="no")))
             seeded = True
+        for intent_id in ADMIN_MAINTENANCE_INTENT_IDS:
+            if intent_id not in existing_ids:
+                state.intents.append(VoiceIntentRecord.model_validate(built_in_admin_maintenance_intent(intent_id=intent_id)))
+                seeded = True
         return seeded
 
     def _normalize_speaker_identity_policies(self, state: VoiceIntentState) -> bool:

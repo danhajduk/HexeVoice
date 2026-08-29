@@ -34,6 +34,9 @@ import soxr
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant import AssistantTurnService
 from hexevoice.engine_http import client_for_engine
+from hexevoice.persistence.voice_admin_maintenance import AdminMaintenanceDecision
+from hexevoice.persistence.voice_admin_maintenance import VoiceAdminMaintenanceStore
+from hexevoice.persistence.voice_admin_maintenance import redact_spoken_passcodes
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
 from hexevoice.voice.audio_quality import AudioQualityResult
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
@@ -1735,6 +1738,7 @@ class VoiceTurnPipeline:
         privacy_mode_enabled: bool = False,
         endpoint_audience_policies: dict[str, dict[str, Any]] | None = None,
         endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
+        admin_maintenance_store: VoiceAdminMaintenanceStore | None = None,
     ) -> None:
         self._assistant_service = assistant_service
         self._stt_adapter = stt_adapter or DeterministicSpeechToTextAdapter()
@@ -1749,6 +1753,7 @@ class VoiceTurnPipeline:
         self._privacy_mode_enabled = privacy_mode_enabled
         self._endpoint_audience_policies = dict(endpoint_audience_policies or {})
         self._endpoint_audience_policy_provider = endpoint_audience_policy_provider
+        self._admin_maintenance_store = admin_maintenance_store
 
     def complete_turn(self, audio: VoiceTurnAudioSummary) -> VoiceTurnResult:
         turn_started_at = time.perf_counter()
@@ -1780,7 +1785,7 @@ class VoiceTurnPipeline:
             confidence=transcript.confidence,
             duration_ms=transcript.duration_ms,
             text_chars=len(transcript.text or ""),
-            transcript_text=transcript.text,
+            transcript_text=redact_spoken_passcodes(transcript.text),
             error=transcript.error,
             chunk_count=audio.chunk_count,
             stt_ms=stt_ms,
@@ -1862,12 +1867,12 @@ class VoiceTurnPipeline:
                     confidence=fallback.confidence,
                     duration_ms=fallback.duration_ms,
                     text_chars=len(fallback.text or ""),
-                    transcript_text=fallback.text,
+                    transcript_text=redact_spoken_passcodes(fallback.text),
                     error=fallback.error,
                     chunk_count=audio.chunk_count,
                     stt_ms=fallback_ms,
                     primary_model=transcript.model,
-                    primary_text=transcript.text,
+                    primary_text=redact_spoken_passcodes(transcript.text),
                 )
                 transcript = fallback
                 speaker_policy = self._speaker_identity_policy(text=transcript.text, command=None, metadata=None)
@@ -1956,6 +1961,27 @@ class VoiceTurnPipeline:
             speaker_policy=speaker_policy,
             metadata=assistant_response.provider_metadata,
         )
+        admin_decision = self._admin_maintenance_decision(
+            text=transcript.text,
+            assistant_response=assistant_response,
+            speaker_identity=speaker_identity,
+            audio_quality=audio_quality,
+        )
+        if admin_decision is not None:
+            redacted_transcript = redact_spoken_passcodes(transcript.text)
+            transcript = replace(transcript, text=redacted_transcript)
+            if not admin_decision.allowed:
+                assistant_response = self._admin_maintenance_refusal_response(
+                    audio=audio,
+                    transcript_text=redacted_transcript,
+                    decision=admin_decision,
+                )
+            else:
+                assistant_response = self._assistant_response_with_admin_maintenance_metadata(
+                    assistant_response,
+                    decision=admin_decision,
+                    heard_text=redacted_transcript,
+                )
         final_audience_decision = self._audience_policy_decision(
             audio=audio,
             text=transcript.text,
@@ -1966,9 +1992,12 @@ class VoiceTurnPipeline:
         if final_audience_decision["blocked"]:
             assistant_response = self._audience_policy_refusal_response(
                 audio=audio,
-                transcript_text=transcript.text,
+                transcript_text=redact_spoken_passcodes(transcript.text),
                 decision=final_audience_decision,
             )
+        transcript = replace(transcript, text=redact_spoken_passcodes(transcript.text))
+        if assistant_response.heard_text != transcript.text:
+            assistant_response = assistant_response.model_copy(update={"heard_text": transcript.text})
         assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
         tts_started_at = time.perf_counter()
         tts = self._tts_adapter.synthesize(
@@ -2016,7 +2045,7 @@ class VoiceTurnPipeline:
             confidence=transcript.confidence,
             duration_ms=transcript.duration_ms,
             text_chars=len(transcript.text or ""),
-            transcript_text=transcript.text,
+            transcript_text=redact_spoken_passcodes(transcript.text),
             error=transcript.error,
             chunk_count=audio.chunk_count,
             stt_ms=stt_ms,
@@ -2359,6 +2388,72 @@ class VoiceTurnPipeline:
                 "reason": decision.get("reason"),
                 "audience_class": audience_class,
             },
+        )
+
+    def _admin_maintenance_decision(
+        self,
+        *,
+        text: str | None,
+        assistant_response: AssistantTurnResponse,
+        speaker_identity: SpeakerIdentityResult | None,
+        audio_quality: AudioQualityResult | None,
+    ) -> AdminMaintenanceDecision | None:
+        intent_id = _admin_maintenance_intent_id(assistant_response)
+        if intent_id is None:
+            return None
+        if self._admin_maintenance_store is None:
+            return AdminMaintenanceDecision(False, "admin_maintenance_store_unavailable", intent_id)
+        return self._admin_maintenance_store.evaluate(
+            text=text or "",
+            intent_id=intent_id,
+            speaker_identity=speaker_identity.as_context() if speaker_identity is not None else None,
+            audio_quality=audio_quality.as_context() if audio_quality is not None else None,
+        )
+
+    def _admin_maintenance_refusal_response(
+        self,
+        *,
+        audio: VoiceTurnAudioSummary,
+        transcript_text: str | None,
+        decision: AdminMaintenanceDecision,
+    ) -> AssistantTurnResponse:
+        reply = "Admin maintenance was not allowed."
+        return AssistantTurnResponse(
+            endpoint_id=audio.endpoint_id,
+            session_id=audio.session_id,
+            heard_text=transcript_text or "",
+            reply_text=reply,
+            spoken_text=reply,
+            handled_locally=True,
+            command="voice.admin_maintenance.refused",
+            device_state="speaking",
+            provider_id="admin_maintenance_policy",
+            provider_metadata={
+                "admin_maintenance": decision.as_metadata(),
+                "admin_passcode_verified": False,
+            },
+            conversation_followup={
+                "type": "admin_maintenance_refusal",
+                "reason": decision.reason,
+                "intent_id": decision.intent_id,
+            },
+        )
+
+    def _assistant_response_with_admin_maintenance_metadata(
+        self,
+        response: AssistantTurnResponse,
+        *,
+        decision: AdminMaintenanceDecision,
+        heard_text: str,
+    ) -> AssistantTurnResponse:
+        metadata = dict(response.provider_metadata or {})
+        metadata["admin_maintenance"] = decision.as_metadata()
+        metadata["admin_passcode_verified"] = True
+        return response.model_copy(
+            update={
+                "heard_text": heard_text,
+                "provider_metadata": metadata,
+            }
         )
 
     def _assistant_request(
@@ -2707,6 +2802,24 @@ def _restricted_content_reason(
     return None
 
 
+def _admin_maintenance_intent_id(response: AssistantTurnResponse) -> str | None:
+    command = str(response.command or "").strip()
+    if command.startswith("admin."):
+        return command
+    metadata = response.provider_metadata if isinstance(response.provider_metadata, dict) else {}
+    voice_intent = metadata.get("voice_intent") if isinstance(metadata.get("voice_intent"), dict) else {}
+    if not isinstance(voice_intent, dict):
+        return None
+    intent_id = str(voice_intent.get("intent_id") or "").strip()
+    intent_metadata = voice_intent.get("metadata") if isinstance(voice_intent.get("metadata"), dict) else {}
+    intent_constraints = voice_intent.get("constraints") if isinstance(voice_intent.get("constraints"), dict) else {}
+    if intent_id.startswith("admin."):
+        return intent_id
+    if bool(intent_metadata.get("admin_maintenance_action")) or bool(intent_constraints.get("admin_maintenance_action")):
+        return intent_id or command or None
+    return None
+
+
 def _metadata_flag(metadata: dict[str, Any] | None, key: str) -> bool:
     if not isinstance(metadata, dict):
         return False
@@ -2770,6 +2883,7 @@ def build_voice_turn_pipeline(
     settings: "Settings",
     assistant_service: AssistantTurnService,
     endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
+    admin_maintenance_store: VoiceAdminMaintenanceStore | None = None,
 ) -> VoiceTurnPipeline:
     stt_adapter: SpeechToTextAdapter | None = None
     tts_adapter: TextToSpeechAdapter | None = None
@@ -2856,4 +2970,5 @@ def build_voice_turn_pipeline(
         speaker_id_personalization_enabled=settings.voice_speaker_id_personalization_enabled,
         privacy_mode_enabled=settings.voice_privacy_mode_enabled,
         endpoint_audience_policy_provider=endpoint_audience_policy_provider,
+        admin_maintenance_store=admin_maintenance_store,
     )

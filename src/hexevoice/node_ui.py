@@ -480,6 +480,33 @@ def invoke_intent_action() -> dict[str, Any]:
     }
 
 
+def admin_maintenance_update_action() -> dict[str, Any]:
+    return {
+        "id": "update_admin_maintenance",
+        "label": "Save Admin Voice Maintenance",
+        "method": "PATCH",
+        "endpoint": "/api/voice/admin-maintenance",
+        "fields": [
+            {"id": "enabled", "label": "Enabled", "type": "boolean"},
+            {"id": "admin_speaker_public_ids", "label": "Admin Speaker IDs", "type": "string_list"},
+            {"id": "enabled_intents", "label": "Enabled Intents", "type": "boolean_map"},
+        ],
+    }
+
+
+def admin_maintenance_passcode_action() -> dict[str, Any]:
+    return {
+        "id": "rotate_admin_maintenance_passcode",
+        "label": "Rotate Spoken Passcode",
+        "method": "POST",
+        "endpoint": "/api/voice/admin-maintenance/passcode",
+        "fields": [
+            {"id": "passcode", "label": "4 Digit Passcode", "type": "password", "min_length": 4, "max_length": 4},
+        ],
+        "confirmation": {"required": True, "message": "Rotate the spoken admin maintenance passcode?"},
+    }
+
+
 def manifest(settings: Settings, node_status: dict[str, Any]) -> dict[str, Any]:
     node_id = text(node_status.get("node_id"), settings.node_name)
     display_name = text(node_status.get("node_name"), settings.node_name)
@@ -1133,6 +1160,54 @@ def intent_actions(snapshot: dict[str, Any]) -> dict[str, Any]:
                 {"id": "invoke_intent", "label": "Invoke Intent", "enabled": has_active, "tone": "warning"},
             ],
         }
+    ]
+    return card
+
+
+def admin_maintenance_controls(status: dict[str, Any], snapshot: dict[str, Any]) -> dict[str, Any]:
+    intents = snapshot.get("intents") if isinstance(snapshot.get("intents"), list) else []
+    enabled_intents = status.get("enabled_intents") if isinstance(status.get("enabled_intents"), dict) else {}
+    admin_intents = []
+    for intent in intents:
+        if not isinstance(intent, dict):
+            continue
+        metadata = intent.get("metadata") if isinstance(intent.get("metadata"), dict) else {}
+        if metadata.get("family") != "admin_maintenance":
+            continue
+        intent_id = str(intent.get("intent_id") or "")
+        admin_intents.append(
+            {
+                "id": intent_id,
+                "name": intent.get("intent_name") or intent_id,
+                "status": intent.get("status"),
+                "enabled": bool(enabled_intents.get(intent_id)),
+                "speaker_identity_policy": metadata.get("speaker_identity_policy"),
+                "tone": "success" if intent.get("status") == "active" else "neutral",
+            }
+        )
+    card = base_card("settings_panel")
+    card["state"] = {
+        "enabled": bool(status.get("enabled")),
+        "passcode_configured": bool(status.get("passcode_configured")),
+        "passcode_storage": status.get("passcode_storage"),
+        "locked": bool(status.get("locked")),
+        "locked_until": status.get("locked_until"),
+        "failed_attempts": status.get("failed_attempts"),
+        "admin_speaker_public_ids": status.get("admin_speaker_public_ids") if isinstance(status.get("admin_speaker_public_ids"), list) else [],
+    }
+    card["facts"] = [
+        {"id": "enabled", "label": "Enabled", "value": yes_no(status.get("enabled"))},
+        {"id": "passcode_configured", "label": "Passcode", "value": "configured" if status.get("passcode_configured") else "missing"},
+        {"id": "admin_speakers", "label": "Admin Speakers", "value": str(len(card["state"]["admin_speaker_public_ids"]))},
+        {"id": "enabled_intents", "label": "Enabled Intents", "value": str(len([item for item in admin_intents if item["enabled"]]))},
+        {"id": "locked", "label": "Locked", "value": yes_no(status.get("locked"))},
+    ]
+    card["intent_toggles"] = admin_intents
+    card["fields"] = [
+        {"id": "enabled", "label": "Enabled", "type": "boolean", "value": card["state"]["enabled"]},
+        {"id": "admin_speaker_public_ids", "label": "Admin Speaker IDs", "type": "string_list", "value": card["state"]["admin_speaker_public_ids"]},
+        {"id": "enabled_intents", "label": "Enabled Intents", "type": "boolean_map", "value": enabled_intents, "options": admin_intents},
+        {"id": "passcode", "label": "4 Digit Passcode", "type": "password", "value": None},
     ]
     return card
 

@@ -131,8 +131,10 @@ from hexevoice.onboarding.session_start import OnboardingSessionStartService
 from hexevoice.onboarding.service import OnboardingStateService
 from hexevoice.onboarding.trust_activation import TrustActivationService
 from hexevoice.persistence import (
+    ADMIN_MAINTENANCE_INTENT_IDS,
     EndpointRegistryStore,
     OnboardingStateStore,
+    VoiceAdminMaintenanceStore,
     VoicePlacementCalibrationStore,
     VoiceQualityObservationLog,
     VoiceSessionHistoryStore,
@@ -295,6 +297,28 @@ def cleanup_voice_artifacts_once(*, tts_audio_service, wake_recorder, micro_vad_
     if micro_vad_chunk_recorder is not None:
         result["micro_vad_chunks"] = micro_vad_chunk_recorder.cleanup_expired()
     return result
+
+
+def _sync_admin_maintenance_intent_lifecycle(
+    *,
+    voice_intent_registry: VoiceIntentRegistry,
+    status: dict[str, object],
+) -> None:
+    enabled = bool(status.get("enabled"))
+    enabled_intents = status.get("enabled_intents") if isinstance(status.get("enabled_intents"), dict) else {}
+    for intent_id in ADMIN_MAINTENANCE_INTENT_IDS:
+        desired_status = "active" if enabled and bool(enabled_intents.get(intent_id)) else "disabled"
+        try:
+            current = voice_intent_registry.get_intent(intent_id=intent_id)
+            if current.get("status") == desired_status:
+                continue
+            voice_intent_registry.transition_intent(
+                intent_id=intent_id,
+                status=desired_status,
+                reason="admin_maintenance_settings_sync",
+            )
+        except ValueError:
+            continue
 
 
 def _voice_privacy_blocked_features(enabled: bool) -> list[str]:
@@ -483,12 +507,19 @@ def create_app(
     voice_placement_calibration_store = VoicePlacementCalibrationStore(
         path=app_settings.resolved_voice_placement_calibration_path(),
     )
+    voice_admin_maintenance_store = VoiceAdminMaintenanceStore(
+        path=app_settings.resolved_voice_admin_maintenance_path(),
+    )
     voice_quality_observation_log = VoiceQualityObservationLog(
         directory=app_settings.resolved_voice_quality_observation_dir(),
         enabled=app_settings.voice_quality_observation_log_enabled and not app_settings.voice_privacy_mode_enabled,
         transcript_mode=app_settings.voice_quality_observation_transcript_mode,
     )
     voice_intent_registry = VoiceIntentRegistry(store=voice_intent_store)
+    _sync_admin_maintenance_intent_lifecycle(
+        voice_intent_registry=voice_intent_registry,
+        status=voice_admin_maintenance_store.status(),
+    )
     onboarding_state_service = OnboardingStateService(onboarding_state_store=onboarding_state_store)
     node_migration_service = NodeMigrationService(settings=app_settings)
     setup_bootstrap_status_service = SetupBootstrapStatusService(settings=app_settings)
@@ -576,6 +607,7 @@ def create_app(
         settings=app_settings,
         assistant_service=assistant_service,
         endpoint_audience_policy_provider=endpoint_audience_policy,
+        admin_maintenance_store=voice_admin_maintenance_store,
     )
     tts_audio_service = TtsAudioService(settings=app_settings, voice_turn_pipeline=voice_turn_pipeline)
     tts_runtime_settings_service = TtsRuntimeSettingsService(settings=app_settings)
@@ -1114,6 +1146,38 @@ def create_app(
     @app.post("/api/voice/quality-observations/cleanup")
     async def voice_quality_observations_cleanup() -> dict[str, object]:
         return {"schema_version": 1, "cleanup": voice_session_manager.cleanup_voice_quality_observations()}
+
+    @app.get("/api/voice/admin-maintenance")
+    async def voice_admin_maintenance_status() -> dict[str, object]:
+        return {"schema_version": 1, "status": voice_admin_maintenance_store.status()}
+
+    @app.patch("/api/voice/admin-maintenance")
+    async def voice_admin_maintenance_update(payload: dict[str, object]) -> dict[str, object]:
+        admin_speaker_public_ids = payload.get("admin_speaker_public_ids")
+        enabled_intents = payload.get("enabled_intents")
+        try:
+            status = voice_admin_maintenance_store.update_settings(
+                enabled=payload.get("enabled") if "enabled" in payload else None,
+                admin_speaker_public_ids=admin_speaker_public_ids if isinstance(admin_speaker_public_ids, list) else None,
+                enabled_intents=enabled_intents if isinstance(enabled_intents, dict) else None,
+            )
+            _sync_admin_maintenance_intent_lifecycle(
+                voice_intent_registry=voice_intent_registry,
+                status=status,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        node_ui_page_cache.invalidate()
+        return {"schema_version": 1, "status": status}
+
+    @app.post("/api/voice/admin-maintenance/passcode")
+    async def voice_admin_maintenance_passcode(payload: dict[str, object]) -> dict[str, object]:
+        try:
+            status = voice_admin_maintenance_store.set_passcode(str(payload.get("passcode") or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        node_ui_page_cache.invalidate()
+        return {"schema_version": 1, "status": status}
 
     @app.post("/api/assistant/turn", response_model=AssistantTurnResponse)
     async def assistant_turn(payload: AssistantTurnRequest) -> AssistantTurnResponse:
@@ -2062,6 +2126,12 @@ def create_app(
     def node_ui_voice_intent_actions_payload() -> dict:
         return node_ui.intent_actions(voice_intent_registry.snapshot())
 
+    def node_ui_voice_admin_maintenance_payload() -> dict:
+        return node_ui.admin_maintenance_controls(
+            voice_admin_maintenance_store.status(),
+            voice_intent_registry.snapshot(),
+        )
+
     async def node_ui_voice_tts_payload() -> dict:
         return node_ui.tts_runtime(await node_ui_tts_settings(), voice_session_manager.status())
 
@@ -2363,6 +2433,16 @@ def create_app(
                     actions=[node_ui.test_intent_action(), node_ui.invoke_intent_action()],
                     refresh=node_ui.MANUAL_REFRESH,
                 ),
+                node_ui.page_card(
+                    "voice.admin_maintenance",
+                    "Admin Voice Maintenance",
+                    node_ui_voice_admin_maintenance_payload(),
+                    actions=[
+                        node_ui.admin_maintenance_update_action(),
+                        node_ui.admin_maintenance_passcode_action(),
+                    ],
+                    refresh=node_ui.MANUAL_REFRESH,
+                ),
             ],
         )
 
@@ -2470,6 +2550,10 @@ def create_app(
     @app.get("/api/node/ui/voice/intent-actions")
     async def node_ui_voice_intent_actions() -> dict:
         return node_ui_voice_intent_actions_payload()
+
+    @app.get("/api/node/ui/voice/admin-maintenance")
+    async def node_ui_voice_admin_maintenance() -> dict:
+        return node_ui_voice_admin_maintenance_payload()
 
     @app.get("/api/node/ui/voice/tts")
     async def node_ui_voice_tts() -> dict:
