@@ -1286,6 +1286,7 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(playback_interrupt, "stop_word", "stop");
   cJSON_AddStringToObject(playback_interrupt, "stop_event_type", "playback.stop");
   cJSON_AddStringToObject(playback_interrupt, "stop_reason", "voice_stop");
+  cJSON_AddBoolToObject(playback_interrupt, "local_keyword_configured", hexe::voice::playback_stop_word_experimental_provider_configured());
   cJSON_AddBoolToObject(playback_interrupt, "local_keyword_available", hexe::voice::playback_stop_word_on_device_available());
   if (!hexe::voice::playback_stop_word_on_device_available()) {
     cJSON_AddStringToObject(playback_interrupt, "local_keyword_reason", hexe::voice::playback_stop_word_unavailable_reason());
@@ -1386,12 +1387,25 @@ std::string endpoint_capabilities_json() {
         state.tts_playback_active && !state.mic_paused_for_playback ? "active" : "ready");
     cJSON *playback_stop_word = cJSON_GetObjectItem(modules, "playback_stop_word");
     if (cJSON_IsObject(playback_stop_word)) {
+      const hexe::voice::LocalKeywordModel &stop_model = hexe::voice::playback_stop_word_model();
       cJSON_AddBoolToObject(playback_stop_word, "backend_available", true);
+      cJSON_AddBoolToObject(playback_stop_word, "experimental_provider_configured", hexe::voice::playback_stop_word_experimental_provider_configured());
       cJSON_AddStringToObject(playback_stop_word, "stop_word", "stop");
       cJSON_AddStringToObject(playback_stop_word, "stop_event_type", "playback.stop");
       cJSON_AddStringToObject(playback_stop_word, "stop_reason", "voice_stop");
       cJSON_AddBoolToObject(playback_stop_word, "local_keyword_available", hexe::voice::playback_stop_word_on_device_available());
       cJSON_AddStringToObject(playback_stop_word, "local_keyword_reason", hexe::voice::playback_stop_word_unavailable_reason());
+      cJSON *stop_keyword_model = cJSON_AddObjectToObject(playback_stop_word, "keyword_model");
+      if (stop_keyword_model != nullptr) {
+        cJSON_AddStringToObject(stop_keyword_model, "id", stop_model.id);
+        cJSON_AddStringToObject(stop_keyword_model, "wake_word", stop_model.wake_word);
+        cJSON_AddStringToObject(stop_keyword_model, "alias", stop_model.alias);
+        cJSON_AddStringToObject(stop_keyword_model, "source", stop_model.source);
+        cJSON_AddStringToObject(stop_keyword_model, "trained_languages", stop_model.trained_languages);
+        cJSON_AddStringToObject(stop_keyword_model, "author", stop_model.author);
+        cJSON_AddNumberToObject(stop_keyword_model, "feature_step_size_ms", stop_model.feature_step_size_ms);
+        cJSON_AddNumberToObject(stop_keyword_model, "tensor_arena_size", stop_model.tensor_arena_size);
+      }
     }
     add_module_status(
         modules,

@@ -277,3 +277,4 @@ Task 248: Add safe profile-learning eligibility policy without automatic learnin
 Task 249: Add global voice privacy mode and feature kill switch - Completed on 08/29/2026 14:37
 Task 250: Add backend wake-candidate election protocol and simulated multi-endpoint arbitration - Completed on 08/29/2026 15:13
 Task 259: Add experimental endpoint microWakeWord wake provider using the official Alexa model for the initial Hexe-compatible wake path - Completed on 08/29/2026 16:45
+Task 260: Add experimental on-device Stop keyword detection for playback/session cancellation - Completed on 08/29/2026 16:48

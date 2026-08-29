@@ -210,7 +210,9 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert "playback_stop_word_on_device_available" in wake_header
     assert "playback_stop_word_active" in wake_header
     assert "playback_stop_word_unavailable_reason" in wake_header
-    assert '"missing_on_device_keyword_engine"' in wake_source
+    assert '"backend_stt_interrupt_with_stop_keyword_manifest"' in wake_source
+    assert '"missing_micro_wake_word_inference_engine"' in wake_source
+    assert '"missing_stop_keyword_model"' in wake_source
     assert '"playback_interrupt"' in backend_source
     assert '"playback_stop_word"' in backend_source
     assert '"available", true' in backend_source
@@ -219,8 +221,10 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert '"stop_event_type", "playback.stop"' in backend_source
     assert '"stop_reason", "voice_stop"' in backend_source
     assert '"backend_available", true' in backend_source
+    assert '"local_keyword_configured"' in backend_source
     assert '"local_keyword_available"' in backend_source
     assert '"local_keyword_reason"' in backend_source
+    assert '"keyword_model"' in backend_source
     assert '"reason", hexe::voice::playback_stop_word_unavailable_reason()' not in backend_source
     assert 'stop_playback("voice_stop")' not in tts_sources
     assert 'send_playback_event(\n        "playback.stop"' in tts_sources
@@ -319,6 +323,29 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
         assert "inspect_wake_word_frame" in source
         assert "WakeCandidateMetrics candidate" in source
         assert "candidate.endpoint_audio_profile_version = \"firmware_audio_v1\"" in source
+
+
+def test_firmware_has_experimental_stop_keyword_provider_hook():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    audio_source = FIRMWARE_AUDIO.read_text()
+    pe_audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
+
+    assert "inspect_playback_stop_word_frame" in wake_header
+    assert "playback_stop_word_model" in wake_header
+    assert "playback_stop_word_experimental_provider_configured" in wake_header
+    assert '"stop"' in wake_source
+    assert '"Stop"' in wake_source
+    assert '"endpoint_stop_keyword_experimental"' in wake_source
+    assert 'cJSON_AddStringToObject(stop_keyword_model, "id", stop_model.id)' in backend_source
+    assert 'cJSON_AddStringToObject(stop_keyword_model, "wake_word", stop_model.wake_word)' in backend_source
+    assert 'cJSON_AddStringToObject(stop_keyword_model, "alias", stop_model.alias)' in backend_source
+    assert 'cJSON_AddNumberToObject(stop_keyword_model, "tensor_arena_size", stop_model.tensor_arena_size)' in backend_source
+    for source in (audio_source, pe_audio_source):
+        assert "inspect_playback_stop_word_frame" in source
+        assert 'stop_playback("voice_stop")' in source
+        assert 'cancel_active_session("voice_stop")' in source
 
 
 def test_firmware_honors_wake_election_stand_down_without_command_ack():

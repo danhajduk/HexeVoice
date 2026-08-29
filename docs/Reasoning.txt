@@ -520,3 +520,9 @@ Chosen fix: Configure the official ESPHome `alexa` v2 model as the primary local
 What changed: Added local keyword model/detection structs, Alexa model metadata, heartbeat model capability fields, and per-frame audio hooks that can submit wake candidates through the existing election protocol once inference is linked.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py::test_firmware_scaffold_modules_are_explicit_status_providers tests/test_firmware_voice_envelope.py::test_firmware_wake_election_candidate_wait_and_fallback_contract tests/test_firmware_voice_envelope.py::test_firmware_has_experimental_alexa_micro_wake_word_provider_hook tests/test_firmware_voice_envelope.py::test_firmware_heartbeat_reports_wake_election_capabilities` passed.
 ###########
+Task #260
+Step objective: Add experimental on-device Stop keyword detection hook for playback and session cancellation.
+Chosen fix: Reuse the local keyword provider boundary for Stop while keeping backend stop-only STT as the active fallback until a native inference engine and trained Stop model are linked.
+What changed: Added Stop keyword model metadata, heartbeat capability fields, `inspect_playback_stop_word_frame(...)`, and board audio hooks that can call `stop_playback("voice_stop")` or `cancel_active_session("voice_stop")` when future local detection fires.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py::test_firmware_reports_playback_stop_word_capability_blocker tests/test_firmware_voice_envelope.py::test_firmware_has_experimental_stop_keyword_provider_hook tests/test_firmware_voice_envelope.py::test_firmware_has_source_agnostic_playback_stop_events tests/test_firmware_voice_envelope.py::test_firmware_replay_can_loop_audio_until_playback_stop` passed.
+###########

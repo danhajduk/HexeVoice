@@ -27,6 +27,22 @@ constexpr hexe::voice::LocalKeywordModel kAlexaWakeModel = {
     10,
     22348,
 };
+
+constexpr hexe::voice::LocalKeywordModel kStopKeywordModel = {
+    "stop",
+    "Stop",
+    "Stop",
+    "hexe_endpoint_local_keyword",
+    "",
+    "",
+    "en",
+    "Hexe",
+    "",
+    0.0f,
+    0,
+    10,
+    0,
+};
 }
 
 namespace hexe::voice {
@@ -66,6 +82,26 @@ LocalKeywordDetection inspect_wake_word_frame(
   return {};
 }
 
+LocalKeywordDetection inspect_playback_stop_word_frame(
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    uint32_t noise_floor_level,
+    uint32_t speech_peak_level,
+    bool vad_speaking) {
+  (void)samples;
+  (void)sample_count;
+  (void)level;
+  (void)noise_floor_level;
+  (void)speech_peak_level;
+  (void)vad_speaking;
+  if (!playback_stop_word_on_device_available()) {
+    return {};
+  }
+  // The Stop keyword shares the local keyword hook but remains inactive until a trained model is linked.
+  return {};
+}
+
 const char *wake_word_runtime_mode() {
   return wake_word_on_device_available() ? "endpoint_micro_wake_word_experimental" : "backend_streaming_with_micro_wake_word_manifest";
 }
@@ -102,8 +138,16 @@ const char *wake_word_unavailable_reason() {
   return wake_word_on_device_available() ? "available" : "missing_micro_wake_word_inference_engine";
 }
 
+const LocalKeywordModel &playback_stop_word_model() {
+  return kStopKeywordModel;
+}
+
+bool playback_stop_word_experimental_provider_configured() {
+  return true;
+}
+
 const char *playback_stop_word_runtime_mode() {
-  return "unavailable";
+  return playback_stop_word_on_device_available() ? "endpoint_stop_keyword_experimental" : "backend_stt_interrupt_with_stop_keyword_manifest";
 }
 
 bool playback_stop_word_on_device_available() {
@@ -115,7 +159,10 @@ bool playback_stop_word_active() {
 }
 
 const char *playback_stop_word_unavailable_reason() {
-  return "missing_on_device_keyword_engine";
+  if (!kMicroWakeWordEngineLinked) {
+    return "missing_micro_wake_word_inference_engine";
+  }
+  return "missing_stop_keyword_model";
 }
 
 }  // namespace hexe::voice

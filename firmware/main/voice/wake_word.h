@@ -37,6 +37,13 @@ LocalKeywordDetection inspect_wake_word_frame(
     uint32_t noise_floor_level,
     uint32_t speech_peak_level,
     bool vad_speaking);
+LocalKeywordDetection inspect_playback_stop_word_frame(
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    uint32_t noise_floor_level,
+    uint32_t speech_peak_level,
+    bool vad_speaking);
 const char *wake_word_runtime_mode();
 bool wake_word_on_device_available();
 bool wake_word_backend_owned();
@@ -46,6 +53,8 @@ const char *wake_word_candidate_source();
 const LocalKeywordModel &wake_word_primary_model();
 bool wake_word_experimental_provider_configured();
 const char *wake_word_unavailable_reason();
+const LocalKeywordModel &playback_stop_word_model();
+bool playback_stop_word_experimental_provider_configured();
 const char *playback_stop_word_runtime_mode();
 bool playback_stop_word_on_device_available();
 bool playback_stop_word_active();

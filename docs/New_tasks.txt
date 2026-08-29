@@ -52,7 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 260: Add experimental on-device Stop keyword detection for playback/session cancellation
 [STOP]
 [TODO] Task 261: Define portable firmware board-profile config schema for YAML/JSON-driven hardware bring-up
 [TODO] Task 262: Refactor firmware board support behind config-driven portable hardware adapters

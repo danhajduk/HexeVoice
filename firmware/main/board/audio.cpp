@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 #include "system/settings.h"
 #include "voice/backend_client.h"
+#include "voice/tts_player.h"
 #include "voice/wake_word.h"
 
 namespace {
@@ -202,6 +203,20 @@ void vad_task(void *arg) {
       candidate.speech_peak_level = level;
       candidate.endpoint_audio_profile_version = "firmware_audio_v1";
       hexe::voice::submit_wake_candidate(candidate);
+    }
+    const hexe::voice::LocalKeywordDetection stop_detection = hexe::voice::inspect_playback_stop_word_frame(
+        samples,
+        kFrameSamples,
+        level,
+        level,
+        level,
+        frame_has_voice);
+    if (stop_detection.detected) {
+      if (hexe::voice::tts_playback_active()) {
+        hexe::voice::stop_playback("voice_stop");
+      } else {
+        hexe::voice::cancel_active_session("voice_stop");
+      }
     }
     hexe::voice::submit_audio_frame(samples, kFrameSamples, level, level, level, frame_has_voice, &micro_vad);
 

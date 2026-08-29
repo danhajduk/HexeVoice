@@ -99,3 +99,9 @@ and returns to idle/wake-armed without sending full utterance audio.
 privacy-safe transport diagnostics, not raw audio or environment classification. Backend quality analysis prefers
 these endpoint-provided ambient/noise-floor metrics when present and falls back to backend-derived in-memory pre-roll
 analysis for older firmware that omits them.
+
+Playback interruption remains backend-owned by default through stop-only STT and backend `playback.stop` commands.
+Firmware also exposes an experimental local Stop keyword hook under `capabilities.firmware.modules.playback_stop_word`
+and `capabilities.audio.input.playback_interrupt`. Until a native inference engine and trained Stop model are linked,
+the endpoint reports the local keyword as configured but unavailable, with a `local_keyword_reason`, while keeping
+`backend_stt_interrupt` active.
