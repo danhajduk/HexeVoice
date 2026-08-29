@@ -1593,6 +1593,26 @@
   min-width: 0;
 }
 
+.runtime-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.runtime-component-grid {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.runtime-component-facts .fact-grid-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .voice-endpoint-status-table .endpoint-health-column {
   width: 28px;
   padding-right: 8px;
@@ -2636,6 +2656,8 @@ select.field-input {
   .voice-endpoint-top,
   .status-grid,
   .fact-grid,
+  .runtime-summary-grid,
+  .runtime-component-grid,
   .intent-summary-grid,
   .intent-main-layout,
   .intent-filter-row,

@@ -510,12 +510,14 @@ restart-required. A successful `tts` or `piper_tts` restart through the service
 proxy clears that flag and records `restart_applied_at` in the runtime settings.
 
 `GET /api/services/status` also exposes runtime page metadata for the operator
-UI: Backend, STT, and TTS component health, per-component CPU/memory usage where
-the runtime can observe it, supervisor registration status, and whether a
-component has a supported restart target. In-process STT reports backend-process
-resource usage. External faster-whisper STT and Piper TTS report Docker
-container usage when enabled. The same status payload includes process IDs for
-monitored services where available.
+UI. The Runtime page renders the full component list, including Backend, STT,
+Wake Word, TTS, and Speaker ID when present, with supervisor registration,
+running/degraded/restartable summaries, per-component transport facts, restart
+targets, model state, and CPU/memory usage where the runtime can observe it.
+In-process STT reports backend-process resource usage. External faster-whisper
+STT, openWakeWord, and Piper TTS report external process or Docker container
+usage when enabled. The same status payload includes process IDs for monitored
+services where available.
 
 The Voice Endpoint runtime page shows all registered endpoint statuses as
 summary cards. Selecting an endpoint pins it as the active operator target and

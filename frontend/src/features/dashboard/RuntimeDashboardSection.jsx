@@ -5,6 +5,24 @@ function text(value, fallback = "unknown") {
   return value === null || value === undefined || value === "" ? fallback : String(value);
 }
 
+function formatLocalDateTime(value) {
+  if (!value) {
+    return "pending";
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
 function componentModel(component) {
   return component?.model_display_name || component?.model;
 }
@@ -31,6 +49,9 @@ function statusTone(component) {
   if (!component) {
     return "neutral";
   }
+  if (component.status === "disabled") {
+    return "neutral";
+  }
   if (component.healthy === false || ["failed", "error", "not_created", "exited"].includes(component.status)) {
     return "danger";
   }
@@ -55,21 +76,32 @@ function componentMemory(component) {
   return `${bytes(usage.process_memory_rss_bytes)} (${percent(usage.process_memory_percent)})`;
 }
 
-function componentFromPipeline(componentId, servicesStatus, voiceStatus) {
-  const serviceComponents = Array.isArray(servicesStatus?.components) ? servicesStatus.components : [];
-  const fallbackLabels = {
-    backend: "Backend",
-    stt: "STT Engine",
-    tts: "TTS Engine",
-  };
-  const component = serviceComponents.find((item) => item.component_id === componentId) || {
-    component_id: componentId,
-    label: fallbackLabels[componentId] || componentId,
-    status: "pending",
-    healthy: false,
-    restart_supported: false,
-  };
+function componentTransport(component) {
+  if (component?.socket_path) {
+    return component.socket_path;
+  }
+  if (component?.base_url) {
+    return component.base_url;
+  }
+  if (component?.host && component?.port) {
+    return `${component.host}:${component.port}`;
+  }
+  if (component?.port) {
+    return `port ${component.port}`;
+  }
+  return component?.resource_scope || "local";
+}
+
+function componentHealth(component) {
+  if (component?.status === "disabled") {
+    return "disabled";
+  }
+  return component?.healthy === false ? "degraded" : "healthy";
+}
+
+function componentFromPipeline(component, voiceStatus) {
   const pipeline = voiceStatus?.turn_pipeline || {};
+  const componentId = component?.component_id;
   const providerStatus = componentId === "stt" ? pipeline.stt : componentId === "tts" ? pipeline.tts : null;
   if (!providerStatus) {
     return component;
@@ -97,7 +129,7 @@ function RuntimeComponentCard({ component, onRestart, actionBusy }) {
         </div>
         <span className={`status-pill status-pill-${tone}`}>{text(component?.status, "pending")}</span>
       </div>
-      <div className="fact-grid">
+      <div className="fact-grid runtime-component-facts">
         <div className="fact-grid-item">
           <span className="fact-grid-label">Provider</span>
           <span className="fact-grid-value">{text(component?.provider)}</span>
@@ -107,12 +139,16 @@ function RuntimeComponentCard({ component, onRestart, actionBusy }) {
           <span className="fact-grid-value">{text(componentModel(component))}</span>
         </div>
         <div className="fact-grid-item">
-          <span className="fact-grid-label">Restart Target</span>
-          <span className="fact-grid-value">{text(component?.restart_target, "unsupported")}</span>
+          <span className="fact-grid-label">Service</span>
+          <span className="fact-grid-value">{text(component?.service_id || component?.restart_target, "unsupported")}</span>
         </div>
         <div className="fact-grid-item">
           <span className="fact-grid-label">Health</span>
-          <span className="fact-grid-value">{component?.healthy === false ? "degraded" : "healthy"}</span>
+          <span className="fact-grid-value">{componentHealth(component)}</span>
+        </div>
+        <div className="fact-grid-item">
+          <span className="fact-grid-label">Transport</span>
+          <span className="fact-grid-value">{text(componentTransport(component))}</span>
         </div>
         <div className="fact-grid-item">
           <span className="fact-grid-label">CPU</span>
@@ -122,6 +158,21 @@ function RuntimeComponentCard({ component, onRestart, actionBusy }) {
           <span className="fact-grid-label">Memory</span>
           <span className="fact-grid-value">{componentMemory(component)}</span>
         </div>
+        {component?.loaded !== undefined ? (
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Model State</span>
+            <span className="fact-grid-value">
+              {component.loaded ? "loaded" : "cold"}
+              {component.reload_required ? " / reload required" : ""}
+            </span>
+          </div>
+        ) : null}
+        {component?.profiles_count !== undefined && component?.profiles_count !== null ? (
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Profiles</span>
+            <span className="fact-grid-value">{component.profiles_count}</span>
+          </div>
+        ) : null}
       </div>
       {component?.last_error ? <div className="callout callout-danger">{component.last_error}</div> : null}
       {component?.restart_detail ? <div className="callout callout-neutral">{component.restart_detail}</div> : null}
@@ -144,14 +195,26 @@ export function RuntimeDashboardSection({ servicesStatus, voiceStatus, onRefresh
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const components = useMemo(
-    () => [
-      componentFromPipeline("backend", servicesStatus, voiceStatus),
-      componentFromPipeline("stt", servicesStatus, voiceStatus),
-      componentFromPipeline("tts", servicesStatus, voiceStatus),
-    ],
+    () => {
+      const serviceComponents = Array.isArray(servicesStatus?.components) ? servicesStatus.components : [];
+      const fallbackComponents = [
+        { component_id: "backend", label: "Backend", status: "pending", healthy: false, restart_supported: false },
+        { component_id: "stt", label: "STT Engine", status: "pending", healthy: false, restart_supported: false },
+        { component_id: "wake", label: "Wake Word", status: "pending", healthy: false, restart_supported: false },
+        { component_id: "tts", label: "TTS Engine", status: "pending", healthy: false, restart_supported: false },
+        { component_id: "speaker_id", label: "Speaker ID", status: "pending", healthy: false, restart_supported: false },
+      ];
+      return (serviceComponents.length ? serviceComponents : fallbackComponents).map((component) =>
+        componentFromPipeline(component, voiceStatus),
+      );
+    },
     [servicesStatus, voiceStatus],
   );
   const supervisor = servicesStatus?.supervisor || {};
+  const runningCount = components.filter((component) => component.status === "running").length;
+  const degradedCount = components.filter((component) => component.status !== "disabled" && component.healthy === false).length;
+  const restartableCount = components.filter((component) => component.restart_supported).length;
+  const backendComponent = components.find((component) => component.component_id === "backend");
 
   async function handleRestart(target) {
     setBusyTarget(target);
@@ -183,22 +246,34 @@ export function RuntimeDashboardSection({ servicesStatus, voiceStatus, onRefresh
             {supervisor.configured ? "configured" : "not configured"}
           </span>
         </div>
-        <div className="fact-grid">
+        <div className="runtime-summary-grid">
           <div className="fact-grid-item">
-            <span className="fact-grid-label">Registered</span>
-            <span className="fact-grid-value">{supervisor.registered ? "yes" : "no"}</span>
+            <span className="fact-grid-label">Supervisor</span>
+            <span className="fact-grid-value">{supervisor.registered ? "registered" : "not registered"}</span>
           </div>
           <div className="fact-grid-item">
             <span className="fact-grid-label">Last Seen</span>
-            <span className="fact-grid-value">{text(supervisor.last_seen_at, "pending")}</span>
+            <span className="fact-grid-value">{formatLocalDateTime(supervisor.last_seen_at)}</span>
           </div>
           <div className="fact-grid-item">
-            <span className="fact-grid-label">Wake Runtime</span>
-            <span className="fact-grid-value">{text(servicesStatus?.openwakeword)}</span>
+            <span className="fact-grid-label">Running</span>
+            <span className="fact-grid-value">
+              {runningCount}/{components.length}
+            </span>
           </div>
           <div className="fact-grid-item">
-            <span className="fact-grid-label">Piper Runtime</span>
-            <span className="fact-grid-value">{text(servicesStatus?.piper_tts)}</span>
+            <span className="fact-grid-label">Degraded</span>
+            <span className="fact-grid-value">{degradedCount}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Restartable</span>
+            <span className="fact-grid-value">{restartableCount}</span>
+          </div>
+          <div className="fact-grid-item">
+            <span className="fact-grid-label">Backend Load</span>
+            <span className="fact-grid-value">
+              {componentCpu(backendComponent)} / {componentMemory(backendComponent)}
+            </span>
           </div>
         </div>
         {supervisor.last_error ? <div className="callout callout-danger">{supervisor.last_error}</div> : null}
@@ -206,14 +281,16 @@ export function RuntimeDashboardSection({ servicesStatus, voiceStatus, onRefresh
         {error ? <div className="callout callout-danger">{error}</div> : null}
       </section>
 
-      {components.map((component) => (
-        <RuntimeComponentCard
-          key={component.component_id}
-          component={component}
-          actionBusy={busyTarget === component.restart_target}
-          onRestart={handleRestart}
-        />
-      ))}
+      <div className="runtime-component-grid">
+        {components.map((component) => (
+          <RuntimeComponentCard
+            key={component.component_id}
+            component={component}
+            actionBusy={busyTarget === component.restart_target}
+            onRestart={handleRestart}
+          />
+        ))}
+      </div>
     </section>
   );
 }
