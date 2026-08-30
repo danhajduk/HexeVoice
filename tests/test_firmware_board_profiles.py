@@ -36,7 +36,11 @@ def test_committed_firmware_board_profiles_validate():
         capture_output=True,
     )
 
-    assert result.stdout.strip() == "Validated 5 board profile(s)."
+    assert result.stdout.strip() == "Validated 4 board profile(s)."
+
+
+def test_retired_xvf3800_xiao_s3_profile_is_not_committed():
+    assert not (PROFILE_ROOT / "xvf3800_xiao_s3").exists()
 
 
 def test_board_profile_validator_accepts_json_profiles(tmp_path):
@@ -88,7 +92,6 @@ def test_board_profiles_separate_hardware_dsp_vad_from_firmware_vad():
     }
 
     assert profiles["ha_voice_pe"]["audio"]["input"]["dsp"]["vad"] is True
-    assert profiles["xvf3800_xiao_s3"]["audio"]["input"]["dsp"]["vad"] is True
     assert profiles["esp_box_3"]["audio"]["input"]["dsp"]["vad"] is False
     assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["audio"]["input"]["dsp"]["vad"] is False
     assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["audio"]["input"]["dsp"]["vad"] is False
@@ -108,7 +111,6 @@ def test_board_profiles_separate_hardware_dsp_vad_from_firmware_vad():
             assert firmware_vad["status"] == "planned"
 
     assert profiles["ha_voice_pe"]["vad"]["firmware"]["adaptive_noise_floor"] is True
-    assert profiles["xvf3800_xiao_s3"]["vad"]["firmware"]["adaptive_noise_floor"] is True
     assert profiles["esp_box_3"]["vad"]["firmware"]["adaptive_noise_floor"] is False
 
 
@@ -121,7 +123,6 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
 
     assert profiles["esp_box_3"]["adapters"]["buildable"] is True
     assert profiles["ha_voice_pe"]["adapters"]["buildable"] is True
-    assert profiles["xvf3800_xiao_s3"]["adapters"]["buildable"] is True
     assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["buildable"] is False
     assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["adapters"]["buildable"] is False
     assert profiles["esp_box_3"]["adapters"]["source_files"] == [
@@ -142,17 +143,6 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "board/touch_none.cpp",
         "voice/tts_player_ha_voice_pe.cpp",
     ]
-    assert profiles["xvf3800_xiao_s3"]["adapters"]["source_files"] == [
-        "board/xvf3800_control.cpp",
-        "board/xvf3800_audio_bus.cpp",
-        "board/audio_xvf3800_xiao_s3.cpp",
-        "board/buttons_xvf3800_xiao_s3.cpp",
-        "board/display_none.cpp",
-        "board/led_ring_xvf3800_xiao_s3.cpp",
-        "board/storage_nvs_only.cpp",
-        "board/touch_none.cpp",
-        "voice/tts_player_xvf3800_xiao_s3.cpp",
-    ]
 
 
 def test_buildable_board_profiles_declare_complete_wiring():
@@ -164,7 +154,6 @@ def test_buildable_board_profiles_declare_complete_wiring():
 
     assert profiles["esp_box_3"]["wiring"]["status"] == "complete"
     assert profiles["ha_voice_pe"]["wiring"]["status"] == "complete"
-    assert profiles["xvf3800_xiao_s3"]["wiring"]["status"] == "complete"
     assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["wiring"]["status"] == "partial"
     assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["wiring"]["status"] == "partial"
 
@@ -191,23 +180,6 @@ def test_buildable_board_profiles_declare_complete_wiring():
     assert pe_leds["led_ring"]["data"] == 21
     assert pe_leds["led_ring"]["power"] == 45
     assert pe_leds["led_ring"]["pixel_count"] == 12
-
-    xvf_wiring = profiles["xvf3800_xiao_s3"]["wiring"]
-    xvf_i2c = {bus["name"]: bus for bus in xvf_wiring["i2c_buses"]}
-    xvf_i2s = {bus["name"]: bus for bus in xvf_wiring["i2s_buses"]}
-
-    assert xvf_i2c["audio_control"]["sda"] == 5
-    assert xvf_i2c["audio_control"]["scl"] == 6
-    assert xvf_i2c["audio_control"]["devices"] == [
-        {"name": "voice_processor", "address": 44},
-        {"name": "speaker_codec", "address": 24},
-    ]
-    assert xvf_i2s["audio"]["role"] == "master"
-    assert xvf_i2s["audio"]["bclk"] == 8
-    assert xvf_i2s["audio"]["lrclk"] == 7
-    assert xvf_i2s["audio"]["din"] == 43
-    assert xvf_i2s["audio"]["dout"] == 44
-
 
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     output = tmp_path / "board_profile_config.cmake"
@@ -257,49 +229,6 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert "constexpr int kMicrophoneBclk = 13;" in header
     assert "constexpr int kSpeakerDout = 10;" in header
     assert "constexpr int kVoicePeLedCount = kLedRingPixelCount;" in header
-
-
-def test_board_profile_generator_renders_xvf3800_xiao_s3_adapter_fragment(tmp_path):
-    output = tmp_path / "board_profile_config.cmake"
-    header_output = tmp_path / "board_profile_pins.h"
-
-    subprocess.run(
-        [
-            sys.executable,
-            str(GENERATOR),
-            "--profile-root",
-            str(PROFILE_ROOT),
-            "--board-profile",
-            "xvf3800_xiao_s3",
-            "--output",
-            str(output),
-            "--header-output",
-            str(header_output),
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-
-    cmake = output.read_text(encoding="utf-8")
-    assert 'set(HEXE_BOARD_PROFILE "xvf3800_xiao_s3")' in cmake
-    assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-8m-recovery-v1")' in cmake
-    assert 'set(HEXE_BOARD_APP_SLOT_SIZE "2560K")' in cmake
-    assert "HEXE_BOARD_PROFILE_XVF3800_XIAO_S3=1" in cmake
-    assert '"board/audio_xvf3800_xiao_s3.cpp"' in cmake
-    assert '"board/led_ring_xvf3800_xiao_s3.cpp"' in cmake
-    assert '"voice/tts_player_xvf3800_xiao_s3.cpp"' in cmake
-
-    header = header_output.read_text(encoding="utf-8")
-    assert 'constexpr const char *kBoardProfile = "xvf3800_xiao_s3";' in header
-    assert 'constexpr const char *kPartitionSchema = "s3-8m-recovery-v1";' in header
-    assert 'constexpr const char *kAppSlotSize = "2560K";' in header
-    assert 'constexpr const char *kFlashSize = "8MiB";' in header
-    assert 'constexpr const char *kPsramSize = "8MiB";' in header
-    assert "constexpr int kXvf3800I2cAddress = kAudioControlVoiceProcessorAddress;" in header
-    assert "constexpr int kXvf3800I2sBclk = kAudioBclk;" in header
-    assert "constexpr int kXvf3800I2sDin = kAudioDin;" in header
-    assert "constexpr int kXvf3800I2sDout = kAudioDout;" in header
 
 
 def test_board_profile_generator_keeps_planned_profiles_non_buildable(tmp_path):
@@ -417,7 +346,7 @@ def test_partition_schema_validator_accepts_committed_board_profiles():
         capture_output=True,
     )
 
-    assert result.stdout.strip() == "Validated partition schema for 5 board profile(s)."
+    assert result.stdout.strip() == "Validated partition schema for 4 board profile(s)."
 
 
 def test_recovery_profiles_require_recovery_partition_schema(tmp_path):
@@ -490,61 +419,6 @@ def test_partition_schema_validator_warns_and_rejects_app_size_gates(tmp_path):
 
     assert rejected.returncode == 1
     assert "exceeds 85 percent slot gate" in rejected.stderr
-
-
-def test_xvf3800_profile_uses_2560k_slot_size_gates(tmp_path):
-    warning_binary = tmp_path / "xvf_warning.bin"
-    warning_binary.write_bytes(b"")
-    warning_binary.open("r+b").truncate(int(2560 * 1024 * 0.75))
-
-    warning = subprocess.run(
-        [
-            sys.executable,
-            str(PARTITION_VALIDATOR),
-            "--profile-root",
-            str(PROFILE_ROOT),
-            "--partition-root",
-            str(PARTITIONS_DIR),
-            "--board-profile",
-            "xvf3800_xiao_s3",
-            "--app-binary",
-            str(warning_binary),
-        ],
-        check=True,
-        text=True,
-        capture_output=True,
-    )
-
-    assert "xvf3800_xiao_s3" in warning.stderr
-    assert "75 percent slot warning" in warning.stderr
-    assert "1966080" in warning.stderr
-
-    rejected_binary = tmp_path / "xvf_rejected.bin"
-    rejected_binary.write_bytes(b"")
-    rejected_binary.open("r+b").truncate(int(2560 * 1024 * 0.85))
-
-    rejected = subprocess.run(
-        [
-            sys.executable,
-            str(PARTITION_VALIDATOR),
-            "--profile-root",
-            str(PROFILE_ROOT),
-            "--partition-root",
-            str(PARTITIONS_DIR),
-            "--board-profile",
-            "xvf3800_xiao_s3",
-            "--app-binary",
-            str(rejected_binary),
-        ],
-        check=False,
-        text=True,
-        capture_output=True,
-    )
-
-    assert rejected.returncode == 1
-    assert "xvf3800_xiao_s3" in rejected.stderr
-    assert "exceeds 85 percent slot gate" in rejected.stderr
-    assert "2228224" in rejected.stderr
 
 
 def test_board_profile_scaffold_dry_run_creates_valid_planned_profile(tmp_path):

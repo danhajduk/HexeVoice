@@ -11,17 +11,12 @@ FIRMWARE_PROVISIONING_CSV_TOOL = Path("firmware/tools/provisioning-env-to-nvs-cs
 FIRMWARE_CMAKE = Path("firmware/components/endpoint_runtime/CMakeLists.txt")
 FIRMWARE_AUDIO = Path("firmware/components/endpoint_runtime/board/audio.cpp")
 FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/audio_ha_voice_pe.cpp")
-FIRMWARE_AUDIO_XVF3800_XIAO_S3 = Path("firmware/components/endpoint_runtime/board/audio_xvf3800_xiao_s3.cpp")
-FIRMWARE_XVF3800_AUDIO_BUS = Path("firmware/components/endpoint_runtime/board/xvf3800_audio_bus.cpp")
-FIRMWARE_XVF3800_CONTROL = Path("firmware/components/endpoint_runtime/board/xvf3800_control.cpp")
 FIRMWARE_BUTTONS = Path("firmware/components/endpoint_runtime/board/buttons.cpp")
 FIRMWARE_BUTTONS_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/buttons_ha_voice_pe.cpp")
-FIRMWARE_BUTTONS_XVF3800_XIAO_S3 = Path("firmware/components/endpoint_runtime/board/buttons_xvf3800_xiao_s3.cpp")
 FIRMWARE_DISPLAY = Path("firmware/components/endpoint_runtime/board/display.cpp")
 FIRMWARE_DISPLAY_NONE = Path("firmware/components/endpoint_runtime/board/display_none.cpp")
 FIRMWARE_LED_RING = Path("firmware/components/endpoint_runtime/board/led_ring.cpp")
 FIRMWARE_LED_RING_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/led_ring_ha_voice_pe.cpp")
-FIRMWARE_LED_RING_XVF3800_XIAO_S3 = Path("firmware/components/endpoint_runtime/board/led_ring_xvf3800_xiao_s3.cpp")
 FIRMWARE_STORAGE = Path("firmware/components/endpoint_runtime/board/storage.cpp")
 FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/components/endpoint_runtime/board/storage_nvs_only.cpp")
 FIRMWARE_SETTINGS = Path("firmware/components/endpoint_runtime/system/settings.cpp")
@@ -32,7 +27,6 @@ FIRMWARE_WIFI = Path("firmware/components/endpoint_runtime/board/wifi.cpp")
 FIRMWARE_TTS_PLAYER = Path("firmware/components/endpoint_runtime/voice/tts_player.cpp")
 FIRMWARE_TTS_PLAYER_HEADER = Path("firmware/components/endpoint_runtime/voice/tts_player.h")
 FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/voice/tts_player_ha_voice_pe.cpp")
-FIRMWARE_TTS_PLAYER_XVF3800_XIAO_S3 = Path("firmware/components/endpoint_runtime/voice/tts_player_xvf3800_xiao_s3.cpp")
 FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/components/endpoint_runtime/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
 FIRMWARE_APP_MAIN = Path("firmware/apps/endpoint/main/app_main.cpp")
@@ -1242,70 +1236,6 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "tts.playback.failed" in tts_source
     assert "Home Assistant Voice PE TTS player initialized" in tts_source
     assert "tts_playback_active()" in tts_source
-
-
-def test_firmware_supports_xvf3800_xiao_s3_profile():
-    profile_source = Path("firmware/boards/xvf3800_xiao_s3/board.yaml").read_text()
-    audio_source = FIRMWARE_AUDIO_XVF3800_XIAO_S3.read_text()
-    audio_bus_source = FIRMWARE_XVF3800_AUDIO_BUS.read_text()
-    control_source = FIRMWARE_XVF3800_CONTROL.read_text()
-    buttons_source = FIRMWARE_BUTTONS_XVF3800_XIAO_S3.read_text()
-    led_source = FIRMWARE_LED_RING_XVF3800_XIAO_S3.read_text()
-    tts_source = FIRMWARE_TTS_PLAYER_XVF3800_XIAO_S3.read_text()
-
-    assert "- HEXE_BOARD_PROFILE_XVF3800_XIAO_S3=1" in profile_source
-    assert "partition_schema: s3-8m-recovery-v1" in profile_source
-    assert "app_slot_size: 2560K" in profile_source
-    assert "flash_size: 8MiB" in profile_source
-    assert "psram_size: 8MiB" in profile_source
-    assert "frontend: xmos_xvf3800" in profile_source
-    assert "microphones: 4" in profile_source
-    assert "dsp:\n      aec: true\n      noise_suppression: true\n      agc: true\n      vad: true" in profile_source
-    assert "- board/xvf3800_control.cpp" in profile_source
-    assert "- board/xvf3800_audio_bus.cpp" in profile_source
-    assert "- board/audio_xvf3800_xiao_s3.cpp" in profile_source
-    assert "- board/buttons_xvf3800_xiao_s3.cpp" in profile_source
-    assert "- board/led_ring_xvf3800_xiao_s3.cpp" in profile_source
-    assert "- voice/tts_player_xvf3800_xiao_s3.cpp" in profile_source
-
-    assert "kXvf3800Address = static_cast<uint8_t>(hexe::board::pins::kXvf3800I2cAddress)" in control_source
-    assert "kApplicationServicerResid = 48" in control_source
-    assert "kGpoServicerResid = 20" in control_source
-    assert "kIoConfigServicerResid = 36" in control_source
-    assert "xvf3800_read_gpi_values" in control_source
-    assert "xvf3800_set_mute" in control_source
-    assert "xvf3800_led_ring_frame" in control_source
-
-    assert "I2S_ROLE_MASTER" in audio_bus_source
-    assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_bus_source
-    assert "I2S_SLOT_MODE_STEREO" in audio_bus_source
-    assert "pins::kXvf3800I2sBclk" in audio_bus_source
-    assert "pins::kXvf3800I2sDin" in audio_bus_source
-    assert "pins::kXvf3800I2sDout" in audio_bus_source
-
-    assert "processed_voice_channel_sample" in audio_source
-    assert "candidate.endpoint_audio_profile_version = \"xvf3800_i2s_processed_v1\"" in audio_source
-    assert "inspect_local_keyword_frame" in audio_source
-    assert "observe_passive_placement_frame" in audio_source
-    assert "submit_audio_frame" in audio_source
-    assert "kVadStartNoiseMultiplier = 3" in audio_source
-    assert "kVadSilenceHoldMs = 1200" in audio_source
-
-    assert "kMuteButtonGpiIndex = 0" in buttons_source
-    assert "xvf3800_read_gpi_values" in buttons_source
-    assert "xvf3800_set_mute(muted)" in buttons_source
-    assert 'stop_playback("xvf3800_mute_button")' in buttons_source
-
-    assert "xvf3800_led_solid" in led_source
-    assert "xvf3800_led_ring_frame" in led_source
-    assert "kLedCount = 12" in led_source
-
-    assert "play_wake_accepted_sound()" in tts_source
-    assert "xvf3800_audio_tx_write" in tts_source
-    assert "const bool microphone_paused = hexe::board::pause_microphone_for_playback();" in tts_source
-    assert "if (microphone_paused)" in tts_source
-    assert "speaker_streaming_not_enabled" in tts_source
-    assert "set_output_volume" in tts_source
 
 
 def test_voice_pe_led_ring_driver_contract_and_priority():

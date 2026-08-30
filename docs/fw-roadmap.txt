@@ -35,10 +35,10 @@ Each supported board profile produces its own compiled binary. Do not build one 
 
 Initial board profiles:
 
-- xvf3800_xiao_s3
 - ha_voice_pe
 - esp_box_3
-- waveshare_p4_7b
+- waveshare_s3_touch_lcd_1_85c_box_v2
+- waveshare_p4_wifi6_touch_lcd_7b
 
 Compile-time board profiles determine:
 
@@ -163,13 +163,13 @@ A network outage must not cause rollback of otherwise valid firmware.
 
 Primary target:
 
-- ReSpeaker XVF3800.
-- XIAO ESP32-S3.
-- Four-microphone circular array.
-- XMOS XVF3800 audio processor.
-- Hardware AEC, beamforming, noise suppression, dereverberation, VAD, AGC, and direction-of-arrival support.
+- Home Assistant Voice Preview Edition.
+- ESP32-S3.
+- Two-microphone audio frontend.
+- XMOS XU316 audio processor.
+- Hardware AEC, noise suppression, VAD, and AGC support.
 - LED ring/status indicators.
-- External or integrated speaker in the final enclosure.
+- Integrated speaker in the final enclosure.
 
 Primary role:
 
@@ -181,7 +181,7 @@ Primary role:
 
 Memory/storage assumption:
 
-- 8 MiB flash.
+- 16 MiB flash.
 - 8 MiB PSRAM.
 - No integrated SD card in the normal configuration.
 
@@ -264,14 +264,16 @@ firmware/
       asset_manager/
 
   boards/
-    xvf3800_xiao_s3/
     ha_voice_pe/
     esp_box_3/
-    waveshare_p4_7b/
+    waveshare_s3_touch_lcd_1_85c_box_v2/
+    waveshare_p4_wifi6_touch_lcd_7b/
 
   partitions/
     s3_8m_v1.csv
+    s3_8m_recovery_v1.csv
     s3_16m_v1.csv
+    s3_16m_recovery_v1.csv
     p4_32m_v1.csv
 
   packages/
@@ -315,7 +317,6 @@ Recommended interfaces:
 
 Examples:
 
-- ReSpeaker profile implements AudioFrontend through XVF3800/I2S.
 - Voice PE profile implements AudioFrontend through XU316/I2S.
 - P4 profile implements AudioFrontend through ES7210 and software DSP.
 - Screenless profiles implement a null DisplayBackend.
@@ -330,18 +331,18 @@ Select one board profile during the build.
 
 The board profile sets required features automatically. Avoid allowing arbitrary feature combinations that have never been tested together.
 
-Example derived settings for xvf3800_xiao_s3:
+Example derived settings for ha_voice_pe:
 
 - HEXE_SOC_ESP32S3=y
-- HEXE_AUDIO_XVF3800=y
+- HEXE_AUDIO_XU316=y
 - HEXE_DISPLAY=n
 - HEXE_TOUCH=n
 - HEXE_SD=n
 - HEXE_LED_RING=y
 - HEXE_SPEAKER=y
-- HEXE_PARTITION_SCHEMA=s3-8m-v1
+- HEXE_PARTITION_SCHEMA=s3-16m-recovery-v1
 
-Example derived settings for waveshare_p4_7b:
+Example derived settings for waveshare_p4_wifi6_touch_lcd_7b:
 
 - HEXE_SOC_ESP32P4=y
 - HEXE_RADIO_ESP32C6=y
@@ -367,7 +368,7 @@ Use the following as starting targets.
 
 Target devices:
 
-- ReSpeaker XVF3800 + XIAO ESP32-S3.
+- No current board profile. Retain as a future compact S3 voice-only layout.
 
 Starting allocation:
 
@@ -381,7 +382,7 @@ Rationale:
 
 - The current largest reference application is approximately 1.27 MiB.
 - A 2.5 MiB OTA slot leaves approximately 1.29 MiB of growth room.
-- The screenless XVF3800 build should be smaller than a display-equipped ESP-BOX-3 build.
+- A future screenless 8 MiB build should be smaller than a display-equipped ESP-BOX-3 build.
 - Mutable models and assets are kept outside the main app where practical.
 
 Validation requirement:
@@ -682,7 +683,7 @@ Each board-profile release should be packaged as a signed release bundle rather 
 
 Example full release package:
 
-hexe-echo-xvf3800-xiao-s3-0.4.0/
+hexe-echo-ha-voice-pe-0.4.0/
   manifest.json
   main.bin
   recovery.bin
@@ -765,14 +766,14 @@ Production devices must not silently fall back to accepting unsigned packages.
 
 Build matrix:
 
-- endpoint:xvf3800_xiao_s3
-- recovery:xvf3800_xiao_s3
 - endpoint:ha_voice_pe
 - recovery:ha_voice_pe
 - endpoint:esp_box_3
 - recovery:esp_box_3
-- endpoint:waveshare_p4_7b
-- recovery:waveshare_p4_7b
+- endpoint:waveshare_s3_touch_lcd_1_85c_box_v2
+- recovery:waveshare_s3_touch_lcd_1_85c_box_v2
+- endpoint:waveshare_p4_wifi6_touch_lcd_7b
+- recovery:waveshare_p4_wifi6_touch_lcd_7b
 
 CI checks:
 
@@ -865,7 +866,7 @@ Exit criteria:
 - Sensitive configuration persists securely.
 
 
-PHASE 2 - SCREENLESS XVF3800 AUDIO ENDPOINT
+PHASE 2 - SCREENLESS HA VOICE PE AUDIO ENDPOINT
 
 Goals:
 
@@ -873,7 +874,7 @@ Goals:
 
 Tasks:
 
-- Implement XVF3800 control and I2S audio input.
+- Implement XU316 control and I2S audio input.
 - Implement audio channel mapping.
 - Implement audio ring buffer.
 - Implement custom Hexe wake-word runtime.
@@ -1091,15 +1092,15 @@ Hexe Echo Voice
 
 Hardware:
 
-- ReSpeaker XVF3800 + XIAO ESP32-S3.
+- Home Assistant Voice Preview Edition.
 
 Characteristics:
 
 - Screenless.
 - Audio-first.
-- Four-microphone XMOS frontend.
+- Two-microphone XMOS frontend.
 - LED/button/tone interface.
-- 8 MiB flash and 8 MiB PSRAM.
+- 16 MiB flash and 8 MiB PSRAM.
 - Internal model storage with embedded fallback.
 
 Intended deployment:

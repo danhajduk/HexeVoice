@@ -102,7 +102,8 @@ use recovery mode, USB/full flashing, or a later dedicated migration mechanism.
 
 Target:
 
-- ReSpeaker XVF3800 plus XIAO ESP32-S3
+- No current board profile. Retain this schema as a future compact S3
+  voice-only layout.
 
 Starting allocation:
 
@@ -124,7 +125,6 @@ Rationale:
 
 Open validation:
 
-- confirm final XVF3800 app size after its audio frontend is implemented
 - compile recovery before locking the factory partition size
 - decide whether model A/B banks fit internally or whether only current plus
   embedded fallback is realistic on 8 MiB parts
