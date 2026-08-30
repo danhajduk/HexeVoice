@@ -27,6 +27,12 @@ manifest-ha_voice_pe.json
 SHA256SUMS
 ```
 
+The generated profile manifests include the static firmware release contract:
+application type, board profile, SoC/IDF target, flash size, PSRAM size,
+partition schema, app slot size, firmware/model/asset/calibration API versions,
+image size, SHA-256, signing key id, signature algorithm, and a signature scope
+that records that OTA payloads are signed by the backend when delivered.
+
 Flash export folders also include `flash-esptool.sh` and
 `provisioning.env.example`. To pre-provision a device during USB flashing, copy
 the example to `provisioning.env` inside the export folder and set the endpoint

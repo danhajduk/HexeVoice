@@ -246,7 +246,18 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
         json.dumps(
             {
                 "version": "0.2.0",
+                "application_type": "endpoint",
                 "board_profile": "ha_voice_pe",
+                "soc": "esp32s3",
+                "idf_target": "esp32s3",
+                "flash_size": "16MiB",
+                "psram_size": "8MiB",
+                "partition_schema": "s3-16m-v1",
+                "app_slot_size": "4MiB",
+                "firmware_api_version": "hexe-firmware-main-api-v1",
+                "model_api_version": "hexe-model-bundle-api-v1",
+                "asset_api_version": "hexe-asset-bundle-api-v1",
+                "calibration_schema_version": "hexe-calibration-schema-v1",
                 "filename": "hexe_firmware_ha_voice_pe.bin",
                 "sha256": "abc123",
                 "created_at_utc": "2026-05-09T20:00:00Z",
@@ -286,6 +297,18 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     assert firmware_update["sha256"] == hashlib.sha256(b"pe-firmware").hexdigest()
     assert firmware_update["profile"] == "ha_voice_pe"
     assert firmware_update["size_bytes"] == len(b"pe-firmware")
+    assert firmware_update["image_size_bytes"] == len(b"pe-firmware")
+    assert firmware_update["application_type"] == "endpoint"
+    assert firmware_update["soc"] == "esp32s3"
+    assert firmware_update["idf_target"] == "esp32s3"
+    assert firmware_update["flash_size"] == "16MiB"
+    assert firmware_update["psram_size"] == "8MiB"
+    assert firmware_update["partition_schema"] == "s3-16m-v1"
+    assert firmware_update["app_slot_size"] == "4MiB"
+    assert firmware_update["firmware_api_version"] == "hexe-firmware-main-api-v1"
+    assert firmware_update["model_api_version"] == "hexe-model-bundle-api-v1"
+    assert firmware_update["asset_api_version"] == "hexe-asset-bundle-api-v1"
+    assert firmware_update["calibration_schema_version"] == "hexe-calibration-schema-v1"
     assert firmware_update["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
     assert firmware_update["signature_key_id"] == ota_manifest_key_id()
     assert len(firmware_update["manifest_signature"]) == 64
@@ -295,6 +318,27 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     firmware_dir = tmp_path / "firmware"
     firmware_dir.mkdir()
     (firmware_dir / "hexe_firmware.bin").write_bytes(b"firmware-bin")
+    (firmware_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": "0.1.1",
+                "application_type": "endpoint",
+                "board_profile": "esp_box_3",
+                "soc": "esp32s3",
+                "idf_target": "esp32s3",
+                "flash_size": "16MiB",
+                "psram_size": "16MiB",
+                "partition_schema": "s3-16m-v1",
+                "app_slot_size": "4MiB",
+                "firmware_api_version": "hexe-firmware-main-api-v1",
+                "model_api_version": "hexe-model-bundle-api-v1",
+                "asset_api_version": "hexe-asset-bundle-api-v1",
+                "calibration_schema_version": "hexe-calibration-schema-v1",
+                "filename": "hexe_firmware.bin",
+            }
+        ),
+        encoding="utf-8",
+    )
     client = TestClient(
         create_app(
             Settings(
@@ -331,6 +375,18 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     assert event["payload"]["version"] == "0.1.1"
     assert event["payload"]["profile"] == "esp_box_3"
     assert event["payload"]["size_bytes"] == len(b"firmware-bin")
+    assert event["payload"]["application_type"] == "endpoint"
+    assert event["payload"]["board_profile"] == "esp_box_3"
+    assert event["payload"]["soc"] == "esp32s3"
+    assert event["payload"]["idf_target"] == "esp32s3"
+    assert event["payload"]["flash_size"] == "16MiB"
+    assert event["payload"]["psram_size"] == "16MiB"
+    assert event["payload"]["partition_schema"] == "s3-16m-v1"
+    assert event["payload"]["app_slot_size"] == "4MiB"
+    assert event["payload"]["firmware_api_version"] == "hexe-firmware-main-api-v1"
+    assert event["payload"]["model_api_version"] == "hexe-model-bundle-api-v1"
+    assert event["payload"]["asset_api_version"] == "hexe-asset-bundle-api-v1"
+    assert event["payload"]["calibration_schema_version"] == "hexe-calibration-schema-v1"
     assert event["payload"]["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
     assert event["payload"]["signature_key_id"] == ota_manifest_key_id()
     signed_payload = ota_manifest_signature_payload(

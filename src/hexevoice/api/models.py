@@ -1,6 +1,6 @@
 from typing import Any, Literal
 
-from pydantic import AnyHttpUrl, BaseModel, Field, model_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, model_validator
 
 
 class OnboardingStepResponse(BaseModel):
@@ -424,6 +424,8 @@ class FirmwareOtaPushRequest(BaseModel):
 
 
 class FirmwareOtaPushResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     accepted: bool
     endpoint_id: str
     firmware_url: str
@@ -434,6 +436,18 @@ class FirmwareOtaPushResponse(BaseModel):
     signature_algorithm: str | None = None
     signature_key_id: str | None = None
     manifest_signature: str | None = None
+    application_type: str | None = None
+    board_profile: str | None = None
+    soc: str | None = None
+    idf_target: str | None = None
+    flash_size: str | None = None
+    psram_size: str | None = None
+    partition_schema: str | None = None
+    app_slot_size: str | None = None
+    firmware_api_version: str | None = None
+    model_api_version: str | None = None
+    asset_api_version: str | None = None
+    calibration_schema_version: str | None = None
     reason: str | None = None
 
 

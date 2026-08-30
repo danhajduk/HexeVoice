@@ -1119,13 +1119,22 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     export_source = FIRMWARE_EXPORT_SCRIPT.read_text()
 
     assert 'requested_profile="all"' in build_source
-    assert "build_profile esp_box_3" in build_source
-    assert "build_profile ha_voice_pe" in build_source
+    assert "buildable_profiles" in build_source
+    assert 'build_profile "${profile}"' in build_source
     assert "hexe_firmware_${1}.bin" in build_source
     assert '\\"filename\\":\\"${filename}\\"' in build_source
+    assert "partition_csv_for_schema" in build_source
+    assert "SDKCONFIG_DEFAULTS" in build_source
 
     assert "PROFILE_APP_FILENAME" in export_source
     assert "hexe_firmware_${BOARD_PROFILE}.bin" in export_source
     assert "manifest-${BOARD_PROFILE}.json" in export_source
     assert "hexe_firmware*.bin > SHA256SUMS" in export_source
     assert "cp \"${APP_SRC}\" \"${COMMON_EXPORT_DIR}/${PROFILE_APP_FILENAME}\"" in export_source
+    assert '"application_type": "${FIRMWARE_APPLICATION_TYPE}"' in export_source
+    assert '"partition_schema": "${BOARD_PARTITION_SCHEMA}"' in export_source
+    assert '"firmware_api_version": "${FIRMWARE_API_VERSION}"' in export_source
+    assert '"model_api_version": "${MODEL_API_VERSION}"' in export_source
+    assert '"asset_api_version": "${ASSET_API_VERSION}"' in export_source
+    assert '"calibration_schema_version": "${CALIBRATION_SCHEMA_VERSION}"' in export_source
+    assert '"signature_scope": "ota_payload_signed_by_backend_at_delivery"' in export_source

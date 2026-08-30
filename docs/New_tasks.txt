@@ -52,7 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 270: Generate firmware artifact manifests that include application type, board profile, SoC, flash size, PSRAM size, partition schema, firmware/model/asset/calibration API versions, image size, SHA-256, signing key ID, and signature metadata
 [TODO] Task 271: Add build-time partition validation and app-size guardrails for every board profile, including warning and rejection thresholds for 2.5 MiB, 4 MiB, and 8 MiB app slots
 [TODO] Task 272: Report partition schema, flash geometry, app slot size, and firmware API compatibility in endpoint heartbeat/capabilities and backend firmware status views
 

@@ -10,6 +10,11 @@ RUNTIME_FIRMWARE_DIR="${RUNTIME_FIRMWARE_DIR:-${ROOT_DIR}/../runtime/firmware}"
 UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-1}"
 PROFILE_APP_FILENAME="${PROFILE_APP_FILENAME:-hexe_firmware_${BOARD_PROFILE}.bin}"
 PROFILE_MANIFEST_FILENAME="${PROFILE_MANIFEST_FILENAME:-manifest-${BOARD_PROFILE}.json}"
+FIRMWARE_APPLICATION_TYPE="${FIRMWARE_APPLICATION_TYPE:-endpoint}"
+FIRMWARE_API_VERSION="${FIRMWARE_API_VERSION:-hexe-firmware-main-api-v1}"
+MODEL_API_VERSION="${MODEL_API_VERSION:-hexe-model-bundle-api-v1}"
+ASSET_API_VERSION="${ASSET_API_VERSION:-hexe-asset-bundle-api-v1}"
+CALIBRATION_SCHEMA_VERSION="${CALIBRATION_SCHEMA_VERSION:-hexe-calibration-schema-v1}"
 
 BOOTLOADER_SRC="${BUILD_DIR}/bootloader/bootloader.bin"
 PARTITION_SRC="${BUILD_DIR}/partition_table/partition-table.bin"
@@ -19,6 +24,7 @@ ELF_SRC="${BUILD_DIR}/hexe_firmware.elf"
 FLASH_ARGS_SRC="${BUILD_DIR}/flasher_args.json"
 PROJECT_DESC_SRC="${BUILD_DIR}/project_description.json"
 PROVISIONING_CSV_TOOL_SRC="${ROOT_DIR}/tools/provisioning-env-to-nvs-csv.py"
+GENERATED_BOARD_CONFIG_SRC="${BUILD_DIR}/generated/board_profile_config.cmake"
 
 require_file() {
   local path="$1"
@@ -35,6 +41,7 @@ require_file "${OTA_DATA_SRC}"
 require_file "${APP_SRC}"
 require_file "${PROJECT_DESC_SRC}"
 require_file "${PROVISIONING_CSV_TOOL_SRC}"
+require_file "${GENERATED_BOARD_CONFIG_SRC}"
 
 mkdir -p "${EXPORT_DIR}"
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
@@ -91,11 +98,24 @@ config_bool() {
   awk -v name="${name}" '$0 ~ ("constexpr bool " name " =") {value=$NF; gsub(/;/, "", value); print value; exit}' "${GENERATED_CONFIG_SRC}" 2>/dev/null || true
 }
 
+cmake_config_string() {
+  local name="$1"
+  awk -F'"' -v name="${name}" '$0 ~ ("set\\(" name " ") {print $2; exit}' "${GENERATED_BOARD_CONFIG_SRC}" 2>/dev/null || true
+}
+
 DEFAULT_ENDPOINT_ID="$(config_string kEndpointId)"
 DEFAULT_BACKEND_HOST="$(config_string kEndpointBackendHost)"
 DEFAULT_HTTP_PORT="$(config_int kEndpointHttpPort)"
 DEFAULT_WS_PORT="$(config_int kEndpointWsPort)"
 DEFAULT_USE_TLS="$(config_bool kEndpointUseTls)"
+OTA_MANIFEST_KEY_ID="$(config_string kEndpointOtaManifestKeyId)"
+
+BOARD_IDF_TARGET="$(cmake_config_string HEXE_BOARD_IDF_TARGET)"
+BOARD_PARTITION_SCHEMA="$(cmake_config_string HEXE_BOARD_PARTITION_SCHEMA)"
+BOARD_APP_SLOT_SIZE="$(cmake_config_string HEXE_BOARD_APP_SLOT_SIZE)"
+BOARD_FLASH_SIZE="$(cmake_config_string HEXE_BOARD_FLASH_SIZE)"
+BOARD_PSRAM_SIZE="$(cmake_config_string HEXE_BOARD_PSRAM_SIZE)"
+BOARD_SUPPORT_STATUS="$(cmake_config_string HEXE_BOARD_SUPPORT_STATUS)"
 
 DEFAULT_ENDPOINT_ID="${DEFAULT_ENDPOINT_ID:-${BOARD_PROFILE}}"
 DEFAULT_DISPLAY_NAME="${DEFAULT_ENDPOINT_ID}"
@@ -103,6 +123,15 @@ DEFAULT_BACKEND_HOST="${DEFAULT_BACKEND_HOST:-10.0.0.100}"
 DEFAULT_HTTP_PORT="${DEFAULT_HTTP_PORT:-9004}"
 DEFAULT_WS_PORT="${DEFAULT_WS_PORT:-9004}"
 DEFAULT_USE_TLS="${DEFAULT_USE_TLS:-false}"
+OTA_MANIFEST_KEY_ID="${OTA_MANIFEST_KEY_ID:-hexevoice-dev-v1}"
+BOARD_IDF_TARGET="${BOARD_IDF_TARGET:-${TARGET}}"
+BOARD_PARTITION_SCHEMA="${BOARD_PARTITION_SCHEMA:-unknown}"
+BOARD_APP_SLOT_SIZE="${BOARD_APP_SLOT_SIZE:-unknown}"
+BOARD_FLASH_SIZE="${BOARD_FLASH_SIZE:-unknown}"
+BOARD_PSRAM_SIZE="${BOARD_PSRAM_SIZE:-unknown}"
+BOARD_SUPPORT_STATUS="${BOARD_SUPPORT_STATUS:-unknown}"
+APP_SIZE_BYTES="$(stat -c '%s' "${APP_SRC}")"
+APP_SHA256="$(sha256sum "${APP_SRC}" | awk '{print $1}')"
 
 (
   cd "${EXPORT_DIR}"
@@ -141,6 +170,20 @@ ota_data_offset=0xd000
 app=hexe_firmware.bin
 app_offset=0x10000
 profile_app=${PROFILE_APP_FILENAME}
+application_type=${FIRMWARE_APPLICATION_TYPE}
+idf_target=${BOARD_IDF_TARGET}
+flash_size=${BOARD_FLASH_SIZE}
+psram_size=${BOARD_PSRAM_SIZE}
+partition_schema=${BOARD_PARTITION_SCHEMA}
+app_slot_size=${BOARD_APP_SLOT_SIZE}
+firmware_api_version=${FIRMWARE_API_VERSION}
+model_api_version=${MODEL_API_VERSION}
+asset_api_version=${ASSET_API_VERSION}
+calibration_schema_version=${CALIBRATION_SCHEMA_VERSION}
+image_size_bytes=${APP_SIZE_BYTES}
+sha256=${APP_SHA256}
+signature_algorithm=hmac-sha256
+signature_key_id=${OTA_MANIFEST_KEY_ID}
 EOF
 
 cat > "${EXPORT_DIR}/provisioning.env.example" <<EOF
@@ -166,10 +209,28 @@ if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
   "project_name": "${PROJECT_NAME}",
   "version": "${VERSION}",
   "target": "${TARGET}",
+  "application_type": "${FIRMWARE_APPLICATION_TYPE}",
+  "firmware_api_version": "${FIRMWARE_API_VERSION}",
+  "model_api_version": "${MODEL_API_VERSION}",
+  "asset_api_version": "${ASSET_API_VERSION}",
+  "calibration_schema_version": "${CALIBRATION_SCHEMA_VERSION}",
   "board_profile": "${BOARD_PROFILE}",
+  "idf_target": "${BOARD_IDF_TARGET}",
+  "soc": "${BOARD_IDF_TARGET}",
+  "flash_size": "${BOARD_FLASH_SIZE}",
+  "psram_size": "${BOARD_PSRAM_SIZE}",
+  "partition_schema": "${BOARD_PARTITION_SCHEMA}",
+  "app_slot_size": "${BOARD_APP_SLOT_SIZE}",
+  "support_status": "${BOARD_SUPPORT_STATUS}",
   "created_at_utc": "${CREATED_AT}",
   "filename": "${PROFILE_APP_FILENAME}",
-  "sha256": "$(sha256sum "${RUNTIME_FIRMWARE_DIR}/${PROFILE_APP_FILENAME}" | awk '{print $1}')"
+  "image_size_bytes": ${APP_SIZE_BYTES},
+  "size_bytes": ${APP_SIZE_BYTES},
+  "sha256": "${APP_SHA256}",
+  "signature_algorithm": "hmac-sha256",
+  "signature_key_id": "${OTA_MANIFEST_KEY_ID}",
+  "signature_scope": "ota_payload_signed_by_backend_at_delivery",
+  "signature": null
 }
 EOF
   if [[ "${BOARD_PROFILE}" == "esp_box_3" ]]; then

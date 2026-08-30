@@ -459,6 +459,7 @@ class VoiceSessionManager:
         signature_algorithm: str | None,
         signature_key_id: str | None,
         manifest_signature: str | None,
+        manifest_metadata: dict | None = None,
     ) -> dict:
         runtime = self._runtime_for_endpoint(endpoint_id)
         if runtime is None:
@@ -474,23 +475,26 @@ class VoiceSessionManager:
         token = self._runtime_context.set(runtime)
         try:
             request_id = f"cmd_{uuid4().hex}"
+            event_payload = {
+                "request_id": request_id,
+                "url": firmware_url,
+                "version": version,
+                "profile": profile,
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+                "signature_algorithm": signature_algorithm,
+                "signature_key_id": signature_key_id,
+                "manifest_signature": manifest_signature,
+            }
+            if manifest_metadata:
+                event_payload.update({key: value for key, value in manifest_metadata.items() if value is not None})
             event = VoiceEventEnvelope(
                 event_type="ota.update",
                 endpoint_id=endpoint_id,
                 direction="backend_to_endpoint",
                 session_id=self._active_session.session_id if self._active_session else None,
                 sequence=self._next_sequence(),
-                payload={
-                    "request_id": request_id,
-                    "url": firmware_url,
-                    "version": version,
-                    "profile": profile,
-                    "sha256": sha256,
-                    "size_bytes": size_bytes,
-                    "signature_algorithm": signature_algorithm,
-                    "signature_key_id": signature_key_id,
-                    "manifest_signature": manifest_signature,
-                },
+                payload=event_payload,
             )
             await runtime.websocket.send_json(event.model_dump(mode="json"))
             self._last_event_type = "ota.update"

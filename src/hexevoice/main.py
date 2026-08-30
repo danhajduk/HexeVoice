@@ -372,6 +372,32 @@ def firmware_profile_for_filename(filename: str) -> str:
     return "esp_box_3"
 
 
+def firmware_manifest_candidates(settings: Settings, filename: str) -> list[Path]:
+    artifact_dir = settings.resolved_firmware_artifact_dir()
+    profile = firmware_profile_for_filename(filename)
+    candidates = [artifact_dir / f"manifest-{profile}.json"]
+    if filename == "hexe_firmware.bin":
+        candidates.insert(0, artifact_dir / "manifest.json")
+    return candidates
+
+
+def read_firmware_artifact_manifest(settings: Settings, filename: str) -> dict:
+    for manifest_path in firmware_manifest_candidates(settings, filename):
+        if not manifest_path.exists():
+            continue
+        try:
+            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        manifest_filename = str(payload.get("filename") or "").strip()
+        if manifest_filename and manifest_filename != filename:
+            continue
+        return payload
+    return {}
+
+
 def ota_manifest_key_id() -> str:
     return os.getenv("HEXEVOICE_OTA_MANIFEST_KEY_ID", DEFAULT_OTA_MANIFEST_KEY_ID)
 
@@ -486,6 +512,18 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
         "url": firmware_public_url_for_settings(settings, filename) if artifact_available else None,
         "sha256": artifact_sha256,
         "size_bytes": artifact_size,
+        "image_size_bytes": artifact_size,
+        "application_type": manifest.get("application_type") or "endpoint",
+        "soc": manifest.get("soc") or manifest.get("idf_target"),
+        "idf_target": manifest.get("idf_target") or manifest.get("soc"),
+        "flash_size": manifest.get("flash_size"),
+        "psram_size": manifest.get("psram_size"),
+        "partition_schema": manifest.get("partition_schema"),
+        "app_slot_size": manifest.get("app_slot_size"),
+        "firmware_api_version": manifest.get("firmware_api_version"),
+        "model_api_version": manifest.get("model_api_version"),
+        "asset_api_version": manifest.get("asset_api_version"),
+        "calibration_schema_version": manifest.get("calibration_schema_version"),
         **signed_metadata,
         "created_at_utc": manifest.get("created_at_utc"),
         "reason": reason,
@@ -1828,19 +1866,34 @@ def create_app(
         path = firmware_artifact_path(filename)
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         size_bytes = path.stat().st_size
-        profile = firmware_profile_for_filename(path.name)
+        static_manifest = read_firmware_artifact_manifest(app_settings, path.name)
+        profile = str(static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name))
         signature = sign_ota_manifest_metadata(
             profile=profile,
             url=firmware_public_url(path.name),
-            version=None,
+            version=static_manifest.get("version"),
             sha256=sha256,
             size_bytes=size_bytes,
         )
         return {
             "filename": path.name,
             "url": firmware_public_url(path.name),
+            "version": static_manifest.get("version"),
             "sha256": sha256,
             "size_bytes": size_bytes,
+            "image_size_bytes": size_bytes,
+            "application_type": static_manifest.get("application_type") or "endpoint",
+            "board_profile": profile,
+            "soc": static_manifest.get("soc") or static_manifest.get("idf_target"),
+            "idf_target": static_manifest.get("idf_target") or static_manifest.get("soc"),
+            "flash_size": static_manifest.get("flash_size"),
+            "psram_size": static_manifest.get("psram_size"),
+            "partition_schema": static_manifest.get("partition_schema"),
+            "app_slot_size": static_manifest.get("app_slot_size"),
+            "firmware_api_version": static_manifest.get("firmware_api_version"),
+            "model_api_version": static_manifest.get("model_api_version"),
+            "asset_api_version": static_manifest.get("asset_api_version"),
+            "calibration_schema_version": static_manifest.get("calibration_schema_version"),
             **signature,
         }
 
@@ -1850,7 +1903,8 @@ def create_app(
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         size_bytes = path.stat().st_size
         url = firmware_public_url(path.name)
-        profile = payload.profile or firmware_profile_for_filename(path.name)
+        static_manifest = read_firmware_artifact_manifest(app_settings, path.name)
+        profile = payload.profile or static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name)
         signature = sign_ota_manifest_metadata(
             profile=profile,
             url=url,
@@ -1868,6 +1922,20 @@ def create_app(
             signature_algorithm=signature["signature_algorithm"],
             signature_key_id=signature["signature_key_id"],
             manifest_signature=signature["manifest_signature"],
+            manifest_metadata={
+                "application_type": static_manifest.get("application_type") or "endpoint",
+                "board_profile": profile,
+                "soc": static_manifest.get("soc") or static_manifest.get("idf_target"),
+                "idf_target": static_manifest.get("idf_target") or static_manifest.get("soc"),
+                "flash_size": static_manifest.get("flash_size"),
+                "psram_size": static_manifest.get("psram_size"),
+                "partition_schema": static_manifest.get("partition_schema"),
+                "app_slot_size": static_manifest.get("app_slot_size"),
+                "firmware_api_version": static_manifest.get("firmware_api_version"),
+                "model_api_version": static_manifest.get("model_api_version"),
+                "asset_api_version": static_manifest.get("asset_api_version"),
+                "calibration_schema_version": static_manifest.get("calibration_schema_version"),
+            },
         )
         return FirmwareOtaPushResponse(
             accepted=bool(result.get("accepted")),
@@ -1880,6 +1948,18 @@ def create_app(
             signature_algorithm=signature["signature_algorithm"],
             signature_key_id=signature["signature_key_id"],
             manifest_signature=signature["manifest_signature"],
+            application_type=static_manifest.get("application_type") or "endpoint",
+            board_profile=profile,
+            soc=static_manifest.get("soc") or static_manifest.get("idf_target"),
+            idf_target=static_manifest.get("idf_target") or static_manifest.get("soc"),
+            flash_size=static_manifest.get("flash_size"),
+            psram_size=static_manifest.get("psram_size"),
+            partition_schema=static_manifest.get("partition_schema"),
+            app_slot_size=static_manifest.get("app_slot_size"),
+            firmware_api_version=static_manifest.get("firmware_api_version"),
+            model_api_version=static_manifest.get("model_api_version"),
+            asset_api_version=static_manifest.get("asset_api_version"),
+            calibration_schema_version=static_manifest.get("calibration_schema_version"),
             reason=result.get("reason"),
         )
 
