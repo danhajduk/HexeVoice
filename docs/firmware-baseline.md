@@ -38,6 +38,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Firmware now has an experimental endpoint microWakeWord provider configured for the official ESPHome `alexa` v2 model, treating the spoken wake word `Alexa` as the initial Hexe-compatible local wake path. The Alexa JSON/TFLite assets and audio preprocessor TFLite are checked in under `firmware/main/voice/models/`, embedded into the firmware image, and exposed through heartbeat capability diagnostics.
 - Firmware links Espressif's `esp-tflite-micro` runtime and ESP-NN acceleration through `voice/micro_wake_engine.{h,cpp}`. The adapter initializes the embedded int16-to-int8 audio preprocessor plus the Alexa streaming model, runs 40-channel feature slices every 10 ms, reports privacy-safe feature/inference/detection counters and probability telemetry in heartbeats, and emits endpoint wake candidates through the existing wake-election path when the sliding probability window crosses the configured cutoff.
 - Firmware keeps backend openWakeWord as the fallback wake provider. Endpoint-local wake detections enter listening mode and stream post-wake audio immediately after submitting the backend wake candidate, while backend stand-down events can still cancel a losing endpoint during arbitration. If local readiness is false or the endpoint election wait times out, the endpoint continues backend streaming behavior.
+- Firmware board-profile schema and examples live under `firmware/boards/`, with validation from `firmware/tools/validate_board_profiles.py`. The initial profile set covers `ha_voice_pe`, `esp_box_3`, V2-only `waveshare_s3_touch_lcd_1_85c_box_v2`, and `waveshare_p4_wifi6_touch_lcd_7b`.
 
 ## Partial
 
@@ -66,6 +67,10 @@ they are no longer ambiguous scaffolds:
 - Physical-device reconnect and session-boundary validation across supported profiles.
 
 ## Current Endpoint Config Contract
+
+Board profiles describe compile-time hardware capabilities and are documented in
+`docs/firmware-board-profile-schema.md`. The local endpoint config remains the
+per-device connection and identity layer.
 
 For local development, copy:
 

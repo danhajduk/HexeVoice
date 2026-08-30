@@ -1,0 +1,128 @@
+schema_version: 1
+board_profile: waveshare_p4_wifi6_touch_lcd_7b
+display_name: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B
+vendor: Waveshare
+model: ESP32-P4-WIFI6-Touch-LCD-7B
+hardware_revision:
+  required: false
+  supported:
+    - standard
+    - camera_option
+  unsupported: []
+support_status: planned
+sources:
+  - label: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B documentation
+    url: https://docs.waveshare.com/ESP32-P4-WIFI6-Touch-LCD-7B
+  - label: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B examples
+    url: https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B
+build:
+  idf_target: esp32p4
+  partition_schema: p4-32m-v1
+  app_slot_size: 8MiB
+  recovery_app: true
+  compile_definitions:
+    - HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B=1
+hardware:
+  soc: esp32p4
+  cpu: dual-core HP RISC-V up to 360MHz plus LP RISC-V up to 40MHz
+  flash_size: 32MiB
+  psram_size: 32MiB
+  wireless:
+    wifi: Wi-Fi 6 through ESP32-C6 coprocessor
+    bluetooth: Bluetooth 5 LE through ESP32-C6 coprocessor
+    coprocessor: esp32c6
+    transport: sdio
+features:
+  display: true
+  touch: true
+  sd_card: true
+  speaker: true
+  microphone: true
+  led_ring: false
+  status_led: true
+  rotary_encoder: false
+  buttons: true
+  hardware_mute: false
+  battery: true
+  camera: true
+  usb_otg: true
+display:
+  available: true
+  kind: ips_lcd
+  driver: mipi_dsi
+  interface: mipi_dsi
+  size_inches: 7
+  shape: rectangular
+  width_px: 1024
+  height_px: 600
+  color_depth: rgb565_or_rgb888
+  touch: true
+audio:
+  input:
+    available: true
+    frontend: es7210
+    sample_rate_hz: 16000
+    channels: 1
+    transport: i2s_tdm
+    codec: es7210
+    microphones: 2
+    dsp:
+      aec: true
+      noise_suppression: false
+      agc: false
+      vad: false
+  output:
+    available: true
+    codec: es8311
+    sample_rate_hz: 48000
+    transport: i2s
+    speaker: true
+    line_out: false
+storage:
+  internal: nvs_and_internal_flash
+  sd_card:
+    available: true
+    driver: sdmmc
+    interface: sdio_3_0_tf_card
+    gpio: null
+  config: encrypted_nvs
+  calibration: encrypted_nvs_or_internal_metrics_store
+  media: sd_versioned_bundles_with_embedded_fallback
+  models: embedded_fallback_then_sd_bundle
+wake:
+  local_micro_wake_word: true
+  primary_model: alexa
+  alias: Hexe
+  backend_fallback: true
+  stop_model: stop
+controls:
+  - name: boot
+    kind: button
+    function: download_mode
+    gpio: null
+  - name: reset
+    kind: button
+    function: reset
+    gpio: null
+  - name: touchscreen
+    kind: touch
+    function: local_ui_controls
+    gpio: null
+indicators:
+  - name: display
+    kind: display
+    driver: mipi_dsi
+    gpio: null
+  - name: status_led
+    kind: status_led
+    driver: board_led
+    gpio: null
+capability_overrides:
+  display: true
+  touchscreen: true
+  storage: true
+  audio_input: true
+  audio_output: true
+notes:
+  - This profile requires a separate ESP32-P4 build class and ESP32-C6 radio transport support.
+  - Bulk UI, media, and model assets should prefer SD with internal fallback assets.

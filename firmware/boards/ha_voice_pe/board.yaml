@@ -1,0 +1,127 @@
+schema_version: 1
+board_profile: ha_voice_pe
+display_name: Home Assistant Voice Preview Edition
+vendor: Nabu Casa / Home Assistant
+model: Home Assistant Voice Preview Edition
+hardware_revision:
+  required: false
+  supported:
+    - production
+  unsupported: []
+support_status: active
+sources:
+  - label: Home Assistant Voice Preview Edition specs
+    url: https://www.home-assistant.io/voice-pe/
+  - label: ESPHome Voice PE firmware reference
+    url: https://github.com/esphome/home-assistant-voice-pe
+build:
+  idf_target: esp32s3
+  partition_schema: s3-16m-v1
+  app_slot_size: 4MiB
+  recovery_app: true
+  compile_definitions:
+    - HEXE_BOARD_PROFILE_HA_VOICE_PE=1
+hardware:
+  soc: esp32s3
+  cpu: dual-core Xtensa LX7 up to 240MHz
+  flash_size: 16MiB
+  psram_size: 8MiB
+  wireless:
+    wifi: 2.4GHz 802.11 b/g/n
+    bluetooth: Bluetooth 5.0 LE
+    coprocessor: null
+    transport: native
+  environment:
+    indoor_only: true
+features:
+  display: false
+  touch: false
+  sd_card: false
+  speaker: true
+  microphone: true
+  led_ring: true
+  status_led: false
+  rotary_encoder: true
+  buttons: true
+  hardware_mute: true
+  battery: false
+  camera: false
+  usb_otg: false
+display:
+  available: false
+  kind: null
+  driver: null
+  interface: null
+  size_inches: null
+  shape: null
+  width_px: null
+  height_px: null
+  color_depth: null
+  touch: false
+audio:
+  input:
+    available: true
+    frontend: xmos_xu316
+    sample_rate_hz: 16000
+    channels: 1
+    transport: i2s
+    codec: xmos_xu316
+    microphones: 2
+    dsp:
+      aec: true
+      noise_suppression: true
+      agc: true
+      vad: true
+  output:
+    available: true
+    codec: ti_aic3204
+    sample_rate_hz: 48000
+    transport: i2s
+    speaker: true
+    line_out: true
+wake:
+  local_micro_wake_word: true
+  primary_model: alexa
+  alias: Hexe
+  backend_fallback: true
+  stop_model: stop
+storage:
+  internal: nvs_and_internal_flash
+  sd_card:
+    available: false
+    driver: null
+    interface: null
+    gpio: null
+  config: encrypted_nvs
+  calibration: encrypted_nvs_or_internal_metrics_store
+  media: embedded_minimal_tones_only
+  models: embedded_fallback_then_internal_bundle_bank
+controls:
+  - name: center
+    kind: button
+    function: wake_cancel_factory_reset
+    gpio: null
+  - name: rotary_dial
+    kind: rotary_encoder
+    function: volume_and_led_accent
+    gpio: null
+  - name: hardware_mute
+    kind: switch
+    function: physical_microphone_power_cut
+    gpio: null
+indicators:
+  - name: led_ring
+    kind: led_ring
+    driver: ws2812_rmt
+    gpio: 21
+    pixel_count: 12
+    color_order: GRB
+capability_overrides:
+  display: false
+  touchscreen: false
+  storage: false
+  audio_input: true
+  audio_output: true
+notes:
+  - Existing Hexe firmware profile already targets this board.
+  - Endpoint instance identity and backend host remain outside this board profile.

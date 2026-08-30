@@ -283,3 +283,4 @@ Task 262: Bundle Alexa/Hexe and Stop microWakeWord model assets into firmware bu
 Task 263: Activate endpoint Alexa/Hexe wake detection with backend openWakeWord fallback and wake-election safety - Completed on 08/29/2026 18:00
 Task 264: Activate endpoint Stop keyword interruption for playback/session cancel with backend STT interrupt fallback - Completed on 08/29/2026 18:11
 Task 265: Define firmware partition and OTA strategy for main app, recovery app, config, calibration, media, and wake-word model assets - Completed on 08/29/2026 19:17
+Task 266: Define portable firmware board-profile config schema for YAML/JSON-driven hardware bring-up - Completed on 08/30/2026 00:56

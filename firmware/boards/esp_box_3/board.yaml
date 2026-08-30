@@ -1,0 +1,124 @@
+schema_version: 1
+board_profile: esp_box_3
+display_name: ESP32-S3-BOX-3
+vendor: Espressif
+model: ESP32-S3-BOX-3
+hardware_revision:
+  required: false
+  supported:
+    - production
+  unsupported: []
+support_status: active
+sources:
+  - label: Espressif ESP-BOX-3 BSP
+    url: https://components.espressif.com/components/espressif/esp-box-3
+  - label: Espressif ESP32-S3-BOX-3 hardware overview
+    url: https://github.com/espressif/esp-box/blob/master/docs/hardware_overview/esp32_s3_box_3/hardware_overview_for_box_3.md
+build:
+  idf_target: esp32s3
+  partition_schema: s3-16m-v1
+  app_slot_size: 4MiB
+  recovery_app: true
+  compile_definitions:
+    - HEXE_BOARD_PROFILE_ESP_BOX_3=1
+hardware:
+  soc: esp32s3
+  cpu: dual-core Xtensa LX7 up to 240MHz
+  flash_size: 16MiB
+  psram_size: 16MiB
+  wireless:
+    wifi: 2.4GHz 802.11 b/g/n
+    bluetooth: Bluetooth 5 LE
+    coprocessor: null
+    transport: native
+features:
+  display: true
+  touch: true
+  sd_card: true
+  speaker: true
+  microphone: true
+  led_ring: false
+  status_led: true
+  rotary_encoder: false
+  buttons: true
+  hardware_mute: false
+  battery: false
+  camera: false
+  usb_otg: true
+display:
+  available: true
+  kind: lcd
+  driver: ili9341_or_st7789_bsp
+  interface: spi
+  size_inches: 2.4
+  shape: rectangular
+  width_px: 320
+  height_px: 240
+  color_depth: rgb565
+  touch: true
+audio:
+  input:
+    available: true
+    frontend: es7210
+    sample_rate_hz: 16000
+    channels: 1
+    transport: i2s
+    codec: es7210
+    microphones: 2
+    dsp:
+      aec: false
+      noise_suppression: false
+      agc: false
+      vad: false
+  output:
+    available: true
+    codec: es8311
+    sample_rate_hz: 48000
+    transport: i2s
+    speaker: true
+    line_out: false
+wake:
+  local_micro_wake_word: true
+  primary_model: alexa
+  alias: Hexe
+  backend_fallback: true
+  stop_model: stop
+storage:
+  internal: nvs_and_spiffs
+  sd_card:
+    available: true
+    driver: bsp_sdcard
+    interface: sdmmc
+    gpio: null
+    notes: Available through ESP-BOX-3 accessory/dock profile when mounted.
+  config: encrypted_nvs
+  calibration: encrypted_nvs_or_spiffs_metrics_store
+  media: sd_preferred_with_embedded_fallback
+  models: embedded_fallback_then_internal_or_sd_bundle
+controls:
+  - name: front_buttons
+    kind: button
+    function: wake_cancel_volume_and_local_controls
+    gpio: null
+  - name: touchscreen
+    kind: touch
+    function: volume_mute_and_display_controls
+    gpio: null
+indicators:
+  - name: display
+    kind: display
+    driver: esp_box_3_bsp
+    gpio: null
+  - name: status_led
+    kind: status_led
+    driver: board_bsp
+    gpio: null
+capability_overrides:
+  display: true
+  touchscreen: true
+  storage: true
+  audio_input: true
+  audio_output: true
+notes:
+  - Existing Hexe firmware profile already targets this board.
+  - SD media availability depends on the attached accessory/dock hardware.

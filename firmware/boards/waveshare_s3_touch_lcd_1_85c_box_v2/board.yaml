@@ -1,0 +1,128 @@
+schema_version: 1
+board_profile: waveshare_s3_touch_lcd_1_85c_box_v2
+display_name: Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2
+vendor: Waveshare
+model: ESP32-S3-Touch-LCD-1.85C-BOX
+hardware_revision:
+  required: true
+  supported:
+    - v2
+    - rev2.0
+  unsupported:
+    - v1
+  notes: V2 is required because the V1 audio path lacks the target dual-mic echo-cancellation hardware.
+support_status: planned
+sources:
+  - label: Waveshare ESP32-S3-Touch-LCD-1.85C documentation
+    url: https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C
+build:
+  idf_target: esp32s3
+  partition_schema: s3-16m-v1
+  app_slot_size: 4MiB
+  recovery_app: true
+  compile_definitions:
+    - HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2=1
+hardware:
+  soc: esp32s3
+  cpu: dual-core Xtensa LX7 up to 240MHz
+  flash_size: 16MiB
+  psram_size: 8MiB
+  wireless:
+    wifi: 2.4GHz 802.11 b/g/n
+    bluetooth: Bluetooth 5 LE
+    coprocessor: null
+    transport: native
+features:
+  display: true
+  touch: true
+  sd_card: true
+  speaker: true
+  microphone: true
+  led_ring: false
+  status_led: true
+  rotary_encoder: false
+  buttons: true
+  hardware_mute: false
+  battery: true
+  camera: false
+  usb_otg: false
+display:
+  available: true
+  kind: lcd
+  driver: waveshare_round_lcd
+  interface: spi
+  size_inches: 1.85
+  shape: round
+  width_px: 360
+  height_px: 360
+  color_depth: 262k_colors
+  touch: true
+audio:
+  input:
+    available: true
+    frontend: es7210
+    sample_rate_hz: 16000
+    channels: 1
+    transport: i2s
+    codec: es7210
+    microphones: 2
+    dsp:
+      aec: true
+      noise_suppression: false
+      agc: false
+      vad: false
+  output:
+    available: true
+    codec: es8311
+    sample_rate_hz: 48000
+    transport: i2s
+    speaker: true
+    line_out: false
+wake:
+  local_micro_wake_word: true
+  primary_model: alexa
+  alias: Hexe
+  backend_fallback: true
+  stop_model: stop
+storage:
+  internal: nvs_and_internal_flash
+  sd_card:
+    available: true
+    driver: sdmmc_or_spi_tbd
+    interface: tf_card
+    gpio: null
+  config: encrypted_nvs
+  calibration: encrypted_nvs_or_internal_metrics_store
+  media: sd_preferred_with_embedded_fallback
+  models: embedded_fallback_then_internal_or_sd_bundle
+controls:
+  - name: boot
+    kind: button
+    function: download_mode
+    gpio: null
+  - name: reset
+    kind: button
+    function: reset
+    gpio: null
+  - name: touchscreen
+    kind: touch
+    function: local_ui_controls
+    gpio: null
+indicators:
+  - name: display
+    kind: display
+    driver: waveshare_round_lcd
+    gpio: null
+  - name: status_led
+    kind: status_led
+    driver: board_led
+    gpio: null
+capability_overrides:
+  display: true
+  touchscreen: true
+  storage: true
+  audio_input: true
+  audio_output: true
+notes:
+  - Only the V2/Rev2.0 1.85C BOX variant is in scope for Hexe.
+  - The non-BOX and V1 variants should be separate unsupported profiles if needed.

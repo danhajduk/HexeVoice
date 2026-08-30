@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/schemas/firmware/board-profile.schema.json",
+  "title": "Hexe firmware board profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "board_profile",
+    "display_name",
+    "vendor",
+    "model",
+    "hardware_revision",
+    "support_status",
+    "sources",
+    "build",
+    "hardware",
+    "features",
+    "audio",
+    "display",
+    "wake",
+    "storage",
+    "controls",
+    "indicators",
+    "capability_overrides"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "board_profile": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "vendor": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hardware_revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "supported", "unsupported"],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "supported": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1
+        },
+        "unsupported": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "support_status": {
+      "type": "string",
+      "enum": ["active", "planned", "experimental", "unsupported"]
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "url"],
+        "properties": {
+          "label": {"type": "string", "minLength": 1},
+          "url": {"type": "string", "minLength": 1},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["idf_target", "partition_schema", "app_slot_size", "recovery_app", "compile_definitions"],
+      "properties": {
+        "idf_target": {
+          "type": "string",
+          "enum": ["esp32s3", "esp32p4"]
+        },
+        "partition_schema": {
+          "type": "string",
+          "enum": ["s3-8m-v1", "s3-16m-v1", "p4-32m-v1"]
+        },
+        "app_slot_size": {
+          "type": "string",
+          "pattern": "^[0-9]+(K|M)i?B$"
+        },
+        "recovery_app": {
+          "type": "boolean"
+        },
+        "compile_definitions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_]+=?[A-Za-z0-9_]*$"
+          }
+        }
+      }
+    },
+    "hardware": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["soc", "cpu", "flash_size", "psram_size", "wireless"],
+      "properties": {
+        "soc": {
+          "type": "string",
+          "enum": ["esp32s3", "esp32p4"]
+        },
+        "cpu": {
+          "type": "string",
+          "minLength": 1
+        },
+        "flash_size": {
+          "type": "string",
+          "pattern": "^[0-9]+(K|M)i?B$"
+        },
+        "psram_size": {
+          "type": "string",
+          "pattern": "^[0-9]+(K|M)i?B$"
+        },
+        "wireless": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wifi", "bluetooth"],
+          "properties": {
+            "wifi": {"type": "string"},
+            "bluetooth": {"type": "string"},
+            "coprocessor": {"type": ["string", "null"]},
+            "transport": {"type": ["string", "null"]}
+          }
+        },
+        "environment": {
+          "type": "object"
+        }
+      }
+    },
+    "features": {
+      "type": "object",
+      "additionalProperties": {"type": "boolean"},
+      "required": [
+        "display",
+        "touch",
+        "sd_card",
+        "speaker",
+        "microphone",
+        "led_ring",
+        "status_led",
+        "rotary_encoder",
+        "buttons",
+        "hardware_mute",
+        "battery",
+        "camera",
+        "usb_otg"
+      ]
+    },
+    "audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "output"],
+      "properties": {
+        "input": {"$ref": "#/$defs/audio_input"},
+        "output": {"$ref": "#/$defs/audio_output"}
+      }
+    },
+    "display": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "kind": {"type": ["string", "null"]},
+        "driver": {"type": ["string", "null"]},
+        "interface": {"type": ["string", "null"]},
+        "size_inches": {"type": ["number", "null"]},
+        "shape": {"type": ["string", "null"], "enum": ["rectangular", "round", null]},
+        "width_px": {"type": ["integer", "null"], "minimum": 1},
+        "height_px": {"type": ["integer", "null"], "minimum": 1},
+        "color_depth": {"type": ["string", "null"]},
+        "touch": {"type": "boolean"}
+      }
+    },
+    "wake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_micro_wake_word", "primary_model", "alias", "backend_fallback", "stop_model"],
+      "properties": {
+        "local_micro_wake_word": {"type": "boolean"},
+        "primary_model": {"type": "string"},
+        "alias": {"type": "string"},
+        "backend_fallback": {"type": "boolean"},
+        "stop_model": {"type": "string"}
+      }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["internal", "sd_card", "config", "calibration", "media", "models"],
+      "properties": {
+        "internal": {"type": "string"},
+        "sd_card": {"$ref": "#/$defs/device_ref"},
+        "config": {"type": "string"},
+        "calibration": {"type": "string"},
+        "media": {"type": "string"},
+        "models": {"type": "string"}
+      }
+    },
+    "controls": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/control"}
+    },
+    "indicators": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/indicator"}
+    },
+    "capability_overrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["display", "touchscreen", "storage", "audio_input", "audio_output"],
+      "properties": {
+        "display": {"type": "boolean"},
+        "touchscreen": {"type": "boolean"},
+        "storage": {"type": "boolean"},
+        "audio_input": {"type": "boolean"},
+        "audio_output": {"type": "boolean"}
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  },
+  "$defs": {
+    "device_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "driver": {"type": ["string", "null"]},
+        "interface": {"type": ["string", "null"]},
+        "gpio": {"type": ["integer", "null"]},
+        "notes": {"type": "string"}
+      }
+    },
+    "audio_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "frontend", "sample_rate_hz", "channels", "transport", "dsp"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "frontend": {"type": ["string", "null"]},
+        "sample_rate_hz": {"type": ["integer", "null"]},
+        "channels": {"type": ["integer", "null"]},
+        "transport": {"type": ["string", "null"]},
+        "codec": {"type": ["string", "null"]},
+        "microphones": {"type": ["integer", "null"]},
+        "dsp": {
+          "type": "object",
+          "additionalProperties": {"type": "boolean"},
+          "required": ["aec", "noise_suppression", "agc", "vad"]
+        }
+      }
+    },
+    "audio_output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "codec", "sample_rate_hz", "transport", "speaker", "line_out"],
+      "properties": {
+        "available": {"type": "boolean"},
+        "codec": {"type": ["string", "null"]},
+        "sample_rate_hz": {"type": ["integer", "null"]},
+        "transport": {"type": ["string", "null"]},
+        "speaker": {"type": "boolean"},
+        "line_out": {"type": "boolean"}
+      }
+    },
+    "control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "function"],
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": ["button", "rotary_encoder", "switch", "touch"]},
+        "function": {"type": "string"},
+        "gpio": {"type": ["integer", "null"]},
+        "notes": {"type": "string"}
+      }
+    },
+    "indicator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "driver"],
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"type": "string", "enum": ["led_ring", "status_led", "display", "speaker_tone"]},
+        "driver": {"type": ["string", "null"]},
+        "gpio": {"type": ["integer", "null"]},
+        "pixel_count": {"type": ["integer", "null"]},
+        "color_order": {"type": ["string", "null"]},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}
