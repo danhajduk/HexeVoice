@@ -39,6 +39,11 @@ bool submit_audio_frame(
     uint32_t speech_peak_level,
     bool vad_speaking,
     const MicroVadFrameState *micro_vad = nullptr);
+void observe_passive_placement_frame(
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    bool speech_like_activity);
 bool finish_audio_stream(const char *reason);
 bool cancel_active_session(const char *reason);
 bool send_tts_playback_event(

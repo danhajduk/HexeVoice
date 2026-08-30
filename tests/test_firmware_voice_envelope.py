@@ -222,6 +222,9 @@ def test_firmware_reports_playback_stop_word_capability_with_backend_fallback():
     assert '"missing_micro_wake_word_inference_engine"' in micro_wake_source
     assert '"missing_stop_keyword_model_asset"' in micro_wake_source
     assert '"playback_interrupt"' in backend_source
+    assert '"passive_placement_calibration"' in backend_source
+    assert '"metrics_only_periodic_ambient"' in backend_source
+    assert '"raw_audio_persisted", false' in backend_source
     assert '"playback_stop_word"' in backend_source
     assert '"available", true' in backend_source
     assert '"backend_stt_interrupt"' in backend_source
@@ -238,6 +241,28 @@ def test_firmware_reports_playback_stop_word_capability_with_backend_fallback():
     assert '"reason", hexe::voice::playback_stop_word_unavailable_reason()' not in backend_source
     assert 'stop_playback("voice_stop")' not in tts_sources
     assert 'send_playback_event(\n        "playback.stop"' in tts_sources
+
+
+def test_firmware_posts_passive_placement_calibration_metrics_only_samples():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    box_audio_source = Path("firmware/main/board/audio.cpp").read_text()
+    pe_audio_source = Path("firmware/main/board/audio_ha_voice_pe.cpp").read_text()
+
+    assert "placement_calibrations_status_url" in backend_source
+    assert "/api/voice/placement-calibrations?endpoint_id=%s" in backend_source
+    assert "placement_calibration_sample_url" in backend_source
+    assert "/api/voice/placement-calibrations/%s/samples" in backend_source
+    assert "apply_passive_placement_calibration_status" in backend_source
+    assert "maybe_post_passive_placement_sample" in backend_source
+    assert "observe_passive_placement_frame" in backend_source
+    assert "ambient_rms" in backend_source
+    assert "peak" in backend_source
+    assert "clipping_ratio" in backend_source
+    assert "speech_like_activity_ratio" in backend_source
+    assert "sample_duration_ms" in backend_source
+    assert "audio_b64" not in backend_source
+    assert "observe_passive_placement_frame(samples, kFrameSamples, level, frame_has_voice)" in box_audio_source
+    assert "observe_passive_placement_frame(g_mono_samples.data(), stereo_frames, level, frame_has_voice)" in pe_audio_source
 
 
 def test_firmware_vad_keeps_listening_window_after_wake_word():

@@ -482,6 +482,7 @@ void vad_task(void *arg) {
         hexe::voice::cancel_active_session("voice_stop");
       }
     }
+    hexe::voice::observe_passive_placement_frame(g_mono_samples.data(), stereo_frames, level, frame_has_voice);
     hexe::voice::submit_audio_frame(
         g_mono_samples.data(),
         stereo_frames,

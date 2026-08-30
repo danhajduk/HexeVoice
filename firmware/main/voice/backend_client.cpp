@@ -4,12 +4,14 @@
 #include <array>
 #include <cerrno>
 #include <cinttypes>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <string>
 #include <ctime>
+#include <utility>
 
 #include "app_state.h"
 #include "board/audio.h"
@@ -65,6 +67,8 @@ constexpr uint32_t kBackendReadinessPollMs = 500;
 constexpr int kClockSyncIntervalMs = 300000;
 constexpr int kClockSyncHttpTimeoutMs = 5000;
 constexpr size_t kMaxClockSyncBytes = 1024;
+constexpr int kPlacementCalibrationHttpTimeoutMs = 5000;
+constexpr size_t kMaxPlacementCalibrationStatusBytes = 8192;
 constexpr size_t kWakePrerollFrameCount = 15;
 constexpr int kVoiceWsSendTimeoutMs = 3000;
 constexpr int kVoiceWsSendRetryDelayMs = 50;
@@ -91,6 +95,21 @@ struct AudioFrame {
   bool micro_vad_ended;
   uint32_t micro_vad_chunk_index;
   uint32_t micro_vad_pause_ms;
+};
+
+struct PlacementAmbientAccumulator {
+  uint64_t sample_count{0};
+  uint64_t square_sum{0};
+  uint64_t clipping_count{0};
+  uint32_t frame_count{0};
+  uint32_t speech_like_frame_count{0};
+  uint32_t peak_abs{0};
+};
+
+struct PlacementCalibrationState {
+  std::string calibration_id;
+  int sample_interval_seconds{600};
+  int64_t next_sample_due_us{0};
 };
 
 QueueHandle_t g_audio_queue = nullptr;
@@ -139,6 +158,9 @@ std::string g_session_id;
 std::string g_tts_playback_session_id;
 std::string g_wake_candidate_id;
 std::string g_ws_rx_buffer;
+portMUX_TYPE g_placement_ambient_lock = portMUX_INITIALIZER_UNLOCKED;
+PlacementAmbientAccumulator g_placement_ambient = {};
+PlacementCalibrationState g_placement_calibration = {};
 
 double probability_as_unit(uint8_t probability) {
   return static_cast<double>(probability) / 255.0;
@@ -197,6 +219,9 @@ std::string base64_audio(const int16_t *samples, size_t sample_count);
 bool send_ws_text(const std::string &message);
 std::string endpoint_capabilities_json();
 bool sync_backend_time(const std::string &url);
+bool refresh_passive_placement_calibration();
+void maybe_post_passive_placement_sample();
+esp_err_t text_http_event_handler(esp_http_client_event_t *event);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
@@ -645,6 +670,32 @@ std::string heartbeat_url() {
       hexe::system::endpoint_backend_host(),
       hexe::system::endpoint_http_port(),
       hexe::config::kEndpointHeartbeatPath);
+  return std::string(buffer);
+}
+
+std::string placement_calibrations_status_url() {
+  char buffer[256];
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "%s://%s:%d/api/voice/placement-calibrations?endpoint_id=%s",
+      scheme_http(),
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port(),
+      hexe::system::endpoint_id());
+  return std::string(buffer);
+}
+
+std::string placement_calibration_sample_url(const char *calibration_id) {
+  char buffer[320];
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "%s://%s:%d/api/voice/placement-calibrations/%s/samples",
+      scheme_http(),
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port(),
+      calibration_id == nullptr ? "" : calibration_id);
   return std::string(buffer);
 }
 
@@ -1301,6 +1352,16 @@ std::string endpoint_capabilities_json() {
   cJSON_AddNumberToObject(input, "sample_rate_hz", hexe::config::kEndpointAudioSampleRateHz);
   cJSON_AddNumberToObject(input, "channels", hexe::config::kEndpointAudioChannels);
   cJSON_AddBoolToObject(input, "paused_for_playback", state.mic_paused_for_playback);
+  cJSON *passive_calibration = cJSON_AddObjectToObject(input, "passive_placement_calibration");
+  cJSON_AddBoolToObject(passive_calibration, "available", true);
+  cJSON_AddStringToObject(passive_calibration, "mode", "metrics_only_periodic_ambient");
+  cJSON_AddStringToObject(
+      passive_calibration,
+      "sample_endpoint",
+      "/api/voice/placement-calibrations/{calibration_id}/samples");
+  cJSON_AddBoolToObject(passive_calibration, "raw_audio_persisted", false);
+  cJSON_AddBoolToObject(passive_calibration, "stt_called", false);
+  cJSON_AddBoolToObject(passive_calibration, "speaker_id_called", false);
   cJSON *micro_vad = cJSON_AddObjectToObject(input, "micro_vad");
   cJSON_AddBoolToObject(micro_vad, "configurable", true);
   cJSON_AddNumberToObject(micro_vad, "pause_ms", hexe::system::micro_vad_pause_ms());
@@ -2389,6 +2450,82 @@ esp_err_t text_http_event_handler(esp_http_client_event_t *event) {
   return ESP_OK;
 }
 
+bool http_get_text(const std::string &url, size_t max_bytes, std::string *response_text) {
+  if (response_text == nullptr || url.empty()) {
+    return false;
+  }
+  response_text->clear();
+  HttpTextBuffer response;
+  response.max_bytes = max_bytes;
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.method = HTTP_METHOD_GET;
+  config.timeout_ms = kPlacementCalibrationHttpTimeoutMs;
+  config.event_handler = text_http_event_handler;
+  config.user_data = &response;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    return false;
+  }
+  esp_err_t err = esp_http_client_perform(client);
+  const int status_code = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+  if (err != ESP_OK || status_code < 200 || status_code >= 300 || response.overflow) {
+    ESP_LOGW(
+        kTag,
+        "HTTP GET failed: url=%s err=%s status=%d overflow=%d",
+        url.c_str(),
+        esp_err_to_name(err),
+        status_code,
+        response.overflow);
+    return false;
+  }
+  *response_text = std::move(response.text);
+  return true;
+}
+
+bool http_post_json_text(const std::string &url, const std::string &body, size_t max_bytes, std::string *response_text) {
+  if (response_text != nullptr) {
+    response_text->clear();
+  }
+  if (url.empty()) {
+    return false;
+  }
+  HttpTextBuffer response;
+  response.max_bytes = max_bytes;
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.method = HTTP_METHOD_POST;
+  config.timeout_ms = kPlacementCalibrationHttpTimeoutMs;
+  config.event_handler = text_http_event_handler;
+  config.user_data = &response;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    return false;
+  }
+  esp_http_client_set_header(client, "Content-Type", "application/json");
+  esp_http_client_set_post_field(client, body.c_str(), static_cast<int>(body.size()));
+  esp_err_t err = esp_http_client_perform(client);
+  const int status_code = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+  if (err != ESP_OK || status_code < 200 || status_code >= 300 || response.overflow) {
+    ESP_LOGW(
+        kTag,
+        "HTTP JSON POST failed: url=%s err=%s status=%d overflow=%d",
+        url.c_str(),
+        esp_err_to_name(err),
+        status_code,
+        response.overflow);
+    return false;
+  }
+  if (response_text != nullptr) {
+    *response_text = std::move(response.text);
+  }
+  return true;
+}
+
 bool parse_clock_sync_payload(const std::string &payload, int64_t *server_unix_ms, int32_t *utc_offset_seconds, int *sync_interval_ms) {
   if (server_unix_ms == nullptr || utc_offset_seconds == nullptr || sync_interval_ms == nullptr || payload.empty()) {
     return false;
@@ -2459,6 +2596,178 @@ bool sync_backend_time(const std::string &url) {
   g_last_clock_sync_us = esp_timer_get_time();
   g_clock_sync_interval_ms = std::max(1000, sync_interval_ms);
   return true;
+}
+
+void clear_passive_placement_calibration() {
+  g_placement_calibration.calibration_id.clear();
+  g_placement_calibration.sample_interval_seconds = 600;
+  g_placement_calibration.next_sample_due_us = 0;
+}
+
+void reset_passive_placement_metrics() {
+  portENTER_CRITICAL(&g_placement_ambient_lock);
+  g_placement_ambient = {};
+  portEXIT_CRITICAL(&g_placement_ambient_lock);
+}
+
+bool apply_passive_placement_calibration_status(const std::string &payload) {
+  if (payload.empty()) {
+    return false;
+  }
+  cJSON *root = cJSON_Parse(payload.c_str());
+  if (root == nullptr) {
+    ESP_LOGW(kTag, "Passive placement calibration status was not valid JSON");
+    return false;
+  }
+
+  cJSON *calibrations = cJSON_GetObjectItem(root, "calibrations");
+  cJSON *active_windows = cJSON_IsObject(calibrations) ? cJSON_GetObjectItem(calibrations, "active_windows") : nullptr;
+  cJSON *selected_window = nullptr;
+  if (cJSON_IsArray(active_windows)) {
+    cJSON *window = nullptr;
+    cJSON_ArrayForEach(window, active_windows) {
+      cJSON *endpoint_id = cJSON_IsObject(window) ? cJSON_GetObjectItem(window, "endpoint_id") : nullptr;
+      cJSON *status = cJSON_IsObject(window) ? cJSON_GetObjectItem(window, "status") : nullptr;
+      if (cJSON_IsString(endpoint_id) && std::strcmp(endpoint_id->valuestring, hexe::system::endpoint_id()) == 0 &&
+          (!cJSON_IsString(status) || std::strcmp(status->valuestring, "active") == 0)) {
+        selected_window = window;
+        break;
+      }
+    }
+  }
+
+  if (selected_window == nullptr) {
+    clear_passive_placement_calibration();
+    reset_passive_placement_metrics();
+    cJSON_Delete(root);
+    return true;
+  }
+
+  cJSON *calibration_id = cJSON_GetObjectItem(selected_window, "calibration_id");
+  cJSON *interval = cJSON_GetObjectItem(selected_window, "sample_interval_seconds");
+  if (!cJSON_IsString(calibration_id) || calibration_id->valuestring[0] == '\0') {
+    clear_passive_placement_calibration();
+    reset_passive_placement_metrics();
+    cJSON_Delete(root);
+    return false;
+  }
+
+  const std::string previous_id = g_placement_calibration.calibration_id;
+  g_placement_calibration.calibration_id = calibration_id->valuestring;
+  g_placement_calibration.sample_interval_seconds = cJSON_IsNumber(interval) ? std::max(60, interval->valueint) : 600;
+  if (previous_id != g_placement_calibration.calibration_id || g_placement_calibration.next_sample_due_us <= 0) {
+    if (previous_id != g_placement_calibration.calibration_id) {
+      reset_passive_placement_metrics();
+    }
+    g_placement_calibration.next_sample_due_us = esp_timer_get_time();
+    ESP_LOGI(
+        kTag,
+        "Passive placement calibration active: id=%s interval_seconds=%d",
+        g_placement_calibration.calibration_id.c_str(),
+        g_placement_calibration.sample_interval_seconds);
+  }
+  cJSON_Delete(root);
+  return true;
+}
+
+bool refresh_passive_placement_calibration() {
+  if (!hexe::state().backend_connected || hexe::state().ota_active) {
+    return false;
+  }
+  std::string payload;
+  if (!http_get_text(placement_calibrations_status_url(), kMaxPlacementCalibrationStatusBytes, &payload)) {
+    return false;
+  }
+  return apply_passive_placement_calibration_status(payload);
+}
+
+bool snapshot_passive_placement_metrics(PlacementAmbientAccumulator *snapshot) {
+  if (snapshot == nullptr) {
+    return false;
+  }
+  portENTER_CRITICAL(&g_placement_ambient_lock);
+  *snapshot = g_placement_ambient;
+  g_placement_ambient = {};
+  portEXIT_CRITICAL(&g_placement_ambient_lock);
+  return snapshot->sample_count > 0 && snapshot->frame_count > 0;
+}
+
+void restore_passive_placement_metrics(const PlacementAmbientAccumulator &snapshot) {
+  if (snapshot.sample_count == 0 || snapshot.frame_count == 0) {
+    return;
+  }
+  portENTER_CRITICAL(&g_placement_ambient_lock);
+  g_placement_ambient.sample_count += snapshot.sample_count;
+  g_placement_ambient.square_sum += snapshot.square_sum;
+  g_placement_ambient.clipping_count += snapshot.clipping_count;
+  g_placement_ambient.frame_count += snapshot.frame_count;
+  g_placement_ambient.speech_like_frame_count += snapshot.speech_like_frame_count;
+  g_placement_ambient.peak_abs = std::max(g_placement_ambient.peak_abs, snapshot.peak_abs);
+  portEXIT_CRITICAL(&g_placement_ambient_lock);
+}
+
+std::string passive_placement_sample_body(const PlacementAmbientAccumulator &snapshot) {
+  const double full_scale = 32768.0;
+  const double rms = snapshot.sample_count == 0
+      ? 0.0
+      : std::sqrt(static_cast<double>(snapshot.square_sum) / static_cast<double>(snapshot.sample_count)) / full_scale;
+  const double peak = static_cast<double>(snapshot.peak_abs) / full_scale;
+  const double clipping_ratio = snapshot.sample_count == 0
+      ? 0.0
+      : static_cast<double>(snapshot.clipping_count) / static_cast<double>(snapshot.sample_count);
+  const double speech_ratio = snapshot.frame_count == 0
+      ? 0.0
+      : static_cast<double>(snapshot.speech_like_frame_count) / static_cast<double>(snapshot.frame_count);
+  const uint64_t sample_duration_ms = (snapshot.sample_count * 1000ULL) / hexe::config::kEndpointAudioSampleRateHz;
+
+  char body[512];
+  std::snprintf(
+      body,
+      sizeof(body),
+      "{\"observed_at\":\"%s\",\"metrics\":{\"ambient_rms\":%.6f,\"peak\":%.6f,"
+      "\"clipping_count\":%llu,\"clipping_ratio\":%.6f,\"speech_like_activity\":%s,"
+      "\"speech_like_activity_ratio\":%.6f,\"sample_duration_ms\":%llu}}",
+      event_timestamp().c_str(),
+      rms,
+      peak,
+      static_cast<unsigned long long>(snapshot.clipping_count),
+      clipping_ratio,
+      speech_ratio >= 0.05 ? "true" : "false",
+      speech_ratio,
+      static_cast<unsigned long long>(sample_duration_ms));
+  return std::string(body);
+}
+
+void maybe_post_passive_placement_sample() {
+  if (g_placement_calibration.calibration_id.empty() || !hexe::state().backend_connected || hexe::state().ota_active) {
+    return;
+  }
+  const int64_t now_us = esp_timer_get_time();
+  if (g_placement_calibration.next_sample_due_us > 0 && now_us < g_placement_calibration.next_sample_due_us) {
+    return;
+  }
+
+  PlacementAmbientAccumulator snapshot;
+  if (!snapshot_passive_placement_metrics(&snapshot)) {
+    return;
+  }
+
+  const std::string url = placement_calibration_sample_url(g_placement_calibration.calibration_id.c_str());
+  const std::string body = passive_placement_sample_body(snapshot);
+  std::string response;
+  if (!http_post_json_text(url, body, 2048, &response)) {
+    restore_passive_placement_metrics(snapshot);
+    g_placement_calibration.next_sample_due_us = now_us + 30000000LL;
+    return;
+  }
+
+  g_placement_calibration.next_sample_due_us =
+      now_us + (static_cast<int64_t>(std::max(60, g_placement_calibration.sample_interval_seconds)) * 1000000LL);
+  ESP_LOGI(
+      kTag,
+      "Passive placement calibration sample posted: id=%s duration_ms=%llu",
+      g_placement_calibration.calibration_id.c_str(),
+      static_cast<unsigned long long>((snapshot.sample_count * 1000ULL) / hexe::config::kEndpointAudioSampleRateHz));
 }
 
 void heartbeat_task(void *arg) {
@@ -2554,6 +2863,10 @@ void heartbeat_task(void *arg) {
     esp_http_client_cleanup(client);
     if (clock_sync_due) {
       sync_backend_time(clock_url);
+    }
+    if (state.backend_connected) {
+      refresh_passive_placement_calibration();
+      maybe_post_passive_placement_sample();
     }
     vTaskDelay(pdMS_TO_TICKS(hexe::config::kEndpointHeartbeatIntervalMs));
   }
@@ -2754,6 +3067,41 @@ bool submit_audio_frame(
     return false;
   }
   return true;
+}
+
+void observe_passive_placement_frame(
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    bool speech_like_activity) {
+  if (samples == nullptr || sample_count == 0 || hexe::state().ota_active || hexe::state().mic_paused_for_playback ||
+      post_tts_input_cooldown_active()) {
+    return;
+  }
+
+  uint64_t square_sum = 0;
+  uint64_t clipping_count = 0;
+  uint32_t peak_abs = 0;
+  for (size_t index = 0; index < sample_count; ++index) {
+    const int32_t sample = samples[index];
+    const uint32_t magnitude = sample < 0 ? static_cast<uint32_t>(-sample) : static_cast<uint32_t>(sample);
+    square_sum += static_cast<uint64_t>(magnitude) * static_cast<uint64_t>(magnitude);
+    peak_abs = std::max(peak_abs, magnitude);
+    if (magnitude >= 32760) {
+      ++clipping_count;
+    }
+  }
+
+  portENTER_CRITICAL(&g_placement_ambient_lock);
+  g_placement_ambient.sample_count += sample_count;
+  g_placement_ambient.square_sum += square_sum;
+  g_placement_ambient.clipping_count += clipping_count;
+  ++g_placement_ambient.frame_count;
+  if (speech_like_activity) {
+    ++g_placement_ambient.speech_like_frame_count;
+  }
+  g_placement_ambient.peak_abs = std::max(g_placement_ambient.peak_abs, peak_abs);
+  portEXIT_CRITICAL(&g_placement_ambient_lock);
 }
 
 bool submit_wake_candidate(const WakeCandidateMetrics &candidate) {

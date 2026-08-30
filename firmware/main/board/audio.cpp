@@ -224,6 +224,7 @@ void vad_task(void *arg) {
         hexe::voice::cancel_active_session("voice_stop");
       }
     }
+    hexe::voice::observe_passive_placement_frame(samples, kFrameSamples, level, frame_has_voice);
     hexe::voice::submit_audio_frame(samples, kFrameSamples, level, level, level, frame_has_voice, &micro_vad);
 
     if (frame_has_voice) {
