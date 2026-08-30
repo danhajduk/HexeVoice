@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = REPO_ROOT / "firmware/tools/validate_board_profiles.py"
 GENERATOR = REPO_ROOT / "firmware/tools/generate_board_profile_config.py"
 SCAFFOLD = REPO_ROOT / "firmware/tools/create_board_profile.py"
+PARTITION_VALIDATOR = REPO_ROOT / "firmware/tools/validate_partition_schema.py"
 PROFILE_ROOT = REPO_ROOT / "firmware/boards"
 FIRMWARE_CMAKE = REPO_ROOT / "firmware/main/CMakeLists.txt"
 FIRMWARE_BUILD_SCRIPT = REPO_ROOT / "firmware/build.sh"
@@ -288,6 +289,75 @@ def test_named_partition_schema_files_exist_and_cover_profile_classes():
         assert "otadata,    data, ota,     0xd000,   8K," in source
         for expected_line in expected_lines:
             assert expected_line in source
+
+
+def test_partition_schema_validator_accepts_committed_board_profiles():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(PARTITION_VALIDATOR),
+            "--profile-root",
+            str(PROFILE_ROOT),
+            "--partition-root",
+            str(PARTITIONS_DIR),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.stdout.strip() == "Validated partition schema for 4 board profile(s)."
+
+
+def test_partition_schema_validator_warns_and_rejects_app_size_gates(tmp_path):
+    warning_binary = tmp_path / "warning.bin"
+    warning_binary.write_bytes(b"")
+    warning_binary.open("r+b").truncate((3 * 1024 * 1024) + 1)
+
+    warning = subprocess.run(
+        [
+            sys.executable,
+            str(PARTITION_VALIDATOR),
+            "--profile-root",
+            str(PROFILE_ROOT),
+            "--partition-root",
+            str(PARTITIONS_DIR),
+            "--board-profile",
+            "ha_voice_pe",
+            "--app-binary",
+            str(warning_binary),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert "75 percent slot warning" in warning.stderr
+
+    rejected_binary = tmp_path / "rejected.bin"
+    rejected_binary.write_bytes(b"")
+    rejected_binary.open("r+b").truncate(int(4 * 1024 * 1024 * 0.85))
+
+    rejected = subprocess.run(
+        [
+            sys.executable,
+            str(PARTITION_VALIDATOR),
+            "--profile-root",
+            str(PROFILE_ROOT),
+            "--partition-root",
+            str(PARTITIONS_DIR),
+            "--board-profile",
+            "ha_voice_pe",
+            "--app-binary",
+            str(rejected_binary),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert rejected.returncode == 1
+    assert "exceeds 85 percent slot gate" in rejected.stderr
 
 
 def test_board_profile_scaffold_dry_run_creates_valid_planned_profile(tmp_path):

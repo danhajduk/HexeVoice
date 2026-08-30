@@ -10,6 +10,8 @@ RUNTIME_FIRMWARE_DIR="${RUNTIME_FIRMWARE_DIR:-${ROOT_DIR}/../runtime/firmware}"
 OTA_API_BASE="${OTA_API_BASE:-http://127.0.0.1:${API_PORT:-9004}}"
 COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR:-${ROOT_DIR}/export}"
 BOARD_PROFILE_ROOT="${BOARD_PROFILE_ROOT:-${ROOT_DIR}/boards}"
+PARTITION_ROOT="${PARTITION_ROOT:-${ROOT_DIR}/partitions}"
+PARTITION_VALIDATOR="${ROOT_DIR}/tools/validate_partition_schema.py"
 
 usage() {
   cat <<EOF
@@ -242,6 +244,12 @@ build_profile() {
     -D "HEXE_BOARD_PROFILE=${profile}" \
     -D "PROJECT_VER=${PROJECT_VERSION}" \
     build
+
+  "${CONVERTER_PYTHON}" "${PARTITION_VALIDATOR}" \
+    --profile-root "${BOARD_PROFILE_ROOT}" \
+    --partition-root "${PARTITION_ROOT}" \
+    --board-profile "${profile}" \
+    --app-binary "${build_dir}/hexe_firmware.bin"
 
   if [[ "${EXPORT_AFTER_BUILD}" == "1" ]]; then
     HEXE_BOARD_PROFILE="${profile}" \

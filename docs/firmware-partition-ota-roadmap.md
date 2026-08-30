@@ -49,6 +49,11 @@ has named schema files for the S3 8 MiB, S3 16 MiB, and P4 32 MiB classes, but
 the recovery/data-bank schemas are not the active buildable-device default until
 the recovery application exists.
 
+`firmware/tools/validate_partition_schema.py` validates board-profile partition
+schema mappings, partition overlap/alignment, flash-size fit, OTA slot sizes,
+and optional app-binary size gates. `firmware/build.sh` runs it after each
+profile build.
+
 ## Product Direction
 
 Use one firmware platform with board-specific binaries. Avoid a giant universal
