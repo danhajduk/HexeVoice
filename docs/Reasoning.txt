@@ -550,3 +550,9 @@ Chosen fix: Enable the embedded Stop microWakeWord runtime and route wake plus S
 What changed: Added combined local keyword frame detections, enabled the Stop model asset, updated ESP-BOX-3 and Voice PE audio loops to stop playback or cancel active sessions on local Stop detection, exposed local Stop mode plus `backend_fallback_mode: "backend_stt_interrupt"` in heartbeat capabilities, and refreshed firmware docs/task records.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_validation_matrix.py tests/test_firmware_endpoint_config.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh` passed with app size `0x193980` and 61% free; `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh` passed with app size `0x16a3a0` and 65% free.
 ###########
+Task #273
+Step objective: Define the recovery/provisioning app architecture before implementing the bootable skeleton.
+Chosen fix: Add a dedicated recovery architecture contract that reuses the new app/component layout while keeping recovery independent from endpoint_runtime.
+What changed: Added `docs/firmware-recovery-architecture.md`, linked it from the recovery app README and partition/OTA roadmap, and added tests for the app boundary, entry conditions, recovery-safe interfaces, diagnostics API, and existing doc links.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_recovery_architecture.py tests/test_firmware_board_profiles.py` passed; `python firmware/tools/validate_partition_schema.py --profile-root firmware/boards --partition-root firmware/partitions` passed; `bash -n firmware/build.sh firmware/export-artifacts.sh` passed. MQTT publish skipped because MQTT_USERNAME/MQTT_PASSWORD were not set.
+###########

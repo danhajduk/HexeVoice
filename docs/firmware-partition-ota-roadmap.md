@@ -177,6 +177,10 @@ Rationale:
 
 ## Recovery Application Scope
 
+Detailed recovery app architecture, entry conditions, shared-code boundaries,
+and the local diagnostics API are defined in
+`docs/firmware-recovery-architecture.md`.
+
 The recovery app is independent from the endpoint runtime.
 
 It owns:
