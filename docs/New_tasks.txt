@@ -54,7 +54,6 @@ Do not edit above this line:
 
 [STOP]
 
-[TODO] Task 279: Define signed model-bundle packaging for Hexe/Alexa wake, Stop, thresholds, preprocessing metadata, compatibility ranges, hashes, and signatures
 [TODO] Task 280: Implement model-bundle activation with internal A/B banks or SD versioned directories, test-load-before-activation, atomic active pointer updates, rollback, and embedded fallback selection
 [TODO] Task 281: Define and implement signed config, calibration, media, prompt, tone, and UI asset bundle contracts with schema compatibility, migration rules, cleanup policy, atomic activation, and rollback
 

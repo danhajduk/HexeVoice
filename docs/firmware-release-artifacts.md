@@ -27,6 +27,11 @@ manifest-ha_voice_pe.json
 SHA256SUMS
 ```
 
+Mutable endpoint assets use their own signed bundle manifests. Wake-word model
+bundles are defined in `docs/firmware-model-bundles.md`; firmware releases keep
+the embedded Alexa/Hexe and Stop models as fallbacks while later mutable bundle
+activation can update `model_a`/`model_b` without reflashing the endpoint app.
+
 The generated profile manifests include the static firmware release contract:
 application type, board profile, SoC/IDF target, flash size, PSRAM size,
 partition schema, app slot size, firmware/model/asset/calibration API versions,
