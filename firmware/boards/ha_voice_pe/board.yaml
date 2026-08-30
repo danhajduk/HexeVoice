@@ -16,7 +16,7 @@ sources:
     url: https://github.com/esphome/home-assistant-voice-pe
 build:
   idf_target: esp32s3
-  partition_schema: s3-16m-v1
+  partition_schema: s3-16m-recovery-v1
   app_slot_size: 4MiB
   recovery_app: true
   compile_definitions:

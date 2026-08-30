@@ -15,7 +15,7 @@ HEXEVOICE_FIRMWARE_RELEASE_TAG=latest \
 ./scripts/firmware-artifacts-control.sh download
 ```
 
-Each release should attach these assets:
+Each endpoint release should attach these assets:
 
 ```text
 hexe_firmware.bin
@@ -35,6 +35,11 @@ signature algorithm, and a signature scope that records that OTA payloads are
 signed by the backend when delivered. The default local release channel is
 `dev`; production release jobs should set `FIRMWARE_RELEASE_CHANNEL=stable`.
 Endpoint OTA accepts only the `signed_manifest_sha256_required` security policy.
+
+The active S3 endpoint profiles use `s3-16m-recovery-v1`, which reserves a
+2 MiB factory recovery app and two 4 MiB endpoint OTA slots. Moving a device
+from the legacy `s3-16m-v1` layout to this recovery-capable layout requires
+USB/full flash because normal endpoint OTA cannot replace the partition table.
 
 Flash export folders also include `flash-esptool.sh` and
 `provisioning.env.example`. To pre-provision a device during USB flashing, copy

@@ -23,7 +23,8 @@ The roadmap keeps the current ESP-IDF firmware useful while moving toward:
 The current native firmware already has a useful OTA foundation:
 
 - ESP32-S3 board profiles for `esp_box_3` and `ha_voice_pe`
-- named ESP-IDF partition schemas under `firmware/partitions/`
+- named ESP-IDF partition schemas under `firmware/partitions/`, including
+  recovery-capable S3/P4 layouts
 - `ota_0` and `ota_1` application slots
 - backend-pushed OTA events through `/api/firmware/ota/push`
 - hosted artifacts under `runtime/firmware`
@@ -38,23 +39,27 @@ The current native firmware already has a useful OTA foundation:
   after local startup self-tests pass, with rollback status reported in
   heartbeat firmware metadata
 
-The current active S3 16 MiB partition schema is
-`firmware/partitions/s3_16m_v1.csv`, a named development layout:
+The current active S3 16 MiB board profiles use
+`firmware/partitions/s3_16m_recovery_v1.csv`, a recovery-capable layout:
 
 | Partition | Purpose | Current Size |
 | --- | --- | ---: |
 | `nvs` | settings and endpoint identity | 16 KiB |
 | `otadata` | ESP-IDF OTA metadata | 8 KiB |
 | `phy_init` | RF calibration data | 4 KiB |
+| `factory` | recovery/provisioning app | 2 MiB |
 | `ota_0` | main app slot A | 4 MiB |
 | `ota_1` | main app slot B | 4 MiB |
-| `storage` | SPIFFS data area | 2 MiB |
+| `model_a` | signed model bundle bank A | 512 KiB |
+| `model_b` | signed model bundle bank B | 512 KiB |
+| `config` | config and calibration data | 512 KiB |
+| `coredump` | crash diagnostics | 512 KiB |
+| `storage` | SPIFFS data area | 3 MiB |
 
-The active S3 16 MiB layout does not yet reserve a factory recovery app, model
-banks, explicit calibration partitions, or coredump storage. The repository now
-has named schema files for the S3 8 MiB, S3 16 MiB, and P4 32 MiB classes, but
-the recovery/data-bank schemas are not the active buildable-device default until
-the recovery application exists.
+The legacy `firmware/partitions/s3_16m_v1.csv` layout remains available as a
+no-factory development layout. Devices already flashed with that table need
+USB/full flash or a future partition-migration lane before they can use the
+factory recovery app.
 
 `firmware/tools/validate_partition_schema.py` validates board-profile partition
 schema mappings, partition overlap/alignment, flash-size fit, OTA slot sizes,
@@ -85,7 +90,9 @@ other schema.
 Initial schema names:
 
 - `s3-8m-v1`
+- `s3-8m-recovery-v1`
 - `s3-16m-v1`
+- `s3-16m-recovery-v1`
 - `p4-32m-v1`
 
 Partition-table changes are not ordinary OTA updates. A schema migration must
@@ -102,16 +109,17 @@ Starting allocation:
 | Area | Target Size | Notes |
 | --- | ---: | --- |
 | bootloader, partition table, NVS, OTA data, PHY | about 256 KiB | reserve alignment and secure boot growth |
-| factory recovery app | 1.0 MiB | provisioning, rescue OTA, basic diagnostics |
+| factory recovery app | 2 MiB | provisioning, rescue OTA, basic diagnostics |
 | `ota_0` endpoint app | 2.5 MiB | voice-only main app |
 | `ota_1` endpoint app | 2.5 MiB | inactive OTA slot |
-| model/config/calibration/coredump data | about 1.7 MiB | final value depends on recovery size |
+| model/config/calibration/coredump data | about 960 KiB | deliberately compact on 8 MiB flash |
 
 Rationale:
 
 - Current S3 application sizes are about 1.49 to 1.66 MiB after embedded
   Alexa/Stop microWakeWord assets.
-- A 2.5 MiB slot leaves meaningful growth room for voice-only hardware.
+- A 2.5 MiB slot leaves meaningful growth room for voice-only hardware while
+  keeping a 2 MiB factory recovery partition.
 - Large display/media stacks are excluded from this profile at compile time.
 
 Open validation:
@@ -133,7 +141,7 @@ Starting allocation:
 | Area | Target Size | Notes |
 | --- | ---: | --- |
 | bootloader, partition table, NVS, OTA data, PHY | about 256 KiB | increase NVS from the current 16 KiB before production |
-| factory recovery app | 1.0 to 1.25 MiB | local provisioning and rescue UI/API |
+| factory recovery app | 2 MiB | local provisioning and rescue UI/API |
 | `ota_0` endpoint app | 4 MiB | keep current app-slot class |
 | `ota_1` endpoint app | 4 MiB | inactive OTA slot |
 | model bank A | 512 KiB to 1 MiB | signed wake/model bundle |
@@ -143,7 +151,8 @@ Starting allocation:
 
 Rationale:
 
-- The current development layout already proves 4 MiB main OTA slots.
+- The current recovery-capable layout keeps the proven 4 MiB main OTA slots
+  while adding a 2 MiB factory recovery app.
 - Voice PE has no SD card, so internal flash must hold model/config/calibration
   assets.
 - ESP-BOX-3 has SD, but the main app must still run without SD for recovery and
@@ -151,8 +160,8 @@ Rationale:
 
 Open validation:
 
-- measure recovery app size with display disabled and with ESP-BOX display
-  minimal UI enabled
+- keep the recovery app below the 2 MiB partition gate with display disabled
+  and with ESP-BOX display minimal UI enabled
 - choose whether ESP-BOX uses internal model banks or SD-first model bundles
 - reserve coredump only after production crash-diagnostics policy is decided
 
@@ -167,7 +176,7 @@ Starting allocation:
 | Area | Target Size | Notes |
 | --- | ---: | --- |
 | bootloader, partition table, NVS, OTA data, PHY | about 512 KiB | allow larger security metadata |
-| factory recovery app | 1.5 to 2.0 MiB | minimal display/touch recovery UI |
+| factory recovery app | 2 MiB | minimal display/touch recovery UI |
 | `ota_0` endpoint app | 8 MiB | display, touch, C6 transport, audio stack |
 | `ota_1` endpoint app | 8 MiB | inactive OTA slot |
 | internal fallback assets | 2 to 4 MiB | minimal UI, fallback model, tones |
@@ -384,8 +393,7 @@ Exit criteria:
 
 Deliverables:
 
-- `firmware/partitions/` with `s3_8m_v1.csv`, `s3_16m_v1.csv`,
-  and `p4_32m_v1.csv`
+- `firmware/partitions/` with legacy and recovery-capable S3/P4 schemas
 - board-profile build selection for partition CSV
 - CI/script validation for flash total, partition alignment, and app size
 - generated artifact manifest including partition schema and flash geometry

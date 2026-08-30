@@ -104,7 +104,9 @@ PY
 partition_csv_for_schema() {
   case "$1" in
     s3-8m-v1) echo "partitions/s3_8m_v1.csv" ;;
+    s3-8m-recovery-v1) echo "partitions/s3_8m_recovery_v1.csv" ;;
     s3-16m-v1) echo "partitions/s3_16m_v1.csv" ;;
+    s3-16m-recovery-v1) echo "partitions/s3_16m_recovery_v1.csv" ;;
     p4-32m-v1) echo "partitions/p4_32m_v1.csv" ;;
     *)
       echo "Unsupported partition schema: $1" >&2

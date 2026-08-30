@@ -741,7 +741,7 @@ def test_firmware_supports_persisted_endpoint_provisioning_contract():
 
 def test_firmware_export_can_flash_text_provisioning_file_to_nvs():
     export_source = FIRMWARE_EXPORT_SCRIPT.read_text()
-    partitions = Path("firmware/partitions/s3_16m_v1.csv").read_text()
+    partitions = Path("firmware/partitions/s3_16m_recovery_v1.csv").read_text()
 
     assert "provisioning.env.example" in export_source
     assert "provisioning-env-to-nvs-csv.py" in export_source

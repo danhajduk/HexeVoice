@@ -19,7 +19,7 @@ Column names include the source YAML path where that helps future refactors.
 | `hardware_revision.supported` | `production` | `production` | `v2`, `rev2.0` | `standard`, `camera_option` |
 | `hardware_revision.unsupported` | none | none | `v1` | none |
 | `build.idf_target` | `esp32s3` | `esp32s3` | `esp32s3` | `esp32p4` |
-| `build.partition_schema` | `s3-16m-v1` | `s3-16m-v1` | `s3-16m-v1` | `p4-32m-v1` |
+| `build.partition_schema` | `s3-16m-recovery-v1` | `s3-16m-recovery-v1` | `s3-16m-recovery-v1` | `p4-32m-v1` |
 | `build.app_slot_size` | `4MiB` | `4MiB` | `4MiB` | `8MiB` |
 | `build.recovery_app` | `true` | `true` | `true` | `true` |
 | `build.compile_definitions` | `HEXE_BOARD_PROFILE_HA_VOICE_PE=1` | `HEXE_BOARD_PROFILE_ESP_BOX_3=1` | `HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2=1` | `HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B=1` |
@@ -166,7 +166,9 @@ describe Hexe firmware VAD running from PCM audio frames.
 ## Config-Driven Conclusions
 
 - `ha_voice_pe`, `esp_box_3`, and `waveshare_s3_touch_lcd_1_85c_box_v2` share
-  `build.idf_target: esp32s3` and `build.partition_schema: s3-16m-v1`.
+  `build.idf_target: esp32s3` and `build.partition_schema:
+  s3-16m-recovery-v1`, which reserves a 2 MiB factory recovery app plus two
+  4 MiB endpoint OTA slots.
 - `waveshare_p4_wifi6_touch_lcd_7b` is the only `esp32p4` profile and requires
   `p4-32m-v1` plus `hardware.wireless.coprocessor: esp32c6`.
 - `ha_voice_pe` is the only profile with `features.led_ring`,

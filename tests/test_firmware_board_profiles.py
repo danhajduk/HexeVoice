@@ -205,7 +205,7 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'set(HEXE_BOARD_PROFILE "ha_voice_pe")' in cmake
     assert 'set(HEXE_BOARD_IDF_TARGET "esp32s3")' in cmake
     assert 'set(HEXE_BOARD_SOC "esp32s3")' in cmake
-    assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-16m-v1")' in cmake
+    assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-16m-recovery-v1")' in cmake
     assert "set(HEXE_BOARD_ADAPTER_BUILDABLE TRUE)" in cmake
     assert "HEXE_BOARD_PROFILE_HA_VOICE_PE=1" in cmake
     assert '"board/audio_ha_voice_pe.cpp"' in cmake
@@ -215,7 +215,7 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'constexpr const char *kBoardProfile = "ha_voice_pe";' in header
     assert 'constexpr const char *kSoc = "esp32s3";' in header
     assert 'constexpr const char *kIdfTarget = "esp32s3";' in header
-    assert 'constexpr const char *kPartitionSchema = "s3-16m-v1";' in header
+    assert 'constexpr const char *kPartitionSchema = "s3-16m-recovery-v1";' in header
     assert 'constexpr const char *kAppSlotSize = "4MiB";' in header
     assert 'constexpr const char *kFlashSize = "16MiB";' in header
     assert 'constexpr const char *kPsramSize = "8MiB";' in header
@@ -283,7 +283,9 @@ def test_firmware_build_script_discovers_buildable_profiles_from_yaml():
     assert "buildable_profiles" in build_script
     assert "partition_csv_for_schema" in build_script
     assert 's3-8m-v1) echo "partitions/s3_8m_v1.csv"' in build_script
+    assert 's3-8m-recovery-v1) echo "partitions/s3_8m_recovery_v1.csv"' in build_script
     assert 's3-16m-v1) echo "partitions/s3_16m_v1.csv"' in build_script
+    assert 's3-16m-recovery-v1) echo "partitions/s3_16m_recovery_v1.csv"' in build_script
     assert 'p4-32m-v1) echo "partitions/p4_32m_v1.csv"' in build_script
     assert "SDKCONFIG_DEFAULTS" in build_script
     assert "build.partition_schema" in build_script
@@ -295,7 +297,17 @@ def test_firmware_build_script_discovers_buildable_profiles_from_yaml():
 def test_named_partition_schema_files_exist_and_cover_profile_classes():
     schemas = {
         "s3_8m_v1.csv": ("ota_0,      app,  ota_0,   ,         2560K,", "ota_1,      app,  ota_1,   ,         2560K,"),
+        "s3_8m_recovery_v1.csv": (
+            "factory,    app,  factory, ,         2M,",
+            "ota_0,      app,  ota_0,   ,         2560K,",
+            "ota_1,      app,  ota_1,   ,         2560K,",
+        ),
         "s3_16m_v1.csv": ("ota_0,      app,  ota_0,   0x10000,  4M,", "ota_1,      app,  ota_1,   ,         4M,"),
+        "s3_16m_recovery_v1.csv": (
+            "factory,    app,  factory, ,         2M,",
+            "ota_0,      app,  ota_0,   ,         4M,",
+            "ota_1,      app,  ota_1,   ,         4M,",
+        ),
         "p4_32m_v1.csv": ("ota_0,      app,  ota_0,   ,         8M,", "ota_1,      app,  ota_1,   ,         8M,"),
     }
 
@@ -323,6 +335,27 @@ def test_partition_schema_validator_accepts_committed_board_profiles():
     )
 
     assert result.stdout.strip() == "Validated partition schema for 4 board profile(s)."
+
+
+def test_recovery_profiles_require_recovery_partition_schema(tmp_path):
+    source = PROFILE_ROOT / "ha_voice_pe/board.yaml"
+    validator = load_validator_module()
+    profile = validator.load_profile(source)
+    profile["build"]["partition_schema"] = "s3-16m-v1"
+    profile_dir = tmp_path / "ha_voice_pe"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "board.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(profile_path)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "recovery_app profiles must use a recovery partition schema" in result.stderr
 
 
 def test_partition_schema_validator_warns_and_rejects_app_size_gates(tmp_path):
@@ -523,6 +556,41 @@ def test_board_profile_scaffold_uses_p4_defaults(tmp_path):
     assert "flash_size: 32MiB" in result.stdout
     assert "psram_size: 32MiB" in result.stdout
     assert "coprocessor: esp32c6" in result.stdout
+
+
+def test_board_profile_scaffold_uses_s3_8m_recovery_defaults(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCAFFOLD),
+            "--profile",
+            "test_s3_voice_8m",
+            "--display-name",
+            "Test S3 Voice 8M",
+            "--vendor",
+            "TestVendor",
+            "--model",
+            "TestS3",
+            "--source-url",
+            "https://example.com/test-s3-board",
+            "--flash-size",
+            "8MiB",
+            "--dry-run",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    profile_dir = tmp_path / "test_s3_voice_8m"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "board.yaml"
+    profile_path.write_text(result.stdout, encoding="utf-8")
+    subprocess.run([sys.executable, str(VALIDATOR), str(profile_path)], check=True, text=True, capture_output=True)
+
+    assert "partition_schema: s3-8m-recovery-v1" in result.stdout
+    assert "app_slot_size: 2560K" in result.stdout
+    assert "flash_size: 8MiB" in result.stdout
 
 
 def test_board_profile_validator_rejects_missing_firmware_vad(tmp_path):

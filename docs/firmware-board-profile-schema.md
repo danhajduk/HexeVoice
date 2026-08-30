@@ -66,9 +66,9 @@ For a side-by-side hardware comparison, see
 
 | Profile | Status | SoC | Flash / PSRAM | Display | Audio Path | Partition Schema |
 | --- | --- | --- | --- | --- | --- | --- |
-| `ha_voice_pe` | active | ESP32-S3 | 16 MiB / 8 MiB | none | XMOS XU316 input, TI AIC3204 output | `s3-16m-v1` |
-| `esp_box_3` | active | ESP32-S3 | 16 MiB / 16 MiB | 2.4 inch, 320 x 240 | ES7210 input, ES8311 output | `s3-16m-v1` |
-| `waveshare_s3_touch_lcd_1_85c_box_v2` | planned | ESP32-S3 | 16 MiB / 8 MiB | 1.85 inch round, 360 x 360 | ES7210 input, ES8311 output | `s3-16m-v1` |
+| `ha_voice_pe` | active | ESP32-S3 | 16 MiB / 8 MiB | none | XMOS XU316 input, TI AIC3204 output | `s3-16m-recovery-v1` |
+| `esp_box_3` | active | ESP32-S3 | 16 MiB / 16 MiB | 2.4 inch, 320 x 240 | ES7210 input, ES8311 output | `s3-16m-recovery-v1` |
+| `waveshare_s3_touch_lcd_1_85c_box_v2` | planned | ESP32-S3 | 16 MiB / 8 MiB | 1.85 inch round, 360 x 360 | ES7210 input, ES8311 output | `s3-16m-recovery-v1` |
 | `waveshare_p4_wifi6_touch_lcd_7b` | planned | ESP32-P4 + ESP32-C6 | 32 MiB / 32 MiB | 7 inch, 1024 x 600 | ES7210 input, ES8311 output | `p4-32m-v1` |
 
 The Waveshare 1.85 inch profile is intentionally V2-only:
@@ -129,7 +129,7 @@ hardware_revision:
 support_status: active
 build:
   idf_target: esp32s3
-  partition_schema: s3-16m-v1
+  partition_schema: s3-16m-recovery-v1
   app_slot_size: 4MiB
   recovery_app: true
 hardware:

@@ -14,6 +14,8 @@ RECOVERY_STATUS = Path("firmware/components/recovery_runtime/recovery_status.cpp
 RECOVERY_STATUS_HEADER = Path("firmware/components/recovery_runtime/recovery_status.h")
 PARTITION_ROADMAP = Path("docs/firmware-partition-ota-roadmap.md")
 S3_8M_PARTITIONS = Path("firmware/partitions/s3_8m_v1.csv")
+S3_8M_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_8m_recovery_v1.csv")
+S3_16M_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_16m_recovery_v1.csv")
 P4_32M_PARTITIONS = Path("firmware/partitions/p4_32m_v1.csv")
 
 
@@ -235,9 +237,10 @@ def test_recovery_contract_covers_unusable_main_ota_slots():
     assert "POST" in doc and "/api/recovery/firmware/install" in doc
     assert "POST" in doc and "/api/recovery/boot/select" in doc
 
-    for partition_csv in (S3_8M_PARTITIONS, P4_32M_PARTITIONS):
+    for partition_csv in (S3_8M_RECOVERY_PARTITIONS, S3_16M_RECOVERY_PARTITIONS, P4_32M_PARTITIONS):
         source = partition_csv.read_text()
         assert "factory,    app,  factory" in source
+        assert "factory,    app,  factory, ,         2M," in source
         assert "ota_0,      app,  ota_0" in source
         assert "ota_1,      app,  ota_1" in source
 

@@ -41,6 +41,11 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Firmware links Espressif's `esp-tflite-micro` runtime and ESP-NN acceleration through `voice/micro_wake_engine.{h,cpp}`. The adapter initializes the embedded int16-to-int8 audio preprocessor plus the Alexa streaming model, runs 40-channel feature slices every 10 ms, reports privacy-safe feature/inference/detection counters and probability telemetry in heartbeats, and emits endpoint wake candidates through the existing wake-election path when the sliding probability window crosses the configured cutoff.
 - Firmware keeps backend openWakeWord as the fallback wake provider. Endpoint-local wake detections enter listening mode and stream post-wake audio immediately after submitting the backend wake candidate, while backend stand-down events can still cancel a losing endpoint during arbitration. If local readiness is false or the endpoint election wait times out, the endpoint continues backend streaming behavior.
 - Firmware board-profile schema and examples live under `firmware/boards/`, with validation from `firmware/tools/validate_board_profiles.py`. The initial profile set covers `ha_voice_pe`, `esp_box_3`, V2-only `waveshare_s3_touch_lcd_1_85c_box_v2`, and `waveshare_p4_wifi6_touch_lcd_7b`.
+- Active S3 board profiles use the recovery-capable `s3-16m-recovery-v1`
+  partition schema, reserving a 2 MiB factory recovery app plus two 4 MiB
+  endpoint OTA slots. The legacy `s3-16m-v1` schema remains available as a
+  no-factory historical layout; devices need USB/full flash to migrate partition
+  tables.
 
 ## Partial
 

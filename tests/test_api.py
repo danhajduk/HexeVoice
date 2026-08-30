@@ -266,7 +266,7 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
                 "idf_target": "esp32s3",
                 "flash_size": "16MiB",
                 "psram_size": "8MiB",
-                "partition_schema": "s3-16m-v1",
+                "partition_schema": "s3-16m-recovery-v1",
                 "app_slot_size": "4MiB",
                 "firmware_api_version": "hexe-firmware-main-api-v1",
                 "model_api_version": "hexe-model-bundle-api-v1",
@@ -319,7 +319,7 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     assert firmware_update["idf_target"] == "esp32s3"
     assert firmware_update["flash_size"] == "16MiB"
     assert firmware_update["psram_size"] == "8MiB"
-    assert firmware_update["partition_schema"] == "s3-16m-v1"
+    assert firmware_update["partition_schema"] == "s3-16m-recovery-v1"
     assert firmware_update["app_slot_size"] == "4MiB"
     assert firmware_update["firmware_api_version"] == "hexe-firmware-main-api-v1"
     assert firmware_update["model_api_version"] == "hexe-model-bundle-api-v1"
@@ -346,7 +346,7 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
                 "idf_target": "esp32s3",
                 "flash_size": "16MiB",
                 "psram_size": "16MiB",
-                "partition_schema": "s3-16m-v1",
+                "partition_schema": "s3-16m-recovery-v1",
                 "app_slot_size": "4MiB",
                 "firmware_api_version": "hexe-firmware-main-api-v1",
                 "model_api_version": "hexe-model-bundle-api-v1",
@@ -401,7 +401,7 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     assert event["payload"]["idf_target"] == "esp32s3"
     assert event["payload"]["flash_size"] == "16MiB"
     assert event["payload"]["psram_size"] == "16MiB"
-    assert event["payload"]["partition_schema"] == "s3-16m-v1"
+    assert event["payload"]["partition_schema"] == "s3-16m-recovery-v1"
     assert event["payload"]["app_slot_size"] == "4MiB"
     assert event["payload"]["firmware_api_version"] == "hexe-firmware-main-api-v1"
     assert event["payload"]["model_api_version"] == "hexe-model-bundle-api-v1"

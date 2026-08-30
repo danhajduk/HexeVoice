@@ -124,7 +124,7 @@ Minimum `/api/recovery/status` shape:
   "application_type": "recovery",
   "recovery_api_version": "hexe-recovery-api-v1",
   "board_profile": "ha_voice_pe",
-  "partition_schema": "s3-16m-v1",
+  "partition_schema": "s3-16m-recovery-v1",
   "soc": "esp32s3",
   "flash_size": "16MiB",
   "psram_size": "8MiB",
@@ -197,6 +197,11 @@ operator boot-slot selection after repair. A board/partition layout that does
 not include a factory recovery app cannot guarantee this path after both
 endpoint OTA slots become unusable; that layout requires USB/full flashing or a
 future schema migration before it can make the same recovery guarantee.
+
+The active S3 recovery-capable schema reserves 2 MiB for the factory recovery
+app. That is intentionally larger than the current measured recovery binary so
+Wi-Fi, HTTP rescue, diagnostics, and small board-specific status surfaces can
+grow without squeezing the endpoint OTA slots.
 
 Normal endpoint OTA must not update recovery during early product phases.
 Recovery app updates require USB/full service flashing until a separate signed

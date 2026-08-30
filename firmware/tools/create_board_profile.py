@@ -61,15 +61,19 @@ def upper_definition(profile: str) -> str:
     return f"HEXE_BOARD_PROFILE_{profile.upper()}=1"
 
 
-def partition_schema_for_soc(soc: str) -> str:
+def partition_schema_for_soc(soc: str, flash_size: str | None = None) -> str:
     if soc == "esp32p4":
         return "p4-32m-v1"
-    return "s3-16m-v1"
+    if str(flash_size or "").lower() == "8mib":
+        return "s3-8m-recovery-v1"
+    return "s3-16m-recovery-v1"
 
 
-def app_slot_size_for_soc(soc: str) -> str:
+def app_slot_size_for_soc(soc: str, flash_size: str | None = None) -> str:
     if soc == "esp32p4":
         return "8MiB"
+    if str(flash_size or "").lower() == "8mib":
+        return "2560K"
     return "4MiB"
 
 
@@ -180,8 +184,8 @@ def build_profile(args: argparse.Namespace) -> dict[str, object]:
         ],
         "build": {
             "idf_target": args.soc,
-            "partition_schema": args.partition_schema or partition_schema_for_soc(args.soc),
-            "app_slot_size": args.app_slot_size or app_slot_size_for_soc(args.soc),
+            "partition_schema": args.partition_schema or partition_schema_for_soc(args.soc, args.flash_size),
+            "app_slot_size": args.app_slot_size or app_slot_size_for_soc(args.soc, args.flash_size),
             "recovery_app": True,
             "compile_definitions": [upper_definition(args.profile)],
         },
@@ -316,7 +320,10 @@ def main() -> int:
     parser.add_argument("--cpu")
     parser.add_argument("--flash-size")
     parser.add_argument("--psram-size")
-    parser.add_argument("--partition-schema", choices=["s3-8m-v1", "s3-16m-v1", "p4-32m-v1"])
+    parser.add_argument(
+        "--partition-schema",
+        choices=["s3-8m-v1", "s3-8m-recovery-v1", "s3-16m-v1", "s3-16m-recovery-v1", "p4-32m-v1"],
+    )
     parser.add_argument("--app-slot-size")
     parser.add_argument("--coprocessor")
     parser.add_argument("--revision-required", action="store_true")

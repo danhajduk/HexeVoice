@@ -315,6 +315,20 @@ fields when serving `/api/firmware/manifest`, computing endpoint update
 metadata, and pushing OTA commands, while still generating URL-specific
 HMAC-SHA256 signatures at delivery time.
 
+Current S3 endpoint profiles use the `s3-16m-recovery-v1` partition schema:
+
+```text
+factory recovery   2 MiB
+ota_0 endpoint     4 MiB
+ota_1 endpoint     4 MiB
+model/config/data  remaining flash
+```
+
+Devices still on the legacy `s3-16m-v1` table cannot receive this layout by
+normal endpoint OTA. They need USB/full flash of bootloader, partition table,
+OTA data, recovery app, and endpoint app before the factory recovery path is
+available.
+
 OTA versions must be lexically newer than the endpoint's current version. The
 standard `firmware/build.sh` path therefore injects a timestamped project
 version such as `zYYYYMMDDHHMMSS-<git-sha>` instead of using raw git hashes.

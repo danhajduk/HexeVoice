@@ -10,7 +10,14 @@ from typing import Any
 
 
 ALLOWED_IDF_TARGETS = {"esp32s3", "esp32p4"}
-ALLOWED_PARTITION_SCHEMAS = {"s3-8m-v1", "s3-16m-v1", "p4-32m-v1"}
+ALLOWED_PARTITION_SCHEMAS = {
+    "s3-8m-v1",
+    "s3-8m-recovery-v1",
+    "s3-16m-v1",
+    "s3-16m-recovery-v1",
+    "p4-32m-v1",
+}
+RECOVERY_PARTITION_SCHEMAS = {"s3-8m-recovery-v1", "s3-16m-recovery-v1", "p4-32m-v1"}
 ALLOWED_SUPPORT_STATUS = {"active", "planned", "experimental", "unsupported"}
 SECRET_KEY_PATTERNS = (
     "password",
@@ -279,6 +286,8 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
         raise ValidationError(f"{board_profile}: ESP32-S3 profiles must use an s3 partition schema")
     if idf_target == "esp32p4" and not str(partition_schema).startswith("p4-"):
         raise ValidationError(f"{board_profile}: ESP32-P4 profiles must use a p4 partition schema")
+    if build.get("recovery_app") is True and partition_schema not in RECOVERY_PARTITION_SCHEMAS:
+        raise ValidationError(f"{board_profile}: recovery_app profiles must use a recovery partition schema")
     definitions = build.get("compile_definitions")
     if not isinstance(definitions, list) or not definitions:
         raise ValidationError(f"{board_profile}: build.compile_definitions must not be empty")

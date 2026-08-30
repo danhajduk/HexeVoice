@@ -1,0 +1,13 @@
+# Hexe S3 16 MiB layout with a 2 MiB factory recovery app and dual 4 MiB endpoint OTA slots.
+# Name,     Type, SubType, Offset,   Size,    Flags
+nvs,        data, nvs,     0x9000,   16K,
+otadata,    data, ota,     0xd000,   8K,
+phy_init,   data, phy,     0xf000,   4K,
+factory,    app,  factory, ,         2M,
+ota_0,      app,  ota_0,   ,         4M,
+ota_1,      app,  ota_1,   ,         4M,
+model_a,    data, spiffs,  ,         512K,
+model_b,    data, spiffs,  ,         512K,
+config,     data, nvs,     ,         512K,
+coredump,   data, coredump,,         512K,
+storage,    data, spiffs,  ,         3M,

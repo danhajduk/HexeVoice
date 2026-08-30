@@ -99,7 +99,7 @@
         },
         "partition_schema": {
           "type": "string",
-          "enum": ["s3-8m-v1", "s3-16m-v1", "p4-32m-v1"]
+          "enum": ["s3-8m-v1", "s3-8m-recovery-v1", "s3-16m-v1", "s3-16m-recovery-v1", "p4-32m-v1"]
         },
         "app_slot_size": {
           "type": "string",

@@ -16,7 +16,7 @@ sources:
     url: https://github.com/espressif/esp-box/blob/master/docs/hardware_overview/esp32_s3_box_3/hardware_overview_for_box_3.md
 build:
   idf_target: esp32s3
-  partition_schema: s3-16m-v1
+  partition_schema: s3-16m-recovery-v1
   app_slot_size: 4MiB
   recovery_app: true
   compile_definitions:
