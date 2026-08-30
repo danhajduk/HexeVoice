@@ -15,6 +15,8 @@ Use board profiles for:
 - flash and PSRAM expectations
 - display size in inches and pixels
 - audio frontend/output hardware
+- hardware/audio-frontend DSP features
+- firmware VAD capability and algorithm
 - storage, controls, and indicators
 - wake/Stop model support
 - capability defaults reported by firmware
@@ -68,6 +70,11 @@ for the voice endpoint use case.
 
 ## Validation Rules
 
+`audio.input.dsp.vad` means the microphone/audio-frontend hardware exposes VAD
+or a VAD-like DSP signal. `vad.firmware` means Hexe firmware can run its own VAD
+from PCM frames. A board can have firmware VAD even when `audio.input.dsp.vad`
+is `false`.
+
 Run:
 
 ```bash
@@ -83,6 +90,7 @@ The validator checks:
 - SoC and partition-schema compatibility
 - display feature flags matching display dimensions
 - audio feature flags matching input/output declarations
+- firmware VAD availability, status, algorithm, and timing defaults
 - wake model contract: Alexa as the initial Hexe alias, Stop as interruption
   model, backend fallback enabled
 - storage capability consistency
@@ -123,9 +131,23 @@ audio:
     available: true
     frontend: xmos_xu316
     microphones: 2
+    dsp:
+      vad: true
   output:
     available: true
     codec: ti_aic3204
+vad:
+  firmware:
+    available: true
+    status: active
+    algorithm: energy_threshold
+    input_source: pcm_audio_frames
+    configurable: true
+    adaptive_noise_floor: true
+    frame_ms: 20
+    default_energy_threshold: 900
+    default_pause_ms: 190
+    silence_hold_ms: 1200
 wake:
   local_micro_wake_word: true
   primary_model: alexa

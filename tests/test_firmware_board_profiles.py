@@ -73,6 +73,57 @@ def test_waveshare_1_85c_profile_requires_v2_and_rejects_v1(tmp_path):
     assert "profile must require V2 and reject V1" in result.stderr
 
 
+def test_board_profiles_separate_hardware_dsp_vad_from_firmware_vad():
+    validator = load_validator_module()
+    profiles = {
+        path.parent.name: validator.load_profile(path)
+        for path in PROFILE_ROOT.glob("*/board.yaml")
+    }
+
+    assert profiles["ha_voice_pe"]["audio"]["input"]["dsp"]["vad"] is True
+    assert profiles["esp_box_3"]["audio"]["input"]["dsp"]["vad"] is False
+    assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["audio"]["input"]["dsp"]["vad"] is False
+    assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["audio"]["input"]["dsp"]["vad"] is False
+
+    for profile_name, profile in profiles.items():
+        firmware_vad = profile["vad"]["firmware"]
+        assert firmware_vad["available"] is True
+        assert firmware_vad["algorithm"] == "energy_threshold"
+        assert firmware_vad["input_source"] == "pcm_audio_frames"
+        assert firmware_vad["configurable"] is True
+        assert firmware_vad["frame_ms"] == 20
+        assert firmware_vad["default_energy_threshold"] == 900
+        assert firmware_vad["default_pause_ms"] == 190
+        if profile["support_status"] == "active":
+            assert firmware_vad["status"] == "active"
+        else:
+            assert firmware_vad["status"] == "planned"
+
+    assert profiles["ha_voice_pe"]["vad"]["firmware"]["adaptive_noise_floor"] is True
+    assert profiles["esp_box_3"]["vad"]["firmware"]["adaptive_noise_floor"] is False
+
+
+def test_board_profile_validator_rejects_missing_firmware_vad(tmp_path):
+    source = PROFILE_ROOT / "ha_voice_pe/board.yaml"
+    validator = load_validator_module()
+    profile = validator.load_profile(source)
+    profile.pop("vad")
+    profile_dir = tmp_path / "ha_voice_pe"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "board.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(profile_path)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "missing required keys: vad" in result.stderr
+
+
 def test_board_profiles_reject_secret_like_instance_config(tmp_path):
     source = PROFILE_ROOT / "ha_voice_pe/board.yaml"
     profile_dir = tmp_path / "ha_voice_pe"

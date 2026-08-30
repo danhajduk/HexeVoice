@@ -230,6 +230,7 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
         "features",
         "display",
         "audio",
+        "vad",
         "wake",
         "storage",
         "controls",
@@ -333,6 +334,28 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
     for key in ("aec", "noise_suppression", "agc", "vad"):
         if not isinstance(dsp.get(key), bool):
             raise ValidationError(f"{board_profile}: audio.input.dsp.{key} must be true or false")
+
+    vad = require_mapping(profile, "vad")
+    firmware_vad = vad.get("firmware")
+    if not isinstance(firmware_vad, dict):
+        raise ValidationError(f"{board_profile}: vad.firmware must be an object")
+    if firmware_vad.get("available") != features["microphone"]:
+        raise ValidationError(f"{board_profile}: vad.firmware.available must match features.microphone")
+    if firmware_vad.get("status") not in {"active", "planned", "unsupported"}:
+        raise ValidationError(f"{board_profile}: vad.firmware.status must be active, planned, or unsupported")
+    if firmware_vad.get("algorithm") != "energy_threshold":
+        raise ValidationError(f"{board_profile}: vad.firmware.algorithm must be energy_threshold")
+    if firmware_vad.get("input_source") != "pcm_audio_frames":
+        raise ValidationError(f"{board_profile}: vad.firmware.input_source must be pcm_audio_frames")
+    for key in ("configurable", "adaptive_noise_floor"):
+        if not isinstance(firmware_vad.get(key), bool):
+            raise ValidationError(f"{board_profile}: vad.firmware.{key} must be true or false")
+    for key in ("frame_ms", "default_energy_threshold", "default_pause_ms", "silence_hold_ms"):
+        if not isinstance(firmware_vad.get(key), int) or firmware_vad[key] <= 0:
+            raise ValidationError(f"{board_profile}: vad.firmware.{key} must be a positive integer")
+    expected_vad_status = "active" if support_status == "active" else "planned"
+    if features["microphone"] and firmware_vad.get("status") != expected_vad_status:
+        raise ValidationError(f"{board_profile}: vad.firmware.status must be {expected_vad_status}")
 
     wake = require_mapping(profile, "wake")
     if wake.get("backend_fallback") is not True:

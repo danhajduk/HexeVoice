@@ -18,6 +18,7 @@
     "features",
     "audio",
     "display",
+    "vad",
     "wake",
     "storage",
     "controls",
@@ -206,6 +207,41 @@
         "alias": {"type": "string"},
         "backend_fallback": {"type": "boolean"},
         "stop_model": {"type": "string"}
+      }
+    },
+    "vad": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["firmware"],
+      "properties": {
+        "firmware": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "available",
+            "status",
+            "algorithm",
+            "input_source",
+            "configurable",
+            "adaptive_noise_floor",
+            "frame_ms",
+            "default_energy_threshold",
+            "default_pause_ms",
+            "silence_hold_ms"
+          ],
+          "properties": {
+            "available": {"type": "boolean"},
+            "status": {"type": "string", "enum": ["active", "planned", "unsupported"]},
+            "algorithm": {"type": "string", "enum": ["energy_threshold"]},
+            "input_source": {"type": "string", "enum": ["pcm_audio_frames"]},
+            "configurable": {"type": "boolean"},
+            "adaptive_noise_floor": {"type": "boolean"},
+            "frame_ms": {"type": "integer", "minimum": 1},
+            "default_energy_threshold": {"type": "integer", "minimum": 1},
+            "default_pause_ms": {"type": "integer", "minimum": 1},
+            "silence_hold_ms": {"type": "integer", "minimum": 1}
+          }
+        }
       }
     },
     "storage": {

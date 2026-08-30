@@ -92,6 +92,24 @@ Column names include the source YAML path where that helps future refactors.
 | `audio.output.speaker` | `true` | `true` | `true` | `true` |
 | `audio.output.line_out` | `true` | `false` | `false` | `false` |
 
+## Firmware VAD
+
+`audio.input.dsp.vad` is a hardware/audio-frontend DSP flag. The fields below
+describe Hexe firmware VAD running from PCM audio frames.
+
+| YAML Field | HA Voice PE | ESP32-S3-BOX-3 | Waveshare 1.85C BOX V2 | Waveshare P4 7B |
+| --- | --- | --- | --- | --- |
+| `vad.firmware.available` | `true` | `true` | `true` | `true` |
+| `vad.firmware.status` | `active` | `active` | `planned` | `planned` |
+| `vad.firmware.algorithm` | `energy_threshold` | `energy_threshold` | `energy_threshold` | `energy_threshold` |
+| `vad.firmware.input_source` | `pcm_audio_frames` | `pcm_audio_frames` | `pcm_audio_frames` | `pcm_audio_frames` |
+| `vad.firmware.configurable` | `true` | `true` | `true` | `true` |
+| `vad.firmware.adaptive_noise_floor` | `true` | `false` | `false` | `false` |
+| `vad.firmware.frame_ms` | `20` | `20` | `20` | `20` |
+| `vad.firmware.default_energy_threshold` | `900` | `900` | `900` | `900` |
+| `vad.firmware.default_pause_ms` | `190` | `190` | `190` | `190` |
+| `vad.firmware.silence_hold_ms` | `1200` | `2500` | `1200` | `1200` |
+
 ## Wake and Storage
 
 | YAML Field | HA Voice PE | ESP32-S3-BOX-3 | Waveshare 1.85C BOX V2 | Waveshare P4 7B |
@@ -135,6 +153,9 @@ Column names include the source YAML path where that helps future refactors.
   `p4-32m-v1` plus `hardware.wireless.coprocessor: esp32c6`.
 - `ha_voice_pe` is the only profile with `features.led_ring`,
   `features.rotary_encoder`, and `features.hardware_mute` enabled.
+- `audio.input.dsp.vad` is true only for `ha_voice_pe`; firmware VAD is
+  separately available on all four profiles and active today on the two active
+  firmware profiles.
 - The three display profiles all expose `display.size_inches`,
   `display.width_px`, and `display.height_px`; `ha_voice_pe` intentionally keeps
   them `null`.

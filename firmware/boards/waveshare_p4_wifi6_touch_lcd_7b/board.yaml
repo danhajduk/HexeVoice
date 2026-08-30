@@ -95,6 +95,18 @@ wake:
   alias: Hexe
   backend_fallback: true
   stop_model: stop
+vad:
+  firmware:
+    available: true
+    status: planned
+    algorithm: energy_threshold
+    input_source: pcm_audio_frames
+    configurable: true
+    adaptive_noise_floor: false
+    frame_ms: 20
+    default_energy_threshold: 900
+    default_pause_ms: 190
+    silence_hold_ms: 1200
 controls:
   - name: boot
     kind: button
