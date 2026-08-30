@@ -95,10 +95,10 @@ mode and submits local `wake.candidate` events through the same backend election
 
 The wake module still exposes `candidate_event_type: "wake.candidate"`, `stand_down_event_type:
 "wake.election.result"`, `candidate_source: "endpoint_micro_wake_word"`, `backend_fallback: true`, `fallback_source:
-"backend_openwakeword"`, and a 300 ms `stream_after_timeout_backend_fallback` policy. While waiting for election,
-firmware buffers microphone frames in the existing pre-roll ring. If the backend elects this endpoint, `wake.accepted`
-releases the stream. If the backend sends `wake.election.result` with `stand_down: true`, firmware cancels local capture
-and returns to idle/wake-armed without sending full utterance audio.
+"backend_openwakeword"`, and a 300 ms `stream_after_timeout_backend_fallback` policy. For endpoint-local wake detections,
+firmware enters listening mode and streams post-wake audio immediately after submitting the candidate instead of waiting
+for backend election. If the backend sends `wake.election.result` with `stand_down: true`, firmware cancels local capture
+and returns to idle/wake-armed.
 
 `audio.chunk` may include optional endpoint-side numeric quality metrics: `frame_level`, `noise_floor_level`,
 `speech_peak_level`, `pre_roll_duration_ms`, `contains_pre_roll`, and `contains_speech`. These fields are

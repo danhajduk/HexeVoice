@@ -301,7 +301,8 @@ def test_firmware_wake_election_candidate_wait_and_fallback_contract():
     assert '"ambient_level"' in backend_source
     assert '"snr_db"' in backend_source
     assert "g_wake_election_waiting = true" in backend_source
-    assert "set_audio_streaming(false);" in backend_source
+    assert "g_wake_accepted_for_session = true;\n    set_audio_streaming(true);" in backend_source
+    assert "entered local listening mode before backend election" in backend_source
     assert "wake_election_wait_timed_out()" in backend_source
     assert "Wake election timed out; streaming buffered audio to backend fallback" in backend_source
     assert "if (g_wake_election_waiting && !g_wake_accepted_for_session) {\n    if (!wake_election_wait_timed_out()) {\n      remember_preroll_frame(frame);" in backend_source
@@ -462,6 +463,9 @@ def test_firmware_honors_wake_election_stand_down_without_command_ack():
     assert 'cJSON_GetObjectItem(payload, "stand_down")' in backend_source
     assert "stand_down_wake_candidate(wake_election_stand_down_reason(payload));" in backend_source
     assert "reset_voice_session_state(false);" in backend_source
+    assert "set_audio_streaming(false);" in backend_source[
+        backend_source.index("void reset_voice_session_state") : backend_source.index("void mark_voice_socket_disconnected")
+    ]
     assert "Wake election stand-down received: %s" in backend_source
     assert "wake.election.result" not in backend_source[
         backend_source.index("bool is_backend_command_event") : backend_source.index("void acknowledge_command_received")
@@ -743,7 +747,9 @@ def test_firmware_handles_backend_session_state_events():
 
     assert 'std::strcmp(type, "session.state") == 0' in source
     assert "g_wake_accepted_for_session" in source
-    assert 'wake_accepted || (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0)' in source
+    assert "local_wake_waiting_for_backend" in source
+    assert 'if (wake_accepted ||\n      (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0) ||' in source
+    assert '(local_wake_waiting_for_backend && std::strcmp(ux_state, "idle") == 0))' in source
     assert 'g_wake_accepted_for_session && std::strcmp(ux_state, "thinking") == 0' in source
     assert "if (g_wake_accepted_for_session) {\n      hexe::state().phase = hexe::AppPhase::kThinking;" in source
     assert "event_requests_followup_listen" in source

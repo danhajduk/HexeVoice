@@ -882,11 +882,14 @@ void handle_backend_event_json(const std::string &message) {
     return;
   }
   if (wake_accepted) {
+    const bool already_locally_accepted = g_wake_accepted_for_session;
     g_wake_accepted_for_session = true;
     reset_wake_election_state();
     set_audio_streaming(true);
     hexe::voice::prewarm_tts_output();
-    hexe::voice::play_wake_accepted_sound();
+    if (!already_locally_accepted) {
+      hexe::voice::play_wake_accepted_sound();
+    }
     cJSON *session_id = cJSON_GetObjectItem(root, "session_id");
     cJSON *wake = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "wake") : nullptr;
     cJSON *confidence = cJSON_IsObject(wake) ? cJSON_GetObjectItem(wake, "confidence") : nullptr;
@@ -912,7 +915,11 @@ void handle_backend_event_json(const std::string &message) {
     resume_audio_stream_for_followup();
   }
 
-  if (wake_accepted || (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0)) {
+  const bool local_wake_waiting_for_backend =
+      g_wake_accepted_for_session && g_wake_election_waiting && std::strcmp(type, "session.state") == 0;
+  if (wake_accepted ||
+      (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0) ||
+      (local_wake_waiting_for_backend && std::strcmp(ux_state, "idle") == 0)) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kListening;
     }
@@ -2838,11 +2845,18 @@ bool submit_wake_candidate(const WakeCandidateMetrics &candidate) {
     g_wake_candidate_id = candidate_id;
     g_wake_election_waiting = true;
     g_wake_election_started_at_us = esp_timer_get_time();
-    set_audio_streaming(false);
+    g_wake_accepted_for_session = true;
+    set_audio_streaming(true);
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kListening;
     }
-    ESP_LOGI(kTag, "Submitted wake.candidate %s source=%s and waiting for backend election", g_wake_candidate_id.c_str(), source);
+    hexe::voice::prewarm_tts_output();
+    hexe::voice::play_wake_accepted_sound();
+    ESP_LOGI(
+        kTag,
+        "Submitted wake.candidate %s source=%s and entered local listening mode before backend election",
+        g_wake_candidate_id.c_str(),
+        source);
   } else {
     reset_wake_election_state();
   }
