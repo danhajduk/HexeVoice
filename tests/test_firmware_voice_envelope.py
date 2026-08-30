@@ -363,12 +363,21 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     assert '"model_asset_bytes"' in backend_source
     assert '"model_runtime_ready"' in backend_source
     assert '"runtime_arena_bytes"' in backend_source
+    assert '"feature_frame_count"' in backend_source
+    assert '"inference_count"' in backend_source
+    assert '"detection_count"' in backend_source
+    assert '"last_probability_raw"' in backend_source
+    assert '"last_probability"' in backend_source
+    assert '"last_average_probability_raw"' in backend_source
+    assert '"best_average_probability_raw"' in backend_source
+    assert '"last_detection_probability_raw"' in backend_source
     assert "experimental_provider_configured" in backend_source
     for source in (audio_source, pe_audio_source):
         assert "inspect_local_keyword_frame" in source
         assert "local_keywords.wake" in source
         assert "WakeCandidateMetrics candidate" in source
         assert "candidate.endpoint_audio_profile_version = \"firmware_audio_v1\"" in source
+        assert "Local wake detected" in source
 
 
 def test_firmware_has_experimental_stop_keyword_provider_hook():
@@ -403,6 +412,8 @@ def test_firmware_has_experimental_stop_keyword_provider_hook():
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "tensor_arena_size", stop_model.tensor_arena_size)' in backend_source
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "model_version", stop_model.model_version)' in backend_source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "manifest_sha256", stop_model.manifest_sha256)' in backend_source
+    for source in (audio_source, pe_audio_source):
+        assert "Local stop detected" in source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "tflite_sha256", stop_model.tflite_sha256)' in backend_source
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "tflite_size_bytes", stop_engine.stop_model_asset_bytes)' in backend_source
     for source in (audio_source, pe_audio_source):

@@ -87,9 +87,11 @@ model id, manifest URL, TFLite URL, probability cutoff, sliding window, feature 
 availability, `model_version`, asset hashes, embedded TFLite size, and a `micro_wake_engine` diagnostic block. The
 adapter links Espressif's TFLM/ESP-NN runtime and reports `tflm_linked`, `feature_frontend_linked`,
 `feature_frontend_ready`, `initialized`, `model_asset_available`, `model_asset_bytes`, `model_runtime_ready`,
-`runtime_arena_bytes`, `ready`, and `reason`. The Alexa/Hexe model asset and int16-to-int8 audio preprocessor are
-embedded in the firmware image, so a ready endpoint reports `endpoint_micro_wake_word_experimental` mode and submits
-local `wake.candidate` events through the same backend election contract.
+`runtime_arena_bytes`, `ready`, and `reason`. It also reports privacy-safe runtime counters and probabilities:
+`feature_frame_count`, `inference_count`, `detection_count`, last raw/normalized probability, last average and max
+probability, best average probability, and last detection probability. The Alexa/Hexe model asset and int16-to-int8
+audio preprocessor are embedded in the firmware image, so a ready endpoint reports `endpoint_micro_wake_word_experimental`
+mode and submits local `wake.candidate` events through the same backend election contract.
 
 The wake module still exposes `candidate_event_type: "wake.candidate"`, `stand_down_event_type:
 "wake.election.result"`, `candidate_source: "endpoint_micro_wake_word"`, `backend_fallback: true`, `fallback_source:

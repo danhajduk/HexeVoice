@@ -140,6 +140,28 @@ std::string g_tts_playback_session_id;
 std::string g_wake_candidate_id;
 std::string g_ws_rx_buffer;
 
+double probability_as_unit(uint8_t probability) {
+  return static_cast<double>(probability) / 255.0;
+}
+
+void add_micro_wake_runtime_diagnostics(cJSON *engine, const hexe::voice::MicroWakeRuntimeDiagnostics &runtime) {
+  if (engine == nullptr) {
+    return;
+  }
+  cJSON_AddNumberToObject(engine, "inference_count", runtime.inference_count);
+  cJSON_AddNumberToObject(engine, "detection_count", runtime.detection_count);
+  cJSON_AddNumberToObject(engine, "last_probability_raw", runtime.last_probability);
+  cJSON_AddNumberToObject(engine, "last_probability", probability_as_unit(runtime.last_probability));
+  cJSON_AddNumberToObject(engine, "last_average_probability_raw", runtime.last_average_probability);
+  cJSON_AddNumberToObject(engine, "last_average_probability", probability_as_unit(runtime.last_average_probability));
+  cJSON_AddNumberToObject(engine, "last_max_probability_raw", runtime.last_max_probability);
+  cJSON_AddNumberToObject(engine, "last_max_probability", probability_as_unit(runtime.last_max_probability));
+  cJSON_AddNumberToObject(engine, "best_average_probability_raw", runtime.best_average_probability);
+  cJSON_AddNumberToObject(engine, "best_average_probability", probability_as_unit(runtime.best_average_probability));
+  cJSON_AddNumberToObject(engine, "last_detection_probability_raw", runtime.last_detection_probability);
+  cJSON_AddNumberToObject(engine, "last_detection_probability", probability_as_unit(runtime.last_detection_probability));
+}
+
 struct MediaTransferRequest {
   char request_id[96];
   char media_type[16];
@@ -1377,6 +1399,8 @@ std::string endpoint_capabilities_json() {
         cJSON_AddNumberToObject(engine, "runtime_arena_bytes", wake_engine.wake_runtime_arena_bytes);
         cJSON_AddBoolToObject(engine, "ready", wake_engine.wake_ready);
         cJSON_AddStringToObject(engine, "reason", wake_engine.wake_reason);
+        cJSON_AddNumberToObject(engine, "feature_frame_count", wake_engine.feature_frame_count);
+        add_micro_wake_runtime_diagnostics(engine, wake_engine.wake_runtime);
       }
       cJSON *primary_model = cJSON_AddObjectToObject(wake_word, "primary_model");
       if (primary_model != nullptr) {
@@ -1433,6 +1457,8 @@ std::string endpoint_capabilities_json() {
         cJSON_AddNumberToObject(engine, "runtime_arena_bytes", stop_engine.stop_runtime_arena_bytes);
         cJSON_AddBoolToObject(engine, "ready", stop_engine.stop_ready);
         cJSON_AddStringToObject(engine, "reason", stop_engine.stop_reason);
+        cJSON_AddNumberToObject(engine, "feature_frame_count", stop_engine.feature_frame_count);
+        add_micro_wake_runtime_diagnostics(engine, stop_engine.stop_runtime);
       }
       cJSON *stop_keyword_model = cJSON_AddObjectToObject(playback_stop_word, "keyword_model");
       if (stop_keyword_model != nullptr) {

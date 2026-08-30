@@ -66,6 +66,7 @@ struct AudioFrontendState {
   size_t samples_filled{0};
   uint64_t total_samples{0};
   uint64_t last_feature_sample{0};
+  uint32_t feature_frame_count{0};
 };
 
 struct StreamingRuntime {
@@ -84,9 +85,13 @@ struct StreamingRuntime {
   int16_t ignore_windows{-kMinWindowsBeforeDetection};
   bool loaded{false};
   bool unprocessed_probability{false};
+  uint32_t inference_count{0};
+  uint32_t detection_count{0};
   uint8_t last_probability{0};
   uint8_t last_average_probability{0};
   uint8_t last_max_probability{0};
+  uint8_t best_average_probability{0};
+  uint8_t last_detection_probability{0};
   const char *failure_reason{nullptr};
 };
 #endif
@@ -207,9 +212,6 @@ void reset_runtime_probabilities(StreamingRuntime &runtime) {
   runtime.current_stride_step = 0;
   runtime.ignore_windows = -kMinWindowsBeforeDetection;
   runtime.unprocessed_probability = false;
-  runtime.last_probability = 0;
-  runtime.last_average_probability = 0;
-  runtime.last_max_probability = 0;
 }
 
 bool initialize_audio_frontend() {
@@ -365,6 +367,7 @@ void release_frontend() {
   g_engine.frontend.samples_filled = 0;
   g_engine.frontend.total_samples = 0;
   g_engine.frontend.last_feature_sample = 0;
+  g_engine.frontend.feature_frame_count = 0;
   g_engine.frontend.rolling_samples.fill(0);
   g_engine.frontend.ordered_samples.fill(0);
 }
@@ -387,6 +390,7 @@ bool generate_feature(const int16_t *samples, int8_t feature[kPreprocessorFeatur
     return false;
   }
   std::copy_n(tflite::GetTensorData<int8_t>(output), kPreprocessorFeatureSize, feature);
+  ++frontend.feature_frame_count;
   (void)samples;
   return true;
 }
@@ -418,6 +422,7 @@ bool perform_streaming_inference(EngineModel &model, const int8_t feature[kPrepr
     return false;
   }
   TfLiteTensor *output = runtime.interpreter->output(0);
+  ++runtime.inference_count;
   ++runtime.last_probability_index;
   if (runtime.last_probability_index >= runtime.sliding_window_size) {
     runtime.last_probability_index = 0;
@@ -452,6 +457,7 @@ hexe::voice::LocalKeywordDetection detection_from_runtime(EngineModel &model) {
   const uint8_t average = static_cast<uint8_t>(sum / runtime.sliding_window_size);
   runtime.last_average_probability = average;
   runtime.last_max_probability = max_probability;
+  runtime.best_average_probability = std::max(runtime.best_average_probability, average);
   if (sum <= static_cast<uint32_t>(cutoff) * runtime.sliding_window_size) {
     return detection;
   }
@@ -463,6 +469,8 @@ hexe::voice::LocalKeywordDetection detection_from_runtime(EngineModel &model) {
   detection.model = model.metadata->id;
   detection.wake_word = model.metadata->wake_word;
   detection.confidence = static_cast<float>(average) / 255.0f;
+  ++runtime.detection_count;
+  runtime.last_detection_probability = average;
   reset_runtime_probabilities(runtime);
   return detection;
 }
@@ -541,6 +549,28 @@ size_t role_runtime_arena_bytes(hexe::voice::MicroWakeModelRole role) {
   (void)role;
 #endif
   return 0;
+}
+
+hexe::voice::MicroWakeRuntimeDiagnostics role_diagnostics(hexe::voice::MicroWakeModelRole role) {
+  hexe::voice::MicroWakeRuntimeDiagnostics diagnostics;
+#if defined(HEXE_MICRO_WAKE_WORD_TFLM_ENABLED) && HEXE_MICRO_WAKE_WORD_TFLM_ENABLED
+  for (size_t index = 0; index < g_engine.model_count; ++index) {
+    const EngineModel &model = g_engine.models[index];
+    if (model.role == role && model.valid && model.enabled && model.runtime && model.runtime->loaded) {
+      diagnostics.inference_count = model.runtime->inference_count;
+      diagnostics.detection_count = model.runtime->detection_count;
+      diagnostics.last_probability = model.runtime->last_probability;
+      diagnostics.last_average_probability = model.runtime->last_average_probability;
+      diagnostics.last_max_probability = model.runtime->last_max_probability;
+      diagnostics.best_average_probability = model.runtime->best_average_probability;
+      diagnostics.last_detection_probability = model.runtime->last_detection_probability;
+      break;
+    }
+  }
+#else
+  (void)role;
+#endif
+  return diagnostics;
 }
 
 bool role_ready(hexe::voice::MicroWakeModelRole role) {
@@ -651,8 +681,10 @@ MicroWakeEngineStatus micro_wake_engine_status() {
   status.feature_frontend_linked = kFeatureFrontendLinked;
 #if defined(HEXE_MICRO_WAKE_WORD_TFLM_ENABLED) && HEXE_MICRO_WAKE_WORD_TFLM_ENABLED
   status.feature_frontend_ready = g_engine.frontend.ready;
+  status.feature_frame_count = g_engine.frontend.feature_frame_count;
 #else
   status.feature_frontend_ready = false;
+  status.feature_frame_count = 0;
 #endif
   status.initialized = g_engine.initialized;
   status.wake_model_asset_available = role_asset_available(MicroWakeModelRole::kWake);
@@ -667,6 +699,8 @@ MicroWakeEngineStatus micro_wake_engine_status() {
   status.stop_ready = role_ready(MicroWakeModelRole::kPlaybackStop);
   status.wake_reason = role_reason(MicroWakeModelRole::kWake);
   status.stop_reason = role_reason(MicroWakeModelRole::kPlaybackStop);
+  status.wake_runtime = role_diagnostics(MicroWakeModelRole::kWake);
+  status.stop_runtime = role_diagnostics(MicroWakeModelRole::kPlaybackStop);
   return status;
 }
 

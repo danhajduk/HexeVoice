@@ -20,10 +20,21 @@ struct MicroWakeModelAsset {
   bool enabled{false};
 };
 
+struct MicroWakeRuntimeDiagnostics {
+  uint32_t inference_count{0};
+  uint32_t detection_count{0};
+  uint8_t last_probability{0};
+  uint8_t last_average_probability{0};
+  uint8_t last_max_probability{0};
+  uint8_t best_average_probability{0};
+  uint8_t last_detection_probability{0};
+};
+
 struct MicroWakeEngineStatus {
   bool tflm_linked{false};
   bool feature_frontend_linked{false};
   bool feature_frontend_ready{false};
+  uint32_t feature_frame_count{0};
   bool initialized{false};
   bool wake_model_asset_available{false};
   bool stop_model_asset_available{false};
@@ -37,6 +48,8 @@ struct MicroWakeEngineStatus {
   bool stop_ready{false};
   const char *wake_reason{nullptr};
   const char *stop_reason{nullptr};
+  MicroWakeRuntimeDiagnostics wake_runtime;
+  MicroWakeRuntimeDiagnostics stop_runtime;
 };
 
 void init_micro_wake_engine(const MicroWakeModelAsset *models, size_t model_count);

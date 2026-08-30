@@ -448,6 +448,14 @@ void vad_task(void *arg) {
         frame_has_voice);
     const hexe::voice::LocalKeywordDetection &wake_detection = local_keywords.wake;
     if (wake_detection.detected) {
+      ESP_LOGI(
+          kTag,
+          "Local wake detected: model=%s confidence=%.3f level=%lu noise=%lu peak=%lu",
+          wake_detection.model == nullptr ? "unknown" : wake_detection.model,
+          static_cast<double>(wake_detection.confidence),
+          static_cast<unsigned long>(level),
+          static_cast<unsigned long>(noise_floor),
+          static_cast<unsigned long>(speech_peak_level));
       hexe::voice::WakeCandidateMetrics candidate;
       candidate.source = wake_detection.source;
       candidate.model = wake_detection.model;
@@ -463,6 +471,11 @@ void vad_task(void *arg) {
     }
     const hexe::voice::LocalKeywordDetection &stop_detection = local_keywords.playback_stop;
     if (stop_detection.detected) {
+      ESP_LOGI(
+          kTag,
+          "Local stop detected: model=%s confidence=%.3f",
+          stop_detection.model == nullptr ? "unknown" : stop_detection.model,
+          static_cast<double>(stop_detection.confidence));
       if (hexe::voice::tts_playback_active()) {
         hexe::voice::stop_playback("voice_stop");
       } else {
