@@ -13,7 +13,8 @@ GENERATOR = REPO_ROOT / "firmware/tools/generate_board_profile_config.py"
 SCAFFOLD = REPO_ROOT / "firmware/tools/create_board_profile.py"
 PARTITION_VALIDATOR = REPO_ROOT / "firmware/tools/validate_partition_schema.py"
 PROFILE_ROOT = REPO_ROOT / "firmware/boards"
-FIRMWARE_CMAKE = REPO_ROOT / "firmware/main/CMakeLists.txt"
+FIRMWARE_ROOT_CMAKE = REPO_ROOT / "firmware/CMakeLists.txt"
+FIRMWARE_CMAKE = REPO_ROOT / "firmware/components/endpoint_runtime/CMakeLists.txt"
 FIRMWARE_BUILD_SCRIPT = REPO_ROOT / "firmware/build.sh"
 PARTITIONS_DIR = REPO_ROOT / "firmware/partitions"
 
@@ -254,8 +255,13 @@ def test_board_profile_generator_keeps_planned_profiles_non_buildable(tmp_path):
 
 
 def test_firmware_cmake_uses_generated_board_profile_adapters():
+    root_cmake = FIRMWARE_ROOT_CMAKE.read_text(encoding="utf-8")
     cmake = FIRMWARE_CMAKE.read_text(encoding="utf-8")
 
+    assert "HEXE_FIRMWARE_APP" in root_cmake
+    assert 'set(HEXE_FIRMWARE_APP "endpoint")' in root_cmake
+    assert 'apps/${HEXE_FIRMWARE_APP}/main' in root_cmake
+    assert "EXTRA_COMPONENT_DIRS" in root_cmake
     assert "generate_board_profile_config.py" in cmake
     assert "--header-output" in cmake
     assert "board_profile_pins.h" in cmake

@@ -239,6 +239,6 @@ direct_dependencies:
 - espressif/esp-tflite-micro
 - espressif/esp_websocket_client
 - idf
-manifest_hash: ac4fad97a02f7ea6259fa9e14a335bd5426d49b1517aa8c5f8f176bc8e3df249
+manifest_hash: 3554d7e3deaae22015b49dd5aa0f91db97ebd7798abea0a73320a66aa2482a90
 target: esp32s3
 version: 3.0.0

@@ -7,7 +7,7 @@ operator setup can now persist endpoint provisioning in NVS.
 
 ## Persisted Settings
 
-`firmware/main/system/settings.cpp` owns the active runtime settings:
+`firmware/components/endpoint_runtime/system/settings.cpp` owns the active runtime settings:
 
 - endpoint id
 - display name
@@ -65,7 +65,7 @@ payload field named `endpoint_id`.
 
 ## Recovery
 
-Keep `firmware/config/endpoint.yaml` and `firmware/main/secrets/wifi_secrets.h`
+Keep `firmware/config/endpoint.yaml` and `firmware/components/endpoint_runtime/secrets/wifi_secrets.h`
 available for lab builds and recovery images. If runtime provisioning is reset
 or unavailable, those generated defaults remain sufficient for a device to
 reconnect to the node.

@@ -4,36 +4,36 @@ import subprocess
 from pathlib import Path
 
 
-FIRMWARE_BACKEND_CLIENT = Path("firmware/main/voice/backend_client.cpp")
+FIRMWARE_BACKEND_CLIENT = Path("firmware/components/endpoint_runtime/voice/backend_client.cpp")
 FIRMWARE_BUILD_SCRIPT = Path("firmware/build.sh")
 FIRMWARE_EXPORT_SCRIPT = Path("firmware/export-artifacts.sh")
 FIRMWARE_PROVISIONING_CSV_TOOL = Path("firmware/tools/provisioning-env-to-nvs-csv.py")
-FIRMWARE_CMAKE = Path("firmware/main/CMakeLists.txt")
-FIRMWARE_AUDIO = Path("firmware/main/board/audio.cpp")
-FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/main/board/audio_ha_voice_pe.cpp")
-FIRMWARE_BUTTONS = Path("firmware/main/board/buttons.cpp")
-FIRMWARE_BUTTONS_HA_VOICE_PE = Path("firmware/main/board/buttons_ha_voice_pe.cpp")
-FIRMWARE_DISPLAY = Path("firmware/main/board/display.cpp")
-FIRMWARE_DISPLAY_NONE = Path("firmware/main/board/display_none.cpp")
-FIRMWARE_LED_RING = Path("firmware/main/board/led_ring.cpp")
-FIRMWARE_LED_RING_HA_VOICE_PE = Path("firmware/main/board/led_ring_ha_voice_pe.cpp")
-FIRMWARE_STORAGE = Path("firmware/main/board/storage.cpp")
-FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/main/board/storage_nvs_only.cpp")
-FIRMWARE_SETTINGS = Path("firmware/main/system/settings.cpp")
-FIRMWARE_SETTINGS_HEADER = Path("firmware/main/system/settings.h")
-FIRMWARE_OTA = Path("firmware/main/system/ota.cpp")
-FIRMWARE_OTA_HEADER = Path("firmware/main/system/ota.h")
-FIRMWARE_WIFI = Path("firmware/main/board/wifi.cpp")
-FIRMWARE_TTS_PLAYER = Path("firmware/main/voice/tts_player.cpp")
-FIRMWARE_TTS_PLAYER_HEADER = Path("firmware/main/voice/tts_player.h")
-FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/main/voice/tts_player_ha_voice_pe.cpp")
-FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
+FIRMWARE_CMAKE = Path("firmware/components/endpoint_runtime/CMakeLists.txt")
+FIRMWARE_AUDIO = Path("firmware/components/endpoint_runtime/board/audio.cpp")
+FIRMWARE_AUDIO_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/audio_ha_voice_pe.cpp")
+FIRMWARE_BUTTONS = Path("firmware/components/endpoint_runtime/board/buttons.cpp")
+FIRMWARE_BUTTONS_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/buttons_ha_voice_pe.cpp")
+FIRMWARE_DISPLAY = Path("firmware/components/endpoint_runtime/board/display.cpp")
+FIRMWARE_DISPLAY_NONE = Path("firmware/components/endpoint_runtime/board/display_none.cpp")
+FIRMWARE_LED_RING = Path("firmware/components/endpoint_runtime/board/led_ring.cpp")
+FIRMWARE_LED_RING_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/led_ring_ha_voice_pe.cpp")
+FIRMWARE_STORAGE = Path("firmware/components/endpoint_runtime/board/storage.cpp")
+FIRMWARE_STORAGE_NVS_ONLY = Path("firmware/components/endpoint_runtime/board/storage_nvs_only.cpp")
+FIRMWARE_SETTINGS = Path("firmware/components/endpoint_runtime/system/settings.cpp")
+FIRMWARE_SETTINGS_HEADER = Path("firmware/components/endpoint_runtime/system/settings.h")
+FIRMWARE_OTA = Path("firmware/components/endpoint_runtime/system/ota.cpp")
+FIRMWARE_OTA_HEADER = Path("firmware/components/endpoint_runtime/system/ota.h")
+FIRMWARE_WIFI = Path("firmware/components/endpoint_runtime/board/wifi.cpp")
+FIRMWARE_TTS_PLAYER = Path("firmware/components/endpoint_runtime/voice/tts_player.cpp")
+FIRMWARE_TTS_PLAYER_HEADER = Path("firmware/components/endpoint_runtime/voice/tts_player.h")
+FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/voice/tts_player_ha_voice_pe.cpp")
+FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/components/endpoint_runtime/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
-FIRMWARE_APP_MAIN = Path("firmware/main/app_main.cpp")
-FIRMWARE_APP_STATE = Path("firmware/main/app_state.h")
-FIRMWARE_MICRO_WAKE_ENGINE = Path("firmware/main/voice/micro_wake_engine.cpp")
-FIRMWARE_MICRO_WAKE_ENGINE_HEADER = Path("firmware/main/voice/micro_wake_engine.h")
-FIRMWARE_MICRO_WAKE_MODELS = Path("firmware/main/voice/models")
+FIRMWARE_APP_MAIN = Path("firmware/apps/endpoint/main/app_main.cpp")
+FIRMWARE_APP_STATE = Path("firmware/components/endpoint_runtime/app_state.h")
+FIRMWARE_MICRO_WAKE_ENGINE = Path("firmware/components/endpoint_runtime/voice/micro_wake_engine.cpp")
+FIRMWARE_MICRO_WAKE_ENGINE_HEADER = Path("firmware/components/endpoint_runtime/voice/micro_wake_engine.h")
+FIRMWARE_MICRO_WAKE_MODELS = Path("firmware/components/endpoint_runtime/voice/models")
 FRONTEND_API_CLIENT = Path("frontend/src/api/client.js")
 FRONTEND_ENDPOINT_DASHBOARD = Path("frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx")
 
@@ -166,18 +166,18 @@ def test_firmware_scaffold_modules_are_explicit_status_providers():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
     module_sources = {
-        "wake_word": Path("firmware/main/voice/wake_word.cpp").read_text(),
-        "stt_stream": Path("firmware/main/voice/stt_stream.cpp").read_text(),
-        "assistant_client": Path("firmware/main/voice/assistant_client.cpp").read_text(),
-        "telemetry": Path("firmware/main/system/telemetry.cpp").read_text(),
-        "power": Path("firmware/main/system/power.cpp").read_text(),
+        "wake_word": Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text(),
+        "stt_stream": Path("firmware/components/endpoint_runtime/voice/stt_stream.cpp").read_text(),
+        "assistant_client": Path("firmware/components/endpoint_runtime/voice/assistant_client.cpp").read_text(),
+        "telemetry": Path("firmware/components/endpoint_runtime/system/telemetry.cpp").read_text(),
+        "power": Path("firmware/components/endpoint_runtime/system/power.cpp").read_text(),
     }
     header_sources = {
-        "wake_word": Path("firmware/main/voice/wake_word.h").read_text(),
-        "stt_stream": Path("firmware/main/voice/stt_stream.h").read_text(),
-        "assistant_client": Path("firmware/main/voice/assistant_client.h").read_text(),
-        "telemetry": Path("firmware/main/system/telemetry.h").read_text(),
-        "power": Path("firmware/main/system/power.h").read_text(),
+        "wake_word": Path("firmware/components/endpoint_runtime/voice/wake_word.h").read_text(),
+        "stt_stream": Path("firmware/components/endpoint_runtime/voice/stt_stream.h").read_text(),
+        "assistant_client": Path("firmware/components/endpoint_runtime/voice/assistant_client.h").read_text(),
+        "telemetry": Path("firmware/components/endpoint_runtime/system/telemetry.h").read_text(),
+        "power": Path("firmware/components/endpoint_runtime/system/power.h").read_text(),
     }
 
     assert "Starting Hexe native firmware runtime" in app_main
@@ -227,8 +227,8 @@ def test_firmware_scaffold_modules_are_explicit_status_providers():
 
 def test_firmware_reports_playback_stop_word_capability_with_backend_fallback():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
-    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
-    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    wake_source = Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/components/endpoint_runtime/voice/wake_word.h").read_text()
     micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
     tts_sources = FIRMWARE_TTS_PLAYER.read_text() + FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
 
@@ -265,8 +265,8 @@ def test_firmware_reports_playback_stop_word_capability_with_backend_fallback():
 
 def test_firmware_posts_passive_placement_calibration_metrics_only_samples():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
-    box_audio_source = Path("firmware/main/board/audio.cpp").read_text()
-    pe_audio_source = Path("firmware/main/board/audio_ha_voice_pe.cpp").read_text()
+    box_audio_source = Path("firmware/components/endpoint_runtime/board/audio.cpp").read_text()
+    pe_audio_source = Path("firmware/components/endpoint_runtime/board/audio_ha_voice_pe.cpp").read_text()
 
     assert "placement_calibrations_status_url" in backend_source
     assert "/api/voice/placement-calibrations?endpoint_id=%s" in backend_source
@@ -328,8 +328,8 @@ def test_firmware_vad_keeps_listening_window_after_wake_word():
 
 def test_firmware_wake_election_candidate_wait_and_fallback_contract():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
-    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
-    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    wake_source = Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/components/endpoint_runtime/voice/wake_word.h").read_text()
     backend_header = FIRMWARE_BACKEND_CLIENT.with_suffix(".h").read_text()
 
     assert "struct WakeCandidateMetrics" in backend_header
@@ -359,12 +359,12 @@ def test_firmware_wake_election_candidate_wait_and_fallback_contract():
 
 def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
-    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
-    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    wake_source = Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/components/endpoint_runtime/voice/wake_word.h").read_text()
     micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
     micro_wake_header = FIRMWARE_MICRO_WAKE_ENGINE_HEADER.read_text()
     cmake_source = FIRMWARE_CMAKE.read_text()
-    component_manifest = Path("firmware/main/idf_component.yml").read_text()
+    component_manifest = Path("firmware/components/endpoint_runtime/idf_component.yml").read_text()
     audio_source = FIRMWARE_AUDIO.read_text()
     pe_audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
 
@@ -429,8 +429,8 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
 
 def test_firmware_has_experimental_stop_keyword_provider_hook():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
-    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
-    wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    wake_source = Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text()
+    wake_header = Path("firmware/components/endpoint_runtime/voice/wake_word.h").read_text()
     audio_source = FIRMWARE_AUDIO.read_text()
     pe_audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
 
@@ -471,7 +471,7 @@ def test_firmware_has_experimental_stop_keyword_provider_hook():
 
 
 def test_firmware_bundles_micro_wake_word_model_assets():
-    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
+    wake_source = Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text()
     micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
     cmake_source = FIRMWARE_CMAKE.read_text()
     model_readme = (FIRMWARE_MICRO_WAKE_MODELS / "README.md").read_text()
@@ -953,6 +953,7 @@ def test_firmware_storage_reformat_is_media_only():
 
 def test_firmware_supports_home_assistant_voice_pe_profile():
     cmake_source = FIRMWARE_CMAKE.read_text()
+    pe_profile_source = Path("firmware/boards/ha_voice_pe/board.yaml").read_text()
     audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
     buttons_source = FIRMWARE_BUTTONS_HA_VOICE_PE.read_text()
     display_source = FIRMWARE_DISPLAY_NONE.read_text()
@@ -961,13 +962,16 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
 
     assert "HEXE_BOARD_PROFILE" in cmake_source
-    assert 'HEXE_BOARD_PROFILE STREQUAL "ha_voice_pe"' in cmake_source
-    assert '"board/audio_ha_voice_pe.cpp"' in cmake_source
-    assert '"board/buttons_ha_voice_pe.cpp"' in cmake_source
-    assert '"board/display_none.cpp"' in cmake_source
-    assert '"board/storage_nvs_only.cpp"' in cmake_source
-    assert '"voice/tts_player_ha_voice_pe.cpp"' in cmake_source
-    assert cmake_source.count('"voice/tts_player.cpp"') == 1
+    assert "generate_board_profile_config.py" in cmake_source
+    assert "${HEXE_BOARD_SRCS}" in cmake_source
+    assert "HEXE_BOARD_PROFILE_ROOT" in cmake_source
+    assert "- HEXE_BOARD_PROFILE_HA_VOICE_PE=1" in pe_profile_source
+    assert "- board/audio_ha_voice_pe.cpp" in pe_profile_source
+    assert "- board/buttons_ha_voice_pe.cpp" in pe_profile_source
+    assert "- board/display_none.cpp" in pe_profile_source
+    assert "- board/storage_nvs_only.cpp" in pe_profile_source
+    assert "- voice/tts_player_ha_voice_pe.cpp" in pe_profile_source
+    assert "- voice/tts_player.cpp" not in pe_profile_source
     assert "esp_driver_i2c" in cmake_source
     assert "esp_driver_i2s" in cmake_source
 
@@ -975,14 +979,15 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_source
     assert "I2S_SLOT_MODE_STEREO" in audio_source
     assert "voice_channel_sample" in audio_source
-    assert "GPIO_NUM_13" in audio_source
-    assert "GPIO_NUM_14" in audio_source
-    assert "GPIO_NUM_15" in audio_source
-    assert "GPIO_NUM_4" in audio_source
-    assert "GPIO_NUM_5" in audio_source
-    assert "GPIO_NUM_6" in audio_source
-    assert "GPIO_NUM_47" in tts_source
-    assert "kVoiceKitI2cAddress = 0x42" in audio_source
+    assert "pins::kVoicePeMicBclk" in audio_source
+    assert "pins::kVoicePeMicLrclk" in audio_source
+    assert "pins::kVoicePeMicDin" in audio_source
+    assert "pins::kVoicePeVoiceKitReset" in audio_source
+    assert "pins::kVoicePeI2cSda" in audio_source
+    assert "pins::kVoicePeI2cScl" in audio_source
+    assert "pins::kVoicePeSpeakerAmp" in tts_source
+    assert "kVoiceKitI2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeVoiceKitI2cAddress)" in audio_source
+    assert "- name: voice_kit\n          address: 66" in pe_profile_source
     assert "kDfuGetVersionCommand = 88" in audio_source
     assert "gpio_set_level(kVoiceKitReset, 1)" in audio_source
     assert "gpio_set_level(kVoiceKitReset, 0)" in audio_source
@@ -995,7 +1000,7 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "kVadStartNoiseMultiplier = 3" in audio_source
     assert "kVadReleasePeakPercent = 60" in audio_source
     assert "kVadSilenceHoldMs = 1200" in audio_source
-    assert "kMaxMicroVadPauseMs = 3000" in FIRMWARE_APP_MAIN.parent.joinpath("system/settings.cpp").read_text()
+    assert "kMaxMicroVadPauseMs = 3000" in FIRMWARE_SETTINGS.read_text()
     assert "speech_peak_level" in audio_source
     assert "update_noise_floor" in audio_source
     assert "noise_floor_level" in backend_source
@@ -1007,18 +1012,19 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert 'xTaskCreate(vad_task, "hexe_vpe_vad", kVadTaskStackBytes' in audio_source
     assert "return g_voice_kit_ready;" in audio_source[audio_source.index("bool audio_output_ready()") :]
 
-    assert "GPIO_NUM_0" in buttons_source
-    assert "GPIO_NUM_3" in buttons_source
+    assert "pins::kVoicePeCenterButton" in buttons_source
+    assert "pins::kVoicePeHardwareMute" in buttons_source
     assert "hardware_mute_active" in buttons_source
     assert 'start_voice_session("button")' in buttons_source
 
     assert "Display disabled for this board profile" in display_source
     assert 'return "none";' in display_source
     assert "NVS storage initialized; SD media storage disabled" in storage_source
-    assert "kAic3204I2cAddress = 0x18" in tts_source
-    assert "GPIO_NUM_7" in tts_source
-    assert "GPIO_NUM_8" in tts_source
-    assert "GPIO_NUM_10" in tts_source
+    assert "kAic3204I2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeSpeakerCodecI2cAddress)" in tts_source
+    assert "- name: speaker_codec\n          address: 24" in pe_profile_source
+    assert "pins::kVoicePeSpeakerLrclk" in tts_source
+    assert "pins::kVoicePeSpeakerBclk" in tts_source
+    assert "pins::kVoicePeSpeakerDout" in tts_source
     assert "kSpeakerSampleRate = 48000" in tts_source
     assert "I2S_ROLE_SLAVE" in tts_source
     assert "I2S_DATA_BIT_WIDTH_32BIT" in tts_source
@@ -1045,19 +1051,20 @@ def test_voice_pe_led_ring_driver_contract_and_priority():
     app_source = FIRMWARE_APP_MAIN.read_text()
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     cmake_source = FIRMWARE_CMAKE.read_text()
+    pe_profile_source = Path("firmware/boards/ha_voice_pe/board.yaml").read_text()
     noop_source = FIRMWARE_LED_RING.read_text()
     led_source = FIRMWARE_LED_RING_HA_VOICE_PE.read_text()
     doc_source = Path("docs/voice-pe-led-ring.md").read_text()
 
-    assert '"board/led_ring.cpp"' in cmake_source
-    assert '"board/led_ring_ha_voice_pe.cpp"' in cmake_source
+    assert "${HEXE_BOARD_SRCS}" in cmake_source
+    assert "- board/led_ring_ha_voice_pe.cpp" in pe_profile_source
     assert "esp_driver_rmt" in cmake_source
     assert "init_led_ring();" in app_source
     assert "update_led_ring_patterns();" in app_source
 
-    assert "kLedDataGpio = GPIO_NUM_21" in led_source
-    assert "kLedPowerGpio = GPIO_NUM_45" in led_source
-    assert "kLedCount = 12" in led_source
+    assert "kLedDataGpio = gpio_pin(hexe::board::pins::kVoicePeLedData)" in led_source
+    assert "kLedPowerGpio = gpio_pin(hexe::board::pins::kVoicePeLedPower)" in led_source
+    assert "kLedCount = hexe::board::pins::kVoicePeLedCount" in led_source
     assert "kPatternFrameMs = 100" in led_source
     assert "kBottomLedIndex = 0" in led_source
     assert "kVisualToPhysical" in led_source
@@ -1114,8 +1121,8 @@ def test_voice_pe_rotary_dial_led_affordances_do_not_trigger_center_action():
     led_source = FIRMWARE_LED_RING_HA_VOICE_PE.read_text()
     noop_source = FIRMWARE_LED_RING.read_text()
 
-    assert "kDialA = GPIO_NUM_16" in buttons_source
-    assert "kDialB = GPIO_NUM_18" in buttons_source
+    assert "kDialA = gpio_pin(hexe::board::pins::kVoicePeDialA)" in buttons_source
+    assert "kDialB = gpio_pin(hexe::board::pins::kVoicePeDialB)" in buttons_source
     assert "kQuadratureStepsPerDetent = 2" in buttons_source
     assert "kVolumeStepPercent = 5" in buttons_source
     assert "hexe::voice::set_output_volume(new_volume)" in buttons_source
@@ -1149,7 +1156,7 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert "PROFILE_APP_FILENAME" in export_source
     assert "hexe_firmware_${BOARD_PROFILE}.bin" in export_source
     assert "manifest-${BOARD_PROFILE}.json" in export_source
-    assert 'GENERATED_DIR="${BUILD_DIR}/esp-idf/main/generated"' in export_source
+    assert 'GENERATED_DIR="${BUILD_DIR}/esp-idf/${GENERATED_COMPONENT_NAME}/generated"' in export_source
     assert 'BOARD_SOC="$(cmake_config_string HEXE_BOARD_SOC)"' in export_source
     assert "hexe_firmware*.bin > SHA256SUMS" in export_source
     assert "cp \"${APP_SRC}\" \"${COMMON_EXPORT_DIR}/${PROFILE_APP_FILENAME}\"" in export_source

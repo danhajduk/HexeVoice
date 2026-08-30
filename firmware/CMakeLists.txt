@@ -1,4 +1,17 @@
 cmake_minimum_required(VERSION 3.16)
 
+if(DEFINED ENV{HEXE_FIRMWARE_APP} AND NOT "$ENV{HEXE_FIRMWARE_APP}" STREQUAL "")
+  set(HEXE_FIRMWARE_APP "$ENV{HEXE_FIRMWARE_APP}" CACHE STRING "Hexe firmware app" FORCE)
+elseif(NOT DEFINED HEXE_FIRMWARE_APP OR HEXE_FIRMWARE_APP STREQUAL "")
+  set(HEXE_FIRMWARE_APP "endpoint")
+endif()
+
+set(HEXE_FIRMWARE_APP_DIR "${CMAKE_CURRENT_LIST_DIR}/apps/${HEXE_FIRMWARE_APP}/main")
+if(NOT EXISTS "${HEXE_FIRMWARE_APP_DIR}/CMakeLists.txt")
+  message(FATAL_ERROR "Unsupported HEXE_FIRMWARE_APP=${HEXE_FIRMWARE_APP}: missing ${HEXE_FIRMWARE_APP_DIR}/CMakeLists.txt")
+endif()
+
+set(EXTRA_COMPONENT_DIRS "${HEXE_FIRMWARE_APP_DIR}")
+
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(hexe_firmware)

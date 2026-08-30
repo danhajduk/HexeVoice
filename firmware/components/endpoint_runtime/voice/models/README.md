@@ -1,6 +1,6 @@
 # microWakeWord Model Assets
 
-These model assets are embedded into the firmware image through `firmware/main/CMakeLists.txt`.
+These model assets are embedded into the firmware image through `firmware/components/endpoint_runtime/CMakeLists.txt`.
 
 | Asset | Source | SHA-256 | Bytes |
 | --- | --- | --- | ---: |

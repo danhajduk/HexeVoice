@@ -1,0 +1,11 @@
+idf_component_register(
+  SRCS
+    "app_main.cpp"
+  INCLUDE_DIRS
+    "."
+  REQUIRES
+    endpoint_runtime
+    esp_app_format
+    freertos
+    log
+)

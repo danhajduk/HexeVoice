@@ -56,7 +56,7 @@ The build generator emits two generated files into the firmware build directory:
 - `board_profile_config.cmake` for compile definitions and board adapter source
   files
 - `board_profile_pins.h` for firmware pin and bus constants consumed through
-  `firmware/main/board/pins.h`
+  `firmware/components/endpoint_runtime/board/pins.h`
 
 ## Supported Initial Profiles
 

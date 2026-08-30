@@ -19,10 +19,22 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
 
 ## Layout
 
-- `main/`
-  Native app entrypoint and modules
+- `apps/endpoint/main/`
+  Native endpoint app entrypoint. This is the default ESP-IDF app selected by
+  `HEXE_FIRMWARE_APP=endpoint`.
+- `apps/recovery/`
+  Reserved for the minimal recovery/provisioning app.
+- `components/endpoint_runtime/`
+  Current endpoint runtime component: app state, board adapters, audio, voice,
+  UI, OTA, storage, provisioning, and backend protocol glue. This is the
+  compatibility component that will be split into finer shared components as
+  recovery work lands.
 - `assets/`
   Shared firmware assets reference area
+- `boards/`
+  YAML board profiles and generated pin/wiring source of truth.
+- `partitions/`
+  Named partition schemas for supported flash sizes.
 - `config/endpoint.example.yaml`
   Local endpoint-to-node connection example. Copy it to `config/endpoint.yaml` for machine-specific backend host and port values.
 
@@ -36,7 +48,7 @@ cp firmware/config/endpoint.example.yaml firmware/config/endpoint.yaml
 
 Then edit `firmware/config/endpoint.yaml` so `node.host`, `node.http_port`, and `node.ws_port` point at the machine running the HexeVoice backend. The local `endpoint.yaml` file is gitignored because it is machine-specific.
 
-During the ESP-IDF build, `main/CMakeLists.txt` runs `tools/generate_endpoint_config.py` and generates `endpoint_config.h` from `config/endpoint.yaml` when present, otherwise from `config/endpoint.example.yaml`. Firmware source consumes that generated header instead of hardcoding a node IP address.
+During the ESP-IDF build, `components/endpoint_runtime/CMakeLists.txt` runs `tools/generate_endpoint_config.py` and generates `endpoint_config.h` from `config/endpoint.yaml` when present, otherwise from `config/endpoint.example.yaml`. Firmware source consumes that generated header instead of hardcoding a node IP address.
 
 The runtime firmware version is not read from endpoint YAML. Heartbeats, voice session starts, and firmware capabilities report the ESP-IDF app/project version embedded in the build. Firmware heartbeats also report a stable `hardware_id` derived from the ESP32-S3 eFuse MAC, such as `esp32s3-b43a4512ab90`; this is separate from the configurable endpoint id/display name.
 
@@ -104,6 +116,10 @@ cd firmware
 HEXE_BOARD_PROFILE=esp_box_3 ./build.sh
 HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
 ```
+
+The root project also accepts `HEXE_FIRMWARE_APP`. `endpoint` is the only
+buildable app today; `recovery` is reserved until the recovery/provisioning
+tasks define its minimal component set and boot entry conditions.
 
 This writes flashable artifacts to `firmware/export-ha-voice-pe`. The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input, speaker output, and the center/mute controls. It reports endpoint id `esp-pe-1` by default, and brings up the onboard Voice Kit/XMOS device over I2C before enabling the secondary I2S microphone stream. Short-pressing the center button starts a voice session with `wake_source=button`, equivalent to an accepted wake word; pressing it during an active turn cancels that turn. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. TTS playback uses the onboard AIC3204 codec and the 48 kHz secondary I2S speaker path.
 

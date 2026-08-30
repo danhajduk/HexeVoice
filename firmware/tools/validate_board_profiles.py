@@ -444,7 +444,7 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
         raise ValidationError(f"{board_profile}: buildable profiles must define adapter source files")
     source_base = None
     if path.parent.parent.name == "boards":
-        source_base = path.parent.parent.parent / "main"
+        source_base = path.parent.parent.parent / "components" / "endpoint_runtime"
     for source in source_files:
         if not isinstance(source, str) or not re.fullmatch(r"(board|voice|system|ui)/[A-Za-z0-9_./-]+\.cpp", source):
             raise ValidationError(f"{board_profile}: invalid adapter source file {source!r}")

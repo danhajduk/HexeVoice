@@ -12,6 +12,7 @@ COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR:-${ROOT_DIR}/export}"
 BOARD_PROFILE_ROOT="${BOARD_PROFILE_ROOT:-${ROOT_DIR}/boards}"
 PARTITION_ROOT="${PARTITION_ROOT:-${ROOT_DIR}/partitions}"
 PARTITION_VALIDATOR="${ROOT_DIR}/tools/validate_partition_schema.py"
+FIRMWARE_APP="${HEXE_FIRMWARE_APP:-endpoint}"
 
 usage() {
   cat <<EOF
@@ -23,6 +24,7 @@ Commands:
 
 Environment:
   HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3, ha_voice_pe, or all. Default: all for build, esp_box_3 for push.
+  HEXE_FIRMWARE_APP    Firmware app to build. Default: endpoint.
   BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
   EXPORT_DIR    Firmware export directory. Defaults to export or export-ha-voice-pe by profile.
   COMMON_EXPORT_DIR  Folder that receives profile-named binaries for all builds. Default: firmware/export.
@@ -241,6 +243,7 @@ build_profile() {
     -B "${build_dir}" \
     -D "SDKCONFIG=${sdkconfig_path}" \
     -D "SDKCONFIG_DEFAULTS=${ROOT_DIR}/sdkconfig.defaults;${sdkconfig_defaults_path}" \
+    -D "HEXE_FIRMWARE_APP=${FIRMWARE_APP}" \
     -D "HEXE_BOARD_PROFILE=${profile}" \
     -D "PROJECT_VER=${PROJECT_VERSION}" \
     build
@@ -259,6 +262,7 @@ build_profile() {
       UPDATE_RUNTIME_FIRMWARE=1 \
       PROFILE_APP_FILENAME="${profile_app}" \
       PROFILE_MANIFEST_FILENAME="manifest-${profile}.json" \
+      GENERATED_COMPONENT_NAME="endpoint_runtime" \
       "${ROOT_DIR}/export-artifacts.sh"
   fi
 }

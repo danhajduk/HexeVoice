@@ -1,11 +1,12 @@
-set(HEXE_ENDPOINT_CONFIG "${CMAKE_CURRENT_LIST_DIR}/../config/endpoint.yaml")
+set(HEXE_FIRMWARE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+set(HEXE_ENDPOINT_CONFIG "${HEXE_FIRMWARE_ROOT}/config/endpoint.yaml")
 if(NOT EXISTS "${HEXE_ENDPOINT_CONFIG}")
-  set(HEXE_ENDPOINT_CONFIG "${CMAKE_CURRENT_LIST_DIR}/../config/endpoint.example.yaml")
+  set(HEXE_ENDPOINT_CONFIG "${HEXE_FIRMWARE_ROOT}/config/endpoint.example.yaml")
 endif()
-set(HEXE_ENDPOINT_CONFIG_GENERATOR "${CMAKE_CURRENT_LIST_DIR}/../tools/generate_endpoint_config.py")
-set(HEXE_BOARD_PROFILE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../boards")
-set(HEXE_BOARD_PROFILE_GENERATOR "${CMAKE_CURRENT_LIST_DIR}/../tools/generate_board_profile_config.py")
-set(HEXE_BOARD_PROFILE_VALIDATOR "${CMAKE_CURRENT_LIST_DIR}/../tools/validate_board_profiles.py")
+set(HEXE_ENDPOINT_CONFIG_GENERATOR "${HEXE_FIRMWARE_ROOT}/tools/generate_endpoint_config.py")
+set(HEXE_BOARD_PROFILE_ROOT "${HEXE_FIRMWARE_ROOT}/boards")
+set(HEXE_BOARD_PROFILE_GENERATOR "${HEXE_FIRMWARE_ROOT}/tools/generate_board_profile_config.py")
+set(HEXE_BOARD_PROFILE_VALIDATOR "${HEXE_FIRMWARE_ROOT}/tools/validate_board_profiles.py")
 file(GLOB HEXE_BOARD_PROFILE_CONFIGS "${HEXE_BOARD_PROFILE_ROOT}/*/board.yaml")
 set_property(
   DIRECTORY
@@ -64,7 +65,6 @@ message(STATUS "Hexe board partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
 
 idf_component_register(
   SRCS
-    "app_main.cpp"
     "app_state.cpp"
     ${HEXE_BOARD_SRCS}
     "board/wifi.cpp"

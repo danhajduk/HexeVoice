@@ -80,7 +80,7 @@ generates:
 - `board_profile_config.cmake`: compile definitions and adapter source list
 - `board_profile_pins.h`: pin, bus, and device-address constants
 
-Firmware adapters include `firmware/main/board/pins.h`, which forwards to the
+Firmware adapters include `firmware/components/endpoint_runtime/board/pins.h`, which forwards to the
 generated `board_profile_pins.h`.
 
 ## Promotion Checklist

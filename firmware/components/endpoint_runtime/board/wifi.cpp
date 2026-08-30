@@ -71,7 +71,7 @@ void init_wifi() {
   state.phase = hexe::AppPhase::kWiFiConnecting;
 
   if (!has_wifi_credentials()) {
-    ESP_LOGW(kTag, "Wi-Fi credentials are empty in firmware/main/secrets/wifi_secrets.h");
+    ESP_LOGW(kTag, "Wi-Fi credentials are empty in firmware/components/endpoint_runtime/secrets/wifi_secrets.h");
     return;
   }
 
