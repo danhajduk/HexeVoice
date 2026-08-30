@@ -32,7 +32,19 @@ struct LocalKeywordDetection {
   float confidence{0.0f};
 };
 
+struct LocalKeywordFrameDetections {
+  LocalKeywordDetection wake;
+  LocalKeywordDetection playback_stop;
+};
+
 void init_wake_word();
+LocalKeywordFrameDetections inspect_local_keyword_frame(
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    uint32_t noise_floor_level,
+    uint32_t speech_peak_level,
+    bool vad_speaking);
 LocalKeywordDetection inspect_wake_word_frame(
     const int16_t *samples,
     size_t sample_count,

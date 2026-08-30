@@ -544,3 +544,9 @@ Chosen fix: Wire the embedded audio preprocessor model and Alexa streaming micro
 What changed: Enabled the microWakeWord feature frontend, embedded `audio_preprocessor_int8.tflite`, added 10 ms feature generation and streaming inference with sliding-window detection, exposed frontend/runtime readiness and arena diagnostics in heartbeats, kept Stop disabled for Task 264, and refreshed firmware docs/task records.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_validation_matrix.py tests/test_firmware_endpoint_config.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh` passed with app size `0x1938b0` and 61% free; `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh` passed with app size `0x16a2d0` and 65% free.
 ###########
+Task #264
+Step objective: Activate endpoint Stop keyword interruption for playback/session cancel with backend STT interrupt fallback.
+Chosen fix: Enable the embedded Stop microWakeWord runtime and route wake plus Stop detection through one shared per-frame local keyword inspection path.
+What changed: Added combined local keyword frame detections, enabled the Stop model asset, updated ESP-BOX-3 and Voice PE audio loops to stop playback or cancel active sessions on local Stop detection, exposed local Stop mode plus `backend_fallback_mode: "backend_stt_interrupt"` in heartbeat capabilities, and refreshed firmware docs/task records.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_validation_matrix.py tests/test_firmware_endpoint_config.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh` passed with app size `0x193980` and 61% free; `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh` passed with app size `0x16a3a0` and 65% free.
+###########

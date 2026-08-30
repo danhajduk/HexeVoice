@@ -41,8 +41,7 @@ struct MicroWakeEngineStatus {
 
 void init_micro_wake_engine(const MicroWakeModelAsset *models, size_t model_count);
 MicroWakeEngineStatus micro_wake_engine_status();
-LocalKeywordDetection process_micro_wake_frame(
-    MicroWakeModelRole role,
+LocalKeywordFrameDetections process_micro_wake_frame(
     const int16_t *samples,
     size_t sample_count,
     uint32_t level,

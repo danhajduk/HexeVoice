@@ -104,10 +104,11 @@ privacy-safe transport diagnostics, not raw audio or environment classification.
 these endpoint-provided ambient/noise-floor metrics when present and falls back to backend-derived in-memory pre-roll
 analysis for older firmware that omits them.
 
-Playback interruption remains backend-owned by default through stop-only STT and backend `playback.stop` commands.
-Firmware also exposes an experimental local Stop keyword hook under `capabilities.firmware.modules.playback_stop_word`
-and `capabilities.audio.input.playback_interrupt`. The configured local model matches the Kevin Ahrendt microWakeWord
-Stop release used by Home Assistant Voice PE (`stop.json`/`stop.tflite`, cutoff 0.50, sliding window 5, tensor arena
-21000). The Stop module shares the same `micro_wake_engine` diagnostics, asset hashes, and embedded TFLite size. The
-Stop model asset is embedded in the firmware image, but the Stop runtime stays disabled until Task 264 so the endpoint
-reports the local keyword as configured but unavailable while keeping `backend_stt_interrupt` active.
+Playback interruption uses local Stop keyword detection when the firmware runtime is ready, with stop-only backend STT
+kept as the fallback path through backend `playback.stop` commands. Firmware exposes this under
+`capabilities.firmware.modules.playback_stop_word` and `capabilities.audio.input.playback_interrupt`. The configured
+local model matches the Kevin Ahrendt microWakeWord Stop release used by Home Assistant Voice PE (`stop.json`/
+`stop.tflite`, cutoff 0.50, sliding window 5, tensor arena 21000). The Stop module shares the same
+`micro_wake_engine` diagnostics, asset hashes, embedded TFLite size, `backend_fallback: true`, and
+`backend_fallback_mode: "backend_stt_interrupt"`. Local Stop detections call `stop_playback("voice_stop")` during
+playback or `cancel_active_session("voice_stop")` during an active voice session.

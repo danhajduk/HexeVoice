@@ -467,10 +467,9 @@ hexe::voice::LocalKeywordDetection detection_from_runtime(EngineModel &model) {
   return detection;
 }
 
-hexe::voice::LocalKeywordDetection process_feature_for_models(
-    hexe::voice::MicroWakeModelRole requested_role,
+hexe::voice::LocalKeywordFrameDetections process_feature_for_models(
     const int8_t feature[kPreprocessorFeatureSize]) {
-  hexe::voice::LocalKeywordDetection detection = {};
+  hexe::voice::LocalKeywordFrameDetections detections = {};
   for (size_t index = 0; index < g_engine.model_count; ++index) {
     EngineModel &model = g_engine.models[index];
     if (!model.enabled || !model.valid || !model.runtime || !model.runtime->loaded) {
@@ -483,11 +482,16 @@ hexe::voice::LocalKeywordDetection process_feature_for_models(
       continue;
     }
     hexe::voice::LocalKeywordDetection model_detection = detection_from_runtime(model);
-    if (model.role == requested_role && model_detection.detected) {
-      detection = model_detection;
+    if (!model_detection.detected) {
+      continue;
+    }
+    if (model.role == hexe::voice::MicroWakeModelRole::kPlaybackStop) {
+      detections.playback_stop = model_detection;
+    } else {
+      detections.wake = model_detection;
     }
   }
-  return detection;
+  return detections;
 }
 #endif
 
@@ -666,8 +670,7 @@ MicroWakeEngineStatus micro_wake_engine_status() {
   return status;
 }
 
-LocalKeywordDetection process_micro_wake_frame(
-    MicroWakeModelRole role,
+LocalKeywordFrameDetections process_micro_wake_frame(
     const int16_t *samples,
     size_t sample_count,
     uint32_t level,
@@ -681,11 +684,11 @@ LocalKeywordDetection process_micro_wake_frame(
   if (samples == nullptr || sample_count == 0) {
     return {};
   }
-  if (!role_ready(role)) {
+  if (!role_ready(MicroWakeModelRole::kWake) && !role_ready(MicroWakeModelRole::kPlaybackStop)) {
     return {};
   }
 #if defined(HEXE_MICRO_WAKE_WORD_TFLM_ENABLED) && HEXE_MICRO_WAKE_WORD_TFLM_ENABLED
-  LocalKeywordDetection detection = {};
+  LocalKeywordFrameDetections detections = {};
   AudioFrontendState &frontend = g_engine.frontend;
   std::array<int8_t, kPreprocessorFeatureSize> feature{};
   for (size_t index = 0; index < sample_count; ++index) {
@@ -701,13 +704,16 @@ LocalKeywordDetection process_micro_wake_frame(
       if (!generate_feature(samples, feature.data())) {
         break;
       }
-      LocalKeywordDetection feature_detection = process_feature_for_models(role, feature.data());
-      if (feature_detection.detected) {
-        detection = feature_detection;
+      LocalKeywordFrameDetections feature_detections = process_feature_for_models(feature.data());
+      if (feature_detections.wake.detected) {
+        detections.wake = feature_detections.wake;
+      }
+      if (feature_detections.playback_stop.detected) {
+        detections.playback_stop = feature_detections.playback_stop;
       }
     }
   }
-  return detection;
+  return detections;
 #else
   (void)samples;
   (void)sample_count;

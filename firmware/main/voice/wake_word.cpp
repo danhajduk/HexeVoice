@@ -68,7 +68,7 @@ void init_wake_word() {
        &kStopKeywordModel,
        kStopKeywordModelStart,
        embedded_model_size(kStopKeywordModelStart, kStopKeywordModelEnd),
-       false},
+       true},
   };
   init_micro_wake_engine(models, sizeof(models) / sizeof(models[0]));
   ESP_LOGI(
@@ -85,6 +85,25 @@ void init_wake_word() {
   ESP_LOGI(kTag, "Backend openWakeWord fallback remains enabled through wake election timeout policy");
 }
 
+LocalKeywordFrameDetections inspect_local_keyword_frame(
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    uint32_t noise_floor_level,
+    uint32_t speech_peak_level,
+    bool vad_speaking) {
+  if (!wake_word_on_device_available() && !playback_stop_word_on_device_available()) {
+    return {};
+  }
+  return process_micro_wake_frame(
+      samples,
+      sample_count,
+      level,
+      noise_floor_level,
+      speech_peak_level,
+      vad_speaking);
+}
+
 LocalKeywordDetection inspect_wake_word_frame(
     const int16_t *samples,
     size_t sample_count,
@@ -92,17 +111,8 @@ LocalKeywordDetection inspect_wake_word_frame(
     uint32_t noise_floor_level,
     uint32_t speech_peak_level,
     bool vad_speaking) {
-  if (!wake_word_on_device_available()) {
-    return {};
-  }
-  return process_micro_wake_frame(
-      MicroWakeModelRole::kWake,
-      samples,
-      sample_count,
-      level,
-      noise_floor_level,
-      speech_peak_level,
-      vad_speaking);
+  return inspect_local_keyword_frame(samples, sample_count, level, noise_floor_level, speech_peak_level, vad_speaking)
+      .wake;
 }
 
 LocalKeywordDetection inspect_playback_stop_word_frame(
@@ -112,17 +122,8 @@ LocalKeywordDetection inspect_playback_stop_word_frame(
     uint32_t noise_floor_level,
     uint32_t speech_peak_level,
     bool vad_speaking) {
-  if (!playback_stop_word_on_device_available()) {
-    return {};
-  }
-  return process_micro_wake_frame(
-      MicroWakeModelRole::kPlaybackStop,
-      samples,
-      sample_count,
-      level,
-      noise_floor_level,
-      speech_peak_level,
-      vad_speaking);
+  return inspect_local_keyword_frame(samples, sample_count, level, noise_floor_level, speech_peak_level, vad_speaking)
+      .playback_stop;
 }
 
 const char *wake_word_runtime_mode() {
@@ -170,7 +171,8 @@ bool playback_stop_word_experimental_provider_configured() {
 }
 
 const char *playback_stop_word_runtime_mode() {
-  return playback_stop_word_on_device_available() ? "endpoint_stop_keyword_experimental" : "backend_stt_interrupt_with_stop_keyword_manifest";
+  return playback_stop_word_on_device_available() ? "endpoint_stop_keyword_experimental_with_backend_stt_interrupt_fallback"
+                                                 : "backend_stt_interrupt_with_stop_keyword_manifest";
 }
 
 bool playback_stop_word_on_device_available() {
@@ -178,7 +180,7 @@ bool playback_stop_word_on_device_available() {
 }
 
 bool playback_stop_word_active() {
-  return false;
+  return playback_stop_word_on_device_available();
 }
 
 const char *playback_stop_word_unavailable_reason() {

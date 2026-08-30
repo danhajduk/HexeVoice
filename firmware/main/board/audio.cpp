@@ -183,13 +183,14 @@ void vad_task(void *arg) {
         micro_vad_chunk_index,
         micro_vad_chunk_active,
         micro_vad_silent_frames);
-    const hexe::voice::LocalKeywordDetection wake_detection = hexe::voice::inspect_wake_word_frame(
+    const hexe::voice::LocalKeywordFrameDetections local_keywords = hexe::voice::inspect_local_keyword_frame(
         samples,
         kFrameSamples,
         level,
         level,
         level,
         frame_has_voice);
+    const hexe::voice::LocalKeywordDetection &wake_detection = local_keywords.wake;
     if (wake_detection.detected) {
       hexe::voice::WakeCandidateMetrics candidate;
       candidate.source = wake_detection.source;
@@ -204,13 +205,7 @@ void vad_task(void *arg) {
       candidate.endpoint_audio_profile_version = "firmware_audio_v1";
       hexe::voice::submit_wake_candidate(candidate);
     }
-    const hexe::voice::LocalKeywordDetection stop_detection = hexe::voice::inspect_playback_stop_word_frame(
-        samples,
-        kFrameSamples,
-        level,
-        level,
-        level,
-        frame_has_voice);
+    const hexe::voice::LocalKeywordDetection &stop_detection = local_keywords.playback_stop;
     if (stop_detection.detected) {
       if (hexe::voice::tts_playback_active()) {
         hexe::voice::stop_playback("voice_stop");

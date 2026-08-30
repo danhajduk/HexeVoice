@@ -205,7 +205,7 @@ def test_firmware_scaffold_modules_are_explicit_status_providers():
     assert '"power"' in backend_source
 
 
-def test_firmware_reports_playback_stop_word_capability_blocker():
+def test_firmware_reports_playback_stop_word_capability_with_backend_fallback():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
     wake_header = Path("firmware/main/voice/wake_word.h").read_text()
@@ -216,6 +216,8 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert "playback_stop_word_on_device_available" in wake_header
     assert "playback_stop_word_active" in wake_header
     assert "playback_stop_word_unavailable_reason" in wake_header
+    assert "inspect_local_keyword_frame" in wake_header
+    assert '"endpoint_stop_keyword_experimental_with_backend_stt_interrupt_fallback"' in wake_source
     assert '"backend_stt_interrupt_with_stop_keyword_manifest"' in wake_source
     assert '"missing_micro_wake_word_inference_engine"' in micro_wake_source
     assert '"missing_stop_keyword_model_asset"' in micro_wake_source
@@ -227,6 +229,8 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert '"stop_event_type", "playback.stop"' in backend_source
     assert '"stop_reason", "voice_stop"' in backend_source
     assert '"backend_available", true' in backend_source
+    assert '"backend_fallback", true' in backend_source
+    assert '"backend_fallback_mode", "backend_stt_interrupt"' in backend_source
     assert '"local_keyword_configured"' in backend_source
     assert '"local_keyword_available"' in backend_source
     assert '"local_keyword_reason"' in backend_source
@@ -361,7 +365,8 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     assert '"runtime_arena_bytes"' in backend_source
     assert "experimental_provider_configured" in backend_source
     for source in (audio_source, pe_audio_source):
-        assert "inspect_wake_word_frame" in source
+        assert "inspect_local_keyword_frame" in source
+        assert "local_keywords.wake" in source
         assert "WakeCandidateMetrics candidate" in source
         assert "candidate.endpoint_audio_profile_version = \"firmware_audio_v1\"" in source
 
@@ -374,6 +379,7 @@ def test_firmware_has_experimental_stop_keyword_provider_hook():
     pe_audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
 
     assert "inspect_playback_stop_word_frame" in wake_header
+    assert "inspect_local_keyword_frame" in wake_header
     assert "playback_stop_word_model" in wake_header
     assert "playback_stop_word_experimental_provider_configured" in wake_header
     assert '"stop"' in wake_source
@@ -385,7 +391,8 @@ def test_firmware_has_experimental_stop_keyword_provider_hook():
     assert '"2024.7.0"' in wake_source
     assert "0.50f" in wake_source
     assert "21000" in wake_source
-    assert '"endpoint_stop_keyword_experimental"' in wake_source
+    assert "kStopKeywordModelEnd),\n       true}" in wake_source
+    assert '"endpoint_stop_keyword_experimental_with_backend_stt_interrupt_fallback"' in wake_source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "id", stop_model.id)' in backend_source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "wake_word", stop_model.wake_word)' in backend_source
     assert 'cJSON_AddStringToObject(stop_keyword_model, "alias", stop_model.alias)' in backend_source
@@ -399,7 +406,8 @@ def test_firmware_has_experimental_stop_keyword_provider_hook():
     assert 'cJSON_AddStringToObject(stop_keyword_model, "tflite_sha256", stop_model.tflite_sha256)' in backend_source
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "tflite_size_bytes", stop_engine.stop_model_asset_bytes)' in backend_source
     for source in (audio_source, pe_audio_source):
-        assert "inspect_playback_stop_word_frame" in source
+        assert "inspect_local_keyword_frame" in source
+        assert "local_keywords.playback_stop" in source
         assert 'stop_playback("voice_stop")' in source
         assert 'cancel_active_session("voice_stop")' in source
 
