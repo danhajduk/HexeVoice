@@ -159,6 +159,27 @@ def test_wake_election_accepts_late_candidate_after_window_closes():
     assert late_decision.winner == late
 
 
+def test_wake_election_status_expires_stale_pending_candidate():
+    started_at = datetime.now(UTC) - timedelta(seconds=1)
+    election = WakeCandidateElection(window_ms=10)
+    candidate = WakeCandidate(
+        endpoint_id="esp-box-1",
+        session_id="session-1",
+        source="endpoint_micro_wake_word",
+        model="alexa",
+        confidence=0.83,
+        received_at=started_at,
+    )
+
+    election.submit_candidate(candidate)
+
+    status = election.status()
+
+    assert status["active_decision"] is None
+    assert status["pending_candidate_count"] == 0
+    assert len(status["recent_candidates"]) == 1
+
+
 def test_wake_election_handles_missing_metrics_without_raw_audio():
     candidate = WakeCandidate(
         endpoint_id="esp-box-1",

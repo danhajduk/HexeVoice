@@ -219,10 +219,8 @@ class WakeCandidateElection:
         return decision
 
     def status(self) -> dict[str, Any]:
+        self._expire_pending(reference_at=datetime.now(UTC))
         active = self._active_decision
-        if active is not None and not self._decision_is_active(active, datetime.now(UTC)):
-            active = None
-            self._active_decision = None
         return {
             "enabled": True,
             "window_ms": self.window_ms,
