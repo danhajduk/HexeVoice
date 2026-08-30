@@ -61,7 +61,8 @@ The build generator emits two generated files into the firmware build directory:
 ## Supported Initial Profiles
 
 For a side-by-side hardware comparison, see
-`docs/firmware-board-comparison.md`.
+`docs/firmware-board-comparison.md`. For the new-board workflow, see
+`docs/firmware-new-board-bringup.md`.
 
 | Profile | Status | SoC | Flash / PSRAM | Display | Audio Path | Partition Schema |
 | --- | --- | --- | --- | --- | --- | --- |

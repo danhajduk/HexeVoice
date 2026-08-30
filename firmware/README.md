@@ -92,6 +92,11 @@ It lists required automated and manual checks for audio streaming, wake
 acceptance, TTS playback, display or LED-ring state, OTA/media, mute/volume, and
 reconnect behavior.
 
+New board profiles should start with
+[`firmware-new-board-bringup.md`](../docs/firmware-new-board-bringup.md) and
+`tools/create_board_profile.py`. The scaffold keeps wiring partial and firmware
+adapters non-buildable until the dev-board connection table is complete.
+
 The shared `firmware/export` folder also receives the profile-named app binaries for both builds. Planned board profiles can be validated before their adapters are buildable. To build just one active profile:
 
 ```bash

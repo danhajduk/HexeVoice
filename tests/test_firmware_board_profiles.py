@@ -10,6 +10,7 @@ import sys
 REPO_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR = REPO_ROOT / "firmware/tools/validate_board_profiles.py"
 GENERATOR = REPO_ROOT / "firmware/tools/generate_board_profile_config.py"
+SCAFFOLD = REPO_ROOT / "firmware/tools/create_board_profile.py"
 PROFILE_ROOT = REPO_ROOT / "firmware/boards"
 FIRMWARE_CMAKE = REPO_ROOT / "firmware/main/CMakeLists.txt"
 FIRMWARE_BUILD_SCRIPT = REPO_ROOT / "firmware/build.sh"
@@ -264,6 +265,155 @@ def test_firmware_build_script_discovers_buildable_profiles_from_yaml():
     assert "buildable_profiles" in build_script
     assert "build_profile esp_box_3" not in build_script
     assert "build_profile ha_voice_pe" not in build_script
+
+
+def test_board_profile_scaffold_dry_run_creates_valid_planned_profile(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCAFFOLD),
+            "--profile",
+            "test_s3_voice_display",
+            "--display-name",
+            "Test S3 Voice Display",
+            "--vendor",
+            "TestVendor",
+            "--model",
+            "TestBoard",
+            "--source-url",
+            "https://example.com/test-board",
+            "--with-display",
+            "--with-touch",
+            "--with-sd-card",
+            "--display-size-inches",
+            "2.8",
+            "--display-width-px",
+            "320",
+            "--display-height-px",
+            "240",
+            "--dry-run",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    profile_dir = tmp_path / "test_s3_voice_display"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "board.yaml"
+    profile_path.write_text(result.stdout, encoding="utf-8")
+    validation = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(profile_path)],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    assert validation.stdout.strip() == "Validated 1 board profile(s)."
+    assert "support_status: planned" in result.stdout
+    assert "wiring:" in result.stdout
+    assert "status: partial" in result.stdout
+    assert "buildable: false" in result.stdout
+
+
+def test_board_profile_scaffold_writes_and_refuses_existing_profile(tmp_path):
+    command = [
+        sys.executable,
+        str(SCAFFOLD),
+        "--profile",
+        "test_minimal_voice",
+        "--display-name",
+        "Test Minimal Voice",
+        "--vendor",
+        "TestVendor",
+        "--model",
+        "TestBoard",
+        "--source-url",
+        "https://example.com/test-board",
+        "--output-root",
+        str(tmp_path),
+    ]
+
+    first = subprocess.run(command, check=True, text=True, capture_output=True)
+    second = subprocess.run(command, check=False, text=True, capture_output=True)
+
+    assert first.stdout.strip() == f"Wrote {tmp_path / 'test_minimal_voice/board.yaml'}"
+    assert second.returncode == 1
+    assert "Refusing to overwrite existing board profile" in second.stderr
+
+
+def test_board_profile_scaffold_requires_display_dimensions():
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCAFFOLD),
+            "--profile",
+            "bad_display_profile",
+            "--display-name",
+            "Bad Display Profile",
+            "--vendor",
+            "TestVendor",
+            "--model",
+            "TestBoard",
+            "--source-url",
+            "https://example.com/test-board",
+            "--with-display",
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "--with-display requires" in result.stderr
+
+
+def test_board_profile_scaffold_uses_p4_defaults(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(SCAFFOLD),
+            "--profile",
+            "test_p4_voice_display",
+            "--display-name",
+            "Test P4 Voice Display",
+            "--vendor",
+            "TestVendor",
+            "--model",
+            "TestP4",
+            "--source-url",
+            "https://example.com/test-p4-board",
+            "--soc",
+            "esp32p4",
+            "--coprocessor",
+            "esp32c6",
+            "--with-display",
+            "--with-touch",
+            "--display-size-inches",
+            "7",
+            "--display-width-px",
+            "1024",
+            "--display-height-px",
+            "600",
+            "--dry-run",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+
+    profile_dir = tmp_path / "test_p4_voice_display"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "board.yaml"
+    profile_path.write_text(result.stdout, encoding="utf-8")
+    subprocess.run([sys.executable, str(VALIDATOR), str(profile_path)], check=True, text=True, capture_output=True)
+
+    assert "idf_target: esp32p4" in result.stdout
+    assert "partition_schema: p4-32m-v1" in result.stdout
+    assert "app_slot_size: 8MiB" in result.stdout
+    assert "flash_size: 32MiB" in result.stdout
+    assert "psram_size: 32MiB" in result.stdout
+    assert "coprocessor: esp32c6" in result.stdout
 
 
 def test_board_profile_validator_rejects_missing_firmware_vad(tmp_path):
