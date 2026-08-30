@@ -11,7 +11,25 @@ if(NOT EXISTS "${HEXE_FIRMWARE_APP_DIR}/CMakeLists.txt")
   message(FATAL_ERROR "Unsupported HEXE_FIRMWARE_APP=${HEXE_FIRMWARE_APP}: missing ${HEXE_FIRMWARE_APP_DIR}/CMakeLists.txt")
 endif()
 
-set(EXTRA_COMPONENT_DIRS "${HEXE_FIRMWARE_APP_DIR}")
+if(HEXE_FIRMWARE_APP STREQUAL "endpoint")
+  set(HEXE_FIRMWARE_RUNTIME_COMPONENT endpoint_runtime)
+elseif(HEXE_FIRMWARE_APP STREQUAL "recovery")
+  set(HEXE_FIRMWARE_RUNTIME_COMPONENT recovery_runtime)
+else()
+  message(FATAL_ERROR "Unsupported HEXE_FIRMWARE_APP=${HEXE_FIRMWARE_APP}")
+endif()
+
+set(HEXE_FIRMWARE_RUNTIME_DIR "${CMAKE_CURRENT_LIST_DIR}/components/${HEXE_FIRMWARE_RUNTIME_COMPONENT}")
+if(NOT EXISTS "${HEXE_FIRMWARE_RUNTIME_DIR}/CMakeLists.txt")
+  message(FATAL_ERROR "Firmware runtime component ${HEXE_FIRMWARE_RUNTIME_COMPONENT} is missing ${HEXE_FIRMWARE_RUNTIME_DIR}/CMakeLists.txt")
+endif()
+
+set(COMPONENT_DIRS
+  "$ENV{IDF_PATH}/components"
+  "${HEXE_FIRMWARE_APP_DIR}"
+  "${HEXE_FIRMWARE_RUNTIME_DIR}"
+)
+set(COMPONENTS main ${HEXE_FIRMWARE_RUNTIME_COMPONENT})
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(hexe_firmware)

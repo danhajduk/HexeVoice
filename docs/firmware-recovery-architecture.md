@@ -1,6 +1,6 @@
 # Firmware Recovery App Architecture
 
-Status: Task 273 architecture contract
+Status: Task 273 architecture contract; Task 274 skeleton implemented
 
 Reference: `docs/fw-roadmap.txt`
 
@@ -22,10 +22,9 @@ The firmware tree uses two application entrypoint lanes:
 | Endpoint | `HEXE_FIRMWARE_APP=endpoint` | `firmware/apps/endpoint/main/` | Normal voice endpoint runtime |
 | Recovery | `HEXE_FIRMWARE_APP=recovery` | `firmware/apps/recovery/main/` | Minimal provisioning, rescue install, and diagnostics |
 
-The root ESP-IDF project selects an app by `HEXE_FIRMWARE_APP`. The recovery
-app will become buildable when Task 274 adds
-`firmware/apps/recovery/main/CMakeLists.txt` and the initial recovery runtime
-component.
+The root ESP-IDF project selects an app by `HEXE_FIRMWARE_APP`. The Task 274
+skeleton adds `firmware/apps/recovery/main/CMakeLists.txt` and
+`firmware/components/recovery_runtime/`.
 
 Expected build shape:
 
@@ -170,7 +169,7 @@ recovery-update lane is designed.
 
 ## Handoff To Implementation Tasks
 
-Task 274 builds the minimal bootable recovery app skeleton:
+Task 274 built the minimal bootable recovery app skeleton:
 
 - `firmware/apps/recovery/main/CMakeLists.txt`
 - recovery `app_main`
@@ -185,4 +184,3 @@ Task 275 adds operator-rescue features:
 - signed endpoint firmware upload/install
 - partition and boot-state inspection
 - selective config reset
-

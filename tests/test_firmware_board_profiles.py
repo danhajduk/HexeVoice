@@ -261,7 +261,9 @@ def test_firmware_cmake_uses_generated_board_profile_adapters():
     assert "HEXE_FIRMWARE_APP" in root_cmake
     assert 'set(HEXE_FIRMWARE_APP "endpoint")' in root_cmake
     assert 'apps/${HEXE_FIRMWARE_APP}/main' in root_cmake
-    assert "EXTRA_COMPONENT_DIRS" in root_cmake
+    assert "HEXE_FIRMWARE_RUNTIME_COMPONENT endpoint_runtime" in root_cmake
+    assert "HEXE_FIRMWARE_RUNTIME_COMPONENT recovery_runtime" in root_cmake
+    assert "COMPONENT_DIRS" in root_cmake
     assert "generate_board_profile_config.py" in cmake
     assert "--header-output" in cmake
     assert "board_profile_pins.h" in cmake

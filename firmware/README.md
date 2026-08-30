@@ -23,7 +23,8 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
   Native endpoint app entrypoint. This is the default ESP-IDF app selected by
   `HEXE_FIRMWARE_APP=endpoint`.
 - `apps/recovery/`
-  Reserved for the minimal recovery/provisioning app.
+  Minimal recovery/provisioning app. The first S3 skeleton logs recovery-safe
+  JSON diagnostics over serial and avoids the normal endpoint runtime.
 - `components/endpoint_runtime/`
   Current endpoint runtime component: app state, board adapters, audio, voice,
   UI, OTA, storage, provisioning, and backend protocol glue. This is the
@@ -117,9 +118,9 @@ HEXE_BOARD_PROFILE=esp_box_3 ./build.sh
 HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
 ```
 
-The root project also accepts `HEXE_FIRMWARE_APP`. `endpoint` is the only
-buildable app today; `recovery` is reserved until the recovery/provisioning
-tasks define its minimal component set and boot entry conditions.
+The root project also accepts `HEXE_FIRMWARE_APP`. `endpoint` is the default.
+`recovery` builds the minimal S3 recovery skeleton with
+`HEXE_FIRMWARE_APP=recovery HEXE_BOARD_PROFILE=<profile> ./build.sh build`.
 
 This writes flashable artifacts to `firmware/export-ha-voice-pe`. The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input, speaker output, and the center/mute controls. It reports endpoint id `esp-pe-1` by default, and brings up the onboard Voice Kit/XMOS device over I2C before enabling the secondary I2S microphone stream. Short-pressing the center button starts a voice session with `wake_source=button`, equivalent to an accepted wake word; pressing it during an active turn cancels that turn. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. TTS playback uses the onboard AIC3204 codec and the 48 kHz secondary I2S speaker path.
 

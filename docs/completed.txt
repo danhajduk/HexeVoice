@@ -291,3 +291,4 @@ Task 270: Generate firmware artifact manifests that include application type, bo
 Task 271: Add build-time partition validation and app-size guardrails for every board profile, including warning and rejection thresholds for 2.5 MiB, 4 MiB, and 8 MiB app slots - Completed on 08/30/2026 02:33
 Task 272: Report partition schema, flash geometry, app slot size, and firmware API compatibility in endpoint heartbeat/capabilities and backend firmware status views - Completed on 08/30/2026 02:49
 Task 273: Define the minimal recovery/provisioning app architecture, CMake target layout, shared code boundary, entry conditions, and recovery-safe diagnostics API - Completed on 08/30/2026 03:28
+Task 274: Implement a bootable S3 recovery app skeleton that works without Core, SD card, wake models, or the normal endpoint runtime - Completed on 08/30/2026 03:58

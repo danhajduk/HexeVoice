@@ -157,7 +157,33 @@ print(" ".join(profiles))
 PY
 }
 
+runtime_component_for_app() {
+  case "$1" in
+    endpoint) echo "endpoint_runtime" ;;
+    recovery) echo "recovery_runtime" ;;
+    *)
+      echo "Unsupported HEXE_FIRMWARE_APP: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
+firmware_api_version_for_app() {
+  case "$1" in
+    endpoint) echo "hexe-firmware-main-api-v1" ;;
+    recovery) echo "hexe-recovery-api-v1" ;;
+    *)
+      echo "Unsupported HEXE_FIRMWARE_APP: $1" >&2
+      exit 1
+      ;;
+  esac
+}
+
 profile_build_dir() {
+  if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
+    echo "${BUILD_DIR:-${ROOT_DIR}/build-recovery-$1}"
+    return
+  fi
   case "$1" in
     esp_box_3) echo "${BUILD_DIR:-${ROOT_DIR}/build}" ;;
     ha_voice_pe) echo "${BUILD_DIR:-${ROOT_DIR}/build-ha-voice-pe}" ;;
@@ -166,6 +192,10 @@ profile_build_dir() {
 }
 
 profile_export_dir() {
+  if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
+    echo "${EXPORT_DIR:-${ROOT_DIR}/export-recovery-$1}"
+    return
+  fi
   case "$1" in
     esp_box_3) echo "${EXPORT_DIR:-${ROOT_DIR}/export}" ;;
     ha_voice_pe) echo "${EXPORT_DIR:-${ROOT_DIR}/export-ha-voice-pe}" ;;
@@ -174,7 +204,11 @@ profile_export_dir() {
 }
 
 profile_app_filename() {
-  echo "hexe_firmware_${1}.bin"
+  if [[ "${FIRMWARE_APP}" == "endpoint" ]]; then
+    echo "hexe_firmware_${1}.bin"
+  else
+    echo "hexe_${FIRMWARE_APP}_${1}.bin"
+  fi
 }
 
 profile_manifest_path() {
@@ -214,9 +248,19 @@ validate_profile() {
     echo "Unsupported HEXE_BOARD_PROFILE: ${profile}" >&2
     exit 1
   fi
-  if [[ "$(board_profile_value "${profile}" adapters.buildable)" != "true" ]]; then
+  if [[ "${FIRMWARE_APP}" == "endpoint" && "$(board_profile_value "${profile}" adapters.buildable)" != "true" ]]; then
     echo "Board profile ${profile} is defined but its firmware adapters are not buildable yet." >&2
     exit 1
+  fi
+  if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
+    if [[ "$(board_profile_value "${profile}" build.recovery_app)" != "true" ]]; then
+      echo "Board profile ${profile} does not declare recovery app support." >&2
+      exit 1
+    fi
+    if [[ "$(board_profile_value "${profile}" build.idf_target)" != "esp32s3" ]]; then
+      echo "Recovery skeleton currently supports only esp32s3 profiles." >&2
+      exit 1
+    fi
   fi
 }
 
@@ -239,7 +283,11 @@ build_profile() {
   sdkconfig_defaults_path="$(profile_sdkconfig_defaults_path "${profile}")"
 
   echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"
-  IDF_TARGET="${idf_target}" idf.py \
+  local idf_env=("IDF_TARGET=${idf_target}")
+  if [[ "${FIRMWARE_APP}" == "recovery" && -z "${IDF_COMPONENT_MANAGER:-}" ]]; then
+    idf_env+=("IDF_COMPONENT_MANAGER=0")
+  fi
+  env "${idf_env[@]}" idf.py \
     -B "${build_dir}" \
     -D "SDKCONFIG=${sdkconfig_path}" \
     -D "SDKCONFIG_DEFAULTS=${ROOT_DIR}/sdkconfig.defaults;${sdkconfig_defaults_path}" \
@@ -262,13 +310,19 @@ build_profile() {
       UPDATE_RUNTIME_FIRMWARE=1 \
       PROFILE_APP_FILENAME="${profile_app}" \
       PROFILE_MANIFEST_FILENAME="manifest-${profile}.json" \
-      GENERATED_COMPONENT_NAME="endpoint_runtime" \
+      FIRMWARE_APPLICATION_TYPE="${FIRMWARE_APP}" \
+      FIRMWARE_API_VERSION="$(firmware_api_version_for_app "${FIRMWARE_APP}")" \
+      GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_APP}")" \
       "${ROOT_DIR}/export-artifacts.sh"
   fi
 }
 
 push_ota() {
   local profile="$1"
+  if [[ "${FIRMWARE_APP}" != "endpoint" ]]; then
+    echo "push mode supports only HEXE_FIRMWARE_APP=endpoint." >&2
+    exit 1
+  fi
   local endpoint_id="${ENDPOINT_ID:-$(yaml_value endpoint id)}"
   local filename
   local manifest_path

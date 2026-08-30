@@ -1149,9 +1149,11 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert "buildable_profiles" in build_source
     assert 'build_profile "${profile}"' in build_source
     assert "hexe_firmware_${1}.bin" in build_source
+    assert 'hexe_${FIRMWARE_APP}_${1}.bin' in build_source
     assert '\\"filename\\":\\"${filename}\\"' in build_source
     assert "partition_csv_for_schema" in build_source
     assert "SDKCONFIG_DEFAULTS" in build_source
+    assert 'GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_APP}")' in build_source
 
     assert "PROFILE_APP_FILENAME" in export_source
     assert "hexe_firmware_${BOARD_PROFILE}.bin" in export_source

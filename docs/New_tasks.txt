@@ -54,7 +54,6 @@ Do not edit above this line:
 
 [STOP]
 
-[TODO] Task 274: Implement a bootable S3 recovery app skeleton that works without Core, SD card, wake models, or the normal endpoint runtime
 [TODO] Task 275: Add recovery provisioning and rescue controls: local status page, Wi-Fi provisioning, signed main-firmware upload/install, partition/boot-state inspection, and selective config reset
 
 [STOP]
