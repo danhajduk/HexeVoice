@@ -52,6 +52,45 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
+[TODO] Task 270: Generate firmware artifact manifests that include application type, board profile, SoC, flash size, PSRAM size, partition schema, firmware/model/asset/calibration API versions, image size, SHA-256, signing key ID, and signature metadata
+[TODO] Task 271: Add build-time partition validation and app-size guardrails for every board profile, including warning and rejection thresholds for 2.5 MiB, 4 MiB, and 8 MiB app slots
+[TODO] Task 272: Report partition schema, flash geometry, app slot size, and firmware API compatibility in endpoint heartbeat/capabilities and backend firmware status views
+
+[STOP]
+
+[TODO] Task 273: Define the minimal recovery/provisioning app architecture, CMake target layout, shared code boundary, entry conditions, and recovery-safe diagnostics API
+[TODO] Task 274: Implement a bootable S3 recovery app skeleton that works without Core, SD card, wake models, or the normal endpoint runtime
+[TODO] Task 275: Add recovery provisioning and rescue controls: local status page, Wi-Fi provisioning, signed main-firmware upload/install, partition/boot-state inspection, and selective config reset
+
+[STOP]
+
+[TODO] Task 276: Harden main-app OTA boot validation by adding pending-verification handling, local startup self-tests, valid-image marking only after self-tests pass, and rollback status reporting
+[TODO] Task 277: Extend OTA/package validation to reject wrong application type, wrong partition schema, wrong SoC, wrong flash/PSRAM geometry, incompatible firmware API, and unsupported release/security policy before download
+[TODO] Task 278: Add OTA rollback and failure-path tests for corrupt images, wrong board/schema, crash before validation, network outage during validation, and recovery availability when both OTA slots are unusable
+
+[STOP]
+
+[TODO] Task 279: Define signed model-bundle packaging for Hexe/Alexa wake, Stop, thresholds, preprocessing metadata, compatibility ranges, hashes, and signatures
+[TODO] Task 280: Implement model-bundle activation with internal A/B banks or SD versioned directories, test-load-before-activation, atomic active pointer updates, rollback, and embedded fallback selection
+[TODO] Task 281: Define and implement signed config, calibration, media, prompt, tone, and UI asset bundle contracts with schema compatibility, migration rules, cleanup policy, atomic activation, and rollback
+
+[STOP]
+
+[TODO] Task 282: Add the xvf3800_xiao_s3 board profile and implement the ReSpeaker XVF3800 plus XIAO ESP32-S3 screenless audio endpoint adapters, including I2S input, channel mapping, DSP/VAD integration, LEDs, buttons, speaker/tones, and size validation against the 2.5 MiB slot target
+
+[STOP]
+
+[TODO] Task 283: Make the Waveshare ESP32-S3 1.85C BOX V2 profile buildable by transcribing the schematic pin map and implementing display, touch, audio, storage, status, and TTS adapters behind the existing board-profile interface
+
+[STOP]
+
+[TODO] Task 284: Make the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B profile buildable by implementing the ESP32-P4 target, ESP32-C6 SDIO radio transport, display/touch backends, ES7210/ES8311 audio path, SD storage, wake pipeline, and fallback UI
+
+[STOP]
+
+[TODO] Task 285: Add the firmware hardware, OTA, recovery, model-bundle, and long-duration stress test matrix from the firmware roadmap, including power-loss, corrupt storage, SD removal, wake-during-playback, and far-field behavior coverage
+[TODO] Task 286: Add production-readiness security and manufacturing docs for firmware signing, key rotation, secure boot, flash encryption, provisioning, recovery, field service, enclosure/audio openings, mute controls, and service access
+
 [STOP]
 
 **********************************************************************************************

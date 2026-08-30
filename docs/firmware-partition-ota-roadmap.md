@@ -23,7 +23,7 @@ The roadmap keeps the current ESP-IDF firmware useful while moving toward:
 The current native firmware already has a useful OTA foundation:
 
 - ESP32-S3 board profiles for `esp_box_3` and `ha_voice_pe`
-- a custom ESP-IDF partition table in `firmware/partitions.csv`
+- named ESP-IDF partition schemas under `firmware/partitions/`
 - `ota_0` and `ota_1` application slots
 - backend-pushed OTA events through `/api/firmware/ota/push`
 - hosted artifacts under `runtime/firmware`
@@ -31,7 +31,8 @@ The current native firmware already has a useful OTA foundation:
 - firmware-side rejection for wrong profile, downgrade/replay, bad signature,
   bad checksum, and bad size
 
-The current partition table is a development S3 16 MiB layout:
+The current active S3 16 MiB partition schema is
+`firmware/partitions/s3_16m_v1.csv`, a named development layout:
 
 | Partition | Purpose | Current Size |
 | --- | --- | ---: |
@@ -42,9 +43,11 @@ The current partition table is a development S3 16 MiB layout:
 | `ota_1` | main app slot B | 4 MiB |
 | `storage` | SPIFFS data area | 2 MiB |
 
-The current layout does not yet reserve a factory recovery app, model banks,
-explicit calibration partitions, coredump storage, or board-profile-specific
-partition schemas.
+The active S3 16 MiB layout does not yet reserve a factory recovery app, model
+banks, explicit calibration partitions, or coredump storage. The repository now
+has named schema files for the S3 8 MiB, S3 16 MiB, and P4 32 MiB classes, but
+the recovery/data-bank schemas are not the active buildable-device default until
+the recovery application exists.
 
 ## Product Direction
 

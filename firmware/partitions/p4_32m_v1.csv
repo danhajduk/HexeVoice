@@ -1,0 +1,14 @@
+# Hexe P4 32 MiB display layout with recovery, large OTA slots, fallback assets, and diagnostics storage.
+# Name,     Type, SubType, Offset,   Size,    Flags
+nvs,        data, nvs,     0x9000,   16K,
+otadata,    data, ota,     0xd000,   8K,
+phy_init,   data, phy,     0xf000,   4K,
+factory,    app,  factory, ,         2M,
+ota_0,      app,  ota_0,   ,         8M,
+ota_1,      app,  ota_1,   ,         8M,
+fallback,   data, spiffs,  ,         3M,
+model_a,    data, spiffs,  ,         2M,
+model_b,    data, spiffs,  ,         2M,
+config,     data, nvs,     ,         1M,
+coredump,   data, coredump,,         1M,
+storage,    data, spiffs,  ,         4M,

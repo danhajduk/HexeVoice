@@ -286,3 +286,4 @@ Task 265: Define firmware partition and OTA strategy for main app, recovery app,
 Task 266: Define portable firmware board-profile config schema for YAML/JSON-driven hardware bring-up - Completed on 08/30/2026 00:56
 Task 267: Refactor firmware board support behind config-driven portable hardware adapters - Completed on 08/30/2026 01:26
 Task 268: Add new-board bring-up generator, examples, validation tests, and docs for config-only firmware ports - Completed on 08/30/2026 02:08
+Task 269: Add named firmware partition schemas for s3-8m-v1, s3-16m-v1, and p4-32m-v1, move the current development partition table under firmware/partitions, and select the correct CSV from each board profile - Completed on 08/30/2026 02:26

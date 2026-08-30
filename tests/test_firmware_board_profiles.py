@@ -14,6 +14,7 @@ SCAFFOLD = REPO_ROOT / "firmware/tools/create_board_profile.py"
 PROFILE_ROOT = REPO_ROOT / "firmware/boards"
 FIRMWARE_CMAKE = REPO_ROOT / "firmware/main/CMakeLists.txt"
 FIRMWARE_BUILD_SCRIPT = REPO_ROOT / "firmware/build.sh"
+PARTITIONS_DIR = REPO_ROOT / "firmware/partitions"
 
 
 def load_validator_module():
@@ -263,8 +264,30 @@ def test_firmware_build_script_discovers_buildable_profiles_from_yaml():
     assert "validate_board_profiles" in build_script
     assert "adapters.buildable" in build_script
     assert "buildable_profiles" in build_script
+    assert "partition_csv_for_schema" in build_script
+    assert 's3-8m-v1) echo "partitions/s3_8m_v1.csv"' in build_script
+    assert 's3-16m-v1) echo "partitions/s3_16m_v1.csv"' in build_script
+    assert 'p4-32m-v1) echo "partitions/p4_32m_v1.csv"' in build_script
+    assert "SDKCONFIG_DEFAULTS" in build_script
+    assert "build.partition_schema" in build_script
+    assert "build.idf_target" in build_script
     assert "build_profile esp_box_3" not in build_script
     assert "build_profile ha_voice_pe" not in build_script
+
+
+def test_named_partition_schema_files_exist_and_cover_profile_classes():
+    schemas = {
+        "s3_8m_v1.csv": ("ota_0,      app,  ota_0,   ,         2560K,", "ota_1,      app,  ota_1,   ,         2560K,"),
+        "s3_16m_v1.csv": ("ota_0,      app,  ota_0,   0x10000,  4M,", "ota_1,      app,  ota_1,   ,         4M,"),
+        "p4_32m_v1.csv": ("ota_0,      app,  ota_0,   ,         8M,", "ota_1,      app,  ota_1,   ,         8M,"),
+    }
+
+    for filename, expected_lines in schemas.items():
+        source = (PARTITIONS_DIR / filename).read_text(encoding="utf-8")
+        assert "nvs,        data, nvs,     0x9000,   16K," in source
+        assert "otadata,    data, ota,     0xd000,   8K," in source
+        for expected_line in expected_lines:
+            assert expected_line in source
 
 
 def test_board_profile_scaffold_dry_run_creates_valid_planned_profile(tmp_path):

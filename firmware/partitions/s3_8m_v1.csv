@@ -1,0 +1,13 @@
+# Hexe S3 8 MiB voice-only layout with recovery, dual endpoint OTA slots, and internal model/config storage.
+# Name,     Type, SubType, Offset,   Size,    Flags
+nvs,        data, nvs,     0x9000,   16K,
+otadata,    data, ota,     0xd000,   8K,
+phy_init,   data, phy,     0xf000,   4K,
+factory,    app,  factory, ,         1M,
+ota_0,      app,  ota_0,   ,         2560K,
+ota_1,      app,  ota_1,   ,         2560K,
+model_a,    data, spiffs,  ,         512K,
+model_b,    data, spiffs,  ,         512K,
+config,     data, nvs,     ,         384K,
+coredump,   data, coredump,,         256K,
+storage,    data, spiffs,  ,         320K,
