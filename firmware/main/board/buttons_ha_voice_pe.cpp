@@ -5,6 +5,7 @@
 
 #include "app_state.h"
 #include "board/led_ring.h"
+#include "board/pins.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -14,10 +15,14 @@
 
 namespace {
 constexpr char kTag[] = "hexe_buttons_vpe";
-constexpr gpio_num_t kCenterButton = GPIO_NUM_0;
-constexpr gpio_num_t kHardwareMute = GPIO_NUM_3;
-constexpr gpio_num_t kDialA = GPIO_NUM_16;
-constexpr gpio_num_t kDialB = GPIO_NUM_18;
+constexpr gpio_num_t gpio_pin(int pin) {
+  return static_cast<gpio_num_t>(pin);
+}
+
+constexpr gpio_num_t kCenterButton = gpio_pin(hexe::board::pins::kVoicePeCenterButton);
+constexpr gpio_num_t kHardwareMute = gpio_pin(hexe::board::pins::kVoicePeHardwareMute);
+constexpr gpio_num_t kDialA = gpio_pin(hexe::board::pins::kVoicePeDialA);
+constexpr gpio_num_t kDialB = gpio_pin(hexe::board::pins::kVoicePeDialB);
 constexpr int64_t kLongPressUs = 1000 * 1000;
 constexpr int kVolumeStepPercent = 5;
 constexpr int kQuadratureStepsPerDetent = 2;

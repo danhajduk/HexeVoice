@@ -137,8 +137,46 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
     ]
 
 
+def test_buildable_board_profiles_declare_complete_wiring():
+    validator = load_validator_module()
+    profiles = {
+        path.parent.name: validator.load_profile(path)
+        for path in PROFILE_ROOT.glob("*/board.yaml")
+    }
+
+    assert profiles["esp_box_3"]["wiring"]["status"] == "complete"
+    assert profiles["ha_voice_pe"]["wiring"]["status"] == "complete"
+    assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["wiring"]["status"] == "partial"
+    assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["wiring"]["status"] == "partial"
+
+    pe_wiring = profiles["ha_voice_pe"]["wiring"]
+    pe_i2c = {bus["name"]: bus for bus in pe_wiring["i2c_buses"]}
+    pe_i2s = {bus["name"]: bus for bus in pe_wiring["i2s_buses"]}
+    pe_gpios = {gpio["name"]: gpio for gpio in pe_wiring["gpios"]}
+    pe_leds = {strip["name"]: strip for strip in pe_wiring["led_strips"]}
+
+    assert pe_i2c["audio_control"]["sda"] == 5
+    assert pe_i2c["audio_control"]["scl"] == 6
+    assert pe_i2c["audio_control"]["devices"] == [
+        {"name": "voice_kit", "address": 66},
+        {"name": "speaker_codec", "address": 24},
+    ]
+    assert pe_i2s["microphone"]["bclk"] == 13
+    assert pe_i2s["microphone"]["lrclk"] == 14
+    assert pe_i2s["microphone"]["din"] == 15
+    assert pe_i2s["speaker"]["bclk"] == 8
+    assert pe_i2s["speaker"]["lrclk"] == 7
+    assert pe_i2s["speaker"]["dout"] == 10
+    assert pe_gpios["center_button"]["gpio"] == 0
+    assert pe_gpios["hardware_mute"]["gpio"] == 3
+    assert pe_leds["led_ring"]["data"] == 21
+    assert pe_leds["led_ring"]["power"] == 45
+    assert pe_leds["led_ring"]["pixel_count"] == 12
+
+
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     output = tmp_path / "board_profile_config.cmake"
+    header_output = tmp_path / "board_profile_pins.h"
 
     result = subprocess.run(
         [
@@ -150,6 +188,8 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
             "ha_voice_pe",
             "--output",
             str(output),
+            "--header-output",
+            str(header_output),
         ],
         check=True,
         text=True,
@@ -164,6 +204,16 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert "HEXE_BOARD_PROFILE_HA_VOICE_PE=1" in cmake
     assert '"board/audio_ha_voice_pe.cpp"' in cmake
     assert '"voice/tts_player_ha_voice_pe.cpp"' in cmake
+
+    header = header_output.read_text(encoding="utf-8")
+    assert 'constexpr const char *kBoardProfile = "ha_voice_pe";' in header
+    assert "constexpr int kAudioControlSda = 5;" in header
+    assert "constexpr int kAudioControlScl = 6;" in header
+    assert "constexpr int kAudioControlVoiceKitAddress = 66;" in header
+    assert "constexpr int kAudioControlSpeakerCodecAddress = 24;" in header
+    assert "constexpr int kMicrophoneBclk = 13;" in header
+    assert "constexpr int kSpeakerDout = 10;" in header
+    assert "constexpr int kVoicePeLedCount = kLedRingPixelCount;" in header
 
 
 def test_board_profile_generator_keeps_planned_profiles_non_buildable(tmp_path):
@@ -196,6 +246,8 @@ def test_firmware_cmake_uses_generated_board_profile_adapters():
     cmake = FIRMWARE_CMAKE.read_text(encoding="utf-8")
 
     assert "generate_board_profile_config.py" in cmake
+    assert "--header-output" in cmake
+    assert "board_profile_pins.h" in cmake
     assert "board_profile_config.cmake" in cmake
     assert 'include("${HEXE_GENERATED_DIR}/board_profile_config.cmake")' in cmake
     assert "HEXE_BOARD_ADAPTER_BUILDABLE" in cmake
@@ -254,6 +306,48 @@ def test_board_profile_validator_rejects_buildable_profile_without_sources(tmp_p
 
     assert result.returncode == 1
     assert "buildable profiles must define adapter source files" in result.stderr
+
+
+def test_board_profile_validator_rejects_buildable_profile_without_complete_wiring(tmp_path):
+    source = PROFILE_ROOT / "ha_voice_pe/board.yaml"
+    validator = load_validator_module()
+    profile = validator.load_profile(source)
+    profile["wiring"]["status"] = "partial"
+    profile_dir = tmp_path / "ha_voice_pe"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "board.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(profile_path)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "buildable profiles must have complete wiring" in result.stderr
+
+
+def test_board_profile_validator_rejects_buildable_profile_with_missing_pin(tmp_path):
+    source = PROFILE_ROOT / "ha_voice_pe/board.yaml"
+    validator = load_validator_module()
+    profile = validator.load_profile(source)
+    profile["wiring"]["i2c_buses"][0]["sda"] = None
+    profile_dir = tmp_path / "ha_voice_pe"
+    profile_dir.mkdir()
+    profile_path = profile_dir / "board.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, str(VALIDATOR), str(profile_path)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "incomplete pin mapping" in result.stderr
 
 
 def test_board_profiles_reject_secret_like_instance_config(tmp_path):

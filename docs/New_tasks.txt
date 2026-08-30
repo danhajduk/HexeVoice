@@ -53,7 +53,7 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 268: Add new-board bring-up generator, examples, validation tests, and docs for config-only firmware ports
+[WIP] Task 268: Add new-board bring-up generator, examples, validation tests, and docs for config-only firmware ports
 
 **********************************************************************************************
 * Future TODO listing

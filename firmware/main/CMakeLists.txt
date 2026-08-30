@@ -31,6 +31,7 @@ execute_process(
     --profile-root "${HEXE_BOARD_PROFILE_ROOT}"
     --board-profile "${HEXE_BOARD_PROFILE}"
     --output "${HEXE_GENERATED_DIR}/board_profile_config.cmake"
+    --header-output "${HEXE_GENERATED_DIR}/board_profile_pins.h"
   RESULT_VARIABLE HEXE_BOARD_PROFILE_CONFIG_RESULT
 )
 if(NOT HEXE_BOARD_PROFILE_CONFIG_RESULT EQUAL 0)

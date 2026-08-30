@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "app_state.h"
+#include "board/pins.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
@@ -36,14 +37,20 @@ constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
 constexpr uint32_t kVadTaskStackBytes = 8192;
 constexpr uint32_t kMicReadTimeoutLogEvery = 200;
 
-constexpr gpio_num_t kMicBclk = GPIO_NUM_13;
-constexpr gpio_num_t kMicLrclk = GPIO_NUM_14;
-constexpr gpio_num_t kMicDin = GPIO_NUM_15;
-constexpr gpio_num_t kVoiceKitReset = GPIO_NUM_4;
-constexpr gpio_num_t kVoiceKitI2cSda = GPIO_NUM_5;
-constexpr gpio_num_t kVoiceKitI2cScl = GPIO_NUM_6;
-constexpr uint8_t kVoiceKitI2cAddress = 0x42;
-constexpr uint32_t kVoiceKitI2cClockHz = 400000;
+constexpr gpio_num_t gpio_pin(int pin) {
+  return static_cast<gpio_num_t>(pin);
+}
+
+constexpr gpio_num_t kMicBclk = gpio_pin(hexe::board::pins::kVoicePeMicBclk);
+constexpr gpio_num_t kMicLrclk = gpio_pin(hexe::board::pins::kVoicePeMicLrclk);
+constexpr gpio_num_t kMicDin = gpio_pin(hexe::board::pins::kVoicePeMicDin);
+constexpr gpio_num_t kVoiceKitReset = gpio_pin(hexe::board::pins::kVoicePeVoiceKitReset);
+constexpr i2c_port_num_t kVoiceKitI2cPort = hexe::board::pins::kVoicePeI2cPort;
+constexpr gpio_num_t kVoiceKitI2cSda = gpio_pin(hexe::board::pins::kVoicePeI2cSda);
+constexpr gpio_num_t kVoiceKitI2cScl = gpio_pin(hexe::board::pins::kVoicePeI2cScl);
+constexpr int kMicI2sPort = hexe::board::pins::kVoicePeMicPort;
+constexpr uint8_t kVoiceKitI2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeVoiceKitI2cAddress);
+constexpr uint32_t kVoiceKitI2cClockHz = static_cast<uint32_t>(hexe::board::pins::kVoicePeI2cClockHz);
 constexpr uint32_t kVoiceKitBootDelayMs = 3000;
 constexpr uint32_t kVoiceKitI2cTimeoutMs = 1000;
 constexpr uint8_t kVoiceKitCtrlDone = 0;
@@ -143,7 +150,7 @@ bool init_voice_kit_i2c() {
 
   if (g_voice_kit_i2c_bus == nullptr) {
     i2c_master_bus_config_t bus_config = {};
-    bus_config.i2c_port = I2C_NUM_0;
+    bus_config.i2c_port = kVoiceKitI2cPort;
     bus_config.sda_io_num = kVoiceKitI2cSda;
     bus_config.scl_io_num = kVoiceKitI2cScl;
     bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
@@ -289,7 +296,7 @@ bool start_microphone_stream() {
     return i2s_channel_enable(g_rx_channel) == ESP_OK;
   }
 
-  i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_SLAVE);
+  i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(kMicI2sPort, I2S_ROLE_SLAVE);
   channel_config.dma_desc_num = 6;
   channel_config.dma_frame_num = kFrameSamples;
   esp_err_t result = i2s_new_channel(&channel_config, nullptr, &g_rx_channel);

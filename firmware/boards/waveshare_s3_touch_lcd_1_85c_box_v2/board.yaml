@@ -78,6 +78,14 @@ audio:
     transport: i2s
     speaker: true
     line_out: false
+wiring:
+  status: partial
+  notes: Board schematic pin mapping still needs to be transcribed before this profile can become buildable.
+  gpios: []
+  i2c_buses: []
+  i2s_buses: []
+  spi_buses: []
+  led_strips: []
 wake:
   local_micro_wake_word: true
   primary_model: alexa

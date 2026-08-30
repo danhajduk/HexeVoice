@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "app_state.h"
+#include "board/pins.h"
 #include "driver/gpio.h"
 #include "driver/rmt_encoder.h"
 #include "driver/rmt_tx.h"
@@ -16,9 +17,13 @@
 
 namespace {
 constexpr char kTag[] = "hexe_led_ring_vpe";
-constexpr gpio_num_t kLedDataGpio = GPIO_NUM_21;
-constexpr gpio_num_t kLedPowerGpio = GPIO_NUM_45;
-constexpr size_t kLedCount = 12;
+constexpr gpio_num_t gpio_pin(int pin) {
+  return static_cast<gpio_num_t>(pin);
+}
+
+constexpr gpio_num_t kLedDataGpio = gpio_pin(hexe::board::pins::kVoicePeLedData);
+constexpr gpio_num_t kLedPowerGpio = gpio_pin(hexe::board::pins::kVoicePeLedPower);
+constexpr size_t kLedCount = hexe::board::pins::kVoicePeLedCount;
 constexpr uint32_t kRmtResolutionHz = 10 * 1000 * 1000;
 constexpr uint32_t kRenderTimeoutMs = 100;
 constexpr uint32_t kPatternFrameMs = 100;

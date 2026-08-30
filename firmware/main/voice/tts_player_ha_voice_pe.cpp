@@ -12,6 +12,7 @@
 
 #include "app_state.h"
 #include "board/audio.h"
+#include "board/pins.h"
 #include "board/storage.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
@@ -50,13 +51,19 @@ constexpr uint32_t kWakeDingDurationMs = 120;
 constexpr uint32_t kWakeDingFrequencyHz = 880;
 constexpr int32_t kWakeDingAmplitude = 5600;
 
-constexpr gpio_num_t kI2cSda = GPIO_NUM_5;
-constexpr gpio_num_t kI2cScl = GPIO_NUM_6;
-constexpr gpio_num_t kSpeakerLrclk = GPIO_NUM_7;
-constexpr gpio_num_t kSpeakerBclk = GPIO_NUM_8;
-constexpr gpio_num_t kSpeakerDout = GPIO_NUM_10;
-constexpr gpio_num_t kSpeakerAmp = GPIO_NUM_47;
-constexpr uint8_t kAic3204I2cAddress = 0x18;
+constexpr gpio_num_t gpio_pin(int pin) {
+  return static_cast<gpio_num_t>(pin);
+}
+
+constexpr gpio_num_t kI2cSda = gpio_pin(hexe::board::pins::kVoicePeI2cSda);
+constexpr gpio_num_t kI2cScl = gpio_pin(hexe::board::pins::kVoicePeI2cScl);
+constexpr i2c_port_num_t kI2cPort = hexe::board::pins::kVoicePeI2cPort;
+constexpr gpio_num_t kSpeakerLrclk = gpio_pin(hexe::board::pins::kVoicePeSpeakerLrclk);
+constexpr gpio_num_t kSpeakerBclk = gpio_pin(hexe::board::pins::kVoicePeSpeakerBclk);
+constexpr gpio_num_t kSpeakerDout = gpio_pin(hexe::board::pins::kVoicePeSpeakerDout);
+constexpr int kSpeakerI2sPort = hexe::board::pins::kVoicePeSpeakerPort;
+constexpr gpio_num_t kSpeakerAmp = gpio_pin(hexe::board::pins::kVoicePeSpeakerAmp);
+constexpr uint8_t kAic3204I2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeSpeakerCodecI2cAddress);
 
 constexpr uint8_t kAicPageCtrl = 0x00;
 constexpr uint8_t kAicSwReset = 0x01;
@@ -375,13 +382,13 @@ bool ensure_i2c_bus() {
     return true;
   }
 
-  esp_err_t result = i2c_master_get_bus_handle(I2C_NUM_0, &g_i2c_bus);
+  esp_err_t result = i2c_master_get_bus_handle(kI2cPort, &g_i2c_bus);
   if (result == ESP_OK) {
     return true;
   }
 
   i2c_master_bus_config_t bus_config = {};
-  bus_config.i2c_port = I2C_NUM_0;
+  bus_config.i2c_port = kI2cPort;
   bus_config.sda_io_num = kI2cSda;
   bus_config.scl_io_num = kI2cScl;
   bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
@@ -546,7 +553,7 @@ void prewarm_task(void *arg) {
 
 bool ensure_i2s_output() {
   if (g_tx_channel == nullptr) {
-    i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_SLAVE);
+    i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(kSpeakerI2sPort, I2S_ROLE_SLAVE);
     channel_config.dma_desc_num = 6;
     channel_config.dma_frame_num = kPlaybackFrameCapacity;
     esp_err_t result = i2s_new_channel(&channel_config, &g_tx_channel, nullptr);

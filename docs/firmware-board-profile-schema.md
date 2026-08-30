@@ -14,6 +14,7 @@ Use board profiles for:
 - ESP-IDF target and partition schema selection
 - flash and PSRAM expectations
 - display size in inches and pixels
+- board pinout and dev-board wiring for GPIO, I2C, I2S, SPI, and LED strips
 - audio frontend/output hardware
 - hardware/audio-frontend DSP features
 - firmware VAD capability and algorithm
@@ -43,11 +44,19 @@ firmware/boards/
   waveshare_s3_touch_lcd_1_85c_box_v2/board.yaml
   waveshare_p4_wifi6_touch_lcd_7b/board.yaml
 firmware/tools/validate_board_profiles.py
+firmware/tools/generate_board_profile_config.py
 ```
 
 The validator accepts `board.yaml`, `board.yml`, or `board.json` files. YAML
 parsing uses PyYAML when available and falls back to the small subset used by
 the committed profiles.
+
+The build generator emits two generated files into the firmware build directory:
+
+- `board_profile_config.cmake` for compile definitions and board adapter source
+  files
+- `board_profile_pins.h` for firmware pin and bus constants consumed through
+  `firmware/main/board/pins.h`
 
 ## Supported Initial Profiles
 
@@ -92,6 +101,9 @@ The validator checks:
 - display feature flags matching display dimensions
 - audio feature flags matching input/output declarations
 - firmware VAD availability, status, algorithm, and timing defaults
+- wiring status, unique wiring names, GPIO ranges, I2C pins, I2C device
+  addresses, I2S pins, SPI pins, and LED-strip pins
+- complete wiring before a profile can become buildable
 - adapter buildability and adapter source-file existence for buildable profiles
 - wake model contract: Alexa as the initial Hexe alias, Stop as interruption
   model, backend fallback enabled
@@ -160,6 +172,41 @@ adapters:
     - board/storage_nvs_only.cpp
     - board/touch_none.cpp
     - voice/tts_player_ha_voice_pe.cpp
+wiring:
+  status: complete
+  gpios:
+    - name: center_button
+      gpio: 0
+      function: wake_cancel_factory_reset
+      active_low: true
+  i2c_buses:
+    - name: audio_control
+      port: 0
+      sda: 5
+      scl: 6
+      clock_hz: 400000
+      pullups: internal
+      devices:
+        - name: voice_kit
+          address: 66
+        - name: speaker_codec
+          address: 24
+  i2s_buses:
+    - name: microphone
+      port: 0
+      role: slave
+      mclk: null
+      bclk: 13
+      lrclk: 14
+      din: 15
+      dout: null
+  spi_buses: []
+  led_strips:
+    - name: led_ring
+      data: 21
+      power: 45
+      pixel_count: 12
+      color_order: GRB
 wake:
   local_micro_wake_word: true
   primary_model: alexa
@@ -170,5 +217,7 @@ wake:
 
 ## Next Step
 
-Task 267 consumes `adapters.source_files` from firmware build tooling and moves
-board-specific source selection behind profile-driven adapters.
+Task 268 extends this into new-board bring-up helpers: a profile can start as
+`wiring.status: partial`, then move to `complete` once the board schematic and
+dev-board connection table have been transcribed. Only profiles with complete
+wiring and implemented adapters should become buildable.

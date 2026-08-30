@@ -78,6 +78,14 @@ audio:
     transport: i2s
     speaker: true
     line_out: false
+wiring:
+  status: partial
+  notes: ESP32-P4, ESP32-C6 radio, display, touch, audio, and storage pin mapping still needs to be transcribed before this profile can become buildable.
+  gpios: []
+  i2c_buses: []
+  i2s_buses: []
+  spi_buses: []
+  led_strips: []
 storage:
   internal: nvs_and_internal_flash
   sd_card:

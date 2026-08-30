@@ -77,6 +77,49 @@ audio:
     transport: i2s
     speaker: true
     line_out: false
+wiring:
+  status: complete
+  notes: Pin aliases used by the current ESP-BOX-3 firmware adapters.
+  gpios:
+    - name: button_top_left
+      gpio: 0
+      function: wake_cancel_control
+      active_low: true
+    - name: backlight
+      gpio: 47
+      function: display_backlight
+      active_low: false
+    - name: speaker_enable
+      gpio: 46
+      function: speaker_power_enable
+      active_low: false
+  i2c_buses:
+    - name: primary
+      port: 0
+      sda: 8
+      scl: 18
+      clock_hz: 400000
+      pullups: board
+      devices: []
+  i2s_buses:
+    - name: audio
+      port: 0
+      role: master
+      mclk: 2
+      bclk: 17
+      lrclk: 45
+      din: 16
+      dout: 15
+  spi_buses:
+    - name: display
+      clk: 7
+      mosi: 6
+      miso: 13
+      cs: 5
+      dc: 4
+      reset: 48
+      backlight: 47
+  led_strips: []
 wake:
   local_micro_wake_word: true
   primary_model: alexa

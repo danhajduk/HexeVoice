@@ -31,6 +31,17 @@ Column names include the source YAML path where that helps future refactors.
 | `adapters.buildable` | `true` | `true` | `false` | `false` |
 | `adapters.source_files` | `board/audio_ha_voice_pe.cpp`, `board/buttons_ha_voice_pe.cpp`, `board/display_none.cpp`, `board/led_ring_ha_voice_pe.cpp`, `board/storage_nvs_only.cpp`, `board/touch_none.cpp`, `voice/tts_player_ha_voice_pe.cpp` | `board/audio.cpp`, `board/buttons.cpp`, `board/display.cpp`, `board/led_ring.cpp`, `board/storage.cpp`, `board/touch.cpp`, `voice/tts_player.cpp` | none | none |
 
+## Firmware Wiring
+
+| YAML Field | HA Voice PE | ESP32-S3-BOX-3 | Waveshare 1.85C BOX V2 | Waveshare P4 7B |
+| --- | --- | --- | --- | --- |
+| `wiring.status` | `complete` | `complete` | `partial` | `partial` |
+| `wiring.i2c_buses` | `audio_control`: port 0, SDA GPIO5, SCL GPIO6, 400 kHz, devices `voice_kit` 66 / `speaker_codec` 24 | `primary`: port 0, SDA GPIO8, SCL GPIO18, 400 kHz | pending schematic transcription | pending schematic transcription |
+| `wiring.i2s_buses` | `microphone`: port 0, BCLK GPIO13, LRCLK GPIO14, DIN GPIO15; `speaker`: port 1, BCLK GPIO8, LRCLK GPIO7, DOUT GPIO10 | `audio`: port 0, MCLK GPIO2, BCLK GPIO17, LRCLK GPIO45, DIN GPIO16, DOUT GPIO15 | pending schematic transcription | pending schematic transcription |
+| `wiring.spi_buses` | none | `display`: CLK GPIO7, MOSI GPIO6, MISO GPIO13, CS GPIO5, DC GPIO4, reset GPIO48, backlight GPIO47 | pending schematic transcription | pending schematic transcription |
+| `wiring.gpios` | reset GPIO4, amp GPIO47, center GPIO0, mute GPIO3, dial GPIO16/GPIO18 | button GPIO0, backlight GPIO47, speaker enable GPIO46 | pending schematic transcription | pending schematic transcription |
+| `wiring.led_strips` | `led_ring`: data GPIO21, power GPIO45, 12 pixels, GRB | none | none | none |
+
 ## Hardware
 
 | YAML Field | HA Voice PE | ESP32-S3-BOX-3 | Waveshare 1.85C BOX V2 | Waveshare P4 7B |

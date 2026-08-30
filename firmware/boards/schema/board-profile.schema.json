@@ -19,6 +19,7 @@
     "audio",
     "display",
     "vad",
+    "wiring",
     "adapters",
     "wake",
     "storage",
@@ -261,6 +262,35 @@
         "notes": {"type": "string"}
       }
     },
+    "wiring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "gpios", "i2c_buses", "i2s_buses", "spi_buses", "led_strips"],
+      "properties": {
+        "status": {"type": "string", "enum": ["complete", "partial", "unknown"]},
+        "notes": {"type": "string"},
+        "gpios": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/wiring_gpio"}
+        },
+        "i2c_buses": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/wiring_i2c_bus"}
+        },
+        "i2s_buses": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/wiring_i2s_bus"}
+        },
+        "spi_buses": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/wiring_spi_bus"}
+        },
+        "led_strips": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/wiring_led_strip"}
+        }
+      }
+    },
     "storage": {
       "type": "object",
       "additionalProperties": false,
@@ -300,6 +330,95 @@
     }
   },
   "$defs": {
+    "pin": {
+      "type": ["integer", "null"],
+      "minimum": -1,
+      "maximum": 99
+    },
+    "wiring_gpio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "gpio", "function", "active_low"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"},
+        "gpio": {"$ref": "#/$defs/pin"},
+        "function": {"type": "string"},
+        "active_low": {"type": "boolean"},
+        "notes": {"type": "string"}
+      }
+    },
+    "wiring_i2c_bus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "port", "sda", "scl", "clock_hz", "pullups", "devices"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"},
+        "port": {"type": ["integer", "null"], "minimum": 0},
+        "sda": {"$ref": "#/$defs/pin"},
+        "scl": {"$ref": "#/$defs/pin"},
+        "clock_hz": {"type": ["integer", "null"], "minimum": 1},
+        "pullups": {"type": ["string", "null"]},
+        "devices": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/wiring_i2c_device"}
+        }
+      }
+    },
+    "wiring_i2c_device": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "address"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"},
+        "address": {"type": ["integer", "null"], "minimum": 0, "maximum": 127},
+        "notes": {"type": "string"}
+      }
+    },
+    "wiring_i2s_bus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "port", "role", "mclk", "bclk", "lrclk", "din", "dout"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"},
+        "port": {"type": ["integer", "null"], "minimum": 0},
+        "role": {"type": ["string", "null"]},
+        "mclk": {"$ref": "#/$defs/pin"},
+        "bclk": {"$ref": "#/$defs/pin"},
+        "lrclk": {"$ref": "#/$defs/pin"},
+        "din": {"$ref": "#/$defs/pin"},
+        "dout": {"$ref": "#/$defs/pin"},
+        "notes": {"type": "string"}
+      }
+    },
+    "wiring_spi_bus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "clk", "mosi", "miso", "cs", "dc", "reset", "backlight"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"},
+        "clk": {"$ref": "#/$defs/pin"},
+        "mosi": {"$ref": "#/$defs/pin"},
+        "miso": {"$ref": "#/$defs/pin"},
+        "cs": {"$ref": "#/$defs/pin"},
+        "dc": {"$ref": "#/$defs/pin"},
+        "reset": {"$ref": "#/$defs/pin"},
+        "backlight": {"$ref": "#/$defs/pin"},
+        "notes": {"type": "string"}
+      }
+    },
+    "wiring_led_strip": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "data", "power", "pixel_count", "color_order"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z0-9]+(?:_[a-z0-9]+)*$"},
+        "data": {"$ref": "#/$defs/pin"},
+        "power": {"$ref": "#/$defs/pin"},
+        "pixel_count": {"type": ["integer", "null"], "minimum": 1},
+        "color_order": {"type": ["string", "null"]},
+        "notes": {"type": "string"}
+      }
+    },
     "device_ref": {
       "type": "object",
       "additionalProperties": false,

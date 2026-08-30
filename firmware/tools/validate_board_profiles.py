@@ -231,6 +231,7 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
         "display",
         "audio",
         "vad",
+        "wiring",
         "adapters",
         "wake",
         "storage",
@@ -358,9 +359,84 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
     if features["microphone"] and firmware_vad.get("status") != expected_vad_status:
         raise ValidationError(f"{board_profile}: vad.firmware.status must be {expected_vad_status}")
 
+    wiring = require_mapping(profile, "wiring")
+    if wiring.get("status") not in {"complete", "partial", "unknown"}:
+        raise ValidationError(f"{board_profile}: wiring.status must be complete, partial, or unknown")
+    for key in ("gpios", "i2c_buses", "i2s_buses", "spi_buses", "led_strips"):
+        if not isinstance(wiring.get(key), list):
+            raise ValidationError(f"{board_profile}: wiring.{key} must be a list")
+
+    def validate_named_entries(entries: list[Any], key: str) -> None:
+        names: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValidationError(f"{board_profile}: wiring.{key} entries must be objects")
+            name = entry.get("name")
+            if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9]+(?:_[a-z0-9]+)*", name):
+                raise ValidationError(f"{board_profile}: wiring.{key} entries need lower_snake_case names")
+            if name in names:
+                raise ValidationError(f"{board_profile}: duplicate wiring.{key} name {name!r}")
+            names.add(name)
+
+    def validate_pin(value: Any, key: str, required_for_build: bool) -> None:
+        if value is None:
+            if required_for_build:
+                raise ValidationError(f"{board_profile}: buildable profile has incomplete pin mapping for {key}")
+            return
+        if not isinstance(value, int) or value < -1 or value > 99:
+            raise ValidationError(f"{board_profile}: {key} must be an ESP GPIO number, -1, or null")
+
+    buildable_wiring = profile.get("support_status") == "active" and wiring["status"] == "complete"
+    validate_named_entries(wiring["gpios"], "gpios")
+    validate_named_entries(wiring["i2c_buses"], "i2c_buses")
+    validate_named_entries(wiring["i2s_buses"], "i2s_buses")
+    validate_named_entries(wiring["spi_buses"], "spi_buses")
+    validate_named_entries(wiring["led_strips"], "led_strips")
+    for entry in wiring["gpios"]:
+        validate_pin(entry.get("gpio"), f"wiring.gpios.{entry['name']}.gpio", buildable_wiring)
+        if not isinstance(entry.get("active_low"), bool):
+            raise ValidationError(f"{board_profile}: wiring.gpios.{entry['name']}.active_low must be true or false")
+    for entry in wiring["i2c_buses"]:
+        if entry.get("port") is not None and (not isinstance(entry.get("port"), int) or entry["port"] < 0):
+            raise ValidationError(f"{board_profile}: wiring.i2c_buses.{entry['name']}.port must be a non-negative integer or null")
+        validate_pin(entry.get("sda"), f"wiring.i2c_buses.{entry['name']}.sda", buildable_wiring)
+        validate_pin(entry.get("scl"), f"wiring.i2c_buses.{entry['name']}.scl", buildable_wiring)
+        if entry.get("clock_hz") is not None and (not isinstance(entry.get("clock_hz"), int) or entry["clock_hz"] <= 0):
+            raise ValidationError(f"{board_profile}: wiring.i2c_buses.{entry['name']}.clock_hz must be positive or null")
+        devices = entry.get("devices")
+        if not isinstance(devices, list):
+            raise ValidationError(f"{board_profile}: wiring.i2c_buses.{entry['name']}.devices must be a list")
+        validate_named_entries(devices, f"i2c_buses.{entry['name']}.devices")
+        for device in devices:
+            address = device.get("address")
+            if address is not None and (not isinstance(address, int) or address < 0 or address > 127):
+                raise ValidationError(f"{board_profile}: wiring.i2c_buses.{entry['name']}.{device['name']}.address must be 0-127 or null")
+            if buildable_wiring and address is None:
+                raise ValidationError(f"{board_profile}: buildable profile has incomplete I2C address for {device['name']}")
+    for entry in wiring["i2s_buses"]:
+        if entry.get("port") is not None and (not isinstance(entry.get("port"), int) or entry["port"] < 0):
+            raise ValidationError(f"{board_profile}: wiring.i2s_buses.{entry['name']}.port must be a non-negative integer or null")
+        for pin_key in ("mclk", "bclk", "lrclk", "din", "dout"):
+            validate_pin(entry.get(pin_key), f"wiring.i2s_buses.{entry['name']}.{pin_key}", False)
+        if buildable_wiring:
+            for pin_key in ("bclk", "lrclk"):
+                validate_pin(entry.get(pin_key), f"wiring.i2s_buses.{entry['name']}.{pin_key}", True)
+            if entry.get("din") is None and entry.get("dout") is None:
+                raise ValidationError(f"{board_profile}: buildable I2S bus {entry['name']} needs din or dout")
+    for entry in wiring["spi_buses"]:
+        for pin_key in ("clk", "mosi", "miso", "cs", "dc", "reset", "backlight"):
+            validate_pin(entry.get(pin_key), f"wiring.spi_buses.{entry['name']}.{pin_key}", buildable_wiring and pin_key != "miso")
+    for entry in wiring["led_strips"]:
+        validate_pin(entry.get("data"), f"wiring.led_strips.{entry['name']}.data", buildable_wiring)
+        validate_pin(entry.get("power"), f"wiring.led_strips.{entry['name']}.power", False)
+        if entry.get("pixel_count") is not None and (not isinstance(entry.get("pixel_count"), int) or entry["pixel_count"] <= 0):
+            raise ValidationError(f"{board_profile}: wiring.led_strips.{entry['name']}.pixel_count must be positive or null")
+
     adapters = require_mapping(profile, "adapters")
     if not isinstance(adapters.get("buildable"), bool):
         raise ValidationError(f"{board_profile}: adapters.buildable must be true or false")
+    if adapters["buildable"] and wiring["status"] != "complete":
+        raise ValidationError(f"{board_profile}: buildable profiles must have complete wiring")
     source_files = adapters.get("source_files")
     if not isinstance(source_files, list):
         raise ValidationError(f"{board_profile}: adapters.source_files must be a list")

@@ -79,6 +79,70 @@ audio:
     transport: i2s
     speaker: true
     line_out: true
+wiring:
+  status: complete
+  notes: Pinmap mirrors the current Voice PE firmware adapters and ESPHome hardware reference.
+  gpios:
+    - name: voice_kit_reset
+      gpio: 4
+      function: xmos_reset
+      active_low: true
+    - name: speaker_amp
+      gpio: 47
+      function: speaker_amplifier_enable
+      active_low: false
+    - name: center_button
+      gpio: 0
+      function: wake_cancel_factory_reset
+      active_low: true
+    - name: hardware_mute
+      gpio: 3
+      function: physical_microphone_power_cut
+      active_low: false
+    - name: dial_a
+      gpio: 16
+      function: rotary_encoder_a
+      active_low: false
+    - name: dial_b
+      gpio: 18
+      function: rotary_encoder_b
+      active_low: false
+  i2c_buses:
+    - name: audio_control
+      port: 0
+      sda: 5
+      scl: 6
+      clock_hz: 400000
+      pullups: internal
+      devices:
+        - name: voice_kit
+          address: 66
+        - name: speaker_codec
+          address: 24
+  i2s_buses:
+    - name: microphone
+      port: 0
+      role: slave
+      mclk: null
+      bclk: 13
+      lrclk: 14
+      din: 15
+      dout: null
+    - name: speaker
+      port: 1
+      role: slave
+      mclk: null
+      bclk: 8
+      lrclk: 7
+      din: null
+      dout: 10
+  spi_buses: []
+  led_strips:
+    - name: led_ring
+      data: 21
+      power: 45
+      pixel_count: 12
+      color_order: GRB
 wake:
   local_micro_wake_word: true
   primary_model: alexa

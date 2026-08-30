@@ -79,7 +79,9 @@ cd firmware
 ```
 
 By default, `./build.sh` discovers the buildable board profiles from
-`firmware/boards/*/board.yaml` and builds them:
+`firmware/boards/*/board.yaml` and builds them. Those profiles own both adapter
+source selection and the dev-board wiring used to generate
+`board_profile_pins.h`:
 
 - ESP-BOX-3: build directory `firmware/build`, flash export `firmware/export`, OTA binary `runtime/firmware/hexe_firmware_esp_box_3.bin`, and legacy OTA binary `runtime/firmware/hexe_firmware.bin`.
 - Home Assistant Voice Preview Edition: build directory `firmware/build-ha-voice-pe`, flash export `firmware/export-ha-voice-pe`, and OTA binary `runtime/firmware/hexe_firmware_ha_voice_pe.bin`.
