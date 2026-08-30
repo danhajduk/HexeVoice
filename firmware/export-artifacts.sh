@@ -24,7 +24,16 @@ ELF_SRC="${BUILD_DIR}/hexe_firmware.elf"
 FLASH_ARGS_SRC="${BUILD_DIR}/flasher_args.json"
 PROJECT_DESC_SRC="${BUILD_DIR}/project_description.json"
 PROVISIONING_CSV_TOOL_SRC="${ROOT_DIR}/tools/provisioning-env-to-nvs-csv.py"
-GENERATED_BOARD_CONFIG_SRC="${BUILD_DIR}/generated/board_profile_config.cmake"
+GENERATED_DIR="${BUILD_DIR}/esp-idf/main/generated"
+LEGACY_GENERATED_DIR="${BUILD_DIR}/generated"
+GENERATED_BOARD_CONFIG_SRC="${GENERATED_DIR}/board_profile_config.cmake"
+GENERATED_CONFIG_SRC="${GENERATED_DIR}/endpoint_config.h"
+if [[ ! -f "${GENERATED_BOARD_CONFIG_SRC}" ]]; then
+  GENERATED_BOARD_CONFIG_SRC="${LEGACY_GENERATED_DIR}/board_profile_config.cmake"
+fi
+if [[ ! -f "${GENERATED_CONFIG_SRC}" ]]; then
+  GENERATED_CONFIG_SRC="${LEGACY_GENERATED_DIR}/endpoint_config.h"
+fi
 
 require_file() {
   local path="$1"
@@ -75,7 +84,6 @@ VERSION="$(awk -F'"' '/"project_version"/ {print $4; exit}' "${PROJECT_DESC_SRC}
 TARGET="$(awk -F'"' '/"target"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
 PROJECT_NAME="$(awk -F'"' '/"project_name"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
 CREATED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-GENERATED_CONFIG_SRC="${BUILD_DIR}/generated/endpoint_config.h"
 
 if [[ "${VERSION}" == *dirty* ]]; then
   echo "Refusing to export dirty firmware version: ${VERSION}" >&2
@@ -111,6 +119,7 @@ DEFAULT_USE_TLS="$(config_bool kEndpointUseTls)"
 OTA_MANIFEST_KEY_ID="$(config_string kEndpointOtaManifestKeyId)"
 
 BOARD_IDF_TARGET="$(cmake_config_string HEXE_BOARD_IDF_TARGET)"
+BOARD_SOC="$(cmake_config_string HEXE_BOARD_SOC)"
 BOARD_PARTITION_SCHEMA="$(cmake_config_string HEXE_BOARD_PARTITION_SCHEMA)"
 BOARD_APP_SLOT_SIZE="$(cmake_config_string HEXE_BOARD_APP_SLOT_SIZE)"
 BOARD_FLASH_SIZE="$(cmake_config_string HEXE_BOARD_FLASH_SIZE)"
@@ -125,6 +134,7 @@ DEFAULT_WS_PORT="${DEFAULT_WS_PORT:-9004}"
 DEFAULT_USE_TLS="${DEFAULT_USE_TLS:-false}"
 OTA_MANIFEST_KEY_ID="${OTA_MANIFEST_KEY_ID:-hexevoice-dev-v1}"
 BOARD_IDF_TARGET="${BOARD_IDF_TARGET:-${TARGET}}"
+BOARD_SOC="${BOARD_SOC:-${BOARD_IDF_TARGET}}"
 BOARD_PARTITION_SCHEMA="${BOARD_PARTITION_SCHEMA:-unknown}"
 BOARD_APP_SLOT_SIZE="${BOARD_APP_SLOT_SIZE:-unknown}"
 BOARD_FLASH_SIZE="${BOARD_FLASH_SIZE:-unknown}"
@@ -172,6 +182,7 @@ app_offset=0x10000
 profile_app=${PROFILE_APP_FILENAME}
 application_type=${FIRMWARE_APPLICATION_TYPE}
 idf_target=${BOARD_IDF_TARGET}
+soc=${BOARD_SOC}
 flash_size=${BOARD_FLASH_SIZE}
 psram_size=${BOARD_PSRAM_SIZE}
 partition_schema=${BOARD_PARTITION_SCHEMA}
@@ -216,7 +227,7 @@ if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
   "calibration_schema_version": "${CALIBRATION_SCHEMA_VERSION}",
   "board_profile": "${BOARD_PROFILE}",
   "idf_target": "${BOARD_IDF_TARGET}",
-  "soc": "${BOARD_IDF_TARGET}",
+  "soc": "${BOARD_SOC}",
   "flash_size": "${BOARD_FLASH_SIZE}",
   "psram_size": "${BOARD_PSRAM_SIZE}",
   "partition_schema": "${BOARD_PARTITION_SCHEMA}",

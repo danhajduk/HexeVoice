@@ -61,6 +61,7 @@ def render_cmake(profile: dict[str, object], profile_path: Path) -> str:
         f"set(HEXE_BOARD_IDF_TARGET {cmake_quote(build.get('idf_target'))})",
         f"set(HEXE_BOARD_PARTITION_SCHEMA {cmake_quote(build.get('partition_schema'))})",
         f"set(HEXE_BOARD_APP_SLOT_SIZE {cmake_quote(build.get('app_slot_size'))})",
+        f"set(HEXE_BOARD_SOC {cmake_quote(hardware.get('soc'))})",
         f"set(HEXE_BOARD_FLASH_SIZE {cmake_quote(hardware.get('flash_size'))})",
         f"set(HEXE_BOARD_PSRAM_SIZE {cmake_quote(hardware.get('psram_size'))})",
         f"set(HEXE_BOARD_RECOVERY_APP {cmake_bool(build.get('recovery_app'))})",

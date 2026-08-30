@@ -202,6 +202,8 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert result.stdout == ""
     cmake = output.read_text(encoding="utf-8")
     assert 'set(HEXE_BOARD_PROFILE "ha_voice_pe")' in cmake
+    assert 'set(HEXE_BOARD_IDF_TARGET "esp32s3")' in cmake
+    assert 'set(HEXE_BOARD_SOC "esp32s3")' in cmake
     assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-16m-v1")' in cmake
     assert "set(HEXE_BOARD_ADAPTER_BUILDABLE TRUE)" in cmake
     assert "HEXE_BOARD_PROFILE_HA_VOICE_PE=1" in cmake
