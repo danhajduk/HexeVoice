@@ -1,0 +1,153 @@
+Voice identity and audio-quality architecture
+
+Each voice endpoint captures an utterance and sends the same audio to the node. On the node, three analysis paths run in parallel:
+
+STT — converts speech to text.
+Speaker ID — identifies the likely person speaking and returns a confidence score.
+Audio quality / environment analysis — measures background noise, SNR, clipping, speech duration, overlap, and optionally classifies things like TV, music, appliances, or other speech.
+
+The results are then combined before intent execution.
+
+Speaker identification behavior
+
+Speaker identity is only required for intents that need a person context, such as calendars, email, personal data, music profiles, or other user-specific services.
+
+Generic intents do not need speaker identification and can execute normally without storing or caring who spoke.
+
+Speaker-confidence handling should be tiered:
+
+High confidence: trusted enough to identify the user and potentially use that interaction to improve the stored voice profile.
+Medium confidence: okay for low-risk personalization, but do not learn from it.
+Low confidence / unknown: do not guess. If identity is required, Hexe asks who is speaking or requests confirmation.
+
+Exact thresholds should be configurable and calibrated from real household data rather than hard-coded permanently.
+
+Profile learning should also require a clear margin between the best and second-best speaker matches to prevent profile drift.
+
+Voice enrollment
+
+Initial speaker enrollment should use roughly 8–12 natural phrases, around 30–60 seconds total speech per person.
+
+The phrases should vary in:
+
+length
+phonetics
+question vs command structure
+normal speaking rhythm
+
+Enrollment should ideally happen across multiple short sessions or slightly different positions so the system learns the person rather than one specific microphone condition.
+
+Store multiple representative speaker embeddings, not just one single sample.
+
+Audio quality and background-noise analysis
+
+The speaker model itself generally will not explain why confidence is low, so audio-quality analysis should be a separate parallel component.
+
+Useful signals include:
+
+signal-to-noise ratio
+RMS / speech level
+clipping
+speech duration
+overlapping speakers
+background speech
+music or TV-like audio
+general environmental sound classification
+
+Possible local tools/models discussed were things like:
+
+WebRTC audio processing
+RNNoise
+Silero VAD
+YAMNet or similar AudioSet-based classifiers
+pyannote for overlap / diarization if needed later
+
+The combined result could explain things like:
+
+speaker unknown
+low SNR
+speech too short
+multiple speakers detected
+TV/background speech likely present
+Pre-roll and ambient noise
+
+When the wake word triggers, the endpoint should preserve a short pre-roll buffer before the actual utterance.
+
+That pre-speech segment can be used as the ambient-noise reference for that interaction.
+
+Then the node compares ambient level against speech level to estimate SNR without needing a continuous audio stream.
+
+Multiple endpoints hearing the same wake word
+
+If two nearby endpoints detect the same wake word, they should not both automatically stream the full utterance.
+
+Instead, use a short election window where endpoints report metrics such as:
+
+wake-word confidence
+speech level
+SNR
+possibly microphone quality
+
+The node selects the best endpoint and tells the others to stand down.
+
+If two endpoints are extremely close in quality, both could briefly stream the first part of the utterance and one could then be dropped, but that should be the exception.
+
+Placement calibration mode
+
+A separate calibration mode can help determine the best physical placement of a voice endpoint.
+
+During installation or testing, the endpoint can periodically sample ambient audio, for example every 10 minutes over 24–48 hours.
+
+For those periodic background samples, run:
+
+ambient noise level
+SNR-related metrics
+event/environment classification
+speech-like activity detection
+
+Do not normally run full STT or speaker identification on unattended periodic samples.
+
+That avoids unnecessary transcription, privacy concerns, and accidental speaker-profile learning from TV or background conversations.
+
+The raw audio can be discarded after extracting metrics.
+
+Active placement testing
+
+For a proper voice-performance test, someone can intentionally trigger a placement test and speak known phrases from normal locations in the room.
+
+Those samples should run through the full pipeline:
+
+STT
+speaker ID
+audio-quality analysis
+
+Because the expected phrase and speaker are known, Hexe can measure:
+
+STT accuracy
+speaker-ID reliability
+SNR
+environmental contamination
+response consistency from different positions
+Placement report
+
+The final endpoint placement report could combine:
+
+average ambient noise by time of day
+peak noise periods
+frequency of TV/music/background speech
+SNR distribution
+STT success rate during active tests
+speaker-ID confidence/reliability
+overlapping-speech frequency
+overall placement score
+
+That gives a much more useful answer than just “this spot is loud.” It tells you whether the device actually performs well for voice interaction in that location.
+
+Future, not active scope
+
+Continuous audio monitoring could later support things like:
+
+smoke/fire alarm detection
+glass breaking
+baby crying
+unusual sound events

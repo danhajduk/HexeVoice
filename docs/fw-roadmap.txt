@@ -1,0 +1,1146 @@
+HEXE ECHO FIRMWARE ARCHITECTURE AND IMPLEMENTATION ROADMAP
+==========================================================
+
+Status: Proposed architecture / implementation plan
+Scope: Hexe Echo endpoint firmware family
+Primary hardware targets:
+  1. Screenless
+  2. Display 
+
+
+1. PURPOSE
+----------
+
+Build one maintainable Hexe Echo firmware platform that supports multiple endpoint hardware profiles without producing one oversized universal binary.
+
+The platform will provide:
+
+- Local custom wake-word detection.
+- Audio capture, buffering, VAD, and streaming to the Hexe Voice service.
+- Reliable signed OTA updates with automatic rollback.
+- A small independent recovery/provisioning environment.
+- Independently updateable wake-word models and other data assets.
+- Board-specific feature sets for screenless and display-equipped endpoints.
+- A stable Hexe endpoint protocol shared across all supported hardware.
+
+
+2. PRIMARY ARCHITECTURE DECISIONS
+---------------------------------
+
+2.1 Single firmware codebase, board-specific binaries
+
+Use one common source repository and shared component architecture.
+
+Each supported board profile produces its own compiled binary. Do not build one giant runtime-detected universal image.
+
+Initial board profiles:
+
+- xvf3800_xiao_s3
+- ha_voice_pe
+- esp_box_3
+- waveshare_p4_7b
+
+Compile-time board profiles determine:
+
+- SoC family.
+- Flash and PSRAM size.
+- Audio frontend and codec drivers.
+- Microphone count and channel mapping.
+- Speaker output path.
+- LED/status hardware.
+- Display and touch support.
+- SD-card support.
+- UI stack.
+- Wi-Fi/radio transport.
+- Partition-table class.
+
+Unused display, touch, SD, codec, UI, camera, and board-driver code must be removed at compile time.
+
+Recommended interpretation:
+
+  One Hexe Echo firmware platform
+  + multiple hardware profiles
+  + multiple optimized board-specific binaries
+
+
+2.2 Two application types
+
+A. Main endpoint application
+
+Responsibilities:
+
+- Hexe endpoint runtime and state machine.
+- Wake-word inference.
+- VAD and end-of-speech detection.
+- Audio preprocessing and buffering.
+- Pre-roll audio ring buffer.
+- Audio streaming to the Hexe Voice service.
+- Endpoint registration and secure communications.
+- Speaker, LED, display, touch, and UI behavior where present.
+- Normal OTA update client.
+- Model/data bundle update client.
+- Health, diagnostics, and telemetry.
+
+B. Recovery/provisioning application
+
+Responsibilities:
+
+- Initial Wi-Fi/network provisioning.
+- Initial Hexe endpoint provisioning and enrollment.
+- Rescue OTA through local upload or Hexe-hosted download.
+- Basic partition and boot-state inspection.
+- Main-app image validation before installation.
+- Board-profile and partition-schema validation.
+- Basic PSRAM, storage, audio, display, and touch diagnostics.
+- Configuration reset and selective data erase.
+- Selection of the next boot partition.
+- Recovery after both normal OTA images are unusable.
+
+The recovery application must remain small, stable, and independent of the normal Hexe runtime.
+
+The recovery application must not contain:
+
+- The full audio pipeline.
+- The normal wake-word runtime.
+- Speaker identification.
+- Full LVGL UI or large UI assets.
+- Music or media features.
+- Normal automation features.
+- Full Hexe Echo application logic.
+
+
+2.3 Separate application and mutable data updates
+
+Do not bundle every model, prompt, certificate, calibration file, and UI asset into the main application image.
+
+Update the following independently where practical:
+
+- Wake-word model bundles.
+- Stop/interruption model.
+- Optional emergency model.
+- Model thresholds and inference metadata.
+- Prompt and sound packs.
+- Certificates and trust-chain updates.
+- Calibration data.
+- UI assets, fonts, themes, and animations.
+- Audio frontend configuration packages.
+
+Every independently updated data package must be:
+
+- Versioned.
+- Signed.
+- Hash-verified.
+- Board-compatible.
+- Firmware-API-compatible.
+- Atomically activated.
+- Rollback-capable.
+
+
+2.4 Dual OTA slots for the main application
+
+Use ota_0 and ota_1 for the normal main application.
+
+Normal update flow:
+
+1. Run the currently valid OTA image.
+2. Download the new image into the inactive OTA slot.
+3. Verify manifest, target board, partition schema, hash, and signature.
+4. Set the new slot as the next boot target.
+5. Boot the new image in pending-verification state.
+6. Run local hardware and firmware self-tests.
+7. Mark the image valid when local validation passes.
+8. Roll back automatically when validation fails or the image crashes repeatedly.
+
+Do not require Hexe Core, MQTT, DNS, the Internet, or a specific Wi-Fi access point to be reachable before marking the image valid.
+
+A network outage must not cause rollback of otherwise valid firmware.
+
+
+3. TARGET HARDWARE CLASSES
+--------------------------
+
+3.1 Screenless Hexe Echo Voice
+
+Primary target:
+
+- ReSpeaker XVF3800.
+- XIAO ESP32-S3.
+- Four-microphone circular array.
+- XMOS XVF3800 audio processor.
+- Hardware AEC, beamforming, noise suppression, dereverberation, VAD, AGC, and direction-of-arrival support.
+- LED ring/status indicators.
+- External or integrated speaker in the final enclosure.
+
+Primary role:
+
+- Audio-first room endpoint.
+- Far-field wake-word detection.
+- Command capture and streaming.
+- No display stack.
+- Minimal local UI through LEDs, buttons, tones, and optional local web provisioning.
+
+Memory/storage assumption:
+
+- 8 MiB flash.
+- 8 MiB PSRAM.
+- No integrated SD card in the normal configuration.
+
+Current firmware-size reference:
+
+- ESP-BOX-3 application: 1,271,984 bytes.
+- HA Voice PE application: 1,097,072 bytes.
+
+Conclusion:
+
+Flash capacity is not a practical concern for the screenless Hexe endpoint. The deciding factors are audio quality, partition design, OTA safety, enclosure design, and firmware maintainability.
+
+
+3.2 Hexe Echo Display
+
+Primary target:
+
+- Waveshare ESP32-P4-WIFI6-Touch-LCD-7B.
+- 7-inch 1024 x 600 capacitive touchscreen.
+- 32 MiB flash.
+- 32 MiB PSRAM.
+- SDIO microSD/TF slot.
+- Dual microphones.
+- ES7210 audio input frontend.
+- ES8311 audio output codec.
+- Speaker connector.
+- ESP32-C6 radio coprocessor.
+
+Primary role:
+
+- Central room or wall/tabletop endpoint.
+- Wake-word and voice endpoint.
+- Visual status and conversational feedback.
+- Timers, alarms, media controls, home controls, and endpoint diagnostics.
+- SD-based UI and audio assets.
+- Larger local caches and diagnostic recordings.
+
+
+4. REPOSITORY AND COMPONENT STRUCTURE
+-------------------------------------
+
+Recommended layout:
+
+firmware/
+  apps/
+    endpoint/
+    recovery/
+
+  components/
+    board_profile/
+    endpoint_runtime/
+    hexe_protocol/
+    identity_and_security/
+    provisioning/
+    ota_manager/
+    bundle_manager/
+    storage/
+    diagnostics/
+
+    audio/
+      audio_frontend/
+      audio_output/
+      audio_pipeline/
+      ring_buffer/
+      vad/
+      wakeword/
+      stream_encoder/
+
+    indicators/
+      led_ring/
+      status_led/
+      buttons/
+      tones/
+
+    ui/
+      display_backend/
+      touch_backend/
+      lvgl_shell/
+      screens/
+      asset_manager/
+
+  boards/
+    xvf3800_xiao_s3/
+    ha_voice_pe/
+    esp_box_3/
+    waveshare_p4_7b/
+
+  partitions/
+    s3_8m_v1.csv
+    s3_16m_v1.csv
+    p4_32m_v1.csv
+
+  packages/
+    firmware_manifest/
+    model_bundle/
+    asset_bundle/
+
+  tools/
+    signing/
+    packaging/
+    flashing/
+    model_validation/
+    partition_validation/
+
+  tests/
+    unit/
+    hardware/
+    integration/
+    ota/
+    recovery/
+
+
+5. HARDWARE ABSTRACTION BOUNDARIES
+----------------------------------
+
+Shared Hexe runtime code must not directly depend on board-specific GPIOs or codec details.
+
+Recommended interfaces:
+
+- AudioFrontend
+- AudioOutput
+- WakeWordEngine
+- StorageBackend
+- DisplayBackend
+- TouchBackend
+- StatusIndicator
+- ButtonInput
+- ProvisioningTransport
+- RadioTransport
+- BoardDiagnostics
+
+Examples:
+
+- ReSpeaker profile implements AudioFrontend through XVF3800/I2S.
+- Voice PE profile implements AudioFrontend through XU316/I2S.
+- P4 profile implements AudioFrontend through ES7210 and software DSP.
+- Screenless profiles implement a null DisplayBackend.
+- P4 profile implements DisplayBackend and TouchBackend.
+- SD-equipped boards expose SDStorageBackend in addition to internal flash storage.
+
+
+6. FEATURE CONFIGURATION MODEL
+------------------------------
+
+Select one board profile during the build.
+
+The board profile sets required features automatically. Avoid allowing arbitrary feature combinations that have never been tested together.
+
+Example derived settings for xvf3800_xiao_s3:
+
+- HEXE_SOC_ESP32S3=y
+- HEXE_AUDIO_XVF3800=y
+- HEXE_DISPLAY=n
+- HEXE_TOUCH=n
+- HEXE_SD=n
+- HEXE_LED_RING=y
+- HEXE_SPEAKER=y
+- HEXE_PARTITION_SCHEMA=s3-8m-v1
+
+Example derived settings for waveshare_p4_7b:
+
+- HEXE_SOC_ESP32P4=y
+- HEXE_RADIO_ESP32C6=y
+- HEXE_AUDIO_ES7210=y
+- HEXE_AUDIO_ES8311=y
+- HEXE_DISPLAY=y
+- HEXE_TOUCH=y
+- HEXE_LVGL=y
+- HEXE_SD=y
+- HEXE_SPEAKER=y
+- HEXE_PARTITION_SCHEMA=p4-32m-v1
+
+
+7. PARTITION STRATEGY
+---------------------
+
+The exact partition offsets and sizes must be finalized only after compiling the recovery application and early main-app prototypes.
+
+Use the following as starting targets.
+
+
+7.1 S3 8 MiB class
+
+Target devices:
+
+- ReSpeaker XVF3800 + XIAO ESP32-S3.
+
+Starting allocation:
+
+- Boot/system/NVS/OTA metadata/security: approximately 256 KiB.
+- Factory recovery application: 1.0 MiB target.
+- ota_0 main application: 2.5 MiB.
+- ota_1 main application: 2.5 MiB.
+- Remaining flash: model/data storage and core dump, approximately 1.7 MiB before final alignment.
+
+Rationale:
+
+- The current largest reference application is approximately 1.27 MiB.
+- A 2.5 MiB OTA slot leaves approximately 1.29 MiB of growth room.
+- The screenless XVF3800 build should be smaller than a display-equipped ESP-BOX-3 build.
+- Mutable models and assets are kept outside the main app where practical.
+
+Validation requirement:
+
+- If the compiled recovery app approaches the 1.0 MiB target, increase the recovery partition deliberately and rebalance before locking the v1 partition table.
+
+
+7.2 S3 16 MiB class
+
+Target devices:
+
+- Home Assistant Voice PE.
+- ESP32-S3-BOX-3.
+
+Starting allocation:
+
+- Factory recovery application: 1.0 to 1.25 MiB.
+- ota_0 main application: 4 MiB.
+- ota_1 main application: 4 MiB.
+- Remaining flash: models, assets, filesystem, and core dump.
+
+Rationale:
+
+- Existing 4 MiB application slots already provide substantial headroom.
+- Keeping the 4 MiB slot class avoids unnecessary repartitioning.
+- Voice PE can use the remaining internal flash because it has no SD card.
+
+
+7.3 P4 32 MiB class
+
+Target devices:
+
+- Waveshare ESP32-P4-WIFI6-Touch-LCD-7B.
+
+Starting allocation:
+
+- Factory recovery application: 1.5 to 2.0 MiB.
+- ota_0 main application: 8 MiB.
+- ota_1 main application: 8 MiB.
+- Remaining internal flash: fallback assets, caches, internal data bundles, logs, and core dump.
+- Bulk and replaceable assets: microSD.
+
+Rationale:
+
+- The P4 main app includes display, touch, UI, audio, C6 transport, and richer diagnostics.
+- Eight MiB slots provide long-term growth without forcing an early partition migration.
+- Large UI assets, full fonts, animations, sounds, model catalogs, and diagnostic recordings stay outside the app binary.
+
+
+7.4 Partition-schema rules
+
+Partition schemas must be versioned and stable:
+
+- s3-8m-v1
+- s3-16m-v1
+- p4-32m-v1
+
+Every firmware package must declare its expected partition schema.
+
+Normal OTA must reject an image built for a different partition schema.
+
+Partition-table changes must not be treated as ordinary OTA updates. A partition-schema migration requires a dedicated migration path or recovery/full-flash operation.
+
+
+8. PERSISTENT DATA DESIGN
+-------------------------
+
+8.1 Encrypted NVS
+
+Store small, sensitive, and transactional data in encrypted NVS:
+
+- Wi-Fi credentials.
+- Hexe endpoint identity.
+- Device private key.
+- Trust and enrollment material.
+- Provisioning status.
+- Current OTA metadata.
+- Active model-bundle pointer.
+- Active asset-bundle pointer.
+- Small calibration values.
+- Recovery counters and boot-failure state.
+
+Do not place private keys or trust tokens on removable SD storage.
+
+
+8.2 Internal model storage
+
+For devices without SD, use A/B model banks where space permits:
+
+- model_0
+- model_1
+- Active-bank pointer in encrypted NVS.
+
+Model update process:
+
+1. Select inactive model bank.
+2. Download the complete signed bundle.
+3. Validate size, manifest, board compatibility, model API, hash, and signature.
+4. Test-load the model bundle.
+5. Atomically switch the active pointer.
+6. Retain the previous compatible bundle for rollback.
+
+
+8.3 SD model and asset storage
+
+For the P4 display endpoint, use versioned directories:
+
+/sd/hexe/models/
+  bundle-0001/
+  bundle-0002/
+  active.json
+
+/sd/hexe/ui/
+  bundle-0001/
+  bundle-0002/
+  active.json
+
+/sd/hexe/audio/
+  prompts/
+  tones/
+  cached_tts/
+
+/sd/hexe/diagnostics/
+  noise_samples/
+  calibration/
+  logs/
+
+Never overwrite the active bundle in place.
+
+Download and validate a complete new bundle first, then atomically switch the active pointer.
+
+
+8.4 Embedded fallback assets
+
+The main app must contain minimum fallback resources:
+
+- One known-good Hexe wake-word model.
+- Basic wake-word thresholds and metadata.
+- Minimal connection and error tones.
+- Minimal font and icons on display devices.
+- Minimal screen allowing provisioning, error reporting, and recovery instructions.
+
+Expected fallback behavior:
+
+- SD missing: run with embedded fallback assets.
+- Model partition corrupt: use embedded Hexe wake model.
+- New model incompatible: keep current compatible model or use fallback.
+- Asset signature invalid: reject bundle and keep existing assets.
+- UI bundle unavailable: use minimal internal UI.
+
+The endpoint must remain functional without the SD card, although advanced UI and cached assets may be unavailable.
+
+
+9. MODEL-BUNDLE CONTRACT
+------------------------
+
+Each wake-word bundle should include:
+
+- Bundle type.
+- Bundle version.
+- Format version.
+- Feature/preprocessing pipeline identifier.
+- Minimum and maximum supported firmware API.
+- Supported SoCs.
+- Supported board profiles where relevant.
+- Model list.
+- Model IDs.
+- File sizes.
+- SHA-256 hashes.
+- Detection thresholds.
+- Sliding-window and probability settings.
+- Language/locale metadata.
+- Signature and signing-key identifier.
+
+Example conceptual fields:
+
+- bundle_type: wake_models
+- bundle_version: 8
+- format_version: 2
+- feature_pipeline: mww-16k-v2
+- min_firmware_api: 5
+- max_firmware_api: 7
+- supported_soc: esp32s3, esp32p4
+
+The firmware must select the newest valid bundle compatible with the running firmware. It must not simply select the most recently downloaded bundle.
+
+Recommended retained states:
+
+- Current compatible model bundle.
+- Previous compatible model bundle.
+- Embedded fallback model.
+
+
+10. FIRMWARE/DATA COMPATIBILITY RULES
+-------------------------------------
+
+Application rollback does not automatically roll back persistent data.
+
+Therefore, every independent bundle must declare compatibility with firmware APIs.
+
+Example failure to prevent:
+
+- Firmware v12 installs model format v4.
+- Firmware v12 fails.
+- Bootloader rolls back to firmware v11.
+- Firmware v11 supports only model format v3.
+
+Required behavior:
+
+- Firmware v11 ignores incompatible v4 bundles.
+- Firmware v11 selects the newest compatible older bundle.
+- If no compatible external bundle exists, it loads the embedded fallback model.
+
+Apply the same compatibility mechanism to:
+
+- Wake-word bundles.
+- UI asset bundles.
+- Prompt/sound bundles.
+- Codec/DSP configuration bundles.
+- Calibration schema.
+
+
+11. RECOVERY ENTRY AND BEHAVIOR
+-------------------------------
+
+Recovery entry methods:
+
+1. Physical boot gesture or recovery button sequence.
+2. Main application requests reboot into recovery.
+3. Bootloader selects recovery when normal app images are unavailable or invalid.
+4. Repeated boot failures trigger recovery according to a documented threshold.
+
+Recovery interfaces:
+
+Screenless endpoint:
+
+- LED patterns.
+- Buttons.
+- Serial console.
+- Temporary Wi-Fi access point and local web UI.
+- Optional BLE provisioning.
+
+Display endpoint:
+
+- Minimal built-in recovery UI.
+- Touch controls.
+- Local Wi-Fi provisioning.
+- Local firmware upload.
+- Diagnostic summary.
+
+Recovery rules:
+
+- Recovery must work without Hexe Core.
+- Recovery must work without the SD card.
+- Recovery must not depend on external model files.
+- Recovery must validate board profile and partition schema.
+- Recovery must accept only signed Hexe firmware in production mode.
+- Recovery must never expose private keys or trust tokens in logs or UI.
+
+Normal OTA must not update the recovery application during early product phases.
+
+Recovery-app updates should initially require USB/full service flashing. A separate signed recovery-update mechanism may be designed later if a real operational need appears.
+
+
+12. MAIN-APP OTA VALIDATION
+---------------------------
+
+Before marking a new OTA image valid, verify local functionality:
+
+Common checks:
+
+- Partition schema matches.
+- Board profile matches.
+- NVS mounts and required records can be read.
+- PSRAM initializes and passes a small allocation test.
+- Audio input hardware initializes.
+- Audio output hardware initializes where present.
+- Embedded fallback wake model loads.
+- At least one inference window executes successfully.
+- Internal storage mounts or clean fallback mode activates.
+- Radio/network hardware initializes.
+- Critical tasks remain alive through the validation window.
+
+Display-specific checks:
+
+- Display initializes.
+- Touch initializes.
+- Minimal internal UI renders.
+- SD failure does not prevent basic operation.
+
+Do not include remote-service availability in firmware validity criteria.
+
+
+13. FIRMWARE PACKAGE FORMAT
+---------------------------
+
+Each board-profile release should be packaged as a signed release bundle rather than distributing a naked application binary.
+
+Example full release package:
+
+hexe-echo-xvf3800-xiao-s3-0.4.0/
+  manifest.json
+  main.bin
+  recovery.bin
+  partition-table.bin
+  bootloader.bin
+  models-default.hxb
+  checksums.txt
+  signature.sig
+
+Normal OTA normally consumes:
+
+- manifest.json
+- main.bin
+- signature information
+
+Model-only update consumes:
+
+- model-manifest.json
+- model bundle
+- signature information
+
+Full provisioning or recovery flash may consume:
+
+- bootloader.bin
+- partition-table.bin
+- recovery.bin
+- main.bin
+- default model bundle
+
+
+14. FIRMWARE MANIFEST REQUIREMENTS
+----------------------------------
+
+The firmware manifest should include at least:
+
+- Product ID.
+- Firmware version.
+- Build ID.
+- Board profile.
+- SoC.
+- Required flash size.
+- Required PSRAM size.
+- Partition schema.
+- Recovery API minimum version.
+- Main firmware API version.
+- Model API version.
+- Asset API version.
+- Minimum bootloader compatibility.
+- Application image size.
+- SHA-256 hash.
+- Signing-key identifier.
+- Signature.
+- Optional release channel.
+
+The recovery and main applications must reject packages that do not match the target board profile, SoC, flash geometry, partition schema, or security policy.
+
+
+15. SECURITY MODEL
+------------------
+
+Production update requirements:
+
+- Signed firmware images.
+- Signed model and asset bundles.
+- SHA-256 verification before activation.
+- Encrypted storage for credentials and private identity material.
+- Anti-rollback policy when release maturity permits it.
+- No secrets in logs.
+- No private keys on SD.
+- Explicit trusted-key rotation mechanism.
+- Atomic activation of all independently updated bundles.
+
+Development mode may allow unsigned local images only through an explicitly enabled development configuration.
+
+Production devices must not silently fall back to accepting unsigned packages.
+
+
+16. BUILD AND CI STRATEGY
+-------------------------
+
+Build matrix:
+
+- endpoint:xvf3800_xiao_s3
+- recovery:xvf3800_xiao_s3
+- endpoint:ha_voice_pe
+- recovery:ha_voice_pe
+- endpoint:esp_box_3
+- recovery:esp_box_3
+- endpoint:waveshare_p4_7b
+- recovery:waveshare_p4_7b
+
+CI checks:
+
+- Compile every supported profile.
+- Validate firmware size against its assigned OTA slot.
+- Validate recovery size against its factory partition.
+- Validate partition alignment and total flash usage.
+- Confirm feature removal from screenless binaries.
+- Confirm board-specific drivers are not linked into unrelated profiles.
+- Generate and validate signed manifests.
+- Verify model-bundle schemas.
+- Run unit and protocol tests.
+- Run OTA compatibility and rollback tests.
+- Run previous-firmware/new-bundle compatibility tests.
+
+Suggested size guardrails:
+
+- Warning at 75 percent of the assigned application slot.
+- Build rejection at 85 percent of the assigned application slot.
+
+Initial application-slot thresholds:
+
+- 2.5 MiB slot:
+  - Warning near 1.875 MiB.
+  - Reject near 2.125 MiB.
+
+- 4 MiB slot:
+  - Warning near 3.0 MiB.
+  - Reject near 3.4 MiB.
+
+- 8 MiB slot:
+  - Warning near 6.0 MiB.
+  - Reject near 6.8 MiB.
+
+These thresholds preserve room for security metadata, emergency fixes, and future growth.
+
+
+17. IMPLEMENTATION PHASES
+-------------------------
+
+PHASE 0 - ARCHITECTURE FREEZE
+
+Goals:
+
+- Confirm initial hardware targets.
+- Confirm repository structure.
+- Define board-profile contract.
+- Define main/recovery responsibility boundary.
+- Define firmware, model, and asset API versioning.
+- Draft partition schemas.
+
+Tasks:
+
+- Create architecture decision record.
+- Define board-profile configuration schema.
+- Define hardware abstraction interfaces.
+- Define partition classes and version names.
+- Define firmware package manifest.
+- Define model-bundle manifest.
+- Define signing and trusted-key policy.
+
+Exit criteria:
+
+- Architecture accepted.
+- No unresolved responsibility overlap between main and recovery apps.
+- Partition allocations fit preliminary build-size estimates.
+
+
+PHASE 1 - COMMON MAIN-APP FOUNDATION
+
+Goals:
+
+- Build a bootable shared endpoint application.
+- Establish common runtime and board-profile selection.
+
+Tasks:
+
+- Create endpoint app and shared components.
+- Implement board-profile selection.
+- Implement logging and diagnostics framework.
+- Implement encrypted NVS wrapper.
+- Implement Hexe endpoint identity state.
+- Implement common event/state machine.
+- Implement board diagnostics interface.
+
+Exit criteria:
+
+- Main app boots on at least one S3 development target.
+- Board profile is reported correctly.
+- Sensitive configuration persists securely.
+
+
+PHASE 2 - SCREENLESS XVF3800 AUDIO ENDPOINT
+
+Goals:
+
+- Establish the reference Hexe Echo audio path.
+
+Tasks:
+
+- Implement XVF3800 control and I2S audio input.
+- Implement audio channel mapping.
+- Implement audio ring buffer.
+- Implement custom Hexe wake-word runtime.
+- Implement Stop model behavior.
+- Implement VAD/end-of-speech detection.
+- Implement Hexe audio-stream protocol.
+- Implement LED ring, mute, and button behavior.
+- Implement speaker output and tones.
+- Measure latency, false accepts, false rejects, and far-field pickup.
+
+Exit criteria:
+
+- Local Hexe wake word reliably triggers.
+- Pre-roll audio is preserved.
+- Command audio streams to Hexe Voice.
+- Endpoint recovers cleanly from network loss.
+- Screenless binary remains comfortably within the 2.5 MiB slot target.
+
+
+PHASE 3 - RECOVERY/PROVISIONING APP
+
+Goals:
+
+- Provide a stable rescue path independent of the main application.
+
+Tasks:
+
+- Build minimal factory recovery app.
+- Implement physical recovery entry.
+- Implement Wi-Fi provisioning.
+- Implement local rescue web UI.
+- Implement signed main-firmware installation.
+- Implement partition inspection and boot selection.
+- Implement basic PSRAM/audio/storage diagnostics.
+- Implement configuration reset options.
+- Validate operation without Core and without external models.
+
+Exit criteria:
+
+- A device with broken main firmware can be restored without a full developer toolchain.
+- Recovery app fits its reserved partition.
+- Recovery rejects incorrect board images.
+
+
+PHASE 4 - MAIN-APP OTA AND AUTOMATIC ROLLBACK
+
+Goals:
+
+- Deliver safe A/B main-app updates.
+
+Tasks:
+
+- Implement signed manifest download and validation.
+- Implement inactive-slot flashing.
+- Enable pending-verification boot state.
+- Implement local startup self-test.
+- Mark valid images after successful self-test.
+- Confirm automatic rollback after failed validation.
+- Add boot-failure counters and recovery threshold.
+
+Exit criteria:
+
+- Successful OTA preserves configuration and active model state.
+- Failed OTA rolls back automatically.
+- Core/network outage does not cause false rollback.
+
+
+PHASE 5 - INDEPENDENT MODEL BUNDLES
+
+Goals:
+
+- Update wake-word models without replacing firmware.
+
+Tasks:
+
+- Define model-bundle packaging tool.
+- Implement model manifest and signature verification.
+- Implement internal A/B model banks for non-SD devices.
+- Implement versioned SD directories for SD devices.
+- Implement compatibility selection and rollback.
+- Embed fallback Hexe model in the main app.
+- Add model health test before activation.
+
+Exit criteria:
+
+- A new Hexe model can be deployed independently.
+- Failed or incompatible model updates do not make the endpoint deaf.
+- Old firmware can select a compatible older bundle after application rollback.
+
+
+PHASE 6 - P4 DISPLAY ENDPOINT
+
+Goals:
+
+- Bring the shared Hexe runtime to the Waveshare P4 7B.
+
+Tasks:
+
+- Implement P4 board profile.
+- Implement ESP32-C6 radio transport.
+- Implement display and touch backends.
+- Implement minimal internal fallback UI.
+- Implement SD storage backend.
+- Implement ES7210/ES8311 audio path.
+- Port or implement the wake-word inference pipeline on P4.
+- Implement LVGL shell and primary Hexe screens.
+- Implement SD-based UI and audio asset bundles.
+- Implement display-specific diagnostics and recovery UI.
+
+Exit criteria:
+
+- Display endpoint performs the same wake/stream protocol as the screenless endpoint.
+- Basic operation continues when SD is removed.
+- UI, audio, touch, network, and wake-word tasks operate concurrently without instability.
+
+
+PHASE 7 - ASSET, PROMPT, AND CALIBRATION BUNDLES
+
+Goals:
+
+- Extend independent updates beyond wake-word models.
+
+Tasks:
+
+- Add UI asset-bundle contract.
+- Add sound/prompt bundle contract.
+- Add calibration schema and migration rules.
+- Add atomic activation and rollback.
+- Add disk-space and cleanup policy for SD bundles.
+
+Exit criteria:
+
+- UI and sound content can be updated without replacing the main firmware.
+- Firmware rollback retains a compatible asset set.
+
+
+PHASE 8 - HARDENING AND PRODUCTION READINESS
+
+Goals:
+
+- Prepare for deployment across multiple rooms and devices.
+
+Tasks:
+
+- Enable production signing policy.
+- Complete key-rotation design.
+- Add secure-boot and flash-encryption plan.
+- Run long-duration audio/network stress tests.
+- Test repeated OTA and power-loss scenarios.
+- Test corrupted NVS, model partitions, and SD filesystems.
+- Validate thermal and power behavior.
+- Finalize enclosure, speaker, microphone openings, mute control, and service access.
+- Document manufacturing/provisioning flow.
+- Document recovery and field-service flow.
+
+Exit criteria:
+
+- Endpoint survives interrupted OTA and bundle updates.
+- Endpoint remains recoverable after filesystem corruption.
+- No production update path accepts unsigned artifacts.
+- Hardware passes sustained room-use testing.
+
+
+18. TEST MATRIX
+---------------
+
+Required OTA tests:
+
+- Normal OTA success.
+- Corrupt image rejection.
+- Wrong-board image rejection.
+- Wrong-partition-schema rejection.
+- Signature failure rejection.
+- Power loss during download.
+- Power loss during flash write.
+- Crash before image validation.
+- Network unavailable during validation.
+- Rollback to previous application.
+- Both OTA slots invalid, recovery still boots.
+
+Required model-update tests:
+
+- Valid model-bundle update.
+- Corrupt bundle rejection.
+- Wrong-SoC bundle rejection.
+- Incompatible model API rejection.
+- Power loss during model download.
+- Power loss before pointer switch.
+- Failure after pointer switch.
+- Application rollback with newer incompatible model bundle.
+- Missing SD card.
+- Corrupt SD filesystem.
+- Embedded fallback model operation.
+
+Required hardware tests:
+
+- PSRAM allocation and sustained use.
+- Microphone and audio-channel validation.
+- Speaker output.
+- Mute and button input.
+- LED/status behavior.
+- Display and touch on P4.
+- SD insertion/removal and remount behavior.
+- Wi-Fi/radio reconnect.
+- Wake-word detection during network activity.
+- Wake-word detection during TTS/music playback.
+- AEC and far-field behavior.
+- Long-duration audio streaming.
+
+
+19. INITIAL PRODUCT PROFILES
+----------------------------
+
+Hexe Echo Voice
+
+Hardware:
+
+- ReSpeaker XVF3800 + XIAO ESP32-S3.
+
+Characteristics:
+
+- Screenless.
+- Audio-first.
+- Four-microphone XMOS frontend.
+- LED/button/tone interface.
+- 8 MiB flash and 8 MiB PSRAM.
+- Internal model storage with embedded fallback.
+
+Intended deployment:
+
+- Bedrooms.
+- Hallways.
+- Offices.
+- Living spaces where a display is unnecessary.
+
+
+Hexe Echo Display
+
+Hardware:
+
+- Waveshare ESP32-P4-WIFI6-Touch-LCD-7B.
+
+Characteristics:
+
+- 7-inch touchscreen.
+- 32 MiB flash and 32 MiB PSRAM.
+- SDIO microSD storage.
+- Audio input and speaker output.
+- Rich UI and larger local assets.
+
+Intended deployment:
+
+- Kitchen.
+- Living room.
+- Central home-control location.
+- Office/control desk.
+
+
+20. FINAL ARCHITECTURE STATEMENT
+--------------------------------
+
+Hexe Echo will use one modular firmware codebase that produces optimized board-specific main and recovery applications.
+
+The factory/recovery partition will contain a small, stable provisioning and rescue environment. Normal endpoint operation will use dual OTA application slots with bootloader-managed validation and rollback.
+
+Wake-word models and other mutable assets will be independently signed, versioned, compatibility-checked, atomically activated, and rollback-capable. Internal A/B model banks will be used on non-SD devices where practical, while SD-equipped devices will use versioned bundle directories with an internal fallback model and fallback UI.
+
+Partition layouts will be standardized by hardware/flash class, versioned early, and kept stable across ordinary OTA releases.
+
+This architecture provides a common Hexe Echo platform without forcing the screenless XIAO endpoint and the 7-inch P4 display endpoint to carry the same binary, drivers, UI stack, or storage assumptions.
