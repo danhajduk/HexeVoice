@@ -1,0 +1,178 @@
+schema_version: 1
+board_profile: xvf3800_xiao_s3
+display_name: ReSpeaker XVF3800 with XIAO ESP32-S3
+vendor: Seeed Studio
+model: reSpeaker XVF3800 USB 4-Mic Array with XIAO ESP32S3
+hardware_revision:
+  required: false
+  supported:
+    - production
+  unsupported: []
+support_status: active
+sources:
+  - label: Seeed reSpeaker XVF3800 XIAO getting started
+    url: https://wiki.seeedstudio.com/respeaker_xvf3800_xiao_getting_started/
+  - label: Seeed reSpeaker XVF3800 XIAO I2S test
+    url: https://wiki.seeedstudio.com/respeaker_xvf3800_xiao_i2s/
+  - label: Seeed reSpeaker XVF3800 XIAO I2C controls
+    url: https://wiki.seeedstudio.com/respeaker_xvf_3800_i2c_list/
+build:
+  idf_target: esp32s3
+  partition_schema: s3-8m-recovery-v1
+  app_slot_size: 2560K
+  recovery_app: true
+  compile_definitions:
+    - HEXE_BOARD_PROFILE_XVF3800_XIAO_S3=1
+hardware:
+  soc: esp32s3
+  cpu: dual-core Xtensa LX7 up to 240MHz
+  flash_size: 8MiB
+  psram_size: 8MiB
+  wireless:
+    wifi: 2.4GHz 802.11 b/g/n
+    bluetooth: Bluetooth 5.0 LE
+    coprocessor: null
+    transport: native
+  environment:
+    indoor_only: true
+features:
+  display: false
+  touch: false
+  sd_card: false
+  speaker: true
+  microphone: true
+  led_ring: true
+  status_led: false
+  rotary_encoder: false
+  buttons: true
+  hardware_mute: true
+  battery: false
+  camera: false
+  usb_otg: false
+display:
+  available: false
+  kind: null
+  driver: null
+  interface: null
+  size_inches: null
+  shape: null
+  width_px: null
+  height_px: null
+  color_depth: null
+  touch: false
+audio:
+  input:
+    available: true
+    frontend: xmos_xvf3800
+    sample_rate_hz: 16000
+    channels: 2
+    transport: i2s
+    codec: xmos_xvf3800
+    microphones: 4
+    dsp:
+      aec: true
+      noise_suppression: true
+      agc: true
+      vad: true
+  output:
+    available: true
+    codec: tlv320aic3104_via_xvf3800
+    sample_rate_hz: 16000
+    transport: i2s
+    speaker: true
+    line_out: true
+wiring:
+  status: complete
+  notes: XIAO ESP32-S3 talks to the XVF3800 over I2C and one stereo 32-bit I2S bus; LEDs, mute button, and amplifier are XVF3800-side GPIO/LED controls.
+  gpios: []
+  i2c_buses:
+    - name: audio_control
+      port: 0
+      sda: 5
+      scl: 6
+      clock_hz: 400000
+      pullups: internal
+      devices:
+        - name: voice_processor
+          address: 44
+        - name: speaker_codec
+          address: 24
+  i2s_buses:
+    - name: audio
+      port: 0
+      role: master
+      mclk: null
+      bclk: 8
+      lrclk: 7
+      din: 43
+      dout: 44
+  spi_buses: []
+  led_strips: []
+wake:
+  local_micro_wake_word: true
+  primary_model: alexa
+  alias: Hexe
+  backend_fallback: true
+  stop_model: stop
+vad:
+  firmware:
+    available: true
+    status: active
+    algorithm: energy_threshold
+    input_source: pcm_audio_frames
+    configurable: true
+    adaptive_noise_floor: true
+    frame_ms: 20
+    default_energy_threshold: 900
+    default_pause_ms: 190
+    silence_hold_ms: 1200
+adapters:
+  buildable: true
+  source_files:
+    - board/xvf3800_control.cpp
+    - board/xvf3800_audio_bus.cpp
+    - board/audio_xvf3800_xiao_s3.cpp
+    - board/buttons_xvf3800_xiao_s3.cpp
+    - board/display_none.cpp
+    - board/led_ring_xvf3800_xiao_s3.cpp
+    - board/storage_nvs_only.cpp
+    - board/touch_none.cpp
+    - voice/tts_player_xvf3800_xiao_s3.cpp
+storage:
+  internal: nvs_and_internal_flash
+  sd_card:
+    available: false
+    driver: null
+    interface: null
+    gpio: null
+  config: encrypted_nvs
+  calibration: encrypted_nvs_or_internal_metrics_store
+  media: embedded_minimal_tones_only
+  models: embedded_fallback_then_internal_bundle_bank
+controls:
+  - name: mute_button
+    kind: button
+    function: xvf3800_gpi_mute_status
+    gpio: null
+  - name: microphone_mute
+    kind: hardware_mute
+    function: xvf3800_gpo30_mute_control
+    gpio: null
+indicators:
+  - name: led_ring
+    kind: led_ring
+    driver: xvf3800_i2c_led_engine
+    gpio: null
+  - name: mute_led
+    kind: status_led
+    driver: xvf3800_gpo30_mute_indicator
+    gpio: null
+capability_overrides:
+  display: false
+  touchscreen: false
+  storage: false
+  audio_input: true
+  audio_output: true
+notes:
+  - XVF3800 must be flashed with the I2S firmware before this endpoint profile can capture audio.
+  - Host firmware downsamples the stereo 32-bit I2S stream to the left processed speech channel for Hexe wake, VAD, and STT streaming.

@@ -225,6 +225,20 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
             ("kVoicePeLedPower", "kLedRingPower"),
             ("kVoicePeLedCount", "kLedRingPixelCount"),
         ]
+    elif board_profile == "xvf3800_xiao_s3":
+        aliases = [
+            ("kXvf3800I2cPort", "kAudioControlPort"),
+            ("kXvf3800I2cSda", "kAudioControlSda"),
+            ("kXvf3800I2cScl", "kAudioControlScl"),
+            ("kXvf3800I2cClockHz", "kAudioControlClockHz"),
+            ("kXvf3800I2cAddress", "kAudioControlVoiceProcessorAddress"),
+            ("kXvf3800CodecI2cAddress", "kAudioControlSpeakerCodecAddress"),
+            ("kXvf3800I2sPort", "kAudioPort"),
+            ("kXvf3800I2sBclk", "kAudioBclk"),
+            ("kXvf3800I2sLrclk", "kAudioLrclk"),
+            ("kXvf3800I2sDin", "kAudioDin"),
+            ("kXvf3800I2sDout", "kAudioDout"),
+        ]
     for alias, target in aliases:
         lines.append(f"constexpr int {alias} = {target};")
 

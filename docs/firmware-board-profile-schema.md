@@ -39,6 +39,7 @@ NVS/backend state.
 ```text
 firmware/boards/
   schema/board-profile.schema.json
+  xvf3800_xiao_s3/board.yaml
   ha_voice_pe/board.yaml
   esp_box_3/board.yaml
   waveshare_s3_touch_lcd_1_85c_box_v2/board.yaml
@@ -66,6 +67,7 @@ For a side-by-side hardware comparison, see
 
 | Profile | Status | SoC | Flash / PSRAM | Display | Audio Path | Partition Schema |
 | --- | --- | --- | --- | --- | --- | --- |
+| `xvf3800_xiao_s3` | active | ESP32-S3 | 8 MiB / 8 MiB | none | XMOS XVF3800 input, TLV320AIC3104 output via XVF3800 | `s3-8m-recovery-v1` |
 | `ha_voice_pe` | active | ESP32-S3 | 16 MiB / 8 MiB | none | XMOS XU316 input, TI AIC3204 output | `s3-16m-recovery-v1` |
 | `esp_box_3` | active | ESP32-S3 | 16 MiB / 16 MiB | 2.4 inch, 320 x 240 | ES7210 input, ES8311 output | `s3-16m-recovery-v1` |
 | `waveshare_s3_touch_lcd_1_85c_box_v2` | planned | ESP32-S3 | 16 MiB / 8 MiB | 1.85 inch round, 360 x 360 | ES7210 input, ES8311 output | `s3-16m-recovery-v1` |
