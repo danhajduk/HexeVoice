@@ -1,5 +1,8 @@
 # Hexe Firmware OTA Plan
 
+For the broader partition, recovery-app, mutable bundle, and multi-board
+strategy, see `docs/firmware-partition-ota-roadmap.md`.
+
 ## Goal
 
 Define a simple OTA path for the native Hexe firmware so devices can update over Wi-Fi later without requiring USB flashing.

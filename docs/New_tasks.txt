@@ -53,8 +53,6 @@ Do not edit above this line:
 **********************************************************************************************
 
 [STOP]
-[TODO] Task 265: Define firmware partition and OTA strategy for main app, recovery app, config, calibration, media, and wake-word model assets
-[STOP]
 [TODO] Task 266: Define portable firmware board-profile config schema for YAML/JSON-driven hardware bring-up
 [TODO] Task 267: Refactor firmware board support behind config-driven portable hardware adapters
 [TODO] Task 268: Add new-board bring-up generator, examples, validation tests, and docs for config-only firmware ports
