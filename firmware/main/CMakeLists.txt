@@ -82,6 +82,7 @@ idf_component_register(
     "."
     "${HEXE_GENERATED_DIR}"
   EMBED_FILES
+    "voice/models/audio_preprocessor_int8.tflite"
     "voice/models/alexa.tflite"
     "voice/models/stop.tflite"
   REQUIRES
@@ -114,5 +115,5 @@ target_compile_definitions(
     ${HEXE_BOARD_DEFINITIONS}
     HEXE_MICRO_WAKE_WORD_ENGINE_LINKED=1
     HEXE_MICRO_WAKE_WORD_TFLM_ENABLED=1
-    HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=0
+    HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=1
 )

@@ -23,11 +23,16 @@ struct MicroWakeModelAsset {
 struct MicroWakeEngineStatus {
   bool tflm_linked{false};
   bool feature_frontend_linked{false};
+  bool feature_frontend_ready{false};
   bool initialized{false};
   bool wake_model_asset_available{false};
   bool stop_model_asset_available{false};
   size_t wake_model_asset_bytes{0};
   size_t stop_model_asset_bytes{0};
+  bool wake_runtime_ready{false};
+  bool stop_runtime_ready{false};
+  size_t wake_runtime_arena_bytes{0};
+  size_t stop_runtime_arena_bytes{0};
   bool wake_ready{false};
   bool stop_ready{false};
   const char *wake_reason{nullptr};

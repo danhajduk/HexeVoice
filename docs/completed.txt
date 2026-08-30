@@ -280,3 +280,4 @@ Task 259: Add experimental endpoint microWakeWord wake provider using the offici
 Task 260: Add experimental on-device Stop keyword detection for playback/session cancellation - Completed on 08/29/2026 16:48
 Task 261: Integrate native firmware microWakeWord/TFLM inference engine behind the existing local keyword hooks - Completed on 08/29/2026 17:21
 Task 262: Bundle Alexa/Hexe and Stop microWakeWord model assets into firmware builds with versioned capability reporting - Completed on 08/29/2026 17:39
+Task 263: Activate endpoint Alexa/Hexe wake detection with backend openWakeWord fallback and wake-election safety - Completed on 08/29/2026 18:00

@@ -4,6 +4,7 @@ These model assets are embedded into the firmware image through `firmware/main/C
 
 | Asset | Source | SHA-256 | Bytes |
 | --- | --- | --- | ---: |
+| `audio_preprocessor_int8.tflite` | `firmware/managed_components/espressif__esp-tflite-micro/examples/micro_speech/main/audio_preprocessor_int8_model_data.h` | `278949d197166fb8b580c0bdc94e902fb709fec0569dcf5766816b28285440e5` | 8772 |
 | `alexa.json` | `https://raw.githubusercontent.com/esphome/micro-wake-word-models/main/models/v2/alexa.json` | `1d999798b35b1fe2606465b75ab840be51c1811d2909d5e620cefb6e96f8abd0` | 377 |
 | `alexa.tflite` | `https://raw.githubusercontent.com/esphome/micro-wake-word-models/main/models/v2/alexa.tflite` | `9011a8155b04de858c48038529235cbc0e42e9fca05a55bf588cb80a653a723b` | 55856 |
 | `stop.json` | `https://github.com/kahrendt/microWakeWord/releases/download/stop/stop.json` | `bd13aeb1b83852649dc4fb6135cb160ff68716d14612b06f6a405342c57447aa` | 375 |

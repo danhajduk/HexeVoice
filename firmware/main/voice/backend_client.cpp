@@ -1367,9 +1367,12 @@ std::string endpoint_capabilities_json() {
       if (engine != nullptr) {
         cJSON_AddBoolToObject(engine, "tflm_linked", wake_engine.tflm_linked);
         cJSON_AddBoolToObject(engine, "feature_frontend_linked", wake_engine.feature_frontend_linked);
+        cJSON_AddBoolToObject(engine, "feature_frontend_ready", wake_engine.feature_frontend_ready);
         cJSON_AddBoolToObject(engine, "initialized", wake_engine.initialized);
         cJSON_AddBoolToObject(engine, "model_asset_available", wake_engine.wake_model_asset_available);
         cJSON_AddNumberToObject(engine, "model_asset_bytes", wake_engine.wake_model_asset_bytes);
+        cJSON_AddBoolToObject(engine, "model_runtime_ready", wake_engine.wake_runtime_ready);
+        cJSON_AddNumberToObject(engine, "runtime_arena_bytes", wake_engine.wake_runtime_arena_bytes);
         cJSON_AddBoolToObject(engine, "ready", wake_engine.wake_ready);
         cJSON_AddStringToObject(engine, "reason", wake_engine.wake_reason);
       }
@@ -1416,9 +1419,12 @@ std::string endpoint_capabilities_json() {
       if (engine != nullptr) {
         cJSON_AddBoolToObject(engine, "tflm_linked", stop_engine.tflm_linked);
         cJSON_AddBoolToObject(engine, "feature_frontend_linked", stop_engine.feature_frontend_linked);
+        cJSON_AddBoolToObject(engine, "feature_frontend_ready", stop_engine.feature_frontend_ready);
         cJSON_AddBoolToObject(engine, "initialized", stop_engine.initialized);
         cJSON_AddBoolToObject(engine, "model_asset_available", stop_engine.stop_model_asset_available);
         cJSON_AddNumberToObject(engine, "model_asset_bytes", stop_engine.stop_model_asset_bytes);
+        cJSON_AddBoolToObject(engine, "model_runtime_ready", stop_engine.stop_runtime_ready);
+        cJSON_AddNumberToObject(engine, "runtime_arena_bytes", stop_engine.stop_runtime_arena_bytes);
         cJSON_AddBoolToObject(engine, "ready", stop_engine.stop_ready);
         cJSON_AddStringToObject(engine, "reason", stop_engine.stop_reason);
       }

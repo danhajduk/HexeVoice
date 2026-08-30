@@ -538,3 +538,9 @@ Chosen fix: Embed the official Alexa v2 and Stop v2 TFLite assets with ESP-IDF `
 What changed: Added `firmware/main/voice/models/*`, registered embedded TFLite symbols in `wake_word.cpp`, reported asset bytes and model hashes/version in firmware capabilities, and added hash/size source tests.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_validation_matrix.py tests/test_firmware_endpoint_config.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh` passed with app size `0x1265e0` and 71% free; `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh` passed with app size `0x151310` and 67% free.
 ###########
+Task #263
+Step objective: Activate endpoint Alexa/Hexe wake detection with backend openWakeWord fallback and wake-election safety.
+Chosen fix: Wire the embedded audio preprocessor model and Alexa streaming microWakeWord model into the firmware TFLM adapter, leaving the existing backend wake-election/fallback contract intact.
+What changed: Enabled the microWakeWord feature frontend, embedded `audio_preprocessor_int8.tflite`, added 10 ms feature generation and streaming inference with sliding-window detection, exposed frontend/runtime readiness and arena diagnostics in heartbeats, kept Stop disabled for Task 264, and refreshed firmware docs/task records.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_validation_matrix.py tests/test_firmware_endpoint_config.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh` passed with app size `0x1938b0` and 61% free; `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh` passed with app size `0x16a2d0` and 65% free.
+###########

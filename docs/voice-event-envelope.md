@@ -81,14 +81,15 @@ Losing or late candidates receive `wake.election.result` with `stand_down: true`
 Existing endpoints that only stream `audio.chunk` remain compatible.
 
 Current firmware reports wake-election protocol capability in heartbeat capabilities under
-`capabilities.firmware.modules.wake_word`. The module exposes an experimental endpoint microWakeWord provider hook with
-the official ESPHome `alexa` v2 model as the primary model and `Hexe` as the local product alias. Heartbeats include the
+`capabilities.firmware.modules.wake_word`. The module exposes an experimental endpoint microWakeWord provider with the
+official ESPHome `alexa` v2 model as the primary model and `Hexe` as the local product alias. Heartbeats include the
 model id, manifest URL, TFLite URL, probability cutoff, sliding window, feature step, tensor-arena size, native inference
 availability, `model_version`, asset hashes, embedded TFLite size, and a `micro_wake_engine` diagnostic block. The
-adapter links Espressif's TFLM/ESP-NN runtime and reports `tflm_linked`, `feature_frontend_linked`, `initialized`,
-`model_asset_available`, `model_asset_bytes`, `ready`, and `reason`. The Alexa/Hexe model asset is embedded in the
-firmware image, but local wake remains unavailable until the feature preprocessing bridge is wired, so firmware continues
-`backend_streaming_with_micro_wake_word_manifest` mode.
+adapter links Espressif's TFLM/ESP-NN runtime and reports `tflm_linked`, `feature_frontend_linked`,
+`feature_frontend_ready`, `initialized`, `model_asset_available`, `model_asset_bytes`, `model_runtime_ready`,
+`runtime_arena_bytes`, `ready`, and `reason`. The Alexa/Hexe model asset and int16-to-int8 audio preprocessor are
+embedded in the firmware image, so a ready endpoint reports `endpoint_micro_wake_word_experimental` mode and submits
+local `wake.candidate` events through the same backend election contract.
 
 The wake module still exposes `candidate_event_type: "wake.candidate"`, `stand_down_event_type:
 "wake.election.result"`, `candidate_source: "endpoint_micro_wake_word"`, `backend_fallback: true`, `fallback_source:
@@ -108,6 +109,5 @@ Firmware also exposes an experimental local Stop keyword hook under `capabilitie
 and `capabilities.audio.input.playback_interrupt`. The configured local model matches the Kevin Ahrendt microWakeWord
 Stop release used by Home Assistant Voice PE (`stop.json`/`stop.tflite`, cutoff 0.50, sliding window 5, tensor arena
 21000). The Stop module shares the same `micro_wake_engine` diagnostics, asset hashes, and embedded TFLite size. The
-Stop model asset is embedded in the firmware image, but local Stop remains unavailable until the feature preprocessing
-bridge is wired, so the endpoint reports the local keyword as configured but unavailable while keeping
-`backend_stt_interrupt` active.
+Stop model asset is embedded in the firmware image, but the Stop runtime stays disabled until Task 264 so the endpoint
+reports the local keyword as configured but unavailable while keeping `backend_stt_interrupt` active.

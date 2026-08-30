@@ -68,7 +68,7 @@ void init_wake_word() {
        &kStopKeywordModel,
        kStopKeywordModelStart,
        embedded_model_size(kStopKeywordModelStart, kStopKeywordModelEnd),
-       true},
+       false},
   };
   init_micro_wake_engine(models, sizeof(models) / sizeof(models[0]));
   ESP_LOGI(

@@ -326,11 +326,20 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     assert "tensorflow/lite/schema/schema_generated.h" in micro_wake_source
     assert "espressif/esp-tflite-micro" in component_manifest
     assert "esp-tflite-micro" in cmake_source
+    assert '"voice/models/audio_preprocessor_int8.tflite"' in cmake_source
     assert '"voice/models/alexa.tflite"' in cmake_source
     assert '"voice/models/stop.tflite"' in cmake_source
     assert "HEXE_MICRO_WAKE_WORD_TFLM_ENABLED=1" in cmake_source
-    assert "HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=0" in cmake_source
-    assert "missing_micro_wake_word_feature_frontend" in micro_wake_source
+    assert "HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=1" in cmake_source
+    assert "_binary_audio_preprocessor_int8_tflite_start" in micro_wake_source
+    assert "AudioPreprocessorOpResolver" in micro_wake_source
+    assert "register_audio_preprocessor_ops" in micro_wake_source
+    assert "FrontendProcessSamples" not in micro_wake_source
+    assert "perform_streaming_inference" in micro_wake_source
+    assert "detection_from_runtime" in micro_wake_source
+    assert "probability_cutoff_as_uint8" in micro_wake_source
+    assert "kMinWindowsBeforeDetection = 100" in micro_wake_source
+    assert "kStreamingArenaMultiplier = 2" in micro_wake_source
     assert '"endpoint_micro_wake_word_experimental"' in wake_source
     assert '"github://esphome/micro-wake-word-models/models/v2/alexa.tflite@main"' in wake_source
     assert ".id =" not in wake_source
@@ -345,8 +354,11 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     assert '"micro_wake_engine"' in backend_source
     assert '"tflm_linked"' in backend_source
     assert '"feature_frontend_linked"' in backend_source
+    assert '"feature_frontend_ready"' in backend_source
     assert '"model_asset_available"' in backend_source
     assert '"model_asset_bytes"' in backend_source
+    assert '"model_runtime_ready"' in backend_source
+    assert '"runtime_arena_bytes"' in backend_source
     assert "experimental_provider_configured" in backend_source
     for source in (audio_source, pe_audio_source):
         assert "inspect_wake_word_frame" in source
@@ -399,6 +411,7 @@ def test_firmware_bundles_micro_wake_word_model_assets():
     model_readme = (FIRMWARE_MICRO_WAKE_MODELS / "README.md").read_text()
 
     expected_assets = {
+        "audio_preprocessor_int8.tflite": ("278949d197166fb8b580c0bdc94e902fb709fec0569dcf5766816b28285440e5", 8772),
         "alexa.json": ("1d999798b35b1fe2606465b75ab840be51c1811d2909d5e620cefb6e96f8abd0", 377),
         "alexa.tflite": ("9011a8155b04de858c48038529235cbc0e42e9fca05a55bf588cb80a653a723b", 55856),
         "stop.json": ("bd13aeb1b83852649dc4fb6135cb160ff68716d14612b06f6a405342c57447aa", 375),
@@ -411,6 +424,7 @@ def test_firmware_bundles_micro_wake_word_model_assets():
         assert expected_sha256 in model_readme
 
     assert 'EMBED_FILES' in cmake_source
+    assert '"voice/models/audio_preprocessor_int8.tflite"' in cmake_source
     assert '"voice/models/alexa.tflite"' in cmake_source
     assert '"voice/models/stop.tflite"' in cmake_source
     assert '_binary_alexa_tflite_start' in wake_source
