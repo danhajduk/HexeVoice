@@ -1,6 +1,6 @@
 # Firmware Recovery App Architecture
 
-Status: Task 273 architecture contract; Task 274 skeleton implemented
+Status: Task 273 architecture contract; Task 274 skeleton implemented; Task 275 local rescue controls implemented
 
 Reference: `docs/fw-roadmap.txt`
 
@@ -24,7 +24,8 @@ The firmware tree uses two application entrypoint lanes:
 
 The root ESP-IDF project selects an app by `HEXE_FIRMWARE_APP`. The Task 274
 skeleton adds `firmware/apps/recovery/main/CMakeLists.txt` and
-`firmware/components/recovery_runtime/`.
+`firmware/components/recovery_runtime/`. Task 275 adds the local recovery
+control plane in `firmware/components/recovery_runtime/recovery_control.cpp`.
 
 Expected build shape:
 
@@ -111,6 +112,10 @@ Initial endpoints:
 | `POST` | `/api/recovery/boot/select` | Select the next valid main slot or stay in recovery |
 | `POST` | `/api/recovery/config/reset` | Reset selected provisioning/config/calibration state |
 
+The local status page is served from `/` and links to the JSON diagnostics
+endpoints. It is intentionally plain HTML so recovery does not depend on the
+normal endpoint dashboard assets.
+
 Minimum `/api/recovery/status` shape:
 
 ```json
@@ -142,6 +147,7 @@ Minimum `/api/recovery/status` shape:
   ],
   "actions": {
     "wifi_provisioning": true,
+    "endpoint_provisioning": true,
     "firmware_upload": true,
     "boot_select": true,
     "selective_config_reset": true
@@ -163,6 +169,26 @@ packages that fail any of these checks:
 - incompatible firmware, model, asset, or calibration API ranges
 - anti-rollback or release-channel policy violation where enabled
 
+Task 275 uses streamed HTTP upload for the first local rescue install path.
+The operator posts the endpoint image body to `/api/recovery/firmware/install`
+with signed metadata headers:
+
+| Header | Purpose |
+| --- | --- |
+| `X-Hexe-Application-Type` | Must be `endpoint` |
+| `X-Hexe-Board-Profile` | Must match the compiled board profile |
+| `X-Hexe-Partition-Schema` | Must match the compiled partition schema |
+| `X-Hexe-Version` | Target endpoint firmware version |
+| `X-Hexe-Image-Size` | Byte length, equal to HTTP body length |
+| `X-Hexe-Image-Sha256` | Expected SHA-256 of the uploaded image body |
+| `X-Hexe-Signature-Algorithm` | `hmac-sha256` for local development |
+| `X-Hexe-Signature-Key-Id` | Must match the generated endpoint config key id |
+| `X-Hexe-Manifest-Signature` | HMAC over the recovery install metadata |
+
+Recovery hashes the body while writing to the inactive OTA slot, rejects checksum
+mismatches, and selects the new endpoint partition for next boot only after
+`esp_ota_end()` succeeds. It does not automatically restart after install.
+
 Normal endpoint OTA must not update recovery during early product phases.
 Recovery app updates require USB/full service flashing until a separate signed
 recovery-update lane is designed.
@@ -179,8 +205,8 @@ Task 274 built the minimal bootable recovery app skeleton:
 
 Task 275 adds operator-rescue features:
 
-- local status page
-- Wi-Fi and endpoint provisioning writes
-- signed endpoint firmware upload/install
+- local status page and recovery HTTP API
+- Wi-Fi and endpoint provisioning writes to endpoint-compatible NVS keys
+- signed endpoint firmware upload/install into an inactive OTA slot
 - partition and boot-state inspection
-- selective config reset
+- selective provisioning, Wi-Fi, settings, and calibration reset

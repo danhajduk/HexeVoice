@@ -23,8 +23,9 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
   Native endpoint app entrypoint. This is the default ESP-IDF app selected by
   `HEXE_FIRMWARE_APP=endpoint`.
 - `apps/recovery/`
-  Minimal recovery/provisioning app. The first S3 skeleton logs recovery-safe
-  JSON diagnostics over serial and avoids the normal endpoint runtime.
+  Minimal recovery/provisioning app. The S3 recovery app logs recovery-safe JSON
+  diagnostics over serial, starts a temporary local Wi-Fi AP and HTTP status/API
+  surface, and avoids the normal endpoint runtime.
 - `components/endpoint_runtime/`
   Current endpoint runtime component: app state, board adapters, audio, voice,
   UI, OTA, storage, provisioning, and backend protocol glue. This is the

@@ -1,4 +1,9 @@
 set(HEXE_FIRMWARE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
+set(HEXE_ENDPOINT_CONFIG "${HEXE_FIRMWARE_ROOT}/config/endpoint.yaml")
+if(NOT EXISTS "${HEXE_ENDPOINT_CONFIG}")
+  set(HEXE_ENDPOINT_CONFIG "${HEXE_FIRMWARE_ROOT}/config/endpoint.example.yaml")
+endif()
+set(HEXE_ENDPOINT_CONFIG_GENERATOR "${HEXE_FIRMWARE_ROOT}/tools/generate_endpoint_config.py")
 set(HEXE_BOARD_PROFILE_ROOT "${HEXE_FIRMWARE_ROOT}/boards")
 set(HEXE_BOARD_PROFILE_GENERATOR "${HEXE_FIRMWARE_ROOT}/tools/generate_board_profile_config.py")
 file(GLOB HEXE_BOARD_PROFILE_CONFIGS "${HEXE_BOARD_PROFILE_ROOT}/*/board.yaml")
@@ -7,6 +12,8 @@ set_property(
   APPEND
   PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${HEXE_BOARD_PROFILE_GENERATOR}"
+    "${HEXE_ENDPOINT_CONFIG}"
+    "${HEXE_ENDPOINT_CONFIG_GENERATOR}"
     ${HEXE_BOARD_PROFILE_CONFIGS}
 )
 
@@ -31,6 +38,18 @@ if(NOT HEXE_BOARD_PROFILE_CONFIG_RESULT EQUAL 0)
 endif()
 include("${HEXE_GENERATED_DIR}/board_profile_config.cmake")
 
+execute_process(
+  COMMAND python3
+    "${HEXE_ENDPOINT_CONFIG_GENERATOR}"
+    --input "${HEXE_ENDPOINT_CONFIG}"
+    --output "${HEXE_GENERATED_DIR}/endpoint_config.h"
+    --board-profile "${HEXE_BOARD_PROFILE}"
+  RESULT_VARIABLE HEXE_ENDPOINT_CONFIG_RESULT
+)
+if(NOT HEXE_ENDPOINT_CONFIG_RESULT EQUAL 0)
+  message(FATAL_ERROR "Failed to generate recovery endpoint_config.h from ${HEXE_ENDPOINT_CONFIG}")
+endif()
+
 if(NOT HEXE_BOARD_RECOVERY_APP)
   message(FATAL_ERROR "Board profile ${HEXE_BOARD_PROFILE} does not support a recovery app")
 endif()
@@ -43,20 +62,28 @@ message(STATUS "Hexe recovery partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
 
 idf_component_register(
   SRCS
+    "recovery_control.cpp"
     "recovery_status.cpp"
   INCLUDE_DIRS
     "."
     "${HEXE_GENERATED_DIR}"
   REQUIRES
     app_update
+    esp_event
     esp_app_format
+    esp_driver_gpio
+    esp_http_server
+    esp_netif
     esp_partition
     esp_psram
     esp_system
+    esp_wifi
     freertos
     heap
     log
+    mbedtls
     nvs_flash
+    espressif__cjson
     spi_flash
 )
 

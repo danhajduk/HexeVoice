@@ -8,6 +8,8 @@ RECOVERY_README = Path("firmware/apps/recovery/README.md")
 RECOVERY_MAIN_CMAKE = Path("firmware/apps/recovery/main/CMakeLists.txt")
 RECOVERY_MAIN = Path("firmware/apps/recovery/main/app_main.cpp")
 RECOVERY_RUNTIME_CMAKE = Path("firmware/components/recovery_runtime/CMakeLists.txt")
+RECOVERY_CONTROL = Path("firmware/components/recovery_runtime/recovery_control.cpp")
+RECOVERY_CONTROL_HEADER = Path("firmware/components/recovery_runtime/recovery_control.h")
 RECOVERY_STATUS = Path("firmware/components/recovery_runtime/recovery_status.cpp")
 RECOVERY_STATUS_HEADER = Path("firmware/components/recovery_runtime/recovery_status.h")
 PARTITION_ROADMAP = Path("docs/firmware-partition-ota-roadmap.md")
@@ -29,7 +31,8 @@ def test_recovery_architecture_defines_app_boundary_and_build_lane():
     assert "HEXE_FIRMWARE_RUNTIME_DIR" in root_cmake
     assert "COMPONENT_DIRS" in root_cmake
     assert '$ENV{IDF_PATH}/components' in root_cmake
-    assert "set(COMPONENTS main ${HEXE_FIRMWARE_RUNTIME_COMPONENT})" in root_cmake
+    assert "HEXE_FIRMWARE_ADDITIONAL_COMPONENT_DIRS" in root_cmake
+    assert "set(COMPONENTS main ${HEXE_FIRMWARE_RUNTIME_COMPONENT} ${HEXE_FIRMWARE_ADDITIONAL_COMPONENTS})" in root_cmake
 
 
 def test_recovery_architecture_defines_entry_conditions_and_interfaces():
@@ -92,13 +95,17 @@ def test_recovery_skeleton_has_bootable_app_and_runtime_component():
     assert "init_recovery_runtime();" in main_source
     assert "log_recovery_status();" in main_source
     assert '"recovery_status.cpp"' in runtime_cmake
+    assert '"recovery_control.cpp"' in runtime_cmake
     assert "generate_board_profile_config.py" in runtime_cmake
+    assert "generate_endpoint_config.py" in runtime_cmake
     assert "board_profile_pins.h" in runtime_cmake
+    assert "endpoint_config.h" in runtime_cmake
     assert "HEXE_BOARD_RECOVERY_APP" in runtime_cmake
     assert 'HEXE_BOARD_IDF_TARGET STREQUAL "esp32s3"' in runtime_cmake
     assert "endpoint_runtime" not in runtime_cmake
     assert "esp-tflite-micro" not in runtime_cmake
     assert "render_status_json()" in status_header
+    assert "init_recovery_controls()" in RECOVERY_MAIN.read_text()
 
 
 def test_recovery_status_skeleton_reports_safe_serial_json():
@@ -111,12 +118,105 @@ def test_recovery_status_skeleton_reports_safe_serial_json():
     assert '\\"sd_required\\":false' in status_source
     assert '\\"models_required\\":false' in status_source
     assert '\\"endpoint_runtime_linked\\":false' in status_source
-    assert '\\"network\\":{\\"mode\\":\\"not_started\\",\\"temporary_ap_active\\":false}' in status_source
-    assert '\\"interfaces\\":{\\"serial_console\\":true,\\"http_api\\":false' in status_source
+    assert "recovery_network_mode()" in status_source
+    assert "recovery_ip_address()" in status_source
+    assert '\\"interfaces\\":{\\"serial_console\\":true,\\"http_api\\":%s' in status_source
+    assert '\\"actions\\":{\\"wifi_provisioning\\":true' in status_source
     assert "esp_ota_get_running_partition" in status_source
     assert "esp_flash_get_size" in status_source
     assert "esp_psram_is_initialized" in status_source
     assert "nvs_flash_init" in status_source
+
+
+def test_recovery_control_plane_exposes_local_http_rescue_api():
+    control_source = RECOVERY_CONTROL.read_text()
+    control_header = RECOVERY_CONTROL_HEADER.read_text()
+    runtime_cmake = RECOVERY_RUNTIME_CMAKE.read_text()
+
+    for path in (
+        "/api/recovery/status",
+        "/api/recovery/partitions",
+        "/api/recovery/diagnostics",
+        "/api/recovery/wifi",
+        "/api/recovery/endpoint",
+        "/api/recovery/firmware/install",
+        "/api/recovery/boot/select",
+        "/api/recovery/config/reset",
+    ):
+        assert path in control_source
+
+    assert "esp_http_server" in runtime_cmake
+    assert "esp_wifi" in runtime_cmake
+    assert "esp_netif" in runtime_cmake
+    assert "espressif__cjson" in runtime_cmake
+    assert "mbedtls" in runtime_cmake
+    assert "httpd_start" in control_source
+    assert "HTTPD_DEFAULT_CONFIG" in control_source
+    assert "HexeRecovery-" in control_source
+    assert "WIFI_MODE_APSTA" in control_source
+    assert "init_recovery_controls()" in control_header
+
+
+def test_recovery_provisioning_writes_endpoint_compatible_nvs_keys():
+    control_source = RECOVERY_CONTROL.read_text()
+
+    assert 'constexpr char kSettingsNamespace[] = "hexe_settings"' in control_source
+    for key in (
+        "endpoint_id",
+        "display_name",
+        "backend_host",
+        "http_port",
+        "ws_port",
+        "use_tls",
+        "wifi_ssid",
+        "wifi_password",
+        "provisioned",
+    ):
+        assert f'"{key}"' in control_source
+
+    assert 'set_nvs_string(handle, root, "endpoint_id", kEndpointIdKey, true)' in control_source
+    assert 'set_nvs_string(handle, root, "backend_host", kBackendHostKey, true)' in control_source
+    assert 'set_nvs_string(handle, root, "wifi_ssid", kWifiSsidKey, true)' in control_source
+    assert "nvs_set_u8(handle, kProvisionedKey, 1)" in control_source
+    assert "valid_port" in control_source
+    assert "wifi_ssid is required" in control_source
+
+
+def test_recovery_signed_endpoint_install_streams_to_inactive_slot():
+    control_source = RECOVERY_CONTROL.read_text()
+
+    assert 'X-Hexe-Application-Type' in control_source
+    assert 'std::strcmp(headers->application_type, "endpoint")' in control_source
+    assert "X-Hexe-Board-Profile" in control_source
+    assert "X-Hexe-Partition-Schema" in control_source
+    assert "X-Hexe-Image-Sha256" in control_source
+    assert "X-Hexe-Manifest-Signature" in control_source
+    assert "canonical_install_payload" in control_source
+    assert "calculate_install_hmac" in control_source
+    assert "verify_install_signature" in control_source
+    assert "hexe::config::kEndpointOtaManifestSigningKey" in control_source
+    assert "esp_ota_get_next_update_partition" in control_source
+    assert "esp_ota_begin(update_partition" in control_source
+    assert "esp_ota_write" in control_source
+    assert "mbedtls_md_update" in control_source
+    assert "esp_ota_set_boot_partition(update_partition)" in control_source
+    assert "esp_restart" not in control_source
+
+
+def test_recovery_partition_and_reset_controls_are_selective():
+    control_source = RECOVERY_CONTROL.read_text()
+
+    assert "render_partitions_json()" in control_source
+    assert "esp_partition_find(ESP_PARTITION_TYPE_ANY" in control_source
+    assert "esp_ota_get_boot_partition" in control_source
+    assert "esp_ota_get_running_partition" in control_source
+    assert "partition_label is required" in control_source
+    assert "Only endpoint OTA app partitions may be selected" in control_source
+    assert "reset_provisioning" in control_source
+    assert "reset_wifi" in control_source
+    assert "reset_settings" in control_source
+    assert "reset_calibration" in control_source
+    assert "erase_key_if_requested(handle, kWifiSsidKey)" in control_source
 
 
 def test_build_script_exports_recovery_metadata_without_endpoint_runtime():

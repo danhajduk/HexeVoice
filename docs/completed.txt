@@ -292,3 +292,4 @@ Task 271: Add build-time partition validation and app-size guardrails for every 
 Task 272: Report partition schema, flash geometry, app slot size, and firmware API compatibility in endpoint heartbeat/capabilities and backend firmware status views - Completed on 08/30/2026 02:49
 Task 273: Define the minimal recovery/provisioning app architecture, CMake target layout, shared code boundary, entry conditions, and recovery-safe diagnostics API - Completed on 08/30/2026 03:28
 Task 274: Implement a bootable S3 recovery app skeleton that works without Core, SD card, wake models, or the normal endpoint runtime - Completed on 08/30/2026 03:58
+Task 275: Add recovery provisioning and rescue controls: local status page, Wi-Fi provisioning, signed main-firmware upload/install, partition/boot-state inspection, and selective config reset - Completed on 08/30/2026 04:20

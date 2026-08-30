@@ -1,4 +1,5 @@
 #include "recovery_status.h"
+#include "recovery_control.h"
 
 #include "esp_app_desc.h"
 #include "esp_log.h"
@@ -16,6 +17,7 @@ extern "C" void app_main(void) {
   ESP_LOGI(kTag, "Recovery project=%s version=%s", app->project_name, app->version);
 
   hexe::recovery::init_recovery_runtime();
+  hexe::recovery::init_recovery_controls();
   hexe::recovery::log_recovery_status();
 
   while (true) {

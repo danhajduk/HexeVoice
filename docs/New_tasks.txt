@@ -54,10 +54,6 @@ Do not edit above this line:
 
 [STOP]
 
-[TODO] Task 275: Add recovery provisioning and rescue controls: local status page, Wi-Fi provisioning, signed main-firmware upload/install, partition/boot-state inspection, and selective config reset
-
-[STOP]
-
 [TODO] Task 276: Harden main-app OTA boot validation by adding pending-verification handling, local startup self-tests, valid-image marking only after self-tests pass, and rollback status reporting
 [TODO] Task 277: Extend OTA/package validation to reject wrong application type, wrong partition schema, wrong SoC, wrong flash/PSRAM geometry, incompatible firmware API, and unsupported release/security policy before download
 [TODO] Task 278: Add OTA rollback and failure-path tests for corrupt images, wrong board/schema, crash before validation, network outage during validation, and recovery availability when both OTA slots are unusable

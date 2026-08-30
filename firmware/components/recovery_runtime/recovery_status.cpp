@@ -1,9 +1,11 @@
 #include "recovery_status.h"
 
+#include <cstring>
 #include <cstdio>
 #include <string>
 
 #include "board_profile_pins.h"
+#include "recovery_control.h"
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_err.h"
@@ -154,9 +156,11 @@ std::string render_status_json() {
       "\"models_required\":false,"
       "\"endpoint_runtime_linked\":false,"
       "\"nvs\":{\"init_ok\":%s,\"error\":\"%s\"},"
-      "\"network\":{\"mode\":\"not_started\",\"temporary_ap_active\":false},"
-      "\"interfaces\":{\"serial_console\":true,\"http_api\":false,\"display_ui\":false,\"ble\":false},"
+      "\"network\":{\"mode\":\"%s\",\"ip_address\":\"%s\",\"ssid_configured\":%s,\"temporary_ap_active\":%s},"
+      "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"display_ui\":false,\"ble\":false},"
       "\"main_slots\":[{\"label\":\"%s\",\"selected_for_boot\":true,\"state\":\"%s\",\"state_readable\":%s}],"
+      "\"actions\":{\"wifi_provisioning\":true,\"endpoint_provisioning\":true,\"firmware_upload\":true,"
+      "\"boot_select\":true,\"selective_config_reset\":true},"
       "\"boot\":{\"running_partition\":\"%s\",\"boot_partition\":\"%s\"}"
       "}",
       kSchemaVersion,
@@ -176,6 +180,12 @@ std::string render_status_json() {
       reset_reason_name(esp_reset_reason()),
       bool_json(g_nvs_init_result == ESP_OK).c_str(),
       esp_err_to_name(g_nvs_init_result),
+      recovery_network_mode(),
+      recovery_ip_address(),
+      bool_json(std::strcmp(recovery_network_mode(), "apsta") == 0 || std::strcmp(recovery_network_mode(), "sta") == 0).c_str(),
+      bool_json(recovery_temporary_ap_active()).c_str(),
+      bool_json(recovery_http_api_active()).c_str(),
+      bool_json(recovery_http_api_active()).c_str(),
       partition_label(boot_partition),
       ota_state_name(running_state),
       bool_json(running_state_result == ESP_OK).c_str(),
