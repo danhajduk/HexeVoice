@@ -1,0 +1,47 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+#include "voice/wake_word.h"
+
+namespace hexe::voice {
+
+enum class MicroWakeModelRole {
+  kWake,
+  kPlaybackStop,
+};
+
+struct MicroWakeModelAsset {
+  MicroWakeModelRole role{MicroWakeModelRole::kWake};
+  const LocalKeywordModel *metadata{nullptr};
+  const uint8_t *model_data{nullptr};
+  size_t model_size{0};
+  bool enabled{false};
+};
+
+struct MicroWakeEngineStatus {
+  bool tflm_linked{false};
+  bool feature_frontend_linked{false};
+  bool initialized{false};
+  bool wake_model_asset_available{false};
+  bool stop_model_asset_available{false};
+  bool wake_ready{false};
+  bool stop_ready{false};
+  const char *wake_reason{nullptr};
+  const char *stop_reason{nullptr};
+};
+
+void init_micro_wake_engine(const MicroWakeModelAsset *models, size_t model_count);
+MicroWakeEngineStatus micro_wake_engine_status();
+LocalKeywordDetection process_micro_wake_frame(
+    MicroWakeModelRole role,
+    const int16_t *samples,
+    size_t sample_count,
+    uint32_t level,
+    uint32_t noise_floor_level,
+    uint32_t speech_peak_level,
+    bool vad_speaking);
+void reset_micro_wake_engine();
+
+}  // namespace hexe::voice

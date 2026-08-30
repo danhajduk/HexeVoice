@@ -30,6 +30,8 @@ FIRMWARE_TTS_PLAYER_NOOP = Path("firmware/main/voice/tts_player_noop.cpp")
 FIRMWARE_CONVERT_SPRITE = Path("firmware/tools/convert-sprite.sh")
 FIRMWARE_APP_MAIN = Path("firmware/main/app_main.cpp")
 FIRMWARE_APP_STATE = Path("firmware/main/app_state.h")
+FIRMWARE_MICRO_WAKE_ENGINE = Path("firmware/main/voice/micro_wake_engine.cpp")
+FIRMWARE_MICRO_WAKE_ENGINE_HEADER = Path("firmware/main/voice/micro_wake_engine.h")
 FRONTEND_API_CLIENT = Path("frontend/src/api/client.js")
 FRONTEND_ENDPOINT_DASHBOARD = Path("frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx")
 
@@ -140,6 +142,7 @@ def test_firmware_build_uses_ota_safe_project_versions():
 def test_firmware_scaffold_modules_are_explicit_status_providers():
     app_main = FIRMWARE_APP_MAIN.read_text()
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
     module_sources = {
         "wake_word": Path("firmware/main/voice/wake_word.cpp").read_text(),
         "stt_stream": Path("firmware/main/voice/stt_stream.cpp").read_text(),
@@ -163,7 +166,7 @@ def test_firmware_scaffold_modules_are_explicit_status_providers():
     assert "wake_word_on_device_available" in header_sources["wake_word"]
     assert '"backend_streaming_with_micro_wake_word_manifest"' in module_sources["wake_word"]
     assert "Experimental endpoint microWakeWord provider configured" in module_sources["wake_word"]
-    assert "missing_micro_wake_word_inference_engine" in module_sources["wake_word"]
+    assert "missing_micro_wake_word_model_asset" in micro_wake_source
     assert "wake_word_election_capable" in module_sources["wake_word"]
     assert "wake_word_election_timeout_ms" in header_sources["wake_word"]
     assert '"endpoint_micro_wake_word"' in module_sources["wake_word"]
@@ -204,6 +207,7 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
     wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
     tts_sources = FIRMWARE_TTS_PLAYER.read_text() + FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
 
     assert "playback_stop_word_runtime_mode" in wake_header
@@ -211,8 +215,8 @@ def test_firmware_reports_playback_stop_word_capability_blocker():
     assert "playback_stop_word_active" in wake_header
     assert "playback_stop_word_unavailable_reason" in wake_header
     assert '"backend_stt_interrupt_with_stop_keyword_manifest"' in wake_source
-    assert '"missing_micro_wake_word_inference_engine"' in wake_source
-    assert '"missing_stop_keyword_model_asset"' in wake_source
+    assert '"missing_micro_wake_word_inference_engine"' in micro_wake_source
+    assert '"missing_stop_keyword_model_asset"' in micro_wake_source
     assert '"playback_interrupt"' in backend_source
     assert '"playback_stop_word"' in backend_source
     assert '"available", true' in backend_source
@@ -304,13 +308,25 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
     wake_header = Path("firmware/main/voice/wake_word.h").read_text()
+    micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
+    micro_wake_header = FIRMWARE_MICRO_WAKE_ENGINE_HEADER.read_text()
+    cmake_source = FIRMWARE_CMAKE.read_text()
+    component_manifest = Path("firmware/main/idf_component.yml").read_text()
     audio_source = FIRMWARE_AUDIO.read_text()
     pe_audio_source = FIRMWARE_AUDIO_HA_VOICE_PE.read_text()
 
     assert "struct LocalKeywordModel" in wake_header
     assert "struct LocalKeywordDetection" in wake_header
     assert "inspect_wake_word_frame" in wake_header
-    assert "HEXE_MICRO_WAKE_WORD_ENGINE_LINKED" in wake_source
+    assert "MicroWakeEngineStatus" in micro_wake_header
+    assert "init_micro_wake_engine" in micro_wake_source
+    assert "process_micro_wake_frame" in micro_wake_source
+    assert "tensorflow/lite/schema/schema_generated.h" in micro_wake_source
+    assert "espressif/esp-tflite-micro" in component_manifest
+    assert "esp-tflite-micro" in cmake_source
+    assert "HEXE_MICRO_WAKE_WORD_TFLM_ENABLED=1" in cmake_source
+    assert "HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=0" in cmake_source
+    assert "missing_micro_wake_word_feature_frontend" in micro_wake_source
     assert '"endpoint_micro_wake_word_experimental"' in wake_source
     assert '"github://esphome/micro-wake-word-models/models/v2/alexa.tflite@main"' in wake_source
     assert ".id =" not in wake_source
@@ -318,6 +334,10 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     assert 'cJSON_AddStringToObject(primary_model, "wake_word", wake_model.wake_word)' in backend_source
     assert 'cJSON_AddStringToObject(primary_model, "alias", wake_model.alias)' in backend_source
     assert 'cJSON_AddNumberToObject(primary_model, "tensor_arena_size", wake_model.tensor_arena_size)' in backend_source
+    assert '"micro_wake_engine"' in backend_source
+    assert '"tflm_linked"' in backend_source
+    assert '"feature_frontend_linked"' in backend_source
+    assert '"model_asset_available"' in backend_source
     assert "experimental_provider_configured" in backend_source
     for source in (audio_source, pe_audio_source):
         assert "inspect_wake_word_frame" in source

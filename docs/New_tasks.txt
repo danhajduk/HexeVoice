@@ -52,16 +52,15 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 261: Integrate native firmware microWakeWord/TFLM inference engine behind the existing local keyword hooks
 [TODO] Task 262: Bundle Alexa/Hexe and Stop microWakeWord model assets into firmware builds with versioned capability reporting
 [TODO] Task 263: Activate endpoint Alexa/Hexe wake detection with backend openWakeWord fallback and wake-election safety
 [TODO] Task 264: Activate endpoint Stop keyword interruption for playback/session cancel with backend STT interrupt fallback
 [STOP]
-[TODO] Task 265: Define portable firmware board-profile config schema for YAML/JSON-driven hardware bring-up
-[TODO] Task 266: Refactor firmware board support behind config-driven portable hardware adapters
-[TODO] Task 267: Add new-board bring-up generator, examples, validation tests, and docs for config-only firmware ports
+[TODO] Task 265: Define firmware partition and OTA strategy for main app, recovery app, config, calibration, media, and wake-word model assets
 [STOP]
-[TODO] Task 268: Define firmware partition and OTA strategy for main app, recovery app, config, calibration, media, and wake-word model assets
+[TODO] Task 266: Define portable firmware board-profile config schema for YAML/JSON-driven hardware bring-up
+[TODO] Task 267: Refactor firmware board support behind config-driven portable hardware adapters
+[TODO] Task 268: Add new-board bring-up generator, examples, validation tests, and docs for config-only firmware ports
 
 **********************************************************************************************
 * Future TODO listing

@@ -41,6 +41,7 @@
 #include "system/settings.h"
 #include "system/telemetry.h"
 #include "voice/assistant_client.h"
+#include "voice/micro_wake_engine.h"
 #include "voice/stt_stream.h"
 #include "voice/tts_player.h"
 #include "voice/wake_word.h"
@@ -1350,6 +1351,7 @@ std::string endpoint_capabilities_json() {
         hexe::voice::wake_word_on_device_available());
     cJSON *wake_word = cJSON_GetObjectItem(modules, "wake_word");
     if (cJSON_IsObject(wake_word)) {
+      const hexe::voice::MicroWakeEngineStatus wake_engine = hexe::voice::micro_wake_engine_status();
       const hexe::voice::LocalKeywordModel &wake_model = hexe::voice::wake_word_primary_model();
       cJSON_AddBoolToObject(wake_word, "experimental_provider_configured", hexe::voice::wake_word_experimental_provider_configured());
       cJSON_AddBoolToObject(wake_word, "election_capable", hexe::voice::wake_word_election_capable());
@@ -1361,6 +1363,15 @@ std::string endpoint_capabilities_json() {
       cJSON_AddStringToObject(wake_word, "fallback_source", "backend_openwakeword");
       cJSON_AddStringToObject(wake_word, "timeout_policy", kWakeElectionFallbackPolicy);
       cJSON_AddStringToObject(wake_word, "unavailable_reason", hexe::voice::wake_word_unavailable_reason());
+      cJSON *engine = cJSON_AddObjectToObject(wake_word, "micro_wake_engine");
+      if (engine != nullptr) {
+        cJSON_AddBoolToObject(engine, "tflm_linked", wake_engine.tflm_linked);
+        cJSON_AddBoolToObject(engine, "feature_frontend_linked", wake_engine.feature_frontend_linked);
+        cJSON_AddBoolToObject(engine, "initialized", wake_engine.initialized);
+        cJSON_AddBoolToObject(engine, "model_asset_available", wake_engine.wake_model_asset_available);
+        cJSON_AddBoolToObject(engine, "ready", wake_engine.wake_ready);
+        cJSON_AddStringToObject(engine, "reason", wake_engine.wake_reason);
+      }
       cJSON *primary_model = cJSON_AddObjectToObject(wake_word, "primary_model");
       if (primary_model != nullptr) {
         cJSON_AddStringToObject(primary_model, "id", wake_model.id);
@@ -1387,6 +1398,7 @@ std::string endpoint_capabilities_json() {
         state.tts_playback_active && !state.mic_paused_for_playback ? "active" : "ready");
     cJSON *playback_stop_word = cJSON_GetObjectItem(modules, "playback_stop_word");
     if (cJSON_IsObject(playback_stop_word)) {
+      const hexe::voice::MicroWakeEngineStatus stop_engine = hexe::voice::micro_wake_engine_status();
       const hexe::voice::LocalKeywordModel &stop_model = hexe::voice::playback_stop_word_model();
       cJSON_AddBoolToObject(playback_stop_word, "backend_available", true);
       cJSON_AddBoolToObject(playback_stop_word, "experimental_provider_configured", hexe::voice::playback_stop_word_experimental_provider_configured());
@@ -1395,6 +1407,15 @@ std::string endpoint_capabilities_json() {
       cJSON_AddStringToObject(playback_stop_word, "stop_reason", "voice_stop");
       cJSON_AddBoolToObject(playback_stop_word, "local_keyword_available", hexe::voice::playback_stop_word_on_device_available());
       cJSON_AddStringToObject(playback_stop_word, "local_keyword_reason", hexe::voice::playback_stop_word_unavailable_reason());
+      cJSON *engine = cJSON_AddObjectToObject(playback_stop_word, "micro_wake_engine");
+      if (engine != nullptr) {
+        cJSON_AddBoolToObject(engine, "tflm_linked", stop_engine.tflm_linked);
+        cJSON_AddBoolToObject(engine, "feature_frontend_linked", stop_engine.feature_frontend_linked);
+        cJSON_AddBoolToObject(engine, "initialized", stop_engine.initialized);
+        cJSON_AddBoolToObject(engine, "model_asset_available", stop_engine.stop_model_asset_available);
+        cJSON_AddBoolToObject(engine, "ready", stop_engine.stop_ready);
+        cJSON_AddStringToObject(engine, "reason", stop_engine.stop_reason);
+      }
       cJSON *stop_keyword_model = cJSON_AddObjectToObject(playback_stop_word, "keyword_model");
       if (stop_keyword_model != nullptr) {
         cJSON_AddStringToObject(stop_keyword_model, "id", stop_model.id);

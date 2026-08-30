@@ -1,16 +1,11 @@
 #include "voice/wake_word.h"
 
 #include "esp_log.h"
+#include "voice/micro_wake_engine.h"
 
 namespace {
 constexpr char kTag[] = "hexe_wake";
 constexpr int kWakeElectionTimeoutMs = 300;
-
-#if defined(HEXE_MICRO_WAKE_WORD_ENGINE_LINKED) && HEXE_MICRO_WAKE_WORD_ENGINE_LINKED
-constexpr bool kMicroWakeWordEngineLinked = true;
-#else
-constexpr bool kMicroWakeWordEngineLinked = false;
-#endif
 
 constexpr hexe::voice::LocalKeywordModel kAlexaWakeModel = {
     "alexa",
@@ -48,6 +43,7 @@ constexpr hexe::voice::LocalKeywordModel kStopKeywordModel = {
 namespace hexe::voice {
 
 void init_wake_word() {
+  init_micro_wake_engine(nullptr, 0);
   ESP_LOGI(
       kTag,
       "Experimental endpoint microWakeWord provider configured: model=%s wake_word=%s alias=%s arena=%d bytes cutoff=%.2f",
@@ -69,17 +65,17 @@ LocalKeywordDetection inspect_wake_word_frame(
     uint32_t noise_floor_level,
     uint32_t speech_peak_level,
     bool vad_speaking) {
-  (void)samples;
-  (void)sample_count;
-  (void)level;
-  (void)noise_floor_level;
-  (void)speech_peak_level;
-  (void)vad_speaking;
   if (!wake_word_on_device_available()) {
     return {};
   }
-  // The native firmware contract is ready; actual microWakeWord/TFLM inference is linked by a later engine adapter.
-  return {};
+  return process_micro_wake_frame(
+      MicroWakeModelRole::kWake,
+      samples,
+      sample_count,
+      level,
+      noise_floor_level,
+      speech_peak_level,
+      vad_speaking);
 }
 
 LocalKeywordDetection inspect_playback_stop_word_frame(
@@ -89,17 +85,17 @@ LocalKeywordDetection inspect_playback_stop_word_frame(
     uint32_t noise_floor_level,
     uint32_t speech_peak_level,
     bool vad_speaking) {
-  (void)samples;
-  (void)sample_count;
-  (void)level;
-  (void)noise_floor_level;
-  (void)speech_peak_level;
-  (void)vad_speaking;
   if (!playback_stop_word_on_device_available()) {
     return {};
   }
-  // The Stop keyword shares the local keyword hook but remains inactive until the model asset is bundled.
-  return {};
+  return process_micro_wake_frame(
+      MicroWakeModelRole::kPlaybackStop,
+      samples,
+      sample_count,
+      level,
+      noise_floor_level,
+      speech_peak_level,
+      vad_speaking);
 }
 
 const char *wake_word_runtime_mode() {
@@ -107,7 +103,7 @@ const char *wake_word_runtime_mode() {
 }
 
 bool wake_word_on_device_available() {
-  return kMicroWakeWordEngineLinked;
+  return micro_wake_engine_status().wake_ready;
 }
 
 bool wake_word_backend_owned() {
@@ -135,7 +131,7 @@ bool wake_word_experimental_provider_configured() {
 }
 
 const char *wake_word_unavailable_reason() {
-  return wake_word_on_device_available() ? "available" : "missing_micro_wake_word_inference_engine";
+  return micro_wake_engine_status().wake_reason;
 }
 
 const LocalKeywordModel &playback_stop_word_model() {
@@ -151,7 +147,7 @@ const char *playback_stop_word_runtime_mode() {
 }
 
 bool playback_stop_word_on_device_available() {
-  return false;
+  return micro_wake_engine_status().stop_ready;
 }
 
 bool playback_stop_word_active() {
@@ -159,10 +155,7 @@ bool playback_stop_word_active() {
 }
 
 const char *playback_stop_word_unavailable_reason() {
-  if (!kMicroWakeWordEngineLinked) {
-    return "missing_micro_wake_word_inference_engine";
-  }
-  return "missing_stop_keyword_model_asset";
+  return micro_wake_engine_status().stop_reason;
 }
 
 }  // namespace hexe::voice

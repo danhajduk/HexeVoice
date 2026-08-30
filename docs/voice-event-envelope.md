@@ -83,9 +83,11 @@ Existing endpoints that only stream `audio.chunk` remain compatible.
 Current firmware reports wake-election protocol capability in heartbeat capabilities under
 `capabilities.firmware.modules.wake_word`. The module exposes an experimental endpoint microWakeWord provider hook with
 the official ESPHome `alexa` v2 model as the primary model and `Hexe` as the local product alias. Heartbeats include the
-model id, manifest URL, TFLite URL, probability cutoff, sliding window, feature step, tensor-arena size, and native
-inference availability. Until the native microWakeWord/TFLM adapter is linked, firmware reports
-`missing_micro_wake_word_inference_engine` and continues `backend_streaming_with_micro_wake_word_manifest` mode.
+model id, manifest URL, TFLite URL, probability cutoff, sliding window, feature step, tensor-arena size, native inference
+availability, and a `micro_wake_engine` diagnostic block. The adapter links Espressif's TFLM/ESP-NN runtime and reports
+`tflm_linked`, `feature_frontend_linked`, `initialized`, `model_asset_available`, `ready`, and `reason`. Until model
+assets and the feature preprocessing bridge are bundled, firmware reports the local provider as unavailable and continues
+`backend_streaming_with_micro_wake_word_manifest` mode.
 
 The wake module still exposes `candidate_event_type: "wake.candidate"`, `stand_down_event_type:
 "wake.election.result"`, `candidate_source: "endpoint_micro_wake_word"`, `backend_fallback: true`, `fallback_source:
@@ -104,5 +106,6 @@ Playback interruption remains backend-owned by default through stop-only STT and
 Firmware also exposes an experimental local Stop keyword hook under `capabilities.firmware.modules.playback_stop_word`
 and `capabilities.audio.input.playback_interrupt`. The configured local model matches the Kevin Ahrendt microWakeWord
 Stop release used by Home Assistant Voice PE (`stop.json`/`stop.tflite`, cutoff 0.50, sliding window 5, tensor arena
-21000). Until a native inference engine and the Stop model asset are linked, the endpoint reports the local keyword as
-configured but unavailable, with a `local_keyword_reason`, while keeping `backend_stt_interrupt` active.
+21000). The Stop module shares the same `micro_wake_engine` diagnostics. Until the Stop model asset and preprocessing
+bridge are bundled, the endpoint reports the local keyword as configured but unavailable, with a `local_keyword_reason`,
+while keeping `backend_stt_interrupt` active.

@@ -75,6 +75,7 @@ idf_component_register(
     "ui/screens.cpp"
     "voice/assistant_client.cpp"
     "voice/backend_client.cpp"
+    "voice/micro_wake_engine.cpp"
     "voice/stt_stream.cpp"
     "voice/wake_word.cpp"
   INCLUDE_DIRS
@@ -92,6 +93,7 @@ idf_component_register(
     esp_http_client
     esp_lcd
     esp_netif
+    esp-tflite-micro
     esp_websocket_client
     esp_wifi
     espressif__esp_lcd_touch
@@ -103,4 +105,11 @@ idf_component_register(
     sdmmc
 )
 
-target_compile_definitions(${COMPONENT_LIB} PRIVATE ${HEXE_BOARD_DEFINITIONS})
+target_compile_definitions(
+  ${COMPONENT_LIB}
+  PRIVATE
+    ${HEXE_BOARD_DEFINITIONS}
+    HEXE_MICRO_WAKE_WORD_ENGINE_LINKED=1
+    HEXE_MICRO_WAKE_WORD_TFLM_ENABLED=1
+    HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=0
+)
