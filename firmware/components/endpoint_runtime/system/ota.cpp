@@ -6,6 +6,8 @@
 #include <string>
 
 #include "app_state.h"
+#include "board/audio.h"
+#include "board/display.h"
 #include "endpoint_config.h"
 #include "esp_app_desc.h"
 #include "esp_err.h"
@@ -18,6 +20,7 @@
 #include "freertos/queue.h"
 #include "freertos/task.h"
 #include "mbedtls/md.h"
+#include "voice/wake_word.h"
 
 namespace {
 constexpr char kTag[] = "hexe_ota";
@@ -281,6 +284,143 @@ esp_err_t ota_http_event_handler(esp_http_client_event_t *event) {
 
 QueueHandle_t g_ota_queue = nullptr;
 TaskHandle_t g_ota_task = nullptr;
+char g_boot_validation_status[32] = "not_checked";
+char g_boot_validation_error[128] = "";
+char g_running_partition_label[17] = "unknown";
+char g_running_partition_state[24] = "unknown";
+bool g_boot_pending_verification = false;
+bool g_boot_self_tests_passed = false;
+bool g_boot_marked_valid = false;
+bool g_rollback_available = false;
+
+const char *ota_state_name(esp_ota_img_states_t state) {
+  switch (state) {
+    case ESP_OTA_IMG_NEW:
+      return "new";
+    case ESP_OTA_IMG_PENDING_VERIFY:
+      return "pending_verify";
+    case ESP_OTA_IMG_VALID:
+      return "valid";
+    case ESP_OTA_IMG_INVALID:
+      return "invalid";
+    case ESP_OTA_IMG_ABORTED:
+      return "aborted";
+    case ESP_OTA_IMG_UNDEFINED:
+      return "undefined";
+    default:
+      return "unknown";
+  }
+}
+
+void copy_text(char *target, size_t target_size, const char *value) {
+  if (target == nullptr || target_size == 0) {
+    return;
+  }
+  std::snprintf(target, target_size, "%s", value == nullptr ? "" : value);
+}
+
+void append_self_test_failure(std::string &failures, const char *failure) {
+  if (!failures.empty()) {
+    failures.push_back(',');
+  }
+  failures.append(failure == nullptr ? "unknown" : failure);
+}
+
+bool display_self_test_required() {
+  return hexe::board::display_width() > 0 &&
+         hexe::board::display_height() > 0 &&
+         std::strcmp(hexe::board::display_pixel_format(), "none") != 0;
+}
+
+bool local_startup_self_tests_pass(std::string *failure_reasons) {
+  std::string failures;
+  const esp_app_desc_t *app = esp_app_get_description();
+  if (app == nullptr || app->version[0] == '\0') {
+    append_self_test_failure(failures, "missing_app_description");
+  }
+  if (esp_ota_get_running_partition() == nullptr) {
+    append_self_test_failure(failures, "missing_running_partition");
+  }
+  if (!hexe::board::audio_input_ready()) {
+    append_self_test_failure(failures, "audio_input_not_ready");
+  }
+  if (!hexe::board::audio_output_ready()) {
+    append_self_test_failure(failures, "audio_output_not_ready");
+  }
+  if (display_self_test_required() && !hexe::board::display_ready()) {
+    append_self_test_failure(failures, "display_not_ready");
+  }
+  if (hexe::voice::wake_word_experimental_provider_configured() && !hexe::voice::wake_word_on_device_available()) {
+    append_self_test_failure(failures, "wake_word_runtime_not_ready");
+  }
+  if (hexe::voice::playback_stop_word_experimental_provider_configured() &&
+      !hexe::voice::playback_stop_word_on_device_available()) {
+    append_self_test_failure(failures, "stop_word_runtime_not_ready");
+  }
+
+  if (failure_reasons != nullptr) {
+    *failure_reasons = failures;
+  }
+  return failures.empty();
+}
+
+void refresh_boot_validation_status() {
+  const esp_partition_t *running_partition = esp_ota_get_running_partition();
+  const esp_partition_t *next_update_partition = esp_ota_get_next_update_partition(nullptr);
+  copy_text(g_running_partition_label, sizeof(g_running_partition_label), running_partition == nullptr ? "unknown" : running_partition->label);
+  g_rollback_available = running_partition != nullptr && next_update_partition != nullptr &&
+                         next_update_partition != running_partition;
+
+  esp_ota_img_states_t running_state = ESP_OTA_IMG_UNDEFINED;
+  const esp_err_t state_result = running_partition == nullptr
+                                     ? ESP_ERR_NOT_FOUND
+                                     : esp_ota_get_state_partition(running_partition, &running_state);
+  copy_text(
+      g_running_partition_state,
+      sizeof(g_running_partition_state),
+      state_result == ESP_OK ? ota_state_name(running_state) : "unreadable");
+  g_boot_pending_verification = state_result == ESP_OK &&
+                                (running_state == ESP_OTA_IMG_NEW || running_state == ESP_OTA_IMG_PENDING_VERIFY);
+}
+
+void validate_pending_boot_image() {
+  refresh_boot_validation_status();
+  g_boot_self_tests_passed = false;
+  g_boot_marked_valid = false;
+
+  if (!g_boot_pending_verification) {
+    copy_text(g_boot_validation_status, sizeof(g_boot_validation_status), "not_pending");
+    copy_text(g_boot_validation_error, sizeof(g_boot_validation_error), "");
+    ESP_LOGI(kTag, "OTA boot validation not pending; running partition state=%s", g_running_partition_state);
+    return;
+  }
+
+  copy_text(g_boot_validation_status, sizeof(g_boot_validation_status), "self_testing");
+  copy_text(g_boot_validation_error, sizeof(g_boot_validation_error), "");
+  std::string failures;
+  if (!local_startup_self_tests_pass(&failures)) {
+    copy_text(g_boot_validation_status, sizeof(g_boot_validation_status), "failed");
+    copy_text(g_boot_validation_error, sizeof(g_boot_validation_error), failures.c_str());
+    ESP_LOGE(kTag, "OTA boot self-tests failed (%s); requesting rollback", failures.c_str());
+    const esp_err_t rollback_result = esp_ota_mark_app_invalid_rollback_and_reboot();
+    ESP_LOGE(kTag, "OTA rollback request returned unexpectedly: %s", esp_err_to_name(rollback_result));
+    return;
+  }
+
+  g_boot_self_tests_passed = true;
+  const esp_err_t valid_result = esp_ota_mark_app_valid_cancel_rollback();
+  if (valid_result == ESP_OK) {
+    g_boot_marked_valid = true;
+    copy_text(g_boot_validation_status, sizeof(g_boot_validation_status), "valid");
+    copy_text(g_boot_validation_error, sizeof(g_boot_validation_error), "");
+    ESP_LOGI(kTag, "OTA boot self-tests passed; running image marked valid");
+  } else {
+    copy_text(g_boot_validation_status, sizeof(g_boot_validation_status), "mark_valid_failed");
+    copy_text(g_boot_validation_error, sizeof(g_boot_validation_error), esp_err_to_name(valid_result));
+    ESP_LOGE(kTag, "OTA boot self-tests passed but mark-valid failed: %s", esp_err_to_name(valid_result));
+  }
+  refresh_boot_validation_status();
+}
 
 void ota_task(void *arg) {
   (void)arg;
@@ -399,10 +539,7 @@ void ota_task(void *arg) {
 namespace hexe::system {
 
 void init_ota() {
-  const esp_err_t valid_result = esp_ota_mark_app_valid_cancel_rollback();
-  if (valid_result != ESP_OK && valid_result != ESP_ERR_OTA_ROLLBACK_INVALID_STATE) {
-    ESP_LOGW(kTag, "Failed to mark app valid: %s", esp_err_to_name(valid_result));
-  }
+  validate_pending_boot_image();
 
   if (g_ota_queue != nullptr) {
     return;
@@ -478,6 +615,38 @@ bool start_ota_update(const OtaUpdateManifest &manifest, char *error_code, size_
   app_state.ota_bytes_read = 0;
   app_state.ota_size_bytes = request.size_bytes > 0 ? request.size_bytes : 0;
   return true;
+}
+
+const char *ota_boot_validation_status() {
+  return g_boot_validation_status;
+}
+
+const char *ota_boot_validation_error() {
+  return g_boot_validation_error;
+}
+
+const char *ota_running_partition_label() {
+  return g_running_partition_label;
+}
+
+const char *ota_running_partition_state() {
+  return g_running_partition_state;
+}
+
+bool ota_boot_pending_verification() {
+  return g_boot_pending_verification;
+}
+
+bool ota_boot_self_tests_passed() {
+  return g_boot_self_tests_passed;
+}
+
+bool ota_boot_marked_valid() {
+  return g_boot_marked_valid;
+}
+
+bool ota_rollback_available() {
+  return g_rollback_available;
 }
 
 }  // namespace hexe::system

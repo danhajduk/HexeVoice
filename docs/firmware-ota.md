@@ -236,6 +236,18 @@ Endpoint integrity policy:
 
 The endpoint reports OTA integrity failures through `command.error` with exact codes such as `missing_signature`, `invalid_signature`, `unsupported_profile`, `downgrade_or_replay`, `missing_checksum`, `invalid_checksum`, `invalid_size`, and `checksum_mismatch`.
 
+After a successful OTA install, the new endpoint image boots in ESP-IDF's
+pending-verification state. Firmware now runs local startup self-tests before
+calling `esp_ota_mark_app_valid_cancel_rollback()`. The validation checks app
+metadata, the running partition, audio input/output readiness, required display
+readiness, and configured local wake/Stop keyword runtime readiness. It does not
+require Hexe Core, DNS, MQTT, Wi-Fi, or Internet reachability, so a valid image
+will not roll back only because the network is unavailable. If local validation
+fails, firmware asks ESP-IDF to mark the app invalid and reboot into the previous
+slot. Heartbeat firmware metadata reports the running partition state,
+pending-verification flag, self-test outcome, mark-valid outcome, and rollback
+availability.
+
 `firmware/export-artifacts.sh` copies the app binary to:
 
 ```text

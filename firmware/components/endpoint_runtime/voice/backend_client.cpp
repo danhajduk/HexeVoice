@@ -1450,6 +1450,14 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(ota, "signature_key_id", hexe::config::kEndpointOtaManifestKeyId);
   cJSON_AddBoolToObject(ota, "checksum_required", true);
   cJSON_AddBoolToObject(ota, "signature_required", true);
+  cJSON_AddStringToObject(ota, "boot_validation_status", hexe::system::ota_boot_validation_status());
+  cJSON_AddStringToObject(ota, "boot_validation_error", hexe::system::ota_boot_validation_error());
+  cJSON_AddStringToObject(ota, "running_partition", hexe::system::ota_running_partition_label());
+  cJSON_AddStringToObject(ota, "running_partition_state", hexe::system::ota_running_partition_state());
+  cJSON_AddBoolToObject(ota, "pending_verification", hexe::system::ota_boot_pending_verification());
+  cJSON_AddBoolToObject(ota, "startup_self_tests_passed", hexe::system::ota_boot_self_tests_passed());
+  cJSON_AddBoolToObject(ota, "marked_valid_after_self_tests", hexe::system::ota_boot_marked_valid());
+  cJSON_AddBoolToObject(ota, "rollback_available", hexe::system::ota_rollback_available());
   cJSON *modules = cJSON_AddObjectToObject(firmware, "modules");
   if (modules != nullptr) {
     add_module_status(

@@ -132,6 +132,36 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     assert "Refusing to export dirty firmware version" in export_script
 
 
+def test_firmware_ota_boot_validation_marks_valid_only_after_local_self_tests():
+    ota_source = FIRMWARE_OTA.read_text()
+    ota_header = FIRMWARE_OTA_HEADER.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert "validate_pending_boot_image()" in ota_source
+    assert "local_startup_self_tests_pass" in ota_source
+    assert "ESP_OTA_IMG_PENDING_VERIFY" in ota_source
+    assert "ESP_OTA_IMG_NEW" in ota_source
+    assert "esp_ota_mark_app_valid_cancel_rollback()" in ota_source
+    assert "esp_ota_mark_app_invalid_rollback_and_reboot()" in ota_source
+    assert "audio_input_ready()" in ota_source
+    assert "audio_output_ready()" in ota_source
+    assert "display_self_test_required()" in ota_source
+    assert "wake_word_on_device_available()" in ota_source
+    assert "playback_stop_word_on_device_available()" in ota_source
+    assert "backend_connected" not in ota_source
+    assert "voice_ws_connected" not in ota_source
+    assert "esp_wifi_connect" not in ota_source
+    assert "const char *ota_boot_validation_status()" in ota_header
+    assert "bool ota_boot_pending_verification()" in ota_header
+    assert "bool ota_boot_marked_valid()" in ota_header
+
+    assert 'cJSON_AddStringToObject(ota, "boot_validation_status", hexe::system::ota_boot_validation_status())' in backend_source
+    assert 'cJSON_AddStringToObject(ota, "running_partition_state", hexe::system::ota_running_partition_state())' in backend_source
+    assert 'cJSON_AddBoolToObject(ota, "pending_verification", hexe::system::ota_boot_pending_verification())' in backend_source
+    assert 'cJSON_AddBoolToObject(ota, "marked_valid_after_self_tests", hexe::system::ota_boot_marked_valid())' in backend_source
+    assert 'cJSON_AddBoolToObject(ota, "rollback_available", hexe::system::ota_rollback_available())' in backend_source
+
+
 def test_firmware_heartbeat_reports_partition_geometry_and_api_versions():
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
     generator_source = Path("firmware/tools/generate_board_profile_config.py").read_text()

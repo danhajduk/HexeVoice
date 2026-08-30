@@ -30,6 +30,9 @@ The current native firmware already has a useful OTA foundation:
 - signed OTA metadata and SHA-256 image verification
 - firmware-side rejection for wrong profile, downgrade/replay, bad signature,
   bad checksum, and bad size
+- pending-verification boot handling that marks an endpoint image valid only
+  after local startup self-tests pass, with rollback status reported in
+  heartbeat firmware metadata
 
 The current active S3 16 MiB partition schema is
 `firmware/partitions/s3_16m_v1.csv`, a named development layout:
