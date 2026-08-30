@@ -598,3 +598,9 @@ Chosen fix: Add a firmware-side model-bundle manager that validates staged model
 What changed: Added `voice/model_bundle`, wired wake init through active model selection, exposed model-bundle heartbeat diagnostics and activate/rollback commands, added a microWakeWord test-load helper, and updated docs/tests.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_model_bundles.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh build` passed with app size `0x197690` and 60% free. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh build` passed with app size `0x16ddf0` and 64% free. No OTA or backend restart was performed.
 ###########
+Task #281
+Step objective: Define signed mutable asset-bundle contracts for config, calibration, media, prompt, tone, and UI assets.
+Chosen fix: Add a backend-side manifest builder/validator and CLI that mirror the model-bundle signing contract while making schema compatibility, migrations, atomic activation, rollback, and cleanup policy explicit.
+What changed: Added `hexevoice.firmware_asset_bundles`, `firmware/tools/create-asset-bundle-manifest.py`, JSON schema, docs, release-artifact link, and regression tests for all supported asset bundle types.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_asset_bundles.py tests/test_firmware_model_bundles.py` passed. `python -m py_compile src/hexevoice/firmware_asset_bundles.py firmware/tools/create-asset-bundle-manifest.py` passed. No OTA or backend restart was performed.
+###########

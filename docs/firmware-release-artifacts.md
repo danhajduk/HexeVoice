@@ -28,9 +28,11 @@ SHA256SUMS
 ```
 
 Mutable endpoint assets use their own signed bundle manifests. Wake-word model
-bundles are defined in `docs/firmware-model-bundles.md`; firmware releases keep
-the embedded Alexa/Hexe and Stop models as fallbacks while later mutable bundle
-activation can update `model_a`/`model_b` without reflashing the endpoint app.
+bundles are defined in `docs/firmware-model-bundles.md`; config, calibration,
+media, prompt, tone, and UI bundles are defined in
+`docs/firmware-asset-bundles.md`. Firmware releases keep the embedded
+Alexa/Hexe and Stop models as fallbacks while later mutable bundle activation
+can update `model_a`/`model_b` without reflashing the endpoint app.
 
 The generated profile manifests include the static firmware release contract:
 application type, board profile, SoC/IDF target, flash size, PSRAM size,

@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/schemas/firmware-asset-bundle.schema.json",
+  "title": "Hexe Firmware Asset Bundle Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "asset_api_version",
+    "bundle_id",
+    "bundle_type",
+    "version",
+    "created_at_utc",
+    "release_channel",
+    "security_policy",
+    "compatibility",
+    "activation",
+    "assets",
+    "hashes",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": { "const": "hexe-asset-bundle-v1" },
+    "asset_api_version": { "const": "hexe-asset-bundle-api-v1" },
+    "bundle_id": { "type": "string", "minLength": 1 },
+    "bundle_type": { "enum": ["config", "calibration", "media", "prompt", "tone", "ui"] },
+    "version": { "type": "string", "minLength": 1 },
+    "created_at_utc": { "type": "string", "minLength": 1 },
+    "release_channel": { "type": "string", "minLength": 1 },
+    "security_policy": { "const": "signed_manifest_sha256_required" },
+    "compatibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "firmware_api_version",
+        "board_profiles",
+        "partition_schemas",
+        "schema_compatibility",
+        "migration_rules"
+      ],
+      "properties": {
+        "firmware_api_version": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "type": "string", "minLength": 1 },
+            "max": { "type": "string", "minLength": 1 }
+          }
+        },
+        "board_profiles": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "partition_schemas": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "schema_compatibility": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["mode", "current", "accepted", "migration_required"],
+          "properties": {
+            "mode": { "enum": ["exact", "compatible", "migrate"] },
+            "current": { "type": "string", "minLength": 1 },
+            "accepted": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 },
+              "uniqueItems": true
+            },
+            "migration_required": { "type": "boolean" }
+          }
+        },
+        "migration_rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/migration_rule" }
+        }
+      }
+    },
+    "activation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage",
+        "strategy",
+        "active_pointer",
+        "rollback_pointer",
+        "test_load_required",
+        "rollback_supported",
+        "cleanup_policy"
+      ],
+      "properties": {
+        "storage": {
+          "enum": ["nvs_namespace", "internal_ab_bank", "sd_versioned_directory", "spiffs_versioned_directory"]
+        },
+        "strategy": { "const": "atomic_pointer_swap" },
+        "active_pointer": { "type": "string", "minLength": 1 },
+        "rollback_pointer": { "type": "string", "minLength": 1 },
+        "test_load_required": { "const": true },
+        "rollback_supported": { "const": true },
+        "cleanup_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "keep_previous_versions",
+            "remove_unreferenced_after_success",
+            "preserve_active_and_previous"
+          ],
+          "properties": {
+            "keep_previous_versions": { "type": "integer", "minimum": 1 },
+            "remove_unreferenced_after_success": { "const": true },
+            "preserve_active_and_previous": { "const": true }
+          }
+        }
+      }
+    },
+    "assets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/asset" }
+    },
+    "hashes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/hash" }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "key_id", "scope", "value"],
+      "properties": {
+        "algorithm": { "const": "hmac-sha256" },
+        "key_id": { "type": "string", "minLength": 1 },
+        "scope": { "const": "canonical_manifest_without_signature" },
+        "value": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  },
+  "$defs": {
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "content_type", "size_bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "role": { "type": "string", "minLength": 1 },
+        "content_type": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "hash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "size_bytes", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "migration_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "from", "to", "strategy"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "strategy": { "enum": ["no_op", "rename_key", "transform_json", "regenerate"] }
+      }
+    }
+  }
+}
