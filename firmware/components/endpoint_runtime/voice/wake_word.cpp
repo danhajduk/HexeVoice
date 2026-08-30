@@ -2,6 +2,7 @@
 
 #include "esp_log.h"
 #include "voice/micro_wake_engine.h"
+#include "voice/model_bundle.h"
 
 namespace {
 constexpr char kTag[] = "hexe_wake";
@@ -58,7 +59,8 @@ size_t embedded_model_size(const uint8_t *start, const uint8_t *end) {
 namespace hexe::voice {
 
 void init_wake_word() {
-  const MicroWakeModelAsset models[] = {
+  init_model_bundle_manager();
+  const MicroWakeModelAsset embedded_models[] = {
       {MicroWakeModelRole::kWake,
        &kAlexaWakeModel,
        kAlexaWakeModelStart,
@@ -70,7 +72,12 @@ void init_wake_word() {
        embedded_model_size(kStopKeywordModelStart, kStopKeywordModelEnd),
        true},
   };
-  init_micro_wake_engine(models, sizeof(models) / sizeof(models[0]));
+  size_t selected_model_count = 0;
+  const MicroWakeModelAsset *models = active_model_bundle_models(
+      embedded_models,
+      sizeof(embedded_models) / sizeof(embedded_models[0]),
+      &selected_model_count);
+  init_micro_wake_engine(models, selected_model_count);
   ESP_LOGI(
       kTag,
       "Experimental endpoint microWakeWord provider configured: model=%s wake_word=%s alias=%s arena=%d bytes cutoff=%.2f",

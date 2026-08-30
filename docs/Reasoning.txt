@@ -592,3 +592,9 @@ Chosen fix: Add a backend-side manifest builder/validator and CLI that derive th
 What changed: Added signed `hexe-model-bundle-v1` manifest generation, HMAC-SHA256 signature helpers, compatibility/hash/threshold validation, JSON schema, model-bundle docs, release-artifact docs, and regression tests.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_model_bundles.py tests/test_firmware_voice_envelope.py` passed. No OTA, artifact export, or backend restart was performed.
 ###########
+Task #280
+Step objective: Implement mutable model-bundle activation and fallback selection.
+Chosen fix: Add a firmware-side model-bundle manager that validates staged model assets through the microWakeWord loader before atomically committing active/previous A/B pointers in NVS, with SD directory policy and embedded fallback.
+What changed: Added `voice/model_bundle`, wired wake init through active model selection, exposed model-bundle heartbeat diagnostics and activate/rollback commands, added a microWakeWord test-load helper, and updated docs/tests.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_model_bundles.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh build` passed with app size `0x197690` and 60% free. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh build` passed with app size `0x16ddf0` and 64% free. No OTA or backend restart was performed.
+###########

@@ -53,6 +53,7 @@ struct MicroWakeEngineStatus {
 };
 
 void init_micro_wake_engine(const MicroWakeModelAsset *models, size_t model_count);
+bool test_load_micro_wake_model_assets(const MicroWakeModelAsset *models, size_t model_count, char *error_code, size_t error_code_size);
 MicroWakeEngineStatus micro_wake_engine_status();
 LocalKeywordFrameDetections process_micro_wake_frame(
     const int16_t *samples,

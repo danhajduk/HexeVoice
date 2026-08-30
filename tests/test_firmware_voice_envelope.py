@@ -33,6 +33,8 @@ FIRMWARE_APP_MAIN = Path("firmware/apps/endpoint/main/app_main.cpp")
 FIRMWARE_APP_STATE = Path("firmware/components/endpoint_runtime/app_state.h")
 FIRMWARE_MICRO_WAKE_ENGINE = Path("firmware/components/endpoint_runtime/voice/micro_wake_engine.cpp")
 FIRMWARE_MICRO_WAKE_ENGINE_HEADER = Path("firmware/components/endpoint_runtime/voice/micro_wake_engine.h")
+FIRMWARE_MODEL_BUNDLE = Path("firmware/components/endpoint_runtime/voice/model_bundle.cpp")
+FIRMWARE_MODEL_BUNDLE_HEADER = Path("firmware/components/endpoint_runtime/voice/model_bundle.h")
 FIRMWARE_MICRO_WAKE_MODELS = Path("firmware/components/endpoint_runtime/voice/models")
 FRONTEND_API_CLIENT = Path("frontend/src/api/client.js")
 FRONTEND_ENDPOINT_DASHBOARD = Path("frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx")
@@ -627,9 +629,66 @@ def test_firmware_bundles_micro_wake_word_model_assets():
     assert '"voice/models/stop.tflite"' in cmake_source
     assert '_binary_alexa_tflite_start' in wake_source
     assert '_binary_stop_tflite_start' in wake_source
-    assert 'init_micro_wake_engine(models, sizeof(models) / sizeof(models[0]))' in wake_source
+    assert "active_model_bundle_models(" in wake_source
+    assert "init_micro_wake_engine(models, selected_model_count)" in wake_source
     assert 'wake_model_asset_bytes' in micro_wake_source
     assert 'stop_model_asset_bytes' in micro_wake_source
+
+
+def test_firmware_model_bundle_activation_uses_ab_banks_and_embedded_fallback():
+    bundle_source = FIRMWARE_MODEL_BUNDLE.read_text()
+    bundle_header = FIRMWARE_MODEL_BUNDLE_HEADER.read_text()
+    wake_source = Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
+    micro_wake_header = FIRMWARE_MICRO_WAKE_ENGINE_HEADER.read_text()
+    cmake_source = FIRMWARE_CMAKE.read_text()
+    docs = Path("docs/firmware-model-bundles.md").read_text()
+
+    assert "enum class ModelBundleStorageKind" in bundle_header
+    assert "struct ModelBundleCandidate" in bundle_header
+    assert "struct ModelBundleState" in bundle_header
+    assert "activate_model_bundle_candidate" in bundle_header
+    assert "rollback_model_bundle" in bundle_header
+    assert "active_model_bundle_models" in bundle_header
+
+    assert 'constexpr char kActiveBankKey[] = "active_bank"' in bundle_source
+    assert 'constexpr char kPreviousBankKey[] = "previous_bank"' in bundle_source
+    assert 'esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, label)' in bundle_source
+    assert 'find_model_partition("model_a")' in bundle_source
+    assert 'find_model_partition("model_b")' in bundle_source
+    assert 'std::strcmp(bank, "model_a") == 0 || std::strcmp(bank, "model_b") == 0' in bundle_source
+    assert 'std::strncmp(bank, "/sdcard/hexe/models/", 20)' in bundle_source
+    assert "test_load_micro_wake_model_assets(candidate.models, candidate.model_count" in bundle_source
+    assert bundle_source.index("test_load_micro_wake_model_assets(candidate.models, candidate.model_count") < bundle_source.index(
+        "if (!commit_active_bundle_pointer("
+    )
+    assert "nvs_set_str(handle, kActiveBankKey, active_bank)" in bundle_source
+    assert "nvs_set_str(handle, kPreviousBankKey, previous_bank)" in bundle_source
+    assert "nvs_commit(handle)" in bundle_source
+    assert "active_bundle_assets_not_loaded" in bundle_source
+    assert "embedded_fallback" in bundle_source
+
+    assert "init_model_bundle_manager();" in wake_source
+    assert "active_model_bundle_models(" in wake_source
+    assert "init_micro_wake_engine(models, selected_model_count)" in wake_source
+    assert "test_load_micro_wake_model_assets" in micro_wake_header
+    assert "missing_wake_model" in micro_wake_source
+    assert "missing_stop_model" in micro_wake_source
+    assert '"endpoint.model_bundle.activate"' in backend_source
+    assert "ModelBundleCandidate candidate = {}" in backend_source
+    assert "candidate.storage_kind = storage_kind" in backend_source
+    assert "activate_model_bundle_candidate(candidate, activation_error" in backend_source
+    assert '"model_bundle"' in backend_source
+    assert '"active_bank"' in backend_source
+    assert '"previous_bank"' in backend_source
+    assert '"embedded_fallback"' in backend_source
+    assert '"endpoint.model_bundle.rollback"' in backend_source
+    assert '"voice/model_bundle.cpp"' in cmake_source
+    assert "esp_partition" in cmake_source
+
+    assert "internal A/B banks named `model_a` and `model_b`" in docs
+    assert "atomic NVS updates of active and previous bundle pointers" in docs
 
 
 def test_firmware_honors_wake_election_stand_down_without_command_ack():

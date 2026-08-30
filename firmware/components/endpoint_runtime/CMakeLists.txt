@@ -79,6 +79,7 @@ idf_component_register(
     "voice/assistant_client.cpp"
     "voice/backend_client.cpp"
     "voice/micro_wake_engine.cpp"
+    "voice/model_bundle.cpp"
     "voice/stt_stream.cpp"
     "voice/wake_word.cpp"
   INCLUDE_DIRS
@@ -100,6 +101,7 @@ idf_component_register(
     esp_http_client
     esp_lcd
     esp_netif
+    esp_partition
     esp-tflite-micro
     esp_websocket_client
     esp_wifi

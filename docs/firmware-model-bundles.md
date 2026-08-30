@@ -19,9 +19,11 @@ stop.json
 stop.tflite
 ```
 
-Task 279 defines the signed package contract. Task 280 owns endpoint activation:
-staging, test-load, atomic active pointer changes, rollback, and embedded
-fallback selection.
+Task 279 defines the signed package contract. Task 280 adds the endpoint
+activation boundary: staged model assets must pass a microWakeWord test-load
+before the endpoint atomically switches the active pointer. If the active
+mutable bank is unavailable after boot, the endpoint selects the embedded
+Alexa/Hexe and Stop models instead.
 
 ## Manifest Contract
 
@@ -65,3 +67,22 @@ python firmware/tools/create-model-bundle-manifest.py \
 
 The tool refuses unsigned output during normal validation because endpoints must
 never activate mutable model assets from an unsigned manifest.
+
+## Endpoint Activation
+
+The endpoint firmware exposes a model-bundle manager behind
+`voice/model_bundle.{h,cpp}`. It supports:
+
+- internal A/B banks named `model_a` and `model_b`
+- SD versioned bundle directories rooted at `/sdcard/hexe/models/`
+- compatibility checks for `hexe-model-bundle-api-v1` and the compiled
+  partition schema
+- test-loading through the microWakeWord model validator before activation
+- atomic NVS updates of active and previous bundle pointers
+- rollback by swapping the active and previous pointers
+- embedded fallback selection when no valid mutable assets are loaded
+
+The current firmware boots with embedded fallback models. A future downloader
+can stage signed bundle files into `model_a`, `model_b`, or an SD versioned
+directory, then pass the loaded model assets to the activation manager without
+changing the wake/Stop runtime path.

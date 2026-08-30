@@ -631,6 +631,40 @@ const char *role_reason(hexe::voice::MicroWakeModelRole role) {
 
 namespace hexe::voice {
 
+bool test_load_micro_wake_model_assets(const MicroWakeModelAsset *models, size_t model_count, char *error_code, size_t error_code_size) {
+  if (models == nullptr || model_count == 0) {
+    if (error_code != nullptr && error_code_size > 0) {
+      std::snprintf(error_code, error_code_size, "%s", "missing_model_bundle_assets");
+    }
+    return false;
+  }
+  bool wake_present = false;
+  bool stop_present = false;
+  for (size_t index = 0; index < model_count; ++index) {
+    if (!validate_model_asset(models[index])) {
+      if (error_code != nullptr && error_code_size > 0) {
+        std::snprintf(error_code, error_code_size, "%s", "model_bundle_test_load_failed");
+      }
+      return false;
+    }
+    if (models[index].role == MicroWakeModelRole::kWake) {
+      wake_present = true;
+    } else if (models[index].role == MicroWakeModelRole::kPlaybackStop) {
+      stop_present = true;
+    }
+  }
+  if (!wake_present || !stop_present) {
+    if (error_code != nullptr && error_code_size > 0) {
+      std::snprintf(error_code, error_code_size, "%s", !wake_present ? "missing_wake_model" : "missing_stop_model");
+    }
+    return false;
+  }
+  if (error_code != nullptr && error_code_size > 0) {
+    error_code[0] = '\0';
+  }
+  return true;
+}
+
 void init_micro_wake_engine(const MicroWakeModelAsset *models, size_t model_count) {
   reset_micro_wake_engine();
   g_engine.initialized = true;

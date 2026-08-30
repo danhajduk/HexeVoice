@@ -45,6 +45,7 @@
 #include "system/telemetry.h"
 #include "voice/assistant_client.h"
 #include "voice/micro_wake_engine.h"
+#include "voice/model_bundle.h"
 #include "voice/stt_stream.h"
 #include "voice/tts_player.h"
 #include "voice/wake_word.h"
@@ -1164,6 +1165,37 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else if (std::strcmp(type, "endpoint.media.transfer") == 0) {
     queue_media_transfer(payload);
+  } else if (std::strcmp(type, "endpoint.model_bundle.activate") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *bundle_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "bundle_id") : nullptr;
+    cJSON *version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "version") : nullptr;
+    cJSON *bank = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "bank") : nullptr;
+    cJSON *storage = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "storage") : nullptr;
+    const char *storage_value = cJSON_IsString(storage) ? storage->valuestring : "internal_ab";
+    const hexe::voice::ModelBundleStorageKind storage_kind =
+        std::strcmp(storage_value, "sd_versioned") == 0 ? hexe::voice::ModelBundleStorageKind::kSdVersionedDirectory
+                                                        : hexe::voice::ModelBundleStorageKind::kInternalBank;
+    hexe::voice::ModelBundleCandidate candidate = {};
+    candidate.bundle_id = cJSON_IsString(bundle_id) ? bundle_id->valuestring : nullptr;
+    candidate.version = cJSON_IsString(version) ? version->valuestring : nullptr;
+    candidate.bank = cJSON_IsString(bank) ? bank->valuestring : nullptr;
+    candidate.storage_kind = storage_kind;
+    candidate.model_api_version = kModelApiVersion;
+    candidate.partition_schema = hexe::board::pins::kPartitionSchema;
+    char activation_error[64] = {};
+    if (hexe::voice::activate_model_bundle_candidate(candidate, activation_error, sizeof(activation_error))) {
+      send_command_ack(request_id, "endpoint.model_bundle.activate", "succeeded", "Model bundle activated");
+    } else {
+      send_command_error(request_id, "endpoint.model_bundle.activate", activation_error, "Model bundle activation rejected");
+    }
+  } else if (std::strcmp(type, "endpoint.model_bundle.rollback") == 0) {
+    const char *request_id = payload_request_id(payload);
+    char rollback_error[64] = {};
+    if (hexe::voice::rollback_model_bundle(rollback_error, sizeof(rollback_error))) {
+      send_command_ack(request_id, "endpoint.model_bundle.rollback", "succeeded", "Model bundle pointer rolled back");
+    } else {
+      send_command_error(request_id, "endpoint.model_bundle.rollback", rollback_error, "Model bundle rollback unavailable");
+    }
   } else if (std::strcmp(type, "endpoint.timer") == 0) {
     handle_endpoint_timer(payload);
   } else if (std::strcmp(type, "endpoint.provisioning.apply") == 0) {
@@ -1508,6 +1540,24 @@ std::string endpoint_capabilities_json() {
       cJSON_AddStringToObject(wake_word, "fallback_source", "backend_openwakeword");
       cJSON_AddStringToObject(wake_word, "timeout_policy", kWakeElectionFallbackPolicy);
       cJSON_AddStringToObject(wake_word, "unavailable_reason", hexe::voice::wake_word_unavailable_reason());
+      const hexe::voice::ModelBundleState &bundle_state = hexe::voice::model_bundle_state();
+      cJSON *model_bundle = cJSON_AddObjectToObject(wake_word, "model_bundle");
+      if (model_bundle != nullptr) {
+        cJSON_AddStringToObject(model_bundle, "status", bundle_state.status);
+        cJSON_AddStringToObject(model_bundle, "error", bundle_state.error);
+        cJSON_AddStringToObject(model_bundle, "active_source", bundle_state.active_source);
+        cJSON_AddStringToObject(model_bundle, "active_bank", bundle_state.active_bank);
+        cJSON_AddStringToObject(model_bundle, "previous_bank", bundle_state.previous_bank);
+        cJSON_AddStringToObject(model_bundle, "active_bundle_id", bundle_state.active_bundle_id);
+        cJSON_AddStringToObject(model_bundle, "active_version", bundle_state.active_version);
+        cJSON_AddBoolToObject(model_bundle, "embedded_fallback", bundle_state.embedded_fallback);
+        cJSON_AddBoolToObject(model_bundle, "rollback_available", bundle_state.rollback_available);
+        cJSON_AddBoolToObject(model_bundle, "staged_tested", bundle_state.staged_tested);
+        cJSON_AddBoolToObject(model_bundle, "internal_ab_available", bundle_state.internal_ab_available);
+        cJSON_AddBoolToObject(model_bundle, "sd_versioned_available", bundle_state.sd_versioned_available);
+        cJSON_AddNumberToObject(model_bundle, "model_a_bytes", bundle_state.model_a_bytes);
+        cJSON_AddNumberToObject(model_bundle, "model_b_bytes", bundle_state.model_b_bytes);
+      }
       cJSON *engine = cJSON_AddObjectToObject(wake_word, "micro_wake_engine");
       if (engine != nullptr) {
         cJSON_AddBoolToObject(engine, "tflm_linked", wake_engine.tflm_linked);
