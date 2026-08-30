@@ -132,6 +132,65 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     assert "Refusing to export dirty firmware version" in export_script
 
 
+def test_firmware_ota_rejects_incompatible_packages_before_download():
+    ota_source = FIRMWARE_OTA.read_text()
+    ota_header = FIRMWARE_OTA_HEADER.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    export_script = FIRMWARE_EXPORT_SCRIPT.read_text()
+
+    for field in [
+        "application_type",
+        "board_profile",
+        "soc",
+        "idf_target",
+        "flash_size",
+        "psram_size",
+        "partition_schema",
+        "app_slot_size",
+        "firmware_api_version",
+        "model_api_version",
+        "asset_api_version",
+        "calibration_schema_version",
+        "release_channel",
+        "security_policy",
+    ]:
+        assert f"const char *{field};" in ota_header
+        assert f"char {field}[" in ota_source
+        assert f'cJSON_GetObjectItem(payload, "{field}")' in backend_source
+        assert f"manifest.{field} =" in backend_source
+
+    for error_code in [
+        "wrong_application_type",
+        "board_profile_mismatch",
+        "soc_mismatch",
+        "idf_target_mismatch",
+        "flash_geometry_mismatch",
+        "psram_geometry_mismatch",
+        "partition_schema_mismatch",
+        "app_slot_size_mismatch",
+        "image_too_large",
+        "incompatible_firmware_api",
+        "incompatible_model_api",
+        "incompatible_asset_api",
+        "incompatible_calibration_schema",
+        "unsupported_release_channel",
+        "unsupported_security_policy",
+    ]:
+        assert error_code in ota_source
+
+    assert '#include "board_profile_pins.h"' in ota_source
+    assert "parse_size_label_bytes(hexe::board::pins::kAppSlotSize" in ota_source
+    assert 'string_in_set(request.release_channel, "dev", "stable")' in ota_source
+    assert "signed_manifest_sha256_required" in ota_source
+    assert "payload.append(request.application_type)" in ota_source
+    assert "payload.append(request.security_policy)" in ota_source
+    assert "verify_ota_manifest_signature(request)" in ota_source
+    assert 'FIRMWARE_RELEASE_CHANNEL="${FIRMWARE_RELEASE_CHANNEL:-dev}"' in export_script
+    assert 'FIRMWARE_SECURITY_POLICY="${FIRMWARE_SECURITY_POLICY:-signed_manifest_sha256_required}"' in export_script
+    assert '"release_channel": "${FIRMWARE_RELEASE_CHANNEL}"' in export_script
+    assert '"security_policy": "${FIRMWARE_SECURITY_POLICY}"' in export_script
+
+
 def test_firmware_ota_boot_validation_marks_valid_only_after_local_self_tests():
     ota_source = FIRMWARE_OTA.read_text()
     ota_header = FIRMWARE_OTA_HEADER.read_text()
@@ -160,6 +219,49 @@ def test_firmware_ota_boot_validation_marks_valid_only_after_local_self_tests():
     assert 'cJSON_AddBoolToObject(ota, "pending_verification", hexe::system::ota_boot_pending_verification())' in backend_source
     assert 'cJSON_AddBoolToObject(ota, "marked_valid_after_self_tests", hexe::system::ota_boot_marked_valid())' in backend_source
     assert 'cJSON_AddBoolToObject(ota, "rollback_available", hexe::system::ota_rollback_available())' in backend_source
+
+
+def test_firmware_ota_failure_paths_abort_or_rollback_without_marking_valid():
+    ota_source = FIRMWARE_OTA.read_text()
+
+    assert ota_source.index("if (!validate_ota_manifest(request, error_code, error_code_size))") < ota_source.index(
+        "xQueueSend(g_ota_queue, &request, 0)"
+    )
+    assert ota_source.index('"board_profile_mismatch"') < ota_source.index("xQueueSend(g_ota_queue, &request, 0)")
+    assert ota_source.index('"partition_schema_mismatch"') < ota_source.index("xQueueSend(g_ota_queue, &request, 0)")
+    assert ota_source.index('"image_too_large"') < ota_source.index("xQueueSend(g_ota_queue, &request, 0)")
+
+    assert "http_config.timeout_ms = kOtaTimeoutMs" in ota_source
+    assert "result = esp_https_ota_begin(&ota_config, &ota_handle)" in ota_source
+    assert "result = esp_https_ota_perform(ota_handle)" in ota_source
+    assert "result == ESP_ERR_HTTPS_OTA_IN_PROGRESS" in ota_source
+    assert "!esp_https_ota_is_complete_data_received(ota_handle)" in ota_source
+    assert "result = ESP_ERR_INVALID_SIZE" in ota_source
+    assert ota_source.index("constant_time_equal(calculated_sha256, request.sha256)") < ota_source.index(
+        "esp_https_ota_finish(ota_handle)"
+    )
+    assert "result = ESP_ERR_INVALID_CRC" in ota_source
+    assert "esp_https_ota_abort(ota_handle)" in ota_source
+    assert "app_state.ota_active = false" in ota_source
+    assert "app_state.phase = hexe::AppPhase::kError" in ota_source
+
+    assert ota_source.index("validate_pending_boot_image();") < ota_source.index(
+        "g_ota_queue = xQueueCreate(kOtaQueueDepth, sizeof(OtaRequest))"
+    )
+    assert "ESP_OTA_IMG_PENDING_VERIFY" in ota_source
+    assert "ESP_OTA_IMG_NEW" in ota_source
+    assert "esp_ota_mark_app_invalid_rollback_and_reboot()" in ota_source
+    assert "esp_ota_mark_app_valid_cancel_rollback()" in ota_source
+    assert ota_source.index("esp_ota_mark_app_invalid_rollback_and_reboot()") < ota_source.index(
+        "esp_ota_mark_app_valid_cancel_rollback()"
+    )
+
+    self_test_block = ota_source[
+        ota_source.index("bool local_startup_self_tests_pass") : ota_source.index("void refresh_boot_validation_status")
+    ]
+    assert "backend_connected" not in self_test_block
+    assert "voice_ws_connected" not in self_test_block
+    assert "esp_wifi_connect" not in self_test_block
 
 
 def test_firmware_heartbeat_reports_partition_geometry_and_api_versions():

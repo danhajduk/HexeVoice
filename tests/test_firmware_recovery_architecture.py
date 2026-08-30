@@ -13,6 +13,8 @@ RECOVERY_CONTROL_HEADER = Path("firmware/components/recovery_runtime/recovery_co
 RECOVERY_STATUS = Path("firmware/components/recovery_runtime/recovery_status.cpp")
 RECOVERY_STATUS_HEADER = Path("firmware/components/recovery_runtime/recovery_status.h")
 PARTITION_ROADMAP = Path("docs/firmware-partition-ota-roadmap.md")
+S3_8M_PARTITIONS = Path("firmware/partitions/s3_8m_v1.csv")
+P4_32M_PARTITIONS = Path("firmware/partitions/p4_32m_v1.csv")
 
 
 def test_recovery_architecture_defines_app_boundary_and_build_lane():
@@ -217,6 +219,38 @@ def test_recovery_partition_and_reset_controls_are_selective():
     assert "reset_settings" in control_source
     assert "reset_calibration" in control_source
     assert "erase_key_if_requested(handle, kWifiSsidKey)" in control_source
+
+
+def test_recovery_contract_covers_unusable_main_ota_slots():
+    doc = RECOVERY_DOC.read_text()
+    roadmap = PARTITION_ROADMAP.read_text()
+    control_source = RECOVERY_CONTROL.read_text()
+    status_source = RECOVERY_STATUS.read_text()
+
+    assert "no_valid_main_slot" in doc
+    assert "boot_failure_threshold" in doc
+    assert "devices with two unusable OTA app slots" in roadmap
+    assert "Recovery must work without Hexe Core and without an SD card." in doc
+    assert "temporary Wi-Fi AP" in doc
+    assert "POST" in doc and "/api/recovery/firmware/install" in doc
+    assert "POST" in doc and "/api/recovery/boot/select" in doc
+
+    for partition_csv in (S3_8M_PARTITIONS, P4_32M_PARTITIONS):
+        source = partition_csv.read_text()
+        assert "factory,    app,  factory" in source
+        assert "ota_0,      app,  ota_0" in source
+        assert "ota_1,      app,  ota_1" in source
+
+    assert "endpoint_runtime_linked\\\":false" in status_source
+    assert "\\\"core_required\\\":false" in status_source
+    assert "\\\"sd_required\\\":false" in status_source
+    assert "recovery_temporary_ap_active()" in status_source
+    assert "firmware_upload\\\":true" in status_source
+    assert "boot_select\\\":true" in status_source
+    assert "esp_ota_get_next_update_partition(nullptr)" in control_source
+    assert "esp_ota_abort(ota_handle)" in control_source
+    assert "Only endpoint OTA app partitions may be selected" in control_source
+    assert "partition->subtype == ESP_PARTITION_SUBTYPE_APP_FACTORY" in control_source
 
 
 def test_build_script_exports_recovery_metadata_without_endpoint_runtime():

@@ -6,7 +6,28 @@
   "additionalProperties": false,
   "required": [
     "request_id",
-    "url"
+    "url",
+    "version",
+    "profile",
+    "sha256",
+    "size_bytes",
+    "application_type",
+    "board_profile",
+    "soc",
+    "idf_target",
+    "flash_size",
+    "psram_size",
+    "partition_schema",
+    "app_slot_size",
+    "firmware_api_version",
+    "model_api_version",
+    "asset_api_version",
+    "calibration_schema_version",
+    "release_channel",
+    "security_policy",
+    "signature_algorithm",
+    "signature_key_id",
+    "manifest_signature"
   ],
   "properties": {
     "request_id": {
@@ -18,23 +39,88 @@
       "minLength": 1
     },
     "version": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": "string",
+      "minLength": 1
+    },
+    "profile": {
+      "type": "string",
+      "minLength": 1
     },
     "sha256": {
-      "type": [
-        "string",
-        "null"
-      ]
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
     },
     "size_bytes": {
-      "type": [
-        "integer",
-        "null"
-      ],
-      "minimum": 0
+      "type": "integer",
+      "minimum": 1
+    },
+    "application_type": {
+      "type": "string",
+      "const": "endpoint"
+    },
+    "board_profile": {
+      "type": "string",
+      "minLength": 1
+    },
+    "soc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "idf_target": {
+      "type": "string",
+      "minLength": 1
+    },
+    "flash_size": {
+      "type": "string",
+      "minLength": 1
+    },
+    "psram_size": {
+      "type": "string",
+      "minLength": 1
+    },
+    "partition_schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "app_slot_size": {
+      "type": "string",
+      "minLength": 1
+    },
+    "firmware_api_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_api_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "asset_api_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "calibration_schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "release_channel": {
+      "type": "string",
+      "enum": ["dev", "stable"]
+    },
+    "security_policy": {
+      "type": "string",
+      "const": "signed_manifest_sha256_required"
+    },
+    "signature_algorithm": {
+      "type": "string",
+      "const": "hmac-sha256"
+    },
+    "signature_key_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "manifest_signature": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{64}$"
     }
   }
 }

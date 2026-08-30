@@ -220,21 +220,57 @@ url
 version
 sha256
 size_bytes
+application_type
+board_profile
+soc
+idf_target
+flash_size
+psram_size
+partition_schema
+app_slot_size
+firmware_api_version
+model_api_version
+asset_api_version
+calibration_schema_version
+release_channel
+security_policy
 signature_algorithm
 signature_key_id
 ```
 
 Local development uses `HEXEVOICE_OTA_MANIFEST_KEY_ID=hexevoice-dev-v1` and `HEXEVOICE_OTA_MANIFEST_SIGNING_KEY=hexevoice-local-dev-ota-signing-key` by default. Firmware receives the same key id and signing key from `firmware/config/endpoint.yaml` through the generated `endpoint_config.h`; production deployments should set deployment-specific values before building firmware and running the backend.
 
+Generated artifacts default to `release_channel=dev` and
+`security_policy=signed_manifest_sha256_required`. Release builds may override
+the channel with `FIRMWARE_RELEASE_CHANNEL=stable`, but endpoint firmware still
+requires the signed-manifest/SHA-256 security policy.
+
 Endpoint integrity policy:
 
 - reject missing or malformed checksums before download
 - reject missing, invalid, unsupported, or unknown-key signatures before download
 - reject artifacts whose `profile` does not match the compiled board profile
+- reject artifacts whose application type is not `endpoint`
+- reject board profile, SoC, IDF target, flash size, PSRAM size, partition
+  schema, or app-slot size mismatches before download
+- reject images whose signed byte count exceeds the compiled app slot size
+- reject incompatible firmware/model/asset/calibration API versions before
+  download
+- reject unsupported release channels or security policies before download
 - reject empty, same, or lower target versions as downgrade/replay attempts
 - reject downloaded images whose byte count or SHA-256 differs from signed metadata
 
-The endpoint reports OTA integrity failures through `command.error` with exact codes such as `missing_signature`, `invalid_signature`, `unsupported_profile`, `downgrade_or_replay`, `missing_checksum`, `invalid_checksum`, `invalid_size`, and `checksum_mismatch`.
+The endpoint reports OTA integrity failures through `command.error` with exact
+codes such as `missing_signature`, `invalid_signature`, `unsupported_profile`,
+`wrong_application_type`, `board_profile_mismatch`, `soc_mismatch`,
+`idf_target_mismatch`, `flash_geometry_mismatch`,
+`psram_geometry_mismatch`, `partition_schema_mismatch`,
+`app_slot_size_mismatch`, `image_too_large`,
+`incompatible_firmware_api`, `incompatible_model_api`,
+`incompatible_asset_api`, `incompatible_calibration_schema`,
+`unsupported_release_channel`, `unsupported_security_policy`,
+`downgrade_or_replay`, `missing_checksum`, `invalid_checksum`, `invalid_size`,
+and `checksum_mismatch`.
 
 After a successful OTA install, the new endpoint image boots in ESP-IDF's
 pending-verification state. Firmware now runs local startup self-tests before
@@ -247,6 +283,21 @@ fails, firmware asks ESP-IDF to mark the app invalid and reboot into the previou
 slot. Heartbeat firmware metadata reports the running partition state,
 pending-verification flag, self-test outcome, mark-valid outcome, and rollback
 availability.
+
+Failure-path expectations:
+
+- wrong application, board, schema, geometry, API, channel, policy, version,
+  size, checksum, or signature metadata is rejected before the image is queued
+  for download
+- interrupted downloads, timeout/outage failures, incomplete bodies, and
+  checksum mismatches abort the ESP-IDF OTA handle and leave the current image
+  running
+- `esp_https_ota_finish()` is reached only after byte count and SHA-256 checks
+  match the signed manifest
+- a crash, watchdog reset, or failed local self-test before validation causes
+  ESP-IDF pending-verify rollback rather than marking the new image valid
+- devices with no usable main OTA slot require the recovery/full-flash lane
+  rather than normal endpoint OTA
 
 `firmware/export-artifacts.sh` copies the app binary to:
 

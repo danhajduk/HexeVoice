@@ -448,6 +448,8 @@ class FirmwareOtaPushResponse(BaseModel):
     model_api_version: str | None = None
     asset_api_version: str | None = None
     calibration_schema_version: str | None = None
+    release_channel: str | None = None
+    security_policy: str | None = None
     reason: str | None = None
 
 

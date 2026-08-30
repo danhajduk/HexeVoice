@@ -189,6 +189,15 @@ Recovery hashes the body while writing to the inactive OTA slot, rejects checksu
 mismatches, and selects the new endpoint partition for next boot only after
 `esp_ota_end()` succeeds. It does not automatically restart after install.
 
+When both main OTA slots are unusable, recovery remains the operator-facing
+repair surface. The recovery app must still boot independently, expose serial
+diagnostics and the temporary local HTTP/API surface, report partition state,
+accept a signed endpoint image upload for an inactive OTA slot, and allow an
+operator boot-slot selection after repair. A board/partition layout that does
+not include a factory recovery app cannot guarantee this path after both
+endpoint OTA slots become unusable; that layout requires USB/full flashing or a
+future schema migration before it can make the same recovery guarantee.
+
 Normal endpoint OTA must not update recovery during early product phases.
 Recovery app updates require USB/full service flashing until a separate signed
 recovery-update lane is designed.

@@ -8,6 +8,7 @@
 #include "app_state.h"
 #include "board/audio.h"
 #include "board/display.h"
+#include "board_profile_pins.h"
 #include "endpoint_config.h"
 #include "esp_app_desc.h"
 #include "esp_err.h"
@@ -30,6 +31,12 @@ constexpr int kOtaTaskPriority = 5;
 constexpr int kOtaTimeoutMs = 30000;
 constexpr size_t kSha256BlockBytes = 64;
 constexpr char kOtaSignatureAlgorithm[] = "hmac-sha256";
+constexpr char kFirmwareApplicationType[] = "endpoint";
+constexpr char kFirmwareApiVersion[] = "hexe-firmware-main-api-v1";
+constexpr char kModelApiVersion[] = "hexe-model-bundle-api-v1";
+constexpr char kAssetApiVersion[] = "hexe-asset-bundle-api-v1";
+constexpr char kCalibrationSchemaVersion[] = "hexe-calibration-schema-v1";
+constexpr char kRequiredSecurityPolicy[] = "signed_manifest_sha256_required";
 
 struct OtaRequest {
   char request_id[96];
@@ -38,6 +45,20 @@ struct OtaRequest {
   char profile[32];
   char sha256[65];
   int size_bytes;
+  char application_type[24];
+  char board_profile[32];
+  char soc[24];
+  char idf_target[24];
+  char flash_size[24];
+  char psram_size[24];
+  char partition_schema[24];
+  char app_slot_size[24];
+  char firmware_api_version[48];
+  char model_api_version[48];
+  char asset_api_version[48];
+  char calibration_schema_version[48];
+  char release_channel[24];
+  char security_policy[48];
   char signature_algorithm[24];
   char signature_key_id[48];
   char manifest_signature[65];
@@ -65,6 +86,38 @@ bool is_hex_digest(const char *value) {
     }
   }
   return true;
+}
+
+bool parse_size_label_bytes(const char *label, int *bytes) {
+  if (label == nullptr || label[0] == '\0' || bytes == nullptr) {
+    return false;
+  }
+  const char *cursor = label;
+  int value = 0;
+  while (std::isdigit(static_cast<unsigned char>(*cursor))) {
+    value = (value * 10) + (*cursor - '0');
+    ++cursor;
+  }
+  if (value <= 0) {
+    return false;
+  }
+  if (std::strcmp(cursor, "MiB") == 0) {
+    *bytes = value * 1024 * 1024;
+    return true;
+  }
+  if (std::strcmp(cursor, "KiB") == 0) {
+    *bytes = value * 1024;
+    return true;
+  }
+  if (std::strcmp(cursor, "B") == 0) {
+    *bytes = value;
+    return true;
+  }
+  return false;
+}
+
+bool string_in_set(const char *value, const char *first, const char *second) {
+  return value != nullptr && (std::strcmp(value, first) == 0 || std::strcmp(value, second) == 0);
 }
 
 void bytes_to_hex(const unsigned char *bytes, size_t byte_count, char *target, size_t target_size) {
@@ -137,7 +190,13 @@ std::string canonical_manifest_payload(const OtaRequest &request) {
   std::string payload;
   payload.reserve(
       std::strlen(request.profile) + std::strlen(request.url) + std::strlen(request.version) +
-      std::strlen(request.sha256) + std::strlen(request.signature_algorithm) + std::strlen(request.signature_key_id) + 32);
+      std::strlen(request.sha256) + std::strlen(request.application_type) + std::strlen(request.board_profile) +
+      std::strlen(request.soc) + std::strlen(request.idf_target) + std::strlen(request.flash_size) +
+      std::strlen(request.psram_size) + std::strlen(request.partition_schema) + std::strlen(request.app_slot_size) +
+      std::strlen(request.firmware_api_version) + std::strlen(request.model_api_version) +
+      std::strlen(request.asset_api_version) + std::strlen(request.calibration_schema_version) +
+      std::strlen(request.release_channel) + std::strlen(request.security_policy) +
+      std::strlen(request.signature_algorithm) + std::strlen(request.signature_key_id) + 64);
   payload.append(request.profile);
   payload.push_back('\n');
   payload.append(request.url);
@@ -147,6 +206,34 @@ std::string canonical_manifest_payload(const OtaRequest &request) {
   payload.append(request.sha256);
   payload.push_back('\n');
   payload.append(std::to_string(request.size_bytes));
+  payload.push_back('\n');
+  payload.append(request.application_type);
+  payload.push_back('\n');
+  payload.append(request.board_profile);
+  payload.push_back('\n');
+  payload.append(request.soc);
+  payload.push_back('\n');
+  payload.append(request.idf_target);
+  payload.push_back('\n');
+  payload.append(request.flash_size);
+  payload.push_back('\n');
+  payload.append(request.psram_size);
+  payload.push_back('\n');
+  payload.append(request.partition_schema);
+  payload.push_back('\n');
+  payload.append(request.app_slot_size);
+  payload.push_back('\n');
+  payload.append(request.firmware_api_version);
+  payload.push_back('\n');
+  payload.append(request.model_api_version);
+  payload.push_back('\n');
+  payload.append(request.asset_api_version);
+  payload.push_back('\n');
+  payload.append(request.calibration_schema_version);
+  payload.push_back('\n');
+  payload.append(request.release_channel);
+  payload.push_back('\n');
+  payload.append(request.security_policy);
   payload.push_back('\n');
   payload.append(request.signature_algorithm);
   payload.push_back('\n');
@@ -234,8 +321,71 @@ bool validate_ota_manifest(const OtaRequest &request, char *error_code, size_t e
     set_error_code(error_code, error_code_size, "unsupported_profile");
     return false;
   }
+  if (std::strcmp(request.application_type, kFirmwareApplicationType) != 0) {
+    set_error_code(error_code, error_code_size, "wrong_application_type");
+    return false;
+  }
+  if (std::strcmp(request.board_profile, hexe::board::pins::kBoardProfile) != 0 ||
+      std::strcmp(request.board_profile, request.profile) != 0) {
+    set_error_code(error_code, error_code_size, "board_profile_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.soc, hexe::board::pins::kSoc) != 0) {
+    set_error_code(error_code, error_code_size, "soc_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.idf_target, hexe::board::pins::kIdfTarget) != 0) {
+    set_error_code(error_code, error_code_size, "idf_target_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.flash_size, hexe::board::pins::kFlashSize) != 0) {
+    set_error_code(error_code, error_code_size, "flash_geometry_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.psram_size, hexe::board::pins::kPsramSize) != 0) {
+    set_error_code(error_code, error_code_size, "psram_geometry_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.partition_schema, hexe::board::pins::kPartitionSchema) != 0) {
+    set_error_code(error_code, error_code_size, "partition_schema_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.app_slot_size, hexe::board::pins::kAppSlotSize) != 0) {
+    set_error_code(error_code, error_code_size, "app_slot_size_mismatch");
+    return false;
+  }
   if (request.size_bytes <= 0) {
     set_error_code(error_code, error_code_size, "invalid_size");
+    return false;
+  }
+  int app_slot_bytes = 0;
+  if (!parse_size_label_bytes(hexe::board::pins::kAppSlotSize, &app_slot_bytes) ||
+      request.size_bytes > app_slot_bytes) {
+    set_error_code(error_code, error_code_size, "image_too_large");
+    return false;
+  }
+  if (std::strcmp(request.firmware_api_version, kFirmwareApiVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_firmware_api");
+    return false;
+  }
+  if (std::strcmp(request.model_api_version, kModelApiVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_model_api");
+    return false;
+  }
+  if (std::strcmp(request.asset_api_version, kAssetApiVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_asset_api");
+    return false;
+  }
+  if (std::strcmp(request.calibration_schema_version, kCalibrationSchemaVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_calibration_schema");
+    return false;
+  }
+  if (!string_in_set(request.release_channel, "dev", "stable")) {
+    set_error_code(error_code, error_code_size, "unsupported_release_channel");
+    return false;
+  }
+  if (std::strcmp(request.security_policy, kRequiredSecurityPolicy) != 0) {
+    set_error_code(error_code, error_code_size, "unsupported_security_policy");
     return false;
   }
   if (!is_hex_digest(request.sha256)) {
@@ -571,6 +721,72 @@ bool start_ota_update(const OtaUpdateManifest &manifest, char *error_code, size_
   std::snprintf(request.profile, sizeof(request.profile), "%s", manifest.profile == nullptr ? "" : manifest.profile);
   std::snprintf(request.sha256, sizeof(request.sha256), "%s", manifest.sha256 == nullptr ? "" : manifest.sha256);
   request.size_bytes = manifest.size_bytes;
+  std::snprintf(
+      request.application_type,
+      sizeof(request.application_type),
+      "%s",
+      manifest.application_type == nullptr ? "" : manifest.application_type);
+  std::snprintf(
+      request.board_profile,
+      sizeof(request.board_profile),
+      "%s",
+      manifest.board_profile == nullptr ? "" : manifest.board_profile);
+  std::snprintf(request.soc, sizeof(request.soc), "%s", manifest.soc == nullptr ? "" : manifest.soc);
+  std::snprintf(
+      request.idf_target,
+      sizeof(request.idf_target),
+      "%s",
+      manifest.idf_target == nullptr ? "" : manifest.idf_target);
+  std::snprintf(
+      request.flash_size,
+      sizeof(request.flash_size),
+      "%s",
+      manifest.flash_size == nullptr ? "" : manifest.flash_size);
+  std::snprintf(
+      request.psram_size,
+      sizeof(request.psram_size),
+      "%s",
+      manifest.psram_size == nullptr ? "" : manifest.psram_size);
+  std::snprintf(
+      request.partition_schema,
+      sizeof(request.partition_schema),
+      "%s",
+      manifest.partition_schema == nullptr ? "" : manifest.partition_schema);
+  std::snprintf(
+      request.app_slot_size,
+      sizeof(request.app_slot_size),
+      "%s",
+      manifest.app_slot_size == nullptr ? "" : manifest.app_slot_size);
+  std::snprintf(
+      request.firmware_api_version,
+      sizeof(request.firmware_api_version),
+      "%s",
+      manifest.firmware_api_version == nullptr ? "" : manifest.firmware_api_version);
+  std::snprintf(
+      request.model_api_version,
+      sizeof(request.model_api_version),
+      "%s",
+      manifest.model_api_version == nullptr ? "" : manifest.model_api_version);
+  std::snprintf(
+      request.asset_api_version,
+      sizeof(request.asset_api_version),
+      "%s",
+      manifest.asset_api_version == nullptr ? "" : manifest.asset_api_version);
+  std::snprintf(
+      request.calibration_schema_version,
+      sizeof(request.calibration_schema_version),
+      "%s",
+      manifest.calibration_schema_version == nullptr ? "" : manifest.calibration_schema_version);
+  std::snprintf(
+      request.release_channel,
+      sizeof(request.release_channel),
+      "%s",
+      manifest.release_channel == nullptr ? "" : manifest.release_channel);
+  std::snprintf(
+      request.security_policy,
+      sizeof(request.security_policy),
+      "%s",
+      manifest.security_policy == nullptr ? "" : manifest.security_policy);
   std::snprintf(
       request.signature_algorithm,
       sizeof(request.signature_algorithm),

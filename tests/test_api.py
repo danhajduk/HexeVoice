@@ -226,6 +226,20 @@ def test_firmware_manifest_serves_runtime_artifact(tmp_path):
         version=None,
         sha256=manifest_payload["sha256"],
         size_bytes=manifest_payload["size_bytes"],
+        application_type=manifest_payload["application_type"],
+        board_profile=manifest_payload["board_profile"],
+        soc=manifest_payload["soc"],
+        idf_target=manifest_payload["idf_target"],
+        flash_size=manifest_payload["flash_size"],
+        psram_size=manifest_payload["psram_size"],
+        partition_schema=manifest_payload["partition_schema"],
+        app_slot_size=manifest_payload["app_slot_size"],
+        firmware_api_version=manifest_payload["firmware_api_version"],
+        model_api_version=manifest_payload["model_api_version"],
+        asset_api_version=manifest_payload["asset_api_version"],
+        calibration_schema_version=manifest_payload["calibration_schema_version"],
+        release_channel=manifest_payload["release_channel"],
+        security_policy=manifest_payload["security_policy"],
         signature_algorithm=manifest_payload["signature_algorithm"],
         signature_key_id=manifest_payload["signature_key_id"],
     )
@@ -258,6 +272,8 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
                 "model_api_version": "hexe-model-bundle-api-v1",
                 "asset_api_version": "hexe-asset-bundle-api-v1",
                 "calibration_schema_version": "hexe-calibration-schema-v1",
+                "release_channel": "dev",
+                "security_policy": "signed_manifest_sha256_required",
                 "filename": "hexe_firmware_ha_voice_pe.bin",
                 "sha256": "abc123",
                 "created_at_utc": "2026-05-09T20:00:00Z",
@@ -309,6 +325,8 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     assert firmware_update["model_api_version"] == "hexe-model-bundle-api-v1"
     assert firmware_update["asset_api_version"] == "hexe-asset-bundle-api-v1"
     assert firmware_update["calibration_schema_version"] == "hexe-calibration-schema-v1"
+    assert firmware_update["release_channel"] == "dev"
+    assert firmware_update["security_policy"] == "signed_manifest_sha256_required"
     assert firmware_update["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
     assert firmware_update["signature_key_id"] == ota_manifest_key_id()
     assert len(firmware_update["manifest_signature"]) == 64
@@ -334,6 +352,8 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
                 "model_api_version": "hexe-model-bundle-api-v1",
                 "asset_api_version": "hexe-asset-bundle-api-v1",
                 "calibration_schema_version": "hexe-calibration-schema-v1",
+                "release_channel": "dev",
+                "security_policy": "signed_manifest_sha256_required",
                 "filename": "hexe_firmware.bin",
             }
         ),
@@ -387,6 +407,8 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     assert event["payload"]["model_api_version"] == "hexe-model-bundle-api-v1"
     assert event["payload"]["asset_api_version"] == "hexe-asset-bundle-api-v1"
     assert event["payload"]["calibration_schema_version"] == "hexe-calibration-schema-v1"
+    assert event["payload"]["release_channel"] == "dev"
+    assert event["payload"]["security_policy"] == "signed_manifest_sha256_required"
     assert event["payload"]["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
     assert event["payload"]["signature_key_id"] == ota_manifest_key_id()
     signed_payload = ota_manifest_signature_payload(
@@ -395,6 +417,20 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
         version=event["payload"]["version"],
         sha256=event["payload"]["sha256"],
         size_bytes=event["payload"]["size_bytes"],
+        application_type=event["payload"]["application_type"],
+        board_profile=event["payload"]["board_profile"],
+        soc=event["payload"]["soc"],
+        idf_target=event["payload"]["idf_target"],
+        flash_size=event["payload"]["flash_size"],
+        psram_size=event["payload"]["psram_size"],
+        partition_schema=event["payload"]["partition_schema"],
+        app_slot_size=event["payload"]["app_slot_size"],
+        firmware_api_version=event["payload"]["firmware_api_version"],
+        model_api_version=event["payload"]["model_api_version"],
+        asset_api_version=event["payload"]["asset_api_version"],
+        calibration_schema_version=event["payload"]["calibration_schema_version"],
+        release_channel=event["payload"]["release_channel"],
+        security_policy=event["payload"]["security_policy"],
         signature_algorithm=event["payload"]["signature_algorithm"],
         signature_key_id=event["payload"]["signature_key_id"],
     )

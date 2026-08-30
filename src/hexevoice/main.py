@@ -415,6 +415,20 @@ def ota_manifest_signature_payload(
     size_bytes: int,
     signature_algorithm: str,
     signature_key_id: str,
+    application_type: str | None = None,
+    board_profile: str | None = None,
+    soc: str | None = None,
+    idf_target: str | None = None,
+    flash_size: str | None = None,
+    psram_size: str | None = None,
+    partition_schema: str | None = None,
+    app_slot_size: str | None = None,
+    firmware_api_version: str | None = None,
+    model_api_version: str | None = None,
+    asset_api_version: str | None = None,
+    calibration_schema_version: str | None = None,
+    release_channel: str | None = None,
+    security_policy: str | None = None,
 ) -> str:
     return "\n".join(
         [
@@ -423,10 +437,43 @@ def ota_manifest_signature_payload(
             version or "",
             sha256,
             str(size_bytes),
+            application_type or "",
+            board_profile or "",
+            soc or "",
+            idf_target or "",
+            flash_size or "",
+            psram_size or "",
+            partition_schema or "",
+            app_slot_size or "",
+            firmware_api_version or "",
+            model_api_version or "",
+            asset_api_version or "",
+            calibration_schema_version or "",
+            release_channel or "",
+            security_policy or "",
             signature_algorithm,
             signature_key_id,
         ]
     )
+
+
+def ota_manifest_static_metadata(manifest: dict, profile: str) -> dict[str, str | None]:
+    return {
+        "application_type": manifest.get("application_type") or "endpoint",
+        "board_profile": profile,
+        "soc": manifest.get("soc") or manifest.get("idf_target"),
+        "idf_target": manifest.get("idf_target") or manifest.get("soc"),
+        "flash_size": manifest.get("flash_size"),
+        "psram_size": manifest.get("psram_size"),
+        "partition_schema": manifest.get("partition_schema"),
+        "app_slot_size": manifest.get("app_slot_size"),
+        "firmware_api_version": manifest.get("firmware_api_version"),
+        "model_api_version": manifest.get("model_api_version"),
+        "asset_api_version": manifest.get("asset_api_version"),
+        "calibration_schema_version": manifest.get("calibration_schema_version"),
+        "release_channel": manifest.get("release_channel") or "dev",
+        "security_policy": manifest.get("security_policy") or "signed_manifest_sha256_required",
+    }
 
 
 def sign_ota_manifest_metadata(
@@ -436,14 +483,30 @@ def sign_ota_manifest_metadata(
     version: str | None,
     sha256: str,
     size_bytes: int,
+    metadata: dict | None = None,
 ) -> dict:
     signature_key_id = ota_manifest_key_id()
+    static_metadata = metadata or {}
     payload = ota_manifest_signature_payload(
         profile=profile,
         url=url,
         version=version,
         sha256=sha256,
         size_bytes=size_bytes,
+        application_type=static_metadata.get("application_type"),
+        board_profile=static_metadata.get("board_profile"),
+        soc=static_metadata.get("soc"),
+        idf_target=static_metadata.get("idf_target"),
+        flash_size=static_metadata.get("flash_size"),
+        psram_size=static_metadata.get("psram_size"),
+        partition_schema=static_metadata.get("partition_schema"),
+        app_slot_size=static_metadata.get("app_slot_size"),
+        firmware_api_version=static_metadata.get("firmware_api_version"),
+        model_api_version=static_metadata.get("model_api_version"),
+        asset_api_version=static_metadata.get("asset_api_version"),
+        calibration_schema_version=static_metadata.get("calibration_schema_version"),
+        release_channel=static_metadata.get("release_channel"),
+        security_policy=static_metadata.get("security_policy"),
         signature_algorithm=OTA_MANIFEST_SIGNATURE_ALGORITHM,
         signature_key_id=signature_key_id,
     )
@@ -493,6 +556,7 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
         reason = "update_available"
     artifact_sha256 = hashlib.sha256(path.read_bytes()).hexdigest() if artifact_available else None
     artifact_size = path.stat().st_size if artifact_available else None
+    static_metadata = ota_manifest_static_metadata(manifest, profile)
     signed_metadata = {}
     if artifact_available and artifact_sha256 is not None and artifact_size is not None:
         signed_metadata = sign_ota_manifest_metadata(
@@ -501,6 +565,7 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
             version=latest_version,
             sha256=artifact_sha256,
             size_bytes=artifact_size,
+            metadata=static_metadata,
         )
     return {
         "board_profile": profile,
@@ -513,17 +578,7 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
         "sha256": artifact_sha256,
         "size_bytes": artifact_size,
         "image_size_bytes": artifact_size,
-        "application_type": manifest.get("application_type") or "endpoint",
-        "soc": manifest.get("soc") or manifest.get("idf_target"),
-        "idf_target": manifest.get("idf_target") or manifest.get("soc"),
-        "flash_size": manifest.get("flash_size"),
-        "psram_size": manifest.get("psram_size"),
-        "partition_schema": manifest.get("partition_schema"),
-        "app_slot_size": manifest.get("app_slot_size"),
-        "firmware_api_version": manifest.get("firmware_api_version"),
-        "model_api_version": manifest.get("model_api_version"),
-        "asset_api_version": manifest.get("asset_api_version"),
-        "calibration_schema_version": manifest.get("calibration_schema_version"),
+        **static_metadata,
         **signed_metadata,
         "created_at_utc": manifest.get("created_at_utc"),
         "reason": reason,
@@ -1868,12 +1923,14 @@ def create_app(
         size_bytes = path.stat().st_size
         static_manifest = read_firmware_artifact_manifest(app_settings, path.name)
         profile = str(static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name))
+        static_metadata = ota_manifest_static_metadata(static_manifest, profile)
         signature = sign_ota_manifest_metadata(
             profile=profile,
             url=firmware_public_url(path.name),
             version=static_manifest.get("version"),
             sha256=sha256,
             size_bytes=size_bytes,
+            metadata=static_metadata,
         )
         return {
             "filename": path.name,
@@ -1882,18 +1939,8 @@ def create_app(
             "sha256": sha256,
             "size_bytes": size_bytes,
             "image_size_bytes": size_bytes,
-            "application_type": static_manifest.get("application_type") or "endpoint",
             "board_profile": profile,
-            "soc": static_manifest.get("soc") or static_manifest.get("idf_target"),
-            "idf_target": static_manifest.get("idf_target") or static_manifest.get("soc"),
-            "flash_size": static_manifest.get("flash_size"),
-            "psram_size": static_manifest.get("psram_size"),
-            "partition_schema": static_manifest.get("partition_schema"),
-            "app_slot_size": static_manifest.get("app_slot_size"),
-            "firmware_api_version": static_manifest.get("firmware_api_version"),
-            "model_api_version": static_manifest.get("model_api_version"),
-            "asset_api_version": static_manifest.get("asset_api_version"),
-            "calibration_schema_version": static_manifest.get("calibration_schema_version"),
+            **static_metadata,
             **signature,
         }
 
@@ -1904,13 +1951,15 @@ def create_app(
         size_bytes = path.stat().st_size
         url = firmware_public_url(path.name)
         static_manifest = read_firmware_artifact_manifest(app_settings, path.name)
-        profile = payload.profile or static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name)
+        profile = str(payload.profile or static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name))
+        static_metadata = ota_manifest_static_metadata(static_manifest, profile)
         signature = sign_ota_manifest_metadata(
             profile=profile,
             url=url,
             version=payload.version,
             sha256=sha256,
             size_bytes=size_bytes,
+            metadata=static_metadata,
         )
         result = await voice_session_manager.push_ota_update(
             endpoint_id=payload.endpoint_id,
@@ -1922,20 +1971,7 @@ def create_app(
             signature_algorithm=signature["signature_algorithm"],
             signature_key_id=signature["signature_key_id"],
             manifest_signature=signature["manifest_signature"],
-            manifest_metadata={
-                "application_type": static_manifest.get("application_type") or "endpoint",
-                "board_profile": profile,
-                "soc": static_manifest.get("soc") or static_manifest.get("idf_target"),
-                "idf_target": static_manifest.get("idf_target") or static_manifest.get("soc"),
-                "flash_size": static_manifest.get("flash_size"),
-                "psram_size": static_manifest.get("psram_size"),
-                "partition_schema": static_manifest.get("partition_schema"),
-                "app_slot_size": static_manifest.get("app_slot_size"),
-                "firmware_api_version": static_manifest.get("firmware_api_version"),
-                "model_api_version": static_manifest.get("model_api_version"),
-                "asset_api_version": static_manifest.get("asset_api_version"),
-                "calibration_schema_version": static_manifest.get("calibration_schema_version"),
-            },
+            manifest_metadata=static_metadata,
         )
         return FirmwareOtaPushResponse(
             accepted=bool(result.get("accepted")),
@@ -1948,18 +1984,7 @@ def create_app(
             signature_algorithm=signature["signature_algorithm"],
             signature_key_id=signature["signature_key_id"],
             manifest_signature=signature["manifest_signature"],
-            application_type=static_manifest.get("application_type") or "endpoint",
-            board_profile=profile,
-            soc=static_manifest.get("soc") or static_manifest.get("idf_target"),
-            idf_target=static_manifest.get("idf_target") or static_manifest.get("soc"),
-            flash_size=static_manifest.get("flash_size"),
-            psram_size=static_manifest.get("psram_size"),
-            partition_schema=static_manifest.get("partition_schema"),
-            app_slot_size=static_manifest.get("app_slot_size"),
-            firmware_api_version=static_manifest.get("firmware_api_version"),
-            model_api_version=static_manifest.get("model_api_version"),
-            asset_api_version=static_manifest.get("asset_api_version"),
-            calibration_schema_version=static_manifest.get("calibration_schema_version"),
+            **static_metadata,
             reason=result.get("reason"),
         )
 

@@ -30,8 +30,11 @@ SHA256SUMS
 The generated profile manifests include the static firmware release contract:
 application type, board profile, SoC/IDF target, flash size, PSRAM size,
 partition schema, app slot size, firmware/model/asset/calibration API versions,
-image size, SHA-256, signing key id, signature algorithm, and a signature scope
-that records that OTA payloads are signed by the backend when delivered.
+release channel, security policy, image size, SHA-256, signing key id,
+signature algorithm, and a signature scope that records that OTA payloads are
+signed by the backend when delivered. The default local release channel is
+`dev`; production release jobs should set `FIRMWARE_RELEASE_CHANNEL=stable`.
+Endpoint OTA accepts only the `signed_manifest_sha256_required` security policy.
 
 Flash export folders also include `flash-esptool.sh` and
 `provisioning.env.example`. To pre-provision a device during USB flashing, copy

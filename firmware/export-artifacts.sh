@@ -15,6 +15,8 @@ FIRMWARE_API_VERSION="${FIRMWARE_API_VERSION:-hexe-firmware-main-api-v1}"
 MODEL_API_VERSION="${MODEL_API_VERSION:-hexe-model-bundle-api-v1}"
 ASSET_API_VERSION="${ASSET_API_VERSION:-hexe-asset-bundle-api-v1}"
 CALIBRATION_SCHEMA_VERSION="${CALIBRATION_SCHEMA_VERSION:-hexe-calibration-schema-v1}"
+FIRMWARE_RELEASE_CHANNEL="${FIRMWARE_RELEASE_CHANNEL:-dev}"
+FIRMWARE_SECURITY_POLICY="${FIRMWARE_SECURITY_POLICY:-signed_manifest_sha256_required}"
 GENERATED_COMPONENT_NAME="${GENERATED_COMPONENT_NAME:-endpoint_runtime}"
 
 BOOTLOADER_SRC="${BUILD_DIR}/bootloader/bootloader.bin"
@@ -192,6 +194,8 @@ firmware_api_version=${FIRMWARE_API_VERSION}
 model_api_version=${MODEL_API_VERSION}
 asset_api_version=${ASSET_API_VERSION}
 calibration_schema_version=${CALIBRATION_SCHEMA_VERSION}
+release_channel=${FIRMWARE_RELEASE_CHANNEL}
+security_policy=${FIRMWARE_SECURITY_POLICY}
 image_size_bytes=${APP_SIZE_BYTES}
 sha256=${APP_SHA256}
 signature_algorithm=hmac-sha256
@@ -226,6 +230,8 @@ if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
   "model_api_version": "${MODEL_API_VERSION}",
   "asset_api_version": "${ASSET_API_VERSION}",
   "calibration_schema_version": "${CALIBRATION_SCHEMA_VERSION}",
+  "release_channel": "${FIRMWARE_RELEASE_CHANNEL}",
+  "security_policy": "${FIRMWARE_SECURITY_POLICY}",
   "board_profile": "${BOARD_PROFILE}",
   "idf_target": "${BOARD_IDF_TARGET}",
   "soc": "${BOARD_SOC}",

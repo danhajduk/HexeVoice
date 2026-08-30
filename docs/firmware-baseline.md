@@ -67,7 +67,11 @@ they are no longer ambiguous scaffolds:
   `psram_size`, `partition_schema`, `app_slot_size`, and firmware/model/asset/
   calibration API version fields. The dashboard uses those values, falling back
   to the backend release manifest when an endpoint has not reported them yet.
-- `firmware/components/endpoint_runtime/system/ota.cpp` implements the manual OTA path from backend-pushed, signed `ota.update` events and verifies downloaded bytes before finishing OTA.
+- `firmware/components/endpoint_runtime/system/ota.cpp` implements the manual
+  OTA path from backend-pushed, signed `ota.update` events, rejects incompatible
+  application type, board/profile, SoC/IDF target, flash/PSRAM, partition, app
+  slot, API, release-channel, and security-policy metadata before download, and
+  verifies downloaded bytes before finishing OTA.
 
 ## Missing
 

@@ -52,9 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 277: Extend OTA/package validation to reject wrong application type, wrong partition schema, wrong SoC, wrong flash/PSRAM geometry, incompatible firmware API, and unsupported release/security policy before download
-[TODO] Task 278: Add OTA rollback and failure-path tests for corrupt images, wrong board/schema, crash before validation, network outage during validation, and recovery availability when both OTA slots are unusable
-
 [STOP]
 
 [TODO] Task 279: Define signed model-bundle packaging for Hexe/Alexa wake, Stop, thresholds, preprocessing metadata, compatibility ranges, hashes, and signatures

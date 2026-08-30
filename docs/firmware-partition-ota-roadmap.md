@@ -30,6 +30,10 @@ The current native firmware already has a useful OTA foundation:
 - signed OTA metadata and SHA-256 image verification
 - firmware-side rejection for wrong profile, downgrade/replay, bad signature,
   bad checksum, and bad size
+- firmware-side pre-download rejection for wrong application type, board
+  profile, SoC/IDF target, flash/PSRAM geometry, partition schema, app slot
+  size, firmware/model/asset/calibration API versions, release channel, and
+  security policy
 - pending-verification boot handling that marks an endpoint image valid only
   after local startup self-tests pass, with rollback status reported in
   heartbeat firmware metadata
@@ -233,6 +237,11 @@ Network reachability is not a validity requirement. A valid firmware must not
 roll back only because Hexe Core, DNS, MQTT, Wi-Fi, or the Internet is
 temporarily unavailable.
 
+Failure-path tests must cover metadata rejection before download, corrupt image
+bytes, truncated or interrupted downloads, crash/watchdog reset before pending
+image validation, failed local self-tests before mark-valid, and the recovery
+handoff for devices whose main OTA slots are both unusable.
+
 ### Recovery / Full-Flash Lane
 
 Use for:
@@ -309,10 +318,10 @@ Every release package should declare:
 - signing-key id
 - signature
 
-The current OTA payload already covers profile, URL, version, SHA-256, size,
-signature algorithm, key id, and manifest signature. Task 265 extends that
-contract with board-profile schema, flash geometry, app type, API compatibility,
-and package/bundle metadata.
+The current OTA payload covers profile, URL, version, SHA-256, size,
+application type, board-profile schema, SoC/IDF target, flash geometry, app slot
+size, firmware/model/asset/calibration API compatibility, release channel,
+security policy, signature algorithm, key id, and manifest signature.
 
 ## Local Validation Before Marking Valid
 
