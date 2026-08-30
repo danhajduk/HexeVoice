@@ -132,6 +132,26 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     assert "Refusing to export dirty firmware version" in export_script
 
 
+def test_firmware_heartbeat_reports_partition_geometry_and_api_versions():
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    generator_source = Path("firmware/tools/generate_board_profile_config.py").read_text()
+    dashboard_source = FRONTEND_ENDPOINT_DASHBOARD.read_text()
+
+    assert 'cJSON_AddStringToObject(firmware, "application_type", kFirmwareApplicationType)' in backend_source
+    assert 'cJSON_AddStringToObject(firmware, "partition_schema", hexe::board::pins::kPartitionSchema)' in backend_source
+    assert 'cJSON_AddStringToObject(firmware, "flash_size", hexe::board::pins::kFlashSize)' in backend_source
+    assert 'cJSON_AddStringToObject(firmware, "psram_size", hexe::board::pins::kPsramSize)' in backend_source
+    assert 'cJSON_AddStringToObject(firmware, "app_slot_size", hexe::board::pins::kAppSlotSize)' in backend_source
+    assert 'cJSON_AddStringToObject(firmware, "firmware_api_version", kFirmwareApiVersion)' in backend_source
+    assert 'cJSON_AddStringToObject(firmware, "model_api_version", kModelApiVersion)' in backend_source
+    assert 'constexpr const char *kPartitionSchema' in generator_source
+    assert 'constexpr const char *kFlashSize' in generator_source
+    assert "partitionSchema" in dashboard_source
+    assert "Flash / PSRAM" in dashboard_source
+    assert "App slot" in dashboard_source
+    assert "firmwareApi" in dashboard_source
+
+
 def test_firmware_build_uses_ota_safe_project_versions():
     build_script = FIRMWARE_BUILD_SCRIPT.read_text()
 

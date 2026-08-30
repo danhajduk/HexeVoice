@@ -210,6 +210,12 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
 
     header = header_output.read_text(encoding="utf-8")
     assert 'constexpr const char *kBoardProfile = "ha_voice_pe";' in header
+    assert 'constexpr const char *kSoc = "esp32s3";' in header
+    assert 'constexpr const char *kIdfTarget = "esp32s3";' in header
+    assert 'constexpr const char *kPartitionSchema = "s3-16m-v1";' in header
+    assert 'constexpr const char *kAppSlotSize = "4MiB";' in header
+    assert 'constexpr const char *kFlashSize = "16MiB";' in header
+    assert 'constexpr const char *kPsramSize = "8MiB";' in header
     assert "constexpr int kAudioControlSda = 5;" in header
     assert "constexpr int kAudioControlScl = 6;" in header
     assert "constexpr int kAudioControlVoiceKitAddress = 66;" in header

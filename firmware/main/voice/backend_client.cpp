@@ -17,6 +17,7 @@
 #include "board/audio.h"
 #include "board/display.h"
 #include "board/led_ring.h"
+#include "board_profile_pins.h"
 #include "board/storage.h"
 #include "board/touch.h"
 #include "board/wifi.h"
@@ -78,6 +79,11 @@ constexpr int64_t kSessionResetInputIgnoreUs = 2000000;
 constexpr int64_t kPreWakeStreamTimeoutUs = 10000000;
 constexpr int64_t kAcceptedCaptureTimeoutUs = 15000000;
 constexpr const char *kWakeElectionFallbackPolicy = "stream_after_timeout_backend_fallback";
+constexpr const char *kFirmwareApplicationType = "endpoint";
+constexpr const char *kFirmwareApiVersion = "hexe-firmware-main-api-v1";
+constexpr const char *kModelApiVersion = "hexe-model-bundle-api-v1";
+constexpr const char *kAssetApiVersion = "hexe-asset-bundle-api-v1";
+constexpr const char *kCalibrationSchemaVersion = "hexe-calibration-schema-v1";
 constexpr int kDiscoveryTimeoutMs = 1200;
 constexpr char kDiscoverySchemaVersion[] = "hexevoice.endpoint.discovery.v1";
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
@@ -1420,6 +1426,17 @@ std::string endpoint_capabilities_json() {
   cJSON_AddStringToObject(firmware, "project_name", app == nullptr ? "unknown" : app->project_name);
   cJSON_AddStringToObject(firmware, "version", app == nullptr ? firmware_version() : app->version);
   cJSON_AddStringToObject(firmware, "board_profile", hexe::config::kEndpointBoardProfile);
+  cJSON_AddStringToObject(firmware, "application_type", kFirmwareApplicationType);
+  cJSON_AddStringToObject(firmware, "soc", hexe::board::pins::kSoc);
+  cJSON_AddStringToObject(firmware, "idf_target", hexe::board::pins::kIdfTarget);
+  cJSON_AddStringToObject(firmware, "flash_size", hexe::board::pins::kFlashSize);
+  cJSON_AddStringToObject(firmware, "psram_size", hexe::board::pins::kPsramSize);
+  cJSON_AddStringToObject(firmware, "partition_schema", hexe::board::pins::kPartitionSchema);
+  cJSON_AddStringToObject(firmware, "app_slot_size", hexe::board::pins::kAppSlotSize);
+  cJSON_AddStringToObject(firmware, "firmware_api_version", kFirmwareApiVersion);
+  cJSON_AddStringToObject(firmware, "model_api_version", kModelApiVersion);
+  cJSON_AddStringToObject(firmware, "asset_api_version", kAssetApiVersion);
+  cJSON_AddStringToObject(firmware, "calibration_schema_version", kCalibrationSchemaVersion);
   cJSON_AddStringToObject(firmware, "build_date", app == nullptr ? "unknown" : app->date);
   cJSON_AddStringToObject(firmware, "build_time", app == nullptr ? "unknown" : app->time);
   cJSON_AddStringToObject(firmware, "idf_version", app == nullptr ? "unknown" : app->idf_ver);

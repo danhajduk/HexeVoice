@@ -925,6 +925,12 @@ function EndpointCapabilitiesPanel({ endpointStatus, onPushFirmwareUpdate, firmw
     .filter(([, supported]) => supported === true)
     .map(([name]) => name)
     .join(", ");
+  const partitionSchema = firmware.partition_schema || firmwareUpdate.partition_schema || "unknown";
+  const appSlotSize = firmware.app_slot_size || firmwareUpdate.app_slot_size || "unknown";
+  const flashSize = firmware.flash_size || firmwareUpdate.flash_size || "unknown";
+  const psramSize = firmware.psram_size || firmwareUpdate.psram_size || "unknown";
+  const firmwareApi = firmware.firmware_api_version || firmwareUpdate.firmware_api_version || "unknown";
+  const modelApi = firmware.model_api_version || firmwareUpdate.model_api_version || "unknown";
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -951,6 +957,22 @@ function EndpointCapabilitiesPanel({ endpointStatus, onPushFirmwareUpdate, firmw
         <div>
           <dt>Build</dt>
           <dd>{firmware.build_date && firmware.build_time ? `${firmware.build_date} ${firmware.build_time}` : "unknown"}</dd>
+        </div>
+        <div>
+          <dt>Partition</dt>
+          <dd>{partitionSchema}</dd>
+        </div>
+        <div>
+          <dt>Flash / PSRAM</dt>
+          <dd>{`${flashSize} / ${psramSize}`}</dd>
+        </div>
+        <div>
+          <dt>App slot</dt>
+          <dd>{appSlotSize}</dd>
+        </div>
+        <div>
+          <dt>APIs</dt>
+          <dd>{`${firmwareApi} / ${modelApi}`}</dd>
         </div>
         <div>
           <dt>Touchscreen</dt>

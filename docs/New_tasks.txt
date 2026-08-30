@@ -52,8 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 272: Report partition schema, flash geometry, app slot size, and firmware API compatibility in endpoint heartbeat/capabilities and backend firmware status views
-
 [STOP]
 
 [TODO] Task 273: Define the minimal recovery/provisioning app architecture, CMake target layout, shared code boundary, entry conditions, and recovery-safe diagnostics API

@@ -62,6 +62,11 @@ they are no longer ambiguous scaffolds:
 - `firmware/main/system/telemetry.cpp` reports `heartbeat_capabilities`; endpoint telemetry is carried in heartbeat capabilities rather than a separate firmware telemetry channel.
 - `firmware/main/system/power.cpp` reports `board_defaults`; low-power and shutdown commands are intentionally unavailable until a safe per-board power contract exists.
 - Heartbeat capabilities expose these decisions under `capabilities.firmware.modules` with `state: "intentional_noop"`, owner, mode, and local availability fields.
+- Heartbeat capabilities also expose the compiled firmware contract:
+  `application_type`, `board_profile`, `soc`/`idf_target`, `flash_size`,
+  `psram_size`, `partition_schema`, `app_slot_size`, and firmware/model/asset/
+  calibration API version fields. The dashboard uses those values, falling back
+  to the backend release manifest when an endpoint has not reported them yet.
 - `firmware/main/system/ota.cpp` implements the manual OTA path from backend-pushed, signed `ota.update` events and verifies downloaded bytes before finishing OTA.
 
 ## Missing

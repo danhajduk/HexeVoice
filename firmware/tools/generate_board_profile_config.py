@@ -88,8 +88,10 @@ def render_cmake(profile: dict[str, object], profile_path: Path) -> str:
 
 def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
     board_profile = str(profile["board_profile"])
+    build = profile["build"]
+    hardware = profile["hardware"]
     wiring = profile["wiring"]
-    if not isinstance(wiring, dict):
+    if not isinstance(build, dict) or not isinstance(hardware, dict) or not isinstance(wiring, dict):
         raise ValidationError("validated profile lost wiring section")
 
     lines = [
@@ -102,6 +104,12 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
         "",
         f'constexpr const char *kBoardProfile = "{board_profile}";',
         f'constexpr const char *kBoardProfilePath = "{profile_path}";',
+        f'constexpr const char *kSoc = "{hardware.get("soc")}";',
+        f'constexpr const char *kIdfTarget = "{build.get("idf_target")}";',
+        f'constexpr const char *kPartitionSchema = "{build.get("partition_schema")}";',
+        f'constexpr const char *kAppSlotSize = "{build.get("app_slot_size")}";',
+        f'constexpr const char *kFlashSize = "{hardware.get("flash_size")}";',
+        f'constexpr const char *kPsramSize = "{hardware.get("psram_size")}";',
         "constexpr int kNoPin = -1;",
         "",
     ]
