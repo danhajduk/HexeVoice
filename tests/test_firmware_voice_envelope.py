@@ -1,4 +1,5 @@
 import csv
+import hashlib
 import subprocess
 from pathlib import Path
 
@@ -32,6 +33,7 @@ FIRMWARE_APP_MAIN = Path("firmware/main/app_main.cpp")
 FIRMWARE_APP_STATE = Path("firmware/main/app_state.h")
 FIRMWARE_MICRO_WAKE_ENGINE = Path("firmware/main/voice/micro_wake_engine.cpp")
 FIRMWARE_MICRO_WAKE_ENGINE_HEADER = Path("firmware/main/voice/micro_wake_engine.h")
+FIRMWARE_MICRO_WAKE_MODELS = Path("firmware/main/voice/models")
 FRONTEND_API_CLIENT = Path("frontend/src/api/client.js")
 FRONTEND_ENDPOINT_DASHBOARD = Path("frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx")
 
@@ -324,6 +326,8 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     assert "tensorflow/lite/schema/schema_generated.h" in micro_wake_source
     assert "espressif/esp-tflite-micro" in component_manifest
     assert "esp-tflite-micro" in cmake_source
+    assert '"voice/models/alexa.tflite"' in cmake_source
+    assert '"voice/models/stop.tflite"' in cmake_source
     assert "HEXE_MICRO_WAKE_WORD_TFLM_ENABLED=1" in cmake_source
     assert "HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=0" in cmake_source
     assert "missing_micro_wake_word_feature_frontend" in micro_wake_source
@@ -334,10 +338,15 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
     assert 'cJSON_AddStringToObject(primary_model, "wake_word", wake_model.wake_word)' in backend_source
     assert 'cJSON_AddStringToObject(primary_model, "alias", wake_model.alias)' in backend_source
     assert 'cJSON_AddNumberToObject(primary_model, "tensor_arena_size", wake_model.tensor_arena_size)' in backend_source
+    assert 'cJSON_AddNumberToObject(primary_model, "model_version", wake_model.model_version)' in backend_source
+    assert 'cJSON_AddStringToObject(primary_model, "manifest_sha256", wake_model.manifest_sha256)' in backend_source
+    assert 'cJSON_AddStringToObject(primary_model, "tflite_sha256", wake_model.tflite_sha256)' in backend_source
+    assert 'cJSON_AddNumberToObject(primary_model, "tflite_size_bytes", wake_engine.wake_model_asset_bytes)' in backend_source
     assert '"micro_wake_engine"' in backend_source
     assert '"tflm_linked"' in backend_source
     assert '"feature_frontend_linked"' in backend_source
     assert '"model_asset_available"' in backend_source
+    assert '"model_asset_bytes"' in backend_source
     assert "experimental_provider_configured" in backend_source
     for source in (audio_source, pe_audio_source):
         assert "inspect_wake_word_frame" in source
@@ -373,10 +382,42 @@ def test_firmware_has_experimental_stop_keyword_provider_hook():
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "probability_cutoff", stop_model.probability_cutoff)' in backend_source
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "sliding_window_size", stop_model.sliding_window_size)' in backend_source
     assert 'cJSON_AddNumberToObject(stop_keyword_model, "tensor_arena_size", stop_model.tensor_arena_size)' in backend_source
+    assert 'cJSON_AddNumberToObject(stop_keyword_model, "model_version", stop_model.model_version)' in backend_source
+    assert 'cJSON_AddStringToObject(stop_keyword_model, "manifest_sha256", stop_model.manifest_sha256)' in backend_source
+    assert 'cJSON_AddStringToObject(stop_keyword_model, "tflite_sha256", stop_model.tflite_sha256)' in backend_source
+    assert 'cJSON_AddNumberToObject(stop_keyword_model, "tflite_size_bytes", stop_engine.stop_model_asset_bytes)' in backend_source
     for source in (audio_source, pe_audio_source):
         assert "inspect_playback_stop_word_frame" in source
         assert 'stop_playback("voice_stop")' in source
         assert 'cancel_active_session("voice_stop")' in source
+
+
+def test_firmware_bundles_micro_wake_word_model_assets():
+    wake_source = Path("firmware/main/voice/wake_word.cpp").read_text()
+    micro_wake_source = FIRMWARE_MICRO_WAKE_ENGINE.read_text()
+    cmake_source = FIRMWARE_CMAKE.read_text()
+    model_readme = (FIRMWARE_MICRO_WAKE_MODELS / "README.md").read_text()
+
+    expected_assets = {
+        "alexa.json": ("1d999798b35b1fe2606465b75ab840be51c1811d2909d5e620cefb6e96f8abd0", 377),
+        "alexa.tflite": ("9011a8155b04de858c48038529235cbc0e42e9fca05a55bf588cb80a653a723b", 55856),
+        "stop.json": ("bd13aeb1b83852649dc4fb6135cb160ff68716d14612b06f6a405342c57447aa", 375),
+        "stop.tflite": ("b5a18c4ad681a89950dfade31011e1631bdcb333e93c84519a1a63ff4f071146", 45744),
+    }
+    for filename, (expected_sha256, expected_size) in expected_assets.items():
+        data = (FIRMWARE_MICRO_WAKE_MODELS / filename).read_bytes()
+        assert hashlib.sha256(data).hexdigest() == expected_sha256
+        assert len(data) == expected_size
+        assert expected_sha256 in model_readme
+
+    assert 'EMBED_FILES' in cmake_source
+    assert '"voice/models/alexa.tflite"' in cmake_source
+    assert '"voice/models/stop.tflite"' in cmake_source
+    assert '_binary_alexa_tflite_start' in wake_source
+    assert '_binary_stop_tflite_start' in wake_source
+    assert 'init_micro_wake_engine(models, sizeof(models) / sizeof(models[0]))' in wake_source
+    assert 'wake_model_asset_bytes' in micro_wake_source
+    assert 'stop_model_asset_bytes' in micro_wake_source
 
 
 def test_firmware_honors_wake_election_stand_down_without_command_ack():

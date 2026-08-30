@@ -279,3 +279,4 @@ Task 250: Add backend wake-candidate election protocol and simulated multi-endpo
 Task 259: Add experimental endpoint microWakeWord wake provider using the official Alexa model for the initial Hexe-compatible wake path - Completed on 08/29/2026 16:45
 Task 260: Add experimental on-device Stop keyword detection for playback/session cancellation - Completed on 08/29/2026 16:48
 Task 261: Integrate native firmware microWakeWord/TFLM inference engine behind the existing local keyword hooks - Completed on 08/29/2026 17:21
+Task 262: Bundle Alexa/Hexe and Stop microWakeWord model assets into firmware builds with versioned capability reporting - Completed on 08/29/2026 17:39

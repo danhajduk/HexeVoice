@@ -15,6 +15,9 @@ struct LocalKeywordModel {
   const char *trained_languages{nullptr};
   const char *author{nullptr};
   const char *minimum_esphome_version{nullptr};
+  const char *manifest_sha256{nullptr};
+  const char *tflite_sha256{nullptr};
+  int model_version{0};
   float probability_cutoff{0.0f};
   int sliding_window_size{0};
   int feature_step_size_ms{0};

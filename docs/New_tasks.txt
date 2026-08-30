@@ -52,7 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 262: Bundle Alexa/Hexe and Stop microWakeWord model assets into firmware builds with versioned capability reporting
 [TODO] Task 263: Activate endpoint Alexa/Hexe wake detection with backend openWakeWord fallback and wake-election safety
 [TODO] Task 264: Activate endpoint Stop keyword interruption for playback/session cancel with backend STT interrupt fallback
 [STOP]

@@ -81,6 +81,9 @@ idf_component_register(
   INCLUDE_DIRS
     "."
     "${HEXE_GENERATED_DIR}"
+  EMBED_FILES
+    "voice/models/alexa.tflite"
+    "voice/models/stop.tflite"
   REQUIRES
     app_update
     esp_app_format

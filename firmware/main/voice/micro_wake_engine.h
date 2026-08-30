@@ -26,6 +26,8 @@ struct MicroWakeEngineStatus {
   bool initialized{false};
   bool wake_model_asset_available{false};
   bool stop_model_asset_available{false};
+  size_t wake_model_asset_bytes{0};
+  size_t stop_model_asset_bytes{0};
   bool wake_ready{false};
   bool stop_ready{false};
   const char *wake_reason{nullptr};

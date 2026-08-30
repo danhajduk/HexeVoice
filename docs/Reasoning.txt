@@ -532,3 +532,9 @@ Chosen fix: Link Espressif's `esp-tflite-micro`/ESP-NN runtime into the firmware
 What changed: Added `voice/micro_wake_engine.{h,cpp}`, routed wake/Stop frame inspection through the adapter, exposed `micro_wake_engine` heartbeat diagnostics for TFLM, feature frontend, initialization, model assets, and readiness, and locked the new firmware dependency graph.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_validation_matrix.py tests/test_firmware_endpoint_config.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh` passed with app size `0x10d660` and 74% free; `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh` passed with app size `0x138380` and 70% free.
 ###########
+Task #262
+Step objective: Bundle Alexa/Hexe and Stop microWakeWord model assets into firmware builds with versioned capability reporting.
+Chosen fix: Embed the official Alexa v2 and Stop v2 TFLite assets with ESP-IDF `EMBED_FILES`, keep the source JSON manifests beside them for provenance, and expose version/hash/size metadata through heartbeat capability fields while leaving local readiness gated on the pending feature-preprocessing bridge.
+What changed: Added `firmware/main/voice/models/*`, registered embedded TFLite symbols in `wake_word.cpp`, reported asset bytes and model hashes/version in firmware capabilities, and added hash/size source tests.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_voice_envelope.py tests/test_firmware_validation_matrix.py tests/test_firmware_endpoint_config.py` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=ha_voice_pe ./firmware/build.sh` passed with app size `0x1265e0` and 71% free; `ALLOW_DIRTY_FIRMWARE_BUILD=1 HEXE_BOARD_PROFILE=esp_box_3 ./firmware/build.sh` passed with app size `0x151310` and 67% free.
+###########

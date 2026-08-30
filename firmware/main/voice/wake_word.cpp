@@ -7,6 +7,11 @@ namespace {
 constexpr char kTag[] = "hexe_wake";
 constexpr int kWakeElectionTimeoutMs = 300;
 
+extern const uint8_t kAlexaWakeModelStart[] asm("_binary_alexa_tflite_start");
+extern const uint8_t kAlexaWakeModelEnd[] asm("_binary_alexa_tflite_end");
+extern const uint8_t kStopKeywordModelStart[] asm("_binary_stop_tflite_start");
+extern const uint8_t kStopKeywordModelEnd[] asm("_binary_stop_tflite_end");
+
 constexpr hexe::voice::LocalKeywordModel kAlexaWakeModel = {
     "alexa",
     "Alexa",
@@ -17,6 +22,9 @@ constexpr hexe::voice::LocalKeywordModel kAlexaWakeModel = {
     "en",
     "Kevin Ahrendt",
     "2024.7.0",
+    "1d999798b35b1fe2606465b75ab840be51c1811d2909d5e620cefb6e96f8abd0",
+    "9011a8155b04de858c48038529235cbc0e42e9fca05a55bf588cb80a653a723b",
+    2,
     0.90f,
     5,
     10,
@@ -33,17 +41,36 @@ constexpr hexe::voice::LocalKeywordModel kStopKeywordModel = {
     "en",
     "Kevin Ahrendt",
     "2024.7.0",
+    "bd13aeb1b83852649dc4fb6135cb160ff68716d14612b06f6a405342c57447aa",
+    "b5a18c4ad681a89950dfade31011e1631bdcb333e93c84519a1a63ff4f071146",
+    2,
     0.50f,
     5,
     10,
     21000,
 };
+
+size_t embedded_model_size(const uint8_t *start, const uint8_t *end) {
+  return start < end ? static_cast<size_t>(end - start) : 0;
+}
 }
 
 namespace hexe::voice {
 
 void init_wake_word() {
-  init_micro_wake_engine(nullptr, 0);
+  const MicroWakeModelAsset models[] = {
+      {MicroWakeModelRole::kWake,
+       &kAlexaWakeModel,
+       kAlexaWakeModelStart,
+       embedded_model_size(kAlexaWakeModelStart, kAlexaWakeModelEnd),
+       true},
+      {MicroWakeModelRole::kPlaybackStop,
+       &kStopKeywordModel,
+       kStopKeywordModelStart,
+       embedded_model_size(kStopKeywordModelStart, kStopKeywordModelEnd),
+       true},
+  };
+  init_micro_wake_engine(models, sizeof(models) / sizeof(models[0]));
   ESP_LOGI(
       kTag,
       "Experimental endpoint microWakeWord provider configured: model=%s wake_word=%s alias=%s arena=%d bytes cutoff=%.2f",

@@ -1369,6 +1369,7 @@ std::string endpoint_capabilities_json() {
         cJSON_AddBoolToObject(engine, "feature_frontend_linked", wake_engine.feature_frontend_linked);
         cJSON_AddBoolToObject(engine, "initialized", wake_engine.initialized);
         cJSON_AddBoolToObject(engine, "model_asset_available", wake_engine.wake_model_asset_available);
+        cJSON_AddNumberToObject(engine, "model_asset_bytes", wake_engine.wake_model_asset_bytes);
         cJSON_AddBoolToObject(engine, "ready", wake_engine.wake_ready);
         cJSON_AddStringToObject(engine, "reason", wake_engine.wake_reason);
       }
@@ -1383,6 +1384,10 @@ std::string endpoint_capabilities_json() {
         cJSON_AddStringToObject(primary_model, "trained_languages", wake_model.trained_languages);
         cJSON_AddStringToObject(primary_model, "author", wake_model.author);
         cJSON_AddStringToObject(primary_model, "minimum_esphome_version", wake_model.minimum_esphome_version);
+        cJSON_AddNumberToObject(primary_model, "model_version", wake_model.model_version);
+        cJSON_AddStringToObject(primary_model, "manifest_sha256", wake_model.manifest_sha256);
+        cJSON_AddStringToObject(primary_model, "tflite_sha256", wake_model.tflite_sha256);
+        cJSON_AddNumberToObject(primary_model, "tflite_size_bytes", wake_engine.wake_model_asset_bytes);
         cJSON_AddNumberToObject(primary_model, "probability_cutoff", wake_model.probability_cutoff);
         cJSON_AddNumberToObject(primary_model, "sliding_window_size", wake_model.sliding_window_size);
         cJSON_AddNumberToObject(primary_model, "feature_step_size_ms", wake_model.feature_step_size_ms);
@@ -1413,6 +1418,7 @@ std::string endpoint_capabilities_json() {
         cJSON_AddBoolToObject(engine, "feature_frontend_linked", stop_engine.feature_frontend_linked);
         cJSON_AddBoolToObject(engine, "initialized", stop_engine.initialized);
         cJSON_AddBoolToObject(engine, "model_asset_available", stop_engine.stop_model_asset_available);
+        cJSON_AddNumberToObject(engine, "model_asset_bytes", stop_engine.stop_model_asset_bytes);
         cJSON_AddBoolToObject(engine, "ready", stop_engine.stop_ready);
         cJSON_AddStringToObject(engine, "reason", stop_engine.stop_reason);
       }
@@ -1427,6 +1433,10 @@ std::string endpoint_capabilities_json() {
         cJSON_AddStringToObject(stop_keyword_model, "trained_languages", stop_model.trained_languages);
         cJSON_AddStringToObject(stop_keyword_model, "author", stop_model.author);
         cJSON_AddStringToObject(stop_keyword_model, "minimum_esphome_version", stop_model.minimum_esphome_version);
+        cJSON_AddNumberToObject(stop_keyword_model, "model_version", stop_model.model_version);
+        cJSON_AddStringToObject(stop_keyword_model, "manifest_sha256", stop_model.manifest_sha256);
+        cJSON_AddStringToObject(stop_keyword_model, "tflite_sha256", stop_model.tflite_sha256);
+        cJSON_AddNumberToObject(stop_keyword_model, "tflite_size_bytes", stop_engine.stop_model_asset_bytes);
         cJSON_AddNumberToObject(stop_keyword_model, "probability_cutoff", stop_model.probability_cutoff);
         cJSON_AddNumberToObject(stop_keyword_model, "sliding_window_size", stop_model.sliding_window_size);
         cJSON_AddNumberToObject(stop_keyword_model, "feature_step_size_ms", stop_model.feature_step_size_ms);

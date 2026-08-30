@@ -78,6 +78,16 @@ bool role_asset_available(hexe::voice::MicroWakeModelRole role) {
   return false;
 }
 
+size_t role_asset_bytes(hexe::voice::MicroWakeModelRole role) {
+  for (size_t index = 0; index < g_engine.model_count; ++index) {
+    const EngineModel &model = g_engine.models[index];
+    if (model.role == role && model.valid) {
+      return model.model_size;
+    }
+  }
+  return 0;
+}
+
 bool role_ready(hexe::voice::MicroWakeModelRole role) {
   if (!kTflmLinked || !kFeatureFrontendLinked || !g_engine.initialized) {
     return false;
@@ -159,6 +169,8 @@ MicroWakeEngineStatus micro_wake_engine_status() {
   status.initialized = g_engine.initialized;
   status.wake_model_asset_available = role_asset_available(MicroWakeModelRole::kWake);
   status.stop_model_asset_available = role_asset_available(MicroWakeModelRole::kPlaybackStop);
+  status.wake_model_asset_bytes = role_asset_bytes(MicroWakeModelRole::kWake);
+  status.stop_model_asset_bytes = role_asset_bytes(MicroWakeModelRole::kPlaybackStop);
   status.wake_ready = role_ready(MicroWakeModelRole::kWake);
   status.stop_ready = role_ready(MicroWakeModelRole::kPlaybackStop);
   status.wake_reason = role_reason(MicroWakeModelRole::kWake);
