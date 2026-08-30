@@ -2830,6 +2830,7 @@ bool submit_wake_candidate(const WakeCandidateMetrics &candidate) {
   envelope.reserve(std::strlen(rendered) + 384);
   append_event_header(envelope, "wake.candidate", g_session_id.c_str(), g_sequence++);
   envelope.append(rendered);
+  envelope.append("}");
   cJSON_free(rendered);
 
   const bool sent = send_ws_text(envelope);

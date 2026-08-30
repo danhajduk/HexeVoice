@@ -291,6 +291,7 @@ def test_firmware_wake_election_candidate_wait_and_fallback_contract():
     assert "bool submit_wake_candidate(const WakeCandidateMetrics &candidate);" in backend_header
     assert "submit_wake_candidate(const WakeCandidateMetrics &candidate)" in backend_source
     assert 'append_event_header(envelope, "wake.candidate", g_session_id.c_str(), g_sequence++);' in backend_source
+    assert 'envelope.append(rendered);\n  envelope.append("}");' in backend_source
     assert 'ensure_session_started("unknown")' in backend_source
     assert '"candidate_id"' in backend_source
     assert '"firmware_timeout_policy"' in backend_source
