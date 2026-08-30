@@ -48,6 +48,9 @@ the committed profiles.
 
 ## Supported Initial Profiles
 
+For a side-by-side hardware comparison, see
+`docs/firmware-board-comparison.md`.
+
 | Profile | Status | SoC | Flash / PSRAM | Display | Audio Path | Partition Schema |
 | --- | --- | --- | --- | --- | --- | --- |
 | `ha_voice_pe` | active | ESP32-S3 | 16 MiB / 8 MiB | none | XMOS XU316 input, TI AIC3204 output | `s3-16m-v1` |
