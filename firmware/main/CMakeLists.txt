@@ -3,12 +3,19 @@ if(NOT EXISTS "${HEXE_ENDPOINT_CONFIG}")
   set(HEXE_ENDPOINT_CONFIG "${CMAKE_CURRENT_LIST_DIR}/../config/endpoint.example.yaml")
 endif()
 set(HEXE_ENDPOINT_CONFIG_GENERATOR "${CMAKE_CURRENT_LIST_DIR}/../tools/generate_endpoint_config.py")
+set(HEXE_BOARD_PROFILE_ROOT "${CMAKE_CURRENT_LIST_DIR}/../boards")
+set(HEXE_BOARD_PROFILE_GENERATOR "${CMAKE_CURRENT_LIST_DIR}/../tools/generate_board_profile_config.py")
+set(HEXE_BOARD_PROFILE_VALIDATOR "${CMAKE_CURRENT_LIST_DIR}/../tools/validate_board_profiles.py")
+file(GLOB HEXE_BOARD_PROFILE_CONFIGS "${HEXE_BOARD_PROFILE_ROOT}/*/board.yaml")
 set_property(
   DIRECTORY
   APPEND
   PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${HEXE_ENDPOINT_CONFIG}"
     "${HEXE_ENDPOINT_CONFIG_GENERATOR}"
+    "${HEXE_BOARD_PROFILE_GENERATOR}"
+    "${HEXE_BOARD_PROFILE_VALIDATOR}"
+    ${HEXE_BOARD_PROFILE_CONFIGS}
 )
 
 if(DEFINED ENV{HEXE_BOARD_PROFILE} AND NOT "$ENV{HEXE_BOARD_PROFILE}" STREQUAL "")
@@ -18,6 +25,26 @@ elseif(NOT DEFINED HEXE_BOARD_PROFILE OR HEXE_BOARD_PROFILE STREQUAL "")
 endif()
 
 set(HEXE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+execute_process(
+  COMMAND python3
+    "${HEXE_BOARD_PROFILE_GENERATOR}"
+    --profile-root "${HEXE_BOARD_PROFILE_ROOT}"
+    --board-profile "${HEXE_BOARD_PROFILE}"
+    --output "${HEXE_GENERATED_DIR}/board_profile_config.cmake"
+  RESULT_VARIABLE HEXE_BOARD_PROFILE_CONFIG_RESULT
+)
+if(NOT HEXE_BOARD_PROFILE_CONFIG_RESULT EQUAL 0)
+  message(FATAL_ERROR "Failed to generate board profile config for ${HEXE_BOARD_PROFILE}")
+endif()
+include("${HEXE_GENERATED_DIR}/board_profile_config.cmake")
+
+if(NOT HEXE_BOARD_ADAPTER_BUILDABLE)
+  message(FATAL_ERROR "Board profile ${HEXE_BOARD_PROFILE} is defined but its firmware adapters are not buildable yet")
+endif()
+if(NOT HEXE_BOARD_SRCS)
+  message(FATAL_ERROR "Board profile ${HEXE_BOARD_PROFILE} did not define any firmware adapter source files")
+endif()
+
 execute_process(
   COMMAND python3
     "${HEXE_ENDPOINT_CONFIG_GENERATOR}"
@@ -30,34 +57,9 @@ if(NOT HEXE_ENDPOINT_CONFIG_RESULT EQUAL 0)
   message(FATAL_ERROR "Failed to generate endpoint_config.h from ${HEXE_ENDPOINT_CONFIG}")
 endif()
 
-set(HEXE_BOARD_SRCS
-  "board/audio.cpp"
-  "board/buttons.cpp"
-  "board/display.cpp"
-  "board/led_ring.cpp"
-  "board/storage.cpp"
-  "board/touch.cpp"
-  "voice/tts_player.cpp"
-)
-
-if(HEXE_BOARD_PROFILE STREQUAL "ha_voice_pe")
-  set(HEXE_BOARD_SRCS
-    "board/audio_ha_voice_pe.cpp"
-    "board/buttons_ha_voice_pe.cpp"
-    "board/display_none.cpp"
-    "board/led_ring_ha_voice_pe.cpp"
-    "board/storage_nvs_only.cpp"
-    "board/touch_none.cpp"
-    "voice/tts_player_ha_voice_pe.cpp"
-  )
-  set(HEXE_BOARD_DEFINITIONS HEXE_BOARD_PROFILE_HA_VOICE_PE=1)
-elseif(HEXE_BOARD_PROFILE STREQUAL "esp_box_3")
-  set(HEXE_BOARD_DEFINITIONS HEXE_BOARD_PROFILE_ESP_BOX_3=1)
-else()
-  message(FATAL_ERROR "Unsupported HEXE_BOARD_PROFILE: ${HEXE_BOARD_PROFILE}")
-endif()
-
 message(STATUS "Hexe board profile: ${HEXE_BOARD_PROFILE}")
+message(STATUS "Hexe board profile file: ${HEXE_BOARD_PROFILE_PATH}")
+message(STATUS "Hexe board partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
 
 idf_component_register(
   SRCS

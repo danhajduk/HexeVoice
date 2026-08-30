@@ -24,6 +24,13 @@ Column names include the source YAML path where that helps future refactors.
 | `build.recovery_app` | `true` | `true` | `true` | `true` |
 | `build.compile_definitions` | `HEXE_BOARD_PROFILE_HA_VOICE_PE=1` | `HEXE_BOARD_PROFILE_ESP_BOX_3=1` | `HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2=1` | `HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B=1` |
 
+## Firmware Adapters
+
+| YAML Field | HA Voice PE | ESP32-S3-BOX-3 | Waveshare 1.85C BOX V2 | Waveshare P4 7B |
+| --- | --- | --- | --- | --- |
+| `adapters.buildable` | `true` | `true` | `false` | `false` |
+| `adapters.source_files` | `board/audio_ha_voice_pe.cpp`, `board/buttons_ha_voice_pe.cpp`, `board/display_none.cpp`, `board/led_ring_ha_voice_pe.cpp`, `board/storage_nvs_only.cpp`, `board/touch_none.cpp`, `voice/tts_player_ha_voice_pe.cpp` | `board/audio.cpp`, `board/buttons.cpp`, `board/display.cpp`, `board/led_ring.cpp`, `board/storage.cpp`, `board/touch.cpp`, `voice/tts_player.cpp` | none | none |
+
 ## Hardware
 
 | YAML Field | HA Voice PE | ESP32-S3-BOX-3 | Waveshare 1.85C BOX V2 | Waveshare P4 7B |

@@ -95,6 +95,16 @@ vad:
     default_energy_threshold: 900
     default_pause_ms: 190
     silence_hold_ms: 2500
+adapters:
+  buildable: true
+  source_files:
+    - board/audio.cpp
+    - board/buttons.cpp
+    - board/display.cpp
+    - board/led_ring.cpp
+    - board/storage.cpp
+    - board/touch.cpp
+    - voice/tts_player.cpp
 storage:
   internal: nvs_and_spiffs
   sd_card:

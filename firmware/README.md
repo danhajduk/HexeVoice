@@ -78,7 +78,8 @@ cd firmware
 ./build.sh
 ```
 
-By default, `./build.sh` builds both supported profiles:
+By default, `./build.sh` discovers the buildable board profiles from
+`firmware/boards/*/board.yaml` and builds them:
 
 - ESP-BOX-3: build directory `firmware/build`, flash export `firmware/export`, OTA binary `runtime/firmware/hexe_firmware_esp_box_3.bin`, and legacy OTA binary `runtime/firmware/hexe_firmware.bin`.
 - Home Assistant Voice Preview Edition: build directory `firmware/build-ha-voice-pe`, flash export `firmware/export-ha-voice-pe`, and OTA binary `runtime/firmware/hexe_firmware_ha_voice_pe.bin`.
@@ -89,7 +90,7 @@ It lists required automated and manual checks for audio streaming, wake
 acceptance, TTS playback, display or LED-ring state, OTA/media, mute/volume, and
 reconnect behavior.
 
-The shared `firmware/export` folder also receives the profile-named app binaries for both builds. To build just one profile:
+The shared `firmware/export` folder also receives the profile-named app binaries for both builds. Planned board profiles can be validated before their adapters are buildable. To build just one active profile:
 
 ```bash
 cd firmware

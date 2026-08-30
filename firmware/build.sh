@@ -9,6 +9,7 @@ CONVERTER_PYTHON="python3"
 RUNTIME_FIRMWARE_DIR="${RUNTIME_FIRMWARE_DIR:-${ROOT_DIR}/../runtime/firmware}"
 OTA_API_BASE="${OTA_API_BASE:-http://127.0.0.1:${API_PORT:-9004}}"
 COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR:-${ROOT_DIR}/export}"
+BOARD_PROFILE_ROOT="${BOARD_PROFILE_ROOT:-${ROOT_DIR}/boards}"
 
 usage() {
   cat <<EOF
@@ -68,10 +69,58 @@ print("" if value is None else value)
 PY
 }
 
+board_profile_value() {
+  local profile="$1"
+  local dotted_key="$2"
+  "${CONVERTER_PYTHON}" - "${BOARD_PROFILE_ROOT}" "${profile}" "${dotted_key}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+profile = sys.argv[2]
+dotted_key = sys.argv[3]
+sys.path.insert(0, str(root.parent / "tools"))
+from validate_board_profiles import load_profile, validate_profile  # noqa: E402
+
+path = root / profile / "board.yaml"
+payload = load_profile(path)
+validate_profile(payload, path)
+value = payload
+for key in dotted_key.split("."):
+    value = value[key]
+if isinstance(value, bool):
+    print("true" if value else "false")
+elif value is None:
+    print("")
+else:
+    print(value)
+PY
+}
+
+buildable_profiles() {
+  "${CONVERTER_PYTHON}" - "${BOARD_PROFILE_ROOT}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root.parent / "tools"))
+from validate_board_profiles import discover_profiles, load_profile, validate_profile  # noqa: E402
+
+profiles = []
+for path in discover_profiles(root):
+    payload = load_profile(path)
+    validate_profile(payload, path)
+    if payload["adapters"]["buildable"]:
+        profiles.append(payload["board_profile"])
+print(" ".join(profiles))
+PY
+}
+
 profile_build_dir() {
   case "$1" in
     esp_box_3) echo "${BUILD_DIR:-${ROOT_DIR}/build}" ;;
     ha_voice_pe) echo "${BUILD_DIR:-${ROOT_DIR}/build-ha-voice-pe}" ;;
+    *) echo "${BUILD_DIR:-${ROOT_DIR}/build-$1}" ;;
   esac
 }
 
@@ -79,6 +128,7 @@ profile_export_dir() {
   case "$1" in
     esp_box_3) echo "${EXPORT_DIR:-${ROOT_DIR}/export}" ;;
     ha_voice_pe) echo "${EXPORT_DIR:-${ROOT_DIR}/export-ha-voice-pe}" ;;
+    *) echo "${EXPORT_DIR:-${ROOT_DIR}/export-$1}" ;;
   esac
 }
 
@@ -118,14 +168,15 @@ require_clean_firmware_source() {
 }
 
 validate_profile() {
-  case "$1" in
-    esp_box_3|ha_voice_pe)
-      ;;
-    *)
-      echo "Unsupported HEXE_BOARD_PROFILE: $1" >&2
-      exit 1
-      ;;
-  esac
+  local profile="$1"
+  if [[ ! -f "${BOARD_PROFILE_ROOT}/${profile}/board.yaml" ]]; then
+    echo "Unsupported HEXE_BOARD_PROFILE: ${profile}" >&2
+    exit 1
+  fi
+  if [[ "$(board_profile_value "${profile}" adapters.buildable)" != "true" ]]; then
+    echo "Board profile ${profile} is defined but its firmware adapters are not buildable yet." >&2
+    exit 1
+  fi
 }
 
 build_profile() {
@@ -232,18 +283,20 @@ fi
 case "${requested_profile}" in
   all)
     if [[ "${COMMAND}" == "push" ]]; then
-      echo "push mode requires a single HEXE_BOARD_PROFILE: esp_box_3 or ha_voice_pe" >&2
+      echo "push mode requires a single buildable HEXE_BOARD_PROFILE." >&2
       exit 1
     fi
-    build_profile esp_box_3
-    build_profile ha_voice_pe
-    ;;
-  esp_box_3|ha_voice_pe)
-    build_profile "${requested_profile}"
+    read -r -a profiles_to_build <<< "$(buildable_profiles)"
+    if [[ "${#profiles_to_build[@]}" -eq 0 ]]; then
+      echo "No buildable board profiles found in ${BOARD_PROFILE_ROOT}." >&2
+      exit 1
+    fi
+    for profile in "${profiles_to_build[@]}"; do
+      build_profile "${profile}"
+    done
     ;;
   *)
-    echo "Unsupported HEXE_BOARD_PROFILE: ${requested_profile}" >&2
-    exit 1
+    build_profile "${requested_profile}"
     ;;
 esac
 

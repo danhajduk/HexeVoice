@@ -17,6 +17,7 @@ Use board profiles for:
 - audio frontend/output hardware
 - hardware/audio-frontend DSP features
 - firmware VAD capability and algorithm
+- firmware adapter source-file selection
 - storage, controls, and indicators
 - wake/Stop model support
 - capability defaults reported by firmware
@@ -91,6 +92,7 @@ The validator checks:
 - display feature flags matching display dimensions
 - audio feature flags matching input/output declarations
 - firmware VAD availability, status, algorithm, and timing defaults
+- adapter buildability and adapter source-file existence for buildable profiles
 - wake model contract: Alexa as the initial Hexe alias, Stop as interruption
   model, backend fallback enabled
 - storage capability consistency
@@ -148,6 +150,16 @@ vad:
     default_energy_threshold: 900
     default_pause_ms: 190
     silence_hold_ms: 1200
+adapters:
+  buildable: true
+  source_files:
+    - board/audio_ha_voice_pe.cpp
+    - board/buttons_ha_voice_pe.cpp
+    - board/display_none.cpp
+    - board/led_ring_ha_voice_pe.cpp
+    - board/storage_nvs_only.cpp
+    - board/touch_none.cpp
+    - voice/tts_player_ha_voice_pe.cpp
 wake:
   local_micro_wake_word: true
   primary_model: alexa
@@ -158,5 +170,5 @@ wake:
 
 ## Next Step
 
-Task 267 should consume these profiles from firmware build tooling and move
+Task 267 consumes `adapters.source_files` from firmware build tooling and moves
 board-specific source selection behind profile-driven adapters.

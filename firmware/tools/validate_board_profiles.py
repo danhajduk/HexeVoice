@@ -231,6 +231,7 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
         "display",
         "audio",
         "vad",
+        "adapters",
         "wake",
         "storage",
         "controls",
@@ -356,6 +357,24 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
     expected_vad_status = "active" if support_status == "active" else "planned"
     if features["microphone"] and firmware_vad.get("status") != expected_vad_status:
         raise ValidationError(f"{board_profile}: vad.firmware.status must be {expected_vad_status}")
+
+    adapters = require_mapping(profile, "adapters")
+    if not isinstance(adapters.get("buildable"), bool):
+        raise ValidationError(f"{board_profile}: adapters.buildable must be true or false")
+    source_files = adapters.get("source_files")
+    if not isinstance(source_files, list):
+        raise ValidationError(f"{board_profile}: adapters.source_files must be a list")
+    if adapters["buildable"] and not source_files:
+        raise ValidationError(f"{board_profile}: buildable profiles must define adapter source files")
+    source_base = None
+    if path.parent.parent.name == "boards":
+        source_base = path.parent.parent.parent / "main"
+    for source in source_files:
+        if not isinstance(source, str) or not re.fullmatch(r"(board|voice|system|ui)/[A-Za-z0-9_./-]+\.cpp", source):
+            raise ValidationError(f"{board_profile}: invalid adapter source file {source!r}")
+        source_path = source_base / source if source_base is not None else None
+        if adapters["buildable"] and source_path is not None and not source_path.exists():
+            raise ValidationError(f"{board_profile}: adapter source file does not exist: {source}")
 
     wake = require_mapping(profile, "wake")
     if wake.get("backend_fallback") is not True:

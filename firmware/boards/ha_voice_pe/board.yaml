@@ -97,6 +97,16 @@ vad:
     default_energy_threshold: 900
     default_pause_ms: 190
     silence_hold_ms: 1200
+adapters:
+  buildable: true
+  source_files:
+    - board/audio_ha_voice_pe.cpp
+    - board/buttons_ha_voice_pe.cpp
+    - board/display_none.cpp
+    - board/led_ring_ha_voice_pe.cpp
+    - board/storage_nvs_only.cpp
+    - board/touch_none.cpp
+    - voice/tts_player_ha_voice_pe.cpp
 storage:
   internal: nvs_and_internal_flash
   sd_card:

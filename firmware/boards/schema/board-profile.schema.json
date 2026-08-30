@@ -19,6 +19,7 @@
     "audio",
     "display",
     "vad",
+    "adapters",
     "wake",
     "storage",
     "controls",
@@ -242,6 +243,22 @@
             "silence_hold_ms": {"type": "integer", "minimum": 1}
           }
         }
+      }
+    },
+    "adapters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buildable", "source_files"],
+      "properties": {
+        "buildable": {"type": "boolean"},
+        "source_files": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^(board|voice|system|ui)/[A-Za-z0-9_./-]+\\.cpp$"
+          }
+        },
+        "notes": {"type": "string"}
       }
     },
     "storage": {

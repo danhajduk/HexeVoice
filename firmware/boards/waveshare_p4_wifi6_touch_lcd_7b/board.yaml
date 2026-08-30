@@ -107,6 +107,10 @@ vad:
     default_energy_threshold: 900
     default_pause_ms: 190
     silence_hold_ms: 1200
+adapters:
+  buildable: false
+  source_files: []
+  notes: ESP32-P4, ESP32-C6 radio, display, touch, audio, storage, and TTS adapters are not implemented yet.
 controls:
   - name: boot
     kind: button

@@ -96,6 +96,10 @@ vad:
     default_energy_threshold: 900
     default_pause_ms: 190
     silence_hold_ms: 1200
+adapters:
+  buildable: false
+  source_files: []
+  notes: Board-specific display, touch, audio, storage, and TTS adapters are not implemented yet.
 storage:
   internal: nvs_and_internal_flash
   sd_card:
