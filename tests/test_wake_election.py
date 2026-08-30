@@ -101,7 +101,7 @@ def test_wake_election_prefers_endpoint_candidate_when_confidence_ties_backend_b
     assert winner == endpoint
 
 
-def test_wake_election_rejects_second_endpoint_inside_active_window():
+def test_wake_election_replaces_provisional_winner_inside_active_window():
     started_at = datetime(2026, 8, 29, 20, 0, tzinfo=UTC)
     election = WakeCandidateElection(window_ms=350)
     first = WakeCandidate(
@@ -126,6 +126,36 @@ def test_wake_election_rejects_second_endpoint_inside_active_window():
 
     assert first_decision.accepted is True
     assert first_decision.winner == first
+    assert second_decision.accepted is True
+    assert second_decision.reason == "winner_replaced"
+    assert second_decision.winner == second
+    assert second_decision.replaced_winner == first
+
+
+def test_wake_election_stands_down_lower_rank_candidate_inside_active_window():
+    started_at = datetime(2026, 8, 29, 20, 0, tzinfo=UTC)
+    election = WakeCandidateElection(window_ms=350)
+    first = WakeCandidate(
+        endpoint_id="esp-box-1",
+        session_id="session-1",
+        source="endpoint_micro_wake_word",
+        model="alexa",
+        confidence=0.95,
+        received_at=started_at,
+    )
+    second = WakeCandidate(
+        endpoint_id="esp-pe-1",
+        session_id="session-2",
+        source="endpoint_micro_wake_word",
+        model="alexa",
+        confidence=0.83,
+        received_at=started_at + timedelta(milliseconds=100),
+    )
+
+    first_decision = election.submit_candidate(first)
+    second_decision = election.submit_candidate(second)
+
+    assert first_decision.accepted is True
     assert second_decision.accepted is False
     assert second_decision.reason == "stand_down_existing_winner"
     assert second_decision.winner == first

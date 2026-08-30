@@ -74,10 +74,12 @@ can keep a tight event contract. The payload must not include raw audio, embeddi
 `openWakeWord` detections are also converted into `backend_openwakeword` candidates so the backend wake path remains a
 fallback when endpoint wake is absent, disabled, or the endpoint election wait times out.
 
-The backend uses `VOICE_WAKE_ELECTION_WINDOW_MS` to keep a short arbitration window and scores candidates from wake
-confidence plus small bonuses for available audio-quality metrics. It sends `wake.accepted` to the selected endpoint.
-Losing or late candidates receive `wake.election.result` with `stand_down: true`, `winner_endpoint_id`, and an
-`election` diagnostic containing the candidate list, winner, per-candidate score, score breakdown, and reason.
+The backend uses `VOICE_WAKE_ELECTION_WINDOW_MS` to keep a short arbitration window based on backend receipt time and
+scores candidates from wake confidence plus small bonuses for available audio-quality metrics. It sends `wake.accepted`
+to the first valid candidate provisionally so endpoints stay responsive, but a better-scored candidate that arrives
+inside the active window replaces the provisional winner. Losing, late, or replaced candidates receive
+`wake.election.result` with `stand_down: true`, `winner_endpoint_id`, and an `election` diagnostic containing the
+candidate list, winner, per-candidate score, score breakdown, and reason.
 Existing endpoints that only stream `audio.chunk` remain compatible.
 
 Current firmware reports wake-election protocol capability in heartbeat capabilities under

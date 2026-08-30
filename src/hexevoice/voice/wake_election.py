@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 from typing import Any
 from uuid import uuid4
 
@@ -132,6 +133,7 @@ class WakeElectionDecision:
     winner: WakeCandidate | None
     candidates: tuple[WakeCandidate, ...]
     decided_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    replaced_winner: WakeCandidate | None = None
 
     def model_dump(self) -> dict[str, Any]:
         return {
@@ -162,23 +164,34 @@ class WakeCandidateElection:
         self._recent_candidates: list[dict[str, Any]] = []
         self._recent_decisions: list[dict[str, Any]] = []
         self._active_decision: WakeElectionDecision | None = None
+        self._lock = Lock()
 
     def submit_candidate(self, candidate: WakeCandidate) -> WakeElectionDecision:
+        with self._lock:
+            return self._submit_candidate(candidate)
+
+    def _submit_candidate(self, candidate: WakeCandidate) -> WakeElectionDecision:
         self._expire_pending(reference_at=candidate.received_at)
         self._record_candidate(candidate)
 
         if self._active_decision is not None and self._decision_is_active(self._active_decision, candidate.received_at):
-            accepted = _same_candidate(candidate, self._active_decision.winner)
+            candidates = (*self._active_decision.candidates, candidate)
+            winner = choose_wake_election_winner(candidates)
+            accepted = _same_candidate(candidate, winner)
+            replaced_winner = self._active_decision.winner if accepted and not _same_candidate(winner, self._active_decision.winner) else None
             decision = WakeElectionDecision(
                 election_id=self._active_decision.election_id,
                 accepted=accepted,
-                reason="winner_confirmed" if accepted else "stand_down_existing_winner",
+                reason="winner_replaced" if replaced_winner else ("winner_confirmed" if accepted else "stand_down_existing_winner"),
                 window_ms=self.window_ms,
                 candidate=candidate,
-                winner=self._active_decision.winner,
-                candidates=(*self._active_decision.candidates, candidate),
+                winner=winner,
+                candidates=candidates,
                 decided_at=candidate.received_at,
+                replaced_winner=replaced_winner,
             )
+            if accepted:
+                self._active_decision = decision
             self._record_decision(decision)
             return decision
 

@@ -613,9 +613,13 @@ def test_voice_websocket_accepts_wake_audio_chunks_and_completion(tmp_path):
     assert status["wake_history"][0]["model"] == "deterministic"
 
 
-def test_voice_websocket_arbitrates_endpoint_wake_candidates_and_stands_down_loser(tmp_path):
+def test_voice_websocket_replaces_endpoint_wake_winner_and_stands_down_loser(tmp_path):
     started_at = datetime(2026, 8, 29, 20, 0, tzinfo=UTC)
-    manager = VoiceSessionManager(wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None))
+    history_store = VoiceSessionHistoryStore(path=tmp_path / "voice_session_history.json", max_records=20)
+    manager = VoiceSessionManager(
+        wake_detector=DeterministicWakeDetector(detect_on_chunk_index=None),
+        session_history_store=history_store,
+    )
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
 
     with client.websocket_connect("/api/voice/ws") as first_socket:
@@ -667,20 +671,32 @@ def test_voice_websocket_arbitrates_endpoint_wake_candidates_and_stands_down_los
                     },
                 )
             )
-            second_result = second_socket.receive_json()
+            second_wake = second_socket.receive_json()
+            second_state = second_socket.receive_json()
+            first_stand_down = first_socket.receive_json()
 
     assert first_wake["event_type"] == "wake.accepted"
     assert first_wake["payload"]["wake"]["source"] == "endpoint_micro_wake_word"
     assert first_wake["payload"]["election"]["accepted"] is True
     assert first_state["payload"]["snapshot"]["session_state"] == "listening"
-    assert second_result["event_type"] == "wake.election.result"
-    assert second_result["payload"]["stand_down"] is True
-    assert second_result["payload"]["winner_endpoint_id"] == "esp-box-1"
-    assert second_result["payload"]["election"]["reason"] == "stand_down_existing_winner"
+    assert second_wake["event_type"] == "wake.accepted"
+    assert second_wake["payload"]["election"]["accepted"] is True
+    assert second_wake["payload"]["election"]["reason"] == "winner_replaced"
+    assert second_wake["payload"]["election"]["winner"]["endpoint_id"] == "esp-pe-1"
+    assert second_state["payload"]["snapshot"]["session_state"] == "listening"
+    assert first_stand_down["event_type"] == "wake.election.result"
+    assert first_stand_down["payload"]["stand_down"] is True
+    assert first_stand_down["payload"]["winner_endpoint_id"] == "esp-pe-1"
+    assert first_stand_down["payload"]["election"]["reason"] == "stand_down_replaced_by_better_candidate"
 
     status = client.get("/api/voice/status").json()
-    assert status["wake_election"]["recent_decisions"][0]["reason"] == "stand_down_existing_winner"
+    assert status["wake_election"]["recent_decisions"][0]["reason"] == "winner_replaced"
+    assert status["wake_history"][0]["endpoint_id"] == "esp-pe-1"
     assert status["wake_history"][0]["source"] == "endpoint_micro_wake_word"
+    sessions = client.get("/api/voice/sessions").json()["sessions"]
+    box_session = next(session for session in sessions if session["session_id"] == "box-session")
+    assert box_session["session_state"] == "cancelled"
+    assert box_session["completion_reason"] == "stand_down_replaced_by_better_candidate"
 
 
 def test_voice_websocket_suppresses_tts_during_speaker_enrollment_capture(tmp_path):

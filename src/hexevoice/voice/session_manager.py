@@ -1216,7 +1216,7 @@ class VoiceSessionManager:
             endpoint_id=event.endpoint_id,
             session_id=session.session_id,
             payload=payload,
-            received_at=event.timestamp,
+            received_at=datetime.now(UTC),
         )
         decision = self._wake_election.submit_candidate(candidate)
         self._record_wake_confidence(
@@ -1233,6 +1233,7 @@ class VoiceSessionManager:
         )
         if not decision.accepted:
             return [self._wake_election_event(session=session, decision=decision)]
+        self._stand_down_replaced_winner(decision)
         events = self._accept_wake_candidate(
             session=session,
             candidate=candidate,
@@ -1844,7 +1845,7 @@ class VoiceSessionManager:
                 source="backend_openwakeword",
                 model=detection.model,
                 confidence=detection.confidence,
-                received_at=event.timestamp,
+                received_at=datetime.now(UTC),
                 detected_at=event.timestamp,
                 chunk_index=payload.chunk_index,
                 chunk_count=self._chunk_count,
@@ -1869,6 +1870,7 @@ class VoiceSessionManager:
             chunk_count=self._chunk_count,
         )
         if wake_accepted and backend_candidate is not None:
+            self._stand_down_replaced_winner(backend_decision)
             events.extend(
                 self._accept_wake_candidate(
                     session=session,
@@ -3972,6 +3974,72 @@ class VoiceSessionManager:
             self._wake_recorder.close_session(
                 endpoint_id=self._active_session.endpoint_id,
                 session_id=self._active_session.session_id,
+            )
+
+    def _stand_down_replaced_winner(self, decision: WakeElectionDecision | None) -> None:
+        if decision is None or decision.replaced_winner is None or decision.winner is None:
+            return
+        replaced = decision.replaced_winner
+        runtime = self._runtime_for_endpoint(replaced.endpoint_id)
+        if runtime is None or runtime.active_session is None or runtime.active_session.session_id != replaced.session_id:
+            return
+
+        token = self._runtime_context.set(runtime)
+        try:
+            session = self._active_session
+            if session is None:
+                return
+            replacement_decision = WakeElectionDecision(
+                election_id=decision.election_id,
+                accepted=False,
+                reason="stand_down_replaced_by_better_candidate",
+                window_ms=decision.window_ms,
+                candidate=replaced,
+                winner=decision.winner,
+                candidates=decision.candidates,
+                decided_at=decision.decided_at,
+            )
+            self._record_wake_confidence(
+                endpoint_id=replaced.endpoint_id,
+                session_id=replaced.session_id,
+                model=replaced.model,
+                confidence=replaced.confidence,
+                detected=True,
+                accepted=False,
+                reason=replacement_decision.reason,
+                source=replaced.source,
+                chunk_index=replaced.chunk_index,
+                chunk_count=replaced.chunk_count,
+            )
+            self._set_session_state("cancelled")
+            session.cancel_reason = replacement_decision.reason
+            stand_down = self._wake_election_event(session=session, decision=replacement_decision)
+            self._persist_active_session_history(session, completion_reason=replacement_decision.reason)
+            self._release_active_session_wake_stream()
+            self._clear_active_session_runtime()
+        finally:
+            self._runtime_context.reset(token)
+        self._schedule_endpoint_event(replaced.endpoint_id, stand_down)
+
+    def _schedule_endpoint_event(self, endpoint_id: str, event: VoiceEventEnvelope) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        loop.create_task(self._send_endpoint_event(endpoint_id, event))
+
+    async def _send_endpoint_event(self, endpoint_id: str, event: VoiceEventEnvelope) -> None:
+        runtime = self._runtime_for_endpoint(endpoint_id)
+        if runtime is None or runtime.websocket is None:
+            return
+        try:
+            await runtime.websocket.send_json(event.model_dump(mode="json"))
+        except Exception as exc:
+            log.debug(
+                "Failed to send endpoint event: endpoint_id=%s event_type=%s error=%s",
+                endpoint_id,
+                event.event_type,
+                exc,
             )
 
     def _state_event(
