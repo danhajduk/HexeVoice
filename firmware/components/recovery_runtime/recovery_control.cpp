@@ -923,9 +923,21 @@ void start_http_server() {
 namespace hexe::recovery {
 
 void init_recovery_controls() {
-  start_recovery_wifi();
+  const bool wifi_recovery_enabled = recovery_wifi_recovery_enabled();
+  if (wifi_recovery_enabled) {
+    start_recovery_wifi();
+  } else {
+    update_network_mode();
+    ESP_LOGI(kTag, "Recovery Wi-Fi/HTTP disabled for BLE-only board profile %s", hexe::board::pins::kBoardProfile);
+  }
   init_recovery_ble_provisioning();
-  start_http_server();
+  if (wifi_recovery_enabled) {
+    start_http_server();
+  }
+}
+
+bool recovery_wifi_recovery_enabled() {
+  return std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0;
 }
 
 bool recovery_http_api_active() {
@@ -1013,8 +1025,8 @@ std::string render_diagnostics_json() {
       "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"ble\":false},"
       "\"subsystems\":{\"core_required\":false,\"sd_required\":false,\"wake_models_linked\":false,"
       "\"endpoint_runtime_linked\":false,\"speaker_id_linked\":false},"
-      "\"actions\":{\"wifi_provisioning\":true,\"endpoint_provisioning\":true,\"firmware_upload\":true,"
-      "\"partition_inspection\":true,\"boot_select\":true,\"selective_config_reset\":true}}",
+      "\"actions\":{\"wifi_provisioning\":%s,\"endpoint_provisioning\":%s,\"firmware_upload\":%s,"
+      "\"partition_inspection\":%s,\"boot_select\":%s,\"selective_config_reset\":%s}}",
       kRecoveryApiVersion,
       hexe::board::pins::kBoardProfile,
       hexe::board::pins::kSoc,
@@ -1024,7 +1036,13 @@ std::string render_diagnostics_json() {
       bool_json(g_temporary_ap_active).c_str(),
       bool_json(g_station_configured).c_str(),
       bool_json(g_http_api_active).c_str(),
-      bool_json(g_http_api_active).c_str());
+      bool_json(g_http_api_active).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str());
   return std::string(body);
 }
 

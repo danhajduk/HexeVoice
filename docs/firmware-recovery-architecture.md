@@ -125,6 +125,11 @@ The local status page is served from `/` and links to the JSON diagnostics
 endpoints. It is intentionally plain HTML so recovery does not depend on the
 normal endpoint dashboard assets.
 
+During HA Voice PE BLE-only validation, the `ha_voice_pe` minimal recovery build
+starts the local recovery BLE peripheral without starting the temporary Wi-Fi AP
+or HTTP API. Other recovery-capable S3 board profiles keep the Wi-Fi/HTTP rescue
+control plane.
+
 Minimum `/api/recovery/status` shape:
 
 ```json
@@ -141,14 +146,14 @@ Minimum `/api/recovery/status` shape:
   "core_required": false,
   "sd_required": false,
   "network": {
-    "mode": "ap",
+    "mode": "not_started",
     "ssid_configured": false,
-    "temporary_ap_active": true
+    "temporary_ap_active": false
   },
   "interfaces": {
     "serial_console": true,
-    "http_api": true,
-    "status_page": true,
+    "http_api": false,
+    "status_page": false,
     "display_ui": false,
     "ble": true,
     "ble_mode": "local_recovery_advertising",
@@ -164,11 +169,11 @@ Minimum `/api/recovery/status` shape:
     }
   ],
   "actions": {
-    "wifi_provisioning": true,
-    "endpoint_provisioning": true,
-    "firmware_upload": true,
-    "boot_select": true,
-    "selective_config_reset": true,
+    "wifi_provisioning": false,
+    "endpoint_provisioning": false,
+    "firmware_upload": false,
+    "boot_select": false,
+    "selective_config_reset": false,
     "ble_local_recovery_provisioning": true,
     "ble_core_governed_provisioning": false
   }

@@ -131,9 +131,10 @@ def test_recovery_status_skeleton_reports_safe_serial_json():
     assert '\\"interfaces\\":{\\"serial_console\\":true,\\"http_api\\":%s' in status_source
     assert '\\"ble\\":%s' in status_source
     assert '\\"ble_mode\\":\\"%s\\"' in status_source
-    assert '\\"actions\\":{\\"wifi_provisioning\\":true' in status_source
+    assert '\\"actions\\":{\\"wifi_provisioning\\":%s' in status_source
     assert '\\"ble_local_recovery_provisioning\\":%s' in status_source
     assert '\\"ble_core_governed_provisioning\\":false' in status_source
+    assert "recovery_wifi_recovery_enabled()" in status_source
     assert "esp_ota_get_running_partition" in status_source
     assert "esp_flash_get_size" in status_source
     assert "esp_psram_is_initialized" in status_source
@@ -169,6 +170,9 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "HexeRecovery-" in control_source
     assert "WIFI_MODE_APSTA" in control_source
     assert "init_recovery_controls()" in control_header
+    assert "recovery_wifi_recovery_enabled()" in control_header
+    assert 'std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0' in control_source
+    assert "Recovery Wi-Fi/HTTP disabled for BLE-only board profile" in control_source
     assert "init_recovery_ble_provisioning()" in control_source
     assert "render_recovery_ble_status_json()" in control_source
 
@@ -286,8 +290,9 @@ def test_recovery_contract_covers_unusable_main_ota_slots():
     assert "\\\"core_required\\\":false" in status_source
     assert "\\\"sd_required\\\":false" in status_source
     assert "recovery_temporary_ap_active()" in status_source
-    assert "firmware_upload\\\":true" in status_source
-    assert "boot_select\\\":true" in status_source
+    assert "firmware_upload\\\":%s" in status_source
+    assert "recovery_wifi_recovery_enabled()" in status_source
+    assert "boot_select\\\":%s" in status_source
     assert "esp_ota_get_next_update_partition(nullptr)" in control_source
     assert "esp_ota_abort(ota_handle)" in control_source
     assert "Only endpoint OTA app partitions may be selected" in control_source

@@ -161,8 +161,8 @@ std::string render_status_json() {
       "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"display_ui\":false,"
       "\"ble\":%s,\"ble_mode\":\"%s\",\"ble_reason\":\"%s\"},"
       "\"main_slots\":[{\"label\":\"%s\",\"selected_for_boot\":true,\"state\":\"%s\",\"state_readable\":%s}],"
-      "\"actions\":{\"wifi_provisioning\":true,\"endpoint_provisioning\":true,\"firmware_upload\":true,"
-      "\"boot_select\":true,\"selective_config_reset\":true,\"ble_local_recovery_provisioning\":%s,"
+      "\"actions\":{\"wifi_provisioning\":%s,\"endpoint_provisioning\":%s,\"firmware_upload\":%s,"
+      "\"boot_select\":%s,\"selective_config_reset\":%s,\"ble_local_recovery_provisioning\":%s,"
       "\"ble_core_governed_provisioning\":false},"
       "\"boot\":{\"running_partition\":\"%s\",\"boot_partition\":\"%s\"}"
       "}",
@@ -195,6 +195,11 @@ std::string render_status_json() {
       partition_label(boot_partition),
       ota_state_name(running_state),
       bool_json(running_state_result == ESP_OK).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_wifi_recovery_enabled()).c_str(),
       bool_json(recovery_ble_enabled()).c_str(),
       partition_label(running_partition),
       partition_label(boot_partition));
