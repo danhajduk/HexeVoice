@@ -1331,7 +1331,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     try {
       const result = await scanEndpointBleDevices({
         adapter: adapter || undefined,
-        scan_seconds: 5,
+        scan_seconds: 60,
       });
       const devices = Array.isArray(result.devices) ? result.devices : [];
       setScanDevices(devices);

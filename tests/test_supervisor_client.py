@@ -60,14 +60,14 @@ def test_supervisor_client_ble_scan_timeout_tracks_requested_scan_window():
         client=fake_client,
     )
 
-    assert client.scan_ble({"adapter": "hci0", "scan_seconds": 15}) == {"ok": True}
+    assert client.scan_ble({"adapter": "hci0", "scan_seconds": 60}) == {"ok": True}
 
     assert fake_client.calls == [
         {
             "method": "POST",
             "path": "/api/supervisor/hardware/bluetooth/ble/scan",
-            "json": {"adapter": "hci0", "scan_seconds": 15},
+            "json": {"adapter": "hci0", "scan_seconds": 60},
             "params": None,
-            "timeout": 20.0,
+            "timeout": 70.0,
         }
     ]

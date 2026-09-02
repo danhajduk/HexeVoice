@@ -118,7 +118,7 @@ class SupervisorApiClient:
             scan_seconds = float(payload.get("scan_seconds") or 5.0)
         except (TypeError, ValueError):
             scan_seconds = 5.0
-        timeout_s = min(max(self._config.timeout_s, scan_seconds + 5.0), 40.0)
+        timeout_s = min(max(self._config.timeout_s, scan_seconds + 10.0), 75.0)
         return self._request_json(
             "POST",
             "/api/supervisor/hardware/bluetooth/ble/scan",

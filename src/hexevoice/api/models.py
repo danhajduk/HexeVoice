@@ -339,7 +339,7 @@ class EndpointBleScanRequest(BaseModel):
     adapter: str | None = Field(default="hci0", max_length=64)
     supervisor_id: str | None = Field(default=None, max_length=120)
     service_uuid: str | None = Field(default=None, min_length=4, max_length=64)
-    scan_seconds: int = Field(default=5, ge=1, le=30)
+    scan_seconds: int = Field(default=5, ge=1, le=60)
     operator_reason: str | None = Field(default=None, max_length=240)
 
 

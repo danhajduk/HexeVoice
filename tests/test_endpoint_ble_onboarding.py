@@ -72,7 +72,7 @@ class FakeSupervisorClient:
             "operation": "ble.scan",
             "adapter": "hci0",
             "service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
-            "scan_seconds": 5,
+            "scan_seconds": 60,
             "devices": [
                 {
                     "address": "11:22:33:44:55:66",
@@ -135,7 +135,7 @@ def request_payload(**overrides) -> EndpointBleProvisionWifiRequest:
 def scan_payload(**overrides) -> EndpointBleScanRequest:
     payload = {
         "adapter": "hci0",
-        "scan_seconds": 5,
+        "scan_seconds": 60,
     }
     payload.update(overrides)
     return EndpointBleScanRequest.model_validate(payload)
@@ -162,7 +162,7 @@ def test_ble_scan_granted_calls_supervisor_and_releases_lease(tmp_path):
             "lease_token": "secret-lease-token",
             "adapter": "hci0",
             "service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
-            "scan_seconds": 5,
+            "scan_seconds": 60,
         }
     ]
     assert core.released == [{"lease_id": "lease-1", "node_id": "voice-node-main"}]
@@ -195,6 +195,15 @@ def test_ble_scan_pending_stops_before_supervisor_call(tmp_path):
     assert response.status == "pending"
     assert supervisor.scan_calls == []
     assert core.released == []
+
+
+def test_ble_scan_rejects_overlong_scan_window():
+    try:
+        scan_payload(scan_seconds=61)
+    except ValueError as exc:
+        assert "less than or equal to 60" in str(exc)
+    else:
+        raise AssertionError("expected scan_seconds over 60 to be rejected")
 
 
 def test_ble_onboarding_granted_calls_supervisor_and_releases_lease(tmp_path):
