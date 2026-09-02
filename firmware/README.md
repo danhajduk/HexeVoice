@@ -11,6 +11,7 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
 - [`docs/firmware-ota.md`](/home/dan/Projects/HexeVoice/docs/firmware-ota.md)
 - [`docs/firmware-provisioning.md`](/home/dan/Projects/HexeVoice/docs/firmware-provisioning.md)
 - [`docs/firmware-ble-onboarding-integration.md`](/home/dan/Projects/HexeVoice/docs/firmware-ble-onboarding-integration.md)
+- [`docs/ble-onboarding-physical-validation.md`](/home/dan/Projects/HexeVoice/docs/ble-onboarding-physical-validation.md)
 - [`docs/firmware-production-readiness.md`](/home/dan/Projects/HexeVoice/docs/firmware-production-readiness.md)
 
 ## Goals
@@ -107,6 +108,8 @@ The profile validation matrix lives in
 It lists required automated and manual checks for audio streaming, wake
 acceptance, TTS playback, display or LED-ring state, OTA/media, mute/volume, and
 reconnect behavior.
+BLE onboarding physical checks live in
+[`docs/ble-onboarding-physical-validation.md`](../docs/ble-onboarding-physical-validation.md).
 Production firmware signing, key rotation, secure boot, flash encryption,
 manufacturing, recovery, field-service, enclosure, audio opening, mute, and
 service-access gates are defined in

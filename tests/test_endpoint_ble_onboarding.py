@@ -22,14 +22,15 @@ def trusted_store(tmp_path) -> OnboardingStateStore:
 
 
 class FakeCoreClient:
-    def __init__(self, *, status: str = "granted") -> None:
+    def __init__(self, *, status: str = "granted", operations: list[str] | None = None) -> None:
         self.status = status
+        self.operations = operations or ["ble.provision_wifi", "ble.scan", "ble.status"]
         self.requested_payloads = []
         self.released = []
 
     def get_hardware_access_request_schema(self, *, core_base_url: str) -> dict:
         assert core_base_url == "http://core.local"
-        return {"ok": True, "operations": ["ble.provision_wifi", "ble.scan", "ble.status"]}
+        return {"ok": True, "operations": self.operations}
 
     def get_voice_ble_provisioning_schema(self, *, core_base_url: str) -> dict:
         assert core_base_url == "http://core.local"
@@ -149,6 +150,63 @@ def test_ble_onboarding_denied_does_not_send_credentials_to_supervisor(tmp_path)
     assert response.error == "bluetooth_policy_disabled"
     assert supervisor.calls == []
     assert response.credential_payload["wifi_password"] == "[REDACTED]"
+
+
+def test_ble_onboarding_scan_status_scope_cannot_be_reused_for_provisioning(tmp_path):
+    core = FakeCoreClient(operations=["ble.scan", "ble.status"])
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.provision_wifi(request_payload())
+
+    assert response.ok is False
+    assert response.status == "failed"
+    assert response.error == "core_ble_provisioning_contract_unavailable"
+    assert core.requested_payloads == []
+    assert supervisor.calls == []
+    assert response.schema_status["operation_supported"] is False
+
+
+def test_ble_onboarding_supervisor_failure_is_redacted_and_releases_lease(tmp_path):
+    core = FakeCoreClient(status="granted")
+    supervisor = FakeSupervisorClient(
+        result={
+            "ok": False,
+            "status": "failed",
+            "error": "wrong_adapter",
+            "lease_token": "secret-lease-token",
+            "credential_payload": {"wifi_ssid": "KitchenNet", "wifi_password": "correct-password"},
+            "envelope": {
+                "nonce": "secret-nonce",
+                "ciphertext": "secret-ciphertext",
+                "tag": "secret-tag",
+                "aad": "secret-aad",
+            },
+        }
+    )
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.provision_wifi(request_payload())
+    encoded = response.model_dump_json()
+
+    assert response.ok is False
+    assert response.status == "failed"
+    assert response.error == "wrong_adapter"
+    assert core.released == [{"lease_id": "lease-1", "node_id": "voice-node-main"}]
+    assert response.supervisor_result["lease_token"] == "[REDACTED]"
+    assert response.supervisor_result["credential_payload"]["wifi_password"] == "[REDACTED]"
+    assert response.supervisor_result["envelope"]["ciphertext"] == "[REDACTED]"
+    assert "correct-password" not in encoded
+    assert "secret-lease-token" not in encoded
+    assert "secret-ciphertext" not in encoded
 
 
 def test_frontend_exposes_core_governed_ble_operator_flow():

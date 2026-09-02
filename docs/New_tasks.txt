@@ -51,7 +51,6 @@ Do not edit above this line:
 **********************************************************************************************
 * TODO listing
 **********************************************************************************************
-[TODO] Task 291: Add BLE onboarding end-to-end tests, fake BLE/GATT harnesses, security regression checks, docs, and physical-device validation criteria across supported endpoint boards
 
 
 **********************************************************************************************

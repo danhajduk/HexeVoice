@@ -1,6 +1,6 @@
 # Firmware BLE Onboarding Integration
 
-Status: Task 290 recovery BLE rescue support. This document records how
+Status: Task 291 BLE onboarding validation coverage. This document records how
 HexeVoice implements endpoint BLE onboarding against the current
 Core/Supervisor `ble.provision_wifi` contract without inventing a parallel host
 Bluetooth API.
@@ -187,6 +187,27 @@ Task 290 adds a recovery-owned BLE rescue path:
 - Core-governed encrypted BLE provisioning remains the normal endpoint firmware
   path; recovery returns `core_governed_requires_endpoint_app` for encrypted
   Core envelopes instead of accepting them silently.
+
+## Validation Status
+
+Task 291 adds CI/local validation coverage around the BLE onboarding boundary:
+
+- `FakeBleGattEndpoint` models firmware-facing GATT identity, pairing nonce,
+  credential writes, ack/error reads, replay rejection, local recovery mode, and
+  safe status redaction without physical Bluetooth hardware.
+- `FakeSupervisorBleBroker` models the Supervisor-facing broker boundary for
+  adapter presence, adapter selection, granted/pending/denied lease status,
+  lease expiry, and operation/scope isolation.
+- Security checks prove `hardware.bluetooth.ble.scan` and
+  `hardware.bluetooth.ble.status` leases cannot be reused for
+  `ble.provision_wifi`; failures return `lease_scope_mismatch` before a target
+  write happens.
+- State-machine checks cover `wrong_adapter`, wrong target node, wrong pairing
+  nonce, `malformed_payload`, `replay_detected`, failed Wi-Fi association, and
+  `backend_unreachable`.
+- Physical validation criteria live in
+  `docs/ble-onboarding-physical-validation.md` for HA Voice PE,
+  ESP32-S3-BOX-3, Waveshare S3 1.85C BOX V2, and the future P4/C6 flow.
 
 ## HexeVoice Implementation Plan
 
