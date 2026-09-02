@@ -94,6 +94,14 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
     wiring = profile["wiring"]
     if not isinstance(build, dict) or not isinstance(hardware, dict) or not isinstance(wiring, dict):
         raise ValidationError("validated profile lost wiring section")
+    wireless = hardware.get("wireless")
+    if not isinstance(wireless, dict):
+        raise ValidationError("validated profile lost wireless section")
+    ble_transport = str(wireless.get("transport") or "unknown")
+    ble_supported = bool(wireless.get("bluetooth")) and ble_transport == "native" and build.get("idf_target") == "esp32s3"
+    ble_status = "active" if ble_supported and profile.get("support_status") == "active" else "planned"
+    if not ble_supported:
+        ble_status = "coprocessor_pending" if wireless.get("coprocessor") else "unsupported"
 
     lines = [
         "#pragma once",
@@ -111,6 +119,9 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
         f'constexpr const char *kAppSlotSize = "{build.get("app_slot_size")}";',
         f'constexpr const char *kFlashSize = "{hardware.get("flash_size")}";',
         f'constexpr const char *kPsramSize = "{hardware.get("psram_size")}";',
+        f"constexpr bool kBleOnboardingSupported = {'true' if ble_supported else 'false'};",
+        f'constexpr const char *kBleOnboardingTransport = "{ble_transport}";',
+        f'constexpr const char *kBleOnboardingStatus = "{ble_status}";',
         "constexpr int kNoPin = -1;",
         "",
     ]

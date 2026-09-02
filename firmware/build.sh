@@ -154,12 +154,14 @@ write_profile_sdkconfig_defaults() {
   local flash_size
   local flash_size_symbol
   local flash_size_value
+  local bluetooth_transport
   local output
   schema="$(board_profile_value "${profile}" build.partition_schema)"
   partition_csv="$(partition_csv_for_schema "${schema}")"
   flash_size="$(board_profile_value "${profile}" hardware.flash_size)"
   flash_size_symbol="$(flash_size_kconfig_symbol "${flash_size}")"
   flash_size_value="$(flash_size_kconfig_value "${flash_size}")"
+  bluetooth_transport="$(board_profile_value "${profile}" hardware.wireless.transport)"
   output="$(profile_sdkconfig_defaults_path "${profile}")"
 
   mkdir -p "$(dirname "${output}")"
@@ -178,17 +180,33 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="${partition_csv}"
 ${flash_size_symbol}=y
 CONFIG_ESPTOOLPY_FLASHSIZE="${flash_size_value}"
 EOF
+  if [[ "${FIRMWARE_APP}" == "endpoint" && "${bluetooth_transport}" == "native" ]]; then
+    cat >> "${output}" <<'EOF'
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_GATT_SERVER=y
+EOF
+  fi
 }
 
-refresh_profile_sdkconfig_if_flash_size_changed() {
+refresh_profile_sdkconfig_if_generated_defaults_changed() {
   local profile="$1"
   local sdkconfig_path="$2"
   local flash_size
   local flash_size_value
+  local bluetooth_transport
   flash_size="$(board_profile_value "${profile}" hardware.flash_size)"
   flash_size_value="$(flash_size_kconfig_value "${flash_size}")"
   if [[ -f "${sdkconfig_path}" ]] && ! grep -q "^CONFIG_ESPTOOLPY_FLASHSIZE=\"${flash_size_value}\"$" "${sdkconfig_path}"; then
     echo "Refreshing generated sdkconfig for ${profile}; flash size changed to ${flash_size_value}"
+    rm -f "${sdkconfig_path}"
+    return
+  fi
+  bluetooth_transport="$(board_profile_value "${profile}" hardware.wireless.transport)"
+  if [[ -f "${sdkconfig_path}" && "${FIRMWARE_APP}" == "endpoint" && "${bluetooth_transport}" == "native" ]] &&
+    ! grep -q "^CONFIG_BT_NIMBLE_ENABLED=y$" "${sdkconfig_path}"; then
+    echo "Refreshing generated sdkconfig for ${profile}; BLE onboarding now requires NimBLE"
     rm -f "${sdkconfig_path}"
   fi
 }
@@ -336,7 +354,7 @@ build_profile() {
   write_profile_sdkconfig_defaults "${profile}"
   sdkconfig_path="$(profile_sdkconfig_path "${profile}")"
   sdkconfig_defaults_path="$(profile_sdkconfig_defaults_path "${profile}")"
-  refresh_profile_sdkconfig_if_flash_size_changed "${profile}" "${sdkconfig_path}"
+  refresh_profile_sdkconfig_if_generated_defaults_changed "${profile}" "${sdkconfig_path}"
 
   echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"
   local idf_env=("IDF_TARGET=${idf_target}")

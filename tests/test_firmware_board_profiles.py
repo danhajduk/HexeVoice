@@ -268,6 +268,9 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'constexpr const char *kAppSlotSize = "4MiB";' in header
     assert 'constexpr const char *kFlashSize = "16MiB";' in header
     assert 'constexpr const char *kPsramSize = "8MiB";' in header
+    assert "constexpr bool kBleOnboardingSupported = true;" in header
+    assert 'constexpr const char *kBleOnboardingTransport = "native";' in header
+    assert 'constexpr const char *kBleOnboardingStatus = "active";' in header
     assert "constexpr int kAudioControlSda = 5;" in header
     assert "constexpr int kAudioControlScl = 6;" in header
     assert "constexpr int kAudioControlVoiceKitAddress = 66;" in header
@@ -334,7 +337,8 @@ def test_firmware_build_script_discovers_buildable_profiles_from_yaml():
     assert "partition_csv_for_schema" in build_script
     assert "flash_size_kconfig_symbol" in build_script
     assert "flash_size_kconfig_value" in build_script
-    assert "refresh_profile_sdkconfig_if_flash_size_changed" in build_script
+    assert "refresh_profile_sdkconfig_if_generated_defaults_changed" in build_script
+    assert "CONFIG_BT_NIMBLE_ENABLED=y" in build_script
     assert 's3-8m-v1) echo "partitions/s3_8m_v1.csv"' in build_script
     assert 's3-8m-recovery-v1) echo "partitions/s3_8m_recovery_v1.csv"' in build_script
     assert 's3-16m-v1) echo "partitions/s3_16m_v1.csv"' in build_script

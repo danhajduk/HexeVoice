@@ -106,6 +106,32 @@ Firmware must write through the existing endpoint provisioning settings path
 rather than introducing a BLE-only credential store. That keeps BLE
 provisioning, backend-command provisioning, and recovery provisioning aligned.
 
+## Endpoint Firmware Status
+
+Task 288 has started the endpoint-side peripheral implementation:
+
+- The endpoint runtime now declares the Core `ble.provision_wifi` operation,
+  lease scope, contract version, Voice payload schema id, and canonical GATT
+  service/characteristic UUIDs.
+- Native ESP32-S3 board profiles enable NimBLE peripheral/GATT support through
+  generated board-profile metadata and build defaults.
+- The firmware starts BLE onboarding only when the board supports native BLE and
+  the endpoint is not already provisioned.
+- The heartbeat reports BLE onboarding capability, transport, UUIDs, state,
+  advertising eligibility, and ack/error status without reporting credentials,
+  ciphertext, pairing nonce values, claim codes, or derived keys.
+- The encrypted credential write path validates envelope shape, contract
+  version, schema id, target identity, pairing nonce binding, size, and replay
+  sequence before failing closed with deterministic errors.
+- The decrypted Voice payload apply path writes through
+  `save_endpoint_provisioning` and requests Wi-Fi reconnect.
+
+The current Core/Supervisor contract does not yet define how the endpoint gets
+the provisioning-envelope decrypt key. Until that key handoff is specified, the
+firmware intentionally returns `decrypt_failed` for real encrypted writes after
+binding validation rather than deriving a key from a readable nonce or accepting
+plaintext credentials over BLE.
+
 ## HexeVoice Implementation Plan
 
 ### Task 288: Endpoint firmware peripheral

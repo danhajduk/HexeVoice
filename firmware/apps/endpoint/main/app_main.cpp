@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "system/log_stream.h"
+#include "system/ble_provisioning.h"
 #include "system/ota.h"
 #include "system/power.h"
 #include "system/settings.h"
@@ -53,6 +54,7 @@ extern "C" void app_main(void) {
   hexe::board::init_buttons();
   hexe::board::init_audio();
   hexe::board::init_wifi();
+  hexe::system::init_ble_provisioning();
   hexe::system::init_log_stream();
 
   hexe::voice::init_wake_word();
@@ -77,6 +79,7 @@ extern "C" void app_main(void) {
     hexe::board::update_buttons();
     hexe::board::update_touch();
     hexe::board::refresh_wifi_status();
+    hexe::system::update_ble_provisioning();
     hexe::board::update_led_ring_patterns();
 
     const int frame = state.loading_frame;

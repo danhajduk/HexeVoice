@@ -39,6 +39,7 @@
 #include "mbedtls/base64.h"
 #include "psa/crypto.h"
 #include "system/clock.h"
+#include "system/ble_provisioning.h"
 #include "system/ota.h"
 #include "system/power.h"
 #include "system/settings.h"
@@ -1481,6 +1482,33 @@ std::string endpoint_capabilities_json() {
   cJSON_AddNumberToObject(discovery, "udp_port", hexe::config::kEndpointDiscoveryUdpPort);
   cJSON_AddBoolToObject(discovery, "attempted", g_discovery_attempted);
   cJSON_AddStringToObject(discovery, "status", g_discovery_status);
+  const hexe::system::BleProvisioningStatus ble_status = hexe::system::ble_provisioning_status();
+  cJSON *ble = cJSON_AddObjectToObject(provisioning, "ble");
+  cJSON_AddStringToObject(ble, "operation", hexe::system::kBleProvisioningOperation);
+  cJSON_AddStringToObject(ble, "lease_scope", hexe::system::kBleProvisioningLeaseScope);
+  cJSON_AddStringToObject(ble, "contract_version", hexe::system::kBleProvisioningContractVersion);
+  cJSON_AddStringToObject(ble, "payload_schema_id", hexe::system::kBleProvisioningPayloadSchemaId);
+  cJSON_AddStringToObject(ble, "service_uuid", hexe::system::kBleProvisioningServiceUuid);
+  cJSON_AddStringToObject(ble, "device_identity_uuid", hexe::system::kBleProvisioningDeviceIdentityUuid);
+  cJSON_AddStringToObject(ble, "pairing_nonce_uuid", hexe::system::kBleProvisioningPairingNonceUuid);
+  cJSON_AddStringToObject(ble, "provisioning_status_uuid", hexe::system::kBleProvisioningStatusUuid);
+  cJSON_AddStringToObject(ble, "encrypted_credentials_uuid", hexe::system::kBleProvisioningEncryptedCredentialsUuid);
+  cJSON_AddStringToObject(ble, "ack_error_uuid", hexe::system::kBleProvisioningAckErrorUuid);
+  cJSON_AddBoolToObject(ble, "supported", ble_status.supported);
+  cJSON_AddBoolToObject(ble, "enabled", ble_status.enabled);
+  cJSON_AddBoolToObject(ble, "eligible", ble_status.eligible);
+  cJSON_AddBoolToObject(ble, "advertising", ble_status.advertising);
+  cJSON_AddStringToObject(ble, "transport", ble_status.transport);
+  cJSON_AddStringToObject(ble, "state", ble_status.state);
+  cJSON_AddStringToObject(ble, "reason", ble_status.reason);
+  cJSON_AddBoolToObject(ble, "pairing_nonce_available", ble_status.eligible);
+  cJSON_AddBoolToObject(ble, "claim_code_ref_available", false);
+  if (ble_status.last_ack[0] != '\0') {
+    cJSON_AddStringToObject(ble, "last_ack", ble_status.last_ack);
+  }
+  if (ble_status.last_error[0] != '\0') {
+    cJSON_AddStringToObject(ble, "last_error", ble_status.last_error);
+  }
 
   cJSON *firmware = cJSON_AddObjectToObject(root, "firmware");
   cJSON_AddStringToObject(firmware, "project_name", app == nullptr ? "unknown" : app->project_name);
@@ -1670,6 +1698,20 @@ std::string endpoint_capabilities_json() {
         hexe::system::telemetry_heartbeat_owned() ? "heartbeat" : "firmware",
         hexe::system::telemetry_runtime_mode(),
         hexe::system::telemetry_dedicated_channel_enabled());
+    add_module_status(
+        modules,
+        "ble_onboarding",
+        "firmware",
+        "nimble_peripheral",
+        ble_status.supported,
+        ble_status.state);
+    cJSON *ble_onboarding = cJSON_GetObjectItem(modules, "ble_onboarding");
+    if (cJSON_IsObject(ble_onboarding)) {
+      cJSON_AddBoolToObject(ble_onboarding, "enabled", ble_status.enabled);
+      cJSON_AddBoolToObject(ble_onboarding, "advertising", ble_status.advertising);
+      cJSON_AddStringToObject(ble_onboarding, "transport", ble_status.transport);
+      cJSON_AddStringToObject(ble_onboarding, "reason", ble_status.reason);
+    }
     add_module_status(
         modules,
         "power",

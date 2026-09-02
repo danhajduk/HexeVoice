@@ -110,6 +110,33 @@ void init_wifi() {
   ESP_LOGI(kTag, "Wi-Fi init complete, waiting for connection to SSID '%s'", hexe::system::wifi_ssid());
 }
 
+void reconnect_wifi() {
+  if (!g_wifi_initialized) {
+    init_wifi();
+    return;
+  }
+  if (!has_wifi_credentials()) {
+    ESP_LOGW(kTag, "Wi-Fi reconnect skipped because no Wi-Fi SSID is configured");
+    return;
+  }
+
+  wifi_config_t wifi_config = {};
+  std::strncpy(
+      reinterpret_cast<char *>(wifi_config.sta.ssid), hexe::system::wifi_ssid(), sizeof(wifi_config.sta.ssid) - 1);
+  std::strncpy(
+      reinterpret_cast<char *>(wifi_config.sta.password),
+      hexe::system::wifi_password(),
+      sizeof(wifi_config.sta.password) - 1);
+  wifi_config.sta.threshold.authmode = WIFI_AUTH_OPEN;
+  wifi_config.sta.pmf_cfg.capable = true;
+  wifi_config.sta.pmf_cfg.required = false;
+
+  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
+  esp_wifi_disconnect();
+  ESP_ERROR_CHECK(esp_wifi_connect());
+  ESP_LOGI(kTag, "Wi-Fi reconnect requested for updated provisioning settings");
+}
+
 void refresh_wifi_status() {
   auto &state = hexe::state();
   if (!state.wifi_connected) {

@@ -622,3 +622,10 @@ Chosen fix: Add a HexeVoice-side integration plan that consumes the current Core
 What changed: Added the BLE onboarding integration plan, mapped Core Voice payload fields to existing firmware/recovery NVS settings, documented Core/Supervisor/HexeVoice ownership and failure modes, linked the plan from firmware docs, and added doc regression tests.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_ble_onboarding_integration.py tests/test_firmware_recovery_architecture.py tests/test_firmware_board_profiles.py` passed. `git diff --check -- docs/firmware-ble-onboarding-integration.md docs/firmware-provisioning.md firmware/README.md tests/test_firmware_ble_onboarding_integration.py docs/New_tasks.txt` passed. MQTT publish skipped because MQTT_USERNAME/MQTT_PASSWORD were not set.
 ###########
+Task #288
+Step objective: Add the endpoint firmware BLE onboarding peripheral foundation for the Core `ble.provision_wifi` GATT contract.
+Issue cause: The current Core/Supervisor contract defines encrypted envelope fields but not the endpoint decrypt-key handoff.
+Chosen fix: Implement the NimBLE peripheral, canonical UUIDs, board-profile capability reporting, nonce/session binding, replay checks, NVS apply helper, Wi-Fi reconnect, and redacted heartbeat status while keeping real encrypted writes fail-closed until key handoff is specified.
+What changed: Added endpoint BLE provisioning runtime and GATT bridge, enabled native ESP32-S3 NimBLE defaults, derived BLE capability metadata from board profiles, added heartbeat/module status, added Wi-Fi reconnect helper, and covered the contract with targeted tests.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_ble_onboarding.py tests/test_firmware_board_profiles.py tests/test_firmware_ble_onboarding_integration.py` passed. `python3 firmware/tools/validate_board_profiles.py --root firmware/boards` passed. `git diff --check` passed. `ALLOW_DIRTY_FIRMWARE_BUILD=1 EXPORT_AFTER_BUILD=0 HEXE_BOARD_PROFILE=ha_voice_pe BUILD_DIR=/tmp/hexevoice-build-ha-voice-pe-ble ./firmware/build.sh build` passed with app size `0x1a2ae0` bytes and 18% free.
+###########

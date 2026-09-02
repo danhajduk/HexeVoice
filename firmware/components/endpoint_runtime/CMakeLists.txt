@@ -68,6 +68,8 @@ idf_component_register(
     "app_state.cpp"
     ${HEXE_BOARD_SRCS}
     "board/wifi.cpp"
+    "system/ble_provisioning.cpp"
+    "system/ble_provisioning_gatt.c"
     "system/clock.cpp"
     "system/ota.cpp"
     "system/log_stream.cpp"
@@ -91,6 +93,7 @@ idf_component_register(
     "voice/models/stop.tflite"
   REQUIRES
     app_update
+    bt
     esp_app_format
     esp_event
     esp_driver_gpio
