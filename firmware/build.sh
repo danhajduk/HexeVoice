@@ -329,6 +329,13 @@ ota_safe_project_version() {
   printf 'z%s-%s\n' "$(date -u +"%Y%m%d%H%M%S")" "$(git_short_sha)"
 }
 
+minimal_project_version() {
+  case "$1" in
+    min-*) echo "$1" ;;
+    *) echo "min-$1" ;;
+  esac
+}
+
 require_clean_firmware_source() {
   if [[ "${ALLOW_DIRTY_FIRMWARE_BUILD:-0}" == "1" ]]; then
     return
@@ -478,6 +485,9 @@ cd "${ROOT_DIR}"
 
 require_clean_firmware_source
 PROJECT_VERSION="$(ota_safe_project_version)"
+if [[ "${FIRMWARE_EXPORT_FLAVOR}" == "minimal" ]]; then
+  PROJECT_VERSION="$(minimal_project_version "${PROJECT_VERSION}")"
+fi
 
 requested_profile="${HEXE_BOARD_PROFILE:-}"
 if [[ "${COMMAND}" == "push" && -z "${requested_profile}" ]]; then

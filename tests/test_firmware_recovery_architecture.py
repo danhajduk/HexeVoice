@@ -302,6 +302,8 @@ def test_build_script_exports_recovery_metadata_without_endpoint_runtime():
     assert 'recovery) echo "recovery_runtime"' in build_script
     assert 'minimal) echo "recovery_runtime"' in build_script
     assert 'FIRMWARE_EXPORT_FLAVOR="minimal"' in build_script
+    assert "minimal_project_version()" in build_script
+    assert 'PROJECT_VERSION="$(minimal_project_version "${PROJECT_VERSION}")"' in build_script
     assert 'echo "${EXPORT_DIR:-${ROOT_DIR}/export-min-$1}"' in build_script
     assert 'echo "hexe_min_${1}.bin"' in build_script
     assert 'FIRMWARE_APPLICATION_TYPE="${FIRMWARE_APP}"' in build_script
@@ -325,5 +327,7 @@ def test_rebuild_script_can_select_minimal_factory_exports():
     assert 'run_build minimal "${profile}"' in rebuild_script
     assert "Minimal firmware profiles:" in rebuild_script
     assert "export-min-<board>" in doc
+    assert "min-<build-version>" in doc
     assert "export-min-<board>" in recovery_readme
     assert "export-min-<profile>" in firmware_readme
+    assert "min-<build-version>" in firmware_readme

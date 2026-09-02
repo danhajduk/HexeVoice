@@ -117,7 +117,8 @@ Recovery builds are exported to their profile folders, while their runtime
 metadata is staged under `/tmp` so endpoint OTA manifests stay endpoint-only.
 Use `--include-minimal` to also build the USB-flashed factory/onboarding image,
 or `--minimal-only` to build only those images. Minimal builds reuse the recovery
-runtime and export complete flash folders named `firmware/export-min-<profile>`.
+runtime, prefix their firmware version as `min-<build-version>`, and export
+complete flash folders named `firmware/export-min-<profile>`.
 
 The profile validation matrix lives in
 [`docs/firmware-validation-matrix.md`](../docs/firmware-validation-matrix.md).
@@ -148,7 +149,8 @@ The root project also accepts `HEXE_FIRMWARE_APP`. `endpoint` is the default.
 `recovery` builds the S3 recovery skeleton with
 `HEXE_FIRMWARE_APP=recovery HEXE_BOARD_PROFILE=<profile> ./build.sh build`.
 `minimal` builds the same small onboarding/rescue app as a factory image and
-exports it under `export-min-<profile>`.
+exports it under `export-min-<profile>` with a `min-<build-version>` firmware
+version.
 
 This writes flashable artifacts to `firmware/export-ha-voice-pe`. The `ha_voice_pe` profile targets the Home Assistant Voice Preview Edition ESP32-S3 pin map for microphone input, speaker output, and the center/mute controls. It reports endpoint id `esp-pe-1` by default, and brings up the onboard Voice Kit/XMOS device over I2C before enabling the secondary I2S microphone stream. Short-pressing the center button starts a voice session with `wake_source=button`, equivalent to an accepted wake word; pressing it during an active turn cancels that turn. It is intentionally headless: display, touchscreen, and SD media storage report unavailable. TTS playback uses the onboard AIC3204 codec and the 48 kHz secondary I2S speaker path.
 

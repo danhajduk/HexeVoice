@@ -291,6 +291,7 @@ def test_firmware_build_uses_ota_safe_project_versions():
 
     assert 'printf \'z%s-%s\\n\'' in build_script
     assert 'PROJECT_VERSION="$(ota_safe_project_version)"' in build_script
+    assert 'PROJECT_VERSION="$(minimal_project_version "${PROJECT_VERSION}")"' in build_script
     assert '-D "PROJECT_VER=${PROJECT_VERSION}"' in build_script
     assert "Refusing to build OTA firmware from tracked uncommitted changes." in build_script
 
@@ -1344,7 +1345,7 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert '\\"filename\\":\\"${filename}\\"' in build_source
     assert "partition_csv_for_schema" in build_source
     assert "SDKCONFIG_DEFAULTS" in build_source
-    assert 'GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_APP}")' in build_source
+    assert 'GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_EXPORT_FLAVOR}")' in build_source
 
     assert "PROFILE_APP_FILENAME" in export_source
     assert "hexe_firmware_${BOARD_PROFILE}.bin" in export_source
