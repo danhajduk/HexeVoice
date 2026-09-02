@@ -168,6 +168,9 @@ Task 289 adds the HexeVoice requester/operator side:
   Supervisor BLE scan broker, list discovered BLE devices, and select a device
   address for provisioning. When exactly one device is discovered, the dialog
   selects it automatically.
+- BLE scan broker calls use a per-request timeout that follows the requested
+  scan window, so longer LE scans can complete without changing the default
+  Supervisor API timeout used by health, registration, and heartbeat calls.
 - When no endpoints are registered, the dashboard keeps the onboarding entry
   point visible and suppresses endpoint-specific statistics, actions, details,
   history, and advanced panels until a heartbeat registers a device.
