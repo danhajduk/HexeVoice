@@ -8,6 +8,9 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
@@ -27,6 +30,10 @@ static const char *TAG = "hexe_ble_gatt";
 
 static uint8_t own_addr_type;
 static int advertising_requested;
+static int connected;
+static uint16_t advertising_refresh_sequence;
+static uint8_t advertising_timestamp_data[8];
+static TaskHandle_t advertising_refresh_task_handle;
 
 static uint16_t device_identity_handle;
 static uint16_t pairing_nonce_handle;
@@ -117,8 +124,41 @@ static const struct ble_gatt_svc_def services[] = {
 
 static int gap_event(struct ble_gap_event *event, void *arg);
 
+static void write_le16(uint8_t *target, uint16_t value) {
+  target[0] = (uint8_t)(value & 0xff);
+  target[1] = (uint8_t)((value >> 8) & 0xff);
+}
+
+static void write_le32(uint8_t *target, uint32_t value) {
+  target[0] = (uint8_t)(value & 0xff);
+  target[1] = (uint8_t)((value >> 8) & 0xff);
+  target[2] = (uint8_t)((value >> 16) & 0xff);
+  target[3] = (uint8_t)((value >> 24) & 0xff);
+}
+
+static void update_advertising_timestamp_data(void) {
+  uint32_t uptime_s = (uint32_t)(esp_timer_get_time() / 1000000LL);
+  uint16_t sequence = ++advertising_refresh_sequence;
+  write_le16(&advertising_timestamp_data[0], 0xffff);
+  write_le32(&advertising_timestamp_data[2], uptime_s);
+  write_le16(&advertising_timestamp_data[6], sequence);
+}
+
+static int set_scan_response_fields(void) {
+  update_advertising_timestamp_data();
+
+  struct ble_hs_adv_fields rsp_fields;
+  memset(&rsp_fields, 0, sizeof(rsp_fields));
+  rsp_fields.name = (uint8_t *)ble_svc_gap_device_name();
+  rsp_fields.name_len = strlen((const char *)rsp_fields.name);
+  rsp_fields.name_is_complete = 1;
+  rsp_fields.mfg_data = advertising_timestamp_data;
+  rsp_fields.mfg_data_len = sizeof(advertising_timestamp_data);
+  return ble_gap_adv_rsp_set_fields(&rsp_fields);
+}
+
 static void advertise(void) {
-  if (!advertising_requested || ble_gap_adv_active()) {
+  if (!advertising_requested || connected || ble_gap_adv_active()) {
     return;
   }
   struct ble_hs_adv_fields fields;
@@ -133,12 +173,7 @@ static void advertise(void) {
     return;
   }
 
-  struct ble_hs_adv_fields rsp_fields;
-  memset(&rsp_fields, 0, sizeof(rsp_fields));
-  rsp_fields.name = (uint8_t *)ble_svc_gap_device_name();
-  rsp_fields.name_len = strlen((const char *)rsp_fields.name);
-  rsp_fields.name_is_complete = 1;
-  rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
+  rc = set_scan_response_fields();
   if (rc != 0) {
     ESP_LOGW(TAG, "BLE onboarding scan response fields failed: %d", rc);
     return;
@@ -160,14 +195,37 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_CONNECT:
       if (event->connect.status != 0) {
         advertise();
+      } else {
+        connected = 1;
       }
       return 0;
     case BLE_GAP_EVENT_DISCONNECT:
+      connected = 0;
+      advertise();
+      return 0;
     case BLE_GAP_EVENT_ADV_COMPLETE:
       advertise();
       return 0;
     default:
       return 0;
+  }
+}
+
+static void advertising_refresh_task(void *param) {
+  (void)param;
+  while (1) {
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    if (!advertising_requested || connected) {
+      continue;
+    }
+    if (ble_gap_adv_active()) {
+      int rc = ble_gap_adv_stop();
+      if (rc != 0) {
+        ESP_LOGW(TAG, "BLE onboarding advertising timestamp refresh failed: %d", rc);
+      }
+      continue;
+    }
+    advertise();
   }
 }
 
@@ -209,6 +267,9 @@ int hexe_ble_provisioning_gatt_init(const char *device_name) {
     }
   }
   nimble_port_freertos_init(host_task);
+  if (advertising_refresh_task_handle == NULL) {
+    xTaskCreate(advertising_refresh_task, "ble_adv_refresh", 3072, NULL, 5, &advertising_refresh_task_handle);
+  }
   return 0;
 }
 

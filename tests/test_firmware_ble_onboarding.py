@@ -41,12 +41,17 @@ def test_ble_onboarding_advertising_keeps_uuid_and_name_under_legacy_packet_limi
     advertise_start = gatt.index("static void advertise(void)")
     advertise = gatt[advertise_start : gatt.index("static int gap_event", advertise_start)]
     primary = advertise[: advertise.index("ble_gap_adv_set_fields(&fields)")]
-    scan_response = advertise[advertise.index("struct ble_hs_adv_fields rsp_fields") :]
+    scan_response_start = gatt.index("static int set_scan_response_fields(void)")
+    scan_response = gatt[scan_response_start:advertise_start]
 
     assert "fields.uuids128 = &service_uuid" in primary
     assert "fields.name =" not in primary
     assert "ble_gap_adv_rsp_set_fields(&rsp_fields)" in scan_response
     assert "rsp_fields.name = (uint8_t *)ble_svc_gap_device_name()" in scan_response
+    assert "rsp_fields.mfg_data = advertising_timestamp_data" in scan_response
+    assert "rsp_fields.mfg_data_len = sizeof(advertising_timestamp_data)" in scan_response
+    assert "esp_timer_get_time()" in gatt[gatt.index("static void update_advertising_timestamp_data") :]
+    assert "ble_gap_adv_stop()" in gatt[gatt.index("static void advertising_refresh_task") :]
 
 
 def test_ble_onboarding_is_gated_by_board_profile_and_nimble_config():
