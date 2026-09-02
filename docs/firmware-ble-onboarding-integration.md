@@ -164,10 +164,12 @@ Task 289 adds the HexeVoice requester/operator side:
 - The dashboard exposes a compact operator BLE onboarding dialog while keeping
   the existing connected-endpoint provisioning command as the post-join
   reconfiguration path.
-- The onboarding dialog can request a Core-governed `ble.scan` lease, call the
-  Supervisor BLE scan broker, list discovered BLE devices, and select a device
-  address for provisioning. When exactly one device is discovered, the dialog
-  selects it automatically.
+- The onboarding dialog asks Core to run a fleet `ble.scan` against all online
+  trusted Bluetooth Supervisors, list discovered UUID-matching BLE devices, and
+  select a device address for provisioning. When exactly one device is
+  discovered, the dialog selects it automatically. If Core does not yet expose
+  the fleet scan route, HexeVoice falls back to the legacy single-Supervisor
+  scan lease path.
 - BLE scan broker calls use a per-request timeout that follows the requested
   scan window, so longer LE scans can complete without changing the default
   Supervisor API timeout used by health, registration, and heartbeat calls.

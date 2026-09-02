@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import httpx
+
 from hexevoice.api.models import EndpointBleProvisionWifiRequest, EndpointBleScanRequest
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -22,11 +24,13 @@ def trusted_store(tmp_path) -> OnboardingStateStore:
 
 
 class FakeCoreClient:
-    def __init__(self, *, status: str = "granted", operations: list[str] | None = None) -> None:
+    def __init__(self, *, status: str = "granted", operations: list[str] | None = None, fleet_scan_result: dict | None = None) -> None:
         self.status = status
         self.operations = operations or ["ble.provision_wifi", "ble.scan", "ble.status"]
         self.requested_payloads = []
         self.released = []
+        self.fleet_scan_result = fleet_scan_result
+        self.scan_payloads = []
 
     def get_hardware_access_request_schema(self, *, core_base_url: str) -> dict:
         assert core_base_url == "http://core.local"
@@ -61,6 +65,16 @@ class FakeCoreClient:
     def release_hardware_lease(self, *, core_base_url: str, node_trust_token: str, lease_id: str, node_id: str) -> dict:
         self.released.append({"lease_id": lease_id, "node_id": node_id})
         return {"ok": True, "access_request": {"status": "released", "lease_id": lease_id}}
+
+    def scan_ble_devices(self, *, core_base_url: str, node_trust_token: str, payload: dict) -> dict:
+        assert core_base_url == "http://core.local"
+        assert node_trust_token == "node-token"
+        self.scan_payloads.append(payload)
+        if self.fleet_scan_result is None:
+            request = httpx.Request("POST", f"{core_base_url}/api/system/nodes/hardware/bluetooth/ble/scan")
+            response = httpx.Response(404, request=request)
+            raise httpx.HTTPStatusError("not found", request=request, response=response)
+        return self.fleet_scan_result
 
 
 class FakeSupervisorClient:
@@ -139,6 +153,66 @@ def scan_payload(**overrides) -> EndpointBleScanRequest:
     }
     payload.update(overrides)
     return EndpointBleScanRequest.model_validate(payload)
+
+
+def test_ble_scan_uses_core_fleet_scan_when_available(tmp_path):
+    core = FakeCoreClient(
+        fleet_scan_result={
+            "ok": True,
+            "status": "partial",
+            "operation": "ble.scan",
+            "mode": "fleet",
+            "node_id": "voice-node-main",
+            "service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+            "scan_seconds": 60,
+            "matching_devices": [
+                {
+                    "address": "AA:BB:CC:DD:EE:FF",
+                    "name": "Hexe Voice PE",
+                    "transport": "ble",
+                    "service_uuid_match": True,
+                    "matched_service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+                    "supervisor_id": "sup-nearby",
+                }
+            ],
+            "devices": [
+                {
+                    "address": "AA:BB:CC:DD:EE:FF",
+                    "name": "Hexe Voice PE",
+                    "transport": "ble",
+                    "service_uuid_match": True,
+                    "matched_service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+                    "supervisor_id": "sup-nearby",
+                }
+            ],
+            "supervisor_results": [],
+        }
+    )
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.scan(scan_payload())
+
+    assert response.ok is True
+    assert response.status == "completed"
+    assert response.supervisor_result["mode"] == "fleet"
+    assert core.scan_payloads == [
+        {
+            "node_id": "voice-node-main",
+            "adapter": "hci0",
+            "service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+            "scan_seconds": 60,
+            "reason": "Discover nearby BLE endpoints",
+        }
+    ]
+    assert core.requested_payloads == []
+    assert core.released == []
+    assert supervisor.scan_calls == []
+    assert response.devices[0]["supervisor_id"] == "sup-nearby"
 
 
 def test_ble_scan_granted_calls_supervisor_and_releases_lease(tmp_path):

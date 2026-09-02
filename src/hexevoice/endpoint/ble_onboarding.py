@@ -108,6 +108,25 @@ class EndpointBleOnboardingService:
                 error="core_ble_scan_contract_unavailable",
             )
 
+        fleet_response = self._request_fleet_ble_scan(
+            core_base_url=core_base_url,
+            node_trust_token=node_trust_token,
+            node_id=node_id,
+            payload=payload,
+        )
+        if fleet_response is not None:
+            fleet_ok = bool(fleet_response.get("ok"))
+            fleet_status = str(fleet_response.get("status") or "").strip().lower()
+            response_status = "completed" if fleet_ok else "pending" if fleet_status == "pending" else "failed"
+            return self._scan_response(
+                status=response_status,
+                node_id=node_id,
+                payload=payload,
+                access_request={},
+                supervisor_result=fleet_response,
+                error=None if fleet_ok or response_status == "pending" else str(fleet_response.get("error") or "core_ble_scan_failed"),
+            )
+
         access_response = self._request_hardware_access(
             core_base_url=core_base_url,
             node_trust_token=node_trust_token,
@@ -390,6 +409,38 @@ class EndpointBleOnboardingService:
             raise HTTPException(status_code=504, detail="hardware_access_request_timeout") from exc
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"hardware_access_request_failed: {exc}") from exc
+
+    def _request_fleet_ble_scan(
+        self,
+        *,
+        core_base_url: str,
+        node_trust_token: str,
+        node_id: str,
+        payload: EndpointBleScanRequest,
+    ) -> dict[str, Any] | None:
+        try:
+            return self._core_client.scan_ble_devices(
+                core_base_url=core_base_url,
+                node_trust_token=node_trust_token,
+                payload=_clean_dict(
+                    {
+                        "node_id": node_id,
+                        "supervisor_id": payload.supervisor_id,
+                        "adapter": payload.adapter,
+                        "service_uuid": payload.service_uuid or BLE_PROVISIONING_SERVICE_UUID,
+                        "scan_seconds": payload.scan_seconds,
+                        "reason": payload.operator_reason or "Discover nearby BLE endpoints",
+                    }
+                ),
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {404, 405}:
+                return None
+            raise HTTPException(status_code=exc.response.status_code, detail=_http_error_detail(exc, "core_ble_scan_failed")) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="core_ble_scan_timeout") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"core_ble_scan_failed: {exc}") from exc
 
     def _request_access(
         self,
