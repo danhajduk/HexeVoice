@@ -12,6 +12,7 @@ import re
 import shutil
 import time
 from urllib.parse import urlencode
+from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.responses import FileResponse
@@ -58,6 +59,7 @@ from hexevoice.api.models import (
     NodeIdentitySetupResponse,
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
+    EndpointBeepCommandRequest,
     EndpointCommandRequest,
     EndpointCommandResponse,
     EndpointDiscoveryRequest,
@@ -161,6 +163,20 @@ from hexevoice.voice.wake import build_wake_detector
 OTA_MANIFEST_SIGNATURE_ALGORITHM = "hmac-sha256"
 DEFAULT_OTA_MANIFEST_KEY_ID = "hexevoice-dev-v1"
 DEFAULT_OTA_MANIFEST_SIGNING_KEY = "hexevoice-local-dev-ota-signing-key"
+BEEP_SOUND_PROFILES = {
+    "short": {
+        "asset_id": "test_beep_short_500ms",
+        "duration_ms": 500,
+        "frequency_hz": 880,
+        "amplitude": 0.35,
+    },
+    "done": {
+        "asset_id": "test_beep_loud_1s",
+        "duration_ms": 1000,
+        "frequency_hz": 880,
+        "amplitude": 0.45,
+    },
+}
 
 
 def setup_provider_action_sequence(action: str) -> tuple[str, ...]:
@@ -1713,6 +1729,13 @@ def create_app(
             reason=result.get("reason"),
         )
 
+    def default_connected_endpoint_id() -> str | None:
+        connected_endpoint_ids = voice_session_manager.status().get("connected_endpoint_ids", [])
+        if not isinstance(connected_endpoint_ids, list) or not connected_endpoint_ids:
+            return None
+        first = connected_endpoint_ids[0]
+        return str(first) if first else None
+
     @app.post("/api/endpoint/play-sound", response_model=EndpointCommandResponse)
     async def endpoint_play_sound(payload: EndpointPlaySoundCommandRequest) -> EndpointCommandResponse:
         return await push_play_sound_response(payload)
@@ -1720,6 +1743,45 @@ def create_app(
     @app.post("/api/interaction/ui/play-sound", response_model=EndpointCommandResponse)
     async def interaction_ui_play_sound(payload: EndpointPlaySoundCommandRequest) -> EndpointCommandResponse:
         return await push_play_sound_response(payload)
+
+    @app.post("/api/endpoint/beep", response_model=EndpointCommandResponse)
+    async def endpoint_beep(payload: EndpointBeepCommandRequest) -> EndpointCommandResponse:
+        endpoint_id = payload.endpoint_id or default_connected_endpoint_id()
+        if not endpoint_id:
+            return EndpointCommandResponse(
+                accepted=False,
+                endpoint_id="",
+                command_type="endpoint.beep",
+                status="failed",
+                reason="no_connected_endpoint",
+            )
+
+        profile = BEEP_SOUND_PROFILES[payload.beep]
+        try:
+            asset = await asyncio.to_thread(
+                endpoint_media_service.ensure_beep_sound,
+                asset_id=profile["asset_id"],
+                duration_ms=profile["duration_ms"],
+                frequency_hz=profile["frequency_hz"],
+                amplitude=profile["amplitude"],
+            )
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+
+        sound_request = EndpointPlaySoundCommandRequest(
+            endpoint_id=endpoint_id,
+            audio_url=f"/api/endpoint/media/files/{asset.asset_id}",
+            stream_id=f"beep-{payload.beep}-{uuid4().hex[:12]}",
+            source_event_id=payload.source_event_id,
+            metadata={
+                **payload.metadata,
+                "beep": payload.beep,
+                "asset_id": asset.asset_id,
+                "duration_ms": asset.metadata.get("duration_ms"),
+            },
+        )
+        result = await push_play_sound_response(sound_request)
+        return result.model_copy(update={"command_type": "endpoint.beep"})
 
     @app.post("/api/endpoint/storage/reformat", response_model=EndpointCommandResponse)
     async def endpoint_storage_reformat(payload: EndpointCommandRequest) -> EndpointCommandResponse:

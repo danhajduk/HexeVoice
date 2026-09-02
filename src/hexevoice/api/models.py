@@ -342,6 +342,13 @@ class EndpointPlaySoundCommandRequest(BaseModel):
     mic_mode: Literal["pause_for_playback", "interrupt_only"] = "pause_for_playback"
 
 
+class EndpointBeepCommandRequest(BaseModel):
+    endpoint_id: str | None = Field(default=None, min_length=1)
+    beep: Literal["short", "done"] = "short"
+    source_event_id: str | None = Field(default=None, max_length=160)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class EndpointCommandResponse(BaseModel):
     accepted: bool
     endpoint_id: str

@@ -202,6 +202,13 @@ the backend run a stop-only STT pass over no-wake audio during active timer alar
 playback. A future on-device stop-word detector can remove the backend STT and
 speaker echo dependency.
 
+Remote beep checks can use `POST /api/endpoint/beep`. With an empty JSON body,
+the node selects the first connected endpoint and plays a short generated WAV
+cue through the existing endpoint playback route. Include `endpoint_id` to target
+a specific endpoint, or set `beep` to `done` for the one-second completion cue.
+If the WAV asset is missing from `runtime/endpoint_media`, the node stages it on
+demand before dispatching playback.
+
 Play-sound commands accept `mic_mode: "interrupt_only"` to request playback
 without pausing the endpoint microphone. The default remains
 `"pause_for_playback"` for normal TTS/replay. Timer-completed WAV alarms use

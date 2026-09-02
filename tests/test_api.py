@@ -757,6 +757,81 @@ def test_endpoint_mute_cancel_and_replay_commands_send_events(tmp_path):
     assert cancel_event["payload"]["request_id"] == cancel_response.json()["request_id"]
 
 
+def test_endpoint_beep_command_defaults_to_connected_endpoint_and_stages_sound(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as websocket:
+        response = client.post("/api/endpoint/beep", json={})
+        event = websocket.receive_json()
+        served = client.get("/api/endpoint/media/files/test_beep_short_500ms")
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["endpoint_id"] == "esp-pe-1"
+    assert response.json()["command_type"] == "endpoint.beep"
+    assert response.json()["status"] == "pending"
+    assert event["event_type"] == "endpoint.replay"
+    assert event["endpoint_id"] == "esp-pe-1"
+    assert event["payload"]["command"] == "ui.play_sound"
+    assert event["payload"]["stream_id"].startswith("beep-short-")
+    assert event["payload"]["audio_url"] == "/api/endpoint/media/files/test_beep_short_500ms"
+    assert event["payload"]["metadata"]["beep"] == "short"
+    assert event["payload"]["metadata"]["asset_id"] == "test_beep_short_500ms"
+    assert event["payload"]["metadata"]["duration_ms"] == 500
+    assert served.status_code == 200
+    assert served.content.startswith(b"RIFF")
+
+
+def test_endpoint_beep_command_can_select_done_profile(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        response = client.post(
+            "/api/endpoint/beep",
+            json={"endpoint_id": "esp-box-1", "beep": "done", "source_event_id": "remote-beep-check"},
+        )
+        event = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["command_type"] == "endpoint.beep"
+    assert event["payload"]["stream_id"].startswith("beep-done-")
+    assert event["payload"]["audio_url"] == "/api/endpoint/media/files/test_beep_loud_1s"
+    assert event["payload"]["source_event_id"] == "remote-beep-check"
+    assert event["payload"]["metadata"]["beep"] == "done"
+    assert event["payload"]["metadata"]["duration_ms"] == 1000
+
+
+def test_endpoint_beep_command_reports_when_no_endpoint_is_connected(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    response = client.post("/api/endpoint/beep", json={})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "accepted": False,
+        "endpoint_id": "",
+        "command_type": "endpoint.beep",
+        "request_id": None,
+        "status": "failed",
+        "reason": "no_connected_endpoint",
+    }
+
+
 def test_endpoint_media_upload_validates_and_serves_picture_rgb565(tmp_path):
     payload = bytes(320 * 240 * 2)
     client = TestClient(

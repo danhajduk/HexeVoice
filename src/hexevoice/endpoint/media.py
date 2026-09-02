@@ -5,8 +5,10 @@ from datetime import UTC, datetime
 import hashlib
 import io
 import json
+import math
 from pathlib import Path
 import re
+import struct
 from typing import Any, Literal
 from uuid import uuid4
 import wave
@@ -106,6 +108,36 @@ class EndpointMediaService:
         if asset is None:
             raise EndpointMediaValidationError("media_asset_not_found", "Media asset was not found.", status_code=404)
         return asset
+
+    def ensure_beep_sound(
+        self,
+        *,
+        asset_id: str,
+        duration_ms: int,
+        frequency_hz: int = 880,
+        amplitude: float = 0.35,
+    ) -> EndpointMediaAsset:
+        try:
+            asset = self.get_asset(asset_id)
+            if self.payload_path(asset).exists():
+                return asset
+        except EndpointMediaValidationError as exc:
+            if exc.code != "media_asset_not_found":
+                raise
+        payload = self._build_beep_wav(
+            duration_ms=duration_ms,
+            frequency_hz=frequency_hz,
+            amplitude=amplitude,
+        )
+        return self.store_upload(
+            media_type="sound",
+            filename=f"{asset_id}.wav",
+            content_base64=base64.b64encode(payload).decode("ascii"),
+            asset_id=asset_id,
+            content_type="audio/wav",
+            metadata={"builtin": True, "purpose": "remote_beep"},
+            overwrite=True,
+        )
 
     def delete_asset(self, asset_id: str) -> EndpointMediaAsset:
         library = self._load()
@@ -304,6 +336,34 @@ class EndpointMediaService:
             "bits_per_sample": bits_per_sample,
             "duration_ms": int((frame_count / sample_rate_hz) * 1000) if sample_rate_hz else None,
         }
+
+    def _build_beep_wav(
+        self,
+        *,
+        duration_ms: int,
+        frequency_hz: int,
+        amplitude: float,
+        sample_rate_hz: int = 48_000,
+    ) -> bytes:
+        frame_count = max(1, int(sample_rate_hz * duration_ms / 1000))
+        fade_frames = min(frame_count // 2, int(sample_rate_hz * 0.015))
+        clamped_amplitude = max(0.0, min(amplitude, 0.8))
+        frames = bytearray()
+        for index in range(frame_count):
+            fade = 1.0
+            if fade_frames > 0:
+                fade = min(fade, index / fade_frames)
+                fade = min(fade, (frame_count - index - 1) / fade_frames)
+            sample = math.sin((2.0 * math.pi * frequency_hz * index) / sample_rate_hz)
+            frames.extend(struct.pack("<h", int(32767 * clamped_amplitude * max(0.0, fade) * sample)))
+
+        output = io.BytesIO()
+        with wave.open(output, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(sample_rate_hz)
+            wav.writeframes(bytes(frames))
+        return output.getvalue()
 
     def _asset_dir(self, asset_id: str) -> Path:
         return self._media_dir / safe_asset_id(asset_id)
