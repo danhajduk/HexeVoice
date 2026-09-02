@@ -66,7 +66,6 @@ Do not edit above this line:
 
 [STOP]
 
-[TODO] Task 285: Add the firmware hardware, OTA, recovery, model-bundle, and long-duration stress test matrix from the firmware roadmap, including power-loss, corrupt storage, SD removal, wake-during-playback, and far-field behavior coverage
 [TODO] Task 286: Add production-readiness security and manufacturing docs for firmware signing, key rotation, secure boot, flash encryption, provisioning, recovery, field service, enclosure/audio openings, mute controls, and service access
 
 [STOP]

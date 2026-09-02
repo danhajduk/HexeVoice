@@ -604,3 +604,9 @@ Chosen fix: Add a backend-side manifest builder/validator and CLI that mirror th
 What changed: Added `hexevoice.firmware_asset_bundles`, `firmware/tools/create-asset-bundle-manifest.py`, JSON schema, docs, release-artifact link, and regression tests for all supported asset bundle types.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_asset_bundles.py tests/test_firmware_model_bundles.py` passed. `python -m py_compile src/hexevoice/firmware_asset_bundles.py firmware/tools/create-asset-bundle-manifest.py` passed. No OTA or backend restart was performed.
 ###########
+Task #285
+Step objective: Add the firmware hardening stress test matrix from the firmware roadmap.
+Chosen fix: Extend the existing firmware validation matrix JSON and release-gate documentation instead of creating a separate checklist.
+What changed: Added machine-readable OTA/recovery, model-bundle, storage-corruption, hardware-behavior, and long-duration stress cases, plus tests that require the roadmap coverage to remain present.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_validation_matrix.py` passed. `python -m json.tool docs/firmware-validation-matrix.json` passed. `git diff --check -- docs/firmware-validation-matrix.json docs/firmware-validation-matrix.md tests/test_firmware_validation_matrix.py docs/New_tasks.txt` passed. MQTT publish skipped because MQTT_USERNAME/MQTT_PASSWORD were not set.
+###########

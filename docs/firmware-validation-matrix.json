@@ -15,6 +15,213 @@
     "runner": "scripts/firmware-reconnect-session-validation.py",
     "release_gate": "All reconnect/session-boundary scenarios must be pass for every supported profile before release approval."
   },
+  "roadmap_stress_matrix": {
+    "source": "docs/fw-roadmap.txt section 18 TEST MATRIX and phase 8 hardening goals",
+    "release_gate": "All required stress cases must have fresh pass evidence for each applicable supported profile before production firmware release approval.",
+    "evidence_policy": "Record automated test names, firmware artifact identifiers, physical board/profile, duration or fault-injection method, observed result, and recovery state. Secret-bearing provisioning payloads and Wi-Fi credentials must be redacted.",
+    "categories": [
+      {
+        "id": "ota_recovery",
+        "title": "OTA and Recovery Faults",
+        "applicability": "endpoint and recovery firmware on every supported board profile",
+        "required_cases": [
+          {
+            "id": "ota_normal_success",
+            "title": "Normal OTA success",
+            "evidence": "Endpoint installs a valid signed artifact, reboots, marks the image valid after startup self-tests, and reconnects with the same endpoint id."
+          },
+          {
+            "id": "ota_corrupt_image_rejection",
+            "title": "Corrupt image rejection",
+            "evidence": "Endpoint rejects the artifact before activation and keeps running the previous image."
+          },
+          {
+            "id": "ota_wrong_board_rejection",
+            "title": "Wrong-board image rejection",
+            "evidence": "Endpoint rejects artifacts whose board profile, SoC, flash geometry, PSRAM, or partition schema do not match the running profile."
+          },
+          {
+            "id": "ota_signature_failure_rejection",
+            "title": "Signature failure rejection",
+            "evidence": "Endpoint rejects unsigned or incorrectly signed firmware metadata before download or install."
+          },
+          {
+            "id": "ota_power_loss_download",
+            "title": "Power loss during OTA download",
+            "evidence": "Device boots the previous valid image, removes partial download state, and reports the failed update."
+          },
+          {
+            "id": "ota_power_loss_flash_write",
+            "title": "Power loss during OTA flash write",
+            "evidence": "Device boots the previous valid image or recovery app, and the interrupted slot is not marked valid."
+          },
+          {
+            "id": "ota_crash_before_validation",
+            "title": "Crash before image validation",
+            "evidence": "Bootloader rollback returns to the previous valid image and firmware reports rollback status."
+          },
+          {
+            "id": "ota_network_unavailable_during_validation",
+            "title": "Network unavailable during validation",
+            "evidence": "Local startup self-tests can mark a good image valid without falsely rolling back because Core is temporarily offline."
+          },
+          {
+            "id": "ota_both_slots_invalid_recovery_boots",
+            "title": "Both OTA slots invalid, recovery still boots",
+            "evidence": "Recovery app starts, exposes safe diagnostics, and can install a valid main firmware image."
+          }
+        ]
+      },
+      {
+        "id": "model_bundle",
+        "title": "Model-Bundle Faults",
+        "applicability": "wake and Stop model bundles on internal A/B banks and SD-backed model directories",
+        "required_cases": [
+          {
+            "id": "model_bundle_valid_update",
+            "title": "Valid model-bundle update",
+            "evidence": "Endpoint stages, verifies, test-loads, activates, and reports the new wake/Stop bundle."
+          },
+          {
+            "id": "model_bundle_corrupt_rejection",
+            "title": "Corrupt bundle rejection",
+            "evidence": "Hash, manifest, or test-load failure keeps the previous active bundle."
+          },
+          {
+            "id": "model_bundle_wrong_soc_rejection",
+            "title": "Wrong-SoC bundle rejection",
+            "evidence": "Compatibility checks reject bundles outside the current SoC, partition schema, board profile, or model API range."
+          },
+          {
+            "id": "model_bundle_power_loss_download",
+            "title": "Power loss during model download",
+            "evidence": "Partial staged bundle is cleaned or ignored and the endpoint remains wake-capable."
+          },
+          {
+            "id": "model_bundle_power_loss_pointer_switch",
+            "title": "Power loss before active pointer switch",
+            "evidence": "Previous active bundle remains selected after reboot."
+          },
+          {
+            "id": "model_bundle_failure_after_pointer_switch",
+            "title": "Failure after active pointer switch",
+            "evidence": "Endpoint rolls back to the previous compatible bundle or embedded fallback."
+          },
+          {
+            "id": "model_bundle_app_rollback_compatibility",
+            "title": "Application rollback with newer incompatible model bundle",
+            "evidence": "Older firmware ignores incompatible mutable bundles and selects a compatible previous or embedded model."
+          },
+          {
+            "id": "model_bundle_embedded_fallback",
+            "title": "Embedded fallback model operation",
+            "evidence": "Wake and Stop detection still initialize when mutable model storage is missing or invalid."
+          }
+        ]
+      },
+      {
+        "id": "storage_corruption",
+        "title": "Storage and Removable Media Faults",
+        "applicability": "NVS, model partitions, mutable bundle storage, and SD-backed display profiles",
+        "required_cases": [
+          {
+            "id": "corrupt_nvs_recovery",
+            "title": "Corrupted NVS recovery",
+            "evidence": "Device enters a safe provisioning or recovery state without exposing secrets."
+          },
+          {
+            "id": "corrupt_model_partition",
+            "title": "Corrupted model partition",
+            "evidence": "Endpoint rejects corrupt model storage and selects previous-compatible or embedded fallback models."
+          },
+          {
+            "id": "corrupt_sd_filesystem",
+            "title": "Corrupt SD filesystem",
+            "evidence": "Display-capable endpoints boot with embedded fallback UI/audio and report SD diagnostics."
+          },
+          {
+            "id": "sd_removal_runtime",
+            "title": "SD removal and remount behavior",
+            "evidence": "Runtime removal degrades gracefully, stops SD-backed asset use, and remounts cleanly when reinserted."
+          }
+        ]
+      },
+      {
+        "id": "hardware_behavior",
+        "title": "Hardware and Audio Behavior",
+        "applicability": "board-specific audio, controls, display/touch, storage, radio, and status outputs",
+        "required_cases": [
+          {
+            "id": "psram_sustained_allocation",
+            "title": "PSRAM allocation and sustained use",
+            "evidence": "Long-running voice, playback, and UI paths do not exhaust or fragment PSRAM beyond profile thresholds."
+          },
+          {
+            "id": "microphone_channel_validation",
+            "title": "Microphone and audio-channel validation",
+            "evidence": "Captured channels, sample rate, gain, and VAD input mapping match the board profile."
+          },
+          {
+            "id": "speaker_output",
+            "title": "Speaker output",
+            "evidence": "Tones and TTS playback are audible, correctly routed, and report playback telemetry."
+          },
+          {
+            "id": "mute_button_input",
+            "title": "Mute and button input",
+            "evidence": "Hardware mute, action, stop, rotary, or touch controls match the board profile without leaking audio while muted."
+          },
+          {
+            "id": "status_display_led",
+            "title": "LED, display, and touch state behavior",
+            "evidence": "Status outputs cover boot, idle, listening, thinking, replying, error, muted, disconnected, OTA, and recovery states."
+          },
+          {
+            "id": "wifi_radio_reconnect",
+            "title": "Wi-Fi/radio reconnect",
+            "evidence": "Endpoint reconnects after AP loss, backend restart, and normal power-cycle without duplicate sessions."
+          },
+          {
+            "id": "wake_during_network_activity",
+            "title": "Wake-word detection during network activity",
+            "evidence": "Wake detection latency and false accept/reject rates remain inside profile limits while telemetry, OTA checks, or downloads are active."
+          },
+          {
+            "id": "wake_during_playback",
+            "title": "Wake-word detection during TTS or music playback",
+            "evidence": "AEC, barge-in, or documented fallback behavior prevents runaway self-triggering and preserves stop/interruption behavior."
+          },
+          {
+            "id": "far_field_behavior",
+            "title": "AEC and far-field behavior",
+            "evidence": "Measured near-field and far-field wake acceptance, false reject, and false accept results are recorded for normal room placement."
+          }
+        ]
+      },
+      {
+        "id": "long_duration",
+        "title": "Long-Duration Stress",
+        "applicability": "all supported profiles before production readiness",
+        "required_cases": [
+          {
+            "id": "long_duration_audio_streaming",
+            "title": "Long-duration audio streaming",
+            "evidence": "Endpoint sustains repeated wake, capture, STT, response, playback, and idle cycles without memory growth or stuck sessions."
+          },
+          {
+            "id": "long_duration_network_stress",
+            "title": "Long-duration network stress",
+            "evidence": "Endpoint remains connected or recovers cleanly across repeated backend restarts, Wi-Fi drops, and MQTT/WebSocket churn."
+          },
+          {
+            "id": "long_duration_thermal_power",
+            "title": "Thermal and power behavior",
+            "evidence": "Board temperature, current draw, brownout behavior, and enclosure constraints remain acceptable through sustained room-use testing."
+          }
+        ]
+      }
+    ]
+  },
   "profiles": [
     {
       "id": "esp_box_3",

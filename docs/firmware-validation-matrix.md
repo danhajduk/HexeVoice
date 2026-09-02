@@ -32,6 +32,25 @@ Unsupported `HEXE_BOARD_PROFILE` values must remain rejected by
 `firmware/build.sh`. A profile that is not listed in the JSON matrix is
 unvalidated and should not be presented as production-ready to operators.
 
+The JSON matrix also contains the production hardening stress matrix from
+`docs/fw-roadmap.txt` section 18. Production firmware release approval requires
+fresh pass evidence for every applicable supported profile across:
+
+- OTA and recovery faults, including corrupt images, wrong-board artifacts,
+  signature failures, power loss during download or flash write, crash before
+  validation, Core/network outage during validation, rollback, and recovery boot
+  when both OTA slots are unusable.
+- Model-bundle faults, including corrupt bundles, wrong-SoC or incompatible API
+  bundles, power loss during staging or active-pointer changes, app rollback
+  with newer model assets, and embedded fallback model operation.
+- Storage and removable-media faults, including corrupted NVS, corrupted model
+  partitions, corrupt SD filesystems, SD removal, and remount behavior.
+- Hardware behavior, including PSRAM pressure, microphone channel mapping,
+  speaker output, mute and button input, LED/display/touch states, radio
+  reconnect, wake during network activity, wake during playback, AEC, and
+  far-field pickup.
+- Long-duration audio, network, thermal, and power stress.
+
 Run the reconnect/session-boundary field rig before release:
 
 ```bash
@@ -50,6 +69,8 @@ profile. Before release, record results for:
 - OTA, media delivery, and inventory behavior appropriate to the profile
 - mute/volume controls and conflict handling
 - backend restart, endpoint power-cycle, and reconnect behavior
+- hardening stress cases from `roadmap_stress_matrix`, with artifact ids,
+  board/profile, duration or fault-injection method, result, and recovery state
 
 `validation_state: "partial"` means automated coverage exists but field
 validation is still required. Do not mark a profile as fully validated until all
