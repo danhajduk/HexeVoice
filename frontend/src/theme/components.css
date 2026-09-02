@@ -709,6 +709,10 @@
   width: min(620px, 100%);
 }
 
+.endpoint-ble-popout {
+  width: min(960px, 100%);
+}
+
 .audio-quality-popout-summary {
   display: flex;
   flex-wrap: wrap;
@@ -2277,6 +2281,21 @@ select.field-input {
   overflow-wrap: anywhere;
 }
 
+.endpoint-onboarding-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel-alt));
+}
+
+.endpoint-onboarding-toolbar .btn {
+  flex: 0 0 auto;
+}
+
 .endpoint-metadata-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
@@ -2784,6 +2803,11 @@ select.field-input {
   .endpoint-volume-control {
     grid-template-columns: 1fr;
     align-items: stretch;
+  }
+
+  .endpoint-onboarding-toolbar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .endpoint-metadata-form {

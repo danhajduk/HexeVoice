@@ -1220,7 +1220,7 @@ function EndpointProvisioningPanel({ endpointStatus, voiceStatus, onRefresh, set
   );
 }
 
-function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessage }) {
+function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessage, showHeader = true }) {
   const provisioning = endpointCapabilities(endpointStatus).provisioning || {};
   const defaultBackendHost = provisioning.backend_host || window.location.hostname || "hexe.local";
   const [targetNodeId, setTargetNodeId] = useState(endpointStatus?.endpoint_id || "");
@@ -1303,13 +1303,15 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
 
   return (
     <section className="voice-endpoint-panel stack">
-      <div className="section-heading">
-        <div>
-          <p className="panel-kicker">Core-Governed BLE</p>
-          <h2 className="panel-title">BLE Provisioning</h2>
+      {showHeader ? (
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Core-Governed BLE</p>
+            <h2 className="panel-title">BLE Provisioning</h2>
+          </div>
+          <span className="status-pill status-pill-neutral">lease required</span>
         </div>
-        <span className="status-pill status-pill-neutral">lease required</span>
-      </div>
+      ) : null}
       <form className="endpoint-metadata-form" onSubmit={handleBleProvision}>
         <label>
           <span>Target node</span>
@@ -1398,6 +1400,47 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
         </button>
       </form>
     </section>
+  );
+}
+
+function EndpointBleOnboardingDialog({ endpointStatus, onRefresh, setActionMessage, onClose }) {
+  useEffect(() => {
+    function handleKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  return (
+    <div className="voice-history-popout-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="voice-history-popout endpoint-ble-popout"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Onboard endpoint"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Core-Governed BLE</p>
+            <h2 className="panel-title">Onboard Endpoint</h2>
+          </div>
+          <button className="btn btn-ghost btn-compact" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <EndpointBleOnboardingPanel
+          endpointStatus={endpointStatus}
+          onRefresh={onRefresh}
+          setActionMessage={setActionMessage}
+          showHeader={false}
+        />
+      </section>
+    </div>
   );
 }
 
@@ -2159,6 +2202,7 @@ export function VoiceEndpointDashboardSection({
   const [placementCalibrationReport, setPlacementCalibrationReport] = useState(null);
   const [placementPassiveBusy, setPlacementPassiveBusy] = useState(false);
   const [endpointAudioQuality, setEndpointAudioQuality] = useState(voiceStatus?.endpoint_audio_quality || null);
+  const [bleOnboardingOpen, setBleOnboardingOpen] = useState(false);
   const selectedEndpointStatus = endpointStatusById(endpointStatuses, selectedEndpointId);
   const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
   const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
@@ -2660,6 +2704,15 @@ export function VoiceEndpointDashboardSection({
         selectedEndpointId={endpointId}
         onSelectEndpoint={setSelectedEndpointId}
       />
+      <div className="endpoint-onboarding-toolbar">
+        <div>
+          <p className="panel-kicker">New Endpoint</p>
+          <h2 className="panel-title">BLE Onboarding</h2>
+        </div>
+        <button className="btn btn-primary" type="button" onClick={() => setBleOnboardingOpen(true)}>
+          Onboard Endpoint
+        </button>
+      </div>
       <div className="voice-endpoint-top">
         <VoicePipelinePanel voiceStatus={scopedVoiceStatus} latestSession={latestEndpointSession} />
         <VoiceEndpointActionsCard
@@ -2739,17 +2792,6 @@ export function VoiceEndpointDashboardSection({
           setActionMessage={setActionMessage}
         />
       </EndpointAdvancedSection>
-      <EndpointAdvancedSection
-        title="BLE Provisioning"
-        kicker="Core-Governed"
-        badge="lease required"
-      >
-        <EndpointBleOnboardingPanel
-          endpointStatus={selectedEndpointStatus}
-          onRefresh={onRefresh}
-          setActionMessage={setActionMessage}
-        />
-      </EndpointAdvancedSection>
       <EndpointAdvancedSection title="SD Asset Manager" kicker="Endpoint Media" badge="advanced">
         <EndpointMediaManagerPanel
           endpointId={endpointId}
@@ -2769,6 +2811,14 @@ export function VoiceEndpointDashboardSection({
           setActionMessage={setActionMessage}
         />
       </EndpointAdvancedSection>
+      {bleOnboardingOpen ? (
+        <EndpointBleOnboardingDialog
+          endpointStatus={selectedEndpointStatus}
+          onRefresh={onRefresh}
+          setActionMessage={setActionMessage}
+          onClose={() => setBleOnboardingOpen(false)}
+        />
+      ) : null}
     </section>
   );
 }

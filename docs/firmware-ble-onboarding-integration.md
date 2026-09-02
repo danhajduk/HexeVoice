@@ -161,7 +161,7 @@ Task 289 adds the HexeVoice requester/operator side:
   derived-key/decrypted-payload fields.
 - Granted leases are released after the Supervisor attempt when Core returns a
   lease id; otherwise Core expiry remains the fallback cleanup path.
-- The dashboard exposes a compact operator BLE provisioning form while keeping
+- The dashboard exposes a compact operator BLE onboarding dialog while keeping
   the existing connected-endpoint provisioning command as the post-join
   reconfiguration path.
 - Normal Core node onboarding/trust is not bypassed. After the endpoint joins
