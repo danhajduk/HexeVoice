@@ -3,6 +3,10 @@
 HexeVoice installs endpoint firmware from a separate release/artifact repo by
 default. The expected GitHub release source is:
 
+Production signing, key rotation, secure boot, flash encryption,
+manufacturing, recovery, and field-service gates are defined in
+`docs/firmware-production-readiness.md`.
+
 ```text
 danhajduk/HexeFirmware
 ```

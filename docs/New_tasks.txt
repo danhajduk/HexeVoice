@@ -51,8 +51,6 @@ Do not edit above this line:
 **********************************************************************************************
 * TODO listing
 **********************************************************************************************
-[TODO] Task 286: Add production-readiness security and manufacturing docs for firmware signing, key rotation, secure boot, flash encryption, provisioning, recovery, field service, enclosure/audio openings, mute controls, and service access
-
 [STOP]
 
 [TODO] Task 287: Reconcile HexeVoice BLE onboarding requirements with the current Core/Supervisor `ble.provision_wifi` contract, schema, lease policy, broker route, security model, and failure modes

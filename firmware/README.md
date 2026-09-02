@@ -10,6 +10,7 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
 - [`docs/firmware-discovery.md`](/home/dan/Projects/HexeVoice/docs/firmware-discovery.md)
 - [`docs/firmware-ota.md`](/home/dan/Projects/HexeVoice/docs/firmware-ota.md)
 - [`docs/firmware-provisioning.md`](/home/dan/Projects/HexeVoice/docs/firmware-provisioning.md)
+- [`docs/firmware-production-readiness.md`](/home/dan/Projects/HexeVoice/docs/firmware-production-readiness.md)
 
 ## Goals
 
@@ -105,6 +106,10 @@ The profile validation matrix lives in
 It lists required automated and manual checks for audio streaming, wake
 acceptance, TTS playback, display or LED-ring state, OTA/media, mute/volume, and
 reconnect behavior.
+Production firmware signing, key rotation, secure boot, flash encryption,
+manufacturing, recovery, field-service, enclosure, audio opening, mute, and
+service-access gates are defined in
+[`docs/firmware-production-readiness.md`](../docs/firmware-production-readiness.md).
 
 New board profiles should start with
 [`firmware-new-board-bringup.md`](../docs/firmware-new-board-bringup.md) and

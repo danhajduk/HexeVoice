@@ -610,3 +610,9 @@ Chosen fix: Extend the existing firmware validation matrix JSON and release-gate
 What changed: Added machine-readable OTA/recovery, model-bundle, storage-corruption, hardware-behavior, and long-duration stress cases, plus tests that require the roadmap coverage to remain present.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_validation_matrix.py` passed. `python -m json.tool docs/firmware-validation-matrix.json` passed. `git diff --check -- docs/firmware-validation-matrix.json docs/firmware-validation-matrix.md tests/test_firmware_validation_matrix.py docs/New_tasks.txt` passed. MQTT publish skipped because MQTT_USERNAME/MQTT_PASSWORD were not set.
 ###########
+Task #286
+Step objective: Add firmware production-readiness security and manufacturing documentation.
+Chosen fix: Add one production-readiness contract and link it from the firmware README and release artifact docs.
+What changed: Documented production signing, key rotation, secure boot, flash encryption, provisioning/manufacturing, recovery/field service, enclosure/audio openings, mute controls, service access, and required release evidence. Added doc regression tests for required topics and links.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_production_readiness.py tests/test_firmware_validation_matrix.py tests/test_firmware_recovery_architecture.py` passed. `git diff --check -- docs/firmware-production-readiness.md docs/firmware-release-artifacts.md firmware/README.md tests/test_firmware_production_readiness.py docs/New_tasks.txt` passed.
+###########
