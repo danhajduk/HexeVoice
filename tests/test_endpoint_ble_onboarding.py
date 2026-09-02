@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from hexevoice.api.models import EndpointBleProvisionWifiRequest
+from hexevoice.api.models import EndpointBleProvisionWifiRequest, EndpointBleScanRequest
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 
@@ -67,10 +67,22 @@ class FakeSupervisorClient:
     def __init__(self, *, result: dict | None = None) -> None:
         self.result = result or {"ok": True, "status": "completed", "credential_payload": {"wifi_password": "[REDACTED]"}}
         self.calls = []
+        self.scan_result = {
+            "ok": True,
+            "operation": "ble.scan",
+            "adapter": "hci0",
+            "scan_seconds": 5,
+            "devices": [{"address": "AA:BB:CC:DD:EE:FF", "name": "Hexe Voice PE", "transport": "ble"}],
+        }
+        self.scan_calls = []
 
     def provision_ble_wifi(self, payload: dict) -> dict | None:
         self.calls.append(payload)
         return self.result
+
+    def scan_ble(self, payload: dict) -> dict | None:
+        self.scan_calls.append(payload)
+        return self.scan_result
 
 
 def request_payload(**overrides) -> EndpointBleProvisionWifiRequest:
@@ -92,6 +104,53 @@ def request_payload(**overrides) -> EndpointBleProvisionWifiRequest:
     }
     payload.update(overrides)
     return EndpointBleProvisionWifiRequest.model_validate(payload)
+
+
+def scan_payload(**overrides) -> EndpointBleScanRequest:
+    payload = {
+        "adapter": "hci0",
+        "scan_seconds": 5,
+    }
+    payload.update(overrides)
+    return EndpointBleScanRequest.model_validate(payload)
+
+
+def test_ble_scan_granted_calls_supervisor_and_releases_lease(tmp_path):
+    core = FakeCoreClient(status="granted")
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.scan(scan_payload())
+
+    assert response.ok is True
+    assert response.status == "completed"
+    assert core.requested_payloads[0]["operation"] == "ble.scan"
+    assert core.requested_payloads[0]["resource_type"] == "bluetooth"
+    assert supervisor.scan_calls == [{"node_id": "voice-node-main", "lease_token": "secret-lease-token", "adapter": "hci0", "scan_seconds": 5}]
+    assert core.released == [{"lease_id": "lease-1", "node_id": "voice-node-main"}]
+    assert response.access_request["lease_token"] == "[REDACTED]"
+    assert response.devices == [{"address": "AA:BB:CC:DD:EE:FF", "name": "Hexe Voice PE", "transport": "ble"}]
+
+
+def test_ble_scan_pending_stops_before_supervisor_call(tmp_path):
+    core = FakeCoreClient(status="pending")
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.scan(scan_payload())
+
+    assert response.ok is False
+    assert response.status == "pending"
+    assert supervisor.scan_calls == []
+    assert core.released == []
 
 
 def test_ble_onboarding_granted_calls_supervisor_and_releases_lease(tmp_path):
@@ -214,9 +273,12 @@ def test_frontend_exposes_core_governed_ble_operator_flow():
     dashboard_source = Path("frontend/src/features/dashboard/VoiceEndpointDashboardSection.jsx").read_text(encoding="utf-8")
 
     assert "provisionEndpointBleWifi" in client_source
+    assert "scanEndpointBleDevices" in client_source
     assert '"/api/endpoint/ble/provision-wifi"' in client_source
+    assert '"/api/endpoint/ble/scan"' in client_source
     assert "EndpointBleOnboardingPanel" in dashboard_source
     assert "Core-Governed BLE" in dashboard_source
+    assert "Scan BLE" in dashboard_source
     assert "Provision over BLE" in dashboard_source
     assert "endpoint_ephemeral_public_key" in dashboard_source
     assert "wifi_password" in dashboard_source

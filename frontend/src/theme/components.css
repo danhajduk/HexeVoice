@@ -2296,6 +2296,62 @@ select.field-input {
   flex: 0 0 auto;
 }
 
+.endpoint-ble-scan-panel {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel-alt));
+}
+
+.endpoint-ble-scan-panel h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.endpoint-ble-device-list {
+  display: grid;
+  gap: 8px;
+}
+
+.endpoint-ble-device-row {
+  appearance: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel));
+  color: hsl(var(--sx-text));
+  cursor: pointer;
+  text-align: left;
+}
+
+.endpoint-ble-device-row-selected {
+  border-color: hsl(var(--sx-accent));
+}
+
+.endpoint-ble-device-row > span:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.endpoint-ble-device-row strong,
+.endpoint-ble-device-row small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.endpoint-ble-device-row small {
+  color: hsl(var(--sx-text-muted));
+}
+
 .endpoint-metadata-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;

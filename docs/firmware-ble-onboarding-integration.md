@@ -164,9 +164,16 @@ Task 289 adds the HexeVoice requester/operator side:
 - The dashboard exposes a compact operator BLE onboarding dialog while keeping
   the existing connected-endpoint provisioning command as the post-join
   reconfiguration path.
+- The onboarding dialog can request a Core-governed `ble.scan` lease, call the
+  Supervisor BLE scan broker, list discovered BLE devices, and select a device
+  address for provisioning. When exactly one device is discovered, the dialog
+  selects it automatically.
 - When no endpoints are registered, the dashboard keeps the onboarding entry
   point visible and suppresses endpoint-specific statistics, actions, details,
   history, and advanced panels until a heartbeat registers a device.
+- Scan results contain the Supervisor broker's address/name/transport rows.
+  Reading endpoint GATT identity fields directly from scan results remains a
+  separate enhancement.
 - Normal Core node onboarding/trust is not bypassed. After the endpoint joins
   Wi-Fi, the existing discovery, heartbeat, registry, and trust workflow remain
   the source of truth for a connected endpoint.

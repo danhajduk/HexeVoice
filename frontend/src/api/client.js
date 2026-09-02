@@ -601,6 +601,10 @@ export async function provisionEndpointBleWifi(payload) {
   return sendJson("/api/endpoint/ble/provision-wifi", { body: payload });
 }
 
+export async function scanEndpointBleDevices(payload = {}) {
+  return sendJson("/api/endpoint/ble/scan", { body: payload });
+}
+
 export async function cancelEndpointSession(endpointId) {
   return sendJson("/api/endpoint/session/cancel", {
     body: {

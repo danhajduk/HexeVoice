@@ -24,6 +24,7 @@ import {
   resetEndpointProvisioning,
   replayEndpointResponse,
   replayVoiceSession,
+  scanEndpointBleDevices,
   setEndpointVolume,
   startVoicePlacementCalibration,
   startVoicePlacementTest,
@@ -1229,6 +1230,7 @@ function EndpointProvisioningPanel({ endpointStatus, voiceStatus, onRefresh, set
 function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessage, showHeader = true }) {
   const provisioning = endpointCapabilities(endpointStatus).provisioning || {};
   const defaultBackendHost = provisioning.backend_host || window.location.hostname || "hexe.local";
+  const safeTargetNodeNamePattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
   const [targetNodeId, setTargetNodeId] = useState(endpointStatus?.endpoint_id || "");
   const [onboardingSessionId, setOnboardingSessionId] = useState("");
   const [endpointPublicKey, setEndpointPublicKey] = useState("");
@@ -1246,6 +1248,9 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [wifiSsid, setWifiSsid] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanDevices, setScanDevices] = useState([]);
+  const [selectedScanAddress, setSelectedScanAddress] = useState("");
 
   useEffect(() => {
     setTargetNodeId(endpointStatus?.endpoint_id || "");
@@ -1262,6 +1267,47 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     provisioning.use_tls,
     provisioning.ws_port,
   ]);
+
+  function useScannedDevice(device) {
+    const address = String(device?.address || "");
+    const name = String(device?.name || "").trim();
+    if (address) {
+      setTargetAddress(address);
+      setSelectedScanAddress(address);
+    }
+    if (!displayName && name) {
+      setDisplayName(name);
+    }
+    if (!targetNodeId && safeTargetNodeNamePattern.test(name)) {
+      setTargetNodeId(name);
+    }
+  }
+
+  async function handleBleScan() {
+    setScanBusy(true);
+    try {
+      const result = await scanEndpointBleDevices({
+        adapter: adapter || undefined,
+        scan_seconds: 5,
+      });
+      const devices = Array.isArray(result.devices) ? result.devices : [];
+      setScanDevices(devices);
+      if (result.status !== "completed") {
+        setActionMessage(`BLE scan ${result.status}${result.error ? `: ${result.error}` : ""}.`);
+        return;
+      }
+      if (devices.length === 1) {
+        useScannedDevice(devices[0]);
+        setActionMessage("BLE scan found one device and selected it.");
+        return;
+      }
+      setActionMessage(`BLE scan found ${devices.length} device${devices.length === 1 ? "" : "s"}.`);
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setScanBusy(false);
+    }
+  }
 
   async function handleBleProvision(event) {
     event.preventDefault();
@@ -1318,6 +1364,42 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
           <span className="status-pill status-pill-neutral">lease required</span>
         </div>
       ) : null}
+      <div className="endpoint-ble-scan-panel">
+        <div className="section-heading">
+          <div>
+            <p className="panel-kicker">Nearby BLE</p>
+            <h3>Discovered Devices</h3>
+          </div>
+          <button className="btn btn-secondary btn-compact" type="button" onClick={handleBleScan} disabled={busy || scanBusy}>
+            {scanBusy ? "Scanning..." : "Scan BLE"}
+          </button>
+        </div>
+        {scanDevices.length ? (
+          <div className="endpoint-ble-device-list">
+            {scanDevices.map((device) => {
+              const address = String(device.address || "");
+              const selected = selectedScanAddress && selectedScanAddress === address;
+              return (
+                <button
+                  className={`endpoint-ble-device-row${selected ? " endpoint-ble-device-row-selected" : ""}`}
+                  key={address || String(device.name || "unknown")}
+                  type="button"
+                  onClick={() => useScannedDevice(device)}
+                  disabled={busy || !address}
+                >
+                  <span>
+                    <strong>{valueOrEmpty(device.name, "Unnamed device")}</strong>
+                    <small>{valueOrEmpty(address, "unknown address")}</small>
+                  </span>
+                  <span className="status-pill status-pill-neutral">{selected ? "Selected" : valueOrEmpty(device.transport, "ble")}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="muted-text">No scan results yet.</p>
+        )}
+      </div>
       <form className="endpoint-metadata-form" onSubmit={handleBleProvision}>
         <label>
           <span>Target node</span>
