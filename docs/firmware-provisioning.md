@@ -63,6 +63,14 @@ command. For changing the device's future identity, the apply request uses
 `provisioned_endpoint_id`, which the backend maps to the firmware command
 payload field named `endpoint_id`.
 
+## BLE Onboarding
+
+The Core/Supervisor-governed BLE onboarding integration plan is documented in
+[`docs/firmware-ble-onboarding-integration.md`](firmware-ble-onboarding-integration.md).
+It maps the current `ble.provision_wifi` Voice payload to the same persisted
+settings contract used by `endpoint.provisioning.apply` and recovery
+provisioning.
+
 ## Recovery
 
 Keep `firmware/config/endpoint.yaml` and `firmware/components/endpoint_runtime/secrets/wifi_secrets.h`

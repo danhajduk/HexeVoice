@@ -10,6 +10,7 @@ It replaces the ESPHome prototype as the active firmware track while preserving 
 - [`docs/firmware-discovery.md`](/home/dan/Projects/HexeVoice/docs/firmware-discovery.md)
 - [`docs/firmware-ota.md`](/home/dan/Projects/HexeVoice/docs/firmware-ota.md)
 - [`docs/firmware-provisioning.md`](/home/dan/Projects/HexeVoice/docs/firmware-provisioning.md)
+- [`docs/firmware-ble-onboarding-integration.md`](/home/dan/Projects/HexeVoice/docs/firmware-ble-onboarding-integration.md)
 - [`docs/firmware-production-readiness.md`](/home/dan/Projects/HexeVoice/docs/firmware-production-readiness.md)
 
 ## Goals

@@ -616,3 +616,9 @@ Chosen fix: Add one production-readiness contract and link it from the firmware 
 What changed: Documented production signing, key rotation, secure boot, flash encryption, provisioning/manufacturing, recovery/field service, enclosure/audio openings, mute controls, service access, and required release evidence. Added doc regression tests for required topics and links.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_production_readiness.py tests/test_firmware_validation_matrix.py tests/test_firmware_recovery_architecture.py` passed. `git diff --check -- docs/firmware-production-readiness.md docs/firmware-release-artifacts.md firmware/README.md tests/test_firmware_production_readiness.py docs/New_tasks.txt` passed.
 ###########
+Task #287
+Step objective: Reconcile HexeVoice BLE onboarding with the Core/Supervisor `ble.provision_wifi` contract.
+Chosen fix: Add a HexeVoice-side integration plan that consumes the current Core/Supervisor contract instead of inventing local host Bluetooth APIs.
+What changed: Added the BLE onboarding integration plan, mapped Core Voice payload fields to existing firmware/recovery NVS settings, documented Core/Supervisor/HexeVoice ownership and failure modes, linked the plan from firmware docs, and added doc regression tests.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_ble_onboarding_integration.py tests/test_firmware_recovery_architecture.py tests/test_firmware_board_profiles.py` passed. `git diff --check -- docs/firmware-ble-onboarding-integration.md docs/firmware-provisioning.md firmware/README.md tests/test_firmware_ble_onboarding_integration.py docs/New_tasks.txt` passed. MQTT publish skipped because MQTT_USERNAME/MQTT_PASSWORD were not set.
+###########
