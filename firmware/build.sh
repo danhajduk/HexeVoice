@@ -12,7 +12,20 @@ COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR:-${ROOT_DIR}/export}"
 BOARD_PROFILE_ROOT="${BOARD_PROFILE_ROOT:-${ROOT_DIR}/boards}"
 PARTITION_ROOT="${PARTITION_ROOT:-${ROOT_DIR}/partitions}"
 PARTITION_VALIDATOR="${ROOT_DIR}/tools/validate_partition_schema.py"
-FIRMWARE_APP="${HEXE_FIRMWARE_APP:-endpoint}"
+REQUESTED_FIRMWARE_APP="${HEXE_FIRMWARE_APP:-endpoint}"
+FIRMWARE_EXPORT_FLAVOR="${REQUESTED_FIRMWARE_APP}"
+case "${REQUESTED_FIRMWARE_APP}" in
+  endpoint|recovery)
+    FIRMWARE_APP="${REQUESTED_FIRMWARE_APP}"
+    ;;
+  min|minimal|factory)
+    FIRMWARE_APP="recovery"
+    FIRMWARE_EXPORT_FLAVOR="minimal"
+    ;;
+  *)
+    FIRMWARE_APP="${REQUESTED_FIRMWARE_APP}"
+    ;;
+esac
 
 usage() {
   cat <<EOF
@@ -24,7 +37,7 @@ Commands:
 
 Environment:
   HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3, ha_voice_pe, or all. Default: all for build, esp_box_3 for push.
-  HEXE_FIRMWARE_APP    Firmware app to build. Default: endpoint.
+  HEXE_FIRMWARE_APP    Firmware app to build. Default: endpoint. Use minimal for factory onboarding firmware.
   BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
   EXPORT_DIR    Firmware export directory. Defaults to export or export-ha-voice-pe by profile.
   COMMON_EXPORT_DIR  Folder that receives profile-named binaries for all builds. Default: firmware/export.
@@ -234,6 +247,7 @@ runtime_component_for_app() {
   case "$1" in
     endpoint) echo "endpoint_runtime" ;;
     recovery) echo "recovery_runtime" ;;
+    minimal) echo "recovery_runtime" ;;
     *)
       echo "Unsupported HEXE_FIRMWARE_APP: $1" >&2
       exit 1
@@ -245,6 +259,7 @@ firmware_api_version_for_app() {
   case "$1" in
     endpoint) echo "hexe-firmware-main-api-v1" ;;
     recovery) echo "hexe-recovery-api-v1" ;;
+    minimal) echo "hexe-recovery-api-v1" ;;
     *)
       echo "Unsupported HEXE_FIRMWARE_APP: $1" >&2
       exit 1
@@ -253,6 +268,10 @@ firmware_api_version_for_app() {
 }
 
 profile_build_dir() {
+  if [[ "${FIRMWARE_EXPORT_FLAVOR}" == "minimal" ]]; then
+    echo "${BUILD_DIR:-${ROOT_DIR}/build-min-$1}"
+    return
+  fi
   if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
     echo "${BUILD_DIR:-${ROOT_DIR}/build-recovery-$1}"
     return
@@ -265,6 +284,10 @@ profile_build_dir() {
 }
 
 profile_export_dir() {
+  if [[ "${FIRMWARE_EXPORT_FLAVOR}" == "minimal" ]]; then
+    echo "${EXPORT_DIR:-${ROOT_DIR}/export-min-$1}"
+    return
+  fi
   if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
     echo "${EXPORT_DIR:-${ROOT_DIR}/export-recovery-$1}"
     return
@@ -277,7 +300,9 @@ profile_export_dir() {
 }
 
 profile_app_filename() {
-  if [[ "${FIRMWARE_APP}" == "endpoint" ]]; then
+  if [[ "${FIRMWARE_EXPORT_FLAVOR}" == "minimal" ]]; then
+    echo "hexe_min_${1}.bin"
+  elif [[ "${FIRMWARE_APP}" == "endpoint" ]]; then
     echo "hexe_firmware_${1}.bin"
   else
     echo "hexe_${FIRMWARE_APP}_${1}.bin"
@@ -357,7 +382,7 @@ build_profile() {
   refresh_profile_sdkconfig_if_generated_defaults_changed "${profile}" "${sdkconfig_path}"
 
   echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"
-  local idf_env=("IDF_TARGET=${idf_target}")
+  local idf_env=("IDF_TARGET=${idf_target}" "HEXE_FIRMWARE_APP=${FIRMWARE_APP}")
   if [[ "${FIRMWARE_APP}" == "recovery" && -z "${IDF_COMPONENT_MANAGER:-}" ]]; then
     idf_env+=("IDF_COMPONENT_MANAGER=0")
   fi
@@ -385,8 +410,8 @@ build_profile() {
       PROFILE_APP_FILENAME="${profile_app}" \
       PROFILE_MANIFEST_FILENAME="manifest-${profile}.json" \
       FIRMWARE_APPLICATION_TYPE="${FIRMWARE_APP}" \
-      FIRMWARE_API_VERSION="$(firmware_api_version_for_app "${FIRMWARE_APP}")" \
-      GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_APP}")" \
+      FIRMWARE_API_VERSION="$(firmware_api_version_for_app "${FIRMWARE_EXPORT_FLAVOR}")" \
+      GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_EXPORT_FLAVOR}")" \
       "${ROOT_DIR}/export-artifacts.sh"
   fi
 }

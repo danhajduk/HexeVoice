@@ -35,6 +35,11 @@ HEXE_FIRMWARE_APP=recovery HEXE_BOARD_PROFILE=<board> ./firmware/build.sh build
 
 Recovery artifacts must declare `application_type=recovery`. Endpoint artifacts
 must continue to declare `application_type=endpoint`.
+For the initial USB factory/onboarding flash flow, `HEXE_FIRMWARE_APP=minimal`
+uses the same recovery runtime but writes a complete flash export to
+`firmware/export-min-<board>`. The factory image carries the recovery API,
+local HTTP controls, BLE local provisioning, and signed endpoint-image install
+path without linking the normal endpoint runtime.
 
 ## Shared Code Boundary
 

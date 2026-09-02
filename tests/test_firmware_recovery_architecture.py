@@ -4,6 +4,7 @@ from pathlib import Path
 RECOVERY_DOC = Path("docs/firmware-recovery-architecture.md")
 ROOT_CMAKE = Path("firmware/CMakeLists.txt")
 BUILD_SCRIPT = Path("firmware/build.sh")
+REBUILD_SCRIPT = Path("scripts/rebuild-firmware.sh")
 RECOVERY_README = Path("firmware/apps/recovery/README.md")
 RECOVERY_MAIN_CMAKE = Path("firmware/apps/recovery/main/CMakeLists.txt")
 RECOVERY_MAIN = Path("firmware/apps/recovery/main/app_main.cpp")
@@ -299,9 +300,30 @@ def test_build_script_exports_recovery_metadata_without_endpoint_runtime():
     assert "runtime_component_for_app()" in build_script
     assert 'endpoint) echo "endpoint_runtime"' in build_script
     assert 'recovery) echo "recovery_runtime"' in build_script
+    assert 'minimal) echo "recovery_runtime"' in build_script
+    assert 'FIRMWARE_EXPORT_FLAVOR="minimal"' in build_script
+    assert 'echo "${EXPORT_DIR:-${ROOT_DIR}/export-min-$1}"' in build_script
+    assert 'echo "hexe_min_${1}.bin"' in build_script
     assert 'FIRMWARE_APPLICATION_TYPE="${FIRMWARE_APP}"' in build_script
-    assert 'FIRMWARE_API_VERSION="$(firmware_api_version_for_app "${FIRMWARE_APP}")"' in build_script
-    assert 'GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_APP}")"' in build_script
+    assert 'FIRMWARE_API_VERSION="$(firmware_api_version_for_app "${FIRMWARE_EXPORT_FLAVOR}")"' in build_script
+    assert 'GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_EXPORT_FLAVOR}")"' in build_script
     assert 'idf_env+=("IDF_COMPONENT_MANAGER=0")' in build_script
     assert 'push mode supports only HEXE_FIRMWARE_APP=endpoint.' in build_script
     assert 'hexe_${FIRMWARE_APP}_${1}.bin' in build_script
+
+
+def test_rebuild_script_can_select_minimal_factory_exports():
+    build_script = BUILD_SCRIPT.read_text()
+    rebuild_script = REBUILD_SCRIPT.read_text()
+    recovery_readme = RECOVERY_README.read_text()
+    firmware_readme = Path("firmware/README.md").read_text()
+    doc = RECOVERY_DOC.read_text()
+
+    assert 'min|minimal|factory)' in build_script
+    assert "--include-minimal" in rebuild_script
+    assert "--minimal-only" in rebuild_script
+    assert 'run_build minimal "${profile}"' in rebuild_script
+    assert "Minimal firmware profiles:" in rebuild_script
+    assert "export-min-<board>" in doc
+    assert "export-min-<board>" in recovery_readme
+    assert "export-min-<profile>" in firmware_readme

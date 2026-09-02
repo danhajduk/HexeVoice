@@ -3,6 +3,8 @@
 This directory contains the minimal recovery/provisioning firmware app.
 The recovery app is buildable for S3 board profiles and reports serial JSON
 diagnostics without linking the normal endpoint runtime.
+Factory onboarding builds use `HEXE_FIRMWARE_APP=minimal` and reuse this app,
+exporting flashable artifacts as `firmware/export-min-<board>`.
 
 Task 275 adds a local recovery control plane:
 

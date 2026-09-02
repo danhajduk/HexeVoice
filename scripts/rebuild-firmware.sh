@@ -9,6 +9,8 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 CLEAN_BUILD=0
 DRY_RUN=0
 INCLUDE_RECOVERY=0
+INCLUDE_MINIMAL=0
+MINIMAL_ONLY=0
 LIST_ONLY=0
 PROJECT_VERSION="${FIRMWARE_PROJECT_VERSION:-}"
 REQUESTED_PROFILES=()
@@ -22,6 +24,8 @@ Rebuild firmware for all available Hexe board profiles.
 Options:
   --clean             Use fresh temporary build directories under /tmp.
   --include-recovery  Also build recovery firmware for supported S3 profiles.
+  --include-minimal   Also build minimal factory/onboarding firmware for supported S3 profiles.
+  --minimal-only      Build only minimal factory/onboarding firmware.
   --profile PROFILE   Rebuild only one profile. Can be repeated.
   --project-version V Use an explicit shared firmware version.
   --list              List selected profiles without building.
@@ -41,6 +45,13 @@ while [[ $# -gt 0 ]]; do
       ;;
     --include-recovery)
       INCLUDE_RECOVERY=1
+      ;;
+    --include-minimal)
+      INCLUDE_MINIMAL=1
+      ;;
+    --minimal-only)
+      INCLUDE_MINIMAL=1
+      MINIMAL_ONLY=1
       ;;
     --profile)
       if [[ $# -lt 2 || -z "$2" ]]; then
@@ -176,9 +187,14 @@ run_build() {
 
 mapfile -t ENDPOINT_PROFILES < <(discover_profiles endpoint "${REQUESTED_PROFILES[@]}")
 mapfile -t RECOVERY_PROFILES < <(discover_profiles recovery "${REQUESTED_PROFILES[@]}")
+mapfile -t MINIMAL_PROFILES < <(discover_profiles recovery "${REQUESTED_PROFILES[@]}")
 
-if [[ "${#ENDPOINT_PROFILES[@]}" -eq 0 ]]; then
+if [[ "${MINIMAL_ONLY}" != "1" && "${#ENDPOINT_PROFILES[@]}" -eq 0 ]]; then
   echo "No buildable endpoint board profiles selected." >&2
+  exit 1
+fi
+if [[ "${INCLUDE_MINIMAL}" == "1" && "${#MINIMAL_PROFILES[@]}" -eq 0 ]]; then
+  echo "No minimal-capable S3 board profiles selected." >&2
   exit 1
 fi
 
@@ -188,9 +204,14 @@ fi
 
 BUILD_BASE="/tmp/hexevoice-fw-build-${PROJECT_VERSION}"
 
-print_profiles "Endpoint firmware profiles:" "${ENDPOINT_PROFILES[@]}"
+if [[ "${MINIMAL_ONLY}" != "1" ]]; then
+  print_profiles "Endpoint firmware profiles:" "${ENDPOINT_PROFILES[@]}"
+fi
 if [[ "${INCLUDE_RECOVERY}" == "1" ]]; then
   print_profiles "Recovery firmware profiles:" "${RECOVERY_PROFILES[@]}"
+fi
+if [[ "${INCLUDE_MINIMAL}" == "1" ]]; then
+  print_profiles "Minimal firmware profiles:" "${MINIMAL_PROFILES[@]}"
 fi
 echo "Firmware version: ${PROJECT_VERSION}"
 if [[ "${CLEAN_BUILD}" == "1" ]]; then
@@ -201,13 +222,21 @@ if [[ "${LIST_ONLY}" == "1" ]]; then
   exit 0
 fi
 
-for profile in "${ENDPOINT_PROFILES[@]}"; do
-  run_build endpoint "${profile}"
-done
+if [[ "${MINIMAL_ONLY}" != "1" ]]; then
+  for profile in "${ENDPOINT_PROFILES[@]}"; do
+    run_build endpoint "${profile}"
+  done
+fi
 
 if [[ "${INCLUDE_RECOVERY}" == "1" ]]; then
   for profile in "${RECOVERY_PROFILES[@]}"; do
     run_build recovery "${profile}"
+  done
+fi
+
+if [[ "${INCLUDE_MINIMAL}" == "1" ]]; then
+  for profile in "${MINIMAL_PROFILES[@]}"; do
+    run_build minimal "${profile}" "RUNTIME_FIRMWARE_DIR=${BUILD_BASE}/minimal-runtime-artifacts"
   done
 fi
 
