@@ -3,6 +3,7 @@ import {
   applyEndpointProvisioning,
   cancelEndpointSession,
   cancelVoicePlacementCalibration,
+  deleteEndpoint,
   deleteEndpointMedia,
   deleteEndpointVoiceArtifacts,
   deleteVoiceTtsArtifact,
@@ -614,7 +615,10 @@ function EndpointStatusTable({
   endpointAudioQuality,
   selectedEndpointId,
   onSelectEndpoint,
+  onRefresh,
+  setActionMessage,
 }) {
+  const [deleteConfirmEndpointId, setDeleteConfirmEndpointId] = useState("");
   const timings = voiceStatus?.last_turn_timings || {};
   const qualityByEndpoint = endpointAudioQualityById(endpointAudioQuality || voiceStatus?.endpoint_audio_quality);
   const endpointStatuses = [...endpointStatusesFromRegistry(endpointStatus, endpointRegistry)].sort((left, right) => (
@@ -686,6 +690,35 @@ function EndpointStatusTable({
         ["Audio recommendation", labelizeState(selectedEndpoint.audioQualityStats?.recommendation, "none")],
       ]
     : [];
+  const deleteConfirming = deleteConfirmEndpointId === selectedEndpoint?.endpointId;
+
+  useEffect(() => {
+    if (deleteConfirmEndpointId && deleteConfirmEndpointId !== selectedEndpoint?.endpointId) {
+      setDeleteConfirmEndpointId("");
+    }
+  }, [deleteConfirmEndpointId, selectedEndpoint?.endpointId]);
+
+  async function handleForgetEndpoint() {
+    if (!selectedEndpoint?.endpointId) {
+      return;
+    }
+
+    if (!deleteConfirming) {
+      setDeleteConfirmEndpointId(selectedEndpoint.endpointId);
+      setActionMessage?.(`Confirm forget for ${selectedEndpoint.endpointId}.`);
+      return;
+    }
+
+    try {
+      const result = await deleteEndpoint(selectedEndpoint.endpointId);
+      setDeleteConfirmEndpointId("");
+      onSelectEndpoint?.("");
+      setActionMessage?.(`Forgot endpoint ${result.endpoint_id}.`);
+      await onRefresh?.();
+    } catch (err) {
+      setActionMessage?.(String(err.message || err));
+    }
+  }
 
   return (
     <section className="voice-endpoint-panel stack">
@@ -774,8 +807,18 @@ function EndpointStatusTable({
                     <p className="panel-kicker">Endpoint Detail</p>
                     <h2 className="panel-title">{valueOrEmpty(selectedEndpoint.displayName, selectedEndpoint.endpointId)}</h2>
                   </div>
-                  <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
+                  <div className="endpoint-detail-actions">
+                    <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
+                    <button className="btn btn-ghost" type="button" onClick={handleForgetEndpoint}>
+                      {deleteConfirming ? "Confirm Forget" : "Forget Endpoint"}
+                    </button>
+                  </div>
                 </div>
+                {deleteConfirming ? (
+                  <div className="callout callout-warning">
+                    Forget removes this endpoint from the local registry. A powered endpoint may appear again when it reports in.
+                  </div>
+                ) : null}
                 <div className="endpoint-detail-summary">
                   <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
                   <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
@@ -2795,6 +2838,8 @@ export function VoiceEndpointDashboardSection({
         endpointAudioQuality={endpointAudioQuality}
         selectedEndpointId={endpointId}
         onSelectEndpoint={setSelectedEndpointId}
+        onRefresh={onRefresh}
+        setActionMessage={setActionMessage}
       />
       <div className="endpoint-onboarding-toolbar">
         <div>

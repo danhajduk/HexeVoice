@@ -117,6 +117,33 @@ def test_endpoint_heartbeat_records_latest_status(tmp_path):
     assert status_payload["rssi_dbm"] == -58
 
 
+def test_endpoint_registry_delete_removes_endpoint(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    client = TestClient(create_app(Settings(onboarding_state_path=state_path)))
+
+    heartbeat = client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-box-1",
+            "hardware_id": "esp32s3-b43a4512ab90",
+            "device_state": "idle",
+            "firmware_version": "0.1.0",
+        },
+    )
+    assert heartbeat.status_code == 200
+
+    deleted = client.delete("/api/endpoints/esp-box-1")
+
+    assert deleted.status_code == 200
+    deleted_payload = deleted.json()
+    assert deleted_payload["deleted"] is True
+    assert deleted_payload["endpoint_id"] == "esp-box-1"
+    assert deleted_payload["endpoint"]["hardware_id"] == "esp32s3-b43a4512ab90"
+    assert client.get("/api/endpoints").json()["endpoints"] == []
+    assert client.get("/api/endpoint/status/esp-box-1").status_code == 404
+    assert client.delete("/api/endpoints/esp-box-1").status_code == 404
+
+
 def test_endpoint_heartbeat_accepts_ota_device_state(tmp_path):
     state_path = tmp_path / "onboarding-state.json"
     client = TestClient(create_app(Settings(onboarding_state_path=state_path)))

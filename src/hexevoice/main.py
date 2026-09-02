@@ -81,6 +81,7 @@ from hexevoice.api.models import (
     EndpointMediaUploadRequest,
     EndpointPlaySoundCommandRequest,
     EndpointProvisioningApplyRequest,
+    EndpointRegistryDeleteResponse,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
     EndpointSpeakCommandRequest,
@@ -1569,6 +1570,13 @@ def create_app(
         status = endpoint_service.update_metadata(endpoint_id, payload)
         node_ui_page_cache.invalidate()
         return status.model_copy(update={"firmware_update": firmware_update_payload(app_settings, status)})
+
+    @app.delete("/api/endpoints/{endpoint_id}", response_model=EndpointRegistryDeleteResponse)
+    async def endpoint_registry_delete(endpoint_id: str) -> EndpointRegistryDeleteResponse:
+        result = endpoint_service.delete(endpoint_id)
+        node_ui_page_cache.invalidate()
+        endpoint = result.endpoint.model_copy(update={"firmware_update": firmware_update_payload(app_settings, result.endpoint)})
+        return result.model_copy(update={"endpoint": endpoint})
 
     @app.post("/api/endpoint/volume", response_model=EndpointVolumeCommandResponse)
     async def endpoint_volume(payload: EndpointVolumeCommandRequest) -> EndpointVolumeCommandResponse:

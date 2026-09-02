@@ -554,6 +554,10 @@ export async function updateEndpointMetadata(endpointId, metadata) {
   });
 }
 
+export async function deleteEndpoint(endpointId) {
+  return sendJson(`/api/endpoints/${encodeURIComponent(endpointId)}`, { method: "DELETE" });
+}
+
 export async function cancelVoiceSession() {
   return sendJson("/api/voice/session/cancel");
 }

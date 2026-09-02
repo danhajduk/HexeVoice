@@ -8,6 +8,7 @@ from hexevoice.api.models import (
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
     EndpointMetadataUpdateRequest,
+    EndpointRegistryDeleteResponse,
     EndpointRegistryListResponse,
     EndpointStatusResponse,
     EndpointTimeResponse,
@@ -114,6 +115,19 @@ class EndpointHeartbeatService:
         registry.endpoints[endpoint_id] = updated
         self._store.save(registry)
         return self._response_from_record(updated)
+
+    def delete(self, endpoint_id: str) -> EndpointRegistryDeleteResponse:
+        registry = self._store.load()
+        record = registry.endpoints.pop(endpoint_id, None)
+        if record is None:
+            raise HTTPException(status_code=404, detail="endpoint_not_found")
+
+        self._store.save(registry)
+        return EndpointRegistryDeleteResponse(
+            deleted=True,
+            endpoint_id=endpoint_id,
+            endpoint=self._response_from_record(record),
+        )
 
     def _response_from_record(self, record: EndpointRegistryRecord) -> EndpointStatusResponse:
         connection_state = self._connection_state(record)

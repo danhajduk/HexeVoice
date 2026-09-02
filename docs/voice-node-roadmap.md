@@ -19,6 +19,7 @@ The current Voice Node is a backend-owned endpoint runtime with:
 * multiple connected ESP endpoints, each with its own WebSocket command route and session runtime
 * backend wake detection, STT, assistant routing, TTS metadata, and session state projection
 * persistent endpoint registry records from heartbeat data
+* operator endpoint registry forget action through `DELETE /api/endpoints/{endpoint_id}` and the Voice Endpoint dashboard
 * firmware-persisted endpoint volume/mute settings and hardware capability heartbeats
 * distinct `connection_state`, `ux_state`, and `session_state` surfaces
 * structured endpoint command acknowledgements and errors

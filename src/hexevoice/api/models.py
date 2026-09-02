@@ -243,6 +243,12 @@ class EndpointRegistryListResponse(BaseModel):
     endpoints: list[EndpointStatusResponse] = Field(default_factory=list)
 
 
+class EndpointRegistryDeleteResponse(BaseModel):
+    deleted: bool
+    endpoint_id: str
+    endpoint: EndpointStatusResponse
+
+
 class EndpointMetadataUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, max_length=80)
     zone_id: str | None = Field(default=None, max_length=80)
