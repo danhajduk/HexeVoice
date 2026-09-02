@@ -37,9 +37,73 @@ import {
 import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
 
 const LATEST_SPEECH_VISIBLE_MS = 20000;
+const HEXE_BLE_PROVISIONING_SERVICE_UUID = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000";
 
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : value;
+}
+
+function bleScanRows(result) {
+  const supervisorResult = result?.supervisor_result;
+  if (!supervisorResult || typeof supervisorResult !== "object") {
+    return [];
+  }
+  if (Array.isArray(supervisorResult.supervisor_results)) {
+    return supervisorResult.supervisor_results.filter((row) => row && typeof row === "object");
+  }
+  return [supervisorResult];
+}
+
+function bleRawScanDevices(result) {
+  const seen = new Set();
+  const devices = [];
+
+  function addDevices(sourceDevices, supervisorId) {
+    if (!Array.isArray(sourceDevices)) {
+      return;
+    }
+    sourceDevices.forEach((device, index) => {
+      if (!device || typeof device !== "object") {
+        return;
+      }
+      const address = String(device.address || "").trim();
+      const name = String(device.name || "").trim();
+      const key = `${supervisorId || "supervisor"}:${address || name || index}`;
+      if (seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      devices.push({
+        ...device,
+        supervisor_id: device.supervisor_id || supervisorId,
+        service_uuid_match: Boolean(device.service_uuid_match),
+      });
+    });
+  }
+
+  const supervisorResult = result?.supervisor_result;
+  if (supervisorResult && typeof supervisorResult === "object") {
+    addDevices(supervisorResult.devices, supervisorResult.supervisor_id || supervisorResult.node_id);
+  }
+  bleScanRows(result).forEach((row) => {
+    addDevices(row.devices, row.supervisor_id || row.node_id || row.node_name);
+  });
+
+  return devices;
+}
+
+function bleScanSummaryText(result, matchedCount, shownCount) {
+  const rows = bleScanRows(result);
+  const responded = rows.filter((row) => row.ok || row.status === "completed" || row.status === "partial").length;
+  const failed = rows.filter((row) => row.error || row.ok === false || row.status === "failed").length;
+  const prefix = matchedCount
+    ? `${matchedCount} Hexe UUID match${matchedCount === 1 ? "" : "es"}`
+    : `${shownCount} raw BLE sighting${shownCount === 1 ? "" : "s"}`;
+  if (!rows.length) {
+    return prefix;
+  }
+  const failureSuffix = failed ? `; ${failed} unavailable` : "";
+  return `${prefix}; ${responded}/${rows.length} supervisors responded${failureSuffix}`;
 }
 
 function formatLocalDateTime(value) {
@@ -1293,6 +1357,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [scanDevices, setScanDevices] = useState([]);
+  const [scanSummary, setScanSummary] = useState("");
   const [selectedScanAddress, setSelectedScanAddress] = useState("");
 
   useEffect(() => {
@@ -1331,20 +1396,29 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     try {
       const result = await scanEndpointBleDevices({
         adapter: adapter || undefined,
+        service_uuid: HEXE_BLE_PROVISIONING_SERVICE_UUID,
         scan_seconds: 60,
       });
-      const devices = Array.isArray(result.devices) ? result.devices : [];
-      setScanDevices(devices);
+      const matchedDevices = Array.isArray(result.devices) ? result.devices : [];
+      const rawDevices = bleRawScanDevices(result);
+      const displayDevices = matchedDevices.length ? matchedDevices : rawDevices;
+      const summary = bleScanSummaryText(result, matchedDevices.length, displayDevices.length);
+      setScanDevices(displayDevices);
+      setScanSummary(summary);
       if (result.status !== "completed") {
         setActionMessage(`BLE scan ${result.status}${result.error ? `: ${result.error}` : ""}.`);
         return;
       }
-      if (devices.length === 1) {
-        useScannedDevice(devices[0]);
+      if (matchedDevices.length === 1) {
+        useScannedDevice(matchedDevices[0]);
         setActionMessage("BLE scan found one device and selected it.");
         return;
       }
-      setActionMessage(`BLE scan found ${devices.length} device${devices.length === 1 ? "" : "s"}.`);
+      if (!matchedDevices.length && displayDevices.length) {
+        setActionMessage(`BLE scan found no Hexe UUID matches; showing ${displayDevices.length} raw BLE sighting${displayDevices.length === 1 ? "" : "s"}.`);
+        return;
+      }
+      setActionMessage(`BLE scan found ${matchedDevices.length} Hexe device${matchedDevices.length === 1 ? "" : "s"}.`);
     } catch (err) {
       setActionMessage(String(err.message || err));
     } finally {
@@ -1433,15 +1507,20 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
                   <span>
                     <strong>{valueOrEmpty(device.name, "Unnamed device")}</strong>
                     <small>{valueOrEmpty(address, "unknown address")}</small>
+                    {device.supervisor_id ? <small>{device.supervisor_id}</small> : null}
                   </span>
-                  <span className="status-pill status-pill-neutral">{selected ? "Selected" : valueOrEmpty(device.transport, "ble")}</span>
+                  <span className="endpoint-ble-device-badges">
+                    {device.service_uuid_match ? <span className="status-pill status-pill-success">UUID match</span> : null}
+                    <span className="status-pill status-pill-neutral">{selected ? "Selected" : valueOrEmpty(device.transport, "ble")}</span>
+                  </span>
                 </button>
               );
             })}
           </div>
         ) : (
-          <p className="muted-text">No scan results yet.</p>
+          <p className="muted-text">{scanSummary ? "No BLE devices shown." : "No scan results yet."}</p>
         )}
+        {scanSummary ? <p className="muted-text endpoint-ble-scan-summary">{scanSummary}</p> : null}
       </div>
       <form className="endpoint-metadata-form" onSubmit={handleBleProvision}>
         <label>

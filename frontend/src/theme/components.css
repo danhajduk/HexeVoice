@@ -2360,6 +2360,17 @@ select.field-input {
   color: hsl(var(--sx-text-muted));
 }
 
+.endpoint-ble-device-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.endpoint-ble-scan-summary {
+  margin: 0;
+}
+
 .endpoint-metadata-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
