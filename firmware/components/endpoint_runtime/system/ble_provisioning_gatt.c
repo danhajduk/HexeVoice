@@ -8,6 +8,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "host/ble_gap.h"
 #include "host/ble_gatt.h"
 #include "host/ble_hs.h"
 #include "host/ble_uuid.h"
@@ -123,15 +124,23 @@ static void advertise(void) {
   struct ble_hs_adv_fields fields;
   memset(&fields, 0, sizeof(fields));
   fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
-  fields.name = (uint8_t *)ble_svc_gap_device_name();
-  fields.name_len = strlen((const char *)fields.name);
-  fields.name_is_complete = 1;
   fields.uuids128 = &service_uuid;
   fields.num_uuids128 = 1;
   fields.uuids128_is_complete = 1;
   int rc = ble_gap_adv_set_fields(&fields);
   if (rc != 0) {
     ESP_LOGW(TAG, "BLE onboarding advertising fields failed: %d", rc);
+    return;
+  }
+
+  struct ble_hs_adv_fields rsp_fields;
+  memset(&rsp_fields, 0, sizeof(rsp_fields));
+  rsp_fields.name = (uint8_t *)ble_svc_gap_device_name();
+  rsp_fields.name_len = strlen((const char *)rsp_fields.name);
+  rsp_fields.name_is_complete = 1;
+  rc = ble_gap_adv_rsp_set_fields(&rsp_fields);
+  if (rc != 0) {
+    ESP_LOGW(TAG, "BLE onboarding scan response fields failed: %d", rc);
     return;
   }
 

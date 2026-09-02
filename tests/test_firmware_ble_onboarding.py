@@ -36,6 +36,19 @@ def test_ble_onboarding_declares_core_gatt_contract_constants():
     assert "bt" in cmake
 
 
+def test_ble_onboarding_advertising_keeps_uuid_and_name_under_legacy_packet_limit():
+    gatt = BLE_GATT.read_text(encoding="utf-8")
+    advertise_start = gatt.index("static void advertise(void)")
+    advertise = gatt[advertise_start : gatt.index("static int gap_event", advertise_start)]
+    primary = advertise[: advertise.index("ble_gap_adv_set_fields(&fields)")]
+    scan_response = advertise[advertise.index("struct ble_hs_adv_fields rsp_fields") :]
+
+    assert "fields.uuids128 = &service_uuid" in primary
+    assert "fields.name =" not in primary
+    assert "ble_gap_adv_rsp_set_fields(&rsp_fields)" in scan_response
+    assert "rsp_fields.name = (uint8_t *)ble_svc_gap_device_name()" in scan_response
+
+
 def test_ble_onboarding_is_gated_by_board_profile_and_nimble_config():
     source = BLE_SOURCE.read_text(encoding="utf-8")
     generator = Path("firmware/tools/generate_board_profile_config.py").read_text(encoding="utf-8")
