@@ -164,6 +164,9 @@ Task 289 adds the HexeVoice requester/operator side:
 - The dashboard exposes a compact operator BLE onboarding dialog while keeping
   the existing connected-endpoint provisioning command as the post-join
   reconfiguration path.
+- When no endpoints are registered, the dashboard keeps the onboarding entry
+  point visible and suppresses endpoint-specific statistics, actions, details,
+  history, and advanced panels until a heartbeat registers a device.
 - Normal Core node onboarding/trust is not bypassed. After the endpoint joins
   Wi-Fi, the existing discovery, heartbeat, registry, and trust workflow remain
   the source of truth for a connected endpoint.

@@ -619,7 +619,7 @@ function EndpointStatusTable({
   const endpointStatuses = [...endpointStatusesFromRegistry(endpointStatus, endpointRegistry)].sort((left, right) => (
     endpointSortKey(left).localeCompare(endpointSortKey(right), undefined, { numeric: true, sensitivity: "base" })
   ));
-  const endpointRows = (endpointStatuses.length ? endpointStatuses : [null]).map((currentEndpointStatus) => {
+  const endpointRows = endpointStatuses.map((currentEndpointStatus) => {
     const endpointId = currentEndpointStatus?.endpoint_id || voiceStatus?.endpoint_id || "not connected";
     const projection = voiceStateProjectionForEndpoint(voiceStatus, endpointId);
     const storage = endpointCapabilities(currentEndpointStatus).storage || {};
@@ -691,105 +691,111 @@ function EndpointStatusTable({
       <div className="section-heading">
         <div>
           <p className="panel-kicker">Endpoint Status</p>
-          <h2 className="panel-title">Selected Endpoint</h2>
+          <h2 className="panel-title">{endpointRows.length ? "Selected Endpoint" : "Endpoint Registry"}</h2>
         </div>
         <span className="status-pill status-pill-neutral">{`${endpointStatuses.length} endpoint${endpointStatuses.length === 1 ? "" : "s"}`}</span>
       </div>
-      {selectedEndpoint ? (
-        <div className="selected-endpoint-summary">
-          <div>
-            <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
-            <strong>{valueOrEmpty(selectedEndpoint.displayName, selectedEndpoint.endpointId)}</strong>
-            <span>{valueOrEmpty(selectedEndpoint.endpointId)}</span>
-          </div>
-          <span>{selectedEndpoint.connectionState}</span>
-          <span>{selectedEndpoint.sessionState}</span>
-          <span>{selectedEndpoint.uxState}</span>
-          <span>{`${selectedEndpoint.volume} / ${selectedEndpoint.muted}`}</span>
-          <span>{selectedEndpoint.rssi}</span>
-        </div>
-      ) : null}
-      <div className="endpoint-overview-layout">
-        <div className="endpoint-card-grid">
-          {endpointRows.map((row) => (
-            <button
-              key={row.endpointId}
-              className={`endpoint-status-card${row.endpointId === selectedEndpoint?.endpointId ? " endpoint-status-card-selected" : ""}`}
-              type="button"
-              aria-pressed={row.endpointId === selectedEndpoint?.endpointId}
-              onClick={() => onSelectEndpoint?.(row.endpointId)}
-            >
-              <div className="endpoint-status-card-header">
-                <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
-                <div className="endpoint-status-card-title-block">
-                  <h3>{valueOrEmpty(row.displayName, row.endpointId)}</h3>
-                  <span>{valueOrEmpty(row.endpointId)}</span>
-                </div>
-                <span className={`status-pill ${row.firmwareUpdate?.update_available ? "status-pill-warning" : "status-pill-neutral"}`}>
-                  {firmwareUpdateLabel(row.firmwareUpdate)}
-                </span>
-              </div>
-              <div className="endpoint-status-card-facts">
-                <span>
-                  <strong>State</strong>
-                  {valueOrEmpty(row.deviceState)}
-                </span>
-                <span>
-                  <strong>Voice</strong>
-                  {valueOrEmpty(row.voiceConnection)}
-                </span>
-                <span>
-                  <strong>UX</strong>
-                  {valueOrEmpty(row.uxState)}
-                </span>
-                <span>
-                  <strong>Board</strong>
-                  {valueOrEmpty(row.boardProfile)}
-                </span>
-                <span>
-                  <strong>Audio</strong>
-                  {endpointAudioQualitySummary(row.audioQualityStats)}
-                </span>
-                <span>
-                  <strong>Volume</strong>
-                  {`${valueOrEmpty(row.volume)} / ${valueOrEmpty(row.muted)}`}
-                </span>
-              </div>
-              <div className="endpoint-status-card-footer">
-                <span>FW {valueOrEmpty(row.firmwareVersion)}</span>
-                <span>{valueOrEmpty(row.lastSeenAt)}</span>
-              </div>
-            </button>
-          ))}
-        </div>
-        {selectedEndpoint ? (
-          <section className="endpoint-detail-inline stack" aria-label={`${selectedEndpoint.endpointId} endpoint details`}>
-            <div className="section-heading">
+      {!endpointRows.length ? (
+        <div className="callout callout-neutral">No endpoints registered.</div>
+      ) : (
+        <>
+          {selectedEndpoint ? (
+            <div className="selected-endpoint-summary">
               <div>
-                <p className="panel-kicker">Endpoint Detail</p>
-                <h2 className="panel-title">{valueOrEmpty(selectedEndpoint.displayName, selectedEndpoint.endpointId)}</h2>
+                <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
+                <strong>{valueOrEmpty(selectedEndpoint.displayName, selectedEndpoint.endpointId)}</strong>
+                <span>{valueOrEmpty(selectedEndpoint.endpointId)}</span>
               </div>
-              <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
+              <span>{selectedEndpoint.connectionState}</span>
+              <span>{selectedEndpoint.sessionState}</span>
+              <span>{selectedEndpoint.uxState}</span>
+              <span>{`${selectedEndpoint.volume} / ${selectedEndpoint.muted}`}</span>
+              <span>{selectedEndpoint.rssi}</span>
             </div>
-            <div className="endpoint-detail-summary">
-              <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
-              <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
-              <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.voiceConnection)}</span>
-              {selectedEndpoint.firmwareUpdate?.update_available ? (
-                <span className="status-pill status-pill-warning">Update ready</span>
-              ) : null}
-            </div>
-            <dl className="fact-grid endpoint-detail-grid">
-              {selectedDetailRows.map(([label, value]) => (
-                <div className="fact-grid-item" key={label}>
-                  <dt className="fact-grid-label">{label}</dt>
-                  <dd className="fact-grid-value">{valueOrEmpty(value)}</dd>
-                </div>
+          ) : null}
+          <div className="endpoint-overview-layout">
+            <div className="endpoint-card-grid">
+              {endpointRows.map((row) => (
+                <button
+                  key={row.endpointId}
+                  className={`endpoint-status-card${row.endpointId === selectedEndpoint?.endpointId ? " endpoint-status-card-selected" : ""}`}
+                  type="button"
+                  aria-pressed={row.endpointId === selectedEndpoint?.endpointId}
+                  onClick={() => onSelectEndpoint?.(row.endpointId)}
+                >
+                  <div className="endpoint-status-card-header">
+                    <span className={`endpoint-health-led endpoint-health-led-${row.health}`} aria-label={`${row.health} endpoint health`} />
+                    <div className="endpoint-status-card-title-block">
+                      <h3>{valueOrEmpty(row.displayName, row.endpointId)}</h3>
+                      <span>{valueOrEmpty(row.endpointId)}</span>
+                    </div>
+                    <span className={`status-pill ${row.firmwareUpdate?.update_available ? "status-pill-warning" : "status-pill-neutral"}`}>
+                      {firmwareUpdateLabel(row.firmwareUpdate)}
+                    </span>
+                  </div>
+                  <div className="endpoint-status-card-facts">
+                    <span>
+                      <strong>State</strong>
+                      {valueOrEmpty(row.deviceState)}
+                    </span>
+                    <span>
+                      <strong>Voice</strong>
+                      {valueOrEmpty(row.voiceConnection)}
+                    </span>
+                    <span>
+                      <strong>UX</strong>
+                      {valueOrEmpty(row.uxState)}
+                    </span>
+                    <span>
+                      <strong>Board</strong>
+                      {valueOrEmpty(row.boardProfile)}
+                    </span>
+                    <span>
+                      <strong>Audio</strong>
+                      {endpointAudioQualitySummary(row.audioQualityStats)}
+                    </span>
+                    <span>
+                      <strong>Volume</strong>
+                      {`${valueOrEmpty(row.volume)} / ${valueOrEmpty(row.muted)}`}
+                    </span>
+                  </div>
+                  <div className="endpoint-status-card-footer">
+                    <span>FW {valueOrEmpty(row.firmwareVersion)}</span>
+                    <span>{valueOrEmpty(row.lastSeenAt)}</span>
+                  </div>
+                </button>
               ))}
-            </dl>
-          </section>
-        ) : null}
-      </div>
+            </div>
+            {selectedEndpoint ? (
+              <section className="endpoint-detail-inline stack" aria-label={`${selectedEndpoint.endpointId} endpoint details`}>
+                <div className="section-heading">
+                  <div>
+                    <p className="panel-kicker">Endpoint Detail</p>
+                    <h2 className="panel-title">{valueOrEmpty(selectedEndpoint.displayName, selectedEndpoint.endpointId)}</h2>
+                  </div>
+                  <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
+                </div>
+                <div className="endpoint-detail-summary">
+                  <span className={`endpoint-health-led endpoint-health-led-${selectedEndpoint.health}`} />
+                  <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.connectionState)}</span>
+                  <span className="status-pill status-pill-neutral">{valueOrEmpty(selectedEndpoint.voiceConnection)}</span>
+                  {selectedEndpoint.firmwareUpdate?.update_available ? (
+                    <span className="status-pill status-pill-warning">Update ready</span>
+                  ) : null}
+                </div>
+                <dl className="fact-grid endpoint-detail-grid">
+                  {selectedDetailRows.map(([label, value]) => (
+                    <div className="fact-grid-item" key={label}>
+                      <dt className="fact-grid-label">{label}</dt>
+                      <dd className="fact-grid-value">{valueOrEmpty(value)}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            ) : null}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -2203,14 +2209,18 @@ export function VoiceEndpointDashboardSection({
   const [placementPassiveBusy, setPlacementPassiveBusy] = useState(false);
   const [endpointAudioQuality, setEndpointAudioQuality] = useState(voiceStatus?.endpoint_audio_quality || null);
   const [bleOnboardingOpen, setBleOnboardingOpen] = useState(false);
+  const hasRegisteredEndpoints = endpointStatuses.length > 0;
   const selectedEndpointStatus = endpointStatusById(endpointStatuses, selectedEndpointId);
-  const endpointId = selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "";
+  const endpointId = hasRegisteredEndpoints ? selectedEndpointStatus?.endpoint_id || selectedEndpointId || voiceStatus?.endpoint_id || "" : "";
   const scopedVoiceStatus = selectedVoiceStatus(voiceStatus, endpointId);
   const latestEndpointSession = visibleHistorySessions(voiceSessions)[0] || null;
   const reportedOutput = endpointCapabilities(selectedEndpointStatus).audio?.output || {};
 
   useEffect(() => {
     if (!endpointStatuses.length) {
+      if (selectedEndpointId) {
+        setSelectedEndpointId("");
+      }
       return;
     }
     const hasSelected = selectedEndpointId && endpointStatuses.some((status) => status?.endpoint_id === selectedEndpointId);
@@ -2713,104 +2723,109 @@ export function VoiceEndpointDashboardSection({
           Onboard Endpoint
         </button>
       </div>
-      <div className="voice-endpoint-top">
-        <VoicePipelinePanel voiceStatus={scopedVoiceStatus} latestSession={latestEndpointSession} />
-        <VoiceEndpointActionsCard
-          voiceStatus={scopedVoiceStatus}
-          onRefresh={onRefresh}
-          onTestTurn={handleTestTurn}
-          onStopSession={handleStopSession}
-          onReplayResponse={handleReplayResponse}
-          onMuteEndpoint={handleMuteEndpoint}
-          onSetVolume={handleSetVolume}
-          volumePercent={volumePercent}
-          onVolumeChange={setVolumePercent}
-          muted={muted}
-          actionMessage={actionMessage}
-        />
-      </div>
-      <PlacementTestPanel
-        endpointId={endpointId}
-        voiceStatus={voiceStatus}
-        reports={placementReports}
-        room={placementRoom}
-        zone={placementZone}
-        positionLabel={placementPosition}
-        expectedPhrase={placementPhrase}
-        expectedSpeakerPublicId={placementSpeaker}
-        busy={placementBusy}
-        passiveCalibrations={placementCalibrations}
-        passiveReport={placementCalibrationReport}
-        passiveBusy={placementPassiveBusy}
-        onRoomChange={setPlacementRoom}
-        onZoneChange={setPlacementZone}
-        onPositionLabelChange={setPlacementPosition}
-        onExpectedPhraseChange={setPlacementPhrase}
-        onExpectedSpeakerPublicIdChange={setPlacementSpeaker}
-        onStart={handleStartPlacementTest}
-        onRefresh={refreshPlacementTests}
-        onStartPassive={handleStartPassivePlacementCalibration}
-        onCancelPassive={handleCancelPassivePlacementCalibration}
-        onRefreshPassive={refreshPlacementCalibrations}
-      />
-      <VoiceSessionHistoryPanel
-        sessions={voiceSessions}
-        historyStatus={historyStatus}
-        endpointId={endpointId}
-        detailSession={historyDetailSession}
-        detailLoading={historyDetailLoading}
-        detailError={historyDetailError}
-        onOpenSessionDetail={handleOpenSessionDetail}
-        onCloseSessionDetail={handleCloseSessionDetail}
-        onReplaySession={handleReplaySession}
-        onReplayWakeRecording={handleReplayWakeRecording}
-        onDeleteWakeRecording={handleDeleteWakeRecording}
-        onDeleteTtsArtifact={handleDeleteTtsArtifact}
-        onDeleteEndpointArtifacts={handleDeleteEndpointArtifacts}
-        onRefreshHistory={refreshVoiceSessions}
-      />
-      <EndpointAdvancedSection
-        title="Hardware & Firmware"
-        kicker="Endpoint Capabilities"
-        badge={selectedEndpointStatus?.firmware_version || "unknown FW"}
-      >
-        <EndpointCapabilitiesPanel
-          endpointStatus={selectedEndpointStatus}
-          onPushFirmwareUpdate={handlePushFirmwareUpdate}
-          firmwareUpdateBusy={firmwareUpdateBusy}
-        />
-      </EndpointAdvancedSection>
-      <EndpointAdvancedSection
-        title="Provisioning"
-        kicker="Endpoint Settings"
-        badge={endpointCapabilities(selectedEndpointStatus).provisioning?.configured ? "persisted" : "build defaults"}
-      >
-        <EndpointProvisioningPanel
-          voiceStatus={scopedVoiceStatus}
-          endpointStatus={selectedEndpointStatus}
-          onRefresh={onRefresh}
-          setActionMessage={setActionMessage}
-        />
-      </EndpointAdvancedSection>
-      <EndpointAdvancedSection title="SD Asset Manager" kicker="Endpoint Media" badge="advanced">
-        <EndpointMediaManagerPanel
-          endpointId={endpointId}
-          onRefresh={onRefresh}
-          setActionMessage={setActionMessage}
-        />
-      </EndpointAdvancedSection>
-      <EndpointAdvancedSection
-        title="Operator Metadata"
-        kicker="Endpoint Registry"
-        badge={labelizeState(selectedEndpointStatus?.connection_state, "unregistered")}
-      >
-        <EndpointMetadataPanel
-          voiceStatus={scopedVoiceStatus}
-          endpointStatus={selectedEndpointStatus}
-          onRefresh={onRefresh}
-          setActionMessage={setActionMessage}
-        />
-      </EndpointAdvancedSection>
+      {!hasRegisteredEndpoints && actionMessage ? <div className="callout">{actionMessage}</div> : null}
+      {hasRegisteredEndpoints ? (
+        <>
+          <div className="voice-endpoint-top">
+            <VoicePipelinePanel voiceStatus={scopedVoiceStatus} latestSession={latestEndpointSession} />
+            <VoiceEndpointActionsCard
+              voiceStatus={scopedVoiceStatus}
+              onRefresh={onRefresh}
+              onTestTurn={handleTestTurn}
+              onStopSession={handleStopSession}
+              onReplayResponse={handleReplayResponse}
+              onMuteEndpoint={handleMuteEndpoint}
+              onSetVolume={handleSetVolume}
+              volumePercent={volumePercent}
+              onVolumeChange={setVolumePercent}
+              muted={muted}
+              actionMessage={actionMessage}
+            />
+          </div>
+          <PlacementTestPanel
+            endpointId={endpointId}
+            voiceStatus={voiceStatus}
+            reports={placementReports}
+            room={placementRoom}
+            zone={placementZone}
+            positionLabel={placementPosition}
+            expectedPhrase={placementPhrase}
+            expectedSpeakerPublicId={placementSpeaker}
+            busy={placementBusy}
+            passiveCalibrations={placementCalibrations}
+            passiveReport={placementCalibrationReport}
+            passiveBusy={placementPassiveBusy}
+            onRoomChange={setPlacementRoom}
+            onZoneChange={setPlacementZone}
+            onPositionLabelChange={setPlacementPosition}
+            onExpectedPhraseChange={setPlacementPhrase}
+            onExpectedSpeakerPublicIdChange={setPlacementSpeaker}
+            onStart={handleStartPlacementTest}
+            onRefresh={refreshPlacementTests}
+            onStartPassive={handleStartPassivePlacementCalibration}
+            onCancelPassive={handleCancelPassivePlacementCalibration}
+            onRefreshPassive={refreshPlacementCalibrations}
+          />
+          <VoiceSessionHistoryPanel
+            sessions={voiceSessions}
+            historyStatus={historyStatus}
+            endpointId={endpointId}
+            detailSession={historyDetailSession}
+            detailLoading={historyDetailLoading}
+            detailError={historyDetailError}
+            onOpenSessionDetail={handleOpenSessionDetail}
+            onCloseSessionDetail={handleCloseSessionDetail}
+            onReplaySession={handleReplaySession}
+            onReplayWakeRecording={handleReplayWakeRecording}
+            onDeleteWakeRecording={handleDeleteWakeRecording}
+            onDeleteTtsArtifact={handleDeleteTtsArtifact}
+            onDeleteEndpointArtifacts={handleDeleteEndpointArtifacts}
+            onRefreshHistory={refreshVoiceSessions}
+          />
+          <EndpointAdvancedSection
+            title="Hardware & Firmware"
+            kicker="Endpoint Capabilities"
+            badge={selectedEndpointStatus?.firmware_version || "unknown FW"}
+          >
+            <EndpointCapabilitiesPanel
+              endpointStatus={selectedEndpointStatus}
+              onPushFirmwareUpdate={handlePushFirmwareUpdate}
+              firmwareUpdateBusy={firmwareUpdateBusy}
+            />
+          </EndpointAdvancedSection>
+          <EndpointAdvancedSection
+            title="Provisioning"
+            kicker="Endpoint Settings"
+            badge={endpointCapabilities(selectedEndpointStatus).provisioning?.configured ? "persisted" : "build defaults"}
+          >
+            <EndpointProvisioningPanel
+              voiceStatus={scopedVoiceStatus}
+              endpointStatus={selectedEndpointStatus}
+              onRefresh={onRefresh}
+              setActionMessage={setActionMessage}
+            />
+          </EndpointAdvancedSection>
+          <EndpointAdvancedSection title="SD Asset Manager" kicker="Endpoint Media" badge="advanced">
+            <EndpointMediaManagerPanel
+              endpointId={endpointId}
+              onRefresh={onRefresh}
+              setActionMessage={setActionMessage}
+            />
+          </EndpointAdvancedSection>
+          <EndpointAdvancedSection
+            title="Operator Metadata"
+            kicker="Endpoint Registry"
+            badge={labelizeState(selectedEndpointStatus?.connection_state, "unregistered")}
+          >
+            <EndpointMetadataPanel
+              voiceStatus={scopedVoiceStatus}
+              endpointStatus={selectedEndpointStatus}
+              onRefresh={onRefresh}
+              setActionMessage={setActionMessage}
+            />
+          </EndpointAdvancedSection>
+        </>
+      ) : null}
       {bleOnboardingOpen ? (
         <EndpointBleOnboardingDialog
           endpointStatus={selectedEndpointStatus}
