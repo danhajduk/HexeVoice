@@ -338,6 +338,7 @@ class EndpointBleProvisionWifiRequest(BaseModel):
 class EndpointBleScanRequest(BaseModel):
     adapter: str | None = Field(default="hci0", max_length=64)
     supervisor_id: str | None = Field(default=None, max_length=120)
+    service_uuid: str | None = Field(default=None, min_length=4, max_length=64)
     scan_seconds: int = Field(default=5, ge=1, le=30)
     operator_reason: str | None = Field(default=None, max_length=240)
 
@@ -351,6 +352,7 @@ class EndpointBleScanResponse(BaseModel):
     devices: list[dict[str, Any]] = Field(default_factory=list)
     adapter: str | None = None
     adapters: list[dict[str, Any]] = Field(default_factory=list)
+    service_uuid: str | None = Field(default=None, min_length=4, max_length=64)
     scan_seconds: int
     error: str | None = None
     release_result: dict[str, Any] | None = None

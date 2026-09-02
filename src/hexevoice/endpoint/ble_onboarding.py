@@ -20,6 +20,7 @@ from hexevoice.supervisor.client import SupervisorApiClient
 
 BLE_PROVISIONING_OPERATION = "ble.provision_wifi"
 BLE_SCAN_OPERATION = "ble.scan"
+BLE_PROVISIONING_SERVICE_UUID = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000"
 BLE_PROVISIONING_CONTRACT_VERSION = "1.0"
 BLE_PROVISIONING_ENVELOPE_SCHEMA_VERSION = "1.0"
 VOICE_PROVISIONING_PAYLOAD_SCHEMA_ID = "hexe.voice_node.wifi_backend.v1"
@@ -155,6 +156,7 @@ class EndpointBleOnboardingService:
                             "node_id": node_id,
                             "lease_token": lease_token,
                             "adapter": access_request.get("adapter") or payload.adapter,
+                            "service_uuid": payload.service_uuid or BLE_PROVISIONING_SERVICE_UUID,
                             "scan_seconds": payload.scan_seconds,
                         }
                     )
@@ -500,9 +502,10 @@ class EndpointBleOnboardingService:
         devices = []
         adapters = []
         adapter = payload.adapter
+        service_uuid = payload.service_uuid or BLE_PROVISIONING_SERVICE_UUID
         scan_seconds = payload.scan_seconds
         if isinstance(supervisor_result, dict):
-            raw_devices = supervisor_result.get("devices")
+            raw_devices = supervisor_result.get("matching_devices") or supervisor_result.get("devices")
             if isinstance(raw_devices, list):
                 devices = [item for item in raw_devices if isinstance(item, dict)]
             raw_adapters = supervisor_result.get("adapters")
@@ -513,6 +516,8 @@ class EndpointBleOnboardingService:
                 adapter = adapter_value
             elif isinstance(adapter_value, dict):
                 adapter = str(adapter_value.get("adapter") or adapter or "")
+            if isinstance(supervisor_result.get("service_uuid"), str):
+                service_uuid = str(supervisor_result["service_uuid"])
             scan_seconds = int(supervisor_result.get("scan_seconds") or scan_seconds)
         return EndpointBleScanResponse(
             ok=status == "completed",
@@ -523,6 +528,7 @@ class EndpointBleOnboardingService:
             devices=devices,
             adapter=adapter,
             adapters=adapters,
+            service_uuid=service_uuid,
             scan_seconds=scan_seconds,
             error=error,
             release_result=_redact(release_result) if release_result is not None else None,

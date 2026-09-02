@@ -71,8 +71,34 @@ class FakeSupervisorClient:
             "ok": True,
             "operation": "ble.scan",
             "adapter": "hci0",
+            "service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
             "scan_seconds": 5,
-            "devices": [{"address": "AA:BB:CC:DD:EE:FF", "name": "Hexe Voice PE", "transport": "ble"}],
+            "devices": [
+                {
+                    "address": "11:22:33:44:55:66",
+                    "name": "Other Sensor",
+                    "transport": "ble",
+                    "service_uuid_match": False,
+                },
+                {
+                    "address": "AA:BB:CC:DD:EE:FF",
+                    "name": "Hexe Voice PE",
+                    "transport": "ble",
+                    "uuids": ["7f9c0000-5f04-4d8b-9a46-7c0f7a100000"],
+                    "service_uuid_match": True,
+                    "matched_service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+                },
+            ],
+            "matching_devices": [
+                {
+                    "address": "AA:BB:CC:DD:EE:FF",
+                    "name": "Hexe Voice PE",
+                    "transport": "ble",
+                    "uuids": ["7f9c0000-5f04-4d8b-9a46-7c0f7a100000"],
+                    "service_uuid_match": True,
+                    "matched_service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+                }
+            ],
         }
         self.scan_calls = []
 
@@ -130,10 +156,28 @@ def test_ble_scan_granted_calls_supervisor_and_releases_lease(tmp_path):
     assert response.status == "completed"
     assert core.requested_payloads[0]["operation"] == "ble.scan"
     assert core.requested_payloads[0]["resource_type"] == "bluetooth"
-    assert supervisor.scan_calls == [{"node_id": "voice-node-main", "lease_token": "secret-lease-token", "adapter": "hci0", "scan_seconds": 5}]
+    assert supervisor.scan_calls == [
+        {
+            "node_id": "voice-node-main",
+            "lease_token": "secret-lease-token",
+            "adapter": "hci0",
+            "service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+            "scan_seconds": 5,
+        }
+    ]
     assert core.released == [{"lease_id": "lease-1", "node_id": "voice-node-main"}]
     assert response.access_request["lease_token"] == "[REDACTED]"
-    assert response.devices == [{"address": "AA:BB:CC:DD:EE:FF", "name": "Hexe Voice PE", "transport": "ble"}]
+    assert response.service_uuid == "7f9c0000-5f04-4d8b-9a46-7c0f7a100000"
+    assert response.devices == [
+        {
+            "address": "AA:BB:CC:DD:EE:FF",
+            "name": "Hexe Voice PE",
+            "transport": "ble",
+            "uuids": ["7f9c0000-5f04-4d8b-9a46-7c0f7a100000"],
+            "service_uuid_match": True,
+            "matched_service_uuid": "7f9c0000-5f04-4d8b-9a46-7c0f7a100000",
+        }
+    ]
 
 
 def test_ble_scan_pending_stops_before_supervisor_call(tmp_path):
