@@ -218,14 +218,9 @@ static void advertising_refresh_task(void *param) {
     if (!advertising_requested || connected) {
       continue;
     }
-    if (ble_gap_adv_active()) {
-      int rc = ble_gap_adv_stop();
-      if (rc != 0) {
-        ESP_LOGW(TAG, "BLE onboarding advertising timestamp refresh failed: %d", rc);
-      }
-      continue;
+    if (!ble_gap_adv_active()) {
+      advertise();
     }
-    advertise();
   }
 }
 
