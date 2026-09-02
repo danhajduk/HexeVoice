@@ -62,6 +62,8 @@ message(STATUS "Hexe recovery partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
 
 idf_component_register(
   SRCS
+    "../endpoint_runtime/system/ble_provisioning_gatt.c"
+    "recovery_ble_provisioning.cpp"
     "recovery_control.cpp"
     "recovery_status.cpp"
   INCLUDE_DIRS
@@ -69,6 +71,7 @@ idf_component_register(
     "${HEXE_GENERATED_DIR}"
   REQUIRES
     app_update
+    bt
     esp_event
     esp_app_format
     esp_driver_gpio

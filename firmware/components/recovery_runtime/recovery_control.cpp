@@ -12,6 +12,7 @@
 #include "board_profile_pins.h"
 #include "cJSON.h"
 #include "endpoint_config.h"
+#include "recovery_ble_provisioning.h"
 #include "recovery_status.h"
 #include "esp_err.h"
 #include "esp_event.h"
@@ -574,6 +575,11 @@ esp_err_t diagnostics_handler(httpd_req_t *req) {
   return ESP_OK;
 }
 
+esp_err_t ble_status_handler(httpd_req_t *req) {
+  send_json(req, "200 OK", hexe::recovery::render_recovery_ble_status_json());
+  return ESP_OK;
+}
+
 esp_err_t root_handler(httpd_req_t *req) {
   constexpr char page[] =
       "<!doctype html><html><head><meta charset=\"utf-8\"><title>Hexe Recovery</title>"
@@ -584,6 +590,7 @@ esp_err_t root_handler(httpd_req_t *req) {
       "<a href=\"/api/recovery/status\">Status JSON</a>"
       "<a href=\"/api/recovery/partitions\">Partition JSON</a>"
       "<a href=\"/api/recovery/diagnostics\">Diagnostics JSON</a>"
+      "<a href=\"/api/recovery/ble/status\">BLE JSON</a>"
       "<p>POST JSON to <code>/api/recovery/wifi</code>, <code>/api/recovery/endpoint</code>, "
       "or <code>/api/recovery/config/reset</code> for rescue actions.</p></body></html>";
   httpd_resp_set_type(req, "text/html");
@@ -901,6 +908,7 @@ void start_http_server() {
   register_uri("/api/recovery/status", HTTP_GET, status_handler);
   register_uri("/api/recovery/partitions", HTTP_GET, partitions_handler);
   register_uri("/api/recovery/diagnostics", HTTP_GET, diagnostics_handler);
+  register_uri("/api/recovery/ble/status", HTTP_GET, ble_status_handler);
   register_uri("/api/recovery/wifi", HTTP_POST, wifi_post_handler);
   register_uri("/api/recovery/endpoint", HTTP_POST, endpoint_post_handler);
   register_uri("/api/recovery/firmware/install", HTTP_POST, firmware_install_post_handler);
@@ -916,6 +924,7 @@ namespace hexe::recovery {
 
 void init_recovery_controls() {
   start_recovery_wifi();
+  init_recovery_ble_provisioning();
   start_http_server();
 }
 

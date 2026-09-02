@@ -15,5 +15,15 @@ Task 275 adds a local recovery control plane:
 - streamed main-firmware install into the inactive OTA slot with signed
   metadata, SHA-256 verification, and no automatic reboot
 
+Task 290 adds local BLE rescue provisioning on native-BLE recovery boards:
+
+- the recovery app advertises the canonical `ble.provision_wifi` GATT service
+- `/api/recovery/ble/status` reports BLE mode, support, UUIDs, state, and
+  ack/error status without secrets
+- local recovery BLE writes require the recovery session id and pairing nonce
+  before saving endpoint-compatible Wi-Fi/backend settings
+- Core-governed encrypted BLE provisioning remains owned by the normal endpoint
+  app path
+
 The recovery app architecture contract lives in
 `docs/firmware-recovery-architecture.md`.

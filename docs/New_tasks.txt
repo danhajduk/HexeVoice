@@ -51,7 +51,6 @@ Do not edit above this line:
 **********************************************************************************************
 * TODO listing
 **********************************************************************************************
-[TODO] Task 290: Add recovery-app BLE provisioning support using the same Core contract where available and a local recovery-safe fallback when Core is offline, without exposing plaintext credentials in logs or diagnostics
 [TODO] Task 291: Add BLE onboarding end-to-end tests, fake BLE/GATT harnesses, security regression checks, docs, and physical-device validation criteria across supported endpoint boards
 
 

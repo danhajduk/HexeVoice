@@ -10,6 +10,8 @@ RECOVERY_MAIN = Path("firmware/apps/recovery/main/app_main.cpp")
 RECOVERY_RUNTIME_CMAKE = Path("firmware/components/recovery_runtime/CMakeLists.txt")
 RECOVERY_CONTROL = Path("firmware/components/recovery_runtime/recovery_control.cpp")
 RECOVERY_CONTROL_HEADER = Path("firmware/components/recovery_runtime/recovery_control.h")
+RECOVERY_BLE = Path("firmware/components/recovery_runtime/recovery_ble_provisioning.cpp")
+RECOVERY_BLE_HEADER = Path("firmware/components/recovery_runtime/recovery_ble_provisioning.h")
 RECOVERY_STATUS = Path("firmware/components/recovery_runtime/recovery_status.cpp")
 RECOVERY_STATUS_HEADER = Path("firmware/components/recovery_runtime/recovery_status.h")
 PARTITION_ROADMAP = Path("docs/firmware-partition-ota-roadmap.md")
@@ -64,6 +66,7 @@ def test_recovery_architecture_locks_recovery_diagnostics_api():
         "/api/recovery/status",
         "/api/recovery/partitions",
         "/api/recovery/diagnostics",
+        "/api/recovery/ble/status",
         "/api/recovery/wifi",
         "/api/recovery/endpoint",
         "/api/recovery/firmware/install",
@@ -106,7 +109,7 @@ def test_recovery_skeleton_has_bootable_app_and_runtime_component():
     assert "endpoint_config.h" in runtime_cmake
     assert "HEXE_BOARD_RECOVERY_APP" in runtime_cmake
     assert 'HEXE_BOARD_IDF_TARGET STREQUAL "esp32s3"' in runtime_cmake
-    assert "endpoint_runtime" not in runtime_cmake
+    assert "HEXE_FIRMWARE_RUNTIME_COMPONENT endpoint_runtime" not in runtime_cmake
     assert "esp-tflite-micro" not in runtime_cmake
     assert "render_status_json()" in status_header
     assert "init_recovery_controls()" in RECOVERY_MAIN.read_text()
@@ -125,7 +128,11 @@ def test_recovery_status_skeleton_reports_safe_serial_json():
     assert "recovery_network_mode()" in status_source
     assert "recovery_ip_address()" in status_source
     assert '\\"interfaces\\":{\\"serial_console\\":true,\\"http_api\\":%s' in status_source
+    assert '\\"ble\\":%s' in status_source
+    assert '\\"ble_mode\\":\\"%s\\"' in status_source
     assert '\\"actions\\":{\\"wifi_provisioning\\":true' in status_source
+    assert '\\"ble_local_recovery_provisioning\\":%s' in status_source
+    assert '\\"ble_core_governed_provisioning\\":false' in status_source
     assert "esp_ota_get_running_partition" in status_source
     assert "esp_flash_get_size" in status_source
     assert "esp_psram_is_initialized" in status_source
@@ -141,6 +148,7 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
         "/api/recovery/status",
         "/api/recovery/partitions",
         "/api/recovery/diagnostics",
+        "/api/recovery/ble/status",
         "/api/recovery/wifi",
         "/api/recovery/endpoint",
         "/api/recovery/firmware/install",
@@ -150,6 +158,7 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
         assert path in control_source
 
     assert "esp_http_server" in runtime_cmake
+    assert "bt" in runtime_cmake
     assert "esp_wifi" in runtime_cmake
     assert "esp_netif" in runtime_cmake
     assert "espressif__cjson" in runtime_cmake
@@ -159,6 +168,34 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "HexeRecovery-" in control_source
     assert "WIFI_MODE_APSTA" in control_source
     assert "init_recovery_controls()" in control_header
+    assert "init_recovery_ble_provisioning()" in control_source
+    assert "render_recovery_ble_status_json()" in control_source
+
+
+def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runtime():
+    runtime_cmake = RECOVERY_RUNTIME_CMAKE.read_text()
+    ble_source = RECOVERY_BLE.read_text()
+    ble_header = RECOVERY_BLE_HEADER.read_text()
+    status_source = RECOVERY_STATUS.read_text()
+
+    assert '"../endpoint_runtime/system/ble_provisioning_gatt.c"' in runtime_cmake
+    assert '"recovery_ble_provisioning.cpp"' in runtime_cmake
+    assert "endpoint_runtime" not in runtime_cmake.replace("../endpoint_runtime/system/ble_provisioning_gatt.c", "")
+    assert "init_recovery_ble_provisioning()" in ble_header
+    assert "render_recovery_ble_status_json()" in ble_header
+    assert '"ble.provision_wifi"' in ble_source
+    assert '"hardware.bluetooth.ble.provision_wifi"' in ble_source
+    assert '"hexe.voice_node.wifi_backend.v1"' in ble_source
+    assert '"local_recovery"' in ble_source
+    assert '"core_governed_requires_endpoint_app"' in ble_source
+    assert "hexe_ble_provisioning_gatt_init" in ble_source
+    assert "hexe_ble_provisioning_handle_encrypted_credentials" in ble_source
+    assert "save_local_recovery_payload" in ble_source
+    assert "set_nvs_string(handle, kWifiSsidKey" in ble_source
+    assert "set_nvs_string(handle, kWifiPasswordKey" in ble_source
+    assert "nvs_set_u8(handle, kProvisionedKey, 1)" in ble_source
+    assert "ESP_LOG" not in ble_source[ble_source.index("save_local_recovery_payload") : ble_source.index("bool handle_local_recovery_write")]
+    assert "recovery_ble_enabled()" in status_source
 
 
 def test_recovery_provisioning_writes_endpoint_compatible_nvs_keys():

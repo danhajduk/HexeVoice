@@ -1,6 +1,6 @@
 # Firmware BLE Onboarding Integration
 
-Status: Task 289 backend/operator orchestration. This document records how
+Status: Task 290 recovery BLE rescue support. This document records how
 HexeVoice implements endpoint BLE onboarding against the current
 Core/Supervisor `ble.provision_wifi` contract without inventing a parallel host
 Bluetooth API.
@@ -68,7 +68,7 @@ reference.
 | Supervisor | host Bluetooth adapter selection, lease enforcement, broker route, Voice payload validation, response redaction, and physical BLE/GATT client backend |
 | HexeVoice backend/operator flow | discover Core schemas, create lease request, handle `denied`/`pending`/`granted`, send bounded broker call to Supervisor, redact local state, report progress, and hand off to normal node onboarding after Wi-Fi joins |
 | Hexe endpoint firmware | advertise the BLE peripheral, expose the GATT characteristics, validate/decrypt/apply the provisioning envelope, persist settings locally, reconnect Wi-Fi/backend, and stop advertising after success or timeout |
-| Recovery app | reuse the same settings write path when possible, support Core-governed BLE where available, and provide a local recovery-safe fallback when Core is offline |
+| Recovery app | advertise the canonical BLE service on supported recovery boards, provide an explicit local recovery-safe fallback when Core is offline, and report Core-governed encrypted provisioning as endpoint-app only |
 
 HexeVoice must not request raw host Bluetooth, BlueZ DBus, `/sys`, privileged
 containers, or unrestricted host command access.
@@ -167,6 +167,26 @@ Task 289 adds the HexeVoice requester/operator side:
 - Normal Core node onboarding/trust is not bypassed. After the endpoint joins
   Wi-Fi, the existing discovery, heartbeat, registry, and trust workflow remain
   the source of truth for a connected endpoint.
+
+## Recovery BLE Status
+
+Task 290 adds a recovery-owned BLE rescue path:
+
+- The recovery app links the shared GATT UUID bridge and a small local recovery
+  provisioning component without linking the normal `endpoint_runtime`.
+- Supported native-BLE recovery boards advertise the canonical
+  `ble.provision_wifi` service while recovery is running.
+- The local recovery write mode requires `mode: "local_recovery"`, the recovery
+  onboarding session id, the short-lived pairing nonce, the target node id, and
+  the same Voice Wi-Fi/backend credential payload shape before writing NVS.
+- Recovery writes use the same `hexe_settings` keys used by HTTP recovery
+  provisioning and normal endpoint provisioning.
+- `/api/recovery/ble/status` reports support, mode, UUIDs, advertising state,
+  and ack/error status without exposing Wi-Fi credentials, pairing nonce values,
+  claim-code references, ciphertext, or derived keys.
+- Core-governed encrypted BLE provisioning remains the normal endpoint firmware
+  path; recovery returns `core_governed_requires_endpoint_app` for encrypted
+  Core envelopes instead of accepting them silently.
 
 ## HexeVoice Implementation Plan
 

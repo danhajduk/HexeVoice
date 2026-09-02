@@ -1,6 +1,6 @@
 # Firmware Recovery App Architecture
 
-Status: Task 273 architecture contract; Task 274 skeleton implemented; Task 275 local rescue controls implemented
+Status: Task 273 architecture contract; Task 274 skeleton implemented; Task 275 local rescue controls implemented; Task 290 recovery BLE rescue implemented
 
 Reference: `docs/fw-roadmap.txt`
 
@@ -87,12 +87,14 @@ Required interfaces:
 - serial console diagnostics
 - local temporary Wi-Fi AP when no configured network is usable
 - local HTTP diagnostics and provisioning API
+- local BLE provisioning on supported boards
 - LED/button status where the board has suitable controls
 - minimal display/touch status on display boards, without full product UI
 
 Optional later interface:
 
-- BLE provisioning, if it fits the recovery partition and security model
+- Core-governed encrypted BLE provisioning inside recovery, if it can fit the
+  recovery partition without pulling in endpoint runtime dependencies
 
 ## Recovery Diagnostics API
 
@@ -106,6 +108,7 @@ Initial endpoints:
 | `GET` | `/api/recovery/status` | Overall recovery state, board identity, versions, network, actions |
 | `GET` | `/api/recovery/partitions` | Partition table, OTA slots, selected boot slot, image states |
 | `GET` | `/api/recovery/diagnostics` | PSRAM, flash, storage, audio/display/touch/button summaries |
+| `GET` | `/api/recovery/ble/status` | BLE rescue mode, Core contract UUIDs, advertising state, and safe ack/error state |
 | `POST` | `/api/recovery/wifi` | Save Wi-Fi station settings or start/stop temporary AP mode |
 | `POST` | `/api/recovery/endpoint` | Save endpoint id, display name, backend host/ports, and TLS mode |
 | `POST` | `/api/recovery/firmware/install` | Upload or fetch a signed endpoint image and install to an inactive main slot |
@@ -136,6 +139,15 @@ Minimum `/api/recovery/status` shape:
     "ssid_configured": false,
     "temporary_ap_active": true
   },
+  "interfaces": {
+    "serial_console": true,
+    "http_api": true,
+    "status_page": true,
+    "display_ui": false,
+    "ble": true,
+    "ble_mode": "local_recovery_advertising",
+    "ble_reason": "local_recovery_advertising"
+  },
   "main_slots": [
     {
       "label": "ota_0",
@@ -150,7 +162,9 @@ Minimum `/api/recovery/status` shape:
     "endpoint_provisioning": true,
     "firmware_upload": true,
     "boot_select": true,
-    "selective_config_reset": true
+    "selective_config_reset": true,
+    "ble_local_recovery_provisioning": true,
+    "ble_core_governed_provisioning": false
   }
 }
 ```
@@ -224,3 +238,20 @@ Task 275 adds operator-rescue features:
 - signed endpoint firmware upload/install into an inactive OTA slot
 - partition and boot-state inspection
 - selective provisioning, Wi-Fi, settings, and calibration reset
+
+Task 290 adds local BLE rescue provisioning:
+
+- recovery links a small recovery-owned BLE provisioning component and the
+  shared GATT UUID bridge without linking `endpoint_runtime`
+- supported native-BLE boards advertise the canonical `ble.provision_wifi`
+  service while recovery is running
+- the local recovery write mode requires the recovery onboarding session id and
+  short-lived pairing nonce before applying a Voice Wi-Fi/backend payload
+- values are persisted to the same endpoint-compatible `hexe_settings` NVS keys
+  used by HTTP recovery provisioning and the endpoint firmware
+- status and diagnostics expose mode, UUIDs, advertising state, ack/error state,
+  and support/unavailable reasons without exposing Wi-Fi credentials, pairing
+  nonce values, claim-code references, ciphertext, or derived keys
+- Core-governed encrypted BLE provisioning remains available through the normal
+  endpoint firmware path; recovery reports `core_governed_requires_endpoint_app`
+  for encrypted Core envelopes instead of accepting them silently

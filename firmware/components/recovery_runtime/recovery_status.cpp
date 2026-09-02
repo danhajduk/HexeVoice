@@ -5,6 +5,7 @@
 #include <string>
 
 #include "board_profile_pins.h"
+#include "recovery_ble_provisioning.h"
 #include "recovery_control.h"
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
@@ -157,10 +158,12 @@ std::string render_status_json() {
       "\"endpoint_runtime_linked\":false,"
       "\"nvs\":{\"init_ok\":%s,\"error\":\"%s\"},"
       "\"network\":{\"mode\":\"%s\",\"ip_address\":\"%s\",\"ssid_configured\":%s,\"temporary_ap_active\":%s},"
-      "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"display_ui\":false,\"ble\":false},"
+      "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"display_ui\":false,"
+      "\"ble\":%s,\"ble_mode\":\"%s\",\"ble_reason\":\"%s\"},"
       "\"main_slots\":[{\"label\":\"%s\",\"selected_for_boot\":true,\"state\":\"%s\",\"state_readable\":%s}],"
       "\"actions\":{\"wifi_provisioning\":true,\"endpoint_provisioning\":true,\"firmware_upload\":true,"
-      "\"boot_select\":true,\"selective_config_reset\":true},"
+      "\"boot_select\":true,\"selective_config_reset\":true,\"ble_local_recovery_provisioning\":%s,"
+      "\"ble_core_governed_provisioning\":false},"
       "\"boot\":{\"running_partition\":\"%s\",\"boot_partition\":\"%s\"}"
       "}",
       kSchemaVersion,
@@ -186,9 +189,13 @@ std::string render_status_json() {
       bool_json(recovery_temporary_ap_active()).c_str(),
       bool_json(recovery_http_api_active()).c_str(),
       bool_json(recovery_http_api_active()).c_str(),
+      bool_json(recovery_ble_enabled()).c_str(),
+      recovery_ble_advertising() ? "local_recovery_advertising" : recovery_ble_state(),
+      recovery_ble_reason(),
       partition_label(boot_partition),
       ota_state_name(running_state),
       bool_json(running_state_result == ESP_OK).c_str(),
+      bool_json(recovery_ble_enabled()).c_str(),
       partition_label(running_partition),
       partition_label(boot_partition));
   return std::string(buffer);
