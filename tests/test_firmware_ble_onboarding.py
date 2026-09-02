@@ -19,7 +19,10 @@ def test_ble_onboarding_declares_core_gatt_contract_constants():
 
     assert 'kBleProvisioningOperation = "ble.provision_wifi"' in header
     assert 'kBleProvisioningLeaseScope = "hardware.bluetooth.ble.provision_wifi"' in header
+    assert 'kBleProvisioningEnvelopeSchemaVersion = "1.0"' in header
     assert 'kBleProvisioningPayloadSchemaId = "hexe.voice_node.wifi_backend.v1"' in header
+    assert 'kBleProvisioningEncryptionAlgorithm = "aes-256-gcm"' in header
+    assert 'kBleProvisioningKeyAgreement = "x25519-hkdf-sha256"' in header
     assert 'kBleProvisioningServiceUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000"' in header
     assert 'kBleProvisioningDeviceIdentityUuid = "7f9c0001-5f04-4d8b-9a46-7c0f7a100000"' in header
     assert 'kBleProvisioningPairingNonceUuid = "7f9c0002-5f04-4d8b-9a46-7c0f7a100000"' in header
@@ -59,9 +62,38 @@ def test_ble_onboarding_rejects_unusable_envelopes_before_writing_settings():
     assert 'set_error("already_provisioned")' in source
     assert "sequence <= 0" in source
     assert "last_sequence" in source
+    assert "expired_envelope(fields->expires_at)" in source
+    assert "canonical_aad_json(" in source
+    assert "canonical_key_id_json(" in source
+    assert "std::strcmp(fields->key_id, expected_key_id.c_str())" in source
     assert "kMaxEncryptedEnvelopeBytes = 4096" in source
     assert "save_endpoint_provisioning(settings)" in source
     assert "hexe::board::reconnect_wifi()" in source
+
+
+def test_ble_onboarding_implements_supervisor_envelope_crypto():
+    source = BLE_SOURCE.read_text(encoding="utf-8")
+
+    for required_text in (
+        "PSA_ALG_ECDH",
+        "PSA_ALG_HKDF(PSA_ALG_SHA_256)",
+        "PSA_ALG_GCM",
+        "psa_raw_key_agreement",
+        "psa_key_derivation_output_bytes",
+        "psa_aead_decrypt",
+        '"hexe:x25519-hkdf-sha256:ble.provision_wifi"',
+        '"supervisor_ephemeral_public_key"',
+        '"endpoint_ephemeral_public_key"',
+        '"key_agreement"',
+        '"aad"',
+        '"ciphertext"',
+        '"tag"',
+        '"expires_at"',
+    ):
+        assert required_text in source
+
+    assert '"xchacha20poly1305"' not in source
+    assert 'set_error("decrypt_failed");\n  return false;\n}' not in source[source.index("ble_provisioning_handle_encrypted_credentials") :]
 
 
 def test_ble_onboarding_reports_status_without_secret_material():
@@ -77,6 +109,8 @@ def test_ble_onboarding_reports_status_without_secret_material():
     assert '"wifi_password"' not in source[source.index("ble_provisioning_status_json") :]
     assert '"ciphertext"' not in backend
     assert '"pairing_nonce"' not in backend
+    assert '"endpoint_ephemeral_public_key"' in source[source.index("ble_provisioning_device_identity_json") :]
+    assert '"endpoint_ephemeral_public_key"' not in source[source.index("ble_provisioning_status_json") : source.index("ble_provisioning_ack_error_json")]
 
 
 def test_ble_onboarding_starts_after_settings_and_updates_in_main_loop():

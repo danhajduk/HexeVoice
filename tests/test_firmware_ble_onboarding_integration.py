@@ -14,6 +14,8 @@ def test_ble_onboarding_integration_locks_current_core_contract():
         "`hardware.bluetooth.ble.provision_wifi`",
         "`1.0`",
         "`hexe.voice_node.wifi_backend.v1`",
+        "`aes-256-gcm`",
+        "`x25519-hkdf-sha256`",
         "`7f9c0000-5f04-4d8b-9a46-7c0f7a100000`",
         "`7f9c0001-5f04-4d8b-9a46-7c0f7a100000`",
         "`7f9c0002-5f04-4d8b-9a46-7c0f7a100000`",
@@ -23,6 +25,9 @@ def test_ble_onboarding_integration_locks_current_core_contract():
         "GET /api/system/nodes/hardware/access-requests/schema",
         "GET /api/system/nodes/hardware/ble/provisioning/schemas/voice",
         "/api/supervisor/hardware/bluetooth/ble/provision-wifi",
+        "`endpoint_ephemeral_public_key`",
+        "`sequence`",
+        "`expires_at`",
     ):
         assert required_text in doc
 
@@ -55,6 +60,7 @@ def test_ble_onboarding_integration_preserves_security_and_failure_boundaries():
         "Core must not receive, persist, or log plaintext Wi-Fi credentials",
         "Presence of a Bluetooth adapter is not authorization",
         "Supervisor receives plaintext Voice payload fields only for the bounded broker operation",
+        "endpoint ephemeral X25519 private key is volatile",
         "`gatt_backend_unavailable`",
         "`credential_payload.wifi_password`",
         "`invalid_nonce`",
@@ -82,6 +88,8 @@ def test_ble_onboarding_integration_defines_hexevoice_owned_followup_tasks():
 
     assert "Supervisor-owned: provide and validate a real physical BLE/GATT backend" in doc
     assert "Current Supervisor behavior is intentionally pluggable and fails closed" in doc
+    assert "does not yet define how the endpoint gets" not in doc
+    assert "firmware intentionally returns `decrypt_failed` for real encrypted writes" not in doc
 
 
 def test_ble_onboarding_integration_is_linked_from_firmware_docs():

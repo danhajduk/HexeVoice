@@ -9,7 +9,10 @@ namespace hexe::system {
 constexpr const char *kBleProvisioningOperation = "ble.provision_wifi";
 constexpr const char *kBleProvisioningLeaseScope = "hardware.bluetooth.ble.provision_wifi";
 constexpr const char *kBleProvisioningContractVersion = "1.0";
+constexpr const char *kBleProvisioningEnvelopeSchemaVersion = "1.0";
 constexpr const char *kBleProvisioningPayloadSchemaId = "hexe.voice_node.wifi_backend.v1";
+constexpr const char *kBleProvisioningEncryptionAlgorithm = "aes-256-gcm";
+constexpr const char *kBleProvisioningKeyAgreement = "x25519-hkdf-sha256";
 constexpr const char *kBleProvisioningServiceUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000";
 constexpr const char *kBleProvisioningDeviceIdentityUuid = "7f9c0001-5f04-4d8b-9a46-7c0f7a100000";
 constexpr const char *kBleProvisioningPairingNonceUuid = "7f9c0002-5f04-4d8b-9a46-7c0f7a100000";

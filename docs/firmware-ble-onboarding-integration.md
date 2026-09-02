@@ -1,8 +1,9 @@
 # Firmware BLE Onboarding Integration
 
-Status: Task 287 reconciliation plan. This document records how HexeVoice
-should implement endpoint BLE onboarding against the current Core/Supervisor
-`ble.provision_wifi` contract without inventing a parallel host Bluetooth API.
+Status: Task 288 endpoint firmware implementation. This document records how
+HexeVoice implements endpoint BLE onboarding against the current
+Core/Supervisor `ble.provision_wifi` contract without inventing a parallel host
+Bluetooth API.
 
 Core/Supervisor sources checked:
 
@@ -25,7 +26,10 @@ next implementation tasks:
 | Operation | `ble.provision_wifi` |
 | Lease scope | `hardware.bluetooth.ble.provision_wifi` |
 | Contract version | `1.0` |
+| Envelope schema version | `1.0` |
 | Voice payload schema id | `hexe.voice_node.wifi_backend.v1` |
+| Encryption algorithm | `aes-256-gcm` |
+| Key agreement | `x25519-hkdf-sha256` |
 | GATT service UUID | `7f9c0000-5f04-4d8b-9a46-7c0f7a100000` |
 | Device identity characteristic | `7f9c0001-5f04-4d8b-9a46-7c0f7a100000` |
 | Pairing nonce / claim code characteristic | `7f9c0002-5f04-4d8b-9a46-7c0f7a100000` |
@@ -45,6 +49,9 @@ provisioning payload schema at
 - `target_node_id`
 - `node_profile_id`
 - `payload_schema_id`
+- `endpoint_ephemeral_public_key`
+- `sequence`
+- `expires_at`
 - either `pairing_nonce` or `claim_code_ref`
 
 Core binds this context into the hardware lease token and validates the same
@@ -108,29 +115,29 @@ provisioning, backend-command provisioning, and recovery provisioning aligned.
 
 ## Endpoint Firmware Status
 
-Task 288 has started the endpoint-side peripheral implementation:
+Task 288 implements the endpoint-side peripheral:
 
 - The endpoint runtime now declares the Core `ble.provision_wifi` operation,
-  lease scope, contract version, Voice payload schema id, and canonical GATT
+  lease scope, contract version, envelope schema version, Voice payload schema
+  id, encryption algorithm, key agreement, and canonical GATT
   service/characteristic UUIDs.
 - Native ESP32-S3 board profiles enable NimBLE peripheral/GATT support through
   generated board-profile metadata and build defaults.
 - The firmware starts BLE onboarding only when the board supports native BLE and
   the endpoint is not already provisioned.
+- Device identity and pairing metadata expose the endpoint ephemeral X25519
+  public key so Supervisor can create the encrypted provisioning envelope.
 - The heartbeat reports BLE onboarding capability, transport, UUIDs, state,
   advertising eligibility, and ack/error status without reporting credentials,
   ciphertext, pairing nonce values, claim codes, or derived keys.
 - The encrypted credential write path validates envelope shape, contract
-  version, schema id, target identity, pairing nonce binding, size, and replay
-  sequence before failing closed with deterministic errors.
+  version, schema id, onboarding session, target identity, pairing nonce
+  binding, expiry, AAD bytes, key id, size, and replay sequence.
+- The endpoint derives the provisioning key with X25519, HKDF-SHA256, and the
+  contract salt/info strings, then decrypts the envelope with AES-256-GCM.
 - The decrypted Voice payload apply path writes through
-  `save_endpoint_provisioning` and requests Wi-Fi reconnect.
-
-The current Core/Supervisor contract does not yet define how the endpoint gets
-the provisioning-envelope decrypt key. Until that key handoff is specified, the
-firmware intentionally returns `decrypt_failed` for real encrypted writes after
-binding validation rather than deriving a key from a readable nonce or accepting
-plaintext credentials over BLE.
+  `save_endpoint_provisioning`, requests Wi-Fi reconnect, and stops advertising
+  after successful provisioning.
 
 ## HexeVoice Implementation Plan
 
@@ -233,6 +240,8 @@ Endpoint-side:
 - Supervisor receives plaintext Voice payload fields only for the bounded broker operation and must redact responses/events.
 - The BLE write uses an encrypted provisioning envelope; BLE link encryption is
   useful but not sufficient by itself.
+- The endpoint ephemeral X25519 private key is volatile and rotates with each
+  pairing session; only the public key is exposed over GATT metadata.
 - Firmware and recovery logs must not include plaintext credentials,
   ciphertext, pairing nonces, claim codes, derived keys, or trust tokens.
 - The target endpoint owns final credential application and must fail closed if
