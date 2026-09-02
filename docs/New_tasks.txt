@@ -51,41 +51,27 @@ Do not edit above this line:
 **********************************************************************************************
 * TODO listing
 **********************************************************************************************
-
-[STOP]
-
-[STOP]
-
-[STOP]
-
-[TODO] Task 283: Make the Waveshare ESP32-S3 1.85C BOX V2 profile buildable by transcribing the schematic pin map and implementing display, touch, audio, storage, status, and TTS adapters behind the existing board-profile interface
-
-[STOP]
-
-[TODO] Task 284: Make the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B profile buildable by implementing the ESP32-P4 target, ESP32-C6 SDIO radio transport, display/touch backends, ES7210/ES8311 audio path, SD storage, wake pipeline, and fallback UI
-
-[STOP]
-
 [TODO] Task 286: Add production-readiness security and manufacturing docs for firmware signing, key rotation, secure boot, flash encryption, provisioning, recovery, field service, enclosure/audio openings, mute controls, and service access
 
 [STOP]
 
-**********************************************************************************************
-* Completed listing
-**********************************************************************************************
+[TODO] Task 287: Reconcile HexeVoice BLE onboarding requirements with the current Core/Supervisor `ble.provision_wifi` contract, schema, lease policy, broker route, security model, and failure modes
 
-Task 282: Add the xvf3800_xiao_s3 board profile and implement the ReSpeaker XVF3800 plus XIAO ESP32-S3 screenless audio endpoint adapters, including I2S input, channel mapping, DSP/VAD integration, LEDs, buttons, speaker/tones, and size validation against the 2.5 MiB slot target - Completed on 08/30/2026 07:41
+[STOP]
 
-Reasoning:
-Task #282
-Step objective: Add a buildable ReSpeaker XVF3800 plus XIAO ESP32-S3 screenless endpoint profile.
-Chosen fix: Add a YAML board profile backed by generated pin aliases, XVF3800 I2C controls, a shared 16 kHz stereo I2S bus, screenless audio/mute/LED/tone adapters, and 2560K OTA slot validation.
-What changed: The XVF profile now declares the 8 MiB recovery partition schema, 2.5 MiB endpoint OTA slots, XVF DSP/VAD capabilities, I2S channel mapping, I2C LED/mute controls, local wake/stop model settings, and buildable adapter sources. The build script now derives ESPTool flash-size defaults from board YAML and refreshes stale generated sdkconfig files when the profile flash size changes.
-Verification: Profile and partition validators passed for 5 profiles; focused firmware board/envelope tests passed; XVF endpoint firmware built at 1,458,976 bytes with 8MB flash args; XVF recovery firmware built at 848,368 bytes with 8MB flash args.
-###########
+[TODO] Task 288: Implement the endpoint firmware BLE onboarding peripheral for the Core `ble.provision_wifi` GATT contract, including pairing nonce/claim binding, encrypted credential envelope handling, NVS provisioning writes, Wi-Fi restart behavior, and board-profile capability reporting
+[TODO] Task 289: Add HexeVoice backend and operator flow support for Core-governed BLE endpoint onboarding, including hardware lease request, Supervisor provision-wifi broker calls, credential redaction, progress reporting, and normal node onboarding handoff after Wi-Fi connects
+
+[STOP]
+
+[TODO] Task 290: Add recovery-app BLE provisioning support using the same Core contract where available and a local recovery-safe fallback when Core is offline, without exposing plaintext credentials in logs or diagnostics
+[TODO] Task 291: Add BLE onboarding end-to-end tests, fake BLE/GATT harnesses, security regression checks, docs, and physical-device validation criteria across supported endpoint boards
+
 
 **********************************************************************************************
 * Future TODO listing
 **********************************************************************************************
 
 [FUTURE TODO] Task 205: Add an optional experimental Kokoro TTS provider with Docker/Unix-socket runtime, CPU/CUDA mode, voice selection, WAV artifact normalization, and Piper-compatible fallback behavior
+[FUTURE TODO] Task 283: Make the Waveshare ESP32-S3 1.85C BOX V2 profile buildable by transcribing the schematic pin map and implementing display, touch, audio, storage, status, and TTS adapters behind the existing board-profile interface
+[FUTURE TODO] Task 284: Make the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B profile buildable by implementing the ESP32-P4 target, ESP32-C6 SDIO radio transport, display/touch backends, ES7210/ES8311 audio path, SD storage, wake pipeline, and fallback UI

@@ -403,6 +403,12 @@
         "dc": {"$ref": "#/$defs/pin"},
         "reset": {"$ref": "#/$defs/pin"},
         "backlight": {"$ref": "#/$defs/pin"},
+        "data0": {"$ref": "#/$defs/pin"},
+        "data1": {"$ref": "#/$defs/pin"},
+        "data2": {"$ref": "#/$defs/pin"},
+        "data3": {"$ref": "#/$defs/pin"},
+        "te": {"$ref": "#/$defs/pin"},
+        "mode": {"type": ["string", "null"], "enum": ["spi", "qspi", null]},
         "notes": {"type": "string"}
       }
     },

@@ -18,3 +18,4 @@ dependencies:
   espressif/esp_websocket_client: ^1.6.1
   espressif/cjson: ^1.7.19~2
   espressif/esp-tflite-micro: ^1.4.0
+  espressif/esp_lcd_st77916: ^2.0.2

@@ -123,7 +123,7 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
 
     assert profiles["esp_box_3"]["adapters"]["buildable"] is True
     assert profiles["ha_voice_pe"]["adapters"]["buildable"] is True
-    assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["buildable"] is False
+    assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["buildable"] is True
     assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["adapters"]["buildable"] is False
     assert profiles["esp_box_3"]["adapters"]["source_files"] == [
         "board/audio.cpp",
@@ -143,6 +143,17 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "board/touch_none.cpp",
         "voice/tts_player_ha_voice_pe.cpp",
     ]
+    assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["source_files"] == [
+        "board/waveshare_s3_1_85c_bus.cpp",
+        "board/audio_waveshare_s3_1_85c_box_v2.cpp",
+        "board/buttons_waveshare_s3_1_85c_box_v2.cpp",
+        "board/display_waveshare_s3_1_85c_box_v2.cpp",
+        "board/led_ring.cpp",
+        "board/storage_waveshare_s3_1_85c_box_v2.cpp",
+        "board/touch_waveshare_s3_1_85c_box_v2.cpp",
+        "voice/tts_player_waveshare_s3_1_85c_box_v2.cpp",
+    ]
+    assert "PLACEHOLDER" in profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["notes"]
 
 
 def test_buildable_board_profiles_declare_complete_wiring():
@@ -154,7 +165,7 @@ def test_buildable_board_profiles_declare_complete_wiring():
 
     assert profiles["esp_box_3"]["wiring"]["status"] == "complete"
     assert profiles["ha_voice_pe"]["wiring"]["status"] == "complete"
-    assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["wiring"]["status"] == "partial"
+    assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["wiring"]["status"] == "complete"
     assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["wiring"]["status"] == "partial"
 
     pe_wiring = profiles["ha_voice_pe"]["wiring"]
@@ -180,6 +191,41 @@ def test_buildable_board_profiles_declare_complete_wiring():
     assert pe_leds["led_ring"]["data"] == 21
     assert pe_leds["led_ring"]["power"] == 45
     assert pe_leds["led_ring"]["pixel_count"] == 12
+
+    ws_wiring = profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["wiring"]
+    ws_gpios = {gpio["name"]: gpio for gpio in ws_wiring["gpios"]}
+    ws_i2c = {bus["name"]: bus for bus in ws_wiring["i2c_buses"]}
+    ws_i2s = {bus["name"]: bus for bus in ws_wiring["i2s_buses"]}
+    ws_spi = {bus["name"]: bus for bus in ws_wiring["spi_buses"]}
+
+    assert ws_gpios["touch_interrupt"]["gpio"] == 4
+    assert ws_gpios["speaker_pa"]["gpio"] == 15
+    assert ws_gpios["boot_button"]["gpio"] == 0
+    assert ws_gpios["sdmmc_clk"]["gpio"] == 14
+    assert ws_gpios["sdmmc_cmd"]["gpio"] == 17
+    assert ws_gpios["sdmmc_d0"]["gpio"] == 16
+    assert ws_i2c["peripheral_control"]["sda"] == 11
+    assert ws_i2c["peripheral_control"]["scl"] == 10
+    assert ws_i2c["peripheral_control"]["devices"] == [
+        {"name": "touch_controller", "address": 21, "notes": "CST816S touch controller."},
+        {"name": "io_expander", "address": 32, "notes": "TCA9554 reset expander; EXIO1=touch reset, EXIO2=LCD reset."},
+        {"name": "rtc", "address": 81, "notes": "PCF85063-style RTC footprint used by Waveshare examples."},
+        {"name": "microphone_codec", "address": 64, "notes": "ES7210 7-bit address; esp_codec_dev uses the matching shifted default internally."},
+        {"name": "speaker_codec", "address": 24, "notes": "ES8311 7-bit address."},
+    ]
+    assert ws_i2s["audio"]["mclk"] == 2
+    assert ws_i2s["audio"]["bclk"] == 48
+    assert ws_i2s["audio"]["lrclk"] == 38
+    assert ws_i2s["audio"]["din"] == 39
+    assert ws_i2s["audio"]["dout"] == 47
+    assert ws_spi["display"]["mode"] == "qspi"
+    assert ws_spi["display"]["clk"] == 40
+    assert ws_spi["display"]["data0"] == 46
+    assert ws_spi["display"]["data1"] == 45
+    assert ws_spi["display"]["data2"] == 42
+    assert ws_spi["display"]["data3"] == 41
+    assert ws_spi["display"]["cs"] == 21
+    assert ws_spi["display"]["te"] == 18
 
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     output = tmp_path / "board_profile_config.cmake"
@@ -231,7 +277,7 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert "constexpr int kVoicePeLedCount = kLedRingPixelCount;" in header
 
 
-def test_board_profile_generator_keeps_planned_profiles_non_buildable(tmp_path):
+def test_board_profile_generator_renders_waveshare_buildable_scaffold(tmp_path):
     output = tmp_path / "board_profile_config.cmake"
 
     subprocess.run(
@@ -252,9 +298,10 @@ def test_board_profile_generator_keeps_planned_profiles_non_buildable(tmp_path):
 
     cmake = output.read_text(encoding="utf-8")
     assert 'set(HEXE_BOARD_PROFILE "waveshare_s3_touch_lcd_1_85c_box_v2")' in cmake
-    assert "set(HEXE_BOARD_ADAPTER_BUILDABLE FALSE)" in cmake
+    assert "set(HEXE_BOARD_ADAPTER_BUILDABLE TRUE)" in cmake
     assert "HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2=1" in cmake
-    assert "set(HEXE_BOARD_SRCS\n)" in cmake
+    assert '"board/waveshare_s3_1_85c_bus.cpp"' in cmake
+    assert '"board/storage_waveshare_s3_1_85c_box_v2.cpp"' in cmake
 
 
 def test_firmware_cmake_uses_generated_board_profile_adapters():

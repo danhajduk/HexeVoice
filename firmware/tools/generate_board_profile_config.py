@@ -174,6 +174,11 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
             add_const(lines, f"{prefix}Dc", entry.get("dc"))
             add_const(lines, f"{prefix}Reset", entry.get("reset"))
             add_const(lines, f"{prefix}Backlight", entry.get("backlight"))
+            add_const(lines, f"{prefix}Data0", entry.get("data0"))
+            add_const(lines, f"{prefix}Data1", entry.get("data1"))
+            add_const(lines, f"{prefix}Data2", entry.get("data2"))
+            add_const(lines, f"{prefix}Data3", entry.get("data3"))
+            add_const(lines, f"{prefix}Te", entry.get("te"))
         if spi_buses:
             lines.append("")
 
@@ -224,6 +229,38 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
             ("kVoicePeLedData", "kLedRingData"),
             ("kVoicePeLedPower", "kLedRingPower"),
             ("kVoicePeLedCount", "kLedRingPixelCount"),
+        ]
+    elif board_profile == "waveshare_s3_touch_lcd_1_85c_box_v2":
+        aliases = [
+            ("kWs185I2cPort", "kPeripheralControlPort"),
+            ("kWs185I2cSda", "kPeripheralControlSda"),
+            ("kWs185I2cScl", "kPeripheralControlScl"),
+            ("kWs185I2cClockHz", "kPeripheralControlClockHz"),
+            ("kWs185TouchAddress", "kPeripheralControlTouchControllerAddress"),
+            ("kWs185IoExpanderAddress", "kPeripheralControlIoExpanderAddress"),
+            ("kWs185RtcAddress", "kPeripheralControlRtcAddress"),
+            ("kWs185Es7210Address", "kPeripheralControlMicrophoneCodecAddress"),
+            ("kWs185Es8311Address", "kPeripheralControlSpeakerCodecAddress"),
+            ("kWs185AudioPort", "kAudioPort"),
+            ("kWs185AudioMclk", "kAudioMclk"),
+            ("kWs185AudioBclk", "kAudioBclk"),
+            ("kWs185AudioLrclk", "kAudioLrclk"),
+            ("kWs185AudioDin", "kAudioDin"),
+            ("kWs185AudioDout", "kAudioDout"),
+            ("kWs185DisplayClk", "kDisplayClk"),
+            ("kWs185DisplayData0", "kDisplayData0"),
+            ("kWs185DisplayData1", "kDisplayData1"),
+            ("kWs185DisplayData2", "kDisplayData2"),
+            ("kWs185DisplayData3", "kDisplayData3"),
+            ("kWs185DisplayCs", "kDisplayCs"),
+            ("kWs185DisplayTe", "kDisplayTe"),
+            ("kWs185DisplayBacklight", "kDisplayBacklight"),
+            ("kWs185TouchInterrupt", "kTouchInterrupt"),
+            ("kWs185PaCtrl", "kSpeakerPa"),
+            ("kWs185BatteryAdc", "kBatteryAdc"),
+            ("kWs185SdmmcClk", "kSdmmcClk"),
+            ("kWs185SdmmcCmd", "kSdmmcCmd"),
+            ("kWs185SdmmcD0", "kSdmmcD0"),
         ]
     for alias, target in aliases:
         lines.append(f"constexpr int {alias} = {target};")

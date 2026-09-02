@@ -1,0 +1,528 @@
+#include "voice/tts_player.h"
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <vector>
+
+#include "app_state.h"
+#include "board/audio.h"
+#include "board/pins.h"
+#include "board/storage.h"
+#include "board/waveshare_s3_1_85c_bus.h"
+#include "endpoint_config.h"
+#include "esp_codec_dev.h"
+#include "esp_codec_dev_defaults.h"
+#include "esp_http_client.h"
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "freertos/task.h"
+#include "system/settings.h"
+#include "voice/backend_client.h"
+
+namespace {
+constexpr char kTag[] = "hexe_tts_ws185";
+constexpr int kPlaybackQueueDepth = 2;
+constexpr int kTaskStackBytes = 6144;
+constexpr int kTaskPriority = 4;
+constexpr size_t kMaxTtsBytes = 512 * 1024;
+constexpr size_t kPlaybackWriteBytes = 4096;
+
+struct PlaybackRequest {
+  char stream_id[64];
+  char content_type[32];
+  char audio_url[192];
+  char file_path[256];
+  bool loop{false};
+  bool keep_microphone_open{false};
+};
+
+struct HttpBuffer {
+  std::vector<uint8_t> bytes;
+  bool overflow{false};
+};
+
+struct WavView {
+  const uint8_t *pcm{nullptr};
+  size_t pcm_size{0};
+  int sample_rate{16000};
+  int channels{1};
+  int bits_per_sample{16};
+};
+
+QueueHandle_t g_playback_queue = nullptr;
+TaskHandle_t g_playback_task = nullptr;
+esp_codec_dev_handle_t g_speaker_codec = nullptr;
+volatile bool g_stop_requested = false;
+volatile bool g_playback_active = false;
+PlaybackRequest g_current_playback_request = {};
+bool g_current_playback_request_valid = false;
+
+void set_playback_lifecycle(hexe::PlaybackLifecycleState playback_state, bool active) {
+  g_playback_active = active;
+  auto &state = hexe::state();
+  state.tts_playback_state = playback_state;
+  state.tts_playback_active = active;
+}
+
+int current_output_volume() {
+  return std::clamp(hexe::state().output_volume_percent, 0, 100);
+}
+
+void send_playback_event(const char *event_type, const PlaybackRequest &request, const char *reason = nullptr, size_t byte_count = 0) {
+  hexe::voice::send_tts_playback_event(event_type, request.stream_id, request.audio_url, reason, byte_count);
+}
+
+const char *scheme_http() {
+  return hexe::system::endpoint_use_tls() ? "https" : "http";
+}
+
+uint16_t read_le16(const uint8_t *bytes) {
+  return static_cast<uint16_t>(bytes[0] | (bytes[1] << 8));
+}
+
+uint32_t read_le32(const uint8_t *bytes) {
+  return static_cast<uint32_t>(bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24));
+}
+
+std::string resolve_audio_url(const char *audio_url) {
+  if (audio_url == nullptr || audio_url[0] == '\0') {
+    return std::string();
+  }
+  std::string url(audio_url);
+  if (url.rfind("http://", 0) == 0 || url.rfind("https://", 0) == 0) {
+    return url;
+  }
+
+  char buffer[256];
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "%s://%s:%d%s",
+      scheme_http(),
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port(),
+      url.c_str());
+  return std::string(buffer);
+}
+
+esp_err_t http_event_handler(esp_http_client_event_t *event) {
+  if (event == nullptr || event->user_data == nullptr || event->event_id != HTTP_EVENT_ON_DATA) {
+    return ESP_OK;
+  }
+  auto *buffer = static_cast<HttpBuffer *>(event->user_data);
+  if (event->data == nullptr || event->data_len <= 0 || buffer->overflow) {
+    return ESP_OK;
+  }
+  if (buffer->bytes.size() + static_cast<size_t>(event->data_len) > kMaxTtsBytes) {
+    buffer->overflow = true;
+    return ESP_OK;
+  }
+
+  const auto *data = static_cast<const uint8_t *>(event->data);
+  buffer->bytes.insert(buffer->bytes.end(), data, data + event->data_len);
+  return ESP_OK;
+}
+
+bool fetch_audio(const std::string &url, std::vector<uint8_t> *audio) {
+  if (audio == nullptr || url.empty()) {
+    return false;
+  }
+
+  HttpBuffer buffer;
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.method = HTTP_METHOD_GET;
+  config.event_handler = http_event_handler;
+  config.user_data = &buffer;
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    ESP_LOGW(kTag, "Failed to initialize TTS HTTP client");
+    return false;
+  }
+
+  esp_err_t err = esp_http_client_perform(client);
+  const int status_code = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+  if (err != ESP_OK || status_code < 200 || status_code >= 300 || buffer.overflow || buffer.bytes.empty()) {
+    ESP_LOGW(kTag, "Failed to fetch TTS audio: err=%s status=%d overflow=%d", esp_err_to_name(err), status_code, buffer.overflow);
+    return false;
+  }
+
+  *audio = std::move(buffer.bytes);
+  return true;
+}
+
+bool read_audio_file(const char *path, std::vector<uint8_t> *audio) {
+  if (path == nullptr || path[0] == '\0' || audio == nullptr) {
+    return false;
+  }
+
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    ESP_LOGW(kTag, "Could not open SD sound: %s", path);
+    return false;
+  }
+  if (std::fseek(file, 0, SEEK_END) != 0) {
+    std::fclose(file);
+    return false;
+  }
+  const long file_size = std::ftell(file);
+  if (file_size <= 0 || static_cast<size_t>(file_size) > kMaxTtsBytes) {
+    ESP_LOGW(kTag, "Ignoring SD sound %s: size %ld is outside limit", path, file_size);
+    std::fclose(file);
+    return false;
+  }
+  std::rewind(file);
+
+  audio->assign(static_cast<size_t>(file_size), 0);
+  const size_t read_bytes = std::fread(audio->data(), 1, audio->size(), file);
+  std::fclose(file);
+  if (read_bytes != audio->size()) {
+    audio->clear();
+    ESP_LOGW(kTag, "Could not read SD sound %s", path);
+    return false;
+  }
+  return true;
+}
+
+bool parse_wav(const std::vector<uint8_t> &audio, WavView *wav) {
+  if (wav == nullptr || audio.size() < 44 || std::memcmp(audio.data(), "RIFF", 4) != 0 ||
+      std::memcmp(audio.data() + 8, "WAVE", 4) != 0) {
+    return false;
+  }
+
+  size_t offset = 12;
+  bool saw_format = false;
+  while (offset + 8 <= audio.size()) {
+    const uint8_t *chunk = audio.data() + offset;
+    const uint32_t chunk_size = read_le32(chunk + 4);
+    const size_t chunk_data = offset + 8;
+    if (chunk_data + chunk_size > audio.size()) {
+      return false;
+    }
+
+    if (std::memcmp(chunk, "fmt ", 4) == 0 && chunk_size >= 16) {
+      const uint16_t audio_format = read_le16(audio.data() + chunk_data);
+      wav->channels = read_le16(audio.data() + chunk_data + 2);
+      wav->sample_rate = static_cast<int>(read_le32(audio.data() + chunk_data + 4));
+      wav->bits_per_sample = read_le16(audio.data() + chunk_data + 14);
+      saw_format = audio_format == 1 && wav->channels > 0 && wav->bits_per_sample == 16;
+    } else if (std::memcmp(chunk, "data", 4) == 0 && saw_format) {
+      wav->pcm = audio.data() + chunk_data;
+      wav->pcm_size = chunk_size;
+      return wav->pcm_size > 0;
+    }
+
+    offset = chunk_data + chunk_size + (chunk_size % 2);
+  }
+  return false;
+}
+
+bool init_speaker_codec() {
+  if (g_speaker_codec != nullptr) {
+    return true;
+  }
+  if (!hexe::board::waveshare_185_init_i2c() || !hexe::board::waveshare_185_init_audio_i2s()) {
+    return false;
+  }
+
+  audio_codec_i2s_cfg_t i2s_cfg = {};
+  i2s_cfg.port = hexe::board::pins::kWs185AudioPort;
+  i2s_cfg.rx_handle = nullptr;
+  i2s_cfg.tx_handle = hexe::board::waveshare_185_audio_tx_channel();
+  const audio_codec_data_if_t *play_data_if = audio_codec_new_i2s_data(&i2s_cfg);
+
+  audio_codec_i2c_cfg_t i2c_cfg = {};
+  i2c_cfg.port = hexe::board::pins::kWs185I2cPort;
+  i2c_cfg.addr = ES8311_CODEC_DEFAULT_ADDR;
+  i2c_cfg.bus_handle = hexe::board::waveshare_185_i2c_bus();
+  const audio_codec_ctrl_if_t *play_ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
+  const audio_codec_gpio_if_t *play_gpio_if = audio_codec_new_gpio();
+
+  es8311_codec_cfg_t es8311_cfg = {};
+  es8311_cfg.ctrl_if = play_ctrl_if;
+  es8311_cfg.gpio_if = play_gpio_if;
+  es8311_cfg.codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC;
+  es8311_cfg.pa_pin = hexe::board::pins::kWs185PaCtrl;
+  es8311_cfg.pa_reverted = false;
+  es8311_cfg.master_mode = false;
+  es8311_cfg.use_mclk = false;
+  es8311_cfg.digital_mic = false;
+  es8311_cfg.invert_mclk = false;
+  es8311_cfg.invert_sclk = false;
+  es8311_cfg.hw_gain = {};
+  es8311_cfg.no_dac_ref = false;
+  es8311_cfg.mclk_div = 256;
+  const audio_codec_if_t *play_codec_if = es8311_codec_new(&es8311_cfg);
+
+  esp_codec_dev_cfg_t dev_cfg = {};
+  dev_cfg.dev_type = ESP_CODEC_DEV_TYPE_OUT;
+  dev_cfg.codec_if = play_codec_if;
+  dev_cfg.data_if = play_data_if;
+  g_speaker_codec = esp_codec_dev_new(&dev_cfg);
+  if (g_speaker_codec == nullptr) {
+    ESP_LOGW(kTag, "Failed to create ES8311 speaker codec");
+    return false;
+  }
+  return true;
+}
+
+bool play_wav(const std::vector<uint8_t> &audio, const PlaybackRequest &request, bool report_first_frame = true) {
+  WavView wav;
+  if (!parse_wav(audio, &wav)) {
+    ESP_LOGW(kTag, "TTS audio is not supported WAV PCM");
+    return false;
+  }
+  if (!init_speaker_codec()) {
+    ESP_LOGW(kTag, "Speaker codec is not available");
+    return false;
+  }
+
+  esp_codec_dev_sample_info_t sample_info = {};
+  sample_info.bits_per_sample = wav.bits_per_sample;
+  sample_info.channel = wav.channels;
+  sample_info.channel_mask = 0;
+  sample_info.sample_rate = wav.sample_rate;
+  sample_info.mclk_multiple = 256;
+  esp_codec_dev_set_out_vol(g_speaker_codec, current_output_volume());
+  int result = esp_codec_dev_open(g_speaker_codec, &sample_info);
+  if (result != 0) {
+    ESP_LOGW(kTag, "Failed to open ES8311 speaker stream: %d", result);
+    return false;
+  }
+
+  hexe::board::waveshare_185_set_speaker_pa(true);
+  size_t offset = 0;
+  bool first_frame_reported = false;
+  while (offset < wav.pcm_size && !g_stop_requested) {
+    const size_t remaining = wav.pcm_size - offset;
+    const size_t write_size = std::min(remaining, kPlaybackWriteBytes);
+    result = esp_codec_dev_write(g_speaker_codec, const_cast<uint8_t *>(wav.pcm + offset), static_cast<int>(write_size));
+    if (result != 0) {
+      ESP_LOGW(kTag, "Speaker write failed: %d", result);
+      break;
+    }
+    offset += write_size;
+    if (report_first_frame && !first_frame_reported) {
+      send_playback_event("tts.playback.first_audio_frame", request, nullptr, offset);
+      first_frame_reported = true;
+    }
+  }
+  hexe::board::waveshare_185_set_speaker_pa(false);
+  esp_codec_dev_close(g_speaker_codec);
+  return result == 0 && !g_stop_requested;
+}
+
+void playback_task(void *arg) {
+  (void)arg;
+  PlaybackRequest request = {};
+  while (true) {
+    if (xQueueReceive(g_playback_queue, &request, portMAX_DELAY) != pdTRUE) {
+      continue;
+    }
+
+    g_stop_requested = false;
+    g_current_playback_request = request;
+    g_current_playback_request_valid = true;
+    auto &state = hexe::state();
+    if (state.muted) {
+      ESP_LOGI(kTag, "Skipping playback request while muted");
+      send_playback_event("tts.playback.failed", request, "muted");
+      set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
+      g_current_playback_request_valid = false;
+      continue;
+    }
+
+    state.phase = hexe::AppPhase::kReplying;
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kStarted, true);
+
+    std::vector<uint8_t> audio;
+    const bool mic_paused = request.keep_microphone_open ? false : hexe::board::pause_microphone_for_playback();
+    const std::string url = resolve_audio_url(request.audio_url);
+    if (request.file_path[0] == '\0') {
+      send_playback_event("tts.playback.download_started", request);
+    }
+    const bool loaded = request.file_path[0] == '\0' ? fetch_audio(url, &audio) : read_audio_file(request.file_path, &audio);
+    bool played = false;
+    if (loaded) {
+      bool report_first_frame = true;
+      do {
+        played = play_wav(audio, request, report_first_frame);
+        report_first_frame = false;
+      } while (request.loop && played && !g_stop_requested && !state.muted);
+    }
+    if (mic_paused) {
+      hexe::board::resume_microphone_after_playback();
+    }
+    if (!loaded) {
+      send_playback_event(
+          "tts.playback.failed",
+          request,
+          request.file_path[0] == '\0' ? "download_failed" : "file_read_failed");
+    } else if (played && !request.loop) {
+      send_playback_event("tts.playback.completed", request, nullptr, audio.size());
+    } else if (!request.loop || !g_stop_requested) {
+      send_playback_event("tts.playback.failed", request, g_stop_requested ? "stopped" : "playback_failed", audio.size());
+    }
+    if ((played || g_stop_requested) && !state.muted) {
+      state.phase = hexe::idle_or_connecting_phase();
+    } else if (!state.muted && state.phase == hexe::AppPhase::kReplying) {
+      state.phase = hexe::AppPhase::kError;
+    }
+    set_playback_lifecycle(
+        played && !request.loop ? hexe::PlaybackLifecycleState::kFinished
+               : (g_stop_requested ? hexe::PlaybackLifecycleState::kStopped : hexe::PlaybackLifecycleState::kFailed),
+        false);
+    g_current_playback_request_valid = false;
+  }
+}
+
+void copy_field(char *target, size_t target_size, const char *source) {
+  if (target == nullptr || target_size == 0) {
+    return;
+  }
+  std::snprintf(target, target_size, "%s", source == nullptr ? "" : source);
+}
+
+bool is_safe_sound_filename(const char *filename) {
+  if (filename == nullptr || filename[0] == '\0' || filename[0] == '.' || std::strlen(filename) >= 120) {
+    return false;
+  }
+  for (const char *cursor = filename; *cursor != '\0'; ++cursor) {
+    if (*cursor == '/' || *cursor == '\\' || static_cast<unsigned char>(*cursor) < 32) {
+      return false;
+    }
+    if (*cursor == '.' && cursor[1] == '.') {
+      return false;
+    }
+  }
+  return true;
+}
+}  // namespace
+
+namespace hexe::voice {
+
+void init_tts_player() {
+  if (g_playback_queue != nullptr) {
+    return;
+  }
+  hexe::board::waveshare_185_set_speaker_pa(false);
+  g_playback_queue = xQueueCreate(kPlaybackQueueDepth, sizeof(PlaybackRequest));
+  if (g_playback_queue == nullptr) {
+    ESP_LOGE(kTag, "Failed to create TTS playback queue");
+    return;
+  }
+  xTaskCreate(playback_task, "hexe_ws185_tts", kTaskStackBytes, nullptr, kTaskPriority, &g_playback_task);
+  ESP_LOGI(kTag, "Waveshare ES8311 TTS player initialized");
+}
+
+void prewarm_tts_output() {
+  init_speaker_codec();
+}
+
+void handle_tts_ready(
+    const char *stream_id,
+    const char *content_type,
+    const char *audio_url,
+    bool loop,
+    bool keep_microphone_open) {
+  auto &state = hexe::state();
+  if (state.muted) {
+    ESP_LOGI(kTag, "Ignoring TTS while muted");
+    hexe::voice::send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "muted", 0);
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
+    return;
+  }
+  if (audio_url == nullptr || audio_url[0] == '\0') {
+    state.phase = hexe::AppPhase::kReplying;
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
+    hexe::voice::send_tts_playback_event("tts.playback.failed", stream_id, audio_url, "missing_audio_url", 0);
+    return;
+  }
+
+  set_playback_lifecycle(hexe::PlaybackLifecycleState::kQueued, true);
+  PlaybackRequest request = {};
+  copy_field(request.stream_id, sizeof(request.stream_id), stream_id);
+  copy_field(request.content_type, sizeof(request.content_type), content_type);
+  copy_field(request.audio_url, sizeof(request.audio_url), audio_url);
+  request.loop = loop;
+  request.keep_microphone_open = keep_microphone_open;
+  if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
+    ESP_LOGW(kTag, "Dropping TTS playback request because queue is unavailable");
+    send_playback_event("tts.playback.failed", request, "queue_unavailable");
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
+    state.phase = hexe::AppPhase::kError;
+  }
+}
+
+void play_wake_accepted_sound() {}
+
+void play_sd_sound(const char *filename) {
+  auto &state = hexe::state();
+  if (state.muted) {
+    ESP_LOGI(kTag, "Ignoring SD sound while muted");
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
+    return;
+  }
+  if (!hexe::board::sd_card_mounted() || !is_safe_sound_filename(filename)) {
+    ESP_LOGW(kTag, "Ignoring SD sound request for invalid or unavailable file");
+    return;
+  }
+
+  PlaybackRequest request = {};
+  copy_field(request.stream_id, sizeof(request.stream_id), filename);
+  copy_field(request.content_type, sizeof(request.content_type), "audio/wav");
+  const int written = std::snprintf(
+      request.file_path,
+      sizeof(request.file_path),
+      "%s/%s",
+      hexe::board::sd_card_sounds_path(),
+      filename);
+  if (written < 0 || written >= static_cast<int>(sizeof(request.file_path))) {
+    ESP_LOGW(kTag, "SD sound path is too long");
+    return;
+  }
+
+  set_playback_lifecycle(hexe::PlaybackLifecycleState::kQueued, true);
+  if (g_playback_queue == nullptr || xQueueSend(g_playback_queue, &request, 0) != pdTRUE) {
+    ESP_LOGW(kTag, "Dropping SD sound playback request because queue is unavailable");
+    set_playback_lifecycle(hexe::PlaybackLifecycleState::kFailed, false);
+  }
+}
+
+void stop_playback(const char *reason) {
+  ESP_LOGI(kTag, "Stopping playback");
+  g_stop_requested = true;
+  if (g_playback_active && g_current_playback_request_valid) {
+    send_playback_event("playback.stop", g_current_playback_request, reason == nullptr ? "operator_stop" : reason);
+  }
+  set_playback_lifecycle(hexe::PlaybackLifecycleState::kStopped, false);
+  hexe::board::waveshare_185_set_speaker_pa(false);
+  auto &state = hexe::state();
+  if (!state.muted) {
+    state.phase = hexe::idle_or_connecting_phase();
+  }
+}
+
+void stop_tts_playback() {
+  stop_playback("tts_stop");
+}
+
+void set_output_volume(int volume_percent) {
+  const int clamped = std::clamp(volume_percent, 0, 100);
+  hexe::system::set_output_volume_percent(clamped);
+  if (g_speaker_codec != nullptr) {
+    esp_codec_dev_set_out_vol(g_speaker_codec, clamped);
+  }
+  ESP_LOGI(kTag, "Output volume set to %d%%", clamped);
+}
+
+bool tts_playback_active() {
+  return g_playback_active;
+}
+
+}  // namespace hexe::voice

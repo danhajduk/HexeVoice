@@ -435,6 +435,11 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
     for entry in wiring["spi_buses"]:
         for pin_key in ("clk", "mosi", "miso", "cs", "dc", "reset", "backlight"):
             validate_pin(entry.get(pin_key), f"wiring.spi_buses.{entry['name']}.{pin_key}", buildable_wiring and pin_key != "miso")
+        for pin_key in ("data0", "data1", "data2", "data3", "te"):
+            validate_pin(entry.get(pin_key), f"wiring.spi_buses.{entry['name']}.{pin_key}", False)
+        if buildable_wiring and entry.get("mode") == "qspi":
+            for pin_key in ("data0", "data1", "data2", "data3"):
+                validate_pin(entry.get(pin_key), f"wiring.spi_buses.{entry['name']}.{pin_key}", True)
     for entry in wiring["led_strips"]:
         validate_pin(entry.get("data"), f"wiring.led_strips.{entry['name']}.data", buildable_wiring)
         validate_pin(entry.get("power"), f"wiring.led_strips.{entry['name']}.power", False)

@@ -105,6 +105,8 @@ idf_component_register(
     esp-tflite-micro
     esp_websocket_client
     esp_wifi
+    espressif__esp_codec_dev
+    espressif__esp_lcd_st77916
     espressif__esp_lcd_touch
     fatfs
     cjson

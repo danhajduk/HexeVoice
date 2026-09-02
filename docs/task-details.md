@@ -2938,3 +2938,121 @@ Original task details:
   - Generated artifacts are deterministic and validated.
   - Current board profiles build through the generated/config-driven flow.
   - Docs explain when config is enough and when new firmware adapter code is required.
+
+
+## Task 287
+Original task details:
+- Title: Reconcile HexeVoice BLE onboarding requirements with the current Core/Supervisor `ble.provision_wifi` contract, schema, lease policy, broker route, security model, and failure modes
+- Source request:
+  - Use the new Core Bluetooth access request as on-demand BLE transmission of Wi-Fi credentials for endpoint onboarding.
+  - For this first task, check Core/Supervisor again because new BT features exist.
+- Current Core/Supervisor reference points:
+  - Core contract: `/home/dan/hexe/hexe/docs/core/ble-onboarding-contract.md`
+  - Core hardware access model: `/home/dan/hexe/hexe/core/backend/app/system/hardware.py`
+  - Supervisor broker route: `/api/supervisor/hardware/bluetooth/ble/provision-wifi`
+  - Operation: `ble.provision_wifi`
+  - Lease scope: `hardware.bluetooth.ble.provision_wifi`
+  - Voice payload schema id: `hexe.voice_node.wifi_backend.v1`
+  - GATT service UUID: `7f9c0000-5f04-4d8b-9a46-7c0f7a100000`
+- Scope:
+  - Compare the live Core/Supervisor contract and tests against HexeVoice firmware provisioning needs.
+  - Document whether HexeVoice should act only as the target endpoint, as the requesting trusted voice node, or both depending on deployment mode.
+  - Map Core voice payload fields to existing firmware NVS keys and runtime settings.
+  - Define the HexeVoice-owned implementation boundary: endpoint BLE peripheral, backend/operator request orchestration, recovery-app behavior, and validation.
+  - Identify any Core-owned missing pieces as external follow-up notes instead of silently inventing incompatible HexeVoice APIs.
+  - Preserve the Core security boundary: Core owns policy/leases, Supervisor owns host BLE broker access, endpoint owns local credential application.
+- Acceptance criteria:
+  - A HexeVoice BLE onboarding integration plan exists and references the current Core/Supervisor `ble.provision_wifi` contract.
+  - The plan explicitly states what is already Core-owned and what must be implemented in HexeVoice.
+  - The plan confirms plaintext Wi-Fi credentials are not sent to Core, logged, or persisted outside the approved endpoint provisioning path.
+  - Any Core/Supervisor gaps are captured as explicit follow-up requirements.
+
+
+## Task 288
+Original task details:
+- Title: Implement the endpoint firmware BLE onboarding peripheral for the Core `ble.provision_wifi` GATT contract
+- Source request:
+  - Use Core-governed BLE credential transmission for endpoint onboarding.
+- Scope:
+  - Add a firmware BLE provisioning component, preferably using ESP-IDF NimBLE if size and board support allow.
+  - Implement the Hexe BLE onboarding GATT service and characteristics from the Core contract:
+    - device identity / board profile
+    - pairing nonce / claim code
+    - provisioning status
+    - encrypted credential write
+    - ack/error
+  - Advertise only when unprovisioned, explicitly placed in provisioning mode, or running recovery provisioning.
+  - Validate contract version, payload schema id, target node identity, pairing nonce or claim-code binding, replay protection, and payload size/chunking.
+  - Decrypt and validate the voice Wi-Fi/backend payload before applying it.
+  - Save settings through the existing endpoint provisioning path so Wi-Fi SSID/password, backend host/ports, TLS, endpoint name, and display name land in NVS consistently.
+  - Restart or reconnect Wi-Fi after successful provisioning and disable BLE advertising after success or timeout.
+  - Report BLE provisioning capability/status in endpoint heartbeat without exposing secrets.
+  - Keep backend wake word and existing endpoint voice runtime behavior unchanged.
+- Acceptance criteria:
+  - Supported BLE boards can expose the Hexe onboarding service when eligible.
+  - Valid provisioning payloads are written to existing NVS provisioning keys.
+  - Invalid, expired, replayed, wrong-node, malformed, or undecryptable payloads fail closed with deterministic ack/error codes.
+  - BLE advertising is off after successful provisioning or when the device is already provisioned unless explicitly re-enabled.
+  - Firmware size remains within the selected partition slot targets or the size impact is documented before enabling by default.
+
+
+## Task 289
+Original task details:
+- Title: Add HexeVoice backend and operator flow support for Core-governed BLE endpoint onboarding
+- Source request:
+  - Use the Core Bluetooth access request as on-demand BLE transmission of Wi-Fi credentials for endpoint onboarding.
+- Scope:
+  - Add backend-side orchestration for the operator flow:
+    - discover Core hardware access schema
+    - request a `ble.provision_wifi` lease with provisioning context
+    - handle `denied`, `pending`, and `granted` statuses
+    - call the Supervisor `provision-wifi` broker route with the lease token and credential payload
+    - release the lease or allow expiry after completion
+  - Add operator API/UI support for selecting an endpoint candidate, entering Wi-Fi/backend settings, viewing progress, and continuing normal node onboarding once the endpoint comes online.
+  - Ensure Core receives only session/provisioning binding data and never plaintext Wi-Fi credentials.
+  - Redact passwords in logs, API responses, events, UI state, and diagnostics.
+  - Treat Core/Supervisor broker failures as recoverable onboarding errors with actionable status.
+  - Preserve the existing backend-to-connected-endpoint provisioning command as the post-join/reconfiguration path.
+- Acceptance criteria:
+  - Operator can start a Core-governed BLE onboarding attempt from HexeVoice without direct host Bluetooth access.
+  - Pending Core access requests are surfaced clearly when policy is `ask`.
+  - Granted leases can drive a Supervisor broker call and show success/failure progress.
+  - Wi-Fi passwords are never persisted or returned by HexeVoice backend outside the bounded transmit request.
+  - After BLE provisioning succeeds and the endpoint connects, the existing node onboarding/trust flow remains the authority for registration.
+
+
+## Task 290
+Original task details:
+- Title: Add recovery-app BLE provisioning support using the same Core contract where available and a local recovery-safe fallback when Core is offline
+- Source request:
+  - Endpoint onboarding should work through BLE, and recovery/provisioning should remain useful.
+- Scope:
+  - Reuse the endpoint BLE provisioning component from the recovery app when it fits the 2 MiB recovery partition.
+  - In Core-available mode, honor the same `ble.provision_wifi` GATT contract, pairing, schema, and redaction behavior.
+  - In Core-offline recovery mode, allow a local explicit provisioning path with short-lived local pairing and the same NVS write path.
+  - Keep recovery diagnostics secret-safe and useful without Core.
+  - Document entry conditions, button/display indications, timeout behavior, and reset behavior.
+- Acceptance criteria:
+  - Recovery firmware can provision Wi-Fi/backend settings over BLE on supported boards or explicitly reports BLE unavailable.
+  - Recovery mode does not require Core for local rescue provisioning.
+  - Core-governed and local recovery modes are visually/status distinguishable.
+  - No plaintext credentials appear in recovery status, diagnostics, logs, or crash output.
+
+
+## Task 291
+Original task details:
+- Title: Add BLE onboarding end-to-end tests, fake BLE/GATT harnesses, security regression checks, docs, and physical-device validation criteria across supported endpoint boards
+- Source request:
+  - Make BLE endpoint onboarding reliable enough for retiring current Echo-based setup and future board portability.
+- Scope:
+  - Add fake BLE/GATT test harnesses for firmware-facing and Supervisor-facing flows where physical Bluetooth is unavailable in CI.
+  - Add backend tests for Core lease statuses, broker failures, credential redaction, operator status, and post-Wi-Fi node onboarding handoff.
+  - Add firmware tests/static checks for GATT contract constants, payload validation, NVS writes, replay rejection, timeout behavior, and capability heartbeat fields.
+  - Add board-profile validation for BLE availability and unsupported-board behavior.
+  - Document physical validation steps for HA Voice PE, ESP32-S3-BOX-3, Waveshare S3 1.85C BOX V2, and future P4/C6 board flow.
+  - Include failure cases: absent Bluetooth adapter, policy disabled, policy ask pending, lease expiry, wrong adapter, wrong node, wrong pairing nonce, malformed payload, failed Wi-Fi association, and backend unreachable.
+- Acceptance criteria:
+  - CI/local tests cover the security and state-machine behavior without needing physical Bluetooth hardware.
+  - Docs provide a physical-device checklist for validating BLE onboarding on every supported endpoint class.
+  - Security regression tests prove credentials are redacted and lease scopes cannot be reused across scan/status/provisioning operations.
+  - The BLE onboarding batch has enough validation evidence to safely enable on supported boards.

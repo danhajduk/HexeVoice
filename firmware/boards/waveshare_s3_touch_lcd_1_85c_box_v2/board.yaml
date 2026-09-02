@@ -11,10 +11,14 @@ hardware_revision:
   unsupported:
     - v1
   notes: V2 is required because the V1 audio path lacks the target dual-mic echo-cancellation hardware.
-support_status: planned
+support_status: active
 sources:
   - label: Waveshare ESP32-S3-Touch-LCD-1.85C documentation
     url: https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C
+  - label: Waveshare ESP32-S3-Touch-LCD-1.85C resources and schematic
+    url: https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.85C/Resources-And-Documents
+  - label: Waveshare ESP32-S3-Touch-LCD-1.85C example firmware
+    url: https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.85C
 build:
   idf_target: esp32s3
   partition_schema: s3-16m-recovery-v1
@@ -34,14 +38,14 @@ hardware:
     transport: native
 features:
   display: true
-  touch: true
-  sd_card: true
+  touch: false
+  sd_card: false
   speaker: true
   microphone: true
   led_ring: false
   status_led: true
   rotary_encoder: false
-  buttons: true
+  buttons: false
   hardware_mute: false
   battery: true
   camera: false
@@ -49,20 +53,20 @@ features:
 display:
   available: true
   kind: lcd
-  driver: waveshare_round_lcd
-  interface: spi
+  driver: st77916
+  interface: qspi
   size_inches: 1.85
   shape: round
   width_px: 360
   height_px: 360
   color_depth: 262k_colors
-  touch: true
+  touch: false
 audio:
   input:
     available: true
     frontend: es7210
     sample_rate_hz: 16000
-    channels: 1
+    channels: 2
     transport: i2s
     codec: es7210
     microphones: 2
@@ -79,12 +83,89 @@ audio:
     speaker: true
     line_out: false
 wiring:
-  status: partial
-  notes: Board schematic pin mapping still needs to be transcribed before this profile can become buildable.
-  gpios: []
-  i2c_buses: []
-  i2s_buses: []
-  spi_buses: []
+  status: complete
+  notes: Pin map transcribed from Waveshare V2 schematic and ESP-IDF example firmware.
+  gpios:
+    - name: touch_interrupt
+      gpio: 4
+      function: CST816S interrupt
+      active_low: true
+    - name: lcd_backlight_enable
+      gpio: 5
+      function: LCD backlight PWM
+      active_low: false
+    - name: speaker_pa
+      gpio: 15
+      function: NS4150B speaker amplifier enable
+      active_low: false
+    - name: boot_button
+      gpio: 0
+      function: BOOT button
+      active_low: true
+    - name: battery_adc
+      gpio: 8
+      function: battery voltage ADC input
+      active_low: false
+    - name: sdmmc_clk
+      gpio: 14
+      function: SDMMC CLK
+      active_low: false
+    - name: sdmmc_cmd
+      gpio: 17
+      function: SDMMC CMD
+      active_low: false
+    - name: sdmmc_d0
+      gpio: 16
+      function: SDMMC D0
+      active_low: false
+  i2c_buses:
+    - name: peripheral_control
+      port: 0
+      sda: 11
+      scl: 10
+      clock_hz: 400000
+      pullups: board
+      devices:
+        - name: touch_controller
+          address: 21
+          notes: CST816S touch controller.
+        - name: io_expander
+          address: 32
+          notes: TCA9554 reset expander; EXIO1=touch reset, EXIO2=LCD reset.
+        - name: rtc
+          address: 81
+          notes: PCF85063-style RTC footprint used by Waveshare examples.
+        - name: microphone_codec
+          address: 64
+          notes: ES7210 7-bit address; esp_codec_dev uses the matching shifted default internally.
+        - name: speaker_codec
+          address: 24
+          notes: ES8311 7-bit address.
+  i2s_buses:
+    - name: audio
+      port: 1
+      role: master
+      mclk: 2
+      bclk: 48
+      lrclk: 38
+      din: 39
+      dout: 47
+  spi_buses:
+    - name: display
+      clk: 40
+      mosi: 46
+      miso: -1
+      cs: 21
+      dc: -1
+      reset: -1
+      backlight: 5
+      data0: 46
+      data1: 45
+      data2: 42
+      data3: 41
+      te: 18
+      mode: qspi
+      notes: ST77916 QSPI display; reset is TCA9554 EXIO2.
   led_strips: []
 wake:
   local_micro_wake_word: true
@@ -95,7 +176,7 @@ wake:
 vad:
   firmware:
     available: true
-    status: planned
+    status: active
     algorithm: energy_threshold
     input_source: pcm_audio_frames
     configurable: true
@@ -105,16 +186,25 @@ vad:
     default_pause_ms: 190
     silence_hold_ms: 1200
 adapters:
-  buildable: false
-  source_files: []
-  notes: Board-specific display, touch, audio, storage, and TTS adapters are not implemented yet.
+  buildable: true
+  source_files:
+    - board/waveshare_s3_1_85c_bus.cpp
+    - board/audio_waveshare_s3_1_85c_box_v2.cpp
+    - board/buttons_waveshare_s3_1_85c_box_v2.cpp
+    - board/display_waveshare_s3_1_85c_box_v2.cpp
+    - board/led_ring.cpp
+    - board/storage_waveshare_s3_1_85c_box_v2.cpp
+    - board/touch_waveshare_s3_1_85c_box_v2.cpp
+    - voice/tts_player_waveshare_s3_1_85c_box_v2.cpp
+  notes: Buildable scaffold. Display, ES7210 microphone, ES8311 playback, and shared bus adapters are implemented; touch, SD media, and button adapters are explicit PLACEHOLDER adapters.
 storage:
   internal: nvs_and_internal_flash
   sd_card:
-    available: true
-    driver: sdmmc_or_spi_tbd
-    interface: tf_card
+    available: false
+    driver: sdmmc
+    interface: sdmmc_1bit
     gpio: null
+    notes: PLACEHOLDER pending SDMMC adapter implementation. Physical pins are CLK=GPIO14, CMD=GPIO17, D0=GPIO16.
   config: encrypted_nvs
   calibration: encrypted_nvs_or_internal_metrics_store
   media: sd_preferred_with_embedded_fallback
@@ -123,7 +213,7 @@ controls:
   - name: boot
     kind: button
     function: download_mode
-    gpio: null
+    gpio: 0
   - name: reset
     kind: button
     function: reset
@@ -131,20 +221,20 @@ controls:
   - name: touchscreen
     kind: touch
     function: local_ui_controls
-    gpio: null
+    gpio: 4
 indicators:
   - name: display
     kind: display
-    driver: waveshare_round_lcd
-    gpio: null
+    driver: st77916_qspi
+    gpio: 5
   - name: status_led
     kind: status_led
-    driver: board_led
-    gpio: null
+    driver: display_backlight_status
+    gpio: 5
 capability_overrides:
   display: true
-  touchscreen: true
-  storage: true
+  touchscreen: false
+  storage: false
   audio_input: true
   audio_output: true
 notes:
