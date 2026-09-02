@@ -102,6 +102,19 @@ source selection and the dev-board wiring used to generate
 
 - ESP-BOX-3: build directory `firmware/build`, flash export `firmware/export`, OTA binary `runtime/firmware/hexe_firmware_esp_box_3.bin`, and legacy OTA binary `runtime/firmware/hexe_firmware.bin`.
 - Home Assistant Voice Preview Edition: build directory `firmware/build-ha-voice-pe`, flash export `firmware/export-ha-voice-pe`, and OTA binary `runtime/firmware/hexe_firmware_ha_voice_pe.bin`.
+- Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2: build directory `firmware/build-waveshare_s3_touch_lcd_1_85c_box_v2`, flash export `firmware/export-waveshare_s3_touch_lcd_1_85c_box_v2`, and OTA binary `runtime/firmware/hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin`.
+
+The root helper wraps this default flow and stamps every selected board with one
+shared firmware version:
+
+```bash
+./scripts/rebuild-firmware.sh
+```
+
+Use `--clean` when you want fresh temporary build directories, and
+`--include-recovery` when the recovery firmware images should be rebuilt too.
+Recovery builds are exported to their profile folders, while their runtime
+metadata is staged under `/tmp` so endpoint OTA manifests stay endpoint-only.
 
 The profile validation matrix lives in
 [`docs/firmware-validation-matrix.md`](../docs/firmware-validation-matrix.md).
