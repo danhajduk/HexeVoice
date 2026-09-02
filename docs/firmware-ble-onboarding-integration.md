@@ -1,6 +1,6 @@
 # Firmware BLE Onboarding Integration
 
-Status: Task 288 endpoint firmware implementation. This document records how
+Status: Task 289 backend/operator orchestration. This document records how
 HexeVoice implements endpoint BLE onboarding against the current
 Core/Supervisor `ble.provision_wifi` contract without inventing a parallel host
 Bluetooth API.
@@ -138,6 +138,35 @@ Task 288 implements the endpoint-side peripheral:
 - The decrypted Voice payload apply path writes through
   `save_endpoint_provisioning`, requests Wi-Fi reconnect, and stops advertising
   after successful provisioning.
+
+## HexeVoice Backend Status
+
+Task 289 adds the HexeVoice requester/operator side:
+
+- The local backend exposes `POST /api/endpoint/ble/provision-wifi` for
+  Core-governed BLE provisioning attempts.
+- The route discovers Core hardware-access and Voice BLE provisioning schemas
+  before requesting a lease.
+- The request to Core uses operation `ble.provision_wifi`, resource type
+  `bluetooth`, optional Supervisor/adapter targeting, operator reason, and the
+  provisioning context read from the endpoint BLE metadata.
+- The service handles `pending`, `denied`, `granted`, and terminal Supervisor
+  failures distinctly.
+- Only granted hardware access calls Supervisor
+  `/api/supervisor/hardware/bluetooth/ble/provision-wifi` with the lease token,
+  target address when known, timeout, provisioning context, and Voice Wi-Fi
+  credential payload.
+- The local API response redacts lease tokens, Wi-Fi passwords, ciphertext,
+  tags, nonces, claim-code references, endpoint/Supervisor public keys, and
+  derived-key/decrypted-payload fields.
+- Granted leases are released after the Supervisor attempt when Core returns a
+  lease id; otherwise Core expiry remains the fallback cleanup path.
+- The dashboard exposes a compact operator BLE provisioning form while keeping
+  the existing connected-endpoint provisioning command as the post-join
+  reconfiguration path.
+- Normal Core node onboarding/trust is not bypassed. After the endpoint joins
+  Wi-Fi, the existing discovery, heartbeat, registry, and trust workflow remain
+  the source of truth for a connected endpoint.
 
 ## HexeVoice Implementation Plan
 

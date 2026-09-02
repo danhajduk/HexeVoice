@@ -299,6 +299,50 @@ class EndpointProvisioningApplyRequest(BaseModel):
     wifi_password: str | None = Field(default=None, max_length=64)
 
 
+class EndpointBleProvisionWifiRequest(BaseModel):
+    target_node_id: str = Field(min_length=1, max_length=80)
+    onboarding_session_id: str = Field(min_length=1, max_length=120)
+    endpoint_ephemeral_public_key: str = Field(min_length=43, max_length=128)
+    pairing_nonce: str | None = Field(default=None, min_length=8, max_length=128)
+    claim_code_ref: str | None = Field(default=None, min_length=1, max_length=128)
+    sequence: int = Field(default=1, ge=1)
+    expires_at: str | None = Field(default=None, max_length=80)
+    node_profile_id: str = Field(default="voice", min_length=1, max_length=80)
+    adapter: str | None = Field(default=None, max_length=64)
+    supervisor_id: str | None = Field(default=None, max_length=120)
+    target_address: str | None = Field(default=None, max_length=80)
+    timeout_s: int = Field(default=30, ge=1, le=120)
+    operator_reason: str | None = Field(default=None, max_length=240)
+    provisioned_endpoint_id: str | None = Field(default=None, min_length=1, max_length=63)
+    display_name: str | None = Field(default=None, max_length=80)
+    backend_host: str = Field(min_length=1, max_length=253)
+    http_port: int = Field(ge=1, le=65535)
+    ws_port: int = Field(ge=1, le=65535)
+    use_tls: bool = True
+    wifi_ssid: str = Field(min_length=1, max_length=32)
+    wifi_password: str | None = Field(default=None, min_length=8, max_length=63)
+
+    @model_validator(mode="after")
+    def require_pairing_binding(self) -> "EndpointBleProvisionWifiRequest":
+        if not (self.pairing_nonce or self.claim_code_ref):
+            raise ValueError("pairing_nonce_or_claim_code_ref_required")
+        return self
+
+
+class EndpointBleProvisionWifiResponse(BaseModel):
+    ok: bool
+    status: Literal["pending", "denied", "completed", "failed"]
+    node_id: str
+    target_node_id: str
+    access_request: dict[str, Any] = Field(default_factory=dict)
+    provisioning: dict[str, Any] = Field(default_factory=dict)
+    credential_payload: dict[str, Any] = Field(default_factory=dict)
+    supervisor_result: dict[str, Any] | None = None
+    schema_status: dict[str, Any] = Field(default_factory=dict)
+    release_result: dict[str, Any] | None = None
+    error: str | None = None
+
+
 class EndpointCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
 

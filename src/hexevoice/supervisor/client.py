@@ -105,3 +105,6 @@ class SupervisorApiClient:
 
     def heartbeat_runtime(self, payload: dict[str, Any]) -> dict[str, Any] | None:
         return self._request_json("POST", "/api/supervisor/runtimes/heartbeat", payload=payload)
+
+    def provision_ble_wifi(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        return self._request_json("POST", "/api/supervisor/hardware/bluetooth/ble/provision-wifi", payload=payload)

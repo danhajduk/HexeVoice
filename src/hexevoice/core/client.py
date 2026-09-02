@@ -4,6 +4,42 @@ import httpx
 
 
 class CoreOnboardingClient:
+    def get_hardware_access_request_schema(self, *, core_base_url: str) -> dict:
+        response = httpx.get(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/access-requests/schema",
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def get_voice_ble_provisioning_schema(self, *, core_base_url: str) -> dict:
+        response = httpx.get(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/ble/provisioning/schemas/voice",
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def request_hardware_access(self, *, core_base_url: str, node_trust_token: str, payload: dict) -> dict:
+        response = httpx.post(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/access-requests",
+            headers={"X-Node-Trust-Token": node_trust_token},
+            json=payload,
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def release_hardware_lease(self, *, core_base_url: str, node_trust_token: str, lease_id: str, node_id: str) -> dict:
+        response = httpx.post(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/leases/{lease_id}/release",
+            headers={"X-Node-Trust-Token": node_trust_token},
+            json={"node_id": node_id},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
     def start_onboarding_session(self, *, core_base_url: str, payload: dict) -> dict:
         response = httpx.post(
             f"{core_base_url.rstrip('/')}/api/system/nodes/onboarding/sessions",

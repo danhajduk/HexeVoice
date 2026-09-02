@@ -75,6 +75,23 @@ def test_ble_onboarding_integration_preserves_security_and_failure_boundaries():
         assert required_text in doc
 
 
+def test_ble_onboarding_integration_documents_backend_operator_orchestration():
+    doc = DOC.read_text(encoding="utf-8")
+
+    for required_text in (
+        "POST /api/endpoint/ble/provision-wifi",
+        "Only granted hardware access calls Supervisor",
+        "pending",
+        "denied",
+        "granted",
+        "lease tokens",
+        "Wi-Fi passwords",
+        "existing connected-endpoint provisioning command",
+        "existing discovery, heartbeat, registry, and trust workflow",
+    ):
+        assert required_text in doc
+
+
 def test_ble_onboarding_integration_defines_hexevoice_owned_followup_tasks():
     doc = DOC.read_text(encoding="utf-8")
 

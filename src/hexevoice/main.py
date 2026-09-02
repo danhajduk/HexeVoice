@@ -60,6 +60,8 @@ from hexevoice.api.models import (
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
     EndpointBeepCommandRequest,
+    EndpointBleProvisionWifiRequest,
+    EndpointBleProvisionWifiResponse,
     EndpointCommandRequest,
     EndpointCommandResponse,
     EndpointDiscoveryRequest,
@@ -117,6 +119,7 @@ from hexevoice.assistant.service import QueuedEndpointCommandDispatcher
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.endpoint.beacon import EndpointBeaconService
+from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.endpoint.discovery import EndpointDiscoveryService, EndpointDiscoveryUdpProtocol
 from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser
 from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
@@ -674,6 +677,10 @@ def create_app(
         settings=app_settings,
         endpoint_registry_store=endpoint_registry_store,
         stale_after_seconds=app_settings.endpoint_stale_after_seconds,
+    )
+    endpoint_ble_onboarding_service = EndpointBleOnboardingService(
+        onboarding_state_store=onboarding_state_store,
+        supervisor_client=SupervisorApiClient(),
     )
 
     def current_advertised_node_id() -> str:
@@ -1628,6 +1635,12 @@ def create_app(
             status=result.get("status"),
             reason=result.get("reason"),
         )
+
+    @app.post("/api/endpoint/ble/provision-wifi", response_model=EndpointBleProvisionWifiResponse)
+    async def endpoint_ble_provision_wifi(payload: EndpointBleProvisionWifiRequest) -> EndpointBleProvisionWifiResponse:
+        response = endpoint_ble_onboarding_service.provision_wifi(payload)
+        node_ui_page_cache.invalidate()
+        return response
 
     @app.post("/api/endpoint/provisioning/reset", response_model=EndpointCommandResponse)
     async def endpoint_provisioning_reset(payload: EndpointCommandRequest) -> EndpointCommandResponse:

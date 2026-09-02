@@ -18,6 +18,7 @@ import {
   getVoiceSession,
   getVoiceSessions,
   muteEndpoint,
+  provisionEndpointBleWifi,
   pushFirmwareOta,
   reformatEndpointStorage,
   resetEndpointProvisioning,
@@ -1215,6 +1216,187 @@ function EndpointProvisioningPanel({ endpointStatus, voiceStatus, onRefresh, set
           <dd>{discovery.status || "unknown"}</dd>
         </div>
       </dl>
+    </section>
+  );
+}
+
+function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessage }) {
+  const provisioning = endpointCapabilities(endpointStatus).provisioning || {};
+  const defaultBackendHost = provisioning.backend_host || window.location.hostname || "hexe.local";
+  const [targetNodeId, setTargetNodeId] = useState(endpointStatus?.endpoint_id || "");
+  const [onboardingSessionId, setOnboardingSessionId] = useState("");
+  const [endpointPublicKey, setEndpointPublicKey] = useState("");
+  const [pairingNonce, setPairingNonce] = useState("");
+  const [claimCodeRef, setClaimCodeRef] = useState("");
+  const [sequence, setSequence] = useState(1);
+  const [expiresAt, setExpiresAt] = useState("");
+  const [adapter, setAdapter] = useState("hci0");
+  const [targetAddress, setTargetAddress] = useState("");
+  const [displayName, setDisplayName] = useState(endpointStatus?.display_name || "");
+  const [backendHost, setBackendHost] = useState(defaultBackendHost);
+  const [httpPort, setHttpPort] = useState(provisioning.http_port || 9004);
+  const [wsPort, setWsPort] = useState(provisioning.ws_port || 9004);
+  const [useTls, setUseTls] = useState(Boolean(provisioning.use_tls));
+  const [wifiSsid, setWifiSsid] = useState("");
+  const [wifiPassword, setWifiPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setTargetNodeId(endpointStatus?.endpoint_id || "");
+    setDisplayName(endpointStatus?.display_name || "");
+    setBackendHost(defaultBackendHost);
+    setHttpPort(provisioning.http_port || 9004);
+    setWsPort(provisioning.ws_port || 9004);
+    setUseTls(Boolean(provisioning.use_tls));
+  }, [
+    defaultBackendHost,
+    endpointStatus?.display_name,
+    endpointStatus?.endpoint_id,
+    provisioning.http_port,
+    provisioning.use_tls,
+    provisioning.ws_port,
+  ]);
+
+  async function handleBleProvision(event) {
+    event.preventDefault();
+    if (!targetNodeId || !onboardingSessionId || !endpointPublicKey || !wifiSsid || !backendHost) {
+      setActionMessage("BLE provisioning skipped: target, session, public key, Wi-Fi SSID, and backend host are required.");
+      return;
+    }
+    if (!pairingNonce && !claimCodeRef) {
+      setActionMessage("BLE provisioning skipped: pairing nonce or claim reference is required.");
+      return;
+    }
+
+    const payload = {
+      target_node_id: targetNodeId,
+      onboarding_session_id: onboardingSessionId,
+      endpoint_ephemeral_public_key: endpointPublicKey,
+      sequence: Number(sequence),
+      backend_host: backendHost,
+      http_port: Number(httpPort),
+      ws_port: Number(wsPort),
+      use_tls: useTls,
+      wifi_ssid: wifiSsid,
+      timeout_s: 30,
+    };
+    if (pairingNonce) payload.pairing_nonce = pairingNonce;
+    if (claimCodeRef) payload.claim_code_ref = claimCodeRef;
+    if (expiresAt) payload.expires_at = expiresAt;
+    if (adapter) payload.adapter = adapter;
+    if (targetAddress) payload.target_address = targetAddress;
+    if (displayName) payload.display_name = displayName;
+    if (wifiPassword) payload.wifi_password = wifiPassword;
+
+    setBusy(true);
+    try {
+      const result = await provisionEndpointBleWifi(payload);
+      const suffix = result.error ? `: ${result.error}` : "";
+      setActionMessage(`BLE provisioning ${result.status}${suffix}.`);
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="voice-endpoint-panel stack">
+      <div className="section-heading">
+        <div>
+          <p className="panel-kicker">Core-Governed BLE</p>
+          <h2 className="panel-title">BLE Provisioning</h2>
+        </div>
+        <span className="status-pill status-pill-neutral">lease required</span>
+      </div>
+      <form className="endpoint-metadata-form" onSubmit={handleBleProvision}>
+        <label>
+          <span>Target node</span>
+          <input type="text" value={targetNodeId} maxLength={80} onChange={(event) => setTargetNodeId(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>BLE address</span>
+          <input type="text" value={targetAddress} maxLength={80} onChange={(event) => setTargetAddress(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Session</span>
+          <input
+            type="text"
+            value={onboardingSessionId}
+            maxLength={120}
+            onChange={(event) => setOnboardingSessionId(event.target.value)}
+            disabled={busy}
+          />
+        </label>
+        <label>
+          <span>Endpoint public key</span>
+          <input
+            type="text"
+            value={endpointPublicKey}
+            maxLength={128}
+            onChange={(event) => setEndpointPublicKey(event.target.value)}
+            disabled={busy}
+          />
+        </label>
+        <label>
+          <span>Pairing nonce</span>
+          <input type="text" value={pairingNonce} maxLength={128} onChange={(event) => setPairingNonce(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Claim ref</span>
+          <input type="text" value={claimCodeRef} maxLength={128} onChange={(event) => setClaimCodeRef(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Sequence</span>
+          <input type="number" min="1" value={sequence} onChange={(event) => setSequence(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Expires at</span>
+          <input type="text" value={expiresAt} maxLength={80} onChange={(event) => setExpiresAt(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Adapter</span>
+          <input type="text" value={adapter} maxLength={64} onChange={(event) => setAdapter(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Display name</span>
+          <input type="text" value={displayName} maxLength={80} onChange={(event) => setDisplayName(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Backend host</span>
+          <input type="text" value={backendHost} maxLength={253} onChange={(event) => setBackendHost(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>HTTP port</span>
+          <input type="number" min="1" max="65535" value={httpPort} onChange={(event) => setHttpPort(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>WS port</span>
+          <input type="number" min="1" max="65535" value={wsPort} onChange={(event) => setWsPort(event.target.value)} disabled={busy} />
+        </label>
+        <label className="endpoint-media-check">
+          <input type="checkbox" checked={useTls} onChange={(event) => setUseTls(event.target.checked)} disabled={busy} />
+          <span>TLS</span>
+        </label>
+        <label>
+          <span>Wi-Fi SSID</span>
+          <input type="text" value={wifiSsid} maxLength={32} onChange={(event) => setWifiSsid(event.target.value)} disabled={busy} />
+        </label>
+        <label>
+          <span>Wi-Fi password</span>
+          <input
+            type="password"
+            value={wifiPassword}
+            maxLength={63}
+            onChange={(event) => setWifiPassword(event.target.value)}
+            disabled={busy}
+          />
+        </label>
+        <button className="btn btn-primary" type="submit" disabled={busy || !targetNodeId || !onboardingSessionId || !endpointPublicKey || !wifiSsid}>
+          {busy ? "Provisioning..." : "Provision over BLE"}
+        </button>
+      </form>
     </section>
   );
 }
@@ -2552,6 +2734,17 @@ export function VoiceEndpointDashboardSection({
       >
         <EndpointProvisioningPanel
           voiceStatus={scopedVoiceStatus}
+          endpointStatus={selectedEndpointStatus}
+          onRefresh={onRefresh}
+          setActionMessage={setActionMessage}
+        />
+      </EndpointAdvancedSection>
+      <EndpointAdvancedSection
+        title="BLE Provisioning"
+        kicker="Core-Governed"
+        badge="lease required"
+      >
+        <EndpointBleOnboardingPanel
           endpointStatus={selectedEndpointStatus}
           onRefresh={onRefresh}
           setActionMessage={setActionMessage}
