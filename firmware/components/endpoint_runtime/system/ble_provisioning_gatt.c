@@ -170,16 +170,50 @@ static int access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt
 }
 
 static const struct ble_gatt_chr_def characteristics[] = {
-    {&device_identity_uuid.u, access_cb, (void *)(uintptr_t)HEXE_BLE_CHR_DEVICE_IDENTITY, NULL, BLE_GATT_CHR_F_READ, 0, &device_identity_handle, NULL},
-    {&pairing_nonce_uuid.u, access_cb, (void *)(uintptr_t)HEXE_BLE_CHR_PAIRING_NONCE, NULL, BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY, 0, &pairing_nonce_handle, NULL},
-    {&status_uuid.u, access_cb, (void *)(uintptr_t)HEXE_BLE_CHR_STATUS, NULL, BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY, 0, &status_handle, NULL},
-    {&encrypted_credentials_uuid.u, access_cb, (void *)(uintptr_t)HEXE_BLE_CHR_ENCRYPTED_CREDENTIALS, NULL, BLE_GATT_CHR_F_WRITE, 0, &encrypted_credentials_handle, NULL},
-    {&ack_error_uuid.u, access_cb, (void *)(uintptr_t)HEXE_BLE_CHR_ACK_ERROR, NULL, BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY, 0, &ack_error_handle, NULL},
+    {
+        .uuid = &device_identity_uuid.u,
+        .access_cb = access_cb,
+        .arg = (void *)(uintptr_t)HEXE_BLE_CHR_DEVICE_IDENTITY,
+        .flags = BLE_GATT_CHR_F_READ,
+        .val_handle = &device_identity_handle,
+    },
+    {
+        .uuid = &pairing_nonce_uuid.u,
+        .access_cb = access_cb,
+        .arg = (void *)(uintptr_t)HEXE_BLE_CHR_PAIRING_NONCE,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+        .val_handle = &pairing_nonce_handle,
+    },
+    {
+        .uuid = &status_uuid.u,
+        .access_cb = access_cb,
+        .arg = (void *)(uintptr_t)HEXE_BLE_CHR_STATUS,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+        .val_handle = &status_handle,
+    },
+    {
+        .uuid = &encrypted_credentials_uuid.u,
+        .access_cb = access_cb,
+        .arg = (void *)(uintptr_t)HEXE_BLE_CHR_ENCRYPTED_CREDENTIALS,
+        .flags = BLE_GATT_CHR_F_WRITE,
+        .val_handle = &encrypted_credentials_handle,
+    },
+    {
+        .uuid = &ack_error_uuid.u,
+        .access_cb = access_cb,
+        .arg = (void *)(uintptr_t)HEXE_BLE_CHR_ACK_ERROR,
+        .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_NOTIFY,
+        .val_handle = &ack_error_handle,
+    },
     {0},
 };
 
 static const struct ble_gatt_svc_def services[] = {
-    {BLE_GATT_SVC_TYPE_PRIMARY, &service_uuid.u, NULL, characteristics},
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &service_uuid.u,
+        .characteristics = characteristics,
+    },
     {0},
 };
 
@@ -295,14 +329,15 @@ static void handle_pairing_scan_result(const struct ble_gap_disc_desc *disc) {
 }
 
 static int start_pairing_scan(void) {
-  if (!pairing_scan_requested || pairing_scan_active || client_connecting || client_connected || ble_gap_disc_active()) {
+  if (!pairing_scan_requested || pairing_scan_active || client_connecting || client_connected || connected || ble_gap_disc_active()) {
     ESP_LOGI(
         TAG,
-        "BLE host pairing scan_window skipped requested=%d active=%d connecting=%d connected=%d gap_disc_active=%d",
+        "BLE host pairing scan_window skipped requested=%d active=%d connecting=%d client_connected=%d peripheral_connected=%d gap_disc_active=%d",
         pairing_scan_requested,
         pairing_scan_active,
         client_connecting,
         client_connected,
+        connected,
         ble_gap_disc_active());
     return 0;
   }
@@ -643,6 +678,12 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
         ESP_LOGW(TAG, "BLE onboarding peripheral_connect_failed status=%d", event->connect.status);
         advertise();
       } else {
+        if (pairing_scan_active || ble_gap_disc_active()) {
+          int cancel_rc = ble_gap_disc_cancel();
+          pairing_scan_active = 0;
+          hexe_ble_pairing_scan_state_changed(0, "peripheral_connected", cancel_rc);
+          ESP_LOGI(TAG, "BLE host pairing scan_window suspended for peripheral connection rc=%d", cancel_rc);
+        }
         connected = 1;
         ESP_LOGI(TAG, "BLE onboarding peripheral_connected conn=%u", event->connect.conn_handle);
       }
