@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   applyEndpointProvisioning,
+  approveEndpointBlePairingSession,
+  cancelEndpointBlePairingSession,
   cancelEndpointSession,
   cancelVoicePlacementCalibration,
   deleteEndpoint,
@@ -16,6 +18,7 @@ import {
   getVoicePlacementCalibrationReport,
   getVoicePlacementTests,
   getVoiceEndpointAudioQualityStats,
+  getEndpointBlePairingSession,
   getVoiceSession,
   getVoiceSessions,
   muteEndpoint,
@@ -28,6 +31,7 @@ import {
   replayVoiceSession,
   scanEndpointBleDevices,
   setEndpointVolume,
+  startEndpointBlePairingSession,
   startVoicePlacementCalibration,
   startVoicePlacementTest,
   testAssistantTurn,
@@ -124,6 +128,39 @@ function firstText(...values) {
 
 function boardProfileLabel(identity) {
   return firstText(identity?.board_profile, identity?.board_type, identity?.profile, "unknown");
+}
+
+function blePairingStateLabel(value) {
+  switch (value) {
+    case "waiting_for_device":
+      return "Waiting for device";
+    case "device_found":
+    case "ready_to_provision":
+      return "Device found";
+    case "waiting_for_endpoint_online":
+      return "Waiting for endpoint";
+    case "completed":
+      return "Completed";
+    case "timed_out":
+      return "Timed out";
+    case "failed":
+      return "Failed";
+    default:
+      return "Ready";
+  }
+}
+
+function blePairingStatePill(value) {
+  if (value === "ready_to_provision" || value === "device_found" || value === "completed") {
+    return "status-pill-success";
+  }
+  if (value === "timed_out" || value === "failed") {
+    return "status-pill-danger";
+  }
+  if (value === "waiting_for_endpoint_online") {
+    return "status-pill-warning";
+  }
+  return "status-pill-neutral";
 }
 
 function formatLocalDateTime(value) {
@@ -1381,6 +1418,15 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [scanDevices, setScanDevices] = useState([]);
   const [scanSummary, setScanSummary] = useState("");
   const [selectedScanAddress, setSelectedScanAddress] = useState("");
+  const [pairingSession, setPairingSession] = useState(null);
+  const [pairingUiState, setPairingUiState] = useState("ready");
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const [pairingPollBusy, setPairingPollBusy] = useState(false);
+  const [pairingApproveBusy, setPairingApproveBusy] = useState(false);
+
+  const pairingSessionId = firstText(pairingSession?.session_id, onboardingSessionId);
+  const pairingIdentityDeviceId = firstText(identityDetails?.device_id, identityDetails?.target_node_id, targetNodeId);
+  const canApprovePairing = pairingSessionId && pairingUiState === "ready_to_provision" && pairingIdentityDeviceId;
 
   useEffect(() => {
     setTargetNodeId(endpointStatus?.endpoint_id || "");
@@ -1397,6 +1443,142 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     provisioning.use_tls,
     provisioning.ws_port,
   ]);
+
+  useEffect(() => {
+    if (!pairingSessionId || pairingUiState !== "waiting_for_device" || pairingPollBusy) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      handleRefreshPairing(false);
+    }, 20000);
+    return () => window.clearTimeout(timer);
+  }, [pairingSessionId, pairingUiState, pairingPollBusy]);
+
+  function applyBleIdentity(identity, device) {
+    setIdentityDetails(identity);
+    const identityTarget = firstText(identity.device_id, identity.target_node_id, identity.endpoint_id, identity.node_hardware_id);
+    if (identityTarget) {
+      setTargetNodeId(identityTarget);
+    }
+    const sessionId = firstText(identity.onboarding_session_id, identity.session_id);
+    if (sessionId) {
+      setOnboardingSessionId(sessionId);
+    }
+    if (identity.endpoint_ephemeral_public_key && identity.endpoint_ephemeral_public_key !== "[REDACTED]") {
+      setEndpointPublicKey(String(identity.endpoint_ephemeral_public_key));
+    }
+    if (identity.pairing_nonce && identity.pairing_nonce !== "[REDACTED]") {
+      setPairingNonce(String(identity.pairing_nonce));
+    }
+    if (identity.claim_code_ref && identity.claim_code_ref !== "[REDACTED]") {
+      setClaimCodeRef(String(identity.claim_code_ref));
+    }
+    if (identity.sequence) {
+      setSequence(Number(identity.sequence));
+    }
+    if (identity.expires_at) {
+      setExpiresAt(String(identity.expires_at));
+    }
+    const identityDisplayName = firstText(identity.display_name, identityTarget, device?.name);
+    if (identityDisplayName) {
+      setDisplayName(identityDisplayName);
+    }
+  }
+
+  function applyPairingResult(result) {
+    const session = result?.pairing_session && typeof result.pairing_session === "object" ? result.pairing_session : null;
+    const identity = bleIdentityObject(result);
+    setPairingSession(session);
+    setPairingUiState(result?.ui_state || "failed");
+    if (session?.session_id) {
+      setOnboardingSessionId(String(session.session_id));
+    }
+    if (session?.adapter && typeof session.adapter === "string") {
+      setAdapter(session.adapter);
+    }
+    if (identity && Object.keys(identity).length) {
+      applyBleIdentity(identity);
+    }
+  }
+
+  async function handleStartPairing() {
+    setPairingBusy(true);
+    setIdentityDetails(null);
+    setScanSummary("");
+    setScanDevices([]);
+    try {
+      const result = await startEndpointBlePairingSession({
+        adapter: adapter || undefined,
+        duration_s: 300,
+      });
+      applyPairingResult(result);
+      const suffix = result.error ? `: ${result.error}` : "";
+      setActionMessage(`${blePairingStateLabel(result.ui_state)}${suffix}.`);
+    } catch (err) {
+      setPairingUiState("failed");
+      setActionMessage(`BLE pairing session failed: ${String(err.message || err)}`);
+    } finally {
+      setPairingBusy(false);
+    }
+  }
+
+  async function handleRefreshPairing(showMessage = true) {
+    if (!pairingSessionId) {
+      return;
+    }
+    setPairingPollBusy(true);
+    try {
+      const result = await getEndpointBlePairingSession(pairingSessionId);
+      applyPairingResult(result);
+      if (showMessage || result.ui_state !== "waiting_for_device") {
+        const suffix = result.error ? `: ${result.error}` : "";
+        setActionMessage(`${blePairingStateLabel(result.ui_state)}${suffix}.`);
+      }
+    } catch (err) {
+      setPairingUiState("failed");
+      setActionMessage(`BLE pairing refresh failed: ${String(err.message || err)}`);
+    } finally {
+      setPairingPollBusy(false);
+    }
+  }
+
+  async function handleApprovePairing() {
+    if (!canApprovePairing) {
+      setActionMessage("BLE approval skipped: device identity is not ready.");
+      return;
+    }
+    setPairingApproveBusy(true);
+    try {
+      const result = await approveEndpointBlePairingSession(pairingSessionId, {
+        device_id: pairingIdentityDeviceId,
+      });
+      applyPairingResult(result);
+      setActionMessage("BLE device approved. Waiting for it to come online with the same device id.");
+      await onRefresh();
+    } catch (err) {
+      setActionMessage(`BLE pairing approval failed: ${String(err.message || err)}`);
+    } finally {
+      setPairingApproveBusy(false);
+    }
+  }
+
+  async function handleCancelPairing() {
+    if (!pairingSessionId) {
+      return;
+    }
+    setPairingBusy(true);
+    try {
+      const result = await cancelEndpointBlePairingSession(pairingSessionId, {
+        operator_reason: "Operator canceled endpoint onboarding",
+      });
+      applyPairingResult(result);
+      setActionMessage("BLE pairing session canceled.");
+    } catch (err) {
+      setActionMessage(`BLE pairing cancel failed: ${String(err.message || err)}`);
+    } finally {
+      setPairingBusy(false);
+    }
+  }
 
   function useScannedDevice(device) {
     const address = String(device?.address || "").trim();
@@ -1428,34 +1610,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
         timeout_s: 20,
       });
       const identity = bleIdentityObject(result);
-      setIdentityDetails(identity);
-      const identityTarget = firstText(identity.target_node_id, identity.endpoint_id, identity.node_hardware_id);
-      if (identityTarget) {
-        setTargetNodeId(identityTarget);
-      }
-      const sessionId = firstText(identity.onboarding_session_id, identity.session_id);
-      if (sessionId) {
-        setOnboardingSessionId(sessionId);
-      }
-      if (identity.endpoint_ephemeral_public_key) {
-        setEndpointPublicKey(String(identity.endpoint_ephemeral_public_key));
-      }
-      if (identity.pairing_nonce) {
-        setPairingNonce(String(identity.pairing_nonce));
-      }
-      if (identity.claim_code_ref) {
-        setClaimCodeRef(String(identity.claim_code_ref));
-      }
-      if (identity.sequence) {
-        setSequence(Number(identity.sequence));
-      }
-      if (identity.expires_at) {
-        setExpiresAt(String(identity.expires_at));
-      }
-      const identityDisplayName = firstText(identity.display_name, identityTarget, device?.name);
-      if (identityDisplayName) {
-        setDisplayName(identityDisplayName);
-      }
+      applyBleIdentity(identity, device);
       const suffix = result.error ? `: ${result.error}` : "";
       if (result.status === "completed") {
         setActionMessage(`BLE identity read for ${boardProfileLabel(identity)}.`);
@@ -1569,67 +1724,115 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       <div className="endpoint-ble-scan-panel">
         <div className="section-heading">
           <div>
-            <p className="panel-kicker">Nearby BLE</p>
-            <h3>Discovered Devices</h3>
+            <p className="panel-kicker">Pairing Session</p>
+            <h3>{blePairingStateLabel(pairingUiState)}</h3>
           </div>
-          <button className="btn btn-secondary btn-compact" type="button" onClick={handleBleScan} disabled={busy || scanBusy}>
-            {scanBusy ? "Scanning..." : "Scan BLE"}
-          </button>
+          <span className={`status-pill ${blePairingStatePill(pairingUiState)}`}>{blePairingStateLabel(pairingUiState)}</span>
         </div>
-        {scanDevices.length ? (
-          <div className="endpoint-ble-device-list">
-            {scanDevices.map((device) => {
-              const address = String(device.address || "");
-              const selected = selectedScanAddress && selectedScanAddress === address;
-              return (
-                <button
-                  className={`endpoint-ble-device-row${selected ? " endpoint-ble-device-row-selected" : ""}`}
-                  key={address || String(device.name || "unknown")}
-                  type="button"
-                  onClick={() => handleUseScannedDevice(device)}
-                  disabled={busy || scanBusy || identityBusy || !address}
-                >
-                  <span>
-                    <strong>{valueOrEmpty(device.name, "Unnamed device")}</strong>
-                    <small>{valueOrEmpty(address, "unknown address")}</small>
-                    {device.supervisor_id ? <small>{device.supervisor_id}</small> : null}
-                  </span>
-                  <span className="endpoint-ble-device-badges">
-                    {device.service_uuid_match ? <span className="status-pill status-pill-success">UUID match</span> : null}
-                    <span className="status-pill status-pill-neutral">
-                      {selected ? (identityBusy ? "Reading" : "Selected") : valueOrEmpty(device.transport, "ble")}
-                    </span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+        {identityDetails ? (
+          <dl className="facts endpoint-ble-identity-facts">
+            <div>
+              <dt>Device ID</dt>
+              <dd>{valueOrEmpty(pairingIdentityDeviceId, "unknown")}</dd>
+            </div>
+            <div>
+              <dt>Board</dt>
+              <dd>{boardProfileLabel(identityDetails)}</dd>
+            </div>
+            <div>
+              <dt>Firmware</dt>
+              <dd>{valueOrEmpty(identityDetails.firmware_version, "unknown")}</dd>
+            </div>
+            <div>
+              <dt>Mode</dt>
+              <dd>{valueOrEmpty(identityDetails.provisioning_mode || identityDetails.mode, "unknown")}</dd>
+            </div>
+          </dl>
         ) : (
-          <p className="muted-text">{scanSummary ? "No BLE devices shown." : "No scan results yet."}</p>
+          <p className="muted-text">
+            {pairingSessionId ? "Waiting for a setup-mode endpoint to find this pairing session." : "Start pairing, then power or restart the endpoint in setup mode."}
+          </p>
         )}
-        {scanSummary ? <p className="muted-text endpoint-ble-scan-summary">{scanSummary}</p> : null}
+        <div className="form-actions">
+          <button className="btn btn-primary btn-compact" type="button" onClick={handleStartPairing} disabled={pairingBusy || pairingPollBusy || pairingApproveBusy}>
+            {pairingSessionId ? "Restart Pairing" : "Start Pairing"}
+          </button>
+          {pairingSessionId ? (
+            <button className="btn btn-secondary btn-compact" type="button" onClick={() => handleRefreshPairing(true)} disabled={pairingBusy || pairingPollBusy}>
+              {pairingPollBusy ? "Checking..." : "Check Now"}
+            </button>
+          ) : null}
+          {pairingSessionId ? (
+            <button className="btn btn-ghost btn-compact" type="button" onClick={handleCancelPairing} disabled={pairingBusy || pairingApproveBusy}>
+              Cancel
+            </button>
+          ) : null}
+          {canApprovePairing ? (
+            <button className="btn btn-primary btn-compact" type="button" onClick={handleApprovePairing} disabled={pairingApproveBusy}>
+              {pairingApproveBusy ? "Approving..." : "Approve Device"}
+            </button>
+          ) : null}
+        </div>
       </div>
-      {identityDetails ? (
-        <dl className="facts endpoint-ble-identity-facts">
-          <div>
-            <dt>Board</dt>
-            <dd>{boardProfileLabel(identityDetails)}</dd>
+      <details className="endpoint-advanced-section">
+        <summary>
+          <span>
+            <strong>Advanced fallback scan</strong>
+            <small>Use when the endpoint is advertising first.</small>
+          </span>
+        </summary>
+        <div className="endpoint-ble-scan-panel">
+          <div className="section-heading">
+            <div>
+              <p className="panel-kicker">Nearby BLE</p>
+              <h3>Discovered Devices</h3>
+            </div>
+            <button className="btn btn-secondary btn-compact" type="button" onClick={handleBleScan} disabled={busy || scanBusy}>
+              {scanBusy ? "Scanning..." : "Scan BLE"}
+            </button>
           </div>
-          <div>
-            <dt>Mode</dt>
-            <dd>{valueOrEmpty(identityDetails.provisioning_mode || identityDetails.mode, "unknown")}</dd>
-          </div>
-          <div>
-            <dt>Firmware</dt>
-            <dd>{valueOrEmpty(identityDetails.firmware_version, "unknown")}</dd>
-          </div>
-          <div>
-            <dt>Session</dt>
-            <dd>{valueOrEmpty(identityDetails.onboarding_session_id || identityDetails.session_id, "none")}</dd>
-          </div>
-        </dl>
-      ) : null}
-      <form className="endpoint-metadata-form" onSubmit={handleBleProvision}>
+          {scanDevices.length ? (
+            <div className="endpoint-ble-device-list">
+              {scanDevices.map((device) => {
+                const address = String(device.address || "");
+                const selected = selectedScanAddress && selectedScanAddress === address;
+                return (
+                  <button
+                    className={`endpoint-ble-device-row${selected ? " endpoint-ble-device-row-selected" : ""}`}
+                    key={address || String(device.name || "unknown")}
+                    type="button"
+                    onClick={() => handleUseScannedDevice(device)}
+                    disabled={busy || scanBusy || identityBusy || !address}
+                  >
+                    <span>
+                      <strong>{valueOrEmpty(device.name, "Unnamed device")}</strong>
+                      <small>{valueOrEmpty(address, "unknown address")}</small>
+                      {device.supervisor_id ? <small>{device.supervisor_id}</small> : null}
+                    </span>
+                    <span className="endpoint-ble-device-badges">
+                      {device.service_uuid_match ? <span className="status-pill status-pill-success">UUID match</span> : null}
+                      <span className="status-pill status-pill-neutral">
+                        {selected ? (identityBusy ? "Reading" : "Selected") : valueOrEmpty(device.transport, "ble")}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="muted-text">{scanSummary ? "No BLE devices shown." : "No scan results yet."}</p>
+          )}
+          {scanSummary ? <p className="muted-text endpoint-ble-scan-summary">{scanSummary}</p> : null}
+        </div>
+      </details>
+      <details className="endpoint-advanced-section">
+        <summary>
+          <span>
+            <strong>Direct BLE provisioning</strong>
+            <small>Manual recovery path for devices that advertise their own onboarding fields.</small>
+          </span>
+        </summary>
+        <form className="endpoint-metadata-form" onSubmit={handleBleProvision}>
         <label>
           <span>Target node</span>
           <input type="text" value={targetNodeId} maxLength={80} onChange={(event) => setTargetNodeId(event.target.value)} disabled={busy} />
@@ -1719,7 +1922,8 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
         >
           {busy ? "Provisioning..." : "Provision over BLE"}
         </button>
-      </form>
+        </form>
+      </details>
     </section>
   );
 }

@@ -613,6 +613,22 @@ export async function readEndpointBleIdentity(payload = {}) {
   return sendJson("/api/endpoint/ble/identity", { body: payload });
 }
 
+export async function startEndpointBlePairingSession(payload = {}) {
+  return sendJson("/api/endpoint/ble/pairing-sessions", { body: payload });
+}
+
+export async function getEndpointBlePairingSession(sessionId) {
+  return sendJson(`/api/endpoint/ble/pairing-sessions/${encodeURIComponent(sessionId)}`, { method: "GET" });
+}
+
+export async function approveEndpointBlePairingSession(sessionId, payload = {}) {
+  return sendJson(`/api/endpoint/ble/pairing-sessions/${encodeURIComponent(sessionId)}/approve`, { body: payload });
+}
+
+export async function cancelEndpointBlePairingSession(sessionId, payload = {}) {
+  return sendJson(`/api/endpoint/ble/pairing-sessions/${encodeURIComponent(sessionId)}/cancel`, { body: payload });
+}
+
 export async function cancelEndpointSession(endpointId) {
   return sendJson("/api/endpoint/session/cancel", {
     body: {
