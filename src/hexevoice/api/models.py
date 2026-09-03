@@ -189,7 +189,10 @@ class EndpointHeartbeatResponse(BaseModel):
 class EndpointDiscoveryRequest(BaseModel):
     schema_version: str = "hexevoice.endpoint.discovery.v1"
     endpoint_id: str = Field(min_length=1, max_length=63)
+    device_id: str | None = Field(default=None, max_length=128)
+    onboarding_session_id: str | None = Field(default=None, max_length=120)
     hardware_id: str | None = Field(default=None, max_length=80)
+    board_profile: str | None = Field(default=None, max_length=80)
     display_name: str | None = Field(default=None, max_length=63)
     firmware_version: str | None = Field(default=None, max_length=80)
     pairing_nonce: str | None = Field(default=None, max_length=80)
@@ -378,6 +381,41 @@ class EndpointBleIdentityResponse(BaseModel):
     adapters: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
     release_result: dict[str, Any] | None = None
+
+
+class EndpointBlePairingSessionStartRequest(BaseModel):
+    adapter: str | None = Field(default="hci0", max_length=64)
+    supervisor_id: str | None = Field(default=None, max_length=120)
+    duration_s: int = Field(default=300, ge=60, le=600)
+    operator_reason: str | None = Field(default=None, max_length=240)
+
+
+class EndpointBlePairingSessionApproveRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=128)
+    operator_reason: str | None = Field(default=None, max_length=240)
+
+
+class EndpointBlePairingSessionCancelRequest(BaseModel):
+    operator_reason: str | None = Field(default=None, max_length=240)
+
+
+class EndpointBlePairingSessionResponse(BaseModel):
+    ok: bool
+    status: Literal["waiting", "found", "approved", "canceled", "expired", "failed", "completed"]
+    ui_state: Literal[
+        "waiting_for_device",
+        "device_found",
+        "ready_to_provision",
+        "waiting_for_endpoint_online",
+        "completed",
+        "timed_out",
+        "failed",
+    ]
+    node_id: str
+    pairing_session: dict[str, Any] = Field(default_factory=dict)
+    identity: dict[str, Any] = Field(default_factory=dict)
+    next_poll_seconds: int = 20
+    error: str | None = None
 
 
 class EndpointBleProvisionWifiResponse(BaseModel):

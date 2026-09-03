@@ -2,7 +2,15 @@ from pathlib import Path
 
 import httpx
 
-from hexevoice.api.models import EndpointBleIdentityRequest, EndpointBleProvisionWifiRequest, EndpointBleScanRequest
+from hexevoice.api.models import (
+    EndpointBleIdentityRequest,
+    EndpointBlePairingSessionApproveRequest,
+    EndpointBlePairingSessionCancelRequest,
+    EndpointBlePairingSessionStartRequest,
+    EndpointBleProvisionWifiRequest,
+    EndpointBleScanRequest,
+)
+from hexevoice.config.settings import Settings
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 
@@ -31,6 +39,7 @@ class FakeCoreClient:
         operations: list[str] | None = None,
         fleet_scan_result: dict | None = None,
         fleet_identity_result: dict | None = None,
+        pairing_session: dict | None = None,
     ) -> None:
         self.status = status
         self.operations = operations or ["ble.provision_wifi", "ble.scan", "ble.read_identity", "ble.status"]
@@ -40,6 +49,18 @@ class FakeCoreClient:
         self.fleet_identity_result = fleet_identity_result
         self.scan_payloads = []
         self.identity_payloads = []
+        self.pairing_session = pairing_session or {
+            "session_id": "blepair-test",
+            "session_hint": "ABCD1234",
+            "status": "waiting",
+            "node_profile_id": "voice",
+            "payload_schema_id": "hexe.voice_node.wifi_backend.v1",
+            "claim_code_required": False,
+            "adapter": "hci0",
+            "expires_at": "2026-09-03T22:30:00+00:00",
+            "supervisor_results": [{"supervisor_id": "sup-nearby", "status": "advertising", "adapter": "hci0"}],
+        }
+        self.pairing_calls = []
 
     def get_hardware_access_request_schema(self, *, core_base_url: str) -> dict:
         assert core_base_url == "http://core.local"
@@ -94,6 +115,39 @@ class FakeCoreClient:
             response = httpx.Response(404, request=request)
             raise httpx.HTTPStatusError("not found", request=request, response=response)
         return self.fleet_identity_result
+
+    def create_ble_pairing_session(self, *, core_base_url: str, admin_token: str, payload: dict) -> dict:
+        assert core_base_url == "http://core.local"
+        assert admin_token == "admin-token"
+        self.pairing_calls.append({"operation": "create", "payload": payload})
+        session = dict(self.pairing_session)
+        session.update({"status": "waiting", "adapter": payload.get("adapter")})
+        self.pairing_session = session
+        return {"ok": True, "pairing_session": session}
+
+    def get_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, refresh: bool = True) -> dict:
+        assert core_base_url == "http://core.local"
+        assert admin_token == "admin-token"
+        self.pairing_calls.append({"operation": "get", "session_id": session_id, "refresh": refresh})
+        return {"ok": True, "pairing_session": dict(self.pairing_session)}
+
+    def approve_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, payload: dict) -> dict:
+        assert core_base_url == "http://core.local"
+        assert admin_token == "admin-token"
+        self.pairing_calls.append({"operation": "approve", "session_id": session_id, "payload": payload})
+        session = dict(self.pairing_session)
+        session.update({"status": "approved", "approved_device_id": payload["device_id"]})
+        self.pairing_session = session
+        return {"ok": True, "pairing_session": session}
+
+    def cancel_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, payload: dict) -> dict:
+        assert core_base_url == "http://core.local"
+        assert admin_token == "admin-token"
+        self.pairing_calls.append({"operation": "cancel", "session_id": session_id, "payload": payload})
+        session = dict(self.pairing_session)
+        session.update({"status": "canceled"})
+        self.pairing_session = session
+        return {"ok": True, "pairing_session": session}
 
 
 class FakeSupervisorClient:
@@ -464,6 +518,88 @@ def test_ble_identity_falls_back_to_local_when_core_fleet_has_no_bluetooth_super
     assert core.requested_payloads[0]["operation"] == "ble.read_identity"
     assert supervisor.identity_calls
     assert response.identity["board_profile"] == "ha_voice_pe"
+
+
+def test_ble_pairing_session_lifecycle_uses_core_admin_token_and_redacts_identity(tmp_path):
+    core = FakeCoreClient(
+        pairing_session={
+            "session_id": "blepair-test",
+            "session_hint": "ABCD1234",
+            "status": "found",
+            "node_profile_id": "voice",
+            "payload_schema_id": "hexe.voice_node.wifi_backend.v1",
+            "adapter": "hci0",
+            "expires_at": "2026-09-03T22:30:00+00:00",
+            "endpoint_identity": {
+                "device_id": "esp-pe-1",
+                "target_node_id": "esp-pe-1",
+                "board_profile": "ha_voice_pe",
+                "firmware_version": "min-fw-test",
+                "application_type": "recovery",
+                "provisioning_mode": "core_published_pairing",
+                "endpoint_ephemeral_public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+            },
+        }
+    )
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        settings=Settings(core_admin_token="admin-token"),
+        core_client=core,
+        supervisor_client=FakeSupervisorClient(),
+    )
+
+    created = service.start_pairing_session(EndpointBlePairingSessionStartRequest(adapter="hci0", duration_s=300))
+    core.pairing_session = {
+        **core.pairing_session,
+        "status": "found",
+        "endpoint_identity": {
+            "device_id": "esp-pe-1",
+            "target_node_id": "esp-pe-1",
+            "board_profile": "ha_voice_pe",
+            "firmware_version": "min-fw-test",
+            "application_type": "recovery",
+            "provisioning_mode": "core_published_pairing",
+            "endpoint_ephemeral_public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+        },
+    }
+    found = service.get_pairing_session("blepair-test")
+    approved = service.approve_pairing_session("blepair-test", EndpointBlePairingSessionApproveRequest(device_id="esp-pe-1"))
+    canceled = service.cancel_pairing_session("blepair-test", EndpointBlePairingSessionCancelRequest(operator_reason="closed"))
+
+    assert created.status == "waiting"
+    assert core.pairing_calls[0]["payload"]["payload_schema_id"] == "hexe.voice_node.wifi_backend.v1"
+    assert found.status == "found"
+    assert found.ui_state == "ready_to_provision"
+    assert found.identity["device_id"] == "esp-pe-1"
+    assert found.identity["board_profile"] == "ha_voice_pe"
+    assert found.identity["endpoint_ephemeral_public_key"] == "[REDACTED]"
+    assert approved.status == "approved"
+    assert approved.ui_state == "waiting_for_endpoint_online"
+    assert canceled.status == "canceled"
+
+
+def test_ble_pairing_approval_status_requires_matching_session_identity(tmp_path):
+    core = FakeCoreClient(
+        pairing_session={
+            "session_id": "blepair-test",
+            "status": "approved",
+            "approved_device_id": "esp-pe-1",
+            "endpoint_identity": {
+                "device_id": "esp-pe-1",
+                "target_node_id": "esp-pe-1",
+                "board_profile": "ha_voice_pe",
+            },
+        }
+    )
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        settings=Settings(core_admin_token="admin-token"),
+        core_client=core,
+        supervisor_client=FakeSupervisorClient(),
+    )
+
+    assert service.pairing_session_approval_status("blepair-test", "esp-pe-1")["approved"] is True
+    assert service.pairing_session_approval_status("blepair-test", "other-device")["approved"] is False
 
 
 def test_ble_onboarding_granted_calls_supervisor_and_releases_lease(tmp_path):

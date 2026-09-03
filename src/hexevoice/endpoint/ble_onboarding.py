@@ -10,11 +10,16 @@ import httpx
 from hexevoice.api.models import (
     EndpointBleIdentityRequest,
     EndpointBleIdentityResponse,
+    EndpointBlePairingSessionApproveRequest,
+    EndpointBlePairingSessionCancelRequest,
+    EndpointBlePairingSessionResponse,
+    EndpointBlePairingSessionStartRequest,
     EndpointBleProvisionWifiRequest,
     EndpointBleProvisionWifiResponse,
     EndpointBleScanRequest,
     EndpointBleScanResponse,
 )
+from hexevoice.config.settings import Settings
 from hexevoice.core.client import CoreOnboardingClient
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.supervisor.client import SupervisorApiClient
@@ -100,12 +105,101 @@ class EndpointBleOnboardingService:
         self,
         *,
         onboarding_state_store: OnboardingStateStore,
+        settings: Settings | None = None,
         core_client: CoreOnboardingClient | None = None,
         supervisor_client: SupervisorApiClient | None = None,
     ) -> None:
         self._store = onboarding_state_store
+        self._settings = settings or Settings()
         self._core_client = core_client or CoreOnboardingClient()
         self._supervisor_client = supervisor_client or SupervisorApiClient()
+
+    def start_pairing_session(self, payload: EndpointBlePairingSessionStartRequest) -> EndpointBlePairingSessionResponse:
+        core_base_url, node_id, admin_token = self._admin_context()
+        response = self._call_core_pairing(
+            lambda: self._core_client.create_ble_pairing_session(
+                core_base_url=core_base_url,
+                admin_token=admin_token,
+                payload=_clean_dict(
+                    {
+                        "adapter": payload.adapter,
+                        "supervisor_id": payload.supervisor_id,
+                        "duration_s": payload.duration_s,
+                        "node_profile_id": "voice",
+                        "payload_schema_id": VOICE_PROVISIONING_PAYLOAD_SCHEMA_ID,
+                        "claim_code_required": False,
+                        "reason": payload.operator_reason or "Pair a Voice endpoint over BLE",
+                    }
+                ),
+            ),
+            fallback="core_ble_pairing_session_start_failed",
+        )
+        return self._pairing_response(node_id=node_id, core_response=response)
+
+    def get_pairing_session(self, session_id: str, *, refresh: bool = True) -> EndpointBlePairingSessionResponse:
+        core_base_url, node_id, admin_token = self._admin_context()
+        response = self._call_core_pairing(
+            lambda: self._core_client.get_ble_pairing_session(
+                core_base_url=core_base_url,
+                admin_token=admin_token,
+                session_id=session_id,
+                refresh=refresh,
+            ),
+            fallback="core_ble_pairing_session_read_failed",
+        )
+        return self._pairing_response(node_id=node_id, core_response=response)
+
+    def approve_pairing_session(
+        self,
+        session_id: str,
+        payload: EndpointBlePairingSessionApproveRequest,
+    ) -> EndpointBlePairingSessionResponse:
+        core_base_url, node_id, admin_token = self._admin_context()
+        response = self._call_core_pairing(
+            lambda: self._core_client.approve_ble_pairing_session(
+                core_base_url=core_base_url,
+                admin_token=admin_token,
+                session_id=session_id,
+                payload=_clean_dict({"device_id": payload.device_id, "reason": payload.operator_reason or "Operator approved BLE identity"}),
+            ),
+            fallback="core_ble_pairing_session_approve_failed",
+        )
+        return self._pairing_response(node_id=node_id, core_response=response)
+
+    def cancel_pairing_session(
+        self,
+        session_id: str,
+        payload: EndpointBlePairingSessionCancelRequest,
+    ) -> EndpointBlePairingSessionResponse:
+        core_base_url, node_id, admin_token = self._admin_context()
+        response = self._call_core_pairing(
+            lambda: self._core_client.cancel_ble_pairing_session(
+                core_base_url=core_base_url,
+                admin_token=admin_token,
+                session_id=session_id,
+                payload=_clean_dict({"reason": payload.operator_reason or "Operator canceled BLE pairing"}),
+            ),
+            fallback="core_ble_pairing_session_cancel_failed",
+        )
+        return self._pairing_response(node_id=node_id, core_response=response)
+
+    def pairing_session_approval_status(self, session_id: str, device_id: str) -> dict[str, Any]:
+        response = self.get_pairing_session(session_id, refresh=False)
+        session = response.pairing_session
+        identity = session.get("endpoint_identity") if isinstance(session.get("endpoint_identity"), dict) else {}
+        approved_device_id = str(session.get("approved_device_id") or "").strip()
+        identity_device_id = str(identity.get("device_id") or "").strip()
+        requested_device_id = str(device_id or "").strip()
+        approved = session.get("status") in {"approved", "consumed"} and approved_device_id == requested_device_id
+        identity_matches = bool(identity_device_id and identity_device_id == requested_device_id)
+        return {
+            "approved": approved and identity_matches,
+            "status": session.get("status"),
+            "session_id": session.get("session_id"),
+            "approved_device_id": approved_device_id or None,
+            "identity_device_id": identity_device_id or None,
+            "error": response.error,
+        }
 
     def scan(self, payload: EndpointBleScanRequest) -> EndpointBleScanResponse:
         core_base_url, node_id, node_trust_token = self._trusted_node_context()
@@ -453,6 +547,29 @@ class EndpointBleOnboardingService:
             raise HTTPException(status_code=400, detail="trust_not_configured")
         return core_base_url, node_id, node_trust_token
 
+    def _admin_context(self) -> tuple[str, str, str]:
+        state = self._store.load()
+        core_base_url = state.pre_trust.core_base_url
+        node_id = state.trust_activation.node_id
+        admin_token = self._settings.core_admin_token
+        if not core_base_url:
+            raise HTTPException(status_code=400, detail="core_connection_not_configured")
+        if not node_id:
+            raise HTTPException(status_code=400, detail="trust_not_configured")
+        if not admin_token:
+            raise HTTPException(status_code=400, detail="core_admin_token_not_configured")
+        return core_base_url, node_id, admin_token
+
+    def _call_core_pairing(self, call, *, fallback: str) -> dict[str, Any]:
+        try:
+            return call()
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code, detail=_http_error_detail(exc, fallback)) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail=f"{fallback}_timeout") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"{fallback}: {exc}") from exc
+
     def _get_hardware_access_schema(self, core_base_url: str) -> dict[str, Any]:
         try:
             return self._core_client.get_hardware_access_request_schema(core_base_url=core_base_url)
@@ -765,6 +882,41 @@ class EndpointBleOnboardingService:
             adapters=adapters,
             error=error,
             release_result=_redact(release_result) if release_result is not None else None,
+        )
+
+    def _pairing_response(self, *, node_id: str, core_response: dict[str, Any]) -> EndpointBlePairingSessionResponse:
+        session = core_response.get("pairing_session") if isinstance(core_response, dict) else {}
+        session = deepcopy(session) if isinstance(session, dict) else {}
+        identity = session.get("endpoint_identity") if isinstance(session.get("endpoint_identity"), dict) else {}
+        status = str(session.get("status") or "failed").strip().lower()
+        error = str(session.get("error") or "") or None
+        if status == "expired":
+            ui_state = "timed_out"
+        elif status == "found":
+            ui_state = "ready_to_provision"
+        elif status == "approved":
+            ui_state = "waiting_for_endpoint_online"
+        elif status in {"consumed", "completed"}:
+            status = "completed"
+            ui_state = "completed"
+        elif status == "waiting":
+            ui_state = "waiting_for_device"
+        elif status == "canceled":
+            ui_state = "failed"
+            error = error or "ble_pairing_session_canceled"
+        else:
+            status = "failed"
+            ui_state = "failed"
+            error = error or "ble_pairing_session_failed"
+        return EndpointBlePairingSessionResponse(
+            ok=bool(core_response.get("ok")) and status not in {"failed", "expired", "canceled"},
+            status=status,  # type: ignore[arg-type]
+            ui_state=ui_state,  # type: ignore[arg-type]
+            node_id=node_id,
+            pairing_session=_redact(session),
+            identity=_redact(identity),
+            next_poll_seconds=20,
+            error=error,
         )
 
     def _scan_response(

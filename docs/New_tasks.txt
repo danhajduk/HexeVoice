@@ -52,7 +52,7 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 295: Integrate HexeVoice node-side onboarding UI/backend with Core pairing sessions and fallback scanning
+[WIP] Task 295: Integrate HexeVoice node-side onboarding UI/backend with Core pairing sessions and fallback scanning
 
 **********************************************************************************************
 * Future TODO listing

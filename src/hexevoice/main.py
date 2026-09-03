@@ -62,6 +62,10 @@ from hexevoice.api.models import (
     EndpointBeepCommandRequest,
     EndpointBleIdentityRequest,
     EndpointBleIdentityResponse,
+    EndpointBlePairingSessionApproveRequest,
+    EndpointBlePairingSessionCancelRequest,
+    EndpointBlePairingSessionResponse,
+    EndpointBlePairingSessionStartRequest,
     EndpointBleProvisionWifiRequest,
     EndpointBleProvisionWifiResponse,
     EndpointBleScanRequest,
@@ -678,14 +682,16 @@ def create_app(
         endpoint_registry_store=endpoint_registry_store,
         stale_after_seconds=app_settings.endpoint_stale_after_seconds,
     )
+    endpoint_ble_onboarding_service = EndpointBleOnboardingService(
+        onboarding_state_store=onboarding_state_store,
+        settings=app_settings,
+        supervisor_client=SupervisorApiClient(),
+    )
     endpoint_discovery_service = EndpointDiscoveryService(
         settings=app_settings,
         endpoint_registry_store=endpoint_registry_store,
         stale_after_seconds=app_settings.endpoint_stale_after_seconds,
-    )
-    endpoint_ble_onboarding_service = EndpointBleOnboardingService(
-        onboarding_state_store=onboarding_state_store,
-        supervisor_client=SupervisorApiClient(),
+        ble_pairing_approval_checker=endpoint_ble_onboarding_service.pairing_session_approval_status,
     )
 
     def current_advertised_node_id() -> str:
@@ -1661,6 +1667,28 @@ def create_app(
     @app.post("/api/endpoint/ble/identity", response_model=EndpointBleIdentityResponse)
     async def endpoint_ble_identity(payload: EndpointBleIdentityRequest) -> EndpointBleIdentityResponse:
         return endpoint_ble_onboarding_service.read_identity(payload)
+
+    @app.post("/api/endpoint/ble/pairing-sessions", response_model=EndpointBlePairingSessionResponse)
+    async def endpoint_ble_pairing_session_start(payload: EndpointBlePairingSessionStartRequest) -> EndpointBlePairingSessionResponse:
+        return endpoint_ble_onboarding_service.start_pairing_session(payload)
+
+    @app.get("/api/endpoint/ble/pairing-sessions/{session_id}", response_model=EndpointBlePairingSessionResponse)
+    async def endpoint_ble_pairing_session_status(session_id: str) -> EndpointBlePairingSessionResponse:
+        return endpoint_ble_onboarding_service.get_pairing_session(session_id)
+
+    @app.post("/api/endpoint/ble/pairing-sessions/{session_id}/approve", response_model=EndpointBlePairingSessionResponse)
+    async def endpoint_ble_pairing_session_approve(
+        session_id: str,
+        payload: EndpointBlePairingSessionApproveRequest,
+    ) -> EndpointBlePairingSessionResponse:
+        return endpoint_ble_onboarding_service.approve_pairing_session(session_id, payload)
+
+    @app.post("/api/endpoint/ble/pairing-sessions/{session_id}/cancel", response_model=EndpointBlePairingSessionResponse)
+    async def endpoint_ble_pairing_session_cancel(
+        session_id: str,
+        payload: EndpointBlePairingSessionCancelRequest,
+    ) -> EndpointBlePairingSessionResponse:
+        return endpoint_ble_onboarding_service.cancel_pairing_session(session_id, payload)
 
     @app.post("/api/endpoint/provisioning/reset", response_model=EndpointCommandResponse)
     async def endpoint_provisioning_reset(payload: EndpointCommandRequest) -> EndpointCommandResponse:

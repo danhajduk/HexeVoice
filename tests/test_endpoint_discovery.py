@@ -120,6 +120,52 @@ def test_endpoint_discovery_recovers_stale_pairing(tmp_path):
     assert record.last_seen_at != stale
 
 
+def test_endpoint_discovery_requires_approved_ble_pairing_session(tmp_path):
+    store = EndpointRegistryStore(path=tmp_path / "endpoint_registry.json")
+    approvals = []
+
+    def checker(session_id: str, device_id: str) -> dict:
+        approvals.append({"session_id": session_id, "device_id": device_id})
+        return {"approved": session_id == "blepair-test" and device_id == "esp-pe-1"}
+
+    service = EndpointDiscoveryService(
+        settings=Settings(endpoint_discovery_advertise_host="hexevoice.local"),
+        endpoint_registry_store=store,
+        ble_pairing_approval_checker=checker,
+    )
+
+    rejected = service.offer(
+        EndpointDiscoveryRequest(
+            endpoint_id="esp-pe-1",
+            device_id="other-device",
+            onboarding_session_id="blepair-test",
+        ),
+        source_ip="10.0.0.44",
+    )
+    accepted = service.offer(
+        EndpointDiscoveryRequest(
+            endpoint_id="esp-pe-1",
+            device_id="esp-pe-1",
+            onboarding_session_id="blepair-test",
+            board_profile="ha_voice_pe",
+            firmware_version="min-fw-test",
+        ),
+        source_ip="10.0.0.44",
+    )
+    record = store.load().endpoints["esp-pe-1"]
+
+    assert rejected.accepted is False
+    assert rejected.reason == "ble_pairing_not_approved"
+    assert accepted.accepted is True
+    assert record.capabilities["device_id"] == "esp-pe-1"
+    assert record.capabilities["onboarding_session_id"] == "blepair-test"
+    assert record.capabilities["board_profile"] == "ha_voice_pe"
+    assert approvals == [
+        {"session_id": "blepair-test", "device_id": "other-device"},
+        {"session_id": "blepair-test", "device_id": "esp-pe-1"},
+    ]
+
+
 def test_endpoint_discovery_offer_validates_required_endpoint_id(tmp_path):
     client = TestClient(
         create_app(
