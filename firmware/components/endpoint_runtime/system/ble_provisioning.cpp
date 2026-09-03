@@ -1047,8 +1047,6 @@ std::string ble_provisioning_device_identity_json() {
   cJSON_AddStringToObject(root, "device_id", endpoint_id());
   cJSON_AddStringToObject(root, "node_hardware_id", hardware_id());
   cJSON_AddStringToObject(root, "target_node_id", endpoint_id());
-  cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
-  cJSON_AddStringToObject(root, "endpoint_ephemeral_public_key", g_ble.endpoint_public_key_b64);
   cJSON_AddStringToObject(root, "board_profile", hexe::config::kEndpointBoardProfile);
   cJSON_AddStringToObject(root, "firmware_version", esp_app_get_description()->version);
   cJSON_AddStringToObject(root, "application_type", "endpoint");
