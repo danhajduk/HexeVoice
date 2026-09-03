@@ -231,8 +231,9 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
   if [[ -f "${sdkconfig_path}" && "${bluetooth_transport}" == "native" ]] &&
     { ! grep -q "^CONFIG_BT_NIMBLE_ENABLED=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_BT_NIMBLE_ROLE_CENTRAL=y$" "${sdkconfig_path}" ||
-      ! grep -q "^CONFIG_BT_NIMBLE_GATT_CLIENT=y$" "${sdkconfig_path}"; }; then
-    echo "Refreshing generated sdkconfig for ${profile}; BLE onboarding now requires NimBLE peripheral and central roles"
+      ! grep -q "^CONFIG_BT_NIMBLE_GATT_CLIENT=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192$" "${sdkconfig_path}"; }; then
+    echo "Refreshing generated sdkconfig for ${profile}; BLE onboarding requires native roles and host stack sizing"
     rm -f "${sdkconfig_path}"
   fi
 }

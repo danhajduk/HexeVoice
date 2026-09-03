@@ -143,7 +143,7 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "CONFIG_BT_NIMBLE_BLE_GATT_BLOB_TRANSFER=y" in build_script
     assert "CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512" in build_script
     assert "CONFIG_BT_NIMBLE_MSYS_1_BLOCK_SIZE=1024" in build_script
-    assert "BLE onboarding now requires NimBLE peripheral and central roles" in build_script
+    assert "BLE onboarding requires native roles and host stack sizing" in build_script
 
 
 def test_ble_onboarding_rejects_unusable_envelopes_before_writing_settings():
