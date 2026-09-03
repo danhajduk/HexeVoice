@@ -392,25 +392,16 @@ const char *recovery_ble_reason() {
 
 std::string render_recovery_ble_status_json() {
   cJSON *root = cJSON_CreateObject();
-  cJSON_AddStringToObject(root, "schema_version", "hexe-recovery-ble-status-v1");
-  cJSON_AddStringToObject(root, "operation", kOperation);
   cJSON_AddStringToObject(root, "contract_version", kContractVersion);
   cJSON_AddStringToObject(root, "payload_schema_id", kPayloadSchemaId);
   cJSON_AddBoolToObject(root, "supported", board_supported());
   cJSON_AddBoolToObject(root, "enabled", g_ble.enabled);
   cJSON_AddBoolToObject(root, "advertising", g_ble.advertising);
   cJSON_AddBoolToObject(root, "central_scanning", g_ble.central_scanning);
-  cJSON_AddStringToObject(root, "mode", "local_recovery");
-  cJSON_AddStringToObject(root, "core_governed_mode", "endpoint_app");
   cJSON_AddStringToObject(root, "state", g_ble.state);
-  cJSON_AddStringToObject(root, "reason", g_ble.reason);
   cJSON *host_pairing = cJSON_AddObjectToObject(root, "host_pairing");
   cJSON_AddBoolToObject(host_pairing, "found", g_ble.host_pairing_found);
-  cJSON_AddBoolToObject(host_pairing, "role_match", g_ble.host_pairing_role_match);
-  cJSON_AddBoolToObject(host_pairing, "connected", g_ble.host_pairing_connected);
-  cJSON_AddBoolToObject(host_pairing, "offer_received", g_ble.host_pairing_offer_received);
   cJSON_AddBoolToObject(host_pairing, "identity_sent", g_ble.host_pairing_identity_sent);
-  cJSON_AddNumberToObject(root, "expires_at_unix_ms", (g_ble.issued_at_us + kPairingTtlUs) / 1000);
   if (g_ble.last_ack[0] != '\0') {
     cJSON_AddStringToObject(root, "last_ack", g_ble.last_ack);
   }
@@ -426,16 +417,11 @@ extern "C" const char *hexe_ble_provisioning_device_identity_json() {
   static std::string payload;
   cJSON *root = cJSON_CreateObject();
   ensure_pairing_nonce();
-  cJSON_AddStringToObject(root, "contract_version", kContractVersion);
-  cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
   cJSON_AddStringToObject(root, "device_id", hexe::config::kEndpointId);
-  cJSON_AddStringToObject(root, "node_hardware_id", hardware_id());
-  cJSON_AddStringToObject(root, "target_node_id", hexe::config::kEndpointId);
   cJSON_AddStringToObject(root, "board_profile", hexe::board::pins::kBoardProfile);
   cJSON_AddStringToObject(root, "firmware_version", esp_app_get_description()->version);
   cJSON_AddStringToObject(root, "application_type", "recovery");
   cJSON_AddStringToObject(root, "provisioning_mode", "local_recovery");
-  cJSON_AddStringToObject(root, "provisioning_state", g_ble.state);
   payload = print_json(root);
   return payload.c_str();
 }
@@ -444,15 +430,12 @@ extern "C" const char *hexe_ble_provisioning_pairing_nonce_json() {
   static std::string payload;
   ensure_pairing_nonce();
   cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "contract_version", kContractVersion);
   cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
   cJSON_AddStringToObject(root, "target_node_id", hexe::config::kEndpointId);
+  cJSON_AddStringToObject(root, "node_hardware_id", hardware_id());
   cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
-  cJSON_AddStringToObject(root, "payload_schema_id", kPayloadSchemaId);
   cJSON_AddStringToObject(root, "mode", "local_recovery");
-  cJSON *schemas = cJSON_AddArrayToObject(root, "supported_payload_schemas");
-  cJSON_AddItemToArray(schemas, cJSON_CreateString(kPayloadSchemaId));
-  cJSON_AddBoolToObject(root, "claim_code_required", false);
-  cJSON_AddNumberToObject(root, "expires_at_unix_ms", (g_ble.issued_at_us + kPairingTtlUs) / 1000);
   payload = print_json(root);
   return payload.c_str();
 }
