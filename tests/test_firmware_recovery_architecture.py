@@ -340,6 +340,7 @@ def test_build_script_exports_recovery_metadata_without_endpoint_runtime():
     assert 'idf_env+=("IDF_COMPONENT_MANAGER=0")' in build_script
     assert 'push mode supports only HEXE_FIRMWARE_APP=endpoint.' in build_script
     assert 'hexe_${FIRMWARE_APP}_${1}.bin' in build_script
+    assert "CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192" in build_script
 
 
 def test_rebuild_script_can_select_minimal_factory_exports():
