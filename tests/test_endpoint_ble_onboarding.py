@@ -2,7 +2,7 @@ from pathlib import Path
 
 import httpx
 
-from hexevoice.api.models import EndpointBleProvisionWifiRequest, EndpointBleScanRequest
+from hexevoice.api.models import EndpointBleIdentityRequest, EndpointBleProvisionWifiRequest, EndpointBleScanRequest
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 
@@ -24,13 +24,22 @@ def trusted_store(tmp_path) -> OnboardingStateStore:
 
 
 class FakeCoreClient:
-    def __init__(self, *, status: str = "granted", operations: list[str] | None = None, fleet_scan_result: dict | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        status: str = "granted",
+        operations: list[str] | None = None,
+        fleet_scan_result: dict | None = None,
+        fleet_identity_result: dict | None = None,
+    ) -> None:
         self.status = status
-        self.operations = operations or ["ble.provision_wifi", "ble.scan", "ble.status"]
+        self.operations = operations or ["ble.provision_wifi", "ble.scan", "ble.read_identity", "ble.status"]
         self.requested_payloads = []
         self.released = []
         self.fleet_scan_result = fleet_scan_result
+        self.fleet_identity_result = fleet_identity_result
         self.scan_payloads = []
+        self.identity_payloads = []
 
     def get_hardware_access_request_schema(self, *, core_base_url: str) -> dict:
         assert core_base_url == "http://core.local"
@@ -76,6 +85,16 @@ class FakeCoreClient:
             raise httpx.HTTPStatusError("not found", request=request, response=response)
         return self.fleet_scan_result
 
+    def read_ble_identity(self, *, core_base_url: str, node_trust_token: str, payload: dict) -> dict:
+        assert core_base_url == "http://core.local"
+        assert node_trust_token == "node-token"
+        self.identity_payloads.append(payload)
+        if self.fleet_identity_result is None:
+            request = httpx.Request("POST", f"{core_base_url}/api/system/nodes/hardware/bluetooth/ble/identity")
+            response = httpx.Response(404, request=request)
+            raise httpx.HTTPStatusError("not found", request=request, response=response)
+        return self.fleet_identity_result
+
 
 class FakeSupervisorClient:
     def __init__(self, *, result: dict | None = None) -> None:
@@ -115,6 +134,7 @@ class FakeSupervisorClient:
             ],
         }
         self.scan_calls = []
+        self.identity_calls = []
 
     def provision_ble_wifi(self, payload: dict) -> dict | None:
         self.calls.append(payload)
@@ -123,6 +143,22 @@ class FakeSupervisorClient:
     def scan_ble(self, payload: dict) -> dict | None:
         self.scan_calls.append(payload)
         return self.scan_result
+
+    def read_ble_identity(self, payload: dict) -> dict | None:
+        self.identity_calls.append(payload)
+        return {
+            "ok": True,
+            "operation": "ble.read_identity",
+            "adapter": "hci0",
+            "target_address": payload["target_address"],
+            "onboarding": {
+                "target_node_id": "voice-endpoint-1",
+                "onboarding_session_id": "recovery-ble-1234",
+                "pairing_nonce": "nonce-123456",
+                "board_profile": "ha_voice_pe",
+                "provisioning_mode": "local_recovery",
+            },
+        }
 
 
 def request_payload(**overrides) -> EndpointBleProvisionWifiRequest:
@@ -153,6 +189,16 @@ def scan_payload(**overrides) -> EndpointBleScanRequest:
     }
     payload.update(overrides)
     return EndpointBleScanRequest.model_validate(payload)
+
+
+def identity_payload(**overrides) -> EndpointBleIdentityRequest:
+    payload = {
+        "adapter": "hci0",
+        "target_address": "AA:BB:CC:DD:EE:FF",
+        "timeout_s": 20,
+    }
+    payload.update(overrides)
+    return EndpointBleIdentityRequest.model_validate(payload)
 
 
 def test_ble_scan_uses_core_fleet_scan_when_available(tmp_path):
@@ -254,6 +300,37 @@ def test_ble_scan_granted_calls_supervisor_and_releases_lease(tmp_path):
     ]
 
 
+def test_ble_scan_falls_back_to_local_when_core_fleet_has_no_bluetooth_supervisors(tmp_path):
+    core = FakeCoreClient(
+        status="granted",
+        fleet_scan_result={
+            "ok": False,
+            "status": "failed",
+            "operation": "ble.scan",
+            "mode": "fleet",
+            "supervisor_count": 0,
+            "completed_supervisor_count": 0,
+            "matching_devices": [],
+            "devices": [],
+            "supervisor_results": [],
+            "error": "bluetooth_supervisor_unavailable",
+        },
+    )
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.scan(scan_payload())
+
+    assert response.ok is True
+    assert core.scan_payloads
+    assert core.requested_payloads[0]["operation"] == "ble.scan"
+    assert supervisor.scan_calls
+
+
 def test_ble_scan_pending_stops_before_supervisor_call(tmp_path):
     core = FakeCoreClient(status="pending")
     supervisor = FakeSupervisorClient()
@@ -278,6 +355,115 @@ def test_ble_scan_rejects_overlong_scan_window():
         assert "less than or equal to 60" in str(exc)
     else:
         raise AssertionError("expected scan_seconds over 60 to be rejected")
+
+
+def test_ble_identity_uses_core_fleet_identity_when_available(tmp_path):
+    core = FakeCoreClient(
+        fleet_identity_result={
+            "ok": True,
+            "status": "completed",
+            "operation": "ble.read_identity",
+            "mode": "fleet",
+            "node_id": "voice-node-main",
+            "target_address": "AA:BB:CC:DD:EE:FF",
+            "identity": {
+                "target_node_id": "voice-endpoint-1",
+                "onboarding_session_id": "recovery-ble-1234",
+                "pairing_nonce": "nonce-123456",
+                "board_profile": "ha_voice_pe",
+                "provisioning_mode": "local_recovery",
+            },
+            "supervisor_results": [],
+        }
+    )
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.read_identity(identity_payload())
+
+    assert response.ok is True
+    assert response.status == "completed"
+    assert response.supervisor_result["mode"] == "fleet"
+    assert response.identity["board_profile"] == "ha_voice_pe"
+    assert response.identity["onboarding_session_id"] == "recovery-ble-1234"
+    assert response.identity["pairing_nonce"] == "nonce-123456"
+    assert core.identity_payloads == [
+        {
+            "node_id": "voice-node-main",
+            "adapter": "hci0",
+            "target_address": "AA:BB:CC:DD:EE:FF",
+            "timeout_s": 20,
+            "reason": "Read BLE endpoint onboarding identity",
+        }
+    ]
+    assert core.requested_payloads == []
+    assert supervisor.identity_calls == []
+
+
+def test_ble_identity_fallback_reads_supervisor_and_releases_lease(tmp_path):
+    core = FakeCoreClient(status="granted")
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.read_identity(identity_payload(supervisor_id="sup-nearby"))
+
+    assert response.ok is True
+    assert response.status == "completed"
+    assert core.requested_payloads[0]["operation"] == "ble.read_identity"
+    assert core.requested_payloads[0]["resource_type"] == "bluetooth"
+    assert core.requested_payloads[0]["supervisor_id"] == "sup-nearby"
+    assert supervisor.identity_calls == [
+        {
+            "node_id": "voice-node-main",
+            "lease_token": "secret-lease-token",
+            "adapter": "hci0",
+            "target_address": "AA:BB:CC:DD:EE:FF",
+            "timeout_s": 20,
+        }
+    ]
+    assert core.released == [{"lease_id": "lease-1", "node_id": "voice-node-main"}]
+    assert response.access_request["lease_token"] == "[REDACTED]"
+    assert response.identity["board_profile"] == "ha_voice_pe"
+    assert response.identity["pairing_nonce"] == "nonce-123456"
+
+
+def test_ble_identity_falls_back_to_local_when_core_fleet_has_no_bluetooth_supervisors(tmp_path):
+    core = FakeCoreClient(
+        status="granted",
+        fleet_identity_result={
+            "ok": False,
+            "status": "failed",
+            "operation": "ble.read_identity",
+            "mode": "fleet",
+            "supervisor_count": 0,
+            "completed_supervisor_count": 0,
+            "identity": {},
+            "supervisor_results": [],
+            "error": "bluetooth_supervisor_unavailable",
+        },
+    )
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.read_identity(identity_payload())
+
+    assert response.ok is True
+    assert core.identity_payloads
+    assert core.requested_payloads[0]["operation"] == "ble.read_identity"
+    assert supervisor.identity_calls
+    assert response.identity["board_profile"] == "ha_voice_pe"
 
 
 def test_ble_onboarding_granted_calls_supervisor_and_releases_lease(tmp_path):
@@ -401,11 +587,14 @@ def test_frontend_exposes_core_governed_ble_operator_flow():
 
     assert "provisionEndpointBleWifi" in client_source
     assert "scanEndpointBleDevices" in client_source
+    assert "readEndpointBleIdentity" in client_source
     assert '"/api/endpoint/ble/provision-wifi"' in client_source
     assert '"/api/endpoint/ble/scan"' in client_source
+    assert '"/api/endpoint/ble/identity"' in client_source
     assert "EndpointBleOnboardingPanel" in dashboard_source
     assert "Core-Governed BLE" in dashboard_source
     assert "Scan BLE" in dashboard_source
+    assert "board_profile" in dashboard_source
     assert "Provision over BLE" in dashboard_source
     assert "endpoint_ephemeral_public_key" in dashboard_source
     assert "wifi_password" in dashboard_source

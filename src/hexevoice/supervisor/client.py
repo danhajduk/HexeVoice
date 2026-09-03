@@ -125,3 +125,16 @@ class SupervisorApiClient:
             payload=payload,
             timeout_s=timeout_s,
         )
+
+    def read_ble_identity(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        try:
+            read_timeout_s = float(payload.get("timeout_s") or 20.0)
+        except (TypeError, ValueError):
+            read_timeout_s = 20.0
+        timeout_s = min(max(self._config.timeout_s, read_timeout_s * 4.0 + 20.0), 180.0)
+        return self._request_json(
+            "POST",
+            "/api/supervisor/hardware/bluetooth/ble/identity",
+            payload=payload,
+            timeout_s=timeout_s,
+        )

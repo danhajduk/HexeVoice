@@ -8,6 +8,8 @@ from fastapi import HTTPException
 import httpx
 
 from hexevoice.api.models import (
+    EndpointBleIdentityRequest,
+    EndpointBleIdentityResponse,
     EndpointBleProvisionWifiRequest,
     EndpointBleProvisionWifiResponse,
     EndpointBleScanRequest,
@@ -20,6 +22,7 @@ from hexevoice.supervisor.client import SupervisorApiClient
 
 BLE_PROVISIONING_OPERATION = "ble.provision_wifi"
 BLE_SCAN_OPERATION = "ble.scan"
+BLE_IDENTITY_OPERATION = "ble.read_identity"
 BLE_PROVISIONING_SERVICE_UUID = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000"
 BLE_PROVISIONING_CONTRACT_VERSION = "1.0"
 BLE_PROVISIONING_ENVELOPE_SCHEMA_VERSION = "1.0"
@@ -82,6 +85,16 @@ def _http_error_detail(exc: httpx.HTTPStatusError, fallback: str) -> str:
     return fallback
 
 
+def _fleet_has_no_bluetooth_supervisors(response: dict[str, Any]) -> bool:
+    error = str(response.get("error") or "").strip()
+    has_supervisor_count = "supervisor_count" in response
+    try:
+        supervisor_count = int(response.get("supervisor_count") or 0)
+    except (TypeError, ValueError):
+        supervisor_count = 0
+    return error == "bluetooth_supervisor_unavailable" or (response.get("mode") == "fleet" and has_supervisor_count and supervisor_count == 0)
+
+
 class EndpointBleOnboardingService:
     def __init__(
         self,
@@ -115,17 +128,18 @@ class EndpointBleOnboardingService:
             payload=payload,
         )
         if fleet_response is not None:
-            fleet_ok = bool(fleet_response.get("ok"))
-            fleet_status = str(fleet_response.get("status") or "").strip().lower()
-            response_status = "completed" if fleet_ok else "pending" if fleet_status == "pending" else "failed"
-            return self._scan_response(
-                status=response_status,
-                node_id=node_id,
-                payload=payload,
-                access_request={},
-                supervisor_result=fleet_response,
-                error=None if fleet_ok or response_status == "pending" else str(fleet_response.get("error") or "core_ble_scan_failed"),
-            )
+            if not _fleet_has_no_bluetooth_supervisors(fleet_response):
+                fleet_ok = bool(fleet_response.get("ok"))
+                fleet_status = str(fleet_response.get("status") or "").strip().lower()
+                response_status = "completed" if fleet_ok else "pending" if fleet_status == "pending" else "failed"
+                return self._scan_response(
+                    status=response_status,
+                    node_id=node_id,
+                    payload=payload,
+                    access_request={},
+                    supervisor_result=fleet_response,
+                    error=None if fleet_ok or response_status == "pending" else str(fleet_response.get("error") or "core_ble_scan_failed"),
+                )
 
         access_response = self._request_hardware_access(
             core_base_url=core_base_url,
@@ -196,6 +210,106 @@ class EndpointBleOnboardingService:
         if supervisor_result and not completed:
             error = str(supervisor_result.get("error") or supervisor_result.get("status") or error or "supervisor_ble_scan_failed")
         return self._scan_response(
+            status="completed" if completed else "failed",
+            node_id=node_id,
+            payload=payload,
+            access_request=access_request,
+            supervisor_result=supervisor_result,
+            release_result=release_result,
+            error=None if completed else error,
+        )
+
+    def read_identity(self, payload: EndpointBleIdentityRequest) -> EndpointBleIdentityResponse:
+        core_base_url, node_id, node_trust_token = self._trusted_node_context()
+        schema_status = self._discover_hardware_access_contract(core_base_url, BLE_IDENTITY_OPERATION)
+        if not schema_status["operation_supported"]:
+            return EndpointBleIdentityResponse(
+                ok=False,
+                status="failed",
+                node_id=node_id,
+                target_address=payload.target_address,
+                access_request={},
+                identity={},
+                error="core_ble_identity_contract_unavailable",
+            )
+
+        fleet_response = self._request_fleet_ble_identity(
+            core_base_url=core_base_url,
+            node_trust_token=node_trust_token,
+            node_id=node_id,
+            payload=payload,
+        )
+        if fleet_response is not None:
+            if not _fleet_has_no_bluetooth_supervisors(fleet_response):
+                fleet_ok = bool(fleet_response.get("ok"))
+                fleet_status = str(fleet_response.get("status") or "").strip().lower()
+                response_status = "completed" if fleet_ok else "pending" if fleet_status == "pending" else "failed"
+                return self._identity_response(
+                    status=response_status,
+                    node_id=node_id,
+                    payload=payload,
+                    access_request={},
+                    supervisor_result=fleet_response,
+                    error=None if fleet_ok or response_status == "pending" else str(fleet_response.get("error") or "core_ble_identity_failed"),
+                )
+
+        access_response = self._request_ble_identity_access(
+            core_base_url=core_base_url,
+            node_trust_token=node_trust_token,
+            node_id=node_id,
+            payload=payload,
+        )
+        access_request = deepcopy(access_response.get("access_request") if isinstance(access_response, dict) else {})
+        access_status = str(access_request.get("status") or "failed").strip().lower()
+        if access_status == "pending":
+            return self._identity_response(
+                status="pending",
+                node_id=node_id,
+                payload=payload,
+                access_request=access_request,
+                error=None,
+            )
+        if access_status != "granted":
+            return self._identity_response(
+                status="denied" if access_status == "denied" else "failed",
+                node_id=node_id,
+                payload=payload,
+                access_request=access_request,
+                error=str(access_request.get("decision_reason") or access_status or "hardware_access_not_granted"),
+            )
+
+        supervisor_result: dict[str, Any] | None = None
+        release_result: dict[str, Any] | None = None
+        error: str | None = None
+        try:
+            lease_token = str(access_request.get("lease_token") or "")
+            if not lease_token:
+                error = "hardware_access_lease_token_missing"
+            else:
+                supervisor_result = self._supervisor_client.read_ble_identity(
+                    self._supervisor_identity_payload(
+                        node_id=node_id,
+                        lease_token=lease_token,
+                        access_request=access_request,
+                        payload=payload,
+                    )
+                )
+                if supervisor_result is None:
+                    error = "supervisor_ble_identity_unavailable"
+        finally:
+            lease_id = str(access_request.get("lease_id") or "")
+            if lease_id:
+                release_result = self._release_lease(
+                    core_base_url=core_base_url,
+                    node_trust_token=node_trust_token,
+                    lease_id=lease_id,
+                    node_id=node_id,
+                )
+
+        completed = bool(supervisor_result and supervisor_result.get("ok"))
+        if supervisor_result and not completed:
+            error = str(supervisor_result.get("error") or supervisor_result.get("status") or error or "supervisor_ble_identity_failed")
+        return self._identity_response(
             status="completed" if completed else "failed",
             node_id=node_id,
             payload=payload,
@@ -442,6 +556,62 @@ class EndpointBleOnboardingService:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"core_ble_scan_failed: {exc}") from exc
 
+    def _request_fleet_ble_identity(
+        self,
+        *,
+        core_base_url: str,
+        node_trust_token: str,
+        node_id: str,
+        payload: EndpointBleIdentityRequest,
+    ) -> dict[str, Any] | None:
+        try:
+            return self._core_client.read_ble_identity(
+                core_base_url=core_base_url,
+                node_trust_token=node_trust_token,
+                payload=_clean_dict(
+                    {
+                        "node_id": node_id,
+                        "supervisor_id": payload.supervisor_id,
+                        "adapter": payload.adapter,
+                        "target_address": payload.target_address,
+                        "timeout_s": payload.timeout_s,
+                        "reason": payload.operator_reason or "Read BLE endpoint onboarding identity",
+                    }
+                ),
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code in {404, 405}:
+                return None
+            raise HTTPException(status_code=exc.response.status_code, detail=_http_error_detail(exc, "core_ble_identity_failed")) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="core_ble_identity_timeout") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"core_ble_identity_failed: {exc}") from exc
+
+    def _request_ble_identity_access(
+        self,
+        *,
+        core_base_url: str,
+        node_trust_token: str,
+        node_id: str,
+        payload: EndpointBleIdentityRequest,
+    ) -> dict[str, Any]:
+        return self._request_hardware_access(
+            core_base_url=core_base_url,
+            node_trust_token=node_trust_token,
+            payload=_clean_dict(
+                {
+                    "node_id": node_id,
+                    "resource_type": "bluetooth",
+                    "operation": BLE_IDENTITY_OPERATION,
+                    "supervisor_id": payload.supervisor_id,
+                    "adapter": payload.adapter,
+                    "duration_s": max(30, min(24 * 60 * 60, int(payload.timeout_s) + 60)),
+                    "reason": payload.operator_reason or "Read BLE endpoint onboarding identity",
+                }
+            ),
+        )
+
     def _request_access(
         self,
         *,
@@ -500,6 +670,24 @@ class EndpointBleOnboardingService:
             }
         )
 
+    def _supervisor_identity_payload(
+        self,
+        *,
+        node_id: str,
+        lease_token: str,
+        access_request: dict[str, Any],
+        payload: EndpointBleIdentityRequest,
+    ) -> dict[str, Any]:
+        return _clean_dict(
+            {
+                "node_id": node_id,
+                "lease_token": lease_token,
+                "adapter": access_request.get("adapter") or payload.adapter,
+                "target_address": payload.target_address,
+                "timeout_s": payload.timeout_s,
+            }
+        )
+
     def _release_lease(self, *, core_base_url: str, node_trust_token: str, lease_id: str, node_id: str) -> dict[str, Any] | None:
         try:
             return self._core_client.release_hardware_lease(
@@ -537,6 +725,46 @@ class EndpointBleOnboardingService:
             schema_status=_redact(schema_status),
             release_result=_redact(release_result) if release_result is not None else None,
             error=error,
+        )
+
+    def _identity_response(
+        self,
+        *,
+        status: str,
+        node_id: str,
+        payload: EndpointBleIdentityRequest,
+        access_request: dict[str, Any],
+        supervisor_result: dict[str, Any] | None = None,
+        release_result: dict[str, Any] | None = None,
+        error: str | None = None,
+    ) -> EndpointBleIdentityResponse:
+        identity: dict[str, Any] = {}
+        adapters: list[dict[str, Any]] = []
+        adapter = payload.adapter
+        if isinstance(supervisor_result, dict):
+            raw_identity = supervisor_result.get("identity") or supervisor_result.get("onboarding")
+            if isinstance(raw_identity, dict):
+                identity = deepcopy(raw_identity)
+            raw_adapters = supervisor_result.get("adapters")
+            if isinstance(raw_adapters, list):
+                adapters = [item for item in raw_adapters if isinstance(item, dict)]
+            adapter_value = supervisor_result.get("adapter")
+            if isinstance(adapter_value, str):
+                adapter = adapter_value
+            elif isinstance(adapter_value, dict):
+                adapter = str(adapter_value.get("adapter") or adapter or "")
+        return EndpointBleIdentityResponse(
+            ok=status == "completed",
+            status=status,  # type: ignore[arg-type]
+            node_id=node_id,
+            target_address=payload.target_address,
+            access_request=_redact(access_request),
+            supervisor_result=_redact(supervisor_result) if supervisor_result is not None else None,
+            identity=identity,
+            adapter=adapter,
+            adapters=adapters,
+            error=error,
+            release_result=_redact(release_result) if release_result is not None else None,
         )
 
     def _scan_response(

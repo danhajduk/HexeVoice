@@ -31,11 +31,11 @@ next implementation tasks:
 | Encryption algorithm | `aes-256-gcm` |
 | Key agreement | `x25519-hkdf-sha256` |
 | GATT service UUID | `7f9c0000-5f04-4d8b-9a46-7c0f7a100000` |
-| Device identity characteristic | `7f9c0001-5f04-4d8b-9a46-7c0f7a100000` |
-| Pairing nonce / claim code characteristic | `7f9c0002-5f04-4d8b-9a46-7c0f7a100000` |
-| Provisioning status characteristic | `7f9c0003-5f04-4d8b-9a46-7c0f7a100000` |
-| Encrypted credential write characteristic | `7f9c0004-5f04-4d8b-9a46-7c0f7a100000` |
-| Ack/error characteristic | `7f9c0005-5f04-4d8b-9a46-7c0f7a100000` |
+| Device identity characteristic | `7f9c0000-5f04-4d8b-9a46-7c0f7a100001` |
+| Pairing nonce / claim code characteristic | `7f9c0000-5f04-4d8b-9a46-7c0f7a100002` |
+| Provisioning status characteristic | `7f9c0000-5f04-4d8b-9a46-7c0f7a100003` |
+| Encrypted credential write characteristic | `7f9c0000-5f04-4d8b-9a46-7c0f7a100004` |
+| Ack/error characteristic | `7f9c0000-5f04-4d8b-9a46-7c0f7a100005` |
 
 Core exposes the hardware access request schema at
 `GET /api/system/nodes/hardware/access-requests/schema` and the Voice

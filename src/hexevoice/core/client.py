@@ -54,6 +54,20 @@ class CoreOnboardingClient:
         response.raise_for_status()
         return response.json()
 
+    def read_ble_identity(self, *, core_base_url: str, node_trust_token: str, payload: dict) -> dict:
+        try:
+            timeout_s = float(payload.get("timeout_s") or 20.0)
+        except (TypeError, ValueError):
+            timeout_s = 20.0
+        response = httpx.post(
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/bluetooth/ble/identity",
+            headers={"X-Node-Trust-Token": node_trust_token},
+            json=payload,
+            timeout=min(max(timeout_s * 4.0 + 30.0, 45.0), 180.0),
+        )
+        response.raise_for_status()
+        return response.json()
+
     def start_onboarding_session(self, *, core_base_url: str, payload: dict) -> dict:
         response = httpx.post(
             f"{core_base_url.rstrip('/')}/api/system/nodes/onboarding/sessions",

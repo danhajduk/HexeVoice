@@ -60,6 +60,8 @@ from hexevoice.api.models import (
     EndpointHeartbeatRequest,
     EndpointHeartbeatResponse,
     EndpointBeepCommandRequest,
+    EndpointBleIdentityRequest,
+    EndpointBleIdentityResponse,
     EndpointBleProvisionWifiRequest,
     EndpointBleProvisionWifiResponse,
     EndpointBleScanRequest,
@@ -1655,6 +1657,10 @@ def create_app(
     @app.post("/api/endpoint/ble/scan", response_model=EndpointBleScanResponse)
     async def endpoint_ble_scan(payload: EndpointBleScanRequest) -> EndpointBleScanResponse:
         return endpoint_ble_onboarding_service.scan(payload)
+
+    @app.post("/api/endpoint/ble/identity", response_model=EndpointBleIdentityResponse)
+    async def endpoint_ble_identity(payload: EndpointBleIdentityRequest) -> EndpointBleIdentityResponse:
+        return endpoint_ble_onboarding_service.read_identity(payload)
 
     @app.post("/api/endpoint/provisioning/reset", response_model=EndpointCommandResponse)
     async def endpoint_provisioning_reset(payload: EndpointCommandRequest) -> EndpointCommandResponse:

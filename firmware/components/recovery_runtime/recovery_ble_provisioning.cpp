@@ -28,11 +28,11 @@ constexpr char kPayloadSchemaId[] = "hexe.voice_node.wifi_backend.v1";
 constexpr char kOperation[] = "ble.provision_wifi";
 constexpr char kLeaseScope[] = "hardware.bluetooth.ble.provision_wifi";
 constexpr char kServiceUuid[] = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000";
-constexpr char kDeviceIdentityUuid[] = "7f9c0001-5f04-4d8b-9a46-7c0f7a100000";
-constexpr char kPairingNonceUuid[] = "7f9c0002-5f04-4d8b-9a46-7c0f7a100000";
-constexpr char kStatusUuid[] = "7f9c0003-5f04-4d8b-9a46-7c0f7a100000";
-constexpr char kEncryptedCredentialsUuid[] = "7f9c0004-5f04-4d8b-9a46-7c0f7a100000";
-constexpr char kAckErrorUuid[] = "7f9c0005-5f04-4d8b-9a46-7c0f7a100000";
+constexpr char kDeviceIdentityUuid[] = "7f9c0000-5f04-4d8b-9a46-7c0f7a100001";
+constexpr char kPairingNonceUuid[] = "7f9c0000-5f04-4d8b-9a46-7c0f7a100002";
+constexpr char kStatusUuid[] = "7f9c0000-5f04-4d8b-9a46-7c0f7a100003";
+constexpr char kEncryptedCredentialsUuid[] = "7f9c0000-5f04-4d8b-9a46-7c0f7a100004";
+constexpr char kAckErrorUuid[] = "7f9c0000-5f04-4d8b-9a46-7c0f7a100005";
 
 constexpr char kEndpointIdKey[] = "endpoint_id";
 constexpr char kDisplayNameKey[] = "display_name";

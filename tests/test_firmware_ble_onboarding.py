@@ -24,11 +24,11 @@ def test_ble_onboarding_declares_core_gatt_contract_constants():
     assert 'kBleProvisioningEncryptionAlgorithm = "aes-256-gcm"' in header
     assert 'kBleProvisioningKeyAgreement = "x25519-hkdf-sha256"' in header
     assert 'kBleProvisioningServiceUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000"' in header
-    assert 'kBleProvisioningDeviceIdentityUuid = "7f9c0001-5f04-4d8b-9a46-7c0f7a100000"' in header
-    assert 'kBleProvisioningPairingNonceUuid = "7f9c0002-5f04-4d8b-9a46-7c0f7a100000"' in header
-    assert 'kBleProvisioningStatusUuid = "7f9c0003-5f04-4d8b-9a46-7c0f7a100000"' in header
-    assert 'kBleProvisioningEncryptedCredentialsUuid = "7f9c0004-5f04-4d8b-9a46-7c0f7a100000"' in header
-    assert 'kBleProvisioningAckErrorUuid = "7f9c0005-5f04-4d8b-9a46-7c0f7a100000"' in header
+    assert 'kBleProvisioningDeviceIdentityUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100001"' in header
+    assert 'kBleProvisioningPairingNonceUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100002"' in header
+    assert 'kBleProvisioningStatusUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100003"' in header
+    assert 'kBleProvisioningEncryptedCredentialsUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100004"' in header
+    assert 'kBleProvisioningAckErrorUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100005"' in header
     assert "BLE_UUID128_INIT(0x00, 0x00, 0x10, 0x7a" in gatt
     assert "BLE_GATT_CHR_F_WRITE" in gatt
     assert '"system/ble_provisioning.cpp"' in cmake

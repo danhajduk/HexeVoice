@@ -64,6 +64,7 @@ def test_standard_route_groups_exist(tmp_path):
     assert client.get("/api/endpoint/time").status_code == 200
     assert client.post("/api/endpoint/ble/provision-wifi", json={}).status_code == 422
     assert client.post("/api/endpoint/ble/scan", json={}).status_code == 400
+    assert client.post("/api/endpoint/ble/identity", json={}).status_code == 422
     assert client.get("/api/endpoint/media").status_code == 200
     assert client.get("/api/firmware/manifest").status_code in {200, 404}
     assert client.get("/api/capabilities").status_code == 200

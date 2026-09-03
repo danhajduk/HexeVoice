@@ -358,6 +358,28 @@ class EndpointBleScanResponse(BaseModel):
     release_result: dict[str, Any] | None = None
 
 
+class EndpointBleIdentityRequest(BaseModel):
+    adapter: str | None = Field(default="hci0", max_length=64)
+    supervisor_id: str | None = Field(default=None, max_length=120)
+    target_address: str = Field(min_length=1, max_length=64)
+    timeout_s: int = Field(default=20, ge=1, le=60)
+    operator_reason: str | None = Field(default=None, max_length=240)
+
+
+class EndpointBleIdentityResponse(BaseModel):
+    ok: bool
+    status: Literal["pending", "denied", "completed", "failed"]
+    node_id: str
+    target_address: str
+    access_request: dict[str, Any] = Field(default_factory=dict)
+    supervisor_result: dict[str, Any] | None = None
+    identity: dict[str, Any] = Field(default_factory=dict)
+    adapter: str | None = None
+    adapters: list[dict[str, Any]] = Field(default_factory=list)
+    error: str | None = None
+    release_result: dict[str, Any] | None = None
+
+
 class EndpointBleProvisionWifiResponse(BaseModel):
     ok: bool
     status: Literal["pending", "denied", "completed", "failed"]

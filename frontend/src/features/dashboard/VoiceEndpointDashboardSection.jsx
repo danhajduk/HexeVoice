@@ -22,6 +22,7 @@ import {
   provisionEndpointBleWifi,
   pushFirmwareOta,
   reformatEndpointStorage,
+  readEndpointBleIdentity,
   resetEndpointProvisioning,
   replayEndpointResponse,
   replayVoiceSession,
@@ -104,6 +105,25 @@ function bleScanSummaryText(result, matchedCount, shownCount) {
   }
   const failureSuffix = failed ? `; ${failed} unavailable` : "";
   return `${prefix}; ${responded}/${rows.length} supervisors responded${failureSuffix}`;
+}
+
+function bleIdentityObject(result) {
+  const identity = result?.identity;
+  return identity && typeof identity === "object" ? identity : {};
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function boardProfileLabel(identity) {
+  return firstText(identity?.board_profile, identity?.board_type, identity?.profile, "unknown");
 }
 
 function formatLocalDateTime(value) {
@@ -1356,6 +1376,8 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [wifiPassword, setWifiPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const [identityDetails, setIdentityDetails] = useState(null);
   const [scanDevices, setScanDevices] = useState([]);
   const [scanSummary, setScanSummary] = useState("");
   const [selectedScanAddress, setSelectedScanAddress] = useState("");
@@ -1377,7 +1399,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   ]);
 
   function useScannedDevice(device) {
-    const address = String(device?.address || "");
+    const address = String(device?.address || "").trim();
     const name = String(device?.name || "").trim();
     if (address) {
       setTargetAddress(address);
@@ -1391,8 +1413,70 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     }
   }
 
+  async function readBleIdentityForDevice(device) {
+    const address = String(device?.address || targetAddress || "").trim();
+    if (!address) {
+      return;
+    }
+    setIdentityBusy(true);
+    setIdentityDetails(null);
+    try {
+      const result = await readEndpointBleIdentity({
+        adapter: adapter || undefined,
+        supervisor_id: device?.supervisor_id || undefined,
+        target_address: address,
+        timeout_s: 20,
+      });
+      const identity = bleIdentityObject(result);
+      setIdentityDetails(identity);
+      const identityTarget = firstText(identity.target_node_id, identity.endpoint_id, identity.node_hardware_id);
+      if (identityTarget) {
+        setTargetNodeId(identityTarget);
+      }
+      const sessionId = firstText(identity.onboarding_session_id, identity.session_id);
+      if (sessionId) {
+        setOnboardingSessionId(sessionId);
+      }
+      if (identity.endpoint_ephemeral_public_key) {
+        setEndpointPublicKey(String(identity.endpoint_ephemeral_public_key));
+      }
+      if (identity.pairing_nonce) {
+        setPairingNonce(String(identity.pairing_nonce));
+      }
+      if (identity.claim_code_ref) {
+        setClaimCodeRef(String(identity.claim_code_ref));
+      }
+      if (identity.sequence) {
+        setSequence(Number(identity.sequence));
+      }
+      if (identity.expires_at) {
+        setExpiresAt(String(identity.expires_at));
+      }
+      const identityDisplayName = firstText(identity.display_name, identityTarget, device?.name);
+      if (identityDisplayName) {
+        setDisplayName(identityDisplayName);
+      }
+      const suffix = result.error ? `: ${result.error}` : "";
+      if (result.status === "completed") {
+        setActionMessage(`BLE identity read for ${boardProfileLabel(identity)}.`);
+      } else {
+        setActionMessage(`BLE identity ${result.status}${suffix}.`);
+      }
+    } catch (err) {
+      setActionMessage(`BLE identity read failed: ${String(err.message || err)}`);
+    } finally {
+      setIdentityBusy(false);
+    }
+  }
+
+  async function handleUseScannedDevice(device) {
+    useScannedDevice(device);
+    await readBleIdentityForDevice(device);
+  }
+
   async function handleBleScan() {
     setScanBusy(true);
+    setIdentityDetails(null);
     try {
       const result = await scanEndpointBleDevices({
         adapter: adapter || undefined,
@@ -1411,7 +1495,8 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       }
       if (matchedDevices.length === 1) {
         useScannedDevice(matchedDevices[0]);
-        setActionMessage("BLE scan found one device and selected it.");
+        setActionMessage("BLE scan found one device; reading onboarding data.");
+        await readBleIdentityForDevice(matchedDevices[0]);
         return;
       }
       if (!matchedDevices.length && displayDevices.length) {
@@ -1501,8 +1586,8 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
                   className={`endpoint-ble-device-row${selected ? " endpoint-ble-device-row-selected" : ""}`}
                   key={address || String(device.name || "unknown")}
                   type="button"
-                  onClick={() => useScannedDevice(device)}
-                  disabled={busy || !address}
+                  onClick={() => handleUseScannedDevice(device)}
+                  disabled={busy || scanBusy || identityBusy || !address}
                 >
                   <span>
                     <strong>{valueOrEmpty(device.name, "Unnamed device")}</strong>
@@ -1511,7 +1596,9 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
                   </span>
                   <span className="endpoint-ble-device-badges">
                     {device.service_uuid_match ? <span className="status-pill status-pill-success">UUID match</span> : null}
-                    <span className="status-pill status-pill-neutral">{selected ? "Selected" : valueOrEmpty(device.transport, "ble")}</span>
+                    <span className="status-pill status-pill-neutral">
+                      {selected ? (identityBusy ? "Reading" : "Selected") : valueOrEmpty(device.transport, "ble")}
+                    </span>
                   </span>
                 </button>
               );
@@ -1522,6 +1609,26 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
         )}
         {scanSummary ? <p className="muted-text endpoint-ble-scan-summary">{scanSummary}</p> : null}
       </div>
+      {identityDetails ? (
+        <dl className="facts endpoint-ble-identity-facts">
+          <div>
+            <dt>Board</dt>
+            <dd>{boardProfileLabel(identityDetails)}</dd>
+          </div>
+          <div>
+            <dt>Mode</dt>
+            <dd>{valueOrEmpty(identityDetails.provisioning_mode || identityDetails.mode, "unknown")}</dd>
+          </div>
+          <div>
+            <dt>Firmware</dt>
+            <dd>{valueOrEmpty(identityDetails.firmware_version, "unknown")}</dd>
+          </div>
+          <div>
+            <dt>Session</dt>
+            <dd>{valueOrEmpty(identityDetails.onboarding_session_id || identityDetails.session_id, "none")}</dd>
+          </div>
+        </dl>
+      ) : null}
       <form className="endpoint-metadata-form" onSubmit={handleBleProvision}>
         <label>
           <span>Target node</span>
@@ -1605,7 +1712,11 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
             disabled={busy}
           />
         </label>
-        <button className="btn btn-primary" type="submit" disabled={busy || !targetNodeId || !onboardingSessionId || !endpointPublicKey || !wifiSsid}>
+        <button
+          className="btn btn-primary"
+          type="submit"
+          disabled={busy || identityBusy || !targetNodeId || !onboardingSessionId || !endpointPublicKey || !wifiSsid}
+        >
           {busy ? "Provisioning..." : "Provision over BLE"}
         </button>
       </form>
