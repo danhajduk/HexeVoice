@@ -430,12 +430,9 @@ extern "C" const char *hexe_ble_provisioning_pairing_nonce_json() {
   static std::string payload;
   ensure_pairing_nonce();
   cJSON *root = cJSON_CreateObject();
-  cJSON_AddStringToObject(root, "contract_version", kContractVersion);
   cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
   cJSON_AddStringToObject(root, "target_node_id", hexe::config::kEndpointId);
-  cJSON_AddStringToObject(root, "node_hardware_id", hardware_id());
   cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
-  cJSON_AddStringToObject(root, "mode", "local_recovery");
   payload = print_json(root);
   return payload.c_str();
 }
