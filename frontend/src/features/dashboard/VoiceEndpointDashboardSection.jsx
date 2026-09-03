@@ -43,6 +43,7 @@ import { VoiceEndpointActionsCard } from "./cards/VoiceEndpointActionsCard";
 
 const LATEST_SPEECH_VISIBLE_MS = 20000;
 const HEXE_BLE_PROVISIONING_SERVICE_UUID = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000";
+const VOICE_PROVISIONING_PAYLOAD_SCHEMA_ID = "hexe.voice_node.wifi_backend.v1";
 
 function valueOrEmpty(value, fallback = "none") {
   return value === null || value === undefined || value === "" ? fallback : value;
@@ -139,6 +140,8 @@ function blePairingStateLabel(value) {
       return "Device found";
     case "waiting_for_endpoint_online":
       return "Waiting for endpoint";
+    case "identity_only":
+      return "Identity only";
     case "completed":
       return "Completed";
     case "timed_out":
@@ -157,10 +160,29 @@ function blePairingStatePill(value) {
   if (value === "timed_out" || value === "failed") {
     return "status-pill-danger";
   }
-  if (value === "waiting_for_endpoint_online") {
+  if (value === "waiting_for_endpoint_online" || value === "identity_only") {
     return "status-pill-warning";
   }
   return "status-pill-neutral";
+}
+
+function blePairingProvisioningIssue(identity) {
+  if (!identity || typeof identity !== "object") {
+    return "";
+  }
+  const schemas = Array.isArray(identity.supported_payload_schemas)
+    ? identity.supported_payload_schemas.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  if (identity.provisioning_capable === false) {
+    return "Device identity received, but this firmware cannot receive Wi-Fi credentials over BLE yet.";
+  }
+  if (!firstText(identity.endpoint_ephemeral_public_key)) {
+    return "Device identity is missing the BLE encryption key required for Wi-Fi credentials.";
+  }
+  if (!schemas.includes(VOICE_PROVISIONING_PAYLOAD_SCHEMA_ID)) {
+    return "Device identity is missing the Voice Wi-Fi provisioning payload support.";
+  }
+  return "";
 }
 
 function blePairingErrorMessage(error) {
@@ -1437,7 +1459,10 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
 
   const pairingSessionId = firstText(pairingSession?.session_id, onboardingSessionId);
   const pairingIdentityDeviceId = firstText(identityDetails?.device_id, identityDetails?.target_node_id, targetNodeId);
-  const canApprovePairing = pairingSessionId && pairingUiState === "ready_to_provision" && pairingIdentityDeviceId;
+  const pairingProvisioningIssue = blePairingProvisioningIssue(identityDetails);
+  const pairingDisplayState =
+    pairingProvisioningIssue && ["ready_to_provision", "waiting_for_endpoint_online"].includes(pairingUiState) ? "identity_only" : pairingUiState;
+  const canApprovePairing = pairingSessionId && pairingUiState === "ready_to_provision" && pairingIdentityDeviceId && !pairingProvisioningIssue;
 
   useEffect(() => {
     setTargetNodeId(endpointStatus?.endpoint_id || "");
@@ -1736,29 +1761,32 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
         <div className="section-heading">
           <div>
             <p className="panel-kicker">Pairing Session</p>
-            <h3>{blePairingStateLabel(pairingUiState)}</h3>
+            <h3>{blePairingStateLabel(pairingDisplayState)}</h3>
           </div>
-          <span className={`status-pill ${blePairingStatePill(pairingUiState)}`}>{blePairingStateLabel(pairingUiState)}</span>
+          <span className={`status-pill ${blePairingStatePill(pairingDisplayState)}`}>{blePairingStateLabel(pairingDisplayState)}</span>
         </div>
         {identityDetails ? (
-          <dl className="facts endpoint-ble-identity-facts">
-            <div>
-              <dt>Device ID</dt>
-              <dd>{valueOrEmpty(pairingIdentityDeviceId, "unknown")}</dd>
-            </div>
-            <div>
-              <dt>Board</dt>
-              <dd>{boardProfileLabel(identityDetails)}</dd>
-            </div>
-            <div>
-              <dt>Firmware</dt>
-              <dd>{valueOrEmpty(identityDetails.firmware_version, "unknown")}</dd>
-            </div>
-            <div>
-              <dt>Mode</dt>
-              <dd>{valueOrEmpty(identityDetails.provisioning_mode || identityDetails.mode, "unknown")}</dd>
-            </div>
-          </dl>
+          <>
+            <dl className="facts endpoint-ble-identity-facts">
+              <div>
+                <dt>Device ID</dt>
+                <dd>{valueOrEmpty(pairingIdentityDeviceId, "unknown")}</dd>
+              </div>
+              <div>
+                <dt>Board</dt>
+                <dd>{boardProfileLabel(identityDetails)}</dd>
+              </div>
+              <div>
+                <dt>Firmware</dt>
+                <dd>{valueOrEmpty(identityDetails.firmware_version, "unknown")}</dd>
+              </div>
+              <div>
+                <dt>Mode</dt>
+                <dd>{valueOrEmpty(identityDetails.provisioning_mode || identityDetails.mode, "unknown")}</dd>
+              </div>
+            </dl>
+            {pairingProvisioningIssue ? <p className="callout callout-warning">{pairingProvisioningIssue}</p> : null}
+          </>
         ) : (
           <p className="muted-text">
             {pairingSessionId ? "Waiting for a setup-mode endpoint to find this pairing session." : "Start pairing, then power or restart the endpoint in setup mode."}
