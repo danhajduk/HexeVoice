@@ -163,6 +163,17 @@ function blePairingStatePill(value) {
   return "status-pill-neutral";
 }
 
+function blePairingErrorMessage(error) {
+  const message = String(error?.message || error || "");
+  if (message.includes("core_admin_token_not_configured")) {
+    return "BLE pairing needs the Core admin token configured on this Voice node.";
+  }
+  if (message.includes("core_connection_not_configured")) {
+    return "BLE pairing needs this Voice node to be connected to Core.";
+  }
+  return message || "BLE pairing failed.";
+}
+
 function formatLocalDateTime(value) {
   if (!value) {
     return "none";
@@ -1516,7 +1527,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       setActionMessage(`${blePairingStateLabel(result.ui_state)}${suffix}.`);
     } catch (err) {
       setPairingUiState("failed");
-      setActionMessage(`BLE pairing session failed: ${String(err.message || err)}`);
+      setActionMessage(blePairingErrorMessage(err));
     } finally {
       setPairingBusy(false);
     }
@@ -1536,7 +1547,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       }
     } catch (err) {
       setPairingUiState("failed");
-      setActionMessage(`BLE pairing refresh failed: ${String(err.message || err)}`);
+      setActionMessage(blePairingErrorMessage(err));
     } finally {
       setPairingPollBusy(false);
     }
@@ -1556,7 +1567,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       setActionMessage("BLE device approved. Waiting for it to come online with the same device id.");
       await onRefresh();
     } catch (err) {
-      setActionMessage(`BLE pairing approval failed: ${String(err.message || err)}`);
+      setActionMessage(blePairingErrorMessage(err));
     } finally {
       setPairingApproveBusy(false);
     }
@@ -1574,7 +1585,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       applyPairingResult(result);
       setActionMessage("BLE pairing session canceled.");
     } catch (err) {
-      setActionMessage(`BLE pairing cancel failed: ${String(err.message || err)}`);
+      setActionMessage(blePairingErrorMessage(err));
     } finally {
       setPairingBusy(false);
     }
