@@ -68,40 +68,48 @@ class CoreOnboardingClient:
         response.raise_for_status()
         return response.json()
 
-    def create_ble_pairing_session(self, *, core_base_url: str, admin_token: str, payload: dict) -> dict:
+    def create_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, payload: dict) -> dict:
         response = httpx.post(
-            f"{core_base_url.rstrip('/')}/api/system/hardware/bluetooth/ble/pairing-sessions",
-            headers={"X-Admin-Token": admin_token},
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/bluetooth/ble/pairing-sessions",
+            headers={"X-Node-Trust-Token": node_trust_token},
             json=payload,
             timeout=10.0,
         )
         response.raise_for_status()
         return response.json()
 
-    def get_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, refresh: bool = True) -> dict:
+    def get_ble_pairing_session(
+        self,
+        *,
+        core_base_url: str,
+        node_trust_token: str,
+        node_id: str,
+        session_id: str,
+        refresh: bool = True,
+    ) -> dict:
         response = httpx.get(
-            f"{core_base_url.rstrip('/')}/api/system/hardware/bluetooth/ble/pairing-sessions/{session_id}",
-            headers={"X-Admin-Token": admin_token},
-            params={"refresh": str(bool(refresh)).lower()},
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/bluetooth/ble/pairing-sessions/{session_id}",
+            headers={"X-Node-Trust-Token": node_trust_token},
+            params={"node_id": node_id, "refresh": str(bool(refresh)).lower()},
             timeout=10.0,
         )
         response.raise_for_status()
         return response.json()
 
-    def approve_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, payload: dict) -> dict:
+    def approve_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, session_id: str, payload: dict) -> dict:
         response = httpx.post(
-            f"{core_base_url.rstrip('/')}/api/system/hardware/bluetooth/ble/pairing-sessions/{session_id}/approve",
-            headers={"X-Admin-Token": admin_token},
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/bluetooth/ble/pairing-sessions/{session_id}/approve",
+            headers={"X-Node-Trust-Token": node_trust_token},
             json=payload,
             timeout=10.0,
         )
         response.raise_for_status()
         return response.json()
 
-    def cancel_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, payload: dict) -> dict:
+    def cancel_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, session_id: str, payload: dict) -> dict:
         response = httpx.post(
-            f"{core_base_url.rstrip('/')}/api/system/hardware/bluetooth/ble/pairing-sessions/{session_id}/cancel",
-            headers={"X-Admin-Token": admin_token},
+            f"{core_base_url.rstrip('/')}/api/system/nodes/hardware/bluetooth/ble/pairing-sessions/{session_id}/cancel",
+            headers={"X-Node-Trust-Token": node_trust_token},
             json=payload,
             timeout=10.0,
         )

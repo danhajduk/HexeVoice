@@ -10,7 +10,6 @@ from hexevoice.api.models import (
     EndpointBleProvisionWifiRequest,
     EndpointBleScanRequest,
 )
-from hexevoice.config.settings import Settings
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
 
@@ -116,33 +115,36 @@ class FakeCoreClient:
             raise httpx.HTTPStatusError("not found", request=request, response=response)
         return self.fleet_identity_result
 
-    def create_ble_pairing_session(self, *, core_base_url: str, admin_token: str, payload: dict) -> dict:
+    def create_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, payload: dict) -> dict:
         assert core_base_url == "http://core.local"
-        assert admin_token == "admin-token"
+        assert node_trust_token == "node-token"
         self.pairing_calls.append({"operation": "create", "payload": payload})
         session = dict(self.pairing_session)
         session.update({"status": "waiting", "adapter": payload.get("adapter")})
         self.pairing_session = session
         return {"ok": True, "pairing_session": session}
 
-    def get_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, refresh: bool = True) -> dict:
+    def get_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, node_id: str, session_id: str, refresh: bool = True) -> dict:
         assert core_base_url == "http://core.local"
-        assert admin_token == "admin-token"
+        assert node_trust_token == "node-token"
+        assert node_id == "voice-node-main"
         self.pairing_calls.append({"operation": "get", "session_id": session_id, "refresh": refresh})
         return {"ok": True, "pairing_session": dict(self.pairing_session)}
 
-    def approve_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, payload: dict) -> dict:
+    def approve_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, session_id: str, payload: dict) -> dict:
         assert core_base_url == "http://core.local"
-        assert admin_token == "admin-token"
+        assert node_trust_token == "node-token"
+        assert payload["node_id"] == "voice-node-main"
         self.pairing_calls.append({"operation": "approve", "session_id": session_id, "payload": payload})
         session = dict(self.pairing_session)
         session.update({"status": "approved", "approved_device_id": payload["device_id"]})
         self.pairing_session = session
         return {"ok": True, "pairing_session": session}
 
-    def cancel_ble_pairing_session(self, *, core_base_url: str, admin_token: str, session_id: str, payload: dict) -> dict:
+    def cancel_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, session_id: str, payload: dict) -> dict:
         assert core_base_url == "http://core.local"
-        assert admin_token == "admin-token"
+        assert node_trust_token == "node-token"
+        assert payload["node_id"] == "voice-node-main"
         self.pairing_calls.append({"operation": "cancel", "session_id": session_id, "payload": payload})
         session = dict(self.pairing_session)
         session.update({"status": "canceled"})
@@ -520,7 +522,7 @@ def test_ble_identity_falls_back_to_local_when_core_fleet_has_no_bluetooth_super
     assert response.identity["board_profile"] == "ha_voice_pe"
 
 
-def test_ble_pairing_session_lifecycle_uses_core_admin_token_and_redacts_identity(tmp_path):
+def test_ble_pairing_session_lifecycle_uses_node_trust_and_redacts_identity(tmp_path):
     core = FakeCoreClient(
         pairing_session={
             "session_id": "blepair-test",
@@ -543,7 +545,6 @@ def test_ble_pairing_session_lifecycle_uses_core_admin_token_and_redacts_identit
     )
     service = EndpointBleOnboardingService(
         onboarding_state_store=trusted_store(tmp_path),
-        settings=Settings(core_admin_token="admin-token"),
         core_client=core,
         supervisor_client=FakeSupervisorClient(),
     )
@@ -567,6 +568,7 @@ def test_ble_pairing_session_lifecycle_uses_core_admin_token_and_redacts_identit
     canceled = service.cancel_pairing_session("blepair-test", EndpointBlePairingSessionCancelRequest(operator_reason="closed"))
 
     assert created.status == "waiting"
+    assert core.pairing_calls[0]["payload"]["node_id"] == "voice-node-main"
     assert core.pairing_calls[0]["payload"]["payload_schema_id"] == "hexe.voice_node.wifi_backend.v1"
     assert found.status == "found"
     assert found.ui_state == "ready_to_provision"
@@ -593,7 +595,6 @@ def test_ble_pairing_approval_status_requires_matching_session_identity(tmp_path
     )
     service = EndpointBleOnboardingService(
         onboarding_state_store=trusted_store(tmp_path),
-        settings=Settings(core_admin_token="admin-token"),
         core_client=core,
         supervisor_client=FakeSupervisorClient(),
     )

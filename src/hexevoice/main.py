@@ -684,7 +684,6 @@ def create_app(
     )
     endpoint_ble_onboarding_service = EndpointBleOnboardingService(
         onboarding_state_store=onboarding_state_store,
-        settings=app_settings,
         supervisor_client=SupervisorApiClient(),
     )
     endpoint_discovery_service = EndpointDiscoveryService(
