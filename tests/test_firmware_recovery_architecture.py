@@ -204,6 +204,18 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert '"board_profile"' in ble_source
     assert '"onboarding_session_id"' in ble_source
     assert '"identity_sent"' in ble_source
+    identity_json = ble_source[
+        ble_source.index("hexe_ble_provisioning_device_identity_json") : ble_source.index(
+            "hexe_ble_provisioning_pairing_nonce_json"
+        )
+    ]
+    pairing_nonce_json = ble_source[
+        ble_source.index("hexe_ble_provisioning_pairing_nonce_json") : ble_source.index(
+            "hexe_ble_provisioning_status_json"
+        )
+    ]
+    assert '"pairing_nonce"' not in identity_json
+    assert '"pairing_nonce"' in pairing_nonce_json
     assert "remember_host_pairing_offer" in ble_source
     assert "hexe_ble_provisioning_handle_encrypted_credentials" in ble_source
     assert "save_local_recovery_payload" in ble_source
