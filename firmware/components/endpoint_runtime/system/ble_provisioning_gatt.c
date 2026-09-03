@@ -697,7 +697,7 @@ static void pairing_scan_poll_task(void *param) {
   (void)param;
   while (1) {
     vTaskDelay(pdMS_TO_TICKS(kPairingScanPollIntervalMs));
-    if (pairing_scan_requested && !pairing_scan_active && !client_connecting && !client_connected) {
+    if (pairing_scan_requested && !pairing_scan_active && !client_connecting && !client_connected && !connected) {
       start_pairing_scan();
     }
   }
