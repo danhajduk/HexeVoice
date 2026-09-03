@@ -19,18 +19,27 @@ constexpr const char *kBleProvisioningPairingNonceUuid = "7f9c0000-5f04-4d8b-9a4
 constexpr const char *kBleProvisioningStatusUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100003";
 constexpr const char *kBleProvisioningEncryptedCredentialsUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100004";
 constexpr const char *kBleProvisioningAckErrorUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100005";
+constexpr const char *kBleHostPairingAdvertOperation = "ble.host_pairing_advert";
+constexpr const char *kBleHostPairingAdvertRole = "host_pairing_advert";
 
 struct BleProvisioningStatus {
   bool supported;
   bool enabled;
   bool eligible;
   bool advertising;
+  bool central_scanning;
+  bool host_pairing_found;
+  bool host_pairing_role_match;
   bool provisioned;
   const char *transport;
   const char *state;
   const char *reason;
   const char *last_ack;
   const char *last_error;
+  const char *host_pairing_address;
+  const char *host_pairing_name;
+  int host_pairing_rssi;
+  int64_t host_pairing_seen_at_unix_ms;
   int64_t expires_at_unix_ms;
 };
 

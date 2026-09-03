@@ -307,3 +307,4 @@ Task 289: Add HexeVoice backend and operator flow support for Core-governed BLE 
 Task 290: Add recovery-app BLE provisioning support using the same Core contract where available and a local recovery-safe fallback when Core is offline, without exposing plaintext credentials in logs or diagnostics - Completed on 09/02/2026 02:26
 Task 291: Add BLE onboarding end-to-end tests, fake BLE/GATT harnesses, security regression checks, docs, and physical-device validation criteria across supported endpoint boards - Completed on 09/02/2026 02:33
 Task 292: Define HexeVoice endpoint behavior for Core-published BLE pairing sessions - Completed on 09/03/2026 12:16
+Task 293: Implement endpoint firmware BLE central scanning for Hexe pairing adverts - Completed on 09/03/2026 12:40

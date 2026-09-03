@@ -17,6 +17,7 @@
 
 extern "C" int hexe_ble_provisioning_gatt_init(const char *device_name);
 extern "C" int hexe_ble_provisioning_gatt_set_advertising(int enabled);
+extern "C" int hexe_ble_pairing_central_set_scanning(int enabled);
 
 namespace {
 constexpr char kTag[] = "hexe_recovery_ble";
@@ -48,10 +49,17 @@ struct RecoveryBleState {
   bool initialized{false};
   bool enabled{false};
   bool advertising{false};
+  bool central_scanning{false};
+  bool host_pairing_found{false};
+  bool host_pairing_role_match{false};
   char state[24]{"idle"};
   char reason[64]{"not_started"};
   char last_ack[32]{""};
   char last_error[64]{""};
+  char host_pairing_address[18]{""};
+  char host_pairing_name[40]{""};
+  int host_pairing_rssi{0};
+  int64_t host_pairing_seen_at_us{0};
   char onboarding_session_id[64]{""};
   char pairing_nonce[48]{""};
   int64_t issued_at_us{0};
@@ -61,7 +69,7 @@ RecoveryBleState g_ble;
 
 bool nimble_config_enabled() {
 #if defined(CONFIG_BT_ENABLED) && defined(CONFIG_BT_NIMBLE_ENABLED) && defined(CONFIG_BT_NIMBLE_ROLE_PERIPHERAL) && \
-    defined(CONFIG_BT_NIMBLE_GATT_SERVER)
+    defined(CONFIG_BT_NIMBLE_GATT_SERVER) && defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) && defined(CONFIG_BT_NIMBLE_GATT_CLIENT)
   return true;
 #else
   return false;
@@ -305,6 +313,9 @@ void init_recovery_ble_provisioning() {
   } else {
     set_error("gatt_backend_unavailable");
   }
+  if (hexe_ble_pairing_central_set_scanning(1) != 0) {
+    g_ble.central_scanning = false;
+  }
 }
 
 bool recovery_ble_enabled() {
@@ -333,11 +344,23 @@ std::string render_recovery_ble_status_json() {
   cJSON_AddBoolToObject(root, "supported", board_supported());
   cJSON_AddBoolToObject(root, "enabled", g_ble.enabled);
   cJSON_AddBoolToObject(root, "advertising", g_ble.advertising);
+  cJSON_AddBoolToObject(root, "central_scanning", g_ble.central_scanning);
   cJSON_AddStringToObject(root, "mode", "local_recovery");
   cJSON_AddStringToObject(root, "core_governed_mode", "endpoint_app");
   cJSON_AddStringToObject(root, "state", g_ble.state);
   cJSON_AddStringToObject(root, "reason", g_ble.reason);
   cJSON_AddStringToObject(root, "service_uuid", kServiceUuid);
+  cJSON *host_pairing = cJSON_AddObjectToObject(root, "host_pairing");
+  cJSON_AddBoolToObject(host_pairing, "found", g_ble.host_pairing_found);
+  cJSON_AddBoolToObject(host_pairing, "role_match", g_ble.host_pairing_role_match);
+  if (g_ble.host_pairing_address[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "address", g_ble.host_pairing_address);
+  }
+  if (g_ble.host_pairing_name[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "name", g_ble.host_pairing_name);
+  }
+  cJSON_AddNumberToObject(host_pairing, "rssi", g_ble.host_pairing_rssi);
+  cJSON_AddNumberToObject(host_pairing, "seen_at_unix_ms", g_ble.host_pairing_seen_at_us == 0 ? 0 : g_ble.host_pairing_seen_at_us / 1000);
   cJSON_AddStringToObject(root, "device_identity_uuid", kDeviceIdentityUuid);
   cJSON_AddStringToObject(root, "pairing_nonce_uuid", kPairingNonceUuid);
   cJSON_AddStringToObject(root, "provisioning_status_uuid", kStatusUuid);
@@ -422,4 +445,29 @@ extern "C" int hexe_ble_provisioning_handle_encrypted_credentials(const char *js
   const bool applied = handle_local_recovery_write(root);
   cJSON_Delete(root);
   return applied ? 0 : -1;
+}
+
+extern "C" void hexe_ble_pairing_scan_state_changed(int scanning, const char *reason, int rc) {
+  g_ble.central_scanning = scanning != 0;
+  if (reason != nullptr && reason[0] != '\0' && scanning == 0 && rc != 0) {
+    set_state("awaiting_credentials", reason);
+  }
+}
+
+extern "C" void hexe_ble_pairing_host_advert_seen(
+    const char *address,
+    int rssi,
+    const char *name,
+    int host_pairing_role_match) {
+  if (address == nullptr || address[0] == '\0') {
+    return;
+  }
+  copy_cstr(g_ble.host_pairing_address, sizeof(g_ble.host_pairing_address), address);
+  copy_cstr(g_ble.host_pairing_name, sizeof(g_ble.host_pairing_name), name == nullptr ? "" : name);
+  g_ble.host_pairing_rssi = rssi;
+  g_ble.host_pairing_role_match = host_pairing_role_match != 0;
+  g_ble.host_pairing_found = true;
+  g_ble.host_pairing_seen_at_us = esp_timer_get_time();
+  set_state("pairing_advert_seen", g_ble.host_pairing_role_match ? "host_pairing_advert" : "uuid_match");
+  ESP_LOGI(kTag, "BLE host pairing advert seen address=%s rssi=%d role_match=%d", g_ble.host_pairing_address, rssi, host_pairing_role_match);
 }

@@ -194,6 +194,10 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert '"local_recovery"' in ble_source
     assert '"core_governed_requires_endpoint_app"' in ble_source
     assert "hexe_ble_provisioning_gatt_init" in ble_source
+    assert "hexe_ble_pairing_central_set_scanning(1)" in ble_source
+    assert '"central_scanning"' in ble_source
+    assert '"host_pairing"' in ble_source
+    assert "hexe_ble_pairing_host_advert_seen" in ble_source
     assert "hexe_ble_provisioning_handle_encrypted_credentials" in ble_source
     assert "save_local_recovery_payload" in ble_source
     assert "set_nvs_string(handle, kWifiSsidKey" in ble_source

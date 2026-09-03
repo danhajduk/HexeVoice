@@ -29,6 +29,8 @@ def test_ble_onboarding_declares_core_gatt_contract_constants():
     assert 'kBleProvisioningStatusUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100003"' in header
     assert 'kBleProvisioningEncryptedCredentialsUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100004"' in header
     assert 'kBleProvisioningAckErrorUuid = "7f9c0000-5f04-4d8b-9a46-7c0f7a100005"' in header
+    assert 'kBleHostPairingAdvertOperation = "ble.host_pairing_advert"' in header
+    assert 'kBleHostPairingAdvertRole = "host_pairing_advert"' in header
     assert "BLE_UUID128_INIT(0x00, 0x00, 0x10, 0x7a" in gatt
     assert "BLE_GATT_CHR_F_WRITE" in gatt
     assert '"system/ble_provisioning.cpp"' in cmake
@@ -64,10 +66,40 @@ def test_ble_onboarding_is_gated_by_board_profile_and_nimble_config():
     assert "CONFIG_BT_ENABLED" in source
     assert "CONFIG_BT_NIMBLE_ENABLED" in source
     assert "CONFIG_BT_NIMBLE_ROLE_PERIPHERAL" in source
+    assert "CONFIG_BT_NIMBLE_ROLE_CENTRAL" in source
     assert "CONFIG_BT_NIMBLE_GATT_SERVER" in source
+    assert "CONFIG_BT_NIMBLE_GATT_CLIENT" in source
     assert "ble_transport == \"native\"" in generator
     assert "kBleOnboardingSupported" in generator
     assert "CONFIG_BT_NIMBLE_ENABLED=y" in defaults
+
+
+def test_ble_onboarding_scans_for_core_published_pairing_adverts():
+    header = BLE_HEADER.read_text(encoding="utf-8")
+    source = BLE_SOURCE.read_text(encoding="utf-8")
+    gatt = BLE_GATT.read_text(encoding="utf-8")
+    backend = BACKEND_CLIENT.read_text(encoding="utf-8")
+    build_script = Path("firmware/build.sh").read_text(encoding="utf-8")
+
+    assert "central_scanning" in header
+    assert "host_pairing_found" in header
+    assert "host_pairing_address" in header
+    assert "hexe_ble_pairing_central_set_scanning" in source
+    assert "eligible_for_host_pairing_scan()" in source
+    assert '"host_pairing"' in source
+    assert '"central_scanning"' in source
+    assert '"host_pairing"' in backend
+    assert "fields_include_service_uuid" in gatt
+    assert "handle_pairing_scan_result" in gatt
+    assert "ble_hs_adv_parse_fields" in gatt
+    assert "ble_gap_disc(" in gatt
+    assert "BLE_GAP_EVENT_DISC" in gatt
+    assert "host_pairing_role_marker" in gatt
+    assert "'H', 'X', 'P', 'A'" in gatt
+    assert "hexe_ble_pairing_host_advert_seen" in gatt
+    assert "CONFIG_BT_NIMBLE_ROLE_CENTRAL=y" in build_script
+    assert "CONFIG_BT_NIMBLE_GATT_CLIENT=y" in build_script
+    assert "BLE onboarding now requires NimBLE peripheral and central roles" in build_script
 
 
 def test_ble_onboarding_rejects_unusable_envelopes_before_writing_settings():

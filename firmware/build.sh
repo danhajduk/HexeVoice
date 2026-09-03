@@ -193,11 +193,15 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="${partition_csv}"
 ${flash_size_symbol}=y
 CONFIG_ESPTOOLPY_FLASHSIZE="${flash_size_value}"
 EOF
-  if [[ "${FIRMWARE_APP}" == "endpoint" && "${bluetooth_transport}" == "native" ]]; then
+  if [[ "${bluetooth_transport}" == "native" ]]; then
     cat >> "${output}" <<'EOF'
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=y
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=y
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
+CONFIG_BT_NIMBLE_GATT_CLIENT=y
 CONFIG_BT_NIMBLE_GATT_SERVER=y
 EOF
   fi
@@ -217,9 +221,11 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
     return
   fi
   bluetooth_transport="$(board_profile_value "${profile}" hardware.wireless.transport)"
-  if [[ -f "${sdkconfig_path}" && "${FIRMWARE_APP}" == "endpoint" && "${bluetooth_transport}" == "native" ]] &&
-    ! grep -q "^CONFIG_BT_NIMBLE_ENABLED=y$" "${sdkconfig_path}"; then
-    echo "Refreshing generated sdkconfig for ${profile}; BLE onboarding now requires NimBLE"
+  if [[ -f "${sdkconfig_path}" && "${bluetooth_transport}" == "native" ]] &&
+    { ! grep -q "^CONFIG_BT_NIMBLE_ENABLED=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_BT_NIMBLE_ROLE_CENTRAL=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_BT_NIMBLE_GATT_CLIENT=y$" "${sdkconfig_path}"; }; then
+    echo "Refreshing generated sdkconfig for ${profile}; BLE onboarding now requires NimBLE peripheral and central roles"
     rm -f "${sdkconfig_path}"
   fi
 }

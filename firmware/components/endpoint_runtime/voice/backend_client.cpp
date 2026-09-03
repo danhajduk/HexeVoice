@@ -1498,9 +1498,21 @@ std::string endpoint_capabilities_json() {
   cJSON_AddBoolToObject(ble, "enabled", ble_status.enabled);
   cJSON_AddBoolToObject(ble, "eligible", ble_status.eligible);
   cJSON_AddBoolToObject(ble, "advertising", ble_status.advertising);
+  cJSON_AddBoolToObject(ble, "central_scanning", ble_status.central_scanning);
   cJSON_AddStringToObject(ble, "transport", ble_status.transport);
   cJSON_AddStringToObject(ble, "state", ble_status.state);
   cJSON_AddStringToObject(ble, "reason", ble_status.reason);
+  cJSON *host_pairing = cJSON_AddObjectToObject(ble, "host_pairing");
+  cJSON_AddBoolToObject(host_pairing, "found", ble_status.host_pairing_found);
+  cJSON_AddBoolToObject(host_pairing, "role_match", ble_status.host_pairing_role_match);
+  if (ble_status.host_pairing_address[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "address", ble_status.host_pairing_address);
+  }
+  if (ble_status.host_pairing_name[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "name", ble_status.host_pairing_name);
+  }
+  cJSON_AddNumberToObject(host_pairing, "rssi", ble_status.host_pairing_rssi);
+  cJSON_AddNumberToObject(host_pairing, "seen_at_unix_ms", ble_status.host_pairing_seen_at_unix_ms);
   cJSON_AddBoolToObject(ble, "pairing_nonce_available", ble_status.eligible);
   cJSON_AddBoolToObject(ble, "claim_code_ref_available", false);
   if (ble_status.last_ack[0] != '\0') {

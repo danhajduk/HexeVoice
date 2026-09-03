@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -25,11 +26,15 @@ const char *hexe_ble_provisioning_pairing_nonce_json(void);
 const char *hexe_ble_provisioning_status_json(void);
 const char *hexe_ble_provisioning_ack_error_json(void);
 int hexe_ble_provisioning_handle_encrypted_credentials(const char *json, unsigned int length);
+void hexe_ble_pairing_scan_state_changed(int scanning, const char *reason, int rc);
+void hexe_ble_pairing_host_advert_seen(const char *address, int rssi, const char *name, int host_pairing_role_match);
 
 static const char *TAG = "hexe_ble_gatt";
 
 static uint8_t own_addr_type;
 static int advertising_requested;
+static int pairing_scan_requested;
+static int pairing_scan_active;
 static int connected;
 static uint16_t advertising_refresh_sequence;
 static uint8_t advertising_timestamp_data[8];
@@ -53,6 +58,7 @@ static const ble_uuid128_t encrypted_credentials_uuid =
     BLE_UUID128_INIT(0x04, 0x00, 0x10, 0x7a, 0x0f, 0x7c, 0x46, 0x9a, 0x8b, 0x4d, 0x04, 0x5f, 0x00, 0x00, 0x9c, 0x7f);
 static const ble_uuid128_t ack_error_uuid =
     BLE_UUID128_INIT(0x05, 0x00, 0x10, 0x7a, 0x0f, 0x7c, 0x46, 0x9a, 0x8b, 0x4d, 0x04, 0x5f, 0x00, 0x00, 0x9c, 0x7f);
+static const uint8_t host_pairing_role_marker[] = {0xff, 0xff, 'H', 'X', 'P', 'A', 0x01};
 
 enum hexe_ble_characteristic {
   HEXE_BLE_CHR_DEVICE_IDENTITY = 1,
@@ -123,6 +129,126 @@ static const struct ble_gatt_svc_def services[] = {
 };
 
 static int gap_event(struct ble_gap_event *event, void *arg);
+
+static void format_addr(const ble_addr_t *addr, char out[18]) {
+  if (addr == NULL || out == NULL) {
+    return;
+  }
+  snprintf(
+      out,
+      18,
+      "%02X:%02X:%02X:%02X:%02X:%02X",
+      addr->val[5],
+      addr->val[4],
+      addr->val[3],
+      addr->val[2],
+      addr->val[1],
+      addr->val[0]);
+}
+
+static int uuid128_matches_service(const ble_uuid128_t *uuid) {
+  return uuid != NULL && ble_uuid_cmp(&uuid->u, &service_uuid.u) == 0;
+}
+
+static int fields_include_service_uuid(const struct ble_hs_adv_fields *fields) {
+  if (fields == NULL) {
+    return 0;
+  }
+  for (int i = 0; i < fields->num_uuids128; ++i) {
+    if (uuid128_matches_service(&fields->uuids128[i])) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int fields_include_host_pairing_role(const struct ble_hs_adv_fields *fields) {
+  if (fields == NULL || fields->mfg_data == NULL || fields->mfg_data_len < sizeof(host_pairing_role_marker)) {
+    return 0;
+  }
+  for (uint8_t offset = 0; offset <= fields->mfg_data_len - sizeof(host_pairing_role_marker); ++offset) {
+    if (memcmp(fields->mfg_data + offset, host_pairing_role_marker, sizeof(host_pairing_role_marker)) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static void copy_adv_name(const struct ble_hs_adv_fields *fields, char out[40]) {
+  if (out == NULL) {
+    return;
+  }
+  out[0] = '\0';
+  if (fields == NULL || fields->name == NULL || fields->name_len == 0) {
+    return;
+  }
+  const uint8_t copy_len = fields->name_len < 39 ? fields->name_len : 39;
+  memcpy(out, fields->name, copy_len);
+  out[copy_len] = '\0';
+}
+
+static void handle_pairing_scan_result(const struct ble_gap_disc_desc *disc) {
+  if (disc == NULL) {
+    return;
+  }
+  struct ble_hs_adv_fields fields;
+  memset(&fields, 0, sizeof(fields));
+  if (ble_hs_adv_parse_fields(&fields, disc->data, disc->length_data) != 0) {
+    return;
+  }
+  if (!fields_include_service_uuid(&fields)) {
+    return;
+  }
+  char address[18] = "";
+  char name[40] = "";
+  format_addr(&disc->addr, address);
+  copy_adv_name(&fields, name);
+  hexe_ble_pairing_host_advert_seen(address, disc->rssi, name, fields_include_host_pairing_role(&fields));
+}
+
+static int start_pairing_scan(void) {
+#if defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) || defined(CONFIG_BT_NIMBLE_ROLE_OBSERVER)
+  if (!pairing_scan_requested || pairing_scan_active || ble_gap_disc_active()) {
+    return 0;
+  }
+  struct ble_gap_disc_params params;
+  memset(&params, 0, sizeof(params));
+  params.passive = 0;
+  params.itvl = 0x0010;
+  params.window = 0x0010;
+  params.filter_duplicates = 1;
+  int rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &params, gap_event, NULL);
+  if (rc == 0) {
+    pairing_scan_active = 1;
+    hexe_ble_pairing_scan_state_changed(1, "scanning", 0);
+  } else {
+    hexe_ble_pairing_scan_state_changed(0, "ble_pairing_scan_start_failed", rc);
+  }
+  return rc;
+#else
+  hexe_ble_pairing_scan_state_changed(0, "nimble_central_disabled", -1);
+  return -1;
+#endif
+}
+
+static int stop_pairing_scan(void) {
+#if defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) || defined(CONFIG_BT_NIMBLE_ROLE_OBSERVER)
+  if (ble_gap_disc_active()) {
+    int rc = ble_gap_disc_cancel();
+    if (rc != 0) {
+      hexe_ble_pairing_scan_state_changed(pairing_scan_active, "ble_pairing_scan_stop_failed", rc);
+      return rc;
+    }
+  }
+  pairing_scan_active = 0;
+  hexe_ble_pairing_scan_state_changed(0, "stopped", 0);
+  return 0;
+#else
+  pairing_scan_active = 0;
+  hexe_ble_pairing_scan_state_changed(0, "nimble_central_disabled", -1);
+  return -1;
+#endif
+}
 
 static void write_le16(uint8_t *target, uint16_t value) {
   target[0] = (uint8_t)(value & 0xff);
@@ -206,6 +332,16 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_ADV_COMPLETE:
       advertise();
       return 0;
+    case BLE_GAP_EVENT_DISC:
+      handle_pairing_scan_result(&event->disc);
+      return 0;
+    case BLE_GAP_EVENT_DISC_COMPLETE:
+      pairing_scan_active = 0;
+      hexe_ble_pairing_scan_state_changed(0, "scan_complete", event->disc_complete.reason);
+      if (pairing_scan_requested) {
+        start_pairing_scan();
+      }
+      return 0;
     default:
       return 0;
   }
@@ -230,6 +366,7 @@ static void on_sync(void) {
     ESP_LOGW(TAG, "BLE onboarding address selection failed: %d", rc);
     return;
   }
+  start_pairing_scan();
   advertise();
 }
 
@@ -279,6 +416,14 @@ int hexe_ble_provisioning_gatt_set_advertising(int enabled) {
   return 0;
 }
 
+int hexe_ble_pairing_central_set_scanning(int enabled) {
+  pairing_scan_requested = enabled ? 1 : 0;
+  if (!pairing_scan_requested) {
+    return stop_pairing_scan();
+  }
+  return start_pairing_scan();
+}
+
 #else
 
 int hexe_ble_provisioning_gatt_init(const char *device_name) {
@@ -287,6 +432,11 @@ int hexe_ble_provisioning_gatt_init(const char *device_name) {
 }
 
 int hexe_ble_provisioning_gatt_set_advertising(int enabled) {
+  (void)enabled;
+  return -1;
+}
+
+int hexe_ble_pairing_central_set_scanning(int enabled) {
   (void)enabled;
   return -1;
 }

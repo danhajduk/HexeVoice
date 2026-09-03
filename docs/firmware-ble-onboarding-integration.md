@@ -1,9 +1,9 @@
 # Firmware BLE Onboarding Integration
 
-Status: Task 291 BLE onboarding validation coverage. This document records how
+Status: Task 293 central-scan firmware support. This document records how
 HexeVoice implements endpoint BLE onboarding against the current
-Core/Supervisor `ble.provision_wifi` contract without inventing a parallel host
-Bluetooth API.
+Core/Supervisor `ble.provision_wifi` and Core-published pairing contracts
+without inventing a parallel host Bluetooth API.
 
 Core/Supervisor sources checked:
 
@@ -172,16 +172,26 @@ operator approved over BLE.
 
 ## Endpoint Firmware Status
 
-Task 288 implements the endpoint-side peripheral:
+Task 288 implements the endpoint-side peripheral and Task 293 adds
+Core-published pairing advert discovery:
 
 - The endpoint runtime now declares the Core `ble.provision_wifi` operation,
   lease scope, contract version, envelope schema version, Voice payload schema
   id, encryption algorithm, key agreement, and canonical GATT
   service/characteristic UUIDs.
-- Native ESP32-S3 board profiles enable NimBLE peripheral/GATT support through
-  generated board-profile metadata and build defaults.
+- Native ESP32-S3 board profiles enable NimBLE peripheral/server and
+  central/client support through generated board-profile metadata and build
+  defaults.
 - The firmware starts BLE onboarding only when the board supports native BLE and
   the endpoint is not already provisioned.
+- Endpoint and minimal/recovery builds scan for Core/Supervisor
+  `host_pairing_advert` candidates by the canonical service UUID. A compact
+  manufacturer role marker is recognized when present, but UUID matches are
+  still retained so early Supervisor host-advert implementations can be
+  discovered while the full role marker stabilizes.
+- BLE status and heartbeat include only safe host-pairing scan metadata:
+  central scanning state, last seen address, optional name, RSSI, role-marker
+  match, and local seen timestamp.
 - Device identity and pairing metadata expose the endpoint ephemeral X25519
   public key so Supervisor can create the encrypted provisioning envelope.
 - The heartbeat reports BLE onboarding capability, transport, UUIDs, state,

@@ -22,6 +22,7 @@
 
 extern "C" int hexe_ble_provisioning_gatt_init(const char *device_name);
 extern "C" int hexe_ble_provisioning_gatt_set_advertising(int enabled);
+extern "C" int hexe_ble_pairing_central_set_scanning(int enabled);
 
 namespace {
 constexpr char kTag[] = "hexe_ble_prov";
@@ -37,10 +38,17 @@ struct BleProvisioningState {
   bool gatt_ready{false};
   bool crypto_ready{false};
   bool advertising{false};
+  bool central_scanning{false};
+  bool host_pairing_found{false};
+  bool host_pairing_role_match{false};
   char state[24]{"idle"};
   char reason[48]{"not_started"};
   char last_ack[32]{""};
   char last_error[48]{""};
+  char host_pairing_address[18]{""};
+  char host_pairing_name[40]{""};
+  int host_pairing_rssi{0};
+  int64_t host_pairing_seen_at_us{0};
   char onboarding_session_id[64]{""};
   char pairing_nonce[48]{""};
   char endpoint_public_key_b64[48]{""};
@@ -68,7 +76,7 @@ BleProvisioningState g_ble;
 
 bool nimble_config_enabled() {
 #if defined(CONFIG_BT_ENABLED) && defined(CONFIG_BT_NIMBLE_ENABLED) && defined(CONFIG_BT_NIMBLE_ROLE_PERIPHERAL) && \
-    defined(CONFIG_BT_NIMBLE_GATT_SERVER)
+    defined(CONFIG_BT_NIMBLE_GATT_SERVER) && defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) && defined(CONFIG_BT_NIMBLE_GATT_CLIENT)
   return true;
 #else
   return false;
@@ -264,6 +272,10 @@ void ensure_pairing_nonce() {
 
 bool eligible_for_advertising() {
   return board_supported() && g_ble.crypto_ready && !hexe::system::provisioning_configured();
+}
+
+bool eligible_for_host_pairing_scan() {
+  return board_supported() && g_ble.gatt_ready && !hexe::system::provisioning_configured();
 }
 
 bool string_field(cJSON *obj, const char *key, const char **value) {
@@ -870,8 +882,12 @@ void update_ble_provisioning() {
     return;
   }
   const bool should_advertise = eligible_for_advertising();
+  const bool should_scan = eligible_for_host_pairing_scan();
   if (should_advertise) {
     ensure_pairing_nonce();
+  }
+  if (hexe_ble_pairing_central_set_scanning(should_scan ? 1 : 0) != 0 && should_scan) {
+    g_ble.central_scanning = false;
   }
   if (should_advertise == g_ble.advertising) {
     return;
@@ -891,12 +907,19 @@ BleProvisioningStatus ble_provisioning_status() {
       enabled,
       eligible,
       g_ble.advertising,
+      g_ble.central_scanning,
+      g_ble.host_pairing_found,
+      g_ble.host_pairing_role_match,
       provisioning_configured(),
       hexe::board::pins::kBleOnboardingTransport,
       g_ble.state,
       g_ble.reason,
       g_ble.last_ack,
       g_ble.last_error,
+      g_ble.host_pairing_address,
+      g_ble.host_pairing_name,
+      g_ble.host_pairing_rssi,
+      g_ble.host_pairing_seen_at_us == 0 ? 0 : g_ble.host_pairing_seen_at_us / 1000,
       g_ble.issued_at_us == 0 ? 0 : (g_ble.issued_at_us + kPairingTtlUs) / 1000};
 }
 
@@ -941,8 +964,20 @@ std::string ble_provisioning_status_json() {
   cJSON_AddBoolToObject(root, "enabled", status.enabled);
   cJSON_AddBoolToObject(root, "eligible", status.eligible);
   cJSON_AddBoolToObject(root, "advertising", status.advertising);
+  cJSON_AddBoolToObject(root, "central_scanning", status.central_scanning);
   cJSON_AddBoolToObject(root, "provisioned", status.provisioned);
   cJSON_AddStringToObject(root, "reason", status.reason);
+  cJSON *host_pairing = cJSON_AddObjectToObject(root, "host_pairing");
+  cJSON_AddBoolToObject(host_pairing, "found", status.host_pairing_found);
+  cJSON_AddBoolToObject(host_pairing, "role_match", status.host_pairing_role_match);
+  if (status.host_pairing_address[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "address", status.host_pairing_address);
+  }
+  if (status.host_pairing_name[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "name", status.host_pairing_name);
+  }
+  cJSON_AddNumberToObject(host_pairing, "rssi", status.host_pairing_rssi);
+  cJSON_AddNumberToObject(host_pairing, "seen_at_unix_ms", status.host_pairing_seen_at_unix_ms);
   cJSON_AddNumberToObject(root, "expires_at_unix_ms", status.expires_at_unix_ms);
   return print_json(root);
 }
@@ -1023,4 +1058,31 @@ extern "C" const char *hexe_ble_provisioning_ack_error_json() {
 
 extern "C" int hexe_ble_provisioning_handle_encrypted_credentials(const char *json, unsigned int length) {
   return hexe::system::ble_provisioning_handle_encrypted_credentials(json, length) ? 0 : -1;
+}
+
+extern "C" void hexe_ble_pairing_scan_state_changed(int scanning, const char *reason, int rc) {
+  g_ble.central_scanning = scanning != 0;
+  if (reason != nullptr && reason[0] != '\0' && scanning == 0 && rc != 0) {
+    set_state("awaiting_credentials", reason);
+  }
+}
+
+extern "C" void hexe_ble_pairing_host_advert_seen(
+    const char *address,
+    int rssi,
+    const char *name,
+    int host_pairing_role_match) {
+  if (address == nullptr || address[0] == '\0') {
+    return;
+  }
+  std::strncpy(g_ble.host_pairing_address, address, sizeof(g_ble.host_pairing_address) - 1);
+  g_ble.host_pairing_address[sizeof(g_ble.host_pairing_address) - 1] = '\0';
+  std::strncpy(g_ble.host_pairing_name, name == nullptr ? "" : name, sizeof(g_ble.host_pairing_name) - 1);
+  g_ble.host_pairing_name[sizeof(g_ble.host_pairing_name) - 1] = '\0';
+  g_ble.host_pairing_rssi = rssi;
+  g_ble.host_pairing_role_match = host_pairing_role_match != 0;
+  g_ble.host_pairing_found = true;
+  g_ble.host_pairing_seen_at_us = esp_timer_get_time();
+  set_state("pairing_advert_seen", g_ble.host_pairing_role_match ? "host_pairing_advert" : "uuid_match");
+  ESP_LOGI(kTag, "BLE host pairing advert seen address=%s rssi=%d role_match=%d", g_ble.host_pairing_address, rssi, host_pairing_role_match);
 }
