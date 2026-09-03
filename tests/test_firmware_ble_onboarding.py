@@ -122,6 +122,16 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "host_pairing_role_marker" in gatt
     assert "'H', 'X', 'P', 'A'" in gatt
     assert "hexe_ble_pairing_host_advert_seen" in gatt
+    assert "BLE host pairing scan_window start" in gatt
+    assert "BLE host pairing scan_window complete" in gatt
+    assert "BLE host pairing connect_start" in gatt
+    assert "BLE host pairing connected" in gatt
+    assert "BLE host pairing service_found" in gatt
+    assert "BLE host pairing characteristic_found name=device_identity" in gatt
+    assert "BLE host pairing offer_read_ok" in gatt
+    assert "BLE host pairing identity_write_ok" in gatt
+    assert "BLE host pairing scan_state scanning=%d" in source
+    assert "BLE host pairing connection_state connected=%d" in source
     assert "CONFIG_BT_NIMBLE_ROLE_CENTRAL=y" in build_script
     assert "CONFIG_BT_NIMBLE_GATT_CLIENT=y" in build_script
     assert "CONFIG_BT_NIMBLE_BLE_GATT_BLOB_TRANSFER=y" in build_script
@@ -177,6 +187,7 @@ def test_ble_onboarding_implements_supervisor_envelope_crypto():
 def test_ble_onboarding_reports_status_without_secret_material():
     source = BLE_SOURCE.read_text(encoding="utf-8")
     backend = BACKEND_CLIENT.read_text(encoding="utf-8")
+    gatt = BLE_GATT.read_text(encoding="utf-8")
 
     assert '"provisioning", "ble"' not in backend
     assert 'cJSON *ble = cJSON_AddObjectToObject(provisioning, "ble")' in backend
@@ -189,6 +200,13 @@ def test_ble_onboarding_reports_status_without_secret_material():
     assert '"pairing_nonce"' not in backend
     assert '"endpoint_ephemeral_public_key"' in source[source.index("ble_provisioning_device_identity_json") :]
     assert '"endpoint_ephemeral_public_key"' not in source[source.index("ble_provisioning_status_json") : source.index("ble_provisioning_ack_error_json")]
+    assert "payload_len=%u" in gatt
+    assert "BLE onboarding gatt_read" in gatt
+    assert "BLE onboarding credential_write" in gatt
+    logging_source = gatt[gatt.index("static int access_cb") : gatt.index("static const struct ble_gatt_chr_def characteristics")]
+    assert "%s\\n" not in logging_source
+    assert '"pairing_nonce"' not in logging_source
+    assert '"endpoint_ephemeral_public_key"' not in logging_source
 
 
 def test_ble_onboarding_starts_after_settings_and_updates_in_main_loop():

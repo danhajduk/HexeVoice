@@ -93,42 +93,77 @@ static int append_json(struct os_mbuf *om, const char *json) {
   return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 }
 
+static const char *characteristic_name(enum hexe_ble_characteristic characteristic) {
+  switch (characteristic) {
+    case HEXE_BLE_CHR_DEVICE_IDENTITY:
+      return "device_identity";
+    case HEXE_BLE_CHR_PAIRING_NONCE:
+      return "pairing_nonce";
+    case HEXE_BLE_CHR_STATUS:
+      return "status";
+    case HEXE_BLE_CHR_ENCRYPTED_CREDENTIALS:
+      return "encrypted_credentials";
+    case HEXE_BLE_CHR_ACK_ERROR:
+      return "ack_error";
+    default:
+      return "unknown";
+  }
+}
+
 static int access_cb(uint16_t conn_handle, uint16_t attr_handle, struct ble_gatt_access_ctxt *ctxt, void *arg) {
-  (void) conn_handle;
-  (void) attr_handle;
   enum hexe_ble_characteristic characteristic = (enum hexe_ble_characteristic)(uintptr_t)arg;
   if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
+    const char *json = NULL;
     switch (characteristic) {
       case HEXE_BLE_CHR_DEVICE_IDENTITY:
-        return append_json(ctxt->om, hexe_ble_provisioning_device_identity_json());
+        json = hexe_ble_provisioning_device_identity_json();
+        break;
       case HEXE_BLE_CHR_PAIRING_NONCE:
-        return append_json(ctxt->om, hexe_ble_provisioning_pairing_nonce_json());
+        json = hexe_ble_provisioning_pairing_nonce_json();
+        break;
       case HEXE_BLE_CHR_STATUS:
-        return append_json(ctxt->om, hexe_ble_provisioning_status_json());
+        json = hexe_ble_provisioning_status_json();
+        break;
       case HEXE_BLE_CHR_ACK_ERROR:
-        return append_json(ctxt->om, hexe_ble_provisioning_ack_error_json());
+        json = hexe_ble_provisioning_ack_error_json();
+        break;
       default:
         return BLE_ATT_ERR_READ_NOT_PERMITTED;
     }
+    int rc = append_json(ctxt->om, json);
+    ESP_LOGI(
+        TAG,
+        "BLE onboarding gatt_read conn=%u attr=%u characteristic=%s payload_len=%u rc=%d",
+        conn_handle,
+        attr_handle,
+        characteristic_name(characteristic),
+        (unsigned)strlen(json),
+        rc);
+    return rc;
   }
   if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR && characteristic == HEXE_BLE_CHR_ENCRYPTED_CREDENTIALS) {
     uint16_t length = OS_MBUF_PKTLEN(ctxt->om);
+    ESP_LOGI(TAG, "BLE onboarding credential_write conn=%u attr=%u payload_len=%u", conn_handle, attr_handle, (unsigned)length);
     char buffer[4097];
     if (length == 0 || length >= sizeof(buffer)) {
+      ESP_LOGW(TAG, "BLE onboarding credential_write rejected invalid_length=%u", (unsigned)length);
       return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
     int rc = ble_hs_mbuf_to_flat(ctxt->om, buffer, sizeof(buffer) - 1, &length);
     if (rc != 0) {
+      ESP_LOGW(TAG, "BLE onboarding credential_write flatten failed: %d", rc);
       return BLE_ATT_ERR_UNLIKELY;
     }
     buffer[length] = '\0';
     if (hexe_ble_provisioning_handle_encrypted_credentials(buffer, length) == 0) {
       ble_gatts_chr_updated(status_handle);
       ble_gatts_chr_updated(ack_error_handle);
+      ESP_LOGI(TAG, "BLE onboarding credential_write accepted payload_len=%u", (unsigned)length);
       return 0;
     }
     ble_gatts_chr_updated(status_handle);
     ble_gatts_chr_updated(ack_error_handle);
+    ESP_LOGW(TAG, "BLE onboarding credential_write rejected by provisioning validator");
     return BLE_ATT_ERR_UNLIKELY;
   }
   return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
@@ -248,12 +283,27 @@ static void handle_pairing_scan_result(const struct ble_gap_disc_desc *disc) {
   char name[40] = "";
   format_addr(&disc->addr, address);
   copy_adv_name(&fields, name);
+  ESP_LOGI(
+      TAG,
+      "BLE host pairing advert_match address=%s rssi=%d role_match=%d name=%s",
+      address,
+      disc->rssi,
+      fields_include_host_pairing_role(&fields),
+      name[0] == '\0' ? "(none)" : name);
   hexe_ble_pairing_host_advert_seen(address, disc->rssi, name, fields_include_host_pairing_role(&fields));
   start_pairing_connect(&disc->addr);
 }
 
 static int start_pairing_scan(void) {
   if (!pairing_scan_requested || pairing_scan_active || client_connecting || client_connected || ble_gap_disc_active()) {
+    ESP_LOGI(
+        TAG,
+        "BLE host pairing scan_window skipped requested=%d active=%d connecting=%d connected=%d gap_disc_active=%d",
+        pairing_scan_requested,
+        pairing_scan_active,
+        client_connecting,
+        client_connected,
+        ble_gap_disc_active());
     return 0;
   }
   struct ble_gap_disc_params params;
@@ -262,6 +312,13 @@ static int start_pairing_scan(void) {
   params.itvl = 0x0060;
   params.window = 0x0018;
   params.filter_duplicates = 1;
+  ESP_LOGI(
+      TAG,
+      "BLE host pairing scan_window start duration_ms=%d poll_interval_ms=%d interval=0x%04x window=0x%04x",
+      kPairingScanDurationMs,
+      kPairingScanPollIntervalMs,
+      params.itvl,
+      params.window);
   int rc = ble_gap_disc(own_addr_type, kPairingScanDurationMs, &params, gap_event, NULL);
   if (rc == 0) {
     pairing_scan_active = 1;
@@ -287,8 +344,17 @@ static int stop_pairing_scan(void) {
 
 static int start_pairing_connect(const ble_addr_t *addr) {
   if (addr == NULL || client_connecting || client_connected || connected) {
+    ESP_LOGI(
+        TAG,
+        "BLE host pairing connect skipped addr_present=%d connecting=%d client_connected=%d peripheral_connected=%d",
+        addr != NULL,
+        client_connecting,
+        client_connected,
+        connected);
     return 0;
   }
+  char address[18] = "";
+  format_addr(addr, address);
   if (ble_gap_disc_active()) {
     int cancel_rc = ble_gap_disc_cancel();
     if (cancel_rc != 0) {
@@ -301,6 +367,7 @@ static int start_pairing_connect(const ble_addr_t *addr) {
   memcpy(&client_peer_addr, addr, sizeof(client_peer_addr));
   reset_client_state(1);
   client_connecting = 1;
+  ESP_LOGI(TAG, "BLE host pairing connect_start address=%s timeout_ms=%d", address, kPairingConnectTimeoutMs);
   int rc = ble_gap_connect(own_addr_type, &client_peer_addr, kPairingConnectTimeoutMs, NULL, gap_event, NULL);
   if (rc != 0) {
     client_connecting = 0;
@@ -315,6 +382,7 @@ static int start_pairing_connect(const ble_addr_t *addr) {
 }
 
 static int discover_pairing_service(uint16_t conn_handle) {
+  ESP_LOGI(TAG, "BLE host pairing service_discovery_start conn=%u", conn_handle);
   int rc = ble_gattc_disc_svc_by_uuid(conn_handle, &service_uuid.u, pairing_service_discovered_cb, NULL);
   if (rc != 0) {
     hexe_ble_pairing_connection_state_changed(0, "service_discovery_start_failed", rc);
@@ -328,6 +396,7 @@ static int read_pairing_offer(uint16_t conn_handle) {
     hexe_ble_pairing_connection_state_changed(0, "pairing_offer_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
+  ESP_LOGI(TAG, "BLE host pairing offer_read_start conn=%u handle=%u", conn_handle, client_pairing_nonce_handle);
   int rc = ble_gattc_read(conn_handle, client_pairing_nonce_handle, pairing_offer_read_cb, NULL);
   if (rc != 0) {
     hexe_ble_pairing_connection_state_changed(0, "pairing_offer_read_start_failed", rc);
@@ -351,6 +420,7 @@ static int write_pairing_identity(uint16_t conn_handle) {
     hexe_ble_pairing_identity_write_result(0, "device_identity_too_large", BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN);
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
+  ESP_LOGI(TAG, "BLE host pairing identity_write_start conn=%u handle=%u payload_len=%u", conn_handle, client_device_identity_handle, (unsigned)identity_len);
   int rc = ble_gattc_write_flat(conn_handle, client_device_identity_handle, identity, (uint16_t)identity_len, pairing_identity_write_cb, NULL);
   if (rc != 0) {
     hexe_ble_pairing_identity_write_result(0, "device_identity_write_start_failed", rc);
@@ -367,6 +437,12 @@ static int pairing_service_discovered_cb(uint16_t conn_handle, const struct ble_
   if (error->status == 0 && svc != NULL) {
     client_service_start_handle = svc->start_handle;
     client_service_end_handle = svc->end_handle;
+    ESP_LOGI(
+        TAG,
+        "BLE host pairing service_found conn=%u start_handle=%u end_handle=%u",
+        conn_handle,
+        svc->start_handle,
+        svc->end_handle);
     int rc = ble_gattc_disc_all_chrs(conn_handle, svc->start_handle, svc->end_handle, pairing_chr_discovered_cb, NULL);
     if (rc != 0) {
       hexe_ble_pairing_connection_state_changed(0, "characteristic_discovery_start_failed", rc);
@@ -394,12 +470,19 @@ static int pairing_chr_discovered_cb(uint16_t conn_handle, const struct ble_gatt
   if (error->status == 0 && chr != NULL) {
     if (ble_uuid_cmp(&chr->uuid.u, &device_identity_uuid.u) == 0) {
       client_device_identity_handle = chr->val_handle;
+      ESP_LOGI(TAG, "BLE host pairing characteristic_found name=device_identity handle=%u", chr->val_handle);
     } else if (ble_uuid_cmp(&chr->uuid.u, &pairing_nonce_uuid.u) == 0) {
       client_pairing_nonce_handle = chr->val_handle;
+      ESP_LOGI(TAG, "BLE host pairing characteristic_found name=pairing_nonce handle=%u", chr->val_handle);
     }
     return 0;
   }
   if (error->status == BLE_HS_EDONE) {
+    ESP_LOGI(
+        TAG,
+        "BLE host pairing characteristic_discovery_complete identity_handle=%u offer_handle=%u",
+        client_device_identity_handle,
+        client_pairing_nonce_handle);
     if (client_device_identity_handle == 0 || client_pairing_nonce_handle == 0) {
       hexe_ble_pairing_connection_state_changed(0, "required_characteristics_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
       ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
@@ -435,6 +518,7 @@ static int pairing_offer_read_cb(uint16_t conn_handle, const struct ble_gatt_err
   }
   buffer[length] = '\0';
   client_offer_received = 1;
+  ESP_LOGI(TAG, "BLE host pairing offer_read_ok conn=%u payload_len=%u", conn_handle, (unsigned)length);
   if (hexe_ble_pairing_offer_received(buffer, length) != 0) {
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
@@ -453,6 +537,7 @@ static int pairing_identity_write_cb(uint16_t conn_handle, const struct ble_gatt
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
   client_identity_sent = 1;
+  ESP_LOGI(TAG, "BLE host pairing identity_write_ok conn=%u", conn_handle);
   hexe_ble_pairing_identity_write_result(1, "endpoint_identity_written", 0);
   return 0;
 }
@@ -517,9 +602,19 @@ static void advertise(void) {
   adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
   adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
   adv_params.channel_map = BLE_GAP_ADV_DFLT_CHANNEL_MAP;
+  ESP_LOGI(
+      TAG,
+      "BLE onboarding adv_start name=%s service_uuid=7f9c0000-5f04-4d8b-9a46-7c0f7a100000 scan_rsp_mfg_len=%u uptime_s=%u sequence=%u channel_map=%u",
+      ble_svc_gap_device_name(),
+      (unsigned)sizeof(advertising_timestamp_data),
+      (unsigned)(esp_timer_get_time() / 1000000LL),
+      advertising_refresh_sequence,
+      adv_params.channel_map);
   rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event, NULL);
   if (rc != 0) {
     ESP_LOGW(TAG, "BLE onboarding advertising start failed: %d", rc);
+  } else {
+    ESP_LOGI(TAG, "BLE onboarding adv_active");
   }
 }
 
@@ -539,18 +634,22 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
         }
         client_connected = 1;
         client_conn_handle = event->connect.conn_handle;
+        ESP_LOGI(TAG, "BLE host pairing connected conn=%u", event->connect.conn_handle);
         hexe_ble_pairing_connection_state_changed(1, "connected", 0);
         discover_pairing_service(event->connect.conn_handle);
         return 0;
       }
       if (event->connect.status != 0) {
+        ESP_LOGW(TAG, "BLE onboarding peripheral_connect_failed status=%d", event->connect.status);
         advertise();
       } else {
         connected = 1;
+        ESP_LOGI(TAG, "BLE onboarding peripheral_connected conn=%u", event->connect.conn_handle);
       }
       return 0;
     case BLE_GAP_EVENT_DISCONNECT:
       if (client_connected && event->disconnect.conn.conn_handle == client_conn_handle) {
+        ESP_LOGI(TAG, "BLE host pairing disconnected conn=%u reason=%d identity_sent=%d", client_conn_handle, event->disconnect.reason, client_identity_sent);
         reset_client_state(client_identity_sent ? 0 : 1);
         hexe_ble_pairing_connection_state_changed(0, "disconnected", event->disconnect.reason);
         advertise();
@@ -560,9 +659,11 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
         return 0;
       }
       connected = 0;
+      ESP_LOGI(TAG, "BLE onboarding peripheral_disconnected reason=%d", event->disconnect.reason);
       advertise();
       return 0;
     case BLE_GAP_EVENT_ADV_COMPLETE:
+      ESP_LOGI(TAG, "BLE onboarding adv_complete reason=%d restarting=%d", event->adv_complete.reason, advertising_requested);
       advertise();
       return 0;
     case BLE_GAP_EVENT_DISC:
@@ -570,6 +671,7 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
       return 0;
     case BLE_GAP_EVENT_DISC_COMPLETE:
       pairing_scan_active = 0;
+      ESP_LOGI(TAG, "BLE host pairing scan_window complete reason=%d next_poll_ms=%d", event->disc_complete.reason, kPairingScanPollIntervalMs);
       hexe_ble_pairing_scan_state_changed(0, "scan_complete", event->disc_complete.reason);
       return 0;
     default:
@@ -585,6 +687,7 @@ static void advertising_refresh_task(void *param) {
       continue;
     }
     if (!ble_gap_adv_active()) {
+      ESP_LOGI(TAG, "BLE onboarding adv_inactive refreshing");
       advertise();
     }
   }
@@ -606,6 +709,7 @@ static void on_sync(void) {
     ESP_LOGW(TAG, "BLE onboarding address selection failed: %d", rc);
     return;
   }
+  ESP_LOGI(TAG, "BLE onboarding host_sync own_addr_type=%u", own_addr_type);
   start_pairing_scan();
   advertise();
 }
@@ -617,8 +721,10 @@ static void host_task(void *param) {
 }
 
 int hexe_ble_provisioning_gatt_init(const char *device_name) {
+  ESP_LOGI(TAG, "BLE onboarding gatt_init device_name=%s", device_name == NULL || device_name[0] == '\0' ? "(default)" : device_name);
   int rc = nimble_port_init();
   if (rc != 0) {
+    ESP_LOGW(TAG, "BLE onboarding nimble_port_init failed: %d", rc);
     return rc;
   }
   ble_svc_gap_init();
@@ -626,15 +732,18 @@ int hexe_ble_provisioning_gatt_init(const char *device_name) {
   ble_hs_cfg.sync_cb = on_sync;
   rc = ble_gatts_count_cfg(services);
   if (rc != 0) {
+    ESP_LOGW(TAG, "BLE onboarding gatt_count failed: %d", rc);
     return rc;
   }
   rc = ble_gatts_add_svcs(services);
   if (rc != 0) {
+    ESP_LOGW(TAG, "BLE onboarding gatt_add_services failed: %d", rc);
     return rc;
   }
   if (device_name != NULL && device_name[0] != '\0') {
     rc = ble_svc_gap_device_name_set(device_name);
     if (rc != 0) {
+      ESP_LOGW(TAG, "BLE onboarding set_device_name failed: %d", rc);
       return rc;
     }
   }

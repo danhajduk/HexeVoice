@@ -95,10 +95,16 @@ bool board_supported() {
 }
 
 void set_state(const char *state, const char *reason) {
+  const char *next_state = state == nullptr ? "idle" : state;
+  const char *next_reason = reason == nullptr ? "" : reason;
+  const bool changed = std::strcmp(g_ble.state, next_state) != 0 || std::strcmp(g_ble.reason, next_reason) != 0;
   std::strncpy(g_ble.state, state == nullptr ? "idle" : state, sizeof(g_ble.state) - 1);
   g_ble.state[sizeof(g_ble.state) - 1] = '\0';
   std::strncpy(g_ble.reason, reason == nullptr ? "" : reason, sizeof(g_ble.reason) - 1);
   g_ble.reason[sizeof(g_ble.reason) - 1] = '\0';
+  if (changed) {
+    ESP_LOGI(kTag, "BLE provisioning state=%s reason=%s", g_ble.state, g_ble.reason);
+  }
 }
 
 void set_ack(const char *ack) {
@@ -942,11 +948,13 @@ void init_ble_provisioning() {
   g_ble.initialized = true;
   if (!board_supported()) {
     set_state("idle", "board_profile_unsupported");
+    ESP_LOGI(kTag, "BLE onboarding disabled board_profile=%s", hexe::config::kEndpointBoardProfile);
     return;
   }
   if (!nimble_config_enabled()) {
     set_state("failed", "nimble_disabled");
     std::strncpy(g_ble.last_error, "nimble_disabled", sizeof(g_ble.last_error) - 1);
+    ESP_LOGW(kTag, "BLE onboarding disabled: NimBLE peripheral+central config is not enabled");
     return;
   }
   ensure_pairing_nonce();
@@ -957,6 +965,13 @@ void init_ble_provisioning() {
     ESP_LOGW(kTag, "BLE onboarding GATT init failed: %d", rc);
     return;
   }
+  ESP_LOGI(
+      kTag,
+      "BLE onboarding ready board_profile=%s device_id=%s advertising_eligible=%d host_pairing_scan_eligible=%d",
+      hexe::config::kEndpointBoardProfile,
+      endpoint_id(),
+      eligible_for_advertising(),
+      eligible_for_host_pairing_scan());
   set_state("awaiting_credentials", eligible_for_advertising() ? "advertising_allowed" : "already_provisioned");
   update_ble_provisioning();
 }
@@ -978,6 +993,13 @@ void update_ble_provisioning() {
   }
   if (hexe_ble_provisioning_gatt_set_advertising(should_advertise ? 1 : 0) == 0) {
     g_ble.advertising = should_advertise;
+    ESP_LOGI(
+        kTag,
+        "BLE onboarding advertising=%d eligible=%d provisioned=%d host_pairing_scan=%d",
+        g_ble.advertising,
+        should_advertise,
+        provisioning_configured(),
+        should_scan);
     set_state(should_advertise ? "awaiting_credentials" : "idle", should_advertise ? "advertising" : "already_provisioned");
   }
 }
@@ -1174,6 +1196,12 @@ extern "C" int hexe_ble_provisioning_handle_encrypted_credentials(const char *js
 
 extern "C" void hexe_ble_pairing_scan_state_changed(int scanning, const char *reason, int rc) {
   g_ble.central_scanning = scanning != 0;
+  ESP_LOGI(
+      kTag,
+      "BLE host pairing scan_state scanning=%d reason=%s rc=%d",
+      scanning,
+      reason == nullptr || reason[0] == '\0' ? "(none)" : reason,
+      rc);
   if (reason != nullptr && reason[0] != '\0' && scanning == 0 && rc != 0) {
     set_state("awaiting_credentials", reason);
   }
@@ -1201,6 +1229,14 @@ extern "C" void hexe_ble_pairing_host_advert_seen(
 
 extern "C" void hexe_ble_pairing_connection_state_changed(int connected, const char *reason, int rc) {
   g_ble.host_pairing_connected = connected != 0;
+  ESP_LOGI(
+      kTag,
+      "BLE host pairing connection_state connected=%d reason=%s rc=%d offer_received=%d identity_sent=%d",
+      connected,
+      reason == nullptr || reason[0] == '\0' ? "(none)" : reason,
+      rc,
+      g_ble.host_pairing_offer_received,
+      g_ble.host_pairing_identity_sent);
   if (connected) {
     set_state("pairing_connected", reason == nullptr || reason[0] == '\0' ? "host_connected" : reason);
     return;
