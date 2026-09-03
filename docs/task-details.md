@@ -3056,3 +3056,66 @@ Original task details:
   - Docs provide a physical-device checklist for validating BLE onboarding on every supported endpoint class.
   - Security regression tests prove credentials are redacted and lease scopes cannot be reused across scan/status/provisioning operations.
   - The BLE onboarding batch has enough validation evidence to safely enable on supported boards.
+
+## Task 292
+Original task details:
+- User request: Make onboarding work the other way around: the system publishes a BLE advert and the device looks for that advert, connects, and participates in an Add Device pairing session.
+- Goal: Define the HexeVoice endpoint-side behavior for Core-published BLE pairing sessions before firmware changes.
+- Align with the Core/Supervisor contract task for UUID reuse. Prefer reusing the existing Hexe onboarding service UUID if the contract clearly distinguishes endpoint-advert and host-advert roles.
+- Define the endpoint states:
+  - unprovisioned/recovery enters pairing scan mode
+  - endpoint scans for a Hexe pairing-session advert
+  - endpoint validates contract version, session hint, role flag, and expiry
+  - endpoint connects to the Supervisor host GATT service
+  - endpoint writes identity including board profile
+  - endpoint receives encrypted provisioning payload through the approved path
+  - endpoint applies settings and exits setup/recovery advertising/scanning
+- Define what endpoint data is required for onboarding identity: node hardware id, target node id or generated candidate id, board profile, firmware version, application type, provisioning mode, endpoint public key, supported payload schemas, and status.
+- Define retry/backoff, timeout, cancellation, and coexistence with the current device-advertises fallback flow.
+- Acceptance: The endpoint-side design names the BLE central/client responsibilities and all required identity fields.
+- Acceptance: Board profile is mandatory in the endpoint identity exchange.
+- Acceptance: No plaintext Wi-Fi credentials, Core tokens, or trust secrets are advertised or logged.
+
+## Task 293
+Original task details:
+- Depends on: Task 292 and the matching Core/Supervisor contract task.
+- Goal: Implement endpoint firmware BLE central scanning for Hexe pairing-session adverts on supported boards.
+- Add or extend the minimal/recovery firmware BLE component so HA Voice PE can scan for the Hexe pairing service UUID while in setup/recovery mode.
+- Filter candidates by Hexe UUID, contract version, and host-advert role/session flags rather than by device name alone.
+- Keep scan windows long enough for provisioning UX, with bounded retry/backoff and clear status reporting.
+- Preserve the existing endpoint BLE peripheral advert path as fallback/debug unless the contract explicitly retires it.
+- Ensure scanning stops after success, timeout, operator cancellation, or when normal provisioning state is reached.
+- Add diagnostics that show state and high-level errors without exposing secrets.
+- Acceptance: HA Voice PE minimal firmware can detect a Core/Supervisor pairing advert in setup/recovery mode.
+- Acceptance: Unsupported boards fail closed with clear capability/status rather than crashing or silently hanging.
+- Verification: Add firmware tests/static checks for UUID constants, role filtering, scan state transitions, timeout, and unsupported-board behavior.
+
+## Task 294
+Original task details:
+- Depends on: Tasks 292 and 293 plus Core/Supervisor host GATT support.
+- Goal: Implement endpoint-to-Supervisor GATT pairing identity exchange and provisioning handoff.
+- Add endpoint BLE client behavior to connect to the Supervisor host GATT service for the selected pairing session.
+- Read the pairing offer/session metadata and validate contract version, expiry, target/session binding, and supported payload schema.
+- Write endpoint identity to the host GATT service, including mandatory board profile and firmware version.
+- Continue to use the approved encrypted credential path for Wi-Fi/backend settings; do not accept plaintext credential writes except where an explicit local recovery contract says so.
+- Apply Wi-Fi/backend settings through the existing NVS provisioning path and reconnect/reboot as required by the current firmware architecture.
+- Report status/ack/error states for success, invalid session, expired session, unsupported schema, decrypt failure, payload validation failure, Wi-Fi failure, backend unreachable, timeout, and already provisioned.
+- Acceptance: Endpoint can complete the identity exchange and receive/apply provisioning data for a valid Core pairing session.
+- Acceptance: Wrong session, expired session, unsupported schema, malformed payload, or credential decryption failure fails closed.
+- Verification: Add fake GATT/client tests where possible plus physical HA Voice PE validation.
+
+## Task 295
+Original task details:
+- Depends on: Core Tasks 997-1000 and HexeVoice Tasks 292-294.
+- Goal: Integrate HexeVoice onboarding UI/backend with Core pairing sessions and fallback scanning.
+- Update the Voice Endpoint onboarding dialog so the normal path starts a Core pairing session and waits for the endpoint to self-discover/connect.
+- Auto-fill endpoint fields from the endpoint identity returned by Core, especially board profile, target node id, firmware version, and display name.
+- Keep the current Supervisor UUID scan path available as an advanced fallback/debug action.
+- Show user-friendly states: waiting for device, device found, reading identity, ready to provision, provisioning, waiting for endpoint online, completed, timed out, and failed.
+- Hide internal fields such as pairing nonce, endpoint public key, lease token, adapter, and session id by default.
+- Ensure Wi-Fi password handling remains redacted in logs, API responses, diagnostics, and UI state after submission.
+- Acceptance: Operator can onboard a HA Voice PE from the popup without manually copying BLE onboarding fields.
+- Acceptance: If no endpoint responds, the UI gives retry/cancel/fallback options.
+- Acceptance: Existing backend-to-online-endpoint provisioning remains available for already-connected endpoints.
+- Verification: Add focused backend/UI tests and run frontend build.
+- Verification: Run physical scan/onboarding validation after firmware and Core changes are installed.
