@@ -513,6 +513,7 @@ static void advertise(void) {
   memset(&adv_params, 0, sizeof(adv_params));
   adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
   adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+  adv_params.channel_map = BLE_GAP_ADV_DFLT_CHANNEL_MAP;
   rc = ble_gap_adv_start(own_addr_type, NULL, BLE_HS_FOREVER, &adv_params, gap_event, NULL);
   if (rc != 0) {
     ESP_LOGW(TAG, "BLE onboarding advertising start failed: %d", rc);

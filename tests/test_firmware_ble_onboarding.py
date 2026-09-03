@@ -54,6 +54,7 @@ def test_ble_onboarding_advertising_keeps_uuid_and_name_under_legacy_packet_limi
     assert "rsp_fields.mfg_data_len = sizeof(advertising_timestamp_data)" in scan_response
     assert "esp_timer_get_time()" in gatt[gatt.index("static void update_advertising_timestamp_data") :]
     assert "ble_gap_adv_stop()" in gatt[gatt.index("static void advertising_refresh_task") :]
+    assert "adv_params.channel_map = BLE_GAP_ADV_DFLT_CHANNEL_MAP" in advertise
 
 
 def test_ble_onboarding_is_gated_by_board_profile_and_nimble_config():
