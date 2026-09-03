@@ -3071,9 +3071,12 @@ Original task details:
   - endpoint receives encrypted provisioning payload through the approved path
   - endpoint applies settings and exits setup/recovery advertising/scanning
 - Define what endpoint data is required for onboarding identity: node hardware id, target node id or generated candidate id, board profile, firmware version, application type, provisioning mode, endpoint public key, supported payload schemas, and status.
+- Define the endpoint's stable device id as mandatory pairing identity. The endpoint must send it during BLE pairing and later present the same device id with the provisioning session id when it comes online over Wi-Fi.
+- Define the operator approval handoff: user approves the BLE-reported device id, endpoint receives encrypted Wi-Fi/backend credentials, endpoint connects to Wi-Fi, then endpoint starts HexeVoice onboarding with the same provisioning session id and device id so HexeVoice can approve that exact device.
 - Define retry/backoff, timeout, cancellation, and coexistence with the current device-advertises fallback flow.
 - Acceptance: The endpoint-side design names the BLE central/client responsibilities and all required identity fields.
 - Acceptance: Board profile is mandatory in the endpoint identity exchange.
+- Acceptance: Device id is mandatory in the endpoint identity exchange and in the later Wi-Fi onboarding request.
 - Acceptance: No plaintext Wi-Fi credentials, Core tokens, or trust secrets are advertised or logged.
 
 ## Task 293
@@ -3096,11 +3099,13 @@ Original task details:
 - Goal: Implement endpoint-to-Supervisor GATT pairing identity exchange and provisioning handoff.
 - Add endpoint BLE client behavior to connect to the Supervisor host GATT service for the selected pairing session.
 - Read the pairing offer/session metadata and validate contract version, expiry, target/session binding, and supported payload schema.
-- Write endpoint identity to the host GATT service, including mandatory board profile and firmware version.
+- Write endpoint identity to the host GATT service, including mandatory device id, board profile, and firmware version.
 - Continue to use the approved encrypted credential path for Wi-Fi/backend settings; do not accept plaintext credential writes except where an explicit local recovery contract says so.
 - Apply Wi-Fi/backend settings through the existing NVS provisioning path and reconnect/reboot as required by the current firmware architecture.
+- Persist enough provisioning handoff state for first Wi-Fi boot so the endpoint can call HexeVoice onboarding with the same provisioning session id and device id after network connection.
 - Report status/ack/error states for success, invalid session, expired session, unsupported schema, decrypt failure, payload validation failure, Wi-Fi failure, backend unreachable, timeout, and already provisioned.
 - Acceptance: Endpoint can complete the identity exchange and receive/apply provisioning data for a valid Core pairing session.
+- Acceptance: Endpoint presents the same device id and provisioning session id during Wi-Fi onboarding that it used during BLE pairing.
 - Acceptance: Wrong session, expired session, unsupported schema, malformed payload, or credential decryption failure fails closed.
 - Verification: Add fake GATT/client tests where possible plus physical HA Voice PE validation.
 
@@ -3110,11 +3115,13 @@ Original task details:
 - Goal: Integrate HexeVoice onboarding UI/backend with Core pairing sessions and fallback scanning.
 - Update the Voice Endpoint onboarding dialog so the normal path starts a Core pairing session and waits for the endpoint to self-discover/connect.
 - Auto-fill endpoint fields from the endpoint identity returned by Core, especially board profile, target node id, firmware version, and display name.
+- Show the BLE-reported device id as the identity the user is approving, then require the online endpoint onboarding request to present the same provisioning session id and device id before approval.
 - Keep the current Supervisor UUID scan path available as an advanced fallback/debug action.
 - Show user-friendly states: waiting for device, device found, reading identity, ready to provision, provisioning, waiting for endpoint online, completed, timed out, and failed.
 - Hide internal fields such as pairing nonce, endpoint public key, lease token, adapter, and session id by default.
 - Ensure Wi-Fi password handling remains redacted in logs, API responses, diagnostics, and UI state after submission.
 - Acceptance: Operator can onboard a HA Voice PE from the popup without manually copying BLE onboarding fields.
+- Acceptance: HexeVoice approves the device only when the Wi-Fi onboarding request matches the BLE-approved device id and provisioning session id.
 - Acceptance: If no endpoint responds, the UI gives retry/cancel/fallback options.
 - Acceptance: Existing backend-to-online-endpoint provisioning remains available for already-connected endpoints.
 - Verification: Add focused backend/UI tests and run frontend build.
