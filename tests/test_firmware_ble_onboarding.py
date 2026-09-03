@@ -84,15 +84,35 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "central_scanning" in header
     assert "host_pairing_found" in header
     assert "host_pairing_address" in header
+    assert "host_pairing_connected" in header
+    assert "host_pairing_offer_received" in header
+    assert "host_pairing_identity_sent" in header
     assert "hexe_ble_pairing_central_set_scanning" in source
     assert "eligible_for_host_pairing_scan()" in source
     assert '"host_pairing"' in source
     assert '"central_scanning"' in source
+    assert '"connected"' in source
+    assert '"offer_received"' in source
+    assert '"identity_sent"' in source
+    assert '"onboarding_session_id"' in source[source.index("ble_provisioning_device_identity_json") :]
+    assert '"device_id"' in source[source.index("ble_provisioning_device_identity_json") :]
+    assert '"board_profile"' in source[source.index("ble_provisioning_device_identity_json") :]
+    assert "remember_host_pairing_offer" in source
+    assert "invalid_pairing_offer" in source
     assert '"host_pairing"' in backend
+    assert '"identity_sent"' in backend
     assert "fields_include_service_uuid" in gatt
     assert "handle_pairing_scan_result" in gatt
     assert "ble_hs_adv_parse_fields" in gatt
     assert "ble_gap_disc(" in gatt
+    assert "ble_gap_connect(" in gatt
+    assert "ble_gattc_disc_svc_by_uuid" in gatt
+    assert "ble_gattc_disc_all_chrs" in gatt
+    assert "ble_gattc_read" in gatt
+    assert "ble_gattc_write_flat" in gatt
+    assert "pairing_offer_read_cb" in gatt
+    assert "pairing_identity_write_cb" in gatt
+    assert "hexe_ble_pairing_offer_received(buffer, length) != 0" in gatt
     assert "BLE_GAP_EVENT_DISC" in gatt
     assert "host_pairing_role_marker" in gatt
     assert "'H', 'X', 'P', 'A'" in gatt

@@ -30,6 +30,10 @@ struct BleProvisioningStatus {
   bool central_scanning;
   bool host_pairing_found;
   bool host_pairing_role_match;
+  bool host_pairing_connected;
+  bool host_pairing_offer_received;
+  bool host_pairing_identity_sent;
+  bool host_pairing_claim_code_required;
   bool provisioned;
   const char *transport;
   const char *state;
@@ -38,6 +42,9 @@ struct BleProvisioningStatus {
   const char *last_error;
   const char *host_pairing_address;
   const char *host_pairing_name;
+  const char *host_pairing_session_id;
+  const char *host_pairing_session_hint;
+  const char *host_pairing_expires_at;
   int host_pairing_rssi;
   int64_t host_pairing_seen_at_unix_ms;
   int64_t expires_at_unix_ms;

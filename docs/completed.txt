@@ -308,3 +308,4 @@ Task 290: Add recovery-app BLE provisioning support using the same Core contract
 Task 291: Add BLE onboarding end-to-end tests, fake BLE/GATT harnesses, security regression checks, docs, and physical-device validation criteria across supported endpoint boards - Completed on 09/02/2026 02:33
 Task 292: Define HexeVoice endpoint behavior for Core-published BLE pairing sessions - Completed on 09/03/2026 12:16
 Task 293: Implement endpoint firmware BLE central scanning for Hexe pairing adverts - Completed on 09/03/2026 12:40
+Task 294: Implement endpoint-to-Supervisor GATT pairing identity exchange and provisioning handoff - Completed on 09/03/2026 12:50

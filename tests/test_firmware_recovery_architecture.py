@@ -198,6 +198,13 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert '"central_scanning"' in ble_source
     assert '"host_pairing"' in ble_source
     assert "hexe_ble_pairing_host_advert_seen" in ble_source
+    assert "hexe_ble_pairing_offer_received" in ble_source
+    assert "hexe_ble_pairing_identity_write_result" in ble_source
+    assert '"device_id"' in ble_source
+    assert '"board_profile"' in ble_source
+    assert '"onboarding_session_id"' in ble_source
+    assert '"identity_sent"' in ble_source
+    assert "remember_host_pairing_offer" in ble_source
     assert "hexe_ble_provisioning_handle_encrypted_credentials" in ble_source
     assert "save_local_recovery_payload" in ble_source
     assert "set_nvs_string(handle, kWifiSsidKey" in ble_source

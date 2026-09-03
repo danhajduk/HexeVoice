@@ -41,12 +41,19 @@ struct BleProvisioningState {
   bool central_scanning{false};
   bool host_pairing_found{false};
   bool host_pairing_role_match{false};
+  bool host_pairing_connected{false};
+  bool host_pairing_offer_received{false};
+  bool host_pairing_identity_sent{false};
+  bool host_pairing_claim_code_required{false};
   char state[24]{"idle"};
   char reason[48]{"not_started"};
   char last_ack[32]{""};
   char last_error[48]{""};
   char host_pairing_address[18]{""};
   char host_pairing_name[40]{""};
+  char host_pairing_session_id[64]{""};
+  char host_pairing_session_hint[32]{""};
+  char host_pairing_expires_at[32]{""};
   int host_pairing_rssi{0};
   int64_t host_pairing_seen_at_us{0};
   char onboarding_session_id[64]{""};
@@ -264,7 +271,12 @@ void ensure_pairing_nonce() {
   const uint32_t c = esp_random();
   const uint32_t d = esp_random();
   std::snprintf(g_ble.pairing_nonce, sizeof(g_ble.pairing_nonce), "%08" PRIx32 "%08" PRIx32 "%08" PRIx32 "%08" PRIx32, a, b, c, d);
-  std::snprintf(g_ble.onboarding_session_id, sizeof(g_ble.onboarding_session_id), "ble-%08" PRIx32 "%08" PRIx32, esp_random(), esp_random());
+  if (g_ble.host_pairing_session_id[0] != '\0') {
+    std::strncpy(g_ble.onboarding_session_id, g_ble.host_pairing_session_id, sizeof(g_ble.onboarding_session_id) - 1);
+    g_ble.onboarding_session_id[sizeof(g_ble.onboarding_session_id) - 1] = '\0';
+  } else {
+    std::snprintf(g_ble.onboarding_session_id, sizeof(g_ble.onboarding_session_id), "ble-%08" PRIx32 "%08" PRIx32, esp_random(), esp_random());
+  }
   g_ble.last_sequence = 0;
   g_ble.issued_at_us = esp_timer_get_time();
   ensure_crypto_ready();
@@ -297,6 +309,18 @@ bool optional_string_field(cJSON *obj, const char *key, const char **value) {
     return false;
   }
   *value = field->valuestring;
+  return true;
+}
+
+bool optional_bool_field(cJSON *obj, const char *key, bool *value) {
+  cJSON *field = cJSON_IsObject(obj) ? cJSON_GetObjectItem(obj, key) : nullptr;
+  if (field == nullptr || cJSON_IsNull(field)) {
+    return true;
+  }
+  if (!cJSON_IsBool(field)) {
+    return false;
+  }
+  *value = cJSON_IsTrue(field);
   return true;
 }
 
@@ -611,6 +635,66 @@ bool bounded_copy(char *target, size_t target_size, const char *value, size_t mi
   return true;
 }
 
+void copy_text(char *target, size_t target_size, const char *value) {
+  if (target == nullptr || target_size == 0) {
+    return;
+  }
+  std::strncpy(target, value == nullptr ? "" : value, target_size - 1);
+  target[target_size - 1] = '\0';
+}
+
+bool remember_host_pairing_offer(cJSON *root) {
+  const char *onboarding_session_id = nullptr;
+  const char *session_hint = "";
+  const char *expires_at = "";
+  const char *contract_version = nullptr;
+  const char *payload_schema_id = nullptr;
+  bool claim_code_required = false;
+
+  if (!string_field(root, "onboarding_session_id", &onboarding_session_id) ||
+      !optional_string_field(root, "session_hint", &session_hint) ||
+      !optional_string_field(root, "expires_at", &expires_at) ||
+      !optional_bool_field(root, "claim_code_required", &claim_code_required)) {
+    set_error("invalid_pairing_offer");
+    return false;
+  }
+  cJSON *contract_field = cJSON_GetObjectItem(root, "contract_version");
+  if (contract_field != nullptr &&
+      (!cJSON_IsString(contract_field) ||
+       std::strcmp(contract_field->valuestring, hexe::system::kBleProvisioningContractVersion) != 0)) {
+    set_error("unsupported_pairing_offer");
+    return false;
+  }
+  cJSON *schema_field = cJSON_GetObjectItem(root, "payload_schema_id");
+  if (schema_field != nullptr &&
+      (!cJSON_IsString(schema_field) ||
+       std::strcmp(schema_field->valuestring, hexe::system::kBleProvisioningPayloadSchemaId) != 0)) {
+    set_error("unsupported_pairing_offer");
+    return false;
+  }
+  if (contract_field != nullptr) {
+    contract_version = contract_field->valuestring;
+  }
+  if (schema_field != nullptr) {
+    payload_schema_id = schema_field->valuestring;
+  }
+  (void) contract_version;
+  (void) payload_schema_id;
+
+  if (!bounded_copy(g_ble.host_pairing_session_id, sizeof(g_ble.host_pairing_session_id), onboarding_session_id, 1, 63)) {
+    set_error("invalid_pairing_offer");
+    return false;
+  }
+  copy_text(g_ble.onboarding_session_id, sizeof(g_ble.onboarding_session_id), onboarding_session_id);
+  copy_text(g_ble.host_pairing_session_hint, sizeof(g_ble.host_pairing_session_hint), session_hint);
+  copy_text(g_ble.host_pairing_expires_at, sizeof(g_ble.host_pairing_expires_at), expires_at);
+  g_ble.host_pairing_claim_code_required = claim_code_required;
+  g_ble.host_pairing_offer_received = true;
+  g_ble.last_error[0] = '\0';
+  set_state("pairing_offer_received", "host_pairing_offer");
+  return true;
+}
+
 bool validate_and_save_payload(cJSON *payload) {
   const char *wifi_name = nullptr;
   const char *wifi_pass = "";
@@ -910,6 +994,10 @@ BleProvisioningStatus ble_provisioning_status() {
       g_ble.central_scanning,
       g_ble.host_pairing_found,
       g_ble.host_pairing_role_match,
+      g_ble.host_pairing_connected,
+      g_ble.host_pairing_offer_received,
+      g_ble.host_pairing_identity_sent,
+      g_ble.host_pairing_claim_code_required,
       provisioning_configured(),
       hexe::board::pins::kBleOnboardingTransport,
       g_ble.state,
@@ -918,6 +1006,9 @@ BleProvisioningStatus ble_provisioning_status() {
       g_ble.last_error,
       g_ble.host_pairing_address,
       g_ble.host_pairing_name,
+      g_ble.host_pairing_session_id,
+      g_ble.host_pairing_session_hint,
+      g_ble.host_pairing_expires_at,
       g_ble.host_pairing_rssi,
       g_ble.host_pairing_seen_at_us == 0 ? 0 : g_ble.host_pairing_seen_at_us / 1000,
       g_ble.issued_at_us == 0 ? 0 : (g_ble.issued_at_us + kPairingTtlUs) / 1000};
@@ -930,15 +1021,23 @@ std::string ble_provisioning_device_identity_json() {
   cJSON_AddStringToObject(root, "envelope_schema_version", kBleProvisioningEnvelopeSchemaVersion);
   cJSON_AddStringToObject(root, "encryption_algorithm", kBleProvisioningEncryptionAlgorithm);
   cJSON_AddStringToObject(root, "key_agreement", kBleProvisioningKeyAgreement);
+  cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
+  cJSON_AddStringToObject(root, "device_id", endpoint_id());
   cJSON_AddStringToObject(root, "node_hardware_id", hardware_id());
   cJSON_AddStringToObject(root, "target_node_id", endpoint_id());
+  cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
   cJSON_AddStringToObject(root, "endpoint_ephemeral_public_key", g_ble.endpoint_public_key_b64);
   cJSON_AddStringToObject(root, "board_profile", hexe::config::kEndpointBoardProfile);
   cJSON_AddStringToObject(root, "firmware_version", esp_app_get_description()->version);
+  cJSON_AddStringToObject(root, "application_type", "endpoint");
+  cJSON_AddStringToObject(root, "provisioning_mode", "core_governed_pairing");
+  cJSON_AddStringToObject(root, "core_governed_mode", "endpoint_app");
   cJSON_AddStringToObject(root, "protocol_version", kBleProvisioningContractVersion);
   cJSON *schemas = cJSON_AddArrayToObject(root, "supported_payload_schemas");
   cJSON_AddItemToArray(schemas, cJSON_CreateString(kBleProvisioningPayloadSchemaId));
   cJSON_AddStringToObject(root, "provisioning_state", g_ble.state);
+  cJSON_AddBoolToObject(root, "claim_code_required", false);
+  cJSON_AddNumberToObject(root, "expires_at_unix_ms", (g_ble.issued_at_us + kPairingTtlUs) / 1000);
   return print_json(root);
 }
 
@@ -970,11 +1069,24 @@ std::string ble_provisioning_status_json() {
   cJSON *host_pairing = cJSON_AddObjectToObject(root, "host_pairing");
   cJSON_AddBoolToObject(host_pairing, "found", status.host_pairing_found);
   cJSON_AddBoolToObject(host_pairing, "role_match", status.host_pairing_role_match);
+  cJSON_AddBoolToObject(host_pairing, "connected", status.host_pairing_connected);
+  cJSON_AddBoolToObject(host_pairing, "offer_received", status.host_pairing_offer_received);
+  cJSON_AddBoolToObject(host_pairing, "identity_sent", status.host_pairing_identity_sent);
+  cJSON_AddBoolToObject(host_pairing, "claim_code_required", status.host_pairing_claim_code_required);
   if (status.host_pairing_address[0] != '\0') {
     cJSON_AddStringToObject(host_pairing, "address", status.host_pairing_address);
   }
   if (status.host_pairing_name[0] != '\0') {
     cJSON_AddStringToObject(host_pairing, "name", status.host_pairing_name);
+  }
+  if (status.host_pairing_session_id[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "onboarding_session_id", status.host_pairing_session_id);
+  }
+  if (status.host_pairing_session_hint[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "session_hint", status.host_pairing_session_hint);
+  }
+  if (status.host_pairing_expires_at[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "expires_at", status.host_pairing_expires_at);
   }
   cJSON_AddNumberToObject(host_pairing, "rssi", status.host_pairing_rssi);
   cJSON_AddNumberToObject(host_pairing, "seen_at_unix_ms", status.host_pairing_seen_at_unix_ms);
@@ -1085,4 +1197,52 @@ extern "C" void hexe_ble_pairing_host_advert_seen(
   g_ble.host_pairing_seen_at_us = esp_timer_get_time();
   set_state("pairing_advert_seen", g_ble.host_pairing_role_match ? "host_pairing_advert" : "uuid_match");
   ESP_LOGI(kTag, "BLE host pairing advert seen address=%s rssi=%d role_match=%d", g_ble.host_pairing_address, rssi, host_pairing_role_match);
+}
+
+extern "C" void hexe_ble_pairing_connection_state_changed(int connected, const char *reason, int rc) {
+  g_ble.host_pairing_connected = connected != 0;
+  if (connected) {
+    set_state("pairing_connected", reason == nullptr || reason[0] == '\0' ? "host_connected" : reason);
+    return;
+  }
+  if (reason != nullptr && reason[0] != '\0') {
+    set_state(g_ble.host_pairing_offer_received ? "pairing_offer_received" : "pairing_advert_seen", reason);
+  }
+  if (rc != 0) {
+    std::snprintf(g_ble.last_error, sizeof(g_ble.last_error), "%s:%d", reason == nullptr ? "pairing_connect_failed" : reason, rc);
+  }
+}
+
+extern "C" int hexe_ble_pairing_offer_received(const char *json, unsigned int length) {
+  if (json == nullptr || length == 0 || length > 1024) {
+    set_error("invalid_pairing_offer");
+    return -1;
+  }
+  cJSON *root = cJSON_ParseWithLength(json, length);
+  if (!cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    set_error("invalid_pairing_offer");
+    return -1;
+  }
+  const bool remembered = remember_host_pairing_offer(root);
+  cJSON_Delete(root);
+  if (remembered) {
+    ESP_LOGI(kTag, "BLE host pairing offer accepted session_hint=%s", g_ble.host_pairing_session_hint);
+  }
+  return remembered ? 0 : -1;
+}
+
+extern "C" void hexe_ble_pairing_identity_write_result(int succeeded, const char *reason, int rc) {
+  g_ble.host_pairing_identity_sent = succeeded != 0;
+  if (succeeded) {
+    set_ack("identity_sent");
+    set_state("pairing_identity_sent", reason == nullptr || reason[0] == '\0' ? "endpoint_identity_written" : reason);
+    return;
+  }
+  if (reason != nullptr && reason[0] != '\0') {
+    set_state("pairing_failed", reason);
+  }
+  if (rc != 0) {
+    std::snprintf(g_ble.last_error, sizeof(g_ble.last_error), "%s:%d", reason == nullptr ? "identity_write_failed" : reason, rc);
+  }
 }

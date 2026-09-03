@@ -1505,11 +1505,24 @@ std::string endpoint_capabilities_json() {
   cJSON *host_pairing = cJSON_AddObjectToObject(ble, "host_pairing");
   cJSON_AddBoolToObject(host_pairing, "found", ble_status.host_pairing_found);
   cJSON_AddBoolToObject(host_pairing, "role_match", ble_status.host_pairing_role_match);
+  cJSON_AddBoolToObject(host_pairing, "connected", ble_status.host_pairing_connected);
+  cJSON_AddBoolToObject(host_pairing, "offer_received", ble_status.host_pairing_offer_received);
+  cJSON_AddBoolToObject(host_pairing, "identity_sent", ble_status.host_pairing_identity_sent);
+  cJSON_AddBoolToObject(host_pairing, "claim_code_required", ble_status.host_pairing_claim_code_required);
   if (ble_status.host_pairing_address[0] != '\0') {
     cJSON_AddStringToObject(host_pairing, "address", ble_status.host_pairing_address);
   }
   if (ble_status.host_pairing_name[0] != '\0') {
     cJSON_AddStringToObject(host_pairing, "name", ble_status.host_pairing_name);
+  }
+  if (ble_status.host_pairing_session_id[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "onboarding_session_id", ble_status.host_pairing_session_id);
+  }
+  if (ble_status.host_pairing_session_hint[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "session_hint", ble_status.host_pairing_session_hint);
+  }
+  if (ble_status.host_pairing_expires_at[0] != '\0') {
+    cJSON_AddStringToObject(host_pairing, "expires_at", ble_status.host_pairing_expires_at);
   }
   cJSON_AddNumberToObject(host_pairing, "rssi", ble_status.host_pairing_rssi);
   cJSON_AddNumberToObject(host_pairing, "seen_at_unix_ms", ble_status.host_pairing_seen_at_unix_ms);

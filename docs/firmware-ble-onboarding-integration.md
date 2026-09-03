@@ -1,6 +1,6 @@
 # Firmware BLE Onboarding Integration
 
-Status: Task 293 central-scan firmware support. This document records how
+Status: Task 294 endpoint-to-Supervisor GATT identity exchange. This document records how
 HexeVoice implements endpoint BLE onboarding against the current
 Core/Supervisor `ble.provision_wifi` and Core-published pairing contracts
 without inventing a parallel host Bluetooth API.
@@ -172,8 +172,9 @@ operator approved over BLE.
 
 ## Endpoint Firmware Status
 
-Task 288 implements the endpoint-side peripheral and Task 293 adds
-Core-published pairing advert discovery:
+Task 288 implements the endpoint-side peripheral, Task 293 adds
+Core-published pairing advert discovery, and Task 294 adds the first
+endpoint-to-Supervisor GATT identity exchange:
 
 - The endpoint runtime now declares the Core `ble.provision_wifi` operation,
   lease scope, contract version, envelope schema version, Voice payload schema
@@ -189,9 +190,22 @@ Core-published pairing advert discovery:
   manufacturer role marker is recognized when present, but UUID matches are
   still retained so early Supervisor host-advert implementations can be
   discovered while the full role marker stabilizes.
+- After a UUID match, the endpoint connects as a NimBLE central/client,
+  discovers the canonical onboarding service, finds the device identity and
+  pairing offer characteristics, reads the host pairing offer, and writes its
+  endpoint identity. A malformed offer, wrong contract version, or wrong
+  payload schema stops the exchange before identity is written.
+- Endpoint identity includes the stable `device_id`, hardware id, target node
+  id, board profile, firmware version, application type, provisioning mode,
+  host `onboarding_session_id`, endpoint pairing nonce, endpoint ephemeral
+  public key, supported payload schemas, and current provisioning state. The
+  board profile is the board type shown to the operator in the node-side
+  pairing UI.
 - BLE status and heartbeat include only safe host-pairing scan metadata:
   central scanning state, last seen address, optional name, RSSI, role-marker
-  match, and local seen timestamp.
+  match, local seen timestamp, host pairing connection state, pairing-offer
+  receipt, identity-write completion, short session hint, and the non-secret
+  onboarding session id.
 - Device identity and pairing metadata expose the endpoint ephemeral X25519
   public key so Supervisor can create the encrypted provisioning envelope.
 - The heartbeat reports BLE onboarding capability, transport, UUIDs, state,
@@ -205,6 +219,9 @@ Core-published pairing advert discovery:
 - The decrypted Voice payload apply path writes through
   `save_endpoint_provisioning`, requests Wi-Fi reconnect, and stops advertising
   after successful provisioning.
+- The inverted pairing exchange does not itself persist Wi-Fi credentials or
+  store secrets. Credential persistence still happens only after the encrypted
+  provisioning envelope validates and decrypts successfully.
 
 ## HexeVoice Backend Status
 

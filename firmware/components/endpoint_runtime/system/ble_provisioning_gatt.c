@@ -1,7 +1,7 @@
 #include "sdkconfig.h"
 
 #if defined(CONFIG_BT_ENABLED) && defined(CONFIG_BT_NIMBLE_ENABLED) && defined(CONFIG_BT_NIMBLE_ROLE_PERIPHERAL) && \
-    defined(CONFIG_BT_NIMBLE_GATT_SERVER)
+    defined(CONFIG_BT_NIMBLE_GATT_SERVER) && defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) && defined(CONFIG_BT_NIMBLE_GATT_CLIENT)
 
 #include <assert.h>
 #include <stdint.h>
@@ -28,14 +28,31 @@ const char *hexe_ble_provisioning_ack_error_json(void);
 int hexe_ble_provisioning_handle_encrypted_credentials(const char *json, unsigned int length);
 void hexe_ble_pairing_scan_state_changed(int scanning, const char *reason, int rc);
 void hexe_ble_pairing_host_advert_seen(const char *address, int rssi, const char *name, int host_pairing_role_match);
+void hexe_ble_pairing_connection_state_changed(int connected, const char *reason, int rc);
+int hexe_ble_pairing_offer_received(const char *json, unsigned int length);
+void hexe_ble_pairing_identity_write_result(int succeeded, const char *reason, int rc);
 
 static const char *TAG = "hexe_ble_gatt";
+enum {
+  kPairingConnectTimeoutMs = 30000,
+  kMaxPairingOfferBytes = 1024,
+};
 
 static uint8_t own_addr_type;
 static int advertising_requested;
 static int pairing_scan_requested;
 static int pairing_scan_active;
 static int connected;
+static int client_connecting;
+static int client_connected;
+static int client_offer_received;
+static int client_identity_sent;
+static uint16_t client_conn_handle;
+static uint16_t client_service_start_handle;
+static uint16_t client_service_end_handle;
+static uint16_t client_device_identity_handle;
+static uint16_t client_pairing_nonce_handle;
+static ble_addr_t client_peer_addr;
 static uint16_t advertising_refresh_sequence;
 static uint8_t advertising_timestamp_data[8];
 static TaskHandle_t advertising_refresh_task_handle;
@@ -129,6 +146,25 @@ static const struct ble_gatt_svc_def services[] = {
 };
 
 static int gap_event(struct ble_gap_event *event, void *arg);
+static int start_pairing_scan(void);
+
+static void reset_client_handles(void) {
+  client_service_start_handle = 0;
+  client_service_end_handle = 0;
+  client_device_identity_handle = 0;
+  client_pairing_nonce_handle = 0;
+}
+
+static void reset_client_state(int clear_exchange_state) {
+  client_connecting = 0;
+  client_connected = 0;
+  client_conn_handle = 0;
+  reset_client_handles();
+  if (clear_exchange_state) {
+    client_offer_received = 0;
+    client_identity_sent = 0;
+  }
+}
 
 static void format_addr(const ble_addr_t *addr, char out[18]) {
   if (addr == NULL || out == NULL) {
@@ -174,6 +210,12 @@ static int fields_include_host_pairing_role(const struct ble_hs_adv_fields *fiel
   return 0;
 }
 
+static int start_pairing_connect(const ble_addr_t *addr);
+static int pairing_service_discovered_cb(uint16_t conn_handle, const struct ble_gatt_error *error, const struct ble_gatt_svc *svc, void *arg);
+static int pairing_chr_discovered_cb(uint16_t conn_handle, const struct ble_gatt_error *error, const struct ble_gatt_chr *chr, void *arg);
+static int pairing_offer_read_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg);
+static int pairing_identity_write_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg);
+
 static void copy_adv_name(const struct ble_hs_adv_fields *fields, char out[40]) {
   if (out == NULL) {
     return;
@@ -204,11 +246,11 @@ static void handle_pairing_scan_result(const struct ble_gap_disc_desc *disc) {
   format_addr(&disc->addr, address);
   copy_adv_name(&fields, name);
   hexe_ble_pairing_host_advert_seen(address, disc->rssi, name, fields_include_host_pairing_role(&fields));
+  start_pairing_connect(&disc->addr);
 }
 
 static int start_pairing_scan(void) {
-#if defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) || defined(CONFIG_BT_NIMBLE_ROLE_OBSERVER)
-  if (!pairing_scan_requested || pairing_scan_active || ble_gap_disc_active()) {
+  if (!pairing_scan_requested || pairing_scan_active || client_connecting || client_connected || ble_gap_disc_active()) {
     return 0;
   }
   struct ble_gap_disc_params params;
@@ -225,14 +267,9 @@ static int start_pairing_scan(void) {
     hexe_ble_pairing_scan_state_changed(0, "ble_pairing_scan_start_failed", rc);
   }
   return rc;
-#else
-  hexe_ble_pairing_scan_state_changed(0, "nimble_central_disabled", -1);
-  return -1;
-#endif
 }
 
 static int stop_pairing_scan(void) {
-#if defined(CONFIG_BT_NIMBLE_ROLE_CENTRAL) || defined(CONFIG_BT_NIMBLE_ROLE_OBSERVER)
   if (ble_gap_disc_active()) {
     int rc = ble_gap_disc_cancel();
     if (rc != 0) {
@@ -243,11 +280,178 @@ static int stop_pairing_scan(void) {
   pairing_scan_active = 0;
   hexe_ble_pairing_scan_state_changed(0, "stopped", 0);
   return 0;
-#else
+}
+
+static int start_pairing_connect(const ble_addr_t *addr) {
+  if (addr == NULL || client_connecting || client_connected || connected) {
+    return 0;
+  }
+  if (ble_gap_disc_active()) {
+    int cancel_rc = ble_gap_disc_cancel();
+    if (cancel_rc != 0) {
+      hexe_ble_pairing_connection_state_changed(0, "scan_cancel_failed", cancel_rc);
+      return cancel_rc;
+    }
+  }
   pairing_scan_active = 0;
-  hexe_ble_pairing_scan_state_changed(0, "nimble_central_disabled", -1);
-  return -1;
-#endif
+  hexe_ble_pairing_scan_state_changed(0, "connecting", 0);
+  memcpy(&client_peer_addr, addr, sizeof(client_peer_addr));
+  reset_client_state(1);
+  client_connecting = 1;
+  int rc = ble_gap_connect(own_addr_type, &client_peer_addr, kPairingConnectTimeoutMs, NULL, gap_event, NULL);
+  if (rc != 0) {
+    client_connecting = 0;
+    hexe_ble_pairing_connection_state_changed(0, "connect_start_failed", rc);
+    if (pairing_scan_requested) {
+      start_pairing_scan();
+    }
+    return rc;
+  }
+  hexe_ble_pairing_connection_state_changed(0, "connecting", 0);
+  return 0;
+}
+
+static int discover_pairing_service(uint16_t conn_handle) {
+  int rc = ble_gattc_disc_svc_by_uuid(conn_handle, &service_uuid.u, pairing_service_discovered_cb, NULL);
+  if (rc != 0) {
+    hexe_ble_pairing_connection_state_changed(0, "service_discovery_start_failed", rc);
+    ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  return rc;
+}
+
+static int read_pairing_offer(uint16_t conn_handle) {
+  if (client_pairing_nonce_handle == 0) {
+    hexe_ble_pairing_connection_state_changed(0, "pairing_offer_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  int rc = ble_gattc_read(conn_handle, client_pairing_nonce_handle, pairing_offer_read_cb, NULL);
+  if (rc != 0) {
+    hexe_ble_pairing_connection_state_changed(0, "pairing_offer_read_start_failed", rc);
+    ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  return rc;
+}
+
+static int write_pairing_identity(uint16_t conn_handle) {
+  if (client_device_identity_handle == 0) {
+    hexe_ble_pairing_identity_write_result(0, "device_identity_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  const char *identity = hexe_ble_provisioning_device_identity_json();
+  if (identity == NULL || identity[0] == '\0') {
+    hexe_ble_pairing_identity_write_result(0, "device_identity_empty", BLE_ATT_ERR_UNLIKELY);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  size_t identity_len = strlen(identity);
+  if (identity_len > UINT16_MAX) {
+    hexe_ble_pairing_identity_write_result(0, "device_identity_too_large", BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  int rc = ble_gattc_write_flat(conn_handle, client_device_identity_handle, identity, (uint16_t)identity_len, pairing_identity_write_cb, NULL);
+  if (rc != 0) {
+    hexe_ble_pairing_identity_write_result(0, "device_identity_write_start_failed", rc);
+    ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  return rc;
+}
+
+static int pairing_service_discovered_cb(uint16_t conn_handle, const struct ble_gatt_error *error, const struct ble_gatt_svc *svc, void *arg) {
+  (void)arg;
+  if (error == NULL) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  if (error->status == 0 && svc != NULL) {
+    client_service_start_handle = svc->start_handle;
+    client_service_end_handle = svc->end_handle;
+    int rc = ble_gattc_disc_all_chrs(conn_handle, svc->start_handle, svc->end_handle, pairing_chr_discovered_cb, NULL);
+    if (rc != 0) {
+      hexe_ble_pairing_connection_state_changed(0, "characteristic_discovery_start_failed", rc);
+      ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    return 0;
+  }
+  if (error->status == BLE_HS_EDONE) {
+    if (client_service_start_handle == 0) {
+      hexe_ble_pairing_connection_state_changed(0, "service_not_found", BLE_ATT_ERR_ATTR_NOT_FOUND);
+      ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    return 0;
+  }
+  hexe_ble_pairing_connection_state_changed(0, "service_discovery_failed", error->status);
+  ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  return 0;
+}
+
+static int pairing_chr_discovered_cb(uint16_t conn_handle, const struct ble_gatt_error *error, const struct ble_gatt_chr *chr, void *arg) {
+  (void)arg;
+  if (error == NULL) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  if (error->status == 0 && chr != NULL) {
+    if (ble_uuid_cmp(&chr->uuid.u, &device_identity_uuid.u) == 0) {
+      client_device_identity_handle = chr->val_handle;
+    } else if (ble_uuid_cmp(&chr->uuid.u, &pairing_nonce_uuid.u) == 0) {
+      client_pairing_nonce_handle = chr->val_handle;
+    }
+    return 0;
+  }
+  if (error->status == BLE_HS_EDONE) {
+    if (client_device_identity_handle == 0 || client_pairing_nonce_handle == 0) {
+      hexe_ble_pairing_connection_state_changed(0, "required_characteristics_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
+      ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+      return 0;
+    }
+    read_pairing_offer(conn_handle);
+    return 0;
+  }
+  hexe_ble_pairing_connection_state_changed(0, "characteristic_discovery_failed", error->status);
+  ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  return 0;
+}
+
+static int pairing_offer_read_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg) {
+  (void)arg;
+  if (error == NULL) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  if (error->status != 0 || attr == NULL || attr->om == NULL) {
+    hexe_ble_pairing_connection_state_changed(0, "pairing_offer_read_failed", error->status);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  uint16_t length = OS_MBUF_PKTLEN(attr->om);
+  char buffer[kMaxPairingOfferBytes + 1];
+  if (length == 0 || length > kMaxPairingOfferBytes) {
+    hexe_ble_pairing_connection_state_changed(0, "pairing_offer_invalid_length", BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  int rc = ble_hs_mbuf_to_flat(attr->om, buffer, kMaxPairingOfferBytes, &length);
+  if (rc != 0) {
+    hexe_ble_pairing_connection_state_changed(0, "pairing_offer_flatten_failed", rc);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  buffer[length] = '\0';
+  client_offer_received = 1;
+  if (hexe_ble_pairing_offer_received(buffer, length) != 0) {
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  return write_pairing_identity(conn_handle);
+}
+
+static int pairing_identity_write_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg) {
+  (void)attr;
+  (void)arg;
+  if (error == NULL) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  if (error->status != 0) {
+    client_identity_sent = 0;
+    hexe_ble_pairing_identity_write_result(0, "device_identity_write_failed", error->status);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  client_identity_sent = 1;
+  hexe_ble_pairing_identity_write_result(1, "endpoint_identity_written", 0);
+  return 0;
 }
 
 static void write_le16(uint8_t *target, uint16_t value) {
@@ -319,6 +523,22 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
   (void)arg;
   switch (event->type) {
     case BLE_GAP_EVENT_CONNECT:
+      if (client_connecting) {
+        client_connecting = 0;
+        if (event->connect.status != 0) {
+          reset_client_state(1);
+          hexe_ble_pairing_connection_state_changed(0, "connect_failed", event->connect.status);
+          if (pairing_scan_requested) {
+            start_pairing_scan();
+          }
+          return 0;
+        }
+        client_connected = 1;
+        client_conn_handle = event->connect.conn_handle;
+        hexe_ble_pairing_connection_state_changed(1, "connected", 0);
+        discover_pairing_service(event->connect.conn_handle);
+        return 0;
+      }
       if (event->connect.status != 0) {
         advertise();
       } else {
@@ -326,6 +546,15 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
       }
       return 0;
     case BLE_GAP_EVENT_DISCONNECT:
+      if (client_connected && event->disconnect.conn.conn_handle == client_conn_handle) {
+        reset_client_state(client_identity_sent ? 0 : 1);
+        hexe_ble_pairing_connection_state_changed(0, "disconnected", event->disconnect.reason);
+        advertise();
+        if (pairing_scan_requested && !client_identity_sent) {
+          start_pairing_scan();
+        }
+        return 0;
+      }
       connected = 0;
       advertise();
       return 0;
@@ -338,7 +567,7 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_DISC_COMPLETE:
       pairing_scan_active = 0;
       hexe_ble_pairing_scan_state_changed(0, "scan_complete", event->disc_complete.reason);
-      if (pairing_scan_requested) {
+      if (pairing_scan_requested && !client_connecting && !client_connected) {
         start_pairing_scan();
       }
       return 0;
