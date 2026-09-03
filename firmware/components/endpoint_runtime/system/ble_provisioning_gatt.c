@@ -35,6 +35,8 @@ void hexe_ble_pairing_identity_write_result(int succeeded, const char *reason, i
 static const char *TAG = "hexe_ble_gatt";
 enum {
   kPairingConnectTimeoutMs = 30000,
+  kPairingScanDurationMs = 5000,
+  kPairingScanPollIntervalMs = 20000,
   kMaxPairingOfferBytes = 1024,
 };
 
@@ -56,6 +58,7 @@ static ble_addr_t client_peer_addr;
 static uint16_t advertising_refresh_sequence;
 static uint8_t advertising_timestamp_data[8];
 static TaskHandle_t advertising_refresh_task_handle;
+static TaskHandle_t pairing_scan_poll_task_handle;
 
 static uint16_t device_identity_handle;
 static uint16_t pairing_nonce_handle;
@@ -256,10 +259,10 @@ static int start_pairing_scan(void) {
   struct ble_gap_disc_params params;
   memset(&params, 0, sizeof(params));
   params.passive = 0;
-  params.itvl = 0x0010;
-  params.window = 0x0010;
+  params.itvl = 0x0060;
+  params.window = 0x0018;
   params.filter_duplicates = 1;
-  int rc = ble_gap_disc(own_addr_type, BLE_HS_FOREVER, &params, gap_event, NULL);
+  int rc = ble_gap_disc(own_addr_type, kPairingScanDurationMs, &params, gap_event, NULL);
   if (rc == 0) {
     pairing_scan_active = 1;
     hexe_ble_pairing_scan_state_changed(1, "scanning", 0);
@@ -568,9 +571,6 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
     case BLE_GAP_EVENT_DISC_COMPLETE:
       pairing_scan_active = 0;
       hexe_ble_pairing_scan_state_changed(0, "scan_complete", event->disc_complete.reason);
-      if (pairing_scan_requested && !client_connecting && !client_connected) {
-        start_pairing_scan();
-      }
       return 0;
     default:
       return 0;
@@ -586,6 +586,16 @@ static void advertising_refresh_task(void *param) {
     }
     if (!ble_gap_adv_active()) {
       advertise();
+    }
+  }
+}
+
+static void pairing_scan_poll_task(void *param) {
+  (void)param;
+  while (1) {
+    vTaskDelay(pdMS_TO_TICKS(kPairingScanPollIntervalMs));
+    if (pairing_scan_requested && !pairing_scan_active && !client_connecting && !client_connected) {
+      start_pairing_scan();
     }
   }
 }
@@ -631,6 +641,9 @@ int hexe_ble_provisioning_gatt_init(const char *device_name) {
   nimble_port_freertos_init(host_task);
   if (advertising_refresh_task_handle == NULL) {
     xTaskCreate(advertising_refresh_task, "ble_adv_refresh", 3072, NULL, 5, &advertising_refresh_task_handle);
+  }
+  if (pairing_scan_poll_task_handle == NULL) {
+    xTaskCreate(pairing_scan_poll_task, "ble_pair_scan", 3072, NULL, 5, &pairing_scan_poll_task_handle);
   }
   return 0;
 }
