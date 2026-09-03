@@ -60,6 +60,52 @@ checks request, token, and broker-body consistency for onboarding session,
 target node, node profile, payload schema, pairing nonce, and claim-code
 reference.
 
+## Core-Published Pairing Contract
+
+The next user-friendly flow inverts the BLE roles while reusing the same Hexe
+onboarding UUID block:
+
+| Role | Behavior |
+| --- | --- |
+| Core | Creates the short-lived pairing session, owns policy/audit/approval, and binds the session to the device id |
+| Supervisor | Advertises the Hexe onboarding service as a host pairing session and exposes the host GATT service |
+| Endpoint firmware | Scans for the host advert, connects, writes identity, receives encrypted provisioning data, and later proves the same session/id over Wi-Fi |
+| HexeVoice UI/backend | Shows the operator the discovered device id/board profile, asks for approval, sends credentials only after approval, and waits for the matching Wi-Fi onboarding request |
+
+The advertisement is intentionally small and non-secret:
+
+- service UUID: `7f9c0000-5f04-4d8b-9a46-7c0f7a100000`
+- `contract_version`
+- `session_role`: `host_pairing_advert`
+- short `session_hint`
+- expiry/capability flags when they fit the BLE advert budget
+
+The endpoint must not rely on device name alone. It must filter by the Hexe
+service UUID and `host_pairing_advert` role, then connect to the host GATT
+service to read the full pairing offer.
+
+The endpoint identity write is required before credentials are released and
+must include:
+
+- `onboarding_session_id`
+- `device_id`
+- `node_hardware_id`
+- `target_node_id`
+- `board_profile`
+- `firmware_version`
+- `application_type`
+- `provisioning_mode`
+- `endpoint_ephemeral_public_key`
+- `supported_payload_schemas`
+- `provisioning_state`
+
+`device_id` is the stable handoff key. The operator approves the BLE-reported
+`device_id`; the encrypted credential response is bound to that
+`device_id` and `onboarding_session_id`; after Wi-Fi joins, the endpoint must
+start HexeVoice onboarding with the same two values. HexeVoice rejects online
+follow-up onboarding when the session is missing, expired, already consumed, or
+does not match the BLE-approved device id.
+
 ## Ownership Boundary
 
 | Owner | Responsibility |
@@ -78,18 +124,21 @@ exact operation first.
 
 ## Deployment Roles
 
-HexeVoice can participate in two roles:
+HexeVoice can participate in three roles:
 
 - Target endpoint role: every BLE-capable endpoint board advertises the Hexe BLE
   onboarding peripheral when unprovisioned, explicitly placed in provisioning
   mode, or booted into recovery provisioning.
+- Pairing-session endpoint role: every supported setup/recovery build scans for
+  a Core/Supervisor `host_pairing_advert`, connects as a BLE central/client,
+  and writes its session-bound identity before credentials are released.
 - Trusted requester role: a trusted HexeVoice backend may orchestrate Core
   hardware access and call the Supervisor broker to provision a nearby endpoint.
 
-Most deployments need both roles: firmware is the target, while the HexeVoice
-backend provides the operator workflow. If another trusted operator client owns
-the requester role, HexeVoice firmware still implements only the target-side
-GATT service and normal post-Wi-Fi onboarding remains unchanged.
+Most deployments need the pairing-session endpoint role plus the backend
+operator workflow. The older target endpoint peripheral role remains available
+as a fallback/debug path while Core-published pairing becomes the preferred
+popup experience.
 
 ## Payload To Firmware Settings Mapping
 
@@ -108,10 +157,18 @@ runtime's compatible NVS keys:
 | `endpoint_name` | `endpoint_id` | Optional stable endpoint key; use current/generated id when omitted |
 | `display_name` | `display_name` | Optional operator-visible name |
 | successful apply | `provisioned` | Set to `1` after settings validate and persist |
+| pairing handoff session | `onboarding_session_id` or recovery/session handoff key | Persist until first Wi-Fi onboarding completes |
+| pairing handoff device | `device_id` or endpoint id key | Must match the BLE-approved identity |
 
 Firmware must write through the existing endpoint provisioning settings path
 rather than introducing a BLE-only credential store. That keeps BLE
 provisioning, backend-command provisioning, and recovery provisioning aligned.
+
+For the Core-published pairing flow, firmware must also retain the
+`onboarding_session_id` and `device_id` long enough to include both in its first
+post-Wi-Fi HexeVoice onboarding request. That state is not a trust token; it is
+a short-lived proof that the device now on Wi-Fi is the same device the
+operator approved over BLE.
 
 ## Endpoint Firmware Status
 

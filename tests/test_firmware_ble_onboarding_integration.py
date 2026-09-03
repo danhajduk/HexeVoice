@@ -92,6 +92,22 @@ def test_ble_onboarding_integration_documents_backend_operator_orchestration():
         assert required_text in doc
 
 
+def test_ble_onboarding_integration_documents_core_published_pairing_handoff():
+    doc = DOC.read_text(encoding="utf-8")
+
+    for required_text in (
+        "Core-Published Pairing Contract",
+        "`host_pairing_advert`",
+        "`device_id`",
+        "`onboarding_session_id`",
+        "endpoint must not rely on device name alone",
+        "operator approves the BLE-reported",
+        "post-Wi-Fi HexeVoice onboarding request",
+        "same two values",
+    ):
+        assert required_text in doc
+
+
 def test_ble_onboarding_integration_defines_hexevoice_owned_followup_tasks():
     doc = DOC.read_text(encoding="utf-8")
 

@@ -52,7 +52,6 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 292: Define HexeVoice endpoint behavior for Core-published BLE pairing sessions
 [TODO] Task 293: Implement endpoint firmware BLE central scanning for Hexe pairing adverts
 [TODO] Task 294: Implement endpoint-to-Supervisor GATT pairing identity exchange and provisioning handoff
 [TODO] Task 295: Integrate HexeVoice onboarding UI/backend with Core pairing sessions and fallback scanning
