@@ -243,7 +243,10 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert "set_nvs_string(handle, kWifiSsidKey" in ble_source
     assert "set_nvs_string(handle, kWifiPasswordKey" in ble_source
     assert "nvs_set_u8(handle, kProvisionedKey, 1)" in ble_source
-    assert "ESP_LOG" not in ble_source[ble_source.index("save_local_recovery_payload") : ble_source.index("bool handle_local_recovery_write")]
+    assert 'constexpr char kBleOnboardingSessionIdKey[] = "ble_session"' in ble_source
+    assert "ble_onboarding_session_id" not in ble_source
+    assert "static_assert(sizeof(kBleOnboardingSessionIdKey) <= 16" in ble_source
+    assert "Recovery BLE NVS string write failed key=%s value_len=%u err=%s" in ble_source
     assert "recovery_ble_enabled()" in status_source
 
 

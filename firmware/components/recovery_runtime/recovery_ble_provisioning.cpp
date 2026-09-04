@@ -50,8 +50,10 @@ constexpr char kUseTlsKey[] = "use_tls";
 constexpr char kWifiSsidKey[] = "wifi_ssid";
 constexpr char kWifiPasswordKey[] = "wifi_password";
 constexpr char kProvisionedKey[] = "provisioned";
-constexpr char kBleOnboardingSessionIdKey[] = "ble_onboarding_session_id";
+constexpr char kBleOnboardingSessionIdKey[] = "ble_session";
 constexpr char kBleDeviceIdKey[] = "ble_device_id";
+static_assert(sizeof(kBleOnboardingSessionIdKey) <= 16, "NVS keys must fit ESP-IDF's 15 byte key limit");
+static_assert(sizeof(kBleDeviceIdKey) <= 16, "NVS keys must fit ESP-IDF's 15 byte key limit");
 constexpr size_t kX25519PublicKeyBytes = 32;
 constexpr size_t kAes256KeyBytes = 32;
 constexpr size_t kAesGcmNonceBytes = 12;
@@ -620,12 +622,22 @@ bool valid_port(int port) {
 
 bool set_nvs_string(nvs_handle_t handle, const char *key, const char *value, bool required) {
   if ((value == nullptr || value[0] == '\0') && required) {
+    ESP_LOGW(kTag, "Recovery BLE NVS string missing required key=%s", key == nullptr ? "(null)" : key);
     return false;
   }
   if (value == nullptr || value[0] == '\0') {
     return true;
   }
-  return nvs_set_str(handle, key, value) == ESP_OK;
+  const esp_err_t err = nvs_set_str(handle, key, value);
+  if (err != ESP_OK) {
+    ESP_LOGW(
+        kTag,
+        "Recovery BLE NVS string write failed key=%s value_len=%u err=%s",
+        key == nullptr ? "(null)" : key,
+        static_cast<unsigned>(std::strlen(value)),
+        esp_err_to_name(err));
+  }
+  return err == ESP_OK;
 }
 
 bool remember_host_pairing_offer(cJSON *root) {
