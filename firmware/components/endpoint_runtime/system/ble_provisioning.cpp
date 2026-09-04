@@ -510,9 +510,12 @@ bool import_aes_decrypt_key(const uint8_t *key, size_t key_len, psa_key_id_t *ke
 
 bool derive_provisioning_key(const char *supervisor_public_key_b64, const std::string &salt_json, uint8_t key[kAes256KeyBytes]) {
   std::vector<uint8_t> supervisor_public_key;
-  if (!base64url_decode(supervisor_public_key_b64, &supervisor_public_key) ||
-      supervisor_public_key.size() != kX25519PublicKeyBytes ||
-      !ensure_crypto_ready()) {
+  if (!base64url_decode(supervisor_public_key_b64, &supervisor_public_key) || supervisor_public_key.size() != kX25519PublicKeyBytes) {
+    ESP_LOGW(kTag, "BLE supervisor public key invalid len=%u", static_cast<unsigned>(supervisor_public_key.size()));
+    return false;
+  }
+  if (!ensure_crypto_ready()) {
+    ESP_LOGW(kTag, "BLE crypto not ready for key derivation");
     return false;
   }
 
@@ -527,6 +530,7 @@ bool derive_provisioning_key(const char *supervisor_public_key_b64, const std::s
       sizeof(shared_secret),
       &shared_secret_len);
   if (status != PSA_SUCCESS || shared_secret_len != sizeof(shared_secret)) {
+    ESP_LOGW(kTag, "BLE X25519 agreement failed status=%d shared_len=%u", static_cast<int>(status), static_cast<unsigned>(shared_secret_len));
     std::fill(std::begin(shared_secret), std::end(shared_secret), 0);
     return false;
   }
@@ -556,6 +560,9 @@ bool derive_provisioning_key(const char *supervisor_public_key_b64, const std::s
   }
   psa_key_derivation_abort(&derivation);
   std::fill(std::begin(shared_secret), std::end(shared_secret), 0);
+  if (status != PSA_SUCCESS) {
+    ESP_LOGW(kTag, "BLE HKDF failed status=%d", static_cast<int>(status));
+  }
   return status == PSA_SUCCESS;
 }
 
@@ -574,6 +581,7 @@ bool decrypt_payload(
   plaintext->assign(ciphertext.size(), 0);
   psa_key_id_t aes_key = 0;
   if (!import_aes_decrypt_key(key, kAes256KeyBytes, &aes_key)) {
+    ESP_LOGW(kTag, "BLE AES-GCM key import failed");
     return false;
   }
   size_t plaintext_len = 0;
@@ -591,6 +599,7 @@ bool decrypt_payload(
       &plaintext_len);
   psa_destroy_key(aes_key);
   if (status != PSA_SUCCESS) {
+    ESP_LOGW(kTag, "BLE AES-GCM decrypt failed status=%d aad_len=%u ciphertext_len=%u tag_len=%u", static_cast<int>(status), static_cast<unsigned>(aad.size()), static_cast<unsigned>(ciphertext.size()), static_cast<unsigned>(tag.size()));
     plaintext->clear();
     return false;
   }
@@ -897,7 +906,7 @@ bool apply_encrypted_envelope(cJSON *root, const EnvelopeFields &fields) {
   const std::string salt_json = canonical_salt_json(fields.onboarding_session_id, fields.target_node_id, fields.pairing_nonce);
   if (!derive_provisioning_key(fields.supervisor_public_key, salt_json, key)) {
     std::fill(key, key + sizeof(key), 0);
-    set_error("decrypt_failed");
+    set_error("key_derivation_failed");
     return false;
   }
 
@@ -905,7 +914,7 @@ bool apply_encrypted_envelope(cJSON *root, const EnvelopeFields &fields) {
   const bool decrypted = decrypt_payload(key, nonce, aad, ciphertext, tag, &plaintext);
   std::fill(key, key + sizeof(key), 0);
   if (!decrypted) {
-    set_error("decrypt_failed");
+    set_error("aes_gcm_decrypt_failed");
     return false;
   }
   plaintext.push_back('\0');
@@ -1296,10 +1305,12 @@ extern "C" void hexe_ble_pairing_identity_write_result(int succeeded, const char
 extern "C" void hexe_ble_pairing_credentials_read_result(int succeeded, const char *reason, int rc) {
   ESP_LOGI(
       kTag,
-      "BLE host pairing credentials_result succeeded=%d reason=%s rc=%d",
+      "BLE host pairing credentials_result succeeded=%d reason=%s rc=%d ble_state=%s ble_error=%s",
       succeeded,
       reason == nullptr || reason[0] == '\0' ? "(none)" : reason,
-      rc);
+      rc,
+      g_ble.state,
+      g_ble.last_error[0] == '\0' ? "(none)" : g_ble.last_error);
   if (succeeded) {
     set_ack("credentials_applied");
     set_state("completed", reason == nullptr || reason[0] == '\0' ? "credentials_applied" : reason);
