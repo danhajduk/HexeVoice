@@ -232,6 +232,9 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert '"pairing_nonce"' in pairing_nonce_json
     assert '"endpoint_ephemeral_public_key"' in pairing_nonce_json
     assert "remember_host_pairing_offer" in ble_source
+    assert "host_session_bound" in ble_source
+    assert "session_changed" in ble_source
+    assert "reset_crypto_session();" in ble_source[ble_source.index("bool remember_host_pairing_offer") :]
     assert "hexe_ble_provisioning_handle_encrypted_credentials" in ble_source
     assert "save_local_recovery_payload" in ble_source
     assert "apply_encrypted_envelope" in ble_source

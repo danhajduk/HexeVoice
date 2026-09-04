@@ -277,8 +277,10 @@ void reset_crypto_session() {
 }
 
 void ensure_pairing_nonce() {
+  const bool host_session_bound =
+      g_ble.host_pairing_session_id[0] != '\0' && std::strcmp(g_ble.onboarding_session_id, g_ble.host_pairing_session_id) == 0;
   const bool existing_valid =
-      g_ble.pairing_nonce[0] != '\0' && (esp_timer_get_time() - g_ble.issued_at_us) < kPairingTtlUs;
+      g_ble.pairing_nonce[0] != '\0' && (host_session_bound || (esp_timer_get_time() - g_ble.issued_at_us) < kPairingTtlUs);
   if (existing_valid && ensure_crypto_ready()) {
     return;
   }
@@ -639,6 +641,13 @@ bool remember_host_pairing_offer(cJSON *root) {
     set_error("unsupported_pairing_offer");
     return false;
   }
+  const bool session_changed =
+      g_ble.host_pairing_session_id[0] != '\0' && std::strcmp(g_ble.host_pairing_session_id, onboarding_session_id) != 0;
+  if (session_changed) {
+    reset_crypto_session();
+    g_ble.pairing_nonce[0] = '\0';
+    g_ble.last_sequence = 0;
+  }
   copy_cstr(g_ble.host_pairing_session_id, sizeof(g_ble.host_pairing_session_id), onboarding_session_id);
   copy_cstr(g_ble.onboarding_session_id, sizeof(g_ble.onboarding_session_id), onboarding_session_id);
   copy_cstr(g_ble.host_pairing_session_hint, sizeof(g_ble.host_pairing_session_hint), session_hint);
@@ -646,6 +655,7 @@ bool remember_host_pairing_offer(cJSON *root) {
   g_ble.host_pairing_claim_code_required = claim_code_required;
   g_ble.host_pairing_offer_received = true;
   g_ble.last_error[0] = '\0';
+  ensure_pairing_nonce();
   set_state("pairing_offer_received", "host_pairing_offer");
   return true;
 }

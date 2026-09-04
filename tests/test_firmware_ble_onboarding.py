@@ -105,6 +105,9 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert '"pairing_nonce"' in pairing_nonce_json
     assert '"endpoint_ephemeral_public_key"' in pairing_nonce_json
     assert "remember_host_pairing_offer" in source
+    assert "host_session_bound" in source
+    assert "session_changed" in source
+    assert "reset_crypto_session();" in source[source.index("bool remember_host_pairing_offer") :]
     assert "invalid_pairing_offer" in source
     assert '"host_pairing"' in backend
     assert '"identity_sent"' in backend
