@@ -1143,6 +1143,18 @@ def test_firmware_storage_reformat_is_media_only():
     assert "ensure_sd_media_directories_internal()" in storage_source
 
 
+def test_firmware_wifi_disconnect_does_not_abort_during_ota_shutdown():
+    source = FIRMWARE_WIFI.read_text()
+    disconnect_handler = source[
+        source.index("WIFI_EVENT_STA_DISCONNECTED") : source.index("if (event_base == IP_EVENT")
+    ]
+
+    assert "if (state.ota_active)" in disconnect_handler
+    assert "Wi-Fi disconnected during OTA/update shutdown; reconnect skipped" in disconnect_handler
+    assert "const esp_err_t reconnect_result = esp_wifi_connect();" in disconnect_handler
+    assert "ESP_ERROR_CHECK(esp_wifi_connect());" not in disconnect_handler
+
+
 def test_firmware_supports_home_assistant_voice_pe_profile():
     cmake_source = FIRMWARE_CMAKE.read_text()
     pe_profile_source = Path("firmware/boards/ha_voice_pe/board.yaml").read_text()

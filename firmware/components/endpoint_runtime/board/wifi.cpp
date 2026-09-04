@@ -45,9 +45,17 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     state.voice_ws_connected = false;
     state.wifi_rssi = -100;
     std::strncpy(g_ip_address, "0.0.0.0", sizeof(g_ip_address));
+    if (state.ota_active) {
+      ESP_LOGI(kTag, "Wi-Fi disconnected during OTA/update shutdown; reconnect skipped");
+      return;
+    }
     state.phase = hexe::AppPhase::kWiFiConnecting;
-    ESP_LOGW(kTag, "Wi-Fi disconnected, retrying");
-    ESP_ERROR_CHECK(esp_wifi_connect());
+    const esp_err_t reconnect_result = esp_wifi_connect();
+    if (reconnect_result == ESP_OK) {
+      ESP_LOGW(kTag, "Wi-Fi disconnected, retrying");
+    } else {
+      ESP_LOGW(kTag, "Wi-Fi disconnected; reconnect skipped: %s", esp_err_to_name(reconnect_result));
+    }
     return;
   }
 
