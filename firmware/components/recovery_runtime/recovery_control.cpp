@@ -494,9 +494,17 @@ bool load_wifi_credentials(char *ssid, size_t ssid_size, char *password, size_t 
   return err == ESP_OK && ssid[0] != '\0';
 }
 
-void start_recovery_wifi() {
+bool start_recovery_wifi(bool enable_access_point) {
   if (g_wifi_initialized) {
-    return;
+    return true;
+  }
+
+  char ssid[33] = {};
+  char password[65] = {};
+  g_station_configured = load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password));
+  if (!enable_access_point && !g_station_configured) {
+    ESP_LOGW(kTag, "Recovery STA start skipped: no saved Wi-Fi credentials");
+    return false;
   }
 
   ESP_ERROR_CHECK(esp_netif_init());
@@ -505,38 +513,43 @@ void start_recovery_wifi() {
     ESP_ERROR_CHECK(err);
   }
 
-  esp_netif_create_default_wifi_ap();
-  esp_netif_create_default_wifi_sta();
+  if (enable_access_point) {
+    esp_netif_create_default_wifi_ap();
+  }
+  if (g_station_configured) {
+    esp_netif_create_default_wifi_sta();
+  }
   const wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   ESP_ERROR_CHECK(esp_wifi_init(&cfg));
   ESP_ERROR_CHECK(esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, &wifi_event_handler, nullptr));
   ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &wifi_event_handler, nullptr));
 
-  wifi_config_t ap_config = {};
-  uint8_t ap_mac[6] = {};
-  if (esp_read_mac(ap_mac, ESP_MAC_WIFI_SOFTAP) != ESP_OK) {
-    ap_mac[3] = 0xaa;
-    ap_mac[4] = 0xbb;
-    ap_mac[5] = 0xcc;
-  }
-  std::snprintf(
-      reinterpret_cast<char *>(ap_config.ap.ssid),
-      sizeof(ap_config.ap.ssid),
-      "HexeRecovery-%02x%02x%02x",
-      ap_mac[3],
-      ap_mac[4],
-      ap_mac[5]);
-  ap_config.ap.ssid_len = std::strlen(reinterpret_cast<char *>(ap_config.ap.ssid));
-  ap_config.ap.channel = 6;
-  ap_config.ap.max_connection = 2;
-  ap_config.ap.authmode = WIFI_AUTH_OPEN;
-
-  char ssid[33] = {};
-  char password[65] = {};
-  g_station_configured = load_wifi_credentials(ssid, sizeof(ssid), password, sizeof(password));
-  wifi_mode_t mode = g_station_configured ? WIFI_MODE_APSTA : WIFI_MODE_AP;
+  const wifi_mode_t mode = enable_access_point && g_station_configured
+                               ? WIFI_MODE_APSTA
+                               : enable_access_point ? WIFI_MODE_AP : WIFI_MODE_STA;
   ESP_ERROR_CHECK(esp_wifi_set_mode(mode));
-  ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+
+  if (enable_access_point) {
+    wifi_config_t ap_config = {};
+    uint8_t ap_mac[6] = {};
+    if (esp_read_mac(ap_mac, ESP_MAC_WIFI_SOFTAP) != ESP_OK) {
+      ap_mac[3] = 0xaa;
+      ap_mac[4] = 0xbb;
+      ap_mac[5] = 0xcc;
+    }
+    std::snprintf(
+        reinterpret_cast<char *>(ap_config.ap.ssid),
+        sizeof(ap_config.ap.ssid),
+        "HexeRecovery-%02x%02x%02x",
+        ap_mac[3],
+        ap_mac[4],
+        ap_mac[5]);
+    ap_config.ap.ssid_len = std::strlen(reinterpret_cast<char *>(ap_config.ap.ssid));
+    ap_config.ap.channel = 6;
+    ap_config.ap.max_connection = 2;
+    ap_config.ap.authmode = WIFI_AUTH_OPEN;
+    ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &ap_config));
+  }
 
   if (g_station_configured) {
     wifi_config_t sta_config = {};
@@ -553,11 +566,18 @@ void start_recovery_wifi() {
     ESP_ERROR_CHECK(esp_wifi_connect());
   }
 
-  g_temporary_ap_active = true;
+  std::memset(password, 0, sizeof(password));
+  g_temporary_ap_active = enable_access_point;
   g_wifi_initialized = true;
-  copy_cstr(g_ip_address, sizeof(g_ip_address), "192.168.4.1");
+  copy_cstr(g_ip_address, sizeof(g_ip_address), enable_access_point ? "192.168.4.1" : "0.0.0.0");
   update_network_mode();
-  ESP_LOGI(kTag, "Recovery Wi-Fi started in %s mode", g_network_mode);
+  ESP_LOGI(
+      kTag,
+      "Recovery Wi-Fi started in %s mode temporary_ap=%d station_configured=%d",
+      g_network_mode,
+      g_temporary_ap_active,
+      g_station_configured);
+  return true;
 }
 
 esp_err_t status_handler(httpd_req_t *req) {
@@ -925,7 +945,7 @@ namespace hexe::recovery {
 void init_recovery_controls() {
   const bool wifi_recovery_enabled = recovery_wifi_recovery_enabled();
   if (wifi_recovery_enabled) {
-    start_recovery_wifi();
+    start_recovery_wifi(true);
   } else {
     update_network_mode();
     ESP_LOGI(kTag, "Recovery Wi-Fi/HTTP disabled for BLE-only board profile %s", hexe::board::pins::kBoardProfile);
@@ -938,6 +958,11 @@ void init_recovery_controls() {
 
 bool recovery_wifi_recovery_enabled() {
   return std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0;
+}
+
+bool start_recovery_wifi_after_ble_credentials() {
+  ESP_LOGI(kTag, "Starting recovery STA from BLE credentials");
+  return start_recovery_wifi(false);
 }
 
 bool recovery_http_api_active() {

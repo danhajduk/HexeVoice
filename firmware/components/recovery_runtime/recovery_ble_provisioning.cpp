@@ -17,6 +17,7 @@
 #include "esp_timer.h"
 #include "nvs.h"
 #include "psa/crypto.h"
+#include "recovery_control.h"
 
 extern "C" int hexe_ble_provisioning_gatt_init(const char *device_name);
 extern "C" int hexe_ble_provisioning_gatt_set_advertising(int enabled);
@@ -1195,6 +1196,9 @@ extern "C" void hexe_ble_pairing_credentials_read_result(int succeeded, const ch
       g_ble.central_scanning = false;
     } else {
       ESP_LOGW(kTag, "Recovery BLE host pairing scan stop after credentials failed: %d", stop_rc);
+    }
+    if (!hexe::recovery::start_recovery_wifi_after_ble_credentials()) {
+      ESP_LOGW(kTag, "Recovery BLE credentials applied but STA Wi-Fi start failed");
     }
     return;
   }

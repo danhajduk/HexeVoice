@@ -171,8 +171,13 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "WIFI_MODE_APSTA" in control_source
     assert "init_recovery_controls()" in control_header
     assert "recovery_wifi_recovery_enabled()" in control_header
+    assert "start_recovery_wifi_after_ble_credentials()" in control_header
     assert 'std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0' in control_source
     assert "Recovery Wi-Fi/HTTP disabled for BLE-only board profile" in control_source
+    assert "start_recovery_wifi(true)" in control_source
+    assert "start_recovery_wifi(false)" in control_source
+    assert "Starting recovery STA from BLE credentials" in control_source
+    assert "Recovery Wi-Fi started in %s mode temporary_ap=%d station_configured=%d" in control_source
     assert "init_recovery_ble_provisioning()" in control_source
     assert "render_recovery_ble_status_json()" in control_source
 
@@ -203,6 +208,8 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert "hexe_ble_pairing_identity_write_result" in ble_source
     assert "hexe_ble_pairing_central_set_scanning(0)" in ble_source
     assert "Recovery BLE host pairing scan stop after credentials failed" in ble_source
+    assert "start_recovery_wifi_after_ble_credentials()" in ble_source
+    assert "Recovery BLE credentials applied but STA Wi-Fi start failed" in ble_source
     assert '"device_id"' in ble_source
     assert '"board_profile"' in ble_source
     assert '"onboarding_session_id"' in ble_source
