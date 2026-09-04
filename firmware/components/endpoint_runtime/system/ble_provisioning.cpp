@@ -54,6 +54,7 @@ struct BleProvisioningState {
   char host_pairing_session_id[64]{""};
   char host_pairing_session_hint[32]{""};
   char host_pairing_expires_at[32]{""};
+  char crypto_session_id[64]{""};
   int host_pairing_rssi{0};
   int64_t host_pairing_seen_at_us{0};
   char onboarding_session_id[64]{""};
@@ -262,12 +263,16 @@ void reset_crypto_session() {
     g_ble.endpoint_private_key = 0;
   }
   g_ble.endpoint_public_key_b64[0] = '\0';
+  g_ble.crypto_session_id[0] = '\0';
   g_ble.crypto_ready = false;
 }
 
 void ensure_pairing_nonce() {
+  const char *session_id = g_ble.host_pairing_session_id[0] != '\0' ? g_ble.host_pairing_session_id : g_ble.onboarding_session_id;
   const bool host_session_bound =
-      g_ble.host_pairing_session_id[0] != '\0' && std::strcmp(g_ble.onboarding_session_id, g_ble.host_pairing_session_id) == 0;
+      g_ble.host_pairing_session_id[0] != '\0' &&
+      g_ble.crypto_session_id[0] != '\0' &&
+      std::strcmp(g_ble.crypto_session_id, session_id) == 0;
   const bool existing_nonce_valid =
       g_ble.pairing_nonce[0] != '\0' && (host_session_bound || (esp_timer_get_time() - g_ble.issued_at_us) < kPairingTtlUs);
   if (existing_nonce_valid && ensure_crypto_ready()) {
@@ -288,6 +293,15 @@ void ensure_pairing_nonce() {
   g_ble.last_sequence = 0;
   g_ble.issued_at_us = esp_timer_get_time();
   ensure_crypto_ready();
+  std::strncpy(g_ble.crypto_session_id, g_ble.onboarding_session_id, sizeof(g_ble.crypto_session_id) - 1);
+  g_ble.crypto_session_id[sizeof(g_ble.crypto_session_id) - 1] = '\0';
+  ESP_LOGI(
+      kTag,
+      "BLE identity generated session=%s nonce_prefix=%.8s key_prefix=%.8s host_bound=%d",
+      g_ble.crypto_session_id,
+      g_ble.pairing_nonce,
+      g_ble.endpoint_public_key_b64,
+      g_ble.host_pairing_session_id[0] != '\0');
 }
 
 bool eligible_for_advertising() {
@@ -833,6 +847,13 @@ bool validate_envelope_binding(cJSON *root, EnvelopeFields *fields) {
     return false;
   }
   if (std::strcmp(fields->pairing_nonce, g_ble.pairing_nonce) != 0) {
+    ESP_LOGW(
+        kTag,
+        "BLE encrypted credentials nonce mismatch session=%s payload_nonce_prefix=%.8s current_nonce_prefix=%.8s crypto_session=%s",
+        fields->onboarding_session_id,
+        fields->pairing_nonce,
+        g_ble.pairing_nonce,
+        g_ble.crypto_session_id);
     set_error("invalid_nonce");
     return false;
   }
@@ -1282,7 +1303,13 @@ extern "C" int hexe_ble_pairing_offer_received(const char *json, unsigned int le
   const bool remembered = remember_host_pairing_offer(root);
   cJSON_Delete(root);
   if (remembered) {
-    ESP_LOGI(kTag, "BLE host pairing offer accepted session_hint=%s", g_ble.host_pairing_session_hint);
+    ESP_LOGI(
+        kTag,
+        "BLE host pairing offer accepted session_hint=%s session=%s nonce_prefix=%.8s key_prefix=%.8s",
+        g_ble.host_pairing_session_hint,
+        g_ble.onboarding_session_id,
+        g_ble.pairing_nonce,
+        g_ble.endpoint_public_key_b64);
   }
   return remembered ? 0 : -1;
 }
