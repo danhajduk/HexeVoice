@@ -134,7 +134,9 @@ def test_recovery_status_skeleton_reports_safe_serial_json():
     assert '\\"actions\\":{\\"wifi_provisioning\\":%s' in status_source
     assert '\\"ble_local_recovery_provisioning\\":%s' in status_source
     assert '\\"ble_core_governed_provisioning\\":false' in status_source
-    assert "recovery_wifi_recovery_enabled()" in status_source
+    assert "recovery_full_http_rescue_enabled()" in status_source
+    assert "recovery_http_api_active()" in status_source
+    assert "recovery_http_mode()" in status_source
     assert "esp_ota_get_running_partition" in status_source
     assert "esp_flash_get_size" in status_source
     assert "esp_psram_is_initialized" in status_source
@@ -172,11 +174,19 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "WIFI_MODE_APSTA" in control_source
     assert "init_recovery_controls()" in control_header
     assert "recovery_wifi_recovery_enabled()" in control_header
+    assert "recovery_full_http_rescue_enabled()" in control_header
+    assert "recovery_http_mode()" in control_header
     assert "start_recovery_wifi_after_ble_credentials()" in control_header
     assert 'std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0' in control_source
     assert "Recovery Wi-Fi/HTTP disabled for BLE-only board profile" in control_source
     assert "start_recovery_wifi(true)" in control_source
     assert "start_recovery_wifi(false)" in control_source
+    assert "start_http_server(false)" in control_source
+    assert "start_http_server(true)" in control_source
+    assert '"firmware_install_only"' in control_source
+    assert '"full_rescue"' in control_source
+    assert '"X-Hexe-Reboot-After-Install"' in control_source
+    assert "esp_restart();" in control_source
     assert "Starting recovery STA from BLE credentials" in control_source
     assert "Recovery Wi-Fi started in %s mode temporary_ap=%d station_configured=%d" in control_source
     assert "kStationReconnectAttempts = 10" in control_source
@@ -190,6 +200,7 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert '"onboarding_session_id", context.onboarding_session_id' in control_source
     assert "init_recovery_ble_provisioning()" in control_source
     assert "render_recovery_ble_status_json()" in control_source
+    assert '\\"http_mode\\":' in RECOVERY_STATUS.read_text()
     discovery_body = control_source[
         control_source.index("std::string recovery_discovery_body") : control_source.index("bool response_accepted")
     ]
@@ -318,7 +329,8 @@ def test_recovery_signed_endpoint_install_streams_to_inactive_slot():
     assert "esp_ota_write" in control_source
     assert "mbedtls_md_update" in control_source
     assert "esp_ota_set_boot_partition(update_partition)" in control_source
-    assert "esp_restart" not in control_source
+    assert "X-Hexe-Reboot-After-Install" in control_source
+    assert "esp_restart" in control_source
 
 
 def test_recovery_partition_and_reset_controls_are_selective():
@@ -363,7 +375,8 @@ def test_recovery_contract_covers_unusable_main_ota_slots():
     assert "\\\"sd_required\\\":false" in status_source
     assert "recovery_temporary_ap_active()" in status_source
     assert "firmware_upload\\\":%s" in status_source
-    assert "recovery_wifi_recovery_enabled()" in status_source
+    assert "recovery_full_http_rescue_enabled()" in status_source
+    assert "recovery_http_api_active()" in status_source
     assert "boot_select\\\":%s" in status_source
     assert "esp_ota_get_next_update_partition(nullptr)" in control_source
     assert "esp_ota_abort(ota_handle)" in control_source

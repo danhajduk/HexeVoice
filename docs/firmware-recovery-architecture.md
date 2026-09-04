@@ -213,10 +213,21 @@ with signed metadata headers:
 | `X-Hexe-Signature-Algorithm` | `hmac-sha256` for local development |
 | `X-Hexe-Signature-Key-Id` | Must match the generated endpoint config key id |
 | `X-Hexe-Manifest-Signature` | HMAC over the recovery install metadata |
+| `X-Hexe-Reboot-After-Install` | Optional; when true, recovery reboots after the response is sent |
 
 Recovery hashes the body while writing to the inactive OTA slot, rejects checksum
 mismatches, and selects the new endpoint partition for next boot only after
-`esp_ota_end()` succeeds. It does not automatically restart after install.
+`esp_ota_end()` succeeds. Local/manual recovery installs return
+`reboot_required: true` so the operator can inspect state before rebooting.
+Core-governed BLE onboarding can set `X-Hexe-Reboot-After-Install: true`; in
+that path recovery returns `reboot_scheduled: true` and restarts into the
+selected endpoint partition.
+
+HA Voice PE keeps the broad local recovery AP/API disabled by default. After an
+approved BLE credential handoff brings STA Wi-Fi online, PE recovery starts a
+limited LAN HTTP mode for signed firmware install plus safe status routes. It
+does not expose the unauthenticated Wi-Fi, endpoint, boot-select, or config
+reset rescue routes in that mode.
 
 When both main OTA slots are unusable, recovery remains the operator-facing
 repair surface. The recovery app must still boot independently, expose serial

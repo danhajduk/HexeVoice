@@ -65,6 +65,7 @@ constexpr char kDiscoverySchemaVersion[] = "hexevoice.endpoint.discovery.v1";
 httpd_handle_t g_http_server = nullptr;
 bool g_wifi_initialized = false;
 bool g_http_api_active = false;
+bool g_full_http_rescue_active = false;
 bool g_temporary_ap_active = false;
 bool g_station_configured = false;
 int g_station_reconnect_attempts = 0;
@@ -84,6 +85,7 @@ struct InstallHeaders {
   char signature_key_id[48];
   char manifest_signature[65];
   int size_bytes;
+  bool reboot_after_install;
 };
 
 struct RecoveryDiscoveryContext {
@@ -498,6 +500,19 @@ bool parse_header_int(httpd_req_t *req, const char *name, int *target) {
   return true;
 }
 
+bool parse_header_bool(httpd_req_t *req, const char *name) {
+  char value[12] = {};
+  if (!get_header(req, name, value, sizeof(value))) {
+    return false;
+  }
+  for (char &ch : value) {
+    ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return std::strcmp(value, "1") == 0 ||
+         std::strcmp(value, "true") == 0 ||
+         std::strcmp(value, "yes") == 0;
+}
+
 std::string read_json_body(httpd_req_t *req, bool *ok) {
   if (ok != nullptr) {
     *ok = false;
@@ -646,6 +661,8 @@ bool verify_install_signature(const InstallHeaders &headers) {
          constant_time_equal(expected, headers.manifest_signature);
 }
 
+void start_http_server(bool full_rescue_routes);
+
 bool read_install_headers(httpd_req_t *req, InstallHeaders *headers, char *error, size_t error_size) {
   if (headers == nullptr) {
     return false;
@@ -699,7 +716,28 @@ bool read_install_headers(httpd_req_t *req, InstallHeaders *headers, char *error
     copy_cstr(error, error_size, "invalid_signature");
     return false;
   }
+  headers->reboot_after_install = parse_header_bool(req, "X-Hexe-Reboot-After-Install");
   return true;
+}
+
+void delayed_reboot_task(void *arg) {
+  (void)arg;
+  vTaskDelay(pdMS_TO_TICKS(1200));
+  ESP_LOGI(kTag, "Recovery firmware install requested reboot into selected endpoint partition");
+  esp_restart();
+}
+
+void schedule_reboot_after_install() {
+  const BaseType_t created = xTaskCreate(
+      delayed_reboot_task,
+      "hexe_recovery_reboot",
+      2048,
+      nullptr,
+      5,
+      nullptr);
+  if (created != pdPASS) {
+    ESP_LOGW(kTag, "Recovery firmware install could not schedule reboot");
+  }
 }
 
 void update_network_mode() {
@@ -721,6 +759,9 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     std::snprintf(g_ip_address, sizeof(g_ip_address), IPSTR, IP2STR(&event->ip_info.ip));
     g_station_reconnect_attempts = 0;
     ESP_LOGI(kTag, "Recovery STA connected at %s", g_ip_address);
+    if (!g_http_api_active) {
+      start_http_server(false);
+    }
     start_recovery_discovery_task_once();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED && g_station_configured) {
     if (g_station_reconnect_attempts < kStationReconnectAttempts) {
@@ -1153,11 +1194,17 @@ esp_err_t firmware_install_post_handler(httpd_req_t *req) {
   std::snprintf(
       response,
       sizeof(response),
-      "{\"ok\":true,\"installed_partition\":\"%s\",\"version\":\"%s\",\"sha256\":\"%s\",\"reboot_required\":true}",
+      "{\"ok\":true,\"installed_partition\":\"%s\",\"version\":\"%s\",\"sha256\":\"%s\","
+      "\"reboot_required\":%s,\"reboot_scheduled\":%s}",
       update_partition->label,
       json_escape(headers.version).c_str(),
-      headers.sha256);
+      headers.sha256,
+      bool_json(!headers.reboot_after_install).c_str(),
+      bool_json(headers.reboot_after_install).c_str());
   send_json(req, "200 OK", response);
+  if (headers.reboot_after_install) {
+    schedule_reboot_after_install();
+  }
   return ESP_OK;
 }
 
@@ -1173,7 +1220,7 @@ void register_uri(const char *uri, httpd_method_t method, esp_err_t (*handler)(h
   }
 }
 
-void start_http_server() {
+void start_http_server(bool full_rescue_routes) {
   if (g_http_server != nullptr) {
     return;
   }
@@ -1192,13 +1239,16 @@ void start_http_server() {
   register_uri("/api/recovery/partitions", HTTP_GET, partitions_handler);
   register_uri("/api/recovery/diagnostics", HTTP_GET, diagnostics_handler);
   register_uri("/api/recovery/ble/status", HTTP_GET, ble_status_handler);
-  register_uri("/api/recovery/wifi", HTTP_POST, wifi_post_handler);
-  register_uri("/api/recovery/endpoint", HTTP_POST, endpoint_post_handler);
   register_uri("/api/recovery/firmware/install", HTTP_POST, firmware_install_post_handler);
-  register_uri("/api/recovery/boot/select", HTTP_POST, boot_select_post_handler);
-  register_uri("/api/recovery/config/reset", HTTP_POST, reset_post_handler);
+  if (full_rescue_routes) {
+    register_uri("/api/recovery/wifi", HTTP_POST, wifi_post_handler);
+    register_uri("/api/recovery/endpoint", HTTP_POST, endpoint_post_handler);
+    register_uri("/api/recovery/boot/select", HTTP_POST, boot_select_post_handler);
+    register_uri("/api/recovery/config/reset", HTTP_POST, reset_post_handler);
+  }
   g_http_api_active = true;
-  ESP_LOGI(kTag, "Recovery HTTP API started on port 80");
+  g_full_http_rescue_active = full_rescue_routes;
+  ESP_LOGI(kTag, "Recovery HTTP API started on port 80 mode=%s", hexe::recovery::recovery_http_mode());
 }
 
 }  // namespace
@@ -1215,12 +1265,16 @@ void init_recovery_controls() {
   }
   init_recovery_ble_provisioning();
   if (wifi_recovery_enabled) {
-    start_http_server();
+    start_http_server(true);
   }
 }
 
 bool recovery_wifi_recovery_enabled() {
   return std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0;
+}
+
+bool recovery_full_http_rescue_enabled() {
+  return g_full_http_rescue_active;
 }
 
 bool start_recovery_wifi_after_ble_credentials() {
@@ -1230,6 +1284,13 @@ bool start_recovery_wifi_after_ble_credentials() {
 
 bool recovery_http_api_active() {
   return g_http_api_active;
+}
+
+const char *recovery_http_mode() {
+  if (!g_http_api_active) {
+    return "disabled";
+  }
+  return g_full_http_rescue_active ? "full_rescue" : "firmware_install_only";
 }
 
 const char *recovery_network_mode() {
@@ -1314,7 +1375,7 @@ std::string render_diagnostics_json() {
       "{\"schema_version\":\"hexe-recovery-diagnostics-v1\",\"application_type\":\"recovery\","
       "\"recovery_api_version\":\"%s\",\"board_profile\":\"%s\",\"soc\":\"%s\",\"idf_target\":\"%s\","
       "\"network\":{\"mode\":\"%s\",\"ip_address\":\"%s\",\"temporary_ap_active\":%s,\"station_configured\":%s},"
-      "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"ble\":false},"
+      "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"http_mode\":\"%s\",\"status_page\":%s,\"ble\":false},"
       "\"subsystems\":{\"core_required\":false,\"sd_required\":false,\"wake_models_linked\":false,"
       "\"endpoint_runtime_linked\":false,\"speaker_id_linked\":false},"
       "\"actions\":{\"wifi_provisioning\":%s,\"endpoint_provisioning\":%s,\"firmware_upload\":%s,"
@@ -1328,13 +1389,14 @@ std::string render_diagnostics_json() {
       bool_json(g_temporary_ap_active).c_str(),
       bool_json(g_station_configured).c_str(),
       bool_json(g_http_api_active).c_str(),
+      recovery_http_mode(),
       bool_json(g_http_api_active).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str());
+      bool_json(g_full_http_rescue_active).c_str(),
+      bool_json(g_full_http_rescue_active).c_str(),
+      bool_json(g_http_api_active).c_str(),
+      bool_json(g_full_http_rescue_active).c_str(),
+      bool_json(g_full_http_rescue_active).c_str(),
+      bool_json(g_full_http_rescue_active).c_str());
   return std::string(body);
 }
 

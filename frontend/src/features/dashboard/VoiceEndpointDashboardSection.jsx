@@ -33,6 +33,7 @@ import {
   scanEndpointBleDevices,
   saveEndpointBleWifiCredentials,
   setEndpointVolume,
+  startEndpointBleFirmwareHandoff,
   startEndpointBlePairingSession,
   startVoicePlacementCalibration,
   startVoicePlacementTest,
@@ -144,6 +145,14 @@ function blePairingStateLabel(value) {
       return "Waiting for endpoint";
     case "firmware_update_needed":
       return "Recovery online";
+    case "firmware_update_starting":
+      return "Starting firmware";
+    case "firmware_update_running":
+      return "Updating firmware";
+    case "rebooting":
+      return "Rebooting";
+    case "endpoint_returning":
+      return "Endpoint returning";
     case "endpoint_online":
       return "Endpoint online";
     case "identity_only":
@@ -166,7 +175,15 @@ function blePairingStatePill(value) {
   if (value === "timed_out" || value === "failed") {
     return "status-pill-danger";
   }
-  if (value === "waiting_for_endpoint_online" || value === "identity_only" || value === "firmware_update_needed") {
+  if (
+    value === "waiting_for_endpoint_online" ||
+    value === "identity_only" ||
+    value === "firmware_update_needed" ||
+    value === "firmware_update_starting" ||
+    value === "firmware_update_running" ||
+    value === "rebooting" ||
+    value === "endpoint_returning"
+  ) {
     return "status-pill-warning";
   }
   return "status-pill-neutral";
@@ -1467,12 +1484,17 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [pairingBusy, setPairingBusy] = useState(false);
   const [pairingPollBusy, setPairingPollBusy] = useState(false);
   const [pairingApproveBusy, setPairingApproveBusy] = useState(false);
+  const [firmwareHandoffBusy, setFirmwareHandoffBusy] = useState(false);
+  const [firmwareHandoffResult, setFirmwareHandoffResult] = useState(null);
+  const [firmwareHandoffStartedSession, setFirmwareHandoffStartedSession] = useState("");
 
   const pairingSessionId = firstText(pairingSession?.session_id, onboardingSessionId);
   const pairingIdentityDeviceId = firstText(identityDetails?.device_id, identityDetails?.target_node_id, targetNodeId);
   const pairingProvisioningIssue = blePairingProvisioningIssue(identityDetails);
+  const firmwareHandoffUiState = firmwareHandoffResult?.ui_state || "";
   const pairingDisplayState =
-    pairingProvisioningIssue && ["ready_to_provision", "waiting_for_endpoint_online"].includes(pairingUiState) ? "identity_only" : pairingUiState;
+    firmwareHandoffUiState ||
+    (pairingProvisioningIssue && ["ready_to_provision", "waiting_for_endpoint_online"].includes(pairingUiState) ? "identity_only" : pairingUiState);
   const canApprovePairing = pairingSessionId && pairingUiState === "ready_to_provision" && pairingIdentityDeviceId && !pairingProvisioningIssue;
   const canSendPairingWifi =
     pairingSessionId &&
@@ -1539,7 +1561,11 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   }, []);
 
   useEffect(() => {
-    if (!pairingSessionId || !["waiting_for_device", "waiting_for_endpoint_online"].includes(pairingUiState) || pairingPollBusy) {
+    if (
+      !pairingSessionId ||
+      !["waiting_for_device", "waiting_for_endpoint_online", "rebooting", "endpoint_returning"].includes(pairingUiState) ||
+      pairingPollBusy
+    ) {
       return undefined;
     }
     const timer = window.setTimeout(() => {
@@ -1547,6 +1573,18 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     }, 20000);
     return () => window.clearTimeout(timer);
   }, [pairingSessionId, pairingUiState, pairingPollBusy]);
+
+  useEffect(() => {
+    if (
+      !pairingSessionId ||
+      pairingHandoff?.state !== "firmware_update_needed" ||
+      firmwareHandoffBusy ||
+      firmwareHandoffStartedSession === pairingSessionId
+    ) {
+      return;
+    }
+    handleStartFirmwareHandoff(false);
+  }, [pairingSessionId, pairingHandoff?.state, firmwareHandoffBusy, firmwareHandoffStartedSession]);
 
   function applyBleIdentity(identity, device) {
     setIdentityDetails(identity);
@@ -1589,6 +1627,9 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     setPairingSession(session);
     setPairingHandoff(handoff);
     setPairingUiState(result?.ui_state || "failed");
+    if (result?.ui_state === "endpoint_online") {
+      setFirmwareHandoffResult(null);
+    }
     if (session?.session_id) {
       setOnboardingSessionId(String(session.session_id));
     }
@@ -1607,6 +1648,8 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     setPairingBusy(true);
     setIdentityDetails(null);
     setPairingHandoff(null);
+    setFirmwareHandoffResult(null);
+    setFirmwareHandoffStartedSession("");
     setScanSummary("");
     setScanDevices([]);
     try {
@@ -1662,6 +1705,35 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       setActionMessage(blePairingErrorMessage(err));
     } finally {
       setPairingApproveBusy(false);
+    }
+  }
+
+  async function handleStartFirmwareHandoff(showMessage = true) {
+    if (!pairingSessionId) {
+      return;
+    }
+    setFirmwareHandoffBusy(true);
+    setFirmwareHandoffStartedSession(pairingSessionId);
+    setFirmwareHandoffResult({ ui_state: "firmware_update_starting" });
+    setPairingUiState("firmware_update_starting");
+    try {
+      const result = await startEndpointBleFirmwareHandoff(pairingSessionId, {
+        auto_reboot: true,
+        operator_reason: "Operator approved endpoint onboarding firmware handoff",
+      });
+      setFirmwareHandoffResult(result);
+      setPairingUiState(result.ui_state || (result.ok ? "endpoint_returning" : "failed"));
+      const suffix = result.error ? `: ${result.error}` : "";
+      if (showMessage || result.error || result.ok) {
+        setActionMessage(`${blePairingStateLabel(result.ui_state)}${suffix}.`);
+      }
+      await onRefresh();
+    } catch (err) {
+      setFirmwareHandoffResult({ ok: false, ui_state: "failed", error: String(err.message || err) });
+      setPairingUiState("failed");
+      setActionMessage(String(err.message || err));
+    } finally {
+      setFirmwareHandoffBusy(false);
     }
   }
 
@@ -1896,6 +1968,11 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
             {pairingHandoff?.state === "firmware_update_needed" ? (
               <p className="callout callout-warning">Recovery firmware is online; full endpoint firmware is needed next.</p>
             ) : null}
+            {firmwareHandoffBusy ? <p className="callout callout-warning">Installing full endpoint firmware now.</p> : null}
+            {firmwareHandoffResult?.ui_state === "rebooting" ? (
+              <p className="callout callout-warning">Firmware installed. Waiting for the endpoint to reboot and return.</p>
+            ) : null}
+            {firmwareHandoffResult?.error ? <p className="callout callout-warning">Firmware handoff failed: {firmwareHandoffResult.error}</p> : null}
             {pairingHandoff?.state === "endpoint_online" ? <p className="callout callout-success">Endpoint is online with the approved pairing session.</p> : null}
           </>
         ) : (
@@ -1969,6 +2046,11 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
           {canApprovePairing ? (
             <button className="btn btn-primary btn-compact" type="button" onClick={handleApprovePairing} disabled={pairingApproveBusy}>
               {pairingApproveBusy ? "Approving..." : "Approve Device"}
+            </button>
+          ) : null}
+          {pairingHandoff?.state === "firmware_update_needed" || firmwareHandoffResult?.error ? (
+            <button className="btn btn-primary btn-compact" type="button" onClick={() => handleStartFirmwareHandoff(true)} disabled={firmwareHandoffBusy}>
+              {firmwareHandoffBusy ? "Updating..." : "Retry Firmware"}
             </button>
           ) : null}
         </div>

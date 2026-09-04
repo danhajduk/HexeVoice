@@ -421,6 +421,12 @@ class EndpointBlePairingSessionCancelRequest(BaseModel):
     operator_reason: str | None = Field(default=None, max_length=240)
 
 
+class EndpointBleFirmwareHandoffRequest(BaseModel):
+    auto_reboot: bool = True
+    timeout_s: int = Field(default=120, ge=10, le=300)
+    operator_reason: str | None = Field(default=None, max_length=240)
+
+
 class EndpointBlePairingSessionResponse(BaseModel):
     ok: bool
     status: Literal["waiting", "found", "approved", "canceled", "expired", "failed", "completed"]
@@ -440,6 +446,35 @@ class EndpointBlePairingSessionResponse(BaseModel):
     identity: dict[str, Any] = Field(default_factory=dict)
     handoff: dict[str, Any] = Field(default_factory=dict)
     next_poll_seconds: int = 20
+    error: str | None = None
+
+
+class EndpointBleFirmwareHandoffResponse(BaseModel):
+    ok: bool
+    status: Literal[
+        "not_needed",
+        "installing",
+        "rebooting",
+        "waiting_for_endpoint",
+        "completed",
+        "failed",
+    ]
+    ui_state: Literal[
+        "endpoint_online",
+        "firmware_update_starting",
+        "firmware_update_running",
+        "rebooting",
+        "endpoint_returning",
+        "completed",
+        "failed",
+    ]
+    pairing_session_id: str
+    endpoint_id: str | None = None
+    device_id: str | None = None
+    onboarding_session_id: str | None = None
+    firmware: dict[str, Any] = Field(default_factory=dict)
+    handoff: dict[str, Any] = Field(default_factory=dict)
+    recovery_result: dict[str, Any] = Field(default_factory=dict)
     error: str | None = None
 
 

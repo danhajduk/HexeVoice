@@ -62,6 +62,8 @@ from hexevoice.api.models import (
     EndpointBeepCommandRequest,
     EndpointBleIdentityRequest,
     EndpointBleIdentityResponse,
+    EndpointBleFirmwareHandoffRequest,
+    EndpointBleFirmwareHandoffResponse,
     EndpointBlePairingSessionApproveRequest,
     EndpointBlePairingSessionCancelRequest,
     EndpointBlePairingSessionResponse,
@@ -406,13 +408,14 @@ def firmware_profile_for_filename(filename: str) -> str:
 def firmware_manifest_candidates(settings: Settings, filename: str) -> list[Path]:
     artifact_dir = settings.resolved_firmware_artifact_dir()
     profile = firmware_profile_for_filename(filename)
-    candidates = [artifact_dir / f"manifest-{profile}.json"]
+    candidates = [artifact_dir / f"manifest-endpoint-{profile}.json", artifact_dir / f"manifest-{profile}.json"]
     if filename == "hexe_firmware.bin":
-        candidates.insert(0, artifact_dir / "manifest.json")
+        candidates.insert(0, artifact_dir / "manifest-endpoint.json")
+        candidates.insert(1, artifact_dir / "manifest.json")
     return candidates
 
 
-def read_firmware_artifact_manifest(settings: Settings, filename: str) -> dict:
+def read_firmware_artifact_manifest(settings: Settings, filename: str, *, application_type: str | None = None) -> dict:
     for manifest_path in firmware_manifest_candidates(settings, filename):
         if not manifest_path.exists():
             continue
@@ -425,6 +428,10 @@ def read_firmware_artifact_manifest(settings: Settings, filename: str) -> dict:
         manifest_filename = str(payload.get("filename") or "").strip()
         if manifest_filename and manifest_filename != filename:
             continue
+        if application_type:
+            manifest_application_type = str(payload.get("application_type") or "").strip()
+            if manifest_application_type and manifest_application_type != application_type:
+                continue
         return payload
     return {}
 
@@ -557,14 +564,9 @@ def sign_ota_manifest_metadata(
 def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusResponse) -> dict:
     profile = endpoint_board_profile(endpoint_status)
     artifact_dir = settings.resolved_firmware_artifact_dir()
-    manifest_path = artifact_dir / f"manifest-{profile}.json"
-    manifest = {}
-    if manifest_path.exists():
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            manifest = {}
-    filename = str(manifest.get("filename") or f"hexe_firmware_{profile}.bin")
+    preferred_filename = f"hexe_firmware_{profile}.bin"
+    manifest = read_firmware_artifact_manifest(settings, preferred_filename, application_type="endpoint")
+    filename = str(manifest.get("filename") or preferred_filename)
     path = artifact_dir / filename
     fallback_path = artifact_dir / "hexe_firmware.bin"
     if not path.exists() and fallback_path.exists():
@@ -2088,7 +2090,7 @@ def create_app(
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         size_bytes = path.stat().st_size
         url = firmware_public_url(path.name)
-        static_manifest = read_firmware_artifact_manifest(app_settings, path.name)
+        static_manifest = read_firmware_artifact_manifest(app_settings, path.name, application_type="endpoint")
         profile = str(payload.profile or static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name))
         static_metadata = ota_manifest_static_metadata(static_manifest, profile)
         signature = sign_ota_manifest_metadata(
@@ -2131,6 +2133,196 @@ def create_app(
         return FirmwareOtaClearResponse(
             cleared=voice_session_manager.clear_ota_commands(endpoint_id=endpoint_id),
             endpoint_id=endpoint_id,
+        )
+
+    def endpoint_capability_value(status: EndpointStatusResponse, *path: str) -> str | None:
+        value: object = status.capabilities or {}
+        for key in path:
+            if not isinstance(value, dict):
+                return None
+            value = value.get(key)
+        text = str(value or "").strip()
+        return text or None
+
+    def safe_recovery_error(response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            return f"recovery_http_{response.status_code}"
+        if isinstance(payload, dict):
+            return str(payload.get("error_code") or payload.get("error") or payload.get("message") or f"recovery_http_{response.status_code}")
+        return f"recovery_http_{response.status_code}"
+
+    @app.post(
+        "/api/endpoint/ble/pairing-sessions/{session_id}/firmware-handoff",
+        response_model=EndpointBleFirmwareHandoffResponse,
+    )
+    async def endpoint_ble_pairing_firmware_handoff(
+        session_id: str,
+        payload: EndpointBleFirmwareHandoffRequest,
+    ) -> EndpointBleFirmwareHandoffResponse:
+        pairing = endpoint_ble_onboarding_service.get_pairing_session(session_id, refresh=False)
+        identity = pairing.identity if isinstance(pairing.identity, dict) else {}
+        pairing_session = pairing.pairing_session if isinstance(pairing.pairing_session, dict) else {}
+        device_id = str(identity.get("device_id") or identity.get("target_node_id") or "").strip()
+        endpoint_id = str(identity.get("target_node_id") or device_id).strip()
+        onboarding_session_id = str(identity.get("onboarding_session_id") or session_id).strip()
+        approved_device_id = str(pairing_session.get("approved_device_id") or "").strip()
+        if pairing_session.get("status") not in {"approved", "consumed"} or not device_id or approved_device_id != device_id:
+            return EndpointBleFirmwareHandoffResponse(
+                ok=False,
+                status="failed",
+                ui_state="failed",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id or None,
+                device_id=device_id or None,
+                onboarding_session_id=onboarding_session_id or None,
+                error="ble_pairing_not_approved",
+            )
+        if pairing.ui_state == "endpoint_online":
+            return EndpointBleFirmwareHandoffResponse(
+                ok=True,
+                status="not_needed",
+                ui_state="endpoint_online",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id,
+                device_id=device_id,
+                onboarding_session_id=onboarding_session_id,
+                handoff=pairing.handoff,
+            )
+        if pairing.ui_state != "firmware_update_needed":
+            return EndpointBleFirmwareHandoffResponse(
+                ok=False,
+                status="failed",
+                ui_state="failed",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id,
+                device_id=device_id,
+                onboarding_session_id=onboarding_session_id,
+                handoff=pairing.handoff,
+                error="endpoint_not_ready_for_firmware_handoff",
+            )
+
+        status = endpoint_service.status(endpoint_id)
+        registry_device_id = endpoint_capability_value(status, "device_id") or endpoint_capability_value(status, "identity", "device_id")
+        registry_session_id = (
+            endpoint_capability_value(status, "onboarding_session_id")
+            or endpoint_capability_value(status, "ble", "onboarding_session_id")
+        )
+        if registry_device_id != device_id or registry_session_id != onboarding_session_id:
+            return EndpointBleFirmwareHandoffResponse(
+                ok=False,
+                status="failed",
+                ui_state="failed",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id,
+                device_id=device_id,
+                onboarding_session_id=onboarding_session_id,
+                handoff=pairing.handoff,
+                error="endpoint_pairing_identity_mismatch",
+            )
+        if status.connection_state != "online":
+            return EndpointBleFirmwareHandoffResponse(
+                ok=False,
+                status="failed",
+                ui_state="failed",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id,
+                device_id=device_id,
+                onboarding_session_id=onboarding_session_id,
+                handoff=pairing.handoff,
+                error="endpoint_not_online",
+            )
+        if not status.ip_address:
+            return EndpointBleFirmwareHandoffResponse(
+                ok=False,
+                status="failed",
+                ui_state="failed",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id,
+                device_id=device_id,
+                onboarding_session_id=onboarding_session_id,
+                handoff=pairing.handoff,
+                error="endpoint_ip_address_missing",
+            )
+
+        update = firmware_update_payload(app_settings, status)
+        filename = update.get("filename")
+        version = update.get("latest_version")
+        if not filename or not update.get("artifact_available"):
+            return EndpointBleFirmwareHandoffResponse(
+                ok=False,
+                status="failed",
+                ui_state="failed",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id,
+                device_id=device_id,
+                onboarding_session_id=onboarding_session_id,
+                handoff=pairing.handoff,
+                firmware=update,
+                error=str(update.get("reason") or "endpoint_firmware_artifact_not_found"),
+            )
+        path = firmware_artifact_path(str(filename))
+        install_url = f"http://{status.ip_address}/api/recovery/firmware/install"
+        headers = {
+            "Content-Type": "application/octet-stream",
+            "X-Hexe-Application-Type": "endpoint",
+            "X-Hexe-Board-Profile": str(update.get("board_profile") or ""),
+            "X-Hexe-Partition-Schema": str(update.get("partition_schema") or ""),
+            "X-Hexe-Version": str(version or ""),
+            "X-Hexe-Image-Sha256": str(update.get("sha256") or ""),
+            "X-Hexe-Image-Size": str(update.get("size_bytes") or ""),
+            "X-Hexe-Signature-Algorithm": str(update.get("signature_algorithm") or ""),
+            "X-Hexe-Signature-Key-Id": str(update.get("signature_key_id") or ""),
+            "X-Hexe-Manifest-Signature": str(update.get("manifest_signature") or ""),
+            "X-Hexe-Reboot-After-Install": "true" if payload.auto_reboot else "false",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=payload.timeout_s) as client:
+                response = await client.post(install_url, headers=headers, content=path.read_bytes())
+                if response.status_code >= 400:
+                    return EndpointBleFirmwareHandoffResponse(
+                        ok=False,
+                        status="failed",
+                        ui_state="failed",
+                        pairing_session_id=session_id,
+                        endpoint_id=endpoint_id,
+                        device_id=device_id,
+                        onboarding_session_id=onboarding_session_id,
+                        handoff=pairing.handoff,
+                        firmware=update,
+                        error=safe_recovery_error(response),
+                    )
+                try:
+                    recovery_result = response.json()
+                except ValueError:
+                    recovery_result = {"ok": True}
+        except (OSError, httpx.HTTPError) as exc:
+            return EndpointBleFirmwareHandoffResponse(
+                ok=False,
+                status="failed",
+                ui_state="failed",
+                pairing_session_id=session_id,
+                endpoint_id=endpoint_id,
+                device_id=device_id,
+                onboarding_session_id=onboarding_session_id,
+                handoff=pairing.handoff,
+                firmware=update,
+                error=f"recovery_firmware_install_unavailable: {exc.__class__.__name__}",
+            )
+
+        node_ui_page_cache.invalidate()
+        return EndpointBleFirmwareHandoffResponse(
+            ok=True,
+            status="rebooting" if payload.auto_reboot else "completed",
+            ui_state="rebooting" if payload.auto_reboot else "endpoint_returning",
+            pairing_session_id=session_id,
+            endpoint_id=endpoint_id,
+            device_id=device_id,
+            onboarding_session_id=onboarding_session_id,
+            handoff=pairing.handoff,
+            firmware=update,
+            recovery_result=recovery_result,
         )
 
     @app.websocket("/api/voice/ws")

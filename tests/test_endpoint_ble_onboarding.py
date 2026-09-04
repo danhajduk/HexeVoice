@@ -841,6 +841,7 @@ def test_frontend_exposes_core_governed_ble_operator_flow():
     assert "readEndpointBleIdentity" in client_source
     assert "startEndpointBlePairingSession" in client_source
     assert "getEndpointBlePairingSession" in client_source
+    assert "startEndpointBleFirmwareHandoff" in client_source
     assert "approveEndpointBlePairingSession" in client_source
     assert "cancelEndpointBlePairingSession" in client_source
     assert "getEndpointBleWifiCredentials" in client_source
@@ -850,12 +851,15 @@ def test_frontend_exposes_core_governed_ble_operator_flow():
     assert '"/api/endpoint/ble/scan"' in client_source
     assert '"/api/endpoint/ble/identity"' in client_source
     assert '"/api/endpoint/ble/pairing-sessions"' in client_source
+    assert "/firmware-handoff" in client_source
     assert "EndpointBleOnboardingPanel" in dashboard_source
     assert "Core-Governed BLE" in dashboard_source
     assert "Start Pairing" in dashboard_source
     assert "Approve Device" in dashboard_source
     assert "Send Wi-Fi" in dashboard_source
     assert "Save Wi-Fi" in dashboard_source
+    assert "Retry Firmware" in dashboard_source
+    assert "Installing full endpoint firmware now." in dashboard_source
     assert "Advanced fallback scan" in dashboard_source
     assert "Scan BLE" in dashboard_source
     assert "board_profile" in dashboard_source

@@ -629,6 +629,10 @@ export async function getEndpointBlePairingSession(sessionId) {
   return sendJson(`/api/endpoint/ble/pairing-sessions/${encodeURIComponent(sessionId)}`, { method: "GET" });
 }
 
+export async function startEndpointBleFirmwareHandoff(sessionId, payload = {}) {
+  return sendJson(`/api/endpoint/ble/pairing-sessions/${encodeURIComponent(sessionId)}/firmware-handoff`, { body: payload });
+}
+
 export async function approveEndpointBlePairingSession(sessionId, payload = {}) {
   return sendJson(`/api/endpoint/ble/pairing-sessions/${encodeURIComponent(sessionId)}/approve`, { body: payload });
 }

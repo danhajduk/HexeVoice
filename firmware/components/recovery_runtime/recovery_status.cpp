@@ -159,7 +159,8 @@ std::string render_status_json() {
       "\"nvs\":{\"init_ok\":%s,\"error\":\"%s\"},"
       "\"network\":{\"mode\":\"%s\",\"ip_address\":\"%s\",\"ssid_configured\":%s,\"temporary_ap_active\":%s,"
       "\"discovery_status\":\"%s\"},"
-      "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"display_ui\":false,"
+      "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"http_mode\":\"%s\","
+      "\"status_page\":%s,\"display_ui\":false,"
       "\"ble\":%s,\"ble_mode\":\"%s\",\"ble_reason\":\"%s\"},"
       "\"main_slots\":[{\"label\":\"%s\",\"selected_for_boot\":true,\"state\":\"%s\",\"state_readable\":%s}],"
       "\"actions\":{\"wifi_provisioning\":%s,\"endpoint_provisioning\":%s,\"firmware_upload\":%s,"
@@ -190,6 +191,7 @@ std::string render_status_json() {
       bool_json(recovery_temporary_ap_active()).c_str(),
       recovery_discovery_status(),
       bool_json(recovery_http_api_active()).c_str(),
+      recovery_http_mode(),
       bool_json(recovery_http_api_active()).c_str(),
       bool_json(recovery_ble_enabled()).c_str(),
       recovery_ble_advertising() ? "local_recovery_advertising" : recovery_ble_state(),
@@ -197,11 +199,11 @@ std::string render_status_json() {
       partition_label(boot_partition),
       ota_state_name(running_state),
       bool_json(running_state_result == ESP_OK).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
-      bool_json(recovery_wifi_recovery_enabled()).c_str(),
+      bool_json(recovery_full_http_rescue_enabled()).c_str(),
+      bool_json(recovery_full_http_rescue_enabled()).c_str(),
+      bool_json(recovery_http_api_active()).c_str(),
+      bool_json(recovery_full_http_rescue_enabled()).c_str(),
+      bool_json(recovery_full_http_rescue_enabled()).c_str(),
       bool_json(recovery_ble_enabled()).c_str(),
       partition_label(running_partition),
       partition_label(boot_partition));

@@ -266,6 +266,13 @@ Task 289 adds the HexeVoice requester/operator side:
 - Normal Core node onboarding/trust is not bypassed. After the endpoint joins
   Wi-Fi, the existing discovery, heartbeat, registry, and trust workflow remain
   the source of truth for a connected endpoint.
+- If the approved device reports `application_type: recovery` or a minimal
+  firmware version after it joins Wi-Fi, HexeVoice verifies that the online
+  discovery record has the same BLE-approved `device_id` and
+  `onboarding_session_id`, then uploads the signed full endpoint image to the
+  recovery firmware install route. The UI shows recovery online, firmware
+  update start/running, rebooting, endpoint returning, completion, or failure
+  states and lets the operator retry without re-entering Wi-Fi credentials.
 
 ## Recovery BLE Status
 
@@ -283,9 +290,10 @@ Task 290 adds a recovery-owned BLE rescue path:
 - `/api/recovery/ble/status` reports support, mode, UUIDs, advertising state,
   and ack/error status without exposing Wi-Fi credentials, pairing nonce values,
   claim-code references, ciphertext, or derived keys.
-- Core-governed encrypted BLE provisioning remains the normal endpoint firmware
-  path; recovery returns `core_governed_requires_endpoint_app` for encrypted
-  Core envelopes instead of accepting them silently.
+- Core-governed encrypted BLE provisioning is supported in recovery on native
+  BLE boards. After credentials are applied, recovery can start STA Wi-Fi,
+  report a non-secret discovery offer, and, on HA Voice PE, expose only the
+  signed firmware-install route needed to complete the full endpoint handoff.
 
 ## Validation Status
 

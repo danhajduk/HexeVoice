@@ -9,6 +9,8 @@ import wave
 
 from fastapi.testclient import TestClient
 import httpx
+import hexevoice.main as main_module
+import hexevoice.endpoint.ble_onboarding as ble_onboarding_module
 
 from hexevoice.api.models import AssistantTurnRequest
 from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
@@ -289,6 +291,17 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     (firmware_dir / "manifest-ha_voice_pe.json").write_text(
         json.dumps(
             {
+                "version": "recovery-0.1.0",
+                "application_type": "recovery",
+                "board_profile": "ha_voice_pe",
+                "filename": "hexe_recovery_ha_voice_pe.bin",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (firmware_dir / "manifest-endpoint-ha_voice_pe.json").write_text(
+        json.dumps(
+            {
                 "version": "0.2.0",
                 "application_type": "endpoint",
                 "board_profile": "ha_voice_pe",
@@ -360,6 +373,169 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     assert firmware_update["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
     assert firmware_update["signature_key_id"] == ota_manifest_key_id()
     assert len(firmware_update["manifest_signature"]) == 64
+
+
+class FakePairingCoreClient:
+    def __init__(self, *, approved_device_id: str = "esp-pe-1") -> None:
+        self.approved_device_id = approved_device_id
+
+    def get_ble_pairing_session(self, *, core_base_url: str, node_trust_token: str, node_id: str, session_id: str, refresh: bool = True) -> dict:
+        assert core_base_url == "http://core.local"
+        assert node_trust_token == "node-token"
+        assert node_id == "voice-node-main"
+        return {
+            "ok": True,
+            "pairing_session": {
+                "session_id": session_id,
+                "status": "approved",
+                "approved_device_id": self.approved_device_id,
+                "endpoint_identity": {
+                    "device_id": "esp-pe-1",
+                    "target_node_id": "esp-pe-1",
+                    "board_profile": "ha_voice_pe",
+                    "firmware_version": "z-recovery",
+                    "application_type": "recovery",
+                    "onboarding_session_id": session_id,
+                },
+            },
+        }
+
+
+class FakeRecoveryInstallClient:
+    calls: list[dict] = []
+
+    def __init__(self, *args, **kwargs) -> None:
+        self.args = args
+        self.kwargs = kwargs
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        return None
+
+    async def post(self, url: str, *, headers: dict, content: bytes):
+        self.__class__.calls.append({"url": url, "headers": headers, "content": content})
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "installed_partition": "ota_0",
+                "version": headers["X-Hexe-Version"],
+                "reboot_scheduled": True,
+            },
+        )
+
+
+def save_trusted_node_state(path):
+    store = OnboardingStateStore(path=path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {"core_base_url": "http://core.local"},
+                "trust_activation": {
+                    "node_id": "voice-node-main",
+                    "node_trust_token": "node-token",
+                    "trust_status": "trusted",
+                },
+            }
+        )
+    )
+
+
+def test_ble_pairing_firmware_handoff_installs_endpoint_image_only_after_identity_match(tmp_path, monkeypatch):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    firmware_bytes = b"endpoint-pe-firmware"
+    (firmware_dir / "hexe_firmware_ha_voice_pe.bin").write_bytes(firmware_bytes)
+    (firmware_dir / "manifest-endpoint-ha_voice_pe.json").write_text(
+        json.dumps(
+            {
+                "version": "endpoint-0.2.0",
+                "application_type": "endpoint",
+                "board_profile": "ha_voice_pe",
+                "soc": "esp32s3",
+                "idf_target": "esp32s3",
+                "flash_size": "16MiB",
+                "psram_size": "8MiB",
+                "partition_schema": "s3-16m-recovery-v1",
+                "app_slot_size": "4MiB",
+                "firmware_api_version": "hexe-firmware-main-api-v1",
+                "model_api_version": "hexe-model-bundle-api-v1",
+                "asset_api_version": "hexe-asset-bundle-api-v1",
+                "calibration_schema_version": "hexe-calibration-schema-v1",
+                "release_channel": "dev",
+                "security_policy": "signed_manifest_sha256_required",
+                "filename": "hexe_firmware_ha_voice_pe.bin",
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_path = tmp_path / "state.json"
+    save_trusted_node_state(state_path)
+    FakeRecoveryInstallClient.calls = []
+    monkeypatch.setattr(ble_onboarding_module, "CoreOnboardingClient", lambda: FakePairingCoreClient())
+    monkeypatch.setattr(main_module.httpx, "AsyncClient", FakeRecoveryInstallClient)
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=state_path,
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    discovery = client.post(
+        "/api/endpoint/discovery/offer",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "device_id": "esp-pe-1",
+            "onboarding_session_id": "blepair-test",
+            "board_profile": "ha_voice_pe",
+            "firmware_version": "z-recovery",
+            "application_type": "recovery",
+        },
+    )
+    response = client.post("/api/endpoint/ble/pairing-sessions/blepair-test/firmware-handoff", json={"auto_reboot": True})
+
+    assert discovery.status_code == 200
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["status"] == "rebooting"
+    assert payload["ui_state"] == "rebooting"
+    assert payload["endpoint_id"] == "esp-pe-1"
+    assert payload["firmware"]["application_type"] == "endpoint"
+    assert payload["firmware"]["filename"] == "hexe_firmware_ha_voice_pe.bin"
+    assert len(FakeRecoveryInstallClient.calls) == 1
+    call = FakeRecoveryInstallClient.calls[0]
+    assert call["url"] == "http://testclient/api/recovery/firmware/install"
+    assert call["content"] == firmware_bytes
+    assert call["headers"]["X-Hexe-Application-Type"] == "endpoint"
+    assert call["headers"]["X-Hexe-Board-Profile"] == "ha_voice_pe"
+    assert call["headers"]["X-Hexe-Partition-Schema"] == "s3-16m-recovery-v1"
+    assert call["headers"]["X-Hexe-Reboot-After-Install"] == "true"
+
+
+def test_ble_pairing_firmware_handoff_rejects_unapproved_or_mismatched_identity(tmp_path, monkeypatch):
+    state_path = tmp_path / "state.json"
+    save_trusted_node_state(state_path)
+    monkeypatch.setattr(ble_onboarding_module, "CoreOnboardingClient", lambda: FakePairingCoreClient(approved_device_id="other-device"))
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=state_path,
+                endpoint_discovery_udp_enabled=False,
+            )
+        )
+    )
+
+    response = client.post("/api/endpoint/ble/pairing-sessions/blepair-test/firmware-handoff", json={})
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is False
+    assert response.json()["error"] == "ble_pairing_not_approved"
 
 
 def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
