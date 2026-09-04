@@ -1353,7 +1353,11 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert "manifest-${FIRMWARE_APPLICATION_TYPE}-${BOARD_PROFILE}.json" in export_source
     assert 'GENERATED_DIR="${BUILD_DIR}/esp-idf/${GENERATED_COMPONENT_NAME}/generated"' in export_source
     assert 'BOARD_SOC="$(cmake_config_string HEXE_BOARD_SOC)"' in export_source
-    assert "hexe_firmware*.bin > SHA256SUMS" in export_source
+    assert "write_bin_checksums()" in export_source
+    assert 'find . -maxdepth 1 -type f -name "*.bin"' in export_source
+    assert 'sha256sum "${bin_files[@]}" > "${output}"' in export_source
+    assert 'write_bin_checksums "${EXPORT_DIR}" SHA256SUMS' in export_source
+    assert 'write_bin_checksums "${COMMON_EXPORT_DIR}" SHA256SUMS.profiles' in export_source
     assert "cp \"${APP_SRC}\" \"${COMMON_EXPORT_DIR}/${PROFILE_APP_FILENAME}\"" in export_source
     assert "${APP_PROFILE_MANIFEST_FILENAME}" in export_source
     assert '"application_type": "${FIRMWARE_APPLICATION_TYPE}"' in export_source

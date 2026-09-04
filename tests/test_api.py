@@ -375,6 +375,57 @@ def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     assert len(firmware_update["manifest_signature"]) == 64
 
 
+def test_endpoint_status_marks_minimal_firmware_update_required(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    (firmware_dir / "hexe_firmware_ha_voice_pe.bin").write_bytes(b"pe-firmware")
+    (firmware_dir / "manifest-endpoint-ha_voice_pe.json").write_text(
+        json.dumps(
+            {
+                "version": "0.2.0",
+                "application_type": "endpoint",
+                "board_profile": "ha_voice_pe",
+                "filename": "hexe_firmware_ha_voice_pe.bin",
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    heartbeat = client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "firmware_version": "min-z20260904175449-c4897ab",
+            "capabilities": {
+                "firmware": {
+                    "board_profile": "ha_voice_pe",
+                    "application_type": "recovery",
+                }
+            },
+        },
+    )
+    status = client.get("/api/endpoint/status/esp-pe-1")
+
+    assert heartbeat.status_code == 200
+    assert status.status_code == 200
+    firmware_update = status.json()["firmware_update"]
+    assert firmware_update["current_version"] == "min-z20260904175449-c4897ab"
+    assert firmware_update["latest_version"] == "0.2.0"
+    assert firmware_update["update_available"] is True
+    assert firmware_update["reason"] == "minimal_firmware_update_required"
+    assert firmware_update["filename"] == "hexe_firmware_ha_voice_pe.bin"
+    assert firmware_update["application_type"] == "endpoint"
+
+
 class FakePairingCoreClient:
     def __init__(self, *, approved_device_id: str = "esp-pe-1") -> None:
         self.approved_device_id = approved_device_id
@@ -668,6 +719,90 @@ def test_firmware_ota_push_sends_update_event_to_connected_endpoint(tmp_path):
     timeout_at = datetime.fromtimestamp(command["timeout_at"], tz=timezone.utc)
     created_at = datetime.fromisoformat(command["created_at"])
     assert (timeout_at - created_at).total_seconds() >= 170
+
+
+def test_firmware_manifest_rejects_minimal_artifacts_and_manifests(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    (firmware_dir / "hexe_min_ha_voice_pe.bin").write_bytes(b"minimal")
+    (firmware_dir / "hexe_firmware_ha_voice_pe.bin").write_bytes(b"pe-firmware")
+    (firmware_dir / "manifest-endpoint-ha_voice_pe.json").write_text(
+        json.dumps(
+            {
+                "version": "min-z-test",
+                "application_type": "endpoint",
+                "board_profile": "ha_voice_pe",
+                "filename": "hexe_firmware_ha_voice_pe.bin",
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    minimal_filename = client.get("/api/firmware/manifest?filename=hexe_min_ha_voice_pe.bin")
+    minimal_manifest = client.get("/api/firmware/manifest?filename=hexe_firmware_ha_voice_pe.bin")
+
+    assert minimal_filename.status_code == 400
+    assert minimal_filename.json()["detail"] == "minimal_firmware_not_allowed_for_ota"
+    assert minimal_manifest.status_code == 400
+    assert minimal_manifest.json()["detail"] == "minimal_firmware_not_allowed_for_ota"
+
+
+def test_firmware_ota_push_rejects_minimal_artifacts_and_versions(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    (firmware_dir / "hexe_firmware.bin").write_bytes(b"endpoint")
+    (firmware_dir / "hexe_min_ha_voice_pe.bin").write_bytes(b"minimal")
+    (firmware_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "version": "0.2.0",
+                "application_type": "endpoint",
+                "board_profile": "esp_box_3",
+                "filename": "hexe_firmware.bin",
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    minimal_filename = client.post(
+        "/api/firmware/ota/push",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "filename": "hexe_min_ha_voice_pe.bin",
+            "version": "0.2.0",
+        },
+    )
+    minimal_version = client.post(
+        "/api/firmware/ota/push",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "filename": "hexe_firmware.bin",
+            "version": "min-z-test",
+        },
+    )
+
+    assert minimal_filename.status_code == 400
+    assert minimal_filename.json()["detail"] == "minimal_firmware_not_allowed_for_ota"
+    assert minimal_version.status_code == 400
+    assert minimal_version.json()["detail"] == "minimal_firmware_not_allowed_for_ota"
 
 
 def test_firmware_ota_clear_removes_ota_command_records(tmp_path):

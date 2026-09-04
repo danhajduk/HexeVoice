@@ -405,6 +405,36 @@ def firmware_profile_for_filename(filename: str) -> str:
     return "esp_box_3"
 
 
+def firmware_version_is_minimal(version: str | None) -> bool:
+    normalized = str(version or "").strip().lower()
+    return normalized.startswith(("min-", "minimal-"))
+
+
+def firmware_filename_is_minimal(filename: str | None) -> bool:
+    normalized = str(filename or "").strip().lower()
+    return normalized.startswith(("hexe_min_", "hexe_minimal_")) or "/hexe_min_" in normalized
+
+
+def firmware_manifest_is_endpoint_ota(manifest: dict, filename: str) -> bool:
+    application_type = str(manifest.get("application_type") or "").strip()
+    version = str(manifest.get("version") or "").strip()
+    manifest_filename = str(manifest.get("filename") or filename).strip()
+    return (
+        application_type == "endpoint"
+        and not firmware_version_is_minimal(version)
+        and not firmware_filename_is_minimal(filename)
+        and not firmware_filename_is_minimal(manifest_filename)
+    )
+
+
+def reject_non_endpoint_ota_artifact(filename: str, manifest: dict, *, version: str | None = None) -> None:
+    candidate_version = version if version is not None else str(manifest.get("version") or "").strip()
+    if firmware_filename_is_minimal(filename) or firmware_version_is_minimal(candidate_version):
+        raise HTTPException(status_code=400, detail="minimal_firmware_not_allowed_for_ota")
+    if manifest and not firmware_manifest_is_endpoint_ota(manifest, filename):
+        raise HTTPException(status_code=400, detail="non_endpoint_firmware_not_allowed_for_ota")
+
+
 def firmware_manifest_candidates(settings: Settings, filename: str) -> list[Path]:
     artifact_dir = settings.resolved_firmware_artifact_dir()
     profile = firmware_profile_for_filename(filename)
@@ -432,6 +462,8 @@ def read_firmware_artifact_manifest(settings: Settings, filename: str, *, applic
             manifest_application_type = str(payload.get("application_type") or "").strip()
             if manifest_application_type and manifest_application_type != application_type:
                 continue
+        if application_type == "endpoint" and not firmware_manifest_is_endpoint_ota(payload, filename):
+            continue
         return payload
     return {}
 
@@ -628,7 +660,16 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
     latest_version = str(manifest.get("version") or "").strip() or None
     current_version = endpoint_status.firmware_version
     artifact_available = path.exists()
-    update_available = bool(artifact_available and latest_version and current_version and latest_version != current_version)
+    capabilities = endpoint_status.capabilities if isinstance(endpoint_status.capabilities, dict) else {}
+    firmware = capabilities.get("firmware") if isinstance(capabilities.get("firmware"), dict) else {}
+    application_type = str(capabilities.get("application_type") or firmware.get("application_type") or "").strip()
+    current_is_minimal = application_type == "recovery" or firmware_version_is_minimal(current_version)
+    update_available = bool(
+        artifact_available
+        and latest_version
+        and current_version
+        and (current_is_minimal or latest_version != current_version)
+    )
     reason = None
     if not artifact_available:
         reason = "firmware_artifact_not_found"
@@ -636,6 +677,8 @@ def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusR
         reason = "latest_version_unknown"
     elif not current_version:
         reason = "endpoint_version_unknown"
+    elif current_is_minimal:
+        reason = "minimal_firmware_update_required"
     elif not update_available:
         reason = "up_to_date"
     else:
@@ -2114,7 +2157,10 @@ def create_app(
         path = firmware_artifact_path(filename)
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         size_bytes = path.stat().st_size
-        static_manifest = read_firmware_artifact_manifest(app_settings, path.name)
+        raw_manifest = read_firmware_artifact_manifest(app_settings, path.name)
+        reject_non_endpoint_ota_artifact(path.name, raw_manifest)
+        static_manifest = read_firmware_artifact_manifest(app_settings, path.name, application_type="endpoint")
+        reject_non_endpoint_ota_artifact(path.name, static_manifest)
         profile = str(static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name))
         static_metadata = ota_manifest_static_metadata(static_manifest, profile)
         signature = sign_ota_manifest_metadata(
@@ -2143,7 +2189,10 @@ def create_app(
         sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
         size_bytes = path.stat().st_size
         url = firmware_public_url(path.name)
+        raw_manifest = read_firmware_artifact_manifest(app_settings, path.name)
+        reject_non_endpoint_ota_artifact(path.name, raw_manifest, version=payload.version)
         static_manifest = read_firmware_artifact_manifest(app_settings, path.name, application_type="endpoint")
+        reject_non_endpoint_ota_artifact(path.name, static_manifest, version=payload.version)
         profile = str(payload.profile or static_manifest.get("board_profile") or static_manifest.get("profile") or firmware_profile_for_filename(path.name))
         static_metadata = ota_manifest_static_metadata(static_manifest, profile)
         signature = sign_ota_manifest_metadata(

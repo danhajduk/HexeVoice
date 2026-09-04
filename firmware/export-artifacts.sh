@@ -48,6 +48,20 @@ require_file() {
   fi
 }
 
+write_bin_checksums() {
+  local dir="$1"
+  local output="$2"
+  (
+    cd "${dir}"
+    mapfile -t bin_files < <(find . -maxdepth 1 -type f -name "*.bin" -printf "%f\n" | sort)
+    if [[ "${#bin_files[@]}" -eq 0 ]]; then
+      echo "No .bin files found in ${dir}" >&2
+      exit 1
+    fi
+    sha256sum "${bin_files[@]}" > "${output}"
+  )
+}
+
 require_file "${BOOTLOADER_SRC}"
 require_file "${PARTITION_SRC}"
 require_file "${OTA_DATA_SRC}"
@@ -147,26 +161,11 @@ BOARD_SUPPORT_STATUS="${BOARD_SUPPORT_STATUS:-unknown}"
 APP_SIZE_BYTES="$(stat -c '%s' "${APP_SRC}")"
 APP_SHA256="$(sha256sum "${APP_SRC}" | awk '{print $1}')"
 
-(
-  cd "${EXPORT_DIR}"
-  sha256sum \
-    bootloader.bin \
-    partition-table.bin \
-    ota_data_initial.bin \
-    hexe_firmware.bin \
-    "${PROFILE_APP_FILENAME}" > SHA256SUMS
-)
-
-(
-  cd "${COMMON_EXPORT_DIR}"
-  sha256sum hexe_firmware_*.bin > SHA256SUMS.profiles
-)
+write_bin_checksums "${EXPORT_DIR}" SHA256SUMS
+write_bin_checksums "${COMMON_EXPORT_DIR}" SHA256SUMS.profiles
 
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
-  (
-    cd "${RUNTIME_FIRMWARE_DIR}"
-    sha256sum hexe_firmware*.bin > SHA256SUMS
-  )
+  write_bin_checksums "${RUNTIME_FIRMWARE_DIR}" SHA256SUMS
 fi
 
 cat > "${EXPORT_DIR}/manifest.txt" <<EOF
