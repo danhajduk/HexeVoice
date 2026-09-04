@@ -31,6 +31,7 @@ void hexe_ble_pairing_host_advert_seen(const char *address, int rssi, const char
 void hexe_ble_pairing_connection_state_changed(int connected, const char *reason, int rc);
 int hexe_ble_pairing_offer_received(const char *json, unsigned int length);
 void hexe_ble_pairing_identity_write_result(int succeeded, const char *reason, int rc);
+void hexe_ble_pairing_credentials_read_result(int succeeded, const char *reason, int rc);
 
 static const char *TAG = "hexe_ble_gatt";
 enum {
@@ -38,6 +39,7 @@ enum {
   kPairingScanDurationMs = 5000,
   kPairingScanPollIntervalMs = 20000,
   kMaxPairingOfferBytes = 1024,
+  kMaxEncryptedCredentialBytes = 4096,
 };
 
 static uint8_t own_addr_type;
@@ -49,11 +51,13 @@ static int client_connecting;
 static int client_connected;
 static int client_offer_received;
 static int client_identity_sent;
+static int client_credentials_received;
 static uint16_t client_conn_handle;
 static uint16_t client_service_start_handle;
 static uint16_t client_service_end_handle;
 static uint16_t client_device_identity_handle;
 static uint16_t client_pairing_nonce_handle;
+static uint16_t client_encrypted_credentials_handle;
 static ble_addr_t client_peer_addr;
 static uint16_t advertising_refresh_sequence;
 static uint8_t advertising_timestamp_data[8];
@@ -225,6 +229,7 @@ static void reset_client_handles(void) {
   client_service_end_handle = 0;
   client_device_identity_handle = 0;
   client_pairing_nonce_handle = 0;
+  client_encrypted_credentials_handle = 0;
 }
 
 static void reset_client_state(int clear_exchange_state) {
@@ -235,6 +240,7 @@ static void reset_client_state(int clear_exchange_state) {
   if (clear_exchange_state) {
     client_offer_received = 0;
     client_identity_sent = 0;
+    client_credentials_received = 0;
   }
 }
 
@@ -287,6 +293,7 @@ static int pairing_service_discovered_cb(uint16_t conn_handle, const struct ble_
 static int pairing_chr_discovered_cb(uint16_t conn_handle, const struct ble_gatt_error *error, const struct ble_gatt_chr *chr, void *arg);
 static int pairing_offer_read_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg);
 static int pairing_identity_write_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg);
+static int pairing_credentials_read_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg);
 
 static void copy_adv_name(const struct ble_hs_adv_fields *fields, char out[40]) {
   if (out == NULL) {
@@ -464,6 +471,20 @@ static int write_pairing_identity(uint16_t conn_handle) {
   return rc;
 }
 
+static int read_pairing_credentials(uint16_t conn_handle) {
+  if (client_encrypted_credentials_handle == 0) {
+    hexe_ble_pairing_credentials_read_result(0, "credentials_characteristic_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  ESP_LOGI(TAG, "BLE host pairing credentials_read_start conn=%u handle=%u", conn_handle, client_encrypted_credentials_handle);
+  int rc = ble_gattc_read(conn_handle, client_encrypted_credentials_handle, pairing_credentials_read_cb, NULL);
+  if (rc != 0) {
+    hexe_ble_pairing_credentials_read_result(0, "credentials_read_start_failed", rc);
+    ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  return rc;
+}
+
 static int pairing_service_discovered_cb(uint16_t conn_handle, const struct ble_gatt_error *error, const struct ble_gatt_svc *svc, void *arg) {
   (void)arg;
   if (error == NULL) {
@@ -509,15 +530,19 @@ static int pairing_chr_discovered_cb(uint16_t conn_handle, const struct ble_gatt
     } else if (ble_uuid_cmp(&chr->uuid.u, &pairing_nonce_uuid.u) == 0) {
       client_pairing_nonce_handle = chr->val_handle;
       ESP_LOGI(TAG, "BLE host pairing characteristic_found name=pairing_nonce handle=%u", chr->val_handle);
+    } else if (ble_uuid_cmp(&chr->uuid.u, &encrypted_credentials_uuid.u) == 0) {
+      client_encrypted_credentials_handle = chr->val_handle;
+      ESP_LOGI(TAG, "BLE host pairing characteristic_found name=encrypted_credentials handle=%u", chr->val_handle);
     }
     return 0;
   }
   if (error->status == BLE_HS_EDONE) {
     ESP_LOGI(
         TAG,
-        "BLE host pairing characteristic_discovery_complete identity_handle=%u offer_handle=%u",
+        "BLE host pairing characteristic_discovery_complete identity_handle=%u offer_handle=%u credentials_handle=%u",
         client_device_identity_handle,
-        client_pairing_nonce_handle);
+        client_pairing_nonce_handle,
+        client_encrypted_credentials_handle);
     if (client_device_identity_handle == 0 || client_pairing_nonce_handle == 0) {
       hexe_ble_pairing_connection_state_changed(0, "required_characteristics_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
       ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
@@ -574,7 +599,47 @@ static int pairing_identity_write_cb(uint16_t conn_handle, const struct ble_gatt
   client_identity_sent = 1;
   ESP_LOGI(TAG, "BLE host pairing identity_write_ok conn=%u", conn_handle);
   hexe_ble_pairing_identity_write_result(1, "endpoint_identity_written", 0);
-  return 0;
+  if (client_encrypted_credentials_handle != 0) {
+    return read_pairing_credentials(conn_handle);
+  }
+  hexe_ble_pairing_credentials_read_result(0, "credentials_characteristic_missing", BLE_ATT_ERR_ATTR_NOT_FOUND);
+  return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+}
+
+static int pairing_credentials_read_cb(uint16_t conn_handle, const struct ble_gatt_error *error, struct ble_gatt_attr *attr, void *arg) {
+  (void)arg;
+  if (error == NULL) {
+    return BLE_ATT_ERR_UNLIKELY;
+  }
+  if (error->status != 0 || attr == NULL || attr->om == NULL) {
+    hexe_ble_pairing_credentials_read_result(0, "credentials_read_failed", error->status);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  uint16_t length = OS_MBUF_PKTLEN(attr->om);
+  char buffer[kMaxEncryptedCredentialBytes + 1];
+  if (length == 0 || length > kMaxEncryptedCredentialBytes) {
+    hexe_ble_pairing_credentials_read_result(0, "credentials_pending", 0);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  int rc = ble_hs_mbuf_to_flat(attr->om, buffer, kMaxEncryptedCredentialBytes, &length);
+  if (rc != 0) {
+    hexe_ble_pairing_credentials_read_result(0, "credentials_flatten_failed", rc);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  buffer[length] = '\0';
+  if (strstr(buffer, "\"status\":\"pending\"") != NULL || strstr(buffer, "\"credentials_pending\"") != NULL) {
+    ESP_LOGI(TAG, "BLE host pairing credentials_pending conn=%u payload_len=%u", conn_handle, (unsigned)length);
+    hexe_ble_pairing_credentials_read_result(0, "credentials_pending", 0);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  ESP_LOGI(TAG, "BLE host pairing credentials_read_ok conn=%u payload_len=%u", conn_handle, (unsigned)length);
+  if (hexe_ble_provisioning_handle_encrypted_credentials(buffer, length) == 0) {
+    client_credentials_received = 1;
+    hexe_ble_pairing_credentials_read_result(1, "credentials_applied", 0);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
+  hexe_ble_pairing_credentials_read_result(0, "credentials_rejected", BLE_ATT_ERR_UNLIKELY);
+  return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
 }
 
 static void write_le16(uint8_t *target, uint16_t value) {
@@ -690,11 +755,18 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
       return 0;
     case BLE_GAP_EVENT_DISCONNECT:
       if (client_connected && event->disconnect.conn.conn_handle == client_conn_handle) {
-        ESP_LOGI(TAG, "BLE host pairing disconnected conn=%u reason=%d identity_sent=%d", client_conn_handle, event->disconnect.reason, client_identity_sent);
-        reset_client_state(client_identity_sent ? 0 : 1);
+        ESP_LOGI(
+            TAG,
+            "BLE host pairing disconnected conn=%u reason=%d identity_sent=%d credentials_received=%d",
+            client_conn_handle,
+            event->disconnect.reason,
+            client_identity_sent,
+            client_credentials_received);
+        const int should_retry_for_credentials = client_identity_sent && !client_credentials_received;
+        reset_client_state(client_credentials_received ? 0 : 1);
         hexe_ble_pairing_connection_state_changed(0, "disconnected", event->disconnect.reason);
         advertise();
-        if (pairing_scan_requested && !client_identity_sent) {
+        if (pairing_scan_requested && (!client_identity_sent || should_retry_for_credentials)) {
           start_pairing_scan();
         }
         return 0;

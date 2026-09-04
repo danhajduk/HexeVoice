@@ -540,6 +540,7 @@ def test_ble_pairing_session_lifecycle_uses_node_trust_and_redacts_identity(tmp_
                 "application_type": "recovery",
                 "provisioning_mode": "core_published_pairing",
                 "endpoint_ephemeral_public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+                "pairing_nonce": "nonce-123456",
             },
         }
     )
@@ -561,6 +562,7 @@ def test_ble_pairing_session_lifecycle_uses_node_trust_and_redacts_identity(tmp_
             "application_type": "recovery",
             "provisioning_mode": "core_published_pairing",
             "endpoint_ephemeral_public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+            "pairing_nonce": "nonce-123456",
         },
     }
     found = service.get_pairing_session("blepair-test")
@@ -574,7 +576,8 @@ def test_ble_pairing_session_lifecycle_uses_node_trust_and_redacts_identity(tmp_
     assert found.ui_state == "ready_to_provision"
     assert found.identity["device_id"] == "esp-pe-1"
     assert found.identity["board_profile"] == "ha_voice_pe"
-    assert found.identity["endpoint_ephemeral_public_key"] == "[REDACTED]"
+    assert found.identity["endpoint_ephemeral_public_key"] == "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE"
+    assert found.identity["pairing_nonce"] == "nonce-123456"
     assert approved.status == "approved"
     assert approved.ui_state == "waiting_for_endpoint_online"
     assert canceled.status == "canceled"

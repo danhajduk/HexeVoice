@@ -61,17 +61,18 @@ def _clean_dict(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in payload.items() if value is not None}
 
 
-def _redact(value: Any) -> Any:
+def _redact(value: Any, *, expose_session_binding: bool = False) -> Any:
+    exposed_keys = {"endpoint_ephemeral_public_key", "pairing_nonce"} if expose_session_binding else set()
     if isinstance(value, dict):
         redacted: dict[str, Any] = {}
         for key, item in value.items():
-            if str(key) in REDACTED_KEYS and item is not None and item != "":
+            if str(key) in REDACTED_KEYS and str(key) not in exposed_keys and item is not None and item != "":
                 redacted[key] = REDACTED
             else:
-                redacted[key] = _redact(item)
+                redacted[key] = _redact(item, expose_session_binding=expose_session_binding)
         return redacted
     if isinstance(value, list):
-        return [_redact(item) for item in value]
+        return [_redact(item, expose_session_binding=expose_session_binding) for item in value]
     return value
 
 
@@ -901,8 +902,8 @@ class EndpointBleOnboardingService:
             status=status,  # type: ignore[arg-type]
             ui_state=ui_state,  # type: ignore[arg-type]
             node_id=node_id,
-            pairing_session=_redact(session),
-            identity=_redact(identity),
+            pairing_session=_redact(session, expose_session_binding=True),
+            identity=_redact(identity, expose_session_binding=True),
             next_poll_seconds=20,
             error=error,
         )

@@ -192,7 +192,8 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert '"hardware.bluetooth.ble.provision_wifi"' in ble_source
     assert '"hexe.voice_node.wifi_backend.v1"' in ble_source
     assert '"local_recovery"' in ble_source
-    assert '"core_governed_requires_endpoint_app"' in ble_source
+    assert '"core_governed_pairing"' in ble_source
+    assert '"endpoint_ephemeral_public_key"' in ble_source
     assert "hexe_ble_provisioning_gatt_init" in ble_source
     assert "hexe_ble_pairing_central_set_scanning(1)" in ble_source
     assert '"central_scanning"' in ble_source
@@ -214,11 +215,16 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
             "hexe_ble_provisioning_status_json"
         )
     ]
-    assert '"pairing_nonce"' not in identity_json
+    assert '"pairing_nonce"' in identity_json
+    assert '"endpoint_ephemeral_public_key"' in identity_json
     assert '"pairing_nonce"' in pairing_nonce_json
+    assert '"endpoint_ephemeral_public_key"' in pairing_nonce_json
     assert "remember_host_pairing_offer" in ble_source
     assert "hexe_ble_provisioning_handle_encrypted_credentials" in ble_source
     assert "save_local_recovery_payload" in ble_source
+    assert "apply_encrypted_envelope" in ble_source
+    assert "psa_raw_key_agreement" in ble_source
+    assert "psa_aead_decrypt" in ble_source
     assert "set_nvs_string(handle, kWifiSsidKey" in ble_source
     assert "set_nvs_string(handle, kWifiPasswordKey" in ble_source
     assert "nvs_set_u8(handle, kProvisionedKey, 1)" in ble_source

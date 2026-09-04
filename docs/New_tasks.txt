@@ -53,6 +53,9 @@ Do not edit above this line:
 **********************************************************************************************
 
 [WIP] Task 295: Integrate HexeVoice node-side onboarding UI/backend with Core pairing sessions and fallback scanning
+[DONE] Task 296: Add HA Voice PE minimal firmware encrypted credential receive for Core-published BLE pairing sessions
+[DONE] Task 297: Extend Core/Supervisor host pairing GATT flow to deliver approved encrypted Wi-Fi credentials
+[TODO] Task 298: Add minimal firmware post-provisioning OTA handoff into full HexeVoice endpoint firmware
 
 **********************************************************************************************
 * Future TODO listing

@@ -1,9 +1,11 @@
 #include "recovery_ble_provisioning.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <cinttypes>
 #include <string>
+#include <vector>
 
 #include "board_profile_pins.h"
 #include "cJSON.h"
@@ -14,6 +16,7 @@
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "nvs.h"
+#include "psa/crypto.h"
 
 extern "C" int hexe_ble_provisioning_gatt_init(const char *device_name);
 extern "C" int hexe_ble_provisioning_gatt_set_advertising(int enabled);
@@ -25,7 +28,10 @@ constexpr int64_t kPairingTtlUs = 10LL * 60LL * 1000000LL;
 constexpr size_t kMaxBleBodyBytes = 4096;
 constexpr char kSettingsNamespace[] = "hexe_settings";
 constexpr char kContractVersion[] = "1.0";
+constexpr char kEnvelopeSchemaVersion[] = "1.0";
 constexpr char kPayloadSchemaId[] = "hexe.voice_node.wifi_backend.v1";
+constexpr char kEncryptionAlgorithm[] = "aes-256-gcm";
+constexpr char kKeyAgreement[] = "x25519-hkdf-sha256";
 constexpr char kOperation[] = "ble.provision_wifi";
 constexpr char kLeaseScope[] = "hardware.bluetooth.ble.provision_wifi";
 constexpr char kServiceUuid[] = "7f9c0000-5f04-4d8b-9a46-7c0f7a100000";
@@ -44,6 +50,12 @@ constexpr char kUseTlsKey[] = "use_tls";
 constexpr char kWifiSsidKey[] = "wifi_ssid";
 constexpr char kWifiPasswordKey[] = "wifi_password";
 constexpr char kProvisionedKey[] = "provisioned";
+constexpr char kBleOnboardingSessionIdKey[] = "ble_onboarding_session_id";
+constexpr char kBleDeviceIdKey[] = "ble_device_id";
+constexpr size_t kX25519PublicKeyBytes = 32;
+constexpr size_t kAes256KeyBytes = 32;
+constexpr size_t kAesGcmNonceBytes = 12;
+constexpr size_t kAesGcmTagBytes = 16;
 
 struct RecoveryBleState {
   bool initialized{false};
@@ -69,7 +81,26 @@ struct RecoveryBleState {
   int64_t host_pairing_seen_at_us{0};
   char onboarding_session_id[64]{""};
   char pairing_nonce[48]{""};
+  char endpoint_public_key_b64[48]{""};
+  psa_key_id_t endpoint_private_key{0};
+  bool crypto_ready{false};
+  uint32_t last_sequence{0};
   int64_t issued_at_us{0};
+};
+
+struct EnvelopeFields {
+  const char *payload_schema_id{nullptr};
+  const char *onboarding_session_id{nullptr};
+  const char *target_node_id{nullptr};
+  const char *pairing_nonce{nullptr};
+  const char *supervisor_public_key{nullptr};
+  const char *key_id{nullptr};
+  const char *nonce{nullptr};
+  const char *aad{nullptr};
+  const char *ciphertext{nullptr};
+  const char *tag{nullptr};
+  const char *expires_at{nullptr};
+  int sequence{0};
 };
 
 RecoveryBleState g_ble;
@@ -124,12 +155,134 @@ const char *hardware_id() {
   return buffer;
 }
 
+int base64url_value(char value) {
+  if (value >= 'A' && value <= 'Z') {
+    return value - 'A';
+  }
+  if (value >= 'a' && value <= 'z') {
+    return value - 'a' + 26;
+  }
+  if (value >= '0' && value <= '9') {
+    return value - '0' + 52;
+  }
+  if (value == '-' || value == '+') {
+    return 62;
+  }
+  if (value == '_' || value == '/') {
+    return 63;
+  }
+  return -1;
+}
+
+bool base64url_decode(const char *text, std::vector<uint8_t> *decoded) {
+  if (text == nullptr || decoded == nullptr) {
+    return false;
+  }
+  decoded->clear();
+  uint32_t accumulator = 0;
+  int bits = 0;
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    if (*cursor == '=') {
+      break;
+    }
+    const int value = base64url_value(*cursor);
+    if (value < 0) {
+      return false;
+    }
+    accumulator = (accumulator << 6) | static_cast<uint32_t>(value);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      decoded->push_back(static_cast<uint8_t>((accumulator >> bits) & 0xff));
+    }
+  }
+  return true;
+}
+
+std::string base64url_encode(const uint8_t *data, size_t length) {
+  static constexpr char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  std::string encoded;
+  uint32_t accumulator = 0;
+  int bits = 0;
+  for (size_t index = 0; index < length; ++index) {
+    accumulator = (accumulator << 8) | data[index];
+    bits += 8;
+    while (bits >= 6) {
+      bits -= 6;
+      encoded.push_back(kAlphabet[(accumulator >> bits) & 0x3f]);
+    }
+  }
+  if (bits > 0) {
+    encoded.push_back(kAlphabet[(accumulator << (6 - bits)) & 0x3f]);
+  }
+  return encoded;
+}
+
+bool ensure_crypto_ready() {
+  if (g_ble.crypto_ready && g_ble.endpoint_private_key != 0 && g_ble.endpoint_public_key_b64[0] != '\0') {
+    return true;
+  }
+  if (g_ble.endpoint_private_key != 0) {
+    psa_destroy_key(g_ble.endpoint_private_key);
+    g_ble.endpoint_private_key = 0;
+  }
+
+  psa_status_t status = psa_crypto_init();
+  if (status != PSA_SUCCESS) {
+    ESP_LOGW(kTag, "Recovery BLE PSA crypto init failed: %d", static_cast<int>(status));
+    return false;
+  }
+
+  psa_key_attributes_t attributes = psa_key_attributes_init();
+  psa_set_key_type(&attributes, PSA_KEY_TYPE_ECC_KEY_PAIR(PSA_ECC_FAMILY_MONTGOMERY));
+  psa_set_key_bits(&attributes, 255);
+  psa_set_key_lifetime(&attributes, PSA_KEY_LIFETIME_VOLATILE);
+  psa_set_key_algorithm(&attributes, PSA_ALG_ECDH);
+  psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_DERIVE);
+  status = psa_generate_key(&attributes, &g_ble.endpoint_private_key);
+  psa_reset_key_attributes(&attributes);
+  if (status != PSA_SUCCESS) {
+    ESP_LOGW(kTag, "Recovery BLE X25519 key generation failed: %d", static_cast<int>(status));
+    return false;
+  }
+
+  uint8_t public_key[kX25519PublicKeyBytes] = {};
+  size_t public_key_len = 0;
+  status = psa_export_public_key(g_ble.endpoint_private_key, public_key, sizeof(public_key), &public_key_len);
+  if (status != PSA_SUCCESS || public_key_len != sizeof(public_key)) {
+    ESP_LOGW(kTag, "Recovery BLE X25519 public key export failed: %d len=%u", static_cast<int>(status), static_cast<unsigned>(public_key_len));
+    psa_destroy_key(g_ble.endpoint_private_key);
+    g_ble.endpoint_private_key = 0;
+    return false;
+  }
+
+  const std::string encoded = base64url_encode(public_key, public_key_len);
+  if (encoded.size() >= sizeof(g_ble.endpoint_public_key_b64)) {
+    psa_destroy_key(g_ble.endpoint_private_key);
+    g_ble.endpoint_private_key = 0;
+    return false;
+  }
+  copy_cstr(g_ble.endpoint_public_key_b64, sizeof(g_ble.endpoint_public_key_b64), encoded.c_str());
+  g_ble.crypto_ready = true;
+  return true;
+}
+
+void reset_crypto_session() {
+  if (g_ble.endpoint_private_key != 0) {
+    psa_destroy_key(g_ble.endpoint_private_key);
+    g_ble.endpoint_private_key = 0;
+  }
+  g_ble.endpoint_public_key_b64[0] = '\0';
+  g_ble.crypto_ready = false;
+}
+
 void ensure_pairing_nonce() {
   const bool existing_valid =
       g_ble.pairing_nonce[0] != '\0' && (esp_timer_get_time() - g_ble.issued_at_us) < kPairingTtlUs;
-  if (existing_valid) {
+  if (existing_valid && ensure_crypto_ready()) {
     return;
   }
+  reset_crypto_session();
   std::snprintf(
       g_ble.pairing_nonce,
       sizeof(g_ble.pairing_nonce),
@@ -143,7 +296,9 @@ void ensure_pairing_nonce() {
   } else {
     std::snprintf(g_ble.onboarding_session_id, sizeof(g_ble.onboarding_session_id), "recovery-ble-%08" PRIx32 "%08" PRIx32, esp_random(), esp_random());
   }
+  g_ble.last_sequence = 0;
   g_ble.issued_at_us = esp_timer_get_time();
+  ensure_crypto_ready();
 }
 
 bool string_field(cJSON *obj, const char *key, const char **value) {
@@ -195,6 +350,256 @@ bool bool_field(cJSON *obj, const char *key, bool *value) {
     return false;
   }
   *value = cJSON_IsTrue(field);
+  return true;
+}
+
+bool json_escape_append(std::string *target, const char *value) {
+  if (target == nullptr || value == nullptr) {
+    return false;
+  }
+  target->push_back('"');
+  for (const unsigned char *cursor = reinterpret_cast<const unsigned char *>(value); *cursor != '\0'; ++cursor) {
+    switch (*cursor) {
+      case '"':
+        target->append("\\\"");
+        break;
+      case '\\':
+        target->append("\\\\");
+        break;
+      case '\b':
+        target->append("\\b");
+        break;
+      case '\f':
+        target->append("\\f");
+        break;
+      case '\n':
+        target->append("\\n");
+        break;
+      case '\r':
+        target->append("\\r");
+        break;
+      case '\t':
+        target->append("\\t");
+        break;
+      default:
+        if (*cursor < 0x20) {
+          char escaped[7];
+          std::snprintf(escaped, sizeof(escaped), "\\u%04x", static_cast<unsigned>(*cursor));
+          target->append(escaped);
+        } else {
+          target->push_back(static_cast<char>(*cursor));
+        }
+        break;
+    }
+  }
+  target->push_back('"');
+  return true;
+}
+
+void json_string_field(std::string *target, const char *key, const char *value, bool *first) {
+  if (!*first) {
+    target->push_back(',');
+  }
+  *first = false;
+  json_escape_append(target, key);
+  target->push_back(':');
+  json_escape_append(target, value);
+}
+
+void json_int_field(std::string *target, const char *key, int value, bool *first) {
+  if (!*first) {
+    target->push_back(',');
+  }
+  *first = false;
+  json_escape_append(target, key);
+  target->push_back(':');
+  char number[16];
+  std::snprintf(number, sizeof(number), "%d", value);
+  target->append(number);
+}
+
+std::string canonical_salt_json(const char *onboarding_session_id, const char *target_node_id, const char *pairing_nonce) {
+  std::string out = "{";
+  bool first = true;
+  json_string_field(&out, "contract_version", kContractVersion, &first);
+  json_string_field(&out, "onboarding_session_id", onboarding_session_id, &first);
+  json_string_field(&out, "pairing_nonce", pairing_nonce, &first);
+  json_string_field(&out, "schema_version", kEnvelopeSchemaVersion, &first);
+  json_string_field(&out, "target_node_id", target_node_id, &first);
+  out.push_back('}');
+  return out;
+}
+
+std::string canonical_aad_json(
+    const char *payload_schema_id,
+    const char *onboarding_session_id,
+    const char *target_node_id,
+    const char *pairing_nonce,
+    int sequence,
+    const char *expires_at) {
+  std::string out = "{";
+  bool first = true;
+  json_string_field(&out, "algorithm", kEncryptionAlgorithm, &first);
+  json_string_field(&out, "contract_version", kContractVersion, &first);
+  json_string_field(&out, "expires_at", expires_at, &first);
+  json_string_field(&out, "key_agreement", kKeyAgreement, &first);
+  json_string_field(&out, "onboarding_session_id", onboarding_session_id, &first);
+  json_string_field(&out, "pairing_nonce", pairing_nonce, &first);
+  json_string_field(&out, "payload_schema_id", payload_schema_id, &first);
+  json_string_field(&out, "schema_version", kEnvelopeSchemaVersion, &first);
+  json_int_field(&out, "sequence", sequence, &first);
+  json_string_field(&out, "target_node_id", target_node_id, &first);
+  out.push_back('}');
+  return out;
+}
+
+std::string canonical_key_id_json(const char *supervisor_public_key, const char *onboarding_session_id, const char *target_node_id, int sequence) {
+  std::string out = "{";
+  bool first = true;
+  json_string_field(&out, "endpoint_ephemeral_public_key", g_ble.endpoint_public_key_b64, &first);
+  json_string_field(&out, "onboarding_session_id", onboarding_session_id, &first);
+  json_int_field(&out, "sequence", sequence, &first);
+  json_string_field(&out, "supervisor_ephemeral_public_key", supervisor_public_key, &first);
+  json_string_field(&out, "target_node_id", target_node_id, &first);
+  out.push_back('}');
+  return out;
+}
+
+bool parse_iso_utc_seconds(const char *expires_at) {
+  int year = 0;
+  int month = 0;
+  int day = 0;
+  int hour = 0;
+  int minute = 0;
+  int second = 0;
+  if (expires_at == nullptr ||
+      std::sscanf(expires_at, "%4d-%2d-%2dT%2d:%2d:%2d", &year, &month, &day, &hour, &minute, &second) != 6) {
+    return false;
+  }
+  return month >= 1 && month <= 12 && day >= 1 && day <= 31 && hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 && second >= 0 &&
+         second <= 60;
+}
+
+bool import_aes_decrypt_key(const uint8_t *key, size_t key_len, psa_key_id_t *key_id) {
+  psa_key_attributes_t attributes = psa_key_attributes_init();
+  psa_set_key_type(&attributes, PSA_KEY_TYPE_AES);
+  psa_set_key_bits(&attributes, key_len * 8);
+  psa_set_key_algorithm(&attributes, PSA_ALG_GCM);
+  psa_set_key_usage_flags(&attributes, PSA_KEY_USAGE_DECRYPT);
+  const psa_status_t status = psa_import_key(&attributes, key, key_len, key_id);
+  psa_reset_key_attributes(&attributes);
+  return status == PSA_SUCCESS;
+}
+
+bool derive_provisioning_key(const char *supervisor_public_key_b64, const std::string &salt_json, uint8_t key[kAes256KeyBytes]) {
+  std::vector<uint8_t> supervisor_public_key;
+  if (!base64url_decode(supervisor_public_key_b64, &supervisor_public_key) ||
+      supervisor_public_key.size() != kX25519PublicKeyBytes ||
+      !ensure_crypto_ready()) {
+    return false;
+  }
+
+  uint8_t shared_secret[kX25519PublicKeyBytes] = {};
+  size_t shared_secret_len = 0;
+  psa_status_t status = psa_raw_key_agreement(
+      PSA_ALG_ECDH,
+      g_ble.endpoint_private_key,
+      supervisor_public_key.data(),
+      supervisor_public_key.size(),
+      shared_secret,
+      sizeof(shared_secret),
+      &shared_secret_len);
+  if (status != PSA_SUCCESS || shared_secret_len != sizeof(shared_secret)) {
+    std::fill(shared_secret, shared_secret + sizeof(shared_secret), 0);
+    return false;
+  }
+
+  psa_key_derivation_operation_t derivation = PSA_KEY_DERIVATION_OPERATION_INIT;
+  status = psa_key_derivation_setup(&derivation, PSA_ALG_HKDF(PSA_ALG_SHA_256));
+  if (status == PSA_SUCCESS) {
+    status = psa_key_derivation_input_bytes(
+        &derivation,
+        PSA_KEY_DERIVATION_INPUT_SALT,
+        reinterpret_cast<const uint8_t *>(salt_json.data()),
+        salt_json.size());
+  }
+  if (status == PSA_SUCCESS) {
+    status = psa_key_derivation_input_bytes(&derivation, PSA_KEY_DERIVATION_INPUT_SECRET, shared_secret, shared_secret_len);
+  }
+  static constexpr char kInfo[] = "hexe:x25519-hkdf-sha256:ble.provision_wifi";
+  if (status == PSA_SUCCESS) {
+    status = psa_key_derivation_input_bytes(&derivation, PSA_KEY_DERIVATION_INPUT_INFO, reinterpret_cast<const uint8_t *>(kInfo), sizeof(kInfo) - 1);
+  }
+  if (status == PSA_SUCCESS) {
+    status = psa_key_derivation_output_bytes(&derivation, key, kAes256KeyBytes);
+  }
+  psa_key_derivation_abort(&derivation);
+  std::fill(shared_secret, shared_secret + sizeof(shared_secret), 0);
+  return status == PSA_SUCCESS;
+}
+
+bool decrypt_payload(
+    const uint8_t key[kAes256KeyBytes],
+    const std::vector<uint8_t> &nonce,
+    const std::vector<uint8_t> &aad,
+    const std::vector<uint8_t> &ciphertext,
+    const std::vector<uint8_t> &tag,
+    std::vector<uint8_t> *plaintext) {
+  if (plaintext == nullptr || nonce.size() != kAesGcmNonceBytes || tag.size() != kAesGcmTagBytes || ciphertext.empty()) {
+    return false;
+  }
+  std::vector<uint8_t> encrypted = ciphertext;
+  encrypted.insert(encrypted.end(), tag.begin(), tag.end());
+  plaintext->assign(ciphertext.size(), 0);
+  psa_key_id_t aes_key = 0;
+  if (!import_aes_decrypt_key(key, kAes256KeyBytes, &aes_key)) {
+    return false;
+  }
+  size_t plaintext_len = 0;
+  const psa_status_t status = psa_aead_decrypt(
+      aes_key,
+      PSA_ALG_GCM,
+      nonce.data(),
+      nonce.size(),
+      aad.data(),
+      aad.size(),
+      encrypted.data(),
+      encrypted.size(),
+      plaintext->data(),
+      plaintext->size(),
+      &plaintext_len);
+  psa_destroy_key(aes_key);
+  if (status != PSA_SUCCESS) {
+    plaintext->clear();
+    return false;
+  }
+  plaintext->resize(plaintext_len);
+  return true;
+}
+
+bool sha256_hex(const std::string &payload, std::string *hex) {
+  if (hex == nullptr) {
+    return false;
+  }
+  uint8_t digest[32] = {};
+  size_t digest_len = 0;
+  const psa_status_t status = psa_hash_compute(
+      PSA_ALG_SHA_256,
+      reinterpret_cast<const uint8_t *>(payload.data()),
+      payload.size(),
+      digest,
+      sizeof(digest),
+      &digest_len);
+  if (status != PSA_SUCCESS || digest_len != sizeof(digest)) {
+    return false;
+  }
+  static constexpr char kHex[] = "0123456789abcdef";
+  hex->clear();
+  hex->reserve(sizeof(digest) * 2);
+  for (const uint8_t value : digest) {
+    hex->push_back(kHex[(value >> 4) & 0x0f]);
+    hex->push_back(kHex[value & 0x0f]);
+  }
   return true;
 }
 
@@ -281,6 +686,8 @@ bool save_local_recovery_payload(cJSON *credential_payload) {
       set_nvs_string(handle, kBackendHostKey, backend_host, true) &&
       set_nvs_string(handle, kWifiSsidKey, wifi_ssid, true) &&
       set_nvs_string(handle, kWifiPasswordKey, wifi_password, false) &&
+      set_nvs_string(handle, kBleOnboardingSessionIdKey, g_ble.onboarding_session_id, false) &&
+      set_nvs_string(handle, kBleDeviceIdKey, hexe::config::kEndpointId, false) &&
       nvs_set_i32(handle, kHttpPortKey, http_port) == ESP_OK &&
       nvs_set_i32(handle, kWsPortKey, ws_port) == ESP_OK &&
       nvs_set_u8(handle, kUseTlsKey, use_tls ? 1 : 0) == ESP_OK &&
@@ -328,6 +735,172 @@ bool handle_local_recovery_write(cJSON *root) {
   }
   set_state("applying", "local_recovery_payload_validated");
   return save_local_recovery_payload(credential_payload);
+}
+
+bool validate_envelope_binding(cJSON *root, EnvelopeFields *fields) {
+  const char *schema_version = nullptr;
+  const char *contract_version = nullptr;
+  const char *algorithm = nullptr;
+  const char *key_agreement = nullptr;
+
+  if (fields == nullptr) {
+    set_error("invalid_payload");
+    return false;
+  }
+
+  if (!string_field(root, "schema_version", &schema_version) ||
+      !string_field(root, "payload_schema_id", &fields->payload_schema_id) ||
+      !string_field(root, "contract_version", &contract_version) ||
+      !string_field(root, "onboarding_session_id", &fields->onboarding_session_id) ||
+      !string_field(root, "target_node_id", &fields->target_node_id) ||
+      !string_field(root, "pairing_nonce", &fields->pairing_nonce) ||
+      !int_field(root, "sequence", &fields->sequence) ||
+      !string_field(root, "expires_at", &fields->expires_at) ||
+      !string_field(root, "algorithm", &algorithm) ||
+      !string_field(root, "key_agreement", &key_agreement) ||
+      !string_field(root, "key_id", &fields->key_id) ||
+      !string_field(root, "supervisor_ephemeral_public_key", &fields->supervisor_public_key) ||
+      !string_field(root, "nonce", &fields->nonce) ||
+      !string_field(root, "aad", &fields->aad) ||
+      !string_field(root, "ciphertext", &fields->ciphertext) ||
+      !string_field(root, "tag", &fields->tag)) {
+    set_error("invalid_payload");
+    return false;
+  }
+  if (std::strcmp(schema_version, kEnvelopeSchemaVersion) != 0 || std::strcmp(contract_version, kContractVersion) != 0) {
+    set_error("unsupported_schema");
+    return false;
+  }
+  if (std::strcmp(fields->payload_schema_id, kPayloadSchemaId) != 0) {
+    set_error("unsupported_schema");
+    return false;
+  }
+  if (std::strcmp(algorithm, kEncryptionAlgorithm) != 0 || std::strcmp(key_agreement, kKeyAgreement) != 0) {
+    set_error("decrypt_failed");
+    return false;
+  }
+  if (std::strcmp(fields->onboarding_session_id, g_ble.onboarding_session_id) != 0) {
+    set_error("invalid_payload");
+    return false;
+  }
+  if (std::strcmp(fields->target_node_id, hexe::config::kEndpointId) != 0 && std::strcmp(fields->target_node_id, hardware_id()) != 0) {
+    set_error("invalid_payload");
+    return false;
+  }
+  if (std::strcmp(fields->pairing_nonce, g_ble.pairing_nonce) != 0) {
+    set_error("invalid_nonce");
+    return false;
+  }
+  if (fields->sequence <= 0 || static_cast<uint32_t>(fields->sequence) <= g_ble.last_sequence) {
+    set_error("invalid_payload");
+    return false;
+  }
+  if (!parse_iso_utc_seconds(fields->expires_at)) {
+    set_error("invalid_payload");
+    return false;
+  }
+
+  std::vector<uint8_t> aad;
+  if (!base64url_decode(fields->aad, &aad)) {
+    set_error("invalid_payload");
+    return false;
+  }
+  const std::string expected_aad = canonical_aad_json(
+      fields->payload_schema_id,
+      fields->onboarding_session_id,
+      fields->target_node_id,
+      fields->pairing_nonce,
+      fields->sequence,
+      fields->expires_at);
+  if (aad.size() != expected_aad.size() || std::memcmp(aad.data(), expected_aad.data(), expected_aad.size()) != 0) {
+    set_error("invalid_payload");
+    return false;
+  }
+
+  std::vector<uint8_t> supervisor_public_key;
+  std::vector<uint8_t> nonce;
+  std::vector<uint8_t> ciphertext;
+  std::vector<uint8_t> tag;
+  if (!base64url_decode(fields->supervisor_public_key, &supervisor_public_key) ||
+      supervisor_public_key.size() != kX25519PublicKeyBytes ||
+      !base64url_decode(fields->nonce, &nonce) ||
+      nonce.size() != kAesGcmNonceBytes ||
+      !base64url_decode(fields->ciphertext, &ciphertext) ||
+      ciphertext.empty() ||
+      !base64url_decode(fields->tag, &tag) ||
+      tag.size() != kAesGcmTagBytes) {
+    set_error("invalid_payload");
+    return false;
+  }
+
+  std::string expected_key_id;
+  if (!sha256_hex(
+          canonical_key_id_json(fields->supervisor_public_key, fields->onboarding_session_id, fields->target_node_id, fields->sequence),
+          &expected_key_id) ||
+      std::strcmp(fields->key_id, expected_key_id.c_str()) != 0) {
+    set_error("decrypt_failed");
+    return false;
+  }
+  return true;
+}
+
+bool apply_encrypted_envelope(const EnvelopeFields &fields) {
+  std::vector<uint8_t> nonce;
+  std::vector<uint8_t> aad;
+  std::vector<uint8_t> ciphertext;
+  std::vector<uint8_t> tag;
+  if (!base64url_decode(fields.nonce, &nonce) ||
+      !base64url_decode(fields.aad, &aad) ||
+      !base64url_decode(fields.ciphertext, &ciphertext) ||
+      !base64url_decode(fields.tag, &tag)) {
+    set_error("invalid_payload");
+    return false;
+  }
+
+  uint8_t key[kAes256KeyBytes] = {};
+  const std::string salt_json = canonical_salt_json(fields.onboarding_session_id, fields.target_node_id, fields.pairing_nonce);
+  if (!derive_provisioning_key(fields.supervisor_public_key, salt_json, key)) {
+    std::fill(key, key + sizeof(key), 0);
+    set_error("decrypt_failed");
+    return false;
+  }
+
+  std::vector<uint8_t> plaintext;
+  const bool decrypted = decrypt_payload(key, nonce, aad, ciphertext, tag, &plaintext);
+  std::fill(key, key + sizeof(key), 0);
+  if (!decrypted) {
+    set_error("decrypt_failed");
+    return false;
+  }
+  plaintext.push_back('\0');
+
+  cJSON *decrypted_root = cJSON_ParseWithLength(reinterpret_cast<const char *>(plaintext.data()), plaintext.size() - 1);
+  std::fill(plaintext.begin(), plaintext.end(), 0);
+  if (decrypted_root == nullptr) {
+    set_error("invalid_payload");
+    return false;
+  }
+
+  const char *payload_schema_id = nullptr;
+  cJSON *credential_payload = cJSON_GetObjectItem(decrypted_root, "credential_payload");
+  const bool valid_payload =
+      string_field(decrypted_root, "payload_schema_id", &payload_schema_id) &&
+      std::strcmp(payload_schema_id, kPayloadSchemaId) == 0 &&
+      cJSON_IsObject(credential_payload);
+  if (!valid_payload) {
+    cJSON_Delete(decrypted_root);
+    set_error("invalid_payload");
+    return false;
+  }
+
+  set_state("applying", "decrypted_payload_validated");
+  const bool saved = save_local_recovery_payload(credential_payload);
+  cJSON_Delete(decrypted_root);
+  if (saved) {
+    g_ble.last_sequence = static_cast<uint32_t>(fields.sequence);
+    reset_crypto_session();
+  }
+  return saved;
 }
 
 std::string print_json(cJSON *root) {
@@ -393,9 +966,11 @@ const char *recovery_ble_reason() {
 std::string render_recovery_ble_status_json() {
   cJSON *root = cJSON_CreateObject();
   cJSON_AddStringToObject(root, "contract_version", kContractVersion);
+  cJSON_AddStringToObject(root, "envelope_schema_version", kEnvelopeSchemaVersion);
   cJSON_AddStringToObject(root, "payload_schema_id", kPayloadSchemaId);
   cJSON_AddBoolToObject(root, "supported", board_supported());
   cJSON_AddBoolToObject(root, "enabled", g_ble.enabled);
+  cJSON_AddBoolToObject(root, "crypto_ready", g_ble.crypto_ready);
   cJSON_AddBoolToObject(root, "advertising", g_ble.advertising);
   cJSON_AddBoolToObject(root, "central_scanning", g_ble.central_scanning);
   cJSON_AddStringToObject(root, "state", g_ble.state);
@@ -417,11 +992,27 @@ extern "C" const char *hexe_ble_provisioning_device_identity_json() {
   static std::string payload;
   cJSON *root = cJSON_CreateObject();
   ensure_pairing_nonce();
+  cJSON_AddStringToObject(root, "contract_version", kContractVersion);
+  cJSON_AddStringToObject(root, "envelope_schema_version", kEnvelopeSchemaVersion);
+  cJSON_AddStringToObject(root, "encryption_algorithm", kEncryptionAlgorithm);
+  cJSON_AddStringToObject(root, "key_agreement", kKeyAgreement);
+  cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
   cJSON_AddStringToObject(root, "device_id", hexe::config::kEndpointId);
+  cJSON_AddStringToObject(root, "node_hardware_id", hardware_id());
+  cJSON_AddStringToObject(root, "target_node_id", hexe::config::kEndpointId);
   cJSON_AddStringToObject(root, "board_profile", hexe::board::pins::kBoardProfile);
   cJSON_AddStringToObject(root, "firmware_version", esp_app_get_description()->version);
   cJSON_AddStringToObject(root, "application_type", "recovery");
-  cJSON_AddStringToObject(root, "provisioning_mode", "local_recovery");
+  cJSON_AddStringToObject(root, "provisioning_mode", "core_governed_pairing");
+  cJSON_AddStringToObject(root, "core_governed_mode", "recovery_app");
+  cJSON_AddStringToObject(root, "protocol_version", kContractVersion);
+  cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
+  cJSON_AddStringToObject(root, "endpoint_ephemeral_public_key", g_ble.endpoint_public_key_b64);
+  cJSON *schemas = cJSON_AddArrayToObject(root, "supported_payload_schemas");
+  cJSON_AddItemToArray(schemas, cJSON_CreateString(kPayloadSchemaId));
+  cJSON_AddStringToObject(root, "provisioning_state", g_ble.state);
+  cJSON_AddBoolToObject(root, "claim_code_required", false);
+  cJSON_AddNumberToObject(root, "expires_at_unix_ms", (g_ble.issued_at_us + kPairingTtlUs) / 1000);
   payload = print_json(root);
   return payload.c_str();
 }
@@ -433,6 +1024,10 @@ extern "C" const char *hexe_ble_provisioning_pairing_nonce_json() {
   cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
   cJSON_AddStringToObject(root, "target_node_id", hexe::config::kEndpointId);
   cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
+  cJSON_AddStringToObject(root, "endpoint_ephemeral_public_key", g_ble.endpoint_public_key_b64);
+  cJSON_AddStringToObject(root, "key_agreement", kKeyAgreement);
+  cJSON_AddStringToObject(root, "algorithm", kEncryptionAlgorithm);
+  cJSON_AddBoolToObject(root, "claim_code_required", false);
   payload = print_json(root);
   return payload.c_str();
 }
@@ -466,14 +1061,26 @@ extern "C" int hexe_ble_provisioning_handle_encrypted_credentials(const char *js
   }
   const char *mode = nullptr;
   const bool local_mode = string_field(root, "mode", &mode) && std::strcmp(mode, "local_recovery") == 0;
-  if (!local_mode) {
+  bool applied = false;
+  if (local_mode) {
+    applied = handle_local_recovery_write(root);
+  } else {
+    set_state("validating", "encrypted_envelope_received");
+    EnvelopeFields fields;
+    const bool binding_ok = validate_envelope_binding(root, &fields);
+    if (binding_ok) {
+      applied = apply_encrypted_envelope(fields);
+    }
+  }
+  if (!applied && !local_mode && g_ble.last_error[0] == '\0') {
+    set_error("invalid_payload");
+  }
+  if (!applied) {
     cJSON_Delete(root);
-    set_error("core_governed_requires_endpoint_app");
     return -1;
   }
-  const bool applied = handle_local_recovery_write(root);
   cJSON_Delete(root);
-  return applied ? 0 : -1;
+  return 0;
 }
 
 extern "C" void hexe_ble_pairing_scan_state_changed(int scanning, const char *reason, int rc) {
@@ -546,5 +1153,29 @@ extern "C" void hexe_ble_pairing_identity_write_result(int succeeded, const char
   }
   if (rc != 0) {
     std::snprintf(g_ble.last_error, sizeof(g_ble.last_error), "%s:%d", reason == nullptr ? "identity_write_failed" : reason, rc);
+  }
+}
+
+extern "C" void hexe_ble_pairing_credentials_read_result(int succeeded, const char *reason, int rc) {
+  ESP_LOGI(
+      kTag,
+      "BLE host pairing credentials_result succeeded=%d reason=%s rc=%d",
+      succeeded,
+      reason == nullptr || reason[0] == '\0' ? "(none)" : reason,
+      rc);
+  if (succeeded) {
+    set_ack("credentials_applied");
+    set_state("completed", reason == nullptr || reason[0] == '\0' ? "credentials_applied" : reason);
+    return;
+  }
+  if (reason != nullptr && std::strcmp(reason, "credentials_pending") == 0) {
+    set_state("pairing_identity_sent", "waiting_for_operator_approval");
+    return;
+  }
+  if (reason != nullptr && reason[0] != '\0') {
+    set_state("pairing_identity_sent", reason);
+  }
+  if (rc != 0) {
+    std::snprintf(g_ble.last_error, sizeof(g_ble.last_error), "%s:%d", reason == nullptr ? "credentials_read_failed" : reason, rc);
   }
 }

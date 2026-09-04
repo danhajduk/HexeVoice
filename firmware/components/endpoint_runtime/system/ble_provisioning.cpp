@@ -1053,6 +1053,8 @@ std::string ble_provisioning_device_identity_json() {
   cJSON_AddStringToObject(root, "provisioning_mode", "core_governed_pairing");
   cJSON_AddStringToObject(root, "core_governed_mode", "endpoint_app");
   cJSON_AddStringToObject(root, "protocol_version", kBleProvisioningContractVersion);
+  cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
+  cJSON_AddStringToObject(root, "endpoint_ephemeral_public_key", g_ble.endpoint_public_key_b64);
   cJSON *schemas = cJSON_AddArrayToObject(root, "supported_payload_schemas");
   cJSON_AddItemToArray(schemas, cJSON_CreateString(kBleProvisioningPayloadSchemaId));
   cJSON_AddStringToObject(root, "provisioning_state", g_ble.state);
@@ -1278,5 +1280,29 @@ extern "C" void hexe_ble_pairing_identity_write_result(int succeeded, const char
   }
   if (rc != 0) {
     std::snprintf(g_ble.last_error, sizeof(g_ble.last_error), "%s:%d", reason == nullptr ? "identity_write_failed" : reason, rc);
+  }
+}
+
+extern "C" void hexe_ble_pairing_credentials_read_result(int succeeded, const char *reason, int rc) {
+  ESP_LOGI(
+      kTag,
+      "BLE host pairing credentials_result succeeded=%d reason=%s rc=%d",
+      succeeded,
+      reason == nullptr || reason[0] == '\0' ? "(none)" : reason,
+      rc);
+  if (succeeded) {
+    set_ack("credentials_applied");
+    set_state("completed", reason == nullptr || reason[0] == '\0' ? "credentials_applied" : reason);
+    return;
+  }
+  if (reason != nullptr && std::strcmp(reason, "credentials_pending") == 0) {
+    set_state("pairing_identity_sent", "waiting_for_operator_approval");
+    return;
+  }
+  if (reason != nullptr && reason[0] != '\0') {
+    set_state("pairing_identity_sent", reason);
+  }
+  if (rc != 0) {
+    std::snprintf(g_ble.last_error, sizeof(g_ble.last_error), "%s:%d", reason == nullptr ? "credentials_read_failed" : reason, rc);
   }
 }

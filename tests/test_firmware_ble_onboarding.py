@@ -100,8 +100,8 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert '"board_profile"' in source[source.index("ble_provisioning_device_identity_json") :]
     identity_json = source[source.index("ble_provisioning_device_identity_json") : source.index("std::string ble_provisioning_pairing_nonce_json")]
     pairing_nonce_json = source[source.index("std::string ble_provisioning_pairing_nonce_json") : source.index("std::string ble_provisioning_status_json")]
-    assert '"pairing_nonce"' not in identity_json
-    assert '"endpoint_ephemeral_public_key"' not in identity_json
+    assert '"pairing_nonce"' in identity_json
+    assert '"endpoint_ephemeral_public_key"' in identity_json
     assert '"pairing_nonce"' in pairing_nonce_json
     assert '"endpoint_ephemeral_public_key"' in pairing_nonce_json
     assert "remember_host_pairing_offer" in source
@@ -134,8 +134,11 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "BLE host pairing connected" in gatt
     assert "BLE host pairing service_found" in gatt
     assert "BLE host pairing characteristic_found name=device_identity" in gatt
+    assert "BLE host pairing characteristic_found name=encrypted_credentials" in gatt
     assert "BLE host pairing offer_read_ok" in gatt
     assert "BLE host pairing identity_write_ok" in gatt
+    assert "BLE host pairing credentials_read_ok" in gatt
+    assert "hexe_ble_pairing_credentials_read_result" in gatt
     assert "BLE host pairing scan_state scanning=%d" in source
     assert "BLE host pairing connection_state connected=%d" in source
     assert "CONFIG_BT_NIMBLE_ROLE_CENTRAL=y" in build_script
@@ -204,7 +207,7 @@ def test_ble_onboarding_reports_status_without_secret_material():
     assert '"wifi_password"' not in source[source.index("ble_provisioning_status_json") :]
     assert '"ciphertext"' not in backend
     assert '"pairing_nonce"' not in backend
-    assert '"endpoint_ephemeral_public_key"' in source[source.index("ble_provisioning_pairing_nonce_json") :]
+    assert '"endpoint_ephemeral_public_key"' in source[source.index("ble_provisioning_device_identity_json") :]
     assert '"endpoint_ephemeral_public_key"' not in source[source.index("ble_provisioning_status_json") : source.index("ble_provisioning_ack_error_json")]
     assert "payload_len=%u" in gatt
     assert "BLE onboarding gatt_read" in gatt

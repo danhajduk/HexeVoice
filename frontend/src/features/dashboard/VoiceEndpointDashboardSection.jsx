@@ -1436,6 +1436,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [sequence, setSequence] = useState(1);
   const [expiresAt, setExpiresAt] = useState("");
   const [adapter, setAdapter] = useState("hci0");
+  const [supervisorId, setSupervisorId] = useState("");
   const [targetAddress, setTargetAddress] = useState("");
   const [displayName, setDisplayName] = useState(endpointStatus?.display_name || "");
   const [backendHost, setBackendHost] = useState(defaultBackendHost);
@@ -1509,6 +1510,9 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     if (identity.claim_code_ref && identity.claim_code_ref !== "[REDACTED]") {
       setClaimCodeRef(String(identity.claim_code_ref));
     }
+    if (identity.supervisor_id) {
+      setSupervisorId(String(identity.supervisor_id));
+    }
     if (identity.sequence) {
       setSequence(Number(identity.sequence));
     }
@@ -1531,6 +1535,9 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     }
     if (session?.adapter && typeof session.adapter === "string") {
       setAdapter(session.adapter);
+    }
+    if (session?.supervisor_id && typeof session.supervisor_id === "string") {
+      setSupervisorId(session.supervisor_id);
     }
     if (identity && Object.keys(identity).length) {
       applyBleIdentity(identity);
@@ -1729,6 +1736,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     if (claimCodeRef) payload.claim_code_ref = claimCodeRef;
     if (expiresAt) payload.expires_at = expiresAt;
     if (adapter) payload.adapter = adapter;
+    if (supervisorId) payload.supervisor_id = supervisorId;
     if (targetAddress) payload.target_address = targetAddress;
     if (displayName) payload.display_name = displayName;
     if (wifiPassword) payload.wifi_password = wifiPassword;

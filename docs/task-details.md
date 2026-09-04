@@ -3126,3 +3126,46 @@ Original task details:
 - Acceptance: Existing backend-to-online-endpoint provisioning remains available for already-connected endpoints.
 - Verification: Add focused backend/UI tests and run frontend build.
 - Verification: Run physical scan/onboarding validation after firmware and Core changes are installed.
+
+## Task 296
+Original task details:
+- User request: Minimal firmware must receive Wi-Fi through the Core-published BLE pairing flow because this is the required new-device onboarding path.
+- Goal: Add encrypted credential receive support to HA Voice PE minimal/recovery firmware after the endpoint finds a host pairing advert and writes identity.
+- The minimal firmware should not report itself as provisioning-capable until the encrypted receive/decrypt/apply path is active.
+- Include the device id during BLE onboarding so the same id can be used later when the device comes online over Wi-Fi.
+- Include board profile in the onboarding identity.
+- Required identity fields: onboarding session id, device id, node hardware id or candidate id, target node id when known, board profile, firmware version, application type, provisioning mode, endpoint ephemeral public key, supported payload schema, provisioning state, and nonce/session binding.
+- Reuse the existing X25519/HKDF/AES-256-GCM envelope contract where practical.
+- After credential receipt, persist Wi-Fi and backend settings to NVS using the existing recovery provisioning path, then reboot or start Wi-Fi according to the current minimal firmware architecture.
+- Persist enough handoff state for first Wi-Fi boot so the endpoint can present the same onboarding session id and device id to HexeVoice.
+- Keep Wi-Fi password and decrypted payload out of serial logs, BLE status, crash text, API responses, and UI state.
+- Acceptance: HA Voice PE minimal firmware reports provisioning-capable identity only when the encrypted receive path is active.
+- Acceptance: Device can receive approved Wi-Fi/backend credentials from a host-published pairing session without manual field copy.
+- Acceptance: Serial and status logs show scan, connect, identity, credential, and ack states without secrets.
+
+## Task 297
+Original task details:
+- User request: The system should publish a BLE pairing session, the device should connect, the user approves the device, and then the device receives Wi-Fi credentials.
+- Goal: Extend the Core/Supervisor host pairing GATT implementation so approved pairing sessions can deliver encrypted credential envelopes to the endpoint.
+- Expose a credential/envelope characteristic or equivalent endpoint pull mechanism under the host-published pairing service.
+- Before operator approval, return a pending/not-approved state rather than credentials.
+- After approval, build an encrypted credential envelope only for the approved device id, endpoint public key, session id, target node id, nonce, sequence, expiry, and payload schema.
+- Bind the credential envelope to the pairing session and mark it consumed after endpoint acknowledgement.
+- Redact plaintext Wi-Fi credentials, lease tokens, claim codes, endpoint private material, and decrypted payloads from logs and API responses.
+- Surface clear errors for missing identity fields, unsupported schema, approval timeout, cancelled session, encryption failure, stale session, and acknowledgement timeout.
+- Acceptance: A provisioning-capable endpoint identity can receive an encrypted Wi-Fi/backend payload from the same host pairing session after user approval.
+- Acceptance: A non-approved, wrong-device, wrong-session, expired, or replayed request does not receive credentials.
+- Acceptance: Supervisor/Core diagnostics can explain pending, approved, delivered, consumed, expired, cancelled, and failed states without leaking secrets.
+
+## Task 298
+Original task details:
+- User request: After onboarding the new device, if it is running minimal firmware it should trigger OTA for the device, or the device should do it itself.
+- Goal: Add the post-provisioning handoff from minimal/recovery firmware to full HexeVoice endpoint firmware.
+- After the PE receives BLE credentials and joins Wi-Fi, HexeVoice must require the online onboarding request to include the BLE-approved device id and onboarding session id.
+- If the online device reports `application_type=recovery` or a minimal firmware version, trigger installation of the full endpoint firmware through the existing recovery firmware install endpoint when available.
+- Prefer Voice-driven OTA because HexeVoice owns the firmware artifact and can keep the operator flow visible; leave room for endpoint self-OTA as a later fallback if needed.
+- Preserve the trust boundary: BLE approval authorizes the expected device/session, while normal HexeVoice onboarding remains the authority for registering the online endpoint.
+- Show user-friendly UI states for waiting for Wi-Fi, endpoint online, firmware update starting, firmware update running, rebooting, endpoint returning, completed, and failed.
+- Acceptance: A minimal HA Voice PE that completes BLE provisioning is automatically moved toward full firmware without manual reflash.
+- Acceptance: HexeVoice approves only the online endpoint whose device id and onboarding session id match the BLE-approved pairing session.
+- Acceptance: OTA failures are recoverable and do not leak Wi-Fi credentials or trust secrets.
