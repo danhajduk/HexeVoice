@@ -63,6 +63,8 @@ static uint16_t advertising_refresh_sequence;
 static uint8_t advertising_timestamp_data[8];
 static TaskHandle_t advertising_refresh_task_handle;
 static TaskHandle_t pairing_scan_poll_task_handle;
+static char client_credentials_buffer[kMaxEncryptedCredentialBytes + 1];
+static uint16_t client_credentials_length;
 
 static uint16_t device_identity_handle;
 static uint16_t pairing_nonce_handle;
@@ -477,7 +479,9 @@ static int read_pairing_credentials(uint16_t conn_handle) {
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
   ESP_LOGI(TAG, "BLE host pairing credentials_read_start conn=%u handle=%u", conn_handle, client_encrypted_credentials_handle);
-  int rc = ble_gattc_read(conn_handle, client_encrypted_credentials_handle, pairing_credentials_read_cb, NULL);
+  client_credentials_length = 0;
+  memset(client_credentials_buffer, 0, sizeof(client_credentials_buffer));
+  int rc = ble_gattc_read_long(conn_handle, client_encrypted_credentials_handle, 0, pairing_credentials_read_cb, NULL);
   if (rc != 0) {
     hexe_ble_pairing_credentials_read_result(0, "credentials_read_start_failed", rc);
     ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
@@ -611,35 +615,51 @@ static int pairing_credentials_read_cb(uint16_t conn_handle, const struct ble_ga
   if (error == NULL) {
     return BLE_ATT_ERR_UNLIKELY;
   }
+  if (error->status == BLE_HS_EDONE) {
+    if (client_credentials_length == 0) {
+      hexe_ble_pairing_credentials_read_result(0, "credentials_pending", 0);
+      return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    client_credentials_buffer[client_credentials_length] = '\0';
+    if (strstr(client_credentials_buffer, "\"status\":\"pending\"") != NULL || strstr(client_credentials_buffer, "\"credentials_pending\"") != NULL) {
+      ESP_LOGI(TAG, "BLE host pairing credentials_pending conn=%u payload_len=%u", conn_handle, (unsigned)client_credentials_length);
+      hexe_ble_pairing_credentials_read_result(0, "credentials_pending", 0);
+      return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    ESP_LOGI(TAG, "BLE host pairing credentials_read_ok conn=%u payload_len=%u", conn_handle, (unsigned)client_credentials_length);
+    if (hexe_ble_provisioning_handle_encrypted_credentials(client_credentials_buffer, client_credentials_length) == 0) {
+      memset(client_credentials_buffer, 0, sizeof(client_credentials_buffer));
+      client_credentials_received = 1;
+      hexe_ble_pairing_credentials_read_result(1, "credentials_applied", 0);
+      return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+    }
+    memset(client_credentials_buffer, 0, sizeof(client_credentials_buffer));
+    hexe_ble_pairing_credentials_read_result(0, "credentials_rejected", BLE_ATT_ERR_UNLIKELY);
+    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  }
   if (error->status != 0 || attr == NULL || attr->om == NULL) {
+    memset(client_credentials_buffer, 0, sizeof(client_credentials_buffer));
     hexe_ble_pairing_credentials_read_result(0, "credentials_read_failed", error->status);
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
   uint16_t length = OS_MBUF_PKTLEN(attr->om);
-  char buffer[kMaxEncryptedCredentialBytes + 1];
-  if (length == 0 || length > kMaxEncryptedCredentialBytes) {
-    hexe_ble_pairing_credentials_read_result(0, "credentials_pending", 0);
+  if (length == 0) {
+    return 0;
+  }
+  if ((uint32_t)attr->offset + length > kMaxEncryptedCredentialBytes || attr->offset != client_credentials_length) {
+    memset(client_credentials_buffer, 0, sizeof(client_credentials_buffer));
+    hexe_ble_pairing_credentials_read_result(0, "credentials_too_large", BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN);
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
-  int rc = ble_hs_mbuf_to_flat(attr->om, buffer, kMaxEncryptedCredentialBytes, &length);
+  int rc = ble_hs_mbuf_to_flat(attr->om, client_credentials_buffer + client_credentials_length, kMaxEncryptedCredentialBytes - client_credentials_length, &length);
   if (rc != 0) {
+    memset(client_credentials_buffer, 0, sizeof(client_credentials_buffer));
     hexe_ble_pairing_credentials_read_result(0, "credentials_flatten_failed", rc);
     return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
   }
-  buffer[length] = '\0';
-  if (strstr(buffer, "\"status\":\"pending\"") != NULL || strstr(buffer, "\"credentials_pending\"") != NULL) {
-    ESP_LOGI(TAG, "BLE host pairing credentials_pending conn=%u payload_len=%u", conn_handle, (unsigned)length);
-    hexe_ble_pairing_credentials_read_result(0, "credentials_pending", 0);
-    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
-  }
-  ESP_LOGI(TAG, "BLE host pairing credentials_read_ok conn=%u payload_len=%u", conn_handle, (unsigned)length);
-  if (hexe_ble_provisioning_handle_encrypted_credentials(buffer, length) == 0) {
-    client_credentials_received = 1;
-    hexe_ble_pairing_credentials_read_result(1, "credentials_applied", 0);
-    return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
-  }
-  hexe_ble_pairing_credentials_read_result(0, "credentials_rejected", BLE_ATT_ERR_UNLIKELY);
-  return ble_gap_terminate(conn_handle, BLE_ERR_REM_USER_CONN_TERM);
+  client_credentials_length += length;
+  ESP_LOGI(TAG, "BLE host pairing credentials_read_chunk conn=%u offset=%u chunk_len=%u total_len=%u", conn_handle, attr->offset, length, client_credentials_length);
+  return 0;
 }
 
 static void write_le16(uint8_t *target, uint16_t value) {

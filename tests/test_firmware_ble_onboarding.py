@@ -120,6 +120,9 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "ble_gattc_disc_svc_by_uuid" in gatt
     assert "ble_gattc_disc_all_chrs" in gatt
     assert "ble_gattc_read" in gatt
+    assert "ble_gattc_read_long(conn_handle, client_encrypted_credentials_handle" in gatt
+    assert "BLE_HS_EDONE" in gatt
+    assert "credentials_read_chunk" in gatt
     assert "ble_gattc_write_flat" in gatt
     assert "pairing_offer_read_cb" in gatt
     assert "pairing_identity_write_cb" in gatt
