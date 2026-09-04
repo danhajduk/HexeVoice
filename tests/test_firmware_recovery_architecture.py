@@ -324,6 +324,10 @@ def test_recovery_signed_endpoint_install_streams_to_inactive_slot():
     assert "calculate_install_hmac" in control_source
     assert "verify_install_signature" in control_source
     assert "hexe::config::kEndpointOtaManifestSigningKey" in control_source
+    assert "drain_request_body(req, error_code)" in control_source
+    assert 'httpd_resp_set_hdr(req, "Connection", "close")' in control_source
+    assert "Recovery firmware install rejected before body read" in control_source
+    assert "Recovery firmware install accepted version=%s board=%s size=%d reboot=%d" in control_source
     assert "esp_ota_get_next_update_partition" in control_source
     assert "esp_ota_begin(update_partition" in control_source
     assert "esp_ota_write" in control_source

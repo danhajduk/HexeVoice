@@ -542,6 +542,7 @@ std::string read_json_body(httpd_req_t *req, bool *ok) {
 void send_json(httpd_req_t *req, const char *status, const std::string &body) {
   httpd_resp_set_status(req, status);
   httpd_resp_set_type(req, "application/json");
+  httpd_resp_set_hdr(req, "Connection", "close");
   httpd_resp_send(req, body.c_str(), body.size());
 }
 
@@ -555,6 +556,38 @@ void send_error_json(httpd_req_t *req, const char *status, const char *code, con
       code == nullptr ? "recovery_error" : code,
       message == nullptr ? "Recovery request failed" : message);
   send_json(req, status, body);
+}
+
+void drain_request_body(httpd_req_t *req, const char *reason) {
+  if (req == nullptr || req->content_len <= 0) {
+    return;
+  }
+  std::array<char, kInstallBufferBytes> buffer = {};
+  int received = 0;
+  while (received < req->content_len) {
+    const int remaining = req->content_len - received;
+    const int to_read = std::min(static_cast<int>(buffer.size()), remaining);
+    const int chunk = httpd_req_recv(req, buffer.data(), to_read);
+    if (chunk == HTTPD_SOCK_ERR_TIMEOUT) {
+      continue;
+    }
+    if (chunk <= 0) {
+      ESP_LOGW(
+          kTag,
+          "Recovery request body drain stopped reason=%s received=%d/%d rc=%d",
+          reason == nullptr ? "request_rejected" : reason,
+          received,
+          req->content_len,
+          chunk);
+      return;
+    }
+    received += chunk;
+  }
+  ESP_LOGI(
+      kTag,
+      "Recovery request body drained reason=%s bytes=%d",
+      reason == nullptr ? "request_rejected" : reason,
+      received);
 }
 
 bool set_nvs_string(nvs_handle_t handle, const cJSON *root, const char *json_key, const char *nvs_key, bool required) {
@@ -1115,15 +1148,27 @@ esp_err_t boot_select_post_handler(httpd_req_t *req) {
 }
 
 esp_err_t firmware_install_post_handler(httpd_req_t *req) {
+  ESP_LOGI(kTag, "Recovery firmware install request started bytes=%d", req == nullptr ? 0 : req->content_len);
   InstallHeaders headers = {};
   char error_code[48] = {};
   if (!read_install_headers(req, &headers, error_code, sizeof(error_code))) {
+    ESP_LOGW(kTag, "Recovery firmware install rejected before body read reason=%s bytes=%d", error_code, req == nullptr ? 0 : req->content_len);
+    drain_request_body(req, error_code);
     send_error_json(req, "400 Bad Request", error_code, "Firmware install metadata was rejected");
     return ESP_OK;
   }
+  ESP_LOGI(
+      kTag,
+      "Recovery firmware install accepted version=%s board=%s size=%d reboot=%d",
+      headers.version,
+      headers.board_profile,
+      headers.size_bytes,
+      headers.reboot_after_install);
 
   const esp_partition_t *update_partition = esp_ota_get_next_update_partition(nullptr);
   if (update_partition == nullptr || headers.size_bytes > static_cast<int>(update_partition->size)) {
+    ESP_LOGW(kTag, "Recovery firmware install rejected: image too large size=%d", headers.size_bytes);
+    drain_request_body(req, "image_too_large");
     send_error_json(req, "400 Bad Request", "image_too_large", "No inactive OTA slot can hold this endpoint image");
     return ESP_OK;
   }
@@ -1186,9 +1231,22 @@ esp_err_t firmware_install_post_handler(httpd_req_t *req) {
     if (ota_handle != 0) {
       esp_ota_abort(ota_handle);
     }
+    ESP_LOGW(
+        kTag,
+        "Recovery firmware install failed err=%s received=%d/%d",
+        esp_err_to_name(err),
+        received,
+        req->content_len);
     send_error_json(req, "500 Internal Server Error", "firmware_install_failed", esp_err_to_name(err));
     return ESP_OK;
   }
+  ESP_LOGI(
+      kTag,
+      "Recovery firmware install completed partition=%s version=%s sha256=%.12s reboot=%d",
+      update_partition->label,
+      headers.version,
+      headers.sha256,
+      headers.reboot_after_install);
 
   char response[256];
   std::snprintf(
@@ -1227,7 +1285,7 @@ void start_http_server(bool full_rescue_routes) {
 
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
-  config.uri_match_fn = httpd_uri_match_wildcard;
+  config.max_uri_handlers = 12;
   const esp_err_t err = httpd_start(&g_http_server, &config);
   if (err != ESP_OK) {
     ESP_LOGE(kTag, "Failed to start recovery HTTP API: %s", esp_err_to_name(err));
