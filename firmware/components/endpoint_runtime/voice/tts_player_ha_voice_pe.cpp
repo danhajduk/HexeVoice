@@ -19,6 +19,7 @@
 #include "driver/i2s_std.h"
 #include "endpoint_config.h"
 #include "esp_err.h"
+#include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -37,7 +38,8 @@ constexpr int kTaskPriority = 4;
 constexpr int kSpeakerSampleRate = 48000;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
 constexpr size_t kHttpReadBufferBytes = 4096;
-constexpr size_t kPlaybackFrameCapacity = 384;
+constexpr int kPlaybackDmaDescNum = 4;
+constexpr size_t kPlaybackFrameCapacity = 192;
 constexpr size_t kPlaybackDrainFrames = kSpeakerSampleRate / 4;
 constexpr int kHttpReadIdleRetryDelayMs = 20;
 constexpr int kHttpReadMaxIdleRetries = 50;
@@ -554,11 +556,16 @@ void prewarm_task(void *arg) {
 bool ensure_i2s_output() {
   if (g_tx_channel == nullptr) {
     i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(kSpeakerI2sPort, I2S_ROLE_SLAVE);
-    channel_config.dma_desc_num = 6;
+    channel_config.dma_desc_num = kPlaybackDmaDescNum;
     channel_config.dma_frame_num = kPlaybackFrameCapacity;
     esp_err_t result = i2s_new_channel(&channel_config, &g_tx_channel, nullptr);
     if (result != ESP_OK) {
-      ESP_LOGE(kTag, "Failed to create Voice PE I2S TX channel: %s", esp_err_to_name(result));
+      ESP_LOGE(
+          kTag,
+          "Failed to create Voice PE I2S TX channel: %s dma_free=%u internal_free=%u",
+          esp_err_to_name(result),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
       return false;
     }
 
@@ -576,7 +583,16 @@ bool ensure_i2s_output() {
 
     result = i2s_channel_init_std_mode(g_tx_channel, &std_config);
     if (result != ESP_OK) {
-      ESP_LOGE(kTag, "Failed to initialize Voice PE I2S TX mode: %s", esp_err_to_name(result));
+      ESP_LOGE(
+          kTag,
+          "Failed to initialize Voice PE I2S TX mode: %s dma_free=%u internal_free=%u desc=%d frames=%u",
+          esp_err_to_name(result),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+          kPlaybackDmaDescNum,
+          static_cast<unsigned>(kPlaybackFrameCapacity));
+      i2s_del_channel(g_tx_channel);
+      g_tx_channel = nullptr;
       return false;
     }
   }
@@ -585,6 +601,8 @@ bool ensure_i2s_output() {
     const esp_err_t result = i2s_channel_enable(g_tx_channel);
     if (result != ESP_OK) {
       ESP_LOGE(kTag, "Failed to enable Voice PE speaker stream: %s", esp_err_to_name(result));
+      i2s_del_channel(g_tx_channel);
+      g_tx_channel = nullptr;
       return false;
     }
     g_tx_enabled = true;
