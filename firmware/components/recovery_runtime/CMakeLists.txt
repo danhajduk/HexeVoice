@@ -74,6 +74,7 @@ idf_component_register(
     bt
     esp_event
     esp_app_format
+    esp_http_client
     esp_driver_gpio
     esp_http_server
     esp_netif

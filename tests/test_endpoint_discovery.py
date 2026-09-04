@@ -32,6 +32,7 @@ def test_endpoint_discovery_offer_returns_backend_pairing_settings(tmp_path):
             "hardware_id": "esp32s3-b43a4512ab90",
             "display_name": "ESP Box 1",
             "firmware_version": "0.1.0",
+            "application_type": "endpoint",
         },
     )
 
@@ -49,6 +50,8 @@ def test_endpoint_discovery_offer_returns_backend_pairing_settings(tmp_path):
     status = client.get("/api/endpoint/status/esp-box-1")
     assert status.status_code == 200
     assert status.json()["hardware_id"] == "esp32s3-b43a4512ab90"
+    assert status.json()["connection_state"] == "online"
+    assert status.json()["capabilities"]["application_type"] == "endpoint"
 
 
 def test_endpoint_discovery_rejects_duplicate_online_identity(tmp_path):
@@ -149,6 +152,7 @@ def test_endpoint_discovery_requires_approved_ble_pairing_session(tmp_path):
             onboarding_session_id="blepair-test",
             board_profile="ha_voice_pe",
             firmware_version="min-fw-test",
+            application_type="recovery",
         ),
         source_ip="10.0.0.44",
     )
@@ -160,6 +164,9 @@ def test_endpoint_discovery_requires_approved_ble_pairing_session(tmp_path):
     assert record.capabilities["device_id"] == "esp-pe-1"
     assert record.capabilities["onboarding_session_id"] == "blepair-test"
     assert record.capabilities["board_profile"] == "ha_voice_pe"
+    assert record.capabilities["application_type"] == "recovery"
+    assert record.device_state == "idle"
+    assert record.ip_address == "10.0.0.44"
     assert approvals == [
         {"session_id": "blepair-test", "device_id": "other-device"},
         {"session_id": "blepair-test", "device_id": "esp-pe-1"},

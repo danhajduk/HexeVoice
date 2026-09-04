@@ -69,13 +69,15 @@ class EndpointDiscoveryService:
             capabilities["onboarding_session_id"] = payload.onboarding_session_id
         if payload.board_profile:
             capabilities["board_profile"] = payload.board_profile
+        if payload.application_type:
+            capabilities["application_type"] = payload.application_type
 
         registry.endpoints[payload.endpoint_id] = EndpointRegistryRecord(
             endpoint_id=payload.endpoint_id,
             hardware_id=payload.hardware_id or (existing.hardware_id if existing else None),
             display_name=existing.display_name if existing else payload.display_name,
             zone_id=existing.zone_id if existing else None,
-            device_state=existing.device_state if existing else "offline",
+            device_state=existing.device_state if existing else "idle",
             session_id=existing.session_id if existing else None,
             firmware_version=payload.firmware_version or (existing.firmware_version if existing else None),
             ip_address=source_ip or (existing.ip_address if existing else None),

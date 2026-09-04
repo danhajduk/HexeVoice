@@ -14,8 +14,10 @@
 #include "endpoint_config.h"
 #include "recovery_ble_provisioning.h"
 #include "recovery_status.h"
+#include "esp_app_desc.h"
 #include "esp_err.h"
 #include "esp_event.h"
+#include "esp_http_client.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -24,6 +26,8 @@
 #include "esp_partition.h"
 #include "esp_system.h"
 #include "esp_wifi.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "mbedtls/md.h"
 #include "nvs.h"
 
@@ -46,11 +50,17 @@ constexpr char kUseTlsKey[] = "use_tls";
 constexpr char kWifiSsidKey[] = "wifi_ssid";
 constexpr char kWifiPasswordKey[] = "wifi_password";
 constexpr char kProvisionedKey[] = "provisioned";
+constexpr char kBleOnboardingSessionIdKey[] = "ble_session";
+constexpr char kBleDeviceIdKey[] = "ble_device_id";
 constexpr char kVolumeKey[] = "volume_percent";
 constexpr char kMutedKey[] = "muted";
 constexpr char kMicroVadPauseMsKey[] = "micro_vad_pause_ms";
 constexpr char kMicroVadEnergyThresholdKey[] = "micro_vad_energy_threshold";
 constexpr int kStationReconnectAttempts = 10;
+constexpr int kRecoveryDiscoveryAttempts = 5;
+constexpr int kRecoveryDiscoveryDelayMs = 5000;
+constexpr int kRecoveryDiscoveryHttpTimeoutMs = 5000;
+constexpr char kDiscoverySchemaVersion[] = "hexevoice.endpoint.discovery.v1";
 
 httpd_handle_t g_http_server = nullptr;
 bool g_wifi_initialized = false;
@@ -58,8 +68,11 @@ bool g_http_api_active = false;
 bool g_temporary_ap_active = false;
 bool g_station_configured = false;
 int g_station_reconnect_attempts = 0;
+bool g_recovery_discovery_completed = false;
+TaskHandle_t g_recovery_discovery_task = nullptr;
 char g_network_mode[12] = "not_started";
 char g_ip_address[16] = "0.0.0.0";
+char g_recovery_discovery_status[32] = "not_started";
 
 struct InstallHeaders {
   char application_type[16];
@@ -71,6 +84,15 @@ struct InstallHeaders {
   char signature_key_id[48];
   char manifest_signature[65];
   int size_bytes;
+};
+
+struct RecoveryDiscoveryContext {
+  char endpoint_id[64];
+  char device_id[64];
+  char onboarding_session_id[64];
+  char backend_host[96];
+  int http_port;
+  bool use_tls;
 };
 
 void copy_cstr(char *target, size_t target_size, const char *value) {
@@ -159,6 +181,232 @@ std::string json_escape(const char *value) {
     }
   }
   return escaped;
+}
+
+const char *firmware_version() {
+  const esp_app_desc_t *app = esp_app_get_description();
+  return app == nullptr ? "unknown" : app->version;
+}
+
+const char *hardware_id() {
+  static char buffer[32] = "";
+  if (buffer[0] != '\0') {
+    return buffer;
+  }
+  uint8_t mac[6] = {};
+  if (esp_efuse_mac_get_default(mac) != ESP_OK) {
+    copy_cstr(buffer, sizeof(buffer), "esp32-unknown");
+    return buffer;
+  }
+  std::snprintf(buffer, sizeof(buffer), "esp32-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return buffer;
+}
+
+bool load_nvs_string(nvs_handle_t handle, const char *key, char *target, size_t target_size, bool required) {
+  char loaded[128] = {};
+  if (target_size > sizeof(loaded)) {
+    return false;
+  }
+  size_t length = target_size;
+  const esp_err_t err = nvs_get_str(handle, key, loaded, &length);
+  if (err == ESP_ERR_NVS_NOT_FOUND) {
+    return !required;
+  }
+  if (err != ESP_OK || (required && loaded[0] == '\0')) {
+    return false;
+  }
+  copy_cstr(target, target_size, loaded);
+  return true;
+}
+
+bool load_recovery_discovery_context(RecoveryDiscoveryContext *context) {
+  if (context == nullptr) {
+    return false;
+  }
+  *context = {};
+  copy_cstr(context->endpoint_id, sizeof(context->endpoint_id), hexe::config::kEndpointId);
+  copy_cstr(context->device_id, sizeof(context->device_id), hexe::config::kEndpointId);
+  context->use_tls = hexe::config::kEndpointUseTls;
+
+  nvs_handle_t handle = 0;
+  const esp_err_t open_err = nvs_open(kSettingsNamespace, NVS_READONLY, &handle);
+  if (open_err != ESP_OK) {
+    copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "nvs_unavailable");
+    return false;
+  }
+
+  int32_t http_port = 0;
+  uint8_t use_tls = context->use_tls ? 1 : 0;
+  const esp_err_t tls_err = nvs_get_u8(handle, kUseTlsKey, &use_tls);
+  const bool loaded =
+      load_nvs_string(handle, kEndpointIdKey, context->endpoint_id, sizeof(context->endpoint_id), false) &&
+      load_nvs_string(handle, kBleDeviceIdKey, context->device_id, sizeof(context->device_id), false) &&
+      load_nvs_string(handle, kBleOnboardingSessionIdKey, context->onboarding_session_id, sizeof(context->onboarding_session_id), true) &&
+      load_nvs_string(handle, kBackendHostKey, context->backend_host, sizeof(context->backend_host), true) &&
+      nvs_get_i32(handle, kHttpPortKey, &http_port) == ESP_OK &&
+      (tls_err == ESP_OK || tls_err == ESP_ERR_NVS_NOT_FOUND);
+  nvs_close(handle);
+
+  context->http_port = static_cast<int>(http_port);
+  context->use_tls = use_tls != 0;
+  if (!loaded || !valid_port(context->http_port)) {
+    copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "settings_missing");
+    return false;
+  }
+  if (context->device_id[0] == '\0') {
+    copy_cstr(context->device_id, sizeof(context->device_id), context->endpoint_id);
+  }
+  return true;
+}
+
+std::string print_json(cJSON *root) {
+  char *rendered = cJSON_PrintUnformatted(root);
+  std::string result = rendered == nullptr ? "{}" : rendered;
+  cJSON_free(rendered);
+  cJSON_Delete(root);
+  return result;
+}
+
+std::string recovery_discovery_body(const RecoveryDiscoveryContext &context) {
+  cJSON *root = cJSON_CreateObject();
+  cJSON_AddStringToObject(root, "schema_version", kDiscoverySchemaVersion);
+  cJSON_AddStringToObject(root, "endpoint_id", context.endpoint_id);
+  cJSON_AddStringToObject(root, "device_id", context.device_id);
+  cJSON_AddStringToObject(root, "onboarding_session_id", context.onboarding_session_id);
+  cJSON_AddStringToObject(root, "hardware_id", hardware_id());
+  cJSON_AddStringToObject(root, "board_profile", hexe::board::pins::kBoardProfile);
+  cJSON_AddStringToObject(root, "firmware_version", firmware_version());
+  cJSON_AddStringToObject(root, "application_type", "recovery");
+  cJSON *capabilities = cJSON_AddObjectToObject(root, "capabilities");
+  cJSON_AddStringToObject(capabilities, "profile", "recovery");
+  cJSON_AddStringToObject(capabilities, "application_type", "recovery");
+  cJSON *identity = cJSON_AddObjectToObject(capabilities, "identity");
+  cJSON_AddStringToObject(identity, "hardware_id", hardware_id());
+  cJSON_AddStringToObject(identity, "device_id", context.device_id);
+  cJSON *firmware = cJSON_AddObjectToObject(capabilities, "firmware");
+  cJSON_AddStringToObject(firmware, "board_profile", hexe::board::pins::kBoardProfile);
+  cJSON_AddStringToObject(firmware, "application_type", "recovery");
+  cJSON_AddStringToObject(firmware, "version", firmware_version());
+  cJSON *ble = cJSON_AddObjectToObject(capabilities, "ble");
+  cJSON_AddStringToObject(ble, "onboarding_session_id", context.onboarding_session_id);
+  return print_json(root);
+}
+
+bool response_accepted(const char *response, int response_len) {
+  if (response == nullptr || response_len <= 0) {
+    return true;
+  }
+  cJSON *root = cJSON_ParseWithLength(response, response_len);
+  if (!cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    return true;
+  }
+  const cJSON *accepted = cJSON_GetObjectItem(root, "accepted");
+  const bool ok = !cJSON_IsBool(accepted) || cJSON_IsTrue(accepted);
+  cJSON_Delete(root);
+  return ok;
+}
+
+bool post_recovery_discovery(const RecoveryDiscoveryContext &context) {
+  char url[192];
+  std::snprintf(
+      url,
+      sizeof(url),
+      "%s://%s:%d/api/endpoint/discovery/offer",
+      context.use_tls ? "https" : "http",
+      context.backend_host,
+      context.http_port);
+  const std::string body = recovery_discovery_body(context);
+
+  esp_http_client_config_t config = {};
+  config.url = url;
+  config.method = HTTP_METHOD_POST;
+  config.timeout_ms = kRecoveryDiscoveryHttpTimeoutMs;
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    return false;
+  }
+  esp_http_client_set_header(client, "Content-Type", "application/json");
+  esp_err_t err = esp_http_client_open(client, static_cast<int>(body.size()));
+  if (err == ESP_OK) {
+    const int written = esp_http_client_write(client, body.c_str(), static_cast<int>(body.size()));
+    if (written != static_cast<int>(body.size())) {
+      err = ESP_FAIL;
+    }
+  }
+  int status_code = 0;
+  int response_len = 0;
+  char response[512] = {};
+  if (err == ESP_OK) {
+    esp_http_client_fetch_headers(client);
+    status_code = esp_http_client_get_status_code(client);
+    response_len = esp_http_client_read_response(client, response, sizeof(response) - 1);
+    if (response_len < 0) {
+      response_len = 0;
+    }
+    response[response_len] = '\0';
+  }
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+  if (err != ESP_OK || status_code < 200 || status_code >= 300 || !response_accepted(response, response_len)) {
+    ESP_LOGW(kTag, "Recovery discovery offer failed err=%s http=%d", esp_err_to_name(err), status_code);
+    return false;
+  }
+  return true;
+}
+
+void recovery_discovery_task(void *arg) {
+  (void)arg;
+  RecoveryDiscoveryContext context = {};
+  if (!load_recovery_discovery_context(&context)) {
+    ESP_LOGW(kTag, "Recovery discovery skipped: %s", g_recovery_discovery_status);
+    g_recovery_discovery_task = nullptr;
+    vTaskDelete(nullptr);
+    return;
+  }
+
+  for (int attempt = 1; attempt <= kRecoveryDiscoveryAttempts; ++attempt) {
+    copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "posting");
+    if (post_recovery_discovery(context)) {
+      g_recovery_discovery_completed = true;
+      copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "accepted");
+      ESP_LOGI(
+          kTag,
+          "Recovery discovery accepted endpoint=%s device_id=%s session=%s backend=%s:%d",
+          context.endpoint_id,
+          context.device_id,
+          context.onboarding_session_id,
+          context.backend_host,
+          context.http_port);
+      g_recovery_discovery_task = nullptr;
+      vTaskDelete(nullptr);
+      return;
+    }
+    copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "retrying");
+    ESP_LOGW(kTag, "Recovery discovery retry %d/%d", attempt, kRecoveryDiscoveryAttempts);
+    vTaskDelay(pdMS_TO_TICKS(kRecoveryDiscoveryDelayMs));
+  }
+  copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "failed");
+  g_recovery_discovery_task = nullptr;
+  vTaskDelete(nullptr);
+}
+
+void start_recovery_discovery_task_once() {
+  if (g_recovery_discovery_completed || g_recovery_discovery_task != nullptr || !g_station_configured) {
+    return;
+  }
+  const BaseType_t created = xTaskCreate(
+      recovery_discovery_task,
+      "hexe_recovery_disc",
+      8192,
+      nullptr,
+      4,
+      &g_recovery_discovery_task);
+  if (created != pdPASS) {
+    copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "task_failed");
+    g_recovery_discovery_task = nullptr;
+    ESP_LOGW(kTag, "Recovery discovery task start failed");
+  }
 }
 
 const char *partition_type_name(esp_partition_type_t type) {
@@ -473,6 +721,7 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     std::snprintf(g_ip_address, sizeof(g_ip_address), IPSTR, IP2STR(&event->ip_info.ip));
     g_station_reconnect_attempts = 0;
     ESP_LOGI(kTag, "Recovery STA connected at %s", g_ip_address);
+    start_recovery_discovery_task_once();
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED && g_station_configured) {
     if (g_station_reconnect_attempts < kStationReconnectAttempts) {
       ++g_station_reconnect_attempts;
@@ -993,6 +1242,10 @@ const char *recovery_ip_address() {
 
 bool recovery_temporary_ap_active() {
   return g_temporary_ap_active;
+}
+
+const char *recovery_discovery_status() {
+  return g_recovery_discovery_status;
 }
 
 std::string render_partitions_json() {

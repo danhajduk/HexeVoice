@@ -195,6 +195,7 @@ class EndpointDiscoveryRequest(BaseModel):
     board_profile: str | None = Field(default=None, max_length=80)
     display_name: str | None = Field(default=None, max_length=63)
     firmware_version: str | None = Field(default=None, max_length=80)
+    application_type: str | None = Field(default=None, max_length=40)
     pairing_nonce: str | None = Field(default=None, max_length=80)
     capabilities: dict[str, Any] = Field(default_factory=dict)
 
@@ -427,6 +428,8 @@ class EndpointBlePairingSessionResponse(BaseModel):
         "waiting_for_device",
         "device_found",
         "ready_to_provision",
+        "firmware_update_needed",
+        "endpoint_online",
         "waiting_for_endpoint_online",
         "completed",
         "timed_out",
@@ -435,6 +438,7 @@ class EndpointBlePairingSessionResponse(BaseModel):
     node_id: str
     pairing_session: dict[str, Any] = Field(default_factory=dict)
     identity: dict[str, Any] = Field(default_factory=dict)
+    handoff: dict[str, Any] = Field(default_factory=dict)
     next_poll_seconds: int = 20
     error: str | None = None
 

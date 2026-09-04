@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime, timezone
 
 import httpx
 
@@ -12,7 +13,7 @@ from hexevoice.api.models import (
     EndpointBleWifiCredentialsRequest,
 )
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
-from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
+from hexevoice.persistence import EndpointRegistryRecord, EndpointRegistryStore, OnboardingStateStore, PersistedEndpointRegistry, PersistedOnboardingState
 
 
 def trusted_store(tmp_path) -> OnboardingStateStore:
@@ -605,6 +606,60 @@ def test_ble_pairing_approval_status_requires_matching_session_identity(tmp_path
 
     assert service.pairing_session_approval_status("blepair-test", "esp-pe-1")["approved"] is True
     assert service.pairing_session_approval_status("blepair-test", "other-device")["approved"] is False
+
+
+def test_ble_pairing_status_reports_approved_recovery_handoff(tmp_path):
+    registry_store = EndpointRegistryStore(path=tmp_path / "endpoint-registry.json")
+    now = datetime.now(timezone.utc).isoformat()
+    registry_store.save(
+        PersistedEndpointRegistry(
+            endpoints={
+                "esp-pe-1": EndpointRegistryRecord(
+                    endpoint_id="esp-pe-1",
+                    hardware_id="esp32-a085e3f0e16c",
+                    device_state="idle",
+                    firmware_version="z20260904015431-19e8059",
+                    ip_address="10.0.0.171",
+                    capabilities={
+                        "device_id": "esp-pe-1",
+                        "onboarding_session_id": "blepair-test",
+                        "board_profile": "ha_voice_pe",
+                        "application_type": "recovery",
+                    },
+                    first_seen_at=now,
+                    last_seen_at=now,
+                    updated_at=now,
+                )
+            }
+        )
+    )
+    core = FakeCoreClient(
+        pairing_session={
+            "session_id": "blepair-test",
+            "status": "approved",
+            "approved_device_id": "esp-pe-1",
+            "endpoint_identity": {
+                "device_id": "esp-pe-1",
+                "target_node_id": "esp-pe-1",
+                "board_profile": "ha_voice_pe",
+            },
+        }
+    )
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=FakeSupervisorClient(),
+        endpoint_registry_store=registry_store,
+    )
+
+    response = service.get_pairing_session("blepair-test")
+
+    assert response.status == "approved"
+    assert response.ui_state == "firmware_update_needed"
+    assert response.handoff["state"] == "firmware_update_needed"
+    assert response.handoff["endpoint_id"] == "esp-pe-1"
+    assert response.handoff["ip_address"] == "10.0.0.171"
+    assert response.handoff["onboarding_session_id"] == "blepair-test"
 
 
 def test_ble_wifi_credentials_are_saved_encrypted_and_redacted(tmp_path):

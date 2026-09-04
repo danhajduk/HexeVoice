@@ -11,6 +11,7 @@ bool recovery_http_api_active();
 const char *recovery_network_mode();
 const char *recovery_ip_address();
 bool recovery_temporary_ap_active();
+const char *recovery_discovery_status();
 std::string render_partitions_json();
 std::string render_diagnostics_json();
 

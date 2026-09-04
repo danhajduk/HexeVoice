@@ -142,6 +142,10 @@ function blePairingStateLabel(value) {
       return "Device found";
     case "waiting_for_endpoint_online":
       return "Waiting for endpoint";
+    case "firmware_update_needed":
+      return "Recovery online";
+    case "endpoint_online":
+      return "Endpoint online";
     case "identity_only":
       return "Identity only";
     case "completed":
@@ -156,13 +160,13 @@ function blePairingStateLabel(value) {
 }
 
 function blePairingStatePill(value) {
-  if (value === "ready_to_provision" || value === "device_found" || value === "completed") {
+  if (value === "ready_to_provision" || value === "device_found" || value === "endpoint_online" || value === "completed") {
     return "status-pill-success";
   }
   if (value === "timed_out" || value === "failed") {
     return "status-pill-danger";
   }
-  if (value === "waiting_for_endpoint_online" || value === "identity_only") {
+  if (value === "waiting_for_endpoint_online" || value === "identity_only" || value === "firmware_update_needed") {
     return "status-pill-warning";
   }
   return "status-pill-neutral";
@@ -1458,6 +1462,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [scanSummary, setScanSummary] = useState("");
   const [selectedScanAddress, setSelectedScanAddress] = useState("");
   const [pairingSession, setPairingSession] = useState(null);
+  const [pairingHandoff, setPairingHandoff] = useState(null);
   const [pairingUiState, setPairingUiState] = useState("ready");
   const [pairingBusy, setPairingBusy] = useState(false);
   const [pairingPollBusy, setPairingPollBusy] = useState(false);
@@ -1534,7 +1539,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   }, []);
 
   useEffect(() => {
-    if (!pairingSessionId || pairingUiState !== "waiting_for_device" || pairingPollBusy) {
+    if (!pairingSessionId || !["waiting_for_device", "waiting_for_endpoint_online"].includes(pairingUiState) || pairingPollBusy) {
       return undefined;
     }
     const timer = window.setTimeout(() => {
@@ -1579,8 +1584,10 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
 
   function applyPairingResult(result) {
     const session = result?.pairing_session && typeof result.pairing_session === "object" ? result.pairing_session : null;
+    const handoff = result?.handoff && typeof result.handoff === "object" ? result.handoff : null;
     const identity = bleIdentityObject(result);
     setPairingSession(session);
+    setPairingHandoff(handoff);
     setPairingUiState(result?.ui_state || "failed");
     if (session?.session_id) {
       setOnboardingSessionId(String(session.session_id));
@@ -1599,6 +1606,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   async function handleStartPairing() {
     setPairingBusy(true);
     setIdentityDetails(null);
+    setPairingHandoff(null);
     setScanSummary("");
     setScanDevices([]);
     try {
@@ -1877,8 +1885,18 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
                 <dt>Mode</dt>
                 <dd>{valueOrEmpty(identityDetails.provisioning_mode || identityDetails.mode, "unknown")}</dd>
               </div>
+              {pairingHandoff?.ip_address ? (
+                <div>
+                  <dt>Wi-Fi IP</dt>
+                  <dd>{pairingHandoff.ip_address}</dd>
+                </div>
+              ) : null}
             </dl>
             {pairingProvisioningIssue ? <p className="callout callout-warning">{pairingProvisioningIssue}</p> : null}
+            {pairingHandoff?.state === "firmware_update_needed" ? (
+              <p className="callout callout-warning">Recovery firmware is online; full endpoint firmware is needed next.</p>
+            ) : null}
+            {pairingHandoff?.state === "endpoint_online" ? <p className="callout callout-success">Endpoint is online with the approved pairing session.</p> : null}
           </>
         ) : (
           <p className="muted-text">

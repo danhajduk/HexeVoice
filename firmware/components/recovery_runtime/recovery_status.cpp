@@ -157,7 +157,8 @@ std::string render_status_json() {
       "\"models_required\":false,"
       "\"endpoint_runtime_linked\":false,"
       "\"nvs\":{\"init_ok\":%s,\"error\":\"%s\"},"
-      "\"network\":{\"mode\":\"%s\",\"ip_address\":\"%s\",\"ssid_configured\":%s,\"temporary_ap_active\":%s},"
+      "\"network\":{\"mode\":\"%s\",\"ip_address\":\"%s\",\"ssid_configured\":%s,\"temporary_ap_active\":%s,"
+      "\"discovery_status\":\"%s\"},"
       "\"interfaces\":{\"serial_console\":true,\"http_api\":%s,\"status_page\":%s,\"display_ui\":false,"
       "\"ble\":%s,\"ble_mode\":\"%s\",\"ble_reason\":\"%s\"},"
       "\"main_slots\":[{\"label\":\"%s\",\"selected_for_boot\":true,\"state\":\"%s\",\"state_readable\":%s}],"
@@ -187,6 +188,7 @@ std::string render_status_json() {
       recovery_ip_address(),
       bool_json(std::strcmp(recovery_network_mode(), "apsta") == 0 || std::strcmp(recovery_network_mode(), "sta") == 0).c_str(),
       bool_json(recovery_temporary_ap_active()).c_str(),
+      recovery_discovery_status(),
       bool_json(recovery_http_api_active()).c_str(),
       bool_json(recovery_http_api_active()).c_str(),
       bool_json(recovery_ble_enabled()).c_str(),

@@ -160,6 +160,7 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
         assert path in control_source
 
     assert "esp_http_server" in runtime_cmake
+    assert "esp_http_client" in runtime_cmake
     assert "bt" in runtime_cmake
     assert "esp_wifi" in runtime_cmake
     assert "esp_netif" in runtime_cmake
@@ -181,8 +182,20 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "kStationReconnectAttempts = 10" in control_source
     assert "Recovery STA disconnected; reconnect attempt %d/%d err=%s" in control_source
     assert "Recovery STA disconnected; reconnect attempts exhausted" in control_source
+    assert "/api/endpoint/discovery/offer" in control_source
+    assert "kRecoveryDiscoveryAttempts = 5" in control_source
+    assert "Recovery discovery accepted endpoint=%s device_id=%s session=%s backend=%s:%d" in control_source
+    assert "recovery_discovery_status()" in control_source
+    assert '"application_type", "recovery"' in control_source
+    assert '"onboarding_session_id", context.onboarding_session_id' in control_source
     assert "init_recovery_ble_provisioning()" in control_source
     assert "render_recovery_ble_status_json()" in control_source
+    discovery_body = control_source[
+        control_source.index("std::string recovery_discovery_body") : control_source.index("bool response_accepted")
+    ]
+    assert "kWifiPasswordKey" not in discovery_body
+    assert "wifi_password" not in discovery_body
+    assert '\\"discovery_status\\":' in RECOVERY_STATUS.read_text()
 
 
 def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runtime():

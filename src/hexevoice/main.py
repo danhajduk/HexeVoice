@@ -14,7 +14,7 @@ import time
 from urllib.parse import urlencode
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse
 import httpx
 import uvicorn
@@ -688,6 +688,7 @@ def create_app(
     endpoint_ble_onboarding_service = EndpointBleOnboardingService(
         onboarding_state_store=onboarding_state_store,
         supervisor_client=SupervisorApiClient(),
+        endpoint_registry_store=endpoint_registry_store,
         wifi_credential_store=BleWifiCredentialStore(
             path=app_settings.resolved_endpoint_ble_wifi_credentials_path(),
             key_path=app_settings.resolved_endpoint_ble_wifi_credentials_key_path(),
@@ -1533,8 +1534,8 @@ def create_app(
         return response
 
     @app.post("/api/endpoint/discovery/offer", response_model=EndpointDiscoveryResponse)
-    async def endpoint_discovery_offer(payload: EndpointDiscoveryRequest) -> EndpointDiscoveryResponse:
-        response = endpoint_discovery_service.offer(payload)
+    async def endpoint_discovery_offer(request: Request, payload: EndpointDiscoveryRequest) -> EndpointDiscoveryResponse:
+        response = endpoint_discovery_service.offer(payload, source_ip=request.client.host if request.client else None)
         node_ui_page_cache.invalidate()
         return response
 

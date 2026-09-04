@@ -128,7 +128,11 @@ normal endpoint dashboard assets.
 During HA Voice PE BLE-only validation, the `ha_voice_pe` minimal recovery build
 starts the local recovery BLE peripheral without starting the temporary Wi-Fi AP
 or HTTP API. Other recovery-capable S3 board profiles keep the Wi-Fi/HTTP rescue
-control plane.
+control plane. After a Core-governed BLE pairing session applies Wi-Fi/backend
+settings and obtains a station IP, recovery POSTs a non-secret discovery offer
+to `/api/endpoint/discovery/offer` with the approved device id, BLE onboarding
+session id, board profile, firmware version, hardware id, and
+`application_type=recovery`.
 
 Minimum `/api/recovery/status` shape:
 
@@ -263,6 +267,6 @@ Task 290 adds local BLE rescue provisioning:
 - status and diagnostics expose mode, UUIDs, advertising state, ack/error state,
   and support/unavailable reasons without exposing Wi-Fi credentials, pairing
   nonce values, claim-code references, ciphertext, or derived keys
-- Core-governed encrypted BLE provisioning remains available through the normal
-  endpoint firmware path; recovery reports `core_governed_requires_endpoint_app`
-  for encrypted Core envelopes instead of accepting them silently
+- Core-governed encrypted BLE provisioning reuses the same encrypted envelope
+  and NVS write path, then starts STA mode and reports recovery-online handoff
+  status without exposing Wi-Fi credentials or decrypted payloads
