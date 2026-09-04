@@ -201,6 +201,8 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     assert "hexe_ble_pairing_host_advert_seen" in ble_source
     assert "hexe_ble_pairing_offer_received" in ble_source
     assert "hexe_ble_pairing_identity_write_result" in ble_source
+    assert "hexe_ble_pairing_central_set_scanning(0)" in ble_source
+    assert "Recovery BLE host pairing scan stop after credentials failed" in ble_source
     assert '"device_id"' in ble_source
     assert '"board_profile"' in ble_source
     assert '"onboarding_session_id"' in ble_source

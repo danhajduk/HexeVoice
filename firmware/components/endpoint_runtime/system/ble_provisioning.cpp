@@ -1314,6 +1314,12 @@ extern "C" void hexe_ble_pairing_credentials_read_result(int succeeded, const ch
   if (succeeded) {
     set_ack("credentials_applied");
     set_state("completed", reason == nullptr || reason[0] == '\0' ? "credentials_applied" : reason);
+    const int stop_rc = hexe_ble_pairing_central_set_scanning(0);
+    if (stop_rc == 0) {
+      g_ble.central_scanning = false;
+    } else {
+      ESP_LOGW(kTag, "BLE host pairing scan stop after credentials failed: %d", stop_rc);
+    }
     return;
   }
   if (reason != nullptr && std::strcmp(reason, "credentials_pending") == 0) {

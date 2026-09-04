@@ -149,6 +149,8 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "hexe_ble_pairing_credentials_read_result" in gatt
     assert "BLE host pairing scan_state scanning=%d" in source
     assert "BLE host pairing connection_state connected=%d" in source
+    assert "hexe_ble_pairing_central_set_scanning(0)" in source
+    assert "BLE host pairing scan stop after credentials failed" in source
     assert "CONFIG_BT_NIMBLE_ROLE_CENTRAL=y" in build_script
     assert "CONFIG_BT_NIMBLE_GATT_CLIENT=y" in build_script
     assert "CONFIG_BT_NIMBLE_BLE_GATT_BLOB_TRANSFER=y" in build_script
