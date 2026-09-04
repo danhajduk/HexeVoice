@@ -447,6 +447,12 @@ class EndpointBleOnboardingService:
                 error="core_ble_provisioning_contract_unavailable",
             )
 
+        payload = self._payload_with_latest_pairing_identity(
+            payload,
+            core_base_url=core_base_url,
+            node_id=node_id,
+            node_trust_token=node_trust_token,
+        )
         provisioning = self._provisioning_context(payload)
         saved_wifi_password = None if payload.wifi_password else self._wifi_credentials.saved_password_for_ssid(payload.wifi_ssid)
         credential_payload = self._credential_payload(payload, wifi_password=payload.wifi_password or saved_wifi_password)
@@ -624,6 +630,62 @@ class EndpointBleOnboardingService:
                 "sequence": payload.sequence,
                 "expires_at": payload.expires_at or _default_expires_at(),
             }
+        )
+
+    def _payload_with_latest_pairing_identity(
+        self,
+        payload: EndpointBleProvisionWifiRequest,
+        *,
+        core_base_url: str,
+        node_id: str,
+        node_trust_token: str,
+    ) -> EndpointBleProvisionWifiRequest:
+        if payload.target_address:
+            return payload
+        session_id = str(payload.onboarding_session_id or "").strip()
+        if not session_id:
+            return payload
+
+        response = self._call_core_pairing(
+            lambda: self._core_client.get_ble_pairing_session(
+                core_base_url=core_base_url,
+                node_trust_token=node_trust_token,
+                node_id=node_id,
+                session_id=session_id,
+                refresh=True,
+            ),
+            fallback="core_ble_pairing_session_read_failed",
+        )
+        session = response.get("pairing_session") if isinstance(response, dict) else {}
+        if not isinstance(session, dict):
+            return payload
+        identity = session.get("endpoint_identity")
+        if not isinstance(identity, dict):
+            return payload
+
+        requested_device_id = str(payload.provisioned_endpoint_id or payload.target_node_id or "").strip()
+        approved_device_id = str(session.get("approved_device_id") or "").strip()
+        identity_device_id = str(identity.get("device_id") or identity.get("target_node_id") or "").strip()
+        if approved_device_id and requested_device_id and approved_device_id != requested_device_id:
+            return payload
+        if identity_device_id and requested_device_id and identity_device_id != requested_device_id:
+            return payload
+
+        endpoint_public_key = str(identity.get("endpoint_ephemeral_public_key") or "").strip()
+        pairing_nonce = str(identity.get("pairing_nonce") or "").strip()
+        if not endpoint_public_key or not pairing_nonce:
+            return payload
+
+        return payload.model_copy(
+            update=_clean_dict(
+                {
+                    "target_node_id": str(identity.get("target_node_id") or identity_device_id or payload.target_node_id),
+                    "endpoint_ephemeral_public_key": endpoint_public_key,
+                    "pairing_nonce": pairing_nonce,
+                    "adapter": identity.get("adapter") or payload.adapter,
+                    "supervisor_id": identity.get("supervisor_id") or payload.supervisor_id,
+                }
+            )
         )
 
     def _credential_payload(self, payload: EndpointBleProvisionWifiRequest, *, wifi_password: str | None = None) -> dict[str, Any]:
@@ -957,13 +1019,13 @@ class EndpointBleOnboardingService:
         reported_device_id = str(capabilities.get("device_id") or record.endpoint_id or "").strip()
         if reported_session_id != session_id or reported_device_id != expected_device_id:
             return {}
-        connection_state = self._endpoint_connection_state(record)
         application_type = str(capabilities.get("application_type") or "").strip()
         firmware = capabilities.get("firmware") if isinstance(capabilities.get("firmware"), dict) else {}
         if not application_type and isinstance(firmware, dict):
             application_type = str(firmware.get("application_type") or "").strip()
         firmware_version = record.firmware_version or str(firmware.get("version") or "").strip() or None
         minimal = application_type == "recovery" or str(firmware_version or "").startswith(("min-", "minimal-"))
+        connection_state = self._endpoint_connection_state(record, max_age_seconds=15 if minimal else 60)
         state = "firmware_update_needed" if connection_state == "online" and minimal else "endpoint_online" if connection_state == "online" else "waiting_for_endpoint_online"
         return _clean_dict(
             {
@@ -981,7 +1043,7 @@ class EndpointBleOnboardingService:
             }
         )
 
-    def _endpoint_connection_state(self, record: EndpointRegistryRecord) -> str:
+    def _endpoint_connection_state(self, record: EndpointRegistryRecord, *, max_age_seconds: int = 60) -> str:
         if record.device_state == "offline":
             return "offline"
         try:
@@ -991,7 +1053,7 @@ class EndpointBleOnboardingService:
         if last_seen.tzinfo is None:
             last_seen = last_seen.replace(tzinfo=timezone.utc)
         age_seconds = (_utc_now() - last_seen).total_seconds()
-        return "stale" if age_seconds > 60 else "online"
+        return "stale" if age_seconds > max_age_seconds else "online"
 
     def _scan_response(
         self,

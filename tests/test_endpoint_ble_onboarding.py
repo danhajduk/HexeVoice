@@ -1,5 +1,5 @@
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -662,6 +662,59 @@ def test_ble_pairing_status_reports_approved_recovery_handoff(tmp_path):
     assert response.handoff["onboarding_session_id"] == "blepair-test"
 
 
+def test_ble_pairing_status_waits_when_recovery_registry_ping_is_stale(tmp_path):
+    registry_store = EndpointRegistryStore(path=tmp_path / "endpoint-registry.json")
+    stale_seen = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
+    registry_store.save(
+        PersistedEndpointRegistry(
+            endpoints={
+                "esp-pe-1": EndpointRegistryRecord(
+                    endpoint_id="esp-pe-1",
+                    hardware_id="esp32-a085e3f0e16c",
+                    device_state="idle",
+                    firmware_version="z20260904015431-19e8059",
+                    ip_address="10.0.0.171",
+                    capabilities={
+                        "device_id": "esp-pe-1",
+                        "onboarding_session_id": "blepair-test",
+                        "board_profile": "ha_voice_pe",
+                        "application_type": "recovery",
+                    },
+                    first_seen_at=stale_seen,
+                    last_seen_at=stale_seen,
+                    updated_at=stale_seen,
+                )
+            }
+        )
+    )
+    core = FakeCoreClient(
+        pairing_session={
+            "session_id": "blepair-test",
+            "status": "approved",
+            "approved_device_id": "esp-pe-1",
+            "endpoint_identity": {
+                "device_id": "esp-pe-1",
+                "target_node_id": "esp-pe-1",
+                "board_profile": "ha_voice_pe",
+            },
+        }
+    )
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=FakeSupervisorClient(),
+        endpoint_registry_store=registry_store,
+    )
+
+    response = service.get_pairing_session("blepair-test")
+
+    assert response.status == "approved"
+    assert response.ui_state == "waiting_for_endpoint_online"
+    assert response.handoff["state"] == "waiting_for_endpoint_online"
+    assert response.handoff["connection_state"] == "stale"
+    assert "ui_state" not in response.handoff
+
+
 def test_ble_wifi_credentials_are_saved_encrypted_and_redacted(tmp_path):
     service = EndpointBleOnboardingService(
         onboarding_state_store=trusted_store(tmp_path),
@@ -738,6 +791,51 @@ def test_ble_onboarding_granted_calls_supervisor_and_releases_lease(tmp_path):
     assert response.access_request["lease_token"] == "[REDACTED]"
     assert response.credential_payload["wifi_password"] == "[REDACTED]"
     assert response.provisioning["endpoint_ephemeral_public_key"] == "[REDACTED]"
+
+
+def test_ble_onboarding_refreshes_latest_pairing_identity_before_addressless_provisioning(tmp_path):
+    latest_key = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    latest_nonce = "latest-nonce-1234"
+    core = FakeCoreClient(
+        status="granted",
+        pairing_session={
+            "session_id": "ble-session-1",
+            "status": "approved",
+            "approved_device_id": "voice-endpoint-1",
+            "endpoint_identity": {
+                "device_id": "voice-endpoint-1",
+                "target_node_id": "voice-endpoint-1",
+                "endpoint_ephemeral_public_key": latest_key,
+                "pairing_nonce": latest_nonce,
+                "adapter": "hci1",
+                "supervisor_id": "sup-nearby",
+            },
+        },
+    )
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.provision_wifi(
+        request_payload(
+            target_address=None,
+            endpoint_ephemeral_public_key="AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            pairing_nonce="stale-nonce-1234",
+        )
+    )
+
+    assert response.ok is True
+    assert core.pairing_calls[0] == {"operation": "get", "session_id": "ble-session-1", "refresh": True}
+    assert core.requested_payloads[0]["provisioning"]["endpoint_ephemeral_public_key"] == latest_key
+    assert core.requested_payloads[0]["provisioning"]["pairing_nonce"] == latest_nonce
+    assert core.requested_payloads[0]["adapter"] == "hci1"
+    assert core.requested_payloads[0]["supervisor_id"] == "sup-nearby"
+    assert supervisor.calls[0]["endpoint_ephemeral_public_key"] == latest_key
+    assert supervisor.calls[0]["pairing_nonce"] == latest_nonce
+    assert supervisor.calls[0]["adapter"] == "hci1"
 
 
 def test_ble_onboarding_pending_stops_before_supervisor_call(tmp_path):
