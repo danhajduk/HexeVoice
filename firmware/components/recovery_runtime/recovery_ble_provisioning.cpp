@@ -993,26 +993,17 @@ extern "C" const char *hexe_ble_provisioning_device_identity_json() {
   cJSON *root = cJSON_CreateObject();
   ensure_pairing_nonce();
   cJSON_AddStringToObject(root, "contract_version", kContractVersion);
-  cJSON_AddStringToObject(root, "envelope_schema_version", kEnvelopeSchemaVersion);
-  cJSON_AddStringToObject(root, "encryption_algorithm", kEncryptionAlgorithm);
-  cJSON_AddStringToObject(root, "key_agreement", kKeyAgreement);
   cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
   cJSON_AddStringToObject(root, "device_id", hexe::config::kEndpointId);
-  cJSON_AddStringToObject(root, "node_hardware_id", hardware_id());
-  cJSON_AddStringToObject(root, "target_node_id", hexe::config::kEndpointId);
   cJSON_AddStringToObject(root, "board_profile", hexe::board::pins::kBoardProfile);
   cJSON_AddStringToObject(root, "firmware_version", esp_app_get_description()->version);
   cJSON_AddStringToObject(root, "application_type", "recovery");
   cJSON_AddStringToObject(root, "provisioning_mode", "core_governed_pairing");
-  cJSON_AddStringToObject(root, "core_governed_mode", "recovery_app");
-  cJSON_AddStringToObject(root, "protocol_version", kContractVersion);
   cJSON_AddStringToObject(root, "pairing_nonce", g_ble.pairing_nonce);
   cJSON_AddStringToObject(root, "endpoint_ephemeral_public_key", g_ble.endpoint_public_key_b64);
   cJSON *schemas = cJSON_AddArrayToObject(root, "supported_payload_schemas");
   cJSON_AddItemToArray(schemas, cJSON_CreateString(kPayloadSchemaId));
   cJSON_AddStringToObject(root, "provisioning_state", g_ble.state);
-  cJSON_AddBoolToObject(root, "claim_code_required", false);
-  cJSON_AddNumberToObject(root, "expires_at_unix_ms", (g_ble.issued_at_us + kPairingTtlUs) / 1000);
   payload = print_json(root);
   return payload.c_str();
 }

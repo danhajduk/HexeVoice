@@ -217,6 +217,18 @@ def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runt
     ]
     assert '"pairing_nonce"' in identity_json
     assert '"endpoint_ephemeral_public_key"' in identity_json
+    for verbose_field in (
+        '"envelope_schema_version"',
+        '"encryption_algorithm"',
+        '"key_agreement"',
+        '"node_hardware_id"',
+        '"target_node_id"',
+        '"core_governed_mode"',
+        '"protocol_version"',
+        '"claim_code_required"',
+        '"expires_at_unix_ms"',
+    ):
+        assert verbose_field not in identity_json
     assert '"pairing_nonce"' in pairing_nonce_json
     assert '"endpoint_ephemeral_public_key"' in pairing_nonce_json
     assert "remember_host_pairing_offer" in ble_source
