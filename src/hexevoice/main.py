@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import httpx
 import uvicorn
 
@@ -161,6 +161,7 @@ from hexevoice.persistence import (
 )
 from hexevoice.providers.setup import ProviderSetupService
 from hexevoice.runtime.service import NodeRuntimeService
+from hexevoice.schema_catalog import VoiceSchemaCatalog
 from hexevoice.setup_bootstrap import SetupBootstrapStatusService
 from hexevoice.setup_host import SetupHostReadinessService
 from hexevoice.setup_reauth import SetupReauthService
@@ -736,6 +737,7 @@ def create_app(
     speaker_profile_review_store = SpeakerProfileReviewStore(
         path=app_settings.resolved_voice_profile_review_path(),
     )
+    schema_catalog = VoiceSchemaCatalog()
     voice_quality_observation_log = VoiceQualityObservationLog(
         directory=app_settings.resolved_voice_quality_observation_dir(),
         enabled=app_settings.voice_quality_observation_log_enabled and not app_settings.voice_privacy_mode_enabled,
@@ -1153,6 +1155,33 @@ def create_app(
     @app.get("/api/health", response_model=ApiHealthResponse)
     async def api_health() -> ApiHealthResponse:
         return service.api_health_payload()
+
+    @app.get("/api/schemas")
+    async def api_schema_families() -> dict[str, object]:
+        return {
+            "families": [
+                {
+                    "schema_family": "voice",
+                    "versions": [
+                        {
+                            "version": "v1",
+                            "api_path": "/api/schemas/voice/v1",
+                        }
+                    ],
+                }
+            ]
+        }
+
+    @app.get("/api/schemas/voice/v1")
+    async def api_voice_schema_catalog() -> dict[str, object]:
+        return schema_catalog.catalog()
+
+    @app.get("/api/schemas/voice/v1/{schema_name}")
+    async def api_voice_schema(schema_name: str) -> JSONResponse:
+        schema = schema_catalog.schema(schema_name)
+        if schema is None:
+            raise HTTPException(status_code=404, detail="schema_not_found")
+        return JSONResponse(content=schema, media_type="application/schema+json")
 
     @app.post("/api/setup/supervisor/register-runtime")
     async def setup_supervisor_register_runtime() -> dict[str, object]:

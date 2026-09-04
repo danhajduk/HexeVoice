@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hexe.local/schemas/voice-v1/schema-catalog.v1.response.schema.json",
+  "title": "HexeVoice Schema Catalog Response",
+  "type": "object",
+  "required": ["schema_family", "version", "generated_at", "schemas"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_family": { "type": "string", "const": "voice" },
+    "version": { "type": "string", "const": "v1" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "schemas": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/schema_catalog_item" }
+    }
+  },
+  "$defs": {
+    "schema_catalog_item": {
+      "type": "object",
+      "required": ["name", "schema_id", "title", "category", "status", "api_path"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "schema_id": { "type": ["string", "null"] },
+        "title": { "type": ["string", "null"] },
+        "category": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "minLength": 1 },
+        "api_path": {
+          "type": "string",
+          "pattern": "^/api/schemas/voice/v1/[A-Za-z0-9._-]+\\.schema\\.json$"
+        }
+      }
+    }
+  }
+}
