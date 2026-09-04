@@ -1236,12 +1236,21 @@ extern "C" int hexe_ble_provisioning_handle_encrypted_credentials(const char *js
 
 extern "C" void hexe_ble_pairing_scan_state_changed(int scanning, const char *reason, int rc) {
   g_ble.central_scanning = scanning != 0;
-  ESP_LOGI(
-      kTag,
-      "BLE host pairing scan_state scanning=%d reason=%s rc=%d",
-      scanning,
-      reason == nullptr || reason[0] == '\0' ? "(none)" : reason,
-      rc);
+  const char *safe_reason = reason == nullptr || reason[0] == '\0' ? "(none)" : reason;
+  static int last_logged_scanning = -1;
+  static int last_logged_rc = 0;
+  static char last_logged_reason[48] = "";
+  const bool changed =
+      scanning != last_logged_scanning ||
+      rc != last_logged_rc ||
+      std::strncmp(safe_reason, last_logged_reason, sizeof(last_logged_reason) - 1) != 0;
+  if (changed || rc != 0) {
+    ESP_LOGI(kTag, "BLE host pairing scan_state scanning=%d reason=%s rc=%d", scanning, safe_reason, rc);
+    last_logged_scanning = scanning;
+    last_logged_rc = rc;
+    std::strncpy(last_logged_reason, safe_reason, sizeof(last_logged_reason) - 1);
+    last_logged_reason[sizeof(last_logged_reason) - 1] = '\0';
+  }
   if (reason != nullptr && reason[0] != '\0' && scanning == 0 && rc != 0) {
     set_state("awaiting_credentials", reason);
   }
