@@ -561,6 +561,59 @@ def sign_ota_manifest_metadata(
     }
 
 
+def recovery_install_signature_payload(
+    *,
+    application_type: str,
+    board_profile: str,
+    partition_schema: str,
+    version: str | None,
+    sha256: str,
+    size_bytes: int,
+    signature_algorithm: str,
+    signature_key_id: str,
+) -> str:
+    return "\n".join(
+        [
+            application_type,
+            board_profile,
+            partition_schema,
+            version or "",
+            sha256,
+            str(size_bytes),
+            signature_algorithm,
+            signature_key_id,
+        ]
+    )
+
+
+def sign_recovery_install_metadata(
+    *,
+    application_type: str,
+    board_profile: str,
+    partition_schema: str,
+    version: str | None,
+    sha256: str,
+    size_bytes: int,
+    signature_algorithm: str,
+    signature_key_id: str,
+) -> str:
+    payload = recovery_install_signature_payload(
+        application_type=application_type,
+        board_profile=board_profile,
+        partition_schema=partition_schema,
+        version=version,
+        sha256=sha256,
+        size_bytes=size_bytes,
+        signature_algorithm=signature_algorithm,
+        signature_key_id=signature_key_id,
+    )
+    return hmac.new(
+        ota_manifest_signing_key().encode("utf-8"),
+        payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
 def firmware_update_payload(settings: Settings, endpoint_status: EndpointStatusResponse) -> dict:
     profile = endpoint_board_profile(endpoint_status)
     artifact_dir = settings.resolved_firmware_artifact_dir()
@@ -2264,17 +2317,34 @@ def create_app(
             )
         path = firmware_artifact_path(str(filename))
         install_url = f"http://{status.ip_address}/api/recovery/firmware/install"
+        application_type = "endpoint"
+        board_profile = str(update.get("board_profile") or "")
+        partition_schema = str(update.get("partition_schema") or "")
+        sha256 = str(update.get("sha256") or "")
+        size_bytes = int(update.get("size_bytes") or 0)
+        signature_algorithm = str(update.get("signature_algorithm") or "")
+        signature_key_id = str(update.get("signature_key_id") or "")
+        install_signature = sign_recovery_install_metadata(
+            application_type=application_type,
+            board_profile=board_profile,
+            partition_schema=partition_schema,
+            version=str(version or ""),
+            sha256=sha256,
+            size_bytes=size_bytes,
+            signature_algorithm=signature_algorithm,
+            signature_key_id=signature_key_id,
+        )
         headers = {
             "Content-Type": "application/octet-stream",
-            "X-Hexe-Application-Type": "endpoint",
-            "X-Hexe-Board-Profile": str(update.get("board_profile") or ""),
-            "X-Hexe-Partition-Schema": str(update.get("partition_schema") or ""),
+            "X-Hexe-Application-Type": application_type,
+            "X-Hexe-Board-Profile": board_profile,
+            "X-Hexe-Partition-Schema": partition_schema,
             "X-Hexe-Version": str(version or ""),
-            "X-Hexe-Image-Sha256": str(update.get("sha256") or ""),
-            "X-Hexe-Image-Size": str(update.get("size_bytes") or ""),
-            "X-Hexe-Signature-Algorithm": str(update.get("signature_algorithm") or ""),
-            "X-Hexe-Signature-Key-Id": str(update.get("signature_key_id") or ""),
-            "X-Hexe-Manifest-Signature": str(update.get("manifest_signature") or ""),
+            "X-Hexe-Image-Sha256": sha256,
+            "X-Hexe-Image-Size": str(size_bytes),
+            "X-Hexe-Signature-Algorithm": signature_algorithm,
+            "X-Hexe-Signature-Key-Id": signature_key_id,
+            "X-Hexe-Manifest-Signature": install_signature,
             "X-Hexe-Reboot-After-Install": "true" if payload.auto_reboot else "false",
         }
         try:

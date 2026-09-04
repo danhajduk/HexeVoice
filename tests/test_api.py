@@ -516,6 +516,25 @@ def test_ble_pairing_firmware_handoff_installs_endpoint_image_only_after_identit
     assert call["headers"]["X-Hexe-Board-Profile"] == "ha_voice_pe"
     assert call["headers"]["X-Hexe-Partition-Schema"] == "s3-16m-recovery-v1"
     assert call["headers"]["X-Hexe-Reboot-After-Install"] == "true"
+    install_signature_payload = "\n".join(
+        [
+            "endpoint",
+            "ha_voice_pe",
+            "s3-16m-recovery-v1",
+            "endpoint-0.2.0",
+            hashlib.sha256(firmware_bytes).hexdigest(),
+            str(len(firmware_bytes)),
+            OTA_MANIFEST_SIGNATURE_ALGORITHM,
+            ota_manifest_key_id(),
+        ]
+    )
+    expected_install_signature = hmac.new(
+        ota_manifest_signing_key().encode("utf-8"),
+        install_signature_payload.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    assert call["headers"]["X-Hexe-Manifest-Signature"] == expected_install_signature
+    assert call["headers"]["X-Hexe-Manifest-Signature"] != payload["firmware"]["manifest_signature"]
 
 
 def test_ble_pairing_firmware_handoff_rejects_unapproved_or_mismatched_identity(tmp_path, monkeypatch):
