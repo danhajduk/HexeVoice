@@ -100,6 +100,8 @@ class CapabilityDeclarationState(BaseModel):
     accepted_at: str | None = None
     declared_task_families: list[str] = Field(default_factory=list)
     declared_capabilities: list[str] = Field(default_factory=list)
+    provided_task_families: list[str] = Field(default_factory=list)
+    requested_task_families: list[str] = Field(default_factory=list)
     capability_profile_id: str | None = None
     governance_version: str | None = None
     governance_issued_at: str | None = None

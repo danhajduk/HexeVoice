@@ -1,7 +1,7 @@
 import httpx
 from fastapi.testclient import TestClient
 
-from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
+from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES, VOICE_NODE_REQUESTED_TASK_FAMILIES
 from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.config.settings import Settings
 from hexevoice.main import create_app
@@ -205,7 +205,7 @@ def test_local_capability_manifest_schema_rejects_core_incompatible_payload():
     try:
         validate_capability_declaration(payload)
     except CapabilityManifestValidationError as exc:
-        assert "declared_capabilities_must_match_declared_task_families" in str(exc)
+        assert "declared_capabilities_must_match_provided_task_families" in str(exc)
     else:
         raise AssertionError("Expected local manifest schema validation to reject incompatible payload.")
 
@@ -253,6 +253,8 @@ def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):
                 "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
                 "declared_capabilities": VOICE_NODE_CAPABILITIES,
+                "provided_task_families": VOICE_NODE_CAPABILITIES,
+                "requested_task_families": VOICE_NODE_REQUESTED_TASK_FAMILIES,
                 "enabled_providers": ["voice"],
                 "capability_profile_id": "profile-123",
                 "governance_version": "gov-2026.04",

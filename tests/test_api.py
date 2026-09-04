@@ -2432,6 +2432,139 @@ def test_assistant_turn_can_route_to_configured_ai_node():
     assert adapter.status()["last_latency_ms"] is not None
 
 
+def test_assistant_ai_node_adapter_uses_core_resolved_execution_url(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {
+                    "node_name": "kitchen-voice",
+                    "core_base_url": "http://core.test:9001",
+                },
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "node_type": "voice-node",
+                    "node_trust_token": "trust-token-123",
+                    "trust_status": "trusted",
+                },
+            }
+        )
+    )
+    captured = {}
+
+    class FakeCoreClient:
+        def resolve_node_service(self, *, core_base_url, node_trust_token, payload):
+            captured["core_base_url"] = core_base_url
+            captured["node_trust_token"] = node_trust_token
+            captured["resolve_payload"] = payload
+            return {
+                "selected_service_id": "ai-node-chat",
+                "candidates": [
+                    {
+                        "service_id": "ai-node-chat",
+                        "execution_endpoint_url": "http://hexe-ai.local:9002/api/execution/direct",
+                        "provider": "local",
+                        "models_allowed": ["qwen3-8b-q4_k_m"],
+                        "resolution_mode": "catalog_governance_budget",
+                    }
+                ],
+            }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["json"] = request.read()
+        return httpx.Response(
+            200,
+            json={
+                "task_id": "task-123",
+                "status": "completed",
+                "output": {"text": "AI Node says hello."},
+                "provider_used": "local",
+                "model_used": "qwen3-8b-q4_k_m",
+            },
+        )
+
+    adapter = AiNodeAssistantAdapter(
+        base_url=None,
+        turn_path="/api/assistant/turn",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        onboarding_state_store=store,
+        core_client=FakeCoreClient(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    response = adapter.handle_turn(
+        AssistantTurnRequest(endpoint_id="box-9", session_id="session-abc", text="hello"),
+        session_id="session-abc",
+    )
+
+    assert captured["resolve_payload"]["task_family"] == "task.chat"
+    assert captured["resolve_payload"]["type"] == "ai"
+    assert captured["url"] == "http://hexe-ai.local:9002/api/execution/direct"
+    request_json = json.loads(captured["json"])
+    assert request_json["task_family"] == "task.chat"
+    assert request_json["requested_by"] == "hexevoice"
+    assert request_json["service_id"] == "ai-node-chat"
+    assert request_json["inputs"]["text"] == "hello"
+    assert response.reply_text == "AI Node says hello."
+    assert response.provider_id == "local"
+    assert response.model == "qwen3-8b-q4_k_m"
+    assert response.provider_metadata["ai_node"]["resolution_source"] == "core"
+    assert response.provider_metadata["ai_node"]["contract_version"] == "client-ai.execution.v2"
+    assert adapter.status()["last_resolved_url"] == "http://hexe-ai.local:9002/api/execution/direct"
+
+
+def test_assistant_ai_node_adapter_joins_core_provider_api_base_url(tmp_path):
+    state_path = tmp_path / "onboarding-state.json"
+    store = OnboardingStateStore(path=state_path)
+    store.save(
+        PersistedOnboardingState.model_validate(
+            {
+                "pre_trust": {"core_base_url": "http://core.test:9001"},
+                "trust_activation": {
+                    "node_id": "node-voice-123",
+                    "node_trust_token": "trust-token-123",
+                    "trust_status": "trusted",
+                },
+            }
+        )
+    )
+    captured = {}
+
+    class FakeCoreClient:
+        def resolve_node_service(self, *, core_base_url, node_trust_token, payload):
+            return {
+                "selected_service_id": "ai-node-chat",
+                "candidates": [
+                    {
+                        "service_id": "ai-node-chat",
+                        "provider_api_base_url": "http://10.0.0.100:9002/api",
+                    }
+                ],
+            }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        return httpx.Response(200, json={"status": "completed", "output": {"text": "ok"}})
+
+    adapter = AiNodeAssistantAdapter(
+        base_url=None,
+        turn_path="/api/execution/direct",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        onboarding_state_store=store,
+        core_client=FakeCoreClient(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    response = adapter.handle_turn(AssistantTurnRequest(endpoint_id="box-9", text="hello"), session_id="session-abc")
+
+    assert captured["url"] == "http://10.0.0.100:9002/api/execution/direct"
+    assert response.reply_text == "ok"
+
+
 def test_assistant_ai_node_adapter_falls_back_to_local_echo_when_unconfigured():
     adapter = AiNodeAssistantAdapter(
         base_url=None,

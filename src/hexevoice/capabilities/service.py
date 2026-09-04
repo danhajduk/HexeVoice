@@ -24,6 +24,10 @@ VOICE_NODE_CAPABILITIES = [
     "voice.speaker.profile.manage",
 ]
 
+VOICE_NODE_REQUESTED_TASK_FAMILIES = [
+    "task.chat",
+]
+
 
 class CapabilityDeclarationService:
     def __init__(
@@ -49,6 +53,7 @@ class CapabilityDeclarationService:
             raise HTTPException(status_code=400, detail="provider_setup_incomplete")
 
         declared_task_families = self._selected_capabilities(state)
+        requested_task_families = self._requested_task_families(state)
         enabled_providers = self._enabled_providers(state)
         payload = self.capability_declaration_payload(state)
         try:
@@ -115,6 +120,8 @@ class CapabilityDeclarationService:
                         "accepted_at": response.get("accepted_at"),
                         "declared_task_families": declared_task_families,
                         "declared_capabilities": response.get("declared_capabilities", declared_task_families),
+                        "provided_task_families": response.get("provided_task_families", declared_task_families),
+                        "requested_task_families": response.get("requested_task_families", requested_task_families),
                         "capability_profile_id": response.get("capability_profile_id"),
                         "governance_version": response.get("governance_version"),
                         "governance_issued_at": response.get("governance_issued_at"),
@@ -145,6 +152,8 @@ class CapabilityDeclarationService:
             manifest_version=updated.capability_declaration.manifest_version or "1.0",
             accepted_at=updated.capability_declaration.accepted_at,
             declared_capabilities=updated.capability_declaration.declared_capabilities,
+            provided_task_families=updated.capability_declaration.provided_task_families,
+            requested_task_families=updated.capability_declaration.requested_task_families,
             enabled_providers=enabled_providers,
             capability_profile_id=updated.capability_declaration.capability_profile_id,
             governance_version=updated.capability_declaration.governance_version,
@@ -176,6 +185,8 @@ class CapabilityDeclarationService:
             },
             "capabilities": {
                 "selected": declaration_payload["manifest"]["declared_capabilities"],
+                "provided_task_families": declaration_payload["manifest"]["provided_task_families"],
+                "requested_task_families": declaration_payload["manifest"]["requested_task_families"],
                 "endpoints": declaration_payload["manifest"]["capability_endpoints"],
             },
             "runtime": runtime,
@@ -199,6 +210,7 @@ class CapabilityDeclarationService:
         state = state or self._store.load()
         declared_task_families = self._selected_capabilities(state)
         enabled_providers = self._enabled_providers(state)
+        requested_task_families = self._requested_task_families(state)
         return {
             "manifest": {
                 "manifest_version": "1.0",
@@ -210,6 +222,8 @@ class CapabilityDeclarationService:
                 },
                 "declared_task_families": declared_task_families,
                 "declared_capabilities": declared_task_families,
+                "provided_task_families": declared_task_families,
+                "requested_task_families": requested_task_families,
                 "capability_endpoints": self._capability_endpoints(declared_task_families),
                 "supported_providers": self._supported_providers(state),
                 "enabled_providers": enabled_providers,
@@ -405,6 +419,8 @@ class CapabilityDeclarationService:
             "available_models": available_models,
             "enabled_capabilities": selected,
             "disabled_capabilities": disabled,
+            "provided_task_families": list(manifest.get("provided_task_families") or selected),
+            "requested_task_families": list(manifest.get("requested_task_families") or []),
             "enabled_providers": manifest["enabled_providers"],
         }
 
@@ -487,6 +503,17 @@ class CapabilityDeclarationService:
 
     def _selected_capabilities(self, state) -> list[str]:
         return normalize_capability_selection(state.capability_declaration.declared_task_families) or VOICE_NODE_CAPABILITIES
+
+    def _requested_task_families(self, state) -> list[str]:
+        requested = {
+            str(task_family).strip().lower()
+            for task_family in [
+                *state.capability_declaration.requested_task_families,
+                *VOICE_NODE_REQUESTED_TASK_FAMILIES,
+            ]
+            if str(task_family).strip()
+        }
+        return [task_family for task_family in VOICE_NODE_REQUESTED_TASK_FAMILIES if task_family in requested]
 
     def _capability_endpoints(self, selected_capabilities: list[str]) -> dict:
         base_url = (
@@ -616,6 +643,8 @@ def capability_summary(state) -> CapabilitySummaryResponse:
         available=VOICE_NODE_CAPABILITIES,
         selected=normalize_capability_selection(state.capability_declaration.declared_task_families) or VOICE_NODE_CAPABILITIES,
         declared=state.capability_declaration.declared_capabilities,
+        provided_task_families=state.capability_declaration.provided_task_families,
+        requested_task_families=state.capability_declaration.requested_task_families,
         capability_status=state.capability_declaration.capability_status,
         capability_profile_id=state.capability_declaration.capability_profile_id,
         accepted_at=state.capability_declaration.accepted_at,

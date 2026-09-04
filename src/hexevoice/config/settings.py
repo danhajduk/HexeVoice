@@ -269,6 +269,8 @@ class Settings(BaseSettings):
         default="/api/assistant/turn",
         alias="VOICE_ASSISTANT_AI_NODE_TURN_PATH",
     )
+    voice_assistant_ai_node_prompt_id: str | None = Field(default=None, alias="VOICE_ASSISTANT_AI_NODE_PROMPT_ID")
+    voice_assistant_ai_node_prompt_version: str | None = Field(default=None, alias="VOICE_ASSISTANT_AI_NODE_PROMPT_VERSION")
     voice_assistant_timeout_s: float = Field(default=20.0, alias="VOICE_ASSISTANT_TIMEOUT_S", gt=0)
     voice_conversation_context_turns: int = Field(default=6, alias="VOICE_CONVERSATION_CONTEXT_TURNS", ge=0)
     voice_domain_events_enabled: bool = Field(default=True, alias="VOICE_DOMAIN_EVENTS_ENABLED")

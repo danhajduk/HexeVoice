@@ -9,6 +9,7 @@ import re
 import time
 from collections.abc import Callable, Sequence
 from typing import Any, Protocol
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import httpx
@@ -16,6 +17,7 @@ import httpx
 from hexevoice.api.models import AssistantTurnRequest, AssistantTurnResponse
 from hexevoice.assistant.intents import LocalIntentFinder
 from hexevoice.config.settings import Settings
+from hexevoice.core.client import CoreOnboardingClient
 from hexevoice.domain_events import (
     AsyncDomainEventPublisher,
     DomainEventPublishDecision,
@@ -23,6 +25,7 @@ from hexevoice.domain_events import (
     TimerCreateEventPublisher,
     utc_event_timestamp,
 )
+from hexevoice.persistence import OnboardingStateStore
 from hexevoice.persistence.voice_admin_maintenance import redact_spoken_passcodes
 from hexevoice.runtime.service import NodeRuntimeService
 from hexevoice.timer_announcements import TimerOwnershipCache
@@ -68,6 +71,16 @@ class PendingConversationFollowup:
             "created_at": self.created_at.isoformat(),
             "expires_at": self.expires_at.isoformat(),
         }
+
+
+@dataclass(frozen=True)
+class AiNodeRequestTarget:
+    url: str
+    service_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    resolution_mode: str | None = None
+    source: str = "static"
 
 
 @dataclass(frozen=True)
@@ -216,6 +229,8 @@ class LocalEchoAssistantAdapter:
 
 
 class AiNodeAssistantAdapter:
+    TASK_FAMILY = "task.chat"
+
     def __init__(
         self,
         *,
@@ -223,16 +238,28 @@ class AiNodeAssistantAdapter:
         turn_path: str,
         timeout_s: float,
         fallback: AssistantAdapter,
+        prompt_id: str | None = None,
+        prompt_version: str | None = None,
+        onboarding_state_store: OnboardingStateStore | None = None,
+        core_client: CoreOnboardingClient | None = None,
         http_client: httpx.Client | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/") if base_url else None
         self._turn_path = turn_path if turn_path.startswith("/") else f"/{turn_path}"
         self._timeout_s = timeout_s
         self._fallback = fallback
+        self._prompt_id = prompt_id.strip() if prompt_id and prompt_id.strip() else None
+        self._prompt_version = prompt_version.strip() if prompt_version and prompt_version.strip() else None
+        self._onboarding_state_store = onboarding_state_store
+        self._core_client = core_client or CoreOnboardingClient()
         self._http_client = http_client
         self._last_error: str | None = None
         self._last_error_code: str | None = None
         self._last_latency_ms: float | None = None
+        self._last_resolved_url: str | None = None
+        self._last_resolved_service_id: str | None = None
+        self._last_resolution_source: str | None = None
+        self._last_resolution_error: str | None = None
 
     def _fallback_response(
         self,
@@ -259,20 +286,256 @@ class AiNodeAssistantAdapter:
             }
         )
 
-    def _metadata_from_response(self, data: dict[str, Any]) -> dict[str, Any] | None:
+    def _metadata_from_response(self, data: dict[str, Any], target: AiNodeRequestTarget) -> dict[str, Any] | None:
         metadata: dict[str, Any] = {}
         raw_metadata = data.get("provider_metadata") or data.get("metadata")
         if isinstance(raw_metadata, dict):
             metadata.update(raw_metadata)
-        for key in ("provider_id", "provider", "model", "model_provider", "model_id", "request_id"):
+        for key in (
+            "provider_id",
+            "provider",
+            "provider_used",
+            "model",
+            "model_provider",
+            "model_id",
+            "model_used",
+            "request_id",
+            "task_id",
+            "status",
+        ):
             value = data.get(key)
             if value not in (None, ""):
                 metadata[key] = value
+        if isinstance(data.get("metrics"), dict):
+            metadata["metrics"] = data["metrics"]
+        if isinstance(data.get("resolution_metadata"), dict):
+            metadata["resolution_metadata"] = data["resolution_metadata"]
         metadata["ai_node"] = {
-            "turn_path": self._turn_path,
-            "contract_version": "voice.ai_node.turn.v1",
+            "url": target.url,
+            "service_id": target.service_id,
+            "provider": target.provider,
+            "model": target.model,
+            "resolution_mode": target.resolution_mode,
+            "resolution_source": target.source,
+            "contract_version": self._contract_version_for_url(target.url),
         }
         return metadata or None
+
+    def _static_target(self) -> AiNodeRequestTarget | None:
+        if not self._base_url:
+            return None
+        return AiNodeRequestTarget(url=self._join_url(self._base_url, self._turn_path), source="static")
+
+    def _resolve_target(self, payload: AssistantTurnRequest, *, session_id: str) -> AiNodeRequestTarget | None:
+        if not self._onboarding_state_store:
+            return self._static_target()
+        try:
+            state = self._onboarding_state_store.load()
+            node_id = state.trust_activation.node_id
+            token = state.trust_activation.node_trust_token
+            core_base_url = state.pre_trust.core_base_url
+            if state.trust_activation.trust_status != "trusted" or not node_id or not token or not core_base_url:
+                raise ValueError("core_trust_not_ready")
+            resolved = self._core_client.resolve_node_service(
+                core_base_url=core_base_url,
+                node_trust_token=token,
+                payload={
+                    "node_id": node_id,
+                    "task_family": self.TASK_FAMILY,
+                    "type": "ai",
+                    "task_context": {
+                        "type": "ai",
+                        "source": "hexevoice",
+                        "endpoint_id": payload.endpoint_id,
+                        "session_id": session_id,
+                    },
+                },
+            )
+            selected_service_id = str(resolved.get("selected_service_id") or "").strip()
+            candidates = list(resolved.get("candidates") or [])
+            selected = self._select_candidate(candidates, selected_service_id=selected_service_id)
+            if not selected:
+                raise ValueError("ai_node_resolve_no_candidate")
+            target = self._target_from_candidate(selected)
+            if not target:
+                raise ValueError("ai_node_resolve_missing_execution_url")
+            return target
+        except Exception as exc:
+            self._last_resolution_error = str(exc)
+            log.warning("AI Node Core resolution failed; falling back to configured AI URL when available: %s", exc)
+            return self._static_target()
+
+    def _select_candidate(self, candidates: list[Any], *, selected_service_id: str) -> dict[str, Any] | None:
+        dict_candidates = [candidate for candidate in candidates if isinstance(candidate, dict)]
+        if selected_service_id:
+            for candidate in dict_candidates:
+                if str(candidate.get("service_id") or "") == selected_service_id:
+                    return candidate
+        return dict_candidates[0] if dict_candidates else None
+
+    def _target_from_candidate(self, candidate: dict[str, Any]) -> AiNodeRequestTarget | None:
+        endpoint = candidate.get("capability_endpoint")
+        endpoint_url = None
+        if isinstance(endpoint, dict):
+            endpoint_url = endpoint.get("url") or endpoint.get("execution_endpoint_url")
+        url = str(endpoint_url or candidate.get("execution_endpoint_url") or "").strip()
+        if not url:
+            base_url = str(candidate.get("provider_api_base_url") or "").strip()
+            if not base_url:
+                return None
+            url = self._join_url(base_url, self._turn_path)
+        elif self._url_needs_default_path(url):
+            url = self._join_url(url, self._turn_path)
+        return AiNodeRequestTarget(
+            url=url,
+            service_id=str(candidate.get("service_id") or "") or None,
+            provider=str(candidate.get("provider") or "") or None,
+            model=self._first_model(candidate.get("models_allowed")),
+            resolution_mode=str(candidate.get("resolution_mode") or "") or None,
+            source="core",
+        )
+
+    @staticmethod
+    def _first_model(value: Any) -> str | None:
+        if isinstance(value, list) and value:
+            first = str(value[0] or "").strip()
+            return first or None
+        return None
+
+    @staticmethod
+    def _join_url(base_url: str, path: str) -> str:
+        if base_url.rstrip("/").endswith("/api") and path.startswith("/api/"):
+            path = path[4:]
+        return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
+
+    @staticmethod
+    def _url_needs_default_path(url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.path in {"", "/"}
+
+    @staticmethod
+    def _contract_version_for_url(url: str) -> str:
+        return "client-ai.execution.v2" if urlparse(url).path.rstrip("/") == "/api/execution/direct" else "voice.ai_node.turn.v1"
+
+    def _request_json(
+        self,
+        *,
+        target: AiNodeRequestTarget,
+        payload: AssistantTurnRequest,
+        session_id: str,
+        context: Sequence[ConversationTurn],
+    ) -> dict[str, Any]:
+        if self._contract_version_for_url(target.url) == "client-ai.execution.v2":
+            task_id = f"hexevoice-{uuid4().hex}"
+            return {
+                "task_id": task_id,
+                "prompt_id": self._prompt_id,
+                "prompt_version": self._prompt_version,
+                "task_family": self.TASK_FAMILY,
+                "requested_by": "hexevoice",
+                "service_id": target.service_id,
+                "inputs": {
+                    "text": payload.text,
+                    "endpoint_id": payload.endpoint_id,
+                    "session_id": session_id,
+                    "speaker_identity": payload.speaker_identity,
+                    "speaker_identity_policy": payload.speaker_identity_policy,
+                    "speaker_personalization_enabled": payload.speaker_personalization_enabled,
+                    "context": [
+                        {
+                            "endpoint_id": turn.endpoint_id,
+                            "session_id": turn.session_id,
+                            "heard_text": turn.heard_text,
+                            "reply_text": turn.reply_text,
+                        }
+                        for turn in context
+                    ],
+                },
+                "constraints": {},
+                "response_mode": "sync",
+                "timeout_s": max(1, int(self._timeout_s)),
+                "trace_id": f"{session_id}-{uuid4().hex[:8]}",
+            }
+        return {
+            "contract_version": "voice.ai_node.turn.v1",
+            "source_node_type": "voice-node",
+            "endpoint_id": payload.endpoint_id,
+            "session_id": session_id,
+            "text": payload.text,
+            "speaker_identity": payload.speaker_identity,
+            "speaker_identity_policy": payload.speaker_identity_policy,
+            "speaker_personalization_enabled": payload.speaker_personalization_enabled,
+            "context": [
+                {
+                    "endpoint_id": turn.endpoint_id,
+                    "session_id": turn.session_id,
+                    "heard_text": turn.heard_text,
+                    "reply_text": turn.reply_text,
+                }
+                for turn in context
+            ],
+        }
+
+    @staticmethod
+    def _response_text(data: dict[str, Any]) -> str:
+        output = data.get("output")
+        if isinstance(output, dict):
+            output_text = output.get("reply_text") or output.get("spoken_text") or output.get("text")
+            if output_text not in (None, ""):
+                return str(output_text).strip()
+        return str(data.get("reply_text") or data.get("spoken_text") or data.get("text") or "").strip()
+
+    def _execute_target(
+        self,
+        *,
+        client: httpx.Client,
+        target: AiNodeRequestTarget,
+        payload: AssistantTurnRequest,
+        session_id: str,
+        context: Sequence[ConversationTurn],
+        started_at: float,
+    ) -> AssistantTurnResponse:
+        response = client.post(
+            target.url,
+            json=self._request_json(target=target, payload=payload, session_id=session_id, context=context),
+        )
+        response.raise_for_status()
+        data = response.json()
+        if str(data.get("status") or "").lower() in {"failed", "rejected", "error"}:
+            raise ValueError(str(data.get("error_message") or data.get("error_code") or "ai_node_execution_failed"))
+        text = self._response_text(data)
+        if not text:
+            raise ValueError("empty_ai_node_reply")
+        provider_latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
+        heard_text = str(data.get("heard_text") or payload.text).strip()
+        device_state = (
+            data.get("device_state")
+            if data.get("device_state") in {"idle", "listening", "thinking", "speaking"}
+            else "speaking"
+        )
+        self._last_error = None
+        self._last_error_code = None
+        self._last_latency_ms = provider_latency_ms
+        self._last_resolved_url = target.url
+        self._last_resolved_service_id = target.service_id
+        self._last_resolution_source = target.source
+        self._last_resolution_error = None if target.source == "core" else self._last_resolution_error
+        provider_id = str(data.get("provider_id") or data.get("provider") or data.get("provider_used") or "ai_node")
+        return AssistantTurnResponse(
+            endpoint_id=str(data.get("endpoint_id") or payload.endpoint_id),
+            session_id=str(data.get("session_id") or session_id),
+            heard_text=heard_text,
+            reply_text=text,
+            spoken_text=str(data.get("spoken_text") or text),
+            handled_locally=bool(data.get("handled_locally", False)),
+            command=data.get("command") if isinstance(data.get("command"), str) else None,
+            device_state=device_state,
+            provider_id=provider_id,
+            model=str(data.get("model") or data.get("model_used")) if data.get("model") or data.get("model_used") else None,
+            error=None,
+            provider_latency_ms=provider_latency_ms,
+            provider_metadata=self._metadata_from_response(data, target),
+        )
 
     def _error_code(self, exc: Exception) -> str:
         if isinstance(exc, httpx.TimeoutException):
@@ -292,7 +555,8 @@ class AiNodeAssistantAdapter:
         session_id: str,
         context: Sequence[ConversationTurn] = (),
     ) -> AssistantTurnResponse:
-        if not self._base_url:
+        target = self._resolve_target(payload, session_id=session_id)
+        if not target:
             return self._fallback_response(
                 payload,
                 session_id=session_id,
@@ -303,60 +567,34 @@ class AiNodeAssistantAdapter:
         client = self._http_client or httpx.Client(timeout=self._timeout_s)
         started_at = time.perf_counter()
         try:
-            response = client.post(
-                f"{self._base_url}{self._turn_path}",
-                json={
-                    "contract_version": "voice.ai_node.turn.v1",
-                    "source_node_type": "voice-node",
-                    "endpoint_id": payload.endpoint_id,
-                    "session_id": session_id,
-                    "text": payload.text,
-                    "speaker_identity": payload.speaker_identity,
-                    "speaker_identity_policy": payload.speaker_identity_policy,
-                    "speaker_personalization_enabled": payload.speaker_personalization_enabled,
-                    "context": [
-                        {
-                            "endpoint_id": turn.endpoint_id,
-                            "session_id": turn.session_id,
-                            "heard_text": turn.heard_text,
-                            "reply_text": turn.reply_text,
-                        }
-                        for turn in context
-                    ],
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            text = str(data.get("reply_text") or data.get("spoken_text") or data.get("text") or "").strip()
-            if not text:
-                raise ValueError("empty_ai_node_reply")
-            provider_latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
-            heard_text = str(data.get("heard_text") or payload.text).strip()
-            device_state = (
-                data.get("device_state")
-                if data.get("device_state") in {"idle", "listening", "thinking", "speaking"}
-                else "speaking"
-            )
-            self._last_error = None
-            self._last_error_code = None
-            self._last_latency_ms = provider_latency_ms
-            provider_id = str(data.get("provider_id") or data.get("provider") or "ai_node")
-            return AssistantTurnResponse(
-                endpoint_id=str(data.get("endpoint_id") or payload.endpoint_id),
-                session_id=str(data.get("session_id") or session_id),
-                heard_text=heard_text,
-                reply_text=text,
-                spoken_text=str(data.get("spoken_text") or text),
-                handled_locally=bool(data.get("handled_locally", False)),
-                command=data.get("command") if isinstance(data.get("command"), str) else None,
-                device_state=device_state,
-                provider_id=provider_id,
-                model=str(data.get("model")) if data.get("model") else None,
-                error=None,
-                provider_latency_ms=provider_latency_ms,
-                provider_metadata=self._metadata_from_response(data),
+            return self._execute_target(
+                client=client,
+                target=target,
+                payload=payload,
+                session_id=session_id,
+                context=context,
+                started_at=started_at,
             )
         except Exception as exc:
+            static_target = self._static_target()
+            if target.source == "core" and static_target and static_target.url != target.url:
+                try:
+                    log.warning(
+                        "Core-resolved AI Node URL failed; retrying configured AI URL: resolved_url=%s static_url=%s error=%s",
+                        target.url,
+                        static_target.url,
+                        exc,
+                    )
+                    return self._execute_target(
+                        client=client,
+                        target=static_target,
+                        payload=payload,
+                        session_id=session_id,
+                        context=context,
+                        started_at=time.perf_counter(),
+                    )
+                except Exception as retry_exc:
+                    exc = retry_exc
             error_code = self._error_code(exc)
             self._last_latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
             log.warning("AI Node assistant turn failed; using local echo fallback: code=%s error=%s", error_code, exc)
@@ -372,16 +610,23 @@ class AiNodeAssistantAdapter:
                 client.close()
 
     def status(self) -> dict:
+        static_target = self._static_target()
         return {
             "provider": "ai_node",
             "healthy": self._last_error is None,
             "configured": bool(self._base_url),
             "base_url": self._base_url,
             "turn_path": self._turn_path,
+            "prompt_id": self._prompt_id,
+            "prompt_version": self._prompt_version,
+            "last_resolved_url": self._last_resolved_url,
+            "last_resolved_service_id": self._last_resolved_service_id,
+            "last_resolution_source": self._last_resolution_source,
+            "last_resolution_error": self._last_resolution_error,
             "last_error": self._last_error,
             "last_error_code": self._last_error_code,
             "last_latency_ms": self._last_latency_ms,
-            "contract_version": "voice.ai_node.turn.v1",
+            "contract_version": self._contract_version_for_url(static_target.url if static_target else self._turn_path),
             "fallback": self._fallback.status(),
         }
 
@@ -397,10 +642,14 @@ class AssistantTurnService:
         timer_event_publisher: TimerCreateEventPublisher | None = None,
         timer_ownership_cache: TimerOwnershipCache | None = None,
         endpoint_command_dispatcher: EndpointCommandDispatcher | None = None,
+        onboarding_state_store: OnboardingStateStore | None = None,
+        core_client: CoreOnboardingClient | None = None,
     ) -> None:
         self._settings = settings
         self._runtime_service = runtime_service
         self._session_counter = 0
+        self._onboarding_state_store = onboarding_state_store
+        self._core_client = core_client or CoreOnboardingClient()
         self._adapter = adapter or self._build_adapter()
         self._intent_finder = intent_finder or LocalIntentFinder()
         self._timer_event_publisher = timer_event_publisher or AsyncDomainEventPublisher(
@@ -680,6 +929,10 @@ class AssistantTurnService:
                 base_url=self._settings.voice_assistant_ai_node_base_url,
                 turn_path=self._settings.voice_assistant_ai_node_turn_path,
                 timeout_s=self._settings.voice_assistant_timeout_s,
+                prompt_id=self._settings.voice_assistant_ai_node_prompt_id,
+                prompt_version=self._settings.voice_assistant_ai_node_prompt_version,
+                onboarding_state_store=self._onboarding_state_store,
+                core_client=self._core_client,
                 fallback=fallback,
             )
         return fallback

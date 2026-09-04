@@ -1067,6 +1067,8 @@ class CapabilitySummaryResponse(BaseModel):
     available: list[str] = Field(default_factory=list)
     selected: list[str] = Field(default_factory=list)
     declared: list[str] = Field(default_factory=list)
+    provided_task_families: list[str] = Field(default_factory=list)
+    requested_task_families: list[str] = Field(default_factory=list)
     capability_status: str = "missing"
     capability_profile_id: str | None = None
     accepted_at: str | None = None
@@ -1083,6 +1085,8 @@ class CapabilityDeclarationResponse(BaseModel):
     manifest_version: str
     accepted_at: str | None = None
     declared_capabilities: list[str] = Field(default_factory=list)
+    provided_task_families: list[str] = Field(default_factory=list)
+    requested_task_families: list[str] = Field(default_factory=list)
     enabled_providers: list[str] = Field(default_factory=list)
     capability_profile_id: str | None = None
     governance_version: str | None = None

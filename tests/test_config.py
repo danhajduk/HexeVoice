@@ -91,6 +91,8 @@ def test_assistant_settings_default_to_local_echo():
     assert settings.voice_assistant_provider == "local_echo"
     assert settings.voice_assistant_ai_node_base_url is None
     assert settings.voice_assistant_ai_node_turn_path == "/api/assistant/turn"
+    assert settings.voice_assistant_ai_node_prompt_id is None
+    assert settings.voice_assistant_ai_node_prompt_version is None
     assert settings.voice_assistant_timeout_s == 20.0
     assert settings.voice_conversation_context_turns == 6
     assert settings.voice_domain_events_enabled is True

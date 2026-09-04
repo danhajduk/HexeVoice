@@ -829,6 +829,7 @@ def create_app(
         runtime_service=service,
         intent_finder=LocalIntentFinder(registry=voice_intent_registry),
         timer_ownership_cache=timer_ownership_cache,
+        onboarding_state_store=onboarding_state_store,
     )
 
     def endpoint_audience_policy(endpoint_id: str) -> dict[str, object]:

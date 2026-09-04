@@ -1,7 +1,7 @@
 import httpx
 
 from hexevoice.api.models import CapabilitySelectionRequest
-from hexevoice.capabilities.service import CapabilityDeclarationService, VOICE_NODE_CAPABILITIES
+from hexevoice.capabilities.service import CapabilityDeclarationService, VOICE_NODE_CAPABILITIES, VOICE_NODE_REQUESTED_TASK_FAMILIES
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -53,6 +53,8 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
                 "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
                 "declared_capabilities": VOICE_NODE_CAPABILITIES,
+                "provided_task_families": VOICE_NODE_CAPABILITIES,
+                "requested_task_families": VOICE_NODE_REQUESTED_TASK_FAMILIES,
                 "enabled_providers": ["voice"],
                 "capability_profile_id": "profile-123",
                 "governance_version": "gov-2026.04",
@@ -80,6 +82,8 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     assert captured["capability_json"]["manifest"]["manifest_version"] == "1.0"
     assert captured["capability_json"]["manifest"]["declared_task_families"] == VOICE_NODE_CAPABILITIES
     assert captured["capability_json"]["manifest"]["declared_capabilities"] == VOICE_NODE_CAPABILITIES
+    assert captured["capability_json"]["manifest"]["provided_task_families"] == VOICE_NODE_CAPABILITIES
+    assert captured["capability_json"]["manifest"]["requested_task_families"] == VOICE_NODE_REQUESTED_TASK_FAMILIES
     endpoints = captured["capability_json"]["manifest"]["capability_endpoints"]
     assert endpoints["voice.tts.synthesize"]["method"] == "POST"
     assert endpoints["voice.tts.synthesize"]["path"] == "/api/tts/synthesize"
@@ -92,6 +96,10 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     assert captured["budget_json"]["supported_providers"] == ["voice"]
     assert captured["budget_json"]["suggested_money_limit"] is None
     assert captured["budget_json"]["suggested_compute_limit"] is None
+    assert response.provided_task_families == VOICE_NODE_CAPABILITIES
+    assert response.requested_task_families == VOICE_NODE_REQUESTED_TASK_FAMILIES
+    assert persisted.capability_declaration.provided_task_families == VOICE_NODE_CAPABILITIES
+    assert persisted.capability_declaration.requested_task_families == VOICE_NODE_REQUESTED_TASK_FAMILIES
     assert persisted.capability_declaration.capability_profile_id == "profile-123"
     assert persisted.capability_declaration.capability_status == "accepted"
     assert persisted.resume.current_step_id == "governance_sync"
@@ -124,6 +132,8 @@ def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
                 "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
                 "declared_capabilities": ["voice.inference", "voice.tts.synthesize"],
+                "provided_task_families": ["voice.inference", "voice.tts.synthesize"],
+                "requested_task_families": VOICE_NODE_REQUESTED_TASK_FAMILIES,
                 "enabled_providers": ["voice"],
                 "capability_profile_id": "profile-123",
                 "governance_version": "gov-2026.04",
@@ -145,6 +155,8 @@ def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
     manifest = captured["capability_json"]["manifest"]
     assert response.declared_capabilities == ["voice.inference", "voice.tts.synthesize"]
     assert manifest["declared_capabilities"] == ["voice.inference", "voice.tts.synthesize"]
+    assert manifest["provided_task_families"] == ["voice.inference", "voice.tts.synthesize"]
+    assert manifest["requested_task_families"] == VOICE_NODE_REQUESTED_TASK_FAMILIES
     assert sorted(manifest["capability_endpoints"]) == ["voice.tts.synthesize"]
     assert captured["budget_json"]["supported_providers"] == ["voice"]
 
@@ -188,6 +200,8 @@ def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypa
                 "manifest_version": "1.0",
                 "accepted_at": "2026-04-08T03:00:00+00:00",
                 "declared_capabilities": VOICE_NODE_CAPABILITIES,
+                "provided_task_families": VOICE_NODE_CAPABILITIES,
+                "requested_task_families": VOICE_NODE_REQUESTED_TASK_FAMILIES,
                 "enabled_providers": ["piper", "voice"],
                 "capability_profile_id": "profile-123",
                 "governance_version": "gov-2026.04",

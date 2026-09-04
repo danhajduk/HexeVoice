@@ -193,9 +193,15 @@ provider models/configs, selected capabilities, runtime URLs or sockets, budget
 metadata, and current governance metadata so the operator can inspect the exact
 shape before declaring to Core.
 It also exposes a Core-visible summary for STT, TTS, and wake services,
-available models, enabled capabilities, disabled capabilities, and enabled
-provider states so the setup UI can show the high-level declaration outcome
-without forcing operators to read raw JSON.
+available models, enabled capabilities, disabled capabilities, enabled provider
+states, provider-side `provided_task_families`, and requester-side
+`requested_task_families` so the setup UI can show the high-level declaration
+outcome without forcing operators to read raw JSON. HexeVoice declares
+`task.chat` as a requested task family; when `VOICE_ASSISTANT_PROVIDER=ai_node`
+is active, assistant turns resolve that task through Core and use the returned
+AI execution URL. `VOICE_ASSISTANT_AI_NODE_PROMPT_ID` and
+`VOICE_ASSISTANT_AI_NODE_PROMPT_VERSION` can pin the AI Node prompt contract
+used for `/api/execution/direct`.
 Governance sync status includes a summary of Core-returned accepted, denied,
 pending, and locally required changes. The setup UI renders those fields from
 the stored governance bundle while still preserving the raw bundle in status.
