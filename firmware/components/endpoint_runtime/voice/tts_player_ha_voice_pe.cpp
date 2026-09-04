@@ -41,6 +41,7 @@ constexpr size_t kHttpReadBufferBytes = 4096;
 constexpr int kPlaybackDmaDescNum = 3;
 constexpr size_t kPlaybackFrameCapacity = 96;
 constexpr size_t kPlaybackDrainFrames = kSpeakerSampleRate / 4;
+constexpr bool kStreamTtsWhileDownloading = false;
 constexpr int kHttpReadIdleRetryDelayMs = 20;
 constexpr int kHttpReadMaxIdleRetries = 50;
 constexpr size_t kMaxWavHeaderBytes = 4096;
@@ -1076,18 +1077,25 @@ void playback_task(void *arg) {
           }
         }
       } else {
-        const StreamPlaybackResult streamed = stream_http_wav(url, request, &byte_count);
-        if (streamed == StreamPlaybackResult::kPlayed) {
-          loaded = true;
-          played = true;
-        } else if (streamed == StreamPlaybackResult::kFallback) {
-          ESP_LOGI(kTag, "Falling back to full-buffer TTS playback");
+        if (kStreamTtsWhileDownloading) {
+          const StreamPlaybackResult streamed = stream_http_wav(url, request, &byte_count);
+          if (streamed == StreamPlaybackResult::kPlayed) {
+            loaded = true;
+            played = true;
+          } else if (streamed == StreamPlaybackResult::kFallback) {
+            ESP_LOGI(kTag, "Falling back to full-buffer TTS playback");
+            loaded = fetch_audio(url, &audio);
+            played = loaded && play_wav(audio, request);
+            byte_count = audio.size();
+          } else {
+            loaded = false;
+            played = false;
+          }
+        } else {
+          ESP_LOGI(kTag, "Downloading full TTS WAV before Voice PE playback");
           loaded = fetch_audio(url, &audio);
           played = loaded && play_wav(audio, request);
           byte_count = audio.size();
-        } else {
-          loaded = false;
-          played = false;
         }
       }
     } else {
