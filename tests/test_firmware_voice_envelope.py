@@ -1230,8 +1230,8 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "pins::kVoicePeSpeakerBclk" in tts_source
     assert "pins::kVoicePeSpeakerDout" in tts_source
     assert "kSpeakerSampleRate = 48000" in tts_source
-    assert "kPlaybackDmaDescNum = 4" in tts_source
-    assert "kPlaybackFrameCapacity = 192" in tts_source
+    assert "kPlaybackDmaDescNum = 3" in tts_source
+    assert "kPlaybackFrameCapacity = 96" in tts_source
     assert "I2S_ROLE_SLAVE" in tts_source
     assert "I2S_DATA_BIT_WIDTH_32BIT" in tts_source
     assert "I2S_SLOT_MODE_STEREO" in tts_source
