@@ -36,7 +36,7 @@ void hexe_ble_pairing_credentials_read_result(int succeeded, const char *reason,
 static const char *TAG = "hexe_ble_gatt";
 enum {
   kPairingConnectTimeoutMs = 30000,
-  kPairingScanDurationMs = 5000,
+  kPairingScanDurationMs = 60000,
   kPairingScanPollIntervalMs = 20000,
   kMaxPairingOfferBytes = 1024,
   kMaxEncryptedCredentialBytes = 4096,
