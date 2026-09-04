@@ -39,7 +39,8 @@ constexpr char kRecoveryApiVersion[] = "hexe-recovery-api-v1";
 constexpr char kOtaSignatureAlgorithm[] = "hmac-sha256";
 constexpr size_t kSha256BlockBytes = 64;
 constexpr size_t kMaxJsonBodyBytes = 2048;
-constexpr size_t kInstallBufferBytes = 4096;
+constexpr size_t kInstallBufferBytes = 2048;
+constexpr size_t kRecoveryHttpServerStackBytes = 12 * 1024;
 
 constexpr char kEndpointIdKey[] = "endpoint_id";
 constexpr char kDisplayNameKey[] = "display_name";
@@ -1285,6 +1286,7 @@ void start_http_server(bool full_rescue_routes) {
 
   httpd_config_t config = HTTPD_DEFAULT_CONFIG();
   config.server_port = 80;
+  config.stack_size = kRecoveryHttpServerStackBytes;
   config.max_uri_handlers = 12;
   const esp_err_t err = httpd_start(&g_http_server, &config);
   if (err != ESP_OK) {
