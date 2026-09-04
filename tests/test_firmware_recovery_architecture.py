@@ -178,6 +178,9 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "start_recovery_wifi(false)" in control_source
     assert "Starting recovery STA from BLE credentials" in control_source
     assert "Recovery Wi-Fi started in %s mode temporary_ap=%d station_configured=%d" in control_source
+    assert "kStationReconnectAttempts = 10" in control_source
+    assert "Recovery STA disconnected; reconnect attempt %d/%d err=%s" in control_source
+    assert "Recovery STA disconnected; reconnect attempts exhausted" in control_source
     assert "init_recovery_ble_provisioning()" in control_source
     assert "render_recovery_ble_status_json()" in control_source
 

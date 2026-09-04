@@ -50,12 +50,14 @@ constexpr char kVolumeKey[] = "volume_percent";
 constexpr char kMutedKey[] = "muted";
 constexpr char kMicroVadPauseMsKey[] = "micro_vad_pause_ms";
 constexpr char kMicroVadEnergyThresholdKey[] = "micro_vad_energy_threshold";
+constexpr int kStationReconnectAttempts = 10;
 
 httpd_handle_t g_http_server = nullptr;
 bool g_wifi_initialized = false;
 bool g_http_api_active = false;
 bool g_temporary_ap_active = false;
 bool g_station_configured = false;
+int g_station_reconnect_attempts = 0;
 char g_network_mode[12] = "not_started";
 char g_ip_address[16] = "0.0.0.0";
 
@@ -469,9 +471,21 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
   if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP && event_data != nullptr) {
     const auto *event = static_cast<const ip_event_got_ip_t *>(event_data);
     std::snprintf(g_ip_address, sizeof(g_ip_address), IPSTR, IP2STR(&event->ip_info.ip));
+    g_station_reconnect_attempts = 0;
     ESP_LOGI(kTag, "Recovery STA connected at %s", g_ip_address);
   } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED && g_station_configured) {
-    ESP_LOGW(kTag, "Recovery STA disconnected");
+    if (g_station_reconnect_attempts < kStationReconnectAttempts) {
+      ++g_station_reconnect_attempts;
+      const esp_err_t err = esp_wifi_connect();
+      ESP_LOGW(
+          kTag,
+          "Recovery STA disconnected; reconnect attempt %d/%d err=%s",
+          g_station_reconnect_attempts,
+          kStationReconnectAttempts,
+          esp_err_to_name(err));
+    } else {
+      ESP_LOGW(kTag, "Recovery STA disconnected; reconnect attempts exhausted");
+    }
   }
 }
 
