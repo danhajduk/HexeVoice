@@ -117,6 +117,8 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "ble_gap_disc(" in gatt
     assert "kPairingScanDurationMs = 60000" in gatt
     assert "kPairingScanPollIntervalMs = 20000" in gatt
+    assert "params.filter_duplicates = 0" in gatt
+    assert "filter_duplicates=%d" in gatt
     assert "pairing_scan_poll_task" in gatt
     assert "BLE_HS_FOREVER" not in gatt[gatt.index("static int start_pairing_scan") : gatt.index("static int stop_pairing_scan")]
     assert "ble_gap_connect(" in gatt

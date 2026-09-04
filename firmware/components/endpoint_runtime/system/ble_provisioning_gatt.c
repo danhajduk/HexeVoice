@@ -355,14 +355,15 @@ static int start_pairing_scan(void) {
   params.passive = 0;
   params.itvl = 0x0060;
   params.window = 0x0018;
-  params.filter_duplicates = 1;
+  params.filter_duplicates = 0;
   ESP_LOGI(
       TAG,
-      "BLE host pairing scan_window start duration_ms=%d poll_interval_ms=%d interval=0x%04x window=0x%04x",
+      "BLE host pairing scan_window start duration_ms=%d poll_interval_ms=%d interval=0x%04x window=0x%04x filter_duplicates=%d",
       kPairingScanDurationMs,
       kPairingScanPollIntervalMs,
       params.itvl,
-      params.window);
+      params.window,
+      params.filter_duplicates);
   int rc = ble_gap_disc(own_addr_type, kPairingScanDurationMs, &params, gap_event, NULL);
   if (rc == 0) {
     pairing_scan_active = 1;
