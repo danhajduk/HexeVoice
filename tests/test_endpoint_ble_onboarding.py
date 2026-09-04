@@ -9,6 +9,7 @@ from hexevoice.api.models import (
     EndpointBlePairingSessionStartRequest,
     EndpointBleProvisionWifiRequest,
     EndpointBleScanRequest,
+    EndpointBleWifiCredentialsRequest,
 )
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -606,6 +607,61 @@ def test_ble_pairing_approval_status_requires_matching_session_identity(tmp_path
     assert service.pairing_session_approval_status("blepair-test", "other-device")["approved"] is False
 
 
+def test_ble_wifi_credentials_are_saved_encrypted_and_redacted(tmp_path):
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=FakeCoreClient(),
+        supervisor_client=FakeSupervisorClient(),
+    )
+
+    status = service.save_wifi_credentials(
+        EndpointBleWifiCredentialsRequest(
+            wifi_ssid="KitchenNet",
+            wifi_password="correct-password",
+            backend_host="hexe.local",
+            http_port=9004,
+            ws_port=9004,
+            use_tls=False,
+        )
+    )
+    saved = service.wifi_credentials_status()
+    raw_file = (tmp_path / "endpoint_ble_wifi_credentials.json").read_text(encoding="utf-8")
+
+    assert status.ok is True
+    assert saved.wifi_ssid == "KitchenNet"
+    assert saved.wifi_password_saved is True
+    assert saved.backend_host == "hexe.local"
+    assert "correct-password" not in raw_file
+    assert "encrypted_wifi_password" in raw_file
+    assert (tmp_path / "endpoint_ble_wifi_credentials.key").exists()
+
+
+def test_ble_onboarding_uses_saved_wifi_password_when_browser_does_not_echo_it(tmp_path):
+    core = FakeCoreClient(status="granted")
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+    service.save_wifi_credentials(
+        EndpointBleWifiCredentialsRequest(
+            wifi_ssid="KitchenNet",
+            wifi_password="correct-password",
+            backend_host="hexe.local",
+            http_port=9004,
+            ws_port=9004,
+            use_tls=False,
+        )
+    )
+
+    response = service.provision_wifi(request_payload(wifi_password=None, save_wifi_credentials=True))
+
+    assert response.ok is True
+    assert supervisor.calls[0]["credential_payload"]["wifi_password"] == "correct-password"
+    assert response.credential_payload["wifi_password"] == "[REDACTED]"
+
+
 def test_ble_onboarding_granted_calls_supervisor_and_releases_lease(tmp_path):
     core = FakeCoreClient(status="granted")
     supervisor = FakeSupervisorClient()
@@ -732,7 +788,10 @@ def test_frontend_exposes_core_governed_ble_operator_flow():
     assert "getEndpointBlePairingSession" in client_source
     assert "approveEndpointBlePairingSession" in client_source
     assert "cancelEndpointBlePairingSession" in client_source
+    assert "getEndpointBleWifiCredentials" in client_source
+    assert "saveEndpointBleWifiCredentials" in client_source
     assert '"/api/endpoint/ble/provision-wifi"' in client_source
+    assert '"/api/endpoint/ble/wifi-credentials"' in client_source
     assert '"/api/endpoint/ble/scan"' in client_source
     assert '"/api/endpoint/ble/identity"' in client_source
     assert '"/api/endpoint/ble/pairing-sessions"' in client_source
@@ -740,6 +799,8 @@ def test_frontend_exposes_core_governed_ble_operator_flow():
     assert "Core-Governed BLE" in dashboard_source
     assert "Start Pairing" in dashboard_source
     assert "Approve Device" in dashboard_source
+    assert "Send Wi-Fi" in dashboard_source
+    assert "Save Wi-Fi" in dashboard_source
     assert "Advanced fallback scan" in dashboard_source
     assert "Scan BLE" in dashboard_source
     assert "board_profile" in dashboard_source

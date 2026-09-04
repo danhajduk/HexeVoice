@@ -18,8 +18,11 @@ from hexevoice.api.models import (
     EndpointBleProvisionWifiResponse,
     EndpointBleScanRequest,
     EndpointBleScanResponse,
+    EndpointBleWifiCredentialsRequest,
+    EndpointBleWifiCredentialsResponse,
 )
 from hexevoice.core.client import CoreOnboardingClient
+from hexevoice.endpoint.ble_wifi_credentials import BleWifiCredentialStore
 from hexevoice.persistence import OnboardingStateStore
 from hexevoice.supervisor.client import SupervisorApiClient
 
@@ -107,10 +110,23 @@ class EndpointBleOnboardingService:
         onboarding_state_store: OnboardingStateStore,
         core_client: CoreOnboardingClient | None = None,
         supervisor_client: SupervisorApiClient | None = None,
+        wifi_credential_store: BleWifiCredentialStore | None = None,
     ) -> None:
         self._store = onboarding_state_store
         self._core_client = core_client or CoreOnboardingClient()
         self._supervisor_client = supervisor_client or SupervisorApiClient()
+        self._wifi_credentials = wifi_credential_store or BleWifiCredentialStore(
+            path=onboarding_state_store.path.parent / "endpoint_ble_wifi_credentials.json",
+            key_path=onboarding_state_store.path.parent / "endpoint_ble_wifi_credentials.key",
+        )
+
+    def wifi_credentials_status(self) -> EndpointBleWifiCredentialsResponse:
+        return EndpointBleWifiCredentialsResponse.model_validate(self._wifi_credentials.status())
+
+    def save_wifi_credentials(self, payload: EndpointBleWifiCredentialsRequest) -> EndpointBleWifiCredentialsResponse:
+        return EndpointBleWifiCredentialsResponse.model_validate(
+            self._wifi_credentials.save(payload=payload.model_dump(exclude_none=True))
+        )
 
     def start_pairing_session(self, payload: EndpointBlePairingSessionStartRequest) -> EndpointBlePairingSessionResponse:
         core_base_url, node_id, node_trust_token = self._trusted_node_context()
@@ -430,7 +446,19 @@ class EndpointBleOnboardingService:
             )
 
         provisioning = self._provisioning_context(payload)
-        credential_payload = self._credential_payload(payload)
+        saved_wifi_password = None if payload.wifi_password else self._wifi_credentials.saved_password_for_ssid(payload.wifi_ssid)
+        credential_payload = self._credential_payload(payload, wifi_password=payload.wifi_password or saved_wifi_password)
+        if payload.save_wifi_credentials:
+            self._wifi_credentials.save(
+                payload={
+                    "wifi_ssid": payload.wifi_ssid,
+                    "wifi_password": payload.wifi_password,
+                    "backend_host": payload.backend_host,
+                    "http_port": payload.http_port,
+                    "ws_port": payload.ws_port,
+                    "use_tls": payload.use_tls,
+                }
+            )
         access_response = self._request_access(
             core_base_url=core_base_url,
             node_trust_token=node_trust_token,
@@ -596,11 +624,11 @@ class EndpointBleOnboardingService:
             }
         )
 
-    def _credential_payload(self, payload: EndpointBleProvisionWifiRequest) -> dict[str, Any]:
+    def _credential_payload(self, payload: EndpointBleProvisionWifiRequest, *, wifi_password: str | None = None) -> dict[str, Any]:
         return _clean_dict(
             {
                 "wifi_ssid": payload.wifi_ssid,
-                "wifi_password": payload.wifi_password,
+                "wifi_password": wifi_password,
                 "backend_host": payload.backend_host,
                 "http_port": payload.http_port,
                 "ws_port": payload.ws_port,

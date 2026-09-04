@@ -605,6 +605,14 @@ export async function provisionEndpointBleWifi(payload) {
   return sendJson("/api/endpoint/ble/provision-wifi", { body: payload });
 }
 
+export async function getEndpointBleWifiCredentials() {
+  return sendJson("/api/endpoint/ble/wifi-credentials", { method: "GET" });
+}
+
+export async function saveEndpointBleWifiCredentials(payload) {
+  return sendJson("/api/endpoint/ble/wifi-credentials", { method: "PUT", body: payload });
+}
+
 export async function scanEndpointBleDevices(payload = {}) {
   return sendJson("/api/endpoint/ble/scan", { body: payload });
 }

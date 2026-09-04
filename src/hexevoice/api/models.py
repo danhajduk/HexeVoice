@@ -330,12 +330,33 @@ class EndpointBleProvisionWifiRequest(BaseModel):
     use_tls: bool = True
     wifi_ssid: str = Field(min_length=1, max_length=32)
     wifi_password: str | None = Field(default=None, min_length=8, max_length=63)
+    save_wifi_credentials: bool = False
 
     @model_validator(mode="after")
     def require_pairing_binding(self) -> "EndpointBleProvisionWifiRequest":
         if not (self.pairing_nonce or self.claim_code_ref):
             raise ValueError("pairing_nonce_or_claim_code_ref_required")
         return self
+
+
+class EndpointBleWifiCredentialsRequest(BaseModel):
+    wifi_ssid: str | None = Field(default=None, min_length=1, max_length=32)
+    wifi_password: str | None = Field(default=None, min_length=8, max_length=63)
+    backend_host: str | None = Field(default=None, min_length=1, max_length=253)
+    http_port: int | None = Field(default=None, ge=1, le=65535)
+    ws_port: int | None = Field(default=None, ge=1, le=65535)
+    use_tls: bool | None = None
+
+
+class EndpointBleWifiCredentialsResponse(BaseModel):
+    ok: bool
+    wifi_ssid: str | None = None
+    wifi_password_saved: bool = False
+    backend_host: str | None = None
+    http_port: int | None = None
+    ws_port: int | None = None
+    use_tls: bool | None = None
+    updated_at: str | None = None
 
 
 class EndpointBleScanRequest(BaseModel):

@@ -70,6 +70,8 @@ from hexevoice.api.models import (
     EndpointBleProvisionWifiResponse,
     EndpointBleScanRequest,
     EndpointBleScanResponse,
+    EndpointBleWifiCredentialsRequest,
+    EndpointBleWifiCredentialsResponse,
     EndpointCommandRequest,
     EndpointCommandResponse,
     EndpointDiscoveryRequest,
@@ -128,6 +130,7 @@ from hexevoice.assistant.service import QueuedEndpointCommandDispatcher
 from hexevoice.capabilities.service import CapabilityDeclarationService
 from hexevoice.capabilities.schema import CapabilityManifestValidationError, validate_capability_declaration
 from hexevoice.endpoint.beacon import EndpointBeaconService
+from hexevoice.endpoint.ble_wifi_credentials import BleWifiCredentialStore
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.endpoint.discovery import EndpointDiscoveryService, EndpointDiscoveryUdpProtocol
 from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser
@@ -685,6 +688,10 @@ def create_app(
     endpoint_ble_onboarding_service = EndpointBleOnboardingService(
         onboarding_state_store=onboarding_state_store,
         supervisor_client=SupervisorApiClient(),
+        wifi_credential_store=BleWifiCredentialStore(
+            path=app_settings.resolved_endpoint_ble_wifi_credentials_path(),
+            key_path=app_settings.resolved_endpoint_ble_wifi_credentials_key_path(),
+        ),
     )
     endpoint_discovery_service = EndpointDiscoveryService(
         settings=app_settings,
@@ -1658,6 +1665,14 @@ def create_app(
         response = endpoint_ble_onboarding_service.provision_wifi(payload)
         node_ui_page_cache.invalidate()
         return response
+
+    @app.get("/api/endpoint/ble/wifi-credentials", response_model=EndpointBleWifiCredentialsResponse)
+    async def endpoint_ble_wifi_credentials_status() -> EndpointBleWifiCredentialsResponse:
+        return endpoint_ble_onboarding_service.wifi_credentials_status()
+
+    @app.put("/api/endpoint/ble/wifi-credentials", response_model=EndpointBleWifiCredentialsResponse)
+    async def endpoint_ble_wifi_credentials_save(payload: EndpointBleWifiCredentialsRequest) -> EndpointBleWifiCredentialsResponse:
+        return endpoint_ble_onboarding_service.save_wifi_credentials(payload)
 
     @app.post("/api/endpoint/ble/scan", response_model=EndpointBleScanResponse)
     async def endpoint_ble_scan(payload: EndpointBleScanRequest) -> EndpointBleScanResponse:

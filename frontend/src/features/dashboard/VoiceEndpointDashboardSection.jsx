@@ -11,6 +11,7 @@ import {
   deleteVoiceTtsArtifact,
   deleteWakeRecording,
   deliverEndpointMedia,
+  getEndpointBleWifiCredentials,
   getEndpointMediaAssets,
   getEndpointMediaInventory,
   getEndpointVolume,
@@ -30,6 +31,7 @@ import {
   replayEndpointResponse,
   replayVoiceSession,
   scanEndpointBleDevices,
+  saveEndpointBleWifiCredentials,
   setEndpointVolume,
   startEndpointBlePairingSession,
   startVoicePlacementCalibration,
@@ -1445,6 +1447,9 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const [useTls, setUseTls] = useState(Boolean(provisioning.use_tls));
   const [wifiSsid, setWifiSsid] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
+  const [wifiPasswordSaved, setWifiPasswordSaved] = useState(false);
+  const [savedWifiSsid, setSavedWifiSsid] = useState("");
+  const [saveWifiCredentials, setSaveWifiCredentials] = useState(true);
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [identityBusy, setIdentityBusy] = useState(false);
@@ -1464,6 +1469,16 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   const pairingDisplayState =
     pairingProvisioningIssue && ["ready_to_provision", "waiting_for_endpoint_online"].includes(pairingUiState) ? "identity_only" : pairingUiState;
   const canApprovePairing = pairingSessionId && pairingUiState === "ready_to_provision" && pairingIdentityDeviceId && !pairingProvisioningIssue;
+  const canSendPairingWifi =
+    pairingSessionId &&
+    identityDetails &&
+    !pairingProvisioningIssue &&
+    targetNodeId &&
+    onboardingSessionId &&
+    endpointPublicKey &&
+    wifiSsid &&
+    backendHost &&
+    (wifiPassword || (wifiPasswordSaved && wifiSsid === savedWifiSsid));
 
   useEffect(() => {
     setTargetNodeId(endpointStatus?.endpoint_id || "");
@@ -1480,6 +1495,43 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     provisioning.use_tls,
     provisioning.ws_port,
   ]);
+
+  useEffect(() => {
+    let canceled = false;
+    async function loadSavedWifiCredentials() {
+      try {
+        const result = await getEndpointBleWifiCredentials();
+        if (canceled || !result?.ok) {
+          return;
+        }
+        if (result.wifi_ssid) {
+          setWifiSsid(String(result.wifi_ssid));
+          setSavedWifiSsid(String(result.wifi_ssid));
+        }
+        if (result.backend_host) {
+          setBackendHost(String(result.backend_host));
+        }
+        if (result.http_port) {
+          setHttpPort(Number(result.http_port));
+        }
+        if (result.ws_port) {
+          setWsPort(Number(result.ws_port));
+        }
+        if (typeof result.use_tls === "boolean") {
+          setUseTls(result.use_tls);
+        }
+        setWifiPasswordSaved(Boolean(result.wifi_password_saved));
+      } catch {
+        if (!canceled) {
+          setWifiPasswordSaved(false);
+        }
+      }
+    }
+    loadSavedWifiCredentials();
+    return () => {
+      canceled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!pairingSessionId || pairingUiState !== "waiting_for_device" || pairingPollBusy) {
@@ -1605,6 +1657,34 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     }
   }
 
+  async function handleSaveBleWifiCredentials() {
+    if (!wifiSsid || !backendHost || (!wifiPassword && !wifiPasswordSaved)) {
+      setActionMessage("Wi-Fi save skipped: SSID, backend host, and password are required.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const payload = {
+        wifi_ssid: wifiSsid,
+        backend_host: backendHost,
+        http_port: Number(httpPort),
+        ws_port: Number(wsPort),
+        use_tls: useTls,
+      };
+      if (wifiPassword) {
+        payload.wifi_password = wifiPassword;
+      }
+      const result = await saveEndpointBleWifiCredentials(payload);
+      setWifiPasswordSaved(Boolean(result.wifi_password_saved));
+      setSavedWifiSsid(String(result.wifi_ssid || wifiSsid));
+      setActionMessage("BLE Wi-Fi credentials saved for pairing.");
+    } catch (err) {
+      setActionMessage(String(err.message || err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function handleCancelPairing() {
     if (!pairingSessionId) {
       return;
@@ -1710,7 +1790,7 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
   }
 
   async function handleBleProvision(event) {
-    event.preventDefault();
+    event?.preventDefault?.();
     if (!targetNodeId || !onboardingSessionId || !endpointPublicKey || !wifiSsid || !backendHost) {
       setActionMessage("BLE provisioning skipped: target, session, public key, Wi-Fi SSID, and backend host are required.");
       return;
@@ -1740,11 +1820,16 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
     if (targetAddress) payload.target_address = targetAddress;
     if (displayName) payload.display_name = displayName;
     if (wifiPassword) payload.wifi_password = wifiPassword;
+    if (saveWifiCredentials) payload.save_wifi_credentials = true;
 
     setBusy(true);
     try {
       const result = await provisionEndpointBleWifi(payload);
       const suffix = result.error ? `: ${result.error}` : "";
+      if (saveWifiCredentials && result.status === "completed") {
+        setWifiPasswordSaved(true);
+        setSavedWifiSsid(wifiSsid);
+      }
       setActionMessage(`BLE provisioning ${result.status}${suffix}.`);
       await onRefresh();
     } catch (err) {
@@ -1800,6 +1885,55 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
             {pairingSessionId ? "Waiting for a setup-mode endpoint to find this pairing session." : "Start pairing, then power or restart the endpoint in setup mode."}
           </p>
         )}
+        {pairingSessionId && !pairingProvisioningIssue ? (
+          <div className="endpoint-pairing-wifi-row">
+            <label>
+              <span>Wi-Fi SSID</span>
+              <input
+                type="text"
+                value={wifiSsid}
+                maxLength={32}
+                onChange={(event) => {
+                  setWifiSsid(event.target.value);
+                  if (event.target.value !== savedWifiSsid) {
+                    setWifiPasswordSaved(false);
+                  }
+                }}
+                disabled={busy}
+              />
+            </label>
+            <label>
+              <span>Wi-Fi password</span>
+              <input
+                type="password"
+                value={wifiPassword}
+                maxLength={63}
+                placeholder={wifiPasswordSaved && wifiSsid === savedWifiSsid ? "Saved password" : ""}
+                onChange={(event) => setWifiPassword(event.target.value)}
+                disabled={busy}
+              />
+            </label>
+            <label>
+              <span>Backend host</span>
+              <input type="text" value={backendHost} maxLength={253} onChange={(event) => setBackendHost(event.target.value)} disabled={busy} />
+            </label>
+            <label className="toggle-row endpoint-pairing-save-toggle">
+              <input type="checkbox" checked={saveWifiCredentials} onChange={(event) => setSaveWifiCredentials(event.target.checked)} disabled={busy} />
+              <span>Save</span>
+            </label>
+            <button
+              className="btn btn-secondary btn-compact"
+              type="button"
+              onClick={handleSaveBleWifiCredentials}
+              disabled={busy || !wifiSsid || !backendHost || (!wifiPassword && !(wifiPasswordSaved && wifiSsid === savedWifiSsid))}
+            >
+              Save Wi-Fi
+            </button>
+            <button className="btn btn-primary btn-compact" type="button" onClick={handleBleProvision} disabled={busy || !canSendPairingWifi}>
+              {busy ? "Sending..." : "Send Wi-Fi"}
+            </button>
+          </div>
+        ) : null}
         <div className="form-actions">
           <button className="btn btn-primary btn-compact" type="button" onClick={handleStartPairing} disabled={pairingBusy || pairingPollBusy || pairingApproveBusy}>
             {pairingSessionId ? "Restart Pairing" : "Start Pairing"}

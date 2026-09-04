@@ -2371,6 +2371,38 @@ select.field-input {
   margin: 0;
 }
 
+.endpoint-pairing-wifi-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1.1fr) minmax(160px, 1.1fr) minmax(160px, 1fr) auto auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.endpoint-pairing-wifi-row label:not(.toggle-row) {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: hsl(var(--sx-text-muted));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.endpoint-pairing-wifi-row input[type="text"],
+.endpoint-pairing-wifi-row input[type="password"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid hsl(var(--sx-border));
+  border-radius: var(--sx-radius-md);
+  background: hsl(var(--sx-panel));
+  color: hsl(var(--sx-text));
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.endpoint-pairing-save-toggle {
+  align-self: end;
+}
+
 .endpoint-metadata-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(140px, 1fr)) auto;
@@ -2886,6 +2918,11 @@ select.field-input {
   }
 
   .endpoint-metadata-form {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .endpoint-pairing-wifi-row {
     grid-template-columns: 1fr;
     align-items: stretch;
   }
