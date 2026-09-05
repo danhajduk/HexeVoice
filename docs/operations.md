@@ -149,6 +149,9 @@ Use:
 - `scripts/run-from-env.sh frontend` to launch the frontend from `scripts/stack.env`
 - `scripts/stack-control.sh` for service control
 - `scripts/restart-stack.sh` to restart the configured stack services
+- `scripts/watch-pe-serial-log.sh` to capture the PE serial stream from
+  `/dev/ttyACM0` into `runtime/logs`, reset the device, and watch the last 20
+  lines
 - `scripts/faster-whisper-stt-control.sh ready` to build/start the local STT
   container, wait for `/health` over `runtime/sockets/stt.sock`, and
   preload/download the configured model
