@@ -2506,11 +2506,12 @@ def test_assistant_ai_node_adapter_uses_core_resolved_execution_url(tmp_path):
     request_json = json.loads(captured["json"])
     assert request_json["task_family"] == "task.chat"
     assert request_json["requested_by"] == "hexevoice"
-    assert request_json["service_id"] == "ai-node-chat"
+    assert request_json["service_id"] == "hexevoice"
     assert request_json["inputs"]["text"] == "hello"
     assert response.reply_text == "AI Node says hello."
     assert response.provider_id == "local"
     assert response.model == "qwen3-8b-q4_k_m"
+    assert response.provider_metadata["ai_node"]["service_id"] == "ai-node-chat"
     assert response.provider_metadata["ai_node"]["resolution_source"] == "core"
     assert response.provider_metadata["ai_node"]["contract_version"] == "client-ai.execution.v2"
     assert adapter.status()["last_resolved_url"] == "http://hexe-ai.local:9002/api/execution/direct"

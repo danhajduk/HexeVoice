@@ -230,6 +230,7 @@ class LocalEchoAssistantAdapter:
 
 class AiNodeAssistantAdapter:
     TASK_FAMILY = "task.chat"
+    EXECUTION_SERVICE_ID = "hexevoice"
 
     def __init__(
         self,
@@ -433,7 +434,7 @@ class AiNodeAssistantAdapter:
                 "prompt_version": self._prompt_version,
                 "task_family": self.TASK_FAMILY,
                 "requested_by": "hexevoice",
-                "service_id": target.service_id,
+                "service_id": self.EXECUTION_SERVICE_ID,
                 "inputs": {
                     "text": payload.text,
                     "endpoint_id": payload.endpoint_id,
