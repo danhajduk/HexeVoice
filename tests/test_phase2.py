@@ -1,7 +1,12 @@
 import httpx
 
 from hexevoice.api.models import CapabilitySelectionRequest
-from hexevoice.capabilities.service import CapabilityDeclarationService, VOICE_NODE_CAPABILITIES, VOICE_NODE_REQUESTED_TASK_FAMILIES
+from hexevoice.capabilities.service import (
+    CapabilityDeclarationService,
+    LOCAL_FREE_NODE_BUDGET,
+    VOICE_NODE_CAPABILITIES,
+    VOICE_NODE_REQUESTED_TASK_FAMILIES,
+)
 from hexevoice.config.settings import Settings
 from hexevoice.governance.service import GovernanceService
 from hexevoice.persistence import OnboardingStateStore, PersistedOnboardingState
@@ -69,7 +74,14 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
             captured["budget_json"] = kwargs.get("json")
         return DummyResponse()
 
+    def fake_get(*args, **kwargs):
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/budgets/node-voice-123"):
+            return DummyResponse()
+        raise AssertionError(url)
+
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
 
     service = CapabilityDeclarationService(
         settings=Settings(onboarding_state_path=tmp_path / "onboarding-state.json"),
@@ -96,6 +108,8 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     assert captured["budget_json"]["supported_providers"] == ["voice"]
     assert captured["budget_json"]["suggested_money_limit"] is None
     assert captured["budget_json"]["suggested_compute_limit"] is None
+    assert response.budget_setup["status"] == "needs_core_admin_token"
+    assert response.budget_setup["payload"]["node_budget"] == LOCAL_FREE_NODE_BUDGET
     assert response.provided_task_families == VOICE_NODE_CAPABILITIES
     assert response.requested_task_families == VOICE_NODE_REQUESTED_TASK_FAMILIES
     assert persisted.capability_declaration.provided_task_families == VOICE_NODE_CAPABILITIES
@@ -103,6 +117,142 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     assert persisted.capability_declaration.capability_profile_id == "profile-123"
     assert persisted.capability_declaration.capability_status == "accepted"
     assert persisted.resume.current_step_id == "governance_sync"
+
+
+def test_capability_declaration_configures_free_local_budget_when_missing(tmp_path, monkeypatch):
+    store = _trusted_phase2_store(tmp_path)
+    captured = {}
+
+    class CapabilityResponse:
+        status_code = 200
+
+        def raise_for_status(self): return None
+
+        def json(self):
+            return {
+                "acceptance_status": "accepted",
+                "node_id": "node-voice-123",
+                "manifest_version": "1.0",
+                "accepted_at": "2026-04-08T03:00:00+00:00",
+                "declared_capabilities": VOICE_NODE_CAPABILITIES,
+                "provided_task_families": VOICE_NODE_CAPABILITIES,
+                "requested_task_families": VOICE_NODE_REQUESTED_TASK_FAMILIES,
+                "enabled_providers": ["voice"],
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "governance_issued_at": "2026-04-08T03:00:05+00:00",
+            }
+
+    class MissingBudgetResponse:
+        status_code = 200
+
+        def raise_for_status(self): return None
+
+        def json(self):
+            return {"ok": True, "budget": {"declaration": {"node_id": "node-voice-123"}, "node_budget": None}}
+
+    class ConfiguredBudgetResponse:
+        status_code = 200
+
+        def raise_for_status(self): return None
+
+        def json(self):
+            return {"ok": True, "budget": {"node_budget": LOCAL_FREE_NODE_BUDGET}}
+
+    def fake_post(*args, **kwargs):
+        return CapabilityResponse()
+
+    def fake_get(*args, **kwargs):
+        captured["budget_get_headers"] = kwargs.get("headers")
+        return MissingBudgetResponse()
+
+    def fake_put(*args, **kwargs):
+        captured["budget_put_headers"] = kwargs.get("headers")
+        captured["budget_put_json"] = kwargs.get("json")
+        return ConfiguredBudgetResponse()
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "put", fake_put)
+
+    service = CapabilityDeclarationService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "onboarding-state.json",
+            core_admin_token="admin-token-123",
+        ),
+        onboarding_state_store=store,
+    )
+    response = service.declare()
+
+    assert captured["budget_get_headers"] == {"X-Node-Trust-Token": "trust-token-123"}
+    assert captured["budget_put_headers"] == {"X-Admin-Token": "admin-token-123"}
+    assert captured["budget_put_json"] == {
+        "node_budget": LOCAL_FREE_NODE_BUDGET,
+        "customer_allocations": [],
+        "provider_allocations": [],
+    }
+    assert response.budget_setup["status"] == "configured"
+    assert response.budget_setup["configured"] is True
+    assert response.budget_setup["node_budget"] == LOCAL_FREE_NODE_BUDGET
+
+
+def test_capability_declaration_preserves_existing_core_budget(tmp_path, monkeypatch):
+    store = _trusted_phase2_store(tmp_path)
+    existing_budget = dict(LOCAL_FREE_NODE_BUDGET, shared_provider_pool=False, node_compute_limit=1000.0)
+
+    class CapabilityResponse:
+        status_code = 200
+
+        def raise_for_status(self): return None
+
+        def json(self):
+            return {
+                "acceptance_status": "accepted",
+                "node_id": "node-voice-123",
+                "manifest_version": "1.0",
+                "accepted_at": "2026-04-08T03:00:00+00:00",
+                "declared_capabilities": VOICE_NODE_CAPABILITIES,
+                "provided_task_families": VOICE_NODE_CAPABILITIES,
+                "requested_task_families": VOICE_NODE_REQUESTED_TASK_FAMILIES,
+                "enabled_providers": ["voice"],
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "governance_issued_at": "2026-04-08T03:00:05+00:00",
+            }
+
+    class ExistingBudgetResponse:
+        status_code = 200
+
+        def raise_for_status(self): return None
+
+        def json(self):
+            return {"ok": True, "budget": {"node_budget": existing_budget}}
+
+    def fake_post(*args, **kwargs):
+        return CapabilityResponse()
+
+    def fake_get(*args, **kwargs):
+        return ExistingBudgetResponse()
+
+    def fake_put(*args, **kwargs):
+        raise AssertionError("Existing Core budgets must not be overwritten.")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+    monkeypatch.setattr(httpx, "put", fake_put)
+
+    service = CapabilityDeclarationService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "onboarding-state.json",
+            core_admin_token="admin-token-123",
+        ),
+        onboarding_state_store=store,
+    )
+    response = service.declare()
+
+    assert response.budget_setup["status"] == "already_configured"
+    assert response.budget_setup["configured"] is True
+    assert response.budget_setup["node_budget"] == existing_budget
 
 
 def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
@@ -148,7 +298,14 @@ def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
             captured["budget_json"] = kwargs.get("json")
         return DummyResponse()
 
+    def fake_get(*args, **kwargs):
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/budgets/node-voice-123"):
+            return DummyResponse()
+        raise AssertionError(url)
+
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
 
     response = service.declare()
 
@@ -216,7 +373,14 @@ def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypa
             captured["budget_json"] = kwargs.get("json")
         return DummyResponse()
 
+    def fake_get(*args, **kwargs):
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/budgets/node-voice-123"):
+            return DummyResponse()
+        raise AssertionError(url)
+
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
 
     service = CapabilityDeclarationService(
         settings=Settings(

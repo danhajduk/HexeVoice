@@ -28,6 +28,19 @@ VOICE_NODE_REQUESTED_TASK_FAMILIES = [
     "task.chat",
 ]
 
+LOCAL_FREE_NODE_BUDGET = {
+    "currency": "USD",
+    "compute_unit": "cost_units",
+    "period": "monthly",
+    "reset_policy": "calendar",
+    "enforcement_mode": "hard_stop",
+    "shared_customer_pool": False,
+    "shared_provider_pool": True,
+    "overcommit_enabled": False,
+    "node_money_limit": None,
+    "node_compute_limit": None,
+}
+
 
 class CapabilityDeclarationService:
     def __init__(
@@ -111,6 +124,12 @@ class CapabilityDeclarationService:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=502, detail=f"budget_declaration_request_failed: {exc}") from exc
 
+        budget_setup = self._ensure_local_budget_configured(
+            core_base_url=state.pre_trust.core_base_url,
+            node_id=state.trust_activation.node_id,
+            node_trust_token=state.trust_activation.node_trust_token,
+        )
+
         updated = state.model_copy(
             update={
                 "capability_declaration": state.capability_declaration.model_copy(
@@ -158,6 +177,7 @@ class CapabilityDeclarationService:
             capability_profile_id=updated.capability_declaration.capability_profile_id,
             governance_version=updated.capability_declaration.governance_version,
             governance_issued_at=updated.capability_declaration.governance_issued_at,
+            budget_setup=budget_setup,
         )
 
     def manifest_preview(self) -> dict:
@@ -175,6 +195,7 @@ class CapabilityDeclarationService:
             )
             if node_id
             else {},
+            "budget_setup": self._local_budget_setup_preview(),
             "node_identity": declaration_payload["manifest"]["node"],
             "providers": {
                 "supported": declaration_payload["manifest"]["supported_providers"],
@@ -257,6 +278,99 @@ class CapabilityDeclarationService:
             "setup_requirements": [],
             "suggested_money_limit": None,
             "suggested_compute_limit": None,
+        }
+
+    def _local_budget_setup_preview(self) -> dict:
+        return {
+            "mode": "local_free_services",
+            "requires_core_admin_token": True,
+            "configure_when_missing": True,
+            "payload": self._local_budget_setup_payload(),
+        }
+
+    def _local_budget_setup_payload(self) -> dict:
+        return {
+            "node_budget": dict(LOCAL_FREE_NODE_BUDGET),
+            "customer_allocations": [],
+            "provider_allocations": [],
+        }
+
+    def _ensure_local_budget_configured(self, *, core_base_url: str, node_id: str, node_trust_token: str) -> dict:
+        admin_token = str(self._settings.core_admin_token or "").strip()
+        try:
+            bundle_response = self._core_client.get_node_budget_bundle(
+                core_base_url=core_base_url,
+                node_id=node_id,
+                node_trust_token=node_trust_token,
+            )
+        except httpx.HTTPStatusError as exc:
+            detail = "budget_lookup_rejected"
+            try:
+                payload = exc.response.json()
+                if isinstance(payload, dict):
+                    raw_detail = payload.get("detail")
+                    if isinstance(raw_detail, str):
+                        detail = raw_detail
+                    elif isinstance(raw_detail, dict):
+                        detail = raw_detail.get("message") or raw_detail.get("error") or detail
+            except ValueError:
+                pass
+            raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="core_budget_lookup_timeout") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"budget_lookup_request_failed: {exc}") from exc
+
+        budget = bundle_response.get("budget") if isinstance(bundle_response, dict) else {}
+        if isinstance(budget, dict) and budget.get("node_budget"):
+            return {
+                "status": "already_configured",
+                "configured": True,
+                "source": "core",
+                "node_budget": budget.get("node_budget"),
+            }
+
+        if not admin_token:
+            return {
+                "status": "needs_core_admin_token",
+                "configured": False,
+                "source": "core",
+                "required_env": "CORE_ADMIN_TOKEN",
+                "payload": self._local_budget_setup_payload(),
+            }
+
+        payload = self._local_budget_setup_payload()
+        try:
+            response = self._core_client.configure_node_budget(
+                core_base_url=core_base_url,
+                node_id=node_id,
+                admin_token=admin_token,
+                payload=payload,
+            )
+        except httpx.HTTPStatusError as exc:
+            detail = "budget_configuration_rejected"
+            try:
+                payload = exc.response.json()
+                if isinstance(payload, dict):
+                    raw_detail = payload.get("detail")
+                    if isinstance(raw_detail, str):
+                        detail = raw_detail
+                    elif isinstance(raw_detail, dict):
+                        detail = raw_detail.get("message") or raw_detail.get("error") or detail
+            except ValueError:
+                pass
+            raise HTTPException(status_code=exc.response.status_code, detail=detail) from exc
+        except httpx.TimeoutException as exc:
+            raise HTTPException(status_code=504, detail="core_budget_configuration_timeout") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=f"budget_configuration_request_failed: {exc}") from exc
+
+        configured_budget = response.get("budget") if isinstance(response, dict) else {}
+        return {
+            "status": "configured",
+            "configured": True,
+            "source": "local_free_services_default",
+            "node_budget": configured_budget.get("node_budget") if isinstance(configured_budget, dict) else None,
         }
 
     def _supported_providers(self, state) -> list[str]:

@@ -3628,6 +3628,8 @@ def test_capability_declaration_governance_and_operational_status_flow(tmp_path,
         raise AssertionError(url)
 
     def fake_get(url, headers=None, params=None, timeout=None):
+        if url.endswith("/api/system/nodes/budgets/node-voice-123"):
+            return CapabilityResponse()
         if url.endswith("/api/system/nodes/governance/current"):
             return GovernanceCurrentResponse()
         if url.endswith("/api/system/nodes/operational-status/node-voice-123"):

@@ -1091,6 +1091,7 @@ class CapabilityDeclarationResponse(BaseModel):
     capability_profile_id: str | None = None
     governance_version: str | None = None
     governance_issued_at: str | None = None
+    budget_setup: dict[str, Any] = Field(default_factory=dict)
 
 
 class GovernanceBundleResponse(BaseModel):

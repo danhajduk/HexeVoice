@@ -285,7 +285,13 @@ def test_setup_capabilities_declare_and_sync_governance(tmp_path, monkeypatch):
             return GovernanceRefreshResponse()
         raise AssertionError(url)
 
+    def fake_get(url, headers=None, params=None, timeout=None):
+        if url.endswith("/api/system/nodes/budgets/node-voice-123"):
+            return CapabilityResponse()
+        raise AssertionError(url)
+
     monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
 
     declaration = client.post("/api/setup/capabilities/declare")
     assert declaration.status_code == 200

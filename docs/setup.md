@@ -192,6 +192,13 @@ preview contains the Core declaration payload, node identity, enabled providers,
 provider models/configs, selected capabilities, runtime URLs or sockets, budget
 metadata, and current governance metadata so the operator can inspect the exact
 shape before declaring to Core.
+HexeVoice also prepares a default local-free-services budget setup for Core:
+monthly USD `cost_units`, hard-stop enforcement, shared provider pool enabled,
+and no node/customer/provider limits. During declaration it submits the trusted
+node budget capability declaration, then uses `CORE_ADMIN_TOKEN` when available
+to configure that default budget only if Core does not already have a
+`node_budget` for this node. Existing operator-configured Core budgets are left
+unchanged.
 It also exposes a Core-visible summary for STT, TTS, and wake services,
 available models, enabled capabilities, disabled capabilities, enabled provider
 states, provider-side `provided_task_families`, and requester-side
