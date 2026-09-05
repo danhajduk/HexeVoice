@@ -99,8 +99,11 @@ def test_capability_declaration_persists_accepted_profile(tmp_path, monkeypatch)
     endpoints = captured["capability_json"]["manifest"]["capability_endpoints"]
     assert endpoints["voice.tts.synthesize"]["method"] == "POST"
     assert endpoints["voice.tts.synthesize"]["path"] == "/api/tts/synthesize"
+    assert endpoints["voice.tts.synthesize"]["provider_id"] == "voice"
+    assert endpoints["voice.tts.synthesize"]["provider_ids"] == ["voice"]
     assert endpoints["voice.tts.audio_url"]["path"] == "/api/tts/audio/{stream_id}"
     assert endpoints["voice.intent.register"]["path"] == "/api/voice/intents"
+    assert endpoints["voice.intent.register"]["provider_id"] == "voice"
     assert endpoints["voice.intent.dispatch"]["path"] == "/api/voice/intents/dispatch"
     assert captured["capability_json"]["manifest"]["enabled_providers"] == ["voice"]
     assert captured["capability_json"]["manifest"]["provider_intelligence"] == []
@@ -315,7 +318,91 @@ def test_capability_selection_controls_next_declaration(tmp_path, monkeypatch):
     assert manifest["provided_task_families"] == ["voice.inference", "voice.tts.synthesize"]
     assert manifest["requested_task_families"] == VOICE_NODE_REQUESTED_TASK_FAMILIES
     assert sorted(manifest["capability_endpoints"]) == ["voice.tts.synthesize"]
+    assert manifest["capability_endpoints"]["voice.tts.synthesize"]["provider_ids"] == ["voice"]
     assert captured["budget_json"]["supported_providers"] == ["voice"]
+
+
+def test_capability_declaration_derives_piper_tts_provider_from_runtime_settings(tmp_path, monkeypatch):
+    store = _trusted_phase2_store(tmp_path)
+    state = store.load()
+    selected = [
+        "voice.inference",
+        "voice.tts.synthesize",
+        "voice.tts.audio_url",
+        "voice.intent.register",
+        "voice.intent.list",
+        "voice.intent.dispatch",
+    ]
+    store.save(
+        state.model_copy(
+            update={
+                "provider_setup": state.provider_setup.model_copy(
+                    update={
+                        "supported_providers": ["voice", "openwakeword", "supervised_openwakeword"],
+                        "enabled_providers": ["voice", "openwakeword", "supervised_openwakeword"],
+                    }
+                ),
+                "capability_declaration": state.capability_declaration.model_copy(
+                    update={"declared_task_families": selected}
+                ),
+            }
+        )
+    )
+    captured = {}
+
+    class DummyResponse:
+        status_code = 200
+
+        def raise_for_status(self): return None
+
+        def json(self):
+            return {
+                "acceptance_status": "accepted",
+                "node_id": "node-voice-123",
+                "manifest_version": "1.0",
+                "accepted_at": "2026-04-08T03:00:00+00:00",
+                "declared_capabilities": selected,
+                "provided_task_families": selected,
+                "requested_task_families": VOICE_NODE_REQUESTED_TASK_FAMILIES,
+                "enabled_providers": ["piper", "voice"],
+                "capability_profile_id": "profile-123",
+                "governance_version": "gov-2026.04",
+                "governance_issued_at": "2026-04-08T03:00:05+00:00",
+            }
+
+    def fake_post(*args, **kwargs):
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/capabilities/declaration"):
+            captured["capability_json"] = kwargs.get("json")
+        elif url.endswith("/api/system/nodes/budgets/declaration"):
+            captured["budget_json"] = kwargs.get("json")
+        return DummyResponse()
+
+    def fake_get(*args, **kwargs):
+        url = str(args[0])
+        if url.endswith("/api/system/nodes/budgets/node-voice-123"):
+            return DummyResponse()
+        raise AssertionError(url)
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    service = CapabilityDeclarationService(
+        settings=Settings(
+            onboarding_state_path=tmp_path / "onboarding-state.json",
+            voice_tts_provider="piper",
+        ),
+        onboarding_state_store=store,
+    )
+    response = service.declare()
+
+    manifest = captured["capability_json"]["manifest"]
+    assert response.enabled_providers == ["piper", "voice"]
+    assert manifest["enabled_providers"] == ["piper", "voice"]
+    assert manifest["capability_endpoints"]["voice.tts.synthesize"]["provider_ids"] == ["piper"]
+    assert manifest["capability_endpoints"]["voice.tts.audio_url"]["provider_ids"] == ["piper"]
+    assert manifest["capability_endpoints"]["voice.intent.register"]["provider_ids"] == ["voice"]
+    assert captured["budget_json"]["supported_providers"] == ["piper", "voice"]
 
 
 def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypatch):
@@ -393,6 +480,7 @@ def test_capability_declaration_advertises_piper_voice_models(tmp_path, monkeypa
     response = service.declare()
 
     assert response.enabled_providers == ["piper", "voice"]
+    assert captured["capability_json"]["manifest"]["capability_endpoints"]["voice.tts.synthesize"]["provider_ids"] == ["piper"]
     piper = captured["capability_json"]["manifest"]["provider_intelligence"][0]
     assert piper["provider"] == "piper"
     models = {model["model_id"]: model for model in piper["available_models"]}

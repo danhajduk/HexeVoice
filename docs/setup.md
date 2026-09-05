@@ -203,7 +203,10 @@ It also exposes a Core-visible summary for STT, TTS, and wake services,
 available models, enabled capabilities, disabled capabilities, enabled provider
 states, provider-side `provided_task_families`, and requester-side
 `requested_task_families` so the setup UI can show the high-level declaration
-outcome without forcing operators to read raw JSON. HexeVoice declares
+outcome without forcing operators to read raw JSON. Capability endpoints include
+task-specific `provider_id`/`provider_ids`; for example,
+`voice.tts.synthesize` advertises the active TTS backend such as `piper`, while
+intent endpoints advertise the local `voice` provider. HexeVoice declares
 `task.chat` as a requested task family; when `VOICE_ASSISTANT_PROVIDER=ai_node`
 is active, assistant turns resolve that task through Core and use the returned
 AI execution URL. `VOICE_ASSISTANT_AI_NODE_PROMPT_ID` and

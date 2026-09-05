@@ -383,13 +383,25 @@ class CapabilityDeclarationService:
         )
 
     def _enabled_providers(self, state) -> list[str]:
-        return sorted(
-            {
-                provider_id.strip()
-                for provider_id in state.provider_setup.enabled_providers
-                if provider_id and provider_id.strip()
-            }
-        )
+        selected_capabilities = set(self._selected_capabilities(state))
+        role_providers: set[str] = set()
+        if "voice.inference" in selected_capabilities:
+            role_providers.add(self._settings.voice_stt_provider)
+        if selected_capabilities & {"voice.tts.synthesize", "voice.tts.audio_url"}:
+            role_providers.add(self._settings.voice_tts_provider)
+        if any(capability.startswith("voice.intent.") for capability in selected_capabilities):
+            role_providers.add(self._settings.provider_id)
+        if self._settings.voice_speaker_id_enabled and any(capability.startswith("voice.speaker.") for capability in selected_capabilities):
+            role_providers.add(self._settings.voice_speaker_id_service_id)
+
+        enabled = {
+            provider_id.strip()
+            for provider_id in [*state.provider_setup.enabled_providers, *role_providers]
+            if provider_id and provider_id.strip() and provider_id.strip() != "deterministic"
+        }
+        if not any(capability.startswith("voice.wake.") for capability in selected_capabilities):
+            enabled -= {"openwakeword", "supervised_openwakeword"}
+        return sorted(enabled)
 
     def _api_base_url(self) -> str:
         return (
@@ -642,12 +654,17 @@ class CapabilityDeclarationService:
         )
         if default_format not in supported_formats:
             default_format = "wav"
+        tts_provider_id = self._settings.voice_tts_provider if self._settings.voice_tts_provider != "deterministic" else self._settings.provider_id
+        intent_provider_id = self._settings.provider_id
+        speaker_provider_id = self._settings.voice_speaker_id_service_id
         endpoints = {
             "voice.tts.synthesize": {
                 "transport": "http",
                 "method": "POST",
                 "path": "/api/tts/synthesize",
                 "url": f"{base_url}/api/tts/synthesize",
+                "provider_id": tts_provider_id,
+                "provider_ids": [tts_provider_id],
                 "request_schema": "TtsSynthesizeRequest",
                 "response_schema": "TtsSynthesizeResponse",
                 "default_format": default_format,
@@ -663,6 +680,8 @@ class CapabilityDeclarationService:
                 "method": "GET",
                 "path": "/api/tts/audio/{stream_id}",
                 "url_template": f"{base_url}/api/tts/audio/{{stream_id}}",
+                "provider_id": tts_provider_id,
+                "provider_ids": [tts_provider_id],
                 "response": "short_lived_audio_file",
                 "reachable_from": "lan",
             },
@@ -671,6 +690,8 @@ class CapabilityDeclarationService:
                 "method": "POST",
                 "path": "/api/voice/intents",
                 "url": f"{base_url}/api/voice/intents",
+                "provider_id": intent_provider_id,
+                "provider_ids": [intent_provider_id],
                 "request_schema": "VoiceIntentRegisterRequest",
                 "response_schema": "VoiceIntentStateResponse",
                 "lifecycle_paths": {
@@ -687,6 +708,8 @@ class CapabilityDeclarationService:
                 "method": "GET",
                 "path": "/api/voice/intents",
                 "url": f"{base_url}/api/voice/intents",
+                "provider_id": intent_provider_id,
+                "provider_ids": [intent_provider_id],
                 "response_schema": "VoiceIntentStateResponse",
                 "lookup_path": "/api/voice/intents/{intent_id}",
             },
@@ -695,6 +718,8 @@ class CapabilityDeclarationService:
                 "method": "POST",
                 "path": "/api/voice/intents/dispatch",
                 "url": f"{base_url}/api/voice/intents/dispatch",
+                "provider_id": intent_provider_id,
+                "provider_ids": [intent_provider_id],
                 "request_schema": "VoiceIntentDispatchRequest",
                 "response_schema": "VoiceIntentDispatchResponse",
                 "side_effects": "dry_run_match_only",
@@ -704,6 +729,8 @@ class CapabilityDeclarationService:
                 "method": "POST",
                 "path": "/api/speaker-id/identify",
                 "url": f"{base_url}/api/speaker-id/identify",
+                "provider_id": speaker_provider_id,
+                "provider_ids": [speaker_provider_id],
                 "request_schema": "SpeakerIdentifyRequest",
                 "response_schema": "SpeakerIdentifyResponse",
                 "privacy_class": "biometric",
@@ -713,6 +740,8 @@ class CapabilityDeclarationService:
                 "method": "POST",
                 "path": "/api/speaker-id/verify",
                 "url": f"{base_url}/api/speaker-id/verify",
+                "provider_id": speaker_provider_id,
+                "provider_ids": [speaker_provider_id],
                 "request_schema": "SpeakerVerifyRequest",
                 "response_schema": "SpeakerVerifyResponse",
                 "privacy_class": "biometric",
@@ -722,6 +751,8 @@ class CapabilityDeclarationService:
                 "method": "POST",
                 "path": "/api/speaker-id/enroll",
                 "url": f"{base_url}/api/speaker-id/enroll",
+                "provider_id": speaker_provider_id,
+                "provider_ids": [speaker_provider_id],
                 "request_schema": "SpeakerEnrollRequest",
                 "response_schema": "SpeakerEnrollResponse",
                 "privacy_class": "biometric",
@@ -732,6 +763,8 @@ class CapabilityDeclarationService:
                 "method": "GET",
                 "path": "/api/speaker-id/profiles",
                 "url": f"{base_url}/api/speaker-id/profiles",
+                "provider_id": speaker_provider_id,
+                "provider_ids": [speaker_provider_id],
                 "delete_path": "/api/speaker-id/profiles/{profile_id}",
                 "privacy_class": "biometric",
             },

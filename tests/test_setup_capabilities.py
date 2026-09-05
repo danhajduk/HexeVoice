@@ -105,11 +105,10 @@ def test_setup_capabilities_status_includes_manifest_preview(tmp_path):
     assert preview["node_identity"]["node_id"] == "node-voice-123"
     assert preview["runtime"]["api_base_url"] == "http://voice.local:8084"
     assert preview["declaration_payload"]["manifest"]["capability_endpoints"]["voice.tts.synthesize"]["url"] == "http://voice.local:8084/api/tts/synthesize"
-    assert preview["providers"]["enabled"] == ["external_faster_whisper", "openwakeword", "piper", "voice"]
+    assert preview["providers"]["enabled"] == ["external_faster_whisper", "piper", "voice"]
     models = {item["provider_id"]: item for item in preview["providers"]["models"]}
     assert models["external_faster_whisper"]["model"] == "small.en"
     assert models["piper"]["model"] == "en_US-kathleen-low"
-    assert models["openwakeword"]["model"] == "Hexe"
     assert preview["budget_declaration"]["node_id"] == "node-voice-123"
     summary = preview["core_visible_summary"]
     services = {item["service_id"]: item for item in summary["provided_services"]}
