@@ -2646,7 +2646,10 @@ def test_assistant_turn_can_route_to_configured_ai_node():
 
     assert captured["url"] == "https://ai-node.test/api/assistant/turn"
     request_json = json.loads(captured["json"])
-    assert request_json["text"] == "turn on the lights"
+    assert request_json["text"].startswith("Authoritative voice node clock:")
+    assert request_json["text"].endswith("Actual user request:\nturn on the lights")
+    assert request_json["user_text"] == "turn on the lights"
+    assert request_json["original_text"] == "turn on the lights"
     assert request_json["contract_version"] == "voice.ai_node.turn.v1"
     assert request_json["source_node_type"] == "voice-node"
     runtime_context = request_json["runtime_context"]
@@ -2654,6 +2657,12 @@ def test_assistant_turn_can_route_to_configured_ai_node():
     datetime.fromisoformat(runtime_context["current_utc_datetime"])
     assert runtime_context["current_date"]
     assert runtime_context["instruction"].startswith("Use current_local_datetime")
+    node_clock = request_json["node_clock"]
+    assert node_clock["source"] == "voice_node_system_clock"
+    assert node_clock["authoritative"] is True
+    assert node_clock["current_date"] == runtime_context["current_date"]
+    assert node_clock["current_local_datetime"] == runtime_context["current_local_datetime"]
+    assert request_json["system_context"].startswith("Authoritative voice node clock:")
     assert response.reply_text == "AI Node heard turn on the lights."
     assert response.heard_text == "turn on the lights"
     assert response.provider_id == "ai_node"
@@ -2740,12 +2749,21 @@ def test_assistant_ai_node_adapter_uses_core_resolved_execution_url(tmp_path):
     assert request_json["task_family"] == "task.chat"
     assert request_json["requested_by"] == "hexevoice"
     assert request_json["service_id"] == "hexevoice"
-    assert request_json["inputs"]["text"] == "hello"
+    assert request_json["inputs"]["text"].startswith("Authoritative voice node clock:")
+    assert request_json["inputs"]["text"].endswith("Actual user request:\nhello")
+    assert request_json["inputs"]["user_text"] == "hello"
+    assert request_json["inputs"]["original_text"] == "hello"
     runtime_context = request_json["inputs"]["runtime_context"]
     datetime.fromisoformat(runtime_context["current_local_datetime"])
     datetime.fromisoformat(runtime_context["current_utc_datetime"])
     assert runtime_context["current_date"]
     assert runtime_context["instruction"].startswith("Use current_local_datetime")
+    node_clock = request_json["inputs"]["node_clock"]
+    assert node_clock["source"] == "voice_node_system_clock"
+    assert node_clock["authoritative"] is True
+    assert node_clock["current_date"] == runtime_context["current_date"]
+    assert node_clock["current_local_datetime"] == runtime_context["current_local_datetime"]
+    assert request_json["inputs"]["system_context"].startswith("Authoritative voice node clock:")
     assert response.reply_text == "AI Node says hello."
     assert response.provider_id == "local"
     assert response.model == "qwen3-8b-q4_k_m"

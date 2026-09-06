@@ -427,6 +427,9 @@ class AiNodeAssistantAdapter:
         context: Sequence[ConversationTurn],
     ) -> dict[str, Any]:
         runtime_context = self._runtime_context()
+        node_clock = self._node_clock_context(runtime_context)
+        node_clock_instruction = self._node_clock_instruction(node_clock)
+        ai_text = self._ai_prompt_text(text=payload.text, node_clock_instruction=node_clock_instruction)
         if self._contract_version_for_url(target.url) == "client-ai.execution.v2":
             task_id = f"hexevoice-{uuid4().hex}"
             return {
@@ -437,13 +440,17 @@ class AiNodeAssistantAdapter:
                 "requested_by": "hexevoice",
                 "service_id": self.EXECUTION_SERVICE_ID,
                 "inputs": {
-                    "text": payload.text,
+                    "text": ai_text,
+                    "user_text": payload.text,
+                    "original_text": payload.text,
                     "endpoint_id": payload.endpoint_id,
                     "session_id": session_id,
                     "speaker_identity": payload.speaker_identity,
                     "speaker_identity_policy": payload.speaker_identity_policy,
                     "speaker_personalization_enabled": payload.speaker_personalization_enabled,
                     "runtime_context": runtime_context,
+                    "node_clock": node_clock,
+                    "system_context": node_clock_instruction,
                     "context": [
                         {
                             "endpoint_id": turn.endpoint_id,
@@ -464,11 +471,15 @@ class AiNodeAssistantAdapter:
             "source_node_type": "voice-node",
             "endpoint_id": payload.endpoint_id,
             "session_id": session_id,
-            "text": payload.text,
+            "text": ai_text,
+            "user_text": payload.text,
+            "original_text": payload.text,
             "speaker_identity": payload.speaker_identity,
             "speaker_identity_policy": payload.speaker_identity_policy,
             "speaker_personalization_enabled": payload.speaker_personalization_enabled,
             "runtime_context": runtime_context,
+            "node_clock": node_clock,
+            "system_context": node_clock_instruction,
             "context": [
                 {
                     "endpoint_id": turn.endpoint_id,
@@ -496,6 +507,40 @@ class AiNodeAssistantAdapter:
                 "when answering date or time questions."
             ),
         }
+
+    @staticmethod
+    def _node_clock_context(runtime_context: dict[str, Any]) -> dict[str, Any]:
+        local_datetime = str(runtime_context.get("current_local_datetime") or "")
+        utc_datetime = str(runtime_context.get("current_utc_datetime") or "")
+        timezone_name = str(runtime_context.get("timezone") or "local")
+        timezone_offset = str(runtime_context.get("timezone_offset") or "")
+        local_now = datetime.fromisoformat(local_datetime) if local_datetime else datetime.now().astimezone()
+        return {
+            "source": "voice_node_system_clock",
+            "authoritative": True,
+            "current_local_datetime": local_datetime or local_now.isoformat(),
+            "current_utc_datetime": utc_datetime or local_now.astimezone(UTC).isoformat(),
+            "current_date": local_now.date().isoformat(),
+            "current_time": local_now.strftime("%H:%M:%S"),
+            "current_date_text": f"{local_now:%A, %B} {local_now.day}, {local_now.year}",
+            "current_time_text": local_now.strftime("%I:%M %p").lstrip("0"),
+            "timezone": timezone_name,
+            "timezone_offset": timezone_offset,
+        }
+
+    @staticmethod
+    def _node_clock_instruction(node_clock: dict[str, Any]) -> str:
+        return (
+            "Authoritative voice node clock: "
+            f"{node_clock['current_date_text']} at {node_clock['current_time_text']} "
+            f"{node_clock['timezone']} ({node_clock['current_local_datetime']}). "
+            "Use this date and time for any current date, current time, today, tomorrow, "
+            "yesterday, schedule, reminder, timer, or time-sensitive answer."
+        )
+
+    @staticmethod
+    def _ai_prompt_text(*, text: str, node_clock_instruction: str) -> str:
+        return f"{node_clock_instruction}\n\nActual user request:\n{text}"
 
     @staticmethod
     def _response_text(data: dict[str, Any]) -> str:
