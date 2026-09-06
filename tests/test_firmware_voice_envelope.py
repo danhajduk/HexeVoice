@@ -783,6 +783,8 @@ def test_firmware_audio_queue_waits_for_connected_websocket_transport():
     assert websocket_event_block.count("g_ws_started = false;") == 2
     assert "g_ws_connected_at_us = esp_timer_get_time();" in websocket_event_block
     assert "config.network_timeout_ms = kVoiceWsNetworkTimeoutMs;" in source
+    assert "constexpr int kVoiceAudioWsNetworkTimeoutMs = 5000;" in source
+    assert "config.network_timeout_ms = kVoiceAudioWsNetworkTimeoutMs;" in source
     assert "config.ping_interval_sec = kVoiceWsPingIntervalSec;" in source
     assert "config.pingpong_timeout_sec = kVoiceWsPingPongTimeoutSec;" in source
     assert "config.disable_pingpong_discon = true;" in source

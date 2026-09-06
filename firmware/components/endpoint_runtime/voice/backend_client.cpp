@@ -89,6 +89,7 @@ constexpr int kVoiceWsSendTimeoutMs = 1200;
 constexpr int kVoiceWsSendRetryDelayMs = 50;
 constexpr int kVoiceWsSendAttempts = 2;
 constexpr int kVoiceWsNetworkTimeoutMs = 1000;
+constexpr int kVoiceAudioWsNetworkTimeoutMs = 5000;
 constexpr int64_t kVoiceWsReadyWarmupUs = 300000;
 constexpr int64_t kVoiceWsReconnectGraceUs = 1000000;
 constexpr size_t kVoiceWsPingIntervalSec = 0;
@@ -3756,7 +3757,7 @@ void websocket_task(void *arg) {
         esp_websocket_client_config_t config = {};
         config.uri = uri.c_str();
         config.reconnect_timeout_ms = hexe::config::kEndpointReconnectBackoffMs;
-        config.network_timeout_ms = kVoiceWsNetworkTimeoutMs;
+        config.network_timeout_ms = kVoiceAudioWsNetworkTimeoutMs;
         config.task_name = "hexe_audio_ws";
         config.task_stack = kVoiceAudioWsClientTaskStackBytes;
         config.task_prio = 4;
