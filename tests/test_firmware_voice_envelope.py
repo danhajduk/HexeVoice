@@ -758,14 +758,21 @@ def test_firmware_audio_queue_waits_for_connected_websocket_transport():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
 
     assert "bool voice_transport_ready()" in source
+    assert "bool voice_control_transport_ready()" in source
+    assert "bool voice_audio_transport_ready()" in source
+    assert "bool voice_audio_socket_desired()" in source
     assert "return state.wifi_connected && state.backend_connected && !state.ota_active;" in source
-    assert "backend_ready_for_voice() && g_ws_client != nullptr && g_audio_ws_client != nullptr && g_ws_connected" in source
-    assert "g_audio_ws_connected && !g_ws_restart_requested && !g_audio_ws_restart_requested" in source
-    assert "samples == nullptr || sample_count == 0 || !voice_transport_ready()" in source
+    assert "backend_ready_for_voice() && g_ws_client != nullptr && g_ws_connected && !g_ws_restart_requested" in source
+    assert "return g_session_started && !g_audio_stream_finished && !hexe::state().ota_active && backend_ready_for_voice();" in source
+    assert "return voice_control_transport_ready();" in source
+    assert "g_audio_ws_client != nullptr && g_audio_ws_connected" in source
+    assert "!g_audio_ws_restart_requested && audio_connected_for_us >= kVoiceWsReadyWarmupUs" in source
+    assert "samples == nullptr || sample_count == 0 || !voice_control_transport_ready()" in source
     assert "if (!voice_transport_ready()) {\n    app_state.phase = hexe::idle_or_connecting_phase();" in source
     assert "if (!voice_transport_ready()) {\n    return false;" in source
     assert "void reset_audio_transport_queue(const char *reason)" in source
     assert "reset_audio_transport_queue(\"voice_websocket_disconnected\")" in source
+    assert "hexe::state().voice_ws_connected = g_ws_connected;" in source
     websocket_event_start = source.index("void websocket_event_handler")
     websocket_event_block = source[
         websocket_event_start
@@ -795,6 +802,11 @@ def test_firmware_audio_queue_waits_for_connected_websocket_transport():
     assert "esp_websocket_client_destroy(g_audio_ws_client);" in source
     assert "esp_websocket_client_send_bin" in source
     assert "Voice audio WebSocket binary upload active" in source
+    assert "Stopping idle voice audio WebSocket" in source
+    assert "Starting voice audio WebSocket for active session %s" in source
+    assert "voice_audio_socket_desired() && g_ws_connected && !g_audio_ws_started" in source
+    assert "voice_audio_socket_desired() && !voice_audio_transport_ready()" in source
+    assert "voice_audio_transport_ready() && xQueueReceive" in source
     assert "Voice WebSocket start failed: %s" in source
     assert "const esp_err_t start_result = esp_websocket_client_start(g_ws_client);" in source
     assert 'config.task_name = "hexe_ctrl_ws";' in source

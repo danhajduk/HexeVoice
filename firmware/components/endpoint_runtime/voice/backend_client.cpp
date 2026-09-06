@@ -269,6 +269,9 @@ esp_err_t text_http_event_handler(esp_http_client_event_t *event);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
+bool voice_control_transport_ready();
+bool voice_audio_transport_ready();
+bool voice_audio_socket_desired();
 bool voice_transport_ready();
 bool wake_source_is_local_acceptance(const char *wake_source);
 bool event_requests_followup_listen(cJSON *payload, const char *ux_state);
@@ -311,13 +314,25 @@ bool backend_ready_for_voice() {
   return state.wifi_connected && state.backend_connected && !state.ota_active;
 }
 
-bool voice_transport_ready() {
+bool voice_control_transport_ready() {
   const int64_t control_connected_for_us = g_ws_connected_at_us > 0 ? esp_timer_get_time() - g_ws_connected_at_us : 0;
+  return backend_ready_for_voice() && g_ws_client != nullptr && g_ws_connected && !g_ws_restart_requested &&
+         control_connected_for_us >= kVoiceWsReadyWarmupUs;
+}
+
+bool voice_audio_transport_ready() {
   const int64_t audio_connected_for_us =
       g_audio_ws_connected_at_us > 0 ? esp_timer_get_time() - g_audio_ws_connected_at_us : 0;
-  return backend_ready_for_voice() && g_ws_client != nullptr && g_audio_ws_client != nullptr && g_ws_connected &&
-         g_audio_ws_connected && !g_ws_restart_requested && !g_audio_ws_restart_requested &&
-         control_connected_for_us >= kVoiceWsReadyWarmupUs && audio_connected_for_us >= kVoiceWsReadyWarmupUs;
+  return voice_control_transport_ready() && g_audio_ws_client != nullptr && g_audio_ws_connected &&
+         !g_audio_ws_restart_requested && audio_connected_for_us >= kVoiceWsReadyWarmupUs;
+}
+
+bool voice_audio_socket_desired() {
+  return g_session_started && !g_audio_stream_finished && !hexe::state().ota_active && backend_ready_for_voice();
+}
+
+bool voice_transport_ready() {
+  return voice_control_transport_ready();
 }
 
 void reset_wake_election_state() {
@@ -370,7 +385,7 @@ void reset_audio_transport_queue(const char *reason) {
 }
 
 void refresh_voice_transport_connected_state() {
-  hexe::state().voice_ws_connected = g_ws_connected && g_audio_ws_connected;
+  hexe::state().voice_ws_connected = g_ws_connected;
 }
 
 void mark_audio_socket_disconnected() {
@@ -379,7 +394,7 @@ void mark_audio_socket_disconnected() {
   g_audio_ws_disconnected_at_us = esp_timer_get_time();
   refresh_voice_transport_connected_state();
   reset_audio_transport_queue("voice_audio_websocket_disconnected");
-  if (!hexe::state().muted && !hexe::state().ota_active) {
+  if (g_session_started && !g_audio_stream_finished && !hexe::state().muted && !hexe::state().ota_active) {
     hexe::state().phase = hexe::idle_or_connecting_phase();
   }
 }
@@ -435,6 +450,8 @@ void destroy_audio_websocket_client(const char *reason) {
   g_audio_ws_started = false;
   g_audio_ws_connected = false;
   g_audio_ws_connected_at_us = 0;
+  g_audio_ws_disconnected_at_us = 0;
+  g_audio_ws_restart_requested = false;
   refresh_voice_transport_connected_state();
 }
 
@@ -1690,7 +1707,7 @@ bool send_audio_ws_binary(const int16_t *samples, size_t sample_count) {
 
   bool sent = false;
   const size_t byte_count = sample_count * sizeof(int16_t);
-  if (hexe::state().ota_active || g_audio_ws_client == nullptr || !g_audio_ws_connected) {
+  if (hexe::state().ota_active || !voice_audio_transport_ready()) {
     mark_audio_socket_disconnected();
   } else {
     const int written = esp_websocket_client_send_bin(
@@ -3677,6 +3694,14 @@ void websocket_task(void *arg) {
       continue;
     }
 
+    if (!voice_audio_socket_desired() && (g_audio_ws_started || g_audio_ws_client != nullptr || g_audio_ws_connected)) {
+      ESP_LOGI(kTag, "Stopping idle voice audio WebSocket");
+      destroy_audio_websocket_client("audio_socket_idle");
+      reset_audio_transport_queue("voice_audio_websocket_idle");
+      vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+      continue;
+    }
+
     const int64_t audio_disconnected_for_us =
         g_audio_ws_disconnected_at_us > 0 ? esp_timer_get_time() - g_audio_ws_disconnected_at_us : 0;
     if (g_audio_ws_started && !g_audio_ws_connected && audio_disconnected_for_us >= kVoiceWsReconnectGraceUs) {
@@ -3725,7 +3750,7 @@ void websocket_task(void *arg) {
       }
     }
 
-    if (g_ws_connected && !g_audio_ws_started) {
+    if (voice_audio_socket_desired() && g_ws_connected && !g_audio_ws_started) {
       if (g_audio_ws_client == nullptr) {
         const std::string uri = voice_audio_websocket_url();
         esp_websocket_client_config_t config = {};
@@ -3751,7 +3776,7 @@ void websocket_task(void *arg) {
         }
         esp_websocket_register_events(g_audio_ws_client, WEBSOCKET_EVENT_ANY, audio_websocket_event_handler, nullptr);
       }
-      ESP_LOGI(kTag, "Starting voice audio WebSocket after control channel is ready");
+      ESP_LOGI(kTag, "Starting voice audio WebSocket for active session %s", g_session_id.c_str());
       g_audio_ws_disconnected_at_us = 0;
       const esp_err_t start_result = esp_websocket_client_start(g_audio_ws_client);
       if (start_result == ESP_OK) {
@@ -3767,8 +3792,14 @@ void websocket_task(void *arg) {
     if (g_ws_connected) {
       send_voice_session_ping();
     }
-    if (xQueueReceive(g_audio_queue, &frame, pdMS_TO_TICKS(250)) == pdTRUE) {
+    if (voice_audio_socket_desired() && !voice_audio_transport_ready()) {
+      vTaskDelay(pdMS_TO_TICKS(25));
+      continue;
+    }
+    if (voice_audio_transport_ready() && xQueueReceive(g_audio_queue, &frame, pdMS_TO_TICKS(250)) == pdTRUE) {
       send_audio_frame(frame);
+    } else if (!voice_audio_socket_desired()) {
+      vTaskDelay(pdMS_TO_TICKS(250));
     }
   }
 }
@@ -3878,7 +3909,7 @@ bool submit_audio_frame(
     uint32_t speech_peak_level,
     bool vad_speaking,
     const MicroVadFrameState *micro_vad) {
-  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !voice_transport_ready()) {
+  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !voice_control_transport_ready()) {
     return false;
   }
   if (post_tts_input_cooldown_active()) {
