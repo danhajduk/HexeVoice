@@ -1,6 +1,7 @@
 #include "audio_probe.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cerrno>
 #include <cctype>
@@ -43,6 +44,13 @@
 #include "mbedtls/md.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "voice/micro_wake_engine.h"
+
+namespace hexe::voice {
+const char *wake_word_candidate_source() {
+  return "audio_probe_micro_wake_word";
+}
+}  // namespace hexe::voice
 
 #if __has_include("secrets/wifi_secrets.h")
 #include "secrets/wifi_secrets.h"
@@ -81,7 +89,7 @@ constexpr size_t kSendChunkBytes = 1024;
 constexpr size_t kSha256BlockBytes = 64;
 constexpr size_t kMaxBackendEventBytes = 4096;
 constexpr size_t kMaxTtsResponseBytes = 4096;
-constexpr size_t kMaxTtsBytes = 512 * 1024;
+constexpr size_t kMaxTtsBytes = 1024 * 1024;
 constexpr int kCommandQueueDepth = 4;
 constexpr int kOtaQueueDepth = 1;
 constexpr int kWifiMaxRetries = 20;
@@ -95,6 +103,8 @@ constexpr int kControlWsClientBufferBytes = 2048;
 constexpr int kControlWsPingIntervalSec = 0;
 constexpr int kControlWsPingPongTimeoutSec = 0;
 constexpr int kCommandPollMs = 20;
+constexpr int kWakeMonitorPollMs = 20;
+constexpr int kWakeMonitorTaskStackBytes = 12288;
 constexpr int kTurnTtsReadyTimeoutMs = 60000;
 constexpr int kTurnCompletionTimeoutMs = 5000;
 constexpr int kTurnWsConnectTimeoutMs = 7000;
@@ -109,6 +119,14 @@ constexpr size_t kPlaybackFrameCapacity = 96;
 constexpr size_t kPlaybackDrainFrames = kSpeakerSampleRate / 4;
 constexpr uint32_t kSpeakerI2cTimeoutMs = 1000;
 constexpr uint32_t kSpeakerI2sWriteTimeoutMs = 1000;
+constexpr uint32_t kWakeFrameDurationMs = static_cast<uint32_t>((kFrameSamples * 1000) / kSampleRate);
+constexpr uint32_t kWakeVadStartEnergyThreshold = 900;
+constexpr uint32_t kWakeVadContinueEnergyThreshold = 500;
+constexpr uint32_t kWakeVadStartNoiseMultiplier = 3;
+constexpr uint32_t kWakeVadContinueNoiseMultiplier = 2;
+constexpr uint32_t kWakeVadNoiseMargin = 250;
+constexpr uint32_t kWakeVadStartVoiceFrames = 3;
+constexpr uint32_t kWakeVadReleasePeakPercent = 60;
 
 constexpr gpio_num_t gpio_pin(int pin) {
   return static_cast<gpio_num_t>(pin);
@@ -172,6 +190,9 @@ constexpr uint8_t kAicLolDrvGain = 0x12;
 constexpr uint8_t kAicLorDrvGain = 0x13;
 constexpr uint8_t kAicHpStart = 0x14;
 constexpr uint8_t kAicRefStartup = 0x7B;
+
+extern const uint8_t kAlexaWakeModelStart[] asm("_binary_alexa_tflite_start");
+extern const uint8_t kAlexaWakeModelEnd[] asm("_binary_alexa_tflite_end");
 
 struct ProbeSettings {
   char endpoint_id[64];
@@ -268,9 +289,12 @@ i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
 i2c_master_dev_handle_t g_voice_kit_i2c_device = nullptr;
 i2c_master_dev_handle_t g_speaker_codec_device = nullptr;
 i2s_chan_handle_t g_speaker_tx_channel = nullptr;
+SemaphoreHandle_t g_mic_mutex = nullptr;
 std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
+std::array<int16_t, kFrameSamples> g_wake_mono_samples = {};
 QueueHandle_t g_command_queue = nullptr;
 QueueHandle_t g_ota_queue = nullptr;
+TaskHandle_t g_wake_monitor_task = nullptr;
 SemaphoreHandle_t g_ws_send_lock = nullptr;
 esp_websocket_client_handle_t g_ws_client = nullptr;
 bool g_ws_started = false;
@@ -279,11 +303,32 @@ bool g_ota_active = false;
 bool g_speaker_codec_ready = false;
 bool g_speaker_tx_enabled = false;
 bool g_last_center_button_pressed = false;
+std::atomic_bool g_wake_monitor_paused{false};
+std::atomic_bool g_local_wake_pending{false};
 int64_t g_center_button_pressed_at_us = 0;
 int64_t g_last_center_button_handled_at_us = 0;
 uint32_t g_sequence = 1;
 std::string g_ws_rx_buffer;
 TurnProbeState g_turn_probe = {};
+
+constexpr hexe::voice::LocalKeywordModel kAudioProbeWakeModel = {
+    "alexa",
+    "Alexa",
+    "Hexe",
+    "esphome_micro_wake_word_models_v2",
+    "github://esphome/micro-wake-word-models/models/v2/alexa.json@main",
+    "github://esphome/micro-wake-word-models/models/v2/alexa.tflite@main",
+    "en",
+    "Kevin Ahrendt",
+    "2024.7.0",
+    "1d999798b35b1fe2606465b75ab840be51c1811d2909d5e620cefb6e96f8abd0",
+    "9011a8155b04de858c48038529235cbc0e42e9fca05a55bf588cb80a653a723b",
+    2,
+    0.90f,
+    5,
+    10,
+    22348,
+};
 
 void copy_string(char *target, size_t target_size, const char *value) {
   if (target == nullptr || target_size == 0) {
@@ -363,6 +408,70 @@ void set_probe_transport_state(bool wifi_connected, bool backend_connected, bool
 
 void show_probe_error(const char *reason) {
   set_probe_phase(hexe::AppPhase::kError, reason);
+}
+
+size_t embedded_model_size(const uint8_t *start, const uint8_t *end) {
+  return start < end ? static_cast<size_t>(end - start) : 0;
+}
+
+void init_probe_wake_word() {
+  const hexe::voice::MicroWakeModelAsset models[] = {
+      {hexe::voice::MicroWakeModelRole::kWake,
+       &kAudioProbeWakeModel,
+       kAlexaWakeModelStart,
+       embedded_model_size(kAlexaWakeModelStart, kAlexaWakeModelEnd),
+       true},
+  };
+  hexe::voice::init_micro_wake_engine(models, sizeof(models) / sizeof(models[0]));
+  const hexe::voice::MicroWakeEngineStatus status = hexe::voice::micro_wake_engine_status();
+  ESP_LOGI(
+      kTag,
+      "Audio probe wake word initialized: wake_ready=%s reason=%s asset_bytes=%u runtime_arena=%u frontend_ready=%s",
+      status.wake_ready ? "true" : "false",
+      status.wake_reason == nullptr ? "" : status.wake_reason,
+      static_cast<unsigned>(status.wake_model_asset_bytes),
+      static_cast<unsigned>(status.wake_runtime_arena_bytes),
+      status.feature_frontend_ready ? "true" : "false");
+}
+
+class ScopedWakeMonitorPause {
+ public:
+  explicit ScopedWakeMonitorPause(const char *reason) {
+    g_wake_monitor_paused.store(true);
+    ESP_LOGI(kTag, "Audio probe wake monitor paused reason=%s", reason == nullptr ? "unknown" : reason);
+  }
+
+  ~ScopedWakeMonitorPause() {
+    g_wake_monitor_paused.store(false);
+    ESP_LOGI(kTag, "Audio probe wake monitor resumed");
+  }
+};
+
+uint32_t update_wake_noise_floor(uint32_t current_floor, uint32_t level) {
+  if (current_floor == 0) {
+    return level;
+  }
+  return ((current_floor * 15) + level) / 16;
+}
+
+bool read_microphone_frame(std::array<int32_t, kFrameSamples * 2> *raw_samples, size_t *bytes_read, uint32_t timeout_ms) {
+  if (raw_samples == nullptr || bytes_read == nullptr || g_rx_channel == nullptr) {
+    return false;
+  }
+  *bytes_read = 0;
+  if (g_mic_mutex != nullptr && xSemaphoreTake(g_mic_mutex, pdMS_TO_TICKS(timeout_ms + 100)) != pdTRUE) {
+    return false;
+  }
+  const esp_err_t result = i2s_channel_read(
+      g_rx_channel,
+      raw_samples->data(),
+      raw_samples->size() * sizeof((*raw_samples)[0]),
+      bytes_read,
+      pdMS_TO_TICKS(timeout_ms));
+  if (g_mic_mutex != nullptr) {
+    xSemaphoreGive(g_mic_mutex);
+  }
+  return result == ESP_OK && *bytes_read > 0;
 }
 
 void load_nvs_string(nvs_handle_t handle, const char *key, char *target, size_t target_size) {
@@ -811,14 +920,8 @@ size_t capture_microphone_pcm(int16_t *samples, size_t max_samples, uint32_t *le
   uint32_t level_frames = 0;
   while (captured_samples < max_samples) {
     size_t bytes_read = 0;
-    const esp_err_t result = i2s_channel_read(
-        g_rx_channel,
-        g_raw_samples.data(),
-        g_raw_samples.size() * sizeof(g_raw_samples[0]),
-        &bytes_read,
-        pdMS_TO_TICKS(500));
-    if (result != ESP_OK || bytes_read == 0) {
-      ESP_LOGW(kTag, "Voice PE microphone probe read failed: %s bytes=%u", esp_err_to_name(result), static_cast<unsigned>(bytes_read));
+    if (!read_microphone_frame(&g_raw_samples, &bytes_read, 500)) {
+      ESP_LOGW(kTag, "Voice PE microphone probe read failed bytes=%u", static_cast<unsigned>(bytes_read));
       break;
     }
 
@@ -2672,6 +2775,13 @@ bool ensure_microphone_ready() {
   if (g_rx_channel != nullptr) {
     return true;
   }
+  if (g_mic_mutex == nullptr) {
+    g_mic_mutex = xSemaphoreCreateMutex();
+    if (g_mic_mutex == nullptr) {
+      ESP_LOGE(kTag, "Failed to create audio probe microphone mutex");
+      return false;
+    }
+  }
   if (!init_voice_kit() || !start_microphone_stream()) {
     ESP_LOGE(kTag, "Skipping PE microphone probe because microphone initialization failed");
     return false;
@@ -2702,6 +2812,104 @@ bool run_microphone_probe(const ProbeSettings &settings, const char *source) {
   }
   heap_caps_free(mic_audio);
   return uploaded;
+}
+
+void wake_monitor_task(void *arg) {
+  (void)arg;
+  uint32_t voice_candidate_frames = 0;
+  uint32_t noise_floor = 0;
+  uint32_t speech_peak_level = 0;
+  bool was_speaking = false;
+
+  while (true) {
+    if (g_wake_monitor_paused.load() || g_local_wake_pending.load() || g_turn_probe.waiting ||
+        hexe::state().tts_playback_active || hexe::state().phase == hexe::AppPhase::kReplying ||
+        hexe::state().ota_active) {
+      vTaskDelay(pdMS_TO_TICKS(kWakeMonitorPollMs));
+      continue;
+    }
+
+    size_t bytes_read = 0;
+    if (!read_microphone_frame(&g_raw_samples, &bytes_read, 100)) {
+      vTaskDelay(pdMS_TO_TICKS(kWakeMonitorPollMs));
+      continue;
+    }
+
+    const size_t stereo_frames = std::min(bytes_read / (sizeof(int32_t) * 2), kFrameSamples);
+    for (size_t index = 0; index < stereo_frames; ++index) {
+      g_wake_mono_samples[index] = voice_channel_sample(g_raw_samples[index * 2], g_raw_samples[(index * 2) + 1]);
+    }
+
+    const uint32_t level = estimate_level(g_wake_mono_samples.data(), stereo_frames);
+    if (noise_floor == 0) {
+      noise_floor = level;
+    }
+    const uint32_t start_threshold =
+        std::max(kWakeVadStartEnergyThreshold, (noise_floor * kWakeVadStartNoiseMultiplier) + kWakeVadNoiseMargin);
+    const uint32_t continue_threshold =
+        std::max(kWakeVadContinueEnergyThreshold, (noise_floor * kWakeVadContinueNoiseMultiplier) + kWakeVadNoiseMargin);
+    const uint32_t release_threshold = speech_peak_level == 0
+        ? continue_threshold
+        : std::max(continue_threshold, (speech_peak_level * kWakeVadReleasePeakPercent) / 100);
+    const bool frame_over_threshold = level >= (was_speaking ? release_threshold : start_threshold);
+    if (!was_speaking && !frame_over_threshold) {
+      noise_floor = update_wake_noise_floor(noise_floor, level);
+    }
+    if (frame_over_threshold) {
+      if (voice_candidate_frames < kWakeVadStartVoiceFrames) {
+        ++voice_candidate_frames;
+      }
+    } else {
+      voice_candidate_frames = 0;
+    }
+    const bool frame_has_voice = was_speaking ? frame_over_threshold : voice_candidate_frames >= kWakeVadStartVoiceFrames;
+    if (frame_has_voice) {
+      speech_peak_level = std::max(speech_peak_level, level);
+    } else if (!was_speaking) {
+      speech_peak_level = 0;
+    }
+    was_speaking = frame_has_voice;
+
+    const hexe::voice::LocalKeywordFrameDetections local_keywords = hexe::voice::process_micro_wake_frame(
+        g_wake_mono_samples.data(),
+        stereo_frames,
+        level,
+        noise_floor,
+        speech_peak_level,
+        frame_has_voice);
+    const hexe::voice::LocalKeywordDetection &wake_detection = local_keywords.wake;
+    if (wake_detection.detected) {
+      ESP_LOGI(
+          kTag,
+          "Audio probe local wake detected: model=%s confidence=%.3f level=%lu noise=%lu peak=%lu",
+          wake_detection.model == nullptr ? "unknown" : wake_detection.model,
+          static_cast<double>(wake_detection.confidence),
+          static_cast<unsigned long>(level),
+          static_cast<unsigned long>(noise_floor),
+          static_cast<unsigned long>(speech_peak_level));
+      g_local_wake_pending.store(true);
+    }
+
+    hexe::state().vad_enabled = true;
+    hexe::state().vad_speaking = frame_has_voice;
+    hexe::state().vad_level = static_cast<int>(level);
+  }
+}
+
+void start_wake_monitor() {
+  if (g_wake_monitor_task != nullptr) {
+    return;
+  }
+  if (!ensure_microphone_ready()) {
+    show_probe_error("wake_monitor_microphone_unavailable");
+    return;
+  }
+  if (xTaskCreate(wake_monitor_task, "probe_wake", kWakeMonitorTaskStackBytes, nullptr, 5, &g_wake_monitor_task) != pdPASS) {
+    show_probe_error("wake_monitor_task_failed");
+    ESP_LOGE(kTag, "Failed to create audio probe wake monitor task");
+    return;
+  }
+  ESP_LOGI(kTag, "Audio probe wake monitor started: frame_ms=%u", static_cast<unsigned>(kWakeFrameDurationMs));
 }
 
 void reset_turn_probe_state(const char *session_id) {
@@ -2749,6 +2957,7 @@ bool wait_for_turn_completion() {
 }
 
 bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
+  ScopedWakeMonitorPause wake_pause("full_turn");
   if (!wait_for_control_websocket()) {
     ESP_LOGE(kTag, "Audio probe full turn skipped; command WebSocket is not connected trigger=%s", trigger);
     show_probe_error("turn_ws_unavailable");
@@ -2976,6 +3185,11 @@ void handle_command_loop(const ProbeSettings &settings) {
     }
   }
 
+  if (g_local_wake_pending.exchange(false)) {
+    ESP_LOGI(kTag, "Audio probe executing local wake word turn");
+    run_full_turn_probe(settings, "wake_word");
+  }
+
   OtaRequest ota_request = {};
   while (g_ota_queue != nullptr && xQueueReceive(g_ota_queue, &ota_request, 0) == pdTRUE) {
     char ota_error_code[48] = {};
@@ -2997,6 +3211,7 @@ void run() {
   ESP_ERROR_CHECK(nvs_result);
   mark_running_probe_image_valid_if_pending();
   hexe::board::init_led_ring();
+  init_probe_wake_word();
   set_probe_phase(hexe::AppPhase::kWiFiConnecting, "boot");
 
   const ProbeSettings settings = load_settings();
@@ -3010,6 +3225,7 @@ void run() {
   init_probe_button();
   start_command_websocket(settings);
   run_probe_sequence(settings);
+  start_wake_monitor();
   set_probe_phase(hexe::idle_or_connecting_phase(), "boot_probe_complete");
   ESP_LOGI(kTag, "Audio probe sequence complete; idling");
   while (true) {

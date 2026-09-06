@@ -46,6 +46,10 @@ idf_component_register(
     "audio_probe.cpp"
     "../endpoint_runtime/app_state.cpp"
     "../endpoint_runtime/board/led_ring_ha_voice_pe.cpp"
+    "../endpoint_runtime/voice/micro_wake_engine.cpp"
+  EMBED_FILES
+    "../endpoint_runtime/voice/models/audio_preprocessor_int8.tflite"
+    "../endpoint_runtime/voice/models/alexa.tflite"
   INCLUDE_DIRS
     "."
     "../endpoint_runtime"
@@ -60,6 +64,7 @@ idf_component_register(
     esp_https_ota
     esp_http_client
     esp_netif
+    esp-tflite-micro
     esp_websocket_client
     esp_wifi
     freertos
@@ -69,4 +74,12 @@ idf_component_register(
     lwip
     mbedtls
     nvs_flash
+)
+
+target_compile_definitions(
+  ${COMPONENT_LIB}
+  PRIVATE
+    HEXE_MICRO_WAKE_WORD_ENGINE_LINKED=1
+    HEXE_MICRO_WAKE_WORD_TFLM_ENABLED=1
+    HEXE_MICRO_WAKE_WORD_FEATURE_FRONTEND_ENABLED=1
 )
