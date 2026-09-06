@@ -48,10 +48,13 @@ idf_component_register(
     "."
     "${HEXE_GENERATED_DIR}"
   REQUIRES
+    app_update
     esp_event
     esp_driver_gpio
     esp_driver_i2c
     esp_driver_i2s
+    esp_https_ota
+    esp_http_client
     esp_netif
     esp_websocket_client
     esp_wifi
@@ -60,5 +63,6 @@ idf_component_register(
     cjson
     log
     lwip
+    mbedtls
     nvs_flash
 )

@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <cctype>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -15,10 +17,15 @@
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
+#include "esp_app_desc.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
+#include "esp_http_client.h"
+#include "esp_https_ota.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_ota_ops.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_websocket_client.h"
 #include "esp_wifi.h"
@@ -30,6 +37,7 @@
 #include "freertos/task.h"
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
+#include "mbedtls/md.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 
@@ -53,6 +61,13 @@ constexpr char kUseTlsKey[] = "use_tls";
 constexpr char kWifiSsidKey[] = "wifi_ssid";
 constexpr char kWifiPasswordKey[] = "wifi_password";
 constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
+constexpr char kOtaSignatureAlgorithm[] = "hmac-sha256";
+constexpr char kFirmwareApplicationType[] = "endpoint";
+constexpr char kFirmwareApiVersion[] = "hexe-firmware-main-api-v1";
+constexpr char kModelApiVersion[] = "hexe-model-bundle-api-v1";
+constexpr char kAssetApiVersion[] = "hexe-asset-bundle-api-v1";
+constexpr char kCalibrationSchemaVersion[] = "hexe-calibration-schema-v1";
+constexpr char kRequiredSecurityPolicy[] = "signed_manifest_sha256_required";
 constexpr EventBits_t kWifiConnectedBit = BIT0;
 constexpr EventBits_t kWifiFailedBit = BIT1;
 constexpr size_t kSmallProbeBytes = 9600;
@@ -60,10 +75,13 @@ constexpr size_t kLargeProbeBytes = 245760;
 constexpr size_t kMicProbeSamples = 32000;
 constexpr size_t kMicProbeBytes = kMicProbeSamples * sizeof(int16_t);
 constexpr size_t kSendChunkBytes = 1024;
+constexpr size_t kSha256BlockBytes = 64;
 constexpr size_t kMaxBackendEventBytes = 4096;
 constexpr int kCommandQueueDepth = 4;
+constexpr int kOtaQueueDepth = 1;
 constexpr int kWifiMaxRetries = 20;
 constexpr int kSocketTimeoutMs = 5000;
+constexpr int kOtaTimeoutMs = 30000;
 constexpr int kControlWsNetworkTimeoutMs = 1000;
 constexpr int kControlWsSendTimeoutMs = 1200;
 constexpr int kControlWsClientTaskStackBytes = 4096;
@@ -114,6 +132,37 @@ struct CommandRequest {
   char command_type[64];
 };
 
+struct OtaRequest {
+  char request_id[96];
+  char url[256];
+  char version[32];
+  char profile[32];
+  char sha256[65];
+  int size_bytes;
+  char application_type[24];
+  char board_profile[32];
+  char soc[24];
+  char idf_target[24];
+  char flash_size[24];
+  char psram_size[24];
+  char partition_schema[24];
+  char app_slot_size[24];
+  char firmware_api_version[48];
+  char model_api_version[48];
+  char asset_api_version[48];
+  char calibration_schema_version[48];
+  char release_channel[24];
+  char security_policy[48];
+  char signature_algorithm[24];
+  char signature_key_id[48];
+  char manifest_signature[65];
+};
+
+struct OtaDownloadContext {
+  mbedtls_md_context_t sha256;
+  int bytes_seen;
+};
+
 EventGroupHandle_t g_wifi_event_group = nullptr;
 int g_wifi_retry_count = 0;
 char g_ip_address[16] = "0.0.0.0";
@@ -122,10 +171,12 @@ i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
 i2c_master_dev_handle_t g_voice_kit_i2c_device = nullptr;
 std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
 QueueHandle_t g_command_queue = nullptr;
+QueueHandle_t g_ota_queue = nullptr;
 SemaphoreHandle_t g_ws_send_lock = nullptr;
 esp_websocket_client_handle_t g_ws_client = nullptr;
 bool g_ws_started = false;
 bool g_ws_connected = false;
+bool g_ota_active = false;
 uint32_t g_sequence = 1;
 std::string g_ws_rx_buffer;
 
@@ -141,6 +192,8 @@ void copy_string(char *target, size_t target_size, const char *value) {
 bool valid_port(int port) {
   return port > 0 && port <= 65535;
 }
+
+const char *payload_request_id(cJSON *payload);
 
 void load_nvs_string(nvs_handle_t handle, const char *key, char *target, size_t target_size) {
   size_t length = target_size;
@@ -681,6 +734,525 @@ bool post_probe(
   return ok && response_ok && status_code >= 200 && status_code < 300;
 }
 
+void set_error_code(char *target, size_t target_size, const char *code) {
+  if (target == nullptr || target_size == 0) {
+    return;
+  }
+  std::snprintf(target, target_size, "%s", code == nullptr ? "ota_rejected" : code);
+}
+
+bool is_hex_digest(const char *value) {
+  if (value == nullptr || std::strlen(value) != 64) {
+    return false;
+  }
+  for (size_t index = 0; value[index] != '\0'; ++index) {
+    if (!std::isxdigit(static_cast<unsigned char>(value[index]))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool parse_size_label_bytes(const char *label, int *bytes) {
+  if (label == nullptr || label[0] == '\0' || bytes == nullptr) {
+    return false;
+  }
+  const char *cursor = label;
+  int value = 0;
+  while (std::isdigit(static_cast<unsigned char>(*cursor))) {
+    value = (value * 10) + (*cursor - '0');
+    ++cursor;
+  }
+  if (value <= 0) {
+    return false;
+  }
+  if (std::strcmp(cursor, "MiB") == 0) {
+    *bytes = value * 1024 * 1024;
+    return true;
+  }
+  if (std::strcmp(cursor, "KiB") == 0) {
+    *bytes = value * 1024;
+    return true;
+  }
+  if (std::strcmp(cursor, "B") == 0) {
+    *bytes = value;
+    return true;
+  }
+  return false;
+}
+
+bool string_in_set(const char *value, const char *first, const char *second) {
+  return value != nullptr && (std::strcmp(value, first) == 0 || std::strcmp(value, second) == 0);
+}
+
+void bytes_to_hex(const unsigned char *bytes, size_t byte_count, char *target, size_t target_size) {
+  if (target == nullptr || target_size < (byte_count * 2) + 1) {
+    return;
+  }
+  for (size_t index = 0; index < byte_count; ++index) {
+    std::snprintf(target + (index * 2), 3, "%02x", bytes[index]);
+  }
+  target[byte_count * 2] = '\0';
+}
+
+const char *current_firmware_version() {
+  const esp_app_desc_t *app = esp_app_get_description();
+  return (app == nullptr || app->version[0] == '\0') ? "unknown" : app->version;
+}
+
+bool parse_semver_components(const char *version, int *parts, size_t part_count) {
+  if (version == nullptr || version[0] == '\0' || parts == nullptr) {
+    return false;
+  }
+  size_t part_index = 0;
+  const char *cursor = version;
+  while (*cursor != '\0' && part_index < part_count) {
+    if (!std::isdigit(static_cast<unsigned char>(*cursor))) {
+      return false;
+    }
+    int value = 0;
+    while (std::isdigit(static_cast<unsigned char>(*cursor))) {
+      value = (value * 10) + (*cursor - '0');
+      ++cursor;
+    }
+    parts[part_index++] = value;
+    if (*cursor == '.') {
+      ++cursor;
+      continue;
+    }
+    if (*cursor == '\0' || *cursor == '-' || *cursor == '+') {
+      break;
+    }
+    return false;
+  }
+  return part_index > 0;
+}
+
+bool version_is_newer(const char *target, const char *current) {
+  if (target == nullptr || target[0] == '\0') {
+    return false;
+  }
+  if (current == nullptr || current[0] == '\0' || std::strcmp(current, "unknown") == 0) {
+    return true;
+  }
+  int target_parts[4] = {};
+  int current_parts[4] = {};
+  if (parse_semver_components(target, target_parts, 4) && parse_semver_components(current, current_parts, 4)) {
+    for (size_t index = 0; index < 4; ++index) {
+      if (target_parts[index] > current_parts[index]) {
+        return true;
+      }
+      if (target_parts[index] < current_parts[index]) {
+        return false;
+      }
+    }
+    return false;
+  }
+  return std::strcmp(target, current) > 0;
+}
+
+std::string canonical_ota_manifest_payload(const OtaRequest &request) {
+  std::string payload;
+  payload.reserve(
+      std::strlen(request.profile) + std::strlen(request.url) + std::strlen(request.version) +
+      std::strlen(request.sha256) + std::strlen(request.application_type) + std::strlen(request.board_profile) +
+      std::strlen(request.soc) + std::strlen(request.idf_target) + std::strlen(request.flash_size) +
+      std::strlen(request.psram_size) + std::strlen(request.partition_schema) + std::strlen(request.app_slot_size) +
+      std::strlen(request.firmware_api_version) + std::strlen(request.model_api_version) +
+      std::strlen(request.asset_api_version) + std::strlen(request.calibration_schema_version) +
+      std::strlen(request.release_channel) + std::strlen(request.security_policy) +
+      std::strlen(request.signature_algorithm) + std::strlen(request.signature_key_id) + 64);
+  payload.append(request.profile);
+  payload.push_back('\n');
+  payload.append(request.url);
+  payload.push_back('\n');
+  payload.append(request.version);
+  payload.push_back('\n');
+  payload.append(request.sha256);
+  payload.push_back('\n');
+  payload.append(std::to_string(request.size_bytes));
+  payload.push_back('\n');
+  payload.append(request.application_type);
+  payload.push_back('\n');
+  payload.append(request.board_profile);
+  payload.push_back('\n');
+  payload.append(request.soc);
+  payload.push_back('\n');
+  payload.append(request.idf_target);
+  payload.push_back('\n');
+  payload.append(request.flash_size);
+  payload.push_back('\n');
+  payload.append(request.psram_size);
+  payload.push_back('\n');
+  payload.append(request.partition_schema);
+  payload.push_back('\n');
+  payload.append(request.app_slot_size);
+  payload.push_back('\n');
+  payload.append(request.firmware_api_version);
+  payload.push_back('\n');
+  payload.append(request.model_api_version);
+  payload.push_back('\n');
+  payload.append(request.asset_api_version);
+  payload.push_back('\n');
+  payload.append(request.calibration_schema_version);
+  payload.push_back('\n');
+  payload.append(request.release_channel);
+  payload.push_back('\n');
+  payload.append(request.security_policy);
+  payload.push_back('\n');
+  payload.append(request.signature_algorithm);
+  payload.push_back('\n');
+  payload.append(request.signature_key_id);
+  return payload;
+}
+
+bool calculate_ota_manifest_hmac(const OtaRequest &request, char *target, size_t target_size) {
+  const mbedtls_md_info_t *md_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  if (md_info == nullptr || target == nullptr || target_size < 65) {
+    return false;
+  }
+  const std::string payload = canonical_ota_manifest_payload(request);
+  unsigned char digest[32] = {};
+  const unsigned char *key = reinterpret_cast<const unsigned char *>(hexe::config::kEndpointOtaManifestSigningKey);
+  size_t key_len = std::strlen(hexe::config::kEndpointOtaManifestSigningKey);
+  unsigned char key_block[kSha256BlockBytes] = {};
+  if (key_len > kSha256BlockBytes) {
+    if (mbedtls_md(md_info, key, key_len, key_block) != 0) {
+      return false;
+    }
+    key_len = 32;
+  } else {
+    std::memcpy(key_block, key, key_len);
+  }
+
+  unsigned char inner_pad[kSha256BlockBytes] = {};
+  unsigned char outer_pad[kSha256BlockBytes] = {};
+  for (size_t index = 0; index < kSha256BlockBytes; ++index) {
+    inner_pad[index] = key_block[index] ^ 0x36;
+    outer_pad[index] = key_block[index] ^ 0x5c;
+  }
+
+  std::string inner(reinterpret_cast<const char *>(inner_pad), sizeof(inner_pad));
+  inner.append(payload);
+  unsigned char inner_digest[32] = {};
+  if (mbedtls_md(md_info, reinterpret_cast<const unsigned char *>(inner.data()), inner.size(), inner_digest) != 0) {
+    return false;
+  }
+
+  std::string outer(reinterpret_cast<const char *>(outer_pad), sizeof(outer_pad));
+  outer.append(reinterpret_cast<const char *>(inner_digest), sizeof(inner_digest));
+  if (mbedtls_md(md_info, reinterpret_cast<const unsigned char *>(outer.data()), outer.size(), digest) != 0) {
+    return false;
+  }
+  bytes_to_hex(digest, sizeof(digest), target, target_size);
+  return true;
+}
+
+bool constant_time_equal(const char *left, const char *right) {
+  if (left == nullptr || right == nullptr || std::strlen(left) != std::strlen(right)) {
+    return false;
+  }
+  unsigned char diff = 0;
+  for (size_t index = 0; left[index] != '\0'; ++index) {
+    diff |= static_cast<unsigned char>(left[index] ^ right[index]);
+  }
+  return diff == 0;
+}
+
+bool verify_ota_manifest_signature(const OtaRequest &request) {
+  char expected[65] = {};
+  return calculate_ota_manifest_hmac(request, expected, sizeof(expected)) &&
+         constant_time_equal(expected, request.manifest_signature);
+}
+
+bool validate_ota_request(const OtaRequest &request, char *error_code, size_t error_code_size) {
+  if (request.url[0] == '\0') {
+    set_error_code(error_code, error_code_size, "missing_url");
+    return false;
+  }
+  if (request.version[0] == '\0' || !version_is_newer(request.version, current_firmware_version())) {
+    set_error_code(error_code, error_code_size, "downgrade_or_replay");
+    return false;
+  }
+  if (std::strcmp(request.profile, hexe::config::kEndpointBoardProfile) != 0) {
+    set_error_code(error_code, error_code_size, "unsupported_profile");
+    return false;
+  }
+  if (std::strcmp(request.application_type, kFirmwareApplicationType) != 0) {
+    set_error_code(error_code, error_code_size, "wrong_application_type");
+    return false;
+  }
+  if (std::strcmp(request.board_profile, hexe::board::pins::kBoardProfile) != 0 ||
+      std::strcmp(request.board_profile, request.profile) != 0) {
+    set_error_code(error_code, error_code_size, "board_profile_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.soc, hexe::board::pins::kSoc) != 0) {
+    set_error_code(error_code, error_code_size, "soc_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.idf_target, hexe::board::pins::kIdfTarget) != 0) {
+    set_error_code(error_code, error_code_size, "idf_target_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.flash_size, hexe::board::pins::kFlashSize) != 0) {
+    set_error_code(error_code, error_code_size, "flash_geometry_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.psram_size, hexe::board::pins::kPsramSize) != 0) {
+    set_error_code(error_code, error_code_size, "psram_geometry_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.partition_schema, hexe::board::pins::kPartitionSchema) != 0) {
+    set_error_code(error_code, error_code_size, "partition_schema_mismatch");
+    return false;
+  }
+  if (std::strcmp(request.app_slot_size, hexe::board::pins::kAppSlotSize) != 0) {
+    set_error_code(error_code, error_code_size, "app_slot_size_mismatch");
+    return false;
+  }
+  int app_slot_bytes = 0;
+  if (request.size_bytes <= 0 ||
+      !parse_size_label_bytes(hexe::board::pins::kAppSlotSize, &app_slot_bytes) ||
+      request.size_bytes > app_slot_bytes) {
+    set_error_code(error_code, error_code_size, request.size_bytes <= 0 ? "invalid_size" : "image_too_large");
+    return false;
+  }
+  if (std::strcmp(request.firmware_api_version, kFirmwareApiVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_firmware_api");
+    return false;
+  }
+  if (std::strcmp(request.model_api_version, kModelApiVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_model_api");
+    return false;
+  }
+  if (std::strcmp(request.asset_api_version, kAssetApiVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_asset_api");
+    return false;
+  }
+  if (std::strcmp(request.calibration_schema_version, kCalibrationSchemaVersion) != 0) {
+    set_error_code(error_code, error_code_size, "incompatible_calibration_schema");
+    return false;
+  }
+  if (!string_in_set(request.release_channel, "dev", "stable")) {
+    set_error_code(error_code, error_code_size, "unsupported_release_channel");
+    return false;
+  }
+  if (std::strcmp(request.security_policy, kRequiredSecurityPolicy) != 0) {
+    set_error_code(error_code, error_code_size, "unsupported_security_policy");
+    return false;
+  }
+  if (!is_hex_digest(request.sha256)) {
+    set_error_code(error_code, error_code_size, request.sha256[0] == '\0' ? "missing_checksum" : "invalid_checksum");
+    return false;
+  }
+  if (std::strcmp(request.signature_algorithm, kOtaSignatureAlgorithm) != 0) {
+    set_error_code(error_code, error_code_size, "unsupported_signature_algorithm");
+    return false;
+  }
+  if (std::strcmp(request.signature_key_id, hexe::config::kEndpointOtaManifestKeyId) != 0) {
+    set_error_code(error_code, error_code_size, "unknown_signature_key");
+    return false;
+  }
+  if (!is_hex_digest(request.manifest_signature)) {
+    set_error_code(
+        error_code,
+        error_code_size,
+        request.manifest_signature[0] == '\0' ? "missing_signature" : "invalid_signature");
+    return false;
+  }
+  if (!verify_ota_manifest_signature(request)) {
+    set_error_code(error_code, error_code_size, "invalid_signature");
+    return false;
+  }
+  return true;
+}
+
+esp_err_t ota_http_event_handler(esp_http_client_event_t *event) {
+  if (event == nullptr || event->event_id != HTTP_EVENT_ON_DATA || event->data == nullptr || event->data_len <= 0) {
+    return ESP_OK;
+  }
+  auto *context = static_cast<OtaDownloadContext *>(event->user_data);
+  if (context == nullptr) {
+    return ESP_OK;
+  }
+  if (mbedtls_md_update(
+          &context->sha256,
+          reinterpret_cast<const unsigned char *>(event->data),
+          static_cast<size_t>(event->data_len)) != 0) {
+    return ESP_FAIL;
+  }
+  context->bytes_seen += event->data_len;
+  return ESP_OK;
+}
+
+void copy_json_string_field(cJSON *payload, const char *field, char *target, size_t target_size) {
+  cJSON *value = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, field) : nullptr;
+  copy_string(target, target_size, cJSON_IsString(value) ? value->valuestring : "");
+}
+
+bool parse_ota_request(cJSON *payload, OtaRequest *request, char *error_code, size_t error_code_size) {
+  if (!cJSON_IsObject(payload) || request == nullptr) {
+    set_error_code(error_code, error_code_size, "invalid_payload");
+    return false;
+  }
+  *request = {};
+  copy_string(request->request_id, sizeof(request->request_id), payload_request_id(payload));
+  copy_json_string_field(payload, "url", request->url, sizeof(request->url));
+  copy_json_string_field(payload, "version", request->version, sizeof(request->version));
+  copy_json_string_field(payload, "profile", request->profile, sizeof(request->profile));
+  copy_json_string_field(payload, "sha256", request->sha256, sizeof(request->sha256));
+  cJSON *size_bytes = cJSON_GetObjectItem(payload, "size_bytes");
+  request->size_bytes = cJSON_IsNumber(size_bytes) ? size_bytes->valueint : 0;
+  copy_json_string_field(payload, "application_type", request->application_type, sizeof(request->application_type));
+  copy_json_string_field(payload, "board_profile", request->board_profile, sizeof(request->board_profile));
+  copy_json_string_field(payload, "soc", request->soc, sizeof(request->soc));
+  copy_json_string_field(payload, "idf_target", request->idf_target, sizeof(request->idf_target));
+  copy_json_string_field(payload, "flash_size", request->flash_size, sizeof(request->flash_size));
+  copy_json_string_field(payload, "psram_size", request->psram_size, sizeof(request->psram_size));
+  copy_json_string_field(payload, "partition_schema", request->partition_schema, sizeof(request->partition_schema));
+  copy_json_string_field(payload, "app_slot_size", request->app_slot_size, sizeof(request->app_slot_size));
+  copy_json_string_field(payload, "firmware_api_version", request->firmware_api_version, sizeof(request->firmware_api_version));
+  copy_json_string_field(payload, "model_api_version", request->model_api_version, sizeof(request->model_api_version));
+  copy_json_string_field(payload, "asset_api_version", request->asset_api_version, sizeof(request->asset_api_version));
+  copy_json_string_field(payload, "calibration_schema_version", request->calibration_schema_version, sizeof(request->calibration_schema_version));
+  copy_json_string_field(payload, "release_channel", request->release_channel, sizeof(request->release_channel));
+  copy_json_string_field(payload, "security_policy", request->security_policy, sizeof(request->security_policy));
+  copy_json_string_field(payload, "signature_algorithm", request->signature_algorithm, sizeof(request->signature_algorithm));
+  copy_json_string_field(payload, "signature_key_id", request->signature_key_id, sizeof(request->signature_key_id));
+  copy_json_string_field(payload, "manifest_signature", request->manifest_signature, sizeof(request->manifest_signature));
+  return validate_ota_request(*request, error_code, error_code_size);
+}
+
+void mark_running_probe_image_valid_if_pending() {
+  const esp_partition_t *running_partition = esp_ota_get_running_partition();
+  if (running_partition == nullptr) {
+    ESP_LOGW(kTag, "OTA boot validation skipped: missing running partition");
+    return;
+  }
+  esp_ota_img_states_t running_state = ESP_OTA_IMG_UNDEFINED;
+  const esp_err_t state_result = esp_ota_get_state_partition(running_partition, &running_state);
+  if (state_result != ESP_OK) {
+    ESP_LOGW(kTag, "OTA boot validation state unreadable: %s", esp_err_to_name(state_result));
+    return;
+  }
+  if (running_state != ESP_OTA_IMG_NEW && running_state != ESP_OTA_IMG_PENDING_VERIFY) {
+    ESP_LOGI(kTag, "OTA boot validation not pending; running partition=%s state=%d", running_partition->label, running_state);
+    return;
+  }
+  const esp_err_t mark_result = esp_ota_mark_app_valid_cancel_rollback();
+  if (mark_result == ESP_OK) {
+    ESP_LOGI(kTag, "OTA boot validation passed for probe image; running image marked valid");
+  } else {
+    ESP_LOGE(kTag, "OTA boot validation mark-valid failed: %s", esp_err_to_name(mark_result));
+  }
+}
+
+bool execute_ota_update(const OtaRequest &request, char *error_code, size_t error_code_size) {
+  if (g_ota_active) {
+    set_error_code(error_code, error_code_size, "ota_update_active");
+    return false;
+  }
+  g_ota_active = true;
+  ESP_LOGI(
+      kTag,
+      "Audio probe OTA starting version=%s profile=%s size=%d url=%s",
+      request.version,
+      request.profile,
+      request.size_bytes,
+      request.url);
+
+  OtaDownloadContext download_context = {};
+  mbedtls_md_init(&download_context.sha256);
+  const mbedtls_md_info_t *sha256_info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+  esp_err_t result = (
+                         sha256_info != nullptr &&
+                         mbedtls_md_setup(&download_context.sha256, sha256_info, 0) == 0 &&
+                         mbedtls_md_starts(&download_context.sha256) == 0)
+                         ? ESP_OK
+                         : ESP_FAIL;
+
+  esp_http_client_config_t http_config = {};
+  http_config.url = request.url;
+  http_config.timeout_ms = kOtaTimeoutMs;
+  http_config.keep_alive_enable = true;
+  http_config.event_handler = ota_http_event_handler;
+  http_config.user_data = &download_context;
+
+  esp_https_ota_config_t ota_config = {};
+  ota_config.http_config = &http_config;
+
+  esp_https_ota_handle_t ota_handle = nullptr;
+  if (result == ESP_OK) {
+    result = esp_https_ota_begin(&ota_config, &ota_handle);
+  }
+  if (result == ESP_OK) {
+    const int image_size = esp_https_ota_get_image_size(ota_handle);
+    ESP_LOGI(kTag, "Audio probe OTA image size reported=%d", image_size);
+
+    do {
+      result = esp_https_ota_perform(ota_handle);
+      const int bytes_read = esp_https_ota_get_image_len_read(ota_handle);
+      if (bytes_read >= 0 && request.size_bytes > 0) {
+        int percent = (bytes_read * 100) / request.size_bytes;
+        if (percent > 100) {
+          percent = 100;
+        }
+        ESP_LOGI(kTag, "Audio probe OTA progress bytes=%d/%d percent=%d", bytes_read, request.size_bytes, percent);
+      }
+    } while (result == ESP_ERR_HTTPS_OTA_IN_PROGRESS);
+
+    if (result == ESP_OK && !esp_https_ota_is_complete_data_received(ota_handle)) {
+      result = ESP_ERR_INVALID_SIZE;
+    }
+
+    if (result == ESP_OK) {
+      unsigned char digest[32] = {};
+      char calculated_sha256[65] = {};
+      if (mbedtls_md_finish(&download_context.sha256, digest) != 0) {
+        result = ESP_FAIL;
+      } else {
+        bytes_to_hex(digest, sizeof(digest), calculated_sha256, sizeof(calculated_sha256));
+        if (request.size_bytes > 0 && download_context.bytes_seen != request.size_bytes) {
+          ESP_LOGE(
+              kTag,
+              "Audio probe OTA size check failed expected=%d actual=%d",
+              request.size_bytes,
+              download_context.bytes_seen);
+          result = ESP_ERR_INVALID_SIZE;
+        } else if (!constant_time_equal(calculated_sha256, request.sha256)) {
+          ESP_LOGE(
+              kTag,
+              "Audio probe OTA checksum_mismatch expected=%s actual=%s",
+              request.sha256,
+              calculated_sha256);
+          result = ESP_ERR_INVALID_CRC;
+        }
+      }
+    }
+
+    if (result == ESP_OK) {
+      result = esp_https_ota_finish(ota_handle);
+      ota_handle = nullptr;
+    }
+  }
+
+  if (result == ESP_OK) {
+    ESP_LOGI(kTag, "Audio probe OTA installed; restarting into version=%s", request.version);
+    mbedtls_md_free(&download_context.sha256);
+    esp_restart();
+  }
+
+  if (ota_handle != nullptr) {
+    esp_https_ota_abort(ota_handle);
+  }
+  mbedtls_md_free(&download_context.sha256);
+  g_ota_active = false;
+  set_error_code(error_code, error_code_size, esp_err_to_name(result));
+  ESP_LOGE(kTag, "Audio probe OTA failed: %s", esp_err_to_name(result));
+  return false;
+}
+
 bool append_json_escaped(std::string &target, const char *value) {
   const char *source = value == nullptr ? "" : value;
   for (const char *cursor = source; *cursor != '\0'; ++cursor) {
@@ -847,6 +1419,23 @@ void handle_backend_event_json(const ProbeSettings &settings, const std::string 
   if (std::strcmp(type->valuestring, "endpoint.listen") == 0) {
     send_command_ack(settings, payload_request_id(payload), "endpoint.listen", "accepted", "OK");
     enqueue_listen_command(payload);
+  } else if (std::strcmp(type->valuestring, "ota.update") == 0) {
+    OtaRequest request = {};
+    char ota_error_code[48] = {};
+    if (!parse_ota_request(payload, &request, ota_error_code, sizeof(ota_error_code))) {
+      ESP_LOGW(kTag, "Audio probe OTA rejected: reason=%s", ota_error_code);
+      send_command_error(
+          settings,
+          payload_request_id(payload),
+          "ota.update",
+          ota_error_code,
+          "OTA update rejected by endpoint integrity policy");
+    } else if (g_ota_queue == nullptr || xQueueSend(g_ota_queue, &request, 0) != pdTRUE) {
+      send_command_error(settings, request.request_id, "ota.update", "ota_update_busy", "OTA update already queued or active");
+    } else {
+      ESP_LOGI(kTag, "Audio probe OTA accepted request_id=%s version=%s", request.request_id, request.version);
+      send_command_ack(settings, request.request_id, "ota.update", "accepted", "OTA update accepted");
+    }
   } else if (std::strncmp(type->valuestring, "endpoint.", 9) == 0) {
     send_command_error(
         settings,
@@ -915,6 +1504,13 @@ bool start_command_websocket(const ProbeSettings &settings) {
     g_command_queue = xQueueCreate(kCommandQueueDepth, sizeof(CommandRequest));
     if (g_command_queue == nullptr) {
       ESP_LOGE(kTag, "Failed to create audio probe command queue");
+      return false;
+    }
+  }
+  if (g_ota_queue == nullptr) {
+    g_ota_queue = xQueueCreate(kOtaQueueDepth, sizeof(OtaRequest));
+    if (g_ota_queue == nullptr) {
+      ESP_LOGE(kTag, "Failed to create audio probe OTA queue");
       return false;
     }
   }
@@ -1042,6 +1638,14 @@ void handle_command_loop(const ProbeSettings &settings) {
       }
     }
   }
+
+  OtaRequest ota_request = {};
+  while (g_ota_queue != nullptr && xQueueReceive(g_ota_queue, &ota_request, 0) == pdTRUE) {
+    char ota_error_code[48] = {};
+    if (!execute_ota_update(ota_request, ota_error_code, sizeof(ota_error_code))) {
+      send_command_error(settings, ota_request.request_id, "ota.update", ota_error_code, "OTA update failed");
+    }
+  }
 }
 }  // namespace
 
@@ -1054,6 +1658,7 @@ void run() {
     nvs_result = nvs_flash_init();
   }
   ESP_ERROR_CHECK(nvs_result);
+  mark_running_probe_image_valid_if_pending();
 
   const ProbeSettings settings = load_settings();
   if (!connect_wifi(settings)) {

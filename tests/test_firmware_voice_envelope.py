@@ -1574,6 +1574,13 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "Audio probe command WebSocket connected" in probe_source
     assert "WEBSOCKET_EVENT_DATA" in probe_source
     assert "endpoint.listen" in probe_source
+    assert "ota.update" in probe_source
+    assert "esp_https_ota_begin" in probe_source
+    assert "esp_https_ota_perform" in probe_source
+    assert "esp_https_ota_finish" in probe_source
+    assert "esp_ota_mark_app_valid_cancel_rollback" in probe_source
+    assert "verify_ota_manifest_signature" in probe_source
+    assert "constant_time_equal(calculated_sha256, request.sha256)" in probe_source
     assert "command.ack" in probe_source
     assert "command.error" in probe_source
     assert "std::memcpy(stage.data(), data + offset, chunk);" in probe_source
