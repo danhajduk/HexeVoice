@@ -767,7 +767,7 @@ def test_firmware_audio_queue_waits_for_connected_websocket_transport():
     assert "return voice_control_transport_ready();" in source
     assert "g_audio_ws_client != nullptr && g_audio_ws_connected" in source
     assert "!g_audio_ws_restart_requested && audio_connected_for_us >= kVoiceWsReadyWarmupUs" in source
-    assert "samples == nullptr || sample_count == 0 || !voice_control_transport_ready()" in source
+    assert "samples == nullptr || sample_count == 0 || !voice_control_transport_ready() ||\n      !voice_audio_socket_desired()" in source
     assert "if (!voice_transport_ready()) {\n    app_state.phase = hexe::idle_or_connecting_phase();" in source
     assert "if (!voice_transport_ready()) {\n    return false;" in source
     assert "void reset_audio_transport_queue(const char *reason)" in source

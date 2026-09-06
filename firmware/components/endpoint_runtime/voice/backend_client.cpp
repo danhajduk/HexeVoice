@@ -3909,7 +3909,8 @@ bool submit_audio_frame(
     uint32_t speech_peak_level,
     bool vad_speaking,
     const MicroVadFrameState *micro_vad) {
-  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !voice_control_transport_ready()) {
+  if (g_audio_queue == nullptr || samples == nullptr || sample_count == 0 || !voice_control_transport_ready() ||
+      !voice_audio_socket_desired()) {
     return false;
   }
   if (post_tts_input_cooldown_active()) {
