@@ -74,9 +74,10 @@ constexpr int kWakePredictionChunkSamples = 1280;
 constexpr size_t kMaxBackendEventBytes = 8192;
 constexpr uint32_t kBackendReadinessPollMs = 500;
 constexpr int kHeartbeatHttpTimeoutMs = 3000;
-constexpr int kVoiceAudioHttpTimeoutMs = 10000;
+constexpr int kVoiceAudioHttpTimeoutMs = 30000;
 constexpr size_t kVoiceAudioHttpUploadChunkBytes = 2048;
 constexpr size_t kVoiceAudioHttpUploadChunkSamples = kVoiceAudioHttpUploadChunkBytes / sizeof(int16_t);
+constexpr size_t kVoiceAudioHttpWriteChunkBytes = 4096;
 constexpr size_t kVoiceAudioMaxBufferedSamples =
     (static_cast<size_t>(hexe::config::kEndpointAudioSampleRateHz) * hexe::config::kEndpointAudioChannels * 20);
 constexpr int kClockSyncIntervalMs = 300000;
@@ -932,27 +933,45 @@ bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bo
     return false;
   }
 
-  if (byte_count > kVoiceAudioHttpUploadChunkBytes) {
+  if (byte_count > kVoiceAudioMaxBufferedSamples * sizeof(int16_t)) {
     ESP_LOGW(
         kTag,
-        "Voice HTTP audio chunk too large for stack upload: session=%s bytes=%u max_bytes=%u",
+        "Voice HTTP audio payload too large: session=%s bytes=%u max_bytes=%u",
         g_session_id.c_str(),
         static_cast<unsigned>(byte_count),
-        static_cast<unsigned>(kVoiceAudioHttpUploadChunkBytes));
+        static_cast<unsigned>(kVoiceAudioMaxBufferedSamples * sizeof(int16_t)));
     esp_http_client_cleanup(client);
     return false;
   }
 
-  char upload_chunk[kVoiceAudioHttpUploadChunkBytes];
-  std::memcpy(upload_chunk, reinterpret_cast<const char *>(samples), byte_count);
-
   esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
   esp_http_client_set_header(client, "Connection", "close");
-  esp_http_client_set_post_field(client, upload_chunk, static_cast<int>(byte_count));
-  esp_err_t err = esp_http_client_perform(client);
-  const int written_bytes = err == ESP_OK ? static_cast<int>(byte_count) : 0;
+  esp_err_t err = esp_http_client_open(client, static_cast<int>(byte_count));
+  int written_bytes = 0;
+  const char *body = reinterpret_cast<const char *>(samples);
+  while (err == ESP_OK && written_bytes < static_cast<int>(byte_count)) {
+    const size_t remaining = byte_count - static_cast<size_t>(written_bytes);
+    const int to_write = static_cast<int>(std::min(remaining, kVoiceAudioHttpWriteChunkBytes));
+    const int written = esp_http_client_write(client, body + written_bytes, to_write);
+    if (written < 0) {
+      err = ESP_ERR_HTTP_WRITE_DATA;
+      break;
+    }
+    if (written == 0) {
+      err = ESP_ERR_HTTP_EAGAIN;
+      break;
+    }
+    written_bytes += written;
+  }
+  if (err == ESP_OK && written_bytes == static_cast<int>(byte_count)) {
+    const int headers_result = esp_http_client_fetch_headers(client);
+    if (headers_result < 0) {
+      err = ESP_FAIL;
+    }
+  }
   const int status_code = esp_http_client_get_status_code(client);
   const int64_t duration_ms = (esp_timer_get_time() - started_us) / 1000;
+  esp_http_client_close(client);
   esp_http_client_cleanup(client);
 
   const bool uploaded = err == ESP_OK && status_code >= 200 && status_code < 300;
@@ -960,7 +979,7 @@ bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bo
     g_first_http_audio_chunk_logged = true;
     ESP_LOGI(
         kTag,
-        "Voice HTTP raw audio upload active: session=%s first_chunk=%" PRIu32 " bytes=%u written_bytes=%d status=%d duration_ms=%lld",
+        "Voice HTTP raw audio upload active: session=%s chunk=%" PRIu32 " bytes=%u written_bytes=%d status=%d duration_ms=%lld",
         g_session_id.c_str(),
         chunk_index,
         static_cast<unsigned>(byte_count),
@@ -989,33 +1008,25 @@ bool post_buffered_voice_audio_http() {
     return false;
   }
   const size_t total_samples = g_http_audio_sample_count;
-  size_t offset_samples = 0;
-  size_t posted_chunks = 0;
   ESP_LOGI(
       kTag,
-      "Uploading buffered voice audio as raw HTTP chunks: session=%s samples=%u bytes=%u chunk_bytes=%u truncated=%d",
+      "Uploading buffered voice audio as a single raw HTTP POST: session=%s samples=%u bytes=%u request_bytes=%u truncated=%d",
       g_session_id.c_str(),
       static_cast<unsigned>(total_samples),
       static_cast<unsigned>(total_samples * sizeof(int16_t)),
-      static_cast<unsigned>(kVoiceAudioHttpUploadChunkBytes),
+      static_cast<unsigned>(total_samples * sizeof(int16_t)),
       g_http_audio_buffer_overflow ? 1 : 0);
-  while (offset_samples < total_samples) {
-    const size_t remaining_samples = total_samples - offset_samples;
-    const size_t chunk_samples = std::min(remaining_samples, kVoiceAudioHttpUploadChunkSamples);
-    const bool is_final = offset_samples + chunk_samples >= total_samples;
-    const bool truncated = is_final && g_http_audio_buffer_overflow;
-    if (!post_voice_audio_chunk_http(g_http_audio_samples + offset_samples, chunk_samples, is_final, truncated)) {
-      return false;
-    }
-    offset_samples += chunk_samples;
-    ++posted_chunks;
+  if (post_voice_audio_chunk_http(g_http_audio_samples, total_samples, true, g_http_audio_buffer_overflow)) {
+    constexpr size_t posted_chunks = 1;
+    ESP_LOGI(
+        kTag,
+        "Buffered voice audio raw HTTP upload complete: session=%s chunks=%u samples=%u",
+        g_session_id.c_str(),
+        static_cast<unsigned>(posted_chunks),
+        static_cast<unsigned>(total_samples));
+  } else {
+    return false;
   }
-  ESP_LOGI(
-      kTag,
-      "Buffered voice audio raw HTTP upload complete: session=%s chunks=%u samples=%u",
-      g_session_id.c_str(),
-      static_cast<unsigned>(posted_chunks),
-      static_cast<unsigned>(total_samples));
   return true;
 }
 

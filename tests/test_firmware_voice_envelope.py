@@ -833,18 +833,20 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "post_buffered_voice_audio_http()" in source
     assert "kVoiceAudioHttpUploadChunkBytes = 2048" in source
     assert "kVoiceAudioHttpUploadChunkSamples = kVoiceAudioHttpUploadChunkBytes / sizeof(int16_t)" in source
+    assert "kVoiceAudioHttpWriteChunkBytes = 4096" in source
+    assert "kVoiceAudioHttpTimeoutMs = 30000" in source
     assert "size_t transport_flush_sample_limit()" in source
     assert "return std::min(g_transport_samples.size(), kVoiceAudioHttpUploadChunkSamples);" in source
     assert "g_transport_sample_count < transport_flush_sample_limit()" in source
     assert "const size_t flush_sample_limit = transport_flush_sample_limit();" in source
     assert 'esp_http_client_set_header(client, "Content-Type", "application/octet-stream");' in source
-    assert "char upload_chunk[kVoiceAudioHttpUploadChunkBytes]" in source
-    assert "std::memcpy(upload_chunk, reinterpret_cast<const char *>(samples), byte_count)" in source
-    assert "esp_http_client_set_post_field(client, upload_chunk, static_cast<int>(byte_count))" in source
-    assert "esp_http_client_perform(client)" in source
+    assert "esp_http_client_open(client, static_cast<int>(byte_count))" in source
+    assert "esp_http_client_write(client, body + written_bytes, to_write)" in source
+    assert "esp_http_client_fetch_headers(client)" in source
+    assert "esp_http_client_close(client)" in source
     assert "written_bytes=%d" in source
-    assert "while (offset_samples < total_samples)" in source
-    assert "post_voice_audio_chunk_http(g_http_audio_samples + offset_samples, chunk_samples, is_final, truncated)" in source
+    assert "Uploading buffered voice audio as a single raw HTTP POST" in source
+    assert "post_voice_audio_chunk_http(g_http_audio_samples, total_samples, true, g_http_audio_buffer_overflow)" in source
     assert "Voice HTTP raw audio upload active" in source
     assert "Voice HTTP audio chunk upload failed" in source
     transport_chunk_block = source[
