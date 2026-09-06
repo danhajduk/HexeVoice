@@ -1,0 +1,195 @@
+{
+  "schema_version": 1,
+  "board_profile": "waveshare_s3_touch_lcd_1_85c_box_v2",
+  "asset_library_version": "waveshare-185c-ui-20260906.1",
+  "updated_at": "2026-09-06T23:08:41.002426+00:00",
+  "assets": [
+    {
+      "asset_id": "error_logo_palette",
+      "media_type": "picture",
+      "filename": "error_logo_palette.rgb565",
+      "source_filename": "error_logo_palette.rgb565",
+      "role": "error_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "6b1b96381b00a59bb9446a30509b4027d7ced721efa091f6034fd2f8d5b3caaa",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "idle_clock_face",
+      "media_type": "picture",
+      "filename": "idle_clock_face.rgb565",
+      "source_filename": "idle_clock_face.rgb565",
+      "role": "idle_clock_face",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "11819a85eeb70bf36eb023c0573dd09e0ab7509cd291e231243ed1fd7ef67cfe",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "idle_clock_face_logo_palette",
+      "media_type": "picture",
+      "filename": "idle_clock_face_logo_palette.rgb565",
+      "source_filename": "idle_clock_face_logo_palette.rgb565",
+      "role": "idle_logo_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "69ed10f9ea8ab016a0f330580a223ef297ca402bc285b1e734f15d8470045f46",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "idle_clock_face_status_palette",
+      "media_type": "picture",
+      "filename": "idle_clock_face_status_palette.rgb565",
+      "source_filename": "idle_clock_face_status_palette.rgb565",
+      "role": "idle_status_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "7f76c0a51ce9beb34d9f93d68e4d956648927d2e0523a29b1c7e21764a8c2d64",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "listen_logo_palette",
+      "media_type": "picture",
+      "filename": "listen_logo_palette.rgb565",
+      "source_filename": "listen_logo_palette.rgb565",
+      "role": "listening_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "936e89c6b3e890c9f5b5261de2aa13f9fb5193d8059038e93f4305a8ba24f5af",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "min_fw_pairing_logo_palette",
+      "media_type": "picture",
+      "filename": "min_fw_pairing_logo_palette.rgb565",
+      "source_filename": "min_fw_pairing_logo_palette.rgb565",
+      "role": "pairing_active_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "9a5b621f71416d3fa45d77e6c51fc4d48c779a663bc576a1060f28d66f81eaca",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "min_fw_waiting_to_pair_logo_palette",
+      "media_type": "picture",
+      "filename": "min_fw_waiting_to_pair_logo_palette.rgb565",
+      "source_filename": "min_fw_waiting_to_pair_logo_palette.rgb565",
+      "role": "pairing_wait_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "5b2c1ad0edb8bb57ac28db3ea20510f53304d87f4fb304b8c1ae43e076d70d1e",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "ota_progress_logo_palette",
+      "media_type": "picture",
+      "filename": "ota_progress_logo_palette.rgb565",
+      "source_filename": "ota_progress_logo_palette.rgb565",
+      "role": "ota_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "67c64b82e7bd3719770f9e01c68955f31d8cc9ba44a43ee18c5b798a3ba08224",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "talk_logo_palette",
+      "media_type": "picture",
+      "filename": "talk_logo_palette.rgb565",
+      "source_filename": "talk_logo_palette.rgb565",
+      "role": "speaking_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "ffb53073a49c130767f1d034ed76fa86499a19b60e04d8f04201f19dcd04b7ec",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "think_logo_palette",
+      "media_type": "picture",
+      "filename": "think_logo_palette.rgb565",
+      "source_filename": "think_logo_palette.rgb565",
+      "role": "thinking_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "53bf41030c51c50a03c90398bb080d155f1768df9af596dbf9c4b01ca209be3b",
+        "size_bytes": 259200
+      }
+    },
+    {
+      "asset_id": "work_logo_palette",
+      "media_type": "picture",
+      "filename": "work_logo_palette.rgb565",
+      "source_filename": "work_logo_palette.rgb565",
+      "role": "working_background",
+      "version": "2026.09.06.1",
+      "metadata": {
+        "width": 360,
+        "height": 360,
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "shape": "round",
+        "sha256": "2cda5dfc78505f72e2b84d05fc386ddb22c3a3cf1d8fafe4852a9f6b51571144",
+        "size_bytes": 259200
+      }
+    }
+  ]
+}
