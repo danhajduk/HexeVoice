@@ -1555,10 +1555,14 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
 
 def test_audio_probe_firmware_stays_transport_focused():
     probe_source = FIRMWARE_AUDIO_PROBE_RUNTIME.read_text()
+    probe_cmake_source = Path("firmware/components/audio_probe_runtime/CMakeLists.txt").read_text()
     cmake_source = FIRMWARE_TOP_LEVEL_CMAKE.read_text()
 
     assert 'HEXE_FIRMWARE_APP STREQUAL "audio_probe"' in cmake_source
     assert "audio_probe_runtime" in cmake_source
+    assert "../endpoint_runtime/app_state.cpp" in probe_cmake_source
+    assert "../endpoint_runtime/board/led_ring_ha_voice_pe.cpp" in probe_cmake_source
+    assert "esp_driver_rmt" in probe_cmake_source
     assert "/api/voice/audio/probe?endpoint_id=%s&source=%s" in probe_source
     assert "internal-staged" in probe_source
     assert "psram-direct" in probe_source
@@ -1613,11 +1617,20 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "command.error" in probe_source
     assert "std::memcpy(stage.data(), data + offset, chunk);" in probe_source
     assert "endpoint_config.h" in probe_source
+    assert "app_state.h" in probe_source
+    assert "board/led_ring.h" in probe_source
     assert "board_profile_pins.h" in probe_source
     assert "secrets/wifi_secrets.h" in probe_source
     assert "nvs_open(kNvsNamespace, NVS_READONLY, &handle)" in probe_source
     assert "esp_websocket_client_send_text" in probe_source
     assert "esp_websocket_client_send_bin" not in probe_source
+    assert "Audio probe LED state phase=%s reason=%s" in probe_source
+    assert "set_probe_phase(hexe::AppPhase::kListening, \"turn_session_start\")" in probe_source
+    assert "set_probe_phase(hexe::AppPhase::kThinking, \"turn_waiting_tts\")" in probe_source
+    assert "set_probe_phase(hexe::AppPhase::kReplying, \"turn_tts_ready\")" in probe_source
+    assert "hexe::board::init_led_ring();" in probe_source
+    assert "hexe::board::led_ring_show_completed();" in probe_source
+    assert "hexe::board::update_led_ring_patterns();" in probe_source
     assert "/api/voice/audio/ws" not in probe_source
     assert "NimBLE" not in probe_source
     assert "ble_onboarding" not in probe_source

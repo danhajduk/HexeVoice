@@ -13,6 +13,8 @@
 
 #include "cJSON.h"
 #include "endpoint_config.h"
+#include "app_state.h"
+#include "board/led_ring.h"
 #include "board_profile_pins.h"
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
@@ -304,6 +306,64 @@ void send_command_ack(
     const char *command_type,
     const char *status,
     const char *message);
+
+const char *phase_name(hexe::AppPhase phase) {
+  switch (phase) {
+    case hexe::AppPhase::kBooting:
+      return "booting";
+    case hexe::AppPhase::kWiFiConnecting:
+      return "wifi_connecting";
+    case hexe::AppPhase::kBackendConnecting:
+      return "backend_connecting";
+    case hexe::AppPhase::kIdle:
+      return "idle";
+    case hexe::AppPhase::kListening:
+      return "listening";
+    case hexe::AppPhase::kThinking:
+      return "thinking";
+    case hexe::AppPhase::kReplying:
+      return "replying";
+    case hexe::AppPhase::kUpdating:
+      return "updating";
+    case hexe::AppPhase::kMuted:
+      return "muted";
+    case hexe::AppPhase::kTimerFinished:
+      return "timer_finished";
+    case hexe::AppPhase::kError:
+      return "error";
+  }
+  return "unknown";
+}
+
+void update_probe_leds() {
+  hexe::board::update_led_ring_patterns();
+}
+
+void set_probe_phase(hexe::AppPhase phase, const char *reason) {
+  auto &app_state = hexe::state();
+  app_state.phase = phase;
+  hexe::board::update_led_ring_patterns();
+  ESP_LOGI(
+      kTag,
+      "Audio probe LED state phase=%s reason=%s wifi=%s backend=%s ws=%s",
+      phase_name(phase),
+      reason == nullptr ? "unknown" : reason,
+      app_state.wifi_connected ? "true" : "false",
+      app_state.backend_connected ? "true" : "false",
+      app_state.voice_ws_connected ? "true" : "false");
+}
+
+void set_probe_transport_state(bool wifi_connected, bool backend_connected, bool ws_connected, const char *reason) {
+  auto &app_state = hexe::state();
+  app_state.wifi_connected = wifi_connected;
+  app_state.backend_connected = backend_connected;
+  app_state.voice_ws_connected = ws_connected;
+  set_probe_phase(hexe::idle_or_connecting_phase(), reason);
+}
+
+void show_probe_error(const char *reason) {
+  set_probe_phase(hexe::AppPhase::kError, reason);
+}
 
 void load_nvs_string(nvs_handle_t handle, const char *key, char *target, size_t target_size) {
   size_t length = target_size;
@@ -770,6 +830,8 @@ size_t capture_microphone_pcm(int16_t *samples, size_t max_samples, uint32_t *le
     level_total += estimate_level(samples + captured_samples, writable_frames);
     ++level_frames;
     captured_samples += writable_frames;
+    hexe::state().vad_level = static_cast<int>(level_total / level_frames);
+    update_probe_leds();
   }
 
   if (level != nullptr) {
@@ -1458,6 +1520,7 @@ bool write_speaker_frames(const int32_t *frames, size_t stereo_frame_count) {
         static_cast<unsigned>(bytes_to_write));
     return false;
   }
+  update_probe_leds();
   return true;
 }
 
@@ -1599,23 +1662,36 @@ bool run_tts_probe(const ProbeSettings &settings) {
   std::snprintf(text, sizeof(text), "%s Run %08x.", kProbePhrases[choice], static_cast<unsigned>(esp_random()));
 
   log_probe_heap("tts_before_synthesize");
+  set_probe_phase(hexe::AppPhase::kThinking, "boot_tts_synthesize");
   TtsSynthesizeResult synth = {};
   if (!synthesize_tts_probe(settings, text, &synth)) {
     ESP_LOGE(kTag, "Audio probe TTS synthesize failed");
+    show_probe_error("boot_tts_synthesize_failed");
     return false;
   }
   log_probe_heap("tts_after_synthesize");
 
   uint8_t *audio = nullptr;
   size_t audio_size = 0;
+  set_probe_phase(hexe::AppPhase::kReplying, "boot_tts_download");
   if (!fetch_tts_audio(synth.audio_url, &audio, &audio_size)) {
     ESP_LOGE(kTag, "Audio probe TTS download failed stream=%s", synth.stream_id);
+    show_probe_error("boot_tts_download_failed");
     return false;
   }
   log_probe_heap("tts_after_download");
 
+  hexe::state().tts_playback_active = true;
+  hexe::state().tts_playback_state = hexe::PlaybackLifecycleState::kStarted;
   const bool played = play_tts_wav(audio, audio_size);
+  hexe::state().tts_playback_active = false;
+  hexe::state().tts_playback_state = played ? hexe::PlaybackLifecycleState::kFinished : hexe::PlaybackLifecycleState::kFailed;
   heap_caps_free(audio);
+  if (played) {
+    hexe::board::led_ring_show_completed();
+  } else {
+    show_probe_error("boot_tts_playback_failed");
+  }
   log_probe_heap("tts_after_playback");
   ESP_LOGI(
       kTag,
@@ -2495,13 +2571,16 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
   if (event_id == WEBSOCKET_EVENT_CONNECTED) {
     g_ws_connected = true;
     g_ws_rx_buffer.clear();
+    set_probe_transport_state(true, true, true, "command_ws_connected");
     ESP_LOGI(kTag, "Audio probe command WebSocket connected");
   } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
     g_ws_connected = false;
     g_ws_rx_buffer.clear();
+    set_probe_transport_state(true, false, false, "command_ws_disconnected");
     ESP_LOGW(kTag, "Audio probe command WebSocket disconnected");
   } else if (event_id == WEBSOCKET_EVENT_ERROR) {
     g_ws_connected = false;
+    set_probe_transport_state(true, false, false, "command_ws_error");
     ESP_LOGW(kTag, "Audio probe command WebSocket error");
   } else if (event_id == WEBSOCKET_EVENT_DATA && settings != nullptr) {
     handle_websocket_data(*settings, static_cast<esp_websocket_event_data_t *>(event_data));
@@ -2637,6 +2716,7 @@ bool wait_for_control_websocket() {
     if (g_ws_connected) {
       return true;
     }
+    update_probe_leds();
     vTaskDelay(pdMS_TO_TICKS(100));
   }
   return g_ws_connected;
@@ -2648,6 +2728,7 @@ bool wait_for_turn_tts_ready() {
     if (g_turn_probe.tts_ready || g_turn_probe.error) {
       return g_turn_probe.tts_ready && !g_turn_probe.error;
     }
+    update_probe_leds();
     vTaskDelay(pdMS_TO_TICKS(100));
   }
   ESP_LOGW(kTag, "Audio probe full turn timed out waiting for TTS session=%s", g_turn_probe.session_id);
@@ -2660,6 +2741,7 @@ bool wait_for_turn_completion() {
     if (g_turn_probe.completed || g_turn_probe.error) {
       return g_turn_probe.completed && !g_turn_probe.error;
     }
+    update_probe_leds();
     vTaskDelay(pdMS_TO_TICKS(100));
   }
   ESP_LOGW(kTag, "Audio probe full turn timed out waiting for backend completion session=%s", g_turn_probe.session_id);
@@ -2669,9 +2751,11 @@ bool wait_for_turn_completion() {
 bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
   if (!wait_for_control_websocket()) {
     ESP_LOGE(kTag, "Audio probe full turn skipped; command WebSocket is not connected trigger=%s", trigger);
+    show_probe_error("turn_ws_unavailable");
     return false;
   }
   if (!ensure_microphone_ready()) {
+    show_probe_error("turn_microphone_unavailable");
     return false;
   }
 
@@ -2683,10 +2767,12 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
       static_cast<unsigned>(esp_random()),
       static_cast<long long>(esp_timer_get_time() / 1000));
   reset_turn_probe_state(session_id);
+  set_probe_phase(hexe::AppPhase::kListening, "turn_session_start");
   ESP_LOGI(kTag, "Audio probe full turn starting trigger=%s session=%s", trigger == nullptr ? "unknown" : trigger, session_id);
   log_probe_heap("turn_before_session_start");
   if (!send_session_start(settings, session_id)) {
     g_turn_probe.waiting = false;
+    show_probe_error("turn_session_start_failed");
     return false;
   }
 
@@ -2694,12 +2780,16 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
   if (mic_audio == nullptr) {
     ESP_LOGE(kTag, "Failed to allocate full turn microphone buffer bytes=%u free_psram=%u", static_cast<unsigned>(kMicProbeBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     g_turn_probe.waiting = false;
+    show_probe_error("turn_microphone_alloc_failed");
     return false;
   }
 
+  hexe::state().audio_streaming = true;
+  hexe::state().vad_speaking = true;
   log_probe_heap("turn_before_capture");
   uint32_t level = 0;
   const size_t captured_samples = capture_microphone_pcm(mic_audio, kMicProbeSamples, &level);
+  hexe::state().vad_level = static_cast<int>(level);
   const size_t captured_bytes = captured_samples * sizeof(int16_t);
   ESP_LOGI(
       kTag,
@@ -2713,23 +2803,30 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
     uploaded = post_voice_audio_chunk(settings, session_id, reinterpret_cast<const char *>(mic_audio), captured_bytes, level);
   }
   heap_caps_free(mic_audio);
+  hexe::state().audio_streaming = false;
+  hexe::state().vad_speaking = false;
   log_probe_heap("turn_after_capture_upload");
   if (!uploaded) {
     send_audio_end(settings, session_id);
     g_turn_probe.waiting = false;
+    show_probe_error("turn_audio_upload_failed");
     return false;
   }
   if (!send_audio_end(settings, session_id)) {
     g_turn_probe.waiting = false;
+    show_probe_error("turn_audio_end_failed");
     return false;
   }
 
+  set_probe_phase(hexe::AppPhase::kThinking, "turn_waiting_tts");
   const bool tts_ready = wait_for_turn_tts_ready();
   if (!tts_ready) {
     g_turn_probe.waiting = false;
+    show_probe_error(g_turn_probe.error ? "turn_backend_error" : "turn_tts_timeout");
     return false;
   }
 
+  set_probe_phase(hexe::AppPhase::kReplying, "turn_tts_ready");
   send_tts_playback_event(
       settings,
       "tts.playback.download_started",
@@ -2750,6 +2847,7 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
         "download_failed",
         "Audio probe failed to download TTS audio");
     g_turn_probe.waiting = false;
+    show_probe_error("turn_tts_download_failed");
     return false;
   }
 
@@ -2760,7 +2858,11 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
       g_turn_probe.stream_id,
       g_turn_probe.audio_url,
       audio_size);
+  hexe::state().tts_playback_active = true;
+  hexe::state().tts_playback_state = hexe::PlaybackLifecycleState::kStarted;
   const bool played = play_tts_wav(audio, audio_size);
+  hexe::state().tts_playback_active = false;
+  hexe::state().tts_playback_state = played ? hexe::PlaybackLifecycleState::kFinished : hexe::PlaybackLifecycleState::kFailed;
   heap_caps_free(audio);
   send_tts_playback_event(
       settings,
@@ -2772,6 +2874,11 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
       played ? nullptr : "playback_failed",
       played ? nullptr : "Audio probe failed to play TTS audio");
   const bool backend_completed = wait_for_turn_completion();
+  if (played && backend_completed) {
+    hexe::board::led_ring_show_completed();
+  } else {
+    show_probe_error(played ? "turn_backend_completion_failed" : "turn_tts_playback_failed");
+  }
   log_probe_heap("turn_after_tts_playback");
   ESP_LOGI(
       kTag,
@@ -2785,7 +2892,11 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
       g_turn_probe.transcript,
       g_turn_probe.response_text);
   g_turn_probe.waiting = false;
-  return uploaded && g_turn_probe.tts_ready && played && backend_completed;
+  const bool ok = uploaded && g_turn_probe.tts_ready && played && backend_completed;
+  if (ok) {
+    set_probe_phase(hexe::idle_or_connecting_phase(), "turn_complete");
+  }
+  return ok;
 }
 
 bool center_button_pressed() {
@@ -2885,16 +2996,21 @@ void run() {
   }
   ESP_ERROR_CHECK(nvs_result);
   mark_running_probe_image_valid_if_pending();
+  hexe::board::init_led_ring();
+  set_probe_phase(hexe::AppPhase::kWiFiConnecting, "boot");
 
   const ProbeSettings settings = load_settings();
   if (!connect_wifi(settings)) {
+    show_probe_error("wifi_unavailable");
     ESP_LOGE(kTag, "Audio probe stopped because Wi-Fi is unavailable");
     return;
   }
+  set_probe_transport_state(true, false, false, "wifi_connected");
 
   init_probe_button();
   start_command_websocket(settings);
   run_probe_sequence(settings);
+  set_probe_phase(hexe::idle_or_connecting_phase(), "boot_probe_complete");
   ESP_LOGI(kTag, "Audio probe sequence complete; idling");
   while (true) {
     if (!g_ws_started) {
@@ -2902,6 +3018,7 @@ void run() {
     }
     handle_command_loop(settings);
     update_probe_button(settings);
+    update_probe_leds();
     vTaskDelay(pdMS_TO_TICKS(20));
   }
 }

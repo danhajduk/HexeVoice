@@ -44,8 +44,11 @@ message(STATUS "Hexe audio probe board profile: ${HEXE_BOARD_PROFILE}")
 idf_component_register(
   SRCS
     "audio_probe.cpp"
+    "../endpoint_runtime/app_state.cpp"
+    "../endpoint_runtime/board/led_ring_ha_voice_pe.cpp"
   INCLUDE_DIRS
     "."
+    "../endpoint_runtime"
     "${HEXE_GENERATED_DIR}"
   REQUIRES
     app_update
@@ -53,6 +56,7 @@ idf_component_register(
     esp_driver_gpio
     esp_driver_i2c
     esp_driver_i2s
+    esp_driver_rmt
     esp_https_ota
     esp_http_client
     esp_netif
