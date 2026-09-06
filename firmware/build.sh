@@ -194,6 +194,11 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="${partition_csv}"
 ${flash_size_symbol}=y
 CONFIG_ESPTOOLPY_FLASHSIZE="${flash_size_value}"
 EOF
+  if [[ "${FIRMWARE_APP}" == "audio_probe" ]]; then
+    cat >> "${output}" <<'EOF'
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+EOF
+  fi
   if [[ "${bluetooth_transport}" == "native" ]]; then
     cat >> "${output}" <<'EOF'
 CONFIG_BT_ENABLED=y

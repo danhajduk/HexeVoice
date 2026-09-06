@@ -1528,6 +1528,7 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert "partition_csv_for_schema" in build_source
     assert "SDKCONFIG_DEFAULTS" in build_source
     assert 'GENERATED_COMPONENT_NAME="$(runtime_component_for_app "${FIRMWARE_EXPORT_FLAVOR}")' in build_source
+    assert 'CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192' in build_source
 
     assert "PROFILE_APP_FILENAME" in export_source
     assert "hexe_firmware_${BOARD_PROFILE}.bin" in export_source
