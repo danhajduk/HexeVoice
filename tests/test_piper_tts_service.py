@@ -38,6 +38,31 @@ def test_piper_tts_route_returns_wav(monkeypatch):
     assert captured == {"text": "hello", "voice": "en_US-test"}
 
 
+def test_piper_tts_synthesis_uses_isolated_output_file_even_when_warm_worker_exists(tmp_path, monkeypatch):
+    model_path = tmp_path / "voice.onnx"
+    model_path.write_bytes(b"model")
+    monkeypatch.setenv("PIPER_TTS_MODEL_PATH", str(model_path))
+    piper_app._WARM_WORKERS.clear()
+    piper_app._WARM_WORKERS[model_path] = piper_app.WarmPiperWorker(model_path)
+
+    def fail_warm_synthesis(self, text):
+        raise AssertionError("warm worker should not serve request audio")
+
+    captured = {}
+
+    def fake_synthesize_once(*, text, model_path):
+        captured["text"] = text
+        captured["model_path"] = model_path
+        return b"RIFFisolated-wav"
+
+    monkeypatch.setattr(piper_app.WarmPiperWorker, "synthesize_wav", fail_warm_synthesis)
+    monkeypatch.setattr(piper_app, "_synthesize_wav_once", fake_synthesize_once)
+
+    assert piper_app.synthesize_wav(text="hello", voice=None) == b"RIFFisolated-wav"
+    assert captured == {"text": "hello", "model_path": model_path}
+    piper_app._WARM_WORKERS.clear()
+
+
 def test_piper_tts_voice_lookup_accepts_core_normalized_model_ids(tmp_path, monkeypatch):
     model_dir = tmp_path / "models"
     model_dir.mkdir()

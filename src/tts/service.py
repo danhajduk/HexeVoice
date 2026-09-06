@@ -254,10 +254,10 @@ def synthesize_wav(*, text: str, voice: str | None = None) -> bytes:
     model_path = _model_path_for_voice(voice)
     if not model_path.exists():
         raise RuntimeError(f"missing_model:{model_path}")
-    worker = _warm_worker_for_model(model_path)
-    if worker is not None:
-        return worker.synthesize_wav(text)
+    return _synthesize_wav_once(text=text, model_path=model_path)
 
+
+def _synthesize_wav_once(*, text: str, model_path: Path) -> bytes:
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as output_file:
         output_path = Path(output_file.name)
     try:
