@@ -11,7 +11,9 @@ import wave
 import httpx
 
 from hexevoice.api.models import AssistantTurnResponse
+from hexevoice.assistant import AiNodeAssistantAdapter
 from hexevoice.assistant import AssistantTurnService
+from hexevoice.assistant import LocalEchoAssistantAdapter
 from hexevoice.assistant import LocalIntentFinder
 from hexevoice.assistant import VoiceIntentRegistry
 from hexevoice.assistant import VoiceIntentStateStore
@@ -1268,6 +1270,41 @@ def test_build_voice_turn_pipeline_keeps_deterministic_stt_as_default(tmp_path):
     assert result.transcript.provider_id == "deterministic"
     assert result.transcript.text == "hello"
     assert result.assistant_response.spoken_text == "I heard hello"
+
+
+def test_voice_turn_pipeline_does_not_call_ai_node_for_empty_stt_text(tmp_path):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        raise AssertionError("empty STT transcript should not be sent to the AI node")
+
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    runtime = NodeRuntimeService(settings=settings)
+    adapter = AiNodeAssistantAdapter(
+        base_url="https://ai-node.test",
+        turn_path="/api/assistant/turn",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assistant = AssistantTurnService(settings=settings, runtime_service=runtime, adapter=adapter)
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript=""),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(endpoint_id="esp-box-1", session_id="voice-session-empty", chunk_count=1)
+    )
+
+    assert calls == []
+    assert result.transcript.text == ""
+    assert result.assistant_response.provider_id == "no_speech"
+    assert result.assistant_response.handled_locally is True
+    assert result.assistant_response.spoken_text == "I didn't catch that."
+    assert result.tts.provider_id == "deterministic"
 
 
 def test_voice_turn_pipeline_strips_wake_word_from_final_transcript(tmp_path):

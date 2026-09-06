@@ -1004,6 +1004,8 @@ class AssistantTurnService:
     def handle_turn(self, payload: AssistantTurnRequest) -> AssistantTurnResponse:
         heard_text = self._strip_wake_words(payload.text)
         session_id = payload.session_id or self._next_session_id(payload.endpoint_id)
+        if not heard_text:
+            return self._no_speech_response(payload.endpoint_id, session_id=session_id)
         requested_at = utc_event_timestamp()
         intent_started_at = time.perf_counter()
         pending_followup = self._pending_followup(endpoint_id=payload.endpoint_id, session_id=session_id, now=requested_at)
@@ -1048,6 +1050,21 @@ class AssistantTurnService:
         )
         self._record_turn(response)
         return response
+
+    def _no_speech_response(self, endpoint_id: str, *, session_id: str) -> AssistantTurnResponse:
+        reply_text = "I didn't catch that."
+        return AssistantTurnResponse(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text="",
+            reply_text=reply_text,
+            spoken_text=reply_text,
+            handled_locally=True,
+            command=None,
+            device_state="speaking",
+            provider_id="no_speech",
+            provider_metadata={"reason": "empty_transcript"},
+        )
 
     def status(self) -> dict:
         return {

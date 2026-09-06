@@ -2964,6 +2964,38 @@ def test_assistant_turn_service_keeps_rolling_context(tmp_path):
     assert service.status()["endpoint_contexts"]["box-9"] == 2
 
 
+def test_assistant_turn_service_does_not_call_ai_node_for_empty_text(tmp_path):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        raise AssertionError("empty speech should not be sent to the AI node")
+
+    adapter = AiNodeAssistantAdapter(
+        base_url="https://ai-node.test",
+        turn_path="/api/assistant/turn",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    service = AssistantTurnService(
+        settings=settings,
+        runtime_service=NodeRuntimeService(settings=settings),
+        adapter=adapter,
+    )
+
+    response = service.handle_turn(AssistantTurnRequest(endpoint_id="box-9", session_id="session-empty", text=" "))
+
+    assert calls == []
+    assert response.heard_text == ""
+    assert response.reply_text == "I didn't catch that."
+    assert response.handled_locally is True
+    assert response.provider_id == "no_speech"
+    assert response.provider_metadata == {"reason": "empty_transcript"}
+    assert service.context_for_session("session-empty") == []
+
+
 def test_assistant_ai_node_adapter_receives_context():
     captured = {}
 

@@ -193,6 +193,7 @@ Implemented today:
 - Backend health/status/readiness APIs.
 - Device assistant turns at `POST /api/assistant/turn`, including local intents and AI Node fallback routing.
 - Voice WebSocket transport at `/api/voice/ws` with endpoint/session state, audio chunk handling, wake detection, STT/TTS turn flow, and TTS artifact replay routes under `/api/voice/tts/`.
+- Empty STT transcripts are handled locally as no-speech turns and are not sent to AI Node routing.
 - Local/provider-backed STT, TTS, wake-word, timer intent, endpoint telemetry, and Node UI operational surfaces.
 - Native firmware boot/display/buttons/Wi-Fi/microphone VAD, audio streaming, and TTS playback baseline.
 
