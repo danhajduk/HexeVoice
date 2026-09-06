@@ -24,6 +24,7 @@ constexpr gpio_num_t kHardwareMute = gpio_pin(hexe::board::pins::kVoicePeHardwar
 constexpr gpio_num_t kDialA = gpio_pin(hexe::board::pins::kVoicePeDialA);
 constexpr gpio_num_t kDialB = gpio_pin(hexe::board::pins::kVoicePeDialB);
 constexpr int64_t kLongPressUs = 1000 * 1000;
+constexpr int64_t kCenterReleaseDebounceUs = 1200 * 1000;
 constexpr int kVolumeStepPercent = 5;
 constexpr int kQuadratureStepsPerDetent = 2;
 
@@ -31,6 +32,7 @@ bool g_last_center_pressed = false;
 bool g_last_hardware_mute = false;
 bool g_center_rotary_consumed = false;
 int64_t g_center_pressed_at_us = 0;
+int64_t g_last_center_handled_at_us = 0;
 uint8_t g_last_dial_state = 0;
 int g_dial_accumulator = 0;
 
@@ -112,6 +114,11 @@ void apply_hardware_mute(bool muted) {
 
 void handle_center_release(int64_t duration_us) {
   auto &state = hexe::state();
+  const int64_t now_us = esp_timer_get_time();
+  if (g_last_center_handled_at_us > 0 && now_us - g_last_center_handled_at_us < kCenterReleaseDebounceUs) {
+    ESP_LOGI(kTag, "Center button release ignored by debounce");
+    return;
+  }
   if (g_center_rotary_consumed) {
     g_center_rotary_consumed = false;
     ESP_LOGI(kTag, "Center button release consumed by rotary color selection");
@@ -122,6 +129,7 @@ void handle_center_release(int64_t duration_us) {
     hexe::voice::stop_playback("voice_pe_center_long_press");
     hexe::voice::cancel_active_session("voice_pe_center_long_press");
     state.phase = state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
+    g_last_center_handled_at_us = now_us;
     ESP_LOGI(kTag, "Center button long press cancelled active session");
     return;
   }
@@ -132,10 +140,16 @@ void handle_center_release(int64_t duration_us) {
     hexe::voice::cancel_active_session("voice_pe_center_button");
     state.phase = state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
   } else if (!state.muted) {
+    if (hexe::voice::post_tts_input_cooldown_active()) {
+      ESP_LOGI(kTag, "Center button press ignored during input cooldown");
+      g_last_center_handled_at_us = now_us;
+      return;
+    }
     if (!hexe::voice::start_voice_session("button")) {
       state.phase = hexe::idle_or_connecting_phase();
     }
   }
+  g_last_center_handled_at_us = now_us;
   ESP_LOGI(kTag, "Center button press handled");
 }
 }  // namespace

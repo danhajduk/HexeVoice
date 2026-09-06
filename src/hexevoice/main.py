@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
@@ -171,7 +172,13 @@ from hexevoice.timer_announcements import TimerOwnershipCache, TimerSucceededAnn
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.tts import TtsAudioService
 from hexevoice.tts.runtime_settings import TtsRuntimeSettingsService
-from hexevoice.voice import MicroVadChunkRecordingService, VoiceSessionManager, WakeDetector, WakeRecordingService
+from hexevoice.voice import (
+    MicroVadChunkRecordingService,
+    VoiceEventEnvelope,
+    VoiceSessionManager,
+    WakeDetector,
+    WakeRecordingService,
+)
 from hexevoice.voice.pipeline import build_voice_turn_pipeline
 from hexevoice.stt_profiles import resolve_stt_model_profile
 from hexevoice.stt_profiles import stt_profile_options
@@ -2480,6 +2487,84 @@ def create_app(
             websocket,
             endpoint_id=websocket.query_params.get("endpoint_id"),
         )
+
+    @app.websocket("/api/voice/audio/ws")
+    async def voice_audio_websocket(websocket: WebSocket) -> None:
+        await voice_session_manager.handle_audio_websocket(
+            websocket,
+            endpoint_id=websocket.query_params.get("endpoint_id"),
+            encoding=websocket.query_params.get("encoding") or "pcm_s16le",
+            sample_rate_hz=int(websocket.query_params.get("sample_rate_hz") or 16000),
+            channels=int(websocket.query_params.get("channels") or 1),
+        )
+
+    @app.post("/api/voice/audio/chunk")
+    async def voice_audio_chunk(
+        request: Request,
+        endpoint_id: str,
+        session_id: str,
+        chunk_index: int,
+        sequence: int | None = None,
+        encoding: str = "pcm_s16le",
+        sample_rate_hz: int = 16000,
+        channels: int = 1,
+        is_final: bool = False,
+        micro_vad_chunk_index: int | None = None,
+        micro_vad_chunk_started: bool = False,
+        micro_vad_chunk_final: bool = False,
+        micro_vad_pause_ms: int | None = None,
+        frame_level: int | None = None,
+        noise_floor_level: int | None = None,
+        speech_peak_level: int | None = None,
+        pre_roll_duration_ms: int | None = None,
+        contains_pre_roll: bool = False,
+        contains_speech: bool = False,
+    ) -> JSONResponse:
+        audio_bytes = await request.body()
+        if encoding != "pcm_s16le":
+            raise HTTPException(status_code=400, detail="unsupported_audio_encoding")
+        if sample_rate_hz < 8000 or channels < 1 or channels > 2:
+            raise HTTPException(status_code=400, detail="invalid_audio_format")
+        if not audio_bytes:
+            raise HTTPException(status_code=400, detail="audio_payload_required")
+        if len(audio_bytes) > 1024 * 1024:
+            raise HTTPException(status_code=413, detail="audio_payload_too_large")
+
+        payload = {
+            "chunk_index": chunk_index,
+            "audio_format": {
+                "encoding": encoding,
+                "sample_rate_hz": sample_rate_hz,
+                "channels": channels,
+            },
+            "payload_base64": base64.b64encode(audio_bytes).decode("ascii"),
+            "is_final": is_final,
+            "micro_vad_chunk_started": micro_vad_chunk_started,
+            "micro_vad_chunk_final": micro_vad_chunk_final,
+            "contains_pre_roll": contains_pre_roll,
+            "contains_speech": contains_speech,
+        }
+        optional_fields = {
+            "micro_vad_chunk_index": micro_vad_chunk_index,
+            "micro_vad_pause_ms": micro_vad_pause_ms,
+            "frame_level": frame_level,
+            "noise_floor_level": noise_floor_level,
+            "speech_peak_level": speech_peak_level,
+            "pre_roll_duration_ms": pre_roll_duration_ms,
+        }
+        payload.update({key: value for key, value in optional_fields.items() if value is not None})
+        event = VoiceEventEnvelope(
+            event_type="audio.chunk",
+            endpoint_id=endpoint_id,
+            direction="endpoint_to_backend",
+            session_id=session_id,
+            sequence=sequence,
+            payload=payload,
+        )
+        result = await voice_session_manager.handle_http_audio_event(event)
+        if not result.get("accepted"):
+            raise HTTPException(status_code=409, detail=result)
+        return JSONResponse(status_code=202, content=result)
 
     @app.get("/api/voice/status")
     async def voice_status() -> dict:

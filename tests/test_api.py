@@ -1149,6 +1149,179 @@ def test_endpoint_beep_command_defaults_to_connected_endpoint_and_stages_sound(t
     assert served.content.startswith(b"RIFF")
 
 
+def test_endpoint_idle_session_ping_keeps_websocket_bound(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.ping",
+                "event_id": "evt-idle-ping",
+                "schema_version": "hexevoice.voice.event.v1",
+                "endpoint_id": "esp-pe-1",
+                "direction": "endpoint_to_backend",
+                "session_id": None,
+                "sequence": 1,
+                "timestamp": "2026-09-05T22:00:00Z",
+                "payload": {"uptime_ms": 5000},
+            }
+        )
+        response = client.post("/api/endpoint/beep", json={})
+        event = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert event["event_type"] == "endpoint.replay"
+    assert event["endpoint_id"] == "esp-pe-1"
+
+
+def test_endpoint_http_audio_chunk_uses_control_websocket_runtime(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as websocket:
+        websocket.send_json(
+            {
+                "event_type": "session.start",
+                "event_id": "evt-session-start",
+                "schema_version": "hexevoice.voice.event.v1",
+                "endpoint_id": "esp-pe-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-pe-1-1",
+                "sequence": 1,
+                "timestamp": "2026-09-05T22:00:00Z",
+                "payload": {
+                    "wake_source": "button",
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                },
+            }
+        )
+        assert websocket.receive_json()["event_type"] == "wake.accepted"
+        assert websocket.receive_json()["event_type"] == "session.state"
+
+        response = client.post(
+            "/api/voice/audio/chunk",
+            params={
+                "endpoint_id": "esp-pe-1",
+                "session_id": "esp-pe-1-1",
+                "chunk_index": 0,
+                "sequence": 2,
+                "encoding": "pcm_s16le",
+                "sample_rate_hz": 16000,
+                "channels": 1,
+                "frame_level": 1200,
+                "contains_speech": True,
+            },
+            content=b"\x01\x00\x02\x00",
+            headers={"Content-Type": "application/octet-stream"},
+        )
+
+    assert response.status_code == 202
+    assert response.json()["accepted"] is True
+    assert response.json()["event_type"] == "audio.chunk"
+
+
+def test_endpoint_http_audio_chunk_requires_control_websocket(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/voice/audio/chunk",
+        params={
+            "endpoint_id": "esp-pe-1",
+            "session_id": "esp-pe-1-1",
+            "chunk_index": 0,
+            "sequence": 2,
+        },
+        content=b"\x01\x00\x02\x00",
+        headers={"Content-Type": "application/octet-stream"},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["reason"] == "endpoint_control_ws_unavailable"
+
+
+def test_endpoint_binary_audio_websocket_uses_control_websocket_runtime(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as control_socket:
+        started_at = datetime.now(timezone.utc).isoformat()
+        control_socket.send_json(
+            {
+                "event_type": "session.start",
+                "event_id": "evt-session-start",
+                "schema_version": "hexevoice.voice.event.v1",
+                "endpoint_id": "esp-pe-1",
+                "direction": "endpoint_to_backend",
+                "session_id": "esp-pe-1-1",
+                "sequence": 1,
+                "timestamp": started_at,
+                "payload": {
+                    "wake_source": "button",
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                },
+            }
+        )
+        assert control_socket.receive_json()["event_type"] == "wake.accepted"
+        assert control_socket.receive_json()["event_type"] == "session.state"
+
+        with client.websocket_connect(
+            "/api/voice/audio/ws?endpoint_id=esp-pe-1&encoding=pcm_s16le&sample_rate_hz=16000&channels=1"
+        ) as audio_socket:
+            audio_socket.send_bytes(b"\x01\x00\x02\x00")
+            event = control_socket.receive_json()
+
+    assert event["event_type"] == "session.state"
+    assert event["endpoint_id"] == "esp-pe-1"
+    assert event["session_id"] == "esp-pe-1-1"
+    assert event["payload"]["snapshot"]["session_state"] == "capturing"
+
+
+def test_endpoint_binary_audio_websocket_requires_active_session(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1"):
+        with client.websocket_connect("/api/voice/audio/ws?endpoint_id=esp-pe-1") as audio_socket:
+            audio_socket.send_bytes(b"\x01\x00\x02\x00")
+            event = audio_socket.receive_json()
+
+    assert event["accepted"] is False
+    assert event["reason"] == "endpoint_voice_session_unavailable"
+
+
 def test_endpoint_beep_command_can_select_done_profile(tmp_path):
     client = TestClient(
         create_app(

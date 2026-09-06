@@ -61,6 +61,7 @@ from hexevoice.voice.wake_recordings import WakeRecordingService
 log = logging.getLogger(__name__)
 FOLLOWUP_LISTEN_TIMEOUT_S = 10.0
 PRE_AUDIO_SESSION_REPLACEMENT_GRACE_MS = 750
+HTTP_AUDIO_EVENTS = frozenset({"audio.chunk"})
 
 LATENCY_POINT_ORDER = {
     "vad_voice_detected": 0,
@@ -147,9 +148,12 @@ def endpoint_tts_audio_url(tts: TtsSynthesis | dict[str, Any]) -> str | None:
 class EndpointSessionRuntime:
     connection_active: bool = False
     websocket: WebSocket | None = None
+    audio_connection_active: bool = False
+    audio_websocket: WebSocket | None = None
     connected_endpoint_id: str | None = None
     active_session: VoiceSessionSnapshot | None = None
     chunk_count: int = 0
+    audio_ws_chunk_index: int = 0
     audio_chunks: list[bytes] = field(default_factory=list)
     ambient_audio_chunks: list[bytes] = field(default_factory=list)
     audio_format: Any = None
@@ -193,9 +197,12 @@ def _runtime_property(field_name: str):
 class VoiceSessionManager:
     _connection_active = _runtime_property("connection_active")
     _websocket = _runtime_property("websocket")
+    _audio_connection_active = _runtime_property("audio_connection_active")
+    _audio_websocket = _runtime_property("audio_websocket")
     _connected_endpoint_id = _runtime_property("connected_endpoint_id")
     _active_session = _runtime_property("active_session")
     _chunk_count = _runtime_property("chunk_count")
+    _audio_ws_chunk_index = _runtime_property("audio_ws_chunk_index")
     _audio_chunks = _runtime_property("audio_chunks")
     _ambient_audio_chunks = _runtime_property("ambient_audio_chunks")
     _audio_format = _runtime_property("audio_format")
@@ -396,10 +403,6 @@ class VoiceSessionManager:
     async def handle_websocket(self, websocket: WebSocket, *, endpoint_id: str | None = None) -> None:
         await websocket.accept()
         initial_endpoint_id = endpoint_id.strip() if endpoint_id else None
-        runtime = EndpointSessionRuntime(connection_active=True, websocket=websocket)
-        token = self._runtime_context.set(runtime)
-        self._connection_active = True
-        self._websocket = websocket
         if initial_endpoint_id:
             if self._runtime_for_endpoint(initial_endpoint_id) is not None:
                 await websocket.send_json(
@@ -413,6 +416,12 @@ class VoiceSessionManager:
                 )
                 await websocket.close(code=1008)
                 return
+
+        runtime = EndpointSessionRuntime(connection_active=True, websocket=websocket)
+        token = self._runtime_context.set(runtime)
+        self._connection_active = True
+        self._websocket = websocket
+        if initial_endpoint_id:
             self._connected_endpoint_id = initial_endpoint_id
             log.info("Voice endpoint bound to WebSocket: endpoint_id=%s source=query", initial_endpoint_id)
         log.info("Voice WebSocket connected")
@@ -446,6 +455,274 @@ class VoiceSessionManager:
             self._clear_active_session_runtime()
             self._runtime_context.reset(token)
             log.info("Voice WebSocket disconnected")
+
+    async def handle_http_audio_event(self, event: VoiceEventEnvelope) -> dict[str, Any]:
+        runtime = self._runtime_for_endpoint(event.endpoint_id)
+        if runtime is None:
+            log.warning(
+                "Rejected HTTP voice audio event without active control WebSocket: endpoint_id=%s session_id=%s event_type=%s",
+                event.endpoint_id,
+                event.session_id,
+                event.event_type,
+            )
+            self._record_event_diagnostic(
+                code="endpoint_control_ws_unavailable",
+                endpoint_id=event.endpoint_id,
+                session_id=event.session_id,
+                event_type=event.event_type,
+                message="HTTP audio upload requires an active endpoint control WebSocket.",
+            )
+            return {
+                "accepted": False,
+                "status": "rejected",
+                "reason": "endpoint_control_ws_unavailable",
+                "endpoint_id": event.endpoint_id,
+                "session_id": event.session_id,
+                "event_type": event.event_type,
+            }
+
+        token = self._runtime_context.set(runtime)
+        try:
+            events = self._handle_endpoint_event(
+                event,
+                transport_name="HTTP audio",
+                allowed_event_types=HTTP_AUDIO_EVENTS,
+            )
+        finally:
+            self._runtime_context.reset(token)
+
+        accepted = not any(item.event_type == "session.error" for item in events)
+        chunk_index = event.payload.get("chunk_index") if isinstance(event.payload, dict) else None
+        if accepted and (chunk_index == 0 or chunk_index == "0"):
+            log.info(
+                "HTTP voice audio upload active: endpoint_id=%s session_id=%s first_chunk=%s response_event_count=%s",
+                event.endpoint_id,
+                event.session_id,
+                chunk_index,
+                len(events),
+            )
+        for item in events:
+            self._schedule_endpoint_event(item.endpoint_id, item)
+        return {
+            "accepted": accepted,
+            "status": "accepted" if accepted else "rejected",
+            "endpoint_id": event.endpoint_id,
+            "session_id": event.session_id,
+            "event_type": event.event_type,
+            "response_event_count": len(events),
+        }
+
+    async def handle_audio_websocket(
+        self,
+        websocket: WebSocket,
+        *,
+        endpoint_id: str | None = None,
+        encoding: str = "pcm_s16le",
+        sample_rate_hz: int = 16000,
+        channels: int = 1,
+    ) -> None:
+        await websocket.accept()
+        normalized_endpoint_id = endpoint_id.strip() if endpoint_id else None
+        if not normalized_endpoint_id:
+            await websocket.send_json(
+                {
+                    "accepted": False,
+                    "status": "rejected",
+                    "reason": "endpoint_id_required",
+                    "message": "Audio WebSocket requires an endpoint_id query parameter.",
+                }
+            )
+            await websocket.close(code=1008)
+            return
+        if encoding != "pcm_s16le" or sample_rate_hz < 8000 or channels < 1 or channels > 2:
+            await websocket.send_json(
+                {
+                    "accepted": False,
+                    "status": "rejected",
+                    "reason": "invalid_audio_format",
+                    "message": "Audio WebSocket requires pcm_s16le audio with one or two channels.",
+                }
+            )
+            await websocket.close(code=1008)
+            return
+
+        runtime = self._runtime_for_endpoint(normalized_endpoint_id)
+        if runtime is None:
+            await websocket.send_json(
+                {
+                    "accepted": False,
+                    "status": "rejected",
+                    "reason": "endpoint_control_ws_unavailable",
+                    "message": "Audio WebSocket requires an active endpoint control WebSocket.",
+                }
+            )
+            await websocket.close(code=1008)
+            return
+        if runtime.audio_connection_active and runtime.audio_websocket is not None:
+            await websocket.send_json(
+                {
+                    "accepted": False,
+                    "status": "rejected",
+                    "reason": "endpoint_audio_ws_already_connected",
+                    "message": "This endpoint already has an active audio WebSocket.",
+                }
+            )
+            await websocket.close(code=1008)
+            return
+
+        token = self._runtime_context.set(runtime)
+        self._audio_connection_active = True
+        self._audio_websocket = websocket
+        self._audio_ws_chunk_index = 0
+        log.info(
+            "Voice audio WebSocket connected: endpoint_id=%s encoding=%s sample_rate_hz=%s channels=%s",
+            normalized_endpoint_id,
+            encoding,
+            sample_rate_hz,
+            channels,
+        )
+        try:
+            while True:
+                message = await websocket.receive()
+                if message.get("type") == "websocket.disconnect":
+                    break
+                audio_bytes = message.get("bytes")
+                if audio_bytes is None:
+                    await websocket.send_json(
+                        {
+                            "accepted": False,
+                            "status": "rejected",
+                            "reason": "binary_audio_required",
+                            "message": "Audio WebSocket only accepts binary PCM frames.",
+                        }
+                    )
+                    continue
+                result = await self.handle_binary_audio_frame(
+                    endpoint_id=normalized_endpoint_id,
+                    audio_bytes=audio_bytes,
+                    encoding=encoding,
+                    sample_rate_hz=sample_rate_hz,
+                    channels=channels,
+                )
+                if not result.get("accepted"):
+                    await websocket.send_json(result)
+        except WebSocketDisconnect:
+            pass
+        finally:
+            self._audio_websocket = None
+            self._audio_connection_active = False
+            self._runtime_context.reset(token)
+            log.info("Voice audio WebSocket disconnected: endpoint_id=%s", normalized_endpoint_id)
+
+    async def handle_binary_audio_frame(
+        self,
+        *,
+        endpoint_id: str,
+        audio_bytes: bytes,
+        encoding: str = "pcm_s16le",
+        sample_rate_hz: int = 16000,
+        channels: int = 1,
+    ) -> dict[str, Any]:
+        runtime = self._runtime_for_endpoint(endpoint_id)
+        if runtime is None:
+            self._record_event_diagnostic(
+                code="endpoint_control_ws_unavailable",
+                endpoint_id=endpoint_id,
+                session_id=None,
+                event_type="audio.chunk",
+                message="Binary audio frame requires an active endpoint control WebSocket.",
+            )
+            return {
+                "accepted": False,
+                "status": "rejected",
+                "reason": "endpoint_control_ws_unavailable",
+                "endpoint_id": endpoint_id,
+                "session_id": None,
+                "event_type": "audio.chunk",
+            }
+        if not audio_bytes:
+            return {
+                "accepted": False,
+                "status": "rejected",
+                "reason": "audio_payload_required",
+                "endpoint_id": endpoint_id,
+                "session_id": runtime.active_session.session_id if runtime.active_session else None,
+                "event_type": "audio.chunk",
+            }
+        if len(audio_bytes) > 64 * 1024:
+            return {
+                "accepted": False,
+                "status": "rejected",
+                "reason": "audio_payload_too_large",
+                "endpoint_id": endpoint_id,
+                "session_id": runtime.active_session.session_id if runtime.active_session else None,
+                "event_type": "audio.chunk",
+            }
+
+        token = self._runtime_context.set(runtime)
+        try:
+            if self._active_session is None:
+                self._record_event_diagnostic(
+                    code="endpoint_voice_session_unavailable",
+                    endpoint_id=endpoint_id,
+                    session_id=None,
+                    event_type="audio.chunk",
+                    message="Binary audio frame arrived before an active voice session.",
+                )
+                return {
+                    "accepted": False,
+                    "status": "rejected",
+                    "reason": "endpoint_voice_session_unavailable",
+                    "endpoint_id": endpoint_id,
+                    "session_id": None,
+                    "event_type": "audio.chunk",
+                }
+            chunk_index = self._audio_ws_chunk_index
+            self._audio_ws_chunk_index = chunk_index + 1
+            event = VoiceEventEnvelope(
+                event_type="audio.chunk",
+                endpoint_id=endpoint_id,
+                direction="endpoint_to_backend",
+                session_id=self._active_session.session_id,
+                sequence=None,
+                payload={
+                    "chunk_index": chunk_index,
+                    "audio_format": {
+                        "encoding": encoding,
+                        "sample_rate_hz": sample_rate_hz,
+                        "channels": channels,
+                    },
+                    "payload_base64": base64.b64encode(audio_bytes).decode("ascii"),
+                    "contains_speech": True,
+                },
+            )
+            events = self._handle_endpoint_event(
+                event,
+                transport_name="audio WebSocket",
+                allowed_event_types=HTTP_AUDIO_EVENTS,
+            )
+        finally:
+            self._runtime_context.reset(token)
+
+        accepted = not any(item.event_type == "session.error" for item in events)
+        if accepted and chunk_index == 0:
+            log.info(
+                "Voice binary audio WebSocket active: endpoint_id=%s session_id=%s first_chunk_bytes=%s response_event_count=%s",
+                endpoint_id,
+                event.session_id,
+                len(audio_bytes),
+                len(events),
+            )
+        for item in events:
+            self._schedule_endpoint_event(item.endpoint_id, item)
+        return {
+            "accepted": accepted,
+            "status": "accepted" if accepted else "rejected",
+            "endpoint_id": endpoint_id,
+            "session_id": event.session_id,
+            "event_type": event.event_type,
+            "response_event_count": len(events),
+        }
 
     async def push_ota_update(
         self,
@@ -1046,6 +1323,15 @@ class VoiceSessionManager:
                 )
             ]
 
+        return self._handle_endpoint_event(event, transport_name="WebSocket")
+
+    def _handle_endpoint_event(
+        self,
+        event: VoiceEventEnvelope,
+        *,
+        transport_name: str,
+        allowed_event_types: frozenset[str] | None = None,
+    ) -> list[VoiceEventEnvelope]:
         if event.direction != "endpoint_to_backend":
             log.warning(
                 "Rejected voice event with invalid direction: endpoint_id=%s session_id=%s direction=%s",
@@ -1058,7 +1344,7 @@ class VoiceSessionManager:
                     endpoint_id=event.endpoint_id,
                     session_id=event.session_id,
                     code="invalid_direction",
-                    message="Endpoint WebSocket messages must use endpoint_to_backend direction.",
+                    message=f"Endpoint {transport_name} messages must use endpoint_to_backend direction.",
                     recoverable=True,
                 )
             ]
@@ -1076,6 +1362,23 @@ class VoiceSessionManager:
                     session_id=event.session_id,
                     code="unsupported_endpoint_event",
                     message=f"{event.event_type} is not accepted from endpoints.",
+                    recoverable=True,
+                )
+            ]
+        if allowed_event_types is not None and event.event_type not in allowed_event_types:
+            log.warning(
+                "Rejected unsupported endpoint voice event for %s transport: endpoint_id=%s session_id=%s event_type=%s",
+                transport_name,
+                event.endpoint_id,
+                event.session_id,
+                event.event_type,
+            )
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="unsupported_endpoint_transport_event",
+                    message=f"{event.event_type} is not accepted on the {transport_name} transport.",
                     recoverable=True,
                 )
             ]
@@ -3529,6 +3832,9 @@ class VoiceSessionManager:
         return [cancelled]
 
     def _handle_session_ping(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        if self._active_session is None and event.session_id is None:
+            log.debug("Voice idle keepalive received: endpoint_id=%s", event.endpoint_id)
+            return []
         session = self._require_active_session(event)
         if isinstance(session, VoiceEventEnvelope):
             return [session]

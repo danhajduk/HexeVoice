@@ -54,7 +54,7 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert 'normalized_wake_source(wake_source)' in source
     assert "wake.candidate" in source
     assert "wake.election.result" in source
-    assert "audio.chunk" in source
+    assert "/api/voice/audio/ws?endpoint_id=" in source
     assert "audio.end" in source
     assert "vad.speech_started" in source
     assert "notify_vad_speech_started" in source
@@ -69,8 +69,40 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "prewarm_tts_output" in source
     assert "stream_http_wav" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
     assert "Streaming TTS WAV at %d Hz while downloading" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
-    assert "kVoiceWsSendAttempts = 3" in source
+    assert "Released Voice PE I2S TX channel" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    assert "i2s_del_channel(g_tx_channel)" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    assert "kAudioQueueDepth = 16" in source
+    assert "kAudioQueueOfferTimeoutMs = 20" in source
+    assert "kHeartbeatHttpTimeoutMs = 3000" in source
+    assert "kVoiceWsTaskPriority = 6" in source
+    assert "kVoiceWsSendTimeoutMs = 1200" in source
+    assert "kVoiceWsSendAttempts = 2" in source
+    assert "kVoiceWsNetworkTimeoutMs = 1000" in source
+    assert "kVoiceControlWsClientTaskStackBytes = 4096" in source
+    assert "kVoiceAudioWsClientTaskStackBytes = 3072" in source
+    assert "kVoiceAudioWsClientBufferBytes = 512" in source
+    assert "kVoiceWsReadyWarmupUs = 300000" in source
+    assert "kVoiceWsReconnectGraceUs = 1000000" in source
+    assert "kVoiceWsPingIntervalSec = 0" in source
+    assert "kVoiceWsPingPongTimeoutSec = 0" in source
+    assert "kVoiceWsIdlePingIntervalUs = 0" in source
     assert "Voice WebSocket send failed after %d attempts" in source
+    assert 'xTaskCreate(websocket_task, "hexe_voice_ws", kTaskStackBytes, nullptr, kVoiceWsTaskPriority' in source
+    assert 'esp_http_client_set_header(client, "Connection", "close");' in source
+    assert "esp_http_client_open(client, static_cast<int>(body.size()))" in source
+    assert "esp_http_client_write(" in source
+    assert "const bool heartbeat_sent = err == ESP_OK && written_bytes == static_cast<int>(body.size());" in source
+    assert "const int status_code = heartbeat_sent ? 202 : esp_http_client_get_status_code(client);" in source
+    assert "Endpoint heartbeat failed: err=%s status=%d duration_ms=%lld" in source
+    assert "written_bytes=%d" in source
+    assert "esp_http_client_close(client);" in source
+    assert "std::string endpoint_heartbeat_capabilities_json()" in source
+    assert "bool g_heartbeat_capabilities_reported = false;" in source
+    assert "const bool include_capabilities = !g_heartbeat_capabilities_reported || hexe::state().ota_active;" in source
+    assert "include_capabilities ? endpoint_heartbeat_capabilities_json() : std::string();" in source
+    assert "g_heartbeat_capabilities_reported = true;" in source
+    assert 'cJSON_AddStringToObject(root, "board_profile", hexe::config::kEndpointBoardProfile);' in source
+    assert 'cJSON_AddStringToObject(root, "application_type", kFirmwareApplicationType);' in source
 
 
 def test_firmware_backend_commands_acknowledge_receipt_with_ok():
@@ -726,12 +758,97 @@ def test_firmware_audio_queue_waits_for_connected_websocket_transport():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
 
     assert "bool voice_transport_ready()" in source
-    assert "backend_ready_for_voice() && g_ws_client != nullptr && g_ws_connected" in source
-    assert "esp_websocket_client_is_connected(g_ws_client)" in source
+    assert "return state.wifi_connected && state.backend_connected && !state.ota_active;" in source
+    assert "backend_ready_for_voice() && g_ws_client != nullptr && g_audio_ws_client != nullptr && g_ws_connected" in source
+    assert "g_audio_ws_connected && !g_ws_restart_requested && !g_audio_ws_restart_requested" in source
     assert "samples == nullptr || sample_count == 0 || !voice_transport_ready()" in source
     assert "if (!voice_transport_ready()) {\n    app_state.phase = hexe::idle_or_connecting_phase();" in source
     assert "if (!voice_transport_ready()) {\n    return false;" in source
-    assert 'ESP_LOGW(kTag, "Dropping audio frame because transport queue is full");' in source
+    assert "void reset_audio_transport_queue(const char *reason)" in source
+    assert "reset_audio_transport_queue(\"voice_websocket_disconnected\")" in source
+    websocket_event_start = source.index("void websocket_event_handler")
+    websocket_event_block = source[
+        websocket_event_start
+        : source.index("bool send_ws_text", websocket_event_start)
+    ]
+    assert "WEBSOCKET_EVENT_DISCONNECTED" in websocket_event_block
+    assert "WEBSOCKET_EVENT_ERROR" in websocket_event_block
+    assert websocket_event_block.count("g_ws_started = false;") == 2
+    assert "g_ws_connected_at_us = esp_timer_get_time();" in websocket_event_block
+    assert "config.network_timeout_ms = kVoiceWsNetworkTimeoutMs;" in source
+    assert "config.ping_interval_sec = kVoiceWsPingIntervalSec;" in source
+    assert "config.pingpong_timeout_sec = kVoiceWsPingPongTimeoutSec;" in source
+    assert "config.disable_pingpong_discon = true;" in source
+    assert "config.keep_alive_enable = true;" in source
+    assert "g_ws_restart_requested = true;" in source
+    assert "Restarting voice WebSocket after disconnect or send failure" in source
+    assert "Restarting voice WebSocket after disconnected event" in source
+    assert "Recreating voice WebSocket client: reason=%s" in source
+    assert "esp_websocket_client_destroy(g_ws_client);" in source
+    assert "esp_websocket_client_handle_t g_audio_ws_client = nullptr;" in source
+    assert "voice_audio_websocket_url()" in source
+    assert "/api/voice/audio/ws?endpoint_id=%s&encoding=%s&sample_rate_hz=%d&channels=%d" in source
+    assert "audio_websocket_event_handler" in source
+    assert "Voice audio WebSocket connected" in source
+    assert "Restarting voice audio WebSocket after disconnect or send failure" in source
+    assert "Recreating voice audio WebSocket client: reason=%s" in source
+    assert "esp_websocket_client_destroy(g_audio_ws_client);" in source
+    assert "esp_websocket_client_send_bin" in source
+    assert "Voice audio WebSocket binary upload active" in source
+    assert "Voice WebSocket start failed: %s" in source
+    assert "const esp_err_t start_result = esp_websocket_client_start(g_ws_client);" in source
+    assert 'config.task_name = "hexe_ctrl_ws";' in source
+    assert "config.task_stack = kVoiceControlWsClientTaskStackBytes;" in source
+    assert 'config.task_name = "hexe_audio_ws";' in source
+    assert "config.task_stack = kVoiceAudioWsClientTaskStackBytes;" in source
+    assert "config.buffer_size = kVoiceAudioWsClientBufferBytes;" in source
+    assert "append_event_header(envelope, \"session.ping\", nullptr, g_sequence++);" in source
+    assert "Voice WebSocket transport is stale, reconnecting" not in source
+    assert "esp_websocket_client_is_connected(g_ws_client)" not in source
+    assert "kVoiceWsPingIntervalSec = 0" in source
+    assert "kVoiceWsPingPongTimeoutSec = 0" in source
+    assert "kVoiceWsIdlePingIntervalUs = 0" in source
+    assert "send_audio_ws_binary(samples, sample_count)" in source
+    assert "voice_audio_chunk_upload_url" in source
+    assert 'path = "/api/voice/audio/chunk?endpoint_id="' in source
+    assert "Voice HTTP audio buffer allocated bytes=%u" in source
+    assert "post_buffered_voice_audio_http()" in source
+    assert "kVoiceAudioHttpUploadChunkBytes = 2048" in source
+    assert "kVoiceAudioHttpUploadChunkSamples = kVoiceAudioHttpUploadChunkBytes / sizeof(int16_t)" in source
+    assert 'esp_http_client_set_header(client, "Content-Type", "application/octet-stream");' in source
+    assert "char upload_chunk[kVoiceAudioHttpUploadChunkBytes]" in source
+    assert "std::memcpy(upload_chunk, reinterpret_cast<const char *>(samples), byte_count)" in source
+    assert "esp_http_client_set_post_field(client, upload_chunk, static_cast<int>(byte_count))" in source
+    assert "esp_http_client_perform(client)" in source
+    assert "written_bytes=%d" in source
+    assert "while (offset_samples < total_samples)" in source
+    assert "post_voice_audio_chunk_http(g_http_audio_samples + offset_samples, chunk_samples, is_final, truncated)" in source
+    assert "Voice HTTP raw audio upload active" in source
+    assert "Voice HTTP audio chunk upload failed" in source
+    transport_chunk_block = source[
+        source.index("bool send_transport_chunk")
+        : source.index("bool flush_transport_samples")
+    ]
+    finish_audio_block = source[
+        source.index("bool finish_audio_stream")
+        : source.index("bool cancel_active_session")
+    ]
+    assert "send_ws_text" not in transport_chunk_block
+    assert "post_buffered_voice_audio_http" not in transport_chunk_block
+    assert "post_buffered_voice_audio_http" not in finish_audio_block
+    assert "payload_base64" not in source
+    assert "mbedtls_base64" not in source
+    assert "Audio transport queue overflow; dropping oldest voice frame" in source
+    overflow_block = source[
+        source.index("if (xQueueSend(g_audio_queue, &frame, pdMS_TO_TICKS(kAudioQueueOfferTimeoutMs)) != pdTRUE)")
+        : source.index(
+            "return false;",
+            source.index("if (xQueueSend(g_audio_queue, &frame, pdMS_TO_TICKS(kAudioQueueOfferTimeoutMs)) != pdTRUE)"),
+        )
+    ]
+    assert "xQueueReceive(g_audio_queue, &dropped, 0)" in overflow_block
+    assert "mark_voice_socket_disconnected();" not in overflow_block
+    assert "esp_websocket_client_stop(g_ws_client);" not in overflow_block
 
 
 def test_firmware_heartbeat_reports_network_metadata():
@@ -1050,6 +1167,10 @@ def test_firmware_buttons_stop_active_playback():
     assert 'hexe::voice::stop_playback("voice_pe_center_long_press")' in pe_buttons
     assert 'hexe::voice::stop_playback("hardware_mute_switch")' in pe_buttons
     assert 'hexe::voice::tts_playback_active() || state.phase' in pe_buttons
+    assert "kCenterReleaseDebounceUs = 1200 * 1000" in pe_buttons
+    assert "Center button release ignored by debounce" in pe_buttons
+    assert "hexe::voice::post_tts_input_cooldown_active()" in pe_buttons
+    assert "Center button press ignored during input cooldown" in pe_buttons
 
 
 def test_firmware_ui_assets_are_manifest_driven_not_hardcoded_filenames():
@@ -1232,8 +1353,15 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "kSpeakerSampleRate = 48000" in tts_source
     assert "kPlaybackDmaDescNum = 3" in tts_source
     assert "kPlaybackFrameCapacity = 96" in tts_source
-    assert "kStreamTtsWhileDownloading = false" in tts_source
-    assert "Downloading full TTS WAV before Voice PE playback" in tts_source
+    assert "kHttpReadBufferBytes = 1024" in tts_source
+    assert "kStreamTtsWhileDownloading = true" in tts_source
+    assert "Reserved Voice PE I2S output before streaming TTS HTTP request" in tts_source
+    assert "Streaming TTS WAV at %d Hz while downloading" in tts_source
+    stream_source = tts_source[
+        tts_source.index("StreamPlaybackResult stream_http_wav")
+        : tts_source.index("void playback_task")
+    ]
+    assert stream_source.index("ensure_i2s_output()") < stream_source.index("esp_http_client_init(&config)")
     assert "I2S_ROLE_SLAVE" in tts_source
     assert "I2S_DATA_BIT_WIDTH_32BIT" in tts_source
     assert "I2S_SLOT_MODE_STEREO" in tts_source

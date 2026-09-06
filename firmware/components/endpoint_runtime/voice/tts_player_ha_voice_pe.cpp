@@ -37,11 +37,11 @@ constexpr int kPrewarmTaskStackBytes = 4096;
 constexpr int kTaskPriority = 4;
 constexpr int kSpeakerSampleRate = 48000;
 constexpr size_t kMaxTtsBytes = 512 * 1024;
-constexpr size_t kHttpReadBufferBytes = 4096;
+constexpr size_t kHttpReadBufferBytes = 1024;
 constexpr int kPlaybackDmaDescNum = 3;
 constexpr size_t kPlaybackFrameCapacity = 96;
 constexpr size_t kPlaybackDrainFrames = kSpeakerSampleRate / 4;
-constexpr bool kStreamTtsWhileDownloading = false;
+constexpr bool kStreamTtsWhileDownloading = true;
 constexpr int kHttpReadIdleRetryDelayMs = 20;
 constexpr int kHttpReadMaxIdleRetries = 50;
 constexpr size_t kMaxWavHeaderBytes = 4096;
@@ -616,6 +616,15 @@ void disable_i2s_output() {
     i2s_channel_disable(g_tx_channel);
     g_tx_enabled = false;
   }
+  if (g_tx_channel != nullptr) {
+    i2s_del_channel(g_tx_channel);
+    g_tx_channel = nullptr;
+    ESP_LOGI(
+        kTag,
+        "Released Voice PE I2S TX channel dma_free=%u internal_free=%u",
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+  }
 }
 
 bool write_i2s_frames(const int32_t *frames, size_t stereo_frame_count) {
@@ -874,12 +883,24 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
     return StreamPlaybackResult::kFailed;
   }
 
+  bool output_ready = false;
+  if (!ensure_codec_ready_locked() || !ensure_i2s_output()) {
+    return StreamPlaybackResult::kFailed;
+  }
+  output_ready = true;
+  ESP_LOGI(
+      kTag,
+      "Reserved Voice PE I2S output before streaming TTS HTTP request dma_free=%u internal_free=%u",
+      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+
   esp_http_client_config_t config = {};
   config.url = url.c_str();
   config.method = HTTP_METHOD_GET;
   esp_http_client_handle_t client = esp_http_client_init(&config);
   if (client == nullptr) {
     ESP_LOGW(kTag, "Failed to initialize streaming TTS HTTP client");
+    disable_i2s_output();
     return StreamPlaybackResult::kFailed;
   }
 
@@ -887,6 +908,7 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
   if (err != ESP_OK) {
     ESP_LOGW(kTag, "Failed to open streaming TTS HTTP client: %s", esp_err_to_name(err));
     esp_http_client_cleanup(client);
+    disable_i2s_output();
     return StreamPlaybackResult::kFailed;
   }
   esp_http_client_fetch_headers(client);
@@ -895,6 +917,7 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
     ESP_LOGW(kTag, "Streaming TTS HTTP request failed: status=%d", status_code);
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
+    disable_i2s_output();
     return StreamPlaybackResult::kFailed;
   }
 
@@ -904,6 +927,7 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
     ESP_LOGW(kTag, "Failed to allocate streaming TTS buffers");
     esp_http_client_close(client);
     esp_http_client_cleanup(client);
+    disable_i2s_output();
     return StreamPlaybackResult::kFailed;
   }
 
@@ -913,7 +937,6 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
   pending_pcm.reserve(kHttpReadBufferBytes);
   WavStreamInfo wav;
   bool header_ready = false;
-  bool output_ready = false;
   uint32_t data_bytes_received = 0;
   size_t total_bytes = 0;
   int idle_retries = 0;
@@ -967,11 +990,6 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
         break;
       }
       header_ready = true;
-      if (!ensure_codec_ready_locked() || !ensure_i2s_output()) {
-        result = StreamPlaybackResult::kFailed;
-        break;
-      }
-      output_ready = true;
       ESP_LOGI(kTag, "Streaming TTS WAV at %d Hz while downloading", wav.sample_rate);
       if (header.size() > wav.data_offset) {
         const size_t available_pcm = std::min<size_t>(header.size() - wav.data_offset, wav.data_size);
