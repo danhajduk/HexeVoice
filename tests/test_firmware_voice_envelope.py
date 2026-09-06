@@ -1566,9 +1566,20 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "psram-staged-large" in probe_source
     assert "pe-mic-staged" in probe_source
     assert "pe-mic-command-staged" in probe_source
+    assert "/api/tts/synthesize" in probe_source
+    assert 'cJSON_GetObjectItem(audio_urls, "16k")' in probe_source
+    assert "Audio probe TTS synthesize starting" in probe_source
+    assert "Audio probe TTS download completed" in probe_source
+    assert "Audio probe Voice PE speaker codec initialized" in probe_source
+    assert "Audio probe TTS playback first audio frame" in probe_source
+    assert "Audio probe TTS test result" in probe_source
+    assert "i2s_channel_write" in probe_source
+    assert "kVoicePeSpeakerCodecI2cAddress" in probe_source
     assert "heap_caps_malloc(kLargeProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in probe_source
     assert "heap_caps_malloc(kMicProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in probe_source
+    assert "heap_caps_malloc(kMaxTtsBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in probe_source
     assert "I2S_CHANNEL_DEFAULT_CONFIG(kMicI2sPort, I2S_ROLE_SLAVE)" in probe_source
+    assert "I2S_CHANNEL_DEFAULT_CONFIG(kSpeakerI2sPort, I2S_ROLE_SLAVE)" in probe_source
     assert "i2s_channel_read" in probe_source
     assert "Voice PE microphone probe captured" in probe_source
     assert "/api/voice/ws?endpoint_id=%s" in probe_source
@@ -1594,4 +1605,3 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "esp_websocket_client_send_bin" not in probe_source
     assert "/api/voice/audio/ws" not in probe_source
     assert "BLE" not in probe_source
-    assert "tts" not in probe_source.lower()

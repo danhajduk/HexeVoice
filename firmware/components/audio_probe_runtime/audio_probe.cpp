@@ -25,6 +25,7 @@
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_ota_ops.h"
+#include "esp_random.h"
 #include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_websocket_client.h"
@@ -77,11 +78,14 @@ constexpr size_t kMicProbeBytes = kMicProbeSamples * sizeof(int16_t);
 constexpr size_t kSendChunkBytes = 1024;
 constexpr size_t kSha256BlockBytes = 64;
 constexpr size_t kMaxBackendEventBytes = 4096;
+constexpr size_t kMaxTtsResponseBytes = 4096;
+constexpr size_t kMaxTtsBytes = 512 * 1024;
 constexpr int kCommandQueueDepth = 4;
 constexpr int kOtaQueueDepth = 1;
 constexpr int kWifiMaxRetries = 20;
 constexpr int kSocketTimeoutMs = 5000;
 constexpr int kOtaTimeoutMs = 30000;
+constexpr int kTtsHttpTimeoutMs = 30000;
 constexpr int kControlWsNetworkTimeoutMs = 1000;
 constexpr int kControlWsSendTimeoutMs = 1200;
 constexpr int kControlWsClientTaskStackBytes = 4096;
@@ -90,6 +94,12 @@ constexpr int kControlWsPingIntervalSec = 0;
 constexpr int kControlWsPingPongTimeoutSec = 0;
 constexpr int kSampleRate = 16000;
 constexpr size_t kFrameSamples = 320;
+constexpr int kSpeakerSampleRate = 48000;
+constexpr int kPlaybackDmaDescNum = 3;
+constexpr size_t kPlaybackFrameCapacity = 96;
+constexpr size_t kPlaybackDrainFrames = kSpeakerSampleRate / 4;
+constexpr uint32_t kSpeakerI2cTimeoutMs = 1000;
+constexpr uint32_t kSpeakerI2sWriteTimeoutMs = 1000;
 
 constexpr gpio_num_t gpio_pin(int pin) {
   return static_cast<gpio_num_t>(pin);
@@ -105,6 +115,12 @@ constexpr gpio_num_t kVoiceKitI2cScl = gpio_pin(hexe::board::pins::kVoicePeI2cSc
 constexpr int kMicI2sPort = hexe::board::pins::kVoicePeMicPort;
 constexpr uint8_t kVoiceKitI2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeVoiceKitI2cAddress);
 constexpr uint32_t kVoiceKitI2cClockHz = static_cast<uint32_t>(hexe::board::pins::kVoicePeI2cClockHz);
+constexpr gpio_num_t kSpeakerLrclk = gpio_pin(hexe::board::pins::kVoicePeSpeakerLrclk);
+constexpr gpio_num_t kSpeakerBclk = gpio_pin(hexe::board::pins::kVoicePeSpeakerBclk);
+constexpr gpio_num_t kSpeakerDout = gpio_pin(hexe::board::pins::kVoicePeSpeakerDout);
+constexpr int kSpeakerI2sPort = hexe::board::pins::kVoicePeSpeakerPort;
+constexpr gpio_num_t kSpeakerAmp = gpio_pin(hexe::board::pins::kVoicePeSpeakerAmp);
+constexpr uint8_t kAic3204I2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeSpeakerCodecI2cAddress);
 constexpr uint32_t kVoiceKitBootDelayMs = 3000;
 constexpr uint32_t kVoiceKitI2cTimeoutMs = 1000;
 constexpr uint8_t kVoiceKitCtrlDone = 0;
@@ -116,6 +132,36 @@ constexpr uint8_t kChannel0PipelineStage = 0x30;
 constexpr uint8_t kChannel1PipelineStage = 0x40;
 constexpr uint8_t kPipelineAgc = 4;
 constexpr uint8_t kPipelineNs = 3;
+constexpr uint8_t kAicPageCtrl = 0x00;
+constexpr uint8_t kAicSwReset = 0x01;
+constexpr uint8_t kAicNdac = 0x0B;
+constexpr uint8_t kAicMdac = 0x0C;
+constexpr uint8_t kAicDosr = 0x0E;
+constexpr uint8_t kAicCodecIf = 0x1B;
+constexpr uint8_t kAicAudioIf4 = 0x1F;
+constexpr uint8_t kAicAudioIf5 = 0x20;
+constexpr uint8_t kAicSclkMfp3 = 0x38;
+constexpr uint8_t kAicDacSigProc = 0x3C;
+constexpr uint8_t kAicDacChSet1 = 0x3F;
+constexpr uint8_t kAicDacChSet2 = 0x40;
+constexpr uint8_t kAicDaclVolD = 0x41;
+constexpr uint8_t kAicDacrVolD = 0x42;
+constexpr uint8_t kAicLdoCtrl = 0x02;
+constexpr uint8_t kAicPwrCfg = 0x01;
+constexpr uint8_t kAicPlayCfg1 = 0x03;
+constexpr uint8_t kAicPlayCfg2 = 0x04;
+constexpr uint8_t kAicOpPwrCtrl = 0x09;
+constexpr uint8_t kAicCmCtrl = 0x0A;
+constexpr uint8_t kAicHplRoute = 0x0C;
+constexpr uint8_t kAicHprRoute = 0x0D;
+constexpr uint8_t kAicLolRoute = 0x0E;
+constexpr uint8_t kAicLorRoute = 0x0F;
+constexpr uint8_t kAicHplGain = 0x10;
+constexpr uint8_t kAicHprGain = 0x11;
+constexpr uint8_t kAicLolDrvGain = 0x12;
+constexpr uint8_t kAicLorDrvGain = 0x13;
+constexpr uint8_t kAicHpStart = 0x14;
+constexpr uint8_t kAicRefStartup = 0x7B;
 
 struct ProbeSettings {
   char endpoint_id[64];
@@ -163,12 +209,41 @@ struct OtaDownloadContext {
   int bytes_seen;
 };
 
+struct TtsSynthesizeResult {
+  char stream_id[64];
+  char content_type[32];
+  char audio_url[256];
+};
+
+struct HttpTextBuffer {
+  std::string text;
+  size_t max_bytes;
+  bool overflow;
+};
+
+struct HttpBinaryBuffer {
+  uint8_t *data;
+  size_t capacity;
+  size_t size;
+  bool overflow;
+};
+
+struct WavView {
+  const uint8_t *pcm;
+  size_t pcm_size;
+  int sample_rate;
+  int channels;
+  int bits_per_sample;
+};
+
 EventGroupHandle_t g_wifi_event_group = nullptr;
 int g_wifi_retry_count = 0;
 char g_ip_address[16] = "0.0.0.0";
 i2s_chan_handle_t g_rx_channel = nullptr;
 i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
 i2c_master_dev_handle_t g_voice_kit_i2c_device = nullptr;
+i2c_master_dev_handle_t g_speaker_codec_device = nullptr;
+i2s_chan_handle_t g_speaker_tx_channel = nullptr;
 std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
 QueueHandle_t g_command_queue = nullptr;
 QueueHandle_t g_ota_queue = nullptr;
@@ -177,6 +252,8 @@ esp_websocket_client_handle_t g_ws_client = nullptr;
 bool g_ws_started = false;
 bool g_ws_connected = false;
 bool g_ota_active = false;
+bool g_speaker_codec_ready = false;
+bool g_speaker_tx_enabled = false;
 uint32_t g_sequence = 1;
 std::string g_ws_rx_buffer;
 
@@ -738,6 +815,708 @@ bool post_probe(
       status_code,
       static_cast<unsigned>(response_bytes));
   return ok && response_ok && status_code >= 200 && status_code < 300;
+}
+
+void log_probe_heap(const char *stage) {
+  ESP_LOGI(
+      kTag,
+      "Audio probe heap stage=%s internal_free=%u dma_free=%u psram_free=%u",
+      stage == nullptr ? "unknown" : stage,
+      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+}
+
+uint16_t read_le16(const uint8_t *bytes) {
+  return static_cast<uint16_t>(bytes[0] | (bytes[1] << 8));
+}
+
+uint32_t read_le32(const uint8_t *bytes) {
+  return static_cast<uint32_t>(bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24));
+}
+
+esp_err_t text_http_event_handler(esp_http_client_event_t *event) {
+  if (event == nullptr || event->event_id != HTTP_EVENT_ON_DATA || event->data == nullptr || event->data_len <= 0) {
+    return ESP_OK;
+  }
+  auto *buffer = static_cast<HttpTextBuffer *>(event->user_data);
+  if (buffer == nullptr || buffer->overflow) {
+    return ESP_OK;
+  }
+  if (buffer->text.size() + static_cast<size_t>(event->data_len) > buffer->max_bytes) {
+    buffer->overflow = true;
+    return ESP_OK;
+  }
+  buffer->text.append(static_cast<const char *>(event->data), event->data_len);
+  return ESP_OK;
+}
+
+esp_err_t binary_http_event_handler(esp_http_client_event_t *event) {
+  if (event == nullptr || event->event_id != HTTP_EVENT_ON_DATA || event->data == nullptr || event->data_len <= 0) {
+    return ESP_OK;
+  }
+  auto *buffer = static_cast<HttpBinaryBuffer *>(event->user_data);
+  if (buffer == nullptr || buffer->data == nullptr || buffer->overflow) {
+    return ESP_OK;
+  }
+  const size_t incoming = static_cast<size_t>(event->data_len);
+  if (buffer->size + incoming > buffer->capacity) {
+    buffer->overflow = true;
+    return ESP_OK;
+  }
+  std::memcpy(buffer->data + buffer->size, event->data, incoming);
+  buffer->size += incoming;
+  return ESP_OK;
+}
+
+std::string http_url(const ProbeSettings &settings, const char *path) {
+  char url[288] = {};
+  std::snprintf(
+      url,
+      sizeof(url),
+      "%s://%s:%d%s",
+      settings.use_tls ? "https" : "http",
+      settings.backend_host,
+      settings.http_port,
+      path == nullptr ? "/" : path);
+  return std::string(url);
+}
+
+std::string backend_url_from_path_or_url(const ProbeSettings &settings, const char *path_or_url) {
+  if (path_or_url == nullptr || path_or_url[0] == '\0') {
+    return std::string();
+  }
+  const char *path = path_or_url;
+  const char *scheme = std::strstr(path_or_url, "://");
+  if (scheme != nullptr) {
+    const char *after_authority = std::strchr(scheme + 3, '/');
+    if (after_authority == nullptr) {
+      return std::string();
+    }
+    path = after_authority;
+  }
+  if (path[0] != '/') {
+    return std::string(path_or_url);
+  }
+  return http_url(settings, path);
+}
+
+bool http_post_json_text(
+    const std::string &url,
+    const std::string &body,
+    size_t max_response_bytes,
+    std::string *response_text) {
+  if (response_text != nullptr) {
+    response_text->clear();
+  }
+  if (url.empty()) {
+    return false;
+  }
+  HttpTextBuffer response = {};
+  response.max_bytes = max_response_bytes;
+
+  esp_http_client_config_t config = {};
+  config.url = url.c_str();
+  config.method = HTTP_METHOD_POST;
+  config.timeout_ms = kTtsHttpTimeoutMs;
+  config.event_handler = text_http_event_handler;
+  config.user_data = &response;
+
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    ESP_LOGW(kTag, "Failed to initialize TTS synthesize HTTP client");
+    return false;
+  }
+  esp_http_client_set_header(client, "Content-Type", "application/json");
+  esp_http_client_set_post_field(client, body.c_str(), static_cast<int>(body.size()));
+  const esp_err_t err = esp_http_client_perform(client);
+  const int status_code = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+  if (err != ESP_OK || status_code < 200 || status_code >= 300 || response.overflow) {
+    ESP_LOGW(
+        kTag,
+        "TTS synthesize request failed: err=%s status=%d overflow=%d response_bytes=%u",
+        esp_err_to_name(err),
+        status_code,
+        response.overflow,
+        static_cast<unsigned>(response.text.size()));
+    return false;
+  }
+  if (response_text != nullptr) {
+    *response_text = std::move(response.text);
+  }
+  return true;
+}
+
+bool synthesize_tts_probe(
+    const ProbeSettings &settings,
+    const char *text,
+    TtsSynthesizeResult *result) {
+  if (result == nullptr || text == nullptr || text[0] == '\0') {
+    return false;
+  }
+  *result = {};
+
+  cJSON *root = cJSON_CreateObject();
+  cJSON *target = cJSON_CreateObject();
+  if (root == nullptr || target == nullptr) {
+    cJSON_Delete(root);
+    cJSON_Delete(target);
+    return false;
+  }
+  cJSON_AddStringToObject(root, "intent", "tts.speak");
+  cJSON_AddItemToObject(root, "target", target);
+  cJSON_AddStringToObject(target, "device_id", settings.endpoint_id);
+  cJSON_AddStringToObject(target, "playback", "audio_probe");
+  cJSON_AddStringToObject(root, "text", text);
+  cJSON_AddStringToObject(root, "format", "wav");
+  cJSON_AddNumberToObject(root, "ttl_seconds", 60);
+
+  char *body_chars = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+  if (body_chars == nullptr) {
+    return false;
+  }
+  const std::string body(body_chars);
+  cJSON_free(body_chars);
+
+  std::string response;
+  const std::string url = http_url(settings, "/api/tts/synthesize");
+  ESP_LOGI(kTag, "Audio probe TTS synthesize starting url=%s text=\"%s\"", url.c_str(), text);
+  if (!http_post_json_text(url, body, kMaxTtsResponseBytes, &response)) {
+    return false;
+  }
+
+  cJSON *payload = cJSON_ParseWithLength(response.data(), response.size());
+  if (payload == nullptr) {
+    ESP_LOGW(kTag, "TTS synthesize response was not JSON bytes=%u", static_cast<unsigned>(response.size()));
+    return false;
+  }
+  cJSON *status = cJSON_GetObjectItem(payload, "status");
+  cJSON *endpoint_audio_url = cJSON_GetObjectItem(payload, "endpoint_audio_url");
+  cJSON *audio_url = cJSON_GetObjectItem(payload, "audio_url");
+  cJSON *audio_urls = cJSON_GetObjectItem(payload, "audio_urls");
+  cJSON *audio_url_16k = cJSON_IsObject(audio_urls) ? cJSON_GetObjectItem(audio_urls, "16k") : nullptr;
+  cJSON *stream_id = cJSON_GetObjectItem(payload, "stream_id");
+  cJSON *content_type = cJSON_GetObjectItem(payload, "content_type");
+  const char *selected_audio_url = cJSON_IsString(audio_url_16k) && audio_url_16k->valuestring[0] != '\0'
+                                       ? audio_url_16k->valuestring
+                                       : (cJSON_IsString(endpoint_audio_url) && endpoint_audio_url->valuestring[0] != '\0'
+                                              ? endpoint_audio_url->valuestring
+                                              : (cJSON_IsString(audio_url) ? audio_url->valuestring : ""));
+  if (!cJSON_IsString(status) || std::strcmp(status->valuestring, "ready") != 0 || selected_audio_url[0] == '\0') {
+    ESP_LOGW(kTag, "TTS synthesize response not ready or missing audio_url");
+    cJSON_Delete(payload);
+    return false;
+  }
+  copy_string(result->stream_id, sizeof(result->stream_id), cJSON_IsString(stream_id) ? stream_id->valuestring : "tts-probe");
+  copy_string(result->content_type, sizeof(result->content_type), cJSON_IsString(content_type) ? content_type->valuestring : "audio/wav");
+  const std::string resolved_audio_url = backend_url_from_path_or_url(settings, selected_audio_url);
+  copy_string(result->audio_url, sizeof(result->audio_url), resolved_audio_url.c_str());
+  ESP_LOGI(
+      kTag,
+      "Audio probe TTS synthesize ready stream=%s content_type=%s audio_url=%s response_bytes=%u",
+      result->stream_id,
+      result->content_type,
+      result->audio_url,
+      static_cast<unsigned>(response.size()));
+  cJSON_Delete(payload);
+  return result->audio_url[0] != '\0';
+}
+
+bool fetch_tts_audio(const char *url, uint8_t **audio, size_t *audio_size) {
+  if (audio == nullptr || audio_size == nullptr) {
+    return false;
+  }
+  *audio = nullptr;
+  *audio_size = 0;
+  if (url == nullptr || url[0] == '\0') {
+    return false;
+  }
+
+  uint8_t *buffer = static_cast<uint8_t *>(heap_caps_malloc(kMaxTtsBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (buffer == nullptr) {
+    ESP_LOGE(
+        kTag,
+        "Failed to allocate TTS download buffer bytes=%u free_psram=%u",
+        static_cast<unsigned>(kMaxTtsBytes),
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+    return false;
+  }
+  HttpBinaryBuffer http_buffer = {};
+  http_buffer.data = buffer;
+  http_buffer.capacity = kMaxTtsBytes;
+
+  esp_http_client_config_t config = {};
+  config.url = url;
+  config.method = HTTP_METHOD_GET;
+  config.timeout_ms = kTtsHttpTimeoutMs;
+  config.event_handler = binary_http_event_handler;
+  config.user_data = &http_buffer;
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    heap_caps_free(buffer);
+    ESP_LOGW(kTag, "Failed to initialize TTS audio HTTP client");
+    return false;
+  }
+
+  ESP_LOGI(kTag, "Audio probe TTS download starting url=%s", url);
+  const esp_err_t err = esp_http_client_perform(client);
+  const int status_code = esp_http_client_get_status_code(client);
+  esp_http_client_cleanup(client);
+  if (err != ESP_OK || status_code < 200 || status_code >= 300 || http_buffer.overflow || http_buffer.size == 0) {
+    ESP_LOGW(
+        kTag,
+        "TTS audio download failed: err=%s status=%d overflow=%d bytes=%u",
+        esp_err_to_name(err),
+        status_code,
+        http_buffer.overflow,
+        static_cast<unsigned>(http_buffer.size));
+    heap_caps_free(buffer);
+    return false;
+  }
+
+  *audio = buffer;
+  *audio_size = http_buffer.size;
+  ESP_LOGI(kTag, "Audio probe TTS download completed bytes=%u", static_cast<unsigned>(http_buffer.size));
+  return true;
+}
+
+bool parse_wav(const uint8_t *audio, size_t audio_size, WavView *wav) {
+  if (wav == nullptr || audio == nullptr || audio_size < 44 ||
+      std::memcmp(audio, "RIFF", 4) != 0 || std::memcmp(audio + 8, "WAVE", 4) != 0) {
+    return false;
+  }
+  *wav = {};
+  size_t offset = 12;
+  bool saw_format = false;
+  while (offset + 8 <= audio_size) {
+    const uint8_t *chunk = audio + offset;
+    const uint32_t chunk_size = read_le32(chunk + 4);
+    const size_t chunk_data = offset + 8;
+    if (chunk_data + chunk_size > audio_size) {
+      return false;
+    }
+    if (std::memcmp(chunk, "fmt ", 4) == 0 && chunk_size >= 16) {
+      const uint16_t audio_format = read_le16(audio + chunk_data);
+      wav->channels = read_le16(audio + chunk_data + 2);
+      wav->sample_rate = static_cast<int>(read_le32(audio + chunk_data + 4));
+      wav->bits_per_sample = read_le16(audio + chunk_data + 14);
+      saw_format = audio_format == 1 && wav->channels > 0 && wav->channels <= 2 && wav->bits_per_sample == 16;
+    } else if (std::memcmp(chunk, "data", 4) == 0 && saw_format) {
+      wav->pcm = audio + chunk_data;
+      wav->pcm_size = chunk_size;
+      return wav->pcm_size > 0;
+    }
+    offset = chunk_data + chunk_size + (chunk_size % 2);
+  }
+  return false;
+}
+
+bool ensure_speaker_i2c_bus() {
+  if (g_voice_kit_i2c_bus != nullptr) {
+    return true;
+  }
+  esp_err_t result = i2c_master_get_bus_handle(kVoiceKitI2cPort, &g_voice_kit_i2c_bus);
+  if (result == ESP_OK) {
+    return true;
+  }
+
+  i2c_master_bus_config_t bus_config = {};
+  bus_config.i2c_port = kVoiceKitI2cPort;
+  bus_config.sda_io_num = kVoiceKitI2cSda;
+  bus_config.scl_io_num = kVoiceKitI2cScl;
+  bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+  bus_config.glitch_ignore_cnt = 7;
+  bus_config.flags.enable_internal_pullup = true;
+  result = i2c_new_master_bus(&bus_config, &g_voice_kit_i2c_bus);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to create Voice PE speaker I2C bus: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool ensure_speaker_codec_device() {
+  if (g_speaker_codec_device != nullptr) {
+    return true;
+  }
+  if (!ensure_speaker_i2c_bus()) {
+    return false;
+  }
+  i2c_device_config_t device_config = {};
+  device_config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  device_config.device_address = kAic3204I2cAddress;
+  device_config.scl_speed_hz = kVoiceKitI2cClockHz;
+
+  const esp_err_t result = i2c_master_bus_add_device(g_voice_kit_i2c_bus, &device_config, &g_speaker_codec_device);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to add Voice PE AIC3204 speaker device: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool aic_write_byte(uint8_t register_address, uint8_t value) {
+  if (!ensure_speaker_codec_device()) {
+    return false;
+  }
+  const uint8_t data[] = {register_address, value};
+  const esp_err_t result = i2c_master_transmit(
+      g_speaker_codec_device,
+      data,
+      sizeof(data),
+      pdMS_TO_TICKS(kSpeakerI2cTimeoutMs));
+  if (result != ESP_OK) {
+    ESP_LOGW(kTag, "AIC3204 write failed reg=0x%02x value=0x%02x: %s", register_address, value, esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool aic_select_page(uint8_t page) {
+  return aic_write_byte(kAicPageCtrl, page);
+}
+
+bool aic_write_reg(uint8_t page, uint8_t register_address, uint8_t value) {
+  return aic_select_page(page) && aic_write_byte(register_address, value);
+}
+
+uint8_t aic_volume_from_percent(int volume_percent) {
+  constexpr int kMinVolume = -127;
+  constexpr int kMaxVolume = 48;
+  const int clamped = std::clamp(volume_percent, 0, 100);
+  const int value = kMinVolume + ((kMaxVolume - kMinVolume) * clamped) / 100;
+  return static_cast<uint8_t>(static_cast<int8_t>(value));
+}
+
+bool set_speaker_volume(int volume_percent) {
+  const uint8_t register_value = aic_volume_from_percent(volume_percent);
+  return aic_write_reg(0, kAicDaclVolD, register_value) && aic_write_reg(0, kAicDacrVolD, register_value);
+}
+
+bool set_speaker_muted(bool muted) {
+  return aic_write_reg(0, kAicDacChSet2, muted ? 0x0C : 0x00);
+}
+
+bool ensure_speaker_codec_ready() {
+  if (g_speaker_codec_ready) {
+    set_speaker_volume(70);
+    set_speaker_muted(false);
+    return true;
+  }
+  if (!ensure_speaker_codec_device()) {
+    return false;
+  }
+
+  gpio_config_t amp_config = {};
+  amp_config.pin_bit_mask = 1ULL << kSpeakerAmp;
+  amp_config.mode = GPIO_MODE_OUTPUT;
+  gpio_config(&amp_config);
+  gpio_set_level(kSpeakerAmp, 1);
+
+  if (!aic_select_page(0) || !aic_write_byte(kAicSwReset, 0x01)) {
+    return false;
+  }
+  vTaskDelay(pdMS_TO_TICKS(10));
+
+  const bool configured =
+      aic_write_reg(0, kAicNdac, 0x82) &&
+      aic_write_reg(0, kAicMdac, 0x82) &&
+      aic_write_reg(0, kAicDosr, 0x80) &&
+      aic_write_reg(0, kAicCodecIf, 0x30) &&
+      aic_write_reg(0, kAicSclkMfp3, 0x02) &&
+      aic_write_reg(0, kAicAudioIf4, 0x01) &&
+      aic_write_reg(0, kAicAudioIf5, 0x01) &&
+      aic_write_reg(0, kAicDacSigProc, 0x01) &&
+      aic_write_reg(1, kAicLdoCtrl, 0x09) &&
+      aic_write_reg(1, kAicPwrCfg, 0x08) &&
+      aic_write_reg(1, kAicLdoCtrl, 0x01) &&
+      aic_write_reg(1, kAicCmCtrl, 0x40) &&
+      aic_write_reg(1, kAicPlayCfg1, 0x00) &&
+      aic_write_reg(1, kAicPlayCfg2, 0x00) &&
+      aic_write_reg(1, kAicRefStartup, 0x01) &&
+      aic_write_reg(1, kAicHpStart, 0x25) &&
+      aic_write_reg(1, kAicHplRoute, 0x08) &&
+      aic_write_reg(1, kAicHprRoute, 0x08) &&
+      aic_write_reg(1, kAicLolRoute, 0x08) &&
+      aic_write_reg(1, kAicLorRoute, 0x08) &&
+      aic_write_reg(1, kAicHplGain, 0x3E) &&
+      aic_write_reg(1, kAicHprGain, 0x3E) &&
+      aic_write_reg(1, kAicLolDrvGain, 0x00) &&
+      aic_write_reg(1, kAicLorDrvGain, 0x00) &&
+      aic_write_reg(1, kAicOpPwrCtrl, 0x3C);
+  if (!configured) {
+    return false;
+  }
+
+  vTaskDelay(pdMS_TO_TICKS(2500));
+  if (!aic_write_reg(0, kAicDacChSet1, 0xD4) ||
+      !set_speaker_volume(70) ||
+      !set_speaker_muted(false)) {
+    return false;
+  }
+
+  g_speaker_codec_ready = true;
+  ESP_LOGI(kTag, "Audio probe Voice PE speaker codec initialized");
+  return true;
+}
+
+bool ensure_speaker_i2s_output() {
+  if (g_speaker_tx_channel == nullptr) {
+    i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(kSpeakerI2sPort, I2S_ROLE_SLAVE);
+    channel_config.dma_desc_num = kPlaybackDmaDescNum;
+    channel_config.dma_frame_num = kPlaybackFrameCapacity;
+    esp_err_t result = i2s_new_channel(&channel_config, &g_speaker_tx_channel, nullptr);
+    if (result != ESP_OK) {
+      ESP_LOGE(
+          kTag,
+          "Failed to create Voice PE speaker I2S TX channel: %s dma_free=%u internal_free=%u",
+          esp_err_to_name(result),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+      return false;
+    }
+
+    i2s_std_config_t std_config = {};
+    std_config.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(kSpeakerSampleRate);
+    std_config.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
+    std_config.gpio_cfg = {
+        .mclk = I2S_GPIO_UNUSED,
+        .bclk = kSpeakerBclk,
+        .ws = kSpeakerLrclk,
+        .dout = kSpeakerDout,
+        .din = I2S_GPIO_UNUSED,
+        .invert_flags = {},
+    };
+
+    result = i2s_channel_init_std_mode(g_speaker_tx_channel, &std_config);
+    if (result != ESP_OK) {
+      ESP_LOGE(
+          kTag,
+          "Failed to initialize Voice PE speaker I2S TX mode: %s dma_free=%u internal_free=%u",
+          esp_err_to_name(result),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+          static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+      i2s_del_channel(g_speaker_tx_channel);
+      g_speaker_tx_channel = nullptr;
+      return false;
+    }
+  }
+
+  if (!g_speaker_tx_enabled) {
+    const esp_err_t result = i2s_channel_enable(g_speaker_tx_channel);
+    if (result != ESP_OK) {
+      ESP_LOGE(kTag, "Failed to enable Voice PE speaker I2S stream: %s", esp_err_to_name(result));
+      i2s_del_channel(g_speaker_tx_channel);
+      g_speaker_tx_channel = nullptr;
+      return false;
+    }
+    g_speaker_tx_enabled = true;
+  }
+  return true;
+}
+
+void disable_speaker_i2s_output() {
+  if (g_speaker_tx_channel != nullptr && g_speaker_tx_enabled) {
+    i2s_channel_disable(g_speaker_tx_channel);
+    g_speaker_tx_enabled = false;
+  }
+  if (g_speaker_tx_channel != nullptr) {
+    i2s_del_channel(g_speaker_tx_channel);
+    g_speaker_tx_channel = nullptr;
+    ESP_LOGI(
+        kTag,
+        "Audio probe released Voice PE speaker I2S TX dma_free=%u internal_free=%u",
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL)),
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
+  }
+}
+
+bool write_speaker_frames(const int32_t *frames, size_t stereo_frame_count) {
+  const size_t bytes_to_write = stereo_frame_count * 2 * sizeof(int32_t);
+  size_t bytes_written = 0;
+  const esp_err_t result = i2s_channel_write(
+      g_speaker_tx_channel,
+      frames,
+      bytes_to_write,
+      &bytes_written,
+      pdMS_TO_TICKS(kSpeakerI2sWriteTimeoutMs));
+  if (result != ESP_OK || bytes_written != bytes_to_write) {
+    ESP_LOGW(
+        kTag,
+        "Voice PE speaker write failed: %s bytes=%u/%u",
+        esp_err_to_name(result),
+        static_cast<unsigned>(bytes_written),
+        static_cast<unsigned>(bytes_to_write));
+    return false;
+  }
+  return true;
+}
+
+bool flush_speaker_frames(std::array<int32_t, kPlaybackFrameCapacity * 2> *frames, size_t *queued_frames) {
+  if (frames == nullptr || queued_frames == nullptr || *queued_frames == 0) {
+    return true;
+  }
+  const bool written = write_speaker_frames(frames->data(), *queued_frames);
+  *queued_frames = 0;
+  return written;
+}
+
+bool write_speaker_silence_drain() {
+  std::array<int32_t, kPlaybackFrameCapacity * 2> silence = {};
+  size_t remaining_frames = kPlaybackDrainFrames;
+  while (remaining_frames > 0) {
+    const size_t frame_count = std::min(remaining_frames, kPlaybackFrameCapacity);
+    if (!write_speaker_frames(silence.data(), frame_count)) {
+      return false;
+    }
+    remaining_frames -= frame_count;
+  }
+  return true;
+}
+
+int16_t pcm16_sample(const uint8_t *bytes) {
+  return static_cast<int16_t>(read_le16(bytes));
+}
+
+int16_t pcm16_frame_sample(const WavView &wav, size_t frame, int channel, size_t bytes_per_source_frame) {
+  const uint8_t *source = wav.pcm + (frame * bytes_per_source_frame);
+  if (wav.channels == 1 || channel == 0) {
+    return pcm16_sample(source);
+  }
+  return pcm16_sample(source + sizeof(int16_t));
+}
+
+int16_t interpolate_pcm16(int16_t first, int16_t second, uint64_t numerator, uint64_t denominator) {
+  if (denominator == 0 || numerator == 0 || first == second) {
+    return first;
+  }
+  const int64_t delta = static_cast<int64_t>(second) - static_cast<int64_t>(first);
+  const int64_t scaled = static_cast<int64_t>(first) + ((delta * static_cast<int64_t>(numerator)) / static_cast<int64_t>(denominator));
+  return static_cast<int16_t>(std::clamp<int64_t>(scaled, -32768, 32767));
+}
+
+bool play_tts_wav(const uint8_t *audio, size_t audio_size) {
+  WavView wav = {};
+  if (!parse_wav(audio, audio_size, &wav)) {
+    ESP_LOGW(kTag, "Audio probe TTS audio is not supported WAV PCM bytes=%u", static_cast<unsigned>(audio_size));
+    return false;
+  }
+  if (wav.sample_rate <= 0 || wav.channels <= 0 || wav.channels > 2 || wav.bits_per_sample != 16) {
+    ESP_LOGW(
+        kTag,
+        "Unsupported TTS WAV format sample_rate=%d channels=%d bits=%d",
+        wav.sample_rate,
+        wav.channels,
+        wav.bits_per_sample);
+    return false;
+  }
+  const size_t bytes_per_source_frame = static_cast<size_t>(wav.channels) * sizeof(int16_t);
+  if (bytes_per_source_frame == 0 || wav.pcm_size < bytes_per_source_frame) {
+    return false;
+  }
+  if (!ensure_speaker_codec_ready() || !ensure_speaker_i2s_output()) {
+    return false;
+  }
+
+  const size_t source_frames = wav.pcm_size / bytes_per_source_frame;
+  const uint64_t output_frame_count =
+      (static_cast<uint64_t>(source_frames) * static_cast<uint64_t>(kSpeakerSampleRate) +
+       static_cast<uint64_t>(wav.sample_rate) - 1) /
+      static_cast<uint64_t>(wav.sample_rate);
+  if (wav.sample_rate != kSpeakerSampleRate) {
+    ESP_LOGI(kTag, "Audio probe resampling TTS WAV from %d Hz to %d Hz", wav.sample_rate, kSpeakerSampleRate);
+  }
+  ESP_LOGI(
+      kTag,
+      "Audio probe TTS playback starting source_rate=%d channels=%d pcm_bytes=%u output_frames=%u",
+      wav.sample_rate,
+      wav.channels,
+      static_cast<unsigned>(wav.pcm_size),
+      static_cast<unsigned>(output_frame_count));
+
+  std::array<int32_t, kPlaybackFrameCapacity * 2> output_frames = {};
+  size_t queued_frames = 0;
+  bool played_first_frame = false;
+  for (uint64_t frame = 0; frame < output_frame_count; ++frame) {
+    const uint64_t source_position = frame * static_cast<uint64_t>(wav.sample_rate);
+    const size_t source_index = std::min<size_t>(
+        static_cast<size_t>(source_position / static_cast<uint64_t>(kSpeakerSampleRate)),
+        source_frames - 1);
+    const size_t next_source_index = std::min(source_index + 1, source_frames - 1);
+    const uint64_t fractional = source_position % static_cast<uint64_t>(kSpeakerSampleRate);
+    const int16_t left16 = interpolate_pcm16(
+        pcm16_frame_sample(wav, source_index, 0, bytes_per_source_frame),
+        pcm16_frame_sample(wav, next_source_index, 0, bytes_per_source_frame),
+        fractional,
+        kSpeakerSampleRate);
+    const int16_t right16 = interpolate_pcm16(
+        pcm16_frame_sample(wav, source_index, 1, bytes_per_source_frame),
+        pcm16_frame_sample(wav, next_source_index, 1, bytes_per_source_frame),
+        fractional,
+        kSpeakerSampleRate);
+
+    output_frames[queued_frames * 2] = static_cast<int32_t>(left16) << 16;
+    output_frames[(queued_frames * 2) + 1] = static_cast<int32_t>(right16) << 16;
+    ++queued_frames;
+    if (queued_frames == kPlaybackFrameCapacity) {
+      if (!flush_speaker_frames(&output_frames, &queued_frames)) {
+        disable_speaker_i2s_output();
+        return false;
+      }
+      if (!played_first_frame) {
+        ESP_LOGI(kTag, "Audio probe TTS playback first audio frame");
+        played_first_frame = true;
+      }
+    }
+  }
+
+  bool ok = flush_speaker_frames(&output_frames, &queued_frames);
+  if (ok) {
+    ok = write_speaker_silence_drain();
+  }
+  disable_speaker_i2s_output();
+  ESP_LOGI(kTag, "Audio probe TTS playback finished ok=%s", ok ? "true" : "false");
+  return ok;
+}
+
+bool run_tts_probe(const ProbeSettings &settings) {
+  static constexpr const char *kProbePhrases[] = {
+      "Audio probe speaker test. The backend sent this sentence over HTTP.",
+      "Voice Preview Edition playback test. HTTP download is alive.",
+      "Hexe audio probe says hello from a freshly generated test phrase.",
+  };
+  const uint32_t choice = esp_random() % (sizeof(kProbePhrases) / sizeof(kProbePhrases[0]));
+  char text[160] = {};
+  std::snprintf(text, sizeof(text), "%s Run %08x.", kProbePhrases[choice], static_cast<unsigned>(esp_random()));
+
+  log_probe_heap("tts_before_synthesize");
+  TtsSynthesizeResult synth = {};
+  if (!synthesize_tts_probe(settings, text, &synth)) {
+    ESP_LOGE(kTag, "Audio probe TTS synthesize failed");
+    return false;
+  }
+  log_probe_heap("tts_after_synthesize");
+
+  uint8_t *audio = nullptr;
+  size_t audio_size = 0;
+  if (!fetch_tts_audio(synth.audio_url, &audio, &audio_size)) {
+    ESP_LOGE(kTag, "Audio probe TTS download failed stream=%s", synth.stream_id);
+    return false;
+  }
+  log_probe_heap("tts_after_download");
+
+  const bool played = play_tts_wav(audio, audio_size);
+  heap_caps_free(audio);
+  log_probe_heap("tts_after_playback");
+  ESP_LOGI(
+      kTag,
+      "Audio probe TTS test result stream=%s bytes=%u played=%s",
+      synth.stream_id,
+      static_cast<unsigned>(audio_size),
+      played ? "true" : "false");
+  return played;
 }
 
 void set_error_code(char *target, size_t target_size, const char *code) {
@@ -1627,6 +2406,7 @@ bool run_microphone_probe(const ProbeSettings &settings, const char *source) {
 void run_probe_sequence(const ProbeSettings &settings) {
   run_generated_probe_sequence(settings);
   run_microphone_probe(settings, "pe-mic-staged");
+  run_tts_probe(settings);
 }
 
 void handle_command_loop(const ProbeSettings &settings) {
