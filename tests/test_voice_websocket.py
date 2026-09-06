@@ -183,22 +183,21 @@ def test_voice_websocket_binds_endpoint_from_query_before_voice_event(tmp_path):
     assert box_command["event_type"] == "endpoint.mute"
 
 
-def test_voice_websocket_rejects_duplicate_endpoint_without_clearing_original(tmp_path):
+def test_voice_websocket_replaces_duplicate_endpoint_control_socket(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
     with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as first_socket:
         with client.websocket_connect("/api/voice/ws?endpoint_id=esp-pe-1") as duplicate_socket:
-            duplicate_error = duplicate_socket.receive_json()
-            assert duplicate_error["event_type"] == "session.error"
-            assert duplicate_error["payload"]["code"] == "endpoint_already_connected"
+            with pytest.raises(WebSocketDisconnect):
+                first_socket.receive_json()
 
-        status = client.get("/api/voice/status").json()
+            status = client.get("/api/voice/status").json()
 
-        volume_response = client.post(
-            "/api/endpoint/volume",
-            json={"endpoint_id": "esp-pe-1", "volume_percent": 42},
-        )
-        pe_command = first_socket.receive_json()
+            volume_response = client.post(
+                "/api/endpoint/volume",
+                json={"endpoint_id": "esp-pe-1", "volume_percent": 42},
+            )
+            pe_command = duplicate_socket.receive_json()
 
     assert status["connection_count"] == 1
     assert status["connected_endpoint_ids"] == ["esp-pe-1"]

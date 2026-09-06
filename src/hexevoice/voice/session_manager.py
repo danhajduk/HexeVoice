@@ -304,6 +304,38 @@ class VoiceSessionManager:
         runtime = self._runtime_for_endpoint(endpoint_id)
         return runtime if runtime is not None and runtime is not self._current_runtime() else None
 
+    async def _replace_endpoint_runtime(self, endpoint_id: str, state: EndpointSessionRuntime) -> None:
+        token = self._runtime_context.set(state)
+        try:
+            if self._active_session is not None:
+                self._set_session_state("cancelled")
+                self._active_session.cancel_reason = "endpoint_reconnected"
+                self._persist_active_session_history(
+                    self._active_session,
+                    completion_reason="endpoint_reconnected",
+                )
+                self._release_active_session_wake_stream()
+            self._cancel_followup_timeout_task()
+            if self._audio_websocket is not None:
+                try:
+                    await self._audio_websocket.close(code=1012)
+                except RuntimeError:
+                    pass
+            if self._websocket is not None:
+                try:
+                    await self._websocket.close(code=1012)
+                except RuntimeError:
+                    pass
+            self._audio_websocket = None
+            self._audio_connection_active = False
+            self._websocket = None
+            self._connection_active = False
+            self._clear_active_session_runtime()
+            self._unbind_runtime_endpoint(state)
+            log.warning("Replaced existing voice endpoint WebSocket: endpoint_id=%s", endpoint_id)
+        finally:
+            self._runtime_context.reset(token)
+
     def _status_runtime(self) -> EndpointSessionRuntime:
         for state in self._endpoint_runtimes.values():
             if state.active_session is not None:
@@ -404,18 +436,9 @@ class VoiceSessionManager:
         await websocket.accept()
         initial_endpoint_id = endpoint_id.strip() if endpoint_id else None
         if initial_endpoint_id:
-            if self._runtime_for_endpoint(initial_endpoint_id) is not None:
-                await websocket.send_json(
-                    self._error_event(
-                        endpoint_id=initial_endpoint_id,
-                        session_id=None,
-                        code="endpoint_already_connected",
-                        message="This endpoint already has an active WebSocket.",
-                        recoverable=False,
-                    ).model_dump(mode="json")
-                )
-                await websocket.close(code=1008)
-                return
+            existing_runtime = self._runtime_for_endpoint(initial_endpoint_id)
+            if existing_runtime is not None:
+                await self._replace_endpoint_runtime(initial_endpoint_id, existing_runtime)
 
         runtime = EndpointSessionRuntime(connection_active=True, websocket=websocket)
         token = self._runtime_context.set(runtime)
