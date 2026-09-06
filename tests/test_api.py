@@ -1212,6 +1212,10 @@ def test_endpoint_http_audio_chunk_uses_control_websocket_runtime(tmp_path):
         assert websocket.receive_json()["event_type"] == "wake.accepted"
         assert websocket.receive_json()["event_type"] == "session.state"
 
+        def audio_chunks():
+            yield b"\x01\x00"
+            yield b"\x02\x00"
+
         response = client.post(
             "/api/voice/audio/chunk",
             params={
@@ -1225,7 +1229,7 @@ def test_endpoint_http_audio_chunk_uses_control_websocket_runtime(tmp_path):
                 "frame_level": 1200,
                 "contains_speech": True,
             },
-            content=b"\x01\x00\x02\x00",
+            content=audio_chunks(),
             headers={"Content-Type": "application/octet-stream"},
         )
 

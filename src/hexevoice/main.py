@@ -18,6 +18,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse
 import httpx
+from starlette.requests import ClientDisconnect
 import uvicorn
 
 from hexevoice.api.models import (
@@ -2520,15 +2521,40 @@ def create_app(
         contains_pre_roll: bool = False,
         contains_speech: bool = False,
     ) -> JSONResponse:
-        audio_bytes = await request.body()
         if encoding != "pcm_s16le":
             raise HTTPException(status_code=400, detail="unsupported_audio_encoding")
         if sample_rate_hz < 8000 or channels < 1 or channels > 2:
             raise HTTPException(status_code=400, detail="invalid_audio_format")
+        audio_body = bytearray()
+        try:
+            async for body_chunk in request.stream():
+                if not body_chunk:
+                    continue
+                audio_body.extend(body_chunk)
+                if len(audio_body) > 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="audio_payload_too_large")
+        except ClientDisconnect:
+            log.warning(
+                "HTTP voice audio upload disconnected before body complete: endpoint_id=%s session_id=%s "
+                "chunk_index=%s received_bytes=%s",
+                endpoint_id,
+                session_id,
+                chunk_index,
+                len(audio_body),
+            )
+            raise HTTPException(status_code=499, detail="client_disconnected_during_audio_upload")
+
+        audio_bytes = bytes(audio_body)
         if not audio_bytes:
             raise HTTPException(status_code=400, detail="audio_payload_required")
-        if len(audio_bytes) > 1024 * 1024:
-            raise HTTPException(status_code=413, detail="audio_payload_too_large")
+        if chunk_index == 0:
+            log.info(
+                "HTTP voice audio body received: endpoint_id=%s session_id=%s bytes=%s is_final=%s",
+                endpoint_id,
+                session_id,
+                len(audio_bytes),
+                is_final,
+            )
 
         payload = {
             "chunk_index": chunk_index,

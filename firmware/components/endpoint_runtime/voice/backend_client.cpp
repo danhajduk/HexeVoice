@@ -76,9 +76,11 @@ constexpr size_t kMaxBackendEventBytes = 8192;
 constexpr uint32_t kBackendReadinessPollMs = 500;
 constexpr int kHeartbeatHttpTimeoutMs = 3000;
 constexpr int kVoiceAudioHttpTimeoutMs = 30000;
+constexpr int kVoiceAudioHttpUploadTimeoutMs = 120000;
 constexpr size_t kVoiceAudioHttpUploadChunkBytes = 2048;
 constexpr size_t kVoiceAudioHttpUploadChunkSamples = kVoiceAudioHttpUploadChunkBytes / sizeof(int16_t);
-constexpr size_t kVoiceAudioHttpWriteChunkBytes = 4096;
+constexpr size_t kVoiceAudioHttpWriteChunkBytes = 1024;
+constexpr size_t kVoiceAudioHttpProgressLogBytes = 32768;
 constexpr size_t kVoiceAudioMaxBufferedSamples =
     (static_cast<size_t>(hexe::config::kEndpointAudioSampleRateHz) * hexe::config::kEndpointAudioChannels * 20);
 constexpr int kClockSyncIntervalMs = 300000;
@@ -928,8 +930,9 @@ bool socket_send_all(int sock, const char *data, size_t byte_count, int *written
   if (last_errno != nullptr) {
     *last_errno = 0;
   }
-  const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(kVoiceAudioHttpTimeoutMs) * 1000;
+  const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(kVoiceAudioHttpUploadTimeoutMs) * 1000;
   size_t offset = 0;
+  size_t next_progress_log = kVoiceAudioHttpProgressLogBytes;
   while (offset < byte_count) {
     const size_t remaining = byte_count - offset;
     const int to_send = static_cast<int>(std::min(remaining, kVoiceAudioHttpWriteChunkBytes));
@@ -939,13 +942,21 @@ bool socket_send_all(int sock, const char *data, size_t byte_count, int *written
       if (written_bytes != nullptr) {
         *written_bytes = static_cast<int>(offset);
       }
+      if (byte_count >= kVoiceAudioHttpProgressLogBytes && offset >= next_progress_log) {
+        ESP_LOGI(
+            kTag,
+            "Voice HTTP audio socket send progress: written=%u total=%u",
+            static_cast<unsigned>(offset),
+            static_cast<unsigned>(byte_count));
+        next_progress_log += kVoiceAudioHttpProgressLogBytes;
+      }
       continue;
     }
     const int error_code = errno;
     if (last_errno != nullptr) {
       *last_errno = error_code;
     }
-    if (!socket_retryable_errno(error_code) || esp_timer_get_time() >= deadline_us) {
+    if ((sent < 0 && !socket_retryable_errno(error_code)) || esp_timer_get_time() >= deadline_us) {
       return false;
     }
     vTaskDelay(pdMS_TO_TICKS(25));
@@ -1024,7 +1035,8 @@ int connect_backend_socket(int *last_errno) {
       continue;
     }
     timeval timeout = {};
-    timeout.tv_sec = 1;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 250000;
     setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     if (connect(sock, item->ai_addr, item->ai_addrlen) == 0) {

@@ -833,7 +833,9 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "post_buffered_voice_audio_http()" in source
     assert "kVoiceAudioHttpUploadChunkBytes = 2048" in source
     assert "kVoiceAudioHttpUploadChunkSamples = kVoiceAudioHttpUploadChunkBytes / sizeof(int16_t)" in source
-    assert "kVoiceAudioHttpWriteChunkBytes = 4096" in source
+    assert "kVoiceAudioHttpUploadTimeoutMs = 120000" in source
+    assert "kVoiceAudioHttpWriteChunkBytes = 1024" in source
+    assert "Voice HTTP audio socket send progress" in source
     assert "kVoiceAudioHttpTimeoutMs = 30000" in source
     assert "size_t transport_flush_sample_limit()" in source
     assert "return std::min(g_transport_samples.size(), kVoiceAudioHttpUploadChunkSamples);" in source
