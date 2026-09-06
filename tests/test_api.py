@@ -13,7 +13,8 @@ import hexevoice.main as main_module
 import hexevoice.endpoint.ble_onboarding as ble_onboarding_module
 
 from hexevoice.api.models import AssistantTurnRequest
-from hexevoice.assistant import AiNodeAssistantAdapter, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
+from hexevoice.assistant import AiNodeAssistantAdapter, AiNodeIntentClassifier, AssistantTurnService, ConversationTurn, LocalEchoAssistantAdapter
+from hexevoice.assistant import LocalIntentFinder, VoiceIntentRegistry, VoiceIntentStateStore
 from hexevoice.capabilities.service import VOICE_NODE_CAPABILITIES
 from hexevoice.main import (
     OTA_MANIFEST_SIGNATURE_ALGORITHM,
@@ -2994,6 +2995,156 @@ def test_assistant_ai_node_adapter_receives_context():
     body = captured["json"].replace(b" ", b"")
     assert b'"context":[{' in body
     assert b'"heard_text":"first"' in body
+
+
+def test_assistant_turn_uses_ai_classifier_for_missed_registered_intent(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    registry.register_intent(
+        intent_id="kitchen.status",
+        intent_name="Kitchen status",
+        definition={
+            "utterance_examples": ["kitchen status"],
+            "dispatch": {"type": "local_response", "command": "kitchen.status"},
+            "response": {"reply_text": "Kitchen status accepted."},
+            "matcher": {"type": "exact_example"},
+        },
+    )
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["json"] = request.read()
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": {
+                    "type": "intent",
+                    "intent": "kitchen.status",
+                    "confidence": 0.91,
+                    "arguments": {},
+                },
+                "provider_used": "local",
+                "model_used": "qwen-test",
+            },
+        )
+
+    classifier = AiNodeIntentClassifier(
+        base_url="https://ai-node.test",
+        turn_path="/api/execution/direct",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    service = AssistantTurnService(
+        settings=settings,
+        runtime_service=NodeRuntimeService(settings=settings),
+        adapter=LocalEchoAssistantAdapter(),
+        intent_finder=LocalIntentFinder(registry=registry),
+        intent_classifier=classifier,
+    )
+
+    response = service.handle_turn(
+        AssistantTurnRequest(endpoint_id="box-9", session_id="session-abc", text="How is the kitchen doing?")
+    )
+
+    assert response.handled_locally is True
+    assert response.command == "kitchen.status"
+    assert response.reply_text == "Kitchen status accepted."
+    assert response.provider_id == "ai_node_intent_classifier"
+    assert response.provider_latency_ms is not None
+    assert captured["url"] == "https://ai-node.test/api/execution/direct"
+    request_json = json.loads(captured["json"])
+    assert request_json["prompt_id"] == "prompt.hexevoice.intent_classifier"
+    assert request_json["prompt_version"] == "v1.1"
+    assert request_json["task_family"] == "task.chat"
+    assert request_json["service_id"] == "hexevoice"
+    assert "- kitchen.status" in request_json["inputs"]["intent_catalog"]
+    assert request_json["inputs"]["json_schema"]["properties"]["type"]["enum"] == ["intent", "clarification", "chat"]
+    assert "How is the kitchen doing?" in request_json["inputs"]["text"]
+    assert response.provider_metadata["voice_intent"]["metadata"]["ai_intent_classifier"]["confidence"] == 0.91
+    assert response.provider_metadata["ai_intent_classifier"]["intent_classifier"]["prompt_id"] == "prompt.hexevoice.intent_classifier"
+
+
+def test_ai_classifier_clarification_returns_spoken_question(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": {
+                    "type": "clarification",
+                    "intent": "endpoint.volume.set",
+                    "confidence": 0.82,
+                    "text": "What volume should I set?",
+                },
+            },
+        )
+
+    classifier = AiNodeIntentClassifier(
+        base_url="https://ai-node.test",
+        turn_path="/api/execution/direct",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    service = AssistantTurnService(
+        settings=settings,
+        runtime_service=NodeRuntimeService(settings=settings),
+        adapter=LocalEchoAssistantAdapter(),
+        intent_finder=LocalIntentFinder(registry=registry),
+        intent_classifier=classifier,
+    )
+
+    response = service.handle_turn(AssistantTurnRequest(endpoint_id="box-9", text="Set the volume."))
+
+    assert response.handled_locally is False
+    assert response.command is None
+    assert response.provider_id == "ai_node_intent_classifier"
+    assert response.reply_text == "What volume should I set?"
+
+
+def test_low_confidence_ai_classifier_intent_falls_back_to_assistant(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "completed",
+                "output": {
+                    "type": "intent",
+                    "intent": "timer.create",
+                    "confidence": 0.2,
+                    "arguments": {"duration_text": "five minutes"},
+                },
+            },
+        )
+
+    classifier = AiNodeIntentClassifier(
+        base_url="https://ai-node.test",
+        turn_path="/api/execution/direct",
+        timeout_s=5,
+        fallback=LocalEchoAssistantAdapter(),
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    settings = Settings(onboarding_state_path=tmp_path / "state.json")
+    service = AssistantTurnService(
+        settings=settings,
+        runtime_service=NodeRuntimeService(settings=settings),
+        adapter=LocalEchoAssistantAdapter(),
+        intent_finder=LocalIntentFinder(registry=registry),
+        intent_classifier=classifier,
+    )
+
+    response = service.handle_turn(AssistantTurnRequest(endpoint_id="box-9", text="Something vague."))
+
+    assert response.provider_id == "local_echo"
+    assert response.reply_text == "I heard Something vague."
 
 
 def test_status_endpoint_reads_persisted_onboarding_state(tmp_path):

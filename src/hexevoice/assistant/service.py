@@ -4,6 +4,7 @@ from collections import deque
 import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
+import json
 import logging
 import re
 import time
@@ -697,6 +698,271 @@ class AiNodeAssistantAdapter:
         }
 
 
+@dataclass(frozen=True)
+class AiIntentClassifierMatch:
+    kind: str
+    intent: str | None = None
+    confidence: float | None = None
+    arguments: dict[str, Any] | None = None
+    text: str | None = None
+    provider_id: str = "ai_node_intent_classifier"
+    provider_metadata: dict[str, Any] | None = None
+    provider_latency_ms: float | None = None
+
+
+class AiNodeIntentClassifier(AiNodeAssistantAdapter):
+    PROMPT_ID = "prompt.hexevoice.intent_classifier"
+    PROMPT_VERSION = "v1.1"
+    PROVIDER_ID = "ai_node_intent_classifier"
+    JSON_SCHEMA: dict[str, Any] = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "type": {"type": "string", "enum": ["intent", "clarification", "chat"]},
+            "intent": {"type": "string"},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "arguments": {"type": "object"},
+            "text": {"type": "string"},
+        },
+        "required": ["type"],
+    }
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None,
+        turn_path: str,
+        timeout_s: float,
+        fallback: AssistantAdapter,
+        prompt_id: str | None = None,
+        prompt_version: str | None = None,
+        min_confidence: float = 0.65,
+        onboarding_state_store: OnboardingStateStore | None = None,
+        core_client: CoreOnboardingClient | None = None,
+        http_client: httpx.Client | None = None,
+    ) -> None:
+        super().__init__(
+            base_url=base_url,
+            turn_path=turn_path,
+            timeout_s=timeout_s,
+            fallback=fallback,
+            prompt_id=prompt_id or self.PROMPT_ID,
+            prompt_version=prompt_version or self.PROMPT_VERSION,
+            onboarding_state_store=onboarding_state_store,
+            core_client=core_client,
+            http_client=http_client,
+        )
+        self._min_confidence = max(0.0, min(1.0, float(min_confidence)))
+
+    def classify(
+        self,
+        *,
+        payload: AssistantTurnRequest,
+        session_id: str,
+        context: Sequence[ConversationTurn],
+        intent_catalog: str,
+    ) -> AiIntentClassifierMatch | None:
+        target = self._resolve_target(payload, session_id=session_id)
+        if not target:
+            self._last_error_code = "missing_ai_node_base_url"
+            self._last_error = "missing_ai_node_base_url"
+            return None
+
+        client = self._http_client or httpx.Client(timeout=self._timeout_s)
+        started_at = time.perf_counter()
+        try:
+            response = client.post(
+                target.url,
+                json=self._classifier_request_json(
+                    target=target,
+                    payload=payload,
+                    session_id=session_id,
+                    context=context,
+                    intent_catalog=intent_catalog,
+                ),
+            )
+            response.raise_for_status()
+            data = response.json()
+            if str(data.get("status") or "").lower() in {"failed", "rejected", "error"}:
+                raise ValueError(str(data.get("error_message") or data.get("error_code") or "ai_node_classifier_failed"))
+            classifier_output = self._classifier_output_from_response(data)
+            if classifier_output is None:
+                raise ValueError("empty_ai_node_classifier_reply")
+            latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            self._last_error = None
+            self._last_error_code = None
+            self._last_latency_ms = latency_ms
+            self._last_resolved_url = target.url
+            self._last_resolved_service_id = target.service_id
+            self._last_resolution_source = target.source
+            self._last_resolution_error = None if target.source == "core" else self._last_resolution_error
+            metadata = self._metadata_from_response(data, target) or {}
+            metadata["intent_classifier"] = {
+                "prompt_id": self._prompt_id,
+                "prompt_version": self._prompt_version,
+                "min_confidence": self._min_confidence,
+            }
+            return AiIntentClassifierMatch(
+                kind=str(classifier_output.get("type") or "").strip().lower(),
+                intent=str(classifier_output.get("intent") or "").strip() or None,
+                confidence=self._confidence(classifier_output.get("confidence")),
+                arguments=classifier_output.get("arguments") if isinstance(classifier_output.get("arguments"), dict) else {},
+                text=str(classifier_output.get("text") or "").strip() or None,
+                provider_metadata=metadata,
+                provider_latency_ms=latency_ms,
+            )
+        except Exception as exc:
+            self._last_latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            self._last_error_code = self._error_code(exc)
+            self._last_error = str(exc)
+            log.warning("AI Node intent classifier failed; continuing with assistant fallback: code=%s error=%s", self._last_error_code, exc)
+            return None
+        finally:
+            if self._http_client is None:
+                client.close()
+
+    def _classifier_request_json(
+        self,
+        *,
+        target: AiNodeRequestTarget,
+        payload: AssistantTurnRequest,
+        session_id: str,
+        context: Sequence[ConversationTurn],
+        intent_catalog: str,
+    ) -> dict[str, Any]:
+        runtime_context = self._runtime_context()
+        node_clock = self._node_clock_context(runtime_context)
+        conversation_context = [
+            {
+                "endpoint_id": turn.endpoint_id,
+                "session_id": turn.session_id,
+                "heard_text": turn.heard_text,
+                "reply_text": turn.reply_text,
+            }
+            for turn in context
+        ]
+        prompt_text = self._classifier_prompt_text(
+            user_text=payload.text,
+            intent_catalog=intent_catalog,
+            node_clock=node_clock,
+            conversation_context=conversation_context,
+        )
+        if self._contract_version_for_url(target.url) == "client-ai.execution.v2":
+            return {
+                "task_id": f"hexevoice-intent-classifier-{uuid4().hex}",
+                "prompt_id": self._prompt_id,
+                "prompt_version": self._prompt_version,
+                "task_family": self.TASK_FAMILY,
+                "requested_by": "hexevoice",
+                "service_id": self.EXECUTION_SERVICE_ID,
+                "inputs": {
+                    "text": prompt_text,
+                    "user_text": payload.text,
+                    "original_text": payload.text,
+                    "intent_catalog": intent_catalog,
+                    "json_schema": self.JSON_SCHEMA,
+                    "conversation_context": conversation_context,
+                    "endpoint_id": payload.endpoint_id,
+                    "session_id": session_id,
+                    "speaker_identity": payload.speaker_identity,
+                    "speaker_identity_policy": payload.speaker_identity_policy,
+                    "speaker_personalization_enabled": payload.speaker_personalization_enabled,
+                    "runtime_context": runtime_context,
+                    "node_clock": node_clock,
+                    "system_context": self._node_clock_instruction(node_clock),
+                },
+                "constraints": {"structured_output_required": True},
+                "response_mode": "sync",
+                "timeout_s": max(1, int(self._timeout_s)),
+                "trace_id": f"{session_id}-intent-{uuid4().hex[:8]}",
+            }
+        return {
+            "contract_version": "voice.ai_node.intent_classifier.v1",
+            "source_node_type": "voice-node",
+            "endpoint_id": payload.endpoint_id,
+            "session_id": session_id,
+            "text": prompt_text,
+            "user_text": payload.text,
+            "original_text": payload.text,
+            "intent_catalog": intent_catalog,
+            "json_schema": self.JSON_SCHEMA,
+            "conversation_context": conversation_context,
+            "speaker_identity": payload.speaker_identity,
+            "speaker_identity_policy": payload.speaker_identity_policy,
+            "speaker_personalization_enabled": payload.speaker_personalization_enabled,
+            "runtime_context": runtime_context,
+            "node_clock": node_clock,
+            "system_context": self._node_clock_instruction(node_clock),
+        }
+
+    @staticmethod
+    def _classifier_prompt_text(
+        *,
+        user_text: str,
+        intent_catalog: str,
+        node_clock: dict[str, Any],
+        conversation_context: list[dict[str, Any]],
+    ) -> str:
+        return (
+            "You are HexeVoice, a concise household voice assistant and intent router.\n\n"
+            "Your job is to decide whether the user's message matches one of the recognized intents below.\n\n"
+            f"Recognized intents:\n{intent_catalog}\n\n"
+            "The only valid intent names are the literal IDs after '- ' in the catalog. "
+            "Return those IDs exactly, such as voice.date.query; do not convert them to function-style aliases.\n\n"
+            "Return exactly one valid JSON object following the registered classifier prompt rules.\n\n"
+            f"Authoritative node clock: {json.dumps(node_clock, sort_keys=True)}\n"
+            f"Conversation context: {json.dumps(conversation_context, sort_keys=True)}\n"
+            f"User message: {user_text}"
+        )
+
+    def _classifier_output_from_response(self, data: dict[str, Any]) -> dict[str, Any] | None:
+        for value in (data.get("output"), data.get("result"), data):
+            parsed = self._json_object_from_value(value)
+            if parsed is not None and str(parsed.get("type") or "").strip().lower() in {"intent", "clarification", "chat"}:
+                return parsed
+        text = self._response_text(data)
+        return self._json_object_from_value(text)
+
+    @staticmethod
+    def _json_object_from_value(value: Any) -> dict[str, Any] | None:
+        if isinstance(value, dict):
+            if isinstance(value.get("text"), str) and len(value) <= 3:
+                return AiNodeIntentClassifier._json_object_from_value(value.get("text"))
+            return value
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE).strip()
+            text = re.sub(r"\s*```$", "", text).strip()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @staticmethod
+    def _confidence(value: object) -> float | None:
+        try:
+            confidence = float(value)
+        except (TypeError, ValueError):
+            return None
+        return max(0.0, min(1.0, confidence))
+
+    def is_confident_intent(self, match: AiIntentClassifierMatch) -> bool:
+        return match.kind == "intent" and match.intent is not None and (match.confidence or 0.0) >= self._min_confidence
+
+    def status(self) -> dict:
+        status = super().status()
+        status.update(
+            {
+                "provider": self.PROVIDER_ID,
+                "min_confidence": self._min_confidence,
+            }
+        )
+        return status
+
+
 class AssistantTurnService:
     def __init__(
         self,
@@ -705,6 +971,7 @@ class AssistantTurnService:
         runtime_service: NodeRuntimeService,
         adapter: AssistantAdapter | None = None,
         intent_finder: LocalIntentFinder | None = None,
+        intent_classifier: AiNodeIntentClassifier | None = None,
         timer_event_publisher: TimerCreateEventPublisher | None = None,
         timer_ownership_cache: TimerOwnershipCache | None = None,
         endpoint_command_dispatcher: EndpointCommandDispatcher | None = None,
@@ -718,6 +985,7 @@ class AssistantTurnService:
         self._core_client = core_client or CoreOnboardingClient()
         self._adapter = adapter or self._build_adapter()
         self._intent_finder = intent_finder or LocalIntentFinder()
+        self._intent_classifier = intent_classifier or self._build_intent_classifier()
         self._timer_event_publisher = timer_event_publisher or AsyncDomainEventPublisher(
             HexeMqttTimerCreateEventPublisher(settings=settings)
         )
@@ -745,57 +1013,27 @@ class AssistantTurnService:
             pending_followup=pending_followup.as_dict() if pending_followup else None,
         )
         if intent is not None:
-            intent = self._resolve_timer_context(intent, endpoint_id=payload.endpoint_id)
-            recorded_heard_text = _recorded_heard_text_for_intent(intent, heard_text)
-            self._publish_intent_recognized_event(
+            return self._handle_matched_intent(
                 endpoint_id=payload.endpoint_id,
                 session_id=session_id,
-                heard_text=recorded_heard_text,
+                heard_text=heard_text,
                 intent=intent,
                 requested_at=requested_at,
-                intent_latency_ms=self._elapsed_ms(intent_started_at),
+                intent_started_at=intent_started_at,
             )
-            self._dispatch_intent(
-                endpoint_id=payload.endpoint_id,
-                session_id=session_id,
-                heard_text=recorded_heard_text,
-                intent=intent,
-                requested_at=requested_at,
-            )
-            intent_latency_ms = self._elapsed_ms(intent_started_at)
-            conversation_followup = self._apply_followup_transition(
-                endpoint_id=payload.endpoint_id,
-                session_id=session_id,
-                intent=intent,
-                now=requested_at,
-            )
-            response = AssistantTurnResponse(
-                endpoint_id=payload.endpoint_id,
-                session_id=session_id,
-                heard_text=recorded_heard_text,
-                reply_text=intent.reply_text,
-                spoken_text=intent.reply_text,
-                handled_locally=True,
-                command=intent.command,
-                device_state="speaking",
-                provider_id=intent.provider_id,
-                provider_metadata=self._intent_provider_metadata(intent),
-                intent_latency_ms=intent_latency_ms,
-                conversation_followup=conversation_followup,
-            )
-            self._record_intent_latency(
-                matched=True,
-                endpoint_id=payload.endpoint_id,
-                session_id=session_id,
-                intent_id=intent.intent,
-                command=intent.command,
-                provider_id=intent.provider_id,
-                latency_ms=intent_latency_ms,
-            )
-            self._record_turn(response)
-            return response
 
         context = self._conversation_context(endpoint_id=payload.endpoint_id, session_id=session_id)
+        classifier_response = self._classify_missed_intent(
+            payload=payload,
+            heard_text=heard_text,
+            session_id=session_id,
+            context=context,
+            requested_at=requested_at,
+            intent_started_at=intent_started_at,
+        )
+        if classifier_response is not None:
+            return classifier_response
+
         response = self._adapter.handle_turn(
             AssistantTurnRequest(
                 endpoint_id=payload.endpoint_id,
@@ -815,6 +1053,7 @@ class AssistantTurnService:
         return {
             **self._adapter.status(),
             "local_intents": self._intent_finder.status(),
+            "intent_classifier": self._intent_classifier.status() if self._intent_classifier else None,
             "domain_events": self._timer_event_publisher.status(),
             "timer_ownership": self._timer_ownership_cache.status() if self._timer_ownership_cache else None,
             "last_intent_latency": self._last_intent_latency,
@@ -1002,6 +1241,167 @@ class AssistantTurnService:
                 fallback=fallback,
             )
         return fallback
+
+    def _build_intent_classifier(self) -> AiNodeIntentClassifier | None:
+        if not self._settings.voice_intent_ai_classifier_enabled:
+            return None
+        if self._settings.voice_assistant_provider != "ai_node":
+            return None
+        return AiNodeIntentClassifier(
+            base_url=self._settings.voice_assistant_ai_node_base_url,
+            turn_path=self._settings.voice_assistant_ai_node_turn_path,
+            timeout_s=self._settings.voice_intent_ai_classifier_timeout_s,
+            prompt_id=self._settings.voice_intent_ai_classifier_prompt_id,
+            prompt_version=self._settings.voice_intent_ai_classifier_prompt_version,
+            min_confidence=self._settings.voice_intent_ai_classifier_min_confidence,
+            onboarding_state_store=self._onboarding_state_store,
+            core_client=self._core_client,
+            fallback=LocalEchoAssistantAdapter(),
+        )
+
+    def _classify_missed_intent(
+        self,
+        *,
+        payload: AssistantTurnRequest,
+        heard_text: str,
+        session_id: str,
+        context: Sequence[ConversationTurn],
+        requested_at: datetime,
+        intent_started_at: float,
+    ) -> AssistantTurnResponse | None:
+        if self._intent_classifier is None:
+            return None
+        classification = self._intent_classifier.classify(
+            payload=AssistantTurnRequest(
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                text=heard_text or " ",
+                speaker_identity=payload.speaker_identity,
+                speaker_identity_policy=payload.speaker_identity_policy,
+                speaker_personalization_enabled=payload.speaker_personalization_enabled,
+            ),
+            session_id=session_id,
+            context=context,
+            intent_catalog=self._intent_finder.ai_intent_catalog(),
+        )
+        if classification is None:
+            return None
+        if self._intent_classifier.is_confident_intent(classification):
+            intent = self._intent_finder.match_ai_classification(
+                {
+                    "type": classification.kind,
+                    "intent": classification.intent,
+                    "confidence": classification.confidence,
+                    "arguments": classification.arguments or {},
+                },
+                requested_at=requested_at,
+                provider_id=classification.provider_id,
+            )
+            if intent is not None:
+                response = self._handle_matched_intent(
+                    endpoint_id=payload.endpoint_id,
+                    session_id=session_id,
+                    heard_text=heard_text,
+                    intent=intent,
+                    requested_at=requested_at,
+                    intent_started_at=intent_started_at,
+                )
+                provider_metadata = response.provider_metadata or {}
+                provider_metadata["ai_intent_classifier"] = classification.provider_metadata or {}
+                return response.model_copy(
+                    update={
+                        "provider_latency_ms": classification.provider_latency_ms,
+                        "provider_metadata": provider_metadata,
+                    }
+                )
+        if classification.kind in {"clarification", "chat"} and classification.text:
+            intent_latency_ms = self._elapsed_ms(intent_started_at)
+            self._record_intent_latency(
+                matched=False,
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                intent_id=classification.intent,
+                command=None,
+                provider_id=classification.provider_id,
+                latency_ms=intent_latency_ms,
+            )
+            response = AssistantTurnResponse(
+                endpoint_id=payload.endpoint_id,
+                session_id=session_id,
+                heard_text=heard_text,
+                reply_text=classification.text,
+                spoken_text=classification.text,
+                handled_locally=False,
+                command=None,
+                device_state="speaking",
+                provider_id=classification.provider_id,
+                provider_latency_ms=classification.provider_latency_ms,
+                provider_metadata=classification.provider_metadata,
+                intent_latency_ms=intent_latency_ms,
+            )
+            self._record_turn(response)
+            return response
+        return None
+
+    def _handle_matched_intent(
+        self,
+        *,
+        endpoint_id: str,
+        session_id: str,
+        heard_text: str,
+        intent,
+        requested_at: datetime,
+        intent_started_at: float,
+    ) -> AssistantTurnResponse:
+        intent = self._resolve_timer_context(intent, endpoint_id=endpoint_id)
+        recorded_heard_text = _recorded_heard_text_for_intent(intent, heard_text)
+        self._publish_intent_recognized_event(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text=recorded_heard_text,
+            intent=intent,
+            requested_at=requested_at,
+            intent_latency_ms=self._elapsed_ms(intent_started_at),
+        )
+        self._dispatch_intent(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text=recorded_heard_text,
+            intent=intent,
+            requested_at=requested_at,
+        )
+        intent_latency_ms = self._elapsed_ms(intent_started_at)
+        conversation_followup = self._apply_followup_transition(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            intent=intent,
+            now=requested_at,
+        )
+        response = AssistantTurnResponse(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text=recorded_heard_text,
+            reply_text=intent.reply_text,
+            spoken_text=intent.reply_text,
+            handled_locally=True,
+            command=intent.command,
+            device_state="speaking",
+            provider_id=intent.provider_id,
+            provider_metadata=self._intent_provider_metadata(intent),
+            intent_latency_ms=intent_latency_ms,
+            conversation_followup=conversation_followup,
+        )
+        self._record_intent_latency(
+            matched=True,
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            intent_id=intent.intent,
+            command=intent.command,
+            provider_id=intent.provider_id,
+            latency_ms=intent_latency_ms,
+        )
+        self._record_turn(response)
+        return response
 
     def _publish_timer_create_event(
         self,

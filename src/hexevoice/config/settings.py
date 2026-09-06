@@ -272,6 +272,19 @@ class Settings(BaseSettings):
     voice_assistant_ai_node_prompt_id: str | None = Field(default=None, alias="VOICE_ASSISTANT_AI_NODE_PROMPT_ID")
     voice_assistant_ai_node_prompt_version: str | None = Field(default=None, alias="VOICE_ASSISTANT_AI_NODE_PROMPT_VERSION")
     voice_assistant_timeout_s: float = Field(default=20.0, alias="VOICE_ASSISTANT_TIMEOUT_S", gt=0)
+    voice_intent_ai_classifier_enabled: bool = Field(default=True, alias="VOICE_INTENT_AI_CLASSIFIER_ENABLED")
+    voice_intent_ai_classifier_prompt_id: str = Field(
+        default="prompt.hexevoice.intent_classifier",
+        alias="VOICE_INTENT_AI_CLASSIFIER_PROMPT_ID",
+    )
+    voice_intent_ai_classifier_prompt_version: str = Field(default="v1.1", alias="VOICE_INTENT_AI_CLASSIFIER_PROMPT_VERSION")
+    voice_intent_ai_classifier_min_confidence: float = Field(
+        default=0.65,
+        alias="VOICE_INTENT_AI_CLASSIFIER_MIN_CONFIDENCE",
+        ge=0,
+        le=1,
+    )
+    voice_intent_ai_classifier_timeout_s: float = Field(default=8.0, alias="VOICE_INTENT_AI_CLASSIFIER_TIMEOUT_S", gt=0)
     voice_conversation_context_turns: int = Field(default=6, alias="VOICE_CONVERSATION_CONTEXT_TURNS", ge=0)
     voice_domain_events_enabled: bool = Field(default=True, alias="VOICE_DOMAIN_EVENTS_ENABLED")
     voice_domain_events_mqtt_timeout_s: float = Field(default=5.0, alias="VOICE_DOMAIN_EVENTS_MQTT_TIMEOUT_S", gt=0)

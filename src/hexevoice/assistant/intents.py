@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 import re
 from typing import Any
@@ -102,6 +102,121 @@ class LocalIntentFinder:
                 "endpoint.identify",
             ],
         }
+
+    def ai_intent_catalog(self) -> str:
+        intents = self._candidate_intents()
+        if not intents:
+            return "\n".join(
+                [
+                    "- timer.create",
+                    "  Description: User asks to set, start, create, or make a timer.",
+                    "  Arguments:",
+                    "  duration_text: required string",
+                    "",
+                    "- voice.time.query",
+                    "  Description: User asks for the current local time.",
+                    "  Arguments: none",
+                    "",
+                    "- voice.date.query",
+                    "  Description: User asks for today's date, day, month, or year.",
+                    "  Arguments: none",
+                ]
+            )
+        catalog_entries: list[str] = []
+        for intent in intents:
+            intent_id = str(intent.get("intent_id") or "").strip()
+            if not intent_id:
+                continue
+            definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
+            description = _intent_catalog_description(intent, definition)
+            arguments = _intent_catalog_arguments(definition)
+            catalog_entries.extend(
+                [
+                    f"- {intent_id}",
+                    f"  Description: {description}",
+                    "  Arguments: none" if not arguments else "  Arguments:",
+                ]
+            )
+            catalog_entries.extend(f"  {argument}" for argument in arguments)
+            catalog_entries.append("")
+        return "\n".join(catalog_entries).strip()
+
+    def match_ai_classification(
+        self,
+        classification: dict[str, Any],
+        *,
+        requested_at: datetime,
+        provider_id: str = "ai_node_intent_classifier",
+    ) -> LocalIntentMatch | None:
+        if str(classification.get("type") or "").strip().lower() != "intent":
+            return None
+        intent = self._find_ai_catalog_intent(classification.get("intent"))
+        if intent is None:
+            return None
+        definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
+        dispatch = definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else {}
+        command = str(dispatch.get("command") or intent.get("intent_id") or "").strip()
+        if not command:
+            return None
+        arguments = classification.get("arguments") if isinstance(classification.get("arguments"), dict) else {}
+        slots = _normalize_ai_arguments(arguments)
+        slots = self._slots_for_ai_match(command=command, slots=slots, requested_at=requested_at)
+        match = self._build_registered_match(
+            intent=intent,
+            command=command,
+            slots=slots,
+            requested_at=requested_at,
+        )
+        if match is None:
+            return None
+        metadata = dict(match.metadata or {})
+        metadata["ai_intent_classifier"] = {
+            "confidence": _coerce_confidence(classification.get("confidence")),
+            "type": "intent",
+        }
+        return replace(match, provider_id=provider_id, metadata=metadata)
+
+    def _find_ai_catalog_intent(self, value: object) -> dict[str, Any] | None:
+        wanted = str(value or "").strip().lower()
+        if not wanted:
+            return None
+        for intent in self._candidate_intents():
+            if str(intent.get("intent_id") or "").strip().lower() == wanted:
+                return intent
+            if str(intent.get("intent_name") or "").strip().lower() == wanted:
+                return intent
+        return None
+
+    def _slots_for_ai_match(
+        self,
+        *,
+        command: str,
+        slots: dict[str, Any],
+        requested_at: datetime,
+    ) -> dict[str, Any]:
+        if command == "voice.time.query":
+            local_time = requested_at.astimezone()
+            return {
+                **slots,
+                "time_text": _format_clock_time(local_time),
+                "timezone": local_time.tzname() or "",
+            }
+        if command == "voice.date.query":
+            local_time = requested_at.astimezone()
+            return {
+                **slots,
+                "date_text": _format_calendar_date(local_time),
+                "date_iso": local_time.date().isoformat(),
+                "timezone": local_time.tzname() or "",
+            }
+        if command == "timer.create":
+            duration_text = str(slots.get("duration_text") or slots.get("duration") or "").strip()
+            if duration_text and not isinstance(slots.get("duration_seconds"), int):
+                duration_seconds = _parse_duration_seconds(duration_text.lower())
+                if duration_seconds is not None:
+                    slots["duration_seconds"] = duration_seconds
+                    slots["duration_text"] = _format_duration(duration_seconds)
+        return slots
 
     def _candidate_intents(self) -> list[dict[str, Any]]:
         if self._registry is None:
@@ -579,6 +694,86 @@ def _normalize_text(text: str) -> str:
     normalized = normalized.replace("-", " ")
     normalized = re.sub(r"\s+", " ", normalized)
     return normalized.strip(" .!?")
+
+
+def _normalize_ai_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    slots: dict[str, Any] = {}
+    for key, value in arguments.items():
+        name = str(key or "").strip()
+        if not name or _is_missing(value):
+            continue
+        slots[name] = value
+    return slots
+
+
+def _intent_catalog_description(intent: dict[str, Any], definition: dict[str, Any]) -> str:
+    description = definition.get("description") or definition.get("summary")
+    if isinstance(description, str) and description.strip():
+        return description.strip()
+    examples = definition.get("utterance_examples")
+    if isinstance(examples, list):
+        example_text = ", ".join(str(example).strip() for example in examples[:4] if isinstance(example, str) and example.strip())
+        if example_text:
+            return f"{intent.get('intent_name') or intent.get('intent_id')} intent. Examples: {example_text}."
+    return f"{intent.get('intent_name') or intent.get('intent_id')} intent."
+
+
+def _intent_catalog_arguments(definition: dict[str, Any]) -> list[str]:
+    dispatch = definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else {}
+    command = str(dispatch.get("command") or "").strip()
+    if command == "timer.create":
+        return ["duration_text: required string"]
+    if command == "timer.adjust_time":
+        return ["delta_text: required string", "direction: required string; one of add, remove"]
+    if command == "timer.snooze":
+        return ["duration_text: required string"]
+
+    extraction = definition.get("extraction") if isinstance(definition.get("extraction"), dict) else {}
+    arguments: list[str] = []
+    seen: set[str] = set()
+    for required, section in ((True, extraction.get("required")), (False, extraction.get("optional"))):
+        if not isinstance(section, dict):
+            continue
+        for field_name, field_schema in section.items():
+            if not isinstance(field_schema, dict) or _field_is_system_supplied(field_schema):
+                continue
+            name = str(field_name or "").strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            field_type = str(field_schema.get("type") or "string").strip() or "string"
+            requirement = "required" if required or field_schema.get("required") is True else "optional"
+            detail = f"{name}: {requirement} {field_type}"
+            if isinstance(field_schema.get("enum"), list):
+                enum_values = ", ".join(str(item) for item in field_schema["enum"])
+                detail = f"{detail}; one of {enum_values}"
+            arguments.append(detail)
+    if arguments:
+        return arguments
+    slots = definition.get("slots") if isinstance(definition.get("slots"), dict) else {}
+    for field_name, field_schema in slots.items():
+        if not isinstance(field_schema, dict):
+            continue
+        name = str(field_name or "").strip()
+        if not name or name in seen or name in {"requested_at"}:
+            continue
+        seen.add(name)
+        field_type = str(field_schema.get("type") or "string").strip() or "string"
+        arguments.append(f"{name}: optional {field_type}")
+    return arguments
+
+
+def _field_is_system_supplied(field_schema: dict[str, Any]) -> bool:
+    source = str(field_schema.get("source") or "").strip()
+    return source in {"system_time", "requested_at", "now", "value"} or source.startswith("system:")
+
+
+def _coerce_confidence(value: object) -> float | None:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return None
+    return max(0.0, min(1.0, confidence))
 
 
 def _matches_examples(text: str, examples: object) -> bool:

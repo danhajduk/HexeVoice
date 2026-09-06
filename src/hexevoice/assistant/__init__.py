@@ -1,5 +1,6 @@
 from hexevoice.assistant.service import (
     AiNodeAssistantAdapter,
+    AiNodeIntentClassifier,
     AssistantAdapter,
     AssistantTurnService,
     ConversationTurn,
@@ -11,6 +12,7 @@ from hexevoice.domain_events import DomainEventPublishDecision, TimerCreateEvent
 
 __all__ = [
     "AiNodeAssistantAdapter",
+    "AiNodeIntentClassifier",
     "AssistantAdapter",
     "AssistantTurnService",
     "ConversationTurn",

@@ -212,6 +212,15 @@ is active, assistant turns resolve that task through Core and use the returned
 AI execution URL. `VOICE_ASSISTANT_AI_NODE_PROMPT_ID` and
 `VOICE_ASSISTANT_AI_NODE_PROMPT_VERSION` can pin the AI Node prompt contract
 used for `/api/execution/direct`.
+Missed local intents can also route through the AI Node classifier prompt before
+falling through to chat. Register or update
+`prompts/prompt.hexevoice.intent_classifier.json` with:
+`PYTHONPATH=src .venv/bin/python scripts/register-ai-intent-classifier-prompt.py --target http://hexe-ai.local:9002`.
+The runtime uses `VOICE_INTENT_AI_CLASSIFIER_PROMPT_ID`,
+`VOICE_INTENT_AI_CLASSIFIER_PROMPT_VERSION`,
+`VOICE_INTENT_AI_CLASSIFIER_MIN_CONFIDENCE`, and
+`VOICE_INTENT_AI_CLASSIFIER_TIMEOUT_S`; the default prompt ID is
+`prompt.hexevoice.intent_classifier` at `v1.1`.
 Governance sync status includes a summary of Core-returned accepted, denied,
 pending, and locally required changes. The setup UI renders those fields from
 the stored governance bundle while still preserving the raw bundle in status.

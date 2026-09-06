@@ -153,6 +153,16 @@ def test_registered_intent_finder_uses_registry_and_can_disable_timer(tmp_path):
     assert finder.find("set a timer for 5 minutes") is None
 
 
+def test_ai_intent_catalog_lists_exact_ids_and_user_supplied_timer_arguments(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    catalog = LocalIntentFinder(registry=registry).ai_intent_catalog()
+
+    assert "- voice.date.query" in catalog
+    assert "- timer.create" in catalog
+    assert "duration_text: required string" in catalog
+    assert "duration_hhmmss: required" not in catalog
+
+
 def test_registered_intent_finder_answers_voice_node_time_query(tmp_path):
     registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
     finder = LocalIntentFinder(registry=registry)
