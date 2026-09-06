@@ -754,20 +754,24 @@ def test_firmware_heartbeat_reports_wake_election_capabilities():
     assert '"timeout_policy", kWakeElectionFallbackPolicy' in backend_source
 
 
-def test_firmware_audio_queue_waits_for_connected_websocket_transport():
+def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
 
     assert "bool voice_transport_ready()" in source
     assert "bool voice_control_transport_ready()" in source
     assert "bool voice_audio_transport_ready()" in source
+    assert "bool voice_audio_upload_desired()" in source
     assert "bool voice_audio_socket_desired()" in source
     assert "return state.wifi_connected && state.backend_connected && !state.ota_active;" in source
     assert "backend_ready_for_voice() && g_ws_client != nullptr && g_ws_connected && !g_ws_restart_requested" in source
+    assert "constexpr bool kVoiceAudioWebSocketUploadEnabled = false;" in source
+    assert "if (!kVoiceAudioWebSocketUploadEnabled) {\n    return voice_control_transport_ready();\n  }" in source
     assert "return g_session_started && !g_audio_stream_finished && !hexe::state().ota_active && backend_ready_for_voice();" in source
+    assert "return kVoiceAudioWebSocketUploadEnabled && voice_audio_upload_desired();" in source
     assert "return voice_control_transport_ready();" in source
     assert "g_audio_ws_client != nullptr && g_audio_ws_connected" in source
     assert "!g_audio_ws_restart_requested && audio_connected_for_us >= kVoiceWsReadyWarmupUs" in source
-    assert "samples == nullptr || sample_count == 0 || !voice_control_transport_ready() ||\n      !voice_audio_socket_desired()" in source
+    assert "samples == nullptr || sample_count == 0 || !voice_control_transport_ready() ||\n      !voice_audio_upload_desired()" in source
     assert "if (!voice_transport_ready()) {\n    app_state.phase = hexe::idle_or_connecting_phase();" in source
     assert "if (!voice_transport_ready()) {\n    return false;" in source
     assert "void reset_audio_transport_queue(const char *reason)" in source
@@ -807,7 +811,7 @@ def test_firmware_audio_queue_waits_for_connected_websocket_transport():
     assert "Stopping idle voice audio WebSocket" in source
     assert "Starting voice audio WebSocket for active session %s" in source
     assert "voice_audio_socket_desired() && g_ws_connected && !g_audio_ws_started" in source
-    assert "voice_audio_socket_desired() && !voice_audio_transport_ready()" in source
+    assert "voice_audio_upload_desired() && !voice_audio_transport_ready()" in source
     assert "voice_audio_transport_ready() && xQueueReceive" in source
     assert "Voice WebSocket start failed: %s" in source
     assert "const esp_err_t start_result = esp_websocket_client_start(g_ws_client);" in source
@@ -822,7 +826,7 @@ def test_firmware_audio_queue_waits_for_connected_websocket_transport():
     assert "kVoiceWsPingIntervalSec = 0" in source
     assert "kVoiceWsPingPongTimeoutSec = 0" in source
     assert "kVoiceWsIdlePingIntervalUs = 0" in source
-    assert "send_audio_ws_binary(samples, sample_count)" in source
+    assert "kVoiceAudioWebSocketUploadEnabled\n                        ? send_audio_ws_binary(samples, sample_count)\n                        : post_voice_audio_chunk_http(samples, sample_count, false, false)" in source
     assert "voice_audio_chunk_upload_url" in source
     assert 'path = "/api/voice/audio/chunk?endpoint_id="' in source
     assert "Voice HTTP audio buffer allocated bytes=%u" in source

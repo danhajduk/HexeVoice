@@ -244,7 +244,7 @@
             "tests/test_firmware_voice_envelope.py::test_firmware_heartbeat_reports_network_metadata"
           ],
           "manual": [
-            "Capture at least one wake-to-STT turn from the built firmware and confirm audio chunks reach `/api/voice/ws` with the expected endpoint id.",
+            "Capture at least one wake-to-STT turn from the built firmware and confirm audio chunks reach `/api/voice/audio/chunk` with the expected endpoint id.",
             "Confirm no duplicated post-TTS capture during the firmware cooldown window."
           ]
         },
