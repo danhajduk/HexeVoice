@@ -493,6 +493,51 @@ def time_query_intent_definition() -> dict[str, Any]:
     }
 
 
+def date_query_intent_definition() -> dict[str, Any]:
+    return {
+        "utterance_examples": [
+            "what is the date",
+            "what date is it today",
+            "what is today's date",
+            "what day is it",
+            "current date",
+        ],
+        "patterns": [
+            r"^(?:please\s+)?(?:what\s+is\s+(?:the\s+)?date|what\s+date\s+is\s+it(?:\s+today)?|"
+            r"what(?:'s|\s+is)\s+today(?:'s)?\s+date|what\s+is\s+today(?:'s)?\s+date|"
+            r"what\s+day\s+is\s+it|current\s+date|tell\s+me\s+(?:the\s+)?date)$",
+        ],
+        "slots": {
+            "date_text": {"type": "string"},
+            "date_iso": {"type": "string"},
+            "timezone": {"type": "string"},
+            "requested_at": {"type": "datetime"},
+        },
+        "extraction": {
+            "optional": {
+                "requested_at": {"type": "datetime", "source": "system_time"},
+            }
+        },
+        "dispatch": {
+            "type": "local_response",
+            "command": "voice.date.query",
+        },
+        "response": {
+            "reply_template": "Today is {date_text}.",
+        },
+        "reply": {
+            "text_template": "Today is {date_text}.",
+            "audio": {
+                "mode": "none",
+                "ttl_seconds": 3600,
+            },
+        },
+        "matcher": {
+            "type": "builtin_date_query",
+        },
+    }
+
+
 def confirmation_intent_definition(*, response: str) -> dict[str, Any]:
     if response == "yes":
         examples = ["yes", "yeah", "yep", "correct", "confirm", "do it"]
@@ -578,6 +623,35 @@ def built_in_time_query_intent() -> dict[str, Any]:
         "privacy_class": "internal",
         "access_scope": "service",
         "definition": time_query_intent_definition(),
+        "constraints": {
+            "requires_operational_mqtt": False,
+            "dispatch_side_effect": "none",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "voice_node",
+            "owned_by": "voice_node",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def built_in_date_query_intent() -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": "voice.date.query",
+        "intent_name": "What is the date",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": date_query_intent_definition(),
         "constraints": {
             "requires_operational_mqtt": False,
             "dispatch_side_effect": "none",
@@ -920,6 +994,7 @@ def resolve_intent_speaker_identity_policy(intent: dict[str, Any] | "VoiceIntent
         return "not_required"
     command = _intent_command(payload)
     if command.startswith(("timer.", "endpoint.", "playback.")) or command in {
+        "voice.date.query",
         "voice.time.query",
         "voice.confirm.yes",
         "voice.confirm.no",
@@ -1082,6 +1157,7 @@ class VoiceIntentStateStore:
                     VoiceIntentRecord.model_validate(built_in_timer_adjust_time_intent()),
                     VoiceIntentRecord.model_validate(built_in_timer_snooze_intent()),
                     VoiceIntentRecord.model_validate(built_in_time_query_intent()),
+                    VoiceIntentRecord.model_validate(built_in_date_query_intent()),
                     *[
                         VoiceIntentRecord.model_validate(built_in_endpoint_control_intent(intent_id=intent_id))
                         for intent_id in BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS
@@ -1137,6 +1213,9 @@ class VoiceIntentStateStore:
             seeded = True
         if "voice.time.query" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_time_query_intent()))
+            seeded = True
+        if "voice.date.query" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_date_query_intent()))
             seeded = True
         for intent_id in BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS:
             if intent_id not in existing_ids:

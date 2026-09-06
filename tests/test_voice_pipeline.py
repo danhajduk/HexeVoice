@@ -1,4 +1,5 @@
 import base64
+from datetime import UTC, datetime
 import io
 import json
 from pathlib import Path
@@ -1314,6 +1315,19 @@ def test_voice_turn_pipeline_handles_timer_intent_locally(tmp_path):
         }
     ]
     assert publisher.calls[0]["requested_at"].tzinfo is not None
+
+
+def test_registered_date_query_intent_uses_node_clock(tmp_path):
+    registry = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
+    finder = LocalIntentFinder(registry=registry)
+
+    match = finder.find("what date is it today", requested_at=datetime(2026, 9, 6, 15, 45, tzinfo=UTC))
+
+    assert match is not None
+    assert match.intent == "voice.date.query"
+    assert match.command == "voice.date.query"
+    assert match.slots["date_iso"] == "2026-09-06"
+    assert match.reply_text == "Today is Sunday, September 6, 2026."
 
 
 def test_voice_turn_pipeline_handles_timer_status_intent_locally(tmp_path):

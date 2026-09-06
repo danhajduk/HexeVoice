@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 import asyncio
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 import re
 import time
@@ -426,6 +426,7 @@ class AiNodeAssistantAdapter:
         session_id: str,
         context: Sequence[ConversationTurn],
     ) -> dict[str, Any]:
+        runtime_context = self._runtime_context()
         if self._contract_version_for_url(target.url) == "client-ai.execution.v2":
             task_id = f"hexevoice-{uuid4().hex}"
             return {
@@ -442,6 +443,7 @@ class AiNodeAssistantAdapter:
                     "speaker_identity": payload.speaker_identity,
                     "speaker_identity_policy": payload.speaker_identity_policy,
                     "speaker_personalization_enabled": payload.speaker_personalization_enabled,
+                    "runtime_context": runtime_context,
                     "context": [
                         {
                             "endpoint_id": turn.endpoint_id,
@@ -466,6 +468,7 @@ class AiNodeAssistantAdapter:
             "speaker_identity": payload.speaker_identity,
             "speaker_identity_policy": payload.speaker_identity_policy,
             "speaker_personalization_enabled": payload.speaker_personalization_enabled,
+            "runtime_context": runtime_context,
             "context": [
                 {
                     "endpoint_id": turn.endpoint_id,
@@ -475,6 +478,23 @@ class AiNodeAssistantAdapter:
                 }
                 for turn in context
             ],
+        }
+
+    @staticmethod
+    def _runtime_context() -> dict[str, Any]:
+        local_now = datetime.now().astimezone()
+        utc_now = local_now.astimezone(UTC)
+        timezone_name = local_now.tzname() or "local"
+        return {
+            "current_local_datetime": local_now.isoformat(),
+            "current_utc_datetime": utc_now.isoformat(),
+            "current_date": local_now.date().isoformat(),
+            "timezone": timezone_name,
+            "timezone_offset": local_now.strftime("%z"),
+            "instruction": (
+                "Use current_local_datetime as the current date and time for this voice node "
+                "when answering date or time questions."
+            ),
         }
 
     @staticmethod

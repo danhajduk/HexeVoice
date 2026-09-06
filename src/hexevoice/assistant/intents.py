@@ -59,6 +59,7 @@ class LocalIntentFinder:
                 or self._find_timer_control(normalized, action="cancel", requested_at=extraction_time)
                 or self._find_timer_adjust_time(normalized, requested_at=extraction_time)
                 or self._find_timer_snooze(normalized, requested_at=extraction_time)
+                or self._find_date_query(normalized, requested_at=extraction_time)
                 or self._find_endpoint_control(normalized, command="playback.stop", requested_at=extraction_time)
                 or self._find_endpoint_control(normalized, command="playback.repeat", requested_at=extraction_time)
                 or self._find_endpoint_control(normalized, command="endpoint.volume.set", requested_at=extraction_time)
@@ -91,6 +92,7 @@ class LocalIntentFinder:
                 "timer.cancel",
                 "timer.adjust_time",
                 "timer.snooze",
+                "voice.date.query",
                 "playback.stop",
                 "playback.repeat",
                 "endpoint.volume.set",
@@ -163,6 +165,21 @@ class LocalIntentFinder:
             or intent.get("intent_id") == "voice.time.query"
         ):
             match = self._find_time_query(text, requested_at=requested_at)
+            if match is not None:
+                return self._build_registered_match(
+                    intent=intent,
+                    command=command,
+                    slots=match.slots,
+                    requested_at=requested_at,
+                )
+            return None
+
+        if (
+            matcher.get("type") == "builtin_date_query"
+            or command == "voice.date.query"
+            or intent.get("intent_id") == "voice.date.query"
+        ):
+            match = self._find_date_query(text, requested_at=requested_at)
             if match is not None:
                 return self._build_registered_match(
                     intent=intent,
@@ -404,6 +421,24 @@ class LocalIntentFinder:
                 "requested_at": extraction_time.isoformat(),
             },
             reply_text=f"It is {time_text}.",
+        )
+
+    def _find_date_query(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
+        if not _is_date_query(text):
+            return None
+        extraction_time = requested_at or datetime.now(UTC)
+        local_time = extraction_time.astimezone()
+        date_text = _format_calendar_date(local_time)
+        return LocalIntentMatch(
+            intent="voice.date.query",
+            command="voice.date.query",
+            slots={
+                "date_text": date_text,
+                "date_iso": local_time.date().isoformat(),
+                "timezone": local_time.tzname() or "",
+                "requested_at": extraction_time.isoformat(),
+            },
+            reply_text=f"Today is {date_text}.",
         )
 
     def _find_timer_status(self, text: str, *, requested_at: datetime | None = None) -> LocalIntentMatch | None:
@@ -683,6 +718,17 @@ def _is_time_query(text: str) -> bool:
     )
 
 
+def _is_date_query(text: str) -> bool:
+    return bool(
+        re.match(
+            r"^(?:please\s+)?(?:what\s+is\s+(?:the\s+)?date|what\s+date\s+is\s+it(?:\s+today)?|"
+            r"what(?:'s|\s+is)\s+today(?:'s)?\s+date|what\s+is\s+today(?:'s)?\s+date|"
+            r"what\s+day\s+is\s+it|current\s+date|tell\s+me\s+(?:the\s+)?date)$",
+            text,
+        )
+    )
+
+
 def _is_timer_status_query(text: str) -> bool:
     return bool(
         re.match(
@@ -816,6 +862,10 @@ def _format_clock_time(value: datetime) -> str:
     if minute < 10:
         return f"{hour_text} oh {_format_clock_number(minute)} {period}"
     return f"{hour_text} {_format_clock_number(minute)} {period}"
+
+
+def _format_calendar_date(value: datetime) -> str:
+    return f"{value.strftime('%A')}, {value.strftime('%B')} {value.day}, {value.year}"
 
 
 def _format_clock_number(value: int) -> str:
