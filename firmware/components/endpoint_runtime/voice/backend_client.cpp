@@ -36,6 +36,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/inet.h"
+#include "lwip/netdb.h"
 #include "lwip/sockets.h"
 #include "psa/crypto.h"
 #include "system/clock.h"
@@ -858,7 +859,7 @@ void append_query_u32(std::string *url, const char *name, uint32_t value) {
   url->append(buffer);
 }
 
-std::string voice_audio_chunk_upload_url(uint32_t sequence, uint32_t chunk_index, bool is_final, bool truncated) {
+std::string voice_audio_chunk_upload_path(uint32_t sequence, uint32_t chunk_index, bool is_final, bool truncated) {
   std::string path = "/api/voice/audio/chunk?endpoint_id=";
   path.append(hexe::system::endpoint_id());
   path.append("&session_id=");
@@ -878,22 +879,11 @@ std::string voice_audio_chunk_upload_url(uint32_t sequence, uint32_t chunk_index
   if (truncated) {
     append_query_bool(&path, "truncated", true);
   }
-
-  char buffer[512];
-  std::snprintf(
-      buffer,
-      sizeof(buffer),
-      "%s://%s:%d%s",
-      scheme_http(),
-      hexe::system::endpoint_backend_host(),
-      hexe::system::endpoint_http_port(),
-      path.c_str());
-  std::string url(buffer);
   if (g_transport_micro_vad_active || g_transport_micro_vad_started || g_transport_micro_vad_ended) {
-    append_query_u32(&url, "micro_vad_chunk_index", g_transport_micro_vad_chunk_index);
-    append_query_bool(&url, "micro_vad_chunk_started", g_transport_micro_vad_started);
-    append_query_bool(&url, "micro_vad_chunk_final", g_transport_micro_vad_ended);
-    append_query_u32(&url, "micro_vad_pause_ms", g_transport_micro_vad_pause_ms);
+    append_query_u32(&path, "micro_vad_chunk_index", g_transport_micro_vad_chunk_index);
+    append_query_bool(&path, "micro_vad_chunk_started", g_transport_micro_vad_started);
+    append_query_bool(&path, "micro_vad_chunk_final", g_transport_micro_vad_ended);
+    append_query_u32(&path, "micro_vad_pause_ms", g_transport_micro_vad_pause_ms);
   }
   if (
       g_transport_frame_level_peak > 0 ||
@@ -902,14 +892,197 @@ std::string voice_audio_chunk_upload_url(uint32_t sequence, uint32_t chunk_index
       g_transport_pre_roll_duration_ms > 0 ||
       g_transport_contains_pre_roll ||
       g_transport_contains_speech) {
-    append_query_u32(&url, "frame_level", g_transport_frame_level_peak);
-    append_query_u32(&url, "noise_floor_level", g_transport_noise_floor_level);
-    append_query_u32(&url, "speech_peak_level", g_transport_speech_peak_level);
-    append_query_u32(&url, "pre_roll_duration_ms", g_transport_pre_roll_duration_ms);
-    append_query_bool(&url, "contains_pre_roll", g_transport_contains_pre_roll);
-    append_query_bool(&url, "contains_speech", g_transport_contains_speech);
+    append_query_u32(&path, "frame_level", g_transport_frame_level_peak);
+    append_query_u32(&path, "noise_floor_level", g_transport_noise_floor_level);
+    append_query_u32(&path, "speech_peak_level", g_transport_speech_peak_level);
+    append_query_u32(&path, "pre_roll_duration_ms", g_transport_pre_roll_duration_ms);
+    append_query_bool(&path, "contains_pre_roll", g_transport_contains_pre_roll);
+    append_query_bool(&path, "contains_speech", g_transport_contains_speech);
   }
+  return path;
+}
+
+std::string voice_audio_chunk_upload_url(uint32_t sequence, uint32_t chunk_index, bool is_final, bool truncated) {
+  const std::string path = voice_audio_chunk_upload_path(sequence, chunk_index, is_final, truncated);
+  char prefix[96];
+  std::snprintf(
+      prefix,
+      sizeof(prefix),
+      "%s://%s:%d",
+      scheme_http(),
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port());
+  std::string url(prefix);
+  url.append(path);
   return url;
+}
+
+bool socket_retryable_errno(int value) {
+  return value == EINTR || value == EAGAIN || value == EWOULDBLOCK || value == EINPROGRESS;
+}
+
+bool socket_send_all(int sock, const char *data, size_t byte_count, int *written_bytes, int *last_errno) {
+  if (written_bytes != nullptr) {
+    *written_bytes = 0;
+  }
+  if (last_errno != nullptr) {
+    *last_errno = 0;
+  }
+  const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(kVoiceAudioHttpTimeoutMs) * 1000;
+  size_t offset = 0;
+  while (offset < byte_count) {
+    const size_t remaining = byte_count - offset;
+    const int to_send = static_cast<int>(std::min(remaining, kVoiceAudioHttpWriteChunkBytes));
+    const int sent = send(sock, data + offset, to_send, 0);
+    if (sent > 0) {
+      offset += static_cast<size_t>(sent);
+      if (written_bytes != nullptr) {
+        *written_bytes = static_cast<int>(offset);
+      }
+      continue;
+    }
+    const int error_code = errno;
+    if (last_errno != nullptr) {
+      *last_errno = error_code;
+    }
+    if (!socket_retryable_errno(error_code) || esp_timer_get_time() >= deadline_us) {
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(25));
+  }
+  return true;
+}
+
+bool socket_receive_http_status(int sock, int *status_code, int *last_errno) {
+  if (status_code != nullptr) {
+    *status_code = 0;
+  }
+  if (last_errno != nullptr) {
+    *last_errno = 0;
+  }
+  char response[160];
+  size_t offset = 0;
+  const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(kVoiceAudioHttpTimeoutMs) * 1000;
+  while (offset + 1 < sizeof(response)) {
+    const int received = recv(sock, response + offset, sizeof(response) - offset - 1, 0);
+    if (received > 0) {
+      offset += static_cast<size_t>(received);
+      response[offset] = '\0';
+      if (std::strstr(response, "\r\n") != nullptr) {
+        int parsed_status = 0;
+        if (std::sscanf(response, "HTTP/%*s %d", &parsed_status) == 1) {
+          if (status_code != nullptr) {
+            *status_code = parsed_status;
+          }
+          return true;
+        }
+      }
+      continue;
+    }
+    if (received == 0) {
+      break;
+    }
+    const int error_code = errno;
+    if (last_errno != nullptr) {
+      *last_errno = error_code;
+    }
+    if (!socket_retryable_errno(error_code) || esp_timer_get_time() >= deadline_us) {
+      return false;
+    }
+    vTaskDelay(pdMS_TO_TICKS(25));
+  }
+  return false;
+}
+
+int connect_backend_socket(int *last_errno) {
+  if (last_errno != nullptr) {
+    *last_errno = 0;
+  }
+  const char *host = hexe::system::endpoint_backend_host();
+  char port[12];
+  std::snprintf(port, sizeof(port), "%d", hexe::system::endpoint_http_port());
+
+  addrinfo hints = {};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  addrinfo *results = nullptr;
+  const int rc = getaddrinfo(host, port, &hints, &results);
+  if (rc != 0 || results == nullptr) {
+    if (last_errno != nullptr) {
+      *last_errno = errno;
+    }
+    return -1;
+  }
+
+  int connected_sock = -1;
+  for (addrinfo *item = results; item != nullptr; item = item->ai_next) {
+    const int sock = socket(item->ai_family, item->ai_socktype, item->ai_protocol);
+    if (sock < 0) {
+      if (last_errno != nullptr) {
+        *last_errno = errno;
+      }
+      continue;
+    }
+    timeval timeout = {};
+    timeout.tv_sec = 1;
+    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    if (connect(sock, item->ai_addr, item->ai_addrlen) == 0) {
+      connected_sock = sock;
+      break;
+    }
+    if (last_errno != nullptr) {
+      *last_errno = errno;
+    }
+    close(sock);
+  }
+  freeaddrinfo(results);
+  return connected_sock;
+}
+
+bool post_voice_audio_raw_http(
+    const std::string &path,
+    const int16_t *samples,
+    size_t byte_count,
+    int *written_bytes,
+    int *status_code,
+    int *last_errno) {
+  const int sock = connect_backend_socket(last_errno);
+  if (sock < 0) {
+    return false;
+  }
+
+  char fixed_headers[192];
+  std::snprintf(
+      fixed_headers,
+      sizeof(fixed_headers),
+      " HTTP/1.1\r\nHost: %s:%d\r\nContent-Type: application/octet-stream\r\nContent-Length: %u\r\nConnection: close\r\n\r\n",
+      hexe::system::endpoint_backend_host(),
+      hexe::system::endpoint_http_port(),
+      static_cast<unsigned>(byte_count));
+  std::string header = "POST ";
+  header.append(path);
+  header.append(fixed_headers);
+  int header_written = 0;
+  if (!socket_send_all(sock, header.c_str(), header.size(), &header_written, last_errno)) {
+    close(sock);
+    return false;
+  }
+  int body_written = 0;
+  if (!socket_send_all(sock, reinterpret_cast<const char *>(samples), byte_count, &body_written, last_errno)) {
+    if (written_bytes != nullptr) {
+      *written_bytes = body_written;
+    }
+    close(sock);
+    return false;
+  }
+  if (written_bytes != nullptr) {
+    *written_bytes = body_written;
+  }
+  shutdown(sock, SHUT_WR);
+  const bool received_status = socket_receive_http_status(sock, status_code, last_errno);
+  close(sock);
+  return received_status;
 }
 
 bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bool is_final, bool truncated) {
@@ -919,19 +1092,9 @@ bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bo
   const uint32_t sequence = g_sequence++;
   const uint32_t chunk_index = g_chunk_index++;
   const size_t byte_count = sample_count * sizeof(int16_t);
+  const std::string path = voice_audio_chunk_upload_path(sequence, chunk_index, is_final, truncated);
   const std::string url = voice_audio_chunk_upload_url(sequence, chunk_index, is_final, truncated);
   const int64_t started_us = esp_timer_get_time();
-
-  esp_http_client_config_t config = {};
-  config.url = url.c_str();
-  config.method = HTTP_METHOD_POST;
-  config.timeout_ms = kVoiceAudioHttpTimeoutMs;
-  config.keep_alive_enable = false;
-  esp_http_client_handle_t client = esp_http_client_init(&config);
-  if (client == nullptr) {
-    ESP_LOGW(kTag, "Failed to initialize voice HTTP audio upload client");
-    return false;
-  }
 
   if (byte_count > kVoiceAudioMaxBufferedSamples * sizeof(int16_t)) {
     ESP_LOGW(
@@ -940,41 +1103,17 @@ bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bo
         g_session_id.c_str(),
         static_cast<unsigned>(byte_count),
         static_cast<unsigned>(kVoiceAudioMaxBufferedSamples * sizeof(int16_t)));
-    esp_http_client_cleanup(client);
     return false;
   }
 
-  esp_http_client_set_header(client, "Content-Type", "application/octet-stream");
-  esp_http_client_set_header(client, "Connection", "close");
-  esp_err_t err = esp_http_client_open(client, static_cast<int>(byte_count));
   int written_bytes = 0;
-  const char *body = reinterpret_cast<const char *>(samples);
-  while (err == ESP_OK && written_bytes < static_cast<int>(byte_count)) {
-    const size_t remaining = byte_count - static_cast<size_t>(written_bytes);
-    const int to_write = static_cast<int>(std::min(remaining, kVoiceAudioHttpWriteChunkBytes));
-    const int written = esp_http_client_write(client, body + written_bytes, to_write);
-    if (written < 0) {
-      err = ESP_ERR_HTTP_WRITE_DATA;
-      break;
-    }
-    if (written == 0) {
-      err = ESP_ERR_HTTP_EAGAIN;
-      break;
-    }
-    written_bytes += written;
-  }
-  if (err == ESP_OK && written_bytes == static_cast<int>(byte_count)) {
-    const int headers_result = esp_http_client_fetch_headers(client);
-    if (headers_result < 0) {
-      err = ESP_FAIL;
-    }
-  }
-  const int status_code = esp_http_client_get_status_code(client);
+  int status_code = 0;
+  int socket_errno = 0;
+  const bool request_done =
+      post_voice_audio_raw_http(path, samples, byte_count, &written_bytes, &status_code, &socket_errno);
   const int64_t duration_ms = (esp_timer_get_time() - started_us) / 1000;
-  esp_http_client_close(client);
-  esp_http_client_cleanup(client);
 
-  const bool uploaded = err == ESP_OK && status_code >= 200 && status_code < 300;
+  const bool uploaded = request_done && status_code >= 200 && status_code < 300;
   if (uploaded && !g_first_http_audio_chunk_logged) {
     g_first_http_audio_chunk_logged = true;
     ESP_LOGI(
@@ -990,14 +1129,15 @@ bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bo
   if (!uploaded) {
     ESP_LOGW(
         kTag,
-        "Voice HTTP audio chunk upload failed: session=%s chunk=%" PRIu32 " bytes=%u written_bytes=%d err=%s status=%d duration_ms=%lld",
+        "Voice HTTP audio chunk upload failed: session=%s chunk=%" PRIu32 " bytes=%u written_bytes=%d socket_errno=%d status=%d duration_ms=%lld url=%s",
         g_session_id.c_str(),
         chunk_index,
         static_cast<unsigned>(byte_count),
         written_bytes,
-        esp_err_to_name(err),
+        socket_errno,
         status_code,
-        static_cast<long long>(duration_ms));
+        static_cast<long long>(duration_ms),
+        url.c_str());
   }
   return uploaded;
 }

@@ -839,12 +839,13 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "return std::min(g_transport_samples.size(), kVoiceAudioHttpUploadChunkSamples);" in source
     assert "g_transport_sample_count < transport_flush_sample_limit()" in source
     assert "const size_t flush_sample_limit = transport_flush_sample_limit();" in source
-    assert 'esp_http_client_set_header(client, "Content-Type", "application/octet-stream");' in source
-    assert "esp_http_client_open(client, static_cast<int>(byte_count))" in source
-    assert "esp_http_client_write(client, body + written_bytes, to_write)" in source
-    assert "esp_http_client_fetch_headers(client)" in source
-    assert "esp_http_client_close(client)" in source
+    assert "voice_audio_chunk_upload_path" in source
+    assert "connect_backend_socket" in source
+    assert "socket_send_all(sock, reinterpret_cast<const char *>(samples), byte_count" in source
+    assert "socket_receive_http_status(sock, status_code, last_errno)" in source
+    assert "shutdown(sock, SHUT_WR)" in source
     assert "written_bytes=%d" in source
+    assert "socket_errno=%d" in source
     assert "Uploading buffered voice audio as a single raw HTTP POST" in source
     assert "post_voice_audio_chunk_http(g_http_audio_samples, total_samples, true, g_http_audio_buffer_overflow)" in source
     assert "Voice HTTP raw audio upload active" in source
