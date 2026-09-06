@@ -194,6 +194,12 @@ bool valid_port(int port) {
 }
 
 const char *payload_request_id(cJSON *payload);
+void send_command_ack(
+    const ProbeSettings &settings,
+    const char *request_id,
+    const char *command_type,
+    const char *status,
+    const char *message);
 
 void load_nvs_string(nvs_handle_t handle, const char *key, char *target, size_t target_size) {
   size_t length = target_size;
@@ -1148,7 +1154,7 @@ void mark_running_probe_image_valid_if_pending() {
   }
 }
 
-bool execute_ota_update(const OtaRequest &request, char *error_code, size_t error_code_size) {
+bool execute_ota_update(const ProbeSettings &settings, const OtaRequest &request, char *error_code, size_t error_code_size) {
   if (g_ota_active) {
     set_error_code(error_code, error_code_size, "ota_update_active");
     return false;
@@ -1239,6 +1245,8 @@ bool execute_ota_update(const OtaRequest &request, char *error_code, size_t erro
 
   if (result == ESP_OK) {
     ESP_LOGI(kTag, "Audio probe OTA installed; restarting into version=%s", request.version);
+    send_command_ack(settings, request.request_id, "ota.update", "succeeded", "OTA update installed; restarting");
+    vTaskDelay(pdMS_TO_TICKS(250));
     mbedtls_md_free(&download_context.sha256);
     esp_restart();
   }
@@ -1642,7 +1650,7 @@ void handle_command_loop(const ProbeSettings &settings) {
   OtaRequest ota_request = {};
   while (g_ota_queue != nullptr && xQueueReceive(g_ota_queue, &ota_request, 0) == pdTRUE) {
     char ota_error_code[48] = {};
-    if (!execute_ota_update(ota_request, ota_error_code, sizeof(ota_error_code))) {
+    if (!execute_ota_update(settings, ota_request, ota_error_code, sizeof(ota_error_code))) {
       send_command_error(settings, ota_request.request_id, "ota.update", ota_error_code, "OTA update failed");
     }
   }
