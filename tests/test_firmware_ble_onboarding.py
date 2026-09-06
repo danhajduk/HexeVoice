@@ -10,6 +10,7 @@ WIFI_SOURCE = Path("firmware/components/endpoint_runtime/board/wifi.cpp")
 WIFI_HEADER = Path("firmware/components/endpoint_runtime/board/wifi.h")
 FIRMWARE_CMAKE = Path("firmware/components/endpoint_runtime/CMakeLists.txt")
 SDKCONFIG_DEFAULTS = Path("firmware/sdkconfig.defaults")
+FIRMWARE_BUILD_SCRIPT = Path("firmware/build.sh")
 
 
 def test_ble_onboarding_declares_core_gatt_contract_constants():
@@ -61,9 +62,13 @@ def test_ble_onboarding_is_gated_by_board_profile_and_nimble_config():
     source = BLE_SOURCE.read_text(encoding="utf-8")
     generator = Path("firmware/tools/generate_board_profile_config.py").read_text(encoding="utf-8")
     defaults = SDKCONFIG_DEFAULTS.read_text(encoding="utf-8")
+    build_script = FIRMWARE_BUILD_SCRIPT.read_text(encoding="utf-8")
 
     assert "hexe::board::pins::kBleOnboardingSupported" in source
     assert "kBleOnboardingTransport" in source
+    assert "kFullRuntimeBleEnabled = false" in source
+    assert "full_runtime_ble_disabled" in source
+    assert "BLE onboarding disabled for full endpoint runtime" in source
     assert "CONFIG_BT_ENABLED" in source
     assert "CONFIG_BT_NIMBLE_ENABLED" in source
     assert "CONFIG_BT_NIMBLE_ROLE_PERIPHERAL" in source
@@ -72,7 +77,10 @@ def test_ble_onboarding_is_gated_by_board_profile_and_nimble_config():
     assert "CONFIG_BT_NIMBLE_GATT_CLIENT" in source
     assert "ble_transport == \"native\"" in generator
     assert "kBleOnboardingSupported" in generator
-    assert "CONFIG_BT_NIMBLE_ENABLED=y" in defaults
+    assert "CONFIG_BT_NIMBLE_ENABLED=y" not in defaults
+    assert '[[ "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]]' in build_script
+    assert "CONFIG_BT_NIMBLE_ENABLED=y" in build_script
+    assert "# CONFIG_BT_ENABLED is not set" in build_script
 
 
 def test_ble_onboarding_scans_for_core_published_pairing_adverts():
@@ -80,7 +88,7 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     source = BLE_SOURCE.read_text(encoding="utf-8")
     gatt = BLE_GATT.read_text(encoding="utf-8")
     backend = BACKEND_CLIENT.read_text(encoding="utf-8")
-    build_script = Path("firmware/build.sh").read_text(encoding="utf-8")
+    build_script = FIRMWARE_BUILD_SCRIPT.read_text(encoding="utf-8")
 
     assert "central_scanning" in header
     assert "host_pairing_found" in header

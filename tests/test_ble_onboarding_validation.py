@@ -188,7 +188,7 @@ def test_firmware_static_checks_cover_ble_state_machine_and_safe_heartbeat_field
         "kPairingTtlUs",
         "kMaxBleBodyBytes",
         '"local_recovery"',
-        '"core_governed_requires_endpoint_app"',
+        '"core_governed_pairing"',
         "save_local_recovery_payload",
         "nvs_set_u8(handle, kProvisionedKey, 1)",
     ):

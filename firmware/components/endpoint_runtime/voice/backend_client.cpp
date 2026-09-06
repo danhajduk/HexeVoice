@@ -158,6 +158,7 @@ uint32_t g_sequence = 0;
 bool g_session_started = false;
 bool g_wake_accepted_for_session = false;
 bool g_vad_speech_started_reported = false;
+bool g_vad_speech_ended_reported = false;
 bool g_audio_stream_finished = false;
 bool g_ws_connected = false;
 bool g_ws_started = false;
@@ -275,6 +276,7 @@ esp_err_t text_http_event_handler(esp_http_client_event_t *event);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
+bool send_vad_speech_ended_event(uint32_t level, const char *reason);
 bool voice_control_transport_ready();
 bool voice_audio_transport_ready();
 bool voice_audio_upload_desired();
@@ -359,6 +361,7 @@ void reset_voice_session_state(bool clear_tts_session) {
   g_session_started = false;
   g_wake_accepted_for_session = false;
   g_vad_speech_started_reported = false;
+  g_vad_speech_ended_reported = false;
   g_audio_stream_finished = false;
   g_first_http_audio_chunk_logged = false;
   g_first_audio_ws_chunk_logged = false;
@@ -1667,6 +1670,21 @@ void handle_backend_event_json(const std::string &message) {
             "invalid_payload",
             "pause_ms or energy_threshold must be numeric");
       }
+    }
+  } else if (std::strcmp(type, "endpoint.audio.finalize") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *reason = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "reason") : nullptr;
+    const char *finalize_reason = cJSON_IsString(reason) && reason->valuestring[0] != '\0'
+                                      ? reason->valuestring
+                                      : "backend_finalize";
+    if (hexe::voice::finish_audio_stream(finalize_reason)) {
+      send_command_ack(request_id, "endpoint.audio.finalize", "succeeded", "Audio stream finalized");
+    } else {
+      send_command_error(
+          request_id,
+          "endpoint.audio.finalize",
+          "finalize_unavailable",
+          "Audio stream could not be finalized");
     }
   } else if (std::strcmp(type, "endpoint.cancel") == 0) {
     const char *request_id = payload_request_id(payload);
@@ -3027,6 +3045,7 @@ bool ensure_session_started(const char *wake_source) {
   g_audio_stream_finished = false;
   g_wake_accepted_for_session = wake_source_is_local_acceptance(wake_source);
   g_vad_speech_started_reported = false;
+  g_vad_speech_ended_reported = false;
   g_preroll_drained = false;
   g_transport_sample_count = 0;
   g_session_started_at_us = esp_timer_get_time();
@@ -3315,6 +3334,33 @@ bool send_vad_speech_started_event(uint32_t level) {
   const bool sent = send_ws_text(payload);
   if (sent) {
     g_vad_speech_started_reported = true;
+  }
+  return sent;
+}
+
+bool send_vad_speech_ended_event(uint32_t level, const char *reason) {
+  if (g_vad_speech_ended_reported) {
+    return true;
+  }
+  if (!g_session_started || g_audio_stream_finished) {
+    return false;
+  }
+
+  std::string payload;
+  payload.reserve(384);
+  append_event_header(payload, "vad.speech_ended", g_session_id.c_str(), g_sequence++);
+  char body[160];
+  std::snprintf(
+      body,
+      sizeof(body),
+      "{\"level\":%" PRIu32 ",\"source\":\"firmware_vad\",\"reason\":\"%s\"}}",
+      level,
+      reason == nullptr ? "vad_silence" : reason);
+  payload.append(body);
+  const bool sent = send_ws_text(payload);
+  if (sent) {
+    g_vad_speech_ended_reported = true;
+    ESP_LOGI(kTag, "Reported advisory VAD speech end level=%" PRIu32 " reason=%s", level, reason == nullptr ? "vad_silence" : reason);
   }
   return sent;
 }
@@ -4025,6 +4071,11 @@ void websocket_task(void *arg) {
     if (g_ws_connected) {
       send_voice_session_ping();
     }
+    if (voice_audio_upload_desired() && active_audio_stream_timed_out()) {
+      ESP_LOGW(kTag, "Ending voice audio stream after idle-loop capture timeout");
+      hexe::voice::finish_audio_stream("capture_timeout");
+      continue;
+    }
     if (voice_audio_upload_desired() && !voice_audio_transport_ready()) {
       vTaskDelay(pdMS_TO_TICKS(25));
       continue;
@@ -4220,12 +4271,19 @@ void observe_passive_placement_frame(
 bool submit_wake_candidate(const WakeCandidateMetrics &candidate) {
   auto &app_state = hexe::state();
   if (app_state.muted || app_state.ota_active || !hexe::voice::wake_word_election_capable()) {
+    ESP_LOGW(
+        kTag,
+        "Wake candidate ignored reason=%s wake_capable=%d",
+        app_state.muted ? "muted" : (app_state.ota_active ? "ota_active" : "wake_election_unavailable"),
+        hexe::voice::wake_word_election_capable() ? 1 : 0);
     return false;
   }
   if (!voice_transport_ready() || hexe::voice::post_tts_input_cooldown_active()) {
+    ESP_LOGW(kTag, "Wake candidate ignored reason=%s", voice_session_start_unavailable_reason());
     return false;
   }
   if (!ensure_session_started("unknown")) {
+    ESP_LOGW(kTag, "Wake candidate ignored reason=%s", voice_session_start_unavailable_reason());
     return false;
   }
 
@@ -4326,22 +4384,60 @@ bool submit_wake_candidate(const WakeCandidateMetrics &candidate) {
 bool start_voice_session(const char *wake_source) {
   auto &app_state = hexe::state();
   if (app_state.muted || app_state.ota_active) {
+    ESP_LOGW(kTag, "Voice session start unavailable wake_source=%s reason=%s", wake_source == nullptr ? "unknown" : wake_source, voice_session_start_unavailable_reason());
+    return false;
+  }
+  if (hexe::voice::tts_playback_active()) {
+    ESP_LOGW(kTag, "Voice session start unavailable wake_source=%s reason=%s", wake_source == nullptr ? "unknown" : wake_source, voice_session_start_unavailable_reason());
     return false;
   }
   if (!voice_transport_ready()) {
     app_state.phase = hexe::idle_or_connecting_phase();
+    ESP_LOGW(kTag, "Voice session start unavailable wake_source=%s reason=%s", wake_source == nullptr ? "unknown" : wake_source, voice_session_start_unavailable_reason());
     return false;
   }
 
   const bool started = ensure_session_started(wake_source);
   if (started) {
     app_state.phase = hexe::AppPhase::kListening;
+  } else {
+    ESP_LOGW(kTag, "Voice session start unavailable wake_source=%s reason=%s", wake_source == nullptr ? "unknown" : wake_source, voice_session_start_unavailable_reason());
   }
   return started;
 }
 
 bool notify_vad_speech_started(uint32_t level) {
   return send_vad_speech_started_event(level);
+}
+
+bool notify_vad_speech_ended(uint32_t level, const char *reason) {
+  return send_vad_speech_ended_event(level, reason);
+}
+
+const char *voice_session_start_unavailable_reason() {
+  const auto &app_state = hexe::state();
+  if (app_state.muted) {
+    return "muted";
+  }
+  if (app_state.ota_active) {
+    return "ota_active";
+  }
+  if (hexe::voice::tts_playback_active()) {
+    return "tts_active";
+  }
+  if (hexe::voice::post_tts_input_cooldown_active()) {
+    return "cooldown";
+  }
+  if (!backend_ready_for_voice()) {
+    return "backend_not_ready";
+  }
+  if (!voice_control_transport_ready()) {
+    return "transport_not_ready";
+  }
+  if (g_session_started && !g_audio_stream_finished) {
+    return "existing_session";
+  }
+  return "backend_rejected";
 }
 
 bool finish_audio_stream(const char *reason) {
@@ -4355,10 +4451,15 @@ bool finish_audio_stream(const char *reason) {
   if (!flush_transport_samples(true)) {
     return false;
   }
+  const bool capture_timeout_without_speech =
+      reason != nullptr && std::strcmp(reason, "capture_timeout") == 0 && !g_vad_speech_started_reported &&
+      !g_transport_contains_speech;
   if (!kVoiceAudioWebSocketUploadEnabled) {
     g_audio_stream_finished = true;
     set_audio_streaming(false);
-    if (!post_buffered_voice_audio_http()) {
+    if (capture_timeout_without_speech) {
+      ESP_LOGW(kTag, "Skipping buffered voice audio upload after capture timeout without detected speech");
+    } else if (!post_buffered_voice_audio_http()) {
       ESP_LOGW(kTag, "Voice HTTP buffered audio upload failed before audio.end");
     }
   }

@@ -6,6 +6,7 @@ from pathlib import Path
 
 FIRMWARE_BACKEND_CLIENT = Path("firmware/components/endpoint_runtime/voice/backend_client.cpp")
 FIRMWARE_BUILD_SCRIPT = Path("firmware/build.sh")
+FIRMWARE_SDKCONFIG_DEFAULTS = Path("firmware/sdkconfig.defaults")
 FIRMWARE_EXPORT_SCRIPT = Path("firmware/export-artifacts.sh")
 FIRMWARE_PROVISIONING_CSV_TOOL = Path("firmware/tools/provisioning-env-to-nvs-csv.py")
 FIRMWARE_CMAKE = Path("firmware/components/endpoint_runtime/CMakeLists.txt")
@@ -59,7 +60,11 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "/api/voice/audio/ws?endpoint_id=" in source
     assert "audio.end" in source
     assert "vad.speech_started" in source
+    assert "vad.speech_ended" in source
     assert "notify_vad_speech_started" in source
+    assert "notify_vad_speech_ended" in source
+    assert "endpoint.audio.finalize" in source
+    assert "voice_session_start_unavailable_reason" in source
     assert "session.cancel" in source
     assert "command.ack" in source
     assert "command.error" in source
@@ -116,6 +121,8 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
     assert 'send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");' in source
     assert 'return "endpoint.volume.set";' in source
     assert 'return "endpoint.micro_vad.set";' in source
+    assert 'send_command_ack(request_id, "endpoint.audio.finalize", "succeeded", "Audio stream finalized");' in source
+    assert '"finalize_unavailable"' in source
 
 
 def test_firmware_reports_stable_hardware_id_from_efuse_mac():
@@ -328,6 +335,22 @@ def test_firmware_build_uses_ota_safe_project_versions():
     assert 'PROJECT_VERSION="$(minimal_project_version "${PROJECT_VERSION}")"' in build_script
     assert '-D "PROJECT_VER=${PROJECT_VERSION}"' in build_script
     assert "Refusing to build OTA firmware from tracked uncommitted changes." in build_script
+
+
+def test_firmware_build_uses_pe_memory_defaults_and_keeps_endpoint_ble_off():
+    build_script = FIRMWARE_BUILD_SCRIPT.read_text()
+    sdkconfig_defaults = FIRMWARE_SDKCONFIG_DEFAULTS.read_text()
+
+    assert "CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y" in sdkconfig_defaults
+    assert "CONFIG_SPIRAM_RODATA=y" in sdkconfig_defaults
+    assert "CONFIG_ESP32S3_DATA_CACHE_64KB=y" in sdkconfig_defaults
+    assert "CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y" in sdkconfig_defaults
+    assert "CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y" in sdkconfig_defaults
+    assert "CONFIG_BT_ENABLED=y" not in sdkconfig_defaults
+    assert '[[ "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]]' in build_script
+    assert "# Full voice firmware keeps BLE off unless a future explicit pairing-window task re-enables it." in build_script
+    assert "# CONFIG_BT_ENABLED is not set" in build_script
+    assert "full endpoint runtime disables idle BLE" in build_script
 
 
 def test_firmware_scaffold_modules_are_explicit_status_providers():
@@ -592,8 +615,10 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
         assert "inspect_local_keyword_frame" in source
         assert "local_keywords.wake" in source
         assert "WakeCandidateMetrics candidate" in source
-        assert "candidate.endpoint_audio_profile_version = \"firmware_audio_v1\"" in source
         assert "Local wake detected" in source
+    assert "candidate.endpoint_audio_profile_version = \"firmware_audio_v1\"" in audio_source
+    assert 'kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch1_ns_v2"' in pe_audio_source
+    assert "candidate.endpoint_audio_profile_version = kEndpointAudioProfileVersion" in pe_audio_source
 
 
 def test_firmware_has_experimental_stop_keyword_provider_hook():
@@ -813,6 +838,8 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "Stopping idle voice audio WebSocket" in source
     assert "Starting voice audio WebSocket for active session %s" in source
     assert "voice_audio_socket_desired() && g_ws_connected && !g_audio_ws_started" in source
+    assert "voice_audio_upload_desired() && active_audio_stream_timed_out()" in source
+    assert "Ending voice audio stream after idle-loop capture timeout" in source
     assert "voice_audio_upload_desired() && !voice_audio_transport_ready()" in source
     assert "voice_audio_transport_ready() && xQueueReceive" in source
     assert "Voice WebSocket start failed: %s" in source
@@ -835,6 +862,7 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "post_buffered_voice_audio_http()" in source
     assert "kVoiceAudioHttpUploadChunkBytes = 2048" in source
     assert "kVoiceAudioHttpUploadChunkSamples = kVoiceAudioHttpUploadChunkBytes / sizeof(int16_t)" in source
+    assert "std::array<int16_t, kWakePredictionChunkSamples> g_transport_samples" in source
     assert "kVoiceAudioHttpUploadTimeoutMs = 120000" in source
     assert "kVoiceAudioHttpWriteChunkBytes = 1024" in source
     assert "socket_send_audio_body_staged" in source
@@ -845,6 +873,7 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "return std::min(g_transport_samples.size(), kVoiceAudioHttpUploadChunkSamples);" in source
     assert "g_transport_sample_count < transport_flush_sample_limit()" in source
     assert "const size_t flush_sample_limit = transport_flush_sample_limit();" in source
+    assert "frame.micro_vad_ended && !flush_transport_samples(true)" in source
     assert "voice_audio_chunk_upload_path" in source
     assert "connect_backend_socket" in source
     assert "socket_send_audio_body_staged(sock, samples, byte_count" in source
@@ -866,8 +895,10 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     ]
     assert "send_ws_text" not in transport_chunk_block
     assert "post_buffered_voice_audio_http" not in transport_chunk_block
+    assert "buffer_voice_audio_samples(samples, sample_count)" in transport_chunk_block
+    assert "if (!post_buffered_voice_audio_http())" in finish_audio_block
+    assert "Skipping buffered voice audio upload after capture timeout without detected speech" in finish_audio_block
     assert "if (!kVoiceAudioWebSocketUploadEnabled) {\n    g_audio_stream_finished = true;" in finish_audio_block
-    assert "post_buffered_voice_audio_http()" in finish_audio_block
     assert "Voice HTTP buffered audio upload failed before audio.end" in finish_audio_block
     assert "payload_base64" not in source
     assert "mbedtls_base64" not in source
@@ -1200,9 +1231,14 @@ def test_firmware_buttons_stop_active_playback():
     assert 'hexe::voice::stop_playback("voice_pe_center_long_press")' in pe_buttons
     assert 'hexe::voice::stop_playback("hardware_mute_switch")' in pe_buttons
     assert 'hexe::voice::tts_playback_active() || state.phase' in pe_buttons
-    assert "kCenterReleaseDebounceUs = 1200 * 1000" in pe_buttons
+    assert "kShortPressMinUs = 30 * 1000" in pe_buttons
+    assert "kCenterReleaseDebounceUs = 250 * 1000" in pe_buttons
     assert "Center button release ignored by debounce" in pe_buttons
+    assert "Center button release ignored as bounce" in pe_buttons
+    assert "Center button down" in pe_buttons
+    assert "Center button short press handled duration_ms=%lld" in pe_buttons
     assert "hexe::voice::post_tts_input_cooldown_active()" in pe_buttons
+    assert "hexe::voice::voice_session_start_unavailable_reason()" in pe_buttons
     assert "Center button press ignored during input cooldown" in pe_buttons
 
 
@@ -1337,6 +1373,11 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_source
     assert "I2S_SLOT_MODE_STEREO" in audio_source
     assert "voice_channel_sample" in audio_source
+    assert "kSelectedMicChannel = 1" in audio_source
+    assert 'kSelectedMicChannelLabel = "xmos_channel_1_noise_suppressed"' in audio_source
+    assert 'kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch1_ns_v2"' in audio_source
+    assert "const int32_t selected = kSelectedMicChannel == 1 ? right : left" in audio_source
+    assert "Voice Kit microphone pipeline configured: channel0=AGC channel1=NS selected_channel=%u selected_profile=%s" in audio_source
     assert "pins::kVoicePeMicBclk" in audio_source
     assert "pins::kVoicePeMicLrclk" in audio_source
     assert "pins::kVoicePeMicDin" in audio_source

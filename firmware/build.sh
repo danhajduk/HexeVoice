@@ -199,7 +199,7 @@ EOF
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 EOF
   fi
-  if [[ "${bluetooth_transport}" == "native" ]]; then
+  if [[ "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]]; then
     cat >> "${output}" <<'EOF'
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
@@ -216,6 +216,11 @@ CONFIG_BT_NIMBLE_MSYS_1_BLOCK_SIZE=1024
 CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=24
 CONFIG_BT_NIMBLE_MSYS_2_BLOCK_SIZE=1024
 CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=24
+EOF
+  elif [[ "${FIRMWARE_APP}" == "endpoint" ]]; then
+    cat >> "${output}" <<'EOF'
+# Full voice firmware keeps BLE off unless a future explicit pairing-window task re-enables it.
+# CONFIG_BT_ENABLED is not set
 EOF
   fi
 }
@@ -234,7 +239,13 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
     return
   fi
   bluetooth_transport="$(board_profile_value "${profile}" hardware.wireless.transport)"
-  if [[ -f "${sdkconfig_path}" && "${bluetooth_transport}" == "native" ]] &&
+  if [[ -f "${sdkconfig_path}" && "${FIRMWARE_APP}" == "endpoint" ]] &&
+    grep -q "^CONFIG_BT_ENABLED=y$" "${sdkconfig_path}"; then
+    echo "Refreshing generated sdkconfig for ${profile}; full endpoint runtime disables idle BLE"
+    rm -f "${sdkconfig_path}"
+    return
+  fi
+  if [[ -f "${sdkconfig_path}" && "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]] &&
     { ! grep -q "^CONFIG_BT_NIMBLE_ENABLED=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_BT_NIMBLE_ROLE_CENTRAL=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_BT_NIMBLE_GATT_CLIENT=y$" "${sdkconfig_path}" ||

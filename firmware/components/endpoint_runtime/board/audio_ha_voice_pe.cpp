@@ -62,6 +62,9 @@ constexpr uint8_t kChannel0PipelineStage = 0x30;
 constexpr uint8_t kChannel1PipelineStage = 0x40;
 constexpr uint8_t kPipelineAgc = 4;
 constexpr uint8_t kPipelineNs = 3;
+constexpr uint8_t kSelectedMicChannel = 1;
+constexpr const char *kSelectedMicChannelLabel = "xmos_channel_1_noise_suppressed";
+constexpr const char *kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch1_ns_v2";
 
 i2s_chan_handle_t g_rx_channel = nullptr;
 i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
@@ -139,8 +142,8 @@ hexe::voice::MicroVadFrameState micro_vad_frame_state(
 }
 
 int16_t voice_channel_sample(int32_t left, int32_t right) {
-  (void)right;
-  return static_cast<int16_t>(std::clamp<int32_t>(left >> 16, -32768, 32767));
+  const int32_t selected = kSelectedMicChannel == 1 ? right : left;
+  return static_cast<int16_t>(std::clamp<int32_t>(selected >> 16, -32768, 32767));
 }
 
 bool init_voice_kit_i2c() {
@@ -255,6 +258,11 @@ bool init_voice_kit() {
   }
 
   g_voice_kit_ready = true;
+  ESP_LOGI(
+      kTag,
+      "Voice Kit microphone pipeline configured: channel0=AGC channel1=NS selected_channel=%u selected_profile=%s",
+      kSelectedMicChannel,
+      kSelectedMicChannelLabel);
   return true;
 }
 
@@ -280,14 +288,10 @@ void apply_vad_state(bool speaking, uint32_t level) {
     hexe::voice::notify_vad_speech_started(level);
   } else if (g_vad_turn_active) {
     g_vad_turn_active = false;
-    if (hexe::voice::finish_audio_stream("vad_silence")) {
-      if (app_state.phase == hexe::AppPhase::kListening) {
-        app_state.phase = hexe::AppPhase::kThinking;
-      }
-    } else if (app_state.phase == hexe::AppPhase::kListening) {
-      app_state.phase = hexe::idle_or_connecting_phase();
+    if (!hexe::voice::notify_vad_speech_ended(level, "vad_silence")) {
+      ESP_LOGW(kTag, "VAD silence advisory could not be sent (level=%lu)", static_cast<unsigned long>(level));
     }
-    ESP_LOGI(kTag, "VAD silence detected (level=%lu)", static_cast<unsigned long>(level));
+    ESP_LOGI(kTag, "VAD silence detected and reported as advisory (level=%lu)", static_cast<unsigned long>(level));
   }
 }
 
@@ -473,7 +477,7 @@ void vad_task(void *arg) {
       candidate.frame_level = level;
       candidate.noise_floor_level = noise_floor;
       candidate.speech_peak_level = speech_peak_level;
-      candidate.endpoint_audio_profile_version = "firmware_audio_v1";
+      candidate.endpoint_audio_profile_version = kEndpointAudioProfileVersion;
       hexe::voice::submit_wake_candidate(candidate);
     }
     const hexe::voice::LocalKeywordDetection &stop_detection = local_keywords.playback_stop;
@@ -540,7 +544,11 @@ void init_audio() {
     ESP_LOGE(kTag, "Failed to create Voice PE VAD task");
     return;
   }
-  ESP_LOGI(kTag, "Home Assistant Voice PE microphone initialized on I2S GPIO13/14/15");
+  ESP_LOGI(
+      kTag,
+      "Home Assistant Voice PE microphone initialized on I2S GPIO13/14/15 selected_channel=%u selected_profile=%s",
+      kSelectedMicChannel,
+      kSelectedMicChannelLabel);
 }
 
 void update_audio() {

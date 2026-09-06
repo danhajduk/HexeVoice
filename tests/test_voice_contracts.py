@@ -210,6 +210,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "audio.chunk",
         "audio.end",
         "vad.speech_started",
+        "vad.speech_ended",
         "wake.candidate",
         "session.cancel",
         "session.ping",
@@ -230,6 +231,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "tts.ready",
         "session.error",
         "endpoint.micro_vad",
+        "endpoint.audio.finalize",
         "endpoint.listen",
     }.issubset(BACKEND_TO_ENDPOINT_EVENTS)
 

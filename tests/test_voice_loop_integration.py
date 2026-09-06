@@ -98,6 +98,47 @@ def test_single_endpoint_wake_to_reply_loop_updates_backend_and_dashboard_status
     assert latest_endpoint_status.json()["firmware_version"] == "0.1.0"
 
 
+def test_endpoint_vad_end_is_advisory_and_backend_requests_audio_finalize(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"),
+            voice_wake_detector=DeterministicWakeDetector(detect_on_chunk_index=0),
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            event(
+                "session.start",
+                payload={
+                    "firmware_version": "0.1.0",
+                    "wake_source": "button",
+                    "audio_format": {"encoding": "pcm_s16le", "sample_rate_hz": 16000, "channels": 1},
+                },
+            )
+        )
+        started = websocket.receive_json()
+        listening = websocket.receive_json()
+
+        websocket.send_json(event("vad.speech_started", payload={"level": 1200, "source": "firmware_vad"}))
+        state = websocket.receive_json()
+
+        websocket.send_json(
+            event("vad.speech_ended", payload={"level": 180, "source": "firmware_vad", "reason": "vad_silence"})
+        )
+        finalize = websocket.receive_json()
+
+    assert started["event_type"] == "wake.accepted"
+    assert listening["event_type"] == "session.state"
+    assert state["event_type"] == "session.state"
+    assert finalize["event_type"] == "endpoint.audio.finalize"
+    assert finalize["direction"] == "backend_to_endpoint"
+    assert finalize["payload"]["request_id"].startswith("cmd_audio_finalize_")
+    assert finalize["payload"]["reason"] == "backend_vad_speech_ended"
+    assert finalize["payload"]["source"] == "backend_vad_policy"
+    assert finalize["payload"]["snapshot"]["session_state"] == "listening"
+
+
 def test_single_endpoint_cancel_path_updates_voice_status(tmp_path):
     client = TestClient(
         create_app(

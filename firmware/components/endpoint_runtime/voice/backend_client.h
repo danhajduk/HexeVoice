@@ -29,6 +29,8 @@ struct WakeCandidateMetrics {
 void init_backend_client();
 bool start_voice_session(const char *wake_source);
 bool notify_vad_speech_started(uint32_t level);
+bool notify_vad_speech_ended(uint32_t level, const char *reason);
+const char *voice_session_start_unavailable_reason();
 bool post_tts_input_cooldown_active();
 bool submit_wake_candidate(const WakeCandidateMetrics &candidate);
 bool submit_audio_frame(

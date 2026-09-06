@@ -33,6 +33,7 @@ from hexevoice.voice.contracts import (
     VoiceTranscriptPayload,
     VoiceTtsPlaybackPayload,
     VoiceTtsReadyPayload,
+    VoiceVadSpeechEndedPayload,
     VoiceVadSpeechStartedPayload,
     VoiceWakeCandidatePayload,
     is_valid_voice_session_transition,
@@ -1475,6 +1476,7 @@ class VoiceSessionManager:
             "audio.chunk": self._handle_audio_chunk,
             "audio.end": self._handle_audio_end,
             "vad.speech_started": self._handle_vad_speech_started,
+            "vad.speech_ended": self._handle_vad_speech_ended,
             "wake.candidate": self._handle_wake_candidate,
             "session.cancel": self._handle_session_cancel,
             "session.ping": self._handle_session_ping,
@@ -1927,7 +1929,7 @@ class VoiceSessionManager:
             and self._active_session.endpoint_id == event.endpoint_id
             and self._active_session.session_state == "idle"
             and self._active_playback_interrupt(event.endpoint_id) is not None
-            and event.event_type in {"session.start", "vad.speech_started", "audio.chunk", "audio.end"}
+            and event.event_type in {"session.start", "vad.speech_started", "vad.speech_ended", "audio.chunk", "audio.end"}
         )
 
     def _active_session_is_speaker_enrollment_capture(self) -> bool:
@@ -1949,7 +1951,7 @@ class VoiceSessionManager:
             and event.session_id != self._active_session.session_id
             and self._active_session_is_placement_test()
             and self._active_placement_test_window(event.endpoint_id) is not None
-            and event.event_type in {"vad.speech_started", "audio.chunk", "audio.end", "session.cancel"}
+            and event.event_type in {"vad.speech_started", "vad.speech_ended", "audio.chunk", "audio.end", "session.cancel"}
         )
 
     def _can_merge_speaker_enrollment_event(self, event: VoiceEventEnvelope) -> bool:
@@ -1959,7 +1961,7 @@ class VoiceSessionManager:
             and event.session_id != self._active_session.session_id
             and self._active_session_is_speaker_enrollment_capture()
             and self._active_speaker_enrollment_capture_window(event.endpoint_id) is not None
-            and event.event_type in {"vad.speech_started", "audio.chunk", "audio.end", "session.cancel"}
+            and event.event_type in {"vad.speech_started", "vad.speech_ended", "audio.chunk", "audio.end", "session.cancel"}
         )
 
     def _should_complete_placement_test_on_new_session(self, event: VoiceEventEnvelope) -> bool:
@@ -3905,6 +3907,66 @@ class VoiceSessionManager:
             record["speech_started_at"],
         )
         return [self._state_event("session.state", session)]
+
+    def _handle_vad_speech_ended(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        session = self._require_active_session(event)
+        if isinstance(session, VoiceEventEnvelope):
+            return [session]
+
+        try:
+            payload = VoiceVadSpeechEndedPayload.model_validate(event.payload)
+        except ValidationError as exc:
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_vad_speech_ended",
+                    message=str(exc.errors()[0]["msg"]),
+                    recoverable=True,
+                )
+            ]
+
+        reason = payload.reason or "vad_silence"
+        record = {
+            "speech_ended_at": event.timestamp.isoformat(),
+            "speech_end_reason": reason,
+            "speech_end_level": payload.level,
+            "speech_end_source": payload.source or "firmware_vad",
+        }
+        self._set_active_session_vad(record)
+        self._append_latency_point("vad_silence", "VAD silence", event.timestamp)
+        self._last_event_type = event.event_type
+        record_voice_event(
+            "vad.speech_ended",
+            endpoint_id=event.endpoint_id,
+            session_id=session.session_id,
+            level=payload.level,
+            source=record["speech_end_source"],
+            reason=reason,
+            speech_ended_at=record["speech_ended_at"],
+        )
+        log.info(
+            "Endpoint VAD speech ended; requesting audio finalization: endpoint_id=%s session_id=%s level=%s reason=%s",
+            event.endpoint_id,
+            session.session_id,
+            payload.level,
+            reason,
+        )
+        return [
+            VoiceEventEnvelope(
+                event_type="endpoint.audio.finalize",
+                endpoint_id=session.endpoint_id,
+                direction="backend_to_endpoint",
+                session_id=session.session_id,
+                sequence=self._next_sequence(),
+                payload={
+                    "request_id": f"cmd_audio_finalize_{uuid4().hex}",
+                    "reason": "backend_vad_speech_ended",
+                    "source": "backend_vad_policy",
+                    "snapshot": session.model_dump(mode="json"),
+                },
+            )
+        ]
 
     def _handle_command_ack(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         try:

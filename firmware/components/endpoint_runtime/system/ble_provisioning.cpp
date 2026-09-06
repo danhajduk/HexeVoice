@@ -32,6 +32,7 @@ constexpr size_t kX25519PublicKeyBytes = 32;
 constexpr size_t kAes256KeyBytes = 32;
 constexpr size_t kAesGcmNonceBytes = 12;
 constexpr size_t kAesGcmTagBytes = 16;
+constexpr bool kFullRuntimeBleEnabled = false;
 
 struct BleProvisioningState {
   bool initialized{false};
@@ -305,11 +306,11 @@ void ensure_pairing_nonce() {
 }
 
 bool eligible_for_advertising() {
-  return board_supported() && g_ble.crypto_ready && !hexe::system::provisioning_configured();
+  return kFullRuntimeBleEnabled && board_supported() && g_ble.crypto_ready && !hexe::system::provisioning_configured();
 }
 
 bool eligible_for_host_pairing_scan() {
-  return board_supported() && g_ble.gatt_ready && !hexe::system::provisioning_configured();
+  return kFullRuntimeBleEnabled && board_supported() && g_ble.gatt_ready && !hexe::system::provisioning_configured();
 }
 
 bool string_field(cJSON *obj, const char *key, const char **value) {
@@ -991,6 +992,11 @@ void init_ble_provisioning() {
     ESP_LOGI(kTag, "BLE onboarding disabled board_profile=%s", hexe::config::kEndpointBoardProfile);
     return;
   }
+  if (!kFullRuntimeBleEnabled) {
+    set_state("idle", "full_runtime_ble_disabled");
+    ESP_LOGI(kTag, "BLE onboarding disabled for full endpoint runtime; use minimal/recovery or an explicit pairing window");
+    return;
+  }
   if (!nimble_config_enabled()) {
     set_state("failed", "nimble_disabled");
     std::strncpy(g_ble.last_error, "nimble_disabled", sizeof(g_ble.last_error) - 1);
@@ -1046,7 +1052,7 @@ void update_ble_provisioning() {
 
 BleProvisioningStatus ble_provisioning_status() {
   const bool supported = board_supported();
-  const bool enabled = supported && nimble_config_enabled() && g_ble.gatt_ready;
+  const bool enabled = kFullRuntimeBleEnabled && supported && nimble_config_enabled() && g_ble.gatt_ready;
   const bool eligible = eligible_for_advertising();
   return {
       supported,

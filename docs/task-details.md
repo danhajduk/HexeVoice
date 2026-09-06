@@ -3169,3 +3169,91 @@ Original task details:
 - Acceptance: A minimal HA Voice PE that completes BLE provisioning is automatically moved toward full firmware without manual reflash.
 - Acceptance: HexeVoice approves only the online endpoint whose device id and onboarding session id match the BLE-approved pairing session.
 - Acceptance: OTA failures are recoverable and do not leak Wi-Fi credentials or trust secrets.
+
+## Task 299
+Original task details:
+- User request: Apply lessons from the ESPHome Home Assistant Voice PE firmware to make the full HexeVoice PE firmware reliable.
+- Goal: Align the HA Voice PE ESP32-S3 memory configuration with the upstream ESPHome reference where it directly reduces internal heap pressure.
+- Add or regenerate `sdkconfig.defaults` entries for the upstream-style S3/PSRAM settings that are applicable to this project: 64 KB data cache, 64-byte cache lines, PSRAM instruction fetch, PSRAM rodata, Bluetooth allocation from PSRAM first, BLE dynamic environment memory, and mbedTLS external memory allocation.
+- Confirm whether TLS 1.3 is needed for HexeVoice. Do not enable TLS-related options beyond the project need without documenting the reason.
+- Keep the change board/runtime-safe: do not break minimal/recovery partition constraints, and verify the full endpoint build still fits the HA Voice PE app slot.
+- Acceptance: Full HA Voice PE firmware builds with the updated memory settings.
+- Acceptance: Serial boot diagnostics show PSRAM ready and no regression in voice WebSocket task creation under normal full firmware boot.
+- Verification: Run targeted firmware/static tests plus a HA Voice PE endpoint build.
+
+## Task 300
+Original task details:
+- User request: BLE may be interfering with the full voice runtime; ESPHome uses BLE for factory/adoption and disables it after Wi-Fi connects.
+- Goal: Disable BLE in full endpoint firmware outside explicit pairing or recovery windows.
+- Keep BLE active for minimal/recovery provisioning flows and any explicit operator-triggered pairing window.
+- Ensure already-provisioned full firmware does not initialize or keep NimBLE advertising/scanning during normal voice operation unless explicitly requested.
+- Preserve secure onboarding behavior: disabling full-runtime BLE must not remove minimal/recovery BLE credential receive or fallback debug paths.
+- Add status/logging that says whether BLE is disabled because the endpoint is provisioned, because full runtime does not need it, or because an explicit pairing window is active.
+- Acceptance: Full HA Voice PE normal boot does not spend internal heap on idle BLE.
+- Acceptance: Minimal/recovery BLE onboarding remains available.
+- Verification: Build full and minimal/recovery firmware profiles and run focused BLE onboarding static tests.
+
+## Task 301
+Original task details:
+- User request: Compare our PE audio path to ESPHome's firmware and adapt the useful differences.
+- Goal: Reconcile HA Voice PE XMOS microphone channel handling with the upstream ESPHome reference.
+- Upstream config passes both I2S microphone channels to `voice_assistant` and uses channel 1 for `micro_wake_word`; our current PE path converts stereo to mono using one channel.
+- Audit what the XMOS channel 0/channel 1 pipeline stages mean after our I2C configuration, including AGC/noise-suppression stage choices.
+- Test and implement the best PE mono source for wake, VAD, and upload: channel 1/noise-suppressed channel, channel 0/AGC channel, or a documented mix/downselect.
+- Include diagnostic logs/metrics that identify selected mic channel, frame level, noise floor, and clipping/near-silence behavior without dumping audio.
+- Acceptance: The selected mic channel strategy is documented in code/docs and matches physical PE behavior.
+- Acceptance: Button-triggered and wake-triggered turns use the same intended channel strategy unless explicitly configured otherwise.
+- Verification: Run firmware audio envelope tests and a physical PE voice upload/TTS playback check.
+
+## Task 302
+Original task details:
+- User request: For VAD, send `vad.end` from the device but let the backend actually stop/finalize the turn.
+- Goal: Make firmware VAD advisory and move endpoint turn finalization authority to the backend.
+- The endpoint should still emit `vad.start` and `vad.end` events with useful metrics, but local VAD silence must not immediately close the voice turn by itself.
+- After local `vad.end`, the endpoint should continue bounded capture/buffering until the backend sends an explicit finalize/stop command or a firmware safety timeout is reached.
+- For the current buffered HTTP upload path, backend finalization will be based on device VAD events, timers, and session policy; later live audio transport can let backend VAD inspect the audio directly.
+- Keep a fail-safe maximum capture duration and memory cap so a backend bug cannot fill PSRAM indefinitely.
+- Preserve user experience: avoid cutting the user off early, but still recover cleanly from no-speech, timeout, cancel, TTS playback, OTA, and disconnect cases.
+- Acceptance: Firmware sends advisory VAD events and waits for backend finalization before `audio.end` in the normal path.
+- Acceptance: Backend can command endpoint capture finalization and receives the buffered raw audio before or with the terminal audio event according to the documented contract.
+- Acceptance: Safety timeout remains firmware-owned and is clearly logged as a fallback, not the normal path.
+- Verification: Add backend/firmware tests for VAD advisory flow, backend finalize command, no-speech timeout, cancel, and disconnect handling.
+
+## Task 303
+Original task details:
+- User request: Keep the proven working path while learning from ESPHome's more integrated transport.
+- Goal: Keep HA Voice PE voice upload on the stable buffered HTTP path until a low-memory live transport is designed.
+- Preserve the current final buffered raw HTTP upload for full HA Voice PE firmware because live/chunked HTTP opened too many sockets and exhausted internal heap during physical tests.
+- Document that this is an intentional reliability choice, not the final desired low-latency architecture.
+- Add guardrails preventing accidental re-enablement of live HTTP chunking on HA Voice PE without a dedicated memory/transport validation task.
+- Capture requirements for a future live transport: persistent connection, preallocated small buffers, backpressure, no per-chunk socket creation, and measured internal heap headroom with wake, BLE-off full runtime, TTS, and OTA present.
+- Acceptance: Full HA Voice PE continues to use one buffered upload per turn.
+- Acceptance: Tests detect accidental PE live/chunked HTTP upload reactivation.
+- Verification: Run firmware voice envelope tests and physical PE button voice test.
+
+## Task 304
+Original task details:
+- User request: Button/wake on full firmware should be user-friendly and diagnosable.
+- Goal: Tighten HA Voice PE button wake readiness gating and voice-session diagnostics.
+- Match the useful ESPHome behavior: button and wake should only start listening when initialization is complete, the device is not muted, transport is connected, TTS/media playback is not active unless the action is cancel/stop, OTA is not active, and input cooldown has expired.
+- Log a specific reason when a button press or wake candidate does not start a voice session, such as muted, transport_not_ready, init_not_ready, tts_active, cooldown, ota_active, backend_rejected, or existing_session.
+- Keep short/bounce press handling and rotary-center interactions stable.
+- Ensure LED state transitions reflect idle, waiting/listening, thinking, replying, muted, not-ready, and error states consistently after rejected starts and cancellations.
+- Acceptance: Operator can tell from serial/backend logs why the PE did not enter listening mode.
+- Acceptance: Button press and local wake start the same voice session path once gates pass.
+- Verification: Run button/wake firmware tests and a physical PE button/wake sanity check.
+
+## Task 305
+Original task details:
+- User request: Validate the ESPHome-inspired HA Voice PE full firmware changes on the actual PE.
+- Goal: Physically validate HA Voice PE full firmware button wake, wake word, advisory VAD finalization, HTTP upload, TTS playback, and serial diagnostics.
+- Flash the full HA Voice PE endpoint image after Tasks 299-304.
+- Restart the HexeVoice backend/frontend as needed and watch the PE serial log.
+- Verify button press enters listening only when the device is ready, not muted, not in cooldown, and not already in a session.
+- Verify wake word produces a wake candidate with the `ha_voice_pe_xmos_ch1_ns_v2` audio profile.
+- Verify local VAD silence emits the advisory `vad.speech_ended` event, backend responds with `endpoint.audio.finalize`, firmware uploads one buffered HTTP audio body, then emits `audio.end`.
+- Verify TTS HTTP download and speaker playback still work after a turn.
+- Record any serial/backend errors with their exact reason strings.
+- Acceptance: One button-triggered and one wake-triggered physical PE turn complete end-to-end.
+- Acceptance: Serial logs show specific not-ready reasons for rejected button/wake starts.
+- Acceptance: Full runtime BLE remains disabled in normal operation while minimal/recovery BLE provisioning still builds.

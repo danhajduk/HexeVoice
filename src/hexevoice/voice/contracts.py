@@ -37,6 +37,7 @@ VoiceEventType = Literal[
     "audio.chunk",
     "audio.end",
     "vad.speech_started",
+    "vad.speech_ended",
     "wake.candidate",
     "session.cancel",
     "session.ping",
@@ -67,6 +68,7 @@ VoiceEventType = Literal[
     "endpoint.volume",
     "endpoint.mute",
     "endpoint.micro_vad",
+    "endpoint.audio.finalize",
     "endpoint.cancel",
     "endpoint.listen",
     "endpoint.replay",
@@ -85,6 +87,7 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
         "audio.chunk",
         "audio.end",
         "vad.speech_started",
+        "vad.speech_ended",
         "wake.candidate",
         "session.cancel",
         "session.ping",
@@ -123,6 +126,7 @@ BACKEND_TO_ENDPOINT_EVENTS: frozenset[str] = frozenset(
         "endpoint.volume",
         "endpoint.mute",
         "endpoint.micro_vad",
+        "endpoint.audio.finalize",
         "endpoint.cancel",
         "endpoint.listen",
         "endpoint.replay",
@@ -222,6 +226,12 @@ class VoiceTtsPlaybackPayload(BaseModel):
 class VoiceVadSpeechStartedPayload(BaseModel):
     level: int | None = Field(default=None, ge=0)
     source: str | None = None
+
+
+class VoiceVadSpeechEndedPayload(BaseModel):
+    level: int | None = Field(default=None, ge=0)
+    source: str | None = None
+    reason: str | None = None
 
 
 class VoiceWakeCandidatePayload(BaseModel):

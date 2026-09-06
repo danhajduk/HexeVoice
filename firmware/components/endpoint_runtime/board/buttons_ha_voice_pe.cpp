@@ -23,8 +23,9 @@ constexpr gpio_num_t kCenterButton = gpio_pin(hexe::board::pins::kVoicePeCenterB
 constexpr gpio_num_t kHardwareMute = gpio_pin(hexe::board::pins::kVoicePeHardwareMute);
 constexpr gpio_num_t kDialA = gpio_pin(hexe::board::pins::kVoicePeDialA);
 constexpr gpio_num_t kDialB = gpio_pin(hexe::board::pins::kVoicePeDialB);
+constexpr int64_t kShortPressMinUs = 30 * 1000;
 constexpr int64_t kLongPressUs = 1000 * 1000;
-constexpr int64_t kCenterReleaseDebounceUs = 1200 * 1000;
+constexpr int64_t kCenterReleaseDebounceUs = 250 * 1000;
 constexpr int kVolumeStepPercent = 5;
 constexpr int kQuadratureStepsPerDetent = 2;
 
@@ -116,12 +117,21 @@ void handle_center_release(int64_t duration_us) {
   auto &state = hexe::state();
   const int64_t now_us = esp_timer_get_time();
   if (g_last_center_handled_at_us > 0 && now_us - g_last_center_handled_at_us < kCenterReleaseDebounceUs) {
-    ESP_LOGI(kTag, "Center button release ignored by debounce");
+    ESP_LOGI(
+        kTag,
+        "Center button release ignored by debounce duration_ms=%lld since_last_ms=%lld",
+        static_cast<long long>(duration_us / 1000),
+        static_cast<long long>((now_us - g_last_center_handled_at_us) / 1000));
     return;
   }
   if (g_center_rotary_consumed) {
     g_center_rotary_consumed = false;
     ESP_LOGI(kTag, "Center button release consumed by rotary color selection");
+    return;
+  }
+
+  if (duration_us < kShortPressMinUs) {
+    ESP_LOGI(kTag, "Center button release ignored as bounce duration_ms=%lld", static_cast<long long>(duration_us / 1000));
     return;
   }
 
@@ -147,10 +157,11 @@ void handle_center_release(int64_t duration_us) {
     }
     if (!hexe::voice::start_voice_session("button")) {
       state.phase = hexe::idle_or_connecting_phase();
+      ESP_LOGW(kTag, "Center button short press failed to start voice session reason=%s", hexe::voice::voice_session_start_unavailable_reason());
     }
   }
   g_last_center_handled_at_us = now_us;
-  ESP_LOGI(kTag, "Center button press handled");
+  ESP_LOGI(kTag, "Center button short press handled duration_ms=%lld", static_cast<long long>(duration_us / 1000));
 }
 }  // namespace
 
@@ -184,6 +195,7 @@ void update_buttons() {
   if (pressed && !g_last_center_pressed) {
     g_center_pressed_at_us = now_us;
     g_center_rotary_consumed = false;
+    ESP_LOGI(kTag, "Center button down");
   } else if (!pressed && g_last_center_pressed) {
     handle_center_release(g_center_pressed_at_us > 0 ? now_us - g_center_pressed_at_us : 0);
     g_center_pressed_at_us = 0;

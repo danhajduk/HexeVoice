@@ -309,3 +309,9 @@ Task 291: Add BLE onboarding end-to-end tests, fake BLE/GATT harnesses, security
 Task 292: Define HexeVoice endpoint behavior for Core-published BLE pairing sessions - Completed on 09/03/2026 12:16
 Task 293: Implement endpoint firmware BLE central scanning for Hexe pairing adverts - Completed on 09/03/2026 12:40
 Task 294: Implement endpoint-to-Supervisor GATT pairing identity exchange and provisioning handoff - Completed on 09/03/2026 12:50
+Task 299: Align HA Voice PE ESP32-S3 memory configuration with the ESPHome reference firmware - Completed on 09/06/2026 10:16
+Task 300: Disable BLE in full endpoint firmware outside explicit pairing or recovery windows - Completed on 09/06/2026 10:16
+Task 301: Reconcile HA Voice PE XMOS microphone channel handling with the ESPHome reference firmware - Completed on 09/06/2026 10:16
+Task 302: Make firmware VAD advisory and move endpoint turn finalization authority to the backend - Completed on 09/06/2026 10:16
+Task 303: Keep HA Voice PE voice upload on the stable buffered HTTP path until a low-memory live transport is designed - Completed on 09/06/2026 10:16
+Task 304: Tighten HA Voice PE button wake readiness gating and voice-session diagnostics - Completed on 09/06/2026 10:16
