@@ -10,6 +10,10 @@
 #include <string>
 
 #include "endpoint_config.h"
+#include "board_profile_pins.h"
+#include "driver/gpio.h"
+#include "driver/i2c_master.h"
+#include "driver/i2s_std.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -45,9 +49,39 @@ constexpr EventBits_t kWifiConnectedBit = BIT0;
 constexpr EventBits_t kWifiFailedBit = BIT1;
 constexpr size_t kSmallProbeBytes = 9600;
 constexpr size_t kLargeProbeBytes = 245760;
+constexpr size_t kMicProbeSamples = 32000;
+constexpr size_t kMicProbeBytes = kMicProbeSamples * sizeof(int16_t);
 constexpr size_t kSendChunkBytes = 1024;
 constexpr int kWifiMaxRetries = 20;
 constexpr int kSocketTimeoutMs = 5000;
+constexpr int kSampleRate = 16000;
+constexpr size_t kFrameSamples = 320;
+
+constexpr gpio_num_t gpio_pin(int pin) {
+  return static_cast<gpio_num_t>(pin);
+}
+
+constexpr gpio_num_t kMicBclk = gpio_pin(hexe::board::pins::kVoicePeMicBclk);
+constexpr gpio_num_t kMicLrclk = gpio_pin(hexe::board::pins::kVoicePeMicLrclk);
+constexpr gpio_num_t kMicDin = gpio_pin(hexe::board::pins::kVoicePeMicDin);
+constexpr gpio_num_t kVoiceKitReset = gpio_pin(hexe::board::pins::kVoicePeVoiceKitReset);
+constexpr i2c_port_num_t kVoiceKitI2cPort = hexe::board::pins::kVoicePeI2cPort;
+constexpr gpio_num_t kVoiceKitI2cSda = gpio_pin(hexe::board::pins::kVoicePeI2cSda);
+constexpr gpio_num_t kVoiceKitI2cScl = gpio_pin(hexe::board::pins::kVoicePeI2cScl);
+constexpr int kMicI2sPort = hexe::board::pins::kVoicePeMicPort;
+constexpr uint8_t kVoiceKitI2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeVoiceKitI2cAddress);
+constexpr uint32_t kVoiceKitI2cClockHz = static_cast<uint32_t>(hexe::board::pins::kVoicePeI2cClockHz);
+constexpr uint32_t kVoiceKitBootDelayMs = 3000;
+constexpr uint32_t kVoiceKitI2cTimeoutMs = 1000;
+constexpr uint8_t kVoiceKitCtrlDone = 0;
+constexpr uint8_t kDfuServicerResid = 240;
+constexpr uint8_t kConfigurationServicerResid = 241;
+constexpr uint8_t kReadCommandBit = 0x80;
+constexpr uint8_t kDfuGetVersionCommand = 88;
+constexpr uint8_t kChannel0PipelineStage = 0x30;
+constexpr uint8_t kChannel1PipelineStage = 0x40;
+constexpr uint8_t kPipelineAgc = 4;
+constexpr uint8_t kPipelineNs = 3;
 
 struct ProbeSettings {
   char endpoint_id[64];
@@ -60,6 +94,10 @@ struct ProbeSettings {
 EventGroupHandle_t g_wifi_event_group = nullptr;
 int g_wifi_retry_count = 0;
 char g_ip_address[16] = "0.0.0.0";
+i2s_chan_handle_t g_rx_channel = nullptr;
+i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
+i2c_master_dev_handle_t g_voice_kit_i2c_device = nullptr;
+std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
 
 void copy_string(char *target, size_t target_size, const char *value) {
   if (target == nullptr || target_size == 0) {
@@ -336,6 +374,199 @@ void fill_pcm_pattern(char *data, size_t size) {
   }
 }
 
+uint32_t estimate_level(const int16_t *samples, size_t count) {
+  uint64_t total = 0;
+  for (size_t index = 0; index < count; ++index) {
+    const int32_t sample = samples[index];
+    total += sample < 0 ? static_cast<uint32_t>(-sample) : static_cast<uint32_t>(sample);
+  }
+  return count == 0 ? 0 : static_cast<uint32_t>(total / count);
+}
+
+int16_t voice_channel_sample(int32_t left, int32_t right) {
+  (void)right;
+  return static_cast<int16_t>(std::clamp<int32_t>(left >> 16, -32768, 32767));
+}
+
+bool voice_kit_write(const uint8_t *data, size_t size) {
+  const esp_err_t result = i2c_master_transmit(
+      g_voice_kit_i2c_device,
+      data,
+      size,
+      pdMS_TO_TICKS(kVoiceKitI2cTimeoutMs));
+  if (result != ESP_OK) {
+    ESP_LOGW(kTag, "Voice Kit I2C write failed: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool voice_kit_read(uint8_t *data, size_t size) {
+  const esp_err_t result = i2c_master_receive(
+      g_voice_kit_i2c_device,
+      data,
+      size,
+      pdMS_TO_TICKS(kVoiceKitI2cTimeoutMs));
+  if (result != ESP_OK) {
+    ESP_LOGW(kTag, "Voice Kit I2C read failed: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool init_voice_kit_i2c() {
+  i2c_master_bus_config_t bus_config = {};
+  bus_config.i2c_port = kVoiceKitI2cPort;
+  bus_config.sda_io_num = kVoiceKitI2cSda;
+  bus_config.scl_io_num = kVoiceKitI2cScl;
+  bus_config.clk_source = I2C_CLK_SRC_DEFAULT;
+  bus_config.glitch_ignore_cnt = 7;
+  bus_config.flags.enable_internal_pullup = true;
+
+  esp_err_t result = i2c_new_master_bus(&bus_config, &g_voice_kit_i2c_bus);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to create Voice Kit I2C bus: %s", esp_err_to_name(result));
+    return false;
+  }
+
+  i2c_device_config_t device_config = {};
+  device_config.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+  device_config.device_address = kVoiceKitI2cAddress;
+  device_config.scl_speed_hz = kVoiceKitI2cClockHz;
+
+  result = i2c_master_bus_add_device(g_voice_kit_i2c_bus, &device_config, &g_voice_kit_i2c_device);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to add Voice Kit I2C device: %s", esp_err_to_name(result));
+    return false;
+  }
+  return true;
+}
+
+bool read_voice_kit_version() {
+  const uint8_t request[] = {
+      kDfuServicerResid,
+      static_cast<uint8_t>(kDfuGetVersionCommand | kReadCommandBit),
+      4,
+  };
+  uint8_t response[4] = {};
+  if (!voice_kit_write(request, sizeof(request)) || !voice_kit_read(response, sizeof(response))) {
+    return false;
+  }
+  if (response[0] != kVoiceKitCtrlDone) {
+    ESP_LOGW(kTag, "Voice Kit version response not ready: status=%u", response[0]);
+    return false;
+  }
+  ESP_LOGI(kTag, "Voice Kit XMOS firmware version %u.%u.%u", response[1], response[2], response[3]);
+  return true;
+}
+
+bool write_voice_kit_pipeline_stage(uint8_t channel_register, uint8_t stage) {
+  const uint8_t request[] = {
+      kConfigurationServicerResid,
+      channel_register,
+      1,
+      stage,
+  };
+  return voice_kit_write(request, sizeof(request));
+}
+
+bool init_voice_kit() {
+  gpio_config_t output_config = {};
+  output_config.pin_bit_mask = 1ULL << kVoiceKitReset;
+  output_config.mode = GPIO_MODE_OUTPUT;
+  gpio_config(&output_config);
+
+  if (!init_voice_kit_i2c()) {
+    return false;
+  }
+
+  gpio_set_level(kVoiceKitReset, 1);
+  vTaskDelay(pdMS_TO_TICKS(1));
+  gpio_set_level(kVoiceKitReset, 0);
+  vTaskDelay(pdMS_TO_TICKS(kVoiceKitBootDelayMs));
+
+  if (!read_voice_kit_version()) {
+    ESP_LOGE(kTag, "Voice Kit did not respond after reset; microphone I2S clocks are unavailable");
+    return false;
+  }
+  if (!write_voice_kit_pipeline_stage(kChannel0PipelineStage, kPipelineAgc) ||
+      !write_voice_kit_pipeline_stage(kChannel1PipelineStage, kPipelineNs)) {
+    ESP_LOGE(kTag, "Failed to configure Voice Kit microphone pipeline");
+    return false;
+  }
+  return true;
+}
+
+bool start_microphone_stream() {
+  i2s_chan_config_t channel_config = I2S_CHANNEL_DEFAULT_CONFIG(kMicI2sPort, I2S_ROLE_SLAVE);
+  channel_config.dma_desc_num = 6;
+  channel_config.dma_frame_num = kFrameSamples;
+  esp_err_t result = i2s_new_channel(&channel_config, nullptr, &g_rx_channel);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to create Voice PE I2S RX channel: %s", esp_err_to_name(result));
+    return false;
+  }
+
+  i2s_std_config_t std_config = {};
+  std_config.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(kSampleRate);
+  std_config.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_STEREO);
+  std_config.gpio_cfg = {
+      .mclk = I2S_GPIO_UNUSED,
+      .bclk = kMicBclk,
+      .ws = kMicLrclk,
+      .dout = I2S_GPIO_UNUSED,
+      .din = kMicDin,
+      .invert_flags = {},
+  };
+
+  result = i2s_channel_init_std_mode(g_rx_channel, &std_config);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to initialize Voice PE I2S RX mode: %s", esp_err_to_name(result));
+    return false;
+  }
+
+  result = i2s_channel_enable(g_rx_channel);
+  if (result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to enable Voice PE microphone stream: %s", esp_err_to_name(result));
+    return false;
+  }
+  ESP_LOGI(kTag, "Voice PE microphone probe stream initialized");
+  return true;
+}
+
+size_t capture_microphone_pcm(int16_t *samples, size_t max_samples, uint32_t *level) {
+  size_t captured_samples = 0;
+  uint64_t level_total = 0;
+  uint32_t level_frames = 0;
+  while (captured_samples < max_samples) {
+    size_t bytes_read = 0;
+    const esp_err_t result = i2s_channel_read(
+        g_rx_channel,
+        g_raw_samples.data(),
+        g_raw_samples.size() * sizeof(g_raw_samples[0]),
+        &bytes_read,
+        pdMS_TO_TICKS(500));
+    if (result != ESP_OK || bytes_read == 0) {
+      ESP_LOGW(kTag, "Voice PE microphone probe read failed: %s bytes=%u", esp_err_to_name(result), static_cast<unsigned>(bytes_read));
+      break;
+    }
+
+    const size_t stereo_frames = std::min(bytes_read / (sizeof(int32_t) * 2), kFrameSamples);
+    const size_t writable_frames = std::min(stereo_frames, max_samples - captured_samples);
+    for (size_t index = 0; index < writable_frames; ++index) {
+      samples[captured_samples + index] = voice_channel_sample(g_raw_samples[index * 2], g_raw_samples[(index * 2) + 1]);
+    }
+    level_total += estimate_level(samples + captured_samples, writable_frames);
+    ++level_frames;
+    captured_samples += writable_frames;
+  }
+
+  if (level != nullptr) {
+    *level = level_frames == 0 ? 0 : static_cast<uint32_t>(level_total / level_frames);
+  }
+  return captured_samples;
+}
+
 bool post_probe(
     const ProbeSettings &settings,
     const char *source,
@@ -423,6 +654,28 @@ void run_probe_sequence(const ProbeSettings &settings) {
   post_probe(settings, "psram-staged-small", psram_audio, kSmallProbeBytes, true);
   post_probe(settings, "psram-staged-large", psram_audio, kLargeProbeBytes, true);
   heap_caps_free(psram_audio);
+
+  if (!init_voice_kit() || !start_microphone_stream()) {
+    ESP_LOGE(kTag, "Skipping PE microphone probe because microphone initialization failed");
+    return;
+  }
+  int16_t *mic_audio = static_cast<int16_t *>(heap_caps_malloc(kMicProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (mic_audio == nullptr) {
+    ESP_LOGE(kTag, "Failed to allocate microphone probe buffer bytes=%u free_psram=%u", static_cast<unsigned>(kMicProbeBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+    return;
+  }
+  uint32_t level = 0;
+  const size_t captured_samples = capture_microphone_pcm(mic_audio, kMicProbeSamples, &level);
+  ESP_LOGI(
+      kTag,
+      "Voice PE microphone probe captured samples=%u bytes=%u level=%u",
+      static_cast<unsigned>(captured_samples),
+      static_cast<unsigned>(captured_samples * sizeof(int16_t)),
+      static_cast<unsigned>(level));
+  if (captured_samples > 0) {
+    post_probe(settings, "pe-mic-staged", reinterpret_cast<const char *>(mic_audio), captured_samples * sizeof(int16_t), true);
+  }
+  heap_caps_free(mic_audio);
 }
 }  // namespace
 
