@@ -2104,6 +2104,7 @@ def create_app(
             endpoint_id=endpoint_id,
             board_profile=library.board_profile,
             schema_version=library.schema_version,
+            asset_library_version=library.asset_library_version,
             assets=[
                 endpoint_board_media_asset_response(library.board_profile, asset)
                 for asset in library.assets

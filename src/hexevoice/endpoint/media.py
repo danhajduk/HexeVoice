@@ -89,6 +89,7 @@ class EndpointBoardMediaAsset(BaseModel):
 class EndpointBoardMediaLibrary(BaseModel):
     schema_version: int = 1
     board_profile: str
+    asset_library_version: str | None = None
     assets: list[EndpointBoardMediaAsset] = Field(default_factory=list)
     updated_at: str | None = None
 
@@ -216,6 +217,7 @@ class EndpointMediaService:
         return EndpointBoardMediaLibrary(
             schema_version=schema_version,
             board_profile=library_board,
+            asset_library_version=str(payload.get("asset_library_version")) if payload.get("asset_library_version") else None,
             assets=assets,
             updated_at=str(payload.get("updated_at")) if payload.get("updated_at") else None,
         )

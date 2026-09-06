@@ -598,6 +598,7 @@ class EndpointBoardMediaLibraryResponse(BaseModel):
     endpoint_id: str | None = None
     board_profile: str
     schema_version: int = 1
+    asset_library_version: str | None = None
     assets: list[EndpointBoardMediaAssetResponse] = Field(default_factory=list)
     updated_at: str | None = None
 

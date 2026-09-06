@@ -23,6 +23,7 @@ firmware:
 {
   "schema_version": 1,
   "board_profile": "ha_voice_pe",
+  "asset_library_version": "2026.09.06.1",
   "assets": [
     {
       "asset_id": "idle_face",
@@ -42,7 +43,9 @@ firmware:
 The backend computes `size_bytes`, `sha256`, fixed SD destination, endpoint
 path, content type, and download URL from the board library at request time.
 The endpoint can request `/api/endpoint/media/library/{endpoint_id}` after it
-has reported its board profile through discovery or heartbeat.
+has reported its board profile through discovery or heartbeat, then compare
+`asset_library_version` before downloading changed assets. Per-file `sha256`
+remains the final integrity check.
 
 ## Destinations
 

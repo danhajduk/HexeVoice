@@ -1470,6 +1470,7 @@ def test_endpoint_board_media_library_serves_board_assets(tmp_path):
             {
                 "schema_version": 1,
                 "board_profile": "ha_voice_pe",
+                "asset_library_version": "2026.09.06.1",
                 "assets": [
                     {
                         "asset_id": "idle_face",
@@ -1500,6 +1501,7 @@ def test_endpoint_board_media_library_serves_board_assets(tmp_path):
     body = library.json()
     assert body["endpoint_id"] is None
     assert body["board_profile"] == "ha_voice_pe"
+    assert body["asset_library_version"] == "2026.09.06.1"
     assert body["assets"][0]["asset_id"] == "idle_face"
     assert body["assets"][0]["destination"] == "picture"
     assert body["assets"][0]["endpoint_path"] == "/sdcard/hexe/pictures/idle.rgb565"
@@ -1518,6 +1520,7 @@ def test_endpoint_media_library_resolves_board_from_endpoint(tmp_path):
         json.dumps(
             {
                 "schema_version": 1,
+                "asset_library_version": "2026.09.06.2",
                 "assets": [
                     {
                         "asset_id": "startup_chime",
@@ -1554,6 +1557,7 @@ def test_endpoint_media_library_resolves_board_from_endpoint(tmp_path):
     body = library.json()
     assert body["endpoint_id"] == "esp-pe-1"
     assert body["board_profile"] == "ha_voice_pe"
+    assert body["asset_library_version"] == "2026.09.06.2"
     assert body["assets"][0]["asset_id"] == "startup_chime"
     assert body["assets"][0]["destination"] == "sound"
     assert body["assets"][0]["endpoint_path"] == "/sdcard/hexe/sounds/chime.wav"
