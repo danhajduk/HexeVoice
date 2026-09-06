@@ -632,11 +632,18 @@ bool send_transport_chunk(const int16_t *samples, size_t sample_count) {
   return false;
 }
 
+size_t transport_flush_sample_limit() {
+  if (kVoiceAudioWebSocketUploadEnabled) {
+    return g_transport_samples.size();
+  }
+  return std::min(g_transport_samples.size(), kVoiceAudioHttpUploadChunkSamples);
+}
+
 bool flush_transport_samples(bool force) {
   if (g_transport_sample_count == 0) {
     return true;
   }
-  if (!force && g_transport_sample_count < g_transport_samples.size()) {
+  if (!force && g_transport_sample_count < transport_flush_sample_limit()) {
     return true;
   }
 
@@ -681,7 +688,8 @@ bool append_transport_frame(const AudioFrame &frame) {
   merge_transport_audio_metrics(frame);
   size_t offset = 0;
   while (offset < frame.sample_count) {
-    const size_t available = g_transport_samples.size() - g_transport_sample_count;
+    const size_t flush_sample_limit = transport_flush_sample_limit();
+    const size_t available = flush_sample_limit - g_transport_sample_count;
     const size_t to_copy = std::min(available, frame.sample_count - offset);
     std::copy(
         frame.samples.begin() + offset,
@@ -690,7 +698,7 @@ bool append_transport_frame(const AudioFrame &frame) {
     g_transport_sample_count += to_copy;
     offset += to_copy;
 
-    if (g_transport_sample_count == g_transport_samples.size() && !flush_transport_samples(false)) {
+    if (g_transport_sample_count == flush_sample_limit && !flush_transport_samples(false)) {
       return false;
     }
     if (g_transport_sample_count == 0 && offset < frame.sample_count) {
