@@ -27,5 +27,10 @@ Task 290 adds local BLE rescue provisioning on native-BLE recovery boards:
 - Core-governed encrypted BLE provisioning remains owned by the normal endpoint
   app path
 
+For `waveshare_s3_touch_lcd_1_85c_box_v2`, the recovery app embeds three
+360x360 RGB565 test plates for the round LCD: waiting to pair, pairing, and OTA
+install progress. The display refresh loop selects the plate from BLE pairing
+and firmware upload state so the minimal firmware has basic bench-test UI.
+
 The recovery app architecture contract lives in
 `docs/firmware-recovery-architecture.md`.

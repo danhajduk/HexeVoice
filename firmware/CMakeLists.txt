@@ -19,6 +19,20 @@ elseif(HEXE_FIRMWARE_APP STREQUAL "recovery")
   set(HEXE_FIRMWARE_RUNTIME_COMPONENT recovery_runtime)
   set(HEXE_FIRMWARE_ADDITIONAL_COMPONENTS espressif__cjson)
   set(HEXE_FIRMWARE_ADDITIONAL_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/managed_components/espressif__cjson")
+  if(HEXE_BOARD_PROFILE STREQUAL "waveshare_s3_touch_lcd_1_85c_box_v2")
+    list(
+      APPEND
+      HEXE_FIRMWARE_ADDITIONAL_COMPONENTS
+        espressif__cmake_utilities
+        espressif__esp_lcd_st77916
+    )
+    list(
+      APPEND
+      HEXE_FIRMWARE_ADDITIONAL_COMPONENT_DIRS
+        "${CMAKE_CURRENT_LIST_DIR}/managed_components/espressif__cmake_utilities"
+        "${CMAKE_CURRENT_LIST_DIR}/managed_components/espressif__esp_lcd_st77916"
+    )
+  endif()
 else()
   message(FATAL_ERROR "Unsupported HEXE_FIRMWARE_APP=${HEXE_FIRMWARE_APP}")
 endif()

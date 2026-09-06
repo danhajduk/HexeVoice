@@ -60,15 +60,38 @@ endif()
 message(STATUS "Hexe recovery board profile: ${HEXE_BOARD_PROFILE}")
 message(STATUS "Hexe recovery partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
 
+set(HEXE_RECOVERY_EMBED_FILES "")
+set(HEXE_RECOVERY_DISPLAY_REQUIRES "")
+if(HEXE_BOARD_PROFILE STREQUAL "waveshare_s3_touch_lcd_1_85c_box_v2")
+  list(
+    APPEND
+    HEXE_RECOVERY_EMBED_FILES
+      "assets/min_fw_waiting_to_pair.rgb565"
+      "assets/min_fw_pairing.rgb565"
+      "assets/ota_progress.rgb565"
+  )
+  list(
+    APPEND
+    HEXE_RECOVERY_DISPLAY_REQUIRES
+      esp_lcd
+      esp_driver_i2c
+      esp_driver_spi
+      espressif__esp_lcd_st77916
+  )
+endif()
+
 idf_component_register(
   SRCS
     "../endpoint_runtime/system/ble_provisioning_gatt.c"
     "recovery_ble_provisioning.cpp"
     "recovery_control.cpp"
+    "recovery_display.cpp"
     "recovery_status.cpp"
   INCLUDE_DIRS
     "."
     "${HEXE_GENERATED_DIR}"
+  EMBED_FILES
+    ${HEXE_RECOVERY_EMBED_FILES}
   REQUIRES
     app_update
     bt
@@ -89,6 +112,7 @@ idf_component_register(
     nvs_flash
     espressif__cjson
     spi_flash
+    ${HEXE_RECOVERY_DISPLAY_REQUIRES}
 )
 
 target_compile_definitions(

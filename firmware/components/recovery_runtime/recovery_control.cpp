@@ -1,6 +1,7 @@
 #include "recovery_control.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cerrno>
 #include <cctype>
@@ -75,6 +76,10 @@ TaskHandle_t g_recovery_discovery_task = nullptr;
 char g_network_mode[12] = "not_started";
 char g_ip_address[16] = "0.0.0.0";
 char g_recovery_discovery_status[32] = "not_started";
+std::atomic<bool> g_firmware_install_active{false};
+std::atomic<int> g_firmware_install_received{0};
+std::atomic<int> g_firmware_install_total{0};
+std::atomic<int> g_firmware_install_state{0};
 
 struct InstallHeaders {
   char application_type[16];
@@ -96,6 +101,13 @@ struct RecoveryDiscoveryContext {
   char backend_host[96];
   int http_port;
   bool use_tls;
+};
+
+enum FirmwareInstallState {
+  kFirmwareInstallIdle = 0,
+  kFirmwareInstallActive = 1,
+  kFirmwareInstallCompleted = 2,
+  kFirmwareInstallFailed = 3,
 };
 
 void copy_cstr(char *target, size_t target_size, const char *value) {
@@ -1174,9 +1186,16 @@ esp_err_t firmware_install_post_handler(httpd_req_t *req) {
     return ESP_OK;
   }
 
+  g_firmware_install_received.store(0);
+  g_firmware_install_total.store(headers.size_bytes);
+  g_firmware_install_active.store(true);
+  g_firmware_install_state.store(kFirmwareInstallActive);
+
   esp_ota_handle_t ota_handle = 0;
   esp_err_t err = esp_ota_begin(update_partition, headers.size_bytes, &ota_handle);
   if (err != ESP_OK) {
+    g_firmware_install_active.store(false);
+    g_firmware_install_state.store(kFirmwareInstallFailed);
     send_error_json(req, "500 Internal Server Error", "ota_begin_failed", esp_err_to_name(err));
     return ESP_OK;
   }
@@ -1207,6 +1226,7 @@ esp_err_t firmware_install_post_handler(httpd_req_t *req) {
     }
     err = esp_ota_write(ota_handle, buffer.data(), chunk);
     received += chunk;
+    g_firmware_install_received.store(received);
   }
 
   unsigned char digest[32] = {};
@@ -1238,9 +1258,14 @@ esp_err_t firmware_install_post_handler(httpd_req_t *req) {
         esp_err_to_name(err),
         received,
         req->content_len);
+    g_firmware_install_active.store(false);
+    g_firmware_install_state.store(kFirmwareInstallFailed);
     send_error_json(req, "500 Internal Server Error", "firmware_install_failed", esp_err_to_name(err));
     return ESP_OK;
   }
+  g_firmware_install_received.store(headers.size_bytes);
+  g_firmware_install_active.store(false);
+  g_firmware_install_state.store(kFirmwareInstallCompleted);
   ESP_LOGI(
       kTag,
       "Recovery firmware install completed partition=%s version=%s sha256=%.12s reboot=%d",
@@ -1367,6 +1392,33 @@ bool recovery_temporary_ap_active() {
 
 const char *recovery_discovery_status() {
   return g_recovery_discovery_status;
+}
+
+bool recovery_firmware_install_active() {
+  return g_firmware_install_active.load();
+}
+
+int recovery_firmware_install_progress_percent() {
+  const int total = g_firmware_install_total.load();
+  if (total <= 0) {
+    return 0;
+  }
+  const int received = std::clamp(g_firmware_install_received.load(), 0, total);
+  return std::clamp((received * 100) / total, 0, 100);
+}
+
+const char *recovery_firmware_install_state() {
+  switch (g_firmware_install_state.load()) {
+    case kFirmwareInstallActive:
+      return "active";
+    case kFirmwareInstallCompleted:
+      return "completed";
+    case kFirmwareInstallFailed:
+      return "failed";
+    case kFirmwareInstallIdle:
+    default:
+      return "idle";
+  }
 }
 
 std::string render_partitions_json() {

@@ -14,6 +14,9 @@ const char *recovery_network_mode();
 const char *recovery_ip_address();
 bool recovery_temporary_ap_active();
 const char *recovery_discovery_status();
+bool recovery_firmware_install_active();
+int recovery_firmware_install_progress_percent();
+const char *recovery_firmware_install_state();
 std::string render_partitions_json();
 std::string render_diagnostics_json();
 

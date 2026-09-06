@@ -1,0 +1,5 @@
+dependencies:
+  idf:
+    version: '>=5.4'
+  espressif/cjson: ^1.7.19~2
+  espressif/esp_lcd_st77916: ^2.0.2
