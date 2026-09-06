@@ -52,6 +52,11 @@ remains the final integrity check.
 Asset payload files are resolved from the media-type subfolder under the board
 asset library, such as `assets/picture/idle.rgb565`,
 `assets/sprite/avatar.rgb565`, or `assets/sound/chime.wav`.
+Regenerate the library after changing board assets with:
+
+```bash
+python firmware/tools/generate-board-asset-library.py --asset-library-version 2026.09.06.1 ha_voice_pe
+```
 
 ## Destinations
 
