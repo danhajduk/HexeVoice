@@ -38,8 +38,8 @@ hardware:
     transport: native
 features:
   display: true
-  touch: false
-  sd_card: false
+  touch: true
+  sd_card: true
   speaker: true
   microphone: true
   led_ring: false
@@ -60,7 +60,7 @@ display:
   width_px: 360
   height_px: 360
   color_depth: 262k_colors
-  touch: false
+  touch: true
 audio:
   input:
     available: true
@@ -196,15 +196,15 @@ adapters:
     - board/storage_waveshare_s3_1_85c_box_v2.cpp
     - board/touch_waveshare_s3_1_85c_box_v2.cpp
     - voice/tts_player_waveshare_s3_1_85c_box_v2.cpp
-  notes: Buildable scaffold. Display, ES7210 microphone, ES8311 playback, and shared bus adapters are implemented; touch, SD media, and button adapters are explicit PLACEHOLDER adapters.
+  notes: Buildable scaffold. Display, CST816S touch, SDMMC media storage, ES7210 microphone, ES8311 playback, and shared bus adapters are implemented; the button adapter is an explicit PLACEHOLDER adapter.
 storage:
   internal: nvs_and_internal_flash
   sd_card:
-    available: false
+    available: true
     driver: sdmmc
     interface: sdmmc_1bit
     gpio: null
-    notes: PLACEHOLDER pending SDMMC adapter implementation. Physical pins are CLK=GPIO14, CMD=GPIO17, D0=GPIO16.
+    notes: SDMMC 1-bit media storage for UI graphics and sounds. Physical pins are CLK=GPIO14, CMD=GPIO17, D0=GPIO16.
   config: encrypted_nvs
   calibration: encrypted_nvs_or_internal_metrics_store
   media: sd_preferred_with_embedded_fallback
@@ -233,8 +233,8 @@ indicators:
     gpio: 5
 capability_overrides:
   display: true
-  touchscreen: false
-  storage: false
+  touchscreen: true
+  storage: true
   audio_input: true
   audio_output: true
 notes:

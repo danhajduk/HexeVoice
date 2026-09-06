@@ -1,5 +1,6 @@
 #include "board/display.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -203,13 +204,17 @@ void init_display() {
     return;
   }
 
-  spi_bus_config_t bus_config = ST77916_PANEL_BUS_QSPI_CONFIG(
-      pins::kWs185DisplayClk,
-      pins::kWs185DisplayData0,
-      pins::kWs185DisplayData1,
-      pins::kWs185DisplayData2,
-      pins::kWs185DisplayData3,
-      kWidth * kFlushRows * sizeof(uint16_t));
+  spi_bus_config_t bus_config = {};
+  bus_config.data0_io_num = pins::kWs185DisplayData0;
+  bus_config.data1_io_num = pins::kWs185DisplayData1;
+  bus_config.sclk_io_num = pins::kWs185DisplayClk;
+  bus_config.data2_io_num = pins::kWs185DisplayData2;
+  bus_config.data3_io_num = pins::kWs185DisplayData3;
+  bus_config.data4_io_num = -1;
+  bus_config.data5_io_num = -1;
+  bus_config.data6_io_num = -1;
+  bus_config.data7_io_num = -1;
+  bus_config.max_transfer_sz = kWidth * kFlushRows * sizeof(uint16_t);
   esp_err_t result = spi_bus_initialize(kDisplaySpiHost, &bus_config, SPI_DMA_CH_AUTO);
   if (result != ESP_OK && result != ESP_ERR_INVALID_STATE) {
     ESP_LOGE(kTag, "Failed to initialize ST77916 SPI bus: %s", esp_err_to_name(result));
@@ -217,7 +222,17 @@ void init_display() {
   }
 
   esp_lcd_panel_io_handle_t io_handle = nullptr;
-  esp_lcd_panel_io_spi_config_t io_config = ST77916_PANEL_IO_QSPI_CONFIG(pins::kWs185DisplayCs, on_color_transfer_done, &g_flush_done);
+  esp_lcd_panel_io_spi_config_t io_config = {};
+  io_config.cs_gpio_num = gpio_pin(pins::kWs185DisplayCs);
+  io_config.dc_gpio_num = GPIO_NUM_NC;
+  io_config.spi_mode = 0;
+  io_config.pclk_hz = 40 * 1000 * 1000;
+  io_config.trans_queue_depth = 10;
+  io_config.on_color_trans_done = on_color_transfer_done;
+  io_config.user_ctx = &g_flush_done;
+  io_config.lcd_cmd_bits = 32;
+  io_config.lcd_param_bits = 8;
+  io_config.flags.quad_mode = 1;
   result = esp_lcd_new_panel_io_spi(static_cast<esp_lcd_spi_bus_handle_t>(kDisplaySpiHost), &io_config, &io_handle);
   if (result != ESP_OK) {
     ESP_LOGE(kTag, "Failed to create ST77916 panel IO: %s", esp_err_to_name(result));

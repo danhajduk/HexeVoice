@@ -153,7 +153,14 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "board/touch_waveshare_s3_1_85c_box_v2.cpp",
         "voice/tts_player_waveshare_s3_1_85c_box_v2.cpp",
     ]
-    assert "PLACEHOLDER" in profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["notes"]
+    ws185 = profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]
+    assert ws185["features"]["touch"] is True
+    assert ws185["features"]["sd_card"] is True
+    assert ws185["display"]["touch"] is True
+    assert ws185["storage"]["sd_card"]["available"] is True
+    assert ws185["capability_overrides"]["touchscreen"] is True
+    assert ws185["capability_overrides"]["storage"] is True
+    assert "button adapter is an explicit PLACEHOLDER" in ws185["adapters"]["notes"]
 
 
 def test_buildable_board_profiles_declare_complete_wiring():

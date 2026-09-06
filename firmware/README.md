@@ -86,6 +86,11 @@ Use a 16 GB or 32 GB FAT32 card for the smoothest path. A 64 GB card should use 
 
 Those paths are the stable drop zones for picture, sprite, scene manifest, and sound loading.
 
+The Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2 uses its onboard SDMMC slot in
+1-bit mode for the same media tree. That profile mounts FAT-formatted cards at
+`/sdcard` using CLK=`GPIO14`, CMD=`GPIO17`, and D0=`GPIO16`; UI graphics should
+be placed under `/sdcard/hexe/pictures`.
+
 ## Next Build Step
 
 Once ESP-IDF is installed locally, the intended workflow is:
@@ -102,7 +107,7 @@ source selection and the dev-board wiring used to generate
 
 - ESP-BOX-3: build directory `firmware/build`, flash export `firmware/export`, OTA binary `runtime/firmware/hexe_firmware_esp_box_3.bin`, and legacy OTA binary `runtime/firmware/hexe_firmware.bin`.
 - Home Assistant Voice Preview Edition: build directory `firmware/build-ha-voice-pe`, flash export `firmware/export-ha-voice-pe`, and OTA binary `runtime/firmware/hexe_firmware_ha_voice_pe.bin`.
-- Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2: build directory `firmware/build-waveshare_s3_touch_lcd_1_85c_box_v2`, flash export `firmware/export-waveshare_s3_touch_lcd_1_85c_box_v2`, and OTA binary `runtime/firmware/hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin`.
+- Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2: build directory `firmware/build-waveshare_s3_touch_lcd_1_85c_box_v2`, flash export `firmware/export-waveshare_s3_touch_lcd_1_85c_box_v2`, OTA binary `runtime/firmware/hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin`, CST816S touch, and SDMMC UI media storage.
 
 The root helper wraps this default flow and stamps every selected board with one
 shared firmware version:
