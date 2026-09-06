@@ -2135,6 +2135,24 @@ def create_app(
         except EndpointMediaValidationError as exc:
             raise media_error(exc) from exc
 
+    @app.get("/firmware/assets/{board_profile}/assets/{asset_path:path}", response_model=None)
+    async def firmware_board_asset_file(board_profile: str, asset_path: str):
+        try:
+            if asset_path == "assets.json":
+                library = await asyncio.to_thread(endpoint_media_service.board_asset_library, board_profile)
+                return JSONResponse(
+                    content=endpoint_board_media_library_response(library).model_dump(mode="json"),
+                    media_type="application/json",
+                )
+            path, content_type = await asyncio.to_thread(
+                endpoint_media_service.board_asset_raw_path,
+                board_profile,
+                asset_path,
+            )
+            return FileResponse(path, media_type=content_type)
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+
     @app.get("/api/endpoint/media/library/{endpoint_id}", response_model=EndpointBoardMediaLibraryResponse)
     async def endpoint_media_library(endpoint_id: str) -> EndpointBoardMediaLibraryResponse:
         endpoint = endpoint_service.status(endpoint_id)

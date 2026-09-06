@@ -237,6 +237,42 @@ class EndpointMediaService:
                 return asset, path
         raise EndpointMediaValidationError("board_asset_not_found", "Board asset was not found.", status_code=404)
 
+    def board_asset_raw_path(self, board_profile: str, asset_path: str) -> tuple[Path, str]:
+        assets_dir = self._board_assets_dir(board_profile)
+        parts = [part for part in asset_path.split("/") if part]
+        if parts == [BOARD_ASSET_LIBRARY_FILENAME]:
+            path = (assets_dir / BOARD_ASSET_LIBRARY_FILENAME).resolve()
+            if path.parent != assets_dir.resolve():
+                raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
+            if not path.exists():
+                raise EndpointMediaValidationError(
+                    "board_asset_library_not_found",
+                    "Board asset library was not found.",
+                    status_code=404,
+                )
+            return path, "application/json"
+
+        if len(parts) != 2:
+            raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
+        media_type_value, filename_value = parts
+        if media_type_value not in DESTINATIONS:
+            raise EndpointMediaValidationError("invalid_board_asset_media_type", "Board asset media_type is invalid.")
+        media_type = cast(EndpointMediaType, media_type_value)
+        filename = safe_filename(filename_value)
+        suffix = Path(filename).suffix.lower()
+        if suffix not in ALLOWED_EXTENSIONS[media_type]:
+            raise EndpointMediaValidationError(
+                "unsupported_media_extension",
+                f"{suffix or '<none>'} is not allowed for {media_type}.",
+            )
+        type_dir = (assets_dir / media_type).resolve()
+        path = (type_dir / filename).resolve()
+        if path.parent != type_dir:
+            raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
+        if not path.exists():
+            raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
+        return path, _content_type_for_filename(filename, media_type)
+
     def store_upload(
         self,
         *,
