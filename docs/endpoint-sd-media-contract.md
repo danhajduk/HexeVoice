@@ -2,6 +2,48 @@
 
 HexeVoice can deliver persistent media assets from the node to an endpoint SD card. The contract is endpoint-owned storage with node-owned validation and transfer orchestration.
 
+## Board Asset Libraries
+
+Board-specific default assets live under `ENDPOINT_ASSET_LIBRARY_DIR`, which
+defaults to `firmware/assets`. Each board keeps its own subfolder and JSON
+library:
+
+```text
+firmware/assets/
+  ha_voice_pe/
+    assets.json
+    idle.rgb565
+    chime.wav
+```
+
+`assets.json` contains endpoint-ready files that the backend can expose to
+firmware:
+
+```json
+{
+  "schema_version": 1,
+  "board_profile": "ha_voice_pe",
+  "assets": [
+    {
+      "asset_id": "idle_face",
+      "media_type": "picture",
+      "filename": "idle.rgb565",
+      "role": "idle_background",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "width": 320,
+        "height": 240
+      }
+    }
+  ]
+}
+```
+
+The backend computes `size_bytes`, `sha256`, fixed SD destination, endpoint
+path, content type, and download URL from the board library at request time.
+The endpoint can request `/api/endpoint/media/library/{endpoint_id}` after it
+has reported its board profile through discovery or heartbeat.
+
 ## Destinations
 
 Allowed destinations are fixed and may not be overridden by client paths:
@@ -133,6 +175,9 @@ These limits are intentionally conservative for the first endpoint media-transfe
 Current backend routes:
 
 - `GET /api/endpoint/media` lists node-staged media assets.
+- `GET /api/endpoint/media/library/{endpoint_id}` returns the asset library for the endpoint's reported board profile.
+- `GET /api/endpoint/media/library/boards/{board_profile}` returns a board asset library directly.
+- `GET /api/endpoint/media/library/boards/{board_profile}/files/{asset_id}` serves a board-library payload file.
 - `POST /api/endpoint/media` accepts JSON/base64 media uploads and stores the endpoint-ready payload.
 - `GET /api/endpoint/media/{asset_id}` returns asset metadata.
 - `GET /api/endpoint/media/inventory/{endpoint_id}` returns the latest SD inventory reported by endpoint heartbeat.

@@ -36,6 +36,12 @@ def test_voice_intent_registry_path_follows_onboarding_state_dir(tmp_path):
     assert settings.resolved_voice_intent_registry_path() == tmp_path / "voice_intents.json"
 
 
+def test_endpoint_asset_library_dir_defaults_to_firmware_assets():
+    settings = Settings()
+
+    assert settings.resolved_endpoint_asset_library_dir().as_posix() == "firmware/assets"
+
+
 def test_backend_log_path_defaults_under_runtime_logs():
     settings = Settings()
     assert settings.resolved_backend_log_path().as_posix() == "runtime/logs/hexevoice-backend.log"

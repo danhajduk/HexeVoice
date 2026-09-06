@@ -1460,6 +1460,105 @@ def test_endpoint_media_upload_validates_and_serves_picture_rgb565(tmp_path):
     assert served.content == payload
 
 
+def test_endpoint_board_media_library_serves_board_assets(tmp_path):
+    payload = bytes(320 * 240 * 2)
+    board_dir = tmp_path / "assets" / "ha_voice_pe"
+    board_dir.mkdir(parents=True)
+    (board_dir / "idle.rgb565").write_bytes(payload)
+    (board_dir / "assets.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "board_profile": "ha_voice_pe",
+                "assets": [
+                    {
+                        "asset_id": "idle_face",
+                        "media_type": "picture",
+                        "filename": "idle.rgb565",
+                        "role": "idle_background",
+                        "metadata": {"pixel_format": "rgb565", "width": 320, "height": 240},
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_asset_library_dir=tmp_path / "assets",
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    library = client.get("/api/endpoint/media/library/boards/ha_voice_pe")
+    served = client.get("/api/endpoint/media/library/boards/ha_voice_pe/files/idle_face")
+
+    assert library.status_code == 200
+    body = library.json()
+    assert body["endpoint_id"] is None
+    assert body["board_profile"] == "ha_voice_pe"
+    assert body["assets"][0]["asset_id"] == "idle_face"
+    assert body["assets"][0]["destination"] == "picture"
+    assert body["assets"][0]["endpoint_path"] == "/sdcard/hexe/pictures/idle.rgb565"
+    assert body["assets"][0]["size_bytes"] == 153600
+    assert body["assets"][0]["sha256"] == hashlib.sha256(payload).hexdigest()
+    assert body["assets"][0]["download_url"] == "http://voice-node.local:9004/api/endpoint/media/library/boards/ha_voice_pe/files/idle_face"
+    assert served.status_code == 200
+    assert served.content == payload
+
+
+def test_endpoint_media_library_resolves_board_from_endpoint(tmp_path):
+    board_dir = tmp_path / "assets" / "ha_voice_pe"
+    board_dir.mkdir(parents=True)
+    (board_dir / "chime.wav").write_bytes(_wav_bytes())
+    (board_dir / "assets.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "assets": [
+                    {
+                        "asset_id": "startup_chime",
+                        "media_type": "sound",
+                        "filename": "chime.wav",
+                        "role": "startup_sound",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_asset_library_dir=tmp_path / "assets",
+            )
+        )
+    )
+    heartbeat = client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-pe-1",
+            "hardware_id": "hw-pe-1",
+            "capabilities": {"firmware": {"board_profile": "ha_voice_pe"}},
+        },
+    )
+
+    library = client.get("/api/endpoint/media/library/esp-pe-1")
+
+    assert heartbeat.status_code == 200
+    assert library.status_code == 200
+    body = library.json()
+    assert body["endpoint_id"] == "esp-pe-1"
+    assert body["board_profile"] == "ha_voice_pe"
+    assert body["assets"][0]["asset_id"] == "startup_chime"
+    assert body["assets"][0]["destination"] == "sound"
+    assert body["assets"][0]["endpoint_path"] == "/sdcard/hexe/sounds/chime.wav"
+
+
 def test_endpoint_media_upload_rejects_unsafe_filename(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=tmp_path / "media")))
 

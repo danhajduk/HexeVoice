@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 import re
 import struct
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from uuid import uuid4
 import wave
 
@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 
 EndpointMediaType = Literal["picture", "sprite", "sound"]
+BOARD_ASSET_LIBRARY_FILENAME = "assets.json"
 
 PICTURE_BYTES = 320 * 240 * 2
 SPRITE_MAX_BYTES = 512 * 1024
@@ -70,6 +71,28 @@ class EndpointMediaLibrary(BaseModel):
     updated_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
 
 
+class EndpointBoardMediaAsset(BaseModel):
+    asset_id: str
+    media_type: EndpointMediaType
+    destination: str
+    endpoint_path: str
+    filename: str
+    source_filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    role: str | None = None
+    version: str | None = None
+
+
+class EndpointBoardMediaLibrary(BaseModel):
+    schema_version: int = 1
+    board_profile: str
+    assets: list[EndpointBoardMediaAsset] = Field(default_factory=list)
+    updated_at: str | None = None
+
+
 def safe_filename(filename: str) -> str:
     name = filename.strip()
     if not name:
@@ -95,9 +118,10 @@ def safe_asset_id(asset_id: str | None) -> str:
 
 
 class EndpointMediaService:
-    def __init__(self, *, media_dir: Path) -> None:
+    def __init__(self, *, media_dir: Path, asset_library_dir: Path | None = None) -> None:
         self._media_dir = media_dir
         self._manifest_path = media_dir / "manifest.json"
+        self._asset_library_dir = asset_library_dir
 
     def list_assets(self) -> list[EndpointMediaAsset]:
         return sorted(self._load().assets.values(), key=lambda item: item.updated_at, reverse=True)
@@ -161,6 +185,54 @@ class EndpointMediaService:
         if path.parent != asset_dir:
             raise EndpointMediaValidationError("invalid_media_path", "Stored media path is invalid.")
         return path
+
+    def board_asset_library(self, board_profile: str) -> EndpointBoardMediaLibrary:
+        requested_board = safe_asset_id(board_profile)
+        board_dir = self._board_asset_dir(board_profile)
+        library_path = board_dir / BOARD_ASSET_LIBRARY_FILENAME
+        if not library_path.exists():
+            raise EndpointMediaValidationError("board_asset_library_not_found", "Board asset library was not found.", status_code=404)
+        try:
+            payload = json.loads(library_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise EndpointMediaValidationError("invalid_board_asset_library", "Board asset library must be valid JSON.") from exc
+        if not isinstance(payload, dict):
+            raise EndpointMediaValidationError("invalid_board_asset_library", "Board asset library must be a JSON object.")
+        try:
+            schema_version = int(payload.get("schema_version") or 1)
+        except (TypeError, ValueError) as exc:
+            raise EndpointMediaValidationError("invalid_board_asset_library", "Board asset library schema_version is invalid.") from exc
+        library_board = str(payload.get("board_profile") or requested_board).strip()
+        if safe_asset_id(library_board) != requested_board:
+            raise EndpointMediaValidationError("invalid_board_asset_library", "Board asset library board_profile does not match its folder.")
+        raw_assets = payload.get("assets") or []
+        if not isinstance(raw_assets, list):
+            raise EndpointMediaValidationError("invalid_board_asset_library", "Board asset library assets must be a list.")
+        assets = [
+            self._board_asset_from_config(board_dir=board_dir, item=item)
+            for item in raw_assets
+            if isinstance(item, dict)
+        ]
+        return EndpointBoardMediaLibrary(
+            schema_version=schema_version,
+            board_profile=library_board,
+            assets=assets,
+            updated_at=str(payload.get("updated_at")) if payload.get("updated_at") else None,
+        )
+
+    def board_asset_payload_path(self, board_profile: str, asset_id: str) -> tuple[EndpointBoardMediaAsset, Path]:
+        board_dir = self._board_asset_dir(board_profile)
+        library = self.board_asset_library(board_profile)
+        safe_id = safe_asset_id(asset_id)
+        for asset in library.assets:
+            if asset.asset_id == safe_id:
+                path = (board_dir / safe_filename(asset.source_filename)).resolve()
+                if path.parent != board_dir.resolve():
+                    raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
+                if not path.exists():
+                    raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
+                return asset, path
+        raise EndpointMediaValidationError("board_asset_not_found", "Board asset was not found.", status_code=404)
 
     def store_upload(
         self,
@@ -368,6 +440,45 @@ class EndpointMediaService:
     def _asset_dir(self, asset_id: str) -> Path:
         return self._media_dir / safe_asset_id(asset_id)
 
+    def _board_asset_dir(self, board_profile: str) -> Path:
+        if self._asset_library_dir is None:
+            raise EndpointMediaValidationError("board_asset_library_unconfigured", "Board asset library directory is not configured.", status_code=404)
+        return self._asset_library_dir / safe_asset_id(board_profile)
+
+    def _board_asset_from_config(self, *, board_dir: Path, item: dict[str, Any]) -> EndpointBoardMediaAsset:
+        media_type_value = str(item.get("media_type") or "").strip()
+        if media_type_value not in DESTINATIONS:
+            raise EndpointMediaValidationError("invalid_board_asset_media_type", "Board asset media_type is invalid.")
+        media_type = cast(EndpointMediaType, media_type_value)
+        raw_asset_id = str(item.get("asset_id") or "").strip()
+        if not raw_asset_id:
+            raise EndpointMediaValidationError("invalid_board_asset_id", "Board asset entries require asset_id.")
+        asset_id = safe_asset_id(raw_asset_id)
+        filename = safe_filename(str(item.get("filename") or item.get("path") or ""))
+        source_filename = safe_filename(str(item.get("path") or filename))
+        path = (board_dir / source_filename).resolve()
+        if path.parent != board_dir.resolve():
+            raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
+        if not path.exists():
+            raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
+        payload = path.read_bytes()
+        content_type = str(item.get("content_type") or _content_type_for_filename(filename, media_type)).strip()
+        metadata = item.get("metadata") if isinstance(item.get("metadata"), dict) else {}
+        return EndpointBoardMediaAsset(
+            asset_id=asset_id,
+            media_type=media_type,
+            destination=DESTINATIONS[media_type],
+            endpoint_path=f"{DESTINATION_PATHS[media_type]}/{filename}",
+            filename=filename,
+            source_filename=source_filename,
+            content_type=content_type,
+            size_bytes=len(payload),
+            sha256=hashlib.sha256(payload).hexdigest(),
+            metadata=dict(metadata),
+            role=str(item.get("role")) if item.get("role") else None,
+            version=str(item.get("version")) if item.get("version") else None,
+        )
+
     def _load(self) -> EndpointMediaLibrary:
         if not self._manifest_path.exists():
             return EndpointMediaLibrary()
@@ -379,3 +490,16 @@ class EndpointMediaService:
         temp_path = self._manifest_path.with_suffix(".json.tmp")
         temp_path.write_text(library.model_dump_json(indent=2))
         temp_path.replace(self._manifest_path)
+
+
+def _content_type_for_filename(filename: str, media_type: EndpointMediaType) -> str:
+    suffix = Path(filename).suffix.lower()
+    if media_type == "sound":
+        return "audio/wav"
+    if suffix == ".json":
+        return "application/json"
+    if suffix == ".png":
+        return "image/png"
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    return "application/octet-stream"

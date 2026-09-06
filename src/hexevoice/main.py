@@ -64,6 +64,8 @@ from hexevoice.api.models import (
     EndpointBeepCommandRequest,
     EndpointBleIdentityRequest,
     EndpointBleIdentityResponse,
+    EndpointBoardMediaAssetResponse,
+    EndpointBoardMediaLibraryResponse,
     EndpointBleFirmwareHandoffRequest,
     EndpointBleFirmwareHandoffResponse,
     EndpointBlePairingSessionApproveRequest,
@@ -138,7 +140,13 @@ from hexevoice.endpoint.ble_wifi_credentials import BleWifiCredentialStore
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.endpoint.discovery import EndpointDiscoveryService, EndpointDiscoveryUdpProtocol
 from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser
-from hexevoice.endpoint.media import EndpointMediaAsset, EndpointMediaService, EndpointMediaValidationError
+from hexevoice.endpoint.media import (
+    EndpointBoardMediaAsset,
+    EndpointBoardMediaLibrary,
+    EndpointMediaAsset,
+    EndpointMediaService,
+    EndpointMediaValidationError,
+)
 from hexevoice.endpoint.service import EndpointHeartbeatService
 from hexevoice.engine_http import async_client_for_engine
 from hexevoice.onboarding.approval import ApprovalPollingService
@@ -849,7 +857,10 @@ def create_app(
         settings=app_settings,
         node_id_provider=current_advertised_node_id,
     )
-    endpoint_media_service = EndpointMediaService(media_dir=app_settings.resolved_endpoint_media_dir())
+    endpoint_media_service = EndpointMediaService(
+        media_dir=app_settings.resolved_endpoint_media_dir(),
+        asset_library_dir=app_settings.resolved_endpoint_asset_library_dir(),
+    )
     supervisor_enabled = os.getenv("HEXE_SUPERVISOR_ENABLED", "").strip().lower() in {"1", "true", "yes", "on"}
     supervisor_client = SupervisorApiClient() if supervisor_enabled else None
     engine_heartbeats: dict[str, dict[str, object]] = {}
@@ -2065,14 +2076,73 @@ def create_app(
         base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
         return f"{base_url.rstrip('/')}/api/endpoint/media/files/{asset_id}"
 
+    def endpoint_board_media_public_url(board_profile: str, asset_id: str) -> str:
+        base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
+        return f"{base_url.rstrip('/')}/api/endpoint/media/library/boards/{board_profile}/files/{asset_id}"
+
     def endpoint_media_response(asset: EndpointMediaAsset) -> EndpointMediaAssetResponse:
         return EndpointMediaAssetResponse(
             **asset.model_dump(mode="json"),
             download_url=endpoint_media_public_url(asset.asset_id),
         )
 
+    def endpoint_board_media_asset_response(
+        board_profile: str,
+        asset: EndpointBoardMediaAsset,
+    ) -> EndpointBoardMediaAssetResponse:
+        return EndpointBoardMediaAssetResponse(
+            **asset.model_dump(mode="json"),
+            download_url=endpoint_board_media_public_url(board_profile, asset.asset_id),
+        )
+
+    def endpoint_board_media_library_response(
+        library: EndpointBoardMediaLibrary,
+        *,
+        endpoint_id: str | None = None,
+    ) -> EndpointBoardMediaLibraryResponse:
+        return EndpointBoardMediaLibraryResponse(
+            endpoint_id=endpoint_id,
+            board_profile=library.board_profile,
+            schema_version=library.schema_version,
+            assets=[
+                endpoint_board_media_asset_response(library.board_profile, asset)
+                for asset in library.assets
+            ],
+            updated_at=library.updated_at,
+        )
+
     def media_error(exc: EndpointMediaValidationError) -> HTTPException:
         return HTTPException(status_code=exc.status_code, detail={"code": exc.code, "message": exc.message})
+
+    @app.get("/api/endpoint/media/library/boards/{board_profile}", response_model=EndpointBoardMediaLibraryResponse)
+    async def endpoint_board_media_library(board_profile: str) -> EndpointBoardMediaLibraryResponse:
+        try:
+            library = await asyncio.to_thread(endpoint_media_service.board_asset_library, board_profile)
+            return endpoint_board_media_library_response(library)
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+
+    @app.get("/api/endpoint/media/library/boards/{board_profile}/files/{asset_id}")
+    async def endpoint_board_media_file(board_profile: str, asset_id: str) -> FileResponse:
+        try:
+            asset, path = await asyncio.to_thread(
+                endpoint_media_service.board_asset_payload_path,
+                board_profile,
+                asset_id,
+            )
+            return FileResponse(path, media_type=asset.content_type)
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
+
+    @app.get("/api/endpoint/media/library/{endpoint_id}", response_model=EndpointBoardMediaLibraryResponse)
+    async def endpoint_media_library(endpoint_id: str) -> EndpointBoardMediaLibraryResponse:
+        endpoint = endpoint_service.status(endpoint_id)
+        board_profile = endpoint_board_profile(endpoint)
+        try:
+            library = await asyncio.to_thread(endpoint_media_service.board_asset_library, board_profile)
+            return endpoint_board_media_library_response(library, endpoint_id=endpoint_id)
+        except EndpointMediaValidationError as exc:
+            raise media_error(exc) from exc
 
     @app.get("/api/endpoint/media", response_model=EndpointMediaListResponse)
     async def endpoint_media_list() -> EndpointMediaListResponse:

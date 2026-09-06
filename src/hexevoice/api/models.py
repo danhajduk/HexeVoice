@@ -579,6 +579,29 @@ class EndpointMediaAssetResponse(BaseModel):
     download_url: str | None = None
 
 
+class EndpointBoardMediaAssetResponse(BaseModel):
+    asset_id: str
+    media_type: Literal["picture", "sprite", "sound"]
+    destination: str
+    endpoint_path: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    role: str | None = None
+    version: str | None = None
+    download_url: str
+
+
+class EndpointBoardMediaLibraryResponse(BaseModel):
+    endpoint_id: str | None = None
+    board_profile: str
+    schema_version: int = 1
+    assets: list[EndpointBoardMediaAssetResponse] = Field(default_factory=list)
+    updated_at: str | None = None
+
+
 class EndpointMediaListResponse(BaseModel):
     assets: list[EndpointMediaAssetResponse] = Field(default_factory=list)
 

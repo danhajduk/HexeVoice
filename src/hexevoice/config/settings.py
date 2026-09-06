@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     endpoint_ble_wifi_credentials_key_path: Path | None = Field(default=None, alias="ENDPOINT_BLE_WIFI_CREDENTIALS_KEY_PATH")
     voice_intent_registry_path: Path | None = Field(default=None, alias="VOICE_INTENT_REGISTRY_PATH")
     endpoint_media_dir: Path | None = Field(default=None, alias="ENDPOINT_MEDIA_DIR")
+    endpoint_asset_library_dir: Path | None = Field(default=None, alias="ENDPOINT_ASSET_LIBRARY_DIR")
     endpoint_stale_after_seconds: int = Field(default=60, alias="ENDPOINT_STALE_AFTER_SECONDS", ge=1)
     endpoint_discovery_udp_enabled: bool = Field(default=True, alias="ENDPOINT_DISCOVERY_UDP_ENABLED")
     endpoint_discovery_udp_host: str = Field(default="0.0.0.0", alias="ENDPOINT_DISCOVERY_UDP_HOST")
@@ -389,6 +390,11 @@ class Settings(BaseSettings):
         if self.endpoint_media_dir is not None:
             return self.endpoint_media_dir
         return self.runtime_dir / "endpoint_media"
+
+    def resolved_endpoint_asset_library_dir(self) -> Path:
+        if self.endpoint_asset_library_dir is not None:
+            return self.endpoint_asset_library_dir
+        return Path("firmware") / "assets"
 
     def resolved_firmware_artifact_dir(self) -> Path:
         if self.firmware_artifact_dir is not None:
