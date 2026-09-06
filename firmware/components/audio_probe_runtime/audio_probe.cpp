@@ -92,6 +92,10 @@ constexpr int kControlWsClientTaskStackBytes = 4096;
 constexpr int kControlWsClientBufferBytes = 2048;
 constexpr int kControlWsPingIntervalSec = 0;
 constexpr int kControlWsPingPongTimeoutSec = 0;
+constexpr int kCommandPollMs = 20;
+constexpr int64_t kButtonDebounceUs = 250 * 1000;
+constexpr int64_t kButtonShortPressMinUs = 40 * 1000;
+constexpr int64_t kButtonLongPressUs = 1000 * 1000;
 constexpr int kSampleRate = 16000;
 constexpr size_t kFrameSamples = 320;
 constexpr int kSpeakerSampleRate = 48000;
@@ -115,6 +119,7 @@ constexpr gpio_num_t kVoiceKitI2cScl = gpio_pin(hexe::board::pins::kVoicePeI2cSc
 constexpr int kMicI2sPort = hexe::board::pins::kVoicePeMicPort;
 constexpr uint8_t kVoiceKitI2cAddress = static_cast<uint8_t>(hexe::board::pins::kVoicePeVoiceKitI2cAddress);
 constexpr uint32_t kVoiceKitI2cClockHz = static_cast<uint32_t>(hexe::board::pins::kVoicePeI2cClockHz);
+constexpr gpio_num_t kCenterButton = gpio_pin(hexe::board::pins::kVoicePeCenterButton);
 constexpr gpio_num_t kSpeakerLrclk = gpio_pin(hexe::board::pins::kVoicePeSpeakerLrclk);
 constexpr gpio_num_t kSpeakerBclk = gpio_pin(hexe::board::pins::kVoicePeSpeakerBclk);
 constexpr gpio_num_t kSpeakerDout = gpio_pin(hexe::board::pins::kVoicePeSpeakerDout);
@@ -254,6 +259,9 @@ bool g_ws_connected = false;
 bool g_ota_active = false;
 bool g_speaker_codec_ready = false;
 bool g_speaker_tx_enabled = false;
+bool g_last_center_button_pressed = false;
+int64_t g_center_button_pressed_at_us = 0;
+int64_t g_last_center_button_handled_at_us = 0;
 uint32_t g_sequence = 1;
 std::string g_ws_rx_buffer;
 
@@ -2403,6 +2411,61 @@ bool run_microphone_probe(const ProbeSettings &settings, const char *source) {
   return uploaded;
 }
 
+bool center_button_pressed() {
+  return gpio_get_level(kCenterButton) == 0;
+}
+
+void init_probe_button() {
+  gpio_config_t input_config = {};
+  input_config.pin_bit_mask = 1ULL << kCenterButton;
+  input_config.mode = GPIO_MODE_INPUT;
+  input_config.pull_up_en = GPIO_PULLUP_ENABLE;
+  input_config.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  input_config.intr_type = GPIO_INTR_DISABLE;
+  gpio_config(&input_config);
+  g_last_center_button_pressed = center_button_pressed();
+  ESP_LOGI(
+      kTag,
+      "Audio probe center button ready gpio=%d active_low=true initial_pressed=%s",
+      static_cast<int>(kCenterButton),
+      g_last_center_button_pressed ? "true" : "false");
+}
+
+void run_button_listen_probe(const ProbeSettings &settings, int64_t duration_us) {
+  ESP_LOGI(
+      kTag,
+      "Audio probe center button short press accepted duration_ms=%lld",
+      static_cast<long long>(duration_us / 1000));
+  log_probe_heap("button_before_capture");
+  const bool ok = run_microphone_probe(settings, "pe-mic-button-staged");
+  log_probe_heap("button_after_capture_upload");
+  ESP_LOGI(kTag, "Audio probe button listen result uploaded=%s", ok ? "true" : "false");
+}
+
+void update_probe_button(const ProbeSettings &settings) {
+  const bool pressed = center_button_pressed();
+  const int64_t now_us = esp_timer_get_time();
+  if (pressed && !g_last_center_button_pressed) {
+    g_center_button_pressed_at_us = now_us;
+    ESP_LOGI(kTag, "Audio probe center button down");
+  } else if (!pressed && g_last_center_button_pressed) {
+    const int64_t duration_us = g_center_button_pressed_at_us > 0 ? now_us - g_center_button_pressed_at_us : 0;
+    g_center_button_pressed_at_us = 0;
+    if (g_last_center_button_handled_at_us > 0 && now_us - g_last_center_button_handled_at_us < kButtonDebounceUs) {
+      ESP_LOGI(kTag, "Audio probe center button release ignored by debounce duration_ms=%lld", static_cast<long long>(duration_us / 1000));
+    } else if (duration_us < kButtonShortPressMinUs) {
+      ESP_LOGI(kTag, "Audio probe center button release ignored as bounce duration_ms=%lld", static_cast<long long>(duration_us / 1000));
+    } else if (duration_us >= kButtonLongPressUs) {
+      ESP_LOGI(kTag, "Audio probe center button long press ignored duration_ms=%lld", static_cast<long long>(duration_us / 1000));
+      g_last_center_button_handled_at_us = now_us;
+    } else {
+      g_last_center_button_handled_at_us = now_us;
+      run_button_listen_probe(settings, duration_us);
+    }
+  }
+  g_last_center_button_pressed = pressed;
+}
+
 void run_probe_sequence(const ProbeSettings &settings) {
   run_generated_probe_sequence(settings);
   run_microphone_probe(settings, "pe-mic-staged");
@@ -2415,7 +2478,7 @@ void handle_command_loop(const ProbeSettings &settings) {
     return;
   }
   CommandRequest request = {};
-  while (xQueueReceive(g_command_queue, &request, pdMS_TO_TICKS(1000)) == pdTRUE) {
+  while (xQueueReceive(g_command_queue, &request, pdMS_TO_TICKS(kCommandPollMs)) == pdTRUE) {
     ESP_LOGI(kTag, "Audio probe executing command=%s request_id=%s", request.command_type, request.request_id);
     if (std::strcmp(request.command_type, "endpoint.listen") == 0) {
       const bool ok = run_microphone_probe(settings, "pe-mic-command-staged");
@@ -2454,6 +2517,7 @@ void run() {
     return;
   }
 
+  init_probe_button();
   start_command_websocket(settings);
   run_probe_sequence(settings);
   ESP_LOGI(kTag, "Audio probe sequence complete; idling");
@@ -2462,6 +2526,8 @@ void run() {
       start_command_websocket(settings);
     }
     handle_command_loop(settings);
+    update_probe_button(settings);
+    vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 

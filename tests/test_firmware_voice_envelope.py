@@ -1566,6 +1566,13 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "psram-staged-large" in probe_source
     assert "pe-mic-staged" in probe_source
     assert "pe-mic-command-staged" in probe_source
+    assert "pe-mic-button-staged" in probe_source
+    assert "Audio probe center button ready" in probe_source
+    assert "Audio probe center button down" in probe_source
+    assert "Audio probe center button short press accepted" in probe_source
+    assert "Audio probe button listen result" in probe_source
+    assert "kVoicePeCenterButton" in probe_source
+    assert "pdMS_TO_TICKS(kCommandPollMs)" in probe_source
     assert "/api/tts/synthesize" in probe_source
     assert 'cJSON_GetObjectItem(audio_urls, "16k")' in probe_source
     assert "Audio probe TTS synthesize starting" in probe_source
@@ -1604,4 +1611,5 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "esp_websocket_client_send_text" in probe_source
     assert "esp_websocket_client_send_bin" not in probe_source
     assert "/api/voice/audio/ws" not in probe_source
-    assert "BLE" not in probe_source
+    assert "NimBLE" not in probe_source
+    assert "ble_onboarding" not in probe_source
