@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from hexevoice.config.settings import Settings
+from hexevoice.config.settings import parse_tts_endpoint_voice_mapping
 from hexevoice.config.settings import parse_tts_conversion_sample_rates
 from hexevoice.piper_models import piper_model_display_name, read_piper_model_config
 
@@ -24,10 +25,22 @@ class TtsRuntimeSettingsService:
 
     def status(self) -> dict[str, Any]:
         config = self._load_config()
-        warm_voices = normalized_voice_list(config.get("warm_voices"))
-        if not warm_voices:
-            warm_voices = self._settings.resolved_piper_tts_warm_voices()
-        default_voice = normalize_voice(config.get("default_voice")) or normalize_voice(self._settings.voice_tts_piper_voice)
+        models = self.discover_piper_models()
+        model_ids = {model["model_id"] for model in models}
+        endpoint_voices = self._valid_endpoint_voices(
+            self._settings.resolved_voice_tts_endpoint_voices(),
+            model_ids=model_ids,
+        )
+        configured_warm_voices = normalized_voice_list(config.get("warm_voices"))
+        if not configured_warm_voices:
+            configured_warm_voices = self._settings.resolved_piper_tts_warm_voices()
+        default_voice = normalize_voice(config.get("default_voice")) or self._settings.resolved_voice_tts_piper_voice()
+        warm_voices = self._selected_warm_voices(
+            default_voice=default_voice,
+            configured_warm_voices=configured_warm_voices,
+            endpoint_voices=endpoint_voices,
+            model_ids=model_ids,
+        )
         conversion_rates = sorted(
             parse_tts_conversion_sample_rates(config.get("conversion_sample_rates_hz") or self._settings.voice_tts_conversion_sample_rates).values(),
             reverse=True,
@@ -36,8 +49,9 @@ class TtsRuntimeSettingsService:
             "provider": self._settings.voice_tts_provider,
             "config_path": str(self._path),
             "model_dir": str(self._model_dir),
-            "models": self.discover_piper_models(),
+            "models": models,
             "default_voice": default_voice,
+            "endpoint_voices": endpoint_voices,
             "warm_voices": warm_voices,
             "conversion_sample_rates_hz": conversion_rates,
             "allowed_conversion_sample_rates_hz": list(ALLOWED_TTS_CONVERSION_SAMPLE_RATES),
@@ -55,17 +69,37 @@ class TtsRuntimeSettingsService:
         default_voice = normalize_voice(payload.get("default_voice") or current_config.get("default_voice"))
         if default_voice and default_voice not in model_ids:
             default_voice = None
+        endpoint_voices = self._valid_endpoint_voices(
+            parse_tts_endpoint_voice_mapping(
+                payload.get("endpoint_voices")
+                if "endpoint_voices" in payload
+                else current_config.get("endpoint_voices", self._settings.resolved_voice_tts_endpoint_voices())
+            ),
+            model_ids=model_ids,
+        )
+        requested_warm_voices = (
+            payload.get("warm_voices")
+            if "warm_voices" in payload
+            else current_config.get("warm_voices", self._settings.resolved_piper_tts_warm_voices())
+        )
         warm_voices = [
             voice
-            for voice in normalized_voice_list(payload.get("warm_voices"))
+            for voice in normalized_voice_list(requested_warm_voices)
             if voice in model_ids
         ]
+        warm_voices = self._selected_warm_voices(
+            default_voice=default_voice,
+            configured_warm_voices=warm_voices,
+            endpoint_voices=endpoint_voices,
+            model_ids=model_ids,
+        )
         conversion_rates = sorted(
             parse_tts_conversion_sample_rates(payload.get("conversion_sample_rates_hz")).values(),
             reverse=True,
         )
         config = {
             "default_voice": default_voice,
+            "endpoint_voices": endpoint_voices,
             "warm_voices": warm_voices,
             "conversion_sample_rates_hz": conversion_rates,
             "conversion_policy": normalize_conversion_policy(payload.get("conversion_policy")),
@@ -140,6 +174,35 @@ class TtsRuntimeSettingsService:
                 updated_lines.append(f"{key}={value}")
         env_path.parent.mkdir(parents=True, exist_ok=True)
         env_path.write_text("\n".join(updated_lines).rstrip() + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _valid_endpoint_voices(endpoint_voices: dict[str, str], *, model_ids: set[str]) -> dict[str, str]:
+        if not model_ids:
+            return dict(endpoint_voices)
+        return {
+            endpoint_id: voice
+            for endpoint_id, voice in endpoint_voices.items()
+            if voice in model_ids
+        }
+
+    @staticmethod
+    def _selected_warm_voices(
+        *,
+        default_voice: str | None,
+        configured_warm_voices: list[str],
+        endpoint_voices: dict[str, str],
+        model_ids: set[str],
+    ) -> list[str]:
+        warm_voices: list[str] = []
+        for voice in [default_voice, *configured_warm_voices, *endpoint_voices.values()]:
+            normalized = normalize_voice(voice)
+            if not normalized:
+                continue
+            if model_ids and normalized not in model_ids:
+                continue
+            if normalized not in warm_voices:
+                warm_voices.append(normalized)
+        return warm_voices
 
 
 def normalized_voice_list(raw: object) -> list[str]:

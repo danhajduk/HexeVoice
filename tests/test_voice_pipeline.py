@@ -1247,6 +1247,12 @@ def test_voice_turn_pipeline_can_select_voice_by_endpoint(tmp_path):
     assert tts_adapter.calls[1]["voice"] == "en_US-lessac-medium"
     assert pipeline.status()["endpoint_voices"] == {"esp-pe-1": "en_US-hfc_female-medium"}
 
+    pipeline.update_endpoint_voices({"esp-pe-1": "en_US-kathleen-low"})
+    pipeline.synthesize_reply(endpoint_id="esp-pe-1", session_id="voice-session-3", text="hi")
+
+    assert tts_adapter.calls[2]["voice"] == "en_US-kathleen-low"
+    assert pipeline.status()["endpoint_voices"] == {"esp-pe-1": "en_US-kathleen-low"}
+
 
 def test_build_voice_turn_pipeline_keeps_deterministic_stt_as_default(tmp_path):
     settings = Settings(onboarding_state_path=tmp_path / "state.json", runtime_dir=tmp_path)

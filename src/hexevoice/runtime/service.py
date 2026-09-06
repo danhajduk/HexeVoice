@@ -451,7 +451,7 @@ class NodeRuntimeService:
             return self._settings.voice_tts_model
 
         candidates: list[str | None] = [
-            self._settings.voice_tts_piper_voice,
+            self._settings.resolved_voice_tts_piper_voice(),
             *self._settings.resolved_voice_tts_endpoint_voices().values(),
             *self._settings.resolved_piper_tts_warm_voices(),
         ]
@@ -988,7 +988,8 @@ class NodeRuntimeService:
             if self._settings.resolved_voice_tts_piper_socket_path() is not None
             else None,
             "synthesize_path": self._settings.voice_tts_piper_synthesize_path,
-            "voice": self._settings.voice_tts_piper_voice,
+            "voice": self._settings.resolved_voice_tts_piper_voice(),
+            "endpoint_voices": self._settings.resolved_voice_tts_endpoint_voices(),
             "warm_voices": self._settings.resolved_piper_tts_warm_voices(),
             "engine_heartbeat": heartbeat,
             **self._service_process_fields(process),

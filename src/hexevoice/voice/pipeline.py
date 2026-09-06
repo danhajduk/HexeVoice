@@ -2670,6 +2670,9 @@ class VoiceTurnPipeline:
     def _voice_for_endpoint(self, endpoint_id: str) -> str | None:
         return self._endpoint_voices.get(endpoint_id)
 
+    def update_endpoint_voices(self, endpoint_voices: dict[str, str]) -> None:
+        self._endpoint_voices = dict(endpoint_voices)
+
     def preload_stt(self) -> dict | None:
         preload = getattr(self._stt_adapter, "preload", None)
         if not callable(preload):
@@ -3049,7 +3052,7 @@ def build_voice_turn_pipeline(
             base_url=settings.resolved_voice_tts_piper_base_url(),
             socket_path=settings.resolved_voice_tts_piper_socket_path(),
             synthesize_path=settings.voice_tts_piper_synthesize_path,
-            voice=settings.voice_tts_piper_voice,
+            voice=settings.resolved_voice_tts_piper_voice(),
             output_dir=settings.runtime_dir / "voice_tts",
             timeout_s=settings.voice_tts_timeout_s,
             output_sample_rate_hz=settings.voice_tts_output_sample_rate_hz,

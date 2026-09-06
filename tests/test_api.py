@@ -2330,6 +2330,26 @@ def test_tts_warmup_voice_selection_can_use_discovered_piper_voices():
     ) == ["en_US-kathleen-low", "en_US-hfc_female-medium"]
 
 
+def test_tts_warmup_voice_selection_uses_runtime_config(tmp_path):
+    config_path = tmp_path / "voice_tts_settings.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "default_voice": "en_US-kathleen-low",
+                "endpoint_voices": {"esp-pe-1": "en_US-lessac-medium"},
+                "warm_voices": ["en_US-kathleen-low"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = Settings(
+        voice_tts_provider="piper",
+        voice_tts_runtime_config_path=config_path,
+    )
+
+    assert _tts_warmup_voices(settings) == ["en_US-kathleen-low", "en_US-lessac-medium"]
+
+
 def test_daily_orphan_cleanup_schedule_targets_next_midnight():
     seconds = _seconds_until_next_local_midnight(datetime(2026, 5, 7, 23, 30, 0).astimezone())
 
@@ -2456,6 +2476,58 @@ def test_tts_settings_list_models_and_save_runtime_config(tmp_path):
     assert runtime_config["conversion_policy"] == "endpoint_required_sync"
     assert "PIPER_TTS_MODEL_PATH=/models/en_US-jenny-high.onnx" in piper_env_path.read_text(encoding="utf-8")
     assert "PIPER_TTS_WARM_VOICES=en_US-jenny-high" in piper_env_path.read_text(encoding="utf-8")
+
+
+def test_tts_settings_save_endpoint_voices_and_warm_selected_models(tmp_path):
+    model_dir = tmp_path / "piper-tts" / "models"
+    model_dir.mkdir(parents=True)
+    for voice in ("en_US-kathleen-low", "en_US-lessac-medium"):
+        (model_dir / f"{voice}.onnx").write_bytes(b"model")
+        (model_dir / f"{voice}.onnx.json").write_text(
+            json.dumps({"audio": {"sample_rate": 22050}, "language": {"code": "en_US"}}),
+            encoding="utf-8",
+        )
+    piper_env_path = tmp_path / "piper-tts.env"
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                runtime_dir=tmp_path,
+                piper_tts_model_dir=model_dir,
+                piper_tts_env_path=piper_env_path,
+            )
+        )
+    )
+
+    update = client.put(
+        "/api/tts/settings",
+        json={
+            "default_voice": "en_US-kathleen-low",
+            "warm_voices": [],
+            "endpoint_voices": {
+                "esp-pe-1": "en_US-lessac-medium",
+                "esp-box-1": "missing-voice",
+            },
+        },
+    )
+
+    assert update.status_code == 200
+    updated = update.json()
+    assert updated["endpoint_voices"] == {"esp-pe-1": "en_US-lessac-medium"}
+    assert updated["warm_voices"] == ["en_US-kathleen-low", "en_US-lessac-medium"]
+    runtime_config = json.loads((tmp_path / "voice_tts_settings.json").read_text(encoding="utf-8"))
+    assert runtime_config["endpoint_voices"] == {"esp-pe-1": "en_US-lessac-medium"}
+    assert runtime_config["warm_voices"] == ["en_US-kathleen-low", "en_US-lessac-medium"]
+    assert "PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-lessac-medium" in piper_env_path.read_text(encoding="utf-8")
+
+    synth = client.post(
+        "/api/tts/synthesize",
+        json={"text": "hello", "target": {"device_id": "esp-pe-1"}},
+    )
+
+    assert synth.status_code == 200
+    metadata = json.loads((tmp_path / "voice_tts" / f"{synth.json()['stream_id']}.json").read_text(encoding="utf-8"))
+    assert metadata["voice_id"] == "en_US-lessac-medium"
 
 
 def test_tts_restart_clears_restart_required_flag(tmp_path, monkeypatch):

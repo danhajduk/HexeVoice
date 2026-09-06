@@ -290,8 +290,9 @@ def _tts_warmup_voices(settings: Settings, *, discovered_warm_voices: list[str] 
     configured_warm_voices = settings.resolved_piper_tts_warm_voices() or (discovered_warm_voices or [])
     voices: list[str | None] = list(configured_warm_voices)
     voices.extend(settings.resolved_voice_tts_endpoint_voices().values())
-    if settings.voice_tts_piper_voice:
-        voices.insert(0, settings.voice_tts_piper_voice)
+    default_voice = settings.resolved_voice_tts_piper_voice()
+    if default_voice:
+        voices.insert(0, default_voice)
     if not voices:
         voices.append(None)
 
@@ -2715,6 +2716,7 @@ def create_app(
         return {
             "provider": status.get("provider"),
             "default_voice": status.get("default_voice"),
+            "endpoint_voices": status.get("endpoint_voices") if isinstance(status.get("endpoint_voices"), dict) else {},
             "warm_voices": status.get("warm_voices") if isinstance(status.get("warm_voices"), list) else [],
             "voices": voices,
             "languages": list(languages.values()),
@@ -2728,6 +2730,15 @@ def create_app(
     @app.put("/api/tts/settings")
     async def tts_settings_update(payload: dict) -> dict:
         updated = await asyncio.to_thread(tts_runtime_settings_service.update, payload)
+        endpoint_voices = updated.get("endpoint_voices")
+        if isinstance(endpoint_voices, dict):
+            voice_turn_pipeline.update_endpoint_voices(
+                {
+                    str(endpoint_id): str(voice)
+                    for endpoint_id, voice in endpoint_voices.items()
+                    if str(endpoint_id).strip() and str(voice).strip()
+                }
+            )
         try:
             applied = await apply_piper_tts_provider_config(
                 ProviderConfigRequest(
@@ -2984,7 +2995,7 @@ def create_app(
                 [
                     tts_settings.get("default_voice"),
                     *warm_voices,
-                    app_settings.voice_tts_piper_voice,
+                    app_settings.resolved_voice_tts_piper_voice(),
                     "en_US-kathleen-low",
                     "en_US-lessac-medium",
                     "en_US-jenny-high",
@@ -3020,7 +3031,7 @@ def create_app(
             },
             "tts": {
                 "kind": "tts",
-                "default_voice": tts_settings.get("default_voice") or app_settings.voice_tts_piper_voice,
+                "default_voice": tts_settings.get("default_voice") or app_settings.resolved_voice_tts_piper_voice(),
                 "warm_models": tts_settings.get("warm_voices") if isinstance(tts_settings.get("warm_voices"), list) else [],
                 "model_options": tts_model_options,
             },

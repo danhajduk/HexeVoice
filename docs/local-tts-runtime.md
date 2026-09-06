@@ -50,15 +50,26 @@ GET /api/tts/settings
 PUT /api/tts/settings
 ```
 
-`PUT /api/tts/settings` writes `runtime/voice_tts_settings.json` and updates `PIPER_TTS_WARM_VOICES` in `scripts/piper-tts.env`. The backend reports `restart_required=true` after saving because warm voice process changes are applied when the Piper container is restarted, while backend-side conversion policy changes are applied when the backend runtime is restarted.
+`PUT /api/tts/settings` writes `runtime/voice_tts_settings.json` and updates `PIPER_TTS_WARM_VOICES` in `scripts/piper-tts.env`. The JSON file stores the default voice, endpoint-specific voice overrides, conversion settings, and the effective warm voice list. Selected default and endpoint voices are included in the warm list automatically. The backend applies endpoint voice changes to the live voice pipeline after saving, while Piper warm process changes are applied immediately when the Piper provider accepts the config update or after the Piper container is restarted.
 
 Python-SoXR/libsoxr is documented in `docs/third-party-licenses.md`.
 
-Endpoint-specific Piper voice overrides can be set with `VOICE_TTS_ENDPOINT_VOICES`. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. The local stack maps the Home Assistant Voice PE endpoint to Jenny, which emits 22.05 kHz audio:
+Endpoint-specific Piper voice overrides can be saved in `runtime/voice_tts_settings.json` through `PUT /api/tts/settings`:
 
-```env
-VOICE_TTS_ENDPOINT_VOICES=esp-pe-1=en_GB-jenny_dioco-medium
+```json
+{
+  "default_voice": "en_US-kathleen-low",
+  "endpoint_voices": {
+    "esp-pe-1": "en_US-lessac-medium"
+  },
+  "warm_voices": [
+    "en_US-kathleen-low",
+    "en_US-lessac-medium"
+  ]
+}
 ```
+
+`VOICE_TTS_ENDPOINT_VOICES` remains supported as an environment fallback. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. Values from `runtime/voice_tts_settings.json` override matching environment entries.
 
 ## Supervisor Shape
 
@@ -129,7 +140,7 @@ PIPER_TTS_MODEL_PATH=/models/en_US-kathleen-low.onnx
 PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-hfc_female-medium,en_GB-jenny_dioco-medium
 ```
 
-Warm voices reuse persistent Piper `--output-raw` processes and are wrapped back into WAV responses, so `/api/tts` keeps the same response shape while avoiding model reload delay for those voices. The warm reader waits for a one-second idle window before closing the current utterance so Jenny and other voices are not truncated on natural output gaps. Non-warm voices still use the cold per-request Piper process path.
+Warm voices keep Piper models resident for health and warmup, but request audio is synthesized through isolated Piper `--output_file` calls so each `/api/tts` response has a reliable audio boundary.
 
 When `VOICE_TTS_PROVIDER=piper`, the backend also runs an `every_10_minutes` warmup task that synthesizes `hello` against the configured warm voices and endpoint-specific override voices. The generated artifacts are short-lived and are removed by the normal generated-voice cleanup loop. The latest warmup status is visible in `/api/voice/status` as `voice_tts_warmup`.
 

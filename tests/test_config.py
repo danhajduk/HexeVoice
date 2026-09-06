@@ -171,6 +171,32 @@ def test_tts_endpoint_voice_overrides_parse_json_mapping():
     assert settings.resolved_voice_tts_endpoint_voices() == {"esp-pe-1": "en_US-hfc_female-medium"}
 
 
+def test_tts_endpoint_voice_overrides_load_from_runtime_config(tmp_path):
+    config_path = tmp_path / "voice_tts_settings.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "default_voice": "en_US-lessac-medium",
+                "endpoint_voices": {"esp-pe-1": "en_US-lessac-medium"},
+                "warm_voices": ["en_US-lessac-medium"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = Settings(
+        voice_tts_piper_voice="en_US-kathleen-low",
+        voice_tts_endpoint_voices="esp-box-1=en_US-kathleen-low",
+        voice_tts_runtime_config_path=config_path,
+    )
+
+    assert settings.resolved_voice_tts_piper_voice() == "en_US-lessac-medium"
+    assert settings.resolved_piper_tts_warm_voices() == ["en_US-lessac-medium"]
+    assert settings.resolved_voice_tts_endpoint_voices() == {
+        "esp-box-1": "en_US-kathleen-low",
+        "esp-pe-1": "en_US-lessac-medium",
+    }
+
+
 def test_tts_endpoint_sample_rate_overrides_parse_env_mapping():
     settings = Settings(voice_tts_endpoint_sample_rates="esp-pe-1=48000, esp-box-1:16000, bad=0, nope=text")
 

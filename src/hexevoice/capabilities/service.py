@@ -417,7 +417,7 @@ class CapabilityDeclarationService:
             if provider_id in {"external_faster_whisper", "faster_whisper"}:
                 model = config.get("model") or self._settings.voice_stt_faster_whisper_model
             elif provider_id == "piper":
-                model = config.get("default_voice") or self._settings.voice_tts_piper_voice or self._settings.voice_tts_model
+                model = config.get("default_voice") or self._settings.resolved_voice_tts_piper_voice() or self._settings.voice_tts_model
             elif provider_id in {"openwakeword", "supervised_openwakeword"}:
                 model = config.get("default_wakeword") or self._settings.voice_wake_models or "Hexe"
             elif provider_id == "speaker_id":
@@ -587,7 +587,7 @@ class CapabilityDeclarationService:
         for model_path in sorted(model_dir.glob("*.onnx")) if model_dir.exists() else []:
             model_id = model_path.stem
             models.append({"model_id": model_id})
-        configured_voice = str(self._settings.voice_tts_piper_voice or "").strip()
+        configured_voice = str(self._settings.resolved_voice_tts_piper_voice() or "").strip()
         if configured_voice and configured_voice not in {str(model.get("model_id")) for model in models}:
             models.append({"model_id": configured_voice})
         return sorted(models, key=lambda item: str(item.get("model_id") or "").lower())

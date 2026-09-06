@@ -510,37 +510,19 @@ class Settings(BaseSettings):
         return self.runtime_dir / "piper-tts" / "models"
 
     def resolved_piper_tts_warm_voices(self) -> list[str]:
-        return [voice.strip() for voice in self.piper_tts_warm_voices.split(",") if voice.strip()]
+        voices = [voice.strip() for voice in self.piper_tts_warm_voices.split(",") if voice.strip()]
+        for voice in parse_tts_voice_list(self._voice_tts_runtime_config().get("warm_voices")):
+            if voice not in voices:
+                voices.append(voice)
+        return voices
+
+    def resolved_voice_tts_piper_voice(self) -> str | None:
+        voice = str(self._voice_tts_runtime_config().get("default_voice") or self.voice_tts_piper_voice or "").strip()
+        return voice or None
 
     def resolved_voice_tts_endpoint_voices(self) -> dict[str, str]:
-        raw = self.voice_tts_endpoint_voices.strip()
-        if not raw:
-            return {}
-        if raw.startswith("{"):
-            try:
-                payload = json.loads(raw)
-            except json.JSONDecodeError:
-                return {}
-            if not isinstance(payload, dict):
-                return {}
-            return {
-                str(endpoint_id).strip(): str(voice).strip()
-                for endpoint_id, voice in payload.items()
-                if str(endpoint_id).strip() and str(voice).strip()
-            }
-
-        endpoint_voices: dict[str, str] = {}
-        for entry in raw.split(","):
-            if "=" in entry:
-                endpoint_id, voice = entry.split("=", 1)
-            elif ":" in entry:
-                endpoint_id, voice = entry.split(":", 1)
-            else:
-                continue
-            endpoint_id = endpoint_id.strip()
-            voice = voice.strip()
-            if endpoint_id and voice:
-                endpoint_voices[endpoint_id] = voice
+        endpoint_voices = parse_tts_endpoint_voice_mapping(self.voice_tts_endpoint_voices)
+        endpoint_voices.update(parse_tts_endpoint_voice_mapping(self._voice_tts_runtime_config().get("endpoint_voices")))
         return endpoint_voices
 
     def resolved_voice_tts_endpoint_sample_rates(self) -> dict[str, int]:
@@ -626,3 +608,56 @@ def parse_tts_conversion_sample_rates(raw: object) -> dict[str, int]:
         if variant:
             sample_rates[variant] = sample_rate
     return sample_rates or {"48k": 48000, "16k": 16000}
+
+
+def parse_tts_endpoint_voice_mapping(raw: object) -> dict[str, str]:
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return {
+            str(endpoint_id).strip(): str(voice).strip()
+            for endpoint_id, voice in raw.items()
+            if str(endpoint_id).strip() and str(voice).strip()
+        }
+    if not isinstance(raw, str):
+        return {}
+    text = raw.strip()
+    if not text:
+        return {}
+    if text.startswith("{"):
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        return parse_tts_endpoint_voice_mapping(payload)
+
+    endpoint_voices: dict[str, str] = {}
+    for entry in text.split(","):
+        if "=" in entry:
+            endpoint_id, voice = entry.split("=", 1)
+        elif ":" in entry:
+            endpoint_id, voice = entry.split(":", 1)
+        else:
+            continue
+        endpoint_id = endpoint_id.strip()
+        voice = voice.strip()
+        if endpoint_id and voice:
+            endpoint_voices[endpoint_id] = voice
+    return endpoint_voices
+
+
+def parse_tts_voice_list(raw: object) -> list[str]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        values = raw.split(",")
+    elif isinstance(raw, list):
+        values = raw
+    else:
+        return []
+    voices: list[str] = []
+    for value in values:
+        voice = str(value or "").strip()
+        if voice and voice not in voices:
+            voices.append(voice)
+    return voices
