@@ -127,6 +127,15 @@ constexpr uint32_t kWakeVadContinueNoiseMultiplier = 2;
 constexpr uint32_t kWakeVadNoiseMargin = 250;
 constexpr uint32_t kWakeVadStartVoiceFrames = 3;
 constexpr uint32_t kWakeVadReleasePeakPercent = 60;
+constexpr size_t kFullTurnMaxSamples = kSampleRate * 10;
+constexpr size_t kFullTurnMaxBytes = kFullTurnMaxSamples * sizeof(int16_t);
+constexpr size_t kFullTurnMinSamples = (kSampleRate * 800) / 1000;
+constexpr uint32_t kFullTurnVadStartEnergyThreshold = 600;
+constexpr uint32_t kFullTurnVadContinueEnergyThreshold = 350;
+constexpr uint32_t kFullTurnVadStartVoiceFrames = 2;
+constexpr uint32_t kFullTurnVadSilenceFrames = 1200 / kWakeFrameDurationMs;
+constexpr uint32_t kFullTurnNoSpeechFrames = 4000 / kWakeFrameDurationMs;
+constexpr uint32_t kCaptureLedUpdateFrames = 5;
 
 constexpr gpio_num_t gpio_pin(int pin) {
   return static_cast<gpio_num_t>(pin);
@@ -258,6 +267,16 @@ struct TurnProbeState {
   bool tts_ready;
   bool completed;
   bool error;
+};
+
+struct MicrophoneCaptureSummary {
+  size_t samples;
+  uint32_t average_level;
+  uint32_t peak_level;
+  uint32_t voice_frames;
+  uint32_t silent_frames;
+  bool speech_detected;
+  const char *stop_reason;
 };
 
 struct HttpTextBuffer {
@@ -914,33 +933,79 @@ bool start_microphone_stream() {
   return true;
 }
 
-size_t capture_microphone_pcm(int16_t *samples, size_t max_samples, uint32_t *level) {
+MicrophoneCaptureSummary capture_microphone_pcm(int16_t *samples, size_t max_samples, bool stop_after_vad_silence) {
+  MicrophoneCaptureSummary summary = {};
+  summary.stop_reason = "buffer_full";
   size_t captured_samples = 0;
   uint64_t level_total = 0;
   uint32_t level_frames = 0;
+  uint32_t voice_candidate_frames = 0;
+  uint32_t silent_after_voice_frames = 0;
   while (captured_samples < max_samples) {
     size_t bytes_read = 0;
     if (!read_microphone_frame(&g_raw_samples, &bytes_read, 500)) {
       ESP_LOGW(kTag, "Voice PE microphone probe read failed bytes=%u", static_cast<unsigned>(bytes_read));
+      summary.stop_reason = "read_failed";
       break;
     }
 
     const size_t stereo_frames = std::min(bytes_read / (sizeof(int32_t) * 2), kFrameSamples);
     const size_t writable_frames = std::min(stereo_frames, max_samples - captured_samples);
+    if (writable_frames == 0) {
+      continue;
+    }
     for (size_t index = 0; index < writable_frames; ++index) {
       samples[captured_samples + index] = voice_channel_sample(g_raw_samples[index * 2], g_raw_samples[(index * 2) + 1]);
     }
-    level_total += estimate_level(samples + captured_samples, writable_frames);
+    const uint32_t frame_level = estimate_level(samples + captured_samples, writable_frames);
+    level_total += frame_level;
+    summary.peak_level = std::max(summary.peak_level, frame_level);
     ++level_frames;
     captured_samples += writable_frames;
     hexe::state().vad_level = static_cast<int>(level_total / level_frames);
-    update_probe_leds();
+
+    const uint32_t speech_threshold =
+        summary.speech_detected ? kFullTurnVadContinueEnergyThreshold : kFullTurnVadStartEnergyThreshold;
+    if (frame_level >= speech_threshold) {
+      if (voice_candidate_frames < kFullTurnVadStartVoiceFrames) {
+        ++voice_candidate_frames;
+      }
+    } else {
+      voice_candidate_frames = 0;
+    }
+    const bool frame_has_voice =
+        summary.speech_detected ? frame_level >= kFullTurnVadContinueEnergyThreshold
+                                : voice_candidate_frames >= kFullTurnVadStartVoiceFrames;
+    hexe::state().vad_speaking = frame_has_voice;
+    if (frame_has_voice && frame_level >= kFullTurnVadContinueEnergyThreshold) {
+      summary.speech_detected = true;
+      ++summary.voice_frames;
+      silent_after_voice_frames = 0;
+    } else if (summary.speech_detected) {
+      ++silent_after_voice_frames;
+      summary.silent_frames = silent_after_voice_frames;
+    }
+    if ((level_frames % kCaptureLedUpdateFrames) == 0) {
+      update_probe_leds();
+    }
+
+    if (!stop_after_vad_silence) {
+      continue;
+    }
+    if (summary.speech_detected && captured_samples >= kFullTurnMinSamples &&
+        silent_after_voice_frames >= kFullTurnVadSilenceFrames) {
+      summary.stop_reason = "vad_silence";
+      break;
+    }
+    if (!summary.speech_detected && level_frames >= kFullTurnNoSpeechFrames) {
+      summary.stop_reason = "no_speech_timeout";
+      break;
+    }
   }
 
-  if (level != nullptr) {
-    *level = level_frames == 0 ? 0 : static_cast<uint32_t>(level_total / level_frames);
-  }
-  return captured_samples;
+  summary.samples = captured_samples;
+  summary.average_level = level_frames == 0 ? 0 : static_cast<uint32_t>(level_total / level_frames);
+  return summary;
 }
 
 bool post_probe(
@@ -2798,8 +2863,9 @@ bool run_microphone_probe(const ProbeSettings &settings, const char *source) {
     ESP_LOGE(kTag, "Failed to allocate microphone probe buffer bytes=%u free_psram=%u", static_cast<unsigned>(kMicProbeBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     return false;
   }
-  uint32_t level = 0;
-  const size_t captured_samples = capture_microphone_pcm(mic_audio, kMicProbeSamples, &level);
+  const MicrophoneCaptureSummary capture = capture_microphone_pcm(mic_audio, kMicProbeSamples, false);
+  const uint32_t level = capture.average_level;
+  const size_t captured_samples = capture.samples;
   ESP_LOGI(
       kTag,
       "Voice PE microphone probe captured samples=%u bytes=%u level=%u",
@@ -2985,9 +3051,9 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
     return false;
   }
 
-  int16_t *mic_audio = static_cast<int16_t *>(heap_caps_malloc(kMicProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  int16_t *mic_audio = static_cast<int16_t *>(heap_caps_malloc(kFullTurnMaxBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (mic_audio == nullptr) {
-    ESP_LOGE(kTag, "Failed to allocate full turn microphone buffer bytes=%u free_psram=%u", static_cast<unsigned>(kMicProbeBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+    ESP_LOGE(kTag, "Failed to allocate full turn microphone buffer bytes=%u free_psram=%u", static_cast<unsigned>(kFullTurnMaxBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
     g_turn_probe.waiting = false;
     show_probe_error("turn_microphone_alloc_failed");
     return false;
@@ -2996,17 +3062,22 @@ bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
   hexe::state().audio_streaming = true;
   hexe::state().vad_speaking = true;
   log_probe_heap("turn_before_capture");
-  uint32_t level = 0;
-  const size_t captured_samples = capture_microphone_pcm(mic_audio, kMicProbeSamples, &level);
+  const MicrophoneCaptureSummary capture = capture_microphone_pcm(mic_audio, kFullTurnMaxSamples, true);
+  const uint32_t level = capture.average_level;
   hexe::state().vad_level = static_cast<int>(level);
-  const size_t captured_bytes = captured_samples * sizeof(int16_t);
+  const size_t captured_bytes = capture.samples * sizeof(int16_t);
   ESP_LOGI(
       kTag,
-      "Audio probe full turn captured session=%s samples=%u bytes=%u level=%u",
+      "Audio probe full turn captured session=%s samples=%u bytes=%u level=%u peak=%u speech=%s voice_frames=%u silent_frames=%u stop=%s",
       session_id,
-      static_cast<unsigned>(captured_samples),
+      static_cast<unsigned>(capture.samples),
       static_cast<unsigned>(captured_bytes),
-      static_cast<unsigned>(level));
+      static_cast<unsigned>(level),
+      static_cast<unsigned>(capture.peak_level),
+      capture.speech_detected ? "true" : "false",
+      static_cast<unsigned>(capture.voice_frames),
+      static_cast<unsigned>(capture.silent_frames),
+      capture.stop_reason == nullptr ? "unknown" : capture.stop_reason);
   bool uploaded = false;
   if (captured_bytes > 0) {
     uploaded = post_voice_audio_chunk(settings, session_id, reinterpret_cast<const char *>(mic_audio), captured_bytes, level);

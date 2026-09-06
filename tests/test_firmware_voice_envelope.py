@@ -1579,6 +1579,16 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "/api/voice/audio/chunk?endpoint_id=%s&session_id=%s" in probe_source
     assert "Audio probe full turn starting" in probe_source
     assert "Audio probe full turn captured" in probe_source
+    assert "constexpr size_t kFullTurnMaxSamples = kSampleRate * 10;" in probe_source
+    assert "constexpr uint32_t kFullTurnVadSilenceFrames = 1200 / kWakeFrameDurationMs;" in probe_source
+    assert "capture_microphone_pcm(mic_audio, kFullTurnMaxSamples, true)" in probe_source
+    assert "heap_caps_malloc(kFullTurnMaxBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in probe_source
+    assert "stop_after_vad_silence" in probe_source
+    assert '"vad_silence"' in probe_source
+    assert '"no_speech_timeout"' in probe_source
+    assert "kCaptureLedUpdateFrames = 5" in probe_source
+    assert "(level_frames % kCaptureLedUpdateFrames) == 0" in probe_source
+    assert "speech=%s voice_frames=%u silent_frames=%u stop=%s" in probe_source
     assert "Voice turn audio chunk upload finished" in probe_source
     assert "Audio probe full turn TTS ready" in probe_source
     assert "Audio probe full turn backend completed" in probe_source
