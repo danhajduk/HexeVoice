@@ -103,6 +103,31 @@ Completed is a momentary overlay. It temporarily overrides the steady state and
 then returns to the normal priority order. Cancelled sessions return directly to
 the normal steady state without a dedicated LED pattern.
 
+## LED State Reference
+
+| Endpoint State | LED Ring Behavior | Notes |
+| --- | --- | --- |
+| Booting | Sparse warm amber/orange spinner | App phase `kBooting`. |
+| Wi-Fi connecting | One bright orange dot rotating around the ring | Shown while Wi-Fi is unavailable. |
+| Backend or voice WebSocket connecting | Two blue dots opposite each other rotating | Shown while backend heartbeat or voice WebSocket is unavailable. |
+| Idle / ready | Ring off | Endpoint is ready and no higher-priority state is active. |
+| Listening | Two accent LEDs at visual slots `3` and `9` | Uses the current accent color. |
+| Capturing speech | Bottom LED at visual slot `0` is orange | Overlays the listening side LEDs when capture is active during listening. |
+| Thinking | Two opposite purple/blue dots rotate with a pulse | App phase `kThinking`. |
+| Replying / TTS playback | Paired accent sweep rotates around the ring | Uses the current accent color plus a dim trailing pixel. |
+| OTA updating | Teal progress fill with bright mint moving cursor | Uses diagnostic brightness cap. |
+| Completed | Full green/cyan pulse for about `750 ms` | Momentary overlay from `led_ring_show_completed()`. |
+| Muted | Two red LEDs at visual slots `3` and `9` | Hardware or software mute state. |
+| Speaker volume `0%` | Small red/orange cluster at visual slots `5`, `6`, and `7` | Only shown while otherwise idle and ready. |
+| Volume change | Accent-color volume arc for about `750 ms` | Momentary rotary affordance. |
+| Accent/color select | Full accent ring with a white cursor | Momentary center-held rotary affordance. |
+| Error | Full red pulsing ring | Uses diagnostic brightness cap. |
+| Disconnected simulation | One bright orange dot rotating around the ring | Same visual as Wi-Fi connecting; exposed for diagnostics. |
+
+When debugging physical LEDs, distinguish the red states by shape: two red side
+LEDs means muted, a small red/orange cluster means volume is zero, and a full
+pulsing red ring means error.
+
 ## Rotary Affordances
 
 Voice PE rotary pins are `GPIO16` and `GPIO18`. Normal rotation changes the
