@@ -1564,16 +1564,25 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "psram-staged-small" in probe_source
     assert "psram-staged-large" in probe_source
     assert "pe-mic-staged" in probe_source
+    assert "pe-mic-command-staged" in probe_source
     assert "heap_caps_malloc(kLargeProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in probe_source
     assert "heap_caps_malloc(kMicProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in probe_source
     assert "I2S_CHANNEL_DEFAULT_CONFIG(kMicI2sPort, I2S_ROLE_SLAVE)" in probe_source
     assert "i2s_channel_read" in probe_source
     assert "Voice PE microphone probe captured" in probe_source
+    assert "/api/voice/ws?endpoint_id=%s" in probe_source
+    assert "Audio probe command WebSocket connected" in probe_source
+    assert "WEBSOCKET_EVENT_DATA" in probe_source
+    assert "endpoint.listen" in probe_source
+    assert "command.ack" in probe_source
+    assert "command.error" in probe_source
     assert "std::memcpy(stage.data(), data + offset, chunk);" in probe_source
     assert "endpoint_config.h" in probe_source
     assert "board_profile_pins.h" in probe_source
     assert "secrets/wifi_secrets.h" in probe_source
     assert "nvs_open(kNvsNamespace, NVS_READONLY, &handle)" in probe_source
-    assert "esp_websocket_client" not in probe_source
+    assert "esp_websocket_client_send_text" in probe_source
+    assert "esp_websocket_client_send_bin" not in probe_source
+    assert "/api/voice/audio/ws" not in probe_source
     assert "BLE" not in probe_source
     assert "tts" not in probe_source.lower()

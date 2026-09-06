@@ -9,6 +9,7 @@
 #include <cstring>
 #include <string>
 
+#include "cJSON.h"
 #include "endpoint_config.h"
 #include "board_profile_pins.h"
 #include "driver/gpio.h"
@@ -18,10 +19,14 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
+#include "esp_websocket_client.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
+#include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
@@ -43,8 +48,11 @@ constexpr char kNvsNamespace[] = "hexe_settings";
 constexpr char kEndpointIdKey[] = "endpoint_id";
 constexpr char kBackendHostKey[] = "backend_host";
 constexpr char kHttpPortKey[] = "http_port";
+constexpr char kWsPortKey[] = "ws_port";
+constexpr char kUseTlsKey[] = "use_tls";
 constexpr char kWifiSsidKey[] = "wifi_ssid";
 constexpr char kWifiPasswordKey[] = "wifi_password";
+constexpr char kVoiceEventSchemaVersion[] = "hexevoice.voice.event.v1";
 constexpr EventBits_t kWifiConnectedBit = BIT0;
 constexpr EventBits_t kWifiFailedBit = BIT1;
 constexpr size_t kSmallProbeBytes = 9600;
@@ -52,8 +60,16 @@ constexpr size_t kLargeProbeBytes = 245760;
 constexpr size_t kMicProbeSamples = 32000;
 constexpr size_t kMicProbeBytes = kMicProbeSamples * sizeof(int16_t);
 constexpr size_t kSendChunkBytes = 1024;
+constexpr size_t kMaxBackendEventBytes = 4096;
+constexpr int kCommandQueueDepth = 4;
 constexpr int kWifiMaxRetries = 20;
 constexpr int kSocketTimeoutMs = 5000;
+constexpr int kControlWsNetworkTimeoutMs = 1000;
+constexpr int kControlWsSendTimeoutMs = 1200;
+constexpr int kControlWsClientTaskStackBytes = 4096;
+constexpr int kControlWsClientBufferBytes = 2048;
+constexpr int kControlWsPingIntervalSec = 0;
+constexpr int kControlWsPingPongTimeoutSec = 0;
 constexpr int kSampleRate = 16000;
 constexpr size_t kFrameSamples = 320;
 
@@ -87,8 +103,15 @@ struct ProbeSettings {
   char endpoint_id[64];
   char backend_host[96];
   int http_port;
+  int ws_port;
+  bool use_tls;
   char wifi_ssid[33];
   char wifi_password[65];
+};
+
+struct CommandRequest {
+  char request_id[96];
+  char command_type[64];
 };
 
 EventGroupHandle_t g_wifi_event_group = nullptr;
@@ -98,6 +121,13 @@ i2s_chan_handle_t g_rx_channel = nullptr;
 i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
 i2c_master_dev_handle_t g_voice_kit_i2c_device = nullptr;
 std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
+QueueHandle_t g_command_queue = nullptr;
+SemaphoreHandle_t g_ws_send_lock = nullptr;
+esp_websocket_client_handle_t g_ws_client = nullptr;
+bool g_ws_started = false;
+bool g_ws_connected = false;
+uint32_t g_sequence = 1;
+std::string g_ws_rx_buffer;
 
 void copy_string(char *target, size_t target_size, const char *value) {
   if (target == nullptr || target_size == 0) {
@@ -128,6 +158,8 @@ ProbeSettings load_settings() {
   copy_string(settings.endpoint_id, sizeof(settings.endpoint_id), hexe::config::kEndpointId);
   copy_string(settings.backend_host, sizeof(settings.backend_host), hexe::config::kEndpointBackendHost);
   settings.http_port = hexe::config::kEndpointHttpPort;
+  settings.ws_port = hexe::config::kEndpointWsPort;
+  settings.use_tls = hexe::config::kEndpointUseTls;
   copy_string(settings.wifi_ssid, sizeof(settings.wifi_ssid), hexe::secrets::kWifiSsid);
   copy_string(settings.wifi_password, sizeof(settings.wifi_password), hexe::secrets::kWifiPassword);
 
@@ -145,6 +177,20 @@ ProbeSettings load_settings() {
     } else if (port_result != ESP_ERR_NVS_NOT_FOUND && port_result != ESP_OK) {
       ESP_LOGW(kTag, "Failed to read HTTP port from NVS: %s", esp_err_to_name(port_result));
     }
+    int32_t persisted_ws_port = 0;
+    const esp_err_t ws_port_result = nvs_get_i32(handle, kWsPortKey, &persisted_ws_port);
+    if (ws_port_result == ESP_OK && valid_port(persisted_ws_port)) {
+      settings.ws_port = persisted_ws_port;
+    } else if (ws_port_result != ESP_ERR_NVS_NOT_FOUND && ws_port_result != ESP_OK) {
+      ESP_LOGW(kTag, "Failed to read WS port from NVS: %s", esp_err_to_name(ws_port_result));
+    }
+    uint8_t persisted_use_tls = settings.use_tls ? 1 : 0;
+    const esp_err_t tls_result = nvs_get_u8(handle, kUseTlsKey, &persisted_use_tls);
+    if (tls_result == ESP_OK) {
+      settings.use_tls = persisted_use_tls != 0;
+    } else if (tls_result != ESP_ERR_NVS_NOT_FOUND) {
+      ESP_LOGW(kTag, "Failed to read TLS flag from NVS: %s", esp_err_to_name(tls_result));
+    }
     nvs_close(handle);
   } else if (open_result != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGW(kTag, "Failed to open endpoint settings NVS: %s", esp_err_to_name(open_result));
@@ -152,10 +198,12 @@ ProbeSettings load_settings() {
 
   ESP_LOGI(
       kTag,
-      "Probe settings loaded: endpoint=%s backend=%s:%d wifi_ssid=%s",
+      "Probe settings loaded: endpoint=%s backend=%s http_port=%d ws_port=%d tls=%s wifi_ssid=%s",
       settings.endpoint_id,
       settings.backend_host,
       settings.http_port,
+      settings.ws_port,
+      settings.use_tls ? "true" : "false",
       settings.wifi_ssid[0] == '\0' ? "<empty>" : settings.wifi_ssid);
   return settings;
 }
@@ -633,7 +681,287 @@ bool post_probe(
   return ok && response_ok && status_code >= 200 && status_code < 300;
 }
 
-void run_probe_sequence(const ProbeSettings &settings) {
+bool append_json_escaped(std::string &target, const char *value) {
+  const char *source = value == nullptr ? "" : value;
+  for (const char *cursor = source; *cursor != '\0'; ++cursor) {
+    const unsigned char ch = static_cast<unsigned char>(*cursor);
+    if (ch == '"' || ch == '\\') {
+      target.push_back('\\');
+      target.push_back(static_cast<char>(ch));
+    } else if (ch >= 0x20) {
+      target.push_back(static_cast<char>(ch));
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::string websocket_url(const ProbeSettings &settings) {
+  char buffer[224] = {};
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "%s://%s:%d/api/voice/ws?endpoint_id=%s",
+      settings.use_tls ? "wss" : "ws",
+      settings.backend_host,
+      settings.ws_port,
+      settings.endpoint_id);
+  return std::string(buffer);
+}
+
+void append_event_header(std::string &target, const ProbeSettings &settings, const char *event_type) {
+  char prefix[384] = {};
+  const long long now_us = static_cast<long long>(esp_timer_get_time());
+  std::snprintf(
+      prefix,
+      sizeof(prefix),
+      "{\"event_type\":\"%s\",\"event_id\":\"evt_%s_%u_%lld\","
+      "\"schema_version\":\"%s\",\"endpoint_id\":\"%s\","
+      "\"direction\":\"endpoint_to_backend\",\"session_id\":null,"
+      "\"sequence\":%u,\"timestamp\":\"1970-01-01T00:00:00Z\",\"payload\":",
+      event_type,
+      settings.endpoint_id,
+      static_cast<unsigned>(g_sequence),
+      now_us,
+      kVoiceEventSchemaVersion,
+      settings.endpoint_id,
+      static_cast<unsigned>(g_sequence));
+  target.append(prefix);
+}
+
+bool send_ws_text(const std::string &payload) {
+  if (g_ws_client == nullptr || !g_ws_connected) {
+    ESP_LOGW(kTag, "Audio probe command WebSocket send skipped; socket is not connected");
+    return false;
+  }
+  if (g_ws_send_lock != nullptr) {
+    xSemaphoreTake(g_ws_send_lock, portMAX_DELAY);
+  }
+  const int written = esp_websocket_client_send_text(
+      g_ws_client,
+      payload.c_str(),
+      static_cast<int>(payload.size()),
+      pdMS_TO_TICKS(kControlWsSendTimeoutMs));
+  if (g_ws_send_lock != nullptr) {
+    xSemaphoreGive(g_ws_send_lock);
+  }
+  if (written != static_cast<int>(payload.size())) {
+    ESP_LOGW(kTag, "Audio probe command WebSocket send failed written=%d expected=%u", written, static_cast<unsigned>(payload.size()));
+    return false;
+  }
+  return true;
+}
+
+void send_command_ack(
+    const ProbeSettings &settings,
+    const char *request_id,
+    const char *command_type,
+    const char *status,
+    const char *message) {
+  if (request_id == nullptr || request_id[0] == '\0') {
+    return;
+  }
+  std::string envelope;
+  envelope.reserve(640);
+  append_event_header(envelope, settings, "command.ack");
+  envelope.append("{\"request_id\":\"");
+  append_json_escaped(envelope, request_id);
+  envelope.append("\",\"command_type\":\"");
+  append_json_escaped(envelope, command_type == nullptr ? "unknown" : command_type);
+  envelope.append("\",\"status\":\"");
+  append_json_escaped(envelope, status == nullptr ? "succeeded" : status);
+  envelope.append("\",\"message\":\"");
+  append_json_escaped(envelope, message == nullptr ? "" : message);
+  envelope.append("\"}}");
+  if (send_ws_text(envelope)) {
+    ESP_LOGI(kTag, "Audio probe command ack sent request_id=%s command=%s status=%s", request_id, command_type, status);
+  }
+  ++g_sequence;
+}
+
+void send_command_error(
+    const ProbeSettings &settings,
+    const char *request_id,
+    const char *command_type,
+    const char *code,
+    const char *message) {
+  if (request_id == nullptr || request_id[0] == '\0') {
+    return;
+  }
+  std::string envelope;
+  envelope.reserve(640);
+  append_event_header(envelope, settings, "command.error");
+  envelope.append("{\"request_id\":\"");
+  append_json_escaped(envelope, request_id);
+  envelope.append("\",\"command_type\":\"");
+  append_json_escaped(envelope, command_type == nullptr ? "unknown" : command_type);
+  envelope.append("\",\"code\":\"");
+  append_json_escaped(envelope, code == nullptr ? "command_failed" : code);
+  envelope.append("\",\"message\":\"");
+  append_json_escaped(envelope, message == nullptr ? "Command failed" : message);
+  envelope.append("\",\"recoverable\":true}}");
+  if (send_ws_text(envelope)) {
+    ESP_LOGW(kTag, "Audio probe command error sent request_id=%s command=%s code=%s", request_id, command_type, code);
+  }
+  ++g_sequence;
+}
+
+const char *payload_request_id(cJSON *payload) {
+  cJSON *request_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "request_id") : nullptr;
+  return cJSON_IsString(request_id) ? request_id->valuestring : "";
+}
+
+void enqueue_listen_command(cJSON *payload) {
+  if (g_command_queue == nullptr) {
+    return;
+  }
+  const char *request_id = payload_request_id(payload);
+  if (request_id[0] == '\0') {
+    ESP_LOGW(kTag, "Audio probe endpoint.listen missing request_id");
+    return;
+  }
+  CommandRequest request = {};
+  copy_string(request.request_id, sizeof(request.request_id), request_id);
+  copy_string(request.command_type, sizeof(request.command_type), "endpoint.listen");
+  if (xQueueSend(g_command_queue, &request, 0) != pdTRUE) {
+    ESP_LOGW(kTag, "Audio probe command queue full; dropping endpoint.listen request_id=%s", request_id);
+  }
+}
+
+void handle_backend_event_json(const ProbeSettings &settings, const std::string &message) {
+  cJSON *root = cJSON_ParseWithLength(message.data(), message.size());
+  if (root == nullptr) {
+    ESP_LOGW(kTag, "Audio probe received invalid backend event JSON bytes=%u", static_cast<unsigned>(message.size()));
+    return;
+  }
+  cJSON *type = cJSON_GetObjectItem(root, "event_type");
+  cJSON *payload = cJSON_GetObjectItem(root, "payload");
+  if (!cJSON_IsString(type)) {
+    ESP_LOGW(kTag, "Audio probe received backend event without event_type");
+    cJSON_Delete(root);
+    return;
+  }
+
+  ESP_LOGI(kTag, "Audio probe command WebSocket event type=%s", type->valuestring);
+  if (std::strcmp(type->valuestring, "endpoint.listen") == 0) {
+    send_command_ack(settings, payload_request_id(payload), "endpoint.listen", "accepted", "OK");
+    enqueue_listen_command(payload);
+  } else if (std::strncmp(type->valuestring, "endpoint.", 9) == 0) {
+    send_command_error(
+        settings,
+        payload_request_id(payload),
+        type->valuestring,
+        "unsupported_command",
+        "Audio probe only supports endpoint.listen");
+  }
+  cJSON_Delete(root);
+}
+
+void handle_websocket_data(const ProbeSettings &settings, const esp_websocket_event_data_t *data) {
+  if (data == nullptr || data->data_ptr == nullptr || data->data_len <= 0) {
+    return;
+  }
+  if (data->op_code != WS_TRANSPORT_OPCODES_TEXT && data->op_code != WS_TRANSPORT_OPCODES_CONT) {
+    g_ws_rx_buffer.clear();
+    return;
+  }
+  if (data->payload_len <= 0 || data->payload_len > static_cast<int>(kMaxBackendEventBytes)) {
+    g_ws_rx_buffer.clear();
+    ESP_LOGW(kTag, "Dropping oversized audio probe command event bytes=%d", data->payload_len);
+    return;
+  }
+  if (data->payload_offset == 0) {
+    g_ws_rx_buffer.clear();
+    g_ws_rx_buffer.reserve(data->payload_len);
+  }
+  if (data->payload_offset != static_cast<int>(g_ws_rx_buffer.size())) {
+    g_ws_rx_buffer.clear();
+    ESP_LOGW(kTag, "Dropping out-of-order audio probe command event chunk");
+    return;
+  }
+
+  g_ws_rx_buffer.append(data->data_ptr, data->data_len);
+  const int received = data->payload_offset + data->data_len;
+  if (received < data->payload_len) {
+    return;
+  }
+
+  handle_backend_event_json(settings, g_ws_rx_buffer);
+  g_ws_rx_buffer.clear();
+}
+
+void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t event_id, void *event_data) {
+  (void)base;
+  const auto *settings = static_cast<const ProbeSettings *>(handler_args);
+  if (event_id == WEBSOCKET_EVENT_CONNECTED) {
+    g_ws_connected = true;
+    g_ws_rx_buffer.clear();
+    ESP_LOGI(kTag, "Audio probe command WebSocket connected");
+  } else if (event_id == WEBSOCKET_EVENT_DISCONNECTED) {
+    g_ws_connected = false;
+    g_ws_rx_buffer.clear();
+    ESP_LOGW(kTag, "Audio probe command WebSocket disconnected");
+  } else if (event_id == WEBSOCKET_EVENT_ERROR) {
+    g_ws_connected = false;
+    ESP_LOGW(kTag, "Audio probe command WebSocket error");
+  } else if (event_id == WEBSOCKET_EVENT_DATA && settings != nullptr) {
+    handle_websocket_data(*settings, static_cast<esp_websocket_event_data_t *>(event_data));
+  }
+}
+
+bool start_command_websocket(const ProbeSettings &settings) {
+  if (g_command_queue == nullptr) {
+    g_command_queue = xQueueCreate(kCommandQueueDepth, sizeof(CommandRequest));
+    if (g_command_queue == nullptr) {
+      ESP_LOGE(kTag, "Failed to create audio probe command queue");
+      return false;
+    }
+  }
+  if (g_ws_send_lock == nullptr) {
+    g_ws_send_lock = xSemaphoreCreateMutex();
+    if (g_ws_send_lock == nullptr) {
+      ESP_LOGE(kTag, "Failed to create audio probe command WebSocket send lock");
+      return false;
+    }
+  }
+  if (g_ws_client == nullptr) {
+    const std::string uri = websocket_url(settings);
+    esp_websocket_client_config_t config = {};
+    config.uri = uri.c_str();
+    config.reconnect_timeout_ms = hexe::config::kEndpointReconnectBackoffMs;
+    config.network_timeout_ms = kControlWsNetworkTimeoutMs;
+    config.task_name = "hexe_probe_cmd_ws";
+    config.task_stack = kControlWsClientTaskStackBytes;
+    config.task_prio = 5;
+    config.buffer_size = kControlWsClientBufferBytes;
+    config.ping_interval_sec = kControlWsPingIntervalSec;
+    config.pingpong_timeout_sec = kControlWsPingPongTimeoutSec;
+    config.disable_pingpong_discon = true;
+    config.keep_alive_enable = true;
+    config.keep_alive_idle = 10;
+    config.keep_alive_interval = 5;
+    config.keep_alive_count = 3;
+    g_ws_client = esp_websocket_client_init(&config);
+    if (g_ws_client == nullptr) {
+      ESP_LOGE(kTag, "Failed to initialize audio probe command WebSocket client uri=%s", uri.c_str());
+      return false;
+    }
+    esp_websocket_register_events(g_ws_client, WEBSOCKET_EVENT_ANY, websocket_event_handler, const_cast<ProbeSettings *>(&settings));
+    ESP_LOGI(kTag, "Audio probe command WebSocket initialized uri=%s", uri.c_str());
+  }
+  if (!g_ws_started) {
+    const esp_err_t result = esp_websocket_client_start(g_ws_client);
+    if (result != ESP_OK) {
+      ESP_LOGW(kTag, "Audio probe command WebSocket start failed: %s", esp_err_to_name(result));
+      return false;
+    }
+    g_ws_started = true;
+  }
+  return true;
+}
+
+void run_generated_probe_sequence(const ProbeSettings &settings) {
   char *internal_audio = static_cast<char *>(heap_caps_malloc(kSmallProbeBytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
   if (internal_audio == nullptr) {
     ESP_LOGE(kTag, "Failed to allocate internal probe buffer bytes=%u free_internal=%u", static_cast<unsigned>(kSmallProbeBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)));
@@ -654,15 +982,27 @@ void run_probe_sequence(const ProbeSettings &settings) {
   post_probe(settings, "psram-staged-small", psram_audio, kSmallProbeBytes, true);
   post_probe(settings, "psram-staged-large", psram_audio, kLargeProbeBytes, true);
   heap_caps_free(psram_audio);
+}
 
+bool ensure_microphone_ready() {
+  if (g_rx_channel != nullptr) {
+    return true;
+  }
   if (!init_voice_kit() || !start_microphone_stream()) {
     ESP_LOGE(kTag, "Skipping PE microphone probe because microphone initialization failed");
-    return;
+    return false;
+  }
+  return true;
+}
+
+bool run_microphone_probe(const ProbeSettings &settings, const char *source) {
+  if (!ensure_microphone_ready()) {
+    return false;
   }
   int16_t *mic_audio = static_cast<int16_t *>(heap_caps_malloc(kMicProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (mic_audio == nullptr) {
     ESP_LOGE(kTag, "Failed to allocate microphone probe buffer bytes=%u free_psram=%u", static_cast<unsigned>(kMicProbeBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
-    return;
+    return false;
   }
   uint32_t level = 0;
   const size_t captured_samples = capture_microphone_pcm(mic_audio, kMicProbeSamples, &level);
@@ -672,10 +1012,36 @@ void run_probe_sequence(const ProbeSettings &settings) {
       static_cast<unsigned>(captured_samples),
       static_cast<unsigned>(captured_samples * sizeof(int16_t)),
       static_cast<unsigned>(level));
+  bool uploaded = false;
   if (captured_samples > 0) {
-    post_probe(settings, "pe-mic-staged", reinterpret_cast<const char *>(mic_audio), captured_samples * sizeof(int16_t), true);
+    uploaded = post_probe(settings, source, reinterpret_cast<const char *>(mic_audio), captured_samples * sizeof(int16_t), true);
   }
   heap_caps_free(mic_audio);
+  return uploaded;
+}
+
+void run_probe_sequence(const ProbeSettings &settings) {
+  run_generated_probe_sequence(settings);
+  run_microphone_probe(settings, "pe-mic-staged");
+}
+
+void handle_command_loop(const ProbeSettings &settings) {
+  if (g_command_queue == nullptr) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    return;
+  }
+  CommandRequest request = {};
+  while (xQueueReceive(g_command_queue, &request, pdMS_TO_TICKS(1000)) == pdTRUE) {
+    ESP_LOGI(kTag, "Audio probe executing command=%s request_id=%s", request.command_type, request.request_id);
+    if (std::strcmp(request.command_type, "endpoint.listen") == 0) {
+      const bool ok = run_microphone_probe(settings, "pe-mic-command-staged");
+      if (ok) {
+        send_command_ack(settings, request.request_id, request.command_type, "succeeded", "Probe microphone upload completed");
+      } else {
+        send_command_error(settings, request.request_id, request.command_type, "probe_upload_failed", "Probe microphone upload failed");
+      }
+    }
+  }
 }
 }  // namespace
 
@@ -695,10 +1061,14 @@ void run() {
     return;
   }
 
+  start_command_websocket(settings);
   run_probe_sequence(settings);
   ESP_LOGI(kTag, "Audio probe sequence complete; idling");
   while (true) {
-    vTaskDelay(pdMS_TO_TICKS(10000));
+    if (!g_ws_started) {
+      start_command_websocket(settings);
+    }
+    handle_command_loop(settings);
   }
 }
 

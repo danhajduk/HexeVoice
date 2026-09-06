@@ -53,9 +53,11 @@ idf_component_register(
     esp_driver_i2c
     esp_driver_i2s
     esp_netif
+    esp_websocket_client
     esp_wifi
     freertos
     heap
+    cjson
     log
     lwip
     nvs_flash
