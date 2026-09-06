@@ -2592,6 +2592,45 @@ def create_app(
             raise HTTPException(status_code=409, detail=result)
         return JSONResponse(status_code=202, content=result)
 
+    @app.post("/api/voice/audio/probe")
+    async def voice_audio_probe(
+        request: Request,
+        endpoint_id: str,
+        source: str = "generated",
+    ) -> dict[str, object]:
+        audio_body = bytearray()
+        try:
+            async for body_chunk in request.stream():
+                if not body_chunk:
+                    continue
+                audio_body.extend(body_chunk)
+                if len(audio_body) > 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="audio_probe_payload_too_large")
+        except ClientDisconnect:
+            log.warning(
+                "HTTP audio probe disconnected before body complete: endpoint_id=%s source=%s received_bytes=%s",
+                endpoint_id,
+                source,
+                len(audio_body),
+            )
+            raise HTTPException(status_code=499, detail="client_disconnected_during_audio_probe")
+
+        if not audio_body:
+            raise HTTPException(status_code=400, detail="audio_probe_payload_required")
+
+        log.info(
+            "HTTP audio probe body received: endpoint_id=%s source=%s bytes=%s",
+            endpoint_id,
+            source,
+            len(audio_body),
+        )
+        return {
+            "accepted": True,
+            "endpoint_id": endpoint_id,
+            "source": source,
+            "received_bytes": len(audio_body),
+        }
+
     @app.get("/api/voice/status")
     async def voice_status() -> dict:
         status = voice_session_manager.status()

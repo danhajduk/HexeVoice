@@ -24,6 +24,8 @@ FIRMWARE_SETTINGS_HEADER = Path("firmware/components/endpoint_runtime/system/set
 FIRMWARE_OTA = Path("firmware/components/endpoint_runtime/system/ota.cpp")
 FIRMWARE_OTA_HEADER = Path("firmware/components/endpoint_runtime/system/ota.h")
 FIRMWARE_WIFI = Path("firmware/components/endpoint_runtime/board/wifi.cpp")
+FIRMWARE_AUDIO_PROBE_RUNTIME = Path("firmware/components/audio_probe_runtime/audio_probe.cpp")
+FIRMWARE_TOP_LEVEL_CMAKE = Path("firmware/CMakeLists.txt")
 FIRMWARE_TTS_PLAYER = Path("firmware/components/endpoint_runtime/voice/tts_player.cpp")
 FIRMWARE_TTS_PLAYER_HEADER = Path("firmware/components/endpoint_runtime/voice/tts_player.h")
 FIRMWARE_TTS_PLAYER_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/voice/tts_player_ha_voice_pe.cpp")
@@ -1518,7 +1520,10 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert "buildable_profiles" in build_source
     assert 'build_profile "${profile}"' in build_source
     assert "hexe_firmware_${1}.bin" in build_source
+    assert "hexe_audio_probe_${1}.bin" in build_source
     assert 'hexe_${FIRMWARE_APP}_${1}.bin' in build_source
+    assert 'audio_probe) echo "audio_probe_runtime" ;;' in build_source
+    assert 'audio_probe) echo "hexe-audio-probe-api-v1" ;;' in build_source
     assert '\\"filename\\":\\"${filename}\\"' in build_source
     assert "partition_csv_for_schema" in build_source
     assert "SDKCONFIG_DEFAULTS" in build_source
@@ -1545,3 +1550,24 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert '"asset_api_version": "${ASSET_API_VERSION}"' in export_source
     assert '"calibration_schema_version": "${CALIBRATION_SCHEMA_VERSION}"' in export_source
     assert '"signature_scope": "ota_payload_signed_by_backend_at_delivery"' in export_source
+
+
+def test_audio_probe_firmware_stays_transport_focused():
+    probe_source = FIRMWARE_AUDIO_PROBE_RUNTIME.read_text()
+    cmake_source = FIRMWARE_TOP_LEVEL_CMAKE.read_text()
+
+    assert 'HEXE_FIRMWARE_APP STREQUAL "audio_probe"' in cmake_source
+    assert "audio_probe_runtime" in cmake_source
+    assert "/api/voice/audio/probe?endpoint_id=%s&source=%s" in probe_source
+    assert "internal-staged" in probe_source
+    assert "psram-direct" in probe_source
+    assert "psram-staged-small" in probe_source
+    assert "psram-staged-large" in probe_source
+    assert "heap_caps_malloc(kLargeProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in probe_source
+    assert "std::memcpy(stage.data(), data + offset, chunk);" in probe_source
+    assert "endpoint_config.h" in probe_source
+    assert "secrets/wifi_secrets.h" in probe_source
+    assert "nvs_open(kNvsNamespace, NVS_READONLY, &handle)" in probe_source
+    assert "esp_websocket_client" not in probe_source
+    assert "BLE" not in probe_source
+    assert "tts" not in probe_source.lower()

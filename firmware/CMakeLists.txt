@@ -13,6 +13,8 @@ endif()
 
 if(HEXE_FIRMWARE_APP STREQUAL "endpoint")
   set(HEXE_FIRMWARE_RUNTIME_COMPONENT endpoint_runtime)
+elseif(HEXE_FIRMWARE_APP STREQUAL "audio_probe")
+  set(HEXE_FIRMWARE_RUNTIME_COMPONENT audio_probe_runtime)
 elseif(HEXE_FIRMWARE_APP STREQUAL "recovery")
   set(HEXE_FIRMWARE_RUNTIME_COMPONENT recovery_runtime)
   set(HEXE_FIRMWARE_ADDITIONAL_COMPONENTS espressif__cjson)

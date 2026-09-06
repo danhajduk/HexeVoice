@@ -15,7 +15,7 @@ PARTITION_VALIDATOR="${ROOT_DIR}/tools/validate_partition_schema.py"
 REQUESTED_FIRMWARE_APP="${HEXE_FIRMWARE_APP:-endpoint}"
 FIRMWARE_EXPORT_FLAVOR="${REQUESTED_FIRMWARE_APP}"
 case "${REQUESTED_FIRMWARE_APP}" in
-  endpoint|recovery)
+  endpoint|recovery|audio_probe)
     FIRMWARE_APP="${REQUESTED_FIRMWARE_APP}"
     ;;
   min|minimal|factory)
@@ -37,7 +37,8 @@ Commands:
 
 Environment:
   HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3, ha_voice_pe, or all. Default: all for build, esp_box_3 for push.
-  HEXE_FIRMWARE_APP    Firmware app to build. Default: endpoint. Use minimal for factory onboarding firmware.
+  HEXE_FIRMWARE_APP    Firmware app to build. Default: endpoint. Use minimal for factory onboarding firmware,
+                       or audio_probe for the generated-audio transport probe.
   BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
   EXPORT_DIR    Firmware export directory. Defaults to export or export-ha-voice-pe by profile.
   COMMON_EXPORT_DIR  Folder that receives profile-named binaries for all builds. Default: firmware/export.
@@ -260,6 +261,7 @@ PY
 runtime_component_for_app() {
   case "$1" in
     endpoint) echo "endpoint_runtime" ;;
+    audio_probe) echo "audio_probe_runtime" ;;
     recovery) echo "recovery_runtime" ;;
     minimal) echo "recovery_runtime" ;;
     *)
@@ -272,6 +274,7 @@ runtime_component_for_app() {
 firmware_api_version_for_app() {
   case "$1" in
     endpoint) echo "hexe-firmware-main-api-v1" ;;
+    audio_probe) echo "hexe-audio-probe-api-v1" ;;
     recovery) echo "hexe-recovery-api-v1" ;;
     minimal) echo "hexe-recovery-api-v1" ;;
     *)
@@ -284,6 +287,10 @@ firmware_api_version_for_app() {
 profile_build_dir() {
   if [[ "${FIRMWARE_EXPORT_FLAVOR}" == "minimal" ]]; then
     echo "${BUILD_DIR:-${ROOT_DIR}/build-min-$1}"
+    return
+  fi
+  if [[ "${FIRMWARE_APP}" == "audio_probe" ]]; then
+    echo "${BUILD_DIR:-${ROOT_DIR}/build-audio-probe-$1}"
     return
   fi
   if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
@@ -302,6 +309,10 @@ profile_export_dir() {
     echo "${EXPORT_DIR:-${ROOT_DIR}/export-min-$1}"
     return
   fi
+  if [[ "${FIRMWARE_APP}" == "audio_probe" ]]; then
+    echo "${EXPORT_DIR:-${ROOT_DIR}/export-audio-probe-$1}"
+    return
+  fi
   if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
     echo "${EXPORT_DIR:-${ROOT_DIR}/export-recovery-$1}"
     return
@@ -318,6 +329,8 @@ profile_app_filename() {
     echo "hexe_min_${1}.bin"
   elif [[ "${FIRMWARE_APP}" == "endpoint" ]]; then
     echo "hexe_firmware_${1}.bin"
+  elif [[ "${FIRMWARE_APP}" == "audio_probe" ]]; then
+    echo "hexe_audio_probe_${1}.bin"
   else
     echo "hexe_${FIRMWARE_APP}_${1}.bin"
   fi

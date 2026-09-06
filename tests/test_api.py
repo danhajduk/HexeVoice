@@ -1264,6 +1264,57 @@ def test_endpoint_http_audio_chunk_requires_control_websocket(tmp_path):
     assert response.json()["detail"]["reason"] == "endpoint_control_ws_unavailable"
 
 
+def test_endpoint_http_audio_probe_accepts_raw_body(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    def audio_chunks():
+        yield b"\x01\x00"
+        yield b"\x02\x00"
+
+    response = client.post(
+        "/api/voice/audio/probe",
+        params={"endpoint_id": "esp-pe-1", "source": "psram-staged"},
+        content=audio_chunks(),
+        headers={"Content-Type": "application/octet-stream"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "accepted": True,
+        "endpoint_id": "esp-pe-1",
+        "source": "psram-staged",
+        "received_bytes": 4,
+    }
+
+
+def test_endpoint_http_audio_probe_requires_body(tmp_path):
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/voice/audio/probe",
+        params={"endpoint_id": "esp-pe-1"},
+        content=b"",
+        headers={"Content-Type": "application/octet-stream"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "audio_probe_payload_required"
+
+
 def test_endpoint_binary_audio_websocket_uses_control_websocket_runtime(tmp_path):
     client = TestClient(
         create_app(
