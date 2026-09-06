@@ -923,14 +923,19 @@ bool socket_retryable_errno(int value) {
   return value == EINTR || value == EAGAIN || value == EWOULDBLOCK || value == EINPROGRESS;
 }
 
-bool socket_send_all(int sock, const char *data, size_t byte_count, int *written_bytes, int *last_errno) {
+bool socket_send_all_until(
+    int sock,
+    const char *data,
+    size_t byte_count,
+    int64_t deadline_us,
+    int *written_bytes,
+    int *last_errno) {
   if (written_bytes != nullptr) {
     *written_bytes = 0;
   }
   if (last_errno != nullptr) {
     *last_errno = 0;
   }
-  const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(kVoiceAudioHttpUploadTimeoutMs) * 1000;
   size_t offset = 0;
   size_t next_progress_log = kVoiceAudioHttpProgressLogBytes;
   while (offset < byte_count) {
@@ -960,6 +965,50 @@ bool socket_send_all(int sock, const char *data, size_t byte_count, int *written
       return false;
     }
     vTaskDelay(pdMS_TO_TICKS(25));
+  }
+  return true;
+}
+
+bool socket_send_all(int sock, const char *data, size_t byte_count, int *written_bytes, int *last_errno) {
+  const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(kVoiceAudioHttpUploadTimeoutMs) * 1000;
+  return socket_send_all_until(sock, data, byte_count, deadline_us, written_bytes, last_errno);
+}
+
+bool socket_send_audio_body_staged(int sock, const int16_t *samples, size_t byte_count, int *written_bytes, int *last_errno) {
+  if (written_bytes != nullptr) {
+    *written_bytes = 0;
+  }
+  if (samples == nullptr || byte_count == 0) {
+    return true;
+  }
+
+  std::array<char, kVoiceAudioHttpWriteChunkBytes> staging = {};
+  const char *source = reinterpret_cast<const char *>(samples);
+  const int64_t deadline_us = esp_timer_get_time() + static_cast<int64_t>(kVoiceAudioHttpUploadTimeoutMs) * 1000;
+  size_t offset = 0;
+  size_t next_progress_log = kVoiceAudioHttpProgressLogBytes;
+  while (offset < byte_count) {
+    const size_t to_copy = std::min(staging.size(), byte_count - offset);
+    std::memcpy(staging.data(), source + offset, to_copy);
+    int chunk_written = 0;
+    if (!socket_send_all_until(sock, staging.data(), to_copy, deadline_us, &chunk_written, last_errno)) {
+      if (written_bytes != nullptr) {
+        *written_bytes = static_cast<int>(offset + static_cast<size_t>(std::max(chunk_written, 0)));
+      }
+      return false;
+    }
+    offset += to_copy;
+    if (written_bytes != nullptr) {
+      *written_bytes = static_cast<int>(offset);
+    }
+    if (byte_count >= kVoiceAudioHttpProgressLogBytes && offset >= next_progress_log) {
+      ESP_LOGI(
+          kTag,
+          "Voice HTTP audio socket send progress: written=%u total=%u",
+          static_cast<unsigned>(offset),
+          static_cast<unsigned>(byte_count));
+      next_progress_log += kVoiceAudioHttpProgressLogBytes;
+    }
   }
   return true;
 }
@@ -1081,7 +1130,7 @@ bool post_voice_audio_raw_http(
     return false;
   }
   int body_written = 0;
-  if (!socket_send_all(sock, reinterpret_cast<const char *>(samples), byte_count, &body_written, last_errno)) {
+  if (!socket_send_audio_body_staged(sock, samples, byte_count, &body_written, last_errno)) {
     if (written_bytes != nullptr) {
       *written_bytes = body_written;
     }

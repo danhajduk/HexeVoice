@@ -835,6 +835,8 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "kVoiceAudioHttpUploadChunkSamples = kVoiceAudioHttpUploadChunkBytes / sizeof(int16_t)" in source
     assert "kVoiceAudioHttpUploadTimeoutMs = 120000" in source
     assert "kVoiceAudioHttpWriteChunkBytes = 1024" in source
+    assert "socket_send_audio_body_staged" in source
+    assert "std::memcpy(staging.data(), source + offset, to_copy);" in source
     assert "Voice HTTP audio socket send progress" in source
     assert "kVoiceAudioHttpTimeoutMs = 30000" in source
     assert "size_t transport_flush_sample_limit()" in source
@@ -843,7 +845,7 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "const size_t flush_sample_limit = transport_flush_sample_limit();" in source
     assert "voice_audio_chunk_upload_path" in source
     assert "connect_backend_socket" in source
-    assert "socket_send_all(sock, reinterpret_cast<const char *>(samples), byte_count" in source
+    assert "socket_send_audio_body_staged(sock, samples, byte_count" in source
     assert "socket_receive_http_status(sock, status_code, last_errno)" in source
     assert "shutdown(sock, SHUT_WR)" in source
     assert "written_bytes=%d" in source
