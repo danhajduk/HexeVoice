@@ -159,6 +159,20 @@ class SpyAssistantService:
     def status(self):
         return {"provider": "spy", "healthy": True, "configured": True}
 
+    def no_speech_response(self, endpoint_id: str, *, session_id: str, reason: str = "empty_transcript"):
+        return AssistantTurnResponse(
+            endpoint_id=endpoint_id,
+            session_id=session_id,
+            heard_text="",
+            reply_text="I didn't catch that.",
+            spoken_text="I didn't catch that.",
+            handled_locally=True,
+            command=None,
+            device_state="speaking",
+            provider_id="no_speech",
+            provider_metadata={"reason": reason},
+        )
+
 
 class CommandAssistantService(SpyAssistantService):
     def __init__(self, *, command: str, metadata: dict | None = None, spoken_text: str = "handled") -> None:
@@ -378,6 +392,44 @@ def test_voice_turn_pipeline_attaches_audio_quality_without_blocking(monkeypatch
     stt_event = next(event for event in events if event["event_type"] == "stt.completed")
     assert stt_event["audio_quality"]["status"] == "low_level"
     assert "audio_bytes" not in stt_event["audio_quality"]
+
+
+def test_voice_turn_pipeline_uses_audio_quality_profile_to_block_no_speech(monkeypatch):
+    events = []
+    monkeypatch.setattr("hexevoice.voice.pipeline.record_voice_event", lambda event_type, **fields: events.append({"event_type": event_type, **fields}))
+    assistant = SpyAssistantService()
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="and that's it"),
+        tts_adapter=DeterministicTextToSpeechAdapter(),
+        endpoint_audio_quality_profile_provider=lambda endpoint_id: {
+            "low_level_rms_threshold": 0.02,
+            "no_speech_statuses": ["silent", "low_level"],
+        }
+        if endpoint_id == "esp-pe-1"
+        else {},
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-pe-1",
+            session_id="voice-session-low",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=(300).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert assistant.requests == []
+    assert result.audio_quality is not None
+    assert result.audio_quality.status == "low_level"
+    assert result.transcript.text == ""
+    assert result.assistant_response.provider_id == "no_speech"
+    assert result.assistant_response.provider_metadata == {"reason": "audio_quality_low_level"}
+    stt_event = next(event for event in events if event["event_type"] == "stt.completed")
+    assert stt_event["confidence"] == 1.0
 
 
 def test_voice_turn_pipeline_attaches_ambient_snr_metadata(monkeypatch, tmp_path):
@@ -1848,6 +1900,41 @@ def test_faster_whisper_stt_adapter_transcribes_temp_wav_and_removes_it(tmp_path
         "max_initial_timestamp": 0.5,
     }
     assert not Path(captured["path"]).exists()
+
+
+def test_faster_whisper_stt_adapter_derives_confidence_from_segment_metadata(tmp_path):
+    class FakeModel:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def transcribe(self, _path, **_options):
+            return [
+                SimpleNamespace(text=" hello", avg_logprob=-0.1, no_speech_prob=0.2, start=0.0, end=1.0),
+                SimpleNamespace(text=" there", avg_logprob=-0.2, no_speech_prob=0.1, start=1.0, end=3.0),
+            ], object()
+
+    adapter = FasterWhisperSpeechToTextAdapter(
+        model_name="base.en",
+        device="cpu",
+        compute_type="int8",
+        temp_dir=tmp_path,
+        model_factory=FakeModel,
+    )
+
+    transcript = adapter.transcribe(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="voice-session-1",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            channels=1,
+            audio_bytes=b"\x01\x00" * 320,
+        )
+    )
+
+    assert transcript.text == "hello there"
+    assert transcript.confidence == 0.732528
 
 
 def test_faster_whisper_stt_adapter_preloads_model(tmp_path):

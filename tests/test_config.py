@@ -2,7 +2,10 @@ import logging
 import json
 
 from hexevoice.config.settings import Settings
+from hexevoice.config.settings import parse_audio_quality_profile_mapping
 from hexevoice.config.settings import parse_tts_conversion_sample_rates
+from hexevoice.api.models import EndpointStatusResponse
+from hexevoice.main import audio_quality_profile_for_endpoint
 from hexevoice.main import configure_backend_logging
 from hexevoice.voice.records import record_voice_event
 
@@ -66,6 +69,13 @@ def test_faster_whisper_stt_settings_defaults():
     assert settings.voice_stt_silence_trim_leading_padding_ms == 160
     assert settings.voice_stt_silence_trim_trailing_padding_ms == 500
     assert settings.voice_stt_silence_trim_min_audio_ms == 350
+    assert settings.resolved_voice_audio_quality_no_speech_statuses() == (
+        "missing_audio",
+        "unsupported_audio",
+        "short_audio",
+        "silent",
+    )
+    assert settings.resolved_voice_audio_quality_profiles() == {}
     assert settings.resolved_faster_whisper_temp_dir().as_posix() == "runtime/stt/faster-whisper"
 
 
@@ -159,6 +169,60 @@ def test_external_stt_settings_default_to_unix_socket_transport():
     assert settings.voice_stt_service_transport == "unix"
     assert settings.resolved_voice_stt_service_base_url() == "http://hexevoice-stt"
     assert settings.resolved_voice_stt_service_socket_path().as_posix() == "runtime/sockets/stt.sock"
+
+
+def test_audio_quality_profile_mapping_parses_json_thresholds():
+    raw = json.dumps(
+        {
+            "ha_voice_pe": {
+                "low_level_rms_threshold": 0.03,
+                "active_sample_threshold": "0.02",
+                "no_speech_statuses": ["silent", "low_level"],
+                "ignored": "text",
+            }
+        }
+    )
+    settings = Settings(voice_audio_quality_profiles=raw)
+
+    assert settings.resolved_voice_audio_quality_profiles() == {
+        "ha_voice_pe": {
+            "low_level_rms_threshold": 0.03,
+            "active_sample_threshold": 0.02,
+            "no_speech_statuses": ["silent", "low_level"],
+        }
+    }
+
+
+def test_audio_quality_profile_mapping_ignores_malformed_values():
+    assert parse_audio_quality_profile_mapping("not-json") == {}
+    assert parse_audio_quality_profile_mapping({"bad": "value"}) == {}
+
+
+def test_audio_quality_profile_for_endpoint_prefers_specific_overrides():
+    endpoint = EndpointStatusResponse(
+        endpoint_id="esp-pe-1",
+        hardware_id="hw-1",
+        device_state="idle",
+        last_seen_at="2026-09-06T00:00:00+00:00",
+        connection_state="online",
+        capabilities={"firmware": {"board_profile": "ha_voice_pe"}},
+    )
+
+    profile = audio_quality_profile_for_endpoint(
+        endpoint,
+        {
+            "default": {"low_level_rms_threshold": 0.01},
+            "ha_voice_pe": {"low_level_rms_threshold": 0.02},
+            "hardware:hw-1": {"active_sample_threshold": 0.02},
+            "endpoint:esp-pe-1": {"no_speech_statuses": ["silent", "low_level"]},
+        },
+    )
+
+    assert profile == {
+        "low_level_rms_threshold": 0.02,
+        "active_sample_threshold": 0.02,
+        "no_speech_statuses": ["silent", "low_level"],
+    }
 
 
 def test_tts_endpoint_voice_overrides_parse_env_mapping():

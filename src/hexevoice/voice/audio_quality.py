@@ -7,6 +7,17 @@ import struct
 
 
 @dataclass(frozen=True)
+class AudioQualityThresholds:
+    min_duration_ms: int = 300
+    active_sample_threshold: float = 0.01
+    silent_peak_threshold: float = 0.001
+    silent_rms_threshold: float = 0.0005
+    low_level_rms_threshold: float = 0.015
+    clipping_ratio_threshold: float = 0.01
+    min_snr_db: float = 15.0
+
+
+@dataclass(frozen=True)
 class AudioQualityResult:
     schema_version: int
     status: str
@@ -45,7 +56,9 @@ def analyze_pcm_s16le_audio(
     encoding: str | None = "pcm_s16le",
     ambient_audio_bytes: bytes | None = None,
     endpoint_audio_metrics: dict[str, object] | None = None,
+    thresholds: AudioQualityThresholds | None = None,
 ) -> AudioQualityResult:
+    thresholds = thresholds or AudioQualityThresholds()
     sample_rate = int(sample_rate_hz or 0)
     channel_count = max(1, int(channels or 1))
     raw = audio_bytes or b""
@@ -84,19 +97,19 @@ def analyze_pcm_s16le_audio(
     peak = max(abs_samples)
     clipping_count = sum(1 for sample in abs_samples if sample >= 0.999)
     clipping_ratio = clipping_count / len(samples)
-    active_samples = [sample for sample in samples if abs(sample) >= 0.01]
+    active_samples = [sample for sample in samples if abs(sample) >= thresholds.active_sample_threshold]
     active_audio_ratio = len(active_samples) / len(samples)
     silence_ratio = 1.0 - active_audio_ratio
     speech_rms = math.sqrt(sum(sample * sample for sample in active_samples) / len(active_samples)) if active_samples else None
     warnings: list[str] = []
 
-    if duration_ms < 300:
+    if duration_ms < thresholds.min_duration_ms:
         warnings.append("short_audio")
-    if peak <= 0.001 or rms <= 0.0005:
+    if peak <= thresholds.silent_peak_threshold or rms <= thresholds.silent_rms_threshold:
         warnings.append("silent")
-    elif rms < 0.015:
+    elif rms < thresholds.low_level_rms_threshold:
         warnings.append("low_level")
-    if clipping_ratio >= 0.01:
+    if clipping_ratio >= thresholds.clipping_ratio_threshold:
         warnings.append("clipped")
 
     ambient_metrics = _ambient_snr_metrics(
@@ -108,6 +121,7 @@ def analyze_pcm_s16le_audio(
         speech_peak=peak,
         speech_duration_ms=duration_ms,
         endpoint_audio_metrics=endpoint_audio_metrics,
+        min_snr_db=thresholds.min_snr_db,
     )
     if ambient_metrics["snr_status"] == "low_snr":
         warnings.append("low_snr")
@@ -143,6 +157,7 @@ def _ambient_snr_metrics(
     speech_peak: float | None,
     speech_duration_ms: int,
     endpoint_audio_metrics: dict[str, object] | None,
+    min_snr_db: float,
 ) -> dict[str, object]:
     base = {
         "ambient_rms": None,
@@ -160,6 +175,7 @@ def _ambient_snr_metrics(
         speech_rms=speech_rms,
         speech_peak=speech_peak,
         speech_duration_ms=speech_duration_ms,
+        min_snr_db=min_snr_db,
     )
     if endpoint_metrics is not None:
         return endpoint_metrics
@@ -194,7 +210,7 @@ def _ambient_snr_metrics(
     return {
         **measured,
         "snr_db": round(snr_db, 2),
-        "snr_status": "ok" if snr_db >= 15 else "low_snr",
+        "snr_status": "ok" if snr_db >= min_snr_db else "low_snr",
         "snr_reason": None,
     }
 
@@ -205,6 +221,7 @@ def _endpoint_ambient_snr_metrics(
     speech_rms: float | None,
     speech_peak: float | None,
     speech_duration_ms: int,
+    min_snr_db: float,
 ) -> dict[str, object] | None:
     if not endpoint_audio_metrics:
         return None
@@ -237,7 +254,7 @@ def _endpoint_ambient_snr_metrics(
     return {
         **base,
         "snr_db": round(snr_db, 2),
-        "snr_status": "ok" if snr_db >= 15 else "low_snr",
+        "snr_status": "ok" if snr_db >= min_snr_db else "low_snr",
         "snr_reason": None,
     }
 

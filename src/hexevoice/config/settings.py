@@ -1,6 +1,6 @@
 from pathlib import Path
 import json
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -121,6 +121,11 @@ class Settings(BaseSettings):
     voice_quality_observation_transcript_mode: Literal["redacted", "full"] = Field(
         default="redacted",
         alias="VOICE_QUALITY_OBSERVATION_TRANSCRIPT_MODE",
+    )
+    voice_audio_quality_profiles: str = Field(default="", alias="VOICE_AUDIO_QUALITY_PROFILES")
+    voice_audio_quality_no_speech_statuses: str = Field(
+        default="missing_audio,unsupported_audio,short_audio,silent",
+        alias="VOICE_AUDIO_QUALITY_NO_SPEECH_STATUSES",
     )
     voice_session_pre_wake_timeout_s: float = Field(default=10.0, alias="VOICE_SESSION_PRE_WAKE_TIMEOUT_S", gt=0)
     voice_session_max_active_s: float = Field(default=60.0, alias="VOICE_SESSION_MAX_ACTIVE_S", gt=0)
@@ -494,6 +499,12 @@ class Settings(BaseSettings):
             return self.voice_quality_observation_dir
         return self.runtime_dir / "voice_quality_observations"
 
+    def resolved_voice_audio_quality_profiles(self) -> dict[str, dict[str, Any]]:
+        return parse_audio_quality_profile_mapping(self.voice_audio_quality_profiles)
+
+    def resolved_voice_audio_quality_no_speech_statuses(self) -> tuple[str, ...]:
+        return parse_csv_tuple(self.voice_audio_quality_no_speech_statuses)
+
     def resolved_voice_tts_runtime_config_path(self) -> Path:
         if self.voice_tts_runtime_config_path is not None:
             return self.voice_tts_runtime_config_path
@@ -621,6 +632,66 @@ def parse_tts_conversion_sample_rates(raw: object) -> dict[str, int]:
         if variant:
             sample_rates[variant] = sample_rate
     return sample_rates or {"48k": 48000, "16k": 16000}
+
+
+def parse_csv_tuple(raw: object) -> tuple[str, ...]:
+    if raw is None:
+        values: list[object] = []
+    elif isinstance(raw, str):
+        values = raw.split(",")
+    elif isinstance(raw, (list, tuple)):
+        values = list(raw)
+    else:
+        values = []
+    return tuple(str(value).strip() for value in values if str(value).strip())
+
+
+def parse_audio_quality_profile_mapping(raw: object) -> dict[str, dict[str, Any]]:
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        payload = raw
+    elif isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return {}
+        try:
+            payload = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+    else:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
+    profiles: dict[str, dict[str, Any]] = {}
+    for key, raw_config in payload.items():
+        profile_key = str(key).strip()
+        if not profile_key or not isinstance(raw_config, dict):
+            continue
+        config: dict[str, Any] = {}
+        for name, value in raw_config.items():
+            config_key = str(name).strip()
+            if not config_key or value is None:
+                continue
+            if config_key == "no_speech_statuses":
+                config[config_key] = list(parse_csv_tuple(value))
+                continue
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
+                config[config_key] = value
+                continue
+            if isinstance(value, str):
+                text = value.strip()
+                if not text:
+                    continue
+                try:
+                    config[config_key] = float(text)
+                except ValueError:
+                    continue
+        profiles[profile_key] = config
+    return profiles
 
 
 def parse_tts_endpoint_voice_mapping(raw: object) -> dict[str, str]:

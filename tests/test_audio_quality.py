@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
+from hexevoice.voice.audio_quality import AudioQualityThresholds, analyze_pcm_s16le_audio
 
 
 def pcm_sine(*, amplitude: float, duration_ms: int = 1000, sample_rate_hz: int = 16000) -> bytes:
@@ -63,6 +63,17 @@ def test_audio_quality_detects_low_level_audio():
     assert result.status == "low_level"
     assert "low_level" in result.warnings
     assert result.rms is not None and result.rms < 0.015
+
+
+def test_audio_quality_applies_custom_low_level_threshold():
+    result = analyze_pcm_s16le_audio(
+        pcm_sine(amplitude=0.04),
+        sample_rate_hz=16000,
+        thresholds=AudioQualityThresholds(low_level_rms_threshold=0.04),
+    )
+
+    assert result.status == "low_level"
+    assert "low_level" in result.warnings
 
 
 def test_audio_quality_reports_normal_snr_with_ambient_reference():

@@ -15,6 +15,7 @@ import io
 import importlib.util
 import json
 import logging
+import math
 from pathlib import Path
 import re
 import tempfile
@@ -24,6 +25,7 @@ from typing import TYPE_CHECKING
 from typing import Any
 from typing import Callable
 from typing import Protocol
+from typing import Sequence
 import wave
 from uuid import uuid4
 
@@ -40,6 +42,7 @@ from hexevoice.persistence.voice_admin_maintenance import redact_spoken_passcode
 from hexevoice.persistence.speaker_profile_review import SpeakerProfileReviewStore
 from hexevoice.speaker_id.client import SpeakerIdServiceClient
 from hexevoice.voice.audio_quality import AudioQualityResult
+from hexevoice.voice.audio_quality import AudioQualityThresholds
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
 from hexevoice.voice.failure_guidance import voice_failure_guidance
 from hexevoice.voice.metric_schemas import VOICE_METRIC_SCHEMA_VERSION
@@ -73,6 +76,8 @@ PROFILE_LEARNING_AUDIO_DISQUALIFYING_WARNINGS = {
     "silent",
     "unsupported_audio",
 }
+DEFAULT_AUDIO_QUALITY_NO_SPEECH_STATUSES = ("missing_audio", "unsupported_audio", "short_audio", "silent")
+AUDIO_QUALITY_THRESHOLD_FIELDS = frozenset(AudioQualityThresholds.__dataclass_fields__)
 
 
 @dataclass(frozen=True)
@@ -505,10 +510,12 @@ class FasterWhisperSpeechToTextAdapter:
             segments, _info = model.transcribe(str(temp_path), **self._transcribe_options())
             timing["model_inference_ms"] = round((time.perf_counter() - inference_started_at) * 1000, 2)
             decoding_started_at = time.perf_counter()
-            segment_texts = [str(getattr(segment, "text", "")).strip() for segment in segments]
+            segment_list = list(segments)
+            segment_texts = [str(getattr(segment, "text", "")).strip() for segment in segment_list]
             timing["decoding_ms"] = round((time.perf_counter() - decoding_started_at) * 1000, 2)
             post_processing_started_at = time.perf_counter()
             text = " ".join(segment_texts).strip()
+            confidence = _faster_whisper_confidence(segment_list, text)
             timing["post_processing_ms"] = round((time.perf_counter() - post_processing_started_at) * 1000, 2)
             self._last_duration_ms = round((time.perf_counter() - started_at) * 1000, 2)
             timing["total_ms"] = self._last_duration_ms
@@ -525,6 +532,7 @@ class FasterWhisperSpeechToTextAdapter:
             )
             return SpeechTranscript(
                 text=text,
+                confidence=confidence,
                 provider_id="faster_whisper",
                 model=self._model_name,
                 duration_ms=self._last_duration_ms,
@@ -648,6 +656,40 @@ class FasterWhisperSpeechToTextAdapter:
 
     def _reload_required(self) -> bool:
         return self._loaded_config is not None and self._loaded_config != self._current_config()
+
+
+def _faster_whisper_confidence(segments: Sequence[Any], text: str) -> float | None:
+    if not text.strip():
+        return 0.0
+    weighted_total = 0.0
+    total_weight = 0.0
+    for segment in segments:
+        avg_logprob = _optional_float(getattr(segment, "avg_logprob", None))
+        if avg_logprob is None:
+            continue
+        score = _clamped_float(math.exp(avg_logprob), minimum=0.0, maximum=1.0)
+        no_speech_prob = _optional_float(getattr(segment, "no_speech_prob", None))
+        if no_speech_prob is not None:
+            score *= 1.0 - _clamped_float(no_speech_prob, minimum=0.0, maximum=1.0)
+        weight = _segment_weight(segment)
+        weighted_total += score * weight
+        total_weight += weight
+    if total_weight <= 0:
+        return None
+    return round(weighted_total / total_weight, 6)
+
+
+def _segment_weight(segment: Any) -> float:
+    start = _optional_float(getattr(segment, "start", None))
+    end = _optional_float(getattr(segment, "end", None))
+    if start is not None and end is not None and end > start:
+        return end - start
+    text = str(getattr(segment, "text", "") or "").strip()
+    return float(max(len(text), 1))
+
+
+def _clamped_float(value: float, *, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
 
 
 class ExternalFasterWhisperSpeechToTextAdapter:
@@ -1742,6 +1784,8 @@ class VoiceTurnPipeline:
         privacy_mode_enabled: bool = False,
         endpoint_audience_policies: dict[str, dict[str, Any]] | None = None,
         endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
+        endpoint_audio_quality_profile_provider: Callable[[str], dict[str, Any] | None] | None = None,
+        audio_quality_no_speech_statuses: Sequence[str] = DEFAULT_AUDIO_QUALITY_NO_SPEECH_STATUSES,
         admin_maintenance_store: VoiceAdminMaintenanceStore | None = None,
         profile_review_store: SpeakerProfileReviewStore | None = None,
         profile_review_audio_retention_enabled: bool = False,
@@ -1759,6 +1803,10 @@ class VoiceTurnPipeline:
         self._privacy_mode_enabled = privacy_mode_enabled
         self._endpoint_audience_policies = dict(endpoint_audience_policies or {})
         self._endpoint_audience_policy_provider = endpoint_audience_policy_provider
+        self._endpoint_audio_quality_profile_provider = endpoint_audio_quality_profile_provider
+        self._default_audio_quality_no_speech_statuses = tuple(
+            str(status).strip() for status in audio_quality_no_speech_statuses if str(status).strip()
+        )
         self._admin_maintenance_store = admin_maintenance_store
         self._profile_review_store = profile_review_store
         self._profile_review_audio_retention_enabled = profile_review_audio_retention_enabled
@@ -1774,6 +1822,7 @@ class VoiceTurnPipeline:
             encoding=audio.encoding,
             ambient_audio_bytes=audio.ambient_audio_bytes,
             endpoint_audio_metrics=audio.endpoint_audio_metrics,
+            thresholds=self._audio_quality_thresholds(audio.endpoint_id),
         )
         executor = ThreadPoolExecutor(max_workers=2)
         try:
@@ -1829,7 +1878,14 @@ class VoiceTurnPipeline:
             metadata=None,
             speaker_identity=speaker_identity,
         )
-        if audience_decision["blocked"]:
+        audio_quality_blocks_assistant = self._audio_quality_blocks_assistant(audio_quality, audio.endpoint_id)
+        if audio_quality_blocks_assistant:
+            assistant_response = self._assistant_service.no_speech_response(
+                audio.endpoint_id,
+                session_id=audio.session_id,
+                reason=f"audio_quality_{audio_quality.status}",
+            )
+        elif audience_decision["blocked"]:
             assistant_response = self._audience_policy_refusal_response(
                 audio=audio,
                 transcript_text=transcript.text,
@@ -1856,6 +1912,7 @@ class VoiceTurnPipeline:
         fallback_transcribe = getattr(self._stt_adapter, "maybe_fallback_transcribe", None)
         if (
             callable(fallback_transcribe)
+            and not audio_quality_blocks_assistant
             and not audience_decision["blocked"]
             and not self._speaker_identity_blocks_required_policy(speaker_policy, speaker_identity)
         ):
@@ -2351,6 +2408,43 @@ class VoiceTurnPipeline:
             except Exception:
                 log.warning("Endpoint audience policy lookup failed for endpoint_id=%s", endpoint_id, exc_info=True)
         return _normalized_endpoint_audience_policy(self._endpoint_audience_policies.get(endpoint_id) or {})
+
+    def _audio_quality_profile(self, endpoint_id: str) -> dict[str, Any]:
+        if self._endpoint_audio_quality_profile_provider is None:
+            return {}
+        try:
+            profile = self._endpoint_audio_quality_profile_provider(endpoint_id)
+        except Exception:
+            log.warning("Endpoint audio quality profile lookup failed for endpoint_id=%s", endpoint_id, exc_info=True)
+            return {}
+        return profile if isinstance(profile, dict) else {}
+
+    def _audio_quality_thresholds(self, endpoint_id: str) -> AudioQualityThresholds:
+        profile = self._audio_quality_profile(endpoint_id)
+        values: dict[str, Any] = {}
+        for field_name in AUDIO_QUALITY_THRESHOLD_FIELDS:
+            value = profile.get(field_name)
+            if value is not None:
+                values[field_name] = value
+        try:
+            return AudioQualityThresholds(**values)
+        except (TypeError, ValueError):
+            log.warning("Endpoint audio quality profile has invalid thresholds: endpoint_id=%s", endpoint_id, exc_info=True)
+            return AudioQualityThresholds()
+
+    def _audio_quality_no_speech_statuses(self, endpoint_id: str) -> tuple[str, ...]:
+        profile = self._audio_quality_profile(endpoint_id)
+        configured = profile.get("no_speech_statuses")
+        if isinstance(configured, str):
+            statuses = tuple(status.strip() for status in configured.split(",") if status.strip())
+        elif isinstance(configured, Sequence) and not isinstance(configured, (bytes, bytearray)):
+            statuses = tuple(str(status).strip() for status in configured if str(status).strip())
+        else:
+            statuses = ()
+        return statuses or self._default_audio_quality_no_speech_statuses
+
+    def _audio_quality_blocks_assistant(self, audio_quality: AudioQualityResult, endpoint_id: str) -> bool:
+        return audio_quality.status in set(self._audio_quality_no_speech_statuses(endpoint_id))
 
     def _speaker_identity_for_audience_override(
         self,
@@ -2993,6 +3087,7 @@ def build_voice_turn_pipeline(
     settings: "Settings",
     assistant_service: AssistantTurnService,
     endpoint_audience_policy_provider: Callable[[str], dict[str, Any] | None] | None = None,
+    endpoint_audio_quality_profile_provider: Callable[[str], dict[str, Any] | None] | None = None,
     admin_maintenance_store: VoiceAdminMaintenanceStore | None = None,
     profile_review_store: SpeakerProfileReviewStore | None = None,
 ) -> VoiceTurnPipeline:
@@ -3081,6 +3176,8 @@ def build_voice_turn_pipeline(
         speaker_id_personalization_enabled=settings.voice_speaker_id_personalization_enabled,
         privacy_mode_enabled=settings.voice_privacy_mode_enabled,
         endpoint_audience_policy_provider=endpoint_audience_policy_provider,
+        endpoint_audio_quality_profile_provider=endpoint_audio_quality_profile_provider,
+        audio_quality_no_speech_statuses=settings.resolved_voice_audio_quality_no_speech_statuses(),
         admin_maintenance_store=admin_maintenance_store,
         profile_review_store=profile_review_store,
         profile_review_audio_retention_enabled=(

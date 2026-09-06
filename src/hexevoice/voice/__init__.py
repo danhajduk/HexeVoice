@@ -39,7 +39,7 @@ from hexevoice.voice.wake_election import (
 )
 from hexevoice.voice.session_manager import VoiceSessionManager
 from hexevoice.voice.micro_vad_chunks import MicroVadChunkRecordingService
-from hexevoice.voice.audio_quality import AudioQualityResult, analyze_pcm_s16le_audio
+from hexevoice.voice.audio_quality import AudioQualityResult, AudioQualityThresholds, analyze_pcm_s16le_audio
 from hexevoice.voice.metric_schemas import (
     AmbientSnrMetric,
     AudioQualityMetric,
@@ -128,6 +128,7 @@ __all__ = [
     "VoiceSessionManager",
     "MicroVadChunkRecordingService",
     "AudioQualityResult",
+    "AudioQualityThresholds",
     "analyze_pcm_s16le_audio",
     "AmbientSnrMetric",
     "AudioQualityMetric",

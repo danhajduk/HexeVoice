@@ -408,6 +408,33 @@ def endpoint_board_profile(endpoint_status: EndpointStatusResponse) -> str:
     return "esp_box_3"
 
 
+def audio_quality_profile_for_endpoint(
+    endpoint_status: EndpointStatusResponse | None,
+    profiles: dict[str, dict[str, object]],
+) -> dict[str, object]:
+    resolved: dict[str, object] = {}
+    if isinstance(profiles.get("default"), dict):
+        resolved.update(profiles["default"])
+    if endpoint_status is None:
+        return resolved
+
+    capabilities = endpoint_status.capabilities if isinstance(endpoint_status.capabilities, dict) else {}
+    firmware = capabilities.get("firmware") if isinstance(capabilities.get("firmware"), dict) else {}
+    assert isinstance(firmware, dict)
+    keys = [
+        str(capabilities.get("application_type") or firmware.get("application_type") or "").strip(),
+        str(capabilities.get("device_type") or firmware.get("device_type") or "").strip(),
+        endpoint_board_profile(endpoint_status),
+        f"board:{endpoint_board_profile(endpoint_status)}",
+        f"hardware:{endpoint_status.hardware_id}" if endpoint_status.hardware_id else "",
+        f"endpoint:{endpoint_status.endpoint_id}",
+    ]
+    for key in keys:
+        if key and isinstance(profiles.get(key), dict):
+            resolved.update(profiles[key])
+    return resolved
+
+
 def firmware_profile_for_filename(filename: str) -> str:
     normalized = filename.lower()
     if "ha_voice_pe" in normalized:
@@ -851,10 +878,20 @@ def create_app(
             "adult_override_enabled": endpoint.adult_override_enabled,
         }
 
+    audio_quality_profiles = app_settings.resolved_voice_audio_quality_profiles()
+
+    def endpoint_audio_quality_profile(endpoint_id: str) -> dict[str, object]:
+        try:
+            endpoint = endpoint_service.status(endpoint_id)
+        except HTTPException:
+            endpoint = None
+        return audio_quality_profile_for_endpoint(endpoint, audio_quality_profiles)
+
     voice_turn_pipeline = build_voice_turn_pipeline(
         settings=app_settings,
         assistant_service=assistant_service,
         endpoint_audience_policy_provider=endpoint_audience_policy,
+        endpoint_audio_quality_profile_provider=endpoint_audio_quality_profile,
         admin_maintenance_store=voice_admin_maintenance_store,
         profile_review_store=speaker_profile_review_store,
     )

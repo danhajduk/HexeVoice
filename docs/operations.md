@@ -302,12 +302,23 @@ The runtime accepts faster-whisper tuning via `VOICE_STT_FASTER_WHISPER_LANGUAGE
 `VOICE_STT_FASTER_WHISPER_MAX_INITIAL_TIMESTAMP`.
 STT transcription responses include `timing_breakdown_ms` with audio
 preparation, model transcribe call, decoding, post-processing, and total
-durations for latency debugging.
+durations for latency debugging. Faster-whisper responses also include a
+derived `confidence` when segment log-probability metadata is available.
 Provider setup can select the external faster-whisper default model, extra
 models to download/preload, device, and compute type. The safe default is
 `device=cpu` with `compute_type=int8`. GPU mode uses `device=cuda` and normally
 `compute_type=float16`, but it requires compatible NVIDIA drivers, CUDA/cuDNN
 runtime libraries, and a CTranslate2/faster-whisper install that can use CUDA.
+
+Completed turn audio is analyzed before assistant routing. By default only
+missing, unsupported, short, or silent audio is treated as no speech. Use
+`VOICE_AUDIO_QUALITY_PROFILES` to tune thresholds and no-speech statuses per
+device profile, board, hardware id, or endpoint id. Profiles are JSON and
+specific entries override `default`; for example:
+
+```env
+VOICE_AUDIO_QUALITY_PROFILES={"ha_voice_pe":{"low_level_rms_threshold":0.015,"no_speech_statuses":["missing_audio","unsupported_audio","short_audio","silent","low_level"]}}
+```
 Runtime service status also exposes external STT `warm_model_health`, including
 loaded state, loaded-at timestamp, load count, last load duration, and
 `reload_required` when the running STT service does not match the backend's
