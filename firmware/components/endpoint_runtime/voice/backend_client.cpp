@@ -563,7 +563,7 @@ bool ensure_http_audio_buffer() {
   return true;
 }
 
-[[maybe_unused]] bool buffer_voice_audio_samples(const int16_t *samples, size_t sample_count) {
+bool buffer_voice_audio_samples(const int16_t *samples, size_t sample_count) {
   if (samples == nullptr || sample_count == 0) {
     return true;
   }
@@ -619,7 +619,7 @@ bool send_transport_chunk(const int16_t *samples, size_t sample_count) {
   }
   const bool sent = kVoiceAudioWebSocketUploadEnabled
                         ? send_audio_ws_binary(samples, sample_count)
-                        : post_voice_audio_chunk_http(samples, sample_count, false, false);
+                        : buffer_voice_audio_samples(samples, sample_count);
   if (sent) {
     set_audio_streaming(true);
     reset_transport_micro_vad();
@@ -983,7 +983,7 @@ bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bo
   return uploaded;
 }
 
-[[maybe_unused]] bool post_buffered_voice_audio_http() {
+bool post_buffered_voice_audio_http() {
   if (g_http_audio_sample_count == 0) {
     ESP_LOGW(kTag, "Voice HTTP audio upload skipped: no captured samples for session=%s", g_session_id.c_str());
     return false;
@@ -4142,6 +4142,13 @@ bool finish_audio_stream(const char *reason) {
   drain_queued_audio_frames_to_transport_buffer();
   if (!flush_transport_samples(true)) {
     return false;
+  }
+  if (!kVoiceAudioWebSocketUploadEnabled) {
+    g_audio_stream_finished = true;
+    set_audio_streaming(false);
+    if (!post_buffered_voice_audio_http()) {
+      ESP_LOGW(kTag, "Voice HTTP buffered audio upload failed before audio.end");
+    }
   }
   std::string payload;
   payload.reserve(384);

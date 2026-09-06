@@ -826,7 +826,7 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "kVoiceWsPingIntervalSec = 0" in source
     assert "kVoiceWsPingPongTimeoutSec = 0" in source
     assert "kVoiceWsIdlePingIntervalUs = 0" in source
-    assert "kVoiceAudioWebSocketUploadEnabled\n                        ? send_audio_ws_binary(samples, sample_count)\n                        : post_voice_audio_chunk_http(samples, sample_count, false, false)" in source
+    assert "kVoiceAudioWebSocketUploadEnabled\n                        ? send_audio_ws_binary(samples, sample_count)\n                        : buffer_voice_audio_samples(samples, sample_count)" in source
     assert "voice_audio_chunk_upload_url" in source
     assert 'path = "/api/voice/audio/chunk?endpoint_id="' in source
     assert "Voice HTTP audio buffer allocated bytes=%u" in source
@@ -857,7 +857,9 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     ]
     assert "send_ws_text" not in transport_chunk_block
     assert "post_buffered_voice_audio_http" not in transport_chunk_block
-    assert "post_buffered_voice_audio_http" not in finish_audio_block
+    assert "if (!kVoiceAudioWebSocketUploadEnabled) {\n    g_audio_stream_finished = true;" in finish_audio_block
+    assert "post_buffered_voice_audio_http()" in finish_audio_block
+    assert "Voice HTTP buffered audio upload failed before audio.end" in finish_audio_block
     assert "payload_base64" not in source
     assert "mbedtls_base64" not in source
     assert "Audio transport queue overflow; dropping oldest voice frame" in source
