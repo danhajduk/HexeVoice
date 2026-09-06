@@ -1565,8 +1565,16 @@ def test_audio_probe_firmware_stays_transport_focused():
     assert "psram-staged-small" in probe_source
     assert "psram-staged-large" in probe_source
     assert "pe-mic-staged" in probe_source
-    assert "pe-mic-command-staged" in probe_source
-    assert "pe-mic-button-staged" in probe_source
+    assert "/api/voice/audio/chunk?endpoint_id=%s&session_id=%s" in probe_source
+    assert "Audio probe full turn starting" in probe_source
+    assert "Audio probe full turn captured" in probe_source
+    assert "Voice turn audio chunk upload finished" in probe_source
+    assert "Audio probe full turn TTS ready" in probe_source
+    assert "Audio probe full turn backend completed" in probe_source
+    assert "Audio probe full turn result" in probe_source
+    assert "tts.playback.download_started" in probe_source
+    assert "tts.playback.first_audio_frame" in probe_source
+    assert "tts.playback.completed" in probe_source
     assert "Audio probe center button ready" in probe_source
     assert "Audio probe center button down" in probe_source
     assert "Audio probe center button short press accepted" in probe_source

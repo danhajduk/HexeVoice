@@ -93,6 +93,9 @@ constexpr int kControlWsClientBufferBytes = 2048;
 constexpr int kControlWsPingIntervalSec = 0;
 constexpr int kControlWsPingPongTimeoutSec = 0;
 constexpr int kCommandPollMs = 20;
+constexpr int kTurnTtsReadyTimeoutMs = 60000;
+constexpr int kTurnCompletionTimeoutMs = 5000;
+constexpr int kTurnWsConnectTimeoutMs = 7000;
 constexpr int64_t kButtonDebounceUs = 250 * 1000;
 constexpr int64_t kButtonShortPressMinUs = 40 * 1000;
 constexpr int64_t kButtonLongPressUs = 1000 * 1000;
@@ -220,6 +223,20 @@ struct TtsSynthesizeResult {
   char audio_url[256];
 };
 
+struct TurnProbeState {
+  char session_id[96];
+  char stream_id[64];
+  char content_type[32];
+  char audio_url[256];
+  char transcript[160];
+  char response_text[240];
+  char error_code[80];
+  bool waiting;
+  bool tts_ready;
+  bool completed;
+  bool error;
+};
+
 struct HttpTextBuffer {
   std::string text;
   size_t max_bytes;
@@ -264,6 +281,7 @@ int64_t g_center_button_pressed_at_us = 0;
 int64_t g_last_center_button_handled_at_us = 0;
 uint32_t g_sequence = 1;
 std::string g_ws_rx_buffer;
+TurnProbeState g_turn_probe = {};
 
 void copy_string(char *target, size_t target_size, const char *value) {
   if (target == nullptr || target_size == 0) {
@@ -279,6 +297,7 @@ bool valid_port(int port) {
 }
 
 const char *payload_request_id(cJSON *payload);
+bool send_ws_text(const std::string &payload);
 void send_command_ack(
     const ProbeSettings &settings,
     const char *request_id,
@@ -816,6 +835,86 @@ bool post_probe(
       kTag,
       "Probe %s upload finished ok=%s written=%u expected=%u errno=%d status=%d response_bytes=%u",
       source,
+      ok ? "true" : "false",
+      static_cast<unsigned>(written),
+      static_cast<unsigned>(static_cast<size_t>(header_length) + size),
+      last_errno,
+      status_code,
+      static_cast<unsigned>(response_bytes));
+  return ok && response_ok && status_code >= 200 && status_code < 300;
+}
+
+bool post_voice_audio_chunk(
+    const ProbeSettings &settings,
+    const char *session_id,
+    const char *data,
+    size_t size,
+    uint32_t level) {
+  int last_errno = 0;
+  const int sock = connect_socket(settings, &last_errno);
+  if (sock < 0) {
+    ESP_LOGE(kTag, "Voice turn audio chunk socket connect failed session=%s errno=%d", session_id, last_errno);
+    return false;
+  }
+
+  char path[384] = {};
+  const uint32_t sequence = g_sequence++;
+  std::snprintf(
+      path,
+      sizeof(path),
+      "/api/voice/audio/chunk?endpoint_id=%s&session_id=%s&chunk_index=0&sequence=%u"
+      "&encoding=pcm_s16le&sample_rate_hz=%d&channels=1&is_final=true"
+      "&micro_vad_chunk_started=true&micro_vad_chunk_final=true&contains_speech=true"
+      "&frame_level=%u&speech_peak_level=%u",
+      settings.endpoint_id,
+      session_id,
+      static_cast<unsigned>(sequence),
+      kSampleRate,
+      static_cast<unsigned>(level),
+      static_cast<unsigned>(level));
+  char header[512] = {};
+  const int header_length = std::snprintf(
+      header,
+      sizeof(header),
+      "POST %s HTTP/1.1\r\n"
+      "Host: %s:%d\r\n"
+      "Content-Type: application/octet-stream\r\n"
+      "Content-Length: %u\r\n"
+      "Connection: close\r\n"
+      "\r\n",
+      path,
+      settings.backend_host,
+      settings.http_port,
+      static_cast<unsigned>(size));
+  if (header_length <= 0 || static_cast<size_t>(header_length) >= sizeof(header)) {
+    ESP_LOGE(kTag, "Voice turn audio chunk HTTP header overflow session=%s", session_id);
+    close(sock);
+    return false;
+  }
+
+  ESP_LOGI(
+      kTag,
+      "Voice turn audio chunk upload starting session=%s bytes=%u level=%u sequence=%u",
+      session_id,
+      static_cast<unsigned>(size),
+      static_cast<unsigned>(level),
+      static_cast<unsigned>(sequence));
+  size_t written = 0;
+  bool ok = send_all(sock, header, static_cast<size_t>(header_length), &written, &last_errno);
+  if (ok) {
+    ok = send_body(sock, data, size, true, &written, &last_errno);
+  }
+
+  shutdown(sock, SHUT_WR);
+  int status_code = 0;
+  size_t response_bytes = 0;
+  const bool response_ok = read_response(sock, &status_code, &response_bytes);
+  close(sock);
+
+  ESP_LOGI(
+      kTag,
+      "Voice turn audio chunk upload finished session=%s ok=%s written=%u expected=%u errno=%d status=%d response_bytes=%u",
+      session_id,
       ok ? "true" : "false",
       static_cast<unsigned>(written),
       static_cast<unsigned>(static_cast<size_t>(header_length) + size),
@@ -2077,24 +2176,104 @@ std::string websocket_url(const ProbeSettings &settings) {
   return std::string(buffer);
 }
 
-void append_event_header(std::string &target, const ProbeSettings &settings, const char *event_type) {
-  char prefix[384] = {};
+void append_event_header(
+    std::string &target,
+    const ProbeSettings &settings,
+    const char *event_type,
+    const char *session_id = nullptr) {
   const long long now_us = static_cast<long long>(esp_timer_get_time());
+  target.append("{\"event_type\":\"");
+  append_json_escaped(target, event_type == nullptr ? "session.ping" : event_type);
+  target.append("\",\"event_id\":\"evt_");
+  append_json_escaped(target, settings.endpoint_id);
+  target.push_back('_');
+  char numeric[96] = {};
+  std::snprintf(numeric, sizeof(numeric), "%u_%lld", static_cast<unsigned>(g_sequence), now_us);
+  target.append(numeric);
+  target.append("\",\"schema_version\":\"");
+  target.append(kVoiceEventSchemaVersion);
+  target.append("\",\"endpoint_id\":\"");
+  append_json_escaped(target, settings.endpoint_id);
+  target.append("\",\"direction\":\"endpoint_to_backend\",\"session_id\":");
+  if (session_id != nullptr && session_id[0] != '\0') {
+    target.push_back('"');
+    append_json_escaped(target, session_id);
+    target.push_back('"');
+  } else {
+    target.append("null");
+  }
+  target.append(",\"sequence\":");
+  std::snprintf(numeric, sizeof(numeric), "%u", static_cast<unsigned>(g_sequence));
+  target.append(numeric);
+  target.append(",\"payload\":");
+}
+
+bool send_voice_event_payload(
+    const ProbeSettings &settings,
+    const char *event_type,
+    const char *session_id,
+    const char *payload_json) {
+  std::string envelope;
+  envelope.reserve(1024);
+  append_event_header(envelope, settings, event_type, session_id);
+  envelope.append(payload_json == nullptr ? "{}" : payload_json);
+  envelope.push_back('}');
+  const bool sent = send_ws_text(envelope);
+  if (sent) {
+    ESP_LOGI(kTag, "Audio probe event sent type=%s session=%s", event_type, session_id == nullptr ? "<none>" : session_id);
+    ++g_sequence;
+  }
+  return sent;
+}
+
+bool send_session_start(const ProbeSettings &settings, const char *session_id) {
+  char payload[384] = {};
+  const esp_app_desc_t *app = esp_app_get_description();
   std::snprintf(
-      prefix,
-      sizeof(prefix),
-      "{\"event_type\":\"%s\",\"event_id\":\"evt_%s_%u_%lld\","
-      "\"schema_version\":\"%s\",\"endpoint_id\":\"%s\","
-      "\"direction\":\"endpoint_to_backend\",\"session_id\":null,"
-      "\"sequence\":%u,\"timestamp\":\"1970-01-01T00:00:00Z\",\"payload\":",
-      event_type,
-      settings.endpoint_id,
-      static_cast<unsigned>(g_sequence),
-      now_us,
-      kVoiceEventSchemaVersion,
-      settings.endpoint_id,
-      static_cast<unsigned>(g_sequence));
-  target.append(prefix);
+      payload,
+      sizeof(payload),
+      "{\"audio_format\":{\"encoding\":\"pcm_s16le\",\"sample_rate_hz\":%d,\"channels\":1},"
+      "\"firmware_version\":\"%s\",\"wake_source\":\"button\"}",
+      kSampleRate,
+      app == nullptr ? "audio-probe" : app->version);
+  return send_voice_event_payload(settings, "session.start", session_id, payload);
+}
+
+bool send_audio_end(const ProbeSettings &settings, const char *session_id) {
+  return send_voice_event_payload(settings, "audio.end", session_id, "{\"reason\":\"vad_silence\"}");
+}
+
+bool send_tts_playback_event(
+    const ProbeSettings &settings,
+    const char *event_type,
+    const char *session_id,
+    const char *stream_id,
+    const char *audio_url,
+    size_t byte_count,
+    const char *reason = nullptr,
+    const char *message = nullptr) {
+  std::string payload;
+  payload.reserve(512);
+  payload.append("{\"stream_id\":\"");
+  append_json_escaped(payload, stream_id == nullptr ? "" : stream_id);
+  payload.append("\",\"audio_url\":\"");
+  append_json_escaped(payload, audio_url == nullptr ? "" : audio_url);
+  payload.append("\",\"byte_count\":");
+  char numeric[32] = {};
+  std::snprintf(numeric, sizeof(numeric), "%u", static_cast<unsigned>(byte_count));
+  payload.append(numeric);
+  if (reason != nullptr && reason[0] != '\0') {
+    payload.append(",\"reason\":\"");
+    append_json_escaped(payload, reason);
+    payload.push_back('"');
+  }
+  if (message != nullptr && message[0] != '\0') {
+    payload.append(",\"message\":\"");
+    append_json_escaped(payload, message);
+    payload.push_back('"');
+  }
+  payload.push_back('}');
+  return send_voice_event_payload(settings, event_type, session_id, payload.c_str());
 }
 
 bool send_ws_text(const std::string &payload) {
@@ -2179,6 +2358,11 @@ const char *payload_request_id(cJSON *payload) {
   return cJSON_IsString(request_id) ? request_id->valuestring : "";
 }
 
+const char *json_string_or_empty(cJSON *object, const char *key) {
+  cJSON *item = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
+  return cJSON_IsString(item) ? item->valuestring : "";
+}
+
 void enqueue_listen_command(cJSON *payload) {
   if (g_command_queue == nullptr) {
     return;
@@ -2211,6 +2395,36 @@ void handle_backend_event_json(const ProbeSettings &settings, const std::string 
   }
 
   ESP_LOGI(kTag, "Audio probe command WebSocket event type=%s", type->valuestring);
+  const char *session_id = json_string_or_empty(root, "session_id");
+  const bool turn_event = g_turn_probe.waiting && session_id[0] != '\0' && std::strcmp(session_id, g_turn_probe.session_id) == 0;
+  if (turn_event && std::strcmp(type->valuestring, "transcript.final") == 0) {
+    copy_string(g_turn_probe.transcript, sizeof(g_turn_probe.transcript), json_string_or_empty(payload, "text"));
+    ESP_LOGI(kTag, "Audio probe full turn transcript session=%s text=\"%s\"", session_id, g_turn_probe.transcript);
+  } else if (turn_event && std::strcmp(type->valuestring, "response.text") == 0) {
+    copy_string(g_turn_probe.response_text, sizeof(g_turn_probe.response_text), json_string_or_empty(payload, "text"));
+    ESP_LOGI(kTag, "Audio probe full turn response session=%s text=\"%s\"", session_id, g_turn_probe.response_text);
+  } else if (turn_event && std::strcmp(type->valuestring, "tts.ready") == 0) {
+    const char *audio_url = json_string_or_empty(payload, "audio_url");
+    const std::string resolved_audio_url = backend_url_from_path_or_url(settings, audio_url);
+    copy_string(g_turn_probe.stream_id, sizeof(g_turn_probe.stream_id), json_string_or_empty(payload, "stream_id"));
+    copy_string(g_turn_probe.content_type, sizeof(g_turn_probe.content_type), json_string_or_empty(payload, "content_type"));
+    copy_string(g_turn_probe.audio_url, sizeof(g_turn_probe.audio_url), resolved_audio_url.c_str());
+    g_turn_probe.tts_ready = g_turn_probe.audio_url[0] != '\0';
+    ESP_LOGI(
+        kTag,
+        "Audio probe full turn TTS ready session=%s stream=%s audio_url=%s",
+        session_id,
+        g_turn_probe.stream_id,
+        g_turn_probe.audio_url);
+  } else if (turn_event && std::strcmp(type->valuestring, "session.completed") == 0) {
+    g_turn_probe.completed = true;
+    ESP_LOGI(kTag, "Audio probe full turn backend completed session=%s", session_id);
+  } else if (turn_event && std::strcmp(type->valuestring, "session.error") == 0) {
+    copy_string(g_turn_probe.error_code, sizeof(g_turn_probe.error_code), json_string_or_empty(payload, "code"));
+    g_turn_probe.error = true;
+    ESP_LOGW(kTag, "Audio probe full turn backend error session=%s code=%s", session_id, g_turn_probe.error_code);
+  }
+
   if (std::strcmp(type->valuestring, "endpoint.listen") == 0) {
     send_command_ack(settings, payload_request_id(payload), "endpoint.listen", "accepted", "OK");
     enqueue_listen_command(payload);
@@ -2411,6 +2625,169 @@ bool run_microphone_probe(const ProbeSettings &settings, const char *source) {
   return uploaded;
 }
 
+void reset_turn_probe_state(const char *session_id) {
+  g_turn_probe = {};
+  copy_string(g_turn_probe.session_id, sizeof(g_turn_probe.session_id), session_id);
+  g_turn_probe.waiting = true;
+}
+
+bool wait_for_control_websocket() {
+  const int64_t deadline = esp_timer_get_time() + (static_cast<int64_t>(kTurnWsConnectTimeoutMs) * 1000);
+  while (esp_timer_get_time() < deadline) {
+    if (g_ws_connected) {
+      return true;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  return g_ws_connected;
+}
+
+bool wait_for_turn_tts_ready() {
+  const int64_t deadline = esp_timer_get_time() + (static_cast<int64_t>(kTurnTtsReadyTimeoutMs) * 1000);
+  while (esp_timer_get_time() < deadline) {
+    if (g_turn_probe.tts_ready || g_turn_probe.error) {
+      return g_turn_probe.tts_ready && !g_turn_probe.error;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  ESP_LOGW(kTag, "Audio probe full turn timed out waiting for TTS session=%s", g_turn_probe.session_id);
+  return false;
+}
+
+bool wait_for_turn_completion() {
+  const int64_t deadline = esp_timer_get_time() + (static_cast<int64_t>(kTurnCompletionTimeoutMs) * 1000);
+  while (esp_timer_get_time() < deadline) {
+    if (g_turn_probe.completed || g_turn_probe.error) {
+      return g_turn_probe.completed && !g_turn_probe.error;
+    }
+    vTaskDelay(pdMS_TO_TICKS(100));
+  }
+  ESP_LOGW(kTag, "Audio probe full turn timed out waiting for backend completion session=%s", g_turn_probe.session_id);
+  return false;
+}
+
+bool run_full_turn_probe(const ProbeSettings &settings, const char *trigger) {
+  if (!wait_for_control_websocket()) {
+    ESP_LOGE(kTag, "Audio probe full turn skipped; command WebSocket is not connected trigger=%s", trigger);
+    return false;
+  }
+  if (!ensure_microphone_ready()) {
+    return false;
+  }
+
+  char session_id[96] = {};
+  std::snprintf(
+      session_id,
+      sizeof(session_id),
+      "audio-probe-%08x-%lld",
+      static_cast<unsigned>(esp_random()),
+      static_cast<long long>(esp_timer_get_time() / 1000));
+  reset_turn_probe_state(session_id);
+  ESP_LOGI(kTag, "Audio probe full turn starting trigger=%s session=%s", trigger == nullptr ? "unknown" : trigger, session_id);
+  log_probe_heap("turn_before_session_start");
+  if (!send_session_start(settings, session_id)) {
+    g_turn_probe.waiting = false;
+    return false;
+  }
+
+  int16_t *mic_audio = static_cast<int16_t *>(heap_caps_malloc(kMicProbeBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (mic_audio == nullptr) {
+    ESP_LOGE(kTag, "Failed to allocate full turn microphone buffer bytes=%u free_psram=%u", static_cast<unsigned>(kMicProbeBytes), static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
+    g_turn_probe.waiting = false;
+    return false;
+  }
+
+  log_probe_heap("turn_before_capture");
+  uint32_t level = 0;
+  const size_t captured_samples = capture_microphone_pcm(mic_audio, kMicProbeSamples, &level);
+  const size_t captured_bytes = captured_samples * sizeof(int16_t);
+  ESP_LOGI(
+      kTag,
+      "Audio probe full turn captured session=%s samples=%u bytes=%u level=%u",
+      session_id,
+      static_cast<unsigned>(captured_samples),
+      static_cast<unsigned>(captured_bytes),
+      static_cast<unsigned>(level));
+  bool uploaded = false;
+  if (captured_bytes > 0) {
+    uploaded = post_voice_audio_chunk(settings, session_id, reinterpret_cast<const char *>(mic_audio), captured_bytes, level);
+  }
+  heap_caps_free(mic_audio);
+  log_probe_heap("turn_after_capture_upload");
+  if (!uploaded) {
+    send_audio_end(settings, session_id);
+    g_turn_probe.waiting = false;
+    return false;
+  }
+  if (!send_audio_end(settings, session_id)) {
+    g_turn_probe.waiting = false;
+    return false;
+  }
+
+  const bool tts_ready = wait_for_turn_tts_ready();
+  if (!tts_ready) {
+    g_turn_probe.waiting = false;
+    return false;
+  }
+
+  send_tts_playback_event(
+      settings,
+      "tts.playback.download_started",
+      session_id,
+      g_turn_probe.stream_id,
+      g_turn_probe.audio_url,
+      0);
+  uint8_t *audio = nullptr;
+  size_t audio_size = 0;
+  if (!fetch_tts_audio(g_turn_probe.audio_url, &audio, &audio_size)) {
+    send_tts_playback_event(
+        settings,
+        "tts.playback.failed",
+        session_id,
+        g_turn_probe.stream_id,
+        g_turn_probe.audio_url,
+        0,
+        "download_failed",
+        "Audio probe failed to download TTS audio");
+    g_turn_probe.waiting = false;
+    return false;
+  }
+
+  send_tts_playback_event(
+      settings,
+      "tts.playback.first_audio_frame",
+      session_id,
+      g_turn_probe.stream_id,
+      g_turn_probe.audio_url,
+      audio_size);
+  const bool played = play_tts_wav(audio, audio_size);
+  heap_caps_free(audio);
+  send_tts_playback_event(
+      settings,
+      played ? "tts.playback.completed" : "tts.playback.failed",
+      session_id,
+      g_turn_probe.stream_id,
+      g_turn_probe.audio_url,
+      audio_size,
+      played ? nullptr : "playback_failed",
+      played ? nullptr : "Audio probe failed to play TTS audio");
+  const bool backend_completed = wait_for_turn_completion();
+  log_probe_heap("turn_after_tts_playback");
+  ESP_LOGI(
+      kTag,
+      "Audio probe full turn result session=%s trigger=%s uploaded=%s tts_ready=%s played=%s completed=%s transcript=\"%s\" response=\"%s\"",
+      session_id,
+      trigger == nullptr ? "unknown" : trigger,
+      uploaded ? "true" : "false",
+      g_turn_probe.tts_ready ? "true" : "false",
+      played ? "true" : "false",
+      backend_completed ? "true" : "false",
+      g_turn_probe.transcript,
+      g_turn_probe.response_text);
+  g_turn_probe.waiting = false;
+  return uploaded && g_turn_probe.tts_ready && played && backend_completed;
+}
+
 bool center_button_pressed() {
   return gpio_get_level(kCenterButton) == 0;
 }
@@ -2436,10 +2813,8 @@ void run_button_listen_probe(const ProbeSettings &settings, int64_t duration_us)
       kTag,
       "Audio probe center button short press accepted duration_ms=%lld",
       static_cast<long long>(duration_us / 1000));
-  log_probe_heap("button_before_capture");
-  const bool ok = run_microphone_probe(settings, "pe-mic-button-staged");
-  log_probe_heap("button_after_capture_upload");
-  ESP_LOGI(kTag, "Audio probe button listen result uploaded=%s", ok ? "true" : "false");
+  const bool ok = run_full_turn_probe(settings, "button");
+  ESP_LOGI(kTag, "Audio probe button listen result full_turn=%s", ok ? "true" : "false");
 }
 
 void update_probe_button(const ProbeSettings &settings) {
@@ -2481,11 +2856,11 @@ void handle_command_loop(const ProbeSettings &settings) {
   while (xQueueReceive(g_command_queue, &request, pdMS_TO_TICKS(kCommandPollMs)) == pdTRUE) {
     ESP_LOGI(kTag, "Audio probe executing command=%s request_id=%s", request.command_type, request.request_id);
     if (std::strcmp(request.command_type, "endpoint.listen") == 0) {
-      const bool ok = run_microphone_probe(settings, "pe-mic-command-staged");
+      const bool ok = run_full_turn_probe(settings, "endpoint.listen");
       if (ok) {
-        send_command_ack(settings, request.request_id, request.command_type, "succeeded", "Probe microphone upload completed");
+        send_command_ack(settings, request.request_id, request.command_type, "succeeded", "Probe full voice turn completed");
       } else {
-        send_command_error(settings, request.request_id, request.command_type, "probe_upload_failed", "Probe microphone upload failed");
+        send_command_error(settings, request.request_id, request.command_type, "probe_turn_failed", "Probe full voice turn failed");
       }
     }
   }
