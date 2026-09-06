@@ -11,9 +11,12 @@ library:
 ```text
 firmware/assets/
   ha_voice_pe/
-    assets.json
-    idle.rgb565
-    chime.wav
+    assets/
+      assets.json
+      picture/
+        idle.rgb565
+      sound/
+        chime.wav
 ```
 
 `assets.json` contains endpoint-ready files that the backend can expose to
@@ -46,6 +49,9 @@ The endpoint can request `/api/endpoint/media/library/{endpoint_id}` after it
 has reported its board profile through discovery or heartbeat, then compare
 `asset_library_version` before downloading changed assets. Per-file `sha256`
 remains the final integrity check.
+Asset payload files are resolved from the media-type subfolder under the board
+asset library, such as `assets/picture/idle.rgb565`,
+`assets/sprite/avatar.rgb565`, or `assets/sound/chime.wav`.
 
 ## Destinations
 

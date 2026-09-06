@@ -1462,9 +1462,9 @@ def test_endpoint_media_upload_validates_and_serves_picture_rgb565(tmp_path):
 
 def test_endpoint_board_media_library_serves_board_assets(tmp_path):
     payload = bytes(320 * 240 * 2)
-    board_dir = tmp_path / "assets" / "ha_voice_pe"
-    board_dir.mkdir(parents=True)
-    (board_dir / "idle.rgb565").write_bytes(payload)
+    board_dir = tmp_path / "assets" / "ha_voice_pe" / "assets"
+    (board_dir / "picture").mkdir(parents=True)
+    (board_dir / "picture" / "idle.rgb565").write_bytes(payload)
     (board_dir / "assets.json").write_text(
         json.dumps(
             {
@@ -1513,9 +1513,9 @@ def test_endpoint_board_media_library_serves_board_assets(tmp_path):
 
 
 def test_endpoint_media_library_resolves_board_from_endpoint(tmp_path):
-    board_dir = tmp_path / "assets" / "ha_voice_pe"
-    board_dir.mkdir(parents=True)
-    (board_dir / "chime.wav").write_bytes(_wav_bytes())
+    board_dir = tmp_path / "assets" / "ha_voice_pe" / "assets"
+    (board_dir / "sound").mkdir(parents=True)
+    (board_dir / "sound" / "chime.wav").write_bytes(_wav_bytes())
     (board_dir / "assets.json").write_text(
         json.dumps(
             {

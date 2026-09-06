@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 
 EndpointMediaType = Literal["picture", "sprite", "sound"]
+BOARD_ASSET_LIBRARY_DIRNAME = "assets"
 BOARD_ASSET_LIBRARY_FILENAME = "assets.json"
 
 PICTURE_BYTES = 320 * 240 * 2
@@ -189,8 +190,8 @@ class EndpointMediaService:
 
     def board_asset_library(self, board_profile: str) -> EndpointBoardMediaLibrary:
         requested_board = safe_asset_id(board_profile)
-        board_dir = self._board_asset_dir(board_profile)
-        library_path = board_dir / BOARD_ASSET_LIBRARY_FILENAME
+        assets_dir = self._board_assets_dir(board_profile)
+        library_path = assets_dir / BOARD_ASSET_LIBRARY_FILENAME
         if not library_path.exists():
             raise EndpointMediaValidationError("board_asset_library_not_found", "Board asset library was not found.", status_code=404)
         try:
@@ -210,7 +211,7 @@ class EndpointMediaService:
         if not isinstance(raw_assets, list):
             raise EndpointMediaValidationError("invalid_board_asset_library", "Board asset library assets must be a list.")
         assets = [
-            self._board_asset_from_config(board_dir=board_dir, item=item)
+            self._board_asset_from_config(assets_dir=assets_dir, item=item)
             for item in raw_assets
             if isinstance(item, dict)
         ]
@@ -223,13 +224,13 @@ class EndpointMediaService:
         )
 
     def board_asset_payload_path(self, board_profile: str, asset_id: str) -> tuple[EndpointBoardMediaAsset, Path]:
-        board_dir = self._board_asset_dir(board_profile)
+        assets_dir = self._board_assets_dir(board_profile)
         library = self.board_asset_library(board_profile)
         safe_id = safe_asset_id(asset_id)
         for asset in library.assets:
             if asset.asset_id == safe_id:
-                path = (board_dir / safe_filename(asset.source_filename)).resolve()
-                if path.parent != board_dir.resolve():
+                path = (assets_dir / asset.media_type / safe_filename(asset.source_filename)).resolve()
+                if path.parent != (assets_dir / asset.media_type).resolve():
                     raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
                 if not path.exists():
                     raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
@@ -447,7 +448,10 @@ class EndpointMediaService:
             raise EndpointMediaValidationError("board_asset_library_unconfigured", "Board asset library directory is not configured.", status_code=404)
         return self._asset_library_dir / safe_asset_id(board_profile)
 
-    def _board_asset_from_config(self, *, board_dir: Path, item: dict[str, Any]) -> EndpointBoardMediaAsset:
+    def _board_assets_dir(self, board_profile: str) -> Path:
+        return self._board_asset_dir(board_profile) / BOARD_ASSET_LIBRARY_DIRNAME
+
+    def _board_asset_from_config(self, *, assets_dir: Path, item: dict[str, Any]) -> EndpointBoardMediaAsset:
         media_type_value = str(item.get("media_type") or "").strip()
         if media_type_value not in DESTINATIONS:
             raise EndpointMediaValidationError("invalid_board_asset_media_type", "Board asset media_type is invalid.")
@@ -457,9 +461,10 @@ class EndpointMediaService:
             raise EndpointMediaValidationError("invalid_board_asset_id", "Board asset entries require asset_id.")
         asset_id = safe_asset_id(raw_asset_id)
         filename = safe_filename(str(item.get("filename") or item.get("path") or ""))
-        source_filename = safe_filename(str(item.get("path") or filename))
-        path = (board_dir / source_filename).resolve()
-        if path.parent != board_dir.resolve():
+        source_filename = safe_filename(str(item.get("source_filename") or item.get("path") or filename))
+        type_dir = assets_dir / media_type
+        path = (type_dir / source_filename).resolve()
+        if path.parent != type_dir.resolve():
             raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
         if not path.exists():
             raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
