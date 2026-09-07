@@ -152,7 +152,7 @@ DirtyRect ota_progress_rect() {
 }
 
 DirtyRect idle_clock_overlay_rect() {
-  return DirtyRect{40, 40, 280, 280};
+  return DirtyRect{9, 9, 342, 342};
 }
 
 constexpr gpio_num_t gpio_pin(int pin) {
@@ -943,7 +943,7 @@ void draw_top_bar_icons(const hexe::AppState &state) {
 void draw_second_orbit_dot(const std::tm &local) {
   constexpr int kCenterX = 180;
   constexpr int kCenterY = 180;
-  constexpr int kSecondRadius = 154;
+  constexpr int kSecondRadius = 166;
   constexpr uint16_t kRed = 0xF800;
   constexpr uint8_t kDotAlpha = 153;
   const int seconds = std::clamp(local.tm_sec, 0, 59);
