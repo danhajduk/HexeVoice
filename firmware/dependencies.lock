@@ -88,7 +88,7 @@ dependencies:
     - esp32s3
     version: 3.2.0
   espressif/esp-nn:
-    component_hash: 003bfc494fd3faf73088b62dc5f565a3c61b9e36494d90e8cbf5f238ff2b98fe
+    component_hash: 41b0ab49a5a5c88fc7331d76fc5cc58d1ec3e356ff42ea9cb88270daf415ffef
     dependencies:
     - name: idf
       require: private
@@ -96,7 +96,7 @@ dependencies:
     source:
       registry_url: https://components.espressif.com
       type: service
-    version: 1.3.1
+    version: 1.3.2
   espressif/esp-tflite-micro:
     component_hash: 1ce00c44af2362d48b5c0eefc5fcc60fa54d84db332c80005ae324556f4df0db
     dependencies:
@@ -254,6 +254,6 @@ direct_dependencies:
 - espressif/esp_lcd_st77916
 - espressif/esp_websocket_client
 - idf
-manifest_hash: 86c3e72b97b7a4cc9239b3bcf060e2ad24774b1041089a9af2979d790066d56d
+manifest_hash: 804ee9bff5d2a5d715805567fe2d4d37fc8f239348acce328144f1d9b07b1e49
 target: esp32s3
 version: 3.0.0
