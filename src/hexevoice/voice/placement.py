@@ -354,24 +354,24 @@ def _percentile(values: list[float], percentile: float) -> float | None:
 
 def _background_ambient(metrics: list[object]) -> dict[str, object]:
     ambient_values = _numeric_values(metrics, "ambient_rms")
-    quiet_values = [
-        float(metric["ambient_rms"])
+    ambient_metrics = [
+        metric
         for metric in metrics
         if isinstance(metric, dict)
         and isinstance(metric.get("ambient_rms"), (int, float))
-        and not _speech_like(metric)
-        and float(metric.get("clipping_ratio") or 0) <= 0
     ]
-    if quiet_values:
-        return {
-            "rms": _round_or_none(_percentile(quiet_values, 20)),
-            "method": "quiet_sample_p20",
-            "sample_count": len(quiet_values),
-        }
+    speech_like_count = sum(1 for metric in ambient_metrics if _speech_like(metric))
+    quiet_count = sum(
+        1
+        for metric in ambient_metrics
+        if not _speech_like(metric) and float(metric.get("clipping_ratio") or 0) <= 0
+    )
     return {
-        "rms": _round_or_none(_percentile(ambient_values, 10)),
-        "method": "all_sample_p10" if ambient_values else "unavailable",
+        "rms": _round_or_none(_percentile(ambient_values, 20)),
+        "method": "all_sample_p20" if ambient_values else "unavailable",
         "sample_count": len(ambient_values),
+        "quiet_sample_count": quiet_count,
+        "speech_like_sample_count": speech_like_count,
     }
 
 

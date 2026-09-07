@@ -72,9 +72,10 @@ curl http://127.0.0.1:9004/api/voice/placement-calibrations/placement-cal-abc123
 
 The long-window report includes both `ambient.average_rms` for the full
 calibration and `ambient.background.rms` for the inferred base background RMS.
-The background value prefers the 20th percentile of quiet, non-speech,
-non-clipping samples and falls back to the 10th percentile of all ambient
-samples when no quiet samples are available.
+The background value uses the 20th percentile of all ambient samples, including
+speech-like samples, so persistent background speech or TV-like activity can
+raise the inferred baseline without letting short loud events dominate it. The
+report also includes quiet and speech-like sample counts used by the baseline.
 
 The long-window report combines passive ambient statistics with matching active
 placement test reports for the same endpoint, room, and zone. It reports average
