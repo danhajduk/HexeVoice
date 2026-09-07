@@ -145,17 +145,6 @@ idf_component_register(
   REQUIRES
     ${HEXE_ENDPOINT_REQUIRES}
 )
-if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4")
-  # esp_hosted 1.4.x predates IDF 6's split SDMMC driver component.
-  idf_component_get_property(HEXE_ESP_HOSTED_LIB espressif__esp_hosted COMPONENT_LIB)
-  target_link_libraries(
-    ${HEXE_ESP_HOSTED_LIB}
-    PUBLIC
-      idf::esp_driver_dma
-      idf::esp_driver_gpio
-      idf::esp_driver_sdmmc
-  )
-endif()
 target_compile_definitions(
   ${COMPONENT_LIB}
   PRIVATE

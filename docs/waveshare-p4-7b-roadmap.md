@@ -179,8 +179,9 @@ The P4 profile now uses the BSP-backed GT911 touch adapter. The BSP probes
 `0x5d` and `0x14`, applies the board's default coordinate mirroring, and feeds
 touch actions into Hexe's existing mute, volume, and page-navigation controls.
 The profile also uses the shared Hexe station adapter through the onboard
-ESP32-C6. It pins Waveshare's IDF 6-compatible `esp_wifi_remote == 1.2.5` and
-`esp_hosted 1.4.*` pair, with ESP-Hosted owning the board's SDIO/control pins.
+ESP32-C6. It uses the maintained IDF 6.1-compatible
+`esp_wifi_remote == 1.6.4` and `esp_hosted >= 2.11,<3.0` line, with ESP-Hosted
+owning the board's SDIO/control pins.
 
 Tasks:
 
