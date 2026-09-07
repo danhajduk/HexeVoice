@@ -943,17 +943,15 @@ void draw_top_bar_icons(const hexe::AppState &state) {
 void draw_second_orbit_dot(const std::tm &local) {
   constexpr int kCenterX = 180;
   constexpr int kCenterY = 180;
-  constexpr int kSecondRadius = 124;
+  constexpr int kSecondRadius = 154;
   constexpr uint16_t kRed = 0xF800;
-  constexpr uint16_t kWarmRed = 0xF9E7;
+  constexpr uint8_t kDotAlpha = 153;
   const int seconds = std::clamp(local.tm_sec, 0, 59);
   constexpr double kPi = 3.14159265358979323846;
   const double radians = (static_cast<double>(seconds) * 2.0 * kPi) / 60.0;
   const int x = kCenterX + static_cast<int>(std::lround(static_cast<double>(kSecondRadius) * std::sin(radians)));
   const int y = kCenterY - static_cast<int>(std::lround(static_cast<double>(kSecondRadius) * std::cos(radians)));
-  draw_blended_disc(x, y, 9, kRed, 64);
-  draw_disc(x, y, 4, kRed);
-  draw_disc(x - 1, y - 1, 2, kWarmRed);
+  draw_blended_disc(x, y, 5, kRed, kDotAlpha);
 }
 
 void draw_idle_clock_overlay(const hexe::AppState &state, const char *asset_filename) {
