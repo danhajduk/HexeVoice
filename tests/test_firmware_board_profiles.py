@@ -260,6 +260,9 @@ def test_p4_build_supports_explicit_silicon_profiles():
 
 def test_p4_build_enables_esp32_c6_hosted_wifi():
     build_script = FIRMWARE_BUILD_SCRIPT.read_text(encoding="utf-8")
+    component_cmake = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/CMakeLists.txt"
+    ).read_text(encoding="utf-8")
     manifest = (
         REPO_ROOT / "firmware/components/endpoint_runtime/idf_component.yml"
     ).read_text(encoding="utf-8")
@@ -271,6 +274,7 @@ def test_p4_build_enables_esp32_c6_hosted_wifi():
     assert "CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y" in build_script
     assert "CONFIG_SLAVE_IDF_TARGET_ESP32C6=y" in build_script
     assert "P4 hosted Wi-Fi requires ESP32-C6 remote transport" in build_script
+    assert "target_link_libraries(${HEXE_ESP_HOSTED_LIB} PUBLIC idf::esp_driver_sdmmc)" in component_cmake
 
 
 def test_p4_display_falls_back_to_dcs_display_on_command():
