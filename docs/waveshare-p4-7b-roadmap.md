@@ -172,6 +172,9 @@ running `firmware/build.sh`. The 7B profile defaults to `rev1_3`; switching the
 parameter invalidates a cached P4 `sdkconfig` automatically.
 Exported flash helpers consume ESP-IDF's `flasher_args.json`, including the P4
 bootloader offset at `0x2000`, instead of assuming the ESP32-S3 `0x0` layout.
+The direct-panel adapter also falls back to the EK79007 DCS display-on command
+when the managed driver reports that its optional display-on callback is not
+supported.
 
 Tasks:
 

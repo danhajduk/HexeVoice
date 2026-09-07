@@ -258,6 +258,16 @@ def test_p4_build_supports_explicit_silicon_profiles():
     assert "P4 silicon profile changed to ${P4_SILICON_PROFILE}" in build_script
 
 
+def test_p4_display_falls_back_to_dcs_display_on_command():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "display_on_result == ESP_ERR_NOT_SUPPORTED" in source
+    assert "esp_lcd_panel_io_tx_param(g_panel_io, LCD_CMD_DISPON, nullptr, 0)" in source
+    assert "ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(g_panel, true))" not in source
+
+
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     output = tmp_path / "board_profile_config.cmake"
     header_output = tmp_path / "board_profile_pins.h"

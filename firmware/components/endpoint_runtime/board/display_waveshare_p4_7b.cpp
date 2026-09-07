@@ -10,6 +10,8 @@
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
+#include "esp_lcd_panel_commands.h"
+#include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -463,7 +465,15 @@ void init_display() {
     ESP_LOGW(kTag, "P4 LCD refresh callback unavailable: %s", esp_err_to_name(callback_result));
   }
 
-  ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(g_panel, true));
+  esp_err_t display_on_result = esp_lcd_panel_disp_on_off(g_panel, true);
+  if (display_on_result == ESP_ERR_NOT_SUPPORTED && g_panel_io != nullptr) {
+    ESP_LOGW(kTag, "Panel display-on callback unavailable; sending DCS display-on command");
+    display_on_result = esp_lcd_panel_io_tx_param(g_panel_io, LCD_CMD_DISPON, nullptr, 0);
+  }
+  if (display_on_result != ESP_OK) {
+    ESP_LOGE(kTag, "Failed to enable Waveshare P4 7B panel: %s", esp_err_to_name(display_on_result));
+    return;
+  }
   g_display_ready = true;
   ESP_LOGI(kTag, "Waveshare P4 7B display initialized at %dx%d RGB565", kWidth, kHeight);
 }
