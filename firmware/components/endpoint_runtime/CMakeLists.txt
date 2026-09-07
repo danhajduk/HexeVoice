@@ -97,10 +97,12 @@ if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4")
     APPEND
     HEXE_ENDPOINT_REQUIRES
       esp32_p4_wifi6_touch_lcd_7b
-      esp_driver_dma
       esp_driver_sdmmc
       lvgl__lvgl
   )
+  if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
+    list(APPEND HEXE_ENDPOINT_REQUIRES esp_driver_dma)
+  endif()
 else()
   list(
     APPEND

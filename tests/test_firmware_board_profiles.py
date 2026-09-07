@@ -274,6 +274,15 @@ def test_p4_build_enables_esp32_c6_hosted_wifi():
     assert "P4 hosted Wi-Fi requires ESP32-C6 remote transport" in build_script
 
 
+def test_p4_dma_component_is_only_required_on_idf_6():
+    cmake = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/CMakeLists.txt"
+    ).read_text(encoding="utf-8")
+
+    assert "if(IDF_VERSION_MAJOR GREATER_EQUAL 6)" in cmake
+    assert "list(APPEND HEXE_ENDPOINT_REQUIRES esp_driver_dma)" in cmake
+
+
 def test_p4_display_falls_back_to_dcs_display_on_command():
     source = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
