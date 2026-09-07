@@ -1317,7 +1317,9 @@ def test_firmware_sound_transfer_can_activate_sd_playback():
     assert "hexe::voice::play_sd_sound(request.filename)" in backend_source
     assert "read_audio_file" in player_source
     assert "sd_card_sounds_path()" in player_source
-    assert "play_wav(audio, request, report_first_frame)" in player_source
+    assert "play_wav(audio, audio_size, request, report_first_frame)" in player_source
+    assert "heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in player_source
+    assert "heap_caps_free(audio)" in player_source
     assert "tts.playback.first_audio_frame" in player_source
     assert "tts.playback.completed" in player_source
     assert "tts.playback.failed" in player_source
@@ -1430,6 +1432,8 @@ def test_firmware_replay_can_loop_audio_until_playback_stop():
     assert "request.loop = loop" in player_sources
     assert "request.keep_microphone_open = keep_microphone_open" in player_sources
     assert "request.keep_microphone_open ? false : hexe::board::pause_microphone_for_playback()" in player_sources
+    assert "g_mic_pause_requested = true;" in FIRMWARE_AUDIO.read_text()
+    assert "pdMS_TO_TICKS(1500)" in FIRMWARE_AUDIO.read_text()
     assert "while (request.loop && played && !g_stop_requested" in box_player
     assert "while (loaded && !g_stop_requested && !state.muted)" in pe_player
     assert 'played && !request.loop ? hexe::PlaybackLifecycleState::kFinished' in player_sources

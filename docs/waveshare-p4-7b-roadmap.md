@@ -184,6 +184,10 @@ ESP32-C6. It uses the maintained IDF 6.1-compatible
 owning the board's SDIO/control pins. Hosted SDIO transport pools are allocated
 from DMA-capable PSRAM on this profile so the 20-buffer queues do not exhaust
 the ESP32-P4's internal DMA heap during startup.
+On Rev1.3/IDF 5.5 builds, the profile selects Waveshare's compatible
+`esp_wifi_remote 0.14.*` and `esp_hosted 1.4.*` line instead. The P4 profile
+uses the BSP-backed ES7210 microphone and ES8311 speaker through the shared
+Hexe audio and TTS lifecycle adapters.
 
 Tasks:
 
@@ -218,11 +222,10 @@ Implement these first:
 - `board/storage_waveshare_p4_7b.cpp`: mount SD card and expose the SD/assets
   model set; if a required model set fails to load, retry twice and surface a
   device error rather than silently falling back to an embedded bank.
-- `board/audio_waveshare_p4_7b.cpp`: use `bsp_audio_codec_microphone_init()`
-  for ES7210 capture and feed existing wake/VAD/STT paths.
-- `voice/tts_player_waveshare_p4_7b.cpp`: use
-  `bsp_audio_codec_speaker_init()` for ES8311 playback while preserving Hexe's
-  TTS lifecycle events.
+- ES7210 capture is implemented through `bsp_audio_codec_microphone_init()`
+  and feeds the existing wake/VAD/STT paths.
+- ES8311 playback is implemented through `bsp_audio_codec_speaker_init()` and
+  preserves Hexe's TTS lifecycle events.
 - `board/wifi_waveshare_p4_7b.cpp` or a P4 branch in existing Wi-Fi init:
   initialize hosted Wi-Fi without changing credential ownership or BLE
   provisioning security boundaries.

@@ -156,14 +156,14 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "voice/tts_player_waveshare_s3_1_85c_box_v2.cpp",
     ]
     assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["adapters"]["source_files"] == [
-        "board/audio_noop.cpp",
+        "board/audio.cpp",
         "board/buttons_boot_only.cpp",
         "board/display_waveshare_p4_7b.cpp",
         "board/led_ring.cpp",
         "board/storage_nvs_only.cpp",
         "board/touch.cpp",
         "board/wifi.cpp",
-        "voice/tts_player_noop.cpp",
+        "voice/tts_player.cpp",
     ]
     ws185 = profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]
     assert ws185["features"]["touch"] is True

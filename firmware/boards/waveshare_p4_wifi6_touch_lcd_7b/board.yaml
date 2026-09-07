@@ -200,15 +200,15 @@ vad:
 adapters:
   buildable: true
   source_files:
-    - board/audio_noop.cpp
+    - board/audio.cpp
     - board/buttons_boot_only.cpp
     - board/display_waveshare_p4_7b.cpp
     - board/led_ring.cpp
     - board/storage_nvs_only.cpp
     - board/touch.cpp
     - board/wifi.cpp
-    - voice/tts_player_noop.cpp
-  notes: Display and GT911 touch use the Waveshare BSP direct hardware paths. Hosted Wi-Fi uses ESP-Hosted over the onboard ESP32-C6. Audio and SD model sets remain explicit no-op adapters until their hardware slices are implemented.
+    - voice/tts_player.cpp
+  notes: Display, GT911 touch, ES7210 microphone capture, and ES8311 speaker playback use the Waveshare BSP hardware paths. Hosted Wi-Fi uses ESP-Hosted over the onboard ESP32-C6. SD model sets remain an explicit no-op adapter until that hardware slice is implemented.
 controls:
   - name: boot
     kind: button

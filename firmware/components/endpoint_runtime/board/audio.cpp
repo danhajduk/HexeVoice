@@ -5,7 +5,11 @@
 #include <cstdint>
 
 #include "app_state.h"
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+#include "bsp/esp32_p4_wifi6_touch_lcd_7b.h"
+#else
 #include "bsp/esp-box-3.h"
+#endif
 #include "esp_codec_dev.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -33,6 +37,7 @@ esp_codec_dev_handle_t g_mic_codec = nullptr;
 TaskHandle_t g_vad_task = nullptr;
 SemaphoreHandle_t g_mic_mutex = nullptr;
 bool g_vad_turn_active = false;
+volatile bool g_mic_pause_requested = false;
 bool g_mic_paused_for_playback = false;
 
 uint32_t estimate_level(const int16_t *samples, size_t count) {
@@ -146,6 +151,11 @@ void vad_task(void *arg) {
       micro_vad_chunk_active = false;
       micro_vad_silent_frames = 0;
       vTaskDelay(pdMS_TO_TICKS(100));
+      continue;
+    }
+
+    if (g_mic_pause_requested) {
+      vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
 
@@ -310,7 +320,9 @@ bool pause_microphone_for_playback() {
     return false;
   }
 
-  if (xSemaphoreTake(g_mic_mutex, pdMS_TO_TICKS(500)) != pdTRUE) {
+  g_mic_pause_requested = true;
+  if (xSemaphoreTake(g_mic_mutex, pdMS_TO_TICKS(1500)) != pdTRUE) {
+    g_mic_pause_requested = false;
     ESP_LOGW(kTag, "Timed out waiting to pause microphone for playback");
     return false;
   }
@@ -322,6 +334,7 @@ bool pause_microphone_for_playback() {
   const int result = esp_codec_dev_close(g_mic_codec);
   if (result != 0) {
     ESP_LOGW(kTag, "Failed to pause microphone stream: %d", result);
+    g_mic_pause_requested = false;
     xSemaphoreGive(g_mic_mutex);
     return false;
   }
@@ -342,6 +355,7 @@ void resume_microphone_after_playback() {
   }
 
   g_mic_paused_for_playback = false;
+  g_mic_pause_requested = false;
   hexe::state().mic_paused_for_playback = false;
   if (open_microphone_stream()) {
     ESP_LOGI(kTag, "Microphone resumed after playback");
