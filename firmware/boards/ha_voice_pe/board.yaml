@@ -16,7 +16,7 @@ sources:
     url: https://github.com/esphome/home-assistant-voice-pe
 build:
   idf_target: esp32s3
-  partition_schema: s3-16m-recovery-v1
+  partition_schema: s3-16m-recovery-single-model-v1
   app_slot_size: 4MiB
   recovery_app: true
   compile_definitions:
@@ -181,7 +181,7 @@ storage:
   config: encrypted_nvs
   calibration: encrypted_nvs_or_internal_metrics_store
   media: embedded_minimal_tones_only
-  models: embedded_fallback_then_internal_bundle_bank
+  models: embedded_fallback_then_internal_single_model_cache
 controls:
   - name: center
     kind: button

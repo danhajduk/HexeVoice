@@ -212,6 +212,8 @@ CONFIG_CACHE_L2_CACHE_LINE_128B=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 CONFIG_FREERTOS_HZ=1000
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+# CONFIG_LV_BUILD_EXAMPLES is not set
+# CONFIG_LV_BUILD_DEMOS is not set
 EOF
   fi
   if [[ "${FIRMWARE_APP}" == "audio_probe" ]]; then
@@ -258,6 +260,12 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
     rm -f "${sdkconfig_path}"
     return
   fi
+  if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
+    grep -Eq "^CONFIG_LV_BUILD_(EXAMPLES|DEMOS)=y$" "${sdkconfig_path}"; then
+    echo "Refreshing generated sdkconfig for ${profile}; P4 display build disables LVGL examples and demos"
+    rm -f "${sdkconfig_path}"
+    return
+  fi
   bluetooth_transport="$(board_profile_value "${profile}" hardware.wireless.transport)"
   if [[ -f "${sdkconfig_path}" && "${FIRMWARE_APP}" == "endpoint" ]] &&
     grep -q "^CONFIG_BT_ENABLED=y$" "${sdkconfig_path}"; then
@@ -272,6 +280,26 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
       ! grep -q "^CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192$" "${sdkconfig_path}"; }; then
     echo "Refreshing generated sdkconfig for ${profile}; BLE onboarding requires native roles and host stack sizing"
     rm -f "${sdkconfig_path}"
+  fi
+}
+
+managed_component_probe_path() {
+  case "$1" in
+    esp32p4) echo "${ROOT_DIR}/managed_components/waveshare__esp32_p4_wifi6_touch_lcd_7b/esp32_p4_wifi6_touch_lcd_7b.c" ;;
+    esp32s3) echo "${ROOT_DIR}/managed_components/espressif__esp_lcd_st77916/esp_lcd_st77916.c" ;;
+    *) echo "" ;;
+  esac
+}
+
+refresh_build_dir_if_managed_components_changed() {
+  local profile="$1"
+  local build_dir="$2"
+  local idf_target="$3"
+  local probe_path
+  probe_path="$(managed_component_probe_path "${idf_target}")"
+  if [[ -d "${build_dir}" && -n "${probe_path}" && ! -f "${probe_path}" ]]; then
+    echo "Refreshing build directory for ${profile}; managed components do not match ${idf_target}"
+    rm -rf "${build_dir}"
   fi
 }
 
@@ -446,9 +474,10 @@ build_profile() {
   export_dir="$(profile_export_dir "${profile}")"
   profile_app="$(profile_app_filename "${profile}")"
   idf_target="$(board_profile_value "${profile}" build.idf_target)"
-  write_profile_sdkconfig_defaults "${profile}"
   sdkconfig_path="$(profile_sdkconfig_path "${profile}")"
   sdkconfig_defaults_path="$(profile_sdkconfig_defaults_path "${profile}")"
+  refresh_build_dir_if_managed_components_changed "${profile}" "${build_dir}" "${idf_target}"
+  write_profile_sdkconfig_defaults "${profile}"
   refresh_profile_sdkconfig_if_generated_defaults_changed "${profile}" "${sdkconfig_path}"
 
   echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"

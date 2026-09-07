@@ -9,7 +9,7 @@ hardware_revision:
     - standard
     - camera_option
   unsupported: []
-support_status: planned
+support_status: experimental
 sources:
   - label: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B documentation
     url: https://docs.waveshare.com/ESP32-P4-WIFI6-Touch-LCD-7B
@@ -177,8 +177,8 @@ storage:
     notes: SDMMC 4-bit microSD storage. Physical pins are CLK=GPIO43, CMD=GPIO44, D0=GPIO39, D1=GPIO40, D2=GPIO41, D3=GPIO42; BSP uses LDO channel 4 for SD power.
   config: encrypted_nvs
   calibration: encrypted_nvs_or_internal_metrics_store
-  media: sd_versioned_bundles_with_embedded_fallback
-  models: embedded_fallback_then_sd_bundle
+  media: sd_versioned_bundles_with_internal_status_frame
+  models: sd_model_set_required_no_embedded_fallback
 wake:
   local_micro_wake_word: true
   primary_model: alexa
@@ -198,9 +198,17 @@ vad:
     default_pause_ms: 190
     silence_hold_ms: 1200
 adapters:
-  buildable: false
-  source_files: []
-  notes: ESP32-P4, ESP32-C6 radio, display, touch, audio, storage, and TTS adapters are not implemented yet.
+  buildable: true
+  source_files:
+    - board/audio_noop.cpp
+    - board/buttons_boot_only.cpp
+    - board/display_waveshare_p4_7b.cpp
+    - board/led_ring.cpp
+    - board/storage_nvs_only.cpp
+    - board/touch_none.cpp
+    - board/wifi_noop.cpp
+    - voice/tts_player_noop.cpp
+  notes: Minimal experimental display bring-up uses the Waveshare BSP direct panel path. Touch, audio, SD model sets, and hosted Wi-Fi remain explicit no-op adapters until their hardware slices are implemented.
 controls:
   - name: boot
     kind: button
@@ -234,4 +242,5 @@ capability_overrides:
   audio_output: true
 notes:
   - This profile requires a separate ESP32-P4 build class and ESP32-C6 radio transport support.
-  - Bulk UI, media, and model assets should prefer SD with internal fallback assets.
+  - Bulk UI and media assets should prefer SD; the current firmware screen is an internal procedural status frame.
+  - Model sets should be loaded from SD/assets or another explicit model source, not a silent embedded fallback bank.

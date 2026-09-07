@@ -29,16 +29,6 @@ dependencies:
     version: "==3.0.1"
     rules:
       - if: "target in [esp32p4]"
-  espressif/esp_wifi_remote:
-    # Waveshare's IDF 6 Wi-Fi example pins this line to avoid the newer
-    # esp_interface.h contract while retaining esp_hosted 1.4.*.
-    version: "==1.2.5"
-    rules:
-      - if: "target in [esp32p4]"
-  espressif/esp_hosted:
-    version: "1.4.*"
-    rules:
-      - if: "target in [esp32p4]"
   lvgl/lvgl:
     version: "==9.5.0"
     public: true

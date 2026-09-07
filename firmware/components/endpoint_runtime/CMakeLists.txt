@@ -97,9 +97,8 @@ if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4")
     APPEND
     HEXE_ENDPOINT_REQUIRES
       esp32_p4_wifi6_touch_lcd_7b
+      esp_driver_dma
       esp_driver_sdmmc
-      espressif__esp_hosted
-      espressif__esp_wifi_remote
       lvgl__lvgl
   )
 else()
@@ -111,28 +110,33 @@ else()
       espressif__esp_lcd_touch
   )
 endif()
+set(HEXE_ENDPOINT_SRCS
+  "app_state.cpp"
+  ${HEXE_BOARD_SRCS}
+  "system/ble_provisioning.cpp"
+  "system/ble_provisioning_gatt.c"
+  "system/asset_sync.cpp"
+  "system/clock.cpp"
+  "system/ota.cpp"
+  "system/log_stream.cpp"
+  "system/power.cpp"
+  "system/settings.cpp"
+  "system/telemetry.cpp"
+  "ui/animator.cpp"
+  "ui/screens.cpp"
+  "voice/assistant_client.cpp"
+  "voice/backend_client.cpp"
+  "voice/micro_wake_engine.cpp"
+  "voice/model_bundle.cpp"
+  "voice/stt_stream.cpp"
+  "voice/wake_word.cpp"
+)
+if(NOT HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4")
+  list(APPEND HEXE_ENDPOINT_SRCS "board/wifi.cpp")
+endif()
 idf_component_register(
   SRCS
-    "app_state.cpp"
-    ${HEXE_BOARD_SRCS}
-    "board/wifi.cpp"
-    "system/ble_provisioning.cpp"
-    "system/ble_provisioning_gatt.c"
-    "system/asset_sync.cpp"
-    "system/clock.cpp"
-    "system/ota.cpp"
-    "system/log_stream.cpp"
-    "system/power.cpp"
-    "system/settings.cpp"
-    "system/telemetry.cpp"
-    "ui/animator.cpp"
-    "ui/screens.cpp"
-    "voice/assistant_client.cpp"
-    "voice/backend_client.cpp"
-    "voice/micro_wake_engine.cpp"
-    "voice/model_bundle.cpp"
-    "voice/stt_stream.cpp"
-    "voice/wake_word.cpp"
+    ${HEXE_ENDPOINT_SRCS}
   INCLUDE_DIRS
     "."
     "${HEXE_GENERATED_DIR}"
@@ -141,13 +145,6 @@ idf_component_register(
   REQUIRES
     ${HEXE_ENDPOINT_REQUIRES}
 )
-if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4" AND IDF_VERSION_MAJOR GREATER_EQUAL 6)
-  idf_component_get_property(esp_hosted_lib espressif__esp_hosted COMPONENT_LIB)
-  idf_component_get_property(sdmmc_driver_lib esp_driver_sdmmc COMPONENT_LIB)
-  # esp_hosted 1.4.x still expects IDF 5's umbrella driver SDMMC includes.
-  target_link_libraries(${esp_hosted_lib} PRIVATE ${sdmmc_driver_lib})
-endif()
-
 target_compile_definitions(
   ${COMPONENT_LIB}
   PRIVATE

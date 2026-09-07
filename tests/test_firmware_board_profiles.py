@@ -126,7 +126,7 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
     assert profiles["esp_box_3"]["adapters"]["buildable"] is False
     assert profiles["ha_voice_pe"]["adapters"]["buildable"] is True
     assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["buildable"] is True
-    assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["adapters"]["buildable"] is False
+    assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["adapters"]["buildable"] is True
     assert profiles["esp_box_3"]["adapters"]["source_files"] == [
         "board/audio.cpp",
         "board/buttons.cpp",
@@ -155,6 +155,16 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "board/touch_waveshare_s3_1_85c_box_v2.cpp",
         "voice/tts_player_waveshare_s3_1_85c_box_v2.cpp",
     ]
+    assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["adapters"]["source_files"] == [
+        "board/audio_noop.cpp",
+        "board/buttons_boot_only.cpp",
+        "board/display_waveshare_p4_7b.cpp",
+        "board/led_ring.cpp",
+        "board/storage_nvs_only.cpp",
+        "board/touch_none.cpp",
+        "board/wifi_noop.cpp",
+        "voice/tts_player_noop.cpp",
+    ]
     ws185 = profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]
     assert ws185["features"]["touch"] is True
     assert ws185["features"]["sd_card"] is True
@@ -175,7 +185,7 @@ def test_buildable_board_profiles_declare_complete_wiring():
     assert profiles["esp_box_3"]["wiring"]["status"] == "complete"
     assert profiles["ha_voice_pe"]["wiring"]["status"] == "complete"
     assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["wiring"]["status"] == "complete"
-    assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["wiring"]["status"] == "partial"
+    assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["wiring"]["status"] == "complete"
 
     pe_wiring = profiles["ha_voice_pe"]["wiring"]
     pe_i2c = {bus["name"]: bus for bus in pe_wiring["i2c_buses"]}
@@ -263,7 +273,7 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'set(HEXE_BOARD_PROFILE "ha_voice_pe")' in cmake
     assert 'set(HEXE_BOARD_IDF_TARGET "esp32s3")' in cmake
     assert 'set(HEXE_BOARD_SOC "esp32s3")' in cmake
-    assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-16m-recovery-v1")' in cmake
+    assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-16m-recovery-single-model-v1")' in cmake
     assert "set(HEXE_BOARD_ADAPTER_BUILDABLE TRUE)" in cmake
     assert "HEXE_BOARD_PROFILE_HA_VOICE_PE=1" in cmake
     assert '"board/audio_ha_voice_pe.cpp"' in cmake
@@ -273,7 +283,7 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'constexpr const char *kBoardProfile = "ha_voice_pe";' in header
     assert 'constexpr const char *kSoc = "esp32s3";' in header
     assert 'constexpr const char *kIdfTarget = "esp32s3";' in header
-    assert 'constexpr const char *kPartitionSchema = "s3-16m-recovery-v1";' in header
+    assert 'constexpr const char *kPartitionSchema = "s3-16m-recovery-single-model-v1";' in header
     assert 'constexpr const char *kAppSlotSize = "4MiB";' in header
     assert 'constexpr const char *kFlashSize = "16MiB";' in header
     assert 'constexpr const char *kPsramSize = "8MiB";' in header

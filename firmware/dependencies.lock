@@ -254,6 +254,6 @@ direct_dependencies:
 - espressif/esp_lcd_st77916
 - espressif/esp_websocket_client
 - idf
-manifest_hash: 804ee9bff5d2a5d715805567fe2d4d37fc8f239348acce328144f1d9b07b1e49
+manifest_hash: 9e58e6870f67c0d77ad68a1970ffbf52fffcfe278d2d1ace94b2fb866cfdf4ce
 target: esp32s3
 version: 3.0.0

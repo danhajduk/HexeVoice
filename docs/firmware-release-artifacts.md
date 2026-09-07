@@ -50,10 +50,10 @@ signed by the backend when delivered. The default local release channel is
 Endpoint OTA accepts only the `signed_manifest_sha256_required` security policy.
 
 Active S3 endpoint profiles use recovery-capable partition schemas with a
-2 MiB factory recovery app and two endpoint OTA slots. `ha_voice_pe` keeps
-`s3-16m-recovery-v1`; `waveshare_s3_touch_lcd_1_85c_box_v2` uses
+2 MiB factory recovery app and two endpoint OTA slots. `ha_voice_pe` and
+`waveshare_s3_touch_lcd_1_85c_box_v2` use
 `s3-16m-recovery-single-model-v1`, replacing the previous `model_a`/`model_b`
-split with one 1 MiB `model` cache and expanding SPIFFS storage to 4032 KiB.
+split with one 1 MiB `model` cache and providing 4032 KiB of SPIFFS storage.
 Moving a device between partition layouts requires USB/full flash because
 normal endpoint OTA cannot replace the partition table. The retired
 `esp_box_3` profile is no longer part of the required release artifact set.

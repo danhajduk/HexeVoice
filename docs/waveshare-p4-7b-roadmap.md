@@ -9,9 +9,9 @@ Upstream source: https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B
 `firmware/boards/waveshare_p4_wifi6_touch_lcd_7b/board.yaml` now defines the
 target board and pinout, but runtime support is intentionally still planned:
 
-- `support_status: planned`
+- `support_status: experimental`
 - `wiring.status: complete`
-- `adapters.buildable: false`
+- `adapters.buildable: true`
 - `build.idf_target: esp32p4`
 - `build.partition_schema: p4-32m-v1`
 - `display`: 1024 x 600 MIPI-DSI
@@ -148,7 +148,8 @@ Tasks:
   GPIO10, ASDOUT GPIO11, SCLK GPIO12, MCLK GPIO13, amp enable GPIO53.
 - Add an ESP32-C6 hosted-link TODO for GPIO14-GPIO19 plus C6 control nets, but
   keep it out of buildable routing until the hosted Wi-Fi example is validated.
-- Keep `adapters.buildable: false` until the P4 adapter source files exist.
+- Keep non-display hardware paths as explicit no-op adapters until each
+  hardware slice is implemented and validated.
 
 Validation gate:
 
@@ -159,10 +160,11 @@ Validation gate:
 
 Outcome: Hexe can configure an ESP32-P4 build without enabling the 7B app yet.
 
-Status: in progress. The profile already selects `esp32p4`, 32 MiB flash, and
-`p4-32m-v1`; the endpoint runtime now has target-gated Waveshare BSP,
-hosted-Wi-Fi, and LVGL dependencies. The expected configure stop remains
-`adapters.buildable: false`.
+Status: complete for display bring-up. The profile selects `esp32p4`, 32 MiB
+flash, and `p4-32m-v1`; the endpoint runtime has target-gated Waveshare BSP,
+hosted-Wi-Fi, and LVGL dependencies. The buildable profile currently uses the
+P4 direct-panel display adapter with no-op touch, audio, SD, and hosted-Wi-Fi
+adapters.
 
 Tasks:
 
@@ -180,8 +182,7 @@ Tasks:
 
 Validation gate:
 
-- Configure succeeds for the 7B profile up to the expected
-  `adapters.buildable: false` stop.
+- Configure/build succeeds for the 7B profile with the minimal display adapter.
 - Existing ESP32-S3 profiles still configure and test unchanged.
 
 ## Phase 3: Implement Minimal Hexe Adapters
