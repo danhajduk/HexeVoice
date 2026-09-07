@@ -139,9 +139,41 @@ def test_long_window_report_combines_passive_ambient_and_active_results():
     assert report["sample_count"] == 2
     assert report["active_test_count"] == 1
     assert report["ambient"]["average_rms"] == 0.055
+    assert report["ambient"]["background"] == {
+        "rms": 0.02,
+        "method": "quiet_sample_p20",
+        "sample_count": 1,
+    }
     assert report["snr"]["count"] == 2
     assert "elevated_ambient_noise" in report["warnings"]
     assert report["privacy"]["stt_called_for_passive_samples"] is False
+
+
+def test_long_window_report_falls_back_to_low_percentile_background_when_all_samples_are_active():
+    report = build_long_window_placement_report(
+        window={"calibration_id": "placement-cal", "endpoint_id": "esp-box-1", "room": "kitchen"},
+        passive_samples=[
+            {
+                "observed_at": "2026-08-29T08:00:00+00:00",
+                "metrics": {"ambient_rms": 0.03, "speech_like_activity": True},
+            },
+            {
+                "observed_at": "2026-08-29T09:00:00+00:00",
+                "metrics": {"ambient_rms": 0.05, "speech_like_activity_ratio": 0.4},
+            },
+            {
+                "observed_at": "2026-08-29T10:00:00+00:00",
+                "metrics": {"ambient_rms": 0.11, "speech_like_activity": True},
+            },
+        ],
+        active_reports=[],
+    )
+
+    assert report["ambient"]["background"] == {
+        "rms": 0.034,
+        "method": "all_sample_p10",
+        "sample_count": 3,
+    }
 
 
 def test_passive_calibration_store_keeps_samples_metric_only_and_cleans_retention(tmp_path):

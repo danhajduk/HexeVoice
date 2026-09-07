@@ -70,6 +70,12 @@ curl -X POST http://127.0.0.1:9004/api/voice/placement-calibrations/cleanup
 curl http://127.0.0.1:9004/api/voice/placement-calibrations/placement-cal-abc123/report
 ```
 
+The long-window report includes both `ambient.average_rms` for the full
+calibration and `ambient.background.rms` for the inferred base background RMS.
+The background value prefers the 20th percentile of quiet, non-speech,
+non-clipping samples and falls back to the 10th percentile of all ambient
+samples when no quiet samples are available.
+
 The long-window report combines passive ambient statistics with matching active
 placement test reports for the same endpoint, room, and zone. It reports average
 ambient RMS by hour, peak noise periods, speech-like activity frequency,

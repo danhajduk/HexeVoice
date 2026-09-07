@@ -143,6 +143,7 @@ def build_long_window_placement_report(
     warnings: list[str] = []
     score = 100
     average_ambient = mean(ambient_values) if ambient_values else None
+    background = _background_ambient(metrics)
     peak_noise = max(peak_values) if peak_values else None
     clipping_frequency = _ratio(sum(1 for value in clipping_ratios if value > 0), len(clipping_ratios))
     speech_like_frequency = _ratio(speech_like_count, total_samples)
@@ -198,6 +199,7 @@ def build_long_window_placement_report(
         "active_test_count": len(active_reports),
         "ambient": {
             "average_rms": _round_or_none(average_ambient),
+            "background": background,
             "peak": _round_or_none(peak_noise),
             "hourly_average_rms": _hourly_ambient(passive_samples),
             "peak_noise_periods": _peak_noise_periods(passive_samples),
@@ -334,6 +336,43 @@ def _speech_like(metric: object) -> bool:
         return bool(metric["speech_like_activity"])
     ratio = metric.get("speech_like_activity_ratio")
     return isinstance(ratio, (int, float)) and float(ratio) > 0.1
+
+
+def _percentile(values: list[float], percentile: float) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    bounded = max(0.0, min(100.0, percentile))
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (bounded / 100.0) * (len(ordered) - 1)
+    lower = int(rank)
+    upper = min(lower + 1, len(ordered) - 1)
+    fraction = rank - lower
+    return ordered[lower] + ((ordered[upper] - ordered[lower]) * fraction)
+
+
+def _background_ambient(metrics: list[object]) -> dict[str, object]:
+    ambient_values = _numeric_values(metrics, "ambient_rms")
+    quiet_values = [
+        float(metric["ambient_rms"])
+        for metric in metrics
+        if isinstance(metric, dict)
+        and isinstance(metric.get("ambient_rms"), (int, float))
+        and not _speech_like(metric)
+        and float(metric.get("clipping_ratio") or 0) <= 0
+    ]
+    if quiet_values:
+        return {
+            "rms": _round_or_none(_percentile(quiet_values, 20)),
+            "method": "quiet_sample_p20",
+            "sample_count": len(quiet_values),
+        }
+    return {
+        "rms": _round_or_none(_percentile(ambient_values, 10)),
+        "method": "all_sample_p10" if ambient_values else "unavailable",
+        "sample_count": len(ambient_values),
+    }
 
 
 def _hourly_ambient(samples: list[dict[str, object]]) -> list[dict[str, object]]:
