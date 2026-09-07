@@ -15,6 +15,10 @@ sources:
     url: https://docs.waveshare.com/ESP32-P4-WIFI6-Touch-LCD-7B
   - label: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B examples
     url: https://github.com/waveshareteam/ESP32-P4-WIFI6-Touch-LCD-7B
+  - label: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B schematic
+    url: https://files.waveshare.com/wiki/ESP32-P4-WIFI6-Touch-LCD-7B/ESP32-P4-WIFI6-Touch-LCD-7B.pdf
+  - label: Waveshare ESP32-P4-WIFI6-Touch-LCD-7B BSP
+    url: https://components.espressif.com/components/waveshare/esp32_p4_wifi6_touch_lcd_7b
 build:
   idf_target: esp32p4
   partition_schema: p4-32m-v1
@@ -79,11 +83,88 @@ audio:
     speaker: true
     line_out: false
 wiring:
-  status: partial
-  notes: ESP32-P4, ESP32-C6 radio, display, touch, audio, and storage pin mapping still needs to be transcribed before this profile can become buildable.
-  gpios: []
-  i2c_buses: []
-  i2s_buses: []
+  status: complete
+  notes: Pin map transcribed from Waveshare schematic and BSP 3.0.1. Runtime adapters should prefer BSP helpers/macros over duplicating these constants in C++.
+  gpios:
+    - name: boot_button
+      gpio: 35
+      function: BOOT strap button
+      active_low: true
+    - name: lcd_backlight
+      gpio: 32
+      function: LCD backlight PWM
+      active_low: false
+      notes: BSP_LCD_BACKLIGHT; driven through LEDC by the Waveshare BSP.
+    - name: lcd_reset
+      gpio: 33
+      function: EK79007 LCD reset
+      active_low: true
+      notes: BSP_LCD_RST / RESET_LCD.
+    - name: speaker_pa
+      gpio: 53
+      function: NS4150B speaker amplifier enable
+      active_low: false
+      notes: BSP_POWER_AMP_IO / PA_CTRL.
+    - name: sdmmc_d0
+      gpio: 39
+      function: microSD D0
+      active_low: false
+    - name: sdmmc_d1
+      gpio: 40
+      function: microSD D1
+      active_low: false
+    - name: sdmmc_d2
+      gpio: 41
+      function: microSD D2
+      active_low: false
+    - name: sdmmc_d3
+      gpio: 42
+      function: microSD D3 / card-detect contact
+      active_low: false
+      notes: BSP slot config does not use a separate card-detect GPIO.
+    - name: sdmmc_clk
+      gpio: 43
+      function: microSD CLK
+      active_low: false
+    - name: sdmmc_cmd
+      gpio: 44
+      function: microSD CMD
+      active_low: false
+    - name: esp32_c6_hosted_link
+      gpio: null
+      function: ESP32-C6 hosted Wi-Fi SDIO/control link
+      active_low: false
+      notes: Schematic places the hosted-radio link around GPIO14-GPIO19 plus C6 control nets; keep exact role mapping owned by esp_hosted/esp_wifi_remote bring-up.
+  i2c_buses:
+    - name: peripheral_control
+      port: 1
+      sda: 7
+      scl: 8
+      clock_hz: 400000
+      pullups: board
+      devices:
+        - name: touch_controller
+          address: 93
+          notes: GT911 primary address 0x5d; BSP probes fallback address 0x14 if primary is absent.
+        - name: touch_controller_backup
+          address: 20
+          notes: GT911 fallback address 0x14.
+        - name: microphone_codec
+          address: 64
+          notes: ES7210 default 7-bit address used by esp_codec_dev.
+        - name: speaker_codec
+          address: 24
+          notes: ES8311 default 7-bit address used by esp_codec_dev.
+  i2s_buses:
+    - name: audio
+      port: 1
+      role: master
+      mclk: 13
+      bclk: 12
+      lrclk: 10
+      din: 11
+      dout: 9
+      notes: BSP_I2S_MCLK=GPIO13, BSP_I2S_SCLK=GPIO12, BSP_I2S_LCLK=GPIO10, BSP_I2S_DSIN=GPIO11, BSP_I2S_DOUT=GPIO9.
   spi_buses: []
   led_strips: []
 storage:
@@ -93,6 +174,7 @@ storage:
     driver: sdmmc
     interface: sdio_3_0_tf_card
     gpio: null
+    notes: SDMMC 4-bit microSD storage. Physical pins are CLK=GPIO43, CMD=GPIO44, D0=GPIO39, D1=GPIO40, D2=GPIO41, D3=GPIO42; BSP uses LDO channel 4 for SD power.
   config: encrypted_nvs
   calibration: encrypted_nvs_or_internal_metrics_store
   media: sd_versioned_bundles_with_embedded_fallback
@@ -123,24 +205,27 @@ controls:
   - name: boot
     kind: button
     function: download_mode
-    gpio: null
+    gpio: 35
   - name: reset
     kind: button
     function: reset
     gpio: null
+    notes: Physical reset button drives ESP_EN rather than a firmware GPIO.
   - name: touchscreen
     kind: touch
     function: local_ui_controls
     gpio: null
+    notes: GT911 touch is on I2C; BSP sets reset and interrupt GPIOs to GPIO_NUM_NC.
 indicators:
   - name: display
     kind: display
-    driver: mipi_dsi
-    gpio: null
+    driver: ek79007_mipi_dsi
+    gpio: 33
+    notes: 1024x600 EK79007 MIPI-DSI panel, 2 data lanes, 52 MHz pixel clock, 1000 Mbps lane bitrate, DSI PHY LDO channel 3 at 2500 mV.
   - name: status_led
     kind: status_led
-    driver: board_led
-    gpio: null
+    driver: display_backlight_status
+    gpio: 32
 capability_overrides:
   display: true
   touchscreen: true
