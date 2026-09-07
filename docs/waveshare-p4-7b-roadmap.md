@@ -175,6 +175,9 @@ bootloader offset at `0x2000`, instead of assuming the ESP32-S3 `0x0` layout.
 The direct-panel adapter also falls back to the EK79007 DCS display-on command
 when the managed driver reports that its optional display-on callback is not
 supported.
+The P4 profile now uses the BSP-backed GT911 touch adapter. The BSP probes
+`0x5d` and `0x14`, applies the board's default coordinate mirroring, and feeds
+touch actions into Hexe's existing mute, volume, and page-navigation controls.
 
 Tasks:
 

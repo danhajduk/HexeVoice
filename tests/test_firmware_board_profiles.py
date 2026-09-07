@@ -161,7 +161,7 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "board/display_waveshare_p4_7b.cpp",
         "board/led_ring.cpp",
         "board/storage_nvs_only.cpp",
-        "board/touch_none.cpp",
+        "board/touch.cpp",
         "board/wifi_noop.cpp",
         "voice/tts_player_noop.cpp",
     ]
@@ -266,6 +266,16 @@ def test_p4_display_falls_back_to_dcs_display_on_command():
     assert "display_on_result == ESP_ERR_NOT_SUPPORTED" in source
     assert "esp_lcd_panel_io_tx_param(g_panel_io, LCD_CMD_DISPON, nullptr, 0)" in source
     assert "ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(g_panel, true))" not in source
+
+
+def test_p4_profile_uses_bsp_gt911_touch_adapter():
+    source = (REPO_ROOT / "firmware/components/endpoint_runtime/board/touch.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "bsp_touch_new(nullptr, &g_touch)" in source
+    assert "esp_lcd_touch_read_data(g_touch)" in source
+    assert "esp_lcd_touch_get_data(g_touch, &point, &point_count, 1)" in source
 
 
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):

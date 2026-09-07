@@ -205,10 +205,10 @@ adapters:
     - board/display_waveshare_p4_7b.cpp
     - board/led_ring.cpp
     - board/storage_nvs_only.cpp
-    - board/touch_none.cpp
+    - board/touch.cpp
     - board/wifi_noop.cpp
     - voice/tts_player_noop.cpp
-  notes: Minimal experimental display bring-up uses the Waveshare BSP direct panel path. Touch, audio, SD model sets, and hosted Wi-Fi remain explicit no-op adapters until their hardware slices are implemented.
+  notes: Experimental display and GT911 touch bring-up use the Waveshare BSP direct hardware paths. Audio, SD model sets, and hosted Wi-Fi remain explicit no-op adapters until their hardware slices are implemented.
 controls:
   - name: boot
     kind: button
