@@ -275,6 +275,15 @@ def test_p4_build_enables_esp32_c6_hosted_wifi():
     assert "P4 hosted Wi-Fi requires ESP32-C6 remote transport" in build_script
 
 
+def test_wifi_disconnect_logging_keeps_credentials_private():
+    wifi_source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/wifi.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert '"Wi-Fi disconnected reason=%u, retrying"' in wifi_source
+    assert "event->reason" in wifi_source
+
+
 def test_p4_dma_component_is_only_required_on_idf_6():
     cmake = (
         REPO_ROOT / "firmware/components/endpoint_runtime/CMakeLists.txt"

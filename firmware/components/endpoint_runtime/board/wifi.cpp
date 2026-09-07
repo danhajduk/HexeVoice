@@ -28,7 +28,6 @@ void update_rssi_from_ap_info() {
 
 void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data) {
   (void) arg;
-  (void) event_data;
 
   auto &state = hexe::state();
 
@@ -40,6 +39,7 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
   }
 
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
+    const auto *event = static_cast<const wifi_event_sta_disconnected_t *>(event_data);
     state.wifi_connected = false;
     state.backend_connected = false;
     state.voice_ws_connected = false;
@@ -52,7 +52,7 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     state.phase = hexe::AppPhase::kWiFiConnecting;
     const esp_err_t reconnect_result = esp_wifi_connect();
     if (reconnect_result == ESP_OK) {
-      ESP_LOGW(kTag, "Wi-Fi disconnected, retrying");
+      ESP_LOGW(kTag, "Wi-Fi disconnected reason=%u, retrying", static_cast<unsigned>(event->reason));
     } else {
       ESP_LOGW(kTag, "Wi-Fi disconnected; reconnect skipped: %s", esp_err_to_name(reconnect_result));
     }
