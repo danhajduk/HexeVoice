@@ -275,6 +275,7 @@ def test_p4_build_enables_esp32_c6_hosted_wifi():
     assert "CONFIG_SLAVE_IDF_TARGET_ESP32C6=y" in build_script
     assert "P4 hosted Wi-Fi requires ESP32-C6 remote transport" in build_script
     assert "idf::esp_driver_dma" in component_cmake
+    assert "idf::esp_driver_gpio" in component_cmake
     assert "idf::esp_driver_sdmmc" in component_cmake
 
 
