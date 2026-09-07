@@ -13,6 +13,7 @@ BOARD_PROFILE_ROOT="${BOARD_PROFILE_ROOT:-${ROOT_DIR}/boards}"
 PARTITION_ROOT="${PARTITION_ROOT:-${ROOT_DIR}/partitions}"
 PARTITION_VALIDATOR="${ROOT_DIR}/tools/validate_partition_schema.py"
 REQUESTED_FIRMWARE_APP="${HEXE_FIRMWARE_APP:-endpoint}"
+P4_SILICON_PROFILE="${HEXE_P4_SILICON_PROFILE:-rev1_3}"
 FIRMWARE_EXPORT_FLAVOR="${REQUESTED_FIRMWARE_APP}"
 case "${REQUESTED_FIRMWARE_APP}" in
   endpoint|recovery|audio_probe)
@@ -36,8 +37,10 @@ Commands:
   push   Build one firmware profile, refresh artifacts, then push OTA to the endpoint.
 
 Environment:
-  HEXE_BOARD_PROFILE  Firmware board profile: ha_voice_pe, waveshare_s3_touch_lcd_1_85c_box_v2, or all.
+  HEXE_BOARD_PROFILE  Firmware board profile: ha_voice_pe, waveshare_s3_touch_lcd_1_85c_box_v2,
+                      waveshare_p4_wifi6_touch_lcd_7b, or all.
                       Default: all for build, ha_voice_pe for push.
+  HEXE_P4_SILICON_PROFILE  ESP32-P4 silicon profile: rev1_3 or rev3_x. Default: rev1_3.
   HEXE_FIRMWARE_APP    Firmware app to build. Default: endpoint. Use minimal for factory onboarding firmware,
                        or audio_probe for the generated-audio transport probe.
   BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
@@ -155,6 +158,27 @@ flash_size_kconfig_value() {
   esac
 }
 
+p4_silicon_sdkconfig() {
+  case "${P4_SILICON_PROFILE}" in
+    rev1_3)
+      cat <<'EOF'
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_100=y
+EOF
+      ;;
+    rev3_x)
+      cat <<'EOF'
+# CONFIG_ESP32P4_SELECTS_REV_LESS_V3 is not set
+CONFIG_ESP32P4_REV_MIN_300=y
+EOF
+      ;;
+    *)
+      echo "Unsupported HEXE_P4_SILICON_PROFILE: ${P4_SILICON_PROFILE}. Expected rev1_3 or rev3_x." >&2
+      exit 1
+      ;;
+  esac
+}
+
 profile_sdkconfig_path() {
   echo "$(profile_build_dir "$1")/sdkconfig"
 }
@@ -199,10 +223,10 @@ ${flash_size_symbol}=y
 CONFIG_ESPTOOLPY_FLASHSIZE="${flash_size_value}"
 EOF
   if [[ "${idf_target}" == "esp32p4" ]]; then
-    cat >> "${output}" <<'EOF'
+    cat >> "${output}" <<EOF
+# ESP32-P4 silicon profile: ${P4_SILICON_PROFILE}
 CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
-# CONFIG_ESP32P4_SELECTS_REV_LESS_V3 is not set
-CONFIG_ESP32P4_REV_MIN_300=y
+$(p4_silicon_sdkconfig)
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_200M=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
@@ -257,6 +281,17 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
   flash_size_value="$(flash_size_kconfig_value "${flash_size}")"
   if [[ -f "${sdkconfig_path}" ]] && ! grep -q "^CONFIG_ESPTOOLPY_FLASHSIZE=\"${flash_size_value}\"$" "${sdkconfig_path}"; then
     echo "Refreshing generated sdkconfig for ${profile}; flash size changed to ${flash_size_value}"
+    rm -f "${sdkconfig_path}"
+    return
+  fi
+  if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
+    { [[ "${P4_SILICON_PROFILE}" == "rev1_3" ]] &&
+      { ! grep -q "^CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y$" "${sdkconfig_path}" ||
+        ! grep -q "^CONFIG_ESP32P4_REV_MIN_100=y$" "${sdkconfig_path}"; } ||
+      [[ "${P4_SILICON_PROFILE}" == "rev3_x" ]] &&
+      { grep -q "^CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y$" "${sdkconfig_path}" ||
+        ! grep -q "^CONFIG_ESP32P4_REV_MIN_300=y$" "${sdkconfig_path}"; }; }; then
+    echo "Refreshing generated sdkconfig for ${profile}; P4 silicon profile changed to ${P4_SILICON_PROFILE}"
     rm -f "${sdkconfig_path}"
     return
   fi

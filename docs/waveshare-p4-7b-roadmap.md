@@ -162,9 +162,14 @@ Outcome: Hexe can configure an ESP32-P4 build without enabling the 7B app yet.
 
 Status: complete for display bring-up. The profile selects `esp32p4`, 32 MiB
 flash, and `p4-32m-v1`; the endpoint runtime has target-gated Waveshare BSP,
-hosted-Wi-Fi, and LVGL dependencies. The buildable profile currently uses the
+and LVGL dependencies. The buildable profile currently uses the
 P4 direct-panel display adapter with no-op touch, audio, SD, and hosted-Wi-Fi
 adapters.
+
+Select the detected ESP32-P4 silicon family with
+`HEXE_P4_SILICON_PROFILE=rev1_3` or `HEXE_P4_SILICON_PROFILE=rev3_x` when
+running `firmware/build.sh`. The 7B profile defaults to `rev1_3`; switching the
+parameter invalidates a cached P4 `sdkconfig` automatically.
 
 Tasks:
 

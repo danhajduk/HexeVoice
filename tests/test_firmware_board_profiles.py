@@ -246,6 +246,18 @@ def test_buildable_board_profiles_declare_complete_wiring():
     assert ws_spi["display"]["cs"] == 21
     assert ws_spi["display"]["te"] == 18
 
+
+def test_p4_build_supports_explicit_silicon_profiles():
+    build_script = FIRMWARE_BUILD_SCRIPT.read_text(encoding="utf-8")
+
+    assert 'P4_SILICON_PROFILE="${HEXE_P4_SILICON_PROFILE:-rev1_3}"' in build_script
+    assert "CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y" in build_script
+    assert "CONFIG_ESP32P4_REV_MIN_100=y" in build_script
+    assert "CONFIG_ESP32P4_REV_MIN_300=y" in build_script
+    assert "Unsupported HEXE_P4_SILICON_PROFILE" in build_script
+    assert "P4 silicon profile changed to ${P4_SILICON_PROFILE}" in build_script
+
+
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     output = tmp_path / "board_profile_config.cmake"
     header_output = tmp_path / "board_profile_pins.h"
