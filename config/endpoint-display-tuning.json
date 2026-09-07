@@ -1,0 +1,8 @@
+{
+  "endpoints": {
+    "waveshare-185c-1": {
+      "flush_rows": 32,
+      "pixel_clock_hz": 20000000
+    }
+  }
+}

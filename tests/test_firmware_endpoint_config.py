@@ -20,8 +20,8 @@ def test_endpoint_config_generator_uses_yaml_contract(tmp_path):
     )
 
     header = output.read_text(encoding="utf-8")
-    assert 'constexpr const char *kEndpointId = "esp-box-1";' in header
-    assert 'constexpr const char *kEndpointBoardProfile = "esp_box_3";' in header
+    assert 'constexpr const char *kEndpointId = "esp-pe-1";' in header
+    assert 'constexpr const char *kEndpointBoardProfile = "ha_voice_pe";' in header
     assert "kEndpointFirmwareVersion" not in header
     assert 'constexpr const char *kEndpointBackendHost = "10.0.0.22";' in header
     assert 'constexpr const char *kEndpointHeartbeatPath = "/api/endpoint/heartbeat";' in header
@@ -58,3 +58,55 @@ def test_endpoint_config_generator_uses_pe_profile_endpoint_id(tmp_path):
     header = output.read_text(encoding="utf-8")
     assert 'constexpr const char *kEndpointId = "esp-pe-1";' in header
     assert 'constexpr const char *kEndpointBoardProfile = "ha_voice_pe";' in header
+
+
+def test_endpoint_config_generator_uses_waveshare_profile_endpoint_id(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    output = tmp_path / "endpoint_config.h"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "firmware/tools/generate_endpoint_config.py"),
+            "--input",
+            str(repo_root / "firmware/config/endpoint.example.yaml"),
+            "--output",
+            str(output),
+            "--board-profile",
+            "waveshare_s3_touch_lcd_1_85c_box_v2",
+        ],
+        check=True,
+    )
+
+    header = output.read_text(encoding="utf-8")
+    assert 'constexpr const char *kEndpointId = "waveshare-185c-1";' in header
+    assert 'constexpr const char *kEndpointBoardProfile = "waveshare_s3_touch_lcd_1_85c_box_v2";' in header
+
+
+def test_endpoint_config_generator_accepts_legacy_waveshare_profile_endpoint_id(tmp_path):
+    repo_root = Path(__file__).resolve().parents[1]
+    config = tmp_path / "endpoint.yaml"
+    output = tmp_path / "endpoint_config.h"
+    config.write_text(
+        (repo_root / "firmware/config/endpoint.example.yaml")
+        .read_text(encoding="utf-8")
+        .replace("waveshare_185c_id: waveshare-185c-1", "waveshare_s3_touch_lcd_1_85c_box_v2_id: friendly-old-key"),
+        encoding="utf-8",
+    )
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "firmware/tools/generate_endpoint_config.py"),
+            "--input",
+            str(config),
+            "--output",
+            str(output),
+            "--board-profile",
+            "waveshare_s3_touch_lcd_1_85c_box_v2",
+        ],
+        check=True,
+    )
+
+    header = output.read_text(encoding="utf-8")
+    assert 'constexpr const char *kEndpointId = "friendly-old-key";' in header

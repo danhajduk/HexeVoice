@@ -37,7 +37,7 @@ def test_firmware_validation_matrix_covers_supported_build_profiles():
     build_source = FIRMWARE_BUILD_SCRIPT.read_text(encoding="utf-8")
     matrix_profiles = {profile["id"] for profile in matrix["profiles"]}
 
-    assert matrix_profiles == {"esp_box_3", "ha_voice_pe"}
+    assert matrix_profiles == {"ha_voice_pe", "waveshare_s3_touch_lcd_1_85c_box_v2"}
     for profile_id in matrix_profiles:
         profile = _board_profile(profile_id)
         assert profile["adapters"]["buildable"] is True

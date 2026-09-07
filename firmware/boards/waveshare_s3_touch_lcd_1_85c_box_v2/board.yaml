@@ -21,7 +21,7 @@ sources:
     url: https://github.com/waveshareteam/ESP32-S3-Touch-LCD-1.85C
 build:
   idf_target: esp32s3
-  partition_schema: s3-16m-recovery-v1
+  partition_schema: s3-16m-recovery-single-model-v1
   app_slot_size: 4MiB
   recovery_app: true
   compile_definitions:
@@ -60,6 +60,7 @@ display:
   width_px: 360
   height_px: 360
   color_depth: 262k_colors
+  rotation_deg: 180
   touch: true
 audio:
   input:

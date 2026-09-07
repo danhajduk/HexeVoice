@@ -16,6 +16,7 @@ SCHEMA_FILES = {
     "s3-8m-recovery-v1": "s3_8m_recovery_v1.csv",
     "s3-16m-v1": "s3_16m_v1.csv",
     "s3-16m-recovery-v1": "s3_16m_recovery_v1.csv",
+    "s3-16m-recovery-single-model-v1": "s3_16m_recovery_single_model_v1.csv",
     "p4-32m-v1": "p4_32m_v1.csv",
 }
 APP_ALIGNMENT = 0x10000

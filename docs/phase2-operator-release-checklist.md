@@ -160,7 +160,7 @@ inventory, and send the media-only reformat command.
 Install/load ESP-IDF first. The build script auto-loads `~/esp-idf/export.sh`
 when `IDF_PATH` is not already set.
 
-Build both supported profiles:
+Build the supported profiles:
 
 ```bash
 cd firmware
@@ -171,8 +171,8 @@ Build one profile:
 
 ```bash
 cd firmware
-HEXE_BOARD_PROFILE=esp_box_3 ./build.sh
 HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
+HEXE_BOARD_PROFILE=waveshare_s3_touch_lcd_1_85c_box_v2 ./build.sh
 ```
 
 If the endpoint has not yet received the OTA partition table, do one full USB
@@ -188,15 +188,15 @@ From another machine, pull and flash the export:
 ```bash
 cd firmware
 ./tools/flash-remote-export.sh pe /dev/ttyACM0
-./tools/flash-remote-export.sh box /dev/ttyACM0
+./tools/flash-remote-export.sh waveshare /dev/ttyACM0
 ```
 
 After the first full flash, OTA can push the app binary through the backend:
 
 ```bash
 cd firmware
-HEXE_BOARD_PROFILE=esp_box_3 ENDPOINT_ID=esp-box-1 ./build.sh push
 HEXE_BOARD_PROFILE=ha_voice_pe ENDPOINT_ID=esp-pe-1 ./build.sh push
+HEXE_BOARD_PROFILE=waveshare_s3_touch_lcd_1_85c_box_v2 ENDPOINT_ID=waveshare-185c-1 ./build.sh push
 ```
 
 The dashboard Voice Endpoint page can also send OTA when the endpoint is

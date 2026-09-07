@@ -1051,7 +1051,6 @@ extern "C" const char *hexe_ble_provisioning_device_identity_json() {
   static std::string payload;
   cJSON *root = cJSON_CreateObject();
   ensure_pairing_nonce();
-  cJSON_AddStringToObject(root, "contract_version", kContractVersion);
   cJSON_AddStringToObject(root, "onboarding_session_id", g_ble.onboarding_session_id);
   cJSON_AddStringToObject(root, "device_id", hexe::config::kEndpointId);
   cJSON_AddStringToObject(root, "board_profile", hexe::board::pins::kBoardProfile);

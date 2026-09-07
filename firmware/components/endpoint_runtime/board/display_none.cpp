@@ -42,4 +42,20 @@ const char *display_pixel_format() {
   return "none";
 }
 
+int display_last_asset_read_ms() {
+  return 0;
+}
+
+int display_last_flush_ms() {
+  return 0;
+}
+
+int display_last_render_ms() {
+  return 0;
+}
+
+const char *display_last_asset_filename() {
+  return "";
+}
+
 }  // namespace hexe::board

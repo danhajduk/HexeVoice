@@ -916,7 +916,7 @@ def _is_time_query(text: str) -> bool:
 def _is_date_query(text: str) -> bool:
     return bool(
         re.match(
-            r"^(?:please\s+)?(?:what\s+is\s+(?:the\s+)?date|what\s+date\s+is\s+it(?:\s+today)?|"
+            r"^(?:please\s+)?(?:what\s+is\s+(?:the\s+)?date(?:\s+today)?|what\s+date\s+is\s+it(?:\s+today)?|"
             r"what(?:'s|\s+is)\s+today(?:'s)?\s+date|what\s+is\s+today(?:'s)?\s+date|"
             r"what\s+day\s+is\s+it|current\s+date|tell\s+me\s+(?:the\s+)?date)$",
             text,

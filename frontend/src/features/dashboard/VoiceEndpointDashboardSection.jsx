@@ -130,8 +130,15 @@ function firstText(...values) {
   return "";
 }
 
+const BOARD_PROFILE_LABELS = {
+  esp_box_3: "ESP Box 3",
+  ha_voice_pe: "Home Assistant Voice PE",
+  waveshare_s3_touch_lcd_1_85c_box_v2: "Waveshare 1.85C",
+};
+
 function boardProfileLabel(identity) {
-  return firstText(identity?.board_profile, identity?.board_type, identity?.profile, "unknown");
+  const profile = firstText(identity?.board_profile, identity?.board_type, identity?.profile);
+  return BOARD_PROFILE_LABELS[profile] || profile || "unknown";
 }
 
 function blePairingStateLabel(value) {
@@ -419,12 +426,22 @@ function endpointBoardProfile(endpointStatus) {
   if (!endpointStatus) {
     return "unknown";
   }
-  const firmware = endpointCapabilities(endpointStatus).firmware || {};
+  const capabilities = endpointCapabilities(endpointStatus);
+  const firmware = capabilities.firmware || {};
   if (firmware.board_profile || firmware.profile) {
     return firmware.board_profile || firmware.profile;
   }
+  if (capabilities.board_profile) {
+    return capabilities.board_profile;
+  }
   const endpointId = String(endpointStatus?.endpoint_id || "").toLowerCase();
-  return endpointId.includes("pe") ? "ha_voice_pe" : "esp_box_3";
+  if (endpointId.includes("waveshare") || endpointId.includes("ws185")) {
+    return "waveshare_s3_touch_lcd_1_85c_box_v2";
+  }
+  if (endpointId.includes("box")) {
+    return "esp_box_3";
+  }
+  return "ha_voice_pe";
 }
 
 function firmwareUpdateLabel(update) {
@@ -1693,14 +1710,20 @@ function EndpointBleOnboardingPanel({ endpointStatus, onRefresh, setActionMessag
       setActionMessage("BLE approval skipped: device identity is not ready.");
       return;
     }
+    const shouldSendWifiAfterApproval = Boolean(canSendPairingWifi);
     setPairingApproveBusy(true);
     try {
       const result = await approveEndpointBlePairingSession(pairingSessionId, {
         device_id: pairingIdentityDeviceId,
       });
       applyPairingResult(result);
-      setActionMessage("BLE device approved. Waiting for it to come online with the same device id.");
-      await onRefresh();
+      if (shouldSendWifiAfterApproval) {
+        setActionMessage("BLE device approved. Sending Wi-Fi credentials.");
+        await handleBleProvision();
+      } else {
+        setActionMessage("BLE device approved. Send Wi-Fi credentials to bring it online.");
+        await onRefresh();
+      }
     } catch (err) {
       setActionMessage(blePairingErrorMessage(err));
     } finally {

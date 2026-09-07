@@ -12,6 +12,7 @@ DEFAULT_WAKE_ELECTION_WINDOW_MS = 250
 
 SOURCE_PRIORITIES = {
     "button": 100,
+    "touch": 98,
     "manual": 95,
     "endpoint_micro_wake_word": 80,
     "endpoint_wake_word": 75,

@@ -13,12 +13,14 @@ RECOVERY_CONTROL = Path("firmware/components/recovery_runtime/recovery_control.c
 RECOVERY_CONTROL_HEADER = Path("firmware/components/recovery_runtime/recovery_control.h")
 RECOVERY_BLE = Path("firmware/components/recovery_runtime/recovery_ble_provisioning.cpp")
 RECOVERY_BLE_HEADER = Path("firmware/components/recovery_runtime/recovery_ble_provisioning.h")
+BLE_GATT = Path("firmware/components/endpoint_runtime/system/ble_provisioning_gatt.c")
 RECOVERY_STATUS = Path("firmware/components/recovery_runtime/recovery_status.cpp")
 RECOVERY_STATUS_HEADER = Path("firmware/components/recovery_runtime/recovery_status.h")
 PARTITION_ROADMAP = Path("docs/firmware-partition-ota-roadmap.md")
 S3_8M_PARTITIONS = Path("firmware/partitions/s3_8m_v1.csv")
 S3_8M_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_8m_recovery_v1.csv")
 S3_16M_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_16m_recovery_v1.csv")
+S3_16M_SINGLE_MODEL_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_16m_recovery_single_model_v1.csv")
 P4_32M_PARTITIONS = Path("firmware/partitions/p4_32m_v1.csv")
 
 
@@ -178,6 +180,7 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "recovery_http_mode()" in control_header
     assert "start_recovery_wifi_after_ble_credentials()" in control_header
     assert 'std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0' in control_source
+    assert 'std::strcmp(hexe::board::pins::kBoardProfile, "waveshare_s3_touch_lcd_1_85c_box_v2") != 0' in control_source
     assert "Recovery Wi-Fi/HTTP disabled for BLE-only board profile" in control_source
     assert "start_recovery_wifi(true)" in control_source
     assert "start_recovery_wifi(false)" in control_source
@@ -195,6 +198,17 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "/api/endpoint/discovery/offer" in control_source
     assert "kRecoveryDiscoveryAttempts = 5" in control_source
     assert "Recovery discovery accepted endpoint=%s device_id=%s session=%s backend=%s:%d" in control_source
+    discovery_task = control_source[
+        control_source.index("void recovery_discovery_task") : control_source.index("void start_recovery_discovery_task_once")
+    ]
+    assert "for (int attempt = 1; attempt <= kRecoveryDiscoveryAttempts; ++attempt)" in discovery_task
+    assert discovery_task.index("load_recovery_discovery_context(&context)") > discovery_task.index("for (int attempt = 1")
+    assert "g_recovery_discovery_completed = false;" in control_source[
+        control_source.index("bool start_recovery_wifi_after_ble_credentials") : control_source.index("bool recovery_http_api_active")
+    ]
+    assert "start_recovery_discovery_task_once();" in control_source[
+        control_source.index("bool start_recovery_wifi_after_ble_credentials") : control_source.index("bool recovery_http_api_active")
+    ]
     assert "recovery_discovery_status()" in control_source
     assert '"application_type", "recovery"' in control_source
     assert '"onboarding_session_id", context.onboarding_session_id' in control_source
@@ -207,6 +221,17 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "kWifiPasswordKey" not in discovery_body
     assert "wifi_password" not in discovery_body
     assert '\\"discovery_status\\":' in RECOVERY_STATUS.read_text()
+
+
+def test_ble_host_pairing_retries_credential_poll_after_pending_read():
+    gatt_source = BLE_GATT.read_text()
+    disconnect_block = gatt_source[
+        gatt_source.index("BLE host pairing disconnected conn=%u") : gatt_source.index("BLE onboarding peripheral_disconnected")
+    ]
+
+    assert "const int should_retry_for_credentials = client_identity_sent && !client_credentials_received;" in disconnect_block
+    assert disconnect_block.index("const int should_retry_for_credentials") < disconnect_block.index("reset_client_state")
+    assert "if (pairing_scan_requested && should_retry_for_credentials)" in disconnect_block
 
 
 def test_recovery_ble_provisioning_supports_local_fallback_without_endpoint_runtime():
@@ -369,7 +394,12 @@ def test_recovery_contract_covers_unusable_main_ota_slots():
     assert "POST" in doc and "/api/recovery/firmware/install" in doc
     assert "POST" in doc and "/api/recovery/boot/select" in doc
 
-    for partition_csv in (S3_8M_RECOVERY_PARTITIONS, S3_16M_RECOVERY_PARTITIONS, P4_32M_PARTITIONS):
+    for partition_csv in (
+        S3_8M_RECOVERY_PARTITIONS,
+        S3_16M_RECOVERY_PARTITIONS,
+        S3_16M_SINGLE_MODEL_RECOVERY_PARTITIONS,
+        P4_32M_PARTITIONS,
+    ):
         source = partition_csv.read_text()
         assert "factory,    app,  factory" in source
         assert "factory,    app,  factory, ,         2M," in source

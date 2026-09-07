@@ -23,11 +23,13 @@ Each endpoint release should attach these assets:
 
 ```text
 hexe_firmware.bin
-hexe_firmware_esp_box_3.bin
 hexe_firmware_ha_voice_pe.bin
+hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin
 manifest.json
-manifest-esp_box_3.json
 manifest-ha_voice_pe.json
+manifest-endpoint-ha_voice_pe.json
+manifest-waveshare_s3_touch_lcd_1_85c_box_v2.json
+manifest-endpoint-waveshare_s3_touch_lcd_1_85c_box_v2.json
 SHA256SUMS
 ```
 
@@ -47,10 +49,14 @@ signed by the backend when delivered. The default local release channel is
 `dev`; production release jobs should set `FIRMWARE_RELEASE_CHANNEL=stable`.
 Endpoint OTA accepts only the `signed_manifest_sha256_required` security policy.
 
-The active S3 endpoint profiles use `s3-16m-recovery-v1`, which reserves a
-2 MiB factory recovery app and two 4 MiB endpoint OTA slots. Moving a device
-from the legacy `s3-16m-v1` layout to this recovery-capable layout requires
-USB/full flash because normal endpoint OTA cannot replace the partition table.
+Active S3 endpoint profiles use recovery-capable partition schemas with a
+2 MiB factory recovery app and two endpoint OTA slots. `ha_voice_pe` keeps
+`s3-16m-recovery-v1`; `waveshare_s3_touch_lcd_1_85c_box_v2` uses
+`s3-16m-recovery-single-model-v1`, replacing the previous `model_a`/`model_b`
+split with one 1 MiB `model` cache and expanding SPIFFS storage to 4032 KiB.
+Moving a device between partition layouts requires USB/full flash because
+normal endpoint OTA cannot replace the partition table. The retired
+`esp_box_3` profile is no longer part of the required release artifact set.
 
 Flash export folders also include `flash-esptool.sh` and
 `provisioning.env.example`. To pre-provision a device during USB flashing, copy

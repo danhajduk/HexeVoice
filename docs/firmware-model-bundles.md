@@ -1,9 +1,9 @@
 # Firmware Model Bundles
 
 Hexe endpoint firmware treats wake-word model updates as a signed mutable
-bundle, separate from the firmware image. Firmware OTA carries code and static
-embedded fallbacks; model bundles carry microWakeWord assets that can be
-activated later from `model_a` or `model_b`.
+bundle, separate from the firmware image. Legacy recovery layouts can activate
+bundles from `model_a` or `model_b`; S3 single-model layouts use one internal
+`model` cache populated from SD model sets.
 
 ## Bundle Shape
 
@@ -32,7 +32,7 @@ Model-bundle manifests use `schema_version=hexe-model-bundle-v1` and
 
 - bundle id, version, creation time, release channel, and security policy
 - compatible firmware API range, board profiles, partition schemas, and required
-  `model_a`/`model_b` storage banks
+  storage partitions: either `model_a`/`model_b` or the single `model` cache
 - preprocessing metadata for `audio_preprocessor_int8.tflite`, including sample
   rate, feature step, size, and SHA-256
 - one wake model for Alexa with `alias=Hexe`
@@ -74,15 +74,19 @@ The endpoint firmware exposes a model-bundle manager behind
 `voice/model_bundle.{h,cpp}`. It supports:
 
 - internal A/B banks named `model_a` and `model_b`
-- SD versioned bundle directories rooted at `/sdcard/hexe/models/`
+- internal single-cache partition named `model`
+- SD versioned bundle directories rooted at `/sdcard/hexe/model_sets/`
 - compatibility checks for `hexe-model-bundle-api-v1` and the compiled
   partition schema
 - test-loading through the microWakeWord model validator before activation
 - atomic NVS updates of active and previous bundle pointers
 - rollback by swapping the active and previous pointers
-- embedded fallback selection when no valid mutable assets are loaded
+- embedded fallback selection for legacy layouts when no valid mutable assets
+  are loaded
+- `model_error` reporting for single-model layouts after bounded load retries,
+  while network, OTA, BLE provisioning/recovery, and diagnostics remain alive
 
-The current firmware boots with embedded fallback models. A future downloader
-can stage signed bundle files into `model_a`, `model_b`, or an SD versioned
-directory, then pass the loaded model assets to the activation manager without
-changing the wake/Stop runtime path.
+Current single-model boards expect SD model sets under
+`/sdcard/hexe/model_sets/<model_set_id>/`. The loader must verify the signed
+manifest and file hashes before replacing the internal `model` cache; a known
+good internal model must not be overwritten by an unverified SD set.

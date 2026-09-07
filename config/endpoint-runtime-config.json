@@ -1,0 +1,31 @@
+{
+  "board_profiles": {
+    "waveshare_s3_touch_lcd_1_85c_box_v2": {
+      "display": {
+        "flush_rows": 32,
+        "pixel_clock_hz": 20000000
+      },
+      "micro_vad": {
+        "pause_ms": 190,
+        "energy_threshold": 300
+      },
+      "audio": {
+        "output": {
+          "volume_percent": 56,
+          "muted": false
+        }
+      },
+      "restart": {
+        "on_apply": false
+      }
+    }
+  },
+  "endpoints": {
+    "waveshare-185c-1": {
+      "display": {
+        "flush_rows": 32,
+        "pixel_clock_hz": 20000000
+      }
+    }
+  }
+}

@@ -250,7 +250,7 @@ def test_firmware_manifest_serves_runtime_artifact(tmp_path):
     manifest_payload = manifest.json()
     assert manifest_payload["url"] == "http://voice-node.local:9004/api/firmware/artifacts/hexe_firmware.bin"
     assert manifest_payload["size_bytes"] == len(b"firmware-bin")
-    assert manifest_payload["profile"] == "esp_box_3"
+    assert manifest_payload["profile"] == "ha_voice_pe"
     assert manifest_payload["signature_algorithm"] == OTA_MANIFEST_SIGNATURE_ALGORITHM
     assert manifest_payload["signature_key_id"] == ota_manifest_key_id()
     signed_payload = ota_manifest_signature_payload(
@@ -283,6 +283,57 @@ def test_firmware_manifest_serves_runtime_artifact(tmp_path):
     ).hexdigest()
     assert artifact.status_code == 200
     assert artifact.content == b"firmware-bin"
+
+
+def test_firmware_manifest_resolves_waveshare_profile_from_filename(tmp_path):
+    firmware_dir = tmp_path / "firmware"
+    firmware_dir.mkdir()
+    waveshare_filename = "hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin"
+    (firmware_dir / waveshare_filename).write_bytes(b"waveshare-firmware")
+    (firmware_dir / "manifest-endpoint-esp_box_3.json").write_text(
+        json.dumps(
+            {
+                "version": "0.1.0",
+                "application_type": "endpoint",
+                "board_profile": "esp_box_3",
+                "filename": "hexe_firmware_esp_box_3.bin",
+            }
+        ),
+        encoding="utf-8",
+    )
+    (firmware_dir / "manifest-endpoint-waveshare_s3_touch_lcd_1_85c_box_v2.json").write_text(
+        json.dumps(
+            {
+                "version": "0.2.0",
+                "application_type": "endpoint",
+                "board_profile": "waveshare_s3_touch_lcd_1_85c_box_v2",
+                "filename": waveshare_filename,
+                "partition_schema": "s3-16m-recovery-v1",
+                "app_slot_size": "4MiB",
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    manifest = client.get(f"/api/firmware/manifest?filename={waveshare_filename}")
+
+    assert manifest.status_code == 200
+    payload = manifest.json()
+    assert payload["filename"] == waveshare_filename
+    assert payload["board_profile"] == "waveshare_s3_touch_lcd_1_85c_box_v2"
+    assert payload["profile"] == "waveshare_s3_touch_lcd_1_85c_box_v2"
+    assert payload["version"] == "0.2.0"
+    assert payload["partition_schema"] == "s3-16m-recovery-v1"
+    assert payload["app_slot_size"] == "4MiB"
 
 
 def test_endpoint_status_includes_firmware_update_metadata(tmp_path):

@@ -52,9 +52,7 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[DONE] Task 305: Physically validate HA Voice PE full firmware button wake, wake word, advisory VAD finalization, HTTP upload, TTS playback, and serial diagnostics
-[TODO] Task 311: Add S3 16 MiB recovery single-model partition schema and move Waveshare 1.85 to it after clean-flash validation
-[TODO] Task 312: Add SD model-set loading and internal single-model cache policy for S3 16 MiB devices
+[WIP] Task 312: Add SD model-set loading and internal single-model cache policy for S3 16 MiB devices
 
 **********************************************************************************************
 * Future TODO listing

@@ -32,11 +32,12 @@ usage() {
 Usage: $(basename "$0") [build|push]
 
 Commands:
-  build  Build firmware and refresh runtime/export artifacts. Builds both profiles by default.
+  build  Build firmware and refresh runtime/export artifacts. Builds all buildable profiles by default.
   push   Build one firmware profile, refresh artifacts, then push OTA to the endpoint.
 
 Environment:
-  HEXE_BOARD_PROFILE  Firmware board profile: esp_box_3, ha_voice_pe, or all. Default: all for build, esp_box_3 for push.
+  HEXE_BOARD_PROFILE  Firmware board profile: ha_voice_pe, waveshare_s3_touch_lcd_1_85c_box_v2, or all.
+                      Default: all for build, ha_voice_pe for push.
   HEXE_FIRMWARE_APP    Firmware app to build. Default: endpoint. Use minimal for factory onboarding firmware,
                        or audio_probe for the generated-audio transport probe.
   BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
@@ -121,6 +122,7 @@ partition_csv_for_schema() {
     s3-8m-recovery-v1) echo "partitions/s3_8m_recovery_v1.csv" ;;
     s3-16m-v1) echo "partitions/s3_16m_v1.csv" ;;
     s3-16m-recovery-v1) echo "partitions/s3_16m_recovery_v1.csv" ;;
+    s3-16m-recovery-single-model-v1) echo "partitions/s3_16m_recovery_single_model_v1.csv" ;;
     p4-32m-v1) echo "partitions/p4_32m_v1.csv" ;;
     *)
       echo "Unsupported partition schema: $1" >&2
@@ -552,7 +554,7 @@ fi
 
 requested_profile="${HEXE_BOARD_PROFILE:-}"
 if [[ "${COMMAND}" == "push" && -z "${requested_profile}" ]]; then
-  requested_profile="esp_box_3"
+  requested_profile="ha_voice_pe"
 elif [[ -z "${requested_profile}" ]]; then
   requested_profile="all"
 fi

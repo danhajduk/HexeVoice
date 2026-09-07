@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
 
 from hexevoice.config.settings import Settings
+from hexevoice.endpoint.runtime_config import load_endpoint_runtime_config
 from hexevoice.main import create_app
 from hexevoice.api.models import AssistantTurnResponse
 from hexevoice.persistence import VoiceSessionHistoryStore
@@ -181,6 +182,176 @@ def test_voice_websocket_binds_endpoint_from_query_before_voice_event(tmp_path):
     assert mute_response.json()["accepted"] is True
     assert box_command["endpoint_id"] == "esp-box-1"
     assert box_command["event_type"] == "endpoint.mute"
+
+
+def test_voice_websocket_sends_hidden_display_tuning_from_config(tmp_path):
+    config_path = tmp_path / "display-tuning.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "endpoints": {
+                    "waveshare-185c-1": {
+                        "flush_rows": 4,
+                        "pixel_clock_hz": 10000000,
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_display_tuning_path=config_path,
+            )
+        )
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=waveshare-185c-1") as websocket:
+        command = websocket.receive_json()
+
+    assert command["event_type"] == "endpoint.display.tuning"
+    assert command["direction"] == "backend_to_endpoint"
+    assert command["endpoint_id"] == "waveshare-185c-1"
+    assert command["payload"]["flush_rows"] == 4
+    assert command["payload"]["pixel_clock_hz"] == 10000000
+    assert command["payload"]["request_id"].startswith("cmd_")
+
+
+def test_voice_websocket_sends_board_and_endpoint_runtime_config(tmp_path):
+    config_path = tmp_path / "endpoint-runtime-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "board_profiles": {
+                    "waveshare_s3_touch_lcd_1_85c_box_v2": {
+                        "display": {
+                            "flush_rows": 8,
+                            "pixel_clock_hz": 10000000,
+                        },
+                        "micro_vad": {
+                            "pause_ms": 210,
+                            "energy_threshold": 350,
+                        },
+                        "audio": {
+                            "output": {
+                                "volume_percent": 44,
+                                "muted": False,
+                            }
+                        },
+                        "wifi_password": "do-not-send",
+                    }
+                },
+                "endpoints": {
+                    "waveshare-185c-1": {
+                        "display": {
+                            "flush_rows": 32,
+                            "pixel_clock_hz": 20000000,
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    manager = VoiceSessionManager(
+        endpoint_runtime_config=load_endpoint_runtime_config(config_path),
+        endpoint_board_profile_provider=lambda endpoint_id: "waveshare_s3_touch_lcd_1_85c_box_v2",
+    )
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=waveshare-185c-1") as websocket:
+        commands = [websocket.receive_json() for _ in range(4)]
+
+    assert commands[0]["event_type"] == "endpoint.display.tuning"
+    assert commands[0]["payload"]["flush_rows"] == 32
+    assert commands[0]["payload"]["pixel_clock_hz"] == 20000000
+    assert commands[1]["event_type"] == "endpoint.micro_vad"
+    assert commands[1]["payload"]["pause_ms"] == 210
+    assert commands[1]["payload"]["energy_threshold"] == 350
+    assert commands[2]["event_type"] == "endpoint.volume"
+    assert commands[2]["payload"]["volume_percent"] == 44
+    assert commands[3]["event_type"] == "endpoint.mute"
+    assert commands[3]["payload"]["muted"] is False
+    assert "password" not in json.dumps(commands).lower()
+    assert "do-not-send" not in json.dumps(commands)
+
+
+def test_voice_websocket_hot_reloads_runtime_config_for_connected_endpoint(tmp_path):
+    config_path = tmp_path / "endpoint-runtime-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "board_profiles": {
+                    "waveshare_s3_touch_lcd_1_85c_box_v2": {
+                        "display": {
+                            "flush_rows": 4,
+                            "pixel_clock_hz": 10000000,
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    manager = VoiceSessionManager(
+        endpoint_runtime_config=load_endpoint_runtime_config(config_path),
+        endpoint_board_profile_provider=lambda endpoint_id: "waveshare_s3_touch_lcd_1_85c_box_v2",
+    )
+    app = create_app(
+        Settings(
+            onboarding_state_path=tmp_path / "state.json",
+            endpoint_runtime_config_reload_interval_s=0.5,
+        ),
+        voice_session_manager=manager,
+    )
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/api/voice/ws?endpoint_id=waveshare-185c-1") as websocket:
+            initial = websocket.receive_json()
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "board_profiles": {
+                            "waveshare_s3_touch_lcd_1_85c_box_v2": {
+                                "display": {
+                                    "flush_rows": 32,
+                                    "pixel_clock_hz": 20000000,
+                                }
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            updated = websocket.receive_json()
+
+    assert initial["event_type"] == "endpoint.display.tuning"
+    assert initial["payload"]["flush_rows"] == 4
+    assert initial["payload"]["pixel_clock_hz"] == 10000000
+    assert updated["event_type"] == "endpoint.display.tuning"
+    assert updated["payload"]["flush_rows"] == 32
+    assert updated["payload"]["pixel_clock_hz"] == 20000000
+
+
+def test_endpoint_restart_command_routes_to_connected_endpoint(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        response = client.post(
+            "/api/endpoint/restart",
+            json={"endpoint_id": "esp-box-1"},
+        )
+        command = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["command_type"] == "endpoint.restart"
+    assert command["endpoint_id"] == "esp-box-1"
+    assert command["event_type"] == "endpoint.restart"
+    assert command["payload"]["reason"] == "operator_restart"
+    assert command["payload"]["request_id"].startswith("cmd_")
 
 
 def test_voice_websocket_replaces_duplicate_endpoint_control_socket(tmp_path):
@@ -590,6 +761,32 @@ def test_voice_websocket_treats_button_session_start_as_wake(tmp_path):
     status = client.get("/api/voice/status").json()
     assert status["wake_history"][0]["outcome"] == "accepted"
     assert status["wake_history"][0]["source"] == "button"
+    assert status["wake_history"][0]["detected"] is True
+
+
+def test_voice_websocket_treats_touch_session_start_as_wake(tmp_path):
+    detector = DeterministicWakeDetector(detect_on_chunk_index=None)
+    manager = VoiceSessionManager(wake_detector=detector)
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json"), voice_session_manager=manager))
+
+    with client.websocket_connect("/api/voice/ws") as websocket:
+        websocket.send_json(
+            voice_event(
+                "session.start",
+                payload={"wake_source": "touch", "audio_format": {"sample_rate_hz": 16000}},
+            )
+        )
+        wake_response = websocket.receive_json()
+        state_response = websocket.receive_json()
+
+    assert wake_response["event_type"] == "wake.accepted"
+    assert wake_response["payload"]["snapshot"]["session_state"] == "wake_detected"
+    assert wake_response["payload"]["wake"]["source"] == "touch"
+    assert state_response["payload"]["snapshot"]["session_state"] == "listening"
+
+    status = client.get("/api/voice/status").json()
+    assert status["wake_history"][0]["outcome"] == "accepted"
+    assert status["wake_history"][0]["source"] == "touch"
     assert status["wake_history"][0]["detected"] is True
 
 

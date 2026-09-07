@@ -134,7 +134,7 @@ Micro-VAD chunk recording is disabled by default. When temporarily enabled for d
 
 Pre-wake voice sessions that do not receive wake acceptance are cancelled by the backend after `VOICE_SESSION_PRE_WAKE_TIMEOUT_S`, which defaults to `10` seconds. Accepted sessions that do not reach `audio.end` are cancelled after `VOICE_SESSION_MAX_ACTIVE_S`, which defaults to `60` seconds. These limits protect the operator UI and voice runtime from a stuck endpoint VAD state that keeps reporting `wake_armed`, `listening`, or `capturing`.
 
-The firmware micro-VAD pause threshold defaults to `190` ms and the energy threshold defaults to `900`. Both values
+The firmware micro-VAD pause threshold defaults to `190` ms and the energy threshold defaults to `300`. Both values
 are persisted on the endpoint and can be adjusted without UI through:
 
 ```bash

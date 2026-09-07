@@ -3,12 +3,13 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: download-remote-export.sh [all|box|pe] [destination]
+Usage: download-remote-export.sh [all|pe|waveshare|box] [destination]
 
 Profiles:
-  all  Download both firmware/export and firmware/export-ha-voice-pe. Default.
-  box  Download firmware/export.
+  all  Download HA Voice PE and Waveshare exports. Default.
   pe   Download firmware/export-ha-voice-pe.
+  waveshare  Download firmware/export-waveshare_s3_touch_lcd_1_85c_box_v2.
+  box  Download retired firmware/export for legacy ESP-BOX-3 service only.
 
 Environment:
   NODE_HOST    SSH target for the HexeVoice machine. Default: $USER@hexe.local
@@ -83,14 +84,17 @@ mkdir -p "${DEST_ROOT}"
 
 case "${PROFILE}" in
   all)
-    download_export "ESP-BOX-3" "export" "export" "esp_box_3"
     download_export "HA Voice PE" "export-ha-voice-pe" "export-ha-voice-pe" "ha_voice_pe"
+    download_export "Waveshare 1.85C" "export-waveshare_s3_touch_lcd_1_85c_box_v2" "export-waveshare_s3_touch_lcd_1_85c_box_v2" "waveshare_s3_touch_lcd_1_85c_box_v2"
     ;;
   box|esp_box_3|esp-box-3)
     download_export "ESP-BOX-3" "export" "export" "esp_box_3"
     ;;
   pe|ha_voice_pe|ha-voice-pe)
     download_export "HA Voice PE" "export-ha-voice-pe" "export-ha-voice-pe" "ha_voice_pe"
+    ;;
+  waveshare|ws185|waveshare_s3_touch_lcd_1_85c_box_v2)
+    download_export "Waveshare 1.85C" "export-waveshare_s3_touch_lcd_1_85c_box_v2" "export-waveshare_s3_touch_lcd_1_85c_box_v2" "waveshare_s3_touch_lcd_1_85c_box_v2"
     ;;
   *)
     echo "Unknown profile: ${PROFILE}" >&2

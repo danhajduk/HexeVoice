@@ -36,6 +36,7 @@ def main() -> int:
     parser.add_argument("--release-channel", default="dev")
     parser.add_argument("--board-profile", action="append", dest="board_profiles")
     parser.add_argument("--partition-schema", action="append", dest="partition_schemas")
+    parser.add_argument("--required-partition", action="append", dest="required_partitions")
     parser.add_argument("--key-id", default=os.environ.get("HEXEVOICE_MODEL_BUNDLE_KEY_ID", DEFAULT_MODEL_BUNDLE_KEY_ID))
     parser.add_argument("--signing-key", default=os.environ.get("HEXEVOICE_MODEL_BUNDLE_SIGNING_KEY"))
     parser.add_argument("--created-at-utc")
@@ -49,6 +50,7 @@ def main() -> int:
         release_channel=args.release_channel,
         board_profiles=args.board_profiles,
         partition_schemas=args.partition_schemas,
+        required_partitions=args.required_partitions,
         created_at_utc=args.created_at_utc,
     )
     if args.signing_key:

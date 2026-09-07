@@ -91,8 +91,9 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
     board_profile = str(profile["board_profile"])
     build = profile["build"]
     hardware = profile["hardware"]
+    display = profile["display"]
     wiring = profile["wiring"]
-    if not isinstance(build, dict) or not isinstance(hardware, dict) or not isinstance(wiring, dict):
+    if not isinstance(build, dict) or not isinstance(hardware, dict) or not isinstance(display, dict) or not isinstance(wiring, dict):
         raise ValidationError("validated profile lost wiring section")
     wireless = hardware.get("wireless")
     if not isinstance(wireless, dict):
@@ -280,6 +281,12 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
         [
             "",
             "}  // namespace hexe::board::pins",
+            "",
+            "namespace hexe::board::display_config {",
+            "",
+            f"constexpr int kRotationDeg = {int_literal(display.get('rotation_deg', 0))};",
+            "",
+            "}  // namespace hexe::board::display_config",
             "",
         ]
     )

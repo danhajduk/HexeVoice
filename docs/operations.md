@@ -284,7 +284,8 @@ HEXEVOICE_FIRMWARE_RELEASE_TAG=latest \
 
 The downloader writes artifacts atomically into `runtime/firmware`, validates
 `SHA256SUMS` when present, and checks for the configured board profiles
-(`HEXEVOICE_FIRMWARE_REQUIRED_PROFILES`, default `esp_box_3,ha_voice_pe`).
+(`HEXEVOICE_FIRMWARE_REQUIRED_PROFILES`, default
+`ha_voice_pe,waveshare_s3_touch_lcd_1_85c_box_v2`).
 `HEXEVOICE_FIRMWARE_RELEASE_URL` is accepted as an alias for an asset base URL,
 and `HEXEVOICE_FIRMWARE_ARTIFACTS` can override the exact filenames to fetch
 when a release adds another board profile.

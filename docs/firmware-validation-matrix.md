@@ -1,9 +1,13 @@
 # Firmware Validation Matrix
 
-HexeVoice currently supports two firmware hardware profiles:
+HexeVoice currently release-validates two firmware hardware profiles:
 
-- `esp_box_3` - ESP-BOX-3 touchscreen/display target with SD media support.
 - `ha_voice_pe` - Home Assistant Voice Preview Edition audio/LED-ring target with no panel display and NVS-only storage.
+- `waveshare_s3_touch_lcd_1_85c_box_v2` - Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2 round touchscreen/display target with SD media support.
+
+The legacy `esp_box_3` profile is retired: it remains recognizable for old
+endpoint ids and artifacts, but it is not buildable by default and is excluded
+from release gates.
 
 The machine-readable source for this matrix is
 [`docs/firmware-validation-matrix.json`](firmware-validation-matrix.json). Keep
@@ -21,7 +25,7 @@ Run the automated profile coverage before a firmware release:
 PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_validation_matrix.py tests/test_firmware_voice_envelope.py tests/test_voice_loop_integration.py tests/test_voice_websocket.py
 ```
 
-When ESP-IDF is available, also build both supported profiles:
+When ESP-IDF is available, also build the supported profiles:
 
 ```bash
 cd firmware

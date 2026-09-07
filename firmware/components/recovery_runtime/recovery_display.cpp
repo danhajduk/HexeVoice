@@ -31,12 +31,18 @@ constexpr char kTag[] = "hexe_recovery_display";
 #if HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
 constexpr int kWidth = 360;
 constexpr int kHeight = 360;
-constexpr int kFlushRows = 16;
+// Waveshare's reference firmware caps ST77916 QSPI transfers at 2048 bytes.
+// Two 360px RGB565 rows are 1440 bytes, keeping every color burst under that
+// limit while still avoiding a full-frame buffer in the recovery image.
+constexpr int kFlushRows = 2;
 constexpr size_t kAssetBytes = kWidth * kHeight * sizeof(uint16_t);
 constexpr spi_host_device_t kDisplaySpiHost = SPI2_HOST;
+constexpr int kDisplayReadIdClockHz = 3 * 1000 * 1000;
+constexpr int kDisplayPixelClockHz = 10 * 1000 * 1000;
+constexpr int kLcdOpcodeReadCommand = 0x0B;
 constexpr uint8_t kTcaRegisterOutput = 0x01;
 constexpr uint8_t kTcaRegisterConfig = 0x03;
-constexpr uint8_t kDisplayResetBit = 2;
+constexpr uint8_t kDisplayResetBit = 1;
 constexpr int kI2cTimeoutMs = 1000;
 
 extern const uint8_t _binary_min_fw_waiting_to_pair_rgb565_start[] asm("_binary_min_fw_waiting_to_pair_rgb565_start");
@@ -45,6 +51,57 @@ extern const uint8_t _binary_min_fw_pairing_rgb565_start[] asm("_binary_min_fw_p
 extern const uint8_t _binary_min_fw_pairing_rgb565_end[] asm("_binary_min_fw_pairing_rgb565_end");
 extern const uint8_t _binary_ota_progress_rgb565_start[] asm("_binary_ota_progress_rgb565_start");
 extern const uint8_t _binary_ota_progress_rgb565_end[] asm("_binary_ota_progress_rgb565_end");
+
+static const st77916_lcd_init_cmd_t kWavesharePanelInit[] = {
+    {0xF0, "\x28", 1, 0}, {0xF2, "\x28", 1, 0}, {0x73, "\xF0", 1, 0}, {0x7C, "\xD1", 1, 0},
+    {0x83, "\xE0", 1, 0}, {0x84, "\x61", 1, 0}, {0xF2, "\x82", 1, 0}, {0xF0, "\x00", 1, 0},
+    {0xF0, "\x01", 1, 0}, {0xF1, "\x01", 1, 0}, {0xB0, "\x56", 1, 0}, {0xB1, "\x4D", 1, 0},
+    {0xB2, "\x24", 1, 0}, {0xB4, "\x87", 1, 0}, {0xB5, "\x44", 1, 0}, {0xB6, "\x8B", 1, 0},
+    {0xB7, "\x40", 1, 0}, {0xB8, "\x86", 1, 0}, {0xBA, "\x00", 1, 0}, {0xBB, "\x08", 1, 0},
+    {0xBC, "\x08", 1, 0}, {0xBD, "\x00", 1, 0}, {0xC0, "\x80", 1, 0}, {0xC1, "\x10", 1, 0},
+    {0xC2, "\x37", 1, 0}, {0xC3, "\x80", 1, 0}, {0xC4, "\x10", 1, 0}, {0xC5, "\x37", 1, 0},
+    {0xC6, "\xA9", 1, 0}, {0xC7, "\x41", 1, 0}, {0xC8, "\x01", 1, 0}, {0xC9, "\xA9", 1, 0},
+    {0xCA, "\x41", 1, 0}, {0xCB, "\x01", 1, 0}, {0xD0, "\x91", 1, 0}, {0xD1, "\x68", 1, 0},
+    {0xD2, "\x68", 1, 0}, {0xF5, "\x00\xA5", 2, 0}, {0xDD, "\x4F", 1, 0}, {0xDE, "\x4F", 1, 0},
+    {0xF1, "\x10", 1, 0}, {0xF0, "\x00", 1, 0}, {0xF0, "\x02", 1, 0},
+    {0xE0, "\xF0\x0A\x10\x09\x09\x36\x35\x33\x4A\x29\x15\x15\x2E\x34", 14, 0},
+    {0xE1, "\xF0\x0A\x0F\x08\x08\x05\x34\x33\x4A\x39\x15\x15\x2D\x33", 14, 0},
+    {0xF0, "\x10", 1, 0}, {0xF3, "\x10", 1, 0}, {0xE0, "\x07", 1, 0}, {0xE1, "\x00", 1, 0},
+    {0xE2, "\x00", 1, 0}, {0xE3, "\x00", 1, 0}, {0xE4, "\xE0", 1, 0}, {0xE5, "\x06", 1, 0},
+    {0xE6, "\x21", 1, 0}, {0xE7, "\x01", 1, 0}, {0xE8, "\x05", 1, 0}, {0xE9, "\x02", 1, 0},
+    {0xEA, "\xDA", 1, 0}, {0xEB, "\x00", 1, 0}, {0xEC, "\x00", 1, 0}, {0xED, "\x0F", 1, 0},
+    {0xEE, "\x00", 1, 0}, {0xEF, "\x00", 1, 0}, {0xF8, "\x00", 1, 0}, {0xF9, "\x00", 1, 0},
+    {0xFA, "\x00", 1, 0}, {0xFB, "\x00", 1, 0}, {0xFC, "\x00", 1, 0}, {0xFD, "\x00", 1, 0},
+    {0xFE, "\x00", 1, 0}, {0xFF, "\x00", 1, 0}, {0x60, "\x40", 1, 0}, {0x61, "\x04", 1, 0},
+    {0x62, "\x00", 1, 0}, {0x63, "\x42", 1, 0}, {0x64, "\xD9", 1, 0}, {0x65, "\x00", 1, 0},
+    {0x66, "\x00", 1, 0}, {0x67, "\x00", 1, 0}, {0x68, "\x00", 1, 0}, {0x69, "\x00", 1, 0},
+    {0x6A, "\x00", 1, 0}, {0x6B, "\x00", 1, 0}, {0x70, "\x40", 1, 0}, {0x71, "\x03", 1, 0},
+    {0x72, "\x00", 1, 0}, {0x73, "\x42", 1, 0}, {0x74, "\xD8", 1, 0}, {0x75, "\x00", 1, 0},
+    {0x76, "\x00", 1, 0}, {0x77, "\x00", 1, 0}, {0x78, "\x00", 1, 0}, {0x79, "\x00", 1, 0},
+    {0x7A, "\x00", 1, 0}, {0x7B, "\x00", 1, 0}, {0x80, "\x48", 1, 0}, {0x81, "\x00", 1, 0},
+    {0x82, "\x06", 1, 0}, {0x83, "\x02", 1, 0}, {0x84, "\xD6", 1, 0}, {0x85, "\x04", 1, 0},
+    {0x86, "\x00", 1, 0}, {0x87, "\x00", 1, 0}, {0x88, "\x48", 1, 0}, {0x89, "\x00", 1, 0},
+    {0x8A, "\x08", 1, 0}, {0x8B, "\x02", 1, 0}, {0x8C, "\xD8", 1, 0}, {0x8D, "\x04", 1, 0},
+    {0x8E, "\x00", 1, 0}, {0x8F, "\x00", 1, 0}, {0x90, "\x48", 1, 0}, {0x91, "\x00", 1, 0},
+    {0x92, "\x0A", 1, 0}, {0x93, "\x02", 1, 0}, {0x94, "\xDA", 1, 0}, {0x95, "\x04", 1, 0},
+    {0x96, "\x00", 1, 0}, {0x97, "\x00", 1, 0}, {0x98, "\x48", 1, 0}, {0x99, "\x00", 1, 0},
+    {0x9A, "\x0C", 1, 0}, {0x9B, "\x02", 1, 0}, {0x9C, "\xDC", 1, 0}, {0x9D, "\x04", 1, 0},
+    {0x9E, "\x00", 1, 0}, {0x9F, "\x00", 1, 0}, {0xA0, "\x48", 1, 0}, {0xA1, "\x00", 1, 0},
+    {0xA2, "\x05", 1, 0}, {0xA3, "\x02", 1, 0}, {0xA4, "\xD5", 1, 0}, {0xA5, "\x04", 1, 0},
+    {0xA6, "\x00", 1, 0}, {0xA7, "\x00", 1, 0}, {0xA8, "\x48", 1, 0}, {0xA9, "\x00", 1, 0},
+    {0xAA, "\x07", 1, 0}, {0xAB, "\x02", 1, 0}, {0xAC, "\xD7", 1, 0}, {0xAD, "\x04", 1, 0},
+    {0xAE, "\x00", 1, 0}, {0xAF, "\x00", 1, 0}, {0xB0, "\x48", 1, 0}, {0xB1, "\x00", 1, 0},
+    {0xB2, "\x09", 1, 0}, {0xB3, "\x02", 1, 0}, {0xB4, "\xD9", 1, 0}, {0xB5, "\x04", 1, 0},
+    {0xB6, "\x00", 1, 0}, {0xB7, "\x00", 1, 0}, {0xB8, "\x48", 1, 0}, {0xB9, "\x00", 1, 0},
+    {0xBA, "\x0B", 1, 0}, {0xBB, "\x02", 1, 0}, {0xBC, "\xDB", 1, 0}, {0xBD, "\x04", 1, 0},
+    {0xBE, "\x00", 1, 0}, {0xBF, "\x00", 1, 0}, {0xC0, "\x10", 1, 0}, {0xC1, "\x47", 1, 0},
+    {0xC2, "\x56", 1, 0}, {0xC3, "\x65", 1, 0}, {0xC4, "\x74", 1, 0}, {0xC5, "\x88", 1, 0},
+    {0xC6, "\x99", 1, 0}, {0xC7, "\x01", 1, 0}, {0xC8, "\xBB", 1, 0}, {0xC9, "\xAA", 1, 0},
+    {0xD0, "\x10", 1, 0}, {0xD1, "\x47", 1, 0}, {0xD2, "\x56", 1, 0}, {0xD3, "\x65", 1, 0},
+    {0xD4, "\x74", 1, 0}, {0xD5, "\x88", 1, 0}, {0xD6, "\x99", 1, 0}, {0xD7, "\x01", 1, 0},
+    {0xD8, "\xBB", 1, 0}, {0xD9, "\xAA", 1, 0}, {0xF3, "\x01", 1, 0}, {0xF0, "\x00", 1, 0},
+    {0x21, "\x00", 1, 0}, {0x11, "\x00", 1, 120}, {0x29, "\x00", 1, 0},
+};
 
 enum class Plate {
   kWaiting,
@@ -76,6 +133,50 @@ constexpr uint16_t swap565(uint16_t value) {
   return static_cast<uint16_t>((value >> 8) | (value << 8));
 }
 
+bool on_color_transfer_done(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx);
+
+esp_lcd_panel_io_spi_config_t make_panel_io_config(int clock_hz, bool transfer_callback) {
+  esp_lcd_panel_io_spi_config_t io_config = {};
+  io_config.cs_gpio_num = gpio_pin(hexe::board::pins::kWs185DisplayCs);
+  io_config.dc_gpio_num = GPIO_NUM_NC;
+  io_config.spi_mode = 0;
+  io_config.pclk_hz = clock_hz;
+  io_config.trans_queue_depth = 10;
+  io_config.on_color_trans_done = transfer_callback ? on_color_transfer_done : nullptr;
+  io_config.user_ctx = transfer_callback ? &g_flush_done : nullptr;
+  io_config.lcd_cmd_bits = 32;
+  io_config.lcd_param_bits = 8;
+  io_config.flags.quad_mode = 1;
+  return io_config;
+}
+
+bool read_panel_id(uint8_t register_data[4]) {
+  esp_lcd_panel_io_handle_t id_io = nullptr;
+  esp_lcd_panel_io_spi_config_t id_config = make_panel_io_config(kDisplayReadIdClockHz, false);
+  esp_err_t result = esp_lcd_new_panel_io_spi(static_cast<esp_lcd_spi_bus_handle_t>(kDisplaySpiHost), &id_config, &id_io);
+  if (result != ESP_OK) {
+    ESP_LOGW(kTag, "Failed to create temporary ST77916 ID IO: %s", esp_err_to_name(result));
+    return false;
+  }
+  int lcd_cmd = 0x04;
+  lcd_cmd &= 0xFF;
+  lcd_cmd <<= 8;
+  lcd_cmd |= kLcdOpcodeReadCommand << 24;
+  result = esp_lcd_panel_io_rx_param(id_io, lcd_cmd, register_data, 4);
+  ESP_ERROR_CHECK(esp_lcd_panel_io_del(id_io));
+  if (result != ESP_OK) {
+    ESP_LOGW(kTag, "Failed to read ST77916 register 0x04: %s", esp_err_to_name(result));
+    return false;
+  }
+  ESP_LOGI(kTag,
+           "ST77916 register 0x04 data: %02x %02x %02x %02x",
+           register_data[0],
+           register_data[1],
+           register_data[2],
+           register_data[3]);
+  return true;
+}
+
 bool on_color_transfer_done(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
   (void)panel_io;
   (void)edata;
@@ -86,6 +187,17 @@ bool on_color_transfer_done(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io
   BaseType_t high_task_woken = pdFALSE;
   xSemaphoreGiveFromISR(*done, &high_task_woken);
   return high_task_woken == pdTRUE;
+}
+
+void apply_display_rotation() {
+  constexpr int rotation = hexe::board::display_config::kRotationDeg;
+  static_assert(rotation == 0 || rotation == 90 || rotation == 180 || rotation == 270, "unsupported display rotation");
+  const bool swap_xy = rotation == 90 || rotation == 270;
+  const bool mirror_x = rotation == 90 || rotation == 180;
+  const bool mirror_y = rotation == 180 || rotation == 270;
+  ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(g_panel, swap_xy));
+  ESP_ERROR_CHECK(esp_lcd_panel_mirror(g_panel, mirror_x, mirror_y));
+  ESP_LOGI(kTag, "Recovery display rotation configured: %d deg", rotation);
 }
 
 bool tca_write(uint8_t reg, uint8_t value) {
@@ -232,7 +344,7 @@ void render_plate(Plate plate, int progress) {
         target[x] = swap565(source[x]);
       }
       if (plate == Plate::kOta) {
-        overlay_progress_row(y + row, target, progress);
+        overlay_progress_row(y + row, g_flush_buffer + (row * kWidth), progress);
       }
     }
     while (g_flush_done != nullptr && xSemaphoreTake(g_flush_done, 0) == pdTRUE) {
@@ -285,18 +397,14 @@ void init_recovery_display() {
     return;
   }
 
+  if (!pulse_display_reset()) {
+    ESP_LOGW(kTag, "Recovery display reset pulse failed; attempting panel init anyway");
+  }
+  uint8_t panel_id[4] = {};
+  const bool panel_id_read = read_panel_id(panel_id);
+
   esp_lcd_panel_io_handle_t io_handle = nullptr;
-  esp_lcd_panel_io_spi_config_t io_config = {};
-  io_config.cs_gpio_num = gpio_pin(hexe::board::pins::kWs185DisplayCs);
-  io_config.dc_gpio_num = GPIO_NUM_NC;
-  io_config.spi_mode = 0;
-  io_config.pclk_hz = 40 * 1000 * 1000;
-  io_config.trans_queue_depth = 10;
-  io_config.on_color_trans_done = on_color_transfer_done;
-  io_config.user_ctx = &g_flush_done;
-  io_config.lcd_cmd_bits = 32;
-  io_config.lcd_param_bits = 8;
-  io_config.flags.quad_mode = 1;
+  esp_lcd_panel_io_spi_config_t io_config = make_panel_io_config(kDisplayPixelClockHz, true);
   result = esp_lcd_new_panel_io_spi(static_cast<esp_lcd_spi_bus_handle_t>(kDisplaySpiHost), &io_config, &io_handle);
   if (result != ESP_OK) {
     ESP_LOGW(kTag, "Recovery display disabled: panel IO failed: %s", esp_err_to_name(result));
@@ -304,22 +412,29 @@ void init_recovery_display() {
   }
 
   st77916_vendor_config_t vendor_config = {};
+  vendor_config.init_cmds = kWavesharePanelInit;
+  vendor_config.init_cmds_size = sizeof(kWavesharePanelInit) / sizeof(kWavesharePanelInit[0]);
   vendor_config.flags.use_qspi_interface = 1;
+  ESP_LOGI(kTag,
+           "Using Waveshare ST77916 init table panel_id_read=%d panel_id=%02x:%02x:%02x:%02x",
+           panel_id_read,
+           panel_id[0],
+           panel_id[1],
+           panel_id[2],
+           panel_id[3]);
   esp_lcd_panel_dev_config_t panel_config = {};
   panel_config.reset_gpio_num = GPIO_NUM_NC;
   panel_config.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB;
   panel_config.bits_per_pixel = 16;
   panel_config.vendor_config = &vendor_config;
 
-  if (!pulse_display_reset()) {
-    ESP_LOGW(kTag, "Recovery display reset pulse failed; attempting panel init anyway");
-  }
   result = esp_lcd_new_panel_st77916(io_handle, &panel_config, &g_panel);
   if (result != ESP_OK) {
     ESP_LOGW(kTag, "Recovery display disabled: panel create failed: %s", esp_err_to_name(result));
     return;
   }
   ESP_ERROR_CHECK(esp_lcd_panel_init(g_panel));
+  apply_display_rotation();
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(g_panel, true));
   g_display_ready = true;
   g_force_redraw = true;

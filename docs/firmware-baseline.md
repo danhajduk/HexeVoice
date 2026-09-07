@@ -27,7 +27,7 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Heartbeat capability reporting for touchscreen, SD card, display, audio I/O, provisioning state, command controls, firmware build metadata, and TTS playback lifecycle diagnostics.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events in `firmware/components/endpoint_runtime/voice/backend_client.cpp`.
 - TTS-ready download/playback and stop handling in `firmware/components/endpoint_runtime/voice/tts_player.cpp`, with profile-specific speaker support where available.
-- Selectable firmware app support in `firmware/CMakeLists.txt` and selectable board profile support in `firmware/components/endpoint_runtime/CMakeLists.txt`. The `endpoint` app and `esp_box_3` profile remain the defaults, and `ha_voice_pe` adds an experimental Home Assistant Voice Preview Edition profile with I2S microphone input, AIC3204/I2S TTS output, center-button wake/cancel controls, and hardware-mute controls.
+- Selectable firmware app support in `firmware/CMakeLists.txt` and selectable board profile support in `firmware/components/endpoint_runtime/CMakeLists.txt`. The `endpoint` app and `ha_voice_pe` profile are the defaults; `esp_box_3` is retained only as a retired legacy profile.
 - Firmware build selection generates board-specific adapter definitions and source lists from `firmware/boards/<profile>/board.yaml` through `firmware/tools/generate_board_profile_config.py`. Planned profiles can exist as non-buildable until their display, touch, audio, storage, and TTS adapters land.
 - Firmware board wiring is profile-driven. `firmware/tools/generate_board_profile_config.py` emits `board_profile_pins.h`, `firmware/components/endpoint_runtime/board/pins.h` includes that generated header, and buildable board adapters consume generated pin, bus, and device-address constants instead of keeping dev-board wiring inline.
 - Home Assistant Voice PE LED ring hardware contract: `docs/voice-pe-led-ring.md`.
@@ -41,11 +41,12 @@ The archived ESPHome prototype is preserved at `docs/archive/esphome/Expressif b
 - Firmware links Espressif's `esp-tflite-micro` runtime and ESP-NN acceleration through `voice/micro_wake_engine.{h,cpp}`. The adapter initializes the embedded int16-to-int8 audio preprocessor plus the Alexa streaming model, runs 40-channel feature slices every 10 ms, reports privacy-safe feature/inference/detection counters and probability telemetry in heartbeats, and emits endpoint wake candidates through the existing wake-election path when the sliding probability window crosses the configured cutoff.
 - Firmware keeps backend openWakeWord as the fallback wake provider. Endpoint-local wake detections enter listening mode and stream post-wake audio immediately after submitting the backend wake candidate, while backend stand-down events can still cancel a losing endpoint during arbitration. If local readiness is false or the endpoint election wait times out, the endpoint continues backend streaming behavior.
 - Firmware board-profile schema and examples live under `firmware/boards/`, with validation from `firmware/tools/validate_board_profiles.py`. The initial profile set covers `ha_voice_pe`, `esp_box_3`, V2-only `waveshare_s3_touch_lcd_1_85c_box_v2`, and `waveshare_p4_wifi6_touch_lcd_7b`.
-- Active S3 board profiles use the recovery-capable `s3-16m-recovery-v1`
-  partition schema, reserving a 2 MiB factory recovery app plus two 4 MiB
-  endpoint OTA slots. The legacy `s3-16m-v1` schema remains available as a
-  no-factory historical layout; devices need USB/full flash to migrate partition
-  tables.
+- Active S3 board profiles use recovery-capable partition schemas with a 2 MiB
+  factory recovery app plus two endpoint OTA slots. `ha_voice_pe` keeps
+  `s3-16m-recovery-v1`; the Waveshare 1.85 profile uses
+  `s3-16m-recovery-single-model-v1` with one 1 MiB `model` cache and 4032 KiB
+  storage. The legacy `s3-16m-v1` schema remains available as a no-factory
+  historical layout; devices need USB/full flash to migrate partition tables.
 
 ## Partial
 

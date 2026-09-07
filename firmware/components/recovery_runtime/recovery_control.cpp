@@ -372,15 +372,14 @@ bool post_recovery_discovery(const RecoveryDiscoveryContext &context) {
 
 void recovery_discovery_task(void *arg) {
   (void)arg;
-  RecoveryDiscoveryContext context = {};
-  if (!load_recovery_discovery_context(&context)) {
-    ESP_LOGW(kTag, "Recovery discovery skipped: %s", g_recovery_discovery_status);
-    g_recovery_discovery_task = nullptr;
-    vTaskDelete(nullptr);
-    return;
-  }
-
   for (int attempt = 1; attempt <= kRecoveryDiscoveryAttempts; ++attempt) {
+    RecoveryDiscoveryContext context = {};
+    if (!load_recovery_discovery_context(&context)) {
+      ESP_LOGW(kTag, "Recovery discovery skipped: %s", g_recovery_discovery_status);
+      g_recovery_discovery_task = nullptr;
+      vTaskDelete(nullptr);
+      return;
+    }
     copy_cstr(g_recovery_discovery_status, sizeof(g_recovery_discovery_status), "posting");
     if (post_recovery_discovery(context)) {
       g_recovery_discovery_completed = true;
@@ -1355,7 +1354,8 @@ void init_recovery_controls() {
 }
 
 bool recovery_wifi_recovery_enabled() {
-  return std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0;
+  return std::strcmp(hexe::board::pins::kBoardProfile, "ha_voice_pe") != 0 &&
+         std::strcmp(hexe::board::pins::kBoardProfile, "waveshare_s3_touch_lcd_1_85c_box_v2") != 0;
 }
 
 bool recovery_full_http_rescue_enabled() {
@@ -1364,7 +1364,12 @@ bool recovery_full_http_rescue_enabled() {
 
 bool start_recovery_wifi_after_ble_credentials() {
   ESP_LOGI(kTag, "Starting recovery STA from BLE credentials");
-  return start_recovery_wifi(false);
+  g_recovery_discovery_completed = false;
+  const bool started = start_recovery_wifi(false);
+  if (started) {
+    start_recovery_discovery_task_once();
+  }
+  return started;
 }
 
 bool recovery_http_api_active() {

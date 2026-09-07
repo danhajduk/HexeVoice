@@ -8,7 +8,7 @@ hardware_revision:
   supported:
     - production
   unsupported: []
-support_status: active
+support_status: unsupported
 sources:
   - label: Espressif ESP-BOX-3 BSP
     url: https://components.espressif.com/components/espressif/esp-box-3
@@ -129,7 +129,7 @@ wake:
 vad:
   firmware:
     available: true
-    status: active
+    status: planned
     algorithm: energy_threshold
     input_source: pcm_audio_frames
     configurable: true
@@ -139,7 +139,7 @@ vad:
     default_pause_ms: 190
     silence_hold_ms: 2500
 adapters:
-  buildable: true
+  buildable: false
   source_files:
     - board/audio.cpp
     - board/buttons.cpp
@@ -185,5 +185,6 @@ capability_overrides:
   audio_input: true
   audio_output: true
 notes:
-  - Existing Hexe firmware profile already targets this board.
+  - Retired Hexe firmware profile retained only for legacy artifact/profile identification.
+  - New firmware builds and release gates should target ha_voice_pe or the active Waveshare display profile instead.
   - SD media availability depends on the attached accessory/dock hardware.

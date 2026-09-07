@@ -139,10 +139,13 @@ class TtsSynthesizeTarget(BaseModel):
     playback: str | None = None
 
 
+TTS_TEXT_MAX_LENGTH = 12000
+
+
 class TtsSynthesizeRequest(BaseModel):
     intent: Literal["tts.speak"] = "tts.speak"
     target: TtsSynthesizeTarget = Field(default_factory=TtsSynthesizeTarget)
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(min_length=1, max_length=TTS_TEXT_MAX_LENGTH)
     voice: str | None = Field(default=None, max_length=80)
     format: Literal["wav", "mp3"] = "wav"
     ttl_seconds: int = Field(default=3600, ge=5, le=3600)
@@ -516,7 +519,7 @@ class VoiceSessionHistoryDetailResponse(BaseModel):
 
 class EndpointSpeakCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
-    text: str = Field(min_length=1, max_length=4000)
+    text: str = Field(min_length=1, max_length=TTS_TEXT_MAX_LENGTH)
     session_id: str | None = Field(default=None, min_length=1, max_length=120)
 
 
@@ -525,7 +528,7 @@ class EndpointPlaySoundCommandRequest(BaseModel):
     audio_url: str | None = Field(default=None, max_length=2000)
     stream_id: str | None = Field(default=None, max_length=160)
     content_type: str | None = Field(default="audio/wav", max_length=120)
-    text: str | None = Field(default=None, max_length=4000)
+    text: str | None = Field(default=None, max_length=TTS_TEXT_MAX_LENGTH)
     voice: str | None = Field(default=None, max_length=80)
     session_id: str | None = Field(default=None, min_length=1, max_length=120)
     source_event_id: str | None = Field(default=None, max_length=160)

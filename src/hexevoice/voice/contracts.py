@@ -68,10 +68,12 @@ VoiceEventType = Literal[
     "endpoint.volume",
     "endpoint.mute",
     "endpoint.micro_vad",
+    "endpoint.display.tuning",
     "endpoint.audio.finalize",
     "endpoint.cancel",
     "endpoint.listen",
     "endpoint.replay",
+    "endpoint.restart",
     "endpoint.provisioning.apply",
     "endpoint.provisioning.reset",
     "endpoint.led.simulate",
@@ -126,10 +128,12 @@ BACKEND_TO_ENDPOINT_EVENTS: frozenset[str] = frozenset(
         "endpoint.volume",
         "endpoint.mute",
         "endpoint.micro_vad",
+        "endpoint.display.tuning",
         "endpoint.audio.finalize",
         "endpoint.cancel",
         "endpoint.listen",
         "endpoint.replay",
+        "endpoint.restart",
         "endpoint.provisioning.apply",
         "endpoint.provisioning.reset",
         "endpoint.led.simulate",
@@ -180,7 +184,7 @@ class VoiceAudioFormat(BaseModel):
 class VoiceSessionStartPayload(BaseModel):
     audio_format: VoiceAudioFormat = Field(default_factory=VoiceAudioFormat)
     firmware_version: str | None = None
-    wake_source: Literal["openwakeword", "button", "manual", "unknown"] = "unknown"
+    wake_source: Literal["openwakeword", "button", "manual", "touch", "unknown"] = "unknown"
 
 
 class VoiceAudioChunkPayload(BaseModel):
@@ -296,7 +300,7 @@ class VoiceSessionSnapshot(BaseModel):
     ux_state: VoiceEndpointUxState = "idle"
     started_at: datetime = Field(default_factory=_utcnow)
     last_updated_at: datetime = Field(default_factory=_utcnow)
-    wake_source: Literal["openwakeword", "button", "manual", "unknown"] = "unknown"
+    wake_source: Literal["openwakeword", "button", "manual", "touch", "unknown"] = "unknown"
     cancel_reason: str | None = None
     completion_reason: str | None = None
     last_error: VoiceErrorPayload | None = None

@@ -15,9 +15,15 @@ ALLOWED_PARTITION_SCHEMAS = {
     "s3-8m-recovery-v1",
     "s3-16m-v1",
     "s3-16m-recovery-v1",
+    "s3-16m-recovery-single-model-v1",
     "p4-32m-v1",
 }
-RECOVERY_PARTITION_SCHEMAS = {"s3-8m-recovery-v1", "s3-16m-recovery-v1", "p4-32m-v1"}
+RECOVERY_PARTITION_SCHEMAS = {
+    "s3-8m-recovery-v1",
+    "s3-16m-recovery-v1",
+    "s3-16m-recovery-single-model-v1",
+    "p4-32m-v1",
+}
 ALLOWED_SUPPORT_STATUS = {"active", "planned", "experimental", "unsupported"}
 SECRET_KEY_PATTERNS = (
     "password",
@@ -329,6 +335,8 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
             raise ValidationError(f"{board_profile}: display.size_inches is required when display is enabled")
         if not isinstance(display.get("width_px"), int) or not isinstance(display.get("height_px"), int):
             raise ValidationError(f"{board_profile}: display width_px and height_px are required")
+        if display.get("rotation_deg", 0) not in (0, 90, 180, 270):
+            raise ValidationError(f"{board_profile}: display.rotation_deg must be one of 0, 90, 180, 270")
         if display.get("touch") != features["touch"]:
             raise ValidationError(f"{board_profile}: display.touch must match features.touch")
 

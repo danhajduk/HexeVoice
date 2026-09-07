@@ -10,5 +10,6 @@ const char *sd_card_mount_path();
 const char *sd_card_pictures_path();
 const char *sd_card_sprites_path();
 const char *sd_card_sounds_path();
+const char *sd_card_model_sets_path();
 
 }  // namespace hexe::board

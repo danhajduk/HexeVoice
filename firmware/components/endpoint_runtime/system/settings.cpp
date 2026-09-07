@@ -9,6 +9,7 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "nvs.h"
+#include "nvs_flash.h"
 
 #if __has_include("secrets/wifi_secrets.h")
 #include "secrets/wifi_secrets.h"
@@ -22,10 +23,14 @@ constexpr const char *kWifiPassword = "";
 namespace {
 constexpr char kTag[] = "hexe_settings";
 constexpr char kNamespace[] = "hexe_settings";
+constexpr char kConfigPartition[] = "config";
+constexpr char kDisplayNamespace[] = "hexe_display";
 constexpr char kVolumeKey[] = "volume_percent";
 constexpr char kMutedKey[] = "muted";
-constexpr char kMicroVadPauseMsKey[] = "micro_vad_pause_ms";
-constexpr char kMicroVadEnergyThresholdKey[] = "micro_vad_energy_threshold";
+constexpr char kMicroVadPauseMsKey[] = "vad_pause_ms";
+constexpr char kMicroVadEnergyThresholdKey[] = "vad_energy";
+constexpr char kDisplayFlushRowsKey[] = "flush_rows";
+constexpr char kDisplayPixelClockHzKey[] = "pixel_clock_hz";
 constexpr char kEndpointIdKey[] = "endpoint_id";
 constexpr char kDisplayNameKey[] = "display_name";
 constexpr char kBackendHostKey[] = "backend_host";
@@ -39,9 +44,17 @@ constexpr int kDefaultVolumePercent = 70;
 constexpr int kDefaultMicroVadPauseMs = 190;
 constexpr int kMinMicroVadPauseMs = 80;
 constexpr int kMaxMicroVadPauseMs = 3000;
-constexpr int kDefaultMicroVadEnergyThreshold = 900;
+constexpr int kDefaultMicroVadEnergyThreshold = 300;
 constexpr int kMinMicroVadEnergyThreshold = 50;
 constexpr int kMaxMicroVadEnergyThreshold = 20000;
+constexpr int kDefaultDisplayFlushRows = 4;
+constexpr int kMinDisplayFlushRows = 1;
+constexpr int kMaxDisplayFlushRows = 32;
+constexpr int kDefaultDisplayPixelClockHz = 10 * 1000 * 1000;
+constexpr int kMinDisplayPixelClockHz = 3 * 1000 * 1000;
+constexpr int kMaxDisplayPixelClockHz = 40 * 1000 * 1000;
+int g_display_flush_rows = kDefaultDisplayFlushRows;
+int g_display_pixel_clock_hz = kDefaultDisplayPixelClockHz;
 
 hexe::system::EndpointProvisioningSettings g_endpoint_settings = {};
 
@@ -55,6 +68,14 @@ int normalize_micro_vad_pause_ms(int pause_ms) {
 
 int normalize_micro_vad_energy_threshold(int threshold) {
   return std::clamp(threshold, kMinMicroVadEnergyThreshold, kMaxMicroVadEnergyThreshold);
+}
+
+int normalize_display_flush_rows(int rows) {
+  return std::clamp(rows, kMinDisplayFlushRows, kMaxDisplayFlushRows);
+}
+
+int normalize_display_pixel_clock_hz(int clock_hz) {
+  return std::clamp(clock_hz, kMinDisplayPixelClockHz, kMaxDisplayPixelClockHz);
 }
 
 bool valid_port(int port) {
@@ -133,6 +154,64 @@ void load_endpoint_provisioning(nvs_handle_t handle) {
   }
 }
 
+bool open_display_config_nvs(nvs_open_mode_t mode, nvs_handle_t *handle) {
+  if (handle == nullptr) {
+    return false;
+  }
+  esp_err_t err = nvs_flash_init_partition(kConfigPartition);
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(kTag, "Display tuning config partition unavailable: %s", esp_err_to_name(err));
+    return false;
+  }
+  err = nvs_open_from_partition(kConfigPartition, kDisplayNamespace, mode, handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND && mode == NVS_READONLY) {
+    ESP_LOGI(kTag, "Display tuning config namespace not initialized; using defaults");
+    return false;
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "Failed to open display tuning config partition: %s", esp_err_to_name(err));
+    return false;
+  }
+  return true;
+}
+
+void load_display_tuning() {
+  g_display_flush_rows = kDefaultDisplayFlushRows;
+  g_display_pixel_clock_hz = kDefaultDisplayPixelClockHz;
+  nvs_handle_t handle = 0;
+  if (!open_display_config_nvs(NVS_READONLY, &handle)) {
+    ESP_LOGI(
+        kTag,
+        "Display tuning loaded: flush_rows=%d pixel_clock_hz=%d source=defaults",
+        g_display_flush_rows,
+        g_display_pixel_clock_hz);
+    return;
+  }
+
+  int32_t persisted = 0;
+  esp_err_t err = nvs_get_i32(handle, kDisplayFlushRowsKey, &persisted);
+  if (err == ESP_OK) {
+    g_display_flush_rows = normalize_display_flush_rows(persisted);
+  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(kTag, "Failed to read persisted display flush rows: %s", esp_err_to_name(err));
+  }
+
+  persisted = 0;
+  err = nvs_get_i32(handle, kDisplayPixelClockHzKey, &persisted);
+  if (err == ESP_OK) {
+    g_display_pixel_clock_hz = normalize_display_pixel_clock_hz(persisted);
+  } else if (err != ESP_ERR_NVS_NOT_FOUND) {
+    ESP_LOGW(kTag, "Failed to read persisted display pixel clock: %s", esp_err_to_name(err));
+  }
+
+  nvs_close(handle);
+  ESP_LOGI(
+      kTag,
+      "Display tuning loaded: flush_rows=%d pixel_clock_hz=%d source=config",
+      g_display_flush_rows,
+      g_display_pixel_clock_hz);
+}
+
 void save_i32(const char *key, int32_t value) {
   nvs_handle_t handle = 0;
   esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &handle);
@@ -148,6 +227,24 @@ void save_i32(const char *key, int32_t value) {
   nvs_close(handle);
   if (err != ESP_OK) {
     ESP_LOGW(kTag, "Failed to persist %s: %s", key, esp_err_to_name(err));
+  }
+}
+
+void save_display_i32(const char *key, int32_t value) {
+  nvs_handle_t handle = 0;
+  if (!open_display_config_nvs(NVS_READWRITE, &handle)) {
+    return;
+  }
+
+  esp_err_t err = nvs_set_i32(handle, key, value);
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "Failed to persist display tuning %s: %s", key, esp_err_to_name(err));
+  } else {
+    ESP_LOGI(kTag, "Persisted display tuning %s=%ld", key, static_cast<long>(value));
   }
 }
 
@@ -179,6 +276,7 @@ void init_settings() {
   app_state.micro_vad_pause_ms = kDefaultMicroVadPauseMs;
   app_state.micro_vad_energy_threshold = kDefaultMicroVadEnergyThreshold;
   load_endpoint_defaults();
+  load_display_tuning();
 
   nvs_handle_t handle = 0;
   esp_err_t err = nvs_open(kNamespace, NVS_READONLY, &handle);
@@ -237,6 +335,11 @@ void init_settings() {
       g_endpoint_settings.endpoint_id,
       g_endpoint_settings.backend_host,
       g_endpoint_settings.http_port);
+  ESP_LOGI(
+      kTag,
+      "Display tuning loaded: flush_rows=%d pixel_clock_hz=%d",
+      g_display_flush_rows,
+      g_display_pixel_clock_hz);
 }
 
 void set_muted(bool muted) {
@@ -271,6 +374,26 @@ void set_micro_vad_energy_threshold(int threshold) {
   const int clamped = normalize_micro_vad_energy_threshold(threshold);
   hexe::state().micro_vad_energy_threshold = clamped;
   save_i32(kMicroVadEnergyThresholdKey, clamped);
+}
+
+int display_flush_rows() {
+  return normalize_display_flush_rows(g_display_flush_rows);
+}
+
+void set_display_flush_rows(int rows) {
+  const int clamped = normalize_display_flush_rows(rows);
+  g_display_flush_rows = clamped;
+  save_display_i32(kDisplayFlushRowsKey, clamped);
+}
+
+int display_pixel_clock_hz() {
+  return normalize_display_pixel_clock_hz(g_display_pixel_clock_hz);
+}
+
+void set_display_pixel_clock_hz(int clock_hz) {
+  const int clamped = normalize_display_pixel_clock_hz(clock_hz);
+  g_display_pixel_clock_hz = clamped;
+  save_display_i32(kDisplayPixelClockHzKey, clamped);
 }
 
 const EndpointProvisioningSettings &endpoint_provisioning_settings() {

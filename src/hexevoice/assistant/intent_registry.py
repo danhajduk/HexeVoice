@@ -497,13 +497,14 @@ def date_query_intent_definition() -> dict[str, Any]:
     return {
         "utterance_examples": [
             "what is the date",
+            "what is the date today",
             "what date is it today",
             "what is today's date",
             "what day is it",
             "current date",
         ],
         "patterns": [
-            r"^(?:please\s+)?(?:what\s+is\s+(?:the\s+)?date|what\s+date\s+is\s+it(?:\s+today)?|"
+            r"^(?:please\s+)?(?:what\s+is\s+(?:the\s+)?date(?:\s+today)?|what\s+date\s+is\s+it(?:\s+today)?|"
             r"what(?:'s|\s+is)\s+today(?:'s)?\s+date|what\s+is\s+today(?:'s)?\s+date|"
             r"what\s+day\s+is\s+it|current\s+date|tell\s+me\s+(?:the\s+)?date)$",
         ],

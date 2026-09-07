@@ -19,15 +19,16 @@ DEFAULT_MODEL_BUNDLE_VERSION = "2026.08.30"
 DEFAULT_MODEL_BUNDLE_KEY_ID = "hexevoice-model-dev-v1"
 
 DEFAULT_COMPATIBLE_BOARD_PROFILES = [
-    "esp_box_3",
     "ha_voice_pe",
     "waveshare_s3_touch_lcd_1_85c_box_v2",
 ]
 DEFAULT_COMPATIBLE_PARTITION_SCHEMAS = [
     "s3-16m-recovery-v1",
+    "s3-16m-recovery-single-model-v1",
     "s3-8m-recovery-v1",
     "p4-32m-v1",
 ]
+DEFAULT_REQUIRED_MODEL_PARTITIONS = ["model_a", "model_b"]
 
 _HEX_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -91,6 +92,7 @@ def build_default_model_bundle_manifest(
     release_channel: str = "dev",
     board_profiles: list[str] | None = None,
     partition_schemas: list[str] | None = None,
+    required_partitions: list[str] | None = None,
     created_at_utc: str | None = None,
 ) -> dict[str, Any]:
     model_dir = model_dir.resolve()
@@ -139,7 +141,7 @@ def build_default_model_bundle_manifest(
             },
             "board_profiles": board_profiles or DEFAULT_COMPATIBLE_BOARD_PROFILES,
             "partition_schemas": partition_schemas or DEFAULT_COMPATIBLE_PARTITION_SCHEMAS,
-            "requires_partitions": ["model_a", "model_b"],
+            "requires_partitions": required_partitions or DEFAULT_REQUIRED_MODEL_PARTITIONS,
             "minimum_model_bank_bytes": 256 * 1024,
         },
         "preprocessing": {
@@ -170,10 +172,13 @@ def validate_model_bundle_manifest(manifest: Mapping[str, Any]) -> list[str]:
             errors.append("missing_compatible_board_profiles")
         if not _non_empty_string_list(compatibility.get("partition_schemas")):
             errors.append("missing_compatible_partition_schemas")
-        if "model_a" not in compatibility.get("requires_partitions", []) or "model_b" not in compatibility.get(
-            "requires_partitions", []
+        required_partitions = compatibility.get("requires_partitions")
+        if not _non_empty_string_list(required_partitions):
+            errors.append("missing_model_partition_requirement")
+        elif "model" not in required_partitions and (
+            "model_a" not in required_partitions or "model_b" not in required_partitions
         ):
-            errors.append("missing_model_ab_partition_requirement")
+            errors.append("missing_model_ab_or_single_partition_requirement")
 
     preprocessing = manifest.get("preprocessing")
     if not isinstance(preprocessing, Mapping):

@@ -1,5 +1,6 @@
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+import json
 
 import httpx
 
@@ -662,7 +663,7 @@ def test_ble_pairing_status_reports_approved_recovery_handoff(tmp_path):
     assert response.handoff["onboarding_session_id"] == "blepair-test"
 
 
-def test_ble_pairing_status_waits_when_recovery_registry_ping_is_stale(tmp_path):
+def test_ble_pairing_status_keeps_recovery_handoff_when_registry_ping_is_stale(tmp_path):
     registry_store = EndpointRegistryStore(path=tmp_path / "endpoint-registry.json")
     stale_seen = (datetime.now(timezone.utc) - timedelta(seconds=30)).isoformat()
     registry_store.save(
@@ -709,10 +710,10 @@ def test_ble_pairing_status_waits_when_recovery_registry_ping_is_stale(tmp_path)
     response = service.get_pairing_session("blepair-test")
 
     assert response.status == "approved"
-    assert response.ui_state == "waiting_for_endpoint_online"
-    assert response.handoff["state"] == "waiting_for_endpoint_online"
+    assert response.ui_state == "firmware_update_needed"
+    assert response.handoff["state"] == "firmware_update_needed"
     assert response.handoff["connection_state"] == "stale"
-    assert "ui_state" not in response.handoff
+    assert response.handoff["ui_state"] == "firmware_update_needed"
 
 
 def test_ble_wifi_credentials_are_saved_encrypted_and_redacted(tmp_path):
@@ -838,6 +839,68 @@ def test_ble_onboarding_refreshes_latest_pairing_identity_before_addressless_pro
     assert supervisor.calls[0]["adapter"] == "hci1"
 
 
+def test_ble_onboarding_prefers_supervisor_identity_path_over_stale_core_pairing_identity(tmp_path):
+    stale_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    stale_nonce = "stale-nonce-1234"
+    latest_key = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    latest_nonce = "latest-nonce-1234"
+    identity_path = tmp_path / "blepair.identity.json"
+    identity_path.write_text(
+        json.dumps(
+            {
+                "identity": {
+                    "device_id": "voice-endpoint-1",
+                    "onboarding_session_id": "ble-session-1",
+                    "endpoint_ephemeral_public_key": latest_key,
+                    "pairing_nonce": latest_nonce,
+                    "adapter": "hci1",
+                    "supervisor_id": "sup-nearby",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    core = FakeCoreClient(
+        status="granted",
+        pairing_session={
+            "session_id": "ble-session-1",
+            "status": "approved",
+            "approved_device_id": "voice-endpoint-1",
+            "endpoint_identity": {
+                "device_id": "voice-endpoint-1",
+                "endpoint_ephemeral_public_key": stale_key,
+                "pairing_nonce": stale_nonce,
+            },
+            "supervisor_results": [
+                {
+                    "supervisor_id": "sup-nearby",
+                    "backend_result": {"identity_path": str(identity_path)},
+                }
+            ],
+        },
+    )
+    supervisor = FakeSupervisorClient()
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=supervisor,
+    )
+
+    response = service.provision_wifi(
+        request_payload(
+            target_address=None,
+            endpoint_ephemeral_public_key=stale_key,
+            pairing_nonce=stale_nonce,
+        )
+    )
+
+    assert response.ok is True
+    assert core.requested_payloads[0]["provisioning"]["endpoint_ephemeral_public_key"] == latest_key
+    assert core.requested_payloads[0]["provisioning"]["pairing_nonce"] == latest_nonce
+    assert supervisor.calls[0]["endpoint_ephemeral_public_key"] == latest_key
+    assert supervisor.calls[0]["pairing_nonce"] == latest_nonce
+
+
 def test_ble_onboarding_pending_stops_before_supervisor_call(tmp_path):
     core = FakeCoreClient(status="pending")
     supervisor = FakeSupervisorClient()
@@ -960,6 +1023,7 @@ def test_frontend_exposes_core_governed_ble_operator_flow():
     assert "Installing full endpoint firmware now." in dashboard_source
     assert "Advanced fallback scan" in dashboard_source
     assert "Scan BLE" in dashboard_source
+    assert '"Waveshare 1.85C"' in dashboard_source
     assert "board_profile" in dashboard_source
     assert "Provision over BLE" in dashboard_source
     assert "endpoint_ephemeral_public_key" in dashboard_source

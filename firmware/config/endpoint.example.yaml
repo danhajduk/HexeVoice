@@ -6,6 +6,7 @@
 endpoint:
   id: esp-box-1
   ha_voice_pe_id: esp-pe-1
+  waveshare_185c_id: waveshare-185c-1
   display_name: ESP Box 1
 
 node:

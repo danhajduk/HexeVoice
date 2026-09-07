@@ -12,6 +12,7 @@
 #include "driver/i2s_std.h"
 #include "esp_err.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -25,17 +26,18 @@ constexpr char kTag[] = "hexe_audio_vpe";
 constexpr int kSampleRate = 16000;
 constexpr size_t kFrameSamples = 320;
 constexpr uint32_t kFrameDurationMs = static_cast<uint32_t>((kFrameSamples * 1000) / kSampleRate);
-constexpr uint32_t kVadStartEnergyThreshold = 900;
-constexpr uint32_t kVadContinueEnergyThreshold = 500;
+constexpr uint32_t kVadStartEnergyThreshold = 600;
+constexpr uint32_t kVadContinueEnergyThreshold = 350;
 constexpr uint32_t kVadStartNoiseMultiplier = 3;
 constexpr uint32_t kVadContinueNoiseMultiplier = 2;
 constexpr uint32_t kVadNoiseMargin = 250;
-constexpr uint32_t kVadStartVoiceFrames = 3;
+constexpr uint32_t kVadStartVoiceFrames = 2;
 constexpr uint32_t kVadReleasePeakPercent = 60;
 constexpr uint32_t kVadSilenceHoldMs = 1200;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
 constexpr uint32_t kVadTaskStackBytes = 8192;
 constexpr uint32_t kMicReadTimeoutLogEvery = 200;
+constexpr int64_t kActiveAudioLevelLogIntervalUs = 1000000;
 
 constexpr gpio_num_t gpio_pin(int pin) {
   return static_cast<gpio_num_t>(pin);
@@ -62,9 +64,9 @@ constexpr uint8_t kChannel0PipelineStage = 0x30;
 constexpr uint8_t kChannel1PipelineStage = 0x40;
 constexpr uint8_t kPipelineAgc = 4;
 constexpr uint8_t kPipelineNs = 3;
-constexpr uint8_t kSelectedMicChannel = 1;
-constexpr const char *kSelectedMicChannelLabel = "xmos_channel_1_noise_suppressed";
-constexpr const char *kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch1_ns_v2";
+constexpr uint8_t kSelectedMicChannel = 0;
+constexpr const char *kSelectedMicChannelLabel = "xmos_channel_0_agc";
+constexpr const char *kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch0_agc_v3";
 
 i2s_chan_handle_t g_rx_channel = nullptr;
 i2c_master_bus_handle_t g_voice_kit_i2c_bus = nullptr;
@@ -75,6 +77,7 @@ bool g_vad_turn_active = false;
 bool g_mic_paused_for_playback = false;
 bool g_voice_kit_ready = false;
 uint32_t g_mic_read_timeout_count = 0;
+int64_t g_last_active_audio_level_log_us = 0;
 std::array<int32_t, kFrameSamples * 2> g_raw_samples = {};
 std::array<int16_t, kFrameSamples> g_mono_samples = {};
 
@@ -144,6 +147,63 @@ hexe::voice::MicroVadFrameState micro_vad_frame_state(
 int16_t voice_channel_sample(int32_t left, int32_t right) {
   const int32_t selected = kSelectedMicChannel == 1 ? right : left;
   return static_cast<int16_t>(std::clamp<int32_t>(selected >> 16, -32768, 32767));
+}
+
+int16_t raw_i2s_sample_to_pcm16(int32_t sample) {
+  return static_cast<int16_t>(std::clamp<int32_t>(sample >> 16, -32768, 32767));
+}
+
+uint32_t estimate_raw_channel_level(size_t frame_count, size_t channel_index) {
+  uint64_t total = 0;
+  for (size_t index = 0; index < frame_count; ++index) {
+    const int16_t sample = raw_i2s_sample_to_pcm16(g_raw_samples[(index * 2) + channel_index]);
+    total += sample < 0 ? static_cast<uint32_t>(-sample) : static_cast<uint32_t>(sample);
+  }
+  return frame_count == 0 ? 0 : static_cast<uint32_t>(total / frame_count);
+}
+
+bool active_session_audio_log_enabled() {
+  const auto &app_state = hexe::state();
+  return app_state.phase == hexe::AppPhase::kListening || app_state.audio_streaming || app_state.vad_speaking;
+}
+
+void maybe_log_active_audio_metrics(
+    uint32_t level,
+    uint32_t left_level,
+    uint32_t right_level,
+    uint32_t noise_floor,
+    uint32_t start_threshold,
+    uint32_t continue_threshold,
+    uint32_t release_threshold,
+    bool frame_over_threshold,
+    uint32_t voice_candidate_frames,
+    bool frame_has_voice,
+    bool micro_vad_chunk_active) {
+  if (!active_session_audio_log_enabled()) {
+    return;
+  }
+  const int64_t now_us = esp_timer_get_time();
+  if (now_us - g_last_active_audio_level_log_us < kActiveAudioLevelLogIntervalUs) {
+    return;
+  }
+  g_last_active_audio_level_log_us = now_us;
+  ESP_LOGI(
+      kTag,
+      "Voice PE active audio metrics selected_level=%lu left_level=%lu right_level=%lu noise=%lu "
+      "start_threshold=%lu continue_threshold=%lu release_threshold=%lu over_threshold=%d "
+      "candidate_frames=%lu frame_has_voice=%d chunk_active=%d selected_channel=%u",
+      static_cast<unsigned long>(level),
+      static_cast<unsigned long>(left_level),
+      static_cast<unsigned long>(right_level),
+      static_cast<unsigned long>(noise_floor),
+      static_cast<unsigned long>(start_threshold),
+      static_cast<unsigned long>(continue_threshold),
+      static_cast<unsigned long>(release_threshold),
+      frame_over_threshold ? 1 : 0,
+      static_cast<unsigned long>(voice_candidate_frames),
+      frame_has_voice ? 1 : 0,
+      micro_vad_chunk_active ? 1 : 0,
+      kSelectedMicChannel);
 }
 
 bool init_voice_kit_i2c() {
@@ -288,10 +348,19 @@ void apply_vad_state(bool speaking, uint32_t level) {
     hexe::voice::notify_vad_speech_started(level);
   } else if (g_vad_turn_active) {
     g_vad_turn_active = false;
-    if (!hexe::voice::notify_vad_speech_ended(level, "vad_silence")) {
-      ESP_LOGW(kTag, "VAD silence advisory could not be sent (level=%lu)", static_cast<unsigned long>(level));
+    const bool reported = hexe::voice::notify_vad_speech_ended(level, "vad_silence");
+    if (!reported) {
+      ESP_LOGI(
+          kTag,
+          "VAD silence advisory not sent reason=%s level=%lu",
+          hexe::voice::vad_speech_event_unavailable_reason(),
+          static_cast<unsigned long>(level));
     }
-    ESP_LOGI(kTag, "VAD silence detected and reported as advisory (level=%lu)", static_cast<unsigned long>(level));
+    ESP_LOGI(
+        kTag,
+        "VAD silence detected reported=%d level=%lu",
+        reported ? 1 : 0,
+        static_cast<unsigned long>(level));
   }
 }
 
@@ -407,6 +476,8 @@ void vad_task(void *arg) {
     }
 
     const uint32_t level = estimate_level(g_mono_samples.data(), stereo_frames);
+    const uint32_t left_level = estimate_raw_channel_level(stereo_frames, 0);
+    const uint32_t right_level = estimate_raw_channel_level(stereo_frames, 1);
     if (noise_floor == 0) {
       noise_floor = level;
     }
@@ -450,6 +521,18 @@ void vad_task(void *arg) {
         micro_vad_chunk_index,
         micro_vad_chunk_active,
         micro_vad_silent_frames);
+    maybe_log_active_audio_metrics(
+        level,
+        left_level,
+        right_level,
+        noise_floor,
+        start_threshold,
+        continue_threshold,
+        release_threshold,
+        frame_over_threshold,
+        voice_candidate_frames,
+        frame_has_voice,
+        micro_vad_chunk_active);
     const hexe::voice::LocalKeywordFrameDetections local_keywords = hexe::voice::inspect_local_keyword_frame(
         g_mono_samples.data(),
         stereo_frames,

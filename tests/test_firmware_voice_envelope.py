@@ -267,6 +267,7 @@ def test_firmware_ota_rejects_incompatible_packages_before_download():
 
     assert '#include "board_profile_pins.h"' in ota_source
     assert "parse_size_label_bytes(hexe::board::pins::kAppSlotSize" in ota_source
+    assert "char partition_schema[48]" in ota_source
     assert 'string_in_set(request.release_channel, "dev", "stable")' in ota_source
     assert "signed_manifest_sha256_required" in ota_source
     assert "payload.append(request.application_type)" in ota_source
@@ -739,7 +740,7 @@ def test_firmware_bundles_micro_wake_word_model_assets():
     assert 'stop_model_asset_bytes' in micro_wake_source
 
 
-def test_firmware_model_bundle_activation_uses_ab_banks_and_embedded_fallback():
+def test_firmware_model_bundle_activation_supports_single_model_policy():
     bundle_source = FIRMWARE_MODEL_BUNDLE.read_text()
     bundle_header = FIRMWARE_MODEL_BUNDLE_HEADER.read_text()
     wake_source = Path("firmware/components/endpoint_runtime/voice/wake_word.cpp").read_text()
@@ -761,8 +762,13 @@ def test_firmware_model_bundle_activation_uses_ab_banks_and_embedded_fallback():
     assert 'esp_partition_find_first(ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_SPIFFS, label)' in bundle_source
     assert 'find_model_partition("model_a")' in bundle_source
     assert 'find_model_partition("model_b")' in bundle_source
-    assert 'std::strcmp(bank, "model_a") == 0 || std::strcmp(bank, "model_b") == 0' in bundle_source
-    assert 'std::strncmp(bank, "/sdcard/hexe/models/", 20)' in bundle_source
+    assert 'find_model_partition("model")' in bundle_source
+    assert 'std::strcmp(bank, "model") == 0' in bundle_source
+    assert '"/sdcard/hexe/model_sets/"' in bundle_source
+    assert "single_model_schema()" in bundle_source
+    assert '"model_error"' in bundle_source
+    assert '"single_model_cache_not_loaded"' in bundle_source
+    assert "kModelLoadRetryLimit = 2" in bundle_source
     assert "test_load_micro_wake_model_assets(candidate.models, candidate.model_count" in bundle_source
     assert bundle_source.index("test_load_micro_wake_model_assets(candidate.models, candidate.model_count") < bundle_source.index(
         "if (!commit_active_bundle_pointer("
@@ -787,11 +793,18 @@ def test_firmware_model_bundle_activation_uses_ab_banks_and_embedded_fallback():
     assert '"active_bank"' in backend_source
     assert '"previous_bank"' in backend_source
     assert '"embedded_fallback"' in backend_source
+    assert '"internal_single_available"' in backend_source
+    assert '"sd_model_sets_available"' in backend_source
+    assert '"model_bytes"' in backend_source
+    assert '"fail_count"' in backend_source
     assert '"endpoint.model_bundle.rollback"' in backend_source
     assert '"voice/model_bundle.cpp"' in cmake_source
     assert "esp_partition" in cmake_source
 
     assert "internal A/B banks named `model_a` and `model_b`" in docs
+    assert "internal single-cache partition named `model`" in docs
+    assert "`/sdcard/hexe/model_sets/`" in docs
+    assert "`model_error` reporting for single-model layouts" in docs
     assert "atomic NVS updates of active and previous bundle pointers" in docs
 
 

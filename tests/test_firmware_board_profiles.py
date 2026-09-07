@@ -103,7 +103,8 @@ def test_board_profiles_separate_hardware_dsp_vad_from_firmware_vad():
         assert firmware_vad["input_source"] == "pcm_audio_frames"
         assert firmware_vad["configurable"] is True
         assert firmware_vad["frame_ms"] == 20
-        assert firmware_vad["default_energy_threshold"] == 900
+        expected_energy_threshold = 300 if profile_name == "ha_voice_pe" else 900
+        assert firmware_vad["default_energy_threshold"] == expected_energy_threshold
         assert firmware_vad["default_pause_ms"] == 190
         if profile["support_status"] == "active":
             assert firmware_vad["status"] == "active"
@@ -121,7 +122,8 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         for path in PROFILE_ROOT.glob("*/board.yaml")
     }
 
-    assert profiles["esp_box_3"]["adapters"]["buildable"] is True
+    assert profiles["esp_box_3"]["support_status"] == "unsupported"
+    assert profiles["esp_box_3"]["adapters"]["buildable"] is False
     assert profiles["ha_voice_pe"]["adapters"]["buildable"] is True
     assert profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]["adapters"]["buildable"] is True
     assert profiles["waveshare_p4_wifi6_touch_lcd_7b"]["adapters"]["buildable"] is False
@@ -350,6 +352,10 @@ def test_firmware_build_script_discovers_buildable_profiles_from_yaml():
     assert 's3-8m-recovery-v1) echo "partitions/s3_8m_recovery_v1.csv"' in build_script
     assert 's3-16m-v1) echo "partitions/s3_16m_v1.csv"' in build_script
     assert 's3-16m-recovery-v1) echo "partitions/s3_16m_recovery_v1.csv"' in build_script
+    assert (
+        's3-16m-recovery-single-model-v1) echo "partitions/s3_16m_recovery_single_model_v1.csv"'
+        in build_script
+    )
     assert 'p4-32m-v1) echo "partitions/p4_32m_v1.csv"' in build_script
     assert '8MiB|8MB|8M) echo "CONFIG_ESPTOOLPY_FLASHSIZE_8MB"' in build_script
     assert '16MiB|16MB|16M) echo "CONFIG_ESPTOOLPY_FLASHSIZE_16MB"' in build_script
@@ -377,6 +383,13 @@ def test_named_partition_schema_files_exist_and_cover_profile_classes():
             "factory,    app,  factory, ,         2M,",
             "ota_0,      app,  ota_0,   ,         4M,",
             "ota_1,      app,  ota_1,   ,         4M,",
+        ),
+        "s3_16m_recovery_single_model_v1.csv": (
+            "factory,    app,  factory, ,         2M,",
+            "ota_0,      app,  ota_0,   ,         4M,",
+            "ota_1,      app,  ota_1,   ,         4M,",
+            "model,      data, spiffs,  ,         1M,",
+            "storage,    data, spiffs,  ,         4032K,",
         ),
         "p4_32m_v1.csv": ("ota_0,      app,  ota_0,   ,         8M,", "ota_1,      app,  ota_1,   ,         8M,"),
     }

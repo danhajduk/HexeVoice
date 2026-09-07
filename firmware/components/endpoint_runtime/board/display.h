@@ -13,5 +13,9 @@ bool display_ready();
 int display_width();
 int display_height();
 const char *display_pixel_format();
+int display_last_asset_read_ms();
+int display_last_flush_ms();
+int display_last_render_ms();
+const char *display_last_asset_filename();
 
 }  // namespace hexe::board

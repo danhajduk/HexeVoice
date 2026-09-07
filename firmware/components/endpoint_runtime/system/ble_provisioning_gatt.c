@@ -787,7 +787,7 @@ static int gap_event(struct ble_gap_event *event, void *arg) {
         reset_client_state(client_credentials_received ? 0 : 1);
         hexe_ble_pairing_connection_state_changed(0, "disconnected", event->disconnect.reason);
         advertise();
-        if (pairing_scan_requested && (!client_identity_sent || should_retry_for_credentials)) {
+        if (pairing_scan_requested && should_retry_for_credentials) {
           start_pairing_scan();
         }
         return 0;

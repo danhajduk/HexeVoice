@@ -11,6 +11,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "system/log_stream.h"
+#include "system/asset_sync.h"
 #include "system/ble_provisioning.h"
 #include "system/ota.h"
 #include "system/power.h"
@@ -59,6 +60,7 @@ extern "C" void app_main(void) {
 
   hexe::voice::init_wake_word();
   hexe::voice::init_backend_client();
+  hexe::system::init_asset_sync();
   hexe::voice::init_stt_stream();
   hexe::voice::init_tts_player();
   hexe::voice::init_assistant_client();

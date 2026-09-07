@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+import json
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
@@ -659,7 +661,7 @@ class EndpointBleOnboardingService:
         session = response.get("pairing_session") if isinstance(response, dict) else {}
         if not isinstance(session, dict):
             return payload
-        identity = session.get("endpoint_identity")
+        identity = self._freshest_pairing_identity(session=session, session_id=session_id)
         if not isinstance(identity, dict):
             return payload
 
@@ -687,6 +689,37 @@ class EndpointBleOnboardingService:
                 }
             )
         )
+
+    def _freshest_pairing_identity(self, *, session: dict[str, Any], session_id: str) -> dict[str, Any] | None:
+        identity = session.get("endpoint_identity")
+        freshest = identity if isinstance(identity, dict) else None
+        for result in session.get("supervisor_results") or []:
+            if not isinstance(result, dict):
+                continue
+            backend_result = result.get("backend_result")
+            if not isinstance(backend_result, dict):
+                continue
+            identity_path = str(backend_result.get("identity_path") or "").strip()
+            if not identity_path:
+                continue
+            candidate = self._identity_from_supervisor_path(identity_path)
+            if not isinstance(candidate, dict):
+                continue
+            candidate_session_id = str(candidate.get("onboarding_session_id") or "").strip()
+            if candidate_session_id == session_id:
+                freshest = candidate
+        return freshest
+
+    def _identity_from_supervisor_path(self, identity_path: str) -> dict[str, Any] | None:
+        try:
+            path = Path(identity_path)
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        identity = payload.get("identity")
+        return identity if isinstance(identity, dict) else None
 
     def _credential_payload(self, payload: EndpointBleProvisionWifiRequest, *, wifi_password: str | None = None) -> dict[str, Any]:
         return _clean_dict(
@@ -1026,7 +1059,13 @@ class EndpointBleOnboardingService:
         firmware_version = record.firmware_version or str(firmware.get("version") or "").strip() or None
         minimal = application_type == "recovery" or str(firmware_version or "").startswith(("min-", "minimal-"))
         connection_state = self._endpoint_connection_state(record, max_age_seconds=15 if minimal else 60)
-        state = "firmware_update_needed" if connection_state == "online" and minimal else "endpoint_online" if connection_state == "online" else "waiting_for_endpoint_online"
+        state = (
+            "firmware_update_needed"
+            if minimal and connection_state in {"online", "stale"}
+            else "endpoint_online"
+            if connection_state == "online"
+            else "waiting_for_endpoint_online"
+        )
         return _clean_dict(
             {
                 "state": state,

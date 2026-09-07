@@ -9,7 +9,7 @@ import json
 import logging
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from hexevoice.persistence.voice_placement_calibration import VoicePlacementCalibrationStore
 from hexevoice.persistence.voice_quality_observation_log import VoiceQualityObservationLog
 from hexevoice.persistence.voice_session_history import VoiceSessionHistoryStore
+from hexevoice.endpoint.runtime_config import EndpointRuntimeConfig
 from hexevoice.voice.contracts import (
     ENDPOINT_TO_BACKEND_EVENTS,
     VoiceAudioChunkPayload,
@@ -240,6 +241,8 @@ class VoiceSessionManager:
         max_active_session_s: float = 60.0,
         privacy_mode_enabled: bool = False,
         wake_election_window_ms: int = DEFAULT_WAKE_ELECTION_WINDOW_MS,
+        endpoint_runtime_config: EndpointRuntimeConfig | None = None,
+        endpoint_board_profile_provider: Callable[[str], str | None] | None = None,
     ) -> None:
         self._default_runtime = EndpointSessionRuntime()
         self._runtime_context: contextvars.ContextVar[EndpointSessionRuntime | None] = contextvars.ContextVar(
@@ -266,6 +269,8 @@ class VoiceSessionManager:
         self._wake_election = WakeCandidateElection(window_ms=wake_election_window_ms)
         self._speaker_enrollment_capture_windows: dict[str, dict[str, object]] = {}
         self._active_placement_test_windows: dict[str, dict[str, object]] = {}
+        self._endpoint_runtime_config = endpoint_runtime_config or EndpointRuntimeConfig()
+        self._endpoint_board_profile_provider = endpoint_board_profile_provider
 
     def _current_runtime(self) -> EndpointSessionRuntime:
         runtime_context = getattr(self, "_runtime_context", None)
@@ -377,7 +382,7 @@ class VoiceSessionManager:
         wake = state.active_session_history.get("wake") if state.active_session_history else None
         if isinstance(wake, dict) and wake.get("outcome") == "accepted":
             return session
-        if session.wake_source in {"button", "manual"}:
+        if session.wake_source in {"button", "manual", "touch"}:
             return session
         return None
 
@@ -448,6 +453,7 @@ class VoiceSessionManager:
         if initial_endpoint_id:
             self._connected_endpoint_id = initial_endpoint_id
             log.info("Voice endpoint bound to WebSocket: endpoint_id=%s source=query", initial_endpoint_id)
+            await self._push_startup_runtime_config(initial_endpoint_id)
         log.info("Voice WebSocket connected")
         try:
             while True:
@@ -858,6 +864,48 @@ class VoiceSessionManager:
             event_type="endpoint.micro_vad",
             command_type="endpoint.micro_vad.set",
             payload=payload,
+        )
+
+    async def _push_startup_runtime_config(self, endpoint_id: str) -> None:
+        board_profile = self._endpoint_board_profile_provider(endpoint_id) if self._endpoint_board_profile_provider else None
+        for event_type, command_type, payload in self._endpoint_runtime_config.command_payloads_for(
+            endpoint_id=endpoint_id,
+            board_profile=board_profile,
+        ):
+            result = await self._push_endpoint_command(
+                endpoint_id=endpoint_id,
+                event_type=event_type,  # type: ignore[arg-type]
+                command_type=command_type,
+                payload=payload,
+            )
+            if result.get("accepted"):
+                log.info(
+                    "Runtime config command sent to endpoint: endpoint_id=%s board_profile=%s command_type=%s payload=%s",
+                    endpoint_id,
+                    board_profile,
+                    command_type,
+                    payload,
+                )
+
+    async def push_reloaded_runtime_config_to_connected_endpoints(self) -> dict[str, object]:
+        if not self._endpoint_runtime_config.reload_if_changed():
+            return {"changed": False, "endpoints": []}
+        endpoint_ids = sorted(
+            endpoint_id
+            for endpoint_id, state in self._endpoint_runtimes.items()
+            if state.connection_active and state.websocket is not None
+        )
+        for endpoint_id in endpoint_ids:
+            await self._push_startup_runtime_config(endpoint_id)
+        log.info("Endpoint runtime config hot-reloaded: endpoints=%s", endpoint_ids)
+        return {"changed": True, "endpoints": endpoint_ids}
+
+    async def push_restart_command(self, *, endpoint_id: str, reason: str = "operator_restart") -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.restart",
+            command_type="endpoint.restart",
+            payload={"reason": reason},
         )
 
     async def push_endpoint_provisioning_apply_command(
@@ -1850,7 +1898,7 @@ class VoiceSessionManager:
             payload.wake_source,
             payload.audio_format.sample_rate_hz,
         )
-        if payload.wake_source in {"button", "manual"}:
+        if payload.wake_source in {"button", "manual", "touch"}:
             self._set_session_state("wake_detected")
             self._record_wake_history(
                 {

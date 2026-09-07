@@ -668,3 +668,17 @@ Chosen fix: Keep idle as the idle background, use active as the shared non-idle 
 What changed: Added a Waveshare render plan, sprite RGB565/alpha8 cache, layered dirty-rectangle redraws, and full-picture fallback.
 Verification: Focused firmware display test passed; Waveshare firmware build passed as z20260907040321-705d089.
 ###########
+Task #311
+Step objective: Add S3 16 MiB single-model recovery partition schema.
+Issue cause: The current recovery schema splits the 1 MiB model budget into model_a/model_b and leaves only 3 MiB storage.
+Chosen fix: Add a new schema with one 1 MiB model partition and remaining flash assigned to storage, then move Waveshare 1.85 to it.
+What changed: Added `s3-16m-recovery-single-model-v1`, mapped it into build/profile validation tooling, moved the Waveshare 1.85 board profile to it, and documented the layout as one 1 MiB `model` cache plus 4032 KiB storage.
+Verification: Board profile validation passed; Waveshare partition validation passed; 8 focused partition/profile tests passed; Waveshare full endpoint firmware built successfully with the new schema selected and 21% app-slot free.
+###########
+Task #312
+Step objective: Start SD model-set and single-model cache policy.
+Issue cause: The model-bundle manager still exposes A/B internal banks and `/sdcard/hexe/models`, while the new S3 16 MiB product policy uses `/sdcard/hexe/model_sets` plus one internal `model` cache.
+Chosen fix: Extend the existing model-bundle manager rather than adding a parallel loader, preserving the current activation/test-load boundary and adding single-model policy paths around it.
+What changed: Implementation started.
+Verification: Pending.
+###########

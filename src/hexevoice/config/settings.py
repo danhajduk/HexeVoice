@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     voice_intent_registry_path: Path | None = Field(default=None, alias="VOICE_INTENT_REGISTRY_PATH")
     endpoint_media_dir: Path | None = Field(default=None, alias="ENDPOINT_MEDIA_DIR")
     endpoint_asset_library_dir: Path | None = Field(default=None, alias="ENDPOINT_ASSET_LIBRARY_DIR")
+    endpoint_runtime_config_path: Path | None = Field(default=None, alias="ENDPOINT_RUNTIME_CONFIG_PATH")
+    endpoint_runtime_config_reload_interval_s: float = Field(default=2.0, alias="ENDPOINT_RUNTIME_CONFIG_RELOAD_INTERVAL_S")
+    endpoint_display_tuning_path: Path | None = Field(default=None, alias="ENDPOINT_DISPLAY_TUNING_PATH")
     endpoint_stale_after_seconds: int = Field(default=60, alias="ENDPOINT_STALE_AFTER_SECONDS", ge=1)
     endpoint_discovery_udp_enabled: bool = Field(default=True, alias="ENDPOINT_DISCOVERY_UDP_ENABLED")
     endpoint_discovery_udp_host: str = Field(default="0.0.0.0", alias="ENDPOINT_DISCOVERY_UDP_HOST")
@@ -395,6 +398,13 @@ class Settings(BaseSettings):
         if self.endpoint_asset_library_dir is not None:
             return self.endpoint_asset_library_dir
         return Path("firmware") / "assets"
+
+    def resolved_endpoint_display_tuning_path(self) -> Path:
+        if self.endpoint_runtime_config_path is not None:
+            return self.endpoint_runtime_config_path
+        if self.endpoint_display_tuning_path is not None:
+            return self.endpoint_display_tuning_path
+        return Path("config") / "endpoint-runtime-config.json"
 
     def resolved_firmware_artifact_dir(self) -> Path:
         if self.firmware_artifact_dir is not None:

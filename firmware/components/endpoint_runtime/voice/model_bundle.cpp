@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_partition.h"
 #include "nvs.h"
+#include "nvs_flash.h"
 
 namespace {
 constexpr char kTag[] = "hexe_model_bundle";
@@ -17,14 +18,21 @@ constexpr char kActiveBankKey[] = "active_bank";
 constexpr char kPreviousBankKey[] = "previous_bank";
 constexpr char kBundleIdKey[] = "bundle_id";
 constexpr char kVersionKey[] = "version";
+constexpr char kSha256Key[] = "sha256";
 constexpr char kActiveSourceKey[] = "active_source";
+constexpr char kFailCountKey[] = "fail_count";
+constexpr char kLastErrorKey[] = "last_error";
 constexpr char kInternalSource[] = "internal_ab";
+constexpr char kInternalSingleSource[] = "internal_single";
 constexpr char kSdSource[] = "sd_versioned";
 constexpr char kEmbeddedSource[] = "embedded";
 constexpr char kEmbeddedStatus[] = "embedded_fallback";
 constexpr char kActiveStatus[] = "active";
+constexpr char kModelErrorStatus[] = "model_error";
 constexpr char kNoError[] = "";
 constexpr char kModelApiVersion[] = "hexe-model-bundle-api-v1";
+constexpr char kConfigPartition[] = "config";
+constexpr int kModelLoadRetryLimit = 2;
 
 struct MutableModelBundle {
   hexe::voice::ModelBundleStorageKind storage_kind{hexe::voice::ModelBundleStorageKind::kEmbedded};
@@ -46,6 +54,8 @@ char g_active_bank[64] = "";
 char g_previous_bank[64] = "";
 char g_active_bundle_id[64] = "embedded";
 char g_active_version[32] = "embedded";
+char g_active_sha256[65] = "";
+int g_fail_count = 0;
 
 void copy_cstr(char *target, size_t target_size, const char *value) {
   if (target == nullptr || target_size == 0) {
@@ -64,10 +74,12 @@ bool valid_bank_name(const char *bank, hexe::voice::ModelBundleStorageKind stora
     return false;
   }
   if (storage_kind == hexe::voice::ModelBundleStorageKind::kInternalBank) {
-    return std::strcmp(bank, "model_a") == 0 || std::strcmp(bank, "model_b") == 0;
+    return std::strcmp(bank, "model_a") == 0 || std::strcmp(bank, "model_b") == 0 ||
+           std::strcmp(bank, "model") == 0;
   }
   if (storage_kind == hexe::voice::ModelBundleStorageKind::kSdVersionedDirectory) {
-    if (std::strncmp(bank, "/sdcard/hexe/models/", 20) != 0) {
+    constexpr char kModelSetsRoot[] = "/sdcard/hexe/model_sets/";
+    if (std::strncmp(bank, kModelSetsRoot, sizeof(kModelSetsRoot) - 1) != 0) {
       return false;
     }
     return std::strstr(bank, "/../") == nullptr && std::strstr(bank, "//") == nullptr;
@@ -75,9 +87,12 @@ bool valid_bank_name(const char *bank, hexe::voice::ModelBundleStorageKind stora
   return false;
 }
 
+bool single_model_schema();
+bool open_model_config_nvs(nvs_open_mode_t mode, nvs_handle_t *handle);
+
 const char *source_for_storage_kind(hexe::voice::ModelBundleStorageKind storage_kind) {
   if (storage_kind == hexe::voice::ModelBundleStorageKind::kInternalBank) {
-    return kInternalSource;
+    return single_model_schema() ? kInternalSingleSource : kInternalSource;
   }
   if (storage_kind == hexe::voice::ModelBundleStorageKind::kSdVersionedDirectory) {
     return kSdSource;
@@ -94,24 +109,90 @@ size_t model_partition_size(const char *label) {
   return partition == nullptr ? 0 : partition->size;
 }
 
+bool single_model_schema() {
+  return std::strcmp(hexe::board::pins::kPartitionSchema, "s3-16m-recovery-single-model-v1") == 0;
+}
+
+bool open_model_config_nvs(nvs_open_mode_t mode, nvs_handle_t *handle) {
+  if (handle == nullptr) {
+    return false;
+  }
+  esp_err_t err = nvs_flash_init_partition(kConfigPartition);
+  if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+    ESP_LOGW(kTag, "Model config partition unavailable: %s", esp_err_to_name(err));
+    return false;
+  }
+  err = nvs_open_from_partition(kConfigPartition, kNamespace, mode, handle);
+  if (err == ESP_ERR_NVS_NOT_FOUND && mode == NVS_READONLY) {
+    return false;
+  }
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "Failed to open model config partition: %s", esp_err_to_name(err));
+    return false;
+  }
+  return true;
+}
+
+void load_model_config_metadata() {
+  nvs_handle_t handle = 0;
+  if (!open_model_config_nvs(NVS_READONLY, &handle)) {
+    return;
+  }
+  int32_t persisted_fail_count = 0;
+  if (nvs_get_i32(handle, kFailCountKey, &persisted_fail_count) == ESP_OK) {
+    g_fail_count = static_cast<int>(persisted_fail_count);
+  }
+  size_t length = sizeof(g_error);
+  nvs_get_str(handle, kLastErrorKey, g_error, &length);
+  nvs_close(handle);
+}
+
+void persist_model_config_metadata(const char *last_error) {
+  nvs_handle_t handle = 0;
+  if (!open_model_config_nvs(NVS_READWRITE, &handle)) {
+    return;
+  }
+  esp_err_t err = nvs_set_i32(handle, kFailCountKey, g_fail_count);
+  if (err == ESP_OK && last_error != nullptr) {
+    err = nvs_set_str(handle, kLastErrorKey, last_error);
+  }
+  if (err == ESP_OK) {
+    err = nvs_commit(handle);
+  }
+  nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGW(kTag, "Failed to persist model metadata: %s", esp_err_to_name(err));
+  }
+}
+
+void record_model_load_failure(const char *error_code) {
+  if (g_fail_count < kModelLoadRetryLimit) {
+    ++g_fail_count;
+  }
+  copy_cstr(g_error, sizeof(g_error), error_code);
+  persist_model_config_metadata(g_error);
+}
+
 bool commit_active_bundle_pointer(
     const char *active_source,
     const char *active_bank,
     const char *previous_bank,
     const char *bundle_id,
-    const char *version) {
+    const char *version,
+    const char *sha256) {
   nvs_handle_t handle = 0;
-  esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &handle);
-  if (err != ESP_OK) {
-    copy_cstr(g_error, sizeof(g_error), esp_err_to_name(err));
+  if (!open_model_config_nvs(NVS_READWRITE, &handle)) {
+    copy_cstr(g_error, sizeof(g_error), "model_config_unavailable");
     return false;
   }
 
+  esp_err_t err = ESP_OK;
   if (err == ESP_OK) err = nvs_set_str(handle, kActiveSourceKey, active_source);
   if (err == ESP_OK) err = nvs_set_str(handle, kActiveBankKey, active_bank);
   if (err == ESP_OK) err = nvs_set_str(handle, kPreviousBankKey, previous_bank);
   if (err == ESP_OK) err = nvs_set_str(handle, kBundleIdKey, bundle_id);
   if (err == ESP_OK) err = nvs_set_str(handle, kVersionKey, version);
+  if (err == ESP_OK) err = nvs_set_str(handle, kSha256Key, sha256 == nullptr ? "" : sha256);
   if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
 
@@ -124,12 +205,7 @@ bool commit_active_bundle_pointer(
 
 void load_active_bundle_pointer() {
   nvs_handle_t handle = 0;
-  const esp_err_t open_result = nvs_open(kNamespace, NVS_READONLY, &handle);
-  if (open_result == ESP_ERR_NVS_NOT_FOUND) {
-    return;
-  }
-  if (open_result != ESP_OK) {
-    copy_cstr(g_error, sizeof(g_error), esp_err_to_name(open_result));
+  if (!open_model_config_nvs(NVS_READONLY, &handle)) {
     return;
   }
 
@@ -143,6 +219,8 @@ void load_active_bundle_pointer() {
   nvs_get_str(handle, kBundleIdKey, g_active_bundle_id, &length);
   length = sizeof(g_active_version);
   nvs_get_str(handle, kVersionKey, g_active_version, &length);
+  length = sizeof(g_active_sha256);
+  nvs_get_str(handle, kSha256Key, g_active_sha256, &length);
   nvs_close(handle);
 }
 
@@ -153,15 +231,24 @@ void refresh_public_state() {
   if (active_mutable_loaded) {
     copy_cstr(g_status, sizeof(g_status), kActiveStatus);
     copy_cstr(g_error, sizeof(g_error), kNoError);
+    g_fail_count = 0;
   } else if (has_active_pointer) {
-    copy_cstr(g_status, sizeof(g_status), kEmbeddedStatus);
+    copy_cstr(g_status, sizeof(g_status), single_model_schema() ? kModelErrorStatus : kEmbeddedStatus);
     copy_cstr(g_error, sizeof(g_error), "active_bundle_assets_not_loaded");
   } else {
-    copy_cstr(g_status, sizeof(g_status), kEmbeddedStatus);
-    copy_cstr(g_error, sizeof(g_error), kNoError);
-    copy_cstr(g_active_source, sizeof(g_active_source), kEmbeddedSource);
-    copy_cstr(g_active_bundle_id, sizeof(g_active_bundle_id), "embedded");
-    copy_cstr(g_active_version, sizeof(g_active_version), "embedded");
+    if (single_model_schema()) {
+      copy_cstr(g_status, sizeof(g_status), kModelErrorStatus);
+      if (g_error[0] == '\0') {
+        copy_cstr(g_error, sizeof(g_error), "single_model_cache_not_loaded");
+      }
+      copy_cstr(g_active_source, sizeof(g_active_source), kInternalSingleSource);
+    } else {
+      copy_cstr(g_status, sizeof(g_status), kEmbeddedStatus);
+      copy_cstr(g_error, sizeof(g_error), kNoError);
+      copy_cstr(g_active_source, sizeof(g_active_source), kEmbeddedSource);
+      copy_cstr(g_active_bundle_id, sizeof(g_active_bundle_id), "embedded");
+      copy_cstr(g_active_version, sizeof(g_active_version), "embedded");
+    }
   }
 
   g_state.status = g_status;
@@ -171,13 +258,18 @@ void refresh_public_state() {
   g_state.previous_bank = g_previous_bank;
   g_state.active_bundle_id = g_active_bundle_id;
   g_state.active_version = g_active_version;
-  g_state.embedded_fallback = !active_mutable_loaded;
+  g_state.active_sha256 = g_active_sha256;
+  g_state.embedded_fallback = !active_mutable_loaded && !single_model_schema();
   g_state.rollback_available = g_previous_bank[0] != '\0';
   g_state.staged_tested = g_active_candidate.tested;
   g_state.internal_ab_available = find_model_partition("model_a") != nullptr && find_model_partition("model_b") != nullptr;
+  g_state.internal_single_available = find_model_partition("model") != nullptr;
   g_state.sd_versioned_available = hexe::board::sd_card_mounted();
+  g_state.sd_model_sets_available = hexe::board::sd_card_mounted() && hexe::board::sd_card_model_sets_path()[0] != '\0';
   g_state.model_a_bytes = model_partition_size("model_a");
   g_state.model_b_bytes = model_partition_size("model_b");
+  g_state.model_bytes = model_partition_size("model");
+  g_state.fail_count = g_fail_count;
 }
 
 bool candidate_compatible(const hexe::voice::ModelBundleCandidate &candidate, char *error_code, size_t error_code_size) {
@@ -226,18 +318,23 @@ void init_model_bundle_manager() {
   copy_cstr(g_previous_bank, sizeof(g_previous_bank), "");
   copy_cstr(g_active_bundle_id, sizeof(g_active_bundle_id), "embedded");
   copy_cstr(g_active_version, sizeof(g_active_version), "embedded");
+  copy_cstr(g_active_sha256, sizeof(g_active_sha256), "");
+  g_fail_count = 0;
   g_active_candidate = {};
+  load_model_config_metadata();
   load_active_bundle_pointer();
   refresh_public_state();
   ESP_LOGI(
       kTag,
-      "Model bundle manager initialized: source=%s bank=%s status=%s fallback=%s model_a=%u model_b=%u",
+      "Model bundle manager initialized: source=%s bank=%s status=%s fallback=%s model=%u model_a=%u model_b=%u sd_model_sets=%s",
       g_state.active_source,
       g_state.active_bank,
       g_state.status,
       g_state.embedded_fallback ? "true" : "false",
+      static_cast<unsigned>(g_state.model_bytes),
       static_cast<unsigned>(g_state.model_a_bytes),
-      static_cast<unsigned>(g_state.model_b_bytes));
+      static_cast<unsigned>(g_state.model_b_bytes),
+      g_state.sd_model_sets_available ? hexe::board::sd_card_model_sets_path() : "unavailable");
 }
 
 const ModelBundleState &model_bundle_state() {
@@ -260,6 +357,17 @@ const MicroWakeModelAsset *active_model_bundle_models(
   if (selected_model_count != nullptr) {
     *selected_model_count = embedded_model_count;
   }
+  if (single_model_schema()) {
+    for (int attempt = 0; attempt < kModelLoadRetryLimit; ++attempt) {
+      ESP_LOGW(kTag, "Single model cache unavailable; retrying model load attempt=%d", attempt + 1);
+    }
+    record_model_load_failure("single_model_cache_not_loaded");
+    refresh_public_state();
+    if (selected_model_count != nullptr) {
+      *selected_model_count = 0;
+    }
+    return nullptr;
+  }
   return embedded_models;
 }
 
@@ -280,7 +388,8 @@ bool activate_model_bundle_candidate(const ModelBundleCandidate &candidate, char
           candidate.bank,
           previous_bank,
           candidate.bundle_id,
-          candidate.version)) {
+          candidate.version,
+          candidate.bundle_sha256)) {
     set_error(error_code, error_code_size, "model_bundle_active_pointer_commit_failed");
     refresh_public_state();
     return false;
@@ -299,6 +408,9 @@ bool activate_model_bundle_candidate(const ModelBundleCandidate &candidate, char
   copy_cstr(g_previous_bank, sizeof(g_previous_bank), previous_bank);
   copy_cstr(g_active_bundle_id, sizeof(g_active_bundle_id), candidate.bundle_id);
   copy_cstr(g_active_version, sizeof(g_active_version), candidate.version);
+  copy_cstr(g_active_sha256, sizeof(g_active_sha256), candidate.bundle_sha256);
+  g_fail_count = 0;
+  persist_model_config_metadata(kNoError);
   refresh_public_state();
   ESP_LOGI(kTag, "Activated model bundle id=%s version=%s bank=%s", g_active_bundle_id, g_active_version, g_active_bank);
   return true;
@@ -314,7 +426,13 @@ bool rollback_model_bundle(char *error_code, size_t error_code_size) {
   copy_cstr(rollback_target, sizeof(rollback_target), g_previous_bank);
   char old_active[64] = {};
   copy_cstr(old_active, sizeof(old_active), g_active_bank);
-  if (!commit_active_bundle_pointer(g_active_source, rollback_target, old_active, g_active_bundle_id, g_active_version)) {
+  if (!commit_active_bundle_pointer(
+          g_active_source,
+          rollback_target,
+          old_active,
+          g_active_bundle_id,
+          g_active_version,
+          g_active_sha256)) {
     set_error(error_code, error_code_size, "model_bundle_rollback_commit_failed");
     refresh_public_state();
     return false;

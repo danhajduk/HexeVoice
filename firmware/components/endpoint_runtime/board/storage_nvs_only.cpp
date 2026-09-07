@@ -49,4 +49,8 @@ const char *sd_card_sounds_path() {
   return kNoPath;
 }
 
+const char *sd_card_model_sets_path() {
+  return kNoPath;
+}
+
 }  // namespace hexe::board

@@ -123,6 +123,7 @@ def display_section(args: argparse.Namespace) -> dict[str, object]:
         "width_px": args.display_width_px if available else None,
         "height_px": args.display_height_px if available else None,
         "color_depth": args.display_color_depth if available else None,
+        "rotation_deg": args.display_rotation_deg if available else None,
         "touch": bool(args.with_touch),
     }
 
@@ -322,7 +323,14 @@ def main() -> int:
     parser.add_argument("--psram-size")
     parser.add_argument(
         "--partition-schema",
-        choices=["s3-8m-v1", "s3-8m-recovery-v1", "s3-16m-v1", "s3-16m-recovery-v1", "p4-32m-v1"],
+        choices=[
+            "s3-8m-v1",
+            "s3-8m-recovery-v1",
+            "s3-16m-v1",
+            "s3-16m-recovery-v1",
+            "s3-16m-recovery-single-model-v1",
+            "p4-32m-v1",
+        ],
     )
     parser.add_argument("--app-slot-size")
     parser.add_argument("--coprocessor")
@@ -351,6 +359,7 @@ def main() -> int:
     parser.add_argument("--display-width-px", type=int)
     parser.add_argument("--display-height-px", type=int)
     parser.add_argument("--display-color-depth", default="rgb565")
+    parser.add_argument("--display-rotation-deg", type=int, choices=[0, 90, 180, 270], default=0)
     parser.add_argument("--audio-input-frontend", default="tbd")
     parser.add_argument("--audio-input-codec", default="tbd")
     parser.add_argument("--audio-input-transport", default="i2s")

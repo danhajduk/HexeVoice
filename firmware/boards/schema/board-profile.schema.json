@@ -99,7 +99,7 @@
         },
         "partition_schema": {
           "type": "string",
-          "enum": ["s3-8m-v1", "s3-8m-recovery-v1", "s3-16m-v1", "s3-16m-recovery-v1", "p4-32m-v1"]
+          "enum": ["s3-8m-v1", "s3-8m-recovery-v1", "s3-16m-v1", "s3-16m-recovery-v1", "s3-16m-recovery-single-model-v1", "p4-32m-v1"]
         },
         "app_slot_size": {
           "type": "string",
@@ -196,6 +196,7 @@
         "width_px": {"type": ["integer", "null"], "minimum": 1},
         "height_px": {"type": ["integer", "null"], "minimum": 1},
         "color_depth": {"type": ["string", "null"]},
+        "rotation_deg": {"type": ["integer", "null"], "enum": [0, 90, 180, 270, null]},
         "touch": {"type": "boolean"}
       }
     },

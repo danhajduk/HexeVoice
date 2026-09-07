@@ -10,19 +10,21 @@ def _write_firmware_fixture(source: Path) -> None:
     source.mkdir(parents=True)
     artifacts = {
         "hexe_firmware.bin": b"default-firmware",
-        "hexe_firmware_esp_box_3.bin": b"esp-box-firmware",
         "hexe_firmware_ha_voice_pe.bin": b"voice-pe-firmware",
+        "hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin": b"waveshare-firmware",
         "manifest.json": b'{"filename":"hexe_firmware.bin","version":"0.2.0"}',
-        "manifest-esp_box_3.json": b'{"filename":"hexe_firmware_esp_box_3.bin","version":"0.2.0"}',
         "manifest-ha_voice_pe.json": b'{"filename":"hexe_firmware_ha_voice_pe.bin","version":"0.2.0"}',
+        "manifest-endpoint-ha_voice_pe.json": b'{"filename":"hexe_firmware_ha_voice_pe.bin","version":"0.2.0","application_type":"endpoint","board_profile":"ha_voice_pe"}',
+        "manifest-waveshare_s3_touch_lcd_1_85c_box_v2.json": b'{"filename":"hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin","version":"0.2.0"}',
+        "manifest-endpoint-waveshare_s3_touch_lcd_1_85c_box_v2.json": b'{"filename":"hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin","version":"0.2.0","application_type":"endpoint","board_profile":"waveshare_s3_touch_lcd_1_85c_box_v2"}',
     }
     for name, content in artifacts.items():
         (source / name).write_bytes(content)
     checksum_lines = []
     for name in (
         "hexe_firmware.bin",
-        "hexe_firmware_esp_box_3.bin",
         "hexe_firmware_ha_voice_pe.bin",
+        "hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin",
     ):
         checksum_lines.append(f"{hashlib.sha256((source / name).read_bytes()).hexdigest()}  {name}")
     (source / "SHA256SUMS").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
@@ -49,8 +51,10 @@ def test_firmware_artifacts_control_downloads_from_local_source_dir(tmp_path):
 
     assert "installed hexe_firmware.bin" in result.stdout
     assert "checksums: ok (3)" in result.stdout
-    assert (target / "hexe_firmware_esp_box_3.bin").read_bytes() == b"esp-box-firmware"
     assert (target / "manifest-ha_voice_pe.json").exists()
+    assert (target / "manifest-endpoint-ha_voice_pe.json").exists()
+    assert (target / "hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin").read_bytes() == b"waveshare-firmware"
+    assert (target / "manifest-endpoint-waveshare_s3_touch_lcd_1_85c_box_v2.json").exists()
 
 
 def test_firmware_artifacts_control_downloads_from_base_url(tmp_path):
@@ -72,8 +76,9 @@ def test_firmware_artifacts_control_downloads_from_base_url(tmp_path):
         check=True,
     )
 
-    assert "installed manifest-esp_box_3.json" in result.stdout
+    assert "installed manifest-endpoint-ha_voice_pe.json" in result.stdout
     assert (target / "hexe_firmware_ha_voice_pe.bin").read_bytes() == b"voice-pe-firmware"
+    assert (target / "manifest-waveshare_s3_touch_lcd_1_85c_box_v2.json").exists()
 
 
 def test_firmware_artifacts_control_reports_checksum_mismatch(tmp_path):
@@ -134,13 +139,15 @@ def test_firmware_artifacts_control_runs_build_fallback(tmp_path):
 set -euo pipefail
 mkdir -p "${RUNTIME_FIRMWARE_DIR}"
 printf 'default-firmware' > "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
-printf 'esp-box-firmware' > "${RUNTIME_FIRMWARE_DIR}/hexe_firmware_esp_box_3.bin"
 printf 'voice-pe-firmware' > "${RUNTIME_FIRMWARE_DIR}/hexe_firmware_ha_voice_pe.bin"
+printf 'waveshare-firmware' > "${RUNTIME_FIRMWARE_DIR}/hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin"
 printf '{"filename":"hexe_firmware.bin","version":"0.2.0"}' > "${RUNTIME_FIRMWARE_DIR}/manifest.json"
-printf '{"filename":"hexe_firmware_esp_box_3.bin","version":"0.2.0"}' > "${RUNTIME_FIRMWARE_DIR}/manifest-esp_box_3.json"
 printf '{"filename":"hexe_firmware_ha_voice_pe.bin","version":"0.2.0"}' > "${RUNTIME_FIRMWARE_DIR}/manifest-ha_voice_pe.json"
+printf '{"filename":"hexe_firmware_ha_voice_pe.bin","version":"0.2.0","application_type":"endpoint","board_profile":"ha_voice_pe"}' > "${RUNTIME_FIRMWARE_DIR}/manifest-endpoint-ha_voice_pe.json"
+printf '{"filename":"hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin","version":"0.2.0"}' > "${RUNTIME_FIRMWARE_DIR}/manifest-waveshare_s3_touch_lcd_1_85c_box_v2.json"
+printf '{"filename":"hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin","version":"0.2.0","application_type":"endpoint","board_profile":"waveshare_s3_touch_lcd_1_85c_box_v2"}' > "${RUNTIME_FIRMWARE_DIR}/manifest-endpoint-waveshare_s3_touch_lcd_1_85c_box_v2.json"
 cd "${RUNTIME_FIRMWARE_DIR}"
-sha256sum hexe_firmware.bin hexe_firmware_esp_box_3.bin hexe_firmware_ha_voice_pe.bin > SHA256SUMS
+sha256sum hexe_firmware.bin hexe_firmware_ha_voice_pe.bin hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin > SHA256SUMS
 """,
         encoding="utf-8",
     )
@@ -165,3 +172,4 @@ sha256sum hexe_firmware.bin hexe_firmware_esp_box_3.bin hexe_firmware_ha_voice_p
     assert "firmware_build_fallback: running" in result.stdout
     assert "checksums: ok (3)" in result.stdout
     assert (target / "hexe_firmware_ha_voice_pe.bin").read_bytes() == b"voice-pe-firmware"
+    assert (target / "hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin").read_bytes() == b"waveshare-firmware"

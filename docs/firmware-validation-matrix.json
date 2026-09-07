@@ -224,11 +224,11 @@
   },
   "profiles": [
     {
-      "id": "esp_box_3",
-      "display_name": "ESP-BOX-3",
+      "id": "waveshare_s3_touch_lcd_1_85c_box_v2",
+      "display_name": "Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2",
       "support_state": "supported",
       "validation_state": "partial",
-      "operator_summary": "Primary touchscreen/display target. Automated source/API coverage exists; physical audio, speaker, display, SD media, and OTA field validation are still required before release.",
+      "operator_summary": "Active touchscreen/display target replacing ESP-BOX-3 for display-profile release validation. Automated source/API coverage exists; physical audio, speaker, display, SD media, touch, and OTA field validation are still required before release.",
       "automated_checks": [
         "tests/test_firmware_voice_envelope.py",
         "tests/test_voice_loop_integration.py",
@@ -289,7 +289,7 @@
             "tests/test_api.py::test_endpoint_media_upload_validates_and_serves_picture_rgb565"
           ],
           "manual": [
-            "Run an OTA push for the `esp_box_3` artifact and confirm the endpoint returns on the same id.",
+            "Run an OTA push for the `waveshare_s3_touch_lcd_1_85c_box_v2` artifact and confirm the endpoint returns on the same id.",
             "Deliver picture, sprite, sound, and manifest assets to SD media and verify inventory reports them after reconnect."
           ]
         },

@@ -71,10 +71,17 @@ def string_literal(value: object) -> str:
 def endpoint_id_for_profile(data: dict[str, dict[str, object]], board_profile: str) -> object:
     if board_profile == "ha_voice_pe":
         return optional(data, "endpoint", "ha_voice_pe_id", "esp-pe-1")
+    if board_profile == "waveshare_s3_touch_lcd_1_85c_box_v2":
+        return optional(
+            data,
+            "endpoint",
+            "waveshare_185c_id",
+            optional(data, "endpoint", "waveshare_s3_touch_lcd_1_85c_box_v2_id", "waveshare-185c-1"),
+        )
     return required(data, "endpoint", "id")
 
 
-def render_header(data: dict[str, dict[str, object]], board_profile: str = "esp_box_3") -> str:
+def render_header(data: dict[str, dict[str, object]], board_profile: str = "ha_voice_pe") -> str:
     endpoint_id = endpoint_id_for_profile(data, board_profile)
     host = required(data, "node", "host")
     http_port = required(data, "node", "http_port")
@@ -133,7 +140,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--board-profile", default="esp_box_3")
+    parser.add_argument("--board-profile", default="ha_voice_pe")
     args = parser.parse_args()
 
     data = load_yaml(args.input)

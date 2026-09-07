@@ -114,7 +114,7 @@ The strongest implemented areas are the backend API surface, setup/readiness lif
 - Backend heartbeat and voice WebSocket client with reconnect, command, media, OTA, provisioning, discovery, and event-to-UX handling.
 - Backend event-to-UX mapping for wake, transcript, response, TTS-ready, completion, cancellation, and error events.
 - TTS playback lifecycle tracking and reporting.
-- Selectable board profile support: `esp_box_3` default and experimental `ha_voice_pe`.
+- Selectable board profile support: `ha_voice_pe` default, active Waveshare display profile, and retired legacy `esp_box_3` recognition.
 - Home Assistant Voice PE support includes I2S microphone input, AIC3204/I2S TTS output, center-button wake/cancel controls, hardware mute controls, RMT LED ring driver, voice-state LED patterns, rotary volume, and LED accent color selection.
 - Manual OTA path from backend-pushed `ota.update` events.
 

@@ -12,8 +12,8 @@ export HEXEVOICE_FIRMWARE_RELEASE_TAG="${HEXEVOICE_FIRMWARE_RELEASE_TAG:-latest}
 export HEXEVOICE_FIRMWARE_BUILD_FALLBACK="${HEXEVOICE_FIRMWARE_BUILD_FALLBACK:-true}"
 export HEXEVOICE_PROJECT_ROOT="${HEXEVOICE_PROJECT_ROOT:-$ROOT_DIR}"
 export HEXEVOICE_FIRMWARE_REPO_ARTIFACT_DIR="${HEXEVOICE_FIRMWARE_REPO_ARTIFACT_DIR:-runtime/firmware}"
-export HEXEVOICE_FIRMWARE_ARTIFACTS="${HEXEVOICE_FIRMWARE_ARTIFACTS:-hexe_firmware.bin,hexe_firmware_esp_box_3.bin,hexe_firmware_ha_voice_pe.bin,manifest.json,manifest-esp_box_3.json,manifest-ha_voice_pe.json,SHA256SUMS}"
-export HEXEVOICE_FIRMWARE_REQUIRED_PROFILES="${HEXEVOICE_FIRMWARE_REQUIRED_PROFILES:-esp_box_3,ha_voice_pe}"
+export HEXEVOICE_FIRMWARE_ARTIFACTS="${HEXEVOICE_FIRMWARE_ARTIFACTS:-hexe_firmware.bin,hexe_firmware_ha_voice_pe.bin,hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin,manifest.json,manifest-ha_voice_pe.json,manifest-endpoint-ha_voice_pe.json,manifest-waveshare_s3_touch_lcd_1_85c_box_v2.json,manifest-endpoint-waveshare_s3_touch_lcd_1_85c_box_v2.json,SHA256SUMS}"
+export HEXEVOICE_FIRMWARE_REQUIRED_PROFILES="${HEXEVOICE_FIRMWARE_REQUIRED_PROFILES:-ha_voice_pe,waveshare_s3_touch_lcd_1_85c_box_v2}"
 
 run_python() {
   "$PYTHON_BIN" - "$@" <<'PY'

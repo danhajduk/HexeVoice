@@ -3,12 +3,13 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: flash-remote-export.sh [box|pe] [port]
+Usage: flash-remote-export.sh [pe|waveshare|box] [port]
        flash-remote-export.sh [port]
 
 Profiles:
-  box  Pull firmware/export from the HexeVoice machine.
   pe   Pull firmware/export-ha-voice-pe from the HexeVoice machine.
+  waveshare  Pull firmware/export-waveshare_s3_touch_lcd_1_85c_box_v2 from the HexeVoice machine.
+  box  Pull retired firmware/export from the HexeVoice machine for legacy ESP-BOX-3 service only.
 
 Environment:
   NODE_HOST    SSH target for the HexeVoice machine. Default: $USER@hexe.local
@@ -51,6 +52,11 @@ case "${PROFILE}" in
     PROFILE="pe"
     EXPECTED_BOARD_PROFILE="ha_voice_pe"
     REMOTE_EXPORT="${REMOTE_EXPORT:-${REMOTE_ROOT}/export-ha-voice-pe}"
+    ;;
+  waveshare|ws185|waveshare_s3_touch_lcd_1_85c_box_v2)
+    PROFILE="waveshare"
+    EXPECTED_BOARD_PROFILE="waveshare_s3_touch_lcd_1_85c_box_v2"
+    REMOTE_EXPORT="${REMOTE_EXPORT:-${REMOTE_ROOT}/export-waveshare_s3_touch_lcd_1_85c_box_v2}"
     ;;
   *)
     echo "Unknown profile: ${PROFILE}" >&2

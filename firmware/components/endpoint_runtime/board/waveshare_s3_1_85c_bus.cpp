@@ -11,8 +11,8 @@ namespace {
 constexpr char kTag[] = "hexe_ws185_bus";
 constexpr uint8_t kTcaRegisterOutput = 0x01;
 constexpr uint8_t kTcaRegisterConfig = 0x03;
-constexpr uint8_t kTouchResetBit = 1;
-constexpr uint8_t kDisplayResetBit = 2;
+constexpr uint8_t kTouchResetBit = 0;
+constexpr uint8_t kDisplayResetBit = 1;
 constexpr int kI2cTimeoutMs = 1000;
 constexpr int kAudioSampleRate = 16000;
 constexpr int kAudioFrameSamples = 320;
@@ -62,10 +62,7 @@ bool init_io_expander() {
     return false;
   }
 
-  const uint8_t output_mask = static_cast<uint8_t>((1U << kTouchResetBit) | (1U << kDisplayResetBit));
-  const uint8_t config_value = static_cast<uint8_t>(~output_mask);
-  g_io_expander_output |= output_mask;
-  return tca_write(kTcaRegisterOutput, g_io_expander_output) && tca_write(kTcaRegisterConfig, config_value);
+  return tca_write(kTcaRegisterOutput, g_io_expander_output) && tca_write(kTcaRegisterConfig, 0x00);
 }
 
 bool set_expander_bit(uint8_t bit, bool high) {

@@ -105,9 +105,11 @@ By default, `./build.sh` discovers the buildable board profiles from
 source selection and the dev-board wiring used to generate
 `board_profile_pins.h`:
 
-- ESP-BOX-3: build directory `firmware/build`, flash export `firmware/export`, OTA binary `runtime/firmware/hexe_firmware_esp_box_3.bin`, and legacy OTA binary `runtime/firmware/hexe_firmware.bin`.
 - Home Assistant Voice Preview Edition: build directory `firmware/build-ha-voice-pe`, flash export `firmware/export-ha-voice-pe`, and OTA binary `runtime/firmware/hexe_firmware_ha_voice_pe.bin`.
 - Waveshare ESP32-S3-Touch-LCD-1.85C-BOX V2: build directory `firmware/build-waveshare_s3_touch_lcd_1_85c_box_v2`, flash export `firmware/export-waveshare_s3_touch_lcd_1_85c_box_v2`, OTA binary `runtime/firmware/hexe_firmware_waveshare_s3_touch_lcd_1_85c_box_v2.bin`, CST816S touch, and SDMMC UI media storage.
+
+The legacy ESP-BOX-3 profile is retained for old endpoint/artifact recognition
+only; it is not part of the default build or release artifact set.
 
 The root helper wraps this default flow and stamps every selected board with one
 shared firmware version:
@@ -142,12 +144,14 @@ New board profiles should start with
 `tools/create_board_profile.py`. The scaffold keeps wiring partial and firmware
 adapters non-buildable until the dev-board connection table is complete.
 
-The shared `firmware/export` folder also receives the profile-named app binaries for both builds. Planned board profiles can be validated before their adapters are buildable. To build just one active profile:
+The shared `firmware/export` folder also receives the profile-named app binaries
+for active builds. Planned board profiles can be validated before their adapters
+are buildable. To build just one active profile:
 
 ```bash
 cd firmware
-HEXE_BOARD_PROFILE=esp_box_3 ./build.sh
 HEXE_BOARD_PROFILE=ha_voice_pe ./build.sh
+HEXE_BOARD_PROFILE=waveshare_s3_touch_lcd_1_85c_box_v2 ./build.sh
 ```
 
 The root project also accepts `HEXE_FIRMWARE_APP`. `endpoint` is the default.

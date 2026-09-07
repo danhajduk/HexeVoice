@@ -19,6 +19,7 @@ constexpr char kTag[] = "hexe_storage";
 constexpr char kPicturesPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures";
 constexpr char kSpritesPath[] = BSP_SD_MOUNT_POINT "/hexe/sprites";
 constexpr char kSoundsPath[] = BSP_SD_MOUNT_POINT "/hexe/sounds";
+constexpr char kModelSetsPath[] = BSP_SD_MOUNT_POINT "/hexe/model_sets";
 constexpr int kMaxLoggedDirectoryEntries = 64;
 
 bool g_sd_card_mounted = false;
@@ -41,7 +42,8 @@ bool ensure_sd_media_directories_internal() {
   const bool pictures_ready = ensure_directory(kPicturesPath);
   const bool sprites_ready = ensure_directory(kSpritesPath);
   const bool sounds_ready = ensure_directory(kSoundsPath);
-  return root_ready && pictures_ready && sprites_ready && sounds_ready;
+  const bool model_sets_ready = ensure_directory(kModelSetsPath);
+  return root_ready && pictures_ready && sprites_ready && sounds_ready && model_sets_ready;
 }
 
 bool remove_tree_contents(const char *path) {
@@ -143,6 +145,7 @@ void log_sd_media_directories() {
   log_sd_directory(kPicturesPath);
   log_sd_directory(kSpritesPath);
   log_sd_directory(kSoundsPath);
+  log_sd_directory(kModelSetsPath);
 }
 
 void init_sd_card() {
@@ -226,6 +229,10 @@ const char *sd_card_sprites_path() {
 
 const char *sd_card_sounds_path() {
   return kSoundsPath;
+}
+
+const char *sd_card_model_sets_path() {
+  return kModelSetsPath;
 }
 
 }  // namespace hexe::board

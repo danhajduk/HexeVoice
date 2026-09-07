@@ -28,6 +28,7 @@
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_transport_ws.h"
 #include "esp_websocket_client.h"
@@ -40,6 +41,7 @@
 #include "lwip/sockets.h"
 #include "psa/crypto.h"
 #include "system/clock.h"
+#include "system/asset_sync.h"
 #include "system/ble_provisioning.h"
 #include "system/ota.h"
 #include "system/power.h"
@@ -59,7 +61,7 @@ constexpr int kAudioQueueOfferTimeoutMs = 20;
 constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr int kVoiceWsTaskPriority = 6;
-constexpr int kVoiceControlWsClientTaskStackBytes = 4096;
+constexpr int kVoiceControlWsClientTaskStackBytes = 6144;
 constexpr int kVoiceAudioWsClientTaskStackBytes = 3072;
 constexpr int kVoiceControlWsClientBufferBytes = 1024;
 constexpr int kVoiceAudioWsClientBufferBytes = 512;
@@ -104,6 +106,8 @@ constexpr int64_t kPostTtsInputIgnoreUs = 800000;
 constexpr int64_t kSessionResetInputIgnoreUs = 2000000;
 constexpr int64_t kPreWakeStreamTimeoutUs = 10000000;
 constexpr int64_t kAcceptedCaptureTimeoutUs = 15000000;
+constexpr size_t kAudioFinalizeRequestIdBytes = 80;
+constexpr size_t kAudioFinalizeReasonBytes = 64;
 constexpr const char *kWakeElectionFallbackPolicy = "stream_after_timeout_backend_fallback";
 constexpr const char *kFirmwareApplicationType = "endpoint";
 constexpr const char *kFirmwareApiVersion = "hexe-firmware-main-api-v1";
@@ -209,8 +213,12 @@ std::string g_tts_playback_session_id;
 std::string g_wake_candidate_id;
 std::string g_ws_rx_buffer;
 portMUX_TYPE g_placement_ambient_lock = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE g_audio_finalize_lock = portMUX_INITIALIZER_UNLOCKED;
 PlacementAmbientAccumulator g_placement_ambient = {};
 PlacementCalibrationState g_placement_calibration = {};
+bool g_audio_finalize_pending = false;
+char g_audio_finalize_request_id[kAudioFinalizeRequestIdBytes] = {};
+char g_audio_finalize_reason[kAudioFinalizeReasonBytes] = {};
 
 double probability_as_unit(uint8_t probability) {
   return static_cast<double>(probability) / 255.0;
@@ -265,6 +273,12 @@ struct HttpTextBuffer {
   bool overflow{false};
 };
 
+void restart_task(void *) {
+  vTaskDelay(pdMS_TO_TICKS(250));
+  ESP_LOGW(kTag, "Restarting endpoint after backend command");
+  esp_restart();
+}
+
 bool send_ws_text(const std::string &message);
 bool post_voice_audio_chunk_http(const int16_t *samples, size_t sample_count, bool is_final, bool truncated);
 bool post_buffered_voice_audio_http();
@@ -274,6 +288,7 @@ bool refresh_passive_placement_calibration();
 void maybe_post_passive_placement_sample();
 esp_err_t text_http_event_handler(esp_http_client_event_t *event);
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated);
+void add_redacted_runtime_config(cJSON *root);
 bool ensure_session_started(const char *wake_source);
 bool send_vad_speech_started_event(uint32_t level);
 bool send_vad_speech_ended_event(uint32_t level, const char *reason);
@@ -789,7 +804,7 @@ const char *normalized_wake_source(const char *wake_source) {
     return "unknown";
   }
   if (std::strcmp(wake_source, "openwakeword") == 0 || std::strcmp(wake_source, "button") == 0 ||
-      std::strcmp(wake_source, "manual") == 0) {
+      std::strcmp(wake_source, "manual") == 0 || std::strcmp(wake_source, "touch") == 0) {
     return wake_source;
   }
   return "unknown";
@@ -1436,6 +1451,8 @@ void send_command_error(const char *request_id, const char *command_type, const 
 const char *command_type_for_event(const char *event_type);
 bool is_backend_command_event(const char *event_type);
 void acknowledge_command_received(const char *event_type, cJSON *payload);
+void request_audio_finalize(const char *request_id, const char *reason);
+bool process_pending_audio_finalize();
 bool queue_media_transfer(cJSON *payload);
 void handle_endpoint_timer(cJSON *payload);
 void handle_endpoint_provisioning_apply(cJSON *payload);
@@ -1484,6 +1501,7 @@ void handle_backend_event_json(const std::string &message) {
   auto &app_state = hexe::state();
   const bool wake_accepted = std::strcmp(type, "wake.accepted") == 0;
   const bool wake_election_result = std::strcmp(type, "wake.election.result") == 0;
+  const bool backend_command_event = is_backend_command_event(type);
   if (wake_election_result && wake_election_result_requests_stand_down(payload)) {
     stand_down_wake_candidate(wake_election_stand_down_reason(payload));
     cJSON_Delete(root);
@@ -1525,12 +1543,12 @@ void handle_backend_event_json(const std::string &message) {
   const bool local_wake_waiting_for_backend =
       g_wake_accepted_for_session && g_wake_election_waiting && std::strcmp(type, "session.state") == 0;
   if (wake_accepted ||
-      (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0) ||
-      (local_wake_waiting_for_backend && std::strcmp(ux_state, "idle") == 0)) {
+      (!backend_command_event && g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0) ||
+      (!backend_command_event && local_wake_waiting_for_backend && std::strcmp(ux_state, "idle") == 0)) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kListening;
     }
-  } else if (g_wake_accepted_for_session && std::strcmp(ux_state, "thinking") == 0) {
+  } else if (!backend_command_event && g_wake_accepted_for_session && std::strcmp(ux_state, "thinking") == 0) {
     if (!app_state.muted) {
       app_state.phase = hexe::AppPhase::kThinking;
     }
@@ -1671,21 +1689,56 @@ void handle_backend_event_json(const std::string &message) {
             "pause_ms or energy_threshold must be numeric");
       }
     }
+  } else if (std::strcmp(type, "endpoint.display.tuning") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *flush_rows = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "flush_rows") : nullptr;
+    cJSON *pixel_clock_hz = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "pixel_clock_hz") : nullptr;
+    if ((flush_rows != nullptr && !cJSON_IsNumber(flush_rows)) ||
+        (pixel_clock_hz != nullptr && !cJSON_IsNumber(pixel_clock_hz))) {
+      send_command_error(
+          request_id,
+          "endpoint.display.tuning.set",
+          "invalid_payload",
+          "flush_rows and pixel_clock_hz must be numeric when provided");
+    } else {
+      bool updated = false;
+      if (flush_rows != nullptr) {
+        hexe::system::set_display_flush_rows(flush_rows->valueint);
+        updated = true;
+      }
+      if (pixel_clock_hz != nullptr) {
+        hexe::system::set_display_pixel_clock_hz(pixel_clock_hz->valueint);
+        updated = true;
+      }
+      if (updated) {
+        hexe::board::request_display_assets_reload();
+        g_heartbeat_capabilities_reported = false;
+        ESP_LOGI(
+            kTag,
+            "Display tuning updated: flush_rows=%d pixel_clock_hz=%d",
+            hexe::system::display_flush_rows(),
+            hexe::system::display_pixel_clock_hz());
+        send_command_ack(request_id, "endpoint.display.tuning.set", "succeeded", "Display tuning updated");
+      } else {
+        send_command_error(
+            request_id,
+            "endpoint.display.tuning.set",
+            "invalid_payload",
+            "flush_rows or pixel_clock_hz must be numeric");
+      }
+    }
   } else if (std::strcmp(type, "endpoint.audio.finalize") == 0) {
     const char *request_id = payload_request_id(payload);
     cJSON *reason = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "reason") : nullptr;
     const char *finalize_reason = cJSON_IsString(reason) && reason->valuestring[0] != '\0'
                                       ? reason->valuestring
                                       : "backend_finalize";
-    if (hexe::voice::finish_audio_stream(finalize_reason)) {
-      send_command_ack(request_id, "endpoint.audio.finalize", "succeeded", "Audio stream finalized");
-    } else {
-      send_command_error(
-          request_id,
-          "endpoint.audio.finalize",
-          "finalize_unavailable",
-          "Audio stream could not be finalized");
-    }
+    ESP_LOGI(
+        kTag,
+        "Backend requested audio finalize request_id=%s reason=%s",
+        request_id[0] == '\0' ? "missing" : request_id,
+        finalize_reason);
+    request_audio_finalize(request_id, finalize_reason);
   } else if (std::strcmp(type, "endpoint.cancel") == 0) {
     const char *request_id = payload_request_id(payload);
     hexe::voice::cancel_active_session("backend_cancel_command");
@@ -1698,6 +1751,15 @@ void handle_backend_event_json(const std::string &message) {
     } else {
       send_command_error(request_id, "endpoint.listen", "listen_unavailable", "Voice session could not be started");
     }
+  } else if (std::strcmp(type, "endpoint.restart") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *reason = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "reason") : nullptr;
+    ESP_LOGW(
+        kTag,
+        "Endpoint restart requested reason=%s",
+        cJSON_IsString(reason) && reason->valuestring[0] != '\0' ? reason->valuestring : "backend_command");
+    send_command_ack(request_id, "endpoint.restart", "succeeded", "Endpoint restart scheduled");
+    xTaskCreate(restart_task, "hexe_restart", 3072, nullptr, kTaskPriority, nullptr);
   } else if (std::strcmp(type, "playback.stop") == 0) {
     const char *request_id = payload_request_id(payload);
     cJSON *reason = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "reason") : nullptr;
@@ -1733,6 +1795,7 @@ void handle_backend_event_json(const std::string &message) {
     const char *request_id = payload_request_id(payload);
     cJSON *bundle_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "bundle_id") : nullptr;
     cJSON *version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "version") : nullptr;
+    cJSON *sha256 = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "sha256") : nullptr;
     cJSON *bank = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "bank") : nullptr;
     cJSON *storage = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "storage") : nullptr;
     const char *storage_value = cJSON_IsString(storage) ? storage->valuestring : "internal_ab";
@@ -1746,6 +1809,7 @@ void handle_backend_event_json(const std::string &message) {
     candidate.storage_kind = storage_kind;
     candidate.model_api_version = kModelApiVersion;
     candidate.partition_schema = hexe::board::pins::kPartitionSchema;
+    candidate.bundle_sha256 = cJSON_IsString(sha256) ? sha256->valuestring : nullptr;
     char activation_error[64] = {};
     if (hexe::voice::activate_model_bundle_candidate(candidate, activation_error, sizeof(activation_error))) {
       send_command_ack(request_id, "endpoint.model_bundle.activate", "succeeded", "Model bundle activated");
@@ -2079,6 +2143,12 @@ void add_module_status(
   cJSON_AddNumberToObject(display, "width", hexe::board::display_width());
   cJSON_AddNumberToObject(display, "height", hexe::board::display_height());
   cJSON_AddStringToObject(display, "pixel_format", hexe::board::display_pixel_format());
+  cJSON_AddNumberToObject(display, "flush_rows", hexe::system::display_flush_rows());
+  cJSON_AddNumberToObject(display, "pixel_clock_hz", hexe::system::display_pixel_clock_hz());
+  cJSON_AddNumberToObject(display, "last_asset_read_ms", hexe::board::display_last_asset_read_ms());
+  cJSON_AddNumberToObject(display, "last_flush_ms", hexe::board::display_last_flush_ms());
+  cJSON_AddNumberToObject(display, "last_render_ms", hexe::board::display_last_render_ms());
+  cJSON_AddStringToObject(display, "last_asset_filename", hexe::board::display_last_asset_filename());
   char resolution[24];
   std::snprintf(resolution, sizeof(resolution), "%dx%d", hexe::board::display_width(), hexe::board::display_height());
   cJSON_AddStringToObject(display, "resolution", resolution);
@@ -2135,7 +2205,7 @@ void add_module_status(
   cJSON_AddBoolToObject(controls, "cancel", true);
   cJSON_AddBoolToObject(controls, "replay", true);
   cJSON_AddBoolToObject(controls, "storage_reformat", sd_available);
-  cJSON_AddBoolToObject(controls, "restart", false);
+  cJSON_AddBoolToObject(controls, "restart", true);
   cJSON_AddBoolToObject(controls, "reconnect", false);
 
   cJSON *provisioning = cJSON_AddObjectToObject(root, "provisioning");
@@ -2148,6 +2218,7 @@ void add_module_status(
   cJSON_AddBoolToObject(provisioning, "use_tls", hexe::system::endpoint_use_tls());
   cJSON_AddBoolToObject(provisioning, "wifi_configured", hexe::system::wifi_ssid()[0] != '\0');
   cJSON_AddBoolToObject(provisioning, "runtime_configurable", true);
+  add_redacted_runtime_config(root);
   cJSON *discovery = cJSON_AddObjectToObject(provisioning, "discovery");
   cJSON_AddBoolToObject(discovery, "enabled", hexe::config::kEndpointDiscoveryEnabled);
   cJSON_AddNumberToObject(discovery, "udp_port", hexe::config::kEndpointDiscoveryUdpPort);
@@ -2242,6 +2313,14 @@ void add_module_status(
   cJSON_AddBoolToObject(ota, "startup_self_tests_passed", hexe::system::ota_boot_self_tests_passed());
   cJSON_AddBoolToObject(ota, "marked_valid_after_self_tests", hexe::system::ota_boot_marked_valid());
   cJSON_AddBoolToObject(ota, "rollback_available", hexe::system::ota_rollback_available());
+  cJSON *assets = cJSON_AddObjectToObject(firmware, "assets");
+  cJSON_AddStringToObject(assets, "api_version", kAssetApiVersion);
+  cJSON_AddBoolToObject(assets, "sync_active", hexe::system::asset_sync_active());
+  cJSON_AddStringToObject(assets, "sync_status", hexe::system::asset_sync_status());
+  cJSON_AddStringToObject(assets, "manifest_version", hexe::system::asset_sync_manifest_version());
+  cJSON_AddNumberToObject(assets, "checked_count", hexe::system::asset_sync_checked_count());
+  cJSON_AddNumberToObject(assets, "downloaded_count", hexe::system::asset_sync_downloaded_count());
+  cJSON_AddNumberToObject(assets, "failed_count", hexe::system::asset_sync_failed_count());
   cJSON *modules = cJSON_AddObjectToObject(firmware, "modules");
   if (modules != nullptr) {
     add_module_status(
@@ -2274,13 +2353,18 @@ void add_module_status(
         cJSON_AddStringToObject(model_bundle, "previous_bank", bundle_state.previous_bank);
         cJSON_AddStringToObject(model_bundle, "active_bundle_id", bundle_state.active_bundle_id);
         cJSON_AddStringToObject(model_bundle, "active_version", bundle_state.active_version);
+        cJSON_AddStringToObject(model_bundle, "active_sha256", bundle_state.active_sha256);
         cJSON_AddBoolToObject(model_bundle, "embedded_fallback", bundle_state.embedded_fallback);
         cJSON_AddBoolToObject(model_bundle, "rollback_available", bundle_state.rollback_available);
         cJSON_AddBoolToObject(model_bundle, "staged_tested", bundle_state.staged_tested);
         cJSON_AddBoolToObject(model_bundle, "internal_ab_available", bundle_state.internal_ab_available);
+        cJSON_AddBoolToObject(model_bundle, "internal_single_available", bundle_state.internal_single_available);
         cJSON_AddBoolToObject(model_bundle, "sd_versioned_available", bundle_state.sd_versioned_available);
+        cJSON_AddBoolToObject(model_bundle, "sd_model_sets_available", bundle_state.sd_model_sets_available);
         cJSON_AddNumberToObject(model_bundle, "model_a_bytes", bundle_state.model_a_bytes);
         cJSON_AddNumberToObject(model_bundle, "model_b_bytes", bundle_state.model_b_bytes);
+        cJSON_AddNumberToObject(model_bundle, "model_bytes", bundle_state.model_bytes);
+        cJSON_AddNumberToObject(model_bundle, "fail_count", bundle_state.fail_count);
       }
       cJSON *engine = cJSON_AddObjectToObject(wake_word, "micro_wake_engine");
       if (engine != nullptr) {
@@ -2473,6 +2557,34 @@ std::string endpoint_heartbeat_capabilities_json() {
     cJSON_AddStringToObject(storage, "media_transfer_status", state.media_transfer_active ? "downloading_file" : "idle");
   }
 
+  cJSON *display = cJSON_AddObjectToObject(root, "display");
+  if (display != nullptr) {
+    cJSON_AddBoolToObject(display, "available", hexe::board::display_ready());
+    cJSON_AddNumberToObject(display, "width", hexe::board::display_width());
+    cJSON_AddNumberToObject(display, "height", hexe::board::display_height());
+    cJSON_AddStringToObject(display, "pixel_format", hexe::board::display_pixel_format());
+    cJSON_AddNumberToObject(display, "flush_rows", hexe::system::display_flush_rows());
+    cJSON_AddNumberToObject(display, "pixel_clock_hz", hexe::system::display_pixel_clock_hz());
+    cJSON_AddNumberToObject(display, "last_asset_read_ms", hexe::board::display_last_asset_read_ms());
+    cJSON_AddNumberToObject(display, "last_flush_ms", hexe::board::display_last_flush_ms());
+    cJSON_AddNumberToObject(display, "last_render_ms", hexe::board::display_last_render_ms());
+    cJSON_AddStringToObject(display, "last_asset_filename", hexe::board::display_last_asset_filename());
+    char resolution[24];
+    std::snprintf(resolution, sizeof(resolution), "%dx%d", hexe::board::display_width(), hexe::board::display_height());
+    cJSON_AddStringToObject(display, "resolution", resolution);
+  }
+
+  cJSON *controls = cJSON_AddObjectToObject(root, "controls");
+  if (controls != nullptr) {
+    cJSON_AddBoolToObject(controls, "volume", true);
+    cJSON_AddBoolToObject(controls, "mute", true);
+    cJSON_AddBoolToObject(controls, "cancel", true);
+    cJSON_AddBoolToObject(controls, "replay", true);
+    cJSON_AddBoolToObject(controls, "storage_reformat", hexe::board::sd_card_mounted());
+    cJSON_AddBoolToObject(controls, "restart", true);
+    cJSON_AddBoolToObject(controls, "reconnect", false);
+  }
+
   cJSON *provisioning = cJSON_AddObjectToObject(root, "provisioning");
   if (provisioning != nullptr) {
     cJSON_AddBoolToObject(provisioning, "configured", hexe::system::provisioning_configured());
@@ -2484,6 +2596,7 @@ std::string endpoint_heartbeat_capabilities_json() {
     cJSON_AddBoolToObject(provisioning, "use_tls", hexe::system::endpoint_use_tls());
     cJSON_AddBoolToObject(provisioning, "wifi_configured", hexe::system::wifi_ssid()[0] != '\0');
   }
+  add_redacted_runtime_config(root);
 
   cJSON *ble = cJSON_AddObjectToObject(root, "ble");
   if (ble != nullptr) {
@@ -2521,6 +2634,49 @@ std::string endpoint_heartbeat_capabilities_json() {
   cJSON_free(rendered);
   cJSON_Delete(root);
   return result;
+}
+
+void add_redacted_runtime_config(cJSON *root) {
+  if (root == nullptr) {
+    return;
+  }
+  const auto &state = hexe::state();
+  cJSON *config = cJSON_AddObjectToObject(root, "config");
+  if (config == nullptr) {
+    return;
+  }
+
+  cJSON *provisioning = cJSON_AddObjectToObject(config, "provisioning");
+  if (provisioning != nullptr) {
+    cJSON_AddBoolToObject(provisioning, "configured", hexe::system::provisioning_configured());
+    cJSON_AddStringToObject(provisioning, "endpoint_id", hexe::system::endpoint_id());
+    cJSON_AddStringToObject(provisioning, "display_name", hexe::system::endpoint_display_name());
+    cJSON_AddStringToObject(provisioning, "backend_host", hexe::system::endpoint_backend_host());
+    cJSON_AddNumberToObject(provisioning, "http_port", hexe::system::endpoint_http_port());
+    cJSON_AddNumberToObject(provisioning, "ws_port", hexe::system::endpoint_ws_port());
+    cJSON_AddBoolToObject(provisioning, "use_tls", hexe::system::endpoint_use_tls());
+    cJSON_AddStringToObject(provisioning, "wifi_ssid", hexe::system::wifi_ssid());
+    cJSON_AddBoolToObject(provisioning, "wifi_configured", hexe::system::wifi_ssid()[0] != '\0');
+  }
+
+  cJSON *audio = cJSON_AddObjectToObject(config, "audio");
+  cJSON *output = audio == nullptr ? nullptr : cJSON_AddObjectToObject(audio, "output");
+  if (output != nullptr) {
+    cJSON_AddNumberToObject(output, "volume_percent", state.output_volume_percent);
+    cJSON_AddBoolToObject(output, "muted", state.muted);
+  }
+
+  cJSON *micro_vad = cJSON_AddObjectToObject(config, "micro_vad");
+  if (micro_vad != nullptr) {
+    cJSON_AddNumberToObject(micro_vad, "pause_ms", hexe::system::micro_vad_pause_ms());
+    cJSON_AddNumberToObject(micro_vad, "energy_threshold", hexe::system::micro_vad_energy_threshold());
+  }
+
+  cJSON *display = cJSON_AddObjectToObject(config, "display");
+  if (display != nullptr) {
+    cJSON_AddNumberToObject(display, "flush_rows", hexe::system::display_flush_rows());
+    cJSON_AddNumberToObject(display, "pixel_clock_hz", hexe::system::display_pixel_clock_hz());
+  }
 }
 
 void add_media_inventory_files(cJSON *inventory, const char *key, const char *directory, bool &truncated) {
@@ -2583,6 +2739,9 @@ const char *command_type_for_event(const char *event_type) {
   if (std::strcmp(event_type, "endpoint.micro_vad") == 0) {
     return "endpoint.micro_vad.set";
   }
+  if (std::strcmp(event_type, "endpoint.display.tuning") == 0) {
+    return "endpoint.display.tuning.set";
+  }
   return event_type;
 }
 
@@ -2598,6 +2757,76 @@ void acknowledge_command_received(const char *event_type, cJSON *payload) {
     return;
   }
   send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");
+}
+
+void copy_c_string(char *target, size_t target_size, const char *value) {
+  if (target == nullptr || target_size == 0) {
+    return;
+  }
+  size_t index = 0;
+  if (value != nullptr) {
+    for (; index + 1 < target_size && value[index] != '\0'; ++index) {
+      target[index] = value[index];
+    }
+  }
+  target[index] = '\0';
+}
+
+void request_audio_finalize(const char *request_id, const char *reason) {
+  portENTER_CRITICAL(&g_audio_finalize_lock);
+  copy_c_string(g_audio_finalize_request_id, sizeof(g_audio_finalize_request_id), request_id);
+  copy_c_string(g_audio_finalize_reason, sizeof(g_audio_finalize_reason), reason);
+  g_audio_finalize_pending = true;
+  portEXIT_CRITICAL(&g_audio_finalize_lock);
+}
+
+bool take_pending_audio_finalize(char *request_id, size_t request_id_size, char *reason, size_t reason_size) {
+  portENTER_CRITICAL(&g_audio_finalize_lock);
+  if (!g_audio_finalize_pending) {
+    portEXIT_CRITICAL(&g_audio_finalize_lock);
+    return false;
+  }
+  copy_c_string(request_id, request_id_size, g_audio_finalize_request_id);
+  copy_c_string(reason, reason_size, g_audio_finalize_reason);
+  g_audio_finalize_pending = false;
+  g_audio_finalize_request_id[0] = '\0';
+  g_audio_finalize_reason[0] = '\0';
+  portEXIT_CRITICAL(&g_audio_finalize_lock);
+  return true;
+}
+
+bool process_pending_audio_finalize() {
+  char request_id[kAudioFinalizeRequestIdBytes] = {};
+  char reason[kAudioFinalizeReasonBytes] = {};
+  if (!take_pending_audio_finalize(request_id, sizeof(request_id), reason, sizeof(reason))) {
+    return false;
+  }
+
+  const UBaseType_t queued = g_audio_queue == nullptr ? 0 : uxQueueMessagesWaiting(g_audio_queue);
+  ESP_LOGI(
+      kTag,
+      "Processing backend audio finalize request request_id=%s reason=%s queued=%u buffered_samples=%u transport_samples=%u",
+      request_id[0] == '\0' ? "missing" : request_id,
+      reason[0] == '\0' ? "backend_finalize" : reason,
+      static_cast<unsigned>(queued),
+      static_cast<unsigned>(g_http_audio_sample_count),
+      static_cast<unsigned>(g_transport_sample_count));
+  if (hexe::voice::finish_audio_stream(reason[0] == '\0' ? "backend_finalize" : reason)) {
+    send_command_ack(request_id, "endpoint.audio.finalize", "succeeded", "Audio stream finalized");
+  } else {
+    ESP_LOGW(
+        kTag,
+        "Backend audio finalize request could not complete request_id=%s session_started=%d finished=%d",
+        request_id[0] == '\0' ? "missing" : request_id,
+        g_session_started ? 1 : 0,
+        g_audio_stream_finished ? 1 : 0);
+    send_command_error(
+        request_id,
+        "endpoint.audio.finalize",
+        "finalize_unavailable",
+        "Audio stream could not be finalized");
+  }
+  return true;
 }
 
 bool copy_optional_string_field(cJSON *payload, const char *key, char *target, size_t target_size) {
@@ -3089,7 +3318,8 @@ bool ensure_session_started(const char *wake_source) {
 
 bool wake_source_is_local_acceptance(const char *wake_source) {
   return wake_source != nullptr &&
-         (std::strcmp(wake_source, "button") == 0 || std::strcmp(wake_source, "manual") == 0);
+         (std::strcmp(wake_source, "button") == 0 || std::strcmp(wake_source, "manual") == 0 ||
+          std::strcmp(wake_source, "touch") == 0);
 }
 
 bool event_requests_followup_listen(cJSON *payload, const char *ux_state) {
@@ -3363,6 +3593,35 @@ bool send_vad_speech_ended_event(uint32_t level, const char *reason) {
     ESP_LOGI(kTag, "Reported advisory VAD speech end level=%" PRIu32 " reason=%s", level, reason == nullptr ? "vad_silence" : reason);
   }
   return sent;
+}
+
+const char *vad_speech_event_unavailable_reason_internal() {
+  const auto &app_state = hexe::state();
+  if (app_state.ota_active) {
+    return "ota_active";
+  }
+  if (hexe::voice::post_tts_input_cooldown_active()) {
+    return "post_tts_input_cooldown";
+  }
+  if (!g_session_started) {
+    return "no_active_voice_session";
+  }
+  if (g_audio_stream_finished) {
+    return "audio_stream_finished";
+  }
+  if (!backend_ready_for_voice()) {
+    return "backend_not_ready";
+  }
+  if (g_ws_client == nullptr) {
+    return "voice_websocket_missing";
+  }
+  if (!g_ws_connected) {
+    return "voice_websocket_disconnected";
+  }
+  if (g_ws_restart_requested) {
+    return "voice_websocket_restart_pending";
+  }
+  return "voice_websocket_send_failed";
 }
 
 void send_audio_frame(const AudioFrame &frame) {
@@ -4071,6 +4330,9 @@ void websocket_task(void *arg) {
     if (g_ws_connected) {
       send_voice_session_ping();
     }
+    if (process_pending_audio_finalize()) {
+      continue;
+    }
     if (voice_audio_upload_desired() && active_audio_stream_timed_out()) {
       ESP_LOGW(kTag, "Ending voice audio stream after idle-loop capture timeout");
       hexe::voice::finish_audio_stream("capture_timeout");
@@ -4414,6 +4676,10 @@ bool notify_vad_speech_ended(uint32_t level, const char *reason) {
   return send_vad_speech_ended_event(level, reason);
 }
 
+const char *vad_speech_event_unavailable_reason() {
+  return vad_speech_event_unavailable_reason_internal();
+}
+
 const char *voice_session_start_unavailable_reason() {
   const auto &app_state = hexe::state();
   if (app_state.muted) {
@@ -4457,8 +4723,16 @@ bool finish_audio_stream(const char *reason) {
   if (!kVoiceAudioWebSocketUploadEnabled) {
     g_audio_stream_finished = true;
     set_audio_streaming(false);
-    if (capture_timeout_without_speech) {
-      ESP_LOGW(kTag, "Skipping buffered voice audio upload after capture timeout without detected speech");
+    if (capture_timeout_without_speech && g_http_audio_sample_count == 0) {
+      ESP_LOGW(kTag, "Skipping buffered voice audio upload after capture timeout without captured samples");
+    } else if (capture_timeout_without_speech) {
+      ESP_LOGW(
+          kTag,
+          "Uploading buffered voice audio after capture timeout despite missing VAD speech marker samples=%u",
+          static_cast<unsigned>(g_http_audio_sample_count));
+      if (!post_buffered_voice_audio_http()) {
+        ESP_LOGW(kTag, "Voice HTTP buffered audio upload failed before audio.end");
+      }
     } else if (!post_buffered_voice_audio_http()) {
       ESP_LOGW(kTag, "Voice HTTP buffered audio upload failed before audio.end");
     }

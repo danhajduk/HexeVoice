@@ -24,9 +24,9 @@ constexpr int64_t kTapDebounceUs = 250 * 1000;
 constexpr int64_t kReadErrorLogIntervalUs = 5 * 1000 * 1000;
 constexpr int kMaxTapMovementPx = 30;
 constexpr int kSwipeThresholdPx = 80;
-constexpr uint8_t kTouchRegisterGesture = 0x01;
-constexpr uint8_t kTouchRegisterFingerCount = 0x02;
+constexpr uint8_t kTouchRegisterDataStart = 0x02;
 constexpr uint8_t kTouchRegisterChipId = 0xA7;
+constexpr uint8_t kTouchRegisterAutoSleep = 0xFE;
 
 i2c_master_dev_handle_t g_touch = nullptr;
 bool g_touch_ready = false;
@@ -44,6 +44,7 @@ constexpr gpio_num_t gpio_pin(int pin) {
 
 enum class TouchAction {
   kNone,
+  kWake,
   kVolumeDown,
   kVolumeUp,
   kToggleMute,
@@ -57,6 +58,11 @@ struct TouchPoint {
 };
 
 TouchAction action_for_point(int x, int y) {
+  const auto &app_state = hexe::state();
+  if (app_state.phase == hexe::AppPhase::kIdle && !app_state.muted) {
+    return TouchAction::kWake;
+  }
+
   const int width = std::max(1, hexe::board::display_width());
   const int height = std::max(1, hexe::board::display_height());
 
@@ -80,6 +86,18 @@ TouchAction action_for_point(int x, int y) {
 void apply_touch_action(TouchAction action) {
   auto &app_state = hexe::state();
   switch (action) {
+    case TouchAction::kWake:
+      if (hexe::voice::post_tts_input_cooldown_active()) {
+        ESP_LOGI(kTag, "Touch wake ignored during input cooldown");
+        return;
+      }
+      if (!hexe::voice::start_voice_session("touch")) {
+        app_state.phase = hexe::idle_or_connecting_phase();
+        ESP_LOGW(kTag, "Touch wake failed to start voice session reason=%s", hexe::voice::voice_session_start_unavailable_reason());
+        return;
+      }
+      ESP_LOGI(kTag, "Touch wake started voice session");
+      return;
     case TouchAction::kVolumeDown: {
       const int volume = std::clamp(app_state.output_volume_percent - kVolumeStepPercent, 0, 100);
       hexe::voice::set_output_volume(volume);
@@ -131,13 +149,22 @@ esp_err_t touch_read(uint8_t reg, uint8_t *data, size_t data_size) {
   return i2c_master_transmit_receive(g_touch, &reg, sizeof(reg), data, data_size, kI2cTimeoutMs);
 }
 
+esp_err_t touch_write(uint8_t reg, uint8_t value) {
+  const uint8_t data[] = {reg, value};
+  return i2c_master_transmit(g_touch, data, sizeof(data), kI2cTimeoutMs);
+}
+
 bool read_touch_point(TouchPoint *point) {
   if (point == nullptr) {
     return false;
   }
+  if (!g_touch_pressed && gpio_get_level(gpio_pin(hexe::board::pins::kWs185TouchInterrupt)) != 0) {
+    point->pressed = false;
+    return true;
+  }
 
-  uint8_t data[6] = {};
-  const esp_err_t result = touch_read(kTouchRegisterGesture, data, sizeof(data));
+  uint8_t data[5] = {};
+  const esp_err_t result = touch_read(kTouchRegisterDataStart, data, sizeof(data));
   if (result != ESP_OK) {
     const int64_t now_us = esp_timer_get_time();
     if (now_us - g_last_read_error_log_us >= kReadErrorLogIntervalUs) {
@@ -147,16 +174,43 @@ bool read_touch_point(TouchPoint *point) {
     return false;
   }
 
-  const uint8_t finger_count = data[kTouchRegisterFingerCount - kTouchRegisterGesture] & 0x0F;
+  const uint8_t finger_count = data[0] & 0x0F;
   point->pressed = finger_count > 0;
-  point->gesture = data[0];
+  point->gesture = 0;
   if (!point->pressed) {
     return true;
   }
 
-  point->x = ((data[2] & 0x0F) << 8) | data[3];
-  point->y = ((data[4] & 0x0F) << 8) | data[5];
+  point->x = ((data[1] & 0x0F) << 8) | data[2];
+  point->y = ((data[3] & 0x0F) << 8) | data[4];
   return true;
+}
+
+TouchPoint rotate_touch_point(const TouchPoint &point) {
+  constexpr int rotation = hexe::board::display_config::kRotationDeg;
+  static_assert(rotation == 0 || rotation == 90 || rotation == 180 || rotation == 270, "unsupported display rotation");
+  if (!point.pressed || rotation == 0) {
+    return point;
+  }
+
+  TouchPoint rotated = point;
+  const int max_x = std::max(0, hexe::board::display_width() - 1);
+  const int max_y = std::max(0, hexe::board::display_height() - 1);
+  switch (rotation) {
+    case 90:
+      rotated.x = point.y;
+      rotated.y = max_x - point.x;
+      break;
+    case 180:
+      rotated.x = max_x - point.x;
+      rotated.y = max_y - point.y;
+      break;
+    case 270:
+      rotated.x = max_y - point.y;
+      rotated.y = point.x;
+      break;
+  }
+  return rotated;
 }
 
 bool init_touch_device() {
@@ -201,6 +255,10 @@ bool init_touch_device() {
       "CST816S touch initialized: address=0x%02x chip_id=0x%02x",
       hexe::board::pins::kWs185TouchAddress,
       chip_id);
+  const esp_err_t autosleep_result = touch_write(kTouchRegisterAutoSleep, 0x01);
+  if (autosleep_result != ESP_OK) {
+    ESP_LOGW(kTag, "CST816S auto-sleep disable failed: %s", esp_err_to_name(autosleep_result));
+  }
   return true;
 }
 }  // namespace
@@ -226,6 +284,7 @@ void update_touch() {
   if (!read_touch_point(&point)) {
     return;
   }
+  point = rotate_touch_point(point);
 
   const bool pressed = point.pressed;
   if (!pressed) {

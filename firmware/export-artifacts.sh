@@ -2,9 +2,26 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BOARD_PROFILE="${HEXE_BOARD_PROFILE:-esp_box_3}"
-BUILD_DIR="${BUILD_DIR:-${ROOT_DIR}/build}"
-EXPORT_DIR="${EXPORT_DIR:-${ROOT_DIR}/export}"
+BOARD_PROFILE="${HEXE_BOARD_PROFILE:-ha_voice_pe}"
+
+default_build_dir() {
+  case "$1" in
+    esp_box_3) echo "${ROOT_DIR}/build" ;;
+    ha_voice_pe) echo "${ROOT_DIR}/build-ha-voice-pe" ;;
+    *) echo "${ROOT_DIR}/build-$1" ;;
+  esac
+}
+
+default_export_dir() {
+  case "$1" in
+    esp_box_3) echo "${ROOT_DIR}/export" ;;
+    ha_voice_pe) echo "${ROOT_DIR}/export-ha-voice-pe" ;;
+    *) echo "${ROOT_DIR}/export-$1" ;;
+  esac
+}
+
+BUILD_DIR="${BUILD_DIR:-$(default_build_dir "${BOARD_PROFILE}")}"
+EXPORT_DIR="${EXPORT_DIR:-$(default_export_dir "${BOARD_PROFILE}")}"
 COMMON_EXPORT_DIR="${COMMON_EXPORT_DIR:-${ROOT_DIR}/export}"
 RUNTIME_FIRMWARE_DIR="${RUNTIME_FIRMWARE_DIR:-${ROOT_DIR}/../runtime/firmware}"
 UPDATE_RUNTIME_FIRMWARE="${UPDATE_RUNTIME_FIRMWARE:-1}"
@@ -85,7 +102,7 @@ mkdir -p "${COMMON_EXPORT_DIR}"
 cp "${APP_SRC}" "${COMMON_EXPORT_DIR}/${PROFILE_APP_FILENAME}"
 if [[ "${UPDATE_RUNTIME_FIRMWARE}" == "1" ]]; then
   cp "${APP_SRC}" "${RUNTIME_FIRMWARE_DIR}/${PROFILE_APP_FILENAME}"
-  if [[ "${BOARD_PROFILE}" == "esp_box_3" ]]; then
+  if [[ "${BOARD_PROFILE}" == "ha_voice_pe" ]]; then
     cp "${APP_SRC}" "${RUNTIME_FIRMWARE_DIR}/hexe_firmware.bin"
   fi
 fi
@@ -254,7 +271,7 @@ EOF
 )"
   printf '%s\n' "${MANIFEST_JSON}" > "${RUNTIME_FIRMWARE_DIR}/${PROFILE_MANIFEST_FILENAME}"
   printf '%s\n' "${MANIFEST_JSON}" > "${RUNTIME_FIRMWARE_DIR}/${APP_PROFILE_MANIFEST_FILENAME}"
-  if [[ "${FIRMWARE_APPLICATION_TYPE}" == "endpoint" && "${BOARD_PROFILE}" == "esp_box_3" ]]; then
+  if [[ "${FIRMWARE_APPLICATION_TYPE}" == "endpoint" && "${BOARD_PROFILE}" == "ha_voice_pe" ]]; then
     cp "${RUNTIME_FIRMWARE_DIR}/${PROFILE_MANIFEST_FILENAME}" "${RUNTIME_FIRMWARE_DIR}/manifest.json"
     cp "${RUNTIME_FIRMWARE_DIR}/${APP_PROFILE_MANIFEST_FILENAME}" "${RUNTIME_FIRMWARE_DIR}/manifest-endpoint.json"
   fi

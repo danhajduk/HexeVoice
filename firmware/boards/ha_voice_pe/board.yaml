@@ -158,7 +158,7 @@ vad:
     configurable: true
     adaptive_noise_floor: true
     frame_ms: 20
-    default_energy_threshold: 900
+    default_energy_threshold: 300
     default_pause_ms: 190
     silence_hold_ms: 1200
 adapters:

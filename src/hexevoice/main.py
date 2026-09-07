@@ -139,6 +139,7 @@ from hexevoice.endpoint.beacon import EndpointBeaconService
 from hexevoice.endpoint.ble_wifi_credentials import BleWifiCredentialStore
 from hexevoice.endpoint.ble_onboarding import EndpointBleOnboardingService
 from hexevoice.endpoint.discovery import EndpointDiscoveryService, EndpointDiscoveryUdpProtocol
+from hexevoice.endpoint.runtime_config import load_endpoint_runtime_config
 from hexevoice.endpoint.mdns import EndpointMdnsAdvertiser
 from hexevoice.endpoint.media import (
     EndpointBoardMediaAsset,
@@ -413,7 +414,9 @@ def endpoint_board_profile(endpoint_status: EndpointStatusResponse) -> str:
     endpoint_id = endpoint_status.endpoint_id.lower()
     if "pe" in endpoint_id or "ha_voice" in endpoint_id:
         return "ha_voice_pe"
-    return "esp_box_3"
+    if "box" in endpoint_id:
+        return "esp_box_3"
+    return "ha_voice_pe"
 
 
 def audio_quality_profile_for_endpoint(
@@ -443,11 +446,19 @@ def audio_quality_profile_for_endpoint(
     return resolved
 
 
+KNOWN_FIRMWARE_BOARD_PROFILES = (
+    "waveshare_s3_touch_lcd_1_85c_box_v2",
+    "ha_voice_pe",
+    "esp_box_3",
+)
+
+
 def firmware_profile_for_filename(filename: str) -> str:
-    normalized = filename.lower()
-    if "ha_voice_pe" in normalized:
-        return "ha_voice_pe"
-    return "esp_box_3"
+    normalized = Path(filename).name.lower()
+    for profile in KNOWN_FIRMWARE_BOARD_PROFILES:
+        if profile in normalized:
+            return profile
+    return "ha_voice_pe"
 
 
 def firmware_version_is_minimal(version: str | None) -> bool:
@@ -898,6 +909,15 @@ def create_app(
             endpoint = None
         return audio_quality_profile_for_endpoint(endpoint, audio_quality_profiles)
 
+    def endpoint_board_profile(endpoint_id: str) -> str | None:
+        try:
+            endpoint = endpoint_service.status(endpoint_id)
+        except HTTPException:
+            return None
+        capabilities = endpoint.capabilities if isinstance(endpoint.capabilities, dict) else {}
+        board_profile = capabilities.get("board_profile")
+        return str(board_profile) if board_profile else None
+
     voice_turn_pipeline = build_voice_turn_pipeline(
         settings=app_settings,
         assistant_service=assistant_service,
@@ -937,6 +957,8 @@ def create_app(
         max_active_session_s=app_settings.voice_session_max_active_s,
         privacy_mode_enabled=app_settings.voice_privacy_mode_enabled,
         wake_election_window_ms=app_settings.voice_wake_election_window_ms,
+        endpoint_runtime_config=load_endpoint_runtime_config(app_settings.resolved_endpoint_display_tuning_path()),
+        endpoint_board_profile_provider=endpoint_board_profile,
     )
     assistant_service.set_endpoint_command_dispatcher(QueuedEndpointCommandDispatcher(voice_session_manager))
     timer_announcement_service = TimerSucceededAnnouncementService(
@@ -1025,6 +1047,16 @@ def create_app(
 
         if supervisor_enabled:
             track_background_task(asyncio.create_task(loop()))
+
+        async def hot_reload_endpoint_runtime_config():
+            while True:
+                try:
+                    await voice_session_manager.push_reloaded_runtime_config_to_connected_endpoints()
+                except Exception:
+                    log.exception("Endpoint runtime config hot reload failed")
+                await asyncio.sleep(max(0.5, app_settings.endpoint_runtime_config_reload_interval_s))
+
+        track_background_task(asyncio.create_task(hot_reload_endpoint_runtime_config()))
 
         async def cleanup_generated_voice_artifacts_every_5_minutes():
             while True:
@@ -1926,6 +1958,18 @@ def create_app(
             reason=result.get("reason"),
         )
 
+    @app.post("/api/endpoint/restart", response_model=EndpointCommandResponse)
+    async def endpoint_restart(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_restart_command(endpoint_id=payload.endpoint_id)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.restart",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
     @app.post("/api/endpoint/playback/stop", response_model=EndpointCommandResponse)
     async def endpoint_playback_stop(payload: EndpointCommandRequest) -> EndpointCommandResponse:
         result = await voice_session_manager.push_playback_stop_command(endpoint_id=payload.endpoint_id)
@@ -2488,7 +2532,13 @@ def create_app(
                 handoff=pairing.handoff,
                 error="endpoint_pairing_identity_mismatch",
             )
-        if status.connection_state != "online":
+        status_application_type = str(
+            endpoint_capability_value(status, "application_type")
+            or endpoint_capability_value(status, "firmware", "application_type")
+            or ""
+        ).strip()
+        status_is_minimal = status_application_type == "recovery" or firmware_version_is_minimal(status.firmware_version)
+        if status.connection_state != "online" and not (status.connection_state == "stale" and status_is_minimal and status.ip_address):
             return EndpointBleFirmwareHandoffResponse(
                 ok=False,
                 status="failed",

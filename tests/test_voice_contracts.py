@@ -48,6 +48,12 @@ def test_voice_event_envelope_accepts_session_start():
     assert envelope.payload["audio_format"]["sample_rate_hz"] == 16000
 
 
+def test_voice_session_start_accepts_touch_wake_source():
+    payload = VoiceSessionStartPayload(wake_source="touch")
+
+    assert payload.wake_source == "touch"
+
+
 def test_voice_event_envelope_rejects_unknown_event_types():
     with pytest.raises(ValidationError):
         VoiceEventEnvelope(

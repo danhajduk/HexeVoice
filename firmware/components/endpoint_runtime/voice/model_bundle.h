@@ -19,6 +19,7 @@ struct ModelBundleCandidate {
   ModelBundleStorageKind storage_kind{ModelBundleStorageKind::kInternalBank};
   const char *model_api_version{nullptr};
   const char *partition_schema{nullptr};
+  const char *bundle_sha256{nullptr};
   const MicroWakeModelAsset *models{nullptr};
   size_t model_count{0};
 };
@@ -31,13 +32,18 @@ struct ModelBundleState {
   const char *previous_bank{nullptr};
   const char *active_bundle_id{nullptr};
   const char *active_version{nullptr};
+  const char *active_sha256{nullptr};
   bool embedded_fallback{true};
   bool rollback_available{false};
   bool staged_tested{false};
   bool internal_ab_available{false};
+  bool internal_single_available{false};
   bool sd_versioned_available{false};
+  bool sd_model_sets_available{false};
   size_t model_a_bytes{0};
   size_t model_b_bytes{0};
+  size_t model_bytes{0};
+  int fail_count{0};
 };
 
 void init_model_bundle_manager();

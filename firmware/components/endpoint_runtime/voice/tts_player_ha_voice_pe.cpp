@@ -36,7 +36,7 @@ constexpr int kPlaybackTaskStackBytes = 12288;
 constexpr int kPrewarmTaskStackBytes = 4096;
 constexpr int kTaskPriority = 4;
 constexpr int kSpeakerSampleRate = 48000;
-constexpr size_t kMaxTtsBytes = 512 * 1024;
+constexpr size_t kMaxTtsBytes = 4 * 1024 * 1024;
 constexpr size_t kHttpReadBufferBytes = 1024;
 constexpr int kPlaybackDmaDescNum = 3;
 constexpr size_t kPlaybackFrameCapacity = 96;
@@ -138,6 +138,7 @@ enum class WavHeaderParseResult {
 enum class StreamPlaybackResult {
   kPlayed,
   kFallback,
+  kTooLarge,
   kFailed,
 };
 
@@ -968,8 +969,8 @@ StreamPlaybackResult stream_http_wav(const std::string &url, const PlaybackReque
       *downloaded_bytes = total_bytes;
     }
     if (total_bytes > kMaxTtsBytes) {
-      ESP_LOGW(kTag, "Streaming TTS audio exceeded size limit");
-      result = StreamPlaybackResult::kFailed;
+      ESP_LOGW(kTag, "Streaming TTS audio exceeded size limit bytes=%u limit=%u", static_cast<unsigned>(total_bytes), static_cast<unsigned>(kMaxTtsBytes));
+      result = StreamPlaybackResult::kTooLarge;
       break;
     }
 
@@ -1077,6 +1078,7 @@ void playback_task(void *arg) {
     bool loaded = false;
     bool played = false;
     size_t byte_count = 0;
+    const char *failure_reason = request.file_path[0] == '\0' ? "download_failed" : "file_read_failed";
     if (wake_ding) {
       loaded = true;
       played = play_wake_ding(request);
@@ -1105,6 +1107,10 @@ void playback_task(void *arg) {
             loaded = fetch_audio(url, &audio);
             played = loaded && play_wav(audio, request);
             byte_count = audio.size();
+          } else if (streamed == StreamPlaybackResult::kTooLarge) {
+            failure_reason = "audio_too_large";
+            loaded = false;
+            played = false;
           } else {
             loaded = false;
             played = false;
@@ -1132,10 +1138,7 @@ void playback_task(void *arg) {
       hexe::board::resume_microphone_after_playback();
     }
     if (!loaded) {
-      send_playback_event(
-          "tts.playback.failed",
-          request,
-          request.file_path[0] == '\0' ? "download_failed" : "file_read_failed");
+      send_playback_event("tts.playback.failed", request, failure_reason);
     } else if (played && !request.loop) {
       send_playback_event("tts.playback.completed", request, nullptr, byte_count);
     } else if (!request.loop || !g_stop_requested) {

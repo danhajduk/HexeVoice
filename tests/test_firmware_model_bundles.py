@@ -116,5 +116,22 @@ def test_create_model_bundle_manifest_cli_writes_signed_manifest(tmp_path):
     assert manifest["compatibility"]["partition_schemas"] == ["s3-16m-recovery-v1"]
 
 
+def test_model_bundle_manifest_accepts_single_model_partition():
+    manifest = sign_model_bundle_manifest(
+        build_default_model_bundle_manifest(
+            model_dir=MODEL_DIR,
+            partition_schemas=["s3-16m-recovery-single-model-v1"],
+            required_partitions=["model"],
+            created_at_utc="2026-09-06T00:00:00Z",
+        ),
+        signing_key="test-model-key",
+    )
+
+    assert validate_model_bundle_manifest(manifest) == []
+    assert verify_model_bundle_signature(manifest, signing_key="test-model-key")
+    assert manifest["compatibility"]["partition_schemas"] == ["s3-16m-recovery-single-model-v1"]
+    assert manifest["compatibility"]["requires_partitions"] == ["model"]
+
+
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()

@@ -317,3 +317,5 @@ Task 303: Keep HA Voice PE voice upload on the stable buffered HTTP path until a
 Task 304: Tighten HA Voice PE button wake readiness gating and voice-session diagnostics - Completed on 09/06/2026 10:16
 Task 295: Integrate HexeVoice node-side onboarding UI/backend with Core pairing sessions and fallback scanning - Completed on 09/06/2026 20:59
 Task 310: Add layered Waveshare 1.85 UI renderer using idle and active backgrounds, status sprites, procedural icons, and procedural animations - Completed on 09/06/2026 21:03
+Task 305: Physically validate HA Voice PE full firmware button wake, wake word, advisory VAD finalization, HTTP upload, TTS playback, and serial diagnostics - Completed on 09/06/2026 21:07
+Task 311: Add S3 16 MiB recovery single-model partition schema and move Waveshare 1.85 to it after clean-flash validation - Completed on 09/06/2026 21:10
