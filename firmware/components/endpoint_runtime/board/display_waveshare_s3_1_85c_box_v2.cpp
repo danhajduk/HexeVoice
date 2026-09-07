@@ -9,6 +9,7 @@
 #include <ctime>
 
 #include "app_state.h"
+#include "board/audio.h"
 #include "board/pins.h"
 #include "board/storage.h"
 #include "board/waveshare_s3_1_85c_bus.h"
@@ -413,6 +414,33 @@ void draw_wifi_icon(int center_x, int center_y, bool connected, int rssi) {
   }
 }
 
+bool mic_sampling_icon_active(const hexe::AppState &state) {
+  return state.phase == hexe::AppPhase::kIdle && !state.muted && !state.audio_streaming &&
+      !state.tts_playback_active && !state.mic_paused_for_playback && hexe::board::audio_input_ready();
+}
+
+void draw_mic_sampling_icon(int center_x, int center_y, bool active) {
+  if (!active) {
+    return;
+  }
+  constexpr uint16_t kCyan = 0x07FF;
+  constexpr uint16_t kWhiteCyan = 0xE7FF;
+  constexpr uint16_t kShadow = 0x0000;
+
+  draw_blended_disc(center_x, center_y + 4, 16, kCyan, 28);
+  draw_blended_arc(center_x, center_y - 1, 12, 140, 80, 3, kCyan, 220);
+  draw_blended_arc(center_x, center_y - 1, 15, 146, 68, 2, kCyan, 80);
+  draw_thick_line(center_x, center_y + 10, center_x, center_y + 15, kCyan, 2);
+  draw_thick_line(center_x - 6, center_y + 15, center_x + 6, center_y + 15, kCyan, 2);
+  fill_rect(center_x - 4, center_y - 9, 8, 16, kShadow);
+  draw_disc(center_x, center_y - 9, 4, kShadow);
+  draw_disc(center_x, center_y + 7, 4, kShadow);
+  fill_rect(center_x - 3, center_y - 9, 6, 16, kWhiteCyan);
+  draw_disc(center_x, center_y - 9, 3, kWhiteCyan);
+  draw_disc(center_x, center_y + 7, 3, kWhiteCyan);
+  draw_blended_disc(center_x + 2, center_y - 4, 2, kCyan, 170);
+}
+
 void draw_clock_hand(int cx, int cy, int radius, int numerator, int denominator, uint16_t color, int thickness) {
   if (denominator <= 0 || radius <= 0) {
     return;
@@ -709,6 +737,7 @@ int idle_clock_overlay_signature(const hexe::AppState &state, const char *asset_
   }
   int signature = (state.wifi_connected ? 1 : 0) * 1000000;
   signature += wifi_strength_bars(state.wifi_rssi) * 100000;
+  signature += mic_sampling_icon_active(state) ? 10000 : 0;
   if (!hexe::system::clock_synced()) {
     return signature;
   }
@@ -938,6 +967,7 @@ void draw_centered_date_text(const char *date) {
 
 void draw_top_bar_icons(const hexe::AppState &state) {
   draw_wifi_icon(127, 56, state.wifi_connected, state.wifi_rssi);
+  draw_mic_sampling_icon(153, 56, mic_sampling_icon_active(state));
 }
 
 void draw_second_orbit_dot(const std::tm &local) {

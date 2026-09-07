@@ -41,7 +41,9 @@ Recommended overlay regions for `idle.png`:
   `(233,59)`
 - Date capsule: `x=136, y=250, w=88, h=30`
 - Date text center: `(180,265)`
-- Date format: `MM/DD`
+- Date format: `MM-DD`
+- Draw Wi-Fi and active microphone sampling icons procedurally in the status
+  rail.
 - Draw order: base image, clock hands, date text, status icons.
 
 ### Listen
