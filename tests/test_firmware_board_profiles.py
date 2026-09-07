@@ -160,7 +160,7 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "board/buttons_boot_only.cpp",
         "board/display_waveshare_p4_7b.cpp",
         "board/led_ring.cpp",
-        "board/storage_nvs_only.cpp",
+        "board/storage_waveshare_p4_7b.cpp",
         "board/touch.cpp",
         "board/wifi.cpp",
         "voice/tts_player.cpp",

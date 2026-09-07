@@ -204,11 +204,11 @@ adapters:
     - board/buttons_boot_only.cpp
     - board/display_waveshare_p4_7b.cpp
     - board/led_ring.cpp
-    - board/storage_nvs_only.cpp
+    - board/storage_waveshare_p4_7b.cpp
     - board/touch.cpp
     - board/wifi.cpp
     - voice/tts_player.cpp
-  notes: Display, GT911 touch, ES7210 microphone capture, and ES8311 speaker playback use the Waveshare BSP hardware paths. Hosted Wi-Fi uses ESP-Hosted over the onboard ESP32-C6. SD model sets remain an explicit no-op adapter until that hardware slice is implemented.
+  notes: Display, GT911 touch, ES7210 microphone capture, ES8311 speaker playback, and microSD use the Waveshare BSP hardware paths. Hosted Wi-Fi uses ESP-Hosted over the onboard ESP32-C6. A missing microSD card is reported as unavailable and does not block endpoint boot.
 controls:
   - name: boot
     kind: button
