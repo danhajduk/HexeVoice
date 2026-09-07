@@ -266,13 +266,16 @@ def test_p4_build_enables_esp32_c6_hosted_wifi():
 
     assert 'espressif/esp_wifi_remote:' in manifest
     assert 'version: "==1.6.4"' in manifest
+    assert 'if: "idf_version <6.0"\n        version: "0.14.*"' in manifest
     assert 'espressif/esp_hosted:' in manifest
     assert 'version: ">=2.11,<3.0"' in manifest
+    assert 'if: "idf_version <6.0"\n        version: "1.4.*"' in manifest
     assert "CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y" in build_script
     assert "CONFIG_SLAVE_IDF_TARGET_ESP32C6=y" in build_script
     assert "CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y" in build_script
     assert "CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y" in build_script
     assert "P4 hosted Wi-Fi requires ESP32-C6 remote transport" in build_script
+    assert "rev1 P4 hosted Wi-Fi uses the Waveshare legacy stack" in build_script
 
 
 def test_wifi_disconnect_logging_keeps_credentials_private():

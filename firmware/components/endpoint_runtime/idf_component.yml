@@ -31,10 +31,20 @@ dependencies:
       - if: "target in [esp32p4]"
   espressif/esp_wifi_remote:
     version: "==1.6.4"
+    matches:
+      - if: "idf_version >=6.0"
+        version: "==1.6.4"
+      - if: "idf_version <6.0"
+        version: "0.14.*"
     rules:
       - if: "target in [esp32p4]"
   espressif/esp_hosted:
     version: ">=2.11,<3.0"
+    matches:
+      - if: "idf_version >=6.0"
+        version: ">=2.11,<3.0"
+      - if: "idf_version <6.0"
+        version: "1.4.*"
     rules:
       - if: "target in [esp32p4]"
   lvgl/lvgl:
