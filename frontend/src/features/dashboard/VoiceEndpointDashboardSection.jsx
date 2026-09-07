@@ -342,6 +342,12 @@ function endpointDisplayName(endpointStatus) {
   return endpointStatus?.display_name || provisioning.display_name || "none";
 }
 
+function endpointPlacementRoom(endpointStatus) {
+  const provisioning = endpointCapabilities(endpointStatus).provisioning || {};
+  const displayName = endpointStatus?.display_name || provisioning.display_name || "";
+  return endpointStatus?.zone_id || displayName || endpointStatus?.endpoint_id || "";
+}
+
 function endpointHardwareId(endpointStatus) {
   const identity = endpointCapabilities(endpointStatus).identity || {};
   return endpointStatus?.hardware_id || identity.hardware_id || "unknown";
@@ -3378,15 +3384,19 @@ export function VoiceEndpointDashboardSection({
       setActionMessage("Placement calibration skipped: endpoint is not connected.");
       return;
     }
-    if (!placementRoom.trim()) {
+    const calibrationRoom = placementRoom.trim() || endpointPlacementRoom(selectedEndpointStatus);
+    if (!calibrationRoom) {
       setActionMessage("Placement calibration needs a room.");
       return;
+    }
+    if (!placementRoom.trim()) {
+      setPlacementRoom(calibrationRoom);
     }
     setPlacementPassiveBusy(true);
     try {
       const result = await startVoicePlacementCalibration({
         endpointId,
-        room: placementRoom,
+        room: calibrationRoom,
         zone: placementZone,
         durationHours: 24,
         sampleIntervalSeconds: 600,
