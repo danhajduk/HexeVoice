@@ -84,6 +84,7 @@ require_file "${PARTITION_SRC}"
 require_file "${OTA_DATA_SRC}"
 require_file "${APP_SRC}"
 require_file "${PROJECT_DESC_SRC}"
+require_file "${FLASH_ARGS_SRC}"
 require_file "${PROVISIONING_CSV_TOOL_SRC}"
 require_file "${GENERATED_BOARD_CONFIG_SRC}"
 
@@ -111,9 +112,7 @@ if [[ -f "${ELF_SRC}" ]]; then
   cp "${ELF_SRC}" "${EXPORT_DIR}/hexe_firmware.elf"
 fi
 
-if [[ -f "${FLASH_ARGS_SRC}" ]]; then
-  cp "${FLASH_ARGS_SRC}" "${EXPORT_DIR}/flasher_args.json"
-fi
+cp "${FLASH_ARGS_SRC}" "${EXPORT_DIR}/flasher_args.json"
 
 VERSION="$(awk -F'"' '/"project_version"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
 TARGET="$(awk -F'"' '/"target"/ {print $4; exit}' "${PROJECT_DESC_SRC}")"
@@ -178,6 +177,36 @@ BOARD_SUPPORT_STATUS="${BOARD_SUPPORT_STATUS:-unknown}"
 APP_SIZE_BYTES="$(stat -c '%s' "${APP_SRC}")"
 APP_SHA256="$(sha256sum "${APP_SRC}" | awk '{print $1}')"
 
+mapfile -t FLASH_METADATA < <(python3 - "${FLASH_ARGS_SRC}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+print(payload["extra_esptool_args"]["chip"])
+print(payload["flash_settings"]["flash_mode"])
+print(payload["flash_settings"]["flash_size"])
+print(payload["flash_settings"]["flash_freq"])
+print(payload["bootloader"]["offset"])
+print(payload["partition-table"]["offset"])
+print(payload["otadata"]["offset"])
+print(payload["app"]["offset"])
+PY
+)
+if [[ "${#FLASH_METADATA[@]}" -ne 8 ]]; then
+  echo "Invalid ESP-IDF flash metadata: ${FLASH_ARGS_SRC}" >&2
+  exit 1
+fi
+FLASH_CHIP="${FLASH_METADATA[0]}"
+FLASH_MODE="${FLASH_METADATA[1]}"
+FLASH_SIZE="${FLASH_METADATA[2]}"
+FLASH_FREQ="${FLASH_METADATA[3]}"
+BOOTLOADER_OFFSET="${FLASH_METADATA[4]}"
+PARTITION_TABLE_OFFSET="${FLASH_METADATA[5]}"
+OTA_DATA_OFFSET="${FLASH_METADATA[6]}"
+APP_OFFSET="${FLASH_METADATA[7]}"
+
 write_bin_checksums "${EXPORT_DIR}" SHA256SUMS
 write_bin_checksums "${COMMON_EXPORT_DIR}" SHA256SUMS.profiles
 
@@ -192,13 +221,13 @@ target=${TARGET}
 board_profile=${BOARD_PROFILE}
 created_at_utc=${CREATED_AT}
 bootloader=bootloader.bin
-bootloader_offset=0x0
+bootloader_offset=${BOOTLOADER_OFFSET}
 partition_table=partition-table.bin
-partition_table_offset=0x8000
+partition_table_offset=${PARTITION_TABLE_OFFSET}
 ota_data=ota_data_initial.bin
-ota_data_offset=0xd000
+ota_data_offset=${OTA_DATA_OFFSET}
 app=hexe_firmware.bin
-app_offset=0x10000
+app_offset=${APP_OFFSET}
 profile_app=${PROFILE_APP_FILENAME}
 application_type=${FIRMWARE_APPLICATION_TYPE}
 idf_target=${BOARD_IDF_TARGET}
@@ -308,9 +337,38 @@ for artifact in bootloader.bin partition-table.bin ota_data_initial.bin hexe_fir
   fi
 done
 
+mapfile -t FLASH_METADATA < <(python - flasher_args.json <<'PY'
+import json
+
+with open("flasher_args.json", "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+print(payload["extra_esptool_args"]["chip"])
+print(payload["flash_settings"]["flash_mode"])
+print(payload["flash_settings"]["flash_size"])
+print(payload["flash_settings"]["flash_freq"])
+print(payload["bootloader"]["offset"])
+print(payload["partition-table"]["offset"])
+print(payload["otadata"]["offset"])
+print(payload["app"]["offset"])
+PY
+)
+if [[ "${#FLASH_METADATA[@]}" -ne 8 ]]; then
+  echo "Invalid ESP-IDF flash metadata: ${SCRIPT_DIR}/flasher_args.json" >&2
+  exit 1
+fi
+FLASH_CHIP="${FLASH_METADATA[0]}"
+FLASH_MODE="${FLASH_METADATA[1]}"
+FLASH_SIZE="${FLASH_METADATA[2]}"
+FLASH_FREQ="${FLASH_METADATA[3]}"
+BOOTLOADER_OFFSET="${FLASH_METADATA[4]}"
+PARTITION_TABLE_OFFSET="${FLASH_METADATA[5]}"
+OTA_DATA_OFFSET="${FLASH_METADATA[6]}"
+APP_OFFSET="${FLASH_METADATA[7]}"
+
 FLASH_ARGS=(
-  0x0 bootloader.bin
-  0x8000 partition-table.bin
+  "${BOOTLOADER_OFFSET}" bootloader.bin
+  "${PARTITION_TABLE_OFFSET}" partition-table.bin
 )
 
 if [[ -f "${PROVISIONING_ENV}" ]]; then
@@ -329,15 +387,18 @@ else
 fi
 
 FLASH_ARGS+=(
-  0xd000 ota_data_initial.bin
-  0x10000 hexe_firmware.bin
+  "${OTA_DATA_OFFSET}" ota_data_initial.bin
+  "${APP_OFFSET}" hexe_firmware.bin
 )
 
 python "${IDF_PATH}/components/esptool_py/esptool/esptool.py" \
-  --chip esp32s3 \
+  --chip "${FLASH_CHIP}" \
   -p "${PORT}" \
   -b "${BAUD}" \
   write_flash -z \
+  --flash-mode "${FLASH_MODE}" \
+  --flash-freq "${FLASH_FREQ}" \
+  --flash-size "${FLASH_SIZE}" \
   "${FLASH_ARGS[@]}"
 EOF
 chmod +x "${EXPORT_DIR}/flash-esptool.sh"

@@ -1811,6 +1811,19 @@ def test_firmware_build_exports_profile_specific_ota_artifacts():
     assert '"signature_scope": "ota_payload_signed_by_backend_at_delivery"' in export_source
 
 
+def test_firmware_export_flash_helper_uses_idf_flash_metadata():
+    export_source = FIRMWARE_EXPORT_SCRIPT.read_text()
+
+    assert 'payload["extra_esptool_args"]["chip"]' in export_source
+    assert 'payload["bootloader"]["offset"]' in export_source
+    assert '"${BOOTLOADER_OFFSET}" bootloader.bin' in export_source
+    assert '--chip "${FLASH_CHIP}"' in export_source
+    assert '--flash-mode "${FLASH_MODE}"' in export_source
+    assert "bootloader_offset=${BOOTLOADER_OFFSET}" in export_source
+    assert "--chip esp32s3" not in export_source
+    assert "0x0 bootloader.bin" not in export_source
+
+
 def test_audio_probe_firmware_stays_transport_focused():
     probe_source = FIRMWARE_AUDIO_PROBE_RUNTIME.read_text()
     probe_cmake_source = Path("firmware/components/audio_probe_runtime/CMakeLists.txt").read_text()

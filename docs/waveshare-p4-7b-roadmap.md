@@ -170,6 +170,8 @@ Select the detected ESP32-P4 silicon family with
 `HEXE_P4_SILICON_PROFILE=rev1_3` or `HEXE_P4_SILICON_PROFILE=rev3_x` when
 running `firmware/build.sh`. The 7B profile defaults to `rev1_3`; switching the
 parameter invalidates a cached P4 `sdkconfig` automatically.
+Exported flash helpers consume ESP-IDF's `flasher_args.json`, including the P4
+bootloader offset at `0x2000`, instead of assuming the ESP32-S3 `0x0` layout.
 
 Tasks:
 
