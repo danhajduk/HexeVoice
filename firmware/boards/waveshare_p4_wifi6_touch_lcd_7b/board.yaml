@@ -206,9 +206,9 @@ adapters:
     - board/led_ring.cpp
     - board/storage_nvs_only.cpp
     - board/touch.cpp
-    - board/wifi_noop.cpp
+    - board/wifi.cpp
     - voice/tts_player_noop.cpp
-  notes: Experimental display and GT911 touch bring-up use the Waveshare BSP direct hardware paths. Audio, SD model sets, and hosted Wi-Fi remain explicit no-op adapters until their hardware slices are implemented.
+  notes: Display and GT911 touch use the Waveshare BSP direct hardware paths. Hosted Wi-Fi uses ESP-Hosted over the onboard ESP32-C6. Audio and SD model sets remain explicit no-op adapters until their hardware slices are implemented.
 controls:
   - name: boot
     kind: button

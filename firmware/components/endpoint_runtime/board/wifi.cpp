@@ -79,7 +79,7 @@ void init_wifi() {
   state.phase = hexe::AppPhase::kWiFiConnecting;
 
   if (!has_wifi_credentials()) {
-    ESP_LOGW(kTag, "Wi-Fi credentials are empty in firmware/components/endpoint_runtime/secrets/wifi_secrets.h");
+    ESP_LOGW(kTag, "Wi-Fi credentials are not configured");
     return;
   }
 
@@ -115,7 +115,7 @@ void init_wifi() {
   ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_config));
   ESP_ERROR_CHECK(esp_wifi_start());
 
-  ESP_LOGI(kTag, "Wi-Fi init complete, waiting for connection to SSID '%s'", hexe::system::wifi_ssid());
+  ESP_LOGI(kTag, "Wi-Fi init complete, waiting for configured network");
 }
 
 void reconnect_wifi() {

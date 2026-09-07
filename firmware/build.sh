@@ -236,6 +236,9 @@ CONFIG_CACHE_L2_CACHE_LINE_128B=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 CONFIG_FREERTOS_HZ=1000
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+CONFIG_ESP_WIFI_REMOTE_ENABLED=y
+CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
 # CONFIG_LV_BUILD_EXAMPLES is not set
 # CONFIG_LV_BUILD_DEMOS is not set
 EOF
@@ -298,6 +301,14 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
   if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
     grep -Eq "^CONFIG_LV_BUILD_(EXAMPLES|DEMOS)=y$" "${sdkconfig_path}"; then
     echo "Refreshing generated sdkconfig for ${profile}; P4 display build disables LVGL examples and demos"
+    rm -f "${sdkconfig_path}"
+    return
+  fi
+  if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
+    { ! grep -q "^CONFIG_ESP_WIFI_REMOTE_ENABLED=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_SLAVE_IDF_TARGET_ESP32C6=y$" "${sdkconfig_path}"; }; then
+    echo "Refreshing generated sdkconfig for ${profile}; P4 hosted Wi-Fi requires ESP32-C6 remote transport"
     rm -f "${sdkconfig_path}"
     return
   fi

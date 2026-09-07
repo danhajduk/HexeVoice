@@ -178,13 +178,16 @@ supported.
 The P4 profile now uses the BSP-backed GT911 touch adapter. The BSP probes
 `0x5d` and `0x14`, applies the board's default coordinate mirroring, and feeds
 touch actions into Hexe's existing mute, volume, and page-navigation controls.
+The profile also uses the shared Hexe station adapter through the onboard
+ESP32-C6. It pins Waveshare's IDF 6-compatible `esp_wifi_remote == 1.2.5` and
+`esp_hosted 1.4.*` pair, with ESP-Hosted owning the board's SDIO/control pins.
 
 Tasks:
 
 - Add a P4-specific sdkconfig defaults layer instead of mutating S3 defaults.
 - Pull in the managed BSP dependency:
   `waveshare/esp32_p4_wifi6_touch_lcd_7b == 3.0.1`.
-- Add hosted Wi-Fi dependencies only for P4:
+- Add hosted Wi-Fi dependencies only for P4 (implemented):
   `espressif/esp_wifi_remote` and `espressif/esp_hosted`.
 - Add LVGL 9 only when the display adapter needs it; upstream pins LVGL to
   `9.5.0` with the BSP-managed adapter line.

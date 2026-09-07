@@ -162,7 +162,7 @@ def test_buildable_board_profiles_declare_existing_adapter_sources():
         "board/led_ring.cpp",
         "board/storage_nvs_only.cpp",
         "board/touch.cpp",
-        "board/wifi_noop.cpp",
+        "board/wifi.cpp",
         "voice/tts_player_noop.cpp",
     ]
     ws185 = profiles["waveshare_s3_touch_lcd_1_85c_box_v2"]
@@ -256,6 +256,21 @@ def test_p4_build_supports_explicit_silicon_profiles():
     assert "CONFIG_ESP32P4_REV_MIN_300=y" in build_script
     assert "Unsupported HEXE_P4_SILICON_PROFILE" in build_script
     assert "P4 silicon profile changed to ${P4_SILICON_PROFILE}" in build_script
+
+
+def test_p4_build_enables_esp32_c6_hosted_wifi():
+    build_script = FIRMWARE_BUILD_SCRIPT.read_text(encoding="utf-8")
+    manifest = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/idf_component.yml"
+    ).read_text(encoding="utf-8")
+
+    assert 'espressif/esp_wifi_remote:' in manifest
+    assert 'version: "==1.2.5"' in manifest
+    assert 'espressif/esp_hosted:' in manifest
+    assert 'version: "1.4.*"' in manifest
+    assert "CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y" in build_script
+    assert "CONFIG_SLAVE_IDF_TARGET_ESP32C6=y" in build_script
+    assert "P4 hosted Wi-Fi requires ESP32-C6 remote transport" in build_script
 
 
 def test_p4_display_falls_back_to_dcs_display_on_command():
