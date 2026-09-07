@@ -3257,3 +3257,100 @@ Original task details:
 - Acceptance: One button-triggered and one wake-triggered physical PE turn complete end-to-end.
 - Acceptance: Serial logs show specific not-ready reasons for rejected button/wake starts.
 - Acceptance: Full runtime BLE remains disabled in normal operation while minimal/recovery BLE provisioning still builds.
+
+## Task 306
+Original task details:
+- User request: Add a future task for using the dedicated `config` partition for provisioning data.
+- Goal: Move endpoint provisioning/settings into the dedicated `config` NVS partition and store credentials encrypted at rest.
+- Audit all firmware readers/writers that currently use the default `nvs` partition and `hexe_settings` namespace for endpoint id, display name, backend host/ports, TLS flag, Wi-Fi SSID/password, provisioning flag, BLE onboarding session id, BLE device id, volume, mute, and VAD settings.
+- Introduce a shared settings storage wrapper so endpoint, minimal/recovery, and audio probe firmware use the same partition/namespace/key contract.
+- Use `nvs_open_from_partition` or equivalent explicit partition access for the `config` partition.
+- Enable and validate NVS encryption for credential-bearing values, including first-boot key generation/provisioning behavior and recovery-mode access to the same encrypted store.
+- Provide a migration path from the existing default `nvs` partition without erasing working devices.
+- Preserve redaction boundaries: never log plaintext Wi-Fi passwords or decrypted BLE credential payloads.
+- Acceptance: Minimal/recovery can write provisioning data and full endpoint can read it from the encrypted `config` partition after reboot/OTA.
+- Acceptance: Existing devices with provisioning in default `nvs` are migrated or safely continue to boot.
+- Acceptance: Tests cover partition selection, encryption configuration, migration, reset behavior, and secret redaction.
+
+## Task 308
+Original task details:
+- User request: Add a future task for storing some WAV sound files on the firmware, especially for the Home Assistant Voice PE device.
+- Goal: Add a HA Voice PE internal sound cache using the existing `storage` SPIFFS partition so the PE can keep small local WAV cues, alarms, and reusable endpoint sound effects without an SD card.
+- Mount the internal `storage` SPIFFS partition for PE builds and expose sound-directory helpers through the existing board storage interface.
+- Keep the PE board profile honest: no SD-card capability, but report internal media/sound cache availability separately in heartbeat capabilities.
+- Reuse the existing endpoint playback path for local WAV files, including mute handling, stop/playback lifecycle events, looping alarms, and microphone pause or interrupt-only modes.
+- Extend media transfer or add an equivalent endpoint command/API path that can download validated sound assets into internal storage with size limits, SHA-256 validation, overwrite controls, and safe filenames.
+- Preserve backend-hosted `audio_url` playback and procedural tones as fallbacks; do not require local storage for dynamic TTS or large audio.
+- Account for the current PE partition budget: `s3-16m-recovery-v1` reserves 3 MiB for `storage`, so this should target short UI sounds rather than long recordings or large music assets.
+- Avoid storing secrets, raw microphone recordings, or user voice captures in the sound cache.
+- Acceptance: HA Voice PE can store and play at least one local WAV cue after reboot without SD media.
+- Acceptance: `/api/endpoint/beep` or an equivalent command can prefer a cached local PE sound when present and fall back to backend-hosted audio when absent.
+- Acceptance: Heartbeat capabilities distinguish SD media unavailable from internal PE sound-cache availability.
+- Acceptance: Tests cover partition mounting, filename/size/checksum validation, local playback routing, fallback behavior, and storage-full/error reporting.
+
+## Task 309
+Original task details:
+- User request: Add a future TODO for putting adjustable endpoint caps and tuning values into the config partition.
+- Goal: Add versioned endpoint runtime configuration in encrypted `config` NVS so future firmware can adjust operational limits without reflashing.
+- Store the runtime config with a schema/version marker, compiled safe defaults, per-key validation, and hard firmware maximums so bad config cannot exhaust memory or destabilize the device.
+- Use the dedicated encrypted `config` NVS partition introduced by the provisioning/settings config work; keep plaintext secrets out of logs and diagnostics.
+- Include tunable audio/TTS caps such as `max_tts_download_bytes`, `tts_download_timeout_ms`, `tts_http_idle_timeout_ms`, `max_voice_upload_bytes`, `max_capture_ms`, and `audio_upload_timeout_ms`.
+- Include VAD and capture tuning such as `vad_start_threshold`, `vad_continue_threshold`, `vad_silence_hold_ms`, `vad_start_voice_frames`, and `post_tts_mic_ignore_ms`.
+- Include user experience settings such as `volume_percent`, `muted`, `led_brightness`, and `wake_ding_enabled`.
+- Include wake/listen behavior such as `wake_word_enabled`, `button_wake_enabled`, `followup_listen_timeout_ms`, and `wake_election_timeout_ms`.
+- Include network/runtime behavior such as `backend_http_timeout_ms`, `ws_reconnect_min_ms`, `ws_reconnect_max_ms`, and `heartbeat_interval_ms`.
+- Include provisioning/BLE runtime knobs such as `ble_enabled_when_provisioned`, `pairing_scan_seconds`, and `pairing_session_ttl_seconds`.
+- Include diagnostics controls such as `serial_log_level`, `voice_metrics_log_enabled`, and `remote_log_enabled`.
+- Do not make board pinouts, partition sizes, I2S bus shape, PSRAM mode, or task stack sizes runtime-configurable; those remain board-profile/build-time values.
+- Expose these settings through a user-friendly Voice node UI/API as per-endpoint tuning, push updates to connected devices over the command WebSocket, and persist acknowledged values on-device.
+- Acceptance: Firmware boots with defaults when no runtime config exists, validates and clamps stored values, and logs a redacted config summary.
+- Acceptance: Backend/UI can read, update, push, and confirm per-endpoint runtime config without reflashing firmware.
+- Acceptance: Tests cover default loading, NVS persistence, validation/clamping, redaction, command delivery, rollback/reset behavior, and oversized cap rejection.
+
+## Task 310
+Original task details:
+- User request: Implement the new layered UI style for the Waveshare 1.85 round display.
+- Goal: Replace the Waveshare full-status-picture runtime path with a layered renderer that uses one idle background, one non-idle active background, status sprites, procedural icons, and procedural animations.
+- Keep the existing full-screen status pictures under the board asset `picture` folder for fallback and visual reference.
+- Keep `idle.rgb565` as the idle/clock background.
+- Use `active.rgb565` as the shared non-idle background for listening, thinking, replying, updating, pairing, connecting, and error states.
+- Load status sprites from `/sdcard/hexe/sprites/<status>.rgb565` with matching `/sdcard/hexe/sprites/<status>.alpha8` masks.
+- Draw status sprites centered in the round display unless a state-specific overlay region is required.
+- Keep clock hands, date, Wi-Fi/status icons, OTA progress, listening pulse, thinking arcs/dots, and speaking waveform procedural.
+- Preserve current full-screen status-picture fallback when layered assets are missing or invalid.
+- Acceptance: Idle renders from `idle.rgb565` with procedural clock/date/icons.
+- Acceptance: Non-idle states render from `active.rgb565` plus the matching status sprite and procedural animation.
+- Acceptance: State changes between non-idle statuses do not require a full-screen SD read when the active background is already cached.
+- Acceptance: Missing layered assets fall back to existing full-screen status pictures or procedural status frame.
+- Verification: Add/update firmware static tests for layered asset selection, sprite alpha loading, fallback behavior, and existing Waveshare animation dispatch.
+
+## Task 311
+Original task details:
+- User request: Implement the brainstormed S3 16 MiB recovery partition direction.
+- Goal: Add a new S3 16 MiB recovery partition schema with a single 1 MiB model partition, factory recovery preserved, dual 4 MiB OTA endpoint slots, 512 KiB config, 512 KiB coredump, and remaining flash assigned to storage.
+- Add a new partition CSV, tentatively named `s3_16m_recovery_single_model_v1.csv`.
+- The intended layout is: `nvs` 16K, `otadata` 8K, `phy_init` 4K, `factory` 2M, `ota_0` 4M, `ota_1` 4M, `model` 1M, `config` 512K, `coredump` 512K, and `storage` with the remaining space.
+- Keep existing `s3-16m-recovery-v1` available for already-built devices and for rollback testing.
+- Update partition validation, board profile schema/docs, firmware build/export metadata, and OTA compatibility checks to recognize the new schema.
+- Move only the Waveshare 1.85 profile to the new schema after validating the clean-flash path.
+- Document that changing the partition table requires clean serial flash or a controlled migration path, not normal OTA-only migration.
+- Acceptance: The new partition CSV validates and reports the expected storage size.
+- Acceptance: Waveshare 1.85 builds against the new schema with factory recovery and dual endpoint OTA slots intact.
+- Acceptance: Existing S3 16 MiB recovery schema users remain buildable.
+- Verification: Run board profile validation, partition validation, and targeted firmware board/profile tests.
+
+## Task 312
+Original task details:
+- User request: SD cards will store model sets under `/sdcard/hexe/model_sets`.
+- Goal: Add SD model-set discovery, validation, and internal single-model cache behavior for S3 16 MiB devices using the new single `model` partition.
+- Use `/sdcard/hexe/model_sets/<model_set_id>/` as the SD staging and source directory for model bundles.
+- On boot, try the current internal `model` partition first.
+- If the internal model is missing or invalid, discover valid SD model sets, verify manifest/signature/hashes, and cache the selected set into the internal `model` partition.
+- If model load fails, retry twice, then enter/report `model_error` while keeping Wi-Fi, backend, OTA, BLE recovery/provisioning, and diagnostics available.
+- Remove embedded model fallback from the product policy for boards using the new single-model schema once SD/internal model loading is proven.
+- Do not overwrite a known-good internal model until the replacement SD model set is verified.
+- Store model metadata in the config partition, including version, SHA-256, source, fail count, and last model error, without logging sensitive values.
+- Acceptance: Firmware can load a valid SD model set from `/sdcard/hexe/model_sets`.
+- Acceptance: Firmware can cache a verified SD model set into the internal `model` partition and boot from it later.
+- Acceptance: Invalid/missing model data reaches `model_error` after bounded retries without breaking recovery/update access.
+- Verification: Add model-loader tests for SD discovery, hash/signature validation, cache activation, internal load retry, model error reporting, and no embedded fallback for the new product policy.

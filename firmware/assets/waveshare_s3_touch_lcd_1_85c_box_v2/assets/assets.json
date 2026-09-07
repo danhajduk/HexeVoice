@@ -1,24 +1,63 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_s3_touch_lcd_1_85c_box_v2",
-  "asset_library_version": "waveshare-185c-ui-20260906.1",
-  "updated_at": "2026-09-06T23:08:41.002426+00:00",
+  "asset_library_version": "waveshare-185c-ui-20260906.9",
+  "updated_at": "2026-09-07T03:42:56.631639+00:00",
   "assets": [
     {
-      "asset_id": "error_logo_palette",
+      "asset_id": "active",
       "media_type": "picture",
-      "filename": "error_logo_palette.rgb565",
-      "source_filename": "error_logo_palette.rgb565",
-      "role": "error_background",
-      "version": "2026.09.06.1",
+      "filename": "active.rgb565",
+      "source_filename": "active.rgb565",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "6b1b96381b00a59bb9446a30509b4027d7ced721efa091f6034fd2f8d5b3caaa",
-        "size_bytes": 259200
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "08fcf8b1172e367042ca1e375fe05120ebce8e0abb4e7584d857fac887912348"
+      }
+    },
+    {
+      "asset_id": "connecting",
+      "media_type": "picture",
+      "filename": "connecting.rgb565",
+      "source_filename": "connecting.rgb565",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "2cda5dfc78505f72e2b84d05fc386ddb22c3a3cf1d8fafe4852a9f6b51571144"
+      }
+    },
+    {
+      "asset_id": "error",
+      "media_type": "picture",
+      "filename": "error.rgb565",
+      "source_filename": "error.rgb565",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "6b1b96381b00a59bb9446a30509b4027d7ced721efa091f6034fd2f8d5b3caaa"
+      }
+    },
+    {
+      "asset_id": "idle",
+      "media_type": "picture",
+      "filename": "idle.rgb565",
+      "source_filename": "idle.rgb565",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "7f76c0a51ce9beb34d9f93d68e4d956648927d2e0523a29b1c7e21764a8c2d64"
       }
     },
     {
@@ -34,161 +73,340 @@
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
         "shape": "round",
-        "sha256": "11819a85eeb70bf36eb023c0573dd09e0ab7509cd291e231243ed1fd7ef67cfe",
-        "size_bytes": 259200
-      }
-    },
-    {
-      "asset_id": "idle_clock_face_logo_palette",
-      "media_type": "picture",
-      "filename": "idle_clock_face_logo_palette.rgb565",
-      "source_filename": "idle_clock_face_logo_palette.rgb565",
-      "role": "idle_logo_background",
-      "version": "2026.09.06.1",
-      "metadata": {
-        "width": 360,
-        "height": 360,
-        "pixel_format": "rgb565",
-        "byte_order": "little_endian",
-        "shape": "round",
         "sha256": "69ed10f9ea8ab016a0f330580a223ef297ca402bc285b1e734f15d8470045f46",
         "size_bytes": 259200
       }
     },
     {
-      "asset_id": "idle_clock_face_status_palette",
+      "asset_id": "listening",
       "media_type": "picture",
-      "filename": "idle_clock_face_status_palette.rgb565",
-      "source_filename": "idle_clock_face_status_palette.rgb565",
-      "role": "idle_status_background",
-      "version": "2026.09.06.1",
+      "filename": "listening.rgb565",
+      "source_filename": "listening.rgb565",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "7f76c0a51ce9beb34d9f93d68e4d956648927d2e0523a29b1c7e21764a8c2d64",
-        "size_bytes": 259200
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "19416f027d037ce791cd54d2c539fab6dc29c86d1720f9f51d6a84bdbd2635d5"
       }
     },
     {
-      "asset_id": "listen_logo_palette",
+      "asset_id": "pairing",
       "media_type": "picture",
-      "filename": "listen_logo_palette.rgb565",
-      "source_filename": "listen_logo_palette.rgb565",
-      "role": "listening_background",
-      "version": "2026.09.06.1",
+      "filename": "pairing.rgb565",
+      "source_filename": "pairing.rgb565",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "936e89c6b3e890c9f5b5261de2aa13f9fb5193d8059038e93f4305a8ba24f5af",
-        "size_bytes": 259200
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "9a5b621f71416d3fa45d77e6c51fc4d48c779a663bc576a1060f28d66f81eaca"
       }
     },
     {
-      "asset_id": "min_fw_pairing_logo_palette",
+      "asset_id": "replying",
       "media_type": "picture",
-      "filename": "min_fw_pairing_logo_palette.rgb565",
-      "source_filename": "min_fw_pairing_logo_palette.rgb565",
-      "role": "pairing_active_background",
-      "version": "2026.09.06.1",
+      "filename": "replying.rgb565",
+      "source_filename": "replying.rgb565",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "9a5b621f71416d3fa45d77e6c51fc4d48c779a663bc576a1060f28d66f81eaca",
-        "size_bytes": 259200
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "5ec78b79daa207da2b2a4a0a7d0a48fc7a067e09b49460929acdea45e9b81df4"
       }
     },
     {
-      "asset_id": "min_fw_waiting_to_pair_logo_palette",
+      "asset_id": "thinking",
       "media_type": "picture",
-      "filename": "min_fw_waiting_to_pair_logo_palette.rgb565",
-      "source_filename": "min_fw_waiting_to_pair_logo_palette.rgb565",
-      "role": "pairing_wait_background",
-      "version": "2026.09.06.1",
+      "filename": "thinking.rgb565",
+      "source_filename": "thinking.rgb565",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "5b2c1ad0edb8bb57ac28db3ea20510f53304d87f4fb304b8c1ae43e076d70d1e",
-        "size_bytes": 259200
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "700b006abe80c3178c780fdedf2bcdcaf7dc049ebd591ba200f516283238d684"
       }
     },
     {
-      "asset_id": "ota_progress_logo_palette",
+      "asset_id": "updating",
       "media_type": "picture",
-      "filename": "ota_progress_logo_palette.rgb565",
-      "source_filename": "ota_progress_logo_palette.rgb565",
-      "role": "ota_background",
-      "version": "2026.09.06.1",
+      "filename": "updating.rgb565",
+      "source_filename": "updating.rgb565",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "67c64b82e7bd3719770f9e01c68955f31d8cc9ba44a43ee18c5b798a3ba08224",
-        "size_bytes": 259200
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "07d158fc816daac789d4007a889a36dda7746ff73cbc4fecb1e9751e1facda33"
       }
     },
     {
-      "asset_id": "talk_logo_palette",
+      "asset_id": "waiting_to_pair",
       "media_type": "picture",
-      "filename": "talk_logo_palette.rgb565",
-      "source_filename": "talk_logo_palette.rgb565",
-      "role": "speaking_background",
-      "version": "2026.09.06.1",
+      "filename": "waiting_to_pair.rgb565",
+      "source_filename": "waiting_to_pair.rgb565",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "ffb53073a49c130767f1d034ed76fa86499a19b60e04d8f04201f19dcd04b7ec",
-        "size_bytes": 259200
+        "width": 360,
+        "height": 360,
+        "size_bytes": 259200,
+        "sha256": "5b2c1ad0edb8bb57ac28db3ea20510f53304d87f4fb304b8c1ae43e076d70d1e"
       }
     },
     {
-      "asset_id": "think_logo_palette",
-      "media_type": "picture",
-      "filename": "think_logo_palette.rgb565",
-      "source_filename": "think_logo_palette.rgb565",
-      "role": "thinking_background",
-      "version": "2026.09.06.1",
+      "asset_id": "connecting_alpha",
+      "media_type": "sprite",
+      "filename": "connecting.alpha8",
+      "source_filename": "connecting.alpha8",
+      "role": "sprite_alpha_mask",
       "metadata": {
-        "width": 360,
-        "height": 360,
-        "pixel_format": "rgb565",
-        "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "53bf41030c51c50a03c90398bb080d155f1768df9af596dbf9c4b01ca209be3b",
-        "size_bytes": 259200
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "d2c174599291458a6411b63a7eaf2f6112ca49a8299bb0d84f6dcafe2e6ce232",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "connecting.rgb565"
       }
     },
     {
-      "asset_id": "work_logo_palette",
-      "media_type": "picture",
-      "filename": "work_logo_palette.rgb565",
-      "source_filename": "work_logo_palette.rgb565",
-      "role": "working_background",
-      "version": "2026.09.06.1",
+      "asset_id": "connecting_sprite",
+      "media_type": "sprite",
+      "filename": "connecting.rgb565",
+      "source_filename": "connecting.rgb565",
+      "role": "status_sprite",
       "metadata": {
-        "width": 360,
-        "height": 360,
         "pixel_format": "rgb565",
         "byte_order": "little_endian",
-        "shape": "round",
-        "sha256": "2cda5dfc78505f72e2b84d05fc386ddb22c3a3cf1d8fafe4852a9f6b51571144",
-        "size_bytes": 259200
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "0cfab1407d4c6389241a60ae249bd305cfd74818e560ba66a6decfd624fa32fe",
+        "paired_alpha": "connecting.alpha8"
+      }
+    },
+    {
+      "asset_id": "error_alpha",
+      "media_type": "sprite",
+      "filename": "error.alpha8",
+      "source_filename": "error.alpha8",
+      "role": "sprite_alpha_mask",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "2217bb55d1ae78f989a579ecae58bcfa201b727580e7b66311d20d70d7627a00",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "error.rgb565"
+      }
+    },
+    {
+      "asset_id": "error_sprite",
+      "media_type": "sprite",
+      "filename": "error.rgb565",
+      "source_filename": "error.rgb565",
+      "role": "status_sprite",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "7d842e8240e8c0c48004b956beff0c26d801d741185c7f781498ac69582bebb3",
+        "paired_alpha": "error.alpha8"
+      }
+    },
+    {
+      "asset_id": "listening_alpha",
+      "media_type": "sprite",
+      "filename": "listening.alpha8",
+      "source_filename": "listening.alpha8",
+      "role": "sprite_alpha_mask",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "7e4a45684b17528c8fb162d44f95d38b1e97b7bbebf29b6f42b31b44bec26cd8",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "listening.rgb565"
+      }
+    },
+    {
+      "asset_id": "listening_sprite",
+      "media_type": "sprite",
+      "filename": "listening.rgb565",
+      "source_filename": "listening.rgb565",
+      "role": "status_sprite",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "aa9312c39d64c6b7bf67798dce33b95124d981b8bcac77b7d54f4e6ca4330445",
+        "paired_alpha": "listening.alpha8"
+      }
+    },
+    {
+      "asset_id": "pairing_alpha",
+      "media_type": "sprite",
+      "filename": "pairing.alpha8",
+      "source_filename": "pairing.alpha8",
+      "role": "sprite_alpha_mask",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "9a3b239971c468c80537cc99bdf8785e25daa9ce401e800371ac05929e0dca4b",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "pairing.rgb565"
+      }
+    },
+    {
+      "asset_id": "pairing_sprite",
+      "media_type": "sprite",
+      "filename": "pairing.rgb565",
+      "source_filename": "pairing.rgb565",
+      "role": "status_sprite",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "182a27f85ca4a8c4e5e437ff2917ac9cfc44d9dd4250e8fdd25f7d7bbf928f61",
+        "paired_alpha": "pairing.alpha8"
+      }
+    },
+    {
+      "asset_id": "replying_alpha",
+      "media_type": "sprite",
+      "filename": "replying.alpha8",
+      "source_filename": "replying.alpha8",
+      "role": "sprite_alpha_mask",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "cc668548ca32841479a6b47e60d0baa97dc7da10c0656e80eead3f6eeb3fe1b7",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "replying.rgb565"
+      }
+    },
+    {
+      "asset_id": "replying_sprite",
+      "media_type": "sprite",
+      "filename": "replying.rgb565",
+      "source_filename": "replying.rgb565",
+      "role": "status_sprite",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "a1f7d1c2341673026ff9d8bf3955de4d6f4dca7e1dfddf43e97d6f63ca041d4a",
+        "paired_alpha": "replying.alpha8"
+      }
+    },
+    {
+      "asset_id": "thinking_alpha",
+      "media_type": "sprite",
+      "filename": "thinking.alpha8",
+      "source_filename": "thinking.alpha8",
+      "role": "sprite_alpha_mask",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "6903afbf25ba17c927eb3630fcefee1664e802bf3167211439c773e008cb96f1",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "thinking.rgb565"
+      }
+    },
+    {
+      "asset_id": "thinking_sprite",
+      "media_type": "sprite",
+      "filename": "thinking.rgb565",
+      "source_filename": "thinking.rgb565",
+      "role": "status_sprite",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "3bd28a295d3490adbbb0d58e841567620981e55ce26b8d0c2e94f739eca2daef",
+        "paired_alpha": "thinking.alpha8"
+      }
+    },
+    {
+      "asset_id": "updating_alpha",
+      "media_type": "sprite",
+      "filename": "updating.alpha8",
+      "source_filename": "updating.alpha8",
+      "role": "sprite_alpha_mask",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "3ee90bb5cf6614300cd52105356a9df0c7205dc2c41d13db02939204dd4f7da2",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "updating.rgb565"
+      }
+    },
+    {
+      "asset_id": "updating_sprite",
+      "media_type": "sprite",
+      "filename": "updating.rgb565",
+      "source_filename": "updating.rgb565",
+      "role": "status_sprite",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "a6edb9db4bfdc3b3e7c63075e46de2947ecb14b4c930dc984b8edc5b05ee4cd7",
+        "paired_alpha": "updating.alpha8"
+      }
+    },
+    {
+      "asset_id": "waiting_to_pair_alpha",
+      "media_type": "sprite",
+      "filename": "waiting_to_pair.alpha8",
+      "source_filename": "waiting_to_pair.alpha8",
+      "role": "sprite_alpha_mask",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 16384,
+        "sha256": "64d09abffb1e093699304b0ed5c2244ff4ba1e5a0f67b49992aab975d6c6b8b3",
+        "width": 128,
+        "height": 128,
+        "paired_rgb565": "waiting_to_pair.rgb565"
+      }
+    },
+    {
+      "asset_id": "waiting_to_pair_sprite",
+      "media_type": "sprite",
+      "filename": "waiting_to_pair.rgb565",
+      "source_filename": "waiting_to_pair.rgb565",
+      "role": "status_sprite",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 128,
+        "height": 128,
+        "size_bytes": 32768,
+        "sha256": "f3019a43ba8fc73fb8932ccbf38657b7debf1b3757e1521c387208aa88fe9ca3",
+        "paired_alpha": "waiting_to_pair.alpha8"
       }
     }
   ]

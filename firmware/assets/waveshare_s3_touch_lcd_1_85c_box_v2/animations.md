@@ -24,17 +24,17 @@ clock time or audio level drive the UI.
 
 Base assets:
 
-- `idle_clock_face_logo_palette.png`
-- `idle_clock_face_status_palette.png`
+- `idle_clock_face.png`
+- `idle.png`
 
 - Draw hour and minute hands in code.
 - Optional: draw a tiny second dot instead of a full second hand.
 - Pulse the outer cyan ring very subtly every few seconds.
 - Keep the center cap small so the hands remain the primary live element.
-- Prefer `idle_clock_face_status_palette.png` when drawing status icons or the
+- Prefer `idle.png` when drawing status icons or the
   current date on the clock face.
 
-Recommended overlay regions for `idle_clock_face_status_palette.png`:
+Recommended overlay regions for `idle.png`:
 
 - Status icon rail: `x=104, y=44, w=152, h=30`
 - Status icon centers: `(127,59)`, `(153,59)`, `(180,59)`, `(207,59)`,
@@ -46,34 +46,43 @@ Recommended overlay regions for `idle_clock_face_status_palette.png`:
 
 ### Listen
 
-Base asset: `listen_logo_palette.png`
+Base asset: `listening.png`
 
 - Pulse the central orb while listening.
 - Expand short cyan arcs outward from the center.
 - If microphone amplitude is available, map it to orb size and arc brightness.
 - Keep motion symmetric and calm so it reads as attention, not output.
+- Implementation: keep `listening.png` as a quiet base plate. Firmware caches
+  the RGB565 base in PSRAM, restores the center dirty rectangle, draws blended
+  orb/arc overlays, and flushes only that region for animation ticks.
 
 ### Think
 
-Base asset: `think_logo_palette.png`
+Base asset: `thinking.png`
 
 - Rotate the segmented arcs slowly.
 - Pulse the three center dots in sequence.
 - Use timer-driven motion only; no audio input is needed.
 - Keep brightness below the talk state so the state hierarchy stays clear.
+- Implementation: keep `thinking.png` as a quiet base plate and use the shared
+  animated status overlay path to restore its dirty rectangle, draw rotating
+  arc segments plus sequenced dots, and partially flush the center area.
 
 ### Talk
 
-Base asset: `talk_logo_palette.png`
+Base asset: `replying.png`
 
 - Animate the side waveform bars while TTS/audio output is active.
 - If output amplitude is available, map it to bar height and brightness.
 - If amplitude is not available, use a procedural sine/noise pattern.
 - Keep the center core steady enough that the screen does not feel frantic.
+- Implementation: keep `replying.png` as a quiet base plate with empty side
+  lanes. Firmware uses the shared animated overlay path to draw procedural
+  vertical waveform bars and a restrained center pulse.
 
 ### Work
 
-Base asset: `work_logo_palette.png`
+Base asset: `connecting.png`
 
 - Rotate or step the segmented progress rails.
 - Pulse the central module nodes while an action is running.
@@ -82,7 +91,7 @@ Base asset: `work_logo_palette.png`
 
 ### Error
 
-Base asset: `error_logo_palette.png`
+Base asset: `error.png`
 
 - Slowly pulse the warning triangle glow.
 - Optionally flicker broken ring segments at a very low rate.
@@ -109,3 +118,13 @@ Recommended transition duration: 150-250 ms.
   aggressively.
 - Keep all text out of these assets; state labels belong in logs or companion UI,
   not on the round display.
+
+## Layered Asset Direction
+
+- Keep `idle.rgb565` as the full-screen idle/clock background.
+- Use `active.rgb565` as the shared full-screen non-idle background.
+- Keep the existing full-screen status pictures under `assets/picture/` for
+  fallback and visual reference.
+- Store status mark overlays under `assets/sprite/` as 128 x 128 RGB565 sprites
+  with matching alpha8 masks.
+- Draw motion procedurally on top of the active background and status sprite.

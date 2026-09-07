@@ -653,3 +653,18 @@ Chosen fix: Add test-only fake GATT and Supervisor broker harnesses, backend sco
 What changed: Added `FakeBleGattEndpoint` and `FakeSupervisorBleBroker`, covered successful provisioning without leaked credentials, scan/status lease misuse, absent adapter, pending/denied/granted lease behavior, wrong adapter/node/nonce/schema, malformed payload, replay, Wi-Fi/backend failures, recovery local-mode separation, heartbeat capability fields, and physical validation criteria for HA Voice PE, ESP32-S3-BOX-3, Waveshare S3 1.85C BOX V2, and future P4/C6 flow.
 Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_ble_onboarding_validation.py tests/test_endpoint_ble_onboarding.py` passed with 23 tests. `PYTHONPATH=src .venv/bin/pytest -q tests/test_ble_onboarding_validation.py tests/test_endpoint_ble_onboarding.py tests/test_firmware_ble_onboarding.py tests/test_firmware_ble_onboarding_integration.py tests/test_firmware_recovery_architecture.py tests/test_firmware_board_profiles.py` passed with 73 tests. `python3 -m py_compile tests/fake_ble_gatt_harness.py tests/test_ble_onboarding_validation.py` passed. Physical BLE validation remains pending until boards are flashed over USB.
 ###########
+###########
+Task #310
+Step objective: Start layered Waveshare UI renderer task.
+Issue cause: The Waveshare 1.85 firmware still renders one full-screen picture per non-idle status even though layered active background and status sprite assets now exist.
+Chosen fix: Mark Task 310 WIP after removing completed queue entries and preserving Task 295 completion.
+What changed: Cleaned completed tasks from the active queue, recorded Task 295 completion, and marked Task 310 WIP.
+Verification: Queue now has one WIP task.
+###########
+Task #310
+Step objective: Implement layered Waveshare UI rendering.
+Issue cause: The full firmware loaded a full-screen status picture for every non-idle state.
+Chosen fix: Keep idle as the idle background, use active as the shared non-idle background, alpha-blend centered 128x128 status sprites, and keep procedural animations/icons on top.
+What changed: Added a Waveshare render plan, sprite RGB565/alpha8 cache, layered dirty-rectangle redraws, and full-picture fallback.
+Verification: Focused firmware display test passed; Waveshare firmware build passed as z20260907040321-705d089.
+###########

@@ -22,7 +22,7 @@ set_property(
 if(DEFINED ENV{HEXE_BOARD_PROFILE} AND NOT "$ENV{HEXE_BOARD_PROFILE}" STREQUAL "")
   set(HEXE_BOARD_PROFILE "$ENV{HEXE_BOARD_PROFILE}" CACHE STRING "Hexe firmware board profile" FORCE)
 elseif(NOT DEFINED HEXE_BOARD_PROFILE OR HEXE_BOARD_PROFILE STREQUAL "")
-  set(HEXE_BOARD_PROFILE "esp_box_3")
+  set(HEXE_BOARD_PROFILE "ha_voice_pe")
 endif()
 
 set(HEXE_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
@@ -63,6 +63,11 @@ message(STATUS "Hexe board profile: ${HEXE_BOARD_PROFILE}")
 message(STATUS "Hexe board profile file: ${HEXE_BOARD_PROFILE_PATH}")
 message(STATUS "Hexe board partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
 
+set(HEXE_ENDPOINT_EMBED_FILES
+  "voice/models/audio_preprocessor_int8.tflite"
+  "voice/models/alexa.tflite"
+  "voice/models/stop.tflite"
+)
 idf_component_register(
   SRCS
     "app_state.cpp"
@@ -70,6 +75,7 @@ idf_component_register(
     "board/wifi.cpp"
     "system/ble_provisioning.cpp"
     "system/ble_provisioning_gatt.c"
+    "system/asset_sync.cpp"
     "system/clock.cpp"
     "system/ota.cpp"
     "system/log_stream.cpp"
@@ -88,9 +94,7 @@ idf_component_register(
     "."
     "${HEXE_GENERATED_DIR}"
   EMBED_FILES
-    "voice/models/audio_preprocessor_int8.tflite"
-    "voice/models/alexa.tflite"
-    "voice/models/stop.tflite"
+    ${HEXE_ENDPOINT_EMBED_FILES}
   REQUIRES
     app_update
     bt

@@ -16,6 +16,8 @@ FIRMWARE_BUTTONS = Path("firmware/components/endpoint_runtime/board/buttons.cpp"
 FIRMWARE_BUTTONS_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/buttons_ha_voice_pe.cpp")
 FIRMWARE_DISPLAY = Path("firmware/components/endpoint_runtime/board/display.cpp")
 FIRMWARE_DISPLAY_NONE = Path("firmware/components/endpoint_runtime/board/display_none.cpp")
+FIRMWARE_DISPLAY_WAVESHARE_185 = Path("firmware/components/endpoint_runtime/board/display_waveshare_s3_1_85c_box_v2.cpp")
+FIRMWARE_TOUCH_WAVESHARE_185 = Path("firmware/components/endpoint_runtime/board/touch_waveshare_s3_1_85c_box_v2.cpp")
 FIRMWARE_LED_RING = Path("firmware/components/endpoint_runtime/board/led_ring.cpp")
 FIRMWARE_LED_RING_HA_VOICE_PE = Path("firmware/components/endpoint_runtime/board/led_ring_ha_voice_pe.cpp")
 FIRMWARE_STORAGE = Path("firmware/components/endpoint_runtime/board/storage.cpp")
@@ -24,6 +26,8 @@ FIRMWARE_SETTINGS = Path("firmware/components/endpoint_runtime/system/settings.c
 FIRMWARE_SETTINGS_HEADER = Path("firmware/components/endpoint_runtime/system/settings.h")
 FIRMWARE_OTA = Path("firmware/components/endpoint_runtime/system/ota.cpp")
 FIRMWARE_OTA_HEADER = Path("firmware/components/endpoint_runtime/system/ota.h")
+FIRMWARE_ASSET_SYNC = Path("firmware/components/endpoint_runtime/system/asset_sync.cpp")
+FIRMWARE_ASSET_SYNC_HEADER = Path("firmware/components/endpoint_runtime/system/asset_sync.h")
 FIRMWARE_WIFI = Path("firmware/components/endpoint_runtime/board/wifi.cpp")
 FIRMWARE_AUDIO_PROBE_RUNTIME = Path("firmware/components/audio_probe_runtime/audio_probe.cpp")
 FIRMWARE_TOP_LEVEL_CMAKE = Path("firmware/CMakeLists.txt")
@@ -68,6 +72,8 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "session.cancel" in source
     assert "command.ack" in source
     assert "command.error" in source
+    assert "endpoint.restart" in source
+    assert 'std::strcmp(wake_source, "touch") == 0' in source
     assert "send_tts_playback_event" in source
     assert "tts.playback.download_started" in tts_sources
     assert "tts.playback.first_audio_frame" in tts_sources
@@ -76,6 +82,8 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "prewarm_tts_output" in source
     assert "stream_http_wav" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
     assert "Streaming TTS WAV at %d Hz while downloading" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    assert "constexpr size_t kMaxTtsBytes = 4 * 1024 * 1024;" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
+    assert 'failure_reason = "audio_too_large";' in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
     assert "Released Voice PE I2S TX channel" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
     assert "i2s_del_channel(g_tx_channel)" in FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()
     assert "kAudioQueueDepth = 16" in source
@@ -85,7 +93,7 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "kVoiceWsSendTimeoutMs = 1200" in source
     assert "kVoiceWsSendAttempts = 2" in source
     assert "kVoiceWsNetworkTimeoutMs = 1000" in source
-    assert "kVoiceControlWsClientTaskStackBytes = 4096" in source
+    assert "kVoiceControlWsClientTaskStackBytes = 6144" in source
     assert "kVoiceAudioWsClientTaskStackBytes = 3072" in source
     assert "kVoiceAudioWsClientBufferBytes = 512" in source
     assert "kVoiceWsReadyWarmupUs = 300000" in source
@@ -110,19 +118,53 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "g_heartbeat_capabilities_reported = true;" in source
     assert 'cJSON_AddStringToObject(root, "board_profile", hexe::config::kEndpointBoardProfile);' in source
     assert 'cJSON_AddStringToObject(root, "application_type", kFirmwareApplicationType);' in source
+    assert 'cJSON *display = cJSON_AddObjectToObject(root, "display");' in source
+    assert 'cJSON_AddBoolToObject(display, "available", hexe::board::display_ready());' in source
+    assert 'cJSON_AddNumberToObject(display, "width", hexe::board::display_width());' in source
+    assert 'cJSON_AddNumberToObject(display, "height", hexe::board::display_height());' in source
+    assert 'cJSON_AddStringToObject(display, "pixel_format", hexe::board::display_pixel_format());' in source
+    assert 'cJSON_AddNumberToObject(display, "flush_rows", hexe::system::display_flush_rows());' in source
+    assert 'cJSON_AddNumberToObject(display, "pixel_clock_hz", hexe::system::display_pixel_clock_hz());' in source
+    assert 'cJSON_AddNumberToObject(display, "last_asset_read_ms", hexe::board::display_last_asset_read_ms());' in source
+    assert 'cJSON_AddNumberToObject(display, "last_flush_ms", hexe::board::display_last_flush_ms());' in source
+    assert 'cJSON_AddNumberToObject(display, "last_render_ms", hexe::board::display_last_render_ms());' in source
+    assert 'cJSON_AddStringToObject(display, "last_asset_filename", hexe::board::display_last_asset_filename());' in source
+    assert 'cJSON *config = cJSON_AddObjectToObject(root, "config");' in source
+    assert "void add_redacted_runtime_config(cJSON *root)" in source
+    assert "add_redacted_runtime_config(root);" in source
+    assert 'cJSON_AddStringToObject(provisioning, "wifi_ssid", hexe::system::wifi_ssid());' in source
+    assert 'cJSON_AddBoolToObject(controls, "restart", true);' in source
+    assert '#include "esp_system.h"' in source
+    assert "esp_restart();" in source
+    assert 'xTaskCreate(restart_task, "hexe_restart", 3072, nullptr, kTaskPriority, nullptr);' in source
 
 
 def test_firmware_backend_commands_acknowledge_receipt_with_ok():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
+    finalize_handler_block = source[
+        source.index('} else if (std::strcmp(type, "endpoint.audio.finalize") == 0) {')
+        : source.index('} else if (std::strcmp(type, "endpoint.cancel") == 0) {')
+    ]
+    pending_finalize_block = source[
+        source.index("bool process_pending_audio_finalize()")
+        : source.index("bool copy_optional_string_field")
+    ]
 
     assert "acknowledge_command_received(type, payload);" in source
+    assert "const bool backend_command_event = is_backend_command_event(type);" in source
+    assert '!backend_command_event && g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0' in source
     assert 'std::strcmp(event_type, "ota.update") == 0' in source
     assert 'std::strncmp(event_type, "endpoint.", 9) == 0' in source
     assert 'send_command_ack(payload_request_id(payload), command_type_for_event(event_type), "accepted", "OK");' in source
     assert 'return "endpoint.volume.set";' in source
     assert 'return "endpoint.micro_vad.set";' in source
-    assert 'send_command_ack(request_id, "endpoint.audio.finalize", "succeeded", "Audio stream finalized");' in source
-    assert '"finalize_unavailable"' in source
+    assert 'std::strcmp(type, "endpoint.restart") == 0' in source
+    assert 'send_command_ack(request_id, "endpoint.restart", "succeeded", "Endpoint restart scheduled");' in source
+    assert "request_audio_finalize(request_id, finalize_reason);" in finalize_handler_block
+    assert "finish_audio_stream" not in finalize_handler_block
+    assert 'send_command_ack(request_id, "endpoint.audio.finalize", "succeeded", "Audio stream finalized");' in pending_finalize_block
+    assert '"finalize_unavailable"' in pending_finalize_block
+    assert "if (process_pending_audio_finalize())" in source
 
 
 def test_firmware_reports_stable_hardware_id_from_efuse_mac():
@@ -144,6 +186,8 @@ def test_firmware_ota_enforces_signed_manifest_and_download_checksum():
     export_script = FIRMWARE_EXPORT_SCRIPT.read_text()
 
     assert "struct OtaUpdateManifest" in ota_header
+    assert "char profile[64];" in ota_source
+    assert "char board_profile[64];" in ota_source
     assert "verify_ota_manifest_signature" in ota_source
     assert "hmac-sha256" in ota_source
     assert "inner_pad" in ota_source
@@ -617,7 +661,7 @@ def test_firmware_has_experimental_alexa_micro_wake_word_provider_hook():
         assert "WakeCandidateMetrics candidate" in source
         assert "Local wake detected" in source
     assert "candidate.endpoint_audio_profile_version = \"firmware_audio_v1\"" in audio_source
-    assert 'kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch1_ns_v2"' in pe_audio_source
+    assert 'kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch0_agc_v3"' in pe_audio_source
     assert "candidate.endpoint_audio_profile_version = kEndpointAudioProfileVersion" in pe_audio_source
 
 
@@ -897,7 +941,8 @@ def test_firmware_audio_queue_uses_http_upload_without_requiring_audio_websocket
     assert "post_buffered_voice_audio_http" not in transport_chunk_block
     assert "buffer_voice_audio_samples(samples, sample_count)" in transport_chunk_block
     assert "if (!post_buffered_voice_audio_http())" in finish_audio_block
-    assert "Skipping buffered voice audio upload after capture timeout without detected speech" in finish_audio_block
+    assert "Uploading buffered voice audio after capture timeout despite missing VAD speech marker" in finish_audio_block
+    assert "Skipping buffered voice audio upload after capture timeout without captured samples" in finish_audio_block
     assert "if (!kVoiceAudioWebSocketUploadEnabled) {\n    g_audio_stream_finished = true;" in finish_audio_block
     assert "Voice HTTP buffered audio upload failed before audio.end" in finish_audio_block
     assert "payload_base64" not in source
@@ -1091,8 +1136,165 @@ def test_firmware_media_transfer_uses_temp_file_checksum_and_cleanup():
     assert "media_transfer_active" in source
     assert "downloading_file" in source
     assert "request_display_assets_reload()" in source
-    assert 'std::strcmp(request.destination, "picture") == 0' in source
-    assert 'std::strcmp(request.destination, "sprite") == 0' in source
+
+
+def test_firmware_boot_syncs_board_assets_to_sd_card():
+    source = FIRMWARE_ASSET_SYNC.read_text()
+    header = FIRMWARE_ASSET_SYNC_HEADER.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+    app_main_source = FIRMWARE_APP_MAIN.read_text()
+    cmake_source = FIRMWARE_CMAKE.read_text()
+
+    assert '"system/asset_sync.cpp"' in cmake_source
+    assert '#include "system/asset_sync.h"' in app_main_source
+    assert "hexe::system::init_asset_sync();" in app_main_source
+    assert "void init_asset_sync();" in header
+    assert "asset_sync_status()" in header
+    assert "asset_sync_manifest_version()" in header
+    assert "/firmware/assets/%s/assets/%s" in source
+    assert 'constexpr char kAssetsPath[] = "/sdcard/hexe/assets";' in source
+    assert 'constexpr char kManifestPath[] = "/sdcard/hexe/assets/assets.json";' in source
+    assert 'constexpr char kManifestTempPath[] = "/sdcard/hexe/assets/.assets.json.tmp";' in source
+    assert '"assets.json"' in source
+    assert "hexe::board::sd_card_mounted()" in source
+    assert "hexe::board::ensure_sd_media_directories()" in source
+    assert "hexe::board::sd_card_pictures_path()" in source
+    assert "hexe::board::sd_card_sprites_path()" in source
+    assert "hexe::board::sd_card_sounds_path()" in source
+    assert "ensure_directory(kAssetsPath)" in source
+    assert "cJSON_ParseWithLength" in source
+    assert 'cJSON_GetObjectItem(root, "assets")' in source
+    assert 'copy_json_string(asset, "media_type"' in source
+    assert 'copy_json_string(asset, "filename"' in source
+    assert 'copy_json_string(asset, "source_filename"' in source
+    assert 'copy_asset_json_string(asset, "sha256"' in source
+    assert 'cJSON_GetObjectItem(asset, "metadata")' in source
+    assert 'asset_json_number(asset, "size_bytes")' in source
+    assert "psa_hash_setup(&hash_op, PSA_ALG_SHA_256)" in source
+    assert "std::rename(temp_path, final_path)" in source
+    assert "write_manifest(manifest_body)" in source
+    assert "request_display_assets_reload()" in source
+    assert 'xTaskCreate(asset_sync_task, "hexe_asset_sync"' in source
+    assert 'cJSON_AddStringToObject(assets, "sync_status", hexe::system::asset_sync_status())' in backend_source
+    assert 'cJSON_AddNumberToObject(assets, "downloaded_count", hexe::system::asset_sync_downloaded_count())' in backend_source
+    assert 'std::strcmp(media_type, "picture") == 0' in source
+    assert 'std::strcmp(media_type, "sprite") == 0' in source
+
+
+def test_waveshare_display_uses_sd_status_pictures_for_app_phases():
+    source = FIRMWARE_DISPLAY_WAVESHARE_185.read_text()
+    cmake_source = FIRMWARE_CMAKE.read_text()
+    bus_source = Path("firmware/components/endpoint_runtime/board/waveshare_s3_1_85c_bus.cpp").read_text()
+    touch_source = Path("firmware/components/endpoint_runtime/board/touch_waveshare_s3_1_85c_box_v2.cpp").read_text()
+    recovery_display_source = Path("firmware/components/recovery_runtime/recovery_display.cpp").read_text()
+
+    assert '#include "board/storage.h"' in source
+    assert "constexpr uint8_t kTouchResetBit = 0;" in bus_source
+    assert "constexpr uint8_t kDisplayResetBit = 1;" in bus_source
+    assert "constexpr uint8_t kDisplayResetBit = 1;" in recovery_display_source
+    assert "tca_write(kTcaRegisterConfig, 0x00)" in bus_source
+    assert "constexpr uint8_t kTouchRegisterDataStart = 0x02;" in touch_source
+    assert "gpio_get_level(gpio_pin(hexe::board::pins::kWs185TouchInterrupt)) != 0" in touch_source
+    assert "point->x = ((data[1] & 0x0F) << 8) | data[2];" in touch_source
+    assert "point->y = ((data[3] & 0x0F) << 8) | data[4];" in touch_source
+    assert "app_state.phase == hexe::AppPhase::kIdle && !app_state.muted" in touch_source
+    assert 'hexe::voice::start_voice_session("touch")' in touch_source
+    assert "Touch wake started voice session" in touch_source
+    assert "../recovery_runtime/assets/min_fw_waiting_to_pair.rgb565" not in cmake_source
+    assert "_binary_min_fw_waiting_to_pair_rgb565_start" not in source
+    assert "Rendered embedded recovery startup plate" not in source
+    assert "g_hold_embedded_startup_plate" not in source
+    assert "constexpr int kMaxFlushRows = 32;" in source
+    assert "std::clamp(hexe::system::display_flush_rows(), 1, kMaxFlushRows)" in source
+    assert "make_panel_io_config(hexe::system::display_pixel_clock_hz(), true)" in source
+    assert "static const st77916_lcd_init_cmd_t kWavesharePanelInit[]" in source
+    assert "bool read_panel_id(uint8_t register_data[4])" in source
+    assert "esp_lcd_panel_io_spi_config_t make_panel_io_config(int clock_hz, bool transfer_callback)" in source
+    assert "const bool panel_id_read = read_panel_id(panel_id);" in source
+    assert "vendor_config.init_cmds = kWavesharePanelInit;" in source
+    assert "target[col] = swap565(source[col]);" in source
+    assert '#include "esp_timer.h"' in source
+    assert "g_last_asset_read_ms" in source
+    assert "g_last_flush_ms" in source
+    assert "g_last_render_ms" in source
+    assert "Loaded status asset path=%s read_ms=%d bytes=%u" in source
+    assert "Rendered status frame asset=%s render_ms=%d read_ms=%d flush_ms=%d flush_rows=%d pixel_clock_hz=%d" in source
+    assert "render_plan_for_state" in source
+    assert "fallback_status_asset_for_state" in source
+    assert "status_sprite_for_state" in source
+    assert '"active.rgb565"' in source
+    assert "struct RenderPlan" in source
+    assert "kStatusSpriteWidth = 128" in source
+    assert "kStatusSpriteHeight = 128" in source
+    assert "g_status_sprite_pixels" in source
+    assert "g_status_sprite_alpha" in source
+    assert "hexe::board::sd_card_sprites_path()" in source
+    assert '".alpha8"' in source
+    assert "draw_status_sprite(sprite_filename)" in source
+    assert "blend_pixel(kStatusSpriteX + col, kStatusSpriteY + row" in source
+    assert "layered_overlay_rect" in source
+    assert "restore_rect_from_base(layered_overlay_rect(state, asset_filename), asset_filename)" in source
+    assert '"idle.rgb565"' in source
+    assert 'state.muted || state.phase == hexe::AppPhase::kMuted' in source
+    assert 'return RenderPlan{"idle.rgb565", nullptr, fallback, false};' in source
+    assert '#include "system/clock.h"' in source
+    assert "hexe::system::clock_synced()" in source
+    assert "hexe::system::current_local_time(&local)" in source
+    assert "const int month = std::clamp(local.tm_mon + 1, 1, 12);" in source
+    assert "const int day = std::clamp(local.tm_mday, 1, 31);" in source
+    assert 'std::snprintf(date, sizeof(date), "%02d/%02d", month, day);' in source
+    assert "draw_clock_hand(kCenterX, kCenterY, 70, hour_position, 12 * 60" in source
+    assert "draw_clock_hand(kCenterX, kCenterY, 104, local.tm_min, 60" in source
+    assert "local.tm_sec" not in source
+    assert "g_last_clock_minute_signature != clock_minute_signature" in source
+    assert '"listening.rgb565"' in source
+    assert '"thinking.rgb565"' in source
+    assert '"replying.rgb565"' in source
+    assert '"connecting.rgb565"' in source
+    assert '"updating.rgb565"' in source
+    assert '"error.rgb565"' in source
+    assert "hexe::board::sd_card_pictures_path()" in source
+    assert "std::fread(g_framebuffer, 1, expected, file)" in source
+    assert "read != expected || extra != EOF" in source
+    assert "Status asset size mismatch path=%s" in source
+    assert "draw_ota_progress_overlay()" in source
+    assert "fill_rect(90, 254, 180, 8, 0x3186)" in source
+    assert "fill_rect(90, 284, 180, 8, 0x3186)" not in source
+    assert "draw_status_frame()" in source
+    assert "should_render_status_asset" in source
+    assert "g_force_redraw.load()" in source
+    assert "Loaded status asset path=%s" in source
+    assert "Loaded status sprite rgb=%s alpha=%s read_ms=%d bytes=%u" in source
+    assert "Falling back to procedural status frame for asset=%s" in source
+
+
+def test_firmware_display_tuning_is_persisted_in_config_partition():
+    settings_header = FIRMWARE_SETTINGS_HEADER.read_text()
+    settings_source = FIRMWARE_SETTINGS.read_text()
+    backend_source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert "int display_flush_rows();" in settings_header
+    assert "void set_display_flush_rows(int rows);" in settings_header
+    assert "int display_pixel_clock_hz();" in settings_header
+    assert "void set_display_pixel_clock_hz(int clock_hz);" in settings_header
+    assert 'constexpr char kConfigPartition[] = "config";' in settings_source
+    assert 'constexpr char kDisplayNamespace[] = "hexe_display";' in settings_source
+    assert 'constexpr char kMicroVadPauseMsKey[] = "vad_pause_ms";' in settings_source
+    assert 'constexpr char kMicroVadEnergyThresholdKey[] = "vad_energy";' in settings_source
+    assert "nvs_flash_init_partition(kConfigPartition)" in settings_source
+    assert "nvs_open_from_partition(kConfigPartition, kDisplayNamespace" in settings_source
+    assert "save_i32(kMicroVadPauseMsKey, clamped)" in settings_source
+    assert "save_i32(kMicroVadEnergyThresholdKey, clamped)" in settings_source
+    assert "constexpr int kDefaultDisplayFlushRows = 4;" in settings_source
+    assert "constexpr int kDefaultDisplayPixelClockHz = 10 * 1000 * 1000;" in settings_source
+    assert 'std::strcmp(type, "endpoint.display.tuning") == 0' in backend_source
+    assert 'return "endpoint.display.tuning.set";' in backend_source
+    assert 'cJSON_GetObjectItem(payload, "flush_rows")' in backend_source
+    assert 'cJSON_GetObjectItem(payload, "pixel_clock_hz")' in backend_source
+    assert "hexe::system::set_display_flush_rows(flush_rows->valueint);" in backend_source
+    assert "hexe::system::set_display_pixel_clock_hz(pixel_clock_hz->valueint);" in backend_source
+    assert "hexe::board::request_display_assets_reload();" in backend_source
+    assert "g_heartbeat_capabilities_reported = false;" in backend_source
 
 
 def test_firmware_sound_transfer_can_activate_sd_playback():
@@ -1166,9 +1368,10 @@ def test_firmware_handles_backend_session_state_events():
     assert 'std::strcmp(type, "session.state") == 0' in source
     assert "g_wake_accepted_for_session" in source
     assert "local_wake_waiting_for_backend" in source
-    assert 'if (wake_accepted ||\n      (g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0) ||' in source
-    assert '(local_wake_waiting_for_backend && std::strcmp(ux_state, "idle") == 0))' in source
-    assert 'g_wake_accepted_for_session && std::strcmp(ux_state, "thinking") == 0' in source
+    assert "const bool backend_command_event = is_backend_command_event(type);" in source
+    assert 'if (wake_accepted ||\n      (!backend_command_event && g_wake_accepted_for_session && std::strcmp(ux_state, "listening") == 0) ||' in source
+    assert '(!backend_command_event && local_wake_waiting_for_backend && std::strcmp(ux_state, "idle") == 0))' in source
+    assert '!backend_command_event && g_wake_accepted_for_session && std::strcmp(ux_state, "thinking") == 0' in source
     assert "if (g_wake_accepted_for_session) {\n      hexe::state().phase = hexe::AppPhase::kThinking;" in source
     assert "event_requests_followup_listen" in source
     assert "resume_audio_stream_for_followup" in source
@@ -1373,9 +1576,9 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "I2S_DATA_BIT_WIDTH_32BIT" in audio_source
     assert "I2S_SLOT_MODE_STEREO" in audio_source
     assert "voice_channel_sample" in audio_source
-    assert "kSelectedMicChannel = 1" in audio_source
-    assert 'kSelectedMicChannelLabel = "xmos_channel_1_noise_suppressed"' in audio_source
-    assert 'kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch1_ns_v2"' in audio_source
+    assert "kSelectedMicChannel = 0" in audio_source
+    assert 'kSelectedMicChannelLabel = "xmos_channel_0_agc"' in audio_source
+    assert 'kEndpointAudioProfileVersion = "ha_voice_pe_xmos_ch0_agc_v3"' in audio_source
     assert "const int32_t selected = kSelectedMicChannel == 1 ? right : left" in audio_source
     assert "Voice Kit microphone pipeline configured: channel0=AGC channel1=NS selected_channel=%u selected_profile=%s" in audio_source
     assert "pins::kVoicePeMicBclk" in audio_source
@@ -1395,12 +1598,13 @@ def test_firmware_supports_home_assistant_voice_pe_profile():
     assert "kVadTaskStackBytes = 8192" in audio_source
     assert "kMicReadTimeoutLogEvery = 200" in audio_source
     assert "Voice PE microphone read timeout count=" in audio_source
-    assert "kVadStartVoiceFrames = 3" in audio_source
+    assert "kVadStartVoiceFrames = 2" in audio_source
     assert "kVadStartNoiseMultiplier = 3" in audio_source
     assert "kVadReleasePeakPercent = 60" in audio_source
     assert "kVadSilenceHoldMs = 1200" in audio_source
     assert "kMaxMicroVadPauseMs = 3000" in FIRMWARE_SETTINGS.read_text()
     assert "speech_peak_level" in audio_source
+    assert "Voice PE active audio metrics" in audio_source
     assert "update_noise_floor" in audio_source
     assert "noise_floor_level" in backend_source
     assert "pre_roll_duration_ms" in backend_source

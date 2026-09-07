@@ -52,17 +52,9 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[WIP] Task 295: Integrate HexeVoice node-side onboarding UI/backend with Core pairing sessions and fallback scanning
-[DONE] Task 296: Add HA Voice PE minimal firmware encrypted credential receive for Core-published BLE pairing sessions
-[DONE] Task 297: Extend Core/Supervisor host pairing GATT flow to deliver approved encrypted Wi-Fi credentials
-[TODO] Task 298: Add minimal firmware post-provisioning OTA handoff into full HexeVoice endpoint firmware
-[DONE] Task 299: Align HA Voice PE ESP32-S3 memory configuration with the ESPHome reference firmware
-[DONE] Task 300: Disable BLE in full endpoint firmware outside explicit pairing or recovery windows
-[DONE] Task 301: Reconcile HA Voice PE XMOS microphone channel handling with the ESPHome reference firmware
-[DONE] Task 302: Make firmware VAD advisory and move endpoint turn finalization authority to the backend
-[DONE] Task 303: Keep HA Voice PE voice upload on the stable buffered HTTP path until a low-memory live transport is designed
-[DONE] Task 304: Tighten HA Voice PE button wake readiness gating and voice-session diagnostics
-[TODO] Task 305: Physically validate HA Voice PE full firmware button wake, wake word, advisory VAD finalization, HTTP upload, TTS playback, and serial diagnostics
+[DONE] Task 305: Physically validate HA Voice PE full firmware button wake, wake word, advisory VAD finalization, HTTP upload, TTS playback, and serial diagnostics
+[TODO] Task 311: Add S3 16 MiB recovery single-model partition schema and move Waveshare 1.85 to it after clean-flash validation
+[TODO] Task 312: Add SD model-set loading and internal single-model cache policy for S3 16 MiB devices
 
 **********************************************************************************************
 * Future TODO listing
@@ -71,3 +63,8 @@ Do not edit above this line:
 [FUTURE TODO] Task 205: Add an optional experimental Kokoro TTS provider with Docker/Unix-socket runtime, CPU/CUDA mode, voice selection, WAV artifact normalization, and Piper-compatible fallback behavior
 [FUTURE TODO] Task 283: Make the Waveshare ESP32-S3 1.85C BOX V2 profile buildable by transcribing the schematic pin map and implementing display, touch, audio, storage, status, and TTS adapters behind the existing board-profile interface
 [FUTURE TODO] Task 284: Make the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B profile buildable by implementing the ESP32-P4 target, ESP32-C6 SDIO radio transport, display/touch backends, ES7210/ES8311 audio path, SD storage, wake pipeline, and fallback UI
+[FUTURE TODO] Task 298: Add minimal firmware post-provisioning OTA handoff into full HexeVoice endpoint firmware
+[FUTURE TODO] Task 306: Move endpoint provisioning/settings into the dedicated config NVS partition with encrypted-at-rest credential storage
+[FUTURE TODO] Task 307: Build a combined full-device flash bundle that writes minimal/recovery to the factory partition and full endpoint firmware to an OTA partition, boots recovery when provisioning data is missing, and hands off to full firmware after provisioning. Recovery mode should continue storing initial provisioning data in the existing plaintext NVS location for compatibility; on first full-firmware boot, the endpoint must encrypt and migrate those values into the config partition, verify the encrypted copy, and delete the plaintext NVS values.
+[FUTURE TODO] Task 308: Add HA Voice PE internal SPIFFS sound cache for local WAV cues, alarms, and reusable endpoint sound effects
+[FUTURE TODO] Task 309: Add versioned endpoint runtime configuration in encrypted config NVS for tunable timeouts, volume, upload/download caps, VAD, wake behavior, network retry policy, BLE pairing windows, and diagnostics
