@@ -14,8 +14,33 @@ dependencies:
   #   # `public` flag doesn't have an effect dependencies of the `main` component.
   #   # All dependencies of `main` are public by default.
   #   public: true
-  espressif/esp-box-3_noglib: ^3.1.0
+  espressif/esp-box-3_noglib:
+    version: ^3.1.0
+    rules:
+      - if: "target in [esp32s3]"
   espressif/esp_websocket_client: ^1.6.1
   espressif/cjson: ^1.7.19~2
   espressif/esp-tflite-micro: ^1.4.0
-  espressif/esp_lcd_st77916: ^2.0.2
+  espressif/esp_lcd_st77916:
+    version: ^2.0.2
+    rules:
+      - if: "target in [esp32s3]"
+  waveshare/esp32_p4_wifi6_touch_lcd_7b:
+    version: "==3.0.1"
+    rules:
+      - if: "target in [esp32p4]"
+  espressif/esp_wifi_remote:
+    # Waveshare's IDF 6 Wi-Fi example pins this line to avoid the newer
+    # esp_interface.h contract while retaining esp_hosted 1.4.*.
+    version: "==1.2.5"
+    rules:
+      - if: "target in [esp32p4]"
+  espressif/esp_hosted:
+    version: "1.4.*"
+    rules:
+      - if: "target in [esp32p4]"
+  lvgl/lvgl:
+    version: "==9.5.0"
+    public: true
+    rules:
+      - if: "target in [esp32p4]"

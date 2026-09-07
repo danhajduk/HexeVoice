@@ -68,6 +68,49 @@ set(HEXE_ENDPOINT_EMBED_FILES
   "voice/models/alexa.tflite"
   "voice/models/stop.tflite"
 )
+set(HEXE_ENDPOINT_REQUIRES
+  app_update
+  esp_app_format
+  esp_event
+  esp_driver_gpio
+  esp_driver_i2c
+  esp_driver_i2s
+  esp_driver_rmt
+  esp_https_ota
+  esp_http_client
+  esp_lcd
+  esp_netif
+  esp_partition
+  esp-tflite-micro
+  esp_websocket_client
+  esp_wifi
+  espressif__esp_codec_dev
+  fatfs
+  cjson
+  lwip
+  mbedtls
+  nvs_flash
+  sdmmc
+)
+if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4")
+  list(
+    APPEND
+    HEXE_ENDPOINT_REQUIRES
+      esp32_p4_wifi6_touch_lcd_7b
+      esp_driver_sdmmc
+      espressif__esp_hosted
+      espressif__esp_wifi_remote
+      lvgl__lvgl
+  )
+else()
+  list(
+    APPEND
+    HEXE_ENDPOINT_REQUIRES
+      bt
+      espressif__esp_lcd_st77916
+      espressif__esp_lcd_touch
+  )
+endif()
 idf_component_register(
   SRCS
     "app_state.cpp"
@@ -96,32 +139,14 @@ idf_component_register(
   EMBED_FILES
     ${HEXE_ENDPOINT_EMBED_FILES}
   REQUIRES
-    app_update
-    bt
-    esp_app_format
-    esp_event
-    esp_driver_gpio
-    esp_driver_i2c
-    esp_driver_i2s
-    esp_driver_rmt
-    esp_https_ota
-    esp_http_client
-    esp_lcd
-    esp_netif
-    esp_partition
-    esp-tflite-micro
-    esp_websocket_client
-    esp_wifi
-    espressif__esp_codec_dev
-    espressif__esp_lcd_st77916
-    espressif__esp_lcd_touch
-    fatfs
-    cjson
-    lwip
-    mbedtls
-    nvs_flash
-    sdmmc
+    ${HEXE_ENDPOINT_REQUIRES}
 )
+if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4" AND IDF_VERSION_MAJOR GREATER_EQUAL 6)
+  idf_component_get_property(esp_hosted_lib espressif__esp_hosted COMPONENT_LIB)
+  idf_component_get_property(sdmmc_driver_lib esp_driver_sdmmc COMPONENT_LIB)
+  # esp_hosted 1.4.x still expects IDF 5's umbrella driver SDMMC includes.
+  target_link_libraries(${esp_hosted_lib} PRIVATE ${sdmmc_driver_lib})
+endif()
 
 target_compile_definitions(
   ${COMPONENT_LIB}

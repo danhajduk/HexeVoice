@@ -168,6 +168,7 @@ write_profile_sdkconfig_defaults() {
   local flash_size
   local flash_size_symbol
   local flash_size_value
+  local idf_target
   local bluetooth_transport
   local output
   schema="$(board_profile_value "${profile}" build.partition_schema)"
@@ -175,6 +176,7 @@ write_profile_sdkconfig_defaults() {
   flash_size="$(board_profile_value "${profile}" hardware.flash_size)"
   flash_size_symbol="$(flash_size_kconfig_symbol "${flash_size}")"
   flash_size_value="$(flash_size_kconfig_value "${flash_size}")"
+  idf_target="$(board_profile_value "${profile}" build.idf_target)"
   bluetooth_transport="$(board_profile_value "${profile}" hardware.wireless.transport)"
   output="$(profile_sdkconfig_defaults_path "${profile}")"
 
@@ -194,6 +196,22 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="${partition_csv}"
 ${flash_size_symbol}=y
 CONFIG_ESPTOOLPY_FLASHSIZE="${flash_size_value}"
 EOF
+  if [[ "${idf_target}" == "esp32p4" ]]; then
+    cat >> "${output}" <<'EOF'
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+# CONFIG_ESP32P4_SELECTS_REV_LESS_V3 is not set
+CONFIG_ESP32P4_REV_MIN_300=y
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_SPEED_200M=y
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+CONFIG_CACHE_L2_CACHE_256KB=y
+CONFIG_CACHE_L2_CACHE_LINE_128B=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
+CONFIG_FREERTOS_HZ=1000
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+EOF
+  fi
   if [[ "${FIRMWARE_APP}" == "audio_probe" ]]; then
     cat >> "${output}" <<'EOF'
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
