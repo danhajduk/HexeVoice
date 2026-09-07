@@ -108,7 +108,7 @@ hexe::AppPhase g_last_phase = hexe::AppPhase::kBooting;
 bool g_last_muted = false;
 bool g_last_ota_active = false;
 int g_last_ota_progress = -1;
-int g_last_clock_minute_signature = -2;
+int g_last_clock_signature = -2;
 int g_last_animation_tick = -1;
 char g_last_asset_filename[96] = "";
 char g_last_sprite_filename[96] = "";
@@ -149,6 +149,10 @@ DirtyRect status_sprite_rect() {
 
 DirtyRect ota_progress_rect() {
   return DirtyRect{90, 254, 180, 8};
+}
+
+DirtyRect idle_clock_overlay_rect() {
+  return DirtyRect{40, 40, 280, 280};
 }
 
 constexpr gpio_num_t gpio_pin(int pin) {
@@ -375,6 +379,37 @@ void draw_blended_arc(int center_x, int center_y, int radius, int start_degrees,
     previous_x = x;
     previous_y = y;
     has_previous = true;
+  }
+}
+
+int wifi_strength_bars(int rssi) {
+  if (rssi >= -67) {
+    return 3;
+  }
+  if (rssi >= -75) {
+    return 2;
+  }
+  if (rssi >= -85) {
+    return 1;
+  }
+  return 0;
+}
+
+void draw_wifi_icon(int center_x, int center_y, bool connected, int rssi) {
+  constexpr uint16_t kConnected = 0xE7FF;
+  constexpr uint16_t kDim = 0x39E7;
+  constexpr uint16_t kOffline = 0xF800;
+  constexpr uint16_t kShadow = 0x0000;
+  const int bars = connected ? wifi_strength_bars(rssi) : 0;
+  const uint16_t dot_color = connected ? kConnected : kOffline;
+
+  draw_blended_arc(center_x, center_y + 10, 17, 304, 112, 3, bars >= 3 ? kConnected : kDim, bars >= 3 ? 225 : 95);
+  draw_blended_arc(center_x, center_y + 10, 12, 315, 90, 3, bars >= 2 ? kConnected : kDim, bars >= 2 ? 235 : 105);
+  draw_blended_arc(center_x, center_y + 10, 7, 332, 56, 3, bars >= 1 ? kConnected : kDim, bars >= 1 ? 245 : 120);
+  draw_disc(center_x + 1, center_y + 13, 3, kShadow);
+  draw_disc(center_x, center_y + 12, 3, dot_color);
+  if (!connected) {
+    draw_thick_line(center_x - 11, center_y - 6, center_x + 11, center_y + 16, kOffline, 2);
   }
 }
 
@@ -669,10 +704,19 @@ bool should_draw_idle_clock_overlay(const hexe::AppState &state, const char *ass
 }
 
 int idle_clock_overlay_signature(const hexe::AppState &state, const char *asset_filename) {
-  if (!should_draw_idle_clock_overlay(state, asset_filename) || !hexe::system::clock_synced()) {
+  if (!should_draw_idle_clock_overlay(state, asset_filename)) {
     return -1;
   }
-  return hexe::system::current_local_minute_signature();
+  int signature = (state.wifi_connected ? 1 : 0) * 1000000;
+  signature += wifi_strength_bars(state.wifi_rssi) * 100000;
+  if (!hexe::system::clock_synced()) {
+    return signature;
+  }
+  std::tm local = {};
+  if (!hexe::system::current_local_time(&local)) {
+    return signature;
+  }
+  return signature + (hexe::system::current_local_minute_signature() * 60) + std::clamp(local.tm_sec, 0, 59);
 }
 
 bool should_draw_listening_overlay(const hexe::AppState &state, const char *asset_filename) {
@@ -892,8 +936,32 @@ void draw_centered_date_text(const char *date) {
   draw_text5x7(x, kDateY, date, kDateScalePercent, kDateColor);
 }
 
+void draw_top_bar_icons(const hexe::AppState &state) {
+  draw_wifi_icon(127, 56, state.wifi_connected, state.wifi_rssi);
+}
+
+void draw_second_orbit_dot(const std::tm &local) {
+  constexpr int kCenterX = 180;
+  constexpr int kCenterY = 180;
+  constexpr int kSecondRadius = 124;
+  constexpr uint16_t kRed = 0xF800;
+  constexpr uint16_t kWarmRed = 0xF9E7;
+  const int seconds = std::clamp(local.tm_sec, 0, 59);
+  constexpr double kPi = 3.14159265358979323846;
+  const double radians = (static_cast<double>(seconds) * 2.0 * kPi) / 60.0;
+  const int x = kCenterX + static_cast<int>(std::lround(static_cast<double>(kSecondRadius) * std::sin(radians)));
+  const int y = kCenterY - static_cast<int>(std::lround(static_cast<double>(kSecondRadius) * std::cos(radians)));
+  draw_blended_disc(x, y, 9, kRed, 64);
+  draw_disc(x, y, 4, kRed);
+  draw_disc(x - 1, y - 1, 2, kWarmRed);
+}
+
 void draw_idle_clock_overlay(const hexe::AppState &state, const char *asset_filename) {
-  if (!should_draw_idle_clock_overlay(state, asset_filename) || !hexe::system::clock_synced()) {
+  if (!should_draw_idle_clock_overlay(state, asset_filename)) {
+    return;
+  }
+  draw_top_bar_icons(state);
+  if (!hexe::system::clock_synced()) {
     return;
   }
   std::tm local = {};
@@ -913,11 +981,12 @@ void draw_idle_clock_overlay(const hexe::AppState &state, const char *asset_file
   draw_clock_hand(kCenterX, kCenterY, 104, local.tm_min, 60, kMinuteColor, 3);
   draw_disc(kCenterX, kCenterY, 7, kHandShadow);
   draw_disc(kCenterX, kCenterY, 5, kMinuteColor);
+  draw_second_orbit_dot(local);
 
   const int month = std::clamp(local.tm_mon + 1, 1, 12);
   const int day = std::clamp(local.tm_mday, 1, 31);
   char date[6] = {};
-  std::snprintf(date, sizeof(date), "%02d/%02d", month, day);
+  std::snprintf(date, sizeof(date), "%02d-%02d", month, day);
   draw_centered_date_text(date);
 }
 
@@ -925,33 +994,33 @@ bool should_render_status_asset(
     const hexe::AppState &state,
     const char *asset_filename,
     const char *sprite_filename,
-    int clock_minute_signature,
+    int clock_signature,
     int animation_tick) {
   return g_force_redraw.load() || state.phase != g_last_phase || state.muted != g_last_muted ||
       state.ota_active != g_last_ota_active || state.ota_progress_percent != g_last_ota_progress ||
       std::strcmp(g_last_asset_filename, asset_filename) != 0 ||
       std::strcmp(g_last_sprite_filename, sprite_filename == nullptr ? "" : sprite_filename) != 0 ||
-      g_last_clock_minute_signature != clock_minute_signature || g_last_animation_tick != animation_tick;
+      g_last_clock_signature != clock_signature || g_last_animation_tick != animation_tick;
 }
 
-bool needs_full_status_render(const hexe::AppState &state, const char *asset_filename, int clock_minute_signature) {
+bool needs_full_status_render(const hexe::AppState &state, const char *asset_filename, int clock_signature) {
+  (void)clock_signature;
   return g_force_redraw.load() || state.phase != g_last_phase || state.muted != g_last_muted ||
       state.ota_active != g_last_ota_active || state.ota_progress_percent != g_last_ota_progress ||
-      std::strcmp(g_last_asset_filename, asset_filename) != 0 ||
-      g_last_clock_minute_signature != clock_minute_signature;
+      std::strcmp(g_last_asset_filename, asset_filename) != 0;
 }
 
 void remember_status_render(
     const hexe::AppState &state,
     const char *asset_filename,
     const char *sprite_filename,
-    int clock_minute_signature,
+    int clock_signature,
     int animation_tick) {
   g_last_phase = state.phase;
   g_last_muted = state.muted;
   g_last_ota_active = state.ota_active;
   g_last_ota_progress = state.ota_progress_percent;
-  g_last_clock_minute_signature = clock_minute_signature;
+  g_last_clock_signature = clock_signature;
   g_last_animation_tick = animation_tick;
   std::snprintf(g_last_asset_filename, sizeof(g_last_asset_filename), "%s", asset_filename);
   std::snprintf(g_last_sprite_filename, sizeof(g_last_sprite_filename), "%s", sprite_filename == nullptr ? "" : sprite_filename);
@@ -1300,13 +1369,14 @@ void render_boot_frame(int frame, const char *build_id) {
   const RenderPlan plan = render_plan_for_state(state);
   const char *asset_filename = plan.background_asset;
   const char *sprite_filename = plan.sprite_asset;
-  const int clock_minute_signature = idle_clock_overlay_signature(state, asset_filename);
+  const int clock_signature = idle_clock_overlay_signature(state, asset_filename);
   const int animation_tick = active_animation_tick(state, asset_filename);
-  if (!should_render_status_asset(state, asset_filename, sprite_filename, clock_minute_signature, animation_tick)) {
+  if (!should_render_status_asset(state, asset_filename, sprite_filename, clock_signature, animation_tick)) {
     return;
   }
-  const bool full_render = needs_full_status_render(state, asset_filename, clock_minute_signature);
+  const bool full_render = needs_full_status_render(state, asset_filename, clock_signature);
   const bool draw_animation = should_draw_animated_status_overlay(state, asset_filename);
+  const bool draw_idle_clock = should_draw_idle_clock_overlay(state, asset_filename) && clock_signature >= 0;
   if (plan.layered && !full_render && restore_rect_from_base(layered_overlay_rect(state, asset_filename), asset_filename)) {
     draw_status_sprite(sprite_filename);
     if (draw_animation) {
@@ -1316,7 +1386,7 @@ void render_boot_frame(int frame, const char *build_id) {
     const DirtyRect rect = layered_overlay_rect(state, asset_filename);
     flush_framebuffer_region(rect.x, rect.y, rect.width, rect.height);
     g_last_render_ms = static_cast<int>((esp_timer_get_time() - render_started_us) / 1000);
-    remember_status_render(state, asset_filename, sprite_filename, clock_minute_signature, animation_tick);
+    remember_status_render(state, asset_filename, sprite_filename, clock_signature, animation_tick);
     return;
   }
   if (!plan.layered && !full_render && draw_animation && restore_rect_from_base(animated_status_overlay_rect(state, asset_filename), asset_filename)) {
@@ -1324,7 +1394,15 @@ void render_boot_frame(int frame, const char *build_id) {
     const DirtyRect rect = animated_status_overlay_rect(state, asset_filename);
     flush_framebuffer_region(rect.x, rect.y, rect.width, rect.height);
     g_last_render_ms = static_cast<int>((esp_timer_get_time() - render_started_us) / 1000);
-    remember_status_render(state, asset_filename, sprite_filename, clock_minute_signature, animation_tick);
+    remember_status_render(state, asset_filename, sprite_filename, clock_signature, animation_tick);
+    return;
+  }
+  if (!plan.layered && !full_render && draw_idle_clock && restore_rect_from_base(idle_clock_overlay_rect(), asset_filename)) {
+    draw_idle_clock_overlay(state, asset_filename);
+    const DirtyRect rect = idle_clock_overlay_rect();
+    flush_framebuffer_region(rect.x, rect.y, rect.width, rect.height);
+    g_last_render_ms = static_cast<int>((esp_timer_get_time() - render_started_us) / 1000);
+    remember_status_render(state, asset_filename, sprite_filename, clock_signature, animation_tick);
     return;
   }
 
@@ -1361,7 +1439,7 @@ void render_boot_frame(int frame, const char *build_id) {
       g_last_flush_ms,
       hexe::system::display_flush_rows(),
       hexe::system::display_pixel_clock_hz());
-  remember_status_render(state, asset_filename, sprite_filename, clock_minute_signature, animation_tick);
+  remember_status_render(state, asset_filename, sprite_filename, clock_signature, animation_tick);
   (void)frame;
 }
 
