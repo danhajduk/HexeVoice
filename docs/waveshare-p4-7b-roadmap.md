@@ -181,7 +181,9 @@ touch actions into Hexe's existing mute, volume, and page-navigation controls.
 The profile also uses the shared Hexe station adapter through the onboard
 ESP32-C6. It uses the maintained IDF 6.1-compatible
 `esp_wifi_remote == 1.6.4` and `esp_hosted >= 2.11,<3.0` line, with ESP-Hosted
-owning the board's SDIO/control pins.
+owning the board's SDIO/control pins. Hosted SDIO transport pools are allocated
+from DMA-capable PSRAM on this profile so the 20-buffer queues do not exhaust
+the ESP32-P4's internal DMA heap during startup.
 
 Tasks:
 

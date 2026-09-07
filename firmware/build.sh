@@ -240,6 +240,7 @@ CONFIG_ESP_WIFI_REMOTE_ENABLED=y
 CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
 CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y
+CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
 # CONFIG_LV_BUILD_EXAMPLES is not set
 # CONFIG_LV_BUILD_DEMOS is not set
 EOF
@@ -309,7 +310,8 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
     { ! grep -q "^CONFIG_ESP_WIFI_REMOTE_ENABLED=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_SLAVE_IDF_TARGET_ESP32C6=y$" "${sdkconfig_path}" ||
-      ! grep -q "^CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y$" "${sdkconfig_path}"; }; then
+      ! grep -q "^CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y$" "${sdkconfig_path}"; }; then
     echo "Refreshing generated sdkconfig for ${profile}; P4 hosted Wi-Fi requires ESP32-C6 remote transport"
     rm -f "${sdkconfig_path}"
     return
