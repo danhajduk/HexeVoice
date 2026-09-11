@@ -68,6 +68,27 @@ the firmware NVS partition at `0x9000`, which the firmware reads on boot.
 `provisioning.env` can contain Wi-Fi credentials and must stay local. Do not
 publish it as a release asset.
 
+## Full Device Flash Bundle
+
+Use `firmware/build.sh bundle` for manufacturing or service flashes that need
+both the factory recovery app and the full endpoint app in one package. The
+bundle command builds minimal recovery firmware and endpoint firmware for one
+board profile, then exports `flash-full-device.sh`,
+`full-device-manifest.json`, bootloader, partition table, OTA data, and the two
+separate app images.
+
+For S3 recovery-capable profiles, the generated flash script writes recovery to
+the `factory` partition at `0x10000` and endpoint firmware to `ota_0` at
+`0x210000`. Normal endpoint OTA remains separate and must not write the factory
+recovery partition. If `provisioning.env` is present in the bundle directory,
+the flash script converts it to an NVS image and writes it to the default `nvs`
+partition for the current plaintext bootstrap path. Task 306 owns the future
+encrypted config-partition migration.
+
+P4 full-device bundles are intentionally blocked until the recovery app is
+buildable for `esp32p4`; the P4 partition layout already reserves factory and
+OTA slots, but the current recovery skeleton supports only S3.
+
 Build/export from the firmware source tree, then publish the contents of
 `runtime/firmware` as release assets:
 

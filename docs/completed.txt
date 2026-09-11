@@ -320,3 +320,4 @@ Task 310: Add layered Waveshare 1.85 UI renderer using idle and active backgroun
 Task 305: Physically validate HA Voice PE full firmware button wake, wake word, advisory VAD finalization, HTTP upload, TTS playback, and serial diagnostics - Completed on 09/06/2026 21:07
 Task 311: Add S3 16 MiB recovery single-model partition schema and move Waveshare 1.85 to it after clean-flash validation - Completed on 09/06/2026 21:10
 Task 313: Clean endpoint firmware dependencies by board feature and verify all available firmware profiles - Completed on 09/11/2026 08:13
+Task 307: Build a combined full-device flash bundle that writes minimal/recovery to the factory partition and full endpoint firmware to an OTA partition - Completed on 09/11/2026 08:45

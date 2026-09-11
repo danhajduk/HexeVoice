@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_SCRIPT_PATH="${ROOT_DIR}/$(basename "${BASH_SOURCE[0]}")"
 TARGET="${IDF_TARGET:-esp32s3}"
 EXPORT_AFTER_BUILD="${EXPORT_AFTER_BUILD:-1}"
 COMMAND="${1:-build}"
@@ -30,11 +31,12 @@ esac
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [build|push]
+Usage: $(basename "$0") [build|push|bundle]
 
 Commands:
   build  Build firmware and refresh runtime/export artifacts. Builds all buildable profiles by default.
   push   Build one firmware profile, refresh artifacts, then push OTA to the endpoint.
+  bundle Build a full-device recovery plus endpoint flash bundle for one board profile.
 
 Environment:
   HEXE_BOARD_PROFILE  Firmware board profile: ha_voice_pe, waveshare_s3_touch_lcd_1_85c_box_v2,
@@ -45,6 +47,8 @@ Environment:
                        or audio_probe for the generated-audio transport probe.
   BUILD_DIR     ESP-IDF build directory. Defaults to build or build-ha-voice-pe by profile.
   EXPORT_DIR    Firmware export directory. Defaults to export or export-ha-voice-pe by profile.
+  BUNDLE_BUILD_ROOT  Build root for bundle mode. Default: firmware/build-full-<profile>.
+  BUNDLE_EXPORT_DIR  Export folder for bundle mode. Default: firmware/export-full-<profile>.
   COMMON_EXPORT_DIR  Folder that receives profile-named binaries for all builds. Default: firmware/export.
   OTA_API_BASE   Backend API base URL for push mode. Default: ${OTA_API_BASE}
   ENDPOINT_ID    Endpoint id for push mode. Default: endpoint.id from config YAML.
@@ -545,7 +549,8 @@ build_profile() {
 
   echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"
   local idf_env=("IDF_TARGET=${idf_target}" "HEXE_FIRMWARE_APP=${FIRMWARE_APP}" "HEXE_BOARD_PROFILE=${profile}")
-  if [[ "${FIRMWARE_APP}" == "recovery" && -z "${IDF_COMPONENT_MANAGER:-}" ]]; then
+  if [[ "${FIRMWARE_APP}" == "recovery" && -z "${IDF_COMPONENT_MANAGER:-}" &&
+    "$(board_profile_value "${profile}" features.display)" != "true" ]]; then
     idf_env+=("IDF_COMPONENT_MANAGER=0")
   fi
   env "${idf_env[@]}" idf.py \
@@ -608,8 +613,66 @@ push_ota() {
   echo
 }
 
+build_full_device_bundle() {
+  local profile="$1"
+  if [[ "${profile}" == "all" ]]; then
+    echo "bundle mode requires a single HEXE_BOARD_PROFILE." >&2
+    exit 1
+  fi
+  if [[ ! -f "${BOARD_PROFILE_ROOT}/${profile}/board.yaml" ]]; then
+    echo "Unsupported HEXE_BOARD_PROFILE: ${profile}" >&2
+    exit 1
+  fi
+  if [[ "$(board_profile_value "${profile}" build.recovery_app)" != "true" ]]; then
+    echo "Board profile ${profile} does not declare recovery app support." >&2
+    exit 1
+  fi
+  if [[ "$(board_profile_value "${profile}" build.idf_target)" != "esp32s3" ]]; then
+    echo "Full-device bundle currently supports only esp32s3 recovery profiles; ${profile} recovery is not buildable yet." >&2
+    exit 1
+  fi
+  if [[ "$(board_profile_value "${profile}" adapters.buildable)" != "true" ]]; then
+    echo "Board profile ${profile} is defined but its endpoint adapters are not buildable yet." >&2
+    exit 1
+  fi
+
+  local bundle_build_root="${BUNDLE_BUILD_ROOT:-${ROOT_DIR}/build-full-${profile}}"
+  local bundle_export_dir="${BUNDLE_EXPORT_DIR:-${ROOT_DIR}/export-full-${profile}}"
+  local recovery_build_dir="${bundle_build_root}/recovery"
+  local endpoint_build_dir="${bundle_build_root}/endpoint"
+
+  echo "Building factory recovery firmware for ${profile}"
+  env \
+    ALLOW_DIRTY_FIRMWARE_BUILD="${ALLOW_DIRTY_FIRMWARE_BUILD:-0}" \
+    EXPORT_AFTER_BUILD=0 \
+    HEXE_BOARD_PROFILE="${profile}" \
+    HEXE_FIRMWARE_APP=minimal \
+    BUILD_DIR="${recovery_build_dir}" \
+    FIRMWARE_PROJECT_VERSION="${PROJECT_VERSION}" \
+    "${BUILD_SCRIPT_PATH}" build
+
+  echo "Building endpoint OTA firmware for ${profile}"
+  env \
+    ALLOW_DIRTY_FIRMWARE_BUILD="${ALLOW_DIRTY_FIRMWARE_BUILD:-0}" \
+    EXPORT_AFTER_BUILD=0 \
+    HEXE_BOARD_PROFILE="${profile}" \
+    HEXE_FIRMWARE_APP=endpoint \
+    BUILD_DIR="${endpoint_build_dir}" \
+    FIRMWARE_PROJECT_VERSION="${PROJECT_VERSION}" \
+    "${BUILD_SCRIPT_PATH}" build
+
+  "${CONVERTER_PYTHON}" "${ROOT_DIR}/tools/create_full_device_bundle.py" \
+    --board-profile "${profile}" \
+    --profile-root "${BOARD_PROFILE_ROOT}" \
+    --partition-root "${PARTITION_ROOT}" \
+    --recovery-build-dir "${recovery_build_dir}" \
+    --endpoint-build-dir "${endpoint_build_dir}" \
+    --output-dir "${bundle_export_dir}" \
+    --provisioning-csv-tool "${ROOT_DIR}/tools/provisioning-env-to-nvs-csv.py"
+}
+
 case "${COMMAND}" in
-  build|push)
+  build|push|bundle|full-flash|full-device)
     ;;
   -h|--help|help)
     usage
@@ -647,6 +710,8 @@ fi
 requested_profile="${HEXE_BOARD_PROFILE:-}"
 if [[ "${COMMAND}" == "push" && -z "${requested_profile}" ]]; then
   requested_profile="ha_voice_pe"
+elif [[ "${COMMAND}" != "build" && -z "${requested_profile}" ]]; then
+  requested_profile="ha_voice_pe"
 elif [[ -z "${requested_profile}" ]]; then
   requested_profile="all"
 fi
@@ -656,28 +721,35 @@ if [[ "${requested_profile}" == "all" && (-n "${BUILD_DIR:-}" || -n "${EXPORT_DI
   exit 1
 fi
 
-case "${requested_profile}" in
-  all)
+case "${COMMAND}" in
+  build|push)
+    case "${requested_profile}" in
+      all)
+        if [[ "${COMMAND}" == "push" ]]; then
+          echo "push mode requires a single buildable HEXE_BOARD_PROFILE." >&2
+          exit 1
+        fi
+        read -r -a profiles_to_build <<< "$(buildable_profiles)"
+        if [[ "${#profiles_to_build[@]}" -eq 0 ]]; then
+          echo "No buildable board profiles found in ${BOARD_PROFILE_ROOT}." >&2
+          exit 1
+        fi
+        for profile in "${profiles_to_build[@]}"; do
+          build_profile "${profile}"
+        done
+        ;;
+      *)
+        build_profile "${requested_profile}"
+        ;;
+    esac
+
     if [[ "${COMMAND}" == "push" ]]; then
-      echo "push mode requires a single buildable HEXE_BOARD_PROFILE." >&2
-      exit 1
+      push_ota "${requested_profile}"
     fi
-    read -r -a profiles_to_build <<< "$(buildable_profiles)"
-    if [[ "${#profiles_to_build[@]}" -eq 0 ]]; then
-      echo "No buildable board profiles found in ${BOARD_PROFILE_ROOT}." >&2
-      exit 1
-    fi
-    for profile in "${profiles_to_build[@]}"; do
-      build_profile "${profile}"
-    done
     ;;
-  *)
-    build_profile "${requested_profile}"
+  bundle|full-flash|full-device)
+    build_full_device_bundle "${requested_profile}"
     ;;
 esac
-
-if [[ "${COMMAND}" == "push" ]]; then
-  push_ota "${requested_profile}"
-fi
 
 echo "Firmware build complete."

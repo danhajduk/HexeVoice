@@ -699,3 +699,20 @@ Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_board_prof
 #############
 All Tasks completed 09/11/2026 08:15:30
 #############
+Task #307
+Step objective: Start combined full-device flash bundle implementation.
+Issue cause: Normal full-firmware flashing writes a single application image and does not package factory recovery plus endpoint OTA firmware together.
+Chosen fix: Extend the existing firmware build/export flow inside this repo to build paired recovery and endpoint images and generate a manifest plus flash arguments for the selected board profile.
+What changed: Task 307 moved from future TODO to WIP.
+Verification: Pending.
+###########
+Task #307
+Step objective: Complete full-device flash bundle generation.
+Issue cause: Manufacturing/service flashing needed one bundle that installs recovery in factory while preloading endpoint firmware in ota_0, without making normal OTA write the recovery partition.
+Chosen fix: Add a bundle assembler that validates matching ESP-IDF build metadata and partition tables, checks image sizes against factory and ota_0, and emits a manifest-driven flash script from paired recovery and endpoint builds.
+What changed: Added the full-device bundle tool, build-script bundle command, recovery display dependency handling for 1.85 bundles, release artifact docs, and focused tests.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_full_device_bundle.py tests/test_firmware_board_profiles.py tests/test_firmware_recovery_architecture.py` passed with 49 tests. `python3 firmware/tools/validate_board_profiles.py --root firmware/boards` and `python3 firmware/tools/validate_partition_schema.py --profile-root firmware/boards --partition-root firmware/partitions` passed for 4 profiles. `./firmware/build.sh bundle` passed for `ha_voice_pe` and `waveshare_s3_touch_lcd_1_85c_box_v2`; PE recovery `0x1262b0` and endpoint `0x172270` fit, 1.85 recovery `0x1f5cc0` and endpoint `0x193d50` fit. P4 bundle exits intentionally because recovery is not buildable for esp32p4 yet. `git diff --check` passed.
+###########
+#############
+All Tasks completed 09/11/2026 08:45:39
+#############
