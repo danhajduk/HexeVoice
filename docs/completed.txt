@@ -321,3 +321,5 @@ Task 305: Physically validate HA Voice PE full firmware button wake, wake word, 
 Task 311: Add S3 16 MiB recovery single-model partition schema and move Waveshare 1.85 to it after clean-flash validation - Completed on 09/06/2026 21:10
 Task 313: Clean endpoint firmware dependencies by board feature and verify all available firmware profiles - Completed on 09/11/2026 08:13
 Task 307: Build a combined full-device flash bundle that writes minimal/recovery to the factory partition and full endpoint firmware to an OTA partition - Completed on 09/11/2026 08:45
+Task 283: Make the Waveshare ESP32-S3 1.85C BOX V2 profile buildable by transcribing the schematic pin map and implementing display, touch, audio, storage, status, and TTS adapters behind the existing board-profile interface - Completed on 09/11/2026 09:18
+Task 284: Make the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B endpoint profile buildable with ESP32-P4 target, ESP32-C6 hosted Wi-Fi, display/touch, audio, SD storage, wake pipeline, and fallback UI paths - Completed on 09/11/2026 09:18

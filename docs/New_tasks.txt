@@ -59,9 +59,10 @@ Do not edit above this line:
 **********************************************************************************************
 
 [FUTURE TODO] Task 205: Add an optional experimental Kokoro TTS provider with Docker/Unix-socket runtime, CPU/CUDA mode, voice selection, WAV artifact normalization, and Piper-compatible fallback behavior
-[FUTURE TODO] Task 283: Make the Waveshare ESP32-S3 1.85C BOX V2 profile buildable by transcribing the schematic pin map and implementing display, touch, audio, storage, status, and TTS adapters behind the existing board-profile interface
-[FUTURE TODO] Task 284: Make the Waveshare ESP32-P4-WIFI6-Touch-LCD-7B profile buildable by implementing the ESP32-P4 target, ESP32-C6 SDIO radio transport, display/touch backends, ES7210/ES8311 audio path, SD storage, wake pipeline, and fallback UI
 [FUTURE TODO] Task 298: Add minimal firmware post-provisioning OTA handoff into full HexeVoice endpoint firmware
 [FUTURE TODO] Task 306: Move endpoint provisioning/settings into the dedicated config NVS partition with encrypted-at-rest credential storage
 [FUTURE TODO] Task 308: Add HA Voice PE internal SPIFFS sound cache for local WAV cues, alarms, and reusable endpoint sound effects
 [FUTURE TODO] Task 309: Add versioned endpoint runtime configuration in encrypted config NVS for tunable timeouts, volume, upload/download caps, VAD, wake behavior, network retry policy, BLE pairing windows, and diagnostics
+[FUTURE TODO] Task 314: Add ESP32-P4 recovery app support and enable full-device bundles for `waveshare_p4_wifi6_touch_lcd_7b`
+[FUTURE TODO] Task 315: Physically validate the Waveshare P4 endpoint profile on hardware, including ESP32-C6 hosted Wi-Fi, display/touch, ES7210 capture, ES8311 playback, SD storage, wake flow, and no-card boot behavior
+[FUTURE TODO] Task 316: Promote the Waveshare P4 profile from experimental to active after validation, refresh stale planned-profile docs, and resolve the firmware VAD status marker
