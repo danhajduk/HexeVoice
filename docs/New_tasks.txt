@@ -52,7 +52,7 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[WIP] Task 312: Add SD model-set loading and internal single-model cache policy for S3 16 MiB devices
+[TODO] Task 312: Add SD model-set loading and internal single-model cache policy for S3 16 MiB devices
 
 **********************************************************************************************
 * Future TODO listing

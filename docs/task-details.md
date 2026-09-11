@@ -3272,6 +3272,24 @@ Original task details:
 - Acceptance: Existing devices with provisioning in default `nvs` are migrated or safely continue to boot.
 - Acceptance: Tests cover partition selection, encryption configuration, migration, reset behavior, and secret redaction.
 
+## Task 307
+Original task details:
+- User request: Create a recovery-app task after confirming the current full firmware flash does not include both factory recovery and endpoint OTA firmware.
+- Goal: Build a combined full-device flash bundle that writes the minimal/recovery app to the factory partition and the full endpoint firmware to an OTA partition.
+- The bundle should build/export both `HEXE_FIRMWARE_APP=recovery` or `minimal` and `HEXE_FIRMWARE_APP=endpoint` for the selected board profile.
+- The flash script should write bootloader, partition table, OTA data, recovery app, endpoint app, and optional provisioning NVS in one command.
+- For S3 recovery-capable layouts, write recovery to `0x10000` and endpoint to `ota_0` at `0x210000`.
+- For P4, preserve the P4 bootloader offset and write endpoint to `ota_0` at `0x210000` once P4 recovery support exists.
+- Do not let normal endpoint OTA update the factory recovery partition.
+- Keep recovery/minimal provisioning compatible with the current plaintext NVS bootstrap path until Task 306 migrates secrets into encrypted config NVS.
+- On first full endpoint boot after provisioning, migrate accepted bootstrap values to the config partition when that encrypted config path exists, verify the encrypted copy, and remove plaintext credential values.
+- Include metadata that clearly labels application type, board profile, partition schema, app offsets, image sizes, SHA-256 checksums, and whether the bundle is manufacturing/service-only.
+- Acceptance: A generated full-device flash bundle contains separate recovery/minimal and endpoint binaries.
+- Acceptance: The generated flash script writes recovery/minimal to factory and endpoint to `ota_0`, not endpoint to factory.
+- Acceptance: Recovery remains independently bootable when endpoint OTA slots are bad or missing.
+- Acceptance: Endpoint OTA and recovery update policy remain separate.
+- Verification: Run partition validation, recovery/minimal build, endpoint build, generated flash-args inspection, and size checks for PE and Waveshare 1.85; document P4 recovery limitations if still unsupported.
+
 ## Task 308
 Original task details:
 - User request: Add a future task for storing some WAV sound files on the firmware, especially for the Home Assistant Voice PE device.
@@ -3354,3 +3372,24 @@ Original task details:
 - Acceptance: Firmware can cache a verified SD model set into the internal `model` partition and boot from it later.
 - Acceptance: Invalid/missing model data reaches `model_error` after bounded retries without breaking recovery/update access.
 - Verification: Add model-loader tests for SD discovery, hash/signature validation, cache activation, internal load retry, model error reporting, and no embedded fallback for the new product policy.
+
+## Task 313
+Original task details:
+- User request: Create a task for firmware dependency/source hygiene after the profile audit found PE compiles display, touch, SD, and Box3-related dependencies despite having no display, touch, or SD card.
+- Goal: Clean endpoint firmware dependencies by board feature while preserving all active profile builds and keeping Box3 retired/non-buildable.
+- Extend `firmware/tools/generate_board_profile_config.py` to emit feature flags from `board.yaml`, including display, touch, SD card, and USB OTG capability.
+- Refactor `firmware/components/endpoint_runtime/CMakeLists.txt` so `HEXE_ENDPOINT_REQUIRES` starts with only common voice/network dependencies.
+- Add display dependencies only when the selected board profile declares display support.
+- Add touch dependencies only when the selected board profile declares touch support.
+- Add `fatfs`, `sdmmc`, and `esp_driver_sdmmc` only when the selected board profile declares SD-card support.
+- Add `espressif__esp_lcd_st77916` only for the Waveshare 1.85 profile, not every S3 profile.
+- Remove `espressif/esp-box-3_noglib` from endpoint runtime dependencies because Box3 is retired and endpoint adapters are not buildable.
+- Keep PE source selection on `display_none.cpp`, `touch_none.cpp`, `storage_nvs_only.cpp`, and PE-specific audio/buttons/TTS adapters.
+- Keep Waveshare 1.85 compiling its ST77916 display, CST816S touch, SDMMC storage, ES7210/ES8311 audio, and profile-specific TTS paths.
+- Keep P4 compiling its BSP, display/touch, Hosted Wi-Fi, SDMMC, audio, and endpoint source paths.
+- Confirm `esp_box_3` still fails intentionally with the retired/non-buildable adapter message.
+- Acceptance: PE endpoint build no longer compiles LCD, touch, SD, FatFS, or ESP-BOX-3 managed components that are unused by PE.
+- Acceptance: PE, Waveshare 1.85, and P4 endpoint builds still complete.
+- Acceptance: All rebuilt endpoint binaries still fit their configured app partitions.
+- Acceptance: Board profile and partition validators still pass.
+- Verification: Rebuild `ha_voice_pe`, `waveshare_s3_touch_lcd_1_85c_box_v2`, and `waveshare_p4_wifi6_touch_lcd_7b`; inspect compile commands or build metadata for profile-specific dependency/source inclusion; run the explicit `esp_box_3` rejection check.

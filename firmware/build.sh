@@ -544,7 +544,7 @@ build_profile() {
   refresh_profile_sdkconfig_if_generated_defaults_changed "${profile}" "${sdkconfig_path}"
 
   echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"
-  local idf_env=("IDF_TARGET=${idf_target}" "HEXE_FIRMWARE_APP=${FIRMWARE_APP}")
+  local idf_env=("IDF_TARGET=${idf_target}" "HEXE_FIRMWARE_APP=${FIRMWARE_APP}" "HEXE_BOARD_PROFILE=${profile}")
   if [[ "${FIRMWARE_APP}" == "recovery" && -z "${IDF_COMPONENT_MANAGER:-}" ]]; then
     idf_env+=("IDF_COMPONENT_MANAGER=0")
   fi

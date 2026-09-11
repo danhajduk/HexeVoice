@@ -40,8 +40,14 @@ def render_cmake(profile: dict[str, object], profile_path: Path) -> str:
     support_status = str(profile["support_status"])
     build = profile["build"]
     hardware = profile["hardware"]
+    features = profile["features"]
     adapters = profile["adapters"]
-    if not isinstance(build, dict) or not isinstance(hardware, dict) or not isinstance(adapters, dict):
+    if (
+        not isinstance(build, dict)
+        or not isinstance(hardware, dict)
+        or not isinstance(features, dict)
+        or not isinstance(adapters, dict)
+    ):
         raise ValidationError("validated profile lost required object sections")
 
     definitions = build.get("compile_definitions")
@@ -64,6 +70,10 @@ def render_cmake(profile: dict[str, object], profile_path: Path) -> str:
         f"set(HEXE_BOARD_SOC {cmake_quote(hardware.get('soc'))})",
         f"set(HEXE_BOARD_FLASH_SIZE {cmake_quote(hardware.get('flash_size'))})",
         f"set(HEXE_BOARD_PSRAM_SIZE {cmake_quote(hardware.get('psram_size'))})",
+        f"set(HEXE_BOARD_FEATURE_DISPLAY {cmake_bool(features.get('display'))})",
+        f"set(HEXE_BOARD_FEATURE_TOUCH {cmake_bool(features.get('touch'))})",
+        f"set(HEXE_BOARD_FEATURE_SD_CARD {cmake_bool(features.get('sd_card'))})",
+        f"set(HEXE_BOARD_FEATURE_USB_OTG {cmake_bool(features.get('usb_otg'))})",
         f"set(HEXE_BOARD_RECOVERY_APP {cmake_bool(build.get('recovery_app'))})",
         f"set(HEXE_BOARD_ADAPTER_BUILDABLE {cmake_bool(adapters.get('buildable'))})",
         "set(HEXE_BOARD_DEFINITIONS",

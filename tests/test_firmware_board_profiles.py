@@ -15,6 +15,7 @@ PARTITION_VALIDATOR = REPO_ROOT / "firmware/tools/validate_partition_schema.py"
 PROFILE_ROOT = REPO_ROOT / "firmware/boards"
 FIRMWARE_ROOT_CMAKE = REPO_ROOT / "firmware/CMakeLists.txt"
 FIRMWARE_CMAKE = REPO_ROOT / "firmware/components/endpoint_runtime/CMakeLists.txt"
+FIRMWARE_ENDPOINT_MANIFEST = REPO_ROOT / "firmware/components/endpoint_runtime/idf_component.yml"
 FIRMWARE_BUILD_SCRIPT = REPO_ROOT / "firmware/build.sh"
 PARTITIONS_DIR = REPO_ROOT / "firmware/partitions"
 
@@ -344,6 +345,10 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'set(HEXE_BOARD_IDF_TARGET "esp32s3")' in cmake
     assert 'set(HEXE_BOARD_SOC "esp32s3")' in cmake
     assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-16m-recovery-single-model-v1")' in cmake
+    assert "set(HEXE_BOARD_FEATURE_DISPLAY FALSE)" in cmake
+    assert "set(HEXE_BOARD_FEATURE_TOUCH FALSE)" in cmake
+    assert "set(HEXE_BOARD_FEATURE_SD_CARD FALSE)" in cmake
+    assert "set(HEXE_BOARD_FEATURE_USB_OTG FALSE)" in cmake
     assert "set(HEXE_BOARD_ADAPTER_BUILDABLE TRUE)" in cmake
     assert "HEXE_BOARD_PROFILE_HA_VOICE_PE=1" in cmake
     assert '"board/audio_ha_voice_pe.cpp"' in cmake
@@ -391,6 +396,10 @@ def test_board_profile_generator_renders_waveshare_buildable_scaffold(tmp_path):
     cmake = output.read_text(encoding="utf-8")
     assert 'set(HEXE_BOARD_PROFILE "waveshare_s3_touch_lcd_1_85c_box_v2")' in cmake
     assert "set(HEXE_BOARD_ADAPTER_BUILDABLE TRUE)" in cmake
+    assert "set(HEXE_BOARD_FEATURE_DISPLAY TRUE)" in cmake
+    assert "set(HEXE_BOARD_FEATURE_TOUCH TRUE)" in cmake
+    assert "set(HEXE_BOARD_FEATURE_SD_CARD TRUE)" in cmake
+    assert "set(HEXE_BOARD_FEATURE_USB_OTG FALSE)" in cmake
     assert "HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2=1" in cmake
     assert '"board/waveshare_s3_1_85c_bus.cpp"' in cmake
     assert '"board/storage_waveshare_s3_1_85c_box_v2.cpp"' in cmake
@@ -399,6 +408,7 @@ def test_board_profile_generator_renders_waveshare_buildable_scaffold(tmp_path):
 def test_firmware_cmake_uses_generated_board_profile_adapters():
     root_cmake = FIRMWARE_ROOT_CMAKE.read_text(encoding="utf-8")
     cmake = FIRMWARE_CMAKE.read_text(encoding="utf-8")
+    manifest = FIRMWARE_ENDPOINT_MANIFEST.read_text(encoding="utf-8")
 
     assert "HEXE_FIRMWARE_APP" in root_cmake
     assert 'set(HEXE_FIRMWARE_APP "endpoint")' in root_cmake
@@ -412,6 +422,15 @@ def test_firmware_cmake_uses_generated_board_profile_adapters():
     assert "board_profile_config.cmake" in cmake
     assert 'include("${HEXE_GENERATED_DIR}/board_profile_config.cmake")' in cmake
     assert "HEXE_BOARD_ADAPTER_BUILDABLE" in cmake
+    assert "HEXE_BOARD_FEATURE_DISPLAY" in cmake
+    assert "HEXE_BOARD_FEATURE_TOUCH" in cmake
+    assert "HEXE_BOARD_FEATURE_SD_CARD" in cmake
+    assert "list(APPEND HEXE_ENDPOINT_REQUIRES esp_lcd)" in cmake
+    assert "list(APPEND HEXE_ENDPOINT_REQUIRES espressif__esp_lcd_touch)" in cmake
+    assert "list(APPEND HEXE_ENDPOINT_REQUIRES espressif__esp_lcd_st77916)" in cmake
+    assert "HEXE_BOARD_PROFILE STREQUAL \"waveshare_s3_touch_lcd_1_85c_box_v2\"" in cmake
+    assert "esp-box-3_noglib" not in manifest
+    assert "${HEXE_BOARD_PROFILE} == waveshare_s3_touch_lcd_1_85c_box_v2" in manifest
     assert 'set(HEXE_BOARD_SRCS\n  "board/audio.cpp"' not in cmake
     assert "elseif(HEXE_BOARD_PROFILE STREQUAL" not in cmake
 
@@ -426,6 +445,7 @@ def test_firmware_build_script_discovers_buildable_profiles_from_yaml():
     assert "partition_csv_for_schema" in build_script
     assert "flash_size_kconfig_symbol" in build_script
     assert "flash_size_kconfig_value" in build_script
+    assert '"HEXE_BOARD_PROFILE=${profile}"' in build_script
     assert "refresh_profile_sdkconfig_if_generated_defaults_changed" in build_script
     assert "CONFIG_BT_NIMBLE_ENABLED=y" in build_script
     assert 's3-8m-v1) echo "partitions/s3_8m_v1.csv"' in build_script

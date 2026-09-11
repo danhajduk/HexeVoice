@@ -78,39 +78,48 @@ set(HEXE_ENDPOINT_REQUIRES
   esp_driver_rmt
   esp_https_ota
   esp_http_client
-  esp_lcd
   esp_netif
   esp_partition
   esp-tflite-micro
   esp_websocket_client
   esp_wifi
   espressif__esp_codec_dev
-  fatfs
   cjson
   lwip
   mbedtls
   nvs_flash
-  sdmmc
 )
-if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32p4")
+if(HEXE_BOARD_FEATURE_DISPLAY)
+  list(APPEND HEXE_ENDPOINT_REQUIRES esp_lcd)
+endif()
+if(HEXE_BOARD_FEATURE_TOUCH)
+  list(APPEND HEXE_ENDPOINT_REQUIRES espressif__esp_lcd_touch)
+endif()
+if(HEXE_BOARD_FEATURE_SD_CARD)
+  list(
+    APPEND
+    HEXE_ENDPOINT_REQUIRES
+      esp_driver_sdmmc
+      fatfs
+      sdmmc
+  )
+endif()
+if(HEXE_BOARD_IDF_TARGET STREQUAL "esp32s3")
+  list(APPEND HEXE_ENDPOINT_REQUIRES bt)
+endif()
+if(HEXE_BOARD_PROFILE STREQUAL "waveshare_s3_touch_lcd_1_85c_box_v2")
+  list(APPEND HEXE_ENDPOINT_REQUIRES espressif__esp_lcd_st77916)
+endif()
+if(HEXE_BOARD_PROFILE STREQUAL "waveshare_p4_wifi6_touch_lcd_7b")
   list(
     APPEND
     HEXE_ENDPOINT_REQUIRES
       esp32_p4_wifi6_touch_lcd_7b
-      esp_driver_sdmmc
       lvgl__lvgl
   )
   if(IDF_VERSION_MAJOR GREATER_EQUAL 6)
     list(APPEND HEXE_ENDPOINT_REQUIRES esp_driver_dma)
   endif()
-else()
-  list(
-    APPEND
-    HEXE_ENDPOINT_REQUIRES
-      bt
-      espressif__esp_lcd_st77916
-      espressif__esp_lcd_touch
-  )
 endif()
 set(HEXE_ENDPOINT_SRCS
   "app_state.cpp"

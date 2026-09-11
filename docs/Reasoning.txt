@@ -682,3 +682,20 @@ Chosen fix: Extend the existing model-bundle manager rather than adding a parall
 What changed: Implementation started.
 Verification: Pending.
 ###########
+Task #313
+Step objective: Start endpoint dependency/source hygiene by board feature.
+Issue cause: PE selects no-display/no-touch/no-SD sources but the shared endpoint component still pulls display, touch, SD, and retired Box3 dependencies too broadly.
+Chosen fix: Generate board feature flags from board profiles and gate endpoint dependencies from those generated flags.
+What changed: Task 312 paused and Task 313 marked WIP.
+Verification: Started.
+###########
+Task #313
+Step objective: Complete endpoint dependency/source hygiene by board feature.
+Issue cause: Endpoint runtime dependencies were too broad for PE and S3-only LCD packages were selected for all S3 profiles.
+Chosen fix: Export board feature flags from generated board-profile CMake, gate endpoint CMake dependencies by feature/profile, gate optional component-manager dependencies by profile, and export HEXE_BOARD_PROFILE during firmware builds.
+What changed: PE no longer resolves or compiles LCD/touch/SD/Box3 dependencies; Waveshare 1.85 keeps ST77916, touch, FATFS, and SDMMC; P4 keeps its BSP, LVGL, touch, FATFS, and SDMMC path while skipping S3 ST77916; Box3 remains retired/non-buildable.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_board_profiles.py` passed with 31 tests. `python3 firmware/tools/validate_board_profiles.py --root firmware/boards` validated 4 profiles. `python3 firmware/tools/validate_partition_schema.py --profile-root firmware/boards --partition-root firmware/partitions` validated 4 profiles. Firmware builds passed for `ha_voice_pe` (0x172270, 28% free in 0x200000), `waveshare_s3_touch_lcd_1_85c_box_v2` (0x193d50, 21% free in 0x200000), and `waveshare_p4_wifi6_touch_lcd_7b` (0x197070, 21% free in 0x200000). `esp_box_3` failed intentionally with the retired/non-buildable adapter message.
+###########
+#############
+All Tasks completed 09/11/2026 08:15:30
+#############
