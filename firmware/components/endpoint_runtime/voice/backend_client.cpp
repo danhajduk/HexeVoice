@@ -2354,6 +2354,10 @@ void add_module_status(
         cJSON_AddStringToObject(model_bundle, "active_bundle_id", bundle_state.active_bundle_id);
         cJSON_AddStringToObject(model_bundle, "active_version", bundle_state.active_version);
         cJSON_AddStringToObject(model_bundle, "active_sha256", bundle_state.active_sha256);
+        cJSON_AddStringToObject(model_bundle, "storage_model_policy", bundle_state.storage_model_policy);
+        cJSON_AddStringToObject(model_bundle, "sd_model_sets_path", bundle_state.sd_model_sets_path);
+        cJSON_AddStringToObject(model_bundle, "cache_status", bundle_state.cache_status);
+        cJSON_AddStringToObject(model_bundle, "cache_error", bundle_state.cache_error);
         cJSON_AddBoolToObject(model_bundle, "embedded_fallback", bundle_state.embedded_fallback);
         cJSON_AddBoolToObject(model_bundle, "rollback_available", bundle_state.rollback_available);
         cJSON_AddBoolToObject(model_bundle, "staged_tested", bundle_state.staged_tested);

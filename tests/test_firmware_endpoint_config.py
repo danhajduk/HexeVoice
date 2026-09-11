@@ -32,6 +32,8 @@ def test_endpoint_config_generator_uses_yaml_contract(tmp_path):
     assert "constexpr int kEndpointDiscoveryUdpPort = 9134;" in header
     assert 'constexpr const char *kEndpointOtaManifestKeyId = "hexevoice-dev-v1";' in header
     assert 'constexpr const char *kEndpointOtaManifestSigningKey = "hexevoice-local-dev-ota-signing-key";' in header
+    assert 'constexpr const char *kModelBundleManifestKeyId = "hexevoice-model-dev-v1";' in header
+    assert 'constexpr const char *kModelBundleManifestSigningKey = "local-dev-key";' in header
     assert "constexpr bool kEndpointLogStreamEnabled = false;" in header
     assert 'constexpr const char *kEndpointLogStreamHost = "10.0.0.22";' in header
     assert "constexpr int kEndpointLogStreamUdpPort = 9010;" in header

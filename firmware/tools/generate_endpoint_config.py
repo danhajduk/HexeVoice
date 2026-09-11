@@ -99,6 +99,13 @@ def render_header(data: dict[str, dict[str, object]], board_profile: str = "ha_v
     discovery_udp_port = optional(data, "behavior", "discovery_udp_port", 9134)
     ota_manifest_key_id = optional(data, "ota", "manifest_key_id", "hexevoice-dev-v1")
     ota_manifest_signing_key = optional(data, "ota", "manifest_signing_key", "hexevoice-local-dev-ota-signing-key")
+    model_bundle_manifest_key_id = optional(data, "model_bundle", "manifest_key_id", "hexevoice-model-dev-v1")
+    model_bundle_manifest_signing_key = optional(
+        data,
+        "model_bundle",
+        "manifest_signing_key",
+        "local-dev-key",
+    )
     log_stream_enabled = optional(data, "debug_log", "enabled", False)
     log_stream_host = optional(data, "debug_log", "host", host)
     log_stream_port = optional(data, "debug_log", "udp_port", 9010)
@@ -128,6 +135,8 @@ constexpr bool kEndpointDiscoveryEnabled = {bool_literal(discovery_enabled)};
 constexpr int kEndpointDiscoveryUdpPort = {int(discovery_udp_port)};
 constexpr const char *kEndpointOtaManifestKeyId = {string_literal(ota_manifest_key_id)};
 constexpr const char *kEndpointOtaManifestSigningKey = {string_literal(ota_manifest_signing_key)};
+constexpr const char *kModelBundleManifestKeyId = {string_literal(model_bundle_manifest_key_id)};
+constexpr const char *kModelBundleManifestSigningKey = {string_literal(model_bundle_manifest_signing_key)};
 constexpr bool kEndpointLogStreamEnabled = {bool_literal(log_stream_enabled)};
 constexpr const char *kEndpointLogStreamHost = {string_literal(log_stream_host)};
 constexpr int kEndpointLogStreamUdpPort = {int(log_stream_port)};

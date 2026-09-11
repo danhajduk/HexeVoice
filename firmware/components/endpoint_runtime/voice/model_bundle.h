@@ -33,6 +33,10 @@ struct ModelBundleState {
   const char *active_bundle_id{nullptr};
   const char *active_version{nullptr};
   const char *active_sha256{nullptr};
+  const char *storage_model_policy{nullptr};
+  const char *sd_model_sets_path{nullptr};
+  const char *cache_status{nullptr};
+  const char *cache_error{nullptr};
   bool embedded_fallback{true};
   bool rollback_available{false};
   bool staged_tested{false};

@@ -52,7 +52,7 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 312: Add SD model-set loading and internal single-model cache policy for S3 16 MiB devices
+
 
 **********************************************************************************************
 * Future TODO listing
@@ -66,3 +66,4 @@ Do not edit above this line:
 [FUTURE TODO] Task 314: Add ESP32-P4 recovery app support and enable full-device bundles for `waveshare_p4_wifi6_touch_lcd_7b`
 [FUTURE TODO] Task 315: Physically validate the Waveshare P4 endpoint profile on hardware, including ESP32-C6 hosted Wi-Fi, display/touch, ES7210 capture, ES8311 playback, SD storage, wake flow, and no-card boot behavior
 [FUTURE TODO] Task 316: Promote the Waveshare P4 profile from experimental to active after validation, refresh stale planned-profile docs, and resolve the firmware VAD status marker
+[FUTURE TODO] Task 317: Create signed SD model-set media for S3 16 MiB devices and physically validate discovery, internal cache install, boot-from-cache, corrupt-media rejection, and no-media recovery behavior

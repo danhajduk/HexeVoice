@@ -62,6 +62,7 @@ endif()
 message(STATUS "Hexe board profile: ${HEXE_BOARD_PROFILE}")
 message(STATUS "Hexe board profile file: ${HEXE_BOARD_PROFILE_PATH}")
 message(STATUS "Hexe board partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
+message(STATUS "Hexe board storage model policy: ${HEXE_BOARD_STORAGE_MODEL_POLICY}")
 
 set(HEXE_ENDPOINT_EMBED_FILES
   "voice/models/audio_preprocessor_int8.tflite"
@@ -80,6 +81,7 @@ set(HEXE_ENDPOINT_REQUIRES
   esp_http_client
   esp_netif
   esp_partition
+  spiffs
   esp-tflite-micro
   esp_websocket_client
   esp_wifi

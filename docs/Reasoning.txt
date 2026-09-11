@@ -716,3 +716,20 @@ Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_full_devic
 #############
 All Tasks completed 09/11/2026 08:45:39
 #############
+Task #312
+Step objective: Start SD model-set and single-model cache policy implementation.
+Issue cause: S3 16 MiB devices now use a single internal `model` partition, but the runtime still needs explicit SD model-set discovery and no-media-safe cache behavior before real model media is added.
+Chosen fix: Extend the existing model bundle manager with fake-file-testable discovery and policy plumbing rather than requiring real model assets during implementation.
+What changed: Task 312 marked WIP.
+Verification: Pending.
+###########
+Task #312
+Step objective: Complete SD model-set loading and internal single-model cache policy implementation.
+Issue cause: S3 16 MiB devices needed a no-embedded-fallback runtime policy that can discover signed SD model sets, validate them, and cache a verified set into the single internal `model` partition without requiring model media during source implementation.
+Chosen fix: Generate per-board storage model policy constants, add signed-manifest/hash validation and SD discovery to the firmware model bundle manager, load the internal single-model cache first, copy verified SD assets into the `model` SPIFFS partition only after validation, and report cache policy/status in endpoint heartbeat metadata.
+What changed: Waveshare 1.85 now uses `internal_single_or_sd_model_set_no_embedded_fallback`; PE keeps embedded fallback with internal single-model cache; P4 keeps SD-required policy. Model-bundle docs and board comparison docs were updated, and Task 317 was added for real signed-media physical validation.
+Verification: `PYTHONPATH=src .venv/bin/pytest -q tests/test_firmware_endpoint_config.py tests/test_firmware_board_profiles.py tests/test_firmware_model_bundles.py tests/test_firmware_voice_envelope.py::test_firmware_model_bundle_activation_supports_single_model_policy` passed with 40 tests. Firmware builds passed for `ha_voice_pe` (0x17b790, 26% free in 0x200000), `waveshare_s3_touch_lcd_1_85c_box_v2` (0x19c260, 20% free in 0x200000), and `waveshare_p4_wifi6_touch_lcd_7b` (0x1a1850, 18% free in 0x200000). A broader firmware voice-envelope test run still has the pre-existing Waveshare display date-format assertion unrelated to this task.
+###########
+#############
+All Tasks completed 09/11/2026 09:55:41
+#############

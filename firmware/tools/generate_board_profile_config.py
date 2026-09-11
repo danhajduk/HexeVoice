@@ -42,11 +42,13 @@ def render_cmake(profile: dict[str, object], profile_path: Path) -> str:
     hardware = profile["hardware"]
     features = profile["features"]
     adapters = profile["adapters"]
+    storage = profile["storage"]
     if (
         not isinstance(build, dict)
         or not isinstance(hardware, dict)
         or not isinstance(features, dict)
         or not isinstance(adapters, dict)
+        or not isinstance(storage, dict)
     ):
         raise ValidationError("validated profile lost required object sections")
 
@@ -66,6 +68,7 @@ def render_cmake(profile: dict[str, object], profile_path: Path) -> str:
         f"set(HEXE_BOARD_SUPPORT_STATUS {cmake_quote(support_status)})",
         f"set(HEXE_BOARD_IDF_TARGET {cmake_quote(build.get('idf_target'))})",
         f"set(HEXE_BOARD_PARTITION_SCHEMA {cmake_quote(build.get('partition_schema'))})",
+        f"set(HEXE_BOARD_STORAGE_MODEL_POLICY {cmake_quote(storage.get('models', 'embedded_fallback'))})",
         f"set(HEXE_BOARD_APP_SLOT_SIZE {cmake_quote(build.get('app_slot_size'))})",
         f"set(HEXE_BOARD_SOC {cmake_quote(hardware.get('soc'))})",
         f"set(HEXE_BOARD_FLASH_SIZE {cmake_quote(hardware.get('flash_size'))})",
@@ -102,8 +105,9 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
     build = profile["build"]
     hardware = profile["hardware"]
     display = profile["display"]
+    storage = profile["storage"]
     wiring = profile["wiring"]
-    if not isinstance(build, dict) or not isinstance(hardware, dict) or not isinstance(display, dict) or not isinstance(wiring, dict):
+    if not isinstance(build, dict) or not isinstance(hardware, dict) or not isinstance(display, dict) or not isinstance(storage, dict) or not isinstance(wiring, dict):
         raise ValidationError("validated profile lost wiring section")
     wireless = hardware.get("wireless")
     if not isinstance(wireless, dict):
@@ -127,6 +131,7 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
         f'constexpr const char *kSoc = "{hardware.get("soc")}";',
         f'constexpr const char *kIdfTarget = "{build.get("idf_target")}";',
         f'constexpr const char *kPartitionSchema = "{build.get("partition_schema")}";',
+        f'constexpr const char *kStorageModelPolicy = "{storage.get("models", "embedded_fallback")}";',
         f'constexpr const char *kAppSlotSize = "{build.get("app_slot_size")}";',
         f'constexpr const char *kFlashSize = "{hardware.get("flash_size")}";',
         f'constexpr const char *kPsramSize = "{hardware.get("psram_size")}";',

@@ -145,7 +145,7 @@ describe Hexe firmware VAD running from PCM audio frames.
 | `storage.config` | `encrypted_nvs` | `encrypted_nvs` | `encrypted_nvs` | `encrypted_nvs` |
 | `storage.calibration` | `encrypted_nvs_or_internal_metrics_store` | `encrypted_nvs_or_spiffs_metrics_store` | `encrypted_nvs_or_internal_metrics_store` | `encrypted_nvs_or_internal_metrics_store` |
 | `storage.media` | `embedded_minimal_tones_only` | `sd_preferred_with_embedded_fallback` | `sd_preferred_with_embedded_fallback` | `sd_versioned_bundles_with_embedded_fallback` |
-| `storage.models` | `embedded_fallback_then_internal_single_model_cache` | `embedded_fallback_then_internal_or_sd_bundle` | `embedded_fallback_then_internal_or_sd_bundle` | `embedded_fallback_then_sd_bundle` |
+| `storage.models` | `embedded_fallback_then_internal_single_model_cache` | `internal_single_or_sd_model_set_no_embedded_fallback` | `embedded_fallback_then_internal_or_sd_bundle` | `sd_model_set_required_no_embedded_fallback` |
 
 ## Controls and Indicators
 

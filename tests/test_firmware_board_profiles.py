@@ -345,6 +345,7 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'set(HEXE_BOARD_IDF_TARGET "esp32s3")' in cmake
     assert 'set(HEXE_BOARD_SOC "esp32s3")' in cmake
     assert 'set(HEXE_BOARD_PARTITION_SCHEMA "s3-16m-recovery-single-model-v1")' in cmake
+    assert 'set(HEXE_BOARD_STORAGE_MODEL_POLICY "embedded_fallback_then_internal_single_model_cache")' in cmake
     assert "set(HEXE_BOARD_FEATURE_DISPLAY FALSE)" in cmake
     assert "set(HEXE_BOARD_FEATURE_TOUCH FALSE)" in cmake
     assert "set(HEXE_BOARD_FEATURE_SD_CARD FALSE)" in cmake
@@ -359,6 +360,7 @@ def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
     assert 'constexpr const char *kSoc = "esp32s3";' in header
     assert 'constexpr const char *kIdfTarget = "esp32s3";' in header
     assert 'constexpr const char *kPartitionSchema = "s3-16m-recovery-single-model-v1";' in header
+    assert 'constexpr const char *kStorageModelPolicy = "embedded_fallback_then_internal_single_model_cache";' in header
     assert 'constexpr const char *kAppSlotSize = "4MiB";' in header
     assert 'constexpr const char *kFlashSize = "16MiB";' in header
     assert 'constexpr const char *kPsramSize = "8MiB";' in header
@@ -400,6 +402,7 @@ def test_board_profile_generator_renders_waveshare_buildable_scaffold(tmp_path):
     assert "set(HEXE_BOARD_FEATURE_TOUCH TRUE)" in cmake
     assert "set(HEXE_BOARD_FEATURE_SD_CARD TRUE)" in cmake
     assert "set(HEXE_BOARD_FEATURE_USB_OTG FALSE)" in cmake
+    assert 'set(HEXE_BOARD_STORAGE_MODEL_POLICY "internal_single_or_sd_model_set_no_embedded_fallback")' in cmake
     assert "HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2=1" in cmake
     assert '"board/waveshare_s3_1_85c_bus.cpp"' in cmake
     assert '"board/storage_waveshare_s3_1_85c_box_v2.cpp"' in cmake
@@ -425,6 +428,7 @@ def test_firmware_cmake_uses_generated_board_profile_adapters():
     assert "HEXE_BOARD_FEATURE_DISPLAY" in cmake
     assert "HEXE_BOARD_FEATURE_TOUCH" in cmake
     assert "HEXE_BOARD_FEATURE_SD_CARD" in cmake
+    assert "HEXE_BOARD_STORAGE_MODEL_POLICY" in cmake
     assert "list(APPEND HEXE_ENDPOINT_REQUIRES esp_lcd)" in cmake
     assert "list(APPEND HEXE_ENDPOINT_REQUIRES espressif__esp_lcd_touch)" in cmake
     assert "list(APPEND HEXE_ENDPOINT_REQUIRES espressif__esp_lcd_st77916)" in cmake

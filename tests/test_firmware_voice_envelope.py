@@ -766,6 +766,17 @@ def test_firmware_model_bundle_activation_supports_single_model_policy():
     assert 'std::strcmp(bank, "model") == 0' in bundle_source
     assert '"/sdcard/hexe/model_sets/"' in bundle_source
     assert "single_model_schema()" in bundle_source
+    assert "kStorageModelPolicy" in bundle_source
+    assert "model_policy_allows_embedded_fallback()" in bundle_source
+    assert "load_internal_single_model_cache(" in bundle_source
+    assert "discover_sd_model_set(" in bundle_source
+    assert "copy_manifest_assets_to_internal_cache(" in bundle_source
+    assert "verify_manifest_signature(" in bundle_source
+    assert "calculate_manifest_hmac(" in bundle_source
+    assert "model_bundle_signature_mismatch" in bundle_source
+    assert "model_bundle_asset_hash_mismatch" in bundle_source
+    assert "esp_vfs_spiffs_register(&conf)" in bundle_source
+    assert "format_if_mount_failed" in bundle_source
     assert '"model_error"' in bundle_source
     assert '"single_model_cache_not_loaded"' in bundle_source
     assert "kModelLoadRetryLimit = 2" in bundle_source
@@ -793,6 +804,10 @@ def test_firmware_model_bundle_activation_supports_single_model_policy():
     assert '"active_bank"' in backend_source
     assert '"previous_bank"' in backend_source
     assert '"embedded_fallback"' in backend_source
+    assert '"storage_model_policy"' in backend_source
+    assert '"sd_model_sets_path"' in backend_source
+    assert '"cache_status"' in backend_source
+    assert '"cache_error"' in backend_source
     assert '"internal_single_available"' in backend_source
     assert '"sd_model_sets_available"' in backend_source
     assert '"model_bytes"' in backend_source
@@ -800,11 +815,12 @@ def test_firmware_model_bundle_activation_supports_single_model_policy():
     assert '"endpoint.model_bundle.rollback"' in backend_source
     assert '"voice/model_bundle.cpp"' in cmake_source
     assert "esp_partition" in cmake_source
+    assert "spiffs" in cmake_source
 
     assert "internal A/B banks named `model_a` and `model_b`" in docs
     assert "internal single-cache partition named `model`" in docs
     assert "`/sdcard/hexe/model_sets/`" in docs
-    assert "`model_error` reporting for single-model layouts" in docs
+    assert "`model_error` reporting for no-embedded-fallback policies" in docs
     assert "atomic NVS updates of active and previous bundle pointers" in docs
 
 

@@ -209,7 +209,7 @@ storage:
   config: encrypted_nvs
   calibration: encrypted_nvs_or_internal_metrics_store
   media: sd_preferred_with_embedded_fallback
-  models: embedded_fallback_then_internal_or_sd_bundle
+  models: internal_single_or_sd_model_set_no_embedded_fallback
 controls:
   - name: boot
     kind: button

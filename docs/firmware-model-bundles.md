@@ -81,12 +81,16 @@ The endpoint firmware exposes a model-bundle manager behind
 - test-loading through the microWakeWord model validator before activation
 - atomic NVS updates of active and previous bundle pointers
 - rollback by swapping the active and previous pointers
-- embedded fallback selection for legacy layouts when no valid mutable assets
-  are loaded
-- `model_error` reporting for single-model layouts after bounded load retries,
-  while network, OTA, BLE provisioning/recovery, and diagnostics remain alive
+- embedded fallback selection only when the board `storage.models` policy names
+  `embedded_fallback`
+- `model_error` reporting for no-embedded-fallback policies after bounded load
+  retries, while network, OTA, BLE provisioning/recovery, and diagnostics remain
+  alive
 
 Current single-model boards expect SD model sets under
-`/sdcard/hexe/model_sets/<model_set_id>/`. The loader must verify the signed
-manifest and file hashes before replacing the internal `model` cache; a known
-good internal model must not be overwritten by an unverified SD set.
+`/sdcard/hexe/model_sets/<model_set_id>/`. The loader tries the internal
+`model` SPIFFS cache first, then discovers SD model-set directories, verifies
+the signed manifest and every listed file hash, copies the verified set into
+the internal `model` cache, and boots from that cache on later starts. A known
+good internal model is not overwritten until the replacement SD set validates
+and test-loads.
