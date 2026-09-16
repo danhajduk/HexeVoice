@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "y": 12,
+  "y": 10,
   "floating": {
     "x": 20,
     "gap": 0
@@ -9,16 +9,55 @@
     {
       "id": "wifi",
       "placement": "static",
-      "x": 920
+      "x": 900,
+      "animations": [
+        {
+          "type": "blink_dot",
+          "when": {"flag": "wifi_connecting", "equals": true},
+          "color": "#35F4DB",
+          "position": {"x": 0.82, "y": 0.18},
+          "radius": 0.08,
+          "period_ms": 800
+        },
+        {
+          "type": "pulse_ring",
+          "when": {"flag": "backend_connecting", "equals": true},
+          "color": "#55B8FF",
+          "position": {"x": 0.5, "y": 0.5},
+          "radius": 0.28,
+          "period_ms": 1200
+        }
+      ]
     },
     {
       "id": "node_connected",
       "placement": "static",
-      "x": 960
+      "x": 960,
+      "animations": [
+        {
+          "type": "pulse",
+          "when": {"flag": "heartbeat", "equals": true},
+          "period_ms": 1800,
+          "min_opacity": 150,
+          "max_opacity": 255
+        }
+      ]
     },
     {
       "id": "asset_downloading",
-      "placement": "floating"
+      "placement": "floating",
+      "animations": [
+        {
+          "type": "running_dots",
+          "when": {"flag": "asset_sync_active", "equals": true},
+          "color": "#35F4DB",
+          "position": {"x": 0.5, "y": 0.86},
+          "count": 3,
+          "radius": 0.055,
+          "spacing": 0.2,
+          "period_ms": 900
+        }
+      ]
     }
   ]
 }

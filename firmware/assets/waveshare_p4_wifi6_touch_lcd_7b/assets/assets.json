@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.20",
-  "updated_at": "2026-09-16T21:44:48.077804+00:00",
+  "asset_library_version": "2026.09.16.23",
+  "updated_at": "2026-09-16T21:56:36.040392+00:00",
   "assets": [
     {
       "asset_id": "bg",
@@ -103,8 +103,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 341,
-        "sha256": "2a76c490fface336231b9a3779c3911a40059cedc4245a7905e76f094474e612"
+        "size_bytes": 1412,
+        "sha256": "89704c1627dc3a10d015bd7a6a808bbb99b827b9bf9345b1cb89bff49d562931"
       }
     },
     {

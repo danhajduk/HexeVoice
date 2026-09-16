@@ -4,6 +4,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
 
@@ -58,6 +59,7 @@ constexpr size_t kSdTestBackgroundBytes =
 constexpr int kWifiSpriteSize = 40;
 constexpr int kStatusSpriteSize = 40;
 constexpr size_t kStatusLayoutMaxBytes = 2048;
+constexpr size_t kMaxStatusAnimations = 4;
 
 enum class StatusIconId : uint8_t {
   kWifi = 0,
@@ -66,9 +68,55 @@ enum class StatusIconId : uint8_t {
   kCount,
 };
 
+enum class StatusAnimationType : uint8_t {
+  kBlinkDot,
+  kRunningDots,
+  kPulse,
+  kPulseRing,
+  kInvalid,
+};
+
+enum class StatusFlag : uint8_t {
+  kHeartbeat,
+  kLoading,
+  kWifiConnected,
+  kWifiConnecting,
+  kBackendConnected,
+  kBackendConnecting,
+  kVoiceWsConnected,
+  kAssetSyncActive,
+  kMediaTransferActive,
+  kOtaActive,
+  kListening,
+  kThinking,
+  kReplying,
+  kMuted,
+  kTimerActive,
+  kTimerFinished,
+  kError,
+  kInvalid,
+};
+
+struct StatusAnimation {
+  StatusAnimationType type = StatusAnimationType::kInvalid;
+  StatusFlag flag = StatusFlag::kInvalid;
+  bool expected = true;
+  uint32_t color = kCyan;
+  int x_per_mille = 500;
+  int y_per_mille = 500;
+  int radius_per_mille = 80;
+  int spacing_per_mille = 180;
+  int period_ms = 1000;
+  int count = 3;
+  int min_opacity = 128;
+  int max_opacity = 255;
+};
+
 struct StatusIconLayout {
   bool floating;
   int x;
+  StatusAnimation animations[kMaxStatusAnimations] = {};
+  size_t animation_count = 0;
 };
 
 struct StatusLayout {
@@ -110,6 +158,7 @@ int g_last_signature = -1;
 int g_last_asset_read_ms = 0;
 int g_last_flush_ms = 0;
 int g_last_render_ms = 0;
+int64_t g_frame_time_ms = 0;
 char g_last_asset_filename[128] = "procedural-p4-7b-status";
 bool g_logged_sd_unavailable = false;
 bool g_logged_bg_missing = false;
@@ -120,6 +169,8 @@ StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatu
 StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, kStatusSpriteSize};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
+
+bool status_animations_active(const hexe::AppState &state);
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -204,6 +255,9 @@ int frame_signature(int frame) {
   signature = (signature * 131) + (state.ota_active ? 1 : 0);
   signature = (signature * 131) + std::clamp(state.ota_progress_percent, 0, 100);
   signature = (signature * 131) + (hexe::system::asset_sync_active() ? 1 : 0);
+  if (status_animations_active(state)) {
+    signature = (signature * 131) + static_cast<int>((esp_timer_get_time() / 50000) % 100000);
+  }
   if (state.phase == hexe::AppPhase::kBooting || state.phase == hexe::AppPhase::kListening ||
       state.phase == hexe::AppPhase::kThinking || state.phase == hexe::AppPhase::kReplying) {
     signature = (signature * 131) + (frame % 64);
@@ -449,7 +503,7 @@ bool load_status_sprite(StatusSprite *sprite) {
   return true;
 }
 
-void draw_status_sprite(StatusSprite *sprite, int x, int y) {
+void draw_status_sprite(StatusSprite *sprite, int x, int y, uint8_t opacity = 255) {
   if (!load_status_sprite(sprite)) {
     return;
   }
@@ -464,7 +518,7 @@ void draw_status_sprite(StatusSprite *sprite, int x, int y) {
         continue;
       }
       const size_t source_pixel = static_cast<size_t>(source_y) * sprite->width + source_x;
-      const uint8_t alpha = sprite->alpha[source_pixel];
+      const uint8_t alpha = static_cast<uint8_t>((static_cast<unsigned>(sprite->alpha[source_pixel]) * opacity) / 255);
       if (alpha == 0) {
         continue;
       }
@@ -492,6 +546,106 @@ StatusIconId status_icon_id(const char *name) {
     return StatusIconId::kAssetDownloading;
   }
   return StatusIconId::kCount;
+}
+
+StatusAnimationType status_animation_type(const char *name) {
+  if (name != nullptr && std::strcmp(name, "blink_dot") == 0) {
+    return StatusAnimationType::kBlinkDot;
+  }
+  if (name != nullptr && std::strcmp(name, "running_dots") == 0) {
+    return StatusAnimationType::kRunningDots;
+  }
+  if (name != nullptr && std::strcmp(name, "pulse") == 0) {
+    return StatusAnimationType::kPulse;
+  }
+  if (name != nullptr && std::strcmp(name, "pulse_ring") == 0) {
+    return StatusAnimationType::kPulseRing;
+  }
+  return StatusAnimationType::kInvalid;
+}
+
+StatusFlag status_flag(const char *name) {
+  if (name == nullptr) {
+    return StatusFlag::kInvalid;
+  }
+  struct FlagName {
+    const char *name;
+    StatusFlag flag;
+  };
+  static constexpr FlagName kFlags[] = {
+      {"heartbeat", StatusFlag::kHeartbeat},
+      {"loading", StatusFlag::kLoading},
+      {"wifi_connected", StatusFlag::kWifiConnected},
+      {"wifi_connecting", StatusFlag::kWifiConnecting},
+      {"backend_connected", StatusFlag::kBackendConnected},
+      {"backend_connecting", StatusFlag::kBackendConnecting},
+      {"voice_ws_connected", StatusFlag::kVoiceWsConnected},
+      {"asset_sync_active", StatusFlag::kAssetSyncActive},
+      {"media_transfer_active", StatusFlag::kMediaTransferActive},
+      {"ota_active", StatusFlag::kOtaActive},
+      {"listening", StatusFlag::kListening},
+      {"thinking", StatusFlag::kThinking},
+      {"replying", StatusFlag::kReplying},
+      {"muted", StatusFlag::kMuted},
+      {"timer_active", StatusFlag::kTimerActive},
+      {"timer_finished", StatusFlag::kTimerFinished},
+      {"error", StatusFlag::kError},
+  };
+  for (const auto &entry : kFlags) {
+    if (std::strcmp(name, entry.name) == 0) {
+      return entry.flag;
+    }
+  }
+  return StatusFlag::kInvalid;
+}
+
+int json_integer(cJSON *object, const char *key, int fallback, int minimum, int maximum) {
+  cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
+  return cJSON_IsNumber(value) ? std::clamp(value->valueint, minimum, maximum) : fallback;
+}
+
+int json_per_mille(cJSON *object, const char *key, int fallback) {
+  cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
+  if (!cJSON_IsNumber(value)) {
+    return fallback;
+  }
+  return std::clamp(static_cast<int>(value->valuedouble * 1000.0 + 0.5), 0, 1000);
+}
+
+uint32_t json_color(cJSON *object, const char *key, uint32_t fallback) {
+  cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
+  if (!cJSON_IsString(value) || value->valuestring == nullptr || std::strlen(value->valuestring) != 7 ||
+      value->valuestring[0] != '#') {
+    return fallback;
+  }
+  char *end = nullptr;
+  const unsigned long color = std::strtoul(value->valuestring + 1, &end, 16);
+  return end != nullptr && *end == '\0' ? static_cast<uint32_t>(color) : fallback;
+}
+
+StatusAnimation parse_status_animation(cJSON *item) {
+  StatusAnimation animation;
+  cJSON *type = cJSON_IsObject(item) ? cJSON_GetObjectItem(item, "type") : nullptr;
+  animation.type = cJSON_IsString(type) ? status_animation_type(type->valuestring) : StatusAnimationType::kInvalid;
+  cJSON *when = cJSON_IsObject(item) ? cJSON_GetObjectItem(item, "when") : nullptr;
+  cJSON *flag = cJSON_IsObject(when) ? cJSON_GetObjectItem(when, "flag") : nullptr;
+  animation.flag = cJSON_IsString(flag) ? status_flag(flag->valuestring) : StatusFlag::kInvalid;
+  cJSON *equals = cJSON_IsObject(when) ? cJSON_GetObjectItem(when, "equals") : nullptr;
+  animation.expected = cJSON_IsBool(equals) ? cJSON_IsTrue(equals) : true;
+  animation.color = json_color(item, "color", animation.color);
+  cJSON *position = cJSON_GetObjectItem(item, "position");
+  animation.x_per_mille = json_per_mille(position, "x", animation.x_per_mille);
+  animation.y_per_mille = json_per_mille(position, "y", animation.y_per_mille);
+  animation.radius_per_mille = json_per_mille(item, "radius", animation.radius_per_mille);
+  animation.spacing_per_mille = json_per_mille(item, "spacing", animation.spacing_per_mille);
+  animation.period_ms = json_integer(item, "period_ms", animation.period_ms, 100, 60000);
+  animation.count = json_integer(item, "count", animation.count, 1, 8);
+  animation.min_opacity = json_integer(item, "min_opacity", animation.min_opacity, 0, 255);
+  animation.max_opacity = json_integer(item, "max_opacity", animation.max_opacity, 0, 255);
+  if (animation.min_opacity > animation.max_opacity) {
+    std::swap(animation.min_opacity, animation.max_opacity);
+  }
+  return animation;
 }
 
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum) {
@@ -552,6 +706,7 @@ void load_status_layout() {
         continue;
       }
       auto &layout = g_status_layout.icons[static_cast<size_t>(id)];
+      layout.animation_count = 0;
       layout.floating = std::strcmp(placement->valuestring, "floating") == 0;
       if (layout.floating) {
         if (g_status_layout.floating_count < static_cast<size_t>(StatusIconId::kCount)) {
@@ -559,6 +714,17 @@ void load_status_layout() {
         }
       } else {
         layout.x = json_layout_coordinate(icon, "x", layout.x, kWidth - 1);
+      }
+      cJSON *animations = cJSON_GetObjectItem(icon, "animations");
+      cJSON *animation_item = nullptr;
+      cJSON_ArrayForEach(animation_item, animations) {
+        if (layout.animation_count >= kMaxStatusAnimations) {
+          break;
+        }
+        StatusAnimation animation = parse_status_animation(animation_item);
+        if (animation.type != StatusAnimationType::kInvalid && animation.flag != StatusFlag::kInvalid) {
+          layout.animations[layout.animation_count++] = animation;
+        }
       }
     }
   }
@@ -594,15 +760,176 @@ StatusSprite *status_icon_sprite(StatusIconId id, const hexe::AppState &state) {
   return nullptr;
 }
 
+bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
+  switch (flag) {
+    case StatusFlag::kHeartbeat:
+      return true;
+    case StatusFlag::kLoading:
+      return state.phase == hexe::AppPhase::kBooting || state.phase == hexe::AppPhase::kWiFiConnecting ||
+          state.phase == hexe::AppPhase::kBackendConnecting || state.ota_active || hexe::system::asset_sync_active();
+    case StatusFlag::kWifiConnected:
+      return state.wifi_connected;
+    case StatusFlag::kWifiConnecting:
+      return state.phase == hexe::AppPhase::kWiFiConnecting;
+    case StatusFlag::kBackendConnected:
+      return state.backend_connected;
+    case StatusFlag::kBackendConnecting:
+      return state.phase == hexe::AppPhase::kBackendConnecting;
+    case StatusFlag::kVoiceWsConnected:
+      return state.voice_ws_connected;
+    case StatusFlag::kAssetSyncActive:
+      return hexe::system::asset_sync_active();
+    case StatusFlag::kMediaTransferActive:
+      return state.media_transfer_active;
+    case StatusFlag::kOtaActive:
+      return state.ota_active;
+    case StatusFlag::kListening:
+      return state.phase == hexe::AppPhase::kListening;
+    case StatusFlag::kThinking:
+      return state.phase == hexe::AppPhase::kThinking;
+    case StatusFlag::kReplying:
+      return state.phase == hexe::AppPhase::kReplying;
+    case StatusFlag::kMuted:
+      return state.muted || state.phase == hexe::AppPhase::kMuted;
+    case StatusFlag::kTimerActive:
+      return state.timer_active;
+    case StatusFlag::kTimerFinished:
+      return state.timer_state == hexe::TimerLifecycleState::kFinished;
+    case StatusFlag::kError:
+      return state.phase == hexe::AppPhase::kError;
+    case StatusFlag::kInvalid:
+      return false;
+  }
+  return false;
+}
+
+bool status_animation_active(const StatusAnimation &animation, const hexe::AppState &state) {
+  return status_flag_value(animation.flag, state) == animation.expected;
+}
+
+bool status_animations_active(const hexe::AppState &state) {
+  if (!g_status_layout_loaded) {
+    return false;
+  }
+  for (const auto &layout : g_status_layout.icons) {
+    for (size_t index = 0; index < layout.animation_count; ++index) {
+      if (status_animation_active(layout.animations[index], state)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+uint32_t scale_color(uint32_t color, int intensity_per_mille) {
+  const int intensity = std::clamp(intensity_per_mille, 0, 1000);
+  const uint32_t red = ((color >> 16) & 0xFF) * intensity / 1000;
+  const uint32_t green = ((color >> 8) & 0xFF) * intensity / 1000;
+  const uint32_t blue = (color & 0xFF) * intensity / 1000;
+  return (red << 16) | (green << 8) | blue;
+}
+
+int animation_phase_per_mille(const StatusAnimation &animation, int64_t now_ms) {
+  return static_cast<int>((now_ms % animation.period_ms) * 1000 / animation.period_ms);
+}
+
+int animation_triangle_per_mille(const StatusAnimation &animation, int64_t now_ms) {
+  const int phase = animation_phase_per_mille(animation, now_ms) * 2;
+  return phase <= 1000 ? phase : 2000 - phase;
+}
+
+int relative_pixels(int per_mille, int size) {
+  return (per_mille * size + 500) / 1000;
+}
+
+uint8_t status_sprite_opacity(const StatusIconLayout &layout, const hexe::AppState &state, int64_t now_ms) {
+  int opacity = 255;
+  for (size_t index = 0; index < layout.animation_count; ++index) {
+    const auto &animation = layout.animations[index];
+    if (animation.type != StatusAnimationType::kPulse || !status_animation_active(animation, state)) {
+      continue;
+    }
+    const int phase = animation_triangle_per_mille(animation, now_ms);
+    const int animated = animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
+    opacity = std::min(opacity, animated);
+  }
+  return static_cast<uint8_t>(opacity);
+}
+
+void draw_status_animation(
+    const StatusAnimation &animation,
+    const StatusSprite &sprite,
+    int sprite_x,
+    int sprite_y,
+    int64_t now_ms) {
+  const int size = std::min(sprite.width, sprite.height);
+  const int center_x = sprite_x + relative_pixels(animation.x_per_mille, sprite.width);
+  const int center_y = sprite_y + relative_pixels(animation.y_per_mille, sprite.height);
+  const int radius = std::max(1, relative_pixels(animation.radius_per_mille, size));
+  const int phase = animation_phase_per_mille(animation, now_ms);
+
+  switch (animation.type) {
+    case StatusAnimationType::kBlinkDot:
+      if (phase < 500) {
+        draw_disc(center_x, center_y, radius, animation.color);
+      }
+      break;
+    case StatusAnimationType::kRunningDots: {
+      const int spacing = std::max(radius * 2 + 1, relative_pixels(animation.spacing_per_mille, size));
+      const int first_x = center_x - ((animation.count - 1) * spacing / 2);
+      const int active = std::min(animation.count - 1, phase * animation.count / 1000);
+      for (int index = 0; index < animation.count; ++index) {
+        draw_disc(
+            first_x + (index * spacing),
+            center_y,
+            radius,
+            index == active ? animation.color : scale_color(animation.color, 250));
+      }
+      break;
+    }
+    case StatusAnimationType::kPulse:
+      break;
+    case StatusAnimationType::kPulseRing: {
+      const int animated_radius = radius + (radius * phase / 1000);
+      const int thickness = std::max(1, radius / 3);
+      draw_ring(center_x, center_y, animated_radius, thickness, scale_color(animation.color, 1000 - (phase * 700 / 1000)));
+      break;
+    }
+    case StatusAnimationType::kInvalid:
+      break;
+  }
+}
+
+void draw_status_icon(
+    StatusIconId id,
+    const StatusIconLayout &layout,
+    int x,
+    int y,
+    const hexe::AppState &state,
+    int64_t now_ms) {
+  StatusSprite *sprite = status_icon_sprite(id, state);
+  if (sprite == nullptr) {
+    return;
+  }
+  draw_status_sprite(sprite, x, y, status_sprite_opacity(layout, state, now_ms));
+  for (size_t index = 0; index < layout.animation_count; ++index) {
+    const auto &animation = layout.animations[index];
+    if (animation.type != StatusAnimationType::kPulse && status_animation_active(animation, state)) {
+      draw_status_animation(animation, *sprite, x, y, now_ms);
+    }
+  }
+}
+
 void draw_header_status_icons() {
   const auto &state = hexe::state();
   load_status_layout();
+  const int64_t now_ms = g_frame_time_ms;
 
   for (size_t index = 0; index < static_cast<size_t>(StatusIconId::kCount); ++index) {
     const auto id = static_cast<StatusIconId>(index);
     const auto &layout = g_status_layout.icons[index];
     if (!layout.floating && status_icon_active(id, state)) {
-      draw_status_sprite(status_icon_sprite(id, state), layout.x, g_status_layout.y);
+      draw_status_icon(id, layout, layout.x, g_status_layout.y, state, now_ms);
     }
   }
 
@@ -613,7 +940,8 @@ void draw_header_status_icons() {
       continue;
     }
     StatusSprite *sprite = status_icon_sprite(id, state);
-    draw_status_sprite(sprite, floating_x, g_status_layout.y);
+    const auto &layout = g_status_layout.icons[static_cast<size_t>(id)];
+    draw_status_icon(id, layout, floating_x, g_status_layout.y, state, now_ms);
     floating_x += sprite->width + g_status_layout.floating_gap;
   }
 }
@@ -817,6 +1145,7 @@ bool render_frame(int frame, const char *build_id, bool black) {
     return false;
   }
   const int64_t started_us = esp_timer_get_time();
+  g_frame_time_ms = started_us / 1000;
   char background_path[128] = {};
   const int64_t asset_read_started_us = black ? 0 : esp_timer_get_time();
   const bool background_loaded = !black && load_sd_test_background(background_path, sizeof(background_path));

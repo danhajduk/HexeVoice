@@ -339,6 +339,38 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "floating_x += sprite->width + g_status_layout.floating_gap;" in source
     assert "g_status_layout_loaded = false;" in source
     assert "release_status_sprite(&g_wifi_on_sprite)" in source
+    for animation in ("blink_dot", "running_dots", "pulse", "pulse_ring"):
+        assert f'"{animation}"' in source
+    assert "status_flag_value" in source
+    assert "relative_pixels" in source
+    assert "esp_timer_get_time() / 50000" in source
+
+
+def test_p4_status_layout_uses_shared_y_and_scaled_animations():
+    path = (
+        REPO_ROOT
+        / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json"
+    )
+    layout = json.loads(path.read_text(encoding="utf-8"))
+
+    assert isinstance(layout["y"], int)
+    assert "y" not in layout["floating"]
+    assert all("y" not in icon for icon in layout["icons"])
+    animations = [animation for icon in layout["icons"] for animation in icon.get("animations", [])]
+    assert {animation["type"] for animation in animations} == {
+        "blink_dot",
+        "running_dots",
+        "pulse",
+        "pulse_ring",
+    }
+    for animation in animations:
+        assert "flag" in animation["when"]
+        for key in ("radius", "spacing"):
+            if key in animation:
+                assert 0 < animation[key] <= 1
+        if "position" in animation:
+            assert 0 <= animation["position"]["x"] <= 1
+            assert 0 <= animation["position"]["y"] <= 1
 
 
 def test_p4_profile_uses_bsp_gt911_touch_adapter():
