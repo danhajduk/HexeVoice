@@ -56,12 +56,15 @@ constexpr uint32_t kBlue = rgb565_to_rgb888(0x03BF);
 constexpr char kProceduralAssetName[] = "procedural-p4-7b-status";
 constexpr char kSdTestBackgroundName[] = "bg.rgb888";
 constexpr char kStatusLayoutFilename[] = "status_layout.json";
+constexpr char kDefaultClockFont[] = "manrope/clock_42.hxf";
 constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
 constexpr int kWifiSpriteSize = 40;
 constexpr int kStatusSpriteSize = 40;
 constexpr size_t kStatusLayoutMaxBytes = 2048;
 constexpr size_t kMaxStatusAnimations = 4;
+constexpr size_t kMaxClockFontBytes = 64 * 1024;
+constexpr size_t kClockGlyphCount = 11;
 
 enum class StatusIconId : uint8_t {
   kWifi = 0,
@@ -122,6 +125,12 @@ struct StatusIconLayout {
 };
 
 struct StatusLayout {
+  struct Clock {
+    int x_offset = 0;
+    int y_offset = 0;
+    uint32_t color = kCyan;
+    char font[96] = {};
+  } clock;
   int y = 12;
   int floating_x = 20;
   int floating_gap = 0;
@@ -134,6 +143,24 @@ struct StatusLayout {
       StatusIconId::kAssetDownloading,
   };
   size_t floating_count = 1;
+};
+
+struct ClockGlyph {
+  char code = '\0';
+  int left = 0;
+  int top = 0;
+  int advance = 0;
+  int width = 0;
+  int height = 0;
+  uint32_t bitmap_offset = 0;
+};
+
+struct ClockFont {
+  uint8_t *data = nullptr;
+  size_t size = 0;
+  ClockGlyph glyphs[kClockGlyphCount] = {};
+  size_t glyph_count = 0;
+  bool load_attempted = false;
 };
 
 struct StatusSprite {
@@ -171,6 +198,7 @@ StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatu
 StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, kStatusSpriteSize};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
+ClockFont g_clock_font;
 
 bool status_animations_active(const hexe::AppState &state);
 
@@ -279,6 +307,18 @@ void set_pixel(int x, int y, uint32_t color) {
   pixel[0] = static_cast<uint8_t>(color & 0xFF);
   pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFF);
   pixel[2] = static_cast<uint8_t>((color >> 16) & 0xFF);
+}
+
+void blend_pixel(int x, int y, uint32_t color, uint8_t alpha) {
+  if (alpha == 0 || g_flush_buffer == nullptr || x < 0 || y < g_strip_y || x >= kWidth ||
+      y >= g_strip_y + g_strip_rows) {
+    return;
+  }
+  uint8_t *pixel = g_flush_buffer + (((y - g_strip_y) * kWidth + x) * kBytesPerPixel);
+  const int inverse = 255 - alpha;
+  pixel[0] = static_cast<uint8_t>((((color)&0xFF) * alpha + pixel[0] * inverse) / 255);
+  pixel[1] = static_cast<uint8_t>((((color >> 8) & 0xFF) * alpha + pixel[1] * inverse) / 255);
+  pixel[2] = static_cast<uint8_t>((((color >> 16) & 0xFF) * alpha + pixel[2] * inverse) / 255);
 }
 
 void fill_rect(int x, int y, int width, int height, uint32_t color) {
@@ -659,6 +699,94 @@ int json_layout_coordinate(cJSON *object, const char *key, int fallback, int max
   return cJSON_IsNumber(value) ? std::clamp(value->valueint, 0, maximum) : fallback;
 }
 
+int json_signed_offset(cJSON *object, const char *key, int fallback, int limit) {
+  cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
+  return cJSON_IsNumber(value) ? std::clamp(value->valueint, -limit, limit) : fallback;
+}
+
+uint16_t read_u16_le(const uint8_t *data) {
+  return static_cast<uint16_t>(data[0]) | (static_cast<uint16_t>(data[1]) << 8);
+}
+
+int16_t read_i16_le(const uint8_t *data) {
+  return static_cast<int16_t>(read_u16_le(data));
+}
+
+uint32_t read_u32_le(const uint8_t *data) {
+  return static_cast<uint32_t>(data[0]) | (static_cast<uint32_t>(data[1]) << 8) |
+      (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
+}
+
+bool load_clock_font() {
+  if (g_clock_font.data != nullptr) {
+    return true;
+  }
+  if (g_clock_font.load_attempted || !hexe::board::sd_card_mounted()) {
+    return false;
+  }
+  g_clock_font.load_attempted = true;
+  char path[192] = {};
+  const int written = std::snprintf(
+      path,
+      sizeof(path),
+      "%s/%s",
+      hexe::board::sd_card_fonts_path(),
+      g_status_layout.clock.font[0] != '\0' ? g_status_layout.clock.font : kDefaultClockFont);
+  if (written <= 0 || written >= static_cast<int>(sizeof(path))) {
+    return false;
+  }
+  struct stat info = {};
+  if (stat(path, &info) != 0 || info.st_size < 10 || info.st_size > static_cast<off_t>(kMaxClockFontBytes)) {
+    ESP_LOGW(kTag, "Clock font unavailable; using built-in fallback");
+    return false;
+  }
+  auto *data = static_cast<uint8_t *>(heap_caps_malloc(info.st_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (data == nullptr || !read_exact_file(path, data, info.st_size)) {
+    heap_caps_free(data);
+    return false;
+  }
+  const size_t glyph_count = read_u16_le(data + 8);
+  constexpr size_t kHeaderBytes = 10;
+  constexpr size_t kRecordBytes = 15;
+  if (std::memcmp(data, "HXF1", 4) != 0 || glyph_count == 0 || glyph_count > kClockGlyphCount ||
+      kHeaderBytes + (glyph_count * kRecordBytes) > static_cast<size_t>(info.st_size)) {
+    heap_caps_free(data);
+    ESP_LOGW(kTag, "Clock font is invalid; using built-in fallback");
+    return false;
+  }
+  for (size_t index = 0; index < glyph_count; ++index) {
+    const uint8_t *record = data + kHeaderBytes + (index * kRecordBytes);
+    auto &glyph = g_clock_font.glyphs[index];
+    glyph.code = static_cast<char>(record[0]);
+    glyph.left = read_i16_le(record + 1);
+    glyph.top = read_i16_le(record + 3);
+    glyph.advance = read_i16_le(record + 5);
+    glyph.width = read_u16_le(record + 7);
+    glyph.height = read_u16_le(record + 9);
+    glyph.bitmap_offset = read_u32_le(record + 11);
+    const size_t bitmap_bytes = static_cast<size_t>(glyph.width) * glyph.height;
+    if (glyph.bitmap_offset > static_cast<size_t>(info.st_size) ||
+        bitmap_bytes > static_cast<size_t>(info.st_size) - glyph.bitmap_offset) {
+      heap_caps_free(data);
+      return false;
+    }
+  }
+  g_clock_font.data = data;
+  g_clock_font.size = info.st_size;
+  g_clock_font.glyph_count = glyph_count;
+  ESP_LOGI(kTag, "Loaded clock font %s", path);
+  return true;
+}
+
+const ClockGlyph *clock_glyph(char code) {
+  for (size_t index = 0; index < g_clock_font.glyph_count; ++index) {
+    if (g_clock_font.glyphs[index].code == code) {
+      return &g_clock_font.glyphs[index];
+    }
+  }
+  return nullptr;
+}
+
 void load_status_layout() {
   if (g_status_layout_loaded) {
     return;
@@ -693,6 +821,15 @@ void load_status_layout() {
     return;
   }
   cJSON *floating = cJSON_GetObjectItem(root, "floating");
+  cJSON *clock = cJSON_GetObjectItem(root, "clock");
+  g_status_layout.clock.x_offset =
+      json_signed_offset(clock, "x_offset", g_status_layout.clock.x_offset, kWidth);
+  g_status_layout.clock.y_offset =
+      json_signed_offset(clock, "y_offset", g_status_layout.clock.y_offset, kHeight);
+  g_status_layout.clock.color = json_color(clock, "color", g_status_layout.clock.color);
+  cJSON *clock_font = cJSON_IsObject(clock) ? cJSON_GetObjectItem(clock, "font") : nullptr;
+  const char *font_name = cJSON_IsString(clock_font) ? clock_font->valuestring : kDefaultClockFont;
+  std::snprintf(g_status_layout.clock.font, sizeof(g_status_layout.clock.font), "%s", font_name);
   g_status_layout.y = json_layout_coordinate(root, "y", g_status_layout.y, kHeight - 1);
   g_status_layout.floating_x = json_layout_coordinate(floating, "x", g_status_layout.floating_x, kWidth - 1);
   g_status_layout.floating_gap = json_layout_coordinate(floating, "gap", g_status_layout.floating_gap, kWidth);
@@ -966,7 +1103,43 @@ void draw_header_clock() {
   }
   char clock_text[16] = {};
   std::snprintf(clock_text, sizeof(clock_text), "%02d:%02d", hour, local.tm_min);
-  draw_centered_text(10, clock_text, 600, kCyan);
+  load_status_layout();
+
+  if (!load_clock_font()) {
+    draw_centered_text(
+        10 + g_status_layout.clock.y_offset,
+        clock_text,
+        600,
+        g_status_layout.clock.color);
+    return;
+  }
+
+  const ClockGlyph *glyphs[5] = {};
+  for (size_t index = 0; index < 5; ++index) {
+    glyphs[index] = clock_glyph(clock_text[index]);
+    if (glyphs[index] == nullptr) {
+      return;
+    }
+  }
+  const int colon_center = glyphs[0]->advance + glyphs[1]->advance + (glyphs[2]->advance / 2);
+  int cursor_x = (kWidth / 2) + g_status_layout.clock.x_offset - colon_center;
+  const int baseline_y = 48 + g_status_layout.clock.y_offset;
+  for (size_t index = 0; index < 5; ++index) {
+    const ClockGlyph &glyph = *glyphs[index];
+    const int glyph_x = cursor_x + glyph.left;
+    const int glyph_y = baseline_y - glyph.top;
+    const uint8_t *bitmap = g_clock_font.data + glyph.bitmap_offset;
+    for (int row = 0; row < glyph.height; ++row) {
+      for (int column = 0; column < glyph.width; ++column) {
+        blend_pixel(
+            glyph_x + column,
+            glyph_y + row,
+            g_status_layout.clock.color,
+            bitmap[(row * glyph.width) + column]);
+      }
+    }
+    cursor_x += glyph.advance;
+  }
 }
 
 void release_status_sprite(StatusSprite *sprite) {
@@ -978,6 +1151,11 @@ void release_status_sprite(StatusSprite *sprite) {
   sprite->colors = nullptr;
   sprite->alpha = nullptr;
   sprite->load_attempted = false;
+}
+
+void release_clock_font() {
+  heap_caps_free(g_clock_font.data);
+  g_clock_font = ClockFont{};
 }
 
 bool build_sd_test_background_path(char *path, size_t path_size) {
@@ -1284,6 +1462,7 @@ void request_display_assets_reload() {
   g_logged_bg_missing = false;
   g_logged_bg_bad_size = false;
   g_status_layout_loaded = false;
+  release_clock_font();
   release_status_sprite(&g_wifi_on_sprite);
   release_status_sprite(&g_wifi_off_sprite);
   release_status_sprite(&g_node_connected_sprite);

@@ -383,8 +383,23 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     assert "hexe::system::current_local_time(&local)" in source
     assert '"%02d:%02d"' in source
     assert "local.tm_hour % 12" in source
-    assert "draw_centered_text(10, clock_text, 600, kCyan);" in source
+    assert 'std::memcmp(data, "HXF1", 4)' in source
+    assert "const int colon_center = glyphs[0]->advance + glyphs[1]->advance + (glyphs[2]->advance / 2);" in source
+    assert "g_status_layout.clock.x_offset - colon_center" in source
+    assert "const int baseline_y = 48 + g_status_layout.clock.y_offset;" in source
     assert "(local.tm_hour * 60) + local.tm_min + 1" in source
+
+    layout = json.loads(
+        (REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert layout["clock"] == {
+        "font": "manrope/clock_42.hxf",
+        "color": "#35F4DB",
+        "x_offset": 0,
+        "y_offset": 0,
+    }
 
 
 def test_p4_profile_uses_bsp_gt911_touch_adapter():

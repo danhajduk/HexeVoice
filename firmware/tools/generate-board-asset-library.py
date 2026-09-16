@@ -22,7 +22,7 @@ ALLOWED_EXTENSIONS: dict[str, set[str]] = {
     "picture": {".rgb565", ".rgb888", ".png", ".jpg", ".jpeg"},
     "sprite": {".rgb565", ".rgb888", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
     "sound": {".wav"},
-    "font": {".ttf", ".otf", ".txt", ".md"},
+    "font": {".ttf", ".otf", ".hxf", ".txt", ".md"},
 }
 
 
@@ -205,6 +205,8 @@ def _infer_metadata(path: Path, media_type: str, existing: dict[str, Any], board
         metadata.setdefault("content_format", "json")
     elif suffix in {".ttf", ".otf"}:
         metadata.setdefault("font_format", suffix.lstrip("."))
+    elif suffix == ".hxf":
+        metadata.setdefault("font_format", "hexe_bitmap_v1")
     elif media_type == "font" and suffix in {".txt", ".md"}:
         metadata.setdefault("content_format", suffix.lstrip("."))
     elif media_type in {"picture", "sprite"} and suffix in {".png", ".jpg", ".jpeg"}:
