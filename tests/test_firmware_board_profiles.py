@@ -319,6 +319,19 @@ def test_p4_display_caches_rgb888_background_and_batches_flushes():
     assert "heap_caps_free(g_background_pixels);" in source
 
 
+def test_p4_display_blends_header_status_sprites_from_sd():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    for sprite in ("wifi_on", "wifi_off", "node_connected", "asset_downloading"):
+        assert f'{{"{sprite}"}}' in source
+    assert "hexe::system::asset_sync_active()" in source
+    assert "state.backend_connected" in source
+    assert "sprite->alpha[source_pixel]" in source
+    assert "release_status_sprite(&g_wifi_on_sprite)" in source
+
+
 def test_p4_profile_uses_bsp_gt911_touch_adapter():
     source = (REPO_ROOT / "firmware/components/endpoint_runtime/board/touch.cpp").read_text(
         encoding="utf-8"

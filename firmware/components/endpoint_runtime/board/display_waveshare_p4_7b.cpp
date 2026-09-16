@@ -21,6 +21,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+#include "system/asset_sync.h"
 
 namespace {
 constexpr char kTag[] = "hexe_display_p4_7b";
@@ -52,6 +53,16 @@ constexpr char kProceduralAssetName[] = "procedural-p4-7b-status";
 constexpr char kSdTestBackgroundName[] = "bg.rgb888";
 constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
+constexpr int kStatusSpriteSize = 64;
+constexpr size_t kStatusSpritePixels = static_cast<size_t>(kStatusSpriteSize) * kStatusSpriteSize;
+constexpr size_t kStatusSpriteColorBytes = kStatusSpritePixels * kBytesPerPixel;
+
+struct StatusSprite {
+  const char *name;
+  uint8_t *colors = nullptr;
+  uint8_t *alpha = nullptr;
+  bool load_attempted = false;
+};
 
 esp_lcd_panel_handle_t g_panel = nullptr;
 esp_lcd_panel_io_handle_t g_panel_io = nullptr;
@@ -72,6 +83,10 @@ char g_last_asset_filename[128] = "procedural-p4-7b-status";
 bool g_logged_sd_unavailable = false;
 bool g_logged_bg_missing = false;
 bool g_logged_bg_bad_size = false;
+StatusSprite g_wifi_on_sprite{"wifi_on"};
+StatusSprite g_wifi_off_sprite{"wifi_off"};
+StatusSprite g_node_connected_sprite{"node_connected"};
+StatusSprite g_asset_downloading_sprite{"asset_downloading"};
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -155,6 +170,7 @@ int frame_signature(int frame) {
   signature = (signature * 131) + (state.tts_playback_active ? 1 : 0);
   signature = (signature * 131) + (state.ota_active ? 1 : 0);
   signature = (signature * 131) + std::clamp(state.ota_progress_percent, 0, 100);
+  signature = (signature * 131) + (hexe::system::asset_sync_active() ? 1 : 0);
   if (state.phase == hexe::AppPhase::kBooting || state.phase == hexe::AppPhase::kListening ||
       state.phase == hexe::AppPhase::kThinking || state.phase == hexe::AppPhase::kReplying) {
     signature = (signature * 131) + (frame % 64);
@@ -347,6 +363,111 @@ void draw_centered_text(int y, const char *text, int scale_percent, uint32_t col
   draw_text((kWidth - text_width(text, scale_percent)) / 2, y, text, scale_percent, color);
 }
 
+bool read_exact_file(const char *path, uint8_t *target, size_t expected_bytes) {
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    return false;
+  }
+  const size_t read_bytes = std::fread(target, 1, expected_bytes, file);
+  std::fclose(file);
+  return read_bytes == expected_bytes;
+}
+
+bool load_status_sprite(StatusSprite *sprite) {
+  if (sprite == nullptr || sprite->name == nullptr) {
+    return false;
+  }
+  if (sprite->colors != nullptr && sprite->alpha != nullptr) {
+    return true;
+  }
+  if (sprite->load_attempted || !hexe::board::sd_card_mounted()) {
+    return false;
+  }
+  sprite->load_attempted = true;
+
+  char color_path[160] = {};
+  char alpha_path[160] = {};
+  const char *sprites_path = hexe::board::sd_card_sprites_path();
+  const int color_written =
+      std::snprintf(color_path, sizeof(color_path), "%s/%s.rgb888", sprites_path, sprite->name);
+  const int alpha_written = std::snprintf(alpha_path, sizeof(alpha_path), "%s/%s.alpha8", sprites_path, sprite->name);
+  if (color_written <= 0 || color_written >= static_cast<int>(sizeof(color_path)) || alpha_written <= 0 ||
+      alpha_written >= static_cast<int>(sizeof(alpha_path))) {
+    return false;
+  }
+
+  sprite->colors = static_cast<uint8_t *>(
+      heap_caps_malloc(kStatusSpriteColorBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  sprite->alpha = static_cast<uint8_t *>(heap_caps_malloc(kStatusSpritePixels, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (sprite->colors == nullptr || sprite->alpha == nullptr ||
+      !read_exact_file(color_path, sprite->colors, kStatusSpriteColorBytes) ||
+      !read_exact_file(alpha_path, sprite->alpha, kStatusSpritePixels)) {
+    heap_caps_free(sprite->colors);
+    heap_caps_free(sprite->alpha);
+    sprite->colors = nullptr;
+    sprite->alpha = nullptr;
+    return false;
+  }
+  for (size_t offset = 0; offset < kStatusSpriteColorBytes; offset += kBytesPerPixel) {
+    std::swap(sprite->colors[offset], sprite->colors[offset + 2]);
+  }
+  return true;
+}
+
+void draw_status_sprite(StatusSprite *sprite, int x, int y) {
+  if (!load_status_sprite(sprite)) {
+    return;
+  }
+  for (int source_y = 0; source_y < kStatusSpriteSize; ++source_y) {
+    const int target_y = y + source_y;
+    if (target_y < g_strip_y || target_y >= g_strip_y + g_strip_rows || target_y < 0 || target_y >= kHeight) {
+      continue;
+    }
+    for (int source_x = 0; source_x < kStatusSpriteSize; ++source_x) {
+      const int target_x = x + source_x;
+      if (target_x < 0 || target_x >= kWidth) {
+        continue;
+      }
+      const size_t source_pixel = static_cast<size_t>(source_y) * kStatusSpriteSize + source_x;
+      const uint8_t alpha = sprite->alpha[source_pixel];
+      if (alpha == 0) {
+        continue;
+      }
+      uint8_t *target = g_flush_buffer +
+          ((static_cast<size_t>(target_y - g_strip_y) * kWidth + target_x) * kBytesPerPixel);
+      const uint8_t *source = sprite->colors + (source_pixel * kBytesPerPixel);
+      for (int channel = 0; channel < kBytesPerPixel; ++channel) {
+        target[channel] = static_cast<uint8_t>(
+            ((static_cast<unsigned>(source[channel]) * alpha) +
+             (static_cast<unsigned>(target[channel]) * (255 - alpha)) + 127) /
+            255);
+      }
+    }
+  }
+}
+
+void draw_header_status_icons() {
+  const auto &state = hexe::state();
+  draw_status_sprite(state.wifi_connected ? &g_wifi_on_sprite : &g_wifi_off_sprite, 800, 4);
+  if (state.backend_connected) {
+    draw_status_sprite(&g_node_connected_sprite, 864, 4);
+  }
+  if (hexe::system::asset_sync_active()) {
+    draw_status_sprite(&g_asset_downloading_sprite, 928, 4);
+  }
+}
+
+void release_status_sprite(StatusSprite *sprite) {
+  if (sprite == nullptr) {
+    return;
+  }
+  heap_caps_free(sprite->colors);
+  heap_caps_free(sprite->alpha);
+  sprite->colors = nullptr;
+  sprite->alpha = nullptr;
+  sprite->load_attempted = false;
+}
+
 bool build_sd_test_background_path(char *path, size_t path_size) {
   if (path == nullptr || path_size == 0) {
     return false;
@@ -457,6 +578,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
   if (!drew_background) {
     clear_strip();
   } else {
+    draw_header_status_icons();
     (void)frame;
     (void)build_id;
     return true;
@@ -647,6 +769,10 @@ void request_display_assets_reload() {
   g_force_redraw = true;
   g_logged_bg_missing = false;
   g_logged_bg_bad_size = false;
+  release_status_sprite(&g_wifi_on_sprite);
+  release_status_sprite(&g_wifi_off_sprite);
+  release_status_sprite(&g_node_connected_sprite);
+  release_status_sprite(&g_asset_downloading_sprite);
 }
 
 bool show_next_ui_page() {
