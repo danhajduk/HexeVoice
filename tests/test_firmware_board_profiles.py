@@ -315,6 +315,7 @@ def test_p4_display_caches_rgb888_background_and_batches_flushes():
     assert "constexpr int kFlushRows = 120;" in source
     assert "heap_caps_malloc(kSdTestBackgroundBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in source
     assert "std::memcpy(g_flush_buffer, g_background_pixels + offset, expected_bytes)" in source
+    assert "std::swap(g_background_pixels[offset], g_background_pixels[offset + 2])" in source
     assert "heap_caps_free(g_background_pixels);" in source
 
 

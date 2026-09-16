@@ -167,9 +167,9 @@ void set_pixel(int x, int y, uint32_t color) {
     return;
   }
   uint8_t *pixel = g_flush_buffer + (((y - g_strip_y) * kWidth + x) * kBytesPerPixel);
-  pixel[0] = static_cast<uint8_t>((color >> 16) & 0xFF);
+  pixel[0] = static_cast<uint8_t>(color & 0xFF);
   pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFF);
-  pixel[2] = static_cast<uint8_t>(color & 0xFF);
+  pixel[2] = static_cast<uint8_t>((color >> 16) & 0xFF);
 }
 
 void fill_rect(int x, int y, int width, int height, uint32_t color) {
@@ -420,6 +420,9 @@ bool load_sd_test_background(char *path, size_t path_size) {
     heap_caps_free(g_background_pixels);
     g_background_pixels = nullptr;
     return false;
+  }
+  for (size_t offset = 0; offset < kSdTestBackgroundBytes; offset += kBytesPerPixel) {
+    std::swap(g_background_pixels[offset], g_background_pixels[offset + 2]);
   }
   ESP_LOGI(kTag, "Cached P4 SD test background from %s", path);
   return true;
