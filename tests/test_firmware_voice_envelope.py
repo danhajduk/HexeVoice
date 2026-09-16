@@ -1839,7 +1839,8 @@ def test_firmware_export_flash_helper_uses_idf_flash_metadata():
     assert 'payload["bootloader"]["offset"]' in export_source
     assert '"${BOOTLOADER_OFFSET}" bootloader.bin' in export_source
     assert '--chip "${FLASH_CHIP}"' in export_source
-    assert '--flash-mode "${FLASH_MODE}"' in export_source
+    assert '--flash_mode "${FLASH_MODE}"' in export_source
+    assert '--flash-mode "${FLASH_MODE}"' not in export_source
     assert "bootloader_offset=${BOOTLOADER_OFFSET}" in export_source
     assert "--chip esp32s3" not in export_source
     assert "0x0 bootloader.bin" not in export_source

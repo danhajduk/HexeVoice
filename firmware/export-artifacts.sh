@@ -396,9 +396,9 @@ python "${IDF_PATH}/components/esptool_py/esptool/esptool.py" \
   -p "${PORT}" \
   -b "${BAUD}" \
   write_flash -z \
-  --flash-mode "${FLASH_MODE}" \
-  --flash-freq "${FLASH_FREQ}" \
-  --flash-size "${FLASH_SIZE}" \
+  --flash_mode "${FLASH_MODE}" \
+  --flash_freq "${FLASH_FREQ}" \
+  --flash_size "${FLASH_SIZE}" \
   "${FLASH_ARGS[@]}"
 EOF
 chmod +x "${EXPORT_DIR}/flash-esptool.sh"
@@ -442,11 +442,11 @@ commit or share it.
 
 ## Flash Offsets
 
-- \`0x0\` bootloader
-- \`0x8000\` partition table
+- \`${BOOTLOADER_OFFSET}\` bootloader
+- \`${PARTITION_TABLE_OFFSET}\` partition table
 - \`0x9000\` optional provisioning NVS
-- \`0xd000\` OTA data
-- \`0x10000\` app
+- \`${OTA_DATA_OFFSET}\` OTA data
+- \`${APP_OFFSET}\` app
 
 ## Build Info
 

@@ -217,9 +217,9 @@ python "${{IDF_PATH}}/components/esptool_py/esptool/esptool.py" \\
   -p "${{PORT}}" \\
   -b "${{BAUD}}" \\
   write_flash -z \\
-  --flash-mode "${{FLASH_MODE}}" \\
-  --flash-freq "${{FLASH_FREQ}}" \\
-  --flash-size "${{FLASH_SIZE}}" \\
+  --flash_mode "${{FLASH_MODE}}" \\
+  --flash_freq "${{FLASH_FREQ}}" \\
+  --flash_size "${{FLASH_SIZE}}" \\
   "${{FLASH_ARGS[@]}}"
 """,
         encoding="utf-8",

@@ -99,6 +99,8 @@ def test_full_device_bundle_writes_recovery_to_factory_and_endpoint_to_ota0(tmp_
     assert '"${FACTORY_RECOVERY_OFFSET}" "${RECOVERY_IMAGE}"' in flash_script
     assert '"${OTA0_ENDPOINT_OFFSET}" "${ENDPOINT_IMAGE}"' in flash_script
     assert '"${FACTORY_RECOVERY_OFFSET}" "${ENDPOINT_IMAGE}"' not in flash_script
+    assert '--flash_mode "${FLASH_MODE}"' in flash_script
+    assert '--flash-mode "${FLASH_MODE}"' not in flash_script
 
 
 def test_full_device_bundle_accepts_p4_recovery_app(tmp_path):
