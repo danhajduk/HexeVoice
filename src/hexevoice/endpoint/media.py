@@ -45,7 +45,7 @@ ALLOWED_EXTENSIONS: dict[EndpointMediaType, set[str]] = {
     "picture": {".rgb565", ".rgb888", ".png", ".jpg", ".jpeg"},
     "sprite": {".rgb565", ".rgb888", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
     "sound": {".wav"},
-    "font": {".ttf", ".otf", ".txt", ".md"},
+    "font": {".ttf", ".otf", ".hxf", ".txt", ".md"},
 }
 
 
@@ -465,6 +465,9 @@ class EndpointMediaService:
                 signature = source_bytes[:4]
                 if signature not in {b"\x00\x01\x00\x00", b"OTTO", b"true", b"typ1"}:
                     raise EndpointMediaValidationError("invalid_font", "Font uploads must be valid TTF or OTF files.")
+            elif suffix == ".hxf":
+                if not source_bytes.startswith(b"HXF1"):
+                    raise EndpointMediaValidationError("invalid_font", "Bitmap font uploads must use the HXF1 format.")
             else:
                 try:
                     source_bytes.decode("utf-8")
@@ -612,6 +615,8 @@ def _content_type_for_filename(filename: str, media_type: EndpointMediaType) -> 
         return "font/ttf"
     if suffix == ".otf":
         return "font/otf"
+    if suffix == ".hxf":
+        return "application/vnd.hexe.bitmap-font"
     if suffix == ".txt":
         return "text/plain"
     if suffix == ".md":

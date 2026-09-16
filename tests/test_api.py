@@ -1737,6 +1737,39 @@ def test_endpoint_board_media_library_serves_nested_font_bundle(tmp_path):
     assert raw.content == payload
 
 
+def test_endpoint_board_media_library_serves_bitmap_font_bundle(tmp_path):
+    payload = b"HXF1bitmap-font-data"
+    board_dir = tmp_path / "assets" / "waveshare_p4_wifi6_touch_lcd_7b" / "assets"
+    font_dir = board_dir / "font" / "manrope"
+    font_dir.mkdir(parents=True)
+    (font_dir / "clock_42.hxf").write_bytes(payload)
+    (board_dir / "assets.json").write_text(
+        json.dumps({"board_profile": "waveshare_p4_wifi6_touch_lcd_7b", "assets": [{
+            "asset_id": "manrope_clock_42",
+            "media_type": "font",
+            "filename": "manrope/clock_42.hxf",
+            "source_filename": "manrope/clock_42.hxf",
+        }]}),
+        encoding="utf-8",
+    )
+    client = TestClient(create_app(Settings(
+        onboarding_state_path=tmp_path / "state.json",
+        endpoint_asset_library_dir=tmp_path / "assets",
+    )))
+
+    library = client.get("/api/endpoint/media/library/boards/waveshare_p4_wifi6_touch_lcd_7b")
+    raw = client.get(
+        "/firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/font/manrope/clock_42.hxf"
+    )
+
+    assert library.status_code == 200
+    assert library.json()["assets"][0]["endpoint_path"] == "/sdcard/hexe/fonts/manrope/clock_42.hxf"
+    assert library.json()["assets"][0]["content_type"] == "application/vnd.hexe.bitmap-font"
+    assert raw.status_code == 200
+    assert raw.headers["content-type"] == "application/vnd.hexe.bitmap-font"
+    assert raw.content == payload
+
+
 def test_endpoint_media_library_resolves_board_from_endpoint(tmp_path):
     board_dir = tmp_path / "assets" / "ha_voice_pe" / "assets"
     (board_dir / "sound").mkdir(parents=True)
