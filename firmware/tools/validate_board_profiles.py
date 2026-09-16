@@ -286,6 +286,9 @@ def validate_profile(profile: dict[str, Any], path: Path) -> None:
     partition_schema = build.get("partition_schema")
     if idf_target not in ALLOWED_IDF_TARGETS:
         raise ValidationError(f"{board_profile}: invalid build.idf_target {idf_target!r}")
+    required_idf_version = build.get("required_idf_version")
+    if required_idf_version is not None and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", str(required_idf_version)):
+        raise ValidationError(f"{board_profile}: build.required_idf_version must be an exact semantic version")
     if partition_schema not in ALLOWED_PARTITION_SCHEMAS:
         raise ValidationError(f"{board_profile}: invalid build.partition_schema {partition_schema!r}")
     if idf_target == "esp32s3" and not str(partition_schema).startswith("s3-"):

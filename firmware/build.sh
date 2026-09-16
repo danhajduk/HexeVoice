@@ -123,6 +123,52 @@ else:
 PY
 }
 
+board_profile_optional_value() {
+  local profile="$1"
+  local dotted_key="$2"
+  "${CONVERTER_PYTHON}" - "${BOARD_PROFILE_ROOT}" "${profile}" "${dotted_key}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+profile = sys.argv[2]
+dotted_key = sys.argv[3]
+sys.path.insert(0, str(root.parent / "tools"))
+from validate_board_profiles import load_profile, validate_profile  # noqa: E402
+
+path = root / profile / "board.yaml"
+payload = load_profile(path)
+validate_profile(payload, path)
+value = payload
+for key in dotted_key.split("."):
+    if not isinstance(value, dict) or key not in value:
+        print("")
+        raise SystemExit
+    value = value[key]
+print("" if value is None else value)
+PY
+}
+
+active_idf_version() {
+  idf.py --version | sed -E 's/^ESP-IDF v?//; s/[[:space:]]+$//'
+}
+
+validate_profile_idf_version() {
+  local profile="$1"
+  local required_version
+  local active_version
+  required_version="$(board_profile_optional_value "${profile}" build.required_idf_version)"
+  if [[ -z "${required_version}" ]]; then
+    return
+  fi
+  active_version="$(active_idf_version)"
+  if [[ "${active_version}" != "${required_version}" ]]; then
+    echo "Board ${profile} requires ESP-IDF ${required_version}; active ESP-IDF is ${active_version}." >&2
+    echo "Load the required SDK before building: . ~/esp-idf-v${required_version}/export.sh" >&2
+    exit 1
+  fi
+}
+
 partition_csv_for_schema() {
   case "$1" in
     s3-8m-v1) echo "partitions/s3_8m_v1.csv" ;;
@@ -560,6 +606,7 @@ validate_profile() {
 build_profile() {
   local profile="$1"
   validate_profile "${profile}"
+  validate_profile_idf_version "${profile}"
 
   local build_dir
   local export_dir
@@ -567,18 +614,23 @@ build_profile() {
   local idf_target
   local sdkconfig_path
   local sdkconfig_defaults_path
+  local required_idf_version
   build_dir="$(profile_build_dir "${profile}")"
   export_dir="$(profile_export_dir "${profile}")"
   profile_app="$(profile_app_filename "${profile}")"
   idf_target="$(board_profile_value "${profile}" build.idf_target)"
   sdkconfig_path="$(profile_sdkconfig_path "${profile}")"
   sdkconfig_defaults_path="$(profile_sdkconfig_defaults_path "${profile}")"
+  required_idf_version="$(board_profile_optional_value "${profile}" build.required_idf_version)"
   refresh_build_dir_if_managed_components_changed "${profile}" "${build_dir}" "${idf_target}"
   write_profile_sdkconfig_defaults "${profile}"
   refresh_profile_sdkconfig_if_generated_defaults_changed "${profile}" "${sdkconfig_path}"
 
   echo "Building firmware profile ${profile} version ${PROJECT_VERSION}"
   local idf_env=("IDF_TARGET=${idf_target}" "HEXE_FIRMWARE_APP=${FIRMWARE_APP}" "HEXE_BOARD_PROFILE=${profile}")
+  if [[ -n "${required_idf_version}" ]]; then
+    idf_env+=("HEXE_REQUIRED_IDF_VERSION=${required_idf_version}")
+  fi
   if [[ "${FIRMWARE_APP}" == "recovery" && -z "${IDF_COMPONENT_MANAGER:-}" &&
     "$(board_profile_value "${profile}" features.display)" != "true" ]]; then
     idf_env+=("IDF_COMPONENT_MANAGER=0")

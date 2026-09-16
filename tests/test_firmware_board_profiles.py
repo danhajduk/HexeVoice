@@ -267,10 +267,10 @@ def test_p4_build_enables_esp32_c6_hosted_wifi():
 
     assert 'espressif/esp_wifi_remote:' in manifest
     assert 'version: "==1.6.4"' in manifest
-    assert 'if: "idf_version <6.0"\n        version: "0.14.*"' in manifest
+    assert 'if: "idf_version <6.0"\n        version: "==0.14.5"' in manifest
     assert 'espressif/esp_hosted:' in manifest
     assert 'version: ">=2.11,<3.0"' in manifest
-    assert 'if: "idf_version <6.0"\n        version: "1.4.*"' in manifest
+    assert 'if: "idf_version <6.0"\n        version: "==1.4.7"' in manifest
     assert "CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y" in build_script
     assert "CONFIG_SLAVE_IDF_TARGET_ESP32C6=y" in build_script
     assert "CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y" in build_script
@@ -978,3 +978,52 @@ def test_board_profiles_reject_secret_like_instance_config(tmp_path):
 
     assert result.returncode == 1
     assert "must not contain secret-like key" in result.stderr
+
+
+def test_waveshare_p4_build_stack_is_pinned():
+    validator = load_validator_module()
+    profile = validator.load_profile(PROFILE_ROOT / "waveshare_p4_wifi6_touch_lcd_7b/board.yaml")
+    endpoint_manifest = FIRMWARE_ENDPOINT_MANIFEST.read_text(encoding="utf-8")
+    recovery_manifest = (REPO_ROOT / "firmware/components/recovery_runtime/idf_component.yml").read_text(encoding="utf-8")
+    root_cmake = FIRMWARE_ROOT_CMAKE.read_text(encoding="utf-8")
+
+    assert profile["build"]["required_idf_version"] == "5.5.4"
+    for manifest in (endpoint_manifest, recovery_manifest):
+        assert 'version: "==0.14.5"' in manifest
+        assert 'version: "==1.4.7"' in manifest
+    assert "HEXE_REQUIRED_IDF_VERSION" in root_cmake
+    assert "idf_build_set_property(DEPENDENCIES_LOCK" in root_cmake
+
+
+def test_waveshare_p4_build_rejects_wrong_idf_before_build(tmp_path):
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_idf = fake_bin / "idf.py"
+    build_marker = tmp_path / "build-ran"
+    fake_idf.write_text(
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"--version\" ]]; then echo 'ESP-IDF v6.1.0'; exit 0; fi\n"
+        f"touch {build_marker}\n",
+        encoding="utf-8",
+    )
+    fake_idf.chmod(0o755)
+
+    result = subprocess.run(
+        [str(FIRMWARE_BUILD_SCRIPT), "build"],
+        cwd=REPO_ROOT / "firmware",
+        env={
+            "HOME": str(tmp_path),
+            "PATH": f"{fake_bin}:/usr/bin:/bin",
+            "IDF_PATH": str(tmp_path / "wrong-idf"),
+            "HEXE_BOARD_PROFILE": "waveshare_p4_wifi6_touch_lcd_7b",
+            "EXPORT_AFTER_BUILD": "0",
+            "ALLOW_DIRTY_FIRMWARE_BUILD": "1",
+        },
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 1
+    assert "requires ESP-IDF 5.5.4; active ESP-IDF is 6.1.0" in result.stderr
+    assert not build_marker.exists()
