@@ -1,13 +1,34 @@
 #include "recovery_display.h"
 
 #include <algorithm>
+#include <cerrno>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <sys/stat.h>
 
 #include "board_profile_pins.h"
+#include "endpoint_config.h"
 #include "recovery_ble_provisioning.h"
 #include "recovery_control.h"
 #include "esp_log.h"
+
+#if HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B
+#include "bsp/display.h"
+#include "bsp/esp32_p4_wifi6_touch_lcd_7b.h"
+#include "esp_app_desc.h"
+#include "esp_err.h"
+#include "esp_heap_caps.h"
+#include "esp_lcd_mipi_dsi.h"
+#include "esp_lcd_panel_commands.h"
+#include "esp_lcd_panel_io.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_mac.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#include "freertos/task.h"
+#endif
 
 #if HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
 #include "driver/gpio.h"
@@ -27,6 +48,571 @@
 namespace {
 
 constexpr char kTag[] = "hexe_recovery_display";
+
+#if HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B
+constexpr int kWidth = BSP_LCD_H_RES;
+constexpr int kHeight = BSP_LCD_V_RES;
+constexpr int kFlushRows = 24;
+constexpr size_t kBackgroundBytes = static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * sizeof(uint16_t);
+constexpr char kRecoveryBackgroundPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures/recovery_bg.rgb565";
+constexpr char kFallbackBackgroundPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures/bg.rgb565";
+constexpr uint16_t kBlack = 0x0000;
+constexpr uint16_t kCanvas = 0x08A4;
+constexpr uint16_t kCanvasAlt = 0x10E6;
+constexpr uint16_t kInk = 0xFFFF;
+constexpr uint16_t kMuted = 0xBDF7;
+constexpr uint16_t kCyan = 0x05FF;
+constexpr uint16_t kGreen = 0x37E6;
+constexpr uint16_t kYellow = 0xFEE0;
+constexpr uint16_t kOrange = 0xFCA0;
+constexpr uint16_t kRed = 0xF926;
+constexpr uint16_t kMagenta = 0xD29F;
+constexpr uint16_t kBlue = 0x03BF;
+
+enum class P4Screen {
+  kWaiting,
+  kPairing,
+  kValidating,
+  kApplying,
+  kComplete,
+  kFailed,
+  kOta,
+};
+
+esp_lcd_panel_handle_t g_panel = nullptr;
+esp_lcd_panel_io_handle_t g_panel_io = nullptr;
+uint16_t *g_flush_buffer = nullptr;
+uint16_t *g_background_pixels = nullptr;
+SemaphoreHandle_t g_refresh_done = nullptr;
+bool g_display_ready = false;
+bool g_wait_for_refresh = false;
+bool g_backlight_on = false;
+bool g_force_redraw = true;
+bool g_sd_checked = false;
+int g_strip_y = 0;
+int g_strip_rows = 0;
+uint32_t g_last_signature = 0;
+uint32_t g_frame = 0;
+const char *g_background_source = "procedural";
+
+bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
+  (void)panel;
+  (void)edata;
+  auto done = static_cast<SemaphoreHandle_t>(user_ctx);
+  if (done == nullptr) {
+    return false;
+  }
+  BaseType_t high_task_woken = pdFALSE;
+  xSemaphoreGiveFromISR(done, &high_task_woken);
+  return high_task_woken == pdTRUE;
+}
+
+bool state_is_one_of(const char *state, const char *a, const char *b = nullptr, const char *c = nullptr, const char *d = nullptr) {
+  if (state == nullptr) {
+    return false;
+  }
+  return std::strcmp(state, a) == 0 || (b != nullptr && std::strcmp(state, b) == 0) ||
+         (c != nullptr && std::strcmp(state, c) == 0) || (d != nullptr && std::strcmp(state, d) == 0);
+}
+
+P4Screen desired_p4_screen() {
+  if (hexe::recovery::recovery_firmware_install_active()) {
+    return P4Screen::kOta;
+  }
+  const char *state = hexe::recovery::recovery_ble_state();
+  if (state_is_one_of(state, "failed", "pairing_failed")) {
+    return P4Screen::kFailed;
+  }
+  if (state_is_one_of(state, "completed")) {
+    return P4Screen::kComplete;
+  }
+  if (state_is_one_of(state, "applying")) {
+    return P4Screen::kApplying;
+  }
+  if (state_is_one_of(state, "validating")) {
+    return P4Screen::kValidating;
+  }
+  if (state_is_one_of(state, "pairing_advert_seen", "pairing_connected", "pairing_offer_received", "pairing_identity_sent")) {
+    return P4Screen::kPairing;
+  }
+  return P4Screen::kWaiting;
+}
+
+const char *screen_title(P4Screen screen) {
+  switch (screen) {
+    case P4Screen::kPairing:
+      return "Pairing with Core";
+    case P4Screen::kValidating:
+      return "Checking credentials";
+    case P4Screen::kApplying:
+      return "Saving credentials";
+    case P4Screen::kComplete:
+      return "Onboarding saved";
+    case P4Screen::kFailed:
+      return "Onboarding failed";
+    case P4Screen::kOta:
+      return "Firmware update";
+    case P4Screen::kWaiting:
+    default:
+      return "Waiting for onboarding";
+  }
+}
+
+const char *screen_detail(P4Screen screen) {
+  switch (screen) {
+    case P4Screen::kPairing:
+      return "Keep this device powered";
+    case P4Screen::kValidating:
+      return "Verifying encrypted payload";
+    case P4Screen::kApplying:
+      return "Writing local recovery settings";
+    case P4Screen::kComplete:
+      return "Credentials stored";
+    case P4Screen::kFailed:
+      return "Use app or AP rescue to retry";
+    case P4Screen::kOta:
+      return "Installing endpoint firmware";
+    case P4Screen::kWaiting:
+    default:
+      return "BLE ready   AP 192.168.4.1";
+  }
+}
+
+uint16_t screen_accent(P4Screen screen) {
+  switch (screen) {
+    case P4Screen::kPairing:
+      return kCyan;
+    case P4Screen::kValidating:
+      return kYellow;
+    case P4Screen::kApplying:
+      return kOrange;
+    case P4Screen::kComplete:
+      return kGreen;
+    case P4Screen::kFailed:
+      return kRed;
+    case P4Screen::kOta:
+      return kMagenta;
+    case P4Screen::kWaiting:
+    default:
+      return kBlue;
+  }
+}
+
+bool screen_animates(P4Screen screen) {
+  return screen == P4Screen::kWaiting || screen == P4Screen::kPairing || screen == P4Screen::kValidating ||
+         screen == P4Screen::kApplying || screen == P4Screen::kOta;
+}
+
+uint32_t hash_text(uint32_t signature, const char *text) {
+  if (text == nullptr) {
+    return signature * 131;
+  }
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    signature = (signature * 131) + static_cast<unsigned char>(*cursor);
+  }
+  return signature;
+}
+
+uint32_t display_signature(P4Screen screen, uint32_t frame) {
+  uint32_t signature = 2166136261U;
+  signature = (signature * 131) + static_cast<uint32_t>(screen);
+  signature = hash_text(signature, hexe::recovery::recovery_ble_state());
+  signature = hash_text(signature, hexe::recovery::recovery_ble_reason());
+  if (screen == P4Screen::kOta) {
+    signature = (signature * 131) + std::clamp(hexe::recovery::recovery_firmware_install_progress_percent(), 0, 100);
+  }
+  if (screen_animates(screen)) {
+    signature = (signature * 131) + (frame % 12);
+  }
+  return signature;
+}
+
+void set_pixel(int x, int y, uint16_t color) {
+  if (g_flush_buffer == nullptr || x < 0 || y < g_strip_y || x >= kWidth || y >= g_strip_y + g_strip_rows) {
+    return;
+  }
+  g_flush_buffer[(y - g_strip_y) * kWidth + x] = color;
+}
+
+void fill_rect(int x, int y, int width, int height, uint16_t color) {
+  const int x0 = std::clamp(x, 0, kWidth);
+  const int y0 = std::clamp(y, g_strip_y, g_strip_y + g_strip_rows);
+  const int x1 = std::clamp(x + width, 0, kWidth);
+  const int y1 = std::clamp(y + height, g_strip_y, g_strip_y + g_strip_rows);
+  for (int row = y0; row < y1; ++row) {
+    uint16_t *target = g_flush_buffer + ((row - g_strip_y) * kWidth) + x0;
+    for (int col = x0; col < x1; ++col) {
+      *target++ = color;
+    }
+  }
+}
+
+void fill_procedural_background() {
+  for (int row = 0; row < g_strip_rows; ++row) {
+    const int y = g_strip_y + row;
+    const bool alt_band = ((y / 40) % 2) == 0;
+    const uint16_t base = alt_band ? kCanvas : kCanvasAlt;
+    uint16_t *target = g_flush_buffer + (row * kWidth);
+    for (int x = 0; x < kWidth; ++x) {
+      *target++ = base;
+    }
+  }
+}
+
+void fill_background_strip() {
+  if (g_background_pixels == nullptr) {
+    fill_procedural_background();
+    return;
+  }
+  std::memcpy(g_flush_buffer,
+              g_background_pixels + (static_cast<size_t>(g_strip_y) * static_cast<size_t>(kWidth)),
+              static_cast<size_t>(kWidth) * static_cast<size_t>(g_strip_rows) * sizeof(uint16_t));
+}
+
+void draw_disc(int center_x, int center_y, int radius, uint16_t color) {
+  const int r2 = radius * radius;
+  for (int y = center_y - radius; y <= center_y + radius; ++y) {
+    for (int x = center_x - radius; x <= center_x + radius; ++x) {
+      const int dx = x - center_x;
+      const int dy = y - center_y;
+      if ((dx * dx) + (dy * dy) <= r2) {
+        set_pixel(x, y, color);
+      }
+    }
+  }
+}
+
+void draw_ring(int center_x, int center_y, int radius, int thickness, uint16_t color) {
+  const int outer = radius * radius;
+  const int inner_radius = radius - thickness;
+  const int inner = inner_radius * inner_radius;
+  for (int y = center_y - radius; y <= center_y + radius; ++y) {
+    for (int x = center_x - radius; x <= center_x + radius; ++x) {
+      const int dx = x - center_x;
+      const int dy = y - center_y;
+      const int distance = (dx * dx) + (dy * dy);
+      if (distance <= outer && distance >= inner) {
+        set_pixel(x, y, color);
+      }
+    }
+  }
+}
+
+const uint8_t *font5x7_glyph(char ch) {
+  static constexpr uint8_t kDigits[][5] = {
+      {0x3E, 0x51, 0x49, 0x45, 0x3E}, {0x00, 0x42, 0x7F, 0x40, 0x00},
+      {0x42, 0x61, 0x51, 0x49, 0x46}, {0x21, 0x41, 0x45, 0x4B, 0x31},
+      {0x18, 0x14, 0x12, 0x7F, 0x10}, {0x27, 0x45, 0x45, 0x45, 0x39},
+      {0x3C, 0x4A, 0x49, 0x49, 0x30}, {0x01, 0x71, 0x09, 0x05, 0x03},
+      {0x36, 0x49, 0x49, 0x49, 0x36}, {0x06, 0x49, 0x49, 0x29, 0x1E},
+  };
+  static constexpr uint8_t kLetters[][5] = {
+      {0x7E, 0x11, 0x11, 0x11, 0x7E}, {0x7F, 0x49, 0x49, 0x49, 0x36},
+      {0x3E, 0x41, 0x41, 0x41, 0x22}, {0x7F, 0x41, 0x41, 0x22, 0x1C},
+      {0x7F, 0x49, 0x49, 0x49, 0x41}, {0x7F, 0x09, 0x09, 0x09, 0x01},
+      {0x3E, 0x41, 0x49, 0x49, 0x7A}, {0x7F, 0x08, 0x08, 0x08, 0x7F},
+      {0x00, 0x41, 0x7F, 0x41, 0x00}, {0x20, 0x40, 0x41, 0x3F, 0x01},
+      {0x7F, 0x08, 0x14, 0x22, 0x41}, {0x7F, 0x40, 0x40, 0x40, 0x40},
+      {0x7F, 0x02, 0x0C, 0x02, 0x7F}, {0x7F, 0x04, 0x08, 0x10, 0x7F},
+      {0x3E, 0x41, 0x41, 0x41, 0x3E}, {0x7F, 0x09, 0x09, 0x09, 0x06},
+      {0x3E, 0x41, 0x51, 0x21, 0x5E}, {0x7F, 0x09, 0x19, 0x29, 0x46},
+      {0x46, 0x49, 0x49, 0x49, 0x31}, {0x01, 0x01, 0x7F, 0x01, 0x01},
+      {0x3F, 0x40, 0x40, 0x40, 0x3F}, {0x1F, 0x20, 0x40, 0x20, 0x1F},
+      {0x3F, 0x40, 0x38, 0x40, 0x3F}, {0x63, 0x14, 0x08, 0x14, 0x63},
+      {0x07, 0x08, 0x70, 0x08, 0x07}, {0x61, 0x51, 0x49, 0x45, 0x43},
+  };
+  static constexpr uint8_t kLowercase[][5] = {
+      {0x20, 0x54, 0x54, 0x54, 0x78}, {0x7F, 0x48, 0x44, 0x44, 0x38},
+      {0x38, 0x44, 0x44, 0x44, 0x20}, {0x38, 0x44, 0x44, 0x48, 0x7F},
+      {0x38, 0x54, 0x54, 0x54, 0x18}, {0x08, 0x7E, 0x09, 0x01, 0x02},
+      {0x0C, 0x52, 0x52, 0x52, 0x3E}, {0x7F, 0x08, 0x04, 0x04, 0x78},
+      {0x00, 0x44, 0x7D, 0x40, 0x00}, {0x20, 0x40, 0x44, 0x3D, 0x00},
+      {0x7F, 0x10, 0x28, 0x44, 0x00}, {0x00, 0x41, 0x7F, 0x40, 0x00},
+      {0x7C, 0x04, 0x18, 0x04, 0x78}, {0x7C, 0x08, 0x04, 0x04, 0x78},
+      {0x38, 0x44, 0x44, 0x44, 0x38}, {0x7C, 0x14, 0x14, 0x14, 0x08},
+      {0x08, 0x14, 0x14, 0x18, 0x7C}, {0x7C, 0x08, 0x04, 0x04, 0x08},
+      {0x48, 0x54, 0x54, 0x54, 0x20}, {0x04, 0x3F, 0x44, 0x40, 0x20},
+      {0x3C, 0x40, 0x40, 0x20, 0x7C}, {0x1C, 0x20, 0x40, 0x20, 0x1C},
+      {0x3C, 0x40, 0x30, 0x40, 0x3C}, {0x44, 0x28, 0x10, 0x28, 0x44},
+      {0x0C, 0x50, 0x50, 0x50, 0x3C}, {0x44, 0x64, 0x54, 0x4C, 0x44},
+  };
+  static constexpr uint8_t kDot[5] = {0x00, 0x60, 0x60, 0x00, 0x00};
+  static constexpr uint8_t kDash[5] = {0x08, 0x08, 0x08, 0x08, 0x08};
+  static constexpr uint8_t kColon[5] = {0x00, 0x36, 0x36, 0x00, 0x00};
+  if (ch >= '0' && ch <= '9') {
+    return kDigits[ch - '0'];
+  }
+  if (ch >= 'A' && ch <= 'Z') {
+    return kLetters[ch - 'A'];
+  }
+  if (ch >= 'a' && ch <= 'z') {
+    return kLowercase[ch - 'a'];
+  }
+  if (ch == '.') {
+    return kDot;
+  }
+  if (ch == '-' || ch == '_') {
+    return kDash;
+  }
+  if (ch == ':') {
+    return kColon;
+  }
+  return nullptr;
+}
+
+int scaled_units(int units, int scale_percent) {
+  return (units * scale_percent + 99) / 100;
+}
+
+int text_width(const char *text, int scale_percent) {
+  if (text == nullptr || scale_percent <= 0) {
+    return 0;
+  }
+  int width = 0;
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    width += scaled_units(*cursor == ' ' ? 3 : 6, scale_percent);
+  }
+  return width > 0 ? width - scaled_units(1, scale_percent) : 0;
+}
+
+void draw_char(int x, int y, char ch, int scale_percent, uint16_t color) {
+  const uint8_t *glyph = font5x7_glyph(ch);
+  if (glyph == nullptr || scale_percent <= 0) {
+    return;
+  }
+  for (int col = 0; col < 5; ++col) {
+    for (int row = 0; row < 7; ++row) {
+      if ((glyph[col] & (1 << row)) == 0) {
+        continue;
+      }
+      const int x0 = (col * scale_percent) / 100;
+      int x1 = ((col + 1) * scale_percent) / 100;
+      const int y0 = (row * scale_percent) / 100;
+      int y1 = ((row + 1) * scale_percent) / 100;
+      if (x1 <= x0) {
+        x1 = x0 + 1;
+      }
+      if (y1 <= y0) {
+        y1 = y0 + 1;
+      }
+      fill_rect(x + x0, y + y0, x1 - x0, y1 - y0, color);
+    }
+  }
+}
+
+void draw_text(int x, int y, const char *text, int scale_percent, uint16_t color) {
+  if (text == nullptr || scale_percent <= 0) {
+    return;
+  }
+  int cursor_x = x;
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    if (*cursor != ' ') {
+      draw_char(cursor_x, y, *cursor, scale_percent, color);
+    }
+    cursor_x += scaled_units(*cursor == ' ' ? 3 : 6, scale_percent);
+  }
+}
+
+void draw_centered_text(int y, const char *text, int scale_percent, uint16_t color) {
+  draw_text((kWidth - text_width(text, scale_percent)) / 2, y, text, scale_percent, color);
+}
+
+void sanitize_reason(char *target, size_t size, const char *reason) {
+  if (target == nullptr || size == 0) {
+    return;
+  }
+  if (reason == nullptr || reason[0] == '\0') {
+    std::snprintf(target, size, "state %s", hexe::recovery::recovery_ble_state());
+    return;
+  }
+  size_t out = 0;
+  for (const char *cursor = reason; *cursor != '\0' && out + 1 < size; ++cursor) {
+    char ch = *cursor;
+    if (ch == '_' || ch == '/') {
+      ch = ' ';
+    }
+    target[out++] = ch;
+  }
+  target[out] = '\0';
+}
+
+void format_mac(char *target, size_t size, esp_mac_type_t type) {
+  if (target == nullptr || size == 0) {
+    return;
+  }
+  uint8_t mac[6] = {};
+  if (esp_read_mac(mac, type) != ESP_OK) {
+    std::snprintf(target, size, "unknown");
+    return;
+  }
+  std::snprintf(target,
+                size,
+                "%02X:%02X:%02X:%02X:%02X:%02X",
+                mac[0],
+                mac[1],
+                mac[2],
+                mac[3],
+                mac[4],
+                mac[5]);
+}
+
+bool try_load_sd_background(const char *path) {
+  struct stat info = {};
+  if (stat(path, &info) != 0) {
+    ESP_LOGI(kTag, "P4 recovery background not found at %s: %s", path, std::strerror(errno));
+    return false;
+  }
+  if (static_cast<size_t>(info.st_size) != kBackgroundBytes) {
+    ESP_LOGW(kTag,
+             "Ignoring P4 recovery background %s: expected %u bytes for %dx%d RGB565, got %ld",
+             path,
+             static_cast<unsigned>(kBackgroundBytes),
+             kWidth,
+             kHeight,
+             static_cast<long>(info.st_size));
+    return false;
+  }
+
+  if (g_background_pixels == nullptr) {
+    g_background_pixels = static_cast<uint16_t *>(heap_caps_malloc(kBackgroundBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  if (g_background_pixels == nullptr) {
+    ESP_LOGW(kTag, "No PSRAM available for P4 recovery background cache; using procedural background");
+    return false;
+  }
+
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    ESP_LOGW(kTag, "Could not open P4 recovery background %s: %s", path, std::strerror(errno));
+    return false;
+  }
+  const size_t read_pixels = std::fread(g_background_pixels, sizeof(uint16_t), kBackgroundBytes / sizeof(uint16_t), file);
+  std::fclose(file);
+  if (read_pixels != kBackgroundBytes / sizeof(uint16_t)) {
+    ESP_LOGW(kTag,
+             "Could not read P4 recovery background %s: expected %u pixels, got %u",
+             path,
+             static_cast<unsigned>(kBackgroundBytes / sizeof(uint16_t)),
+             static_cast<unsigned>(read_pixels));
+    heap_caps_free(g_background_pixels);
+    g_background_pixels = nullptr;
+    return false;
+  }
+
+  g_background_source = std::strcmp(path, kRecoveryBackgroundPath) == 0 ? "SD recovery_bg.rgb565" : "SD bg.rgb565";
+  ESP_LOGI(kTag, "Loaded P4 recovery background from %s", path);
+  return true;
+}
+
+void init_p4_sd_background() {
+  if (g_sd_checked) {
+    return;
+  }
+  g_sd_checked = true;
+  const esp_err_t mount_result = bsp_sdcard_mount();
+  if (mount_result != ESP_OK && mount_result != ESP_ERR_INVALID_STATE) {
+    ESP_LOGI(kTag, "microSD unavailable for recovery background; using procedural background: %s", esp_err_to_name(mount_result));
+    return;
+  }
+  if (!try_load_sd_background(kRecoveryBackgroundPath)) {
+    try_load_sd_background(kFallbackBackgroundPath);
+  }
+}
+
+void draw_progress_bar(int x, int y, int width, int height, int progress, uint16_t accent) {
+  fill_rect(x, y, width, height, 0x2965);
+  fill_rect(x, y, (width * std::clamp(progress, 0, 100)) / 100, height, accent);
+}
+
+void draw_activity_dots(uint32_t frame, uint16_t accent) {
+  constexpr int start_x = 439;
+  constexpr int center_y = 506;
+  for (int i = 0; i < 6; ++i) {
+    const bool lit = static_cast<int>(frame % 6) == i;
+    draw_disc(start_x + (i * 30), center_y, lit ? 9 : 5, lit ? accent : 0x39E7);
+  }
+}
+
+void draw_p4_frame(P4Screen screen, uint32_t frame) {
+  const uint16_t accent = screen_accent(screen);
+  const bool ota = screen == P4Screen::kOta;
+  const int progress = ota ? std::clamp(hexe::recovery::recovery_firmware_install_progress_percent(), 0, 100) : 0;
+  char reason[72] = {};
+  sanitize_reason(reason, sizeof(reason), ota ? hexe::recovery::recovery_firmware_install_state()
+                                             : hexe::recovery::recovery_ble_reason());
+  char state_text[72] = {};
+  sanitize_reason(state_text, sizeof(state_text), ota ? "firmware_install" : hexe::recovery::recovery_ble_state());
+  char status_line[96] = {};
+  std::snprintf(status_line,
+                sizeof(status_line),
+                "BLE %s   HTTP %s",
+                hexe::recovery::recovery_ble_advertising() ? "advertising" : "ready",
+                hexe::recovery::recovery_http_api_active() ? hexe::recovery::recovery_http_mode() : "off");
+  char name_line[96] = {};
+  char id_line[96] = {};
+  char wifi_mac[24] = {};
+  char ble_mac[24] = {};
+  format_mac(wifi_mac, sizeof(wifi_mac), ESP_MAC_WIFI_STA);
+  format_mac(ble_mac, sizeof(ble_mac), ESP_MAC_BT);
+  std::snprintf(name_line, sizeof(name_line), "Name %.28s", hexe::config::kEndpointId);
+  std::snprintf(id_line, sizeof(id_line), "Device id %.24s", hexe::config::kEndpointId);
+  char wifi_line[48] = {};
+  char ble_line[48] = {};
+  std::snprintf(wifi_line, sizeof(wifi_line), "WiFi MAC %s", wifi_mac);
+  std::snprintf(ble_line, sizeof(ble_line), "BLE MAC %s", ble_mac);
+  const esp_app_desc_t *app = esp_app_get_description();
+  char version[96] = {};
+  std::snprintf(version, sizeof(version), "P4 7B recovery   %s", app != nullptr ? app->version : "unknown");
+
+  for (int y = 0; y < kHeight; y += kFlushRows) {
+    g_strip_y = y;
+    g_strip_rows = std::min(kFlushRows, kHeight - y);
+    fill_background_strip();
+    fill_rect(0, 0, kWidth, 78, kBlack);
+    fill_rect(0, kHeight - 68, kWidth, 68, kBlack);
+    fill_rect(0, 78, kWidth, 5, accent);
+    fill_rect(0, kHeight - 73, kWidth, 5, accent);
+    fill_rect(0, 84, kWidth, 128, kCanvasAlt);
+
+    draw_text(46, 26, "HEXE", 430, kInk);
+    draw_text(214, 38, "RECOVERY", 230, accent);
+    draw_text(674, 38, status_line, 150, kMuted);
+    draw_centered_text(128, screen_title(screen), 430, kInk);
+    draw_centered_text(232, screen_detail(screen), 230, accent);
+    draw_centered_text(288, state_text, 190, kInk);
+    draw_centered_text(322, reason, 180, kMuted);
+    draw_text(76, 372, name_line, 170, kInk);
+    draw_text(76, 402, id_line, 160, kMuted);
+    draw_text(76, 432, wifi_line, 160, kMuted);
+    draw_text(548, 432, ble_line, 160, kMuted);
+
+    if (ota) {
+      draw_progress_bar(272, 486, 480, 22, progress, accent);
+      char progress_text[24] = {};
+      std::snprintf(progress_text, sizeof(progress_text), "%d percent", progress);
+      draw_centered_text(518, progress_text, 160, kMuted);
+    } else if (screen_animates(screen)) {
+      draw_ring(kWidth / 2, 484, 24, 6, accent);
+      draw_activity_dots(frame, accent);
+    } else if (screen == P4Screen::kComplete) {
+      draw_disc(kWidth / 2, 494, 30, accent);
+      draw_text((kWidth / 2) - 16, 474, "OK", 210, kBlack);
+    } else {
+      draw_ring(kWidth / 2, 494, 32, 7, accent);
+    }
+    draw_text(48, 552, version, 175, kMuted);
+    draw_text(420, 552, g_background_source, 130, kMuted);
+    draw_text(744, 552, "no secrets on screen", 160, kMuted);
+
+    while (g_wait_for_refresh && g_refresh_done != nullptr && xSemaphoreTake(g_refresh_done, 0) == pdTRUE) {
+    }
+    ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(g_panel, 0, y, kWidth, y + g_strip_rows, g_flush_buffer));
+    if (g_wait_for_refresh && g_refresh_done != nullptr && xSemaphoreTake(g_refresh_done, pdMS_TO_TICKS(1000)) != pdTRUE) {
+      ESP_LOGW(kTag, "Timed out waiting for P4 LCD refresh");
+    }
+  }
+}
+#endif
 
 #if HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
 constexpr int kWidth = 360;
@@ -362,7 +948,59 @@ void render_plate(Plate plate, int progress) {
 namespace hexe::recovery {
 
 void init_recovery_display() {
-#if HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
+#if HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B
+  if (g_display_ready) {
+    return;
+  }
+
+  g_refresh_done = xSemaphoreCreateBinary();
+  g_flush_buffer = static_cast<uint16_t *>(heap_caps_malloc(kWidth * kFlushRows * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+  if (g_flush_buffer == nullptr) {
+    g_flush_buffer = static_cast<uint16_t *>(
+        heap_caps_malloc(kWidth * kFlushRows * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+  }
+  if (g_flush_buffer == nullptr || g_refresh_done == nullptr) {
+    ESP_LOGW(kTag, "Recovery display disabled: P4 buffer allocation failed");
+    return;
+  }
+
+  const esp_err_t result = bsp_display_new(nullptr, &g_panel, &g_panel_io);
+  if (result != ESP_OK || g_panel == nullptr) {
+    ESP_LOGW(kTag, "Recovery display disabled: P4 panel init failed: %s", esp_err_to_name(result));
+    return;
+  }
+
+  esp_lcd_dpi_panel_event_callbacks_t callbacks = {};
+  callbacks.on_color_trans_done = on_color_done;
+  const esp_err_t callback_result = esp_lcd_dpi_panel_register_event_callbacks(g_panel, &callbacks, g_refresh_done);
+  if (callback_result == ESP_OK) {
+    g_wait_for_refresh = true;
+  } else {
+    ESP_LOGW(kTag, "P4 recovery LCD refresh callback unavailable: %s", esp_err_to_name(callback_result));
+  }
+
+  esp_err_t display_on_result = esp_lcd_panel_disp_on_off(g_panel, true);
+  if (display_on_result == ESP_ERR_NOT_SUPPORTED && g_panel_io != nullptr) {
+    ESP_LOGW(kTag, "Panel display-on callback unavailable; sending DCS display-on command");
+    display_on_result = esp_lcd_panel_io_tx_param(g_panel_io, LCD_CMD_DISPON, nullptr, 0);
+  }
+  if (display_on_result != ESP_OK) {
+    ESP_LOGW(kTag, "Recovery display disabled: P4 panel enable failed: %s", esp_err_to_name(display_on_result));
+    return;
+  }
+
+  init_p4_sd_background();
+  g_display_ready = true;
+  g_force_redraw = true;
+  update_recovery_display();
+  const esp_err_t backlight_result = bsp_display_backlight_on();
+  if (backlight_result == ESP_OK) {
+    g_backlight_on = true;
+  } else {
+    ESP_LOGW(kTag, "Failed to enable P4 recovery LCD backlight: %s", esp_err_to_name(backlight_result));
+  }
+  ESP_LOGI(kTag, "Recovery display initialized for Waveshare P4 7B");
+#elif HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
   if (g_display_ready) {
     return;
   }
@@ -447,7 +1085,20 @@ void init_recovery_display() {
 }
 
 void update_recovery_display() {
-#if HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
+#if HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B
+  if (!g_display_ready) {
+    return;
+  }
+  const P4Screen screen = desired_p4_screen();
+  const uint32_t signature = display_signature(screen, g_frame);
+  ++g_frame;
+  if (!g_force_redraw && signature == g_last_signature) {
+    return;
+  }
+  draw_p4_frame(screen, g_frame);
+  g_last_signature = signature;
+  g_force_redraw = false;
+#elif HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
   if (!g_display_ready) {
     return;
   }
@@ -464,7 +1115,7 @@ void update_recovery_display() {
 }
 
 bool recovery_display_ready() {
-#if HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
+#if HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B || HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
   return g_display_ready;
 #else
   return false;

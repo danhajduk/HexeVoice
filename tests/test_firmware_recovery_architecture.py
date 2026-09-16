@@ -11,6 +11,7 @@ RECOVERY_MAIN = Path("firmware/apps/recovery/main/app_main.cpp")
 RECOVERY_RUNTIME_CMAKE = Path("firmware/components/recovery_runtime/CMakeLists.txt")
 RECOVERY_CONTROL = Path("firmware/components/recovery_runtime/recovery_control.cpp")
 RECOVERY_CONTROL_HEADER = Path("firmware/components/recovery_runtime/recovery_control.h")
+RECOVERY_DISPLAY = Path("firmware/components/recovery_runtime/recovery_display.cpp")
 RECOVERY_BLE = Path("firmware/components/recovery_runtime/recovery_ble_provisioning.cpp")
 RECOVERY_BLE_HEADER = Path("firmware/components/recovery_runtime/recovery_ble_provisioning.h")
 BLE_GATT = Path("firmware/components/endpoint_runtime/system/ble_provisioning_gatt.c")
@@ -221,6 +222,56 @@ def test_recovery_control_plane_exposes_local_http_rescue_api():
     assert "kWifiPasswordKey" not in discovery_body
     assert "wifi_password" not in discovery_body
     assert '\\"discovery_status\\":' in RECOVERY_STATUS.read_text()
+
+
+def test_p4_recovery_display_shows_onboarding_identity_and_sd_background():
+    display_source = RECOVERY_DISPLAY.read_text()
+    runtime_cmake = RECOVERY_RUNTIME_CMAKE.read_text()
+    recovery_readme = RECOVERY_README.read_text()
+
+    assert 'HEXE_BOARD_PROFILE STREQUAL "waveshare_p4_wifi6_touch_lcd_7b"' in runtime_cmake
+    assert "waveshare__esp32_p4_wifi6_touch_lcd_7b" in runtime_cmake
+    assert "espressif__esp_lcd_ek79007" in runtime_cmake
+    assert "fatfs" in runtime_cmake
+    assert "sdmmc" in runtime_cmake
+
+    assert "#if HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B" in display_source
+    assert "bsp_display_new(nullptr, &g_panel, &g_panel_io)" in display_source
+    assert "bsp_display_backlight_on()" in display_source
+    assert "esp_lcd_dpi_panel_register_event_callbacks" in display_source
+    assert "Recovery display initialized for Waveshare P4 7B" in display_source
+    assert 'return g_display_ready;' in display_source
+
+    for status_text in (
+        "Waiting for onboarding",
+        "Pairing with Core",
+        "Checking credentials",
+        "Saving credentials",
+        "Onboarding saved",
+        "Onboarding failed",
+        "Firmware update",
+    ):
+        assert status_text in display_source
+
+    for identity_text in (
+        "recovery_ble_state()",
+        "recovery_ble_reason()",
+        "hexe::config::kEndpointId",
+        "ESP_MAC_WIFI_STA",
+        "ESP_MAC_BT",
+        "WiFi MAC %s",
+        "BLE MAC %s",
+    ):
+        assert identity_text in display_source
+
+    assert "bsp_sdcard_mount()" in display_source
+    assert "recovery_bg.rgb565" in display_source
+    assert "bg.rgb565" in display_source
+    assert "MALLOC_CAP_SPIRAM" in display_source
+    assert "using procedural background" in display_source
+    assert "no secrets on screen" in display_source
+    assert "1024x600 RGB565" in recovery_readme
+    assert "/sdcard/hexe/pictures/recovery_bg.rgb565" in recovery_readme
 
 
 def test_ble_host_pairing_retries_credential_poll_after_pending_read():

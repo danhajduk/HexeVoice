@@ -75,6 +75,17 @@ if(HEXE_BOARD_PROFILE STREQUAL "waveshare_s3_touch_lcd_1_85c_box_v2")
       espressif__esp_lcd_st77916
   )
 endif()
+if(HEXE_BOARD_PROFILE STREQUAL "waveshare_p4_wifi6_touch_lcd_7b")
+  list(
+    APPEND
+    HEXE_RECOVERY_DISPLAY_REQUIRES
+      esp_lcd
+      fatfs
+      sdmmc
+      espressif__esp_lcd_ek79007
+      waveshare__esp32_p4_wifi6_touch_lcd_7b
+  )
+endif()
 
 idf_component_register(
   SRCS

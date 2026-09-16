@@ -31,6 +31,13 @@ For `waveshare_p4_wifi6_touch_lcd_7b`, recovery enables NimBLE through the
 ESP32-C6 hosted transport so an un-onboarded/factory device can advertise the
 same recovery provisioning service before the normal endpoint firmware is
 configured.
+The P4 recovery app also initializes the 7-inch display and renders a live
+onboarding screen before and during pairing. The screen shows the onboarding
+state/reason, device name/id, Wi-Fi MAC, BLE MAC, firmware version, and whether
+the local HTTP rescue path is active. It may load an optional 1024x600 RGB565
+background from `/sdcard/hexe/pictures/recovery_bg.rgb565`, falling back to
+`/sdcard/hexe/pictures/bg.rgb565` and then a procedural background; secrets are
+never rendered on the panel.
 
 For `waveshare_s3_touch_lcd_1_85c_box_v2`, the recovery app embeds three
 360x360 RGB565 test plates for the round LCD: waiting to pair, pairing, and OTA
