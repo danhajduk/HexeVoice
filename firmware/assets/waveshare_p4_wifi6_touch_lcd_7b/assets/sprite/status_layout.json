@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "floating": {
+    "right": 856,
+    "y": 4,
+    "gap": 0
+  },
+  "icons": [
+    {
+      "id": "wifi",
+      "placement": "static",
+      "x": 920,
+      "y": 12
+    },
+    {
+      "id": "node_connected",
+      "placement": "static",
+      "x": 856,
+      "y": 4
+    },
+    {
+      "id": "asset_downloading",
+      "placement": "floating"
+    }
+  ]
+}

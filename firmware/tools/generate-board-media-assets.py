@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 
@@ -15,6 +16,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ASSET_ROOT = ROOT / "firmware" / "assets"
 IMAGE_SUFFIXES = {".png"}
+SPRITE_METADATA_SUFFIXES = {".json"}
 RGB888_BOARD_PROFILES = {"waveshare_p4_wifi6_touch_lcd_7b"}
 
 
@@ -50,6 +52,16 @@ def _source_images(directory: Path) -> list[Path]:
         path
         for path in directory.iterdir()
         if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in IMAGE_SUFFIXES
+    )
+
+
+def _source_sprite_metadata(directory: Path) -> list[Path]:
+    if not directory.exists():
+        return []
+    return sorted(
+        path
+        for path in directory.iterdir()
+        if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in SPRITE_METADATA_SUFFIXES
     )
 
 
@@ -182,7 +194,8 @@ def main() -> int:
 
     picture_sources = _source_images(board_dir)
     sprite_sources = _source_images(board_dir / "sprites")
-    if not picture_sources and not sprite_sources:
+    sprite_metadata_sources = _source_sprite_metadata(board_dir / "sprites")
+    if not picture_sources and not sprite_sources and not sprite_metadata_sources:
         print(f"No source images found in {board_dir} or {board_dir / 'sprites'}")
 
     for source in picture_sources:
@@ -233,6 +246,13 @@ def main() -> int:
         if pixel_format == "rgb565":
             command.extend(["--byte-order", args.byte_order])
         _run(command, args.dry_run)
+
+    for source in sprite_metadata_sources:
+        output = sprite_dir / source.name
+        print(f"+ copy {source} {output}")
+        if not args.dry_run:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, output)
 
     manifest_args = [
         sys.executable,

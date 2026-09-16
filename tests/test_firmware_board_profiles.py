@@ -331,10 +331,11 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "sprite->alpha[source_pixel]" in source
     assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kWifiSpriteSize, kWifiSpriteSize};' in source
     assert "constexpr int kWifiSpriteSize = 40;" in source
-    assert "int x = 920;" in source
-    assert "&g_wifi_off_sprite, x, 12);" in source
-    assert "x -= g_node_connected_sprite.width;" in source
-    assert "x -= g_asset_downloading_sprite.width;" in source
+    assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
+    assert "if (!layout.floating && status_icon_active(id, state))" in source
+    assert "floating_right - floating_width" in source
+    assert "floating_x += sprite->width + g_status_layout.floating_gap;" in source
+    assert "g_status_layout_loaded = false;" in source
     assert "release_status_sprite(&g_wifi_on_sprite)" in source
 
 

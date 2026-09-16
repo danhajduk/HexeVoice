@@ -10,6 +10,7 @@
 #include "app_state.h"
 #include "board/storage.h"
 #include "bsp/display.h"
+#include "cJSON.h"
 #include "esp_err.h"
 #include "esp_heap_caps.h"
 #include "esp_lcd_mipi_dsi.h"
@@ -51,10 +52,40 @@ constexpr uint32_t kMagenta = rgb565_to_rgb888(0xD29F);
 constexpr uint32_t kBlue = rgb565_to_rgb888(0x03BF);
 constexpr char kProceduralAssetName[] = "procedural-p4-7b-status";
 constexpr char kSdTestBackgroundName[] = "bg.rgb888";
+constexpr char kStatusLayoutFilename[] = "status_layout.json";
 constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
 constexpr int kWifiSpriteSize = 40;
 constexpr int kDefaultStatusSpriteSize = 64;
+constexpr size_t kStatusLayoutMaxBytes = 2048;
+
+enum class StatusIconId : uint8_t {
+  kWifi = 0,
+  kNodeConnected,
+  kAssetDownloading,
+  kCount,
+};
+
+struct StatusIconLayout {
+  bool floating;
+  int x;
+  int y;
+};
+
+struct StatusLayout {
+  int floating_right = 856;
+  int floating_y = 4;
+  int floating_gap = 0;
+  StatusIconLayout icons[static_cast<size_t>(StatusIconId::kCount)] = {
+      {false, 920, 12},
+      {false, 856, 4},
+      {true, 0, 0},
+  };
+  StatusIconId floating_order[static_cast<size_t>(StatusIconId::kCount)] = {
+      StatusIconId::kAssetDownloading,
+  };
+  size_t floating_count = 1;
+};
 
 struct StatusSprite {
   const char *name;
@@ -88,6 +119,8 @@ StatusSprite g_wifi_on_sprite{"wifi_on", kWifiSpriteSize, kWifiSpriteSize};
 StatusSprite g_wifi_off_sprite{"wifi_off", kWifiSpriteSize, kWifiSpriteSize};
 StatusSprite g_node_connected_sprite{"node_connected", kDefaultStatusSpriteSize, kDefaultStatusSpriteSize};
 StatusSprite g_asset_downloading_sprite{"asset_downloading", kDefaultStatusSpriteSize, kDefaultStatusSpriteSize};
+StatusLayout g_status_layout;
+bool g_status_layout_loaded = false;
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -449,17 +482,156 @@ void draw_status_sprite(StatusSprite *sprite, int x, int y) {
   }
 }
 
+StatusIconId status_icon_id(const char *name) {
+  if (name != nullptr && std::strcmp(name, "wifi") == 0) {
+    return StatusIconId::kWifi;
+  }
+  if (name != nullptr && std::strcmp(name, "node_connected") == 0) {
+    return StatusIconId::kNodeConnected;
+  }
+  if (name != nullptr && std::strcmp(name, "asset_downloading") == 0) {
+    return StatusIconId::kAssetDownloading;
+  }
+  return StatusIconId::kCount;
+}
+
+int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum) {
+  cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
+  return cJSON_IsNumber(value) ? std::clamp(value->valueint, 0, maximum) : fallback;
+}
+
+void load_status_layout() {
+  if (g_status_layout_loaded) {
+    return;
+  }
+  g_status_layout_loaded = true;
+  g_status_layout = StatusLayout{};
+
+  char path[192] = {};
+  const int written = std::snprintf(
+      path, sizeof(path), "%s/%s", hexe::board::sd_card_sprites_path(), kStatusLayoutFilename);
+  if (written <= 0 || written >= static_cast<int>(sizeof(path))) {
+    return;
+  }
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    ESP_LOGW(kTag, "Status layout not found; using defaults");
+    return;
+  }
+  char payload[kStatusLayoutMaxBytes + 1] = {};
+  const size_t payload_size = std::fread(payload, 1, kStatusLayoutMaxBytes, file);
+  const bool too_large = std::fgetc(file) != EOF;
+  std::fclose(file);
+  if (payload_size == 0 || too_large) {
+    ESP_LOGW(kTag, "Status layout is empty or too large; using defaults");
+    return;
+  }
+
+  cJSON *root = cJSON_ParseWithLength(payload, payload_size);
+  if (!cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    ESP_LOGW(kTag, "Status layout is invalid; using defaults");
+    return;
+  }
+  cJSON *floating = cJSON_GetObjectItem(root, "floating");
+  g_status_layout.floating_right =
+      json_layout_coordinate(floating, "right", g_status_layout.floating_right, kWidth);
+  g_status_layout.floating_y = json_layout_coordinate(floating, "y", g_status_layout.floating_y, kHeight - 1);
+  g_status_layout.floating_gap = json_layout_coordinate(floating, "gap", g_status_layout.floating_gap, kWidth);
+
+  cJSON *icons = cJSON_GetObjectItem(root, "icons");
+  if (cJSON_IsArray(icons)) {
+    g_status_layout.floating_count = 0;
+    cJSON *icon = nullptr;
+    cJSON_ArrayForEach(icon, icons) {
+      cJSON *id_value = cJSON_GetObjectItem(icon, "id");
+      cJSON *placement = cJSON_GetObjectItem(icon, "placement");
+      if (!cJSON_IsString(id_value) || !cJSON_IsString(placement)) {
+        continue;
+      }
+      const StatusIconId id = status_icon_id(id_value->valuestring);
+      if (id == StatusIconId::kCount) {
+        continue;
+      }
+      auto &layout = g_status_layout.icons[static_cast<size_t>(id)];
+      layout.floating = std::strcmp(placement->valuestring, "floating") == 0;
+      if (layout.floating) {
+        if (g_status_layout.floating_count < static_cast<size_t>(StatusIconId::kCount)) {
+          g_status_layout.floating_order[g_status_layout.floating_count++] = id;
+        }
+      } else {
+        layout.x = json_layout_coordinate(icon, "x", layout.x, kWidth - 1);
+        layout.y = json_layout_coordinate(icon, "y", layout.y, kHeight - 1);
+      }
+    }
+  }
+  cJSON_Delete(root);
+  ESP_LOGI(kTag, "Loaded status layout %s", path);
+}
+
+bool status_icon_active(StatusIconId id, const hexe::AppState &state) {
+  switch (id) {
+    case StatusIconId::kWifi:
+      return true;
+    case StatusIconId::kNodeConnected:
+      return state.backend_connected;
+    case StatusIconId::kAssetDownloading:
+      return hexe::system::asset_sync_active();
+    case StatusIconId::kCount:
+      return false;
+  }
+  return false;
+}
+
+StatusSprite *status_icon_sprite(StatusIconId id, const hexe::AppState &state) {
+  switch (id) {
+    case StatusIconId::kWifi:
+      return state.wifi_connected ? &g_wifi_on_sprite : &g_wifi_off_sprite;
+    case StatusIconId::kNodeConnected:
+      return &g_node_connected_sprite;
+    case StatusIconId::kAssetDownloading:
+      return &g_asset_downloading_sprite;
+    case StatusIconId::kCount:
+      return nullptr;
+  }
+  return nullptr;
+}
+
 void draw_header_status_icons() {
   const auto &state = hexe::state();
-  int x = 920;
-  draw_status_sprite(state.wifi_connected ? &g_wifi_on_sprite : &g_wifi_off_sprite, x, 12);
-  if (state.backend_connected) {
-    x -= g_node_connected_sprite.width;
-    draw_status_sprite(&g_node_connected_sprite, x, 4);
+  load_status_layout();
+
+  for (size_t index = 0; index < static_cast<size_t>(StatusIconId::kCount); ++index) {
+    const auto id = static_cast<StatusIconId>(index);
+    const auto &layout = g_status_layout.icons[index];
+    if (!layout.floating && status_icon_active(id, state)) {
+      draw_status_sprite(status_icon_sprite(id, state), layout.x, layout.y);
+    }
   }
-  if (hexe::system::asset_sync_active()) {
-    x -= g_asset_downloading_sprite.width;
-    draw_status_sprite(&g_asset_downloading_sprite, x, 4);
+
+  int floating_width = 0;
+  int active_floating_count = 0;
+  for (size_t index = 0; index < g_status_layout.floating_count; ++index) {
+    const StatusIconId id = g_status_layout.floating_order[index];
+    if (!status_icon_active(id, state)) {
+      continue;
+    }
+    floating_width += status_icon_sprite(id, state)->width;
+    ++active_floating_count;
+  }
+  if (active_floating_count > 1) {
+    floating_width += (active_floating_count - 1) * g_status_layout.floating_gap;
+  }
+
+  int floating_x = g_status_layout.floating_right - floating_width;
+  for (size_t index = 0; index < g_status_layout.floating_count; ++index) {
+    const StatusIconId id = g_status_layout.floating_order[index];
+    if (!status_icon_active(id, state)) {
+      continue;
+    }
+    StatusSprite *sprite = status_icon_sprite(id, state);
+    draw_status_sprite(sprite, floating_x, g_status_layout.floating_y);
+    floating_x += sprite->width + g_status_layout.floating_gap;
   }
 }
 
@@ -775,6 +947,7 @@ void request_display_assets_reload() {
   g_force_redraw = true;
   g_logged_bg_missing = false;
   g_logged_bg_bad_size = false;
+  g_status_layout_loaded = false;
   release_status_sprite(&g_wifi_on_sprite);
   release_status_sprite(&g_wifi_off_sprite);
   release_status_sprite(&g_node_connected_sprite);
