@@ -25,6 +25,14 @@ To convert an image for the SD card:
 python3 firmware/tools/convert_image.py input.png output.rgb565 --format raw-rgb565 --width 320 --height 240 --fit cover
 ```
 
+For the Waveshare P4 7-inch SD-card display smoke test, place a 1024x600
+little-endian RGB565 file at `/sdcard/hexe/pictures/bg.rgb565`. A dependency-free
+test background can be generated directly onto a mounted card:
+
+```bash
+python3 firmware/tools/generate_p4_sd_test_bg.py /media/$USER/<SDCARD>/hexe/pictures/bg.rgb565
+```
+
 To convert an image into an LVGL C descriptor:
 
 ```bash
