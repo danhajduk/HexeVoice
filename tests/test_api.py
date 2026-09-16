@@ -336,6 +336,60 @@ def test_firmware_manifest_resolves_waveshare_profile_from_filename(tmp_path):
     assert payload["app_slot_size"] == "4MiB"
 
 
+def test_firmware_manifest_uses_profile_export_text_manifest(tmp_path):
+    firmware_root = tmp_path / "firmware"
+    firmware_dir = firmware_root / "export"
+    firmware_dir.mkdir(parents=True)
+    profile = "waveshare_p4_wifi6_touch_lcd_7b"
+    filename = f"hexe_firmware_{profile}.bin"
+    (firmware_dir / filename).write_bytes(b"p4-firmware")
+    profile_export = firmware_root / f"export-{profile}"
+    profile_export.mkdir()
+    (profile_export / "manifest.txt").write_text(
+        "\n".join(
+            [
+                "project_name=hexe_firmware",
+                "project_version=z20260916170451-33b2c83",
+                "profile_app=hexe_firmware_waveshare_p4_wifi6_touch_lcd_7b.bin",
+                "application_type=endpoint",
+                "board_profile=waveshare_p4_wifi6_touch_lcd_7b",
+                "idf_target=esp32p4",
+                "soc=esp32p4",
+                "flash_size=32MiB",
+                "psram_size=32MiB",
+                "partition_schema=p4-32m-v1",
+                "app_slot_size=8MiB",
+                "firmware_api_version=hexe-firmware-main-api-v1",
+                "release_channel=dev",
+                "security_policy=signed_manifest_sha256_required",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                firmware_artifact_dir=firmware_dir,
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    manifest = client.get(f"/api/firmware/manifest?filename={filename}")
+
+    assert manifest.status_code == 200
+    payload = manifest.json()
+    assert payload["filename"] == filename
+    assert payload["version"] == "z20260916170451-33b2c83"
+    assert payload["board_profile"] == profile
+    assert payload["partition_schema"] == "p4-32m-v1"
+    assert payload["app_slot_size"] == "8MiB"
+    assert payload["soc"] == "esp32p4"
+    assert payload["application_type"] == "endpoint"
+
+
 def test_endpoint_status_includes_firmware_update_metadata(tmp_path):
     firmware_dir = tmp_path / "firmware"
     firmware_dir.mkdir()

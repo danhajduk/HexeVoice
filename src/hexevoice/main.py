@@ -447,6 +447,7 @@ def audio_quality_profile_for_endpoint(
 
 
 KNOWN_FIRMWARE_BOARD_PROFILES = (
+    "waveshare_p4_wifi6_touch_lcd_7b",
     "waveshare_s3_touch_lcd_1_85c_box_v2",
     "ha_voice_pe",
     "esp_box_3",
@@ -494,21 +495,54 @@ def reject_non_endpoint_ota_artifact(filename: str, manifest: dict, *, version: 
 def firmware_manifest_candidates(settings: Settings, filename: str) -> list[Path]:
     artifact_dir = settings.resolved_firmware_artifact_dir()
     profile = firmware_profile_for_filename(filename)
-    candidates = [artifact_dir / f"manifest-endpoint-{profile}.json", artifact_dir / f"manifest-{profile}.json"]
+    candidates = [
+        artifact_dir / f"manifest-endpoint-{profile}.json",
+        artifact_dir / f"manifest-{profile}.json",
+        artifact_dir.parent / f"export-{profile}" / "manifest.txt",
+        artifact_dir / "manifest.txt",
+    ]
     if filename == "hexe_firmware.bin":
         candidates.insert(0, artifact_dir / "manifest-endpoint.json")
         candidates.insert(1, artifact_dir / "manifest.json")
     return candidates
 
 
+def read_key_value_manifest(path: Path) -> dict:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {}
+    payload: dict[str, str] = {}
+    for line in lines:
+        key, separator, value = line.partition("=")
+        if not separator:
+            continue
+        key = key.strip()
+        if not key:
+            continue
+        payload[key] = value.strip()
+    if not payload:
+        return {}
+    if "project_version" in payload and "version" not in payload:
+        payload["version"] = payload["project_version"]
+    if "profile_app" in payload and "filename" not in payload:
+        payload["filename"] = payload["profile_app"]
+    if "board_profile" in payload and "profile" not in payload:
+        payload["profile"] = payload["board_profile"]
+    return payload
+
+
 def read_firmware_artifact_manifest(settings: Settings, filename: str, *, application_type: str | None = None) -> dict:
     for manifest_path in firmware_manifest_candidates(settings, filename):
         if not manifest_path.exists():
             continue
-        try:
-            payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
+        if manifest_path.suffix == ".txt":
+            payload = read_key_value_manifest(manifest_path)
+        else:
+            try:
+                payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
         if not isinstance(payload, dict):
             continue
         manifest_filename = str(payload.get("filename") or "").strip()
