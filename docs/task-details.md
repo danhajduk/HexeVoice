@@ -3393,3 +3393,66 @@ Original task details:
 - Acceptance: All rebuilt endpoint binaries still fit their configured app partitions.
 - Acceptance: Board profile and partition validators still pass.
 - Verification: Rebuild `ha_voice_pe`, `waveshare_s3_touch_lcd_1_85c_box_v2`, and `waveshare_p4_wifi6_touch_lcd_7b`; inspect compile commands or build metadata for profile-specific dependency/source inclusion; run the explicit `esp_box_3` rejection check.
+## Task 318
+Original task details:
+- Goal: Extend the HexeVoice `voice.tts.synthesize` contract without breaking current callers so a requester can choose `ephemeral`, `cached`, `named_asset`, or `persistent` delivery.
+- Preserve the existing request shape and `ttl_seconds` behavior as the default `ephemeral` mode.
+- Add an optional `delivery` object carrying mode, caller-owned `asset_key`, update policy, retention policy, requested semantic quality profiles, and source version.
+- Define semantic quality profiles such as `compact`, `standard`, `high`, and `source`; publish the actual codec, sample rate, channel count, byte size, and SHA-256 for every generated variant.
+- Reuse the existing 16 kHz, 22.05 kHz, 48 kHz, and provider-native conversion paths instead of adding a parallel synthesizer.
+- Store immutable content-addressed revisions separately from mutable named aliases.
+- A named asset must expose stable URLs while a revision or content hash identifies the exact audio currently behind those URLs.
+- Generate and verify all requested variants before atomically moving the alias to the new revision.
+- Return a consistent response across modes with mode, asset key, revision, changed/cache-hit state, transcript, voice/provider metadata, variant URLs, and expiry.
+- Acceptance: Existing TTS clients continue working unchanged and receive ephemeral artifacts.
+- Acceptance: Repeating an unchanged named-asset request does not resynthesize audio.
+- Acceptance: Replacing a named asset keeps its public URLs stable and switches all variants atomically.
+- Acceptance: A P4 endpoint can select a high-quality variant while smaller endpoints can select compact audio from the same named asset.
+
+## Task 319
+Original task details:
+- Goal: Productionize named/static TTS assets as a reusable HexeVoice service rather than a weather-specific shortcut.
+- Add create/update, read/resolve, inventory, and delete APIs under the existing TTS service boundary.
+- Require caller namespaces such as `interaction/weather/home/current`; authorize updates and deletion only for the owning node while allowing governed consumers to resolve/read assets.
+- Reject traversal, ambiguous aliases, credential-bearing metadata, unsafe names, oversized transcripts, unsupported formats, and unauthorized namespace replacement.
+- Support retention values `until_replaced`, bounded expiry, and persistent, with bounded old-revision cleanup that never removes a revision still serving active playback.
+- Serve stable aliases with ETag/revision metadata and cache headers that prevent endpoints from silently retaining an obsolete mutable response.
+- Keep replacement crash-safe using temporary output, validation, fsync/close where applicable, and atomic alias metadata replacement.
+- Emit operator-safe lifecycle events and diagnostics without exposing authorization tokens or private transcript content unnecessarily.
+- Add API/service tests for compatibility, quality generation, idempotency, replacement, rollback on failed synthesis, ownership, cleanup, ETag behavior, and concurrent reads during replacement.
+- Update TTS capability and API documentation so other nodes request delivery semantics through `voice.tts.synthesize` and never call Piper directly.
+- Acceptance: Interaction can own and update a stable weather TTS alias through the governed Voice capability.
+- Acceptance: The dependency contract needed by Hexe Interaction Tasks 111-115 is documented and live-verifiable before HexeVoice Task 320 begins.
+
+## Task 320
+Original task details:
+- Dependency: Do not start until Hexe Interaction Tasks 111-115 are complete and the published event schemas and live event payloads have been verified.
+- Goal: Make HexeVoice monitor the Interaction-owned versioned weather snapshot stream and expose prepared weather state to connected endpoints.
+- Validate event ownership, schema/version, location scope, snapshot version, observation/expiry times, transcript, named TTS asset reference, radar reference, attribution, and hashes before accepting an update.
+- Keep routing metadata separate from executable endpoint commands and reject stale, replayed, malformed, or unauthorized snapshots.
+- Synchronize current metadata and optionally preload referenced TTS/radar media into endpoint storage when the endpoint advertises capacity and policy allows it.
+- Preserve the previous known-good snapshot until a complete newer snapshot is valid; do not combine weather metadata, TTS, and radar from different snapshot versions.
+- Report synchronization state, selected media quality, last accepted version, freshness, download failures, and fallback availability in operator-safe endpoint diagnostics.
+- Acceptance: A weather request can be answered from the latest valid prepared snapshot without waiting for fresh TTS synthesis.
+- Acceptance: Missing or stale radar does not invalidate otherwise current weather metadata/TTS, but is clearly reported and never shown as current.
+
+## Task 321
+Original task details:
+- Goal: Add dedicated Hexe endpoint weather and timer experiences for the 1024x600 Waveshare P4 display without introducing an Android-style launcher.
+- Add restrained Weather and Timer quick actions to the Hexe idle surface around the animated Hexe mark.
+- Weather opens current conditions and prepared speech immediately, with an optional latest-radar view showing location marker, observation time, age/freshness, provider attribution, legend, refresh, and close controls.
+- Radar is a single current image in the first version; do not implement frame animation.
+- Timer opens Interaction-provided recent durations plus a custom voice path. Selecting a duration creates the timer; custom asks for duration, listens, confirms, and shows the active timer.
+- Keep timer countdown and completion sound functional locally after creation if connectivity drops, while preserving Interaction as lifecycle authority and reconciling on reconnect.
+- Prefer the endpoint-appropriate named TTS quality and cache valid prepared audio/radar on SD when available; retain clear no-card/network fallback behavior.
+- Implement touch targets, state transitions, accessibility sizing, stale/error states, and no-overlap behavior for 1024x600.
+- Acceptance: Weather, radar, timer presets, and custom spoken timer creation are usable from the single-app Hexe idle screen.
+
+## Task 322
+Original task details:
+- Goal: Verify the complete prepared-weather and timer experience across Interaction, HexeVoice, and the physical Waveshare P4 endpoint.
+- Verify weather refresh, named TTS replacement, event publication, Voice consumption, endpoint quality selection, SD/no-SD behavior, display rendering, touch, and spoken playback.
+- Verify radar absent, current, stale, provider failure, checksum failure, and replacement scenarios.
+- Verify recent timer selection, custom spoken duration, confirmation, countdown, completion sound, cancellation, reconnect, and multiple-timer behavior supported by the agreed Interaction contract.
+- Confirm weather/radar requests remain responsive while audio capture, hosted Wi-Fi, display/touch, and TTS playback remain stable.
+- Record physical validation evidence and update the P4 roadmap/status only for behavior actually observed.

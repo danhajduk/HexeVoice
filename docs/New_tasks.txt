@@ -52,7 +52,14 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
+[TODO] Task 318: Add generalized ephemeral, cached, named-asset, and persistent TTS delivery modes with stable aliases and multi-quality audio variants
+[TODO] Task 319: Add secure named TTS asset lifecycle APIs, ownership enforcement, atomic replacement, diagnostics, tests, and provider documentation
 
+[DEPENDENCY STOP] Stop after Task 319. Do not begin Task 320 or later until Hexe Interaction Tasks 111-115 are implemented and their live contracts are verified. This dependency stop overrides the general continue-on-blocker directive above.
+
+[TODO] Task 320: Consume versioned Interaction weather snapshot events and synchronize current weather transcript, TTS, radar, and metadata for endpoints
+[TODO] Task 321: Add Waveshare P4 Hexe weather, static radar, and timer quick-action screens using the Interaction-owned contracts
+[TODO] Task 322: Validate the complete Interaction-to-Voice-to-P4 weather, radar, static TTS, and timer workflow on hardware
 
 **********************************************************************************************
 * Future TODO listing
