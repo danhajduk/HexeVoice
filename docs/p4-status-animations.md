@@ -41,6 +41,23 @@ Parameters: `period_ms`, `min_opacity`, and `max_opacity` (0-255).
 Expands and dims a procedural ring around a relative point. Parameters:
 `color`, `position`, `radius`, and `period_ms`.
 
+### `slide_in`
+
+Moves the owning sprite into its configured position once when the condition
+becomes true, then holds it in place. `offset.x` and `offset.y` are normalized
+signed distances from `-1.0` to `1.0`, relative to the sprite dimensions.
+`period_ms` controls the transition duration. For example, an icon entering
+from one sprite-width to the left uses:
+
+```json
+{
+  "type": "slide_in",
+  "when": {"flag": "asset_sync_active", "equals": true},
+  "offset": {"x": -1.0, "y": 0.0},
+  "period_ms": 350
+}
+```
+
 Every animation requires a `when` object:
 
 ```json

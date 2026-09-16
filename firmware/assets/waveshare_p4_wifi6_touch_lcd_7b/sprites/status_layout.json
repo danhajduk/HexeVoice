@@ -2,17 +2,17 @@
   "schema_version": 1,
   "clock": {
     "font": "manrope/clock_42.hxf",
-    "font_size": 42,
+    "font_size": 55,
     "color": "#35F4DB",
     "x_offset": 0,
-    "y_offset": 0
+    "y_offset": 15
   },
   "version": {
     "font": "manrope/version_24.hxf",
-    "font_size": 18,
+    "font_size": 20,
     "color": "#55B8FF",
-    "x": 24,
-    "y": 568
+    "x": 480,
+    "y": 550
   },
   "y": 10,
   "floating": {
@@ -61,6 +61,12 @@
       "id": "asset_downloading",
       "placement": "floating",
       "animations": [
+        {
+          "type": "slide_in",
+          "when": {"flag": "asset_sync_active", "equals": true},
+          "offset": {"x": -1.0, "y": 0.0},
+          "period_ms": 350
+        },
         {
           "type": "running_dots",
           "when": {"flag": "asset_sync_active", "equals": true},

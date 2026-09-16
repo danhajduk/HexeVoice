@@ -62,6 +62,9 @@ constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
 constexpr int kWifiSpriteSize = 40;
 constexpr int kStatusSpriteSize = 40;
+constexpr int kSidebarWidth = 88;
+constexpr int kSidebarTop = 78;
+constexpr int kSidebarHeight = 477;
 constexpr size_t kStatusLayoutMaxBytes = 2048;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
@@ -79,6 +82,7 @@ enum class StatusAnimationType : uint8_t {
   kRunningDots,
   kPulse,
   kPulseRing,
+  kSlideIn,
   kInvalid,
 };
 
@@ -112,10 +116,17 @@ struct StatusAnimation {
   int y_per_mille = 500;
   int radius_per_mille = 80;
   int spacing_per_mille = 180;
+  int offset_x_per_mille = -1000;
+  int offset_y_per_mille = 0;
   int period_ms = 1000;
   int count = 3;
   int min_opacity = 128;
   int max_opacity = 255;
+};
+
+struct SlideAnimationState {
+  bool active = false;
+  int64_t started_ms = 0;
 };
 
 struct StatusIconLayout {
@@ -207,6 +218,8 @@ StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_wifi_off_sprite{"wifi_off", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};
+SlideAnimationState g_slide_animation_states[static_cast<size_t>(StatusIconId::kCount)][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
 ClockFont g_clock_font;
@@ -619,6 +632,9 @@ StatusAnimationType status_animation_type(const char *name) {
   if (name != nullptr && std::strcmp(name, "pulse_ring") == 0) {
     return StatusAnimationType::kPulseRing;
   }
+  if (name != nullptr && std::strcmp(name, "slide_in") == 0) {
+    return StatusAnimationType::kSlideIn;
+  }
   return StatusAnimationType::kInvalid;
 }
 
@@ -670,6 +686,15 @@ int json_per_mille(cJSON *object, const char *key, int fallback) {
   return std::clamp(static_cast<int>(value->valuedouble * 1000.0 + 0.5), 0, 1000);
 }
 
+int json_signed_per_mille(cJSON *object, const char *key, int fallback) {
+  cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
+  if (!cJSON_IsNumber(value)) {
+    return fallback;
+  }
+  const double scaled = value->valuedouble * 1000.0;
+  return std::clamp(static_cast<int>(scaled + (scaled < 0 ? -0.5 : 0.5)), -1000, 1000);
+}
+
 uint32_t json_color(cJSON *object, const char *key, uint32_t fallback) {
   cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
   if (!cJSON_IsString(value) || value->valuestring == nullptr || std::strlen(value->valuestring) != 7 ||
@@ -696,6 +721,9 @@ StatusAnimation parse_status_animation(cJSON *item) {
   animation.y_per_mille = json_per_mille(position, "y", animation.y_per_mille);
   animation.radius_per_mille = json_per_mille(item, "radius", animation.radius_per_mille);
   animation.spacing_per_mille = json_per_mille(item, "spacing", animation.spacing_per_mille);
+  cJSON *offset = cJSON_GetObjectItem(item, "offset");
+  animation.offset_x_per_mille = json_signed_per_mille(offset, "x", animation.offset_x_per_mille);
+  animation.offset_y_per_mille = json_signed_per_mille(offset, "y", animation.offset_y_per_mille);
   animation.period_ms = json_integer(item, "period_ms", animation.period_ms, 100, 60000);
   animation.count = json_integer(item, "count", animation.count, 1, 8);
   animation.min_opacity = json_integer(item, "min_opacity", animation.min_opacity, 0, 255);
@@ -1059,6 +1087,46 @@ int relative_pixels(int per_mille, int size) {
   return (per_mille * size + 500) / 1000;
 }
 
+int signed_relative_pixels(int per_mille, int size) {
+  const int scaled = per_mille * size;
+  return (scaled + (scaled < 0 ? -500 : 500)) / 1000;
+}
+
+void status_sprite_slide_offset(
+    StatusIconId id,
+    const StatusIconLayout &layout,
+    const hexe::AppState &state,
+    int sprite_width,
+    int sprite_height,
+    int64_t now_ms,
+    int *offset_x,
+    int *offset_y) {
+  *offset_x = 0;
+  *offset_y = 0;
+  const size_t icon_index = static_cast<size_t>(id);
+  for (size_t index = 0; index < layout.animation_count; ++index) {
+    const auto &animation = layout.animations[index];
+    if (animation.type != StatusAnimationType::kSlideIn) {
+      continue;
+    }
+    auto &animation_state = g_slide_animation_states[icon_index][index];
+    if (!status_animation_active(animation, state)) {
+      animation_state = {};
+      continue;
+    }
+    if (!animation_state.active) {
+      animation_state.active = true;
+      animation_state.started_ms = now_ms;
+    }
+    const int64_t elapsed_ms = std::clamp<int64_t>(now_ms - animation_state.started_ms, 0, animation.period_ms);
+    const int progress = static_cast<int>(elapsed_ms * 1000 / animation.period_ms);
+    const int remaining = 1000 - progress;
+    const int eased_remaining = static_cast<int>(static_cast<int64_t>(remaining) * remaining * remaining / 1000000);
+    *offset_x += signed_relative_pixels(animation.offset_x_per_mille, sprite_width) * eased_remaining / 1000;
+    *offset_y += signed_relative_pixels(animation.offset_y_per_mille, sprite_height) * eased_remaining / 1000;
+  }
+}
+
 uint8_t status_sprite_opacity(const StatusIconLayout &layout, const hexe::AppState &state, int64_t now_ms) {
   int opacity = 255;
   for (size_t index = 0; index < layout.animation_count; ++index) {
@@ -1112,6 +1180,8 @@ void draw_status_animation(
       draw_ring(center_x, center_y, animated_radius, thickness, scale_color(animation.color, 1000 - (phase * 700 / 1000)));
       break;
     }
+    case StatusAnimationType::kSlideIn:
+      break;
     case StatusAnimationType::kInvalid:
       break;
   }
@@ -1128,10 +1198,16 @@ void draw_status_icon(
   if (sprite == nullptr) {
     return;
   }
+  int slide_x = 0;
+  int slide_y = 0;
+  status_sprite_slide_offset(id, layout, state, sprite->width, sprite->height, now_ms, &slide_x, &slide_y);
+  x += slide_x;
+  y += slide_y;
   draw_status_sprite(sprite, x, y, status_sprite_opacity(layout, state, now_ms));
   for (size_t index = 0; index < layout.animation_count; ++index) {
     const auto &animation = layout.animations[index];
-    if (animation.type != StatusAnimationType::kPulse && status_animation_active(animation, state)) {
+    if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
+        status_animation_active(animation, state)) {
       draw_status_animation(animation, *sprite, x, y, now_ms);
     }
   }
@@ -1378,6 +1454,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
   if (!drew_background) {
     clear_strip();
   } else {
+    draw_status_sprite(&g_sidebar_sprite, 0, kSidebarTop);
     draw_header_clock();
     draw_header_status_icons();
     draw_version_text(build_id);
@@ -1578,6 +1655,7 @@ void request_display_assets_reload() {
   release_status_sprite(&g_wifi_off_sprite);
   release_status_sprite(&g_node_connected_sprite);
   release_status_sprite(&g_asset_downloading_sprite);
+  release_status_sprite(&g_sidebar_sprite);
 }
 
 bool show_next_ui_page() {

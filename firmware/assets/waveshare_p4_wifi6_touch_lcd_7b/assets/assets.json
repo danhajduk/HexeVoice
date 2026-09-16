@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.38",
-  "updated_at": "2026-09-16T23:31:16.337275+00:00",
+  "asset_library_version": "2026.09.16.52",
+  "updated_at": "2026-09-16T23:53:50.077514+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -66,8 +66,8 @@
       "source_filename": "manrope/version_24.hxf",
       "metadata": {
         "font_format": "hexe_bitmap_v1",
-        "size_bytes": 4091,
-        "sha256": "a582f3f82a51c4495307ef92131c1af72554ef658696dab913bc65344553896e"
+        "size_bytes": 3721,
+        "sha256": "423d66deb855a2ebd145e946391c732c2af4fb13abe455473d210c4d100f98c0"
       }
     },
     {
@@ -107,6 +107,17 @@
       }
     },
     {
+      "asset_id": "sidebar",
+      "media_type": "sprite",
+      "filename": "sidebar.alpha8",
+      "source_filename": "sidebar.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 41976,
+        "sha256": "5e2edfa85221c3b9c1d4e47bb74e3bd66d885e373191970a0e6fc441d980d5ef"
+      }
+    },
+    {
       "asset_id": "sprite_asset_downloading",
       "media_type": "sprite",
       "filename": "asset_downloading.rgb888",
@@ -132,6 +143,20 @@
         "channel_order": "rgb",
         "size_bytes": 4800,
         "sha256": "4becda5fb31c7bb74adb7a4f348d26aae7343d9a2f5af46f8ab6a0a22bdeaa9a"
+      }
+    },
+    {
+      "asset_id": "sprite_sidebar",
+      "media_type": "sprite",
+      "filename": "sidebar.rgb888",
+      "source_filename": "sidebar.rgb888",
+      "metadata": {
+        "width": 88,
+        "height": 477,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 125928,
+        "sha256": "c4534b9d2b47975530636856b35dafbdbab06989b508774cda52b82151dcb6ba"
       }
     },
     {
@@ -169,8 +194,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 1676,
-        "sha256": "aab5ee14df6a5dac325424e725dafeeecb8a53be0a9d5fd6dfde0b19c5c09dea"
+        "size_bytes": 1864,
+        "sha256": "10fda95520bccf43c32c28048fbb23eead76c31ffb994aab020f17c8ee55016f"
       }
     },
     {

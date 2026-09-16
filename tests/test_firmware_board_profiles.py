@@ -330,6 +330,8 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "state.backend_connected" in source
     assert "sprite->alpha[source_pixel]" in source
     assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};' in source
+    assert 'StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};' in source
+    assert "draw_status_sprite(&g_sidebar_sprite, 0, kSidebarTop);" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
     assert 'json_layout_coordinate(root, "y", g_status_layout.y' in source
@@ -339,10 +341,12 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "floating_x += sprite->width + g_status_layout.floating_gap;" in source
     assert "g_status_layout_loaded = false;" in source
     assert "release_status_sprite(&g_wifi_on_sprite)" in source
-    for animation in ("blink_dot", "running_dots", "pulse", "pulse_ring"):
+    for animation in ("blink_dot", "running_dots", "pulse", "pulse_ring", "slide_in"):
         assert f'"{animation}"' in source
     assert "status_flag_value" in source
     assert "relative_pixels" in source
+    assert "status_sprite_slide_offset" in source
+    assert "animation_state.started_ms" in source
     assert "esp_timer_get_time() / 50000" in source
 
 
@@ -362,6 +366,7 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         "running_dots",
         "pulse",
         "pulse_ring",
+        "slide_in",
     }
     for animation in animations:
         assert "flag" in animation["when"]
@@ -371,6 +376,9 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         if "position" in animation:
             assert 0 <= animation["position"]["x"] <= 1
             assert 0 <= animation["position"]["y"] <= 1
+        if "offset" in animation:
+            assert -1 <= animation["offset"]["x"] <= 1
+            assert -1 <= animation["offset"]["y"] <= 1
 
 
 def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
