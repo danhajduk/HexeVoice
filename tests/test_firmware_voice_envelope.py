@@ -399,6 +399,27 @@ def test_firmware_build_uses_pe_memory_defaults_and_keeps_endpoint_ble_off():
     assert "full endpoint runtime disables idle BLE" in build_script
 
 
+def test_endpoint_renders_initial_frame_before_settings_and_peripherals():
+    app_main = FIRMWARE_APP_MAIN.read_text()
+
+    calls = [
+        "hexe::board::init_storage();",
+        "hexe::board::init_display();",
+        "hexe::ui::render_boot_screen();",
+        "hexe::board::render_boot_frame(0, app->version);",
+        "hexe::board::turn_on_backlight();",
+        "hexe::board::init_led_ring();",
+        "hexe::system::init_settings();",
+        "hexe::board::init_touch();",
+        "hexe::board::init_audio();",
+        "hexe::board::init_wifi();",
+    ]
+    positions = [app_main.index(call) for call in calls]
+
+    assert positions == sorted(positions)
+    assert "hexe::board::show_black_frame();" not in app_main
+
+
 def test_firmware_scaffold_modules_are_explicit_status_providers():
     app_main = FIRMWARE_APP_MAIN.read_text()
     backend_source = FIRMWARE_BACKEND_CLIENT.read_text()

@@ -27,8 +27,6 @@
 
 namespace {
 constexpr char kTag[] = "hexe_main";
-constexpr int kPanelSettleDelayMs = 250;
-constexpr int kBacklightSettleDelayMs = 200;
 constexpr int kPostDisplayInitDelayMs = 100;
 constexpr int kBootAnimationDelayMs = 60;
 constexpr int kIdleRenderDelayMs = 25;
@@ -40,17 +38,16 @@ extern "C" void app_main(void) {
   ESP_LOGI(kTag, "Firmware project=%s version=%s", app->project_name, app->version);
 
   hexe::board::init_storage();
-  hexe::system::init_settings();
   hexe::board::init_display();
-  hexe::board::init_touch();
-  hexe::board::init_led_ring();
   vTaskDelay(pdMS_TO_TICKS(kPostDisplayInitDelayMs));
-  hexe::board::show_black_frame();
-  vTaskDelay(pdMS_TO_TICKS(kPanelSettleDelayMs));
-  hexe::board::turn_on_backlight();
-  vTaskDelay(pdMS_TO_TICKS(kBacklightSettleDelayMs));
   hexe::ui::init_animator();
   hexe::ui::render_boot_screen();
+  hexe::board::render_boot_frame(0, app->version);
+  hexe::board::turn_on_backlight();
+
+  hexe::board::init_led_ring();
+  hexe::system::init_settings();
+  hexe::board::init_touch();
 
   hexe::board::init_buttons();
   hexe::board::init_audio();
