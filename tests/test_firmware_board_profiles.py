@@ -373,6 +373,20 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
             assert 0 <= animation["position"]["y"] <= 1
 
 
+def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert '#include "system/clock.h"' in source
+    assert "if (!hexe::system::clock_synced())" in source
+    assert "hexe::system::current_local_time(&local)" in source
+    assert '"%02d:%02d"' in source
+    assert "local.tm_hour % 12" in source
+    assert "draw_centered_text(10, clock_text, 600, kCyan);" in source
+    assert "(local.tm_hour * 60) + local.tm_min + 1" in source
+
+
 def test_p4_profile_uses_bsp_gt911_touch_adapter():
     source = (REPO_ROOT / "firmware/components/endpoint_runtime/board/touch.cpp").read_text(
         encoding="utf-8"

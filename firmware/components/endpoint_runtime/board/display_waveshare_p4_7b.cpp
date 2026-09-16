@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <sys/stat.h>
 
 #include "app_state.h"
@@ -24,6 +25,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "system/asset_sync.h"
+#include "system/clock.h"
 
 namespace {
 constexpr char kTag[] = "hexe_display_p4_7b";
@@ -255,6 +257,10 @@ int frame_signature(int frame) {
   signature = (signature * 131) + (state.ota_active ? 1 : 0);
   signature = (signature * 131) + std::clamp(state.ota_progress_percent, 0, 100);
   signature = (signature * 131) + (hexe::system::asset_sync_active() ? 1 : 0);
+  std::tm local = {};
+  if (hexe::system::clock_synced() && hexe::system::current_local_time(&local)) {
+    signature = (signature * 131) + (local.tm_hour * 60) + local.tm_min + 1;
+  }
   if (status_animations_active(state)) {
     signature = (signature * 131) + static_cast<int>((esp_timer_get_time() / 50000) % 100000);
   }
@@ -946,6 +952,23 @@ void draw_header_status_icons() {
   }
 }
 
+void draw_header_clock() {
+  if (!hexe::system::clock_synced()) {
+    return;
+  }
+  std::tm local = {};
+  if (!hexe::system::current_local_time(&local)) {
+    return;
+  }
+  int hour = local.tm_hour % 12;
+  if (hour == 0) {
+    hour = 12;
+  }
+  char clock_text[16] = {};
+  std::snprintf(clock_text, sizeof(clock_text), "%02d:%02d", hour, local.tm_min);
+  draw_centered_text(10, clock_text, 600, kCyan);
+}
+
 void release_status_sprite(StatusSprite *sprite) {
   if (sprite == nullptr) {
     return;
@@ -1067,6 +1090,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
   if (!drew_background) {
     clear_strip();
   } else {
+    draw_header_clock();
     draw_header_status_icons();
     (void)frame;
     (void)build_id;
