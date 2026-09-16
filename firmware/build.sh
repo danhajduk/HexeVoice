@@ -641,6 +641,7 @@ build_profile() {
     -D "SDKCONFIG_DEFAULTS=${ROOT_DIR}/sdkconfig.defaults;${sdkconfig_defaults_path}" \
     -D "HEXE_FIRMWARE_APP=${FIRMWARE_APP}" \
     -D "HEXE_BOARD_PROFILE=${profile}" \
+    -D "HEXE_REQUIRED_IDF_VERSION=${required_idf_version}" \
     -D "PROJECT_VER=${PROJECT_VERSION}" \
     build
 

@@ -384,7 +384,9 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     assert '"%02d:%02d"' in source
     assert "local.tm_hour % 12" in source
     assert 'std::memcmp(data, "HXF1", 4)' in source
-    assert "const int colon_center = glyphs[0]->advance + glyphs[1]->advance + (glyphs[2]->advance / 2);" in source
+    assert 'json_integer(clock, "font_size", g_status_layout.clock.font_size, 12, 96)' in source
+    assert "const int colon_center = scale_metric(glyphs[0]->advance + glyphs[1]->advance)" in source
+    assert "(row * glyph.height) / scaled_height" in source
     assert "g_status_layout.clock.x_offset - colon_center" in source
     assert "const int baseline_y = 48 + g_status_layout.clock.y_offset;" in source
     assert "(local.tm_hour * 60) + local.tm_min + 1" in source
@@ -396,6 +398,7 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     )
     assert layout["clock"] == {
         "font": "manrope/clock_42.hxf",
+        "font_size": 42,
         "color": "#35F4DB",
         "x_offset": 0,
         "y_offset": 0,

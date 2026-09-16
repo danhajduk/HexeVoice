@@ -2,6 +2,7 @@
   "schema_version": 1,
   "clock": {
     "font": "manrope/clock_42.hxf",
+    "font_size": 42,
     "color": "#35F4DB",
     "x_offset": 0,
     "y_offset": 0

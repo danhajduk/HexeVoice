@@ -126,6 +126,7 @@ struct StatusIconLayout {
 
 struct StatusLayout {
   struct Clock {
+    int font_size = 42;
     int x_offset = 0;
     int y_offset = 0;
     uint32_t color = kCyan;
@@ -158,6 +159,7 @@ struct ClockGlyph {
 struct ClockFont {
   uint8_t *data = nullptr;
   size_t size = 0;
+  int pixel_size = 0;
   ClockGlyph glyphs[kClockGlyphCount] = {};
   size_t glyph_count = 0;
   bool load_attempted = false;
@@ -746,9 +748,10 @@ bool load_clock_font() {
     return false;
   }
   const size_t glyph_count = read_u16_le(data + 8);
+  const int pixel_size = read_u16_le(data + 4);
   constexpr size_t kHeaderBytes = 10;
   constexpr size_t kRecordBytes = 15;
-  if (std::memcmp(data, "HXF1", 4) != 0 || glyph_count == 0 || glyph_count > kClockGlyphCount ||
+  if (std::memcmp(data, "HXF1", 4) != 0 || pixel_size <= 0 || glyph_count == 0 || glyph_count > kClockGlyphCount ||
       kHeaderBytes + (glyph_count * kRecordBytes) > static_cast<size_t>(info.st_size)) {
     heap_caps_free(data);
     ESP_LOGW(kTag, "Clock font is invalid; using built-in fallback");
@@ -765,7 +768,7 @@ bool load_clock_font() {
     glyph.height = read_u16_le(record + 9);
     glyph.bitmap_offset = read_u32_le(record + 11);
     const size_t bitmap_bytes = static_cast<size_t>(glyph.width) * glyph.height;
-    if (glyph.bitmap_offset > static_cast<size_t>(info.st_size) ||
+    if (glyph.width == 0 || glyph.height == 0 || glyph.bitmap_offset > static_cast<size_t>(info.st_size) ||
         bitmap_bytes > static_cast<size_t>(info.st_size) - glyph.bitmap_offset) {
       heap_caps_free(data);
       return false;
@@ -773,6 +776,7 @@ bool load_clock_font() {
   }
   g_clock_font.data = data;
   g_clock_font.size = info.st_size;
+  g_clock_font.pixel_size = pixel_size;
   g_clock_font.glyph_count = glyph_count;
   ESP_LOGI(kTag, "Loaded clock font %s", path);
   return true;
@@ -822,6 +826,8 @@ void load_status_layout() {
   }
   cJSON *floating = cJSON_GetObjectItem(root, "floating");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
+  g_status_layout.clock.font_size =
+      json_integer(clock, "font_size", g_status_layout.clock.font_size, 12, 96);
   g_status_layout.clock.x_offset =
       json_signed_offset(clock, "x_offset", g_status_layout.clock.x_offset, kWidth);
   g_status_layout.clock.y_offset =
@@ -1109,7 +1115,7 @@ void draw_header_clock() {
     draw_centered_text(
         10 + g_status_layout.clock.y_offset,
         clock_text,
-        600,
+        (g_status_layout.clock.font_size * 600) / 42,
         g_status_layout.clock.color);
     return;
   }
@@ -1121,24 +1127,34 @@ void draw_header_clock() {
       return;
     }
   }
-  const int colon_center = glyphs[0]->advance + glyphs[1]->advance + (glyphs[2]->advance / 2);
+  const auto scale_metric = [](int value) {
+    const int numerator = value * g_status_layout.clock.font_size;
+    const int adjustment = numerator < 0 ? -(g_clock_font.pixel_size / 2) : (g_clock_font.pixel_size / 2);
+    return (numerator + adjustment) / g_clock_font.pixel_size;
+  };
+  const int colon_center = scale_metric(glyphs[0]->advance + glyphs[1]->advance) +
+      (scale_metric(glyphs[2]->advance) / 2);
   int cursor_x = (kWidth / 2) + g_status_layout.clock.x_offset - colon_center;
   const int baseline_y = 48 + g_status_layout.clock.y_offset;
   for (size_t index = 0; index < 5; ++index) {
     const ClockGlyph &glyph = *glyphs[index];
-    const int glyph_x = cursor_x + glyph.left;
-    const int glyph_y = baseline_y - glyph.top;
+    const int glyph_x = cursor_x + scale_metric(glyph.left);
+    const int glyph_y = baseline_y - scale_metric(glyph.top);
+    const int scaled_width = std::max(1, scale_metric(glyph.width));
+    const int scaled_height = std::max(1, scale_metric(glyph.height));
     const uint8_t *bitmap = g_clock_font.data + glyph.bitmap_offset;
-    for (int row = 0; row < glyph.height; ++row) {
-      for (int column = 0; column < glyph.width; ++column) {
+    for (int row = 0; row < scaled_height; ++row) {
+      const int source_row = std::min(glyph.height - 1, (row * glyph.height) / scaled_height);
+      for (int column = 0; column < scaled_width; ++column) {
+        const int source_column = std::min(glyph.width - 1, (column * glyph.width) / scaled_width);
         blend_pixel(
             glyph_x + column,
             glyph_y + row,
             g_status_layout.clock.color,
-            bitmap[(row * glyph.width) + column]);
+            bitmap[(source_row * glyph.width) + source_column]);
       }
     }
-    cursor_x += glyph.advance;
+    cursor_x += scale_metric(glyph.advance);
   }
 }
 
