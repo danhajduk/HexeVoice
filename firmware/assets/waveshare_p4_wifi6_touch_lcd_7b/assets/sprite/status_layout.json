@@ -2,7 +2,7 @@
   "schema_version": 1,
   "y": 10,
   "floating": {
-    "x": 20,
+    "x": 30,
     "gap": 0
   },
   "icons": [
@@ -51,7 +51,7 @@
           "type": "running_dots",
           "when": {"flag": "asset_sync_active", "equals": true},
           "color": "#35F4DB",
-          "position": {"x": 0.5, "y": 0.86},
+          "position": {"x": 0.5, "y": 0.1},
           "count": 3,
           "radius": 0.055,
           "spacing": 0.2,

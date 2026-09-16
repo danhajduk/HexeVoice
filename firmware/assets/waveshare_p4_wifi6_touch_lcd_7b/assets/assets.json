@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.25",
-  "updated_at": "2026-09-16T22:04:01.322986+00:00",
+  "asset_library_version": "2026.09.16.27",
+  "updated_at": "2026-09-16T22:06:01.556851+00:00",
   "assets": [
     {
       "asset_id": "manrope_fontlog",
@@ -70,7 +70,7 @@
       "metadata": {
         "alpha_format": "alpha8",
         "size_bytes": 1600,
-        "sha256": "094824ac3994d770341ca19dec74def1ea397ff7d24f842c1153511b55a78e6b"
+        "sha256": "c41cabf6f3860a519333e05bac3b643b0d57f5d0bdcfab12b97145a7fd04970e"
       }
     },
     {
@@ -95,7 +95,7 @@
         "pixel_format": "rgb888",
         "channel_order": "rgb",
         "size_bytes": 4800,
-        "sha256": "5a5129fd1881d4e4589538e6e799594c9f0c48e73ef0acdc53a1d2e3d493e72e"
+        "sha256": "8217653ed56e9a9680ff7006360540d40852899523050454fc23d0392d699803"
       }
     },
     {
@@ -148,7 +148,7 @@
       "metadata": {
         "content_format": "json",
         "size_bytes": 1411,
-        "sha256": "0706cda436cc5c89446f7e9d5f87594f0e572ffb7622effaa02518c2371ef3b4"
+        "sha256": "38a30f6dae26d3f5745190362c53c408b6c28fc3e5281982dcc7d504d57f3558"
       }
     },
     {
