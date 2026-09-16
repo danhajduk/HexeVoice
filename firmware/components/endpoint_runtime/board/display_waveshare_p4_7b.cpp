@@ -56,6 +56,7 @@ constexpr size_t kSdTestBackgroundBytes =
 esp_lcd_panel_handle_t g_panel = nullptr;
 esp_lcd_panel_io_handle_t g_panel_io = nullptr;
 uint8_t *g_flush_buffer = nullptr;
+uint8_t *g_background_pixels = nullptr;
 SemaphoreHandle_t g_refresh_done = nullptr;
 bool g_display_ready = false;
 bool g_backlight_on = false;
@@ -71,7 +72,6 @@ char g_last_asset_filename[128] = "procedural-p4-7b-status";
 bool g_logged_sd_unavailable = false;
 bool g_logged_bg_missing = false;
 bool g_logged_bg_bad_size = false;
-bool g_logged_bg_read_error = false;
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -356,17 +356,20 @@ bool build_sd_test_background_path(char *path, size_t path_size) {
   return written > 0 && written < static_cast<int>(path_size);
 }
 
-FILE *open_sd_test_background(char *path, size_t path_size) {
+bool load_sd_test_background(char *path, size_t path_size) {
+  if (g_background_pixels != nullptr) {
+    return build_sd_test_background_path(path, path_size);
+  }
   if (!hexe::board::sd_card_mounted()) {
     if (!g_logged_sd_unavailable) {
       ESP_LOGI(kTag, "No microSD mounted; using procedural P4 display background");
       g_logged_sd_unavailable = true;
     }
-    return nullptr;
+    return false;
   }
   if (!build_sd_test_background_path(path, path_size)) {
     ESP_LOGW(kTag, "Could not build P4 SD test background path");
-    return nullptr;
+    return false;
   }
 
   struct stat info = {};
@@ -375,7 +378,7 @@ FILE *open_sd_test_background(char *path, size_t path_size) {
       ESP_LOGI(kTag, "P4 SD test background not found at %s: %s", path, std::strerror(errno));
       g_logged_bg_missing = true;
     }
-    return nullptr;
+    return false;
   }
   if (static_cast<size_t>(info.st_size) != kSdTestBackgroundBytes) {
     if (!g_logged_bg_bad_size) {
@@ -389,36 +392,47 @@ FILE *open_sd_test_background(char *path, size_t path_size) {
           static_cast<long>(info.st_size));
       g_logged_bg_bad_size = true;
     }
-    return nullptr;
+    return false;
   }
 
+  g_background_pixels = static_cast<uint8_t *>(
+      heap_caps_malloc(kSdTestBackgroundBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (g_background_pixels == nullptr) {
+    ESP_LOGW(kTag, "No PSRAM available for P4 background cache; using procedural background");
+    return false;
+  }
   FILE *file = std::fopen(path, "rb");
   if (file == nullptr) {
     ESP_LOGW(kTag, "Could not open P4 SD test background %s: %s", path, std::strerror(errno));
+    heap_caps_free(g_background_pixels);
+    g_background_pixels = nullptr;
+    return false;
   }
-  return file;
+  const size_t read_bytes = std::fread(g_background_pixels, 1, kSdTestBackgroundBytes, file);
+  std::fclose(file);
+  if (read_bytes != kSdTestBackgroundBytes) {
+    ESP_LOGW(
+        kTag,
+        "Could not cache P4 SD test background %s: expected %u bytes, got %u",
+        path,
+        static_cast<unsigned>(kSdTestBackgroundBytes),
+        static_cast<unsigned>(read_bytes));
+    heap_caps_free(g_background_pixels);
+    g_background_pixels = nullptr;
+    return false;
+  }
+  ESP_LOGI(kTag, "Cached P4 SD test background from %s", path);
+  return true;
 }
 
-bool read_sd_background_strip(FILE *file, const char *path) {
-  if (file == nullptr || g_flush_buffer == nullptr) {
+bool copy_sd_background_strip() {
+  if (g_background_pixels == nullptr || g_flush_buffer == nullptr) {
     return false;
   }
   const size_t expected_bytes =
       static_cast<size_t>(kWidth) * static_cast<size_t>(g_strip_rows) * kBytesPerPixel;
-  const size_t read_bytes = std::fread(g_flush_buffer, 1, expected_bytes, file);
-  if (read_bytes != expected_bytes) {
-    if (!g_logged_bg_read_error) {
-      ESP_LOGW(
-          kTag,
-          "Could not read P4 SD test background strip from %s at y=%d: expected %u bytes, got %u",
-          path == nullptr ? kSdTestBackgroundName : path,
-          g_strip_y,
-          static_cast<unsigned>(expected_bytes),
-          static_cast<unsigned>(read_bytes));
-      g_logged_bg_read_error = true;
-    }
-    return false;
-  }
+  const size_t offset = static_cast<size_t>(g_strip_y) * kWidth * kBytesPerPixel;
+  std::memcpy(g_flush_buffer, g_background_pixels + offset, expected_bytes);
   return true;
 }
 
@@ -433,10 +447,10 @@ void clear_strip() {
   }
 }
 
-bool draw_status_frame(int frame, const char *build_id, FILE *background_file, const char *background_path) {
+bool draw_status_frame(int frame, const char *build_id, bool background_loaded) {
   const auto &state = hexe::state();
   const uint32_t accent = phase_color(state.phase);
-  const bool drew_background = read_sd_background_strip(background_file, background_path);
+  const bool drew_background = background_loaded && copy_sd_background_strip();
   if (!drew_background) {
     clear_strip();
   } else {
@@ -518,28 +532,21 @@ bool render_frame(int frame, const char *build_id, bool black) {
   }
   const int64_t started_us = esp_timer_get_time();
   char background_path[128] = {};
-  FILE *background_file = black ? nullptr : open_sd_test_background(background_path, sizeof(background_path));
-  int asset_read_ms = 0;
+  const int64_t asset_read_started_us = black ? 0 : esp_timer_get_time();
+  const bool background_loaded = !black && load_sd_test_background(background_path, sizeof(background_path));
+  const int asset_read_ms = black ? 0 : static_cast<int>((esp_timer_get_time() - asset_read_started_us) / 1000);
   bool used_background = false;
-  const int64_t asset_read_started_us = background_file != nullptr ? esp_timer_get_time() : 0;
   for (int y = 0; y < kHeight; y += kFlushRows) {
     g_strip_y = y;
     g_strip_rows = std::min(kFlushRows, kHeight - y);
     if (black) {
       fill_rect(0, y, kWidth, g_strip_rows, kBlack);
     } else {
-      used_background = draw_status_frame(frame, build_id, background_file, background_path) || used_background;
+      used_background = draw_status_frame(frame, build_id, background_loaded) || used_background;
     }
     if (!flush_strip(y, g_strip_rows)) {
-      if (background_file != nullptr) {
-        std::fclose(background_file);
-      }
       return false;
     }
-  }
-  if (background_file != nullptr) {
-    asset_read_ms = static_cast<int>((esp_timer_get_time() - asset_read_started_us) / 1000);
-    std::fclose(background_file);
   }
   const int elapsed_ms = static_cast<int>((esp_timer_get_time() - started_us) / 1000);
   g_last_render_ms = elapsed_ms;
@@ -630,10 +637,13 @@ void render_boot_frame(int frame, const char *build_id) {
 }
 
 void request_display_assets_reload() {
+  if (g_background_pixels != nullptr) {
+    heap_caps_free(g_background_pixels);
+    g_background_pixels = nullptr;
+  }
   g_force_redraw = true;
   g_logged_bg_missing = false;
   g_logged_bg_bad_size = false;
-  g_logged_bg_read_error = false;
 }
 
 bool show_next_ui_page() {

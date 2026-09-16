@@ -307,6 +307,17 @@ def test_p4_display_falls_back_to_dcs_display_on_command():
     assert "ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(g_panel, true))" not in source
 
 
+def test_p4_display_caches_rgb888_background_and_batches_flushes():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "constexpr int kFlushRows = 120;" in source
+    assert "heap_caps_malloc(kSdTestBackgroundBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in source
+    assert "std::memcpy(g_flush_buffer, g_background_pixels + offset, expected_bytes)" in source
+    assert "heap_caps_free(g_background_pixels);" in source
+
+
 def test_p4_profile_uses_bsp_gt911_touch_adapter():
     source = (REPO_ROOT / "firmware/components/endpoint_runtime/board/touch.cpp").read_text(
         encoding="utf-8"
