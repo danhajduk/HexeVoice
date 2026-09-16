@@ -49,12 +49,16 @@ const char *scheme_http() {
   return hexe::system::endpoint_use_tls() ? "https" : "http";
 }
 
-bool is_safe_filename(const char *filename) {
-  if (filename == nullptr || filename[0] == '\0' || filename[0] == '.' || std::strlen(filename) >= 120) {
+bool is_safe_asset_filename(const char *media_type, const char *filename) {
+  const bool nested_allowed = media_type != nullptr && std::strcmp(media_type, "font") == 0;
+  if (filename == nullptr || filename[0] == '\0' || filename[0] == '.' || std::strlen(filename) >= 200) {
     return false;
   }
   for (const char *cursor = filename; *cursor != '\0'; ++cursor) {
-    if (*cursor == '/' || *cursor == '\\' || static_cast<unsigned char>(*cursor) < 32) {
+    if (*cursor == '\\' || static_cast<unsigned char>(*cursor) < 32 || (!nested_allowed && *cursor == '/')) {
+      return false;
+    }
+    if (*cursor == '/' && (cursor[1] == '\0' || cursor[1] == '/' || cursor[1] == '.')) {
       return false;
     }
     if (*cursor == '.' && cursor[1] == '.') {
@@ -73,6 +77,9 @@ const char *destination_dir(const char *media_type) {
   }
   if (std::strcmp(media_type, "sound") == 0) {
     return hexe::board::sd_card_sounds_path();
+  }
+  if (std::strcmp(media_type, "font") == 0) {
+    return hexe::board::sd_card_fonts_path();
   }
   return nullptr;
 }
@@ -118,6 +125,26 @@ bool ensure_directory(const char *path) {
   }
   ESP_LOGW(kTag, "Could not create %s: %s", path, std::strerror(errno));
   return false;
+}
+
+bool ensure_asset_parent_directories(const char *directory, const char *filename) {
+  char path[256] = {};
+  const int written = std::snprintf(path, sizeof(path), "%s/%s", directory, filename);
+  if (written <= 0 || written >= static_cast<int>(sizeof(path))) {
+    return false;
+  }
+  for (char *cursor = path + std::strlen(directory) + 1; *cursor != '\0'; ++cursor) {
+    if (*cursor != '/') {
+      continue;
+    }
+    *cursor = '\0';
+    const bool ready = ensure_directory(path);
+    *cursor = '/';
+    if (!ready) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool read_http_to_string(const char *url, std::string *body) {
@@ -462,7 +489,7 @@ void sync_assets_once() {
     }
     cJSON *size = asset_json_number(asset, "size_bytes");
     const char *directory = destination_dir(media_type);
-    if (!cJSON_IsNumber(size) || size->valueint <= 0 || directory == nullptr || !is_safe_filename(filename) ||
+    if (!cJSON_IsNumber(size) || size->valueint <= 0 || directory == nullptr || !is_safe_asset_filename(media_type, filename) ||
         std::strlen(sha256) != 64) {
       ++g_failed_count;
       continue;
@@ -473,10 +500,10 @@ void sync_assets_once() {
     char temp_path[280] = {};
     char url[256] = {};
     const int final_written = std::snprintf(final_path, sizeof(final_path), "%s/%s", directory, filename);
-    const int temp_written = std::snprintf(temp_path, sizeof(temp_path), "%s/.%s.tmp", directory, filename);
+    const int temp_written = std::snprintf(temp_path, sizeof(temp_path), "%s/%s.tmp", directory, filename);
     if (final_written <= 0 || final_written >= static_cast<int>(sizeof(final_path)) ||
         temp_written <= 0 || temp_written >= static_cast<int>(sizeof(temp_path)) ||
-        !build_file_url(url, sizeof(url), media_type, filename)) {
+        !build_file_url(url, sizeof(url), media_type, filename) || !ensure_asset_parent_directories(directory, filename)) {
       ++g_failed_count;
       continue;
     }

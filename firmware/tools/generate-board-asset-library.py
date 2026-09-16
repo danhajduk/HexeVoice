@@ -17,11 +17,12 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ASSET_ROOT = ROOT / "firmware" / "assets"
 
-MEDIA_TYPES = ("picture", "sprite", "sound")
+MEDIA_TYPES = ("picture", "sprite", "sound", "font")
 ALLOWED_EXTENSIONS: dict[str, set[str]] = {
     "picture": {".rgb565", ".rgb888", ".png", ".jpg", ".jpeg"},
     "sprite": {".rgb565", ".rgb888", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
     "sound": {".wav"},
+    "font": {".ttf", ".otf", ".txt", ".md"},
 }
 
 
@@ -202,6 +203,10 @@ def _infer_metadata(path: Path, media_type: str, existing: dict[str, Any], board
         metadata.update(_wav_metadata(path))
     elif suffix == ".json":
         metadata.setdefault("content_format", "json")
+    elif suffix in {".ttf", ".otf"}:
+        metadata.setdefault("font_format", suffix.lstrip("."))
+    elif media_type == "font" and suffix in {".txt", ".md"}:
+        metadata.setdefault("content_format", suffix.lstrip("."))
     elif media_type in {"picture", "sprite"} and suffix in {".png", ".jpg", ".jpeg"}:
         metadata.setdefault("source_format", suffix.lstrip("."))
 
@@ -216,7 +221,8 @@ def _scan_media_files(assets_dir: Path) -> list[tuple[str, Path]]:
         media_dir = assets_dir / media_type
         if not media_dir.exists():
             continue
-        for path in sorted(item for item in media_dir.iterdir() if item.is_file()):
+        candidates = media_dir.rglob("*") if media_type == "font" else media_dir.iterdir()
+        for path in sorted(item for item in candidates if item.is_file()):
             if path.name.startswith("."):
                 continue
             if path.suffix.lower() not in ALLOWED_EXTENSIONS[media_type]:
@@ -241,14 +247,15 @@ def build_asset_library(
     assets: list[dict[str, Any]] = []
 
     for media_type, path in _scan_media_files(assets_dir):
-        prior = existing_by_file.get((media_type, path.name), {})
-        preferred_asset_id = str(prior.get("asset_id") or _asset_id_from_stem(path.stem))
+        source_filename = path.relative_to(assets_dir / media_type).as_posix()
+        prior = existing_by_file.get((media_type, source_filename), {})
+        preferred_asset_id = str(prior.get("asset_id") or _asset_id_from_stem(str(Path(source_filename).with_suffix(""))))
         asset_id = _dedupe_asset_id(preferred_asset_id, media_type, used_asset_ids)
         item: dict[str, Any] = {
             "asset_id": asset_id,
             "media_type": media_type,
-            "filename": str(prior.get("filename") or path.name),
-            "source_filename": path.name,
+            "filename": str(prior.get("filename") or source_filename),
+            "source_filename": source_filename,
         }
         if prior.get("role"):
             item["role"] = prior["role"]

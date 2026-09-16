@@ -1212,6 +1212,7 @@ def test_firmware_boot_syncs_board_assets_to_sd_card():
     assert "hexe::board::sd_card_pictures_path()" in source
     assert "hexe::board::sd_card_sprites_path()" in source
     assert "hexe::board::sd_card_sounds_path()" in source
+    assert "hexe::board::sd_card_fonts_path()" in source
     assert "ensure_directory(kAssetsPath)" in source
     assert "cJSON_ParseWithLength" in source
     assert 'cJSON_GetObjectItem(root, "assets")' in source
@@ -1230,6 +1231,8 @@ def test_firmware_boot_syncs_board_assets_to_sd_card():
     assert 'cJSON_AddNumberToObject(assets, "downloaded_count", hexe::system::asset_sync_downloaded_count())' in backend_source
     assert 'std::strcmp(media_type, "picture") == 0' in source
     assert 'std::strcmp(media_type, "sprite") == 0' in source
+    assert 'std::strcmp(media_type, "font") == 0' in source
+    assert "ensure_asset_parent_directories(directory, filename)" in source
 
 
 def test_waveshare_display_uses_sd_status_pictures_for_app_phases():

@@ -19,6 +19,7 @@ constexpr char kMountPath[] = BSP_SD_MOUNT_POINT;
 constexpr char kPicturesPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures";
 constexpr char kSpritesPath[] = BSP_SD_MOUNT_POINT "/hexe/sprites";
 constexpr char kSoundsPath[] = BSP_SD_MOUNT_POINT "/hexe/sounds";
+constexpr char kFontsPath[] = BSP_SD_MOUNT_POINT "/hexe/fonts";
 constexpr char kModelSetsPath[] = BSP_SD_MOUNT_POINT "/hexe/model_sets";
 constexpr int kMaxLoggedDirectoryEntries = 64;
 
@@ -38,7 +39,8 @@ bool ensure_directory(const char *path) {
 
 bool ensure_sd_media_directories_internal() {
   return ensure_directory(BSP_SD_MOUNT_POINT "/hexe") && ensure_directory(kPicturesPath) &&
-         ensure_directory(kSpritesPath) && ensure_directory(kSoundsPath) && ensure_directory(kModelSetsPath);
+         ensure_directory(kSpritesPath) && ensure_directory(kSoundsPath) && ensure_directory(kFontsPath) &&
+         ensure_directory(kModelSetsPath);
 }
 
 bool remove_tree_contents(const char *path) {
@@ -157,13 +159,15 @@ bool reformat_sd_media() {
   const bool pictures_removed = remove_tree_contents(kPicturesPath);
   const bool sprites_removed = remove_tree_contents(kSpritesPath);
   const bool sounds_removed = remove_tree_contents(kSoundsPath);
-  return pictures_removed && sprites_removed && sounds_removed && ensure_sd_media_directories_internal();
+  const bool fonts_removed = remove_tree_contents(kFontsPath);
+  return pictures_removed && sprites_removed && sounds_removed && fonts_removed && ensure_sd_media_directories_internal();
 }
 
 const char *sd_card_mount_path() { return kMountPath; }
 const char *sd_card_pictures_path() { return kPicturesPath; }
 const char *sd_card_sprites_path() { return kSpritesPath; }
 const char *sd_card_sounds_path() { return kSoundsPath; }
+const char *sd_card_fonts_path() { return kFontsPath; }
 const char *sd_card_model_sets_path() { return kModelSetsPath; }
 
 }  // namespace hexe::board

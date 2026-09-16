@@ -23,6 +23,7 @@ constexpr char kMountPath[] = "/sdcard";
 constexpr char kPicturesPath[] = "/sdcard/hexe/pictures";
 constexpr char kSpritesPath[] = "/sdcard/hexe/sprites";
 constexpr char kSoundsPath[] = "/sdcard/hexe/sounds";
+constexpr char kFontsPath[] = "/sdcard/hexe/fonts";
 constexpr char kModelSetsPath[] = "/sdcard/hexe/model_sets";
 constexpr int kMaxLoggedDirectoryEntries = 64;
 
@@ -51,8 +52,9 @@ bool ensure_sd_media_directories_internal() {
   const bool pictures_ready = ensure_directory(kPicturesPath);
   const bool sprites_ready = ensure_directory(kSpritesPath);
   const bool sounds_ready = ensure_directory(kSoundsPath);
+  const bool fonts_ready = ensure_directory(kFontsPath);
   const bool model_sets_ready = ensure_directory(kModelSetsPath);
-  return root_ready && pictures_ready && sprites_ready && sounds_ready && model_sets_ready;
+  return root_ready && pictures_ready && sprites_ready && sounds_ready && fonts_ready && model_sets_ready;
 }
 
 bool remove_tree_contents(const char *path) {
@@ -248,9 +250,10 @@ bool reformat_sd_media() {
   const bool pictures_removed = remove_tree_contents(kPicturesPath);
   const bool sprites_removed = remove_tree_contents(kSpritesPath);
   const bool sounds_removed = remove_tree_contents(kSoundsPath);
+  const bool fonts_removed = remove_tree_contents(kFontsPath);
   const bool directories_ready = ensure_sd_media_directories_internal();
   log_sd_media_directories();
-  return pictures_removed && sprites_removed && sounds_removed && directories_ready;
+  return pictures_removed && sprites_removed && sounds_removed && fonts_removed && directories_ready;
 }
 
 const char *sd_card_mount_path() {
@@ -267,6 +270,10 @@ const char *sd_card_sprites_path() {
 
 const char *sd_card_sounds_path() {
   return kSoundsPath;
+}
+
+const char *sd_card_fonts_path() {
+  return kFontsPath;
 }
 
 const char *sd_card_model_sets_path() {

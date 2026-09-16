@@ -16,7 +16,7 @@ import wave
 from pydantic import BaseModel, Field
 
 
-EndpointMediaType = Literal["picture", "sprite", "sound"]
+EndpointMediaType = Literal["picture", "sprite", "sound", "font"]
 BOARD_ASSET_LIBRARY_DIRNAME = "assets"
 BOARD_ASSET_LIBRARY_FILENAME = "assets.json"
 
@@ -25,23 +25,27 @@ PICTURE_DEFAULT_HEIGHT = 240
 PICTURE_MAX_BYTES = 2 * 1024 * 1024
 SPRITE_MAX_BYTES = 512 * 1024
 SOUND_MAX_BYTES = 5 * 1024 * 1024
+FONT_MAX_BYTES = 2 * 1024 * 1024
 
 DESTINATIONS: dict[EndpointMediaType, str] = {
     "picture": "picture",
     "sprite": "sprite",
     "sound": "sound",
+    "font": "font",
 }
 
 DESTINATION_PATHS: dict[EndpointMediaType, str] = {
     "picture": "/sdcard/hexe/pictures",
     "sprite": "/sdcard/hexe/sprites",
     "sound": "/sdcard/hexe/sounds",
+    "font": "/sdcard/hexe/fonts",
 }
 
 ALLOWED_EXTENSIONS: dict[EndpointMediaType, set[str]] = {
     "picture": {".rgb565", ".rgb888", ".png", ".jpg", ".jpeg"},
     "sprite": {".rgb565", ".rgb888", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
     "sound": {".wav"},
+    "font": {".ttf", ".otf", ".txt", ".md"},
 }
 
 
@@ -108,6 +112,19 @@ def safe_filename(filename: str) -> str:
     if len(name) > 120:
         raise EndpointMediaValidationError("invalid_filename", "Filename is too long.")
     return name
+
+
+def safe_asset_relative_path(filename: str, media_type: EndpointMediaType) -> str:
+    if media_type != "font":
+        return safe_filename(filename)
+    name = filename.strip()
+    parts = name.split("/")
+    if not name or name.startswith("/") or len(name) > 240 or any(
+        not part or part in {".", ".."} or part.startswith(".") or "\\" in part or any(ord(char) < 32 for char in part)
+        for part in parts
+    ):
+        raise EndpointMediaValidationError("invalid_filename", "Font path must be a safe relative path.")
+    return "/".join(parts)
 
 
 def safe_asset_id(asset_id: str | None) -> str:
@@ -231,8 +248,9 @@ class EndpointMediaService:
         safe_id = safe_asset_id(asset_id)
         for asset in library.assets:
             if asset.asset_id == safe_id:
-                path = (assets_dir / asset.media_type / safe_filename(asset.source_filename)).resolve()
-                if path.parent != (assets_dir / asset.media_type).resolve():
+                type_dir = (assets_dir / asset.media_type).resolve()
+                path = (type_dir / safe_asset_relative_path(asset.source_filename, asset.media_type)).resolve()
+                if not path.is_relative_to(type_dir):
                     raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
                 if not path.exists():
                     raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
@@ -254,13 +272,13 @@ class EndpointMediaService:
                 )
             return path, "application/json"
 
-        if len(parts) != 2:
+        if len(parts) < 2:
             raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
-        media_type_value, filename_value = parts
+        media_type_value, filename_value = parts[0], "/".join(parts[1:])
         if media_type_value not in DESTINATIONS:
             raise EndpointMediaValidationError("invalid_board_asset_media_type", "Board asset media_type is invalid.")
         media_type = cast(EndpointMediaType, media_type_value)
-        filename = safe_filename(filename_value)
+        filename = safe_asset_relative_path(filename_value, media_type)
         suffix = Path(filename).suffix.lower()
         if suffix not in ALLOWED_EXTENSIONS[media_type]:
             raise EndpointMediaValidationError(
@@ -269,7 +287,7 @@ class EndpointMediaService:
             )
         type_dir = (assets_dir / media_type).resolve()
         path = (type_dir / filename).resolve()
-        if path.parent != type_dir:
+        if not path.is_relative_to(type_dir):
             raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
         if not path.exists():
             raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
@@ -440,6 +458,20 @@ class EndpointMediaService:
                 "converted_from": suffix.lstrip("."),
             }
 
+        if media_type == "font":
+            if len(source_bytes) > FONT_MAX_BYTES:
+                raise EndpointMediaValidationError("font_too_large", "Font asset is too large.")
+            if suffix in {".ttf", ".otf"}:
+                signature = source_bytes[:4]
+                if signature not in {b"\x00\x01\x00\x00", b"OTTO", b"true", b"typ1"}:
+                    raise EndpointMediaValidationError("invalid_font", "Font uploads must be valid TTF or OTF files.")
+            else:
+                try:
+                    source_bytes.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise EndpointMediaValidationError("invalid_font_metadata", "Font metadata must be UTF-8 text.") from exc
+            return source_bytes, source_filename, content_type or _content_type_for_filename(source_filename, media_type), metadata
+
         if len(source_bytes) > SOUND_MAX_BYTES:
             raise EndpointMediaValidationError("sound_too_large", "Sound payload is too large.")
         sound_metadata = self._validate_wav(source_bytes)
@@ -533,11 +565,11 @@ class EndpointMediaService:
         if not raw_asset_id:
             raise EndpointMediaValidationError("invalid_board_asset_id", "Board asset entries require asset_id.")
         asset_id = safe_asset_id(raw_asset_id)
-        filename = safe_filename(str(item.get("filename") or item.get("path") or ""))
-        source_filename = safe_filename(str(item.get("source_filename") or item.get("path") or filename))
+        filename = safe_asset_relative_path(str(item.get("filename") or item.get("path") or ""), media_type)
+        source_filename = safe_asset_relative_path(str(item.get("source_filename") or item.get("path") or filename), media_type)
         type_dir = assets_dir / media_type
         path = (type_dir / source_filename).resolve()
-        if path.parent != type_dir.resolve():
+        if not path.is_relative_to(type_dir.resolve()):
             raise EndpointMediaValidationError("invalid_board_asset_path", "Board asset path is invalid.")
         if not path.exists():
             raise EndpointMediaValidationError("board_asset_file_not_found", "Board asset file was not found.", status_code=404)
@@ -576,6 +608,14 @@ def _content_type_for_filename(filename: str, media_type: EndpointMediaType) -> 
     suffix = Path(filename).suffix.lower()
     if media_type == "sound":
         return "audio/wav"
+    if suffix == ".ttf":
+        return "font/ttf"
+    if suffix == ".otf":
+        return "font/otf"
+    if suffix == ".txt":
+        return "text/plain"
+    if suffix == ".md":
+        return "text/markdown"
     if suffix == ".json":
         return "application/json"
     if suffix == ".png":

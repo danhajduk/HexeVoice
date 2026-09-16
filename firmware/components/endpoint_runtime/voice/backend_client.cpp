@@ -2128,6 +2128,7 @@ void add_module_status(
   cJSON_AddStringToObject(storage, "pictures_path", hexe::board::sd_card_pictures_path());
   cJSON_AddStringToObject(storage, "sprites_path", hexe::board::sd_card_sprites_path());
   cJSON_AddStringToObject(storage, "sounds_path", hexe::board::sd_card_sounds_path());
+  cJSON_AddStringToObject(storage, "fonts_path", hexe::board::sd_card_fonts_path());
   cJSON_AddBoolToObject(storage, "media_reformat", sd_available);
   cJSON_AddBoolToObject(storage, "media_transfer_active", state.media_transfer_active);
   cJSON_AddStringToObject(storage, "media_transfer_status", state.media_transfer_active ? "downloading_file" : "idle");
@@ -2136,6 +2137,7 @@ void add_module_status(
   add_media_inventory_files(inventory, "pictures", hexe::board::sd_card_pictures_path(), inventory_truncated);
   add_media_inventory_files(inventory, "sprites", hexe::board::sd_card_sprites_path(), inventory_truncated);
   add_media_inventory_files(inventory, "sounds", hexe::board::sd_card_sounds_path(), inventory_truncated);
+  add_media_inventory_files(inventory, "fonts", hexe::board::sd_card_fonts_path(), inventory_truncated);
   cJSON_AddBoolToObject(inventory, "truncated", inventory_truncated);
 
   cJSON *display = cJSON_AddObjectToObject(root, "display");
@@ -2991,6 +2993,9 @@ const char *media_destination_dir(const char *destination) {
   }
   if (std::strcmp(destination, "sound") == 0) {
     return hexe::board::sd_card_sounds_path();
+  }
+  if (std::strcmp(destination, "font") == 0) {
+    return hexe::board::sd_card_fonts_path();
   }
   return nullptr;
 }

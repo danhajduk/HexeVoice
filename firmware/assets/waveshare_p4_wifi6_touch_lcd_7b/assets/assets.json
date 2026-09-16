@@ -1,9 +1,53 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.23",
-  "updated_at": "2026-09-16T21:56:36.040392+00:00",
+  "asset_library_version": "2026.09.16.25",
+  "updated_at": "2026-09-16T22:04:01.322986+00:00",
   "assets": [
+    {
+      "asset_id": "manrope_fontlog",
+      "media_type": "font",
+      "filename": "manrope/FONTLOG.txt",
+      "source_filename": "manrope/FONTLOG.txt",
+      "metadata": {
+        "content_format": "txt",
+        "size_bytes": 3075,
+        "sha256": "b6b54bcc1dbd1b18d5afd087ec0b578097644b1c9ec3e0a642d4df7808f449c2"
+      }
+    },
+    {
+      "asset_id": "manrope_manrope-variablefont_wght",
+      "media_type": "font",
+      "filename": "manrope/Manrope-VariableFont_wght.ttf",
+      "source_filename": "manrope/Manrope-VariableFont_wght.ttf",
+      "metadata": {
+        "font_format": "ttf",
+        "size_bytes": 164700,
+        "sha256": "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6"
+      }
+    },
+    {
+      "asset_id": "manrope_ofl",
+      "media_type": "font",
+      "filename": "manrope/OFL.txt",
+      "source_filename": "manrope/OFL.txt",
+      "metadata": {
+        "content_format": "txt",
+        "size_bytes": 4387,
+        "sha256": "58172e0c0fac2cda8a37b348164bb55e44b0e69051e557e92b1d3f6910141f7b"
+      }
+    },
+    {
+      "asset_id": "manrope_readme",
+      "media_type": "font",
+      "filename": "manrope/README.md",
+      "source_filename": "manrope/README.md",
+      "metadata": {
+        "content_format": "md",
+        "size_bytes": 747,
+        "sha256": "b7d3a2d33dc7d9a370c4c64ef9bd129fce24c939ebcbbc5eebf04af4ab61848e"
+      }
+    },
     {
       "asset_id": "bg",
       "media_type": "picture",
@@ -103,8 +147,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 1412,
-        "sha256": "89704c1627dc3a10d015bd7a6a808bbb99b827b9bf9345b1cb89bff49d562931"
+        "size_bytes": 1411,
+        "sha256": "0706cda436cc5c89446f7e9d5f87594f0e572ffb7622effaa02518c2371ef3b4"
       }
     },
     {

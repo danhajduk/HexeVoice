@@ -560,7 +560,7 @@ class EndpointCommandResponse(BaseModel):
 
 
 class EndpointMediaUploadRequest(BaseModel):
-    media_type: Literal["picture", "sprite", "sound"]
+    media_type: Literal["picture", "sprite", "sound", "font"]
     filename: str = Field(min_length=1, max_length=120)
     content_base64: str = Field(min_length=1)
     asset_id: str | None = Field(default=None, max_length=80)
@@ -573,7 +573,7 @@ class EndpointMediaUploadRequest(BaseModel):
 
 class EndpointMediaAssetResponse(BaseModel):
     asset_id: str
-    media_type: Literal["picture", "sprite", "sound"]
+    media_type: Literal["picture", "sprite", "sound", "font"]
     destination: str
     endpoint_path: str
     filename: str
@@ -589,7 +589,7 @@ class EndpointMediaAssetResponse(BaseModel):
 
 class EndpointBoardMediaAssetResponse(BaseModel):
     asset_id: str
-    media_type: Literal["picture", "sprite", "sound"]
+    media_type: Literal["picture", "sprite", "sound", "font"]
     destination: str
     endpoint_path: str
     filename: str

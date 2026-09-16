@@ -69,6 +69,24 @@ def test_generate_board_asset_library_scans_typed_asset_folders(tmp_path):
     assert generator.main(["--root", str(assets_root), "--check", "ha_voice_pe"]) == 0
 
 
+def test_generate_board_asset_library_preserves_nested_font_bundle(tmp_path):
+    generator = _load_generator()
+    assets_root = tmp_path / "assets-root"
+    font_dir = assets_root / "waveshare_p4_wifi6_touch_lcd_7b" / "assets" / "font" / "manrope"
+    font_dir.mkdir(parents=True)
+    (font_dir / "Manrope.ttf").write_bytes(b"\x00\x01\x00\x00font-data")
+    (font_dir / "OFL.txt").write_text("Open Font License", encoding="utf-8")
+
+    assert generator.main(["--root", str(assets_root), "waveshare_p4_wifi6_touch_lcd_7b"]) == 0
+
+    payload = json.loads((font_dir.parent.parent / "assets.json").read_text(encoding="utf-8"))
+    fonts = [asset for asset in payload["assets"] if asset["media_type"] == "font"]
+    assert [asset["source_filename"] for asset in fonts] == ["manrope/Manrope.ttf", "manrope/OFL.txt"]
+    assert fonts[0]["filename"] == "manrope/Manrope.ttf"
+    assert fonts[0]["metadata"]["font_format"] == "ttf"
+    assert fonts[1]["metadata"]["content_format"] == "txt"
+
+
 def test_generate_board_asset_library_preserves_existing_metadata(tmp_path):
     generator = _load_generator()
     assets_root = tmp_path / "assets-root"
