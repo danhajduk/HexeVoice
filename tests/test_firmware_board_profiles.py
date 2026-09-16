@@ -329,8 +329,8 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "hexe::system::asset_sync_active()" in source
     assert "state.backend_connected" in source
     assert "sprite->alpha[source_pixel]" in source
-    assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kWifiSpriteSize, kWifiSpriteSize};' in source
-    assert "constexpr int kWifiSpriteSize = 40;" in source
+    assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};' in source
+    assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
     assert "if (!layout.floating && status_icon_active(id, state))" in source
     assert "floating_right - floating_width" in source

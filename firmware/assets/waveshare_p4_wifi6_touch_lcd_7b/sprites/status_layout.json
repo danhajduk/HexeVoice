@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "floating": {
-    "right": 856,
-    "y": 4,
+    "right": 880,
+    "y": 12,
     "gap": 0
   },
   "icons": [
@@ -15,8 +15,8 @@
     {
       "id": "node_connected",
       "placement": "static",
-      "x": 856,
-      "y": 4
+      "x": 880,
+      "y": 12
     },
     {
       "id": "asset_downloading",

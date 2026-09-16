@@ -56,7 +56,7 @@ constexpr char kStatusLayoutFilename[] = "status_layout.json";
 constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
 constexpr int kWifiSpriteSize = 40;
-constexpr int kDefaultStatusSpriteSize = 64;
+constexpr int kStatusSpriteSize = 40;
 constexpr size_t kStatusLayoutMaxBytes = 2048;
 
 enum class StatusIconId : uint8_t {
@@ -73,12 +73,12 @@ struct StatusIconLayout {
 };
 
 struct StatusLayout {
-  int floating_right = 856;
-  int floating_y = 4;
+  int floating_right = 880;
+  int floating_y = 12;
   int floating_gap = 0;
   StatusIconLayout icons[static_cast<size_t>(StatusIconId::kCount)] = {
       {false, 920, 12},
-      {false, 856, 4},
+      {false, 880, 12},
       {true, 0, 0},
   };
   StatusIconId floating_order[static_cast<size_t>(StatusIconId::kCount)] = {
@@ -115,10 +115,10 @@ char g_last_asset_filename[128] = "procedural-p4-7b-status";
 bool g_logged_sd_unavailable = false;
 bool g_logged_bg_missing = false;
 bool g_logged_bg_bad_size = false;
-StatusSprite g_wifi_on_sprite{"wifi_on", kWifiSpriteSize, kWifiSpriteSize};
-StatusSprite g_wifi_off_sprite{"wifi_off", kWifiSpriteSize, kWifiSpriteSize};
-StatusSprite g_node_connected_sprite{"node_connected", kDefaultStatusSpriteSize, kDefaultStatusSpriteSize};
-StatusSprite g_asset_downloading_sprite{"asset_downloading", kDefaultStatusSpriteSize, kDefaultStatusSpriteSize};
+StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_wifi_off_sprite{"wifi_off", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, kStatusSpriteSize};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
 

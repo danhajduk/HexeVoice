@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.16",
-  "updated_at": "2026-09-16T21:36:23.863913+00:00",
+  "asset_library_version": "2026.09.16.17",
+  "updated_at": "2026-09-16T21:39:25.402367+00:00",
   "assets": [
     {
       "asset_id": "bg",
@@ -25,8 +25,8 @@
       "source_filename": "asset_downloading.alpha8",
       "metadata": {
         "alpha_format": "alpha8",
-        "size_bytes": 4096,
-        "sha256": "7a830e72870bd691b59bbfc55108c1bb7a2e9369807349b3b47bc6a3731b10d4"
+        "size_bytes": 1600,
+        "sha256": "094824ac3994d770341ca19dec74def1ea397ff7d24f842c1153511b55a78e6b"
       }
     },
     {
@@ -36,8 +36,8 @@
       "source_filename": "node_connected.alpha8",
       "metadata": {
         "alpha_format": "alpha8",
-        "size_bytes": 4096,
-        "sha256": "a561b9cfb36ae7e7c637b3669bc1e77faaaf5303b5fb3c26052ad684b232ca73"
+        "size_bytes": 1600,
+        "sha256": "3efcc89bbebb5a001a586264334dd5d27be3c0f5b1c11f1dca2bf8caa8edf7b3"
       }
     },
     {
@@ -46,12 +46,12 @@
       "filename": "asset_downloading.rgb888",
       "source_filename": "asset_downloading.rgb888",
       "metadata": {
-        "width": 64,
-        "height": 64,
+        "width": 40,
+        "height": 40,
         "pixel_format": "rgb888",
         "channel_order": "rgb",
-        "size_bytes": 12288,
-        "sha256": "63cc9b7e8762563ad34a85c76e8807acb318999d6572f0547adc09c0916bb87d"
+        "size_bytes": 4800,
+        "sha256": "5a5129fd1881d4e4589538e6e799594c9f0c48e73ef0acdc53a1d2e3d493e72e"
       }
     },
     {
@@ -60,12 +60,12 @@
       "filename": "node_connected.rgb888",
       "source_filename": "node_connected.rgb888",
       "metadata": {
-        "width": 64,
-        "height": 64,
+        "width": 40,
+        "height": 40,
         "pixel_format": "rgb888",
         "channel_order": "rgb",
-        "size_bytes": 12288,
-        "sha256": "e2f892b58fe459666fee5945602f2218ff1386b53c2fe5230d690df68fc6decd"
+        "size_bytes": 4800,
+        "sha256": "4becda5fb31c7bb74adb7a4f348d26aae7343d9a2f5af46f8ab6a0a22bdeaa9a"
       }
     },
     {
@@ -103,8 +103,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 376,
-        "sha256": "25352b50879479f73b5fdc1510fc5913d65658d5323c19bbb10e2a4acfc1454e"
+        "size_bytes": 378,
+        "sha256": "e72ac971d1b713ff59affe5a3df535920b2154b8544f7ae6097b259b247da5c7"
       }
     },
     {
