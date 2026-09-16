@@ -1,22 +1,20 @@
 {
   "schema_version": 1,
+  "y": 12,
   "floating": {
-    "right": 880,
-    "y": 12,
+    "x": 20,
     "gap": 0
   },
   "icons": [
     {
       "id": "wifi",
       "placement": "static",
-      "x": 920,
-      "y": 12
+      "x": 920
     },
     {
       "id": "node_connected",
       "placement": "static",
-      "x": 880,
-      "y": 12
+      "x": 960
     },
     {
       "id": "asset_downloading",

@@ -69,17 +69,16 @@ enum class StatusIconId : uint8_t {
 struct StatusIconLayout {
   bool floating;
   int x;
-  int y;
 };
 
 struct StatusLayout {
-  int floating_right = 880;
-  int floating_y = 12;
+  int y = 12;
+  int floating_x = 20;
   int floating_gap = 0;
   StatusIconLayout icons[static_cast<size_t>(StatusIconId::kCount)] = {
-      {false, 920, 12},
-      {false, 880, 12},
-      {true, 0, 0},
+      {false, 920},
+      {false, 880},
+      {true, 0},
   };
   StatusIconId floating_order[static_cast<size_t>(StatusIconId::kCount)] = {
       StatusIconId::kAssetDownloading,
@@ -534,9 +533,8 @@ void load_status_layout() {
     return;
   }
   cJSON *floating = cJSON_GetObjectItem(root, "floating");
-  g_status_layout.floating_right =
-      json_layout_coordinate(floating, "right", g_status_layout.floating_right, kWidth);
-  g_status_layout.floating_y = json_layout_coordinate(floating, "y", g_status_layout.floating_y, kHeight - 1);
+  g_status_layout.y = json_layout_coordinate(root, "y", g_status_layout.y, kHeight - 1);
+  g_status_layout.floating_x = json_layout_coordinate(floating, "x", g_status_layout.floating_x, kWidth - 1);
   g_status_layout.floating_gap = json_layout_coordinate(floating, "gap", g_status_layout.floating_gap, kWidth);
 
   cJSON *icons = cJSON_GetObjectItem(root, "icons");
@@ -561,7 +559,6 @@ void load_status_layout() {
         }
       } else {
         layout.x = json_layout_coordinate(icon, "x", layout.x, kWidth - 1);
-        layout.y = json_layout_coordinate(icon, "y", layout.y, kHeight - 1);
       }
     }
   }
@@ -605,32 +602,18 @@ void draw_header_status_icons() {
     const auto id = static_cast<StatusIconId>(index);
     const auto &layout = g_status_layout.icons[index];
     if (!layout.floating && status_icon_active(id, state)) {
-      draw_status_sprite(status_icon_sprite(id, state), layout.x, layout.y);
+      draw_status_sprite(status_icon_sprite(id, state), layout.x, g_status_layout.y);
     }
   }
 
-  int floating_width = 0;
-  int active_floating_count = 0;
-  for (size_t index = 0; index < g_status_layout.floating_count; ++index) {
-    const StatusIconId id = g_status_layout.floating_order[index];
-    if (!status_icon_active(id, state)) {
-      continue;
-    }
-    floating_width += status_icon_sprite(id, state)->width;
-    ++active_floating_count;
-  }
-  if (active_floating_count > 1) {
-    floating_width += (active_floating_count - 1) * g_status_layout.floating_gap;
-  }
-
-  int floating_x = g_status_layout.floating_right - floating_width;
+  int floating_x = g_status_layout.floating_x;
   for (size_t index = 0; index < g_status_layout.floating_count; ++index) {
     const StatusIconId id = g_status_layout.floating_order[index];
     if (!status_icon_active(id, state)) {
       continue;
     }
     StatusSprite *sprite = status_icon_sprite(id, state);
-    draw_status_sprite(sprite, floating_x, g_status_layout.floating_y);
+    draw_status_sprite(sprite, floating_x, g_status_layout.y);
     floating_x += sprite->width + g_status_layout.floating_gap;
   }
 }
