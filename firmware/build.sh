@@ -175,7 +175,6 @@ EOF
 # CONFIG_ESP32P4_SELECTS_REV_LESS_V3 is not set
 CONFIG_ESP32P4_REV_MIN_300=y
 CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y
-CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
 EOF
       ;;
     *)
@@ -245,6 +244,9 @@ CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 CONFIG_ESP_WIFI_REMOTE_ENABLED=y
 CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
+CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y
+CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=10
+CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=10
 # CONFIG_LV_BUILD_EXAMPLES is not set
 # CONFIG_LV_BUILD_DEMOS is not set
 EOF
@@ -318,17 +320,24 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
     rm -f "${sdkconfig_path}"
     return
   fi
+  if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
+    { ! grep -q "^CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=10$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=10$" "${sdkconfig_path}"; }; then
+    echo "Refreshing generated sdkconfig for ${profile}; P4 hosted Wi-Fi uses PSRAM-backed SDIO buffers"
+    rm -f "${sdkconfig_path}"
+    return
+  fi
   if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" &&
     "${P4_SILICON_PROFILE}" == "rev3_x" ]] &&
-    { ! grep -q "^CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y$" "${sdkconfig_path}" ||
-      ! grep -q "^CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y$" "${sdkconfig_path}"; }; then
-    echo "Refreshing generated sdkconfig for ${profile}; rev3 P4 hosted Wi-Fi requires modern board and memory settings"
+    ! grep -q "^CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y$" "${sdkconfig_path}"; then
+    echo "Refreshing generated sdkconfig for ${profile}; rev3 P4 hosted Wi-Fi requires modern board settings"
     rm -f "${sdkconfig_path}"
     return
   fi
   if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" &&
     "${P4_SILICON_PROFILE}" == "rev1_3" ]] &&
-    grep -Eq "^CONFIG_ESP_HOSTED_(P4_DEV_BOARD_FUNC_BOARD|MEMPOOL_PREFER_SPIRAM)=y$" "${sdkconfig_path}"; then
+    grep -q "^CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y$" "${sdkconfig_path}"; then
     echo "Refreshing generated sdkconfig for ${profile}; rev1 P4 hosted Wi-Fi uses the Waveshare legacy stack"
     rm -f "${sdkconfig_path}"
     return

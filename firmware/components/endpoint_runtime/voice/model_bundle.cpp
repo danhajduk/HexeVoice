@@ -133,7 +133,8 @@ void free_runtime_store(RuntimeModelStore *store) {
       store->model_data[index] = nullptr;
     }
   }
-  *store = {};
+  RuntimeModelStore empty;
+  *store = empty;
 }
 
 void rebind_runtime_store(RuntimeModelStore *store) {
