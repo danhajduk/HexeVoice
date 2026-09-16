@@ -54,7 +54,7 @@ constexpr char kTag[] = "hexe_recovery_display";
 #if HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B
 constexpr int kWidth = BSP_LCD_H_RES;
 constexpr int kHeight = BSP_LCD_V_RES;
-constexpr int kFlushRows = 24;
+constexpr int kFlushRows = 120;
 constexpr int kBytesPerPixel = 3;
 constexpr size_t kBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;

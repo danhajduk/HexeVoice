@@ -26,7 +26,7 @@ namespace {
 constexpr char kTag[] = "hexe_display_p4_7b";
 constexpr int kWidth = BSP_LCD_H_RES;
 constexpr int kHeight = BSP_LCD_V_RES;
-constexpr int kFlushRows = 24;
+constexpr int kFlushRows = 120;
 constexpr int kBytesPerPixel = 3;
 
 constexpr uint32_t rgb565_to_rgb888(uint16_t color) {

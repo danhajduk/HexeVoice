@@ -271,6 +271,7 @@ def test_p4_recovery_display_shows_onboarding_identity_and_sd_background():
     assert "bsp_sdcard_mount()" in display_source
     assert "recovery_bg.rgb888" in display_source
     assert "bg.rgb888" in display_source
+    assert "constexpr int kFlushRows = 120;" in display_source
     assert "MALLOC_CAP_SPIRAM" in display_source
     assert "using procedural background" in display_source
     assert "no secrets on screen" in display_source
