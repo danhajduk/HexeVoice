@@ -191,10 +191,10 @@ def _infer_metadata(path: Path, media_type: str, existing: dict[str, Any], board
     size_bytes = path.stat().st_size
 
     if suffix == ".rgb565":
-        metadata.update({key: value for key, value in _matching_source_dimensions(board_dir, media_type, path, 2).items() if key not in metadata})
+        metadata.update(_matching_source_dimensions(board_dir, media_type, path, 2))
         metadata.update(_infer_rgb565_dimensions(size_bytes, metadata))
     elif suffix == ".rgb888":
-        metadata.update({key: value for key, value in _matching_source_dimensions(board_dir, media_type, path, 3).items() if key not in metadata})
+        metadata.update(_matching_source_dimensions(board_dir, media_type, path, 3))
         metadata.update(_infer_rgb888_dimensions(size_bytes, metadata))
     elif suffix in {".alpha8", ".alpha1"}:
         metadata["alpha_format"] = suffix.lstrip(".")

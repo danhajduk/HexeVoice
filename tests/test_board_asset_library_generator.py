@@ -141,3 +141,39 @@ def test_generate_board_asset_library_infers_rgb888_metadata(tmp_path):
     assert metadata["width"] == 1024
     assert metadata["height"] == 600
     assert metadata["size_bytes"] == 1024 * 600 * 3
+
+
+def test_generate_board_asset_library_refreshes_dimensions_from_source_png(tmp_path):
+    generator = _load_generator()
+    assets_root = tmp_path / "assets-root"
+    board_dir = assets_root / "waveshare_p4_wifi6_touch_lcd_7b"
+    sprite_assets = board_dir / "assets" / "sprite"
+    sprite_sources = board_dir / "sprites"
+    sprite_assets.mkdir(parents=True)
+    sprite_sources.mkdir(parents=True)
+    (sprite_assets / "wifi_on.rgb888").write_bytes(b"\x00" * (40 * 40 * 3))
+    (sprite_sources / "wifi_on.png").write_bytes(
+        b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\rIHDR" + (40).to_bytes(4, "big") + (40).to_bytes(4, "big")
+    )
+    (board_dir / "assets" / "assets.json").write_text(
+        json.dumps(
+            {
+                "assets": [
+                    {
+                        "asset_id": "wifi_on",
+                        "media_type": "sprite",
+                        "filename": "wifi_on.rgb888",
+                        "metadata": {"width": 64, "height": 64},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert generator.main(["--root", str(assets_root), "waveshare_p4_wifi6_touch_lcd_7b"]) == 0
+
+    payload = json.loads((board_dir / "assets" / "assets.json").read_text(encoding="utf-8"))
+    metadata = payload["assets"][0]["metadata"]
+    assert metadata["width"] == 40
+    assert metadata["height"] == 40

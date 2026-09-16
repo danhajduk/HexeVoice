@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.13",
-  "updated_at": "2026-09-16T20:59:25.218816+00:00",
+  "asset_library_version": "2026.09.16.14",
+  "updated_at": "2026-09-16T21:29:37.936334+00:00",
   "assets": [
     {
       "asset_id": "bg",
@@ -74,12 +74,12 @@
       "filename": "wifi_off.rgb888",
       "source_filename": "wifi_off.rgb888",
       "metadata": {
-        "width": 64,
-        "height": 64,
+        "width": 40,
+        "height": 40,
         "pixel_format": "rgb888",
         "channel_order": "rgb",
-        "size_bytes": 12288,
-        "sha256": "551d3688680f3aabe08d4565546e2b346fd0aa27d4b53ecf8b4b6890447eaea2"
+        "size_bytes": 4800,
+        "sha256": "deb0750e8b743684a9f67d5630052b44156190a9272ca367752c00ec1cd26518"
       }
     },
     {
@@ -88,12 +88,12 @@
       "filename": "wifi_on.rgb888",
       "source_filename": "wifi_on.rgb888",
       "metadata": {
-        "width": 64,
-        "height": 64,
+        "width": 40,
+        "height": 40,
         "pixel_format": "rgb888",
         "channel_order": "rgb",
-        "size_bytes": 12288,
-        "sha256": "318fea86d6d0f3a6d5d98dea16799801076ae4b6681eb9d37fe1f54a84d25815"
+        "size_bytes": 4800,
+        "sha256": "ea4bff59dc8ca0d41b6e9c5ab73a6a633eb61ecf8986483b2af6d69e0d4c9b3e"
       }
     },
     {
@@ -103,8 +103,8 @@
       "source_filename": "wifi_off.alpha8",
       "metadata": {
         "alpha_format": "alpha8",
-        "size_bytes": 4096,
-        "sha256": "4475adbb214141670f6a193439adf54ffd852fee765c823578160d020ffc2c65"
+        "size_bytes": 1600,
+        "sha256": "b03b69901ad6361f5a25b3553c7f67feeb2751329feb6256fb9e7931ad110167"
       }
     },
     {
@@ -114,8 +114,8 @@
       "source_filename": "wifi_on.alpha8",
       "metadata": {
         "alpha_format": "alpha8",
-        "size_bytes": 4096,
-        "sha256": "3810a7cd055e00686af8682dc0f9a976760c8167112f15939c7d450c41e2814a"
+        "size_bytes": 1600,
+        "sha256": "6a1cafc0a05ed64dfdd2771ab6c8562fe3dddf9f8cb194ebcf371835b7026e44"
       }
     }
   ]

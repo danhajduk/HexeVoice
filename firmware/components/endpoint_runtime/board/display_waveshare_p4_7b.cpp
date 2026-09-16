@@ -53,12 +53,13 @@ constexpr char kProceduralAssetName[] = "procedural-p4-7b-status";
 constexpr char kSdTestBackgroundName[] = "bg.rgb888";
 constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
-constexpr int kStatusSpriteSize = 64;
-constexpr size_t kStatusSpritePixels = static_cast<size_t>(kStatusSpriteSize) * kStatusSpriteSize;
-constexpr size_t kStatusSpriteColorBytes = kStatusSpritePixels * kBytesPerPixel;
+constexpr int kWifiSpriteSize = 40;
+constexpr int kDefaultStatusSpriteSize = 64;
 
 struct StatusSprite {
   const char *name;
+  int width;
+  int height;
   uint8_t *colors = nullptr;
   uint8_t *alpha = nullptr;
   bool load_attempted = false;
@@ -83,10 +84,10 @@ char g_last_asset_filename[128] = "procedural-p4-7b-status";
 bool g_logged_sd_unavailable = false;
 bool g_logged_bg_missing = false;
 bool g_logged_bg_bad_size = false;
-StatusSprite g_wifi_on_sprite{"wifi_on"};
-StatusSprite g_wifi_off_sprite{"wifi_off"};
-StatusSprite g_node_connected_sprite{"node_connected"};
-StatusSprite g_asset_downloading_sprite{"asset_downloading"};
+StatusSprite g_wifi_on_sprite{"wifi_on", kWifiSpriteSize, kWifiSpriteSize};
+StatusSprite g_wifi_off_sprite{"wifi_off", kWifiSpriteSize, kWifiSpriteSize};
+StatusSprite g_node_connected_sprite{"node_connected", kDefaultStatusSpriteSize, kDefaultStatusSpriteSize};
+StatusSprite g_asset_downloading_sprite{"asset_downloading", kDefaultStatusSpriteSize, kDefaultStatusSpriteSize};
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -396,19 +397,21 @@ bool load_status_sprite(StatusSprite *sprite) {
     return false;
   }
 
-  sprite->colors = static_cast<uint8_t *>(
-      heap_caps_malloc(kStatusSpriteColorBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  sprite->alpha = static_cast<uint8_t *>(heap_caps_malloc(kStatusSpritePixels, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  const size_t pixel_count = static_cast<size_t>(sprite->width) * sprite->height;
+  const size_t color_bytes = pixel_count * kBytesPerPixel;
+  sprite->colors =
+      static_cast<uint8_t *>(heap_caps_malloc(color_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  sprite->alpha = static_cast<uint8_t *>(heap_caps_malloc(pixel_count, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   if (sprite->colors == nullptr || sprite->alpha == nullptr ||
-      !read_exact_file(color_path, sprite->colors, kStatusSpriteColorBytes) ||
-      !read_exact_file(alpha_path, sprite->alpha, kStatusSpritePixels)) {
+      !read_exact_file(color_path, sprite->colors, color_bytes) ||
+      !read_exact_file(alpha_path, sprite->alpha, pixel_count)) {
     heap_caps_free(sprite->colors);
     heap_caps_free(sprite->alpha);
     sprite->colors = nullptr;
     sprite->alpha = nullptr;
     return false;
   }
-  for (size_t offset = 0; offset < kStatusSpriteColorBytes; offset += kBytesPerPixel) {
+  for (size_t offset = 0; offset < color_bytes; offset += kBytesPerPixel) {
     std::swap(sprite->colors[offset], sprite->colors[offset + 2]);
   }
   return true;
@@ -418,17 +421,17 @@ void draw_status_sprite(StatusSprite *sprite, int x, int y) {
   if (!load_status_sprite(sprite)) {
     return;
   }
-  for (int source_y = 0; source_y < kStatusSpriteSize; ++source_y) {
+  for (int source_y = 0; source_y < sprite->height; ++source_y) {
     const int target_y = y + source_y;
     if (target_y < g_strip_y || target_y >= g_strip_y + g_strip_rows || target_y < 0 || target_y >= kHeight) {
       continue;
     }
-    for (int source_x = 0; source_x < kStatusSpriteSize; ++source_x) {
+    for (int source_x = 0; source_x < sprite->width; ++source_x) {
       const int target_x = x + source_x;
       if (target_x < 0 || target_x >= kWidth) {
         continue;
       }
-      const size_t source_pixel = static_cast<size_t>(source_y) * kStatusSpriteSize + source_x;
+      const size_t source_pixel = static_cast<size_t>(source_y) * sprite->width + source_x;
       const uint8_t alpha = sprite->alpha[source_pixel];
       if (alpha == 0) {
         continue;
@@ -448,14 +451,14 @@ void draw_status_sprite(StatusSprite *sprite, int x, int y) {
 
 void draw_header_status_icons() {
   const auto &state = hexe::state();
-  int x = 896;
-  draw_status_sprite(state.wifi_connected ? &g_wifi_on_sprite : &g_wifi_off_sprite, x, 4);
+  int x = 920;
+  draw_status_sprite(state.wifi_connected ? &g_wifi_on_sprite : &g_wifi_off_sprite, x, 12);
   if (state.backend_connected) {
-    x -= kStatusSpriteSize;
+    x -= g_node_connected_sprite.width;
     draw_status_sprite(&g_node_connected_sprite, x, 4);
   }
   if (hexe::system::asset_sync_active()) {
-    x -= kStatusSpriteSize;
+    x -= g_asset_downloading_sprite.width;
     draw_status_sprite(&g_asset_downloading_sprite, x, 4);
   }
 }

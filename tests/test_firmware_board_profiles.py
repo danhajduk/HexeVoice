@@ -325,12 +325,16 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     ).read_text(encoding="utf-8")
 
     for sprite in ("wifi_on", "wifi_off", "node_connected", "asset_downloading"):
-        assert f'{{"{sprite}"}}' in source
+        assert f'"{sprite}"' in source
     assert "hexe::system::asset_sync_active()" in source
     assert "state.backend_connected" in source
     assert "sprite->alpha[source_pixel]" in source
-    assert "int x = 896;" in source
-    assert source.count("x -= kStatusSpriteSize;") == 2
+    assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kWifiSpriteSize, kWifiSpriteSize};' in source
+    assert "constexpr int kWifiSpriteSize = 40;" in source
+    assert "int x = 920;" in source
+    assert "&g_wifi_off_sprite, x, 12);" in source
+    assert "x -= g_node_connected_sprite.width;" in source
+    assert "x -= g_asset_downloading_sprite.width;" in source
     assert "release_status_sprite(&g_wifi_on_sprite)" in source
 
 
