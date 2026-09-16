@@ -269,13 +269,13 @@ def test_p4_recovery_display_shows_onboarding_identity_and_sd_background():
     assert "host_synced = 1;" in gatt_source
 
     assert "bsp_sdcard_mount()" in display_source
-    assert "recovery_bg.rgb565" in display_source
-    assert "bg.rgb565" in display_source
+    assert "recovery_bg.rgb888" in display_source
+    assert "bg.rgb888" in display_source
     assert "MALLOC_CAP_SPIRAM" in display_source
     assert "using procedural background" in display_source
     assert "no secrets on screen" in display_source
-    assert "1024x600 RGB565" in recovery_readme
-    assert "/sdcard/hexe/pictures/recovery_bg.rgb565" in recovery_readme
+    assert "1024x600 RGB888" in recovery_readme
+    assert "/sdcard/hexe/pictures/recovery_bg.rgb888" in recovery_readme
 
 
 def test_ble_host_pairing_retries_credential_poll_after_pending_read():

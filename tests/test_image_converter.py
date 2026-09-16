@@ -65,6 +65,36 @@ def test_convert_image_writes_rgb565_and_alpha8_mask(tmp_path):
     assert alpha.read_bytes() == bytes([0, 128, 255, 64])
 
 
+def test_convert_image_writes_packed_rgb888(tmp_path):
+    source = tmp_path / "background.png"
+    output = tmp_path / "background.rgb888"
+    python = converter_python()
+    write_rgba_png(
+        python,
+        source,
+        (2, 1),
+        [(1, 2, 3, 255), (250, 128, 64, 255)],
+    )
+
+    subprocess.run(
+        [
+            python,
+            "firmware/tools/convert_image.py",
+            str(source),
+            str(output),
+            "--format",
+            "raw-rgb888",
+            "--width",
+            "2",
+            "--height",
+            "1",
+        ],
+        check=True,
+    )
+
+    assert output.read_bytes() == bytes([1, 2, 3, 250, 128, 64])
+
+
 def test_convert_image_writes_alpha1_mask(tmp_path):
     source = tmp_path / "icon.png"
     output = tmp_path / "icon.rgb565"

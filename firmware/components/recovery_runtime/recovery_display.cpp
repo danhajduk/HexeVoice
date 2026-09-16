@@ -55,21 +55,31 @@ constexpr char kTag[] = "hexe_recovery_display";
 constexpr int kWidth = BSP_LCD_H_RES;
 constexpr int kHeight = BSP_LCD_V_RES;
 constexpr int kFlushRows = 24;
-constexpr size_t kBackgroundBytes = static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * sizeof(uint16_t);
-constexpr char kRecoveryBackgroundPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures/recovery_bg.rgb565";
-constexpr char kFallbackBackgroundPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures/bg.rgb565";
-constexpr uint16_t kBlack = 0x0000;
-constexpr uint16_t kCanvas = 0x08A4;
-constexpr uint16_t kCanvasAlt = 0x10E6;
-constexpr uint16_t kInk = 0xFFFF;
-constexpr uint16_t kMuted = 0xBDF7;
-constexpr uint16_t kCyan = 0x05FF;
-constexpr uint16_t kGreen = 0x37E6;
-constexpr uint16_t kYellow = 0xFEE0;
-constexpr uint16_t kOrange = 0xFCA0;
-constexpr uint16_t kRed = 0xF926;
-constexpr uint16_t kMagenta = 0xD29F;
-constexpr uint16_t kBlue = 0x03BF;
+constexpr int kBytesPerPixel = 3;
+constexpr size_t kBackgroundBytes =
+    static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
+constexpr char kRecoveryBackgroundPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures/recovery_bg.rgb888";
+constexpr char kFallbackBackgroundPath[] = BSP_SD_MOUNT_POINT "/hexe/pictures/bg.rgb888";
+
+constexpr uint32_t rgb565_to_rgb888(uint16_t color) {
+  const uint32_t red = ((color >> 11) & 0x1F) * 255 / 31;
+  const uint32_t green = ((color >> 5) & 0x3F) * 255 / 63;
+  const uint32_t blue = (color & 0x1F) * 255 / 31;
+  return (red << 16) | (green << 8) | blue;
+}
+
+constexpr uint32_t kBlack = rgb565_to_rgb888(0x0000);
+constexpr uint32_t kCanvas = rgb565_to_rgb888(0x08A4);
+constexpr uint32_t kCanvasAlt = rgb565_to_rgb888(0x10E6);
+constexpr uint32_t kInk = rgb565_to_rgb888(0xFFFF);
+constexpr uint32_t kMuted = rgb565_to_rgb888(0xBDF7);
+constexpr uint32_t kCyan = rgb565_to_rgb888(0x05FF);
+constexpr uint32_t kGreen = rgb565_to_rgb888(0x37E6);
+constexpr uint32_t kYellow = rgb565_to_rgb888(0xFEE0);
+constexpr uint32_t kOrange = rgb565_to_rgb888(0xFCA0);
+constexpr uint32_t kRed = rgb565_to_rgb888(0xF926);
+constexpr uint32_t kMagenta = rgb565_to_rgb888(0xD29F);
+constexpr uint32_t kBlue = rgb565_to_rgb888(0x03BF);
 
 enum class P4Screen {
   kWaiting,
@@ -83,8 +93,8 @@ enum class P4Screen {
 
 esp_lcd_panel_handle_t g_panel = nullptr;
 esp_lcd_panel_io_handle_t g_panel_io = nullptr;
-uint16_t *g_flush_buffer = nullptr;
-uint16_t *g_background_pixels = nullptr;
+uint8_t *g_flush_buffer = nullptr;
+uint8_t *g_background_pixels = nullptr;
 SemaphoreHandle_t g_refresh_done = nullptr;
 bool g_display_ready = false;
 bool g_wait_for_refresh = false;
@@ -180,7 +190,7 @@ const char *screen_detail(P4Screen screen) {
   }
 }
 
-uint16_t screen_accent(P4Screen screen) {
+uint32_t screen_accent(P4Screen screen) {
   switch (screen) {
     case P4Screen::kPairing:
       return kCyan;
@@ -229,22 +239,24 @@ uint32_t display_signature(P4Screen screen, uint32_t frame) {
   return signature;
 }
 
-void set_pixel(int x, int y, uint16_t color) {
+void set_pixel(int x, int y, uint32_t color) {
   if (g_flush_buffer == nullptr || x < 0 || y < g_strip_y || x >= kWidth || y >= g_strip_y + g_strip_rows) {
     return;
   }
-  g_flush_buffer[(y - g_strip_y) * kWidth + x] = color;
+  uint8_t *pixel = g_flush_buffer + (((y - g_strip_y) * kWidth + x) * kBytesPerPixel);
+  pixel[0] = static_cast<uint8_t>((color >> 16) & 0xFF);
+  pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFF);
+  pixel[2] = static_cast<uint8_t>(color & 0xFF);
 }
 
-void fill_rect(int x, int y, int width, int height, uint16_t color) {
+void fill_rect(int x, int y, int width, int height, uint32_t color) {
   const int x0 = std::clamp(x, 0, kWidth);
   const int y0 = std::clamp(y, g_strip_y, g_strip_y + g_strip_rows);
   const int x1 = std::clamp(x + width, 0, kWidth);
   const int y1 = std::clamp(y + height, g_strip_y, g_strip_y + g_strip_rows);
   for (int row = y0; row < y1; ++row) {
-    uint16_t *target = g_flush_buffer + ((row - g_strip_y) * kWidth) + x0;
     for (int col = x0; col < x1; ++col) {
-      *target++ = color;
+      set_pixel(col, row, color);
     }
   }
 }
@@ -253,10 +265,9 @@ void fill_procedural_background() {
   for (int row = 0; row < g_strip_rows; ++row) {
     const int y = g_strip_y + row;
     const bool alt_band = ((y / 40) % 2) == 0;
-    const uint16_t base = alt_band ? kCanvas : kCanvasAlt;
-    uint16_t *target = g_flush_buffer + (row * kWidth);
+    const uint32_t base = alt_band ? kCanvas : kCanvasAlt;
     for (int x = 0; x < kWidth; ++x) {
-      *target++ = base;
+      set_pixel(x, y, base);
     }
   }
 }
@@ -267,11 +278,11 @@ void fill_background_strip() {
     return;
   }
   std::memcpy(g_flush_buffer,
-              g_background_pixels + (static_cast<size_t>(g_strip_y) * static_cast<size_t>(kWidth)),
-              static_cast<size_t>(kWidth) * static_cast<size_t>(g_strip_rows) * sizeof(uint16_t));
+              g_background_pixels + (static_cast<size_t>(g_strip_y) * static_cast<size_t>(kWidth) * kBytesPerPixel),
+              static_cast<size_t>(kWidth) * static_cast<size_t>(g_strip_rows) * kBytesPerPixel);
 }
 
-void draw_disc(int center_x, int center_y, int radius, uint16_t color) {
+void draw_disc(int center_x, int center_y, int radius, uint32_t color) {
   const int r2 = radius * radius;
   for (int y = center_y - radius; y <= center_y + radius; ++y) {
     for (int x = center_x - radius; x <= center_x + radius; ++x) {
@@ -284,7 +295,7 @@ void draw_disc(int center_x, int center_y, int radius, uint16_t color) {
   }
 }
 
-void draw_ring(int center_x, int center_y, int radius, int thickness, uint16_t color) {
+void draw_ring(int center_x, int center_y, int radius, int thickness, uint32_t color) {
   const int outer = radius * radius;
   const int inner_radius = radius - thickness;
   const int inner = inner_radius * inner_radius;
@@ -377,7 +388,7 @@ int text_width(const char *text, int scale_percent) {
   return width > 0 ? width - scaled_units(1, scale_percent) : 0;
 }
 
-void draw_char(int x, int y, char ch, int scale_percent, uint16_t color) {
+void draw_char(int x, int y, char ch, int scale_percent, uint32_t color) {
   const uint8_t *glyph = font5x7_glyph(ch);
   if (glyph == nullptr || scale_percent <= 0) {
     return;
@@ -402,7 +413,7 @@ void draw_char(int x, int y, char ch, int scale_percent, uint16_t color) {
   }
 }
 
-void draw_text(int x, int y, const char *text, int scale_percent, uint16_t color) {
+void draw_text(int x, int y, const char *text, int scale_percent, uint32_t color) {
   if (text == nullptr || scale_percent <= 0) {
     return;
   }
@@ -415,7 +426,7 @@ void draw_text(int x, int y, const char *text, int scale_percent, uint16_t color
   }
 }
 
-void draw_centered_text(int y, const char *text, int scale_percent, uint16_t color) {
+void draw_centered_text(int y, const char *text, int scale_percent, uint32_t color) {
   draw_text((kWidth - text_width(text, scale_percent)) / 2, y, text, scale_percent, color);
 }
 
@@ -466,7 +477,7 @@ bool try_load_sd_background(const char *path) {
   }
   if (static_cast<size_t>(info.st_size) != kBackgroundBytes) {
     ESP_LOGW(kTag,
-             "Ignoring P4 recovery background %s: expected %u bytes for %dx%d RGB565, got %ld",
+             "Ignoring P4 recovery background %s: expected %u bytes for %dx%d RGB888, got %ld",
              path,
              static_cast<unsigned>(kBackgroundBytes),
              kWidth,
@@ -476,7 +487,7 @@ bool try_load_sd_background(const char *path) {
   }
 
   if (g_background_pixels == nullptr) {
-    g_background_pixels = static_cast<uint16_t *>(heap_caps_malloc(kBackgroundBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    g_background_pixels = static_cast<uint8_t *>(heap_caps_malloc(kBackgroundBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
   }
   if (g_background_pixels == nullptr) {
     ESP_LOGW(kTag, "No PSRAM available for P4 recovery background cache; using procedural background");
@@ -488,20 +499,20 @@ bool try_load_sd_background(const char *path) {
     ESP_LOGW(kTag, "Could not open P4 recovery background %s: %s", path, std::strerror(errno));
     return false;
   }
-  const size_t read_pixels = std::fread(g_background_pixels, sizeof(uint16_t), kBackgroundBytes / sizeof(uint16_t), file);
+  const size_t read_bytes = std::fread(g_background_pixels, 1, kBackgroundBytes, file);
   std::fclose(file);
-  if (read_pixels != kBackgroundBytes / sizeof(uint16_t)) {
+  if (read_bytes != kBackgroundBytes) {
     ESP_LOGW(kTag,
-             "Could not read P4 recovery background %s: expected %u pixels, got %u",
+             "Could not read P4 recovery background %s: expected %u bytes, got %u",
              path,
-             static_cast<unsigned>(kBackgroundBytes / sizeof(uint16_t)),
-             static_cast<unsigned>(read_pixels));
+             static_cast<unsigned>(kBackgroundBytes),
+             static_cast<unsigned>(read_bytes));
     heap_caps_free(g_background_pixels);
     g_background_pixels = nullptr;
     return false;
   }
 
-  g_background_source = std::strcmp(path, kRecoveryBackgroundPath) == 0 ? "SD recovery_bg.rgb565" : "SD bg.rgb565";
+  g_background_source = std::strcmp(path, kRecoveryBackgroundPath) == 0 ? "SD recovery_bg.rgb888" : "SD bg.rgb888";
   ESP_LOGI(kTag, "Loaded P4 recovery background from %s", path);
   return true;
 }
@@ -521,22 +532,22 @@ void init_p4_sd_background() {
   }
 }
 
-void draw_progress_bar(int x, int y, int width, int height, int progress, uint16_t accent) {
-  fill_rect(x, y, width, height, 0x2965);
+void draw_progress_bar(int x, int y, int width, int height, int progress, uint32_t accent) {
+  fill_rect(x, y, width, height, rgb565_to_rgb888(0x2965));
   fill_rect(x, y, (width * std::clamp(progress, 0, 100)) / 100, height, accent);
 }
 
-void draw_activity_dots(uint32_t frame, uint16_t accent) {
+void draw_activity_dots(uint32_t frame, uint32_t accent) {
   constexpr int start_x = 439;
   constexpr int center_y = 506;
   for (int i = 0; i < 6; ++i) {
     const bool lit = static_cast<int>(frame % 6) == i;
-    draw_disc(start_x + (i * 30), center_y, lit ? 9 : 5, lit ? accent : 0x39E7);
+    draw_disc(start_x + (i * 30), center_y, lit ? 9 : 5, lit ? accent : rgb565_to_rgb888(0x39E7));
   }
 }
 
 void draw_p4_frame(P4Screen screen, uint32_t frame) {
-  const uint16_t accent = screen_accent(screen);
+  const uint32_t accent = screen_accent(screen);
   const bool ota = screen == P4Screen::kOta;
   const int progress = ota ? std::clamp(hexe::recovery::recovery_firmware_install_progress_percent(), 0, 100) : 0;
   char reason[72] = {};
@@ -957,10 +968,11 @@ void init_recovery_display() {
   }
 
   g_refresh_done = xSemaphoreCreateBinary();
-  g_flush_buffer = static_cast<uint16_t *>(heap_caps_malloc(kWidth * kFlushRows * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+  const size_t flush_buffer_bytes = static_cast<size_t>(kWidth) * kFlushRows * kBytesPerPixel;
+  g_flush_buffer = static_cast<uint8_t *>(heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
   if (g_flush_buffer == nullptr) {
-    g_flush_buffer = static_cast<uint16_t *>(
-        heap_caps_malloc(kWidth * kFlushRows * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+    g_flush_buffer = static_cast<uint8_t *>(
+        heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
   }
   if (g_flush_buffer == nullptr || g_refresh_done == nullptr) {
     ESP_LOGW(kTag, "Recovery display disabled: P4 buffer allocation failed");
@@ -1002,7 +1014,7 @@ void init_recovery_display() {
   } else {
     ESP_LOGW(kTag, "Failed to enable P4 recovery LCD backlight: %s", esp_err_to_name(backlight_result));
   }
-  ESP_LOGI(kTag, "Recovery display initialized for Waveshare P4 7B");
+  ESP_LOGI(kTag, "Recovery display initialized for Waveshare P4 7B RGB888");
 #elif HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
   if (g_display_ready) {
     return;

@@ -59,7 +59,7 @@ display:
   shape: rectangular
   width_px: 1024
   height_px: 600
-  color_depth: rgb565_or_rgb888
+  color_depth: rgb888
   touch: true
 audio:
   input:

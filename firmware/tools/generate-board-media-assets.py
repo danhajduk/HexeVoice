@@ -15,6 +15,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ASSET_ROOT = ROOT / "firmware" / "assets"
 IMAGE_SUFFIXES = {".png"}
+RGB888_BOARD_PROFILES = {"waveshare_p4_wifi6_touch_lcd_7b"}
 
 
 def _parse_size(value: str) -> tuple[int, int]:
@@ -111,12 +112,17 @@ def _run(command: list[str], dry_run: bool) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Convert board source PNG files to raw RGB565 endpoint assets "
+            "Convert board source PNG files to raw RGB endpoint assets "
             "and regenerate assets.json."
         )
     )
     parser.add_argument("board_profile", help="Board profile folder under firmware/assets.")
     parser.add_argument("--asset-root", type=Path, default=DEFAULT_ASSET_ROOT, help="Defaults to firmware/assets.")
+    parser.add_argument(
+        "--pixel-format",
+        choices=("rgb565", "rgb888"),
+        help="Output pixel format. Defaults to RGB888 for the P4 7-inch board and RGB565 otherwise.",
+    )
     parser.add_argument("--width", type=int, help="Override all picture output widths. Defaults to each source image width.")
     parser.add_argument("--height", type=int, help="Override all picture output heights. Defaults to each source image height.")
     parser.add_argument(
@@ -170,6 +176,10 @@ def main() -> int:
     picture_dir = board_dir / "assets" / "picture"
     sprite_dir = board_dir / "assets" / "sprite"
 
+    pixel_format = args.pixel_format or ("rgb888" if args.board_profile in RGB888_BOARD_PROFILES else "rgb565")
+    output_suffix = f".{pixel_format}"
+    converter_format = f"raw-{pixel_format}"
+
     picture_sources = _source_images(board_dir)
     sprite_sources = _source_images(board_dir / "sprites")
     if not picture_sources and not sprite_sources:
@@ -177,49 +187,45 @@ def main() -> int:
 
     for source in picture_sources:
         picture_width, picture_height = (args.width, args.height) if args.width is not None else _image_size(source)
-        output = picture_dir / f"{source.stem}.rgb565"
-        _run(
-            [
-                converter_python,
-                str(converter),
-                str(source),
-                str(output),
-                "--format",
-                "raw-rgb565",
-                "--width",
-                str(picture_width),
-                "--height",
-                str(picture_height),
-                "--fit",
-                args.fit,
-                "--byte-order",
-                args.byte_order,
-            ],
-            args.dry_run,
-        )
+        output = picture_dir / f"{source.stem}{output_suffix}"
+        command = [
+            converter_python,
+            str(converter),
+            str(source),
+            str(output),
+            "--format",
+            converter_format,
+            "--width",
+            str(picture_width),
+            "--height",
+            str(picture_height),
+            "--fit",
+            args.fit,
+        ]
+        if pixel_format == "rgb565":
+            command.extend(["--byte-order", args.byte_order])
+        _run(command, args.dry_run)
 
     for source in sprite_sources:
         sprite_width, sprite_height = args.sprite_size or _image_size(source)
-        output = sprite_dir / f"{source.stem}.rgb565"
-        _run(
-            [
-                converter_python,
-                str(converter),
-                str(source),
-                str(output),
-                "--format",
-                "raw-rgb565",
-                "--width",
-                str(sprite_width),
-                "--height",
-                str(sprite_height),
-                "--fit",
-                args.sprite_fit,
-                "--byte-order",
-                args.byte_order,
-            ],
-            args.dry_run,
-        )
+        output = sprite_dir / f"{source.stem}{output_suffix}"
+        command = [
+            converter_python,
+            str(converter),
+            str(source),
+            str(output),
+            "--format",
+            converter_format,
+            "--width",
+            str(sprite_width),
+            "--height",
+            str(sprite_height),
+            "--fit",
+            args.sprite_fit,
+        ]
+        if pixel_format == "rgb565":
+            command.extend(["--byte-order", args.byte_order])
+        _run(command, args.dry_run)
 
     manifest_args = [
         sys.executable,

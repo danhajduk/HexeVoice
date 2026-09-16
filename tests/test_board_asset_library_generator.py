@@ -122,3 +122,22 @@ def test_generate_board_asset_library_preserves_existing_metadata(tmp_path):
     assert result == 0
     payload = json.loads((board_assets / "assets.json").read_text(encoding="utf-8"))
     assert payload["updated_at"] == first_updated_at
+
+
+def test_generate_board_asset_library_infers_rgb888_metadata(tmp_path):
+    generator = _load_generator()
+    assets_root = tmp_path / "assets-root"
+    board_dir = assets_root / "waveshare_p4_wifi6_touch_lcd_7b"
+    board_assets = board_dir / "assets"
+    (board_assets / "picture").mkdir(parents=True)
+    (board_assets / "picture" / "bg.rgb888").write_bytes(b"\x00" * (1024 * 600 * 3))
+
+    assert generator.main(["--root", str(assets_root), "waveshare_p4_wifi6_touch_lcd_7b"]) == 0
+
+    payload = json.loads((board_assets / "assets.json").read_text(encoding="utf-8"))
+    metadata = payload["assets"][0]["metadata"]
+    assert metadata["pixel_format"] == "rgb888"
+    assert metadata["channel_order"] == "rgb"
+    assert metadata["width"] == 1024
+    assert metadata["height"] == 600
+    assert metadata["size_bytes"] == 1024 * 600 * 3

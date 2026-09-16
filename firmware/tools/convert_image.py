@@ -153,6 +153,11 @@ def write_raw_rgb565(pixels: list[int], output_path: Path, byte_order: str) -> N
             handle.write(rgb565_to_bytes(pixel, byte_order))
 
 
+def write_raw_rgb888(image: Image.Image, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_bytes(image.convert("RGB").tobytes())
+
+
 def write_alpha_mask(image: Image.Image, output_path: Path, mask_format: str) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     alpha = image.getchannel("A")
@@ -236,12 +241,12 @@ def write_lvgl_c(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Convert an image to RGB565 firmware, raw, or LVGL formats")
+    parser = argparse.ArgumentParser(description="Convert an image to raw RGB or RGB565 firmware/LVGL formats")
     parser.add_argument("input", type=Path, help="source image, such as PNG or JPEG")
     parser.add_argument("output", type=Path, help="destination file")
     parser.add_argument(
         "--format",
-        choices=("cpp-header", "raw-rgb565", "lvgl-c"),
+        choices=("cpp-header", "raw-rgb565", "raw-rgb888", "lvgl-c"),
         default="raw-rgb565",
         help="output format; default: raw-rgb565",
     )
@@ -302,8 +307,11 @@ def main() -> None:
         image = rgba_image.convert("RGB")
     else:
         image = prepare_image(args.input, args.width, args.height, args.fit, args.background, args.alpha_mode)
-    pixels = image_to_rgb565_pixels(image)
+    if args.format == "raw-rgb888":
+        write_raw_rgb888(image, args.output)
+        return
 
+    pixels = image_to_rgb565_pixels(image)
     if args.format == "cpp-header":
         write_cpp_header(pixels, args.output, args.width, args.height, args.symbol)
     elif args.format == "raw-rgb565":

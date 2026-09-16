@@ -34,9 +34,9 @@ configured.
 The P4 recovery app also initializes the 7-inch display and renders a live
 onboarding screen before and during pairing. The screen shows the onboarding
 state/reason, device name/id, Wi-Fi MAC, BLE MAC, firmware version, and whether
-the local HTTP rescue path is active. It may load an optional 1024x600 RGB565
-background from `/sdcard/hexe/pictures/recovery_bg.rgb565`, falling back to
-`/sdcard/hexe/pictures/bg.rgb565` and then a procedural background; secrets are
+the local HTTP rescue path is active. It may load an optional 1024x600 RGB888
+background from `/sdcard/hexe/pictures/recovery_bg.rgb888`, falling back to
+`/sdcard/hexe/pictures/bg.rgb888` and then a procedural background; secrets are
 never rendered on the panel.
 
 For `waveshare_s3_touch_lcd_1_85c_box_v2`, the recovery app embeds three

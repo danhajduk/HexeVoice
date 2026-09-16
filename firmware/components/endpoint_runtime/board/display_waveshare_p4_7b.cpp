@@ -27,25 +27,35 @@ constexpr char kTag[] = "hexe_display_p4_7b";
 constexpr int kWidth = BSP_LCD_H_RES;
 constexpr int kHeight = BSP_LCD_V_RES;
 constexpr int kFlushRows = 24;
-constexpr uint16_t kBlack = 0x0000;
-constexpr uint16_t kCanvas = 0x08A4;
-constexpr uint16_t kCanvasAlt = 0x10E6;
-constexpr uint16_t kInk = 0xFFFF;
-constexpr uint16_t kMuted = 0x7BEF;
-constexpr uint16_t kCyan = 0x05FF;
-constexpr uint16_t kGreen = 0x37E6;
-constexpr uint16_t kYellow = 0xFEE0;
-constexpr uint16_t kOrange = 0xFCA0;
-constexpr uint16_t kRed = 0xF926;
-constexpr uint16_t kMagenta = 0xD29F;
-constexpr uint16_t kBlue = 0x03BF;
+constexpr int kBytesPerPixel = 3;
+
+constexpr uint32_t rgb565_to_rgb888(uint16_t color) {
+  const uint32_t red = ((color >> 11) & 0x1F) * 255 / 31;
+  const uint32_t green = ((color >> 5) & 0x3F) * 255 / 63;
+  const uint32_t blue = (color & 0x1F) * 255 / 31;
+  return (red << 16) | (green << 8) | blue;
+}
+
+constexpr uint32_t kBlack = rgb565_to_rgb888(0x0000);
+constexpr uint32_t kCanvas = rgb565_to_rgb888(0x08A4);
+constexpr uint32_t kCanvasAlt = rgb565_to_rgb888(0x10E6);
+constexpr uint32_t kInk = rgb565_to_rgb888(0xFFFF);
+constexpr uint32_t kMuted = rgb565_to_rgb888(0x7BEF);
+constexpr uint32_t kCyan = rgb565_to_rgb888(0x05FF);
+constexpr uint32_t kGreen = rgb565_to_rgb888(0x37E6);
+constexpr uint32_t kYellow = rgb565_to_rgb888(0xFEE0);
+constexpr uint32_t kOrange = rgb565_to_rgb888(0xFCA0);
+constexpr uint32_t kRed = rgb565_to_rgb888(0xF926);
+constexpr uint32_t kMagenta = rgb565_to_rgb888(0xD29F);
+constexpr uint32_t kBlue = rgb565_to_rgb888(0x03BF);
 constexpr char kProceduralAssetName[] = "procedural-p4-7b-status";
-constexpr char kSdTestBackgroundName[] = "bg.rgb565";
-constexpr size_t kSdTestBackgroundBytes = static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * sizeof(uint16_t);
+constexpr char kSdTestBackgroundName[] = "bg.rgb888";
+constexpr size_t kSdTestBackgroundBytes =
+    static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
 
 esp_lcd_panel_handle_t g_panel = nullptr;
 esp_lcd_panel_io_handle_t g_panel_io = nullptr;
-uint16_t *g_flush_buffer = nullptr;
+uint8_t *g_flush_buffer = nullptr;
 SemaphoreHandle_t g_refresh_done = nullptr;
 bool g_display_ready = false;
 bool g_backlight_on = false;
@@ -75,7 +85,7 @@ bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t 
   return high_task_woken == pdTRUE;
 }
 
-uint16_t phase_color(hexe::AppPhase phase) {
+uint32_t phase_color(hexe::AppPhase phase) {
   switch (phase) {
     case hexe::AppPhase::kBooting:
       return kCyan;
@@ -152,42 +162,44 @@ int frame_signature(int frame) {
   return signature;
 }
 
-void set_pixel(int x, int y, uint16_t color) {
+void set_pixel(int x, int y, uint32_t color) {
   if (g_flush_buffer == nullptr || x < 0 || y < g_strip_y || x >= kWidth || y >= g_strip_y + g_strip_rows) {
     return;
   }
-  g_flush_buffer[(y - g_strip_y) * kWidth + x] = color;
+  uint8_t *pixel = g_flush_buffer + (((y - g_strip_y) * kWidth + x) * kBytesPerPixel);
+  pixel[0] = static_cast<uint8_t>((color >> 16) & 0xFF);
+  pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFF);
+  pixel[2] = static_cast<uint8_t>(color & 0xFF);
 }
 
-void fill_rect(int x, int y, int width, int height, uint16_t color) {
+void fill_rect(int x, int y, int width, int height, uint32_t color) {
   const int x0 = std::clamp(x, 0, kWidth);
   const int y0 = std::clamp(y, g_strip_y, g_strip_y + g_strip_rows);
   const int x1 = std::clamp(x + width, 0, kWidth);
   const int y1 = std::clamp(y + height, g_strip_y, g_strip_y + g_strip_rows);
   for (int row = y0; row < y1; ++row) {
-    uint16_t *target = g_flush_buffer + ((row - g_strip_y) * kWidth) + x0;
     for (int col = x0; col < x1; ++col) {
-      *target++ = color;
+      set_pixel(col, row, color);
     }
   }
 }
 
-void draw_hline(int x, int y, int width, uint16_t color) {
+void draw_hline(int x, int y, int width, uint32_t color) {
   fill_rect(x, y, width, 1, color);
 }
 
-void draw_vline(int x, int y, int height, uint16_t color) {
+void draw_vline(int x, int y, int height, uint32_t color) {
   fill_rect(x, y, 1, height, color);
 }
 
-void draw_rect_outline(int x, int y, int width, int height, uint16_t color) {
+void draw_rect_outline(int x, int y, int width, int height, uint32_t color) {
   draw_hline(x, y, width, color);
   draw_hline(x, y + height - 1, width, color);
   draw_vline(x, y, height, color);
   draw_vline(x + width - 1, y, height, color);
 }
 
-void draw_disc(int center_x, int center_y, int radius, uint16_t color) {
+void draw_disc(int center_x, int center_y, int radius, uint32_t color) {
   const int r2 = radius * radius;
   for (int y = center_y - radius; y <= center_y + radius; ++y) {
     for (int x = center_x - radius; x <= center_x + radius; ++x) {
@@ -200,7 +212,7 @@ void draw_disc(int center_x, int center_y, int radius, uint16_t color) {
   }
 }
 
-void draw_ring(int center_x, int center_y, int radius, int thickness, uint16_t color) {
+void draw_ring(int center_x, int center_y, int radius, int thickness, uint32_t color) {
   const int outer = radius * radius;
   const int inner_radius = radius - thickness;
   const int inner = inner_radius * inner_radius;
@@ -293,7 +305,7 @@ int text_width(const char *text, int scale_percent) {
   return width > 0 ? width - scaled_units(1, scale_percent) : 0;
 }
 
-void draw_char(int x, int y, char ch, int scale_percent, uint16_t color) {
+void draw_char(int x, int y, char ch, int scale_percent, uint32_t color) {
   const uint8_t *glyph = font5x7_glyph(ch);
   if (glyph == nullptr || scale_percent <= 0) {
     return;
@@ -318,7 +330,7 @@ void draw_char(int x, int y, char ch, int scale_percent, uint16_t color) {
   }
 }
 
-void draw_text(int x, int y, const char *text, int scale_percent, uint16_t color) {
+void draw_text(int x, int y, const char *text, int scale_percent, uint32_t color) {
   if (text == nullptr || scale_percent <= 0) {
     return;
   }
@@ -331,7 +343,7 @@ void draw_text(int x, int y, const char *text, int scale_percent, uint16_t color
   }
 }
 
-void draw_centered_text(int y, const char *text, int scale_percent, uint16_t color) {
+void draw_centered_text(int y, const char *text, int scale_percent, uint32_t color) {
   draw_text((kWidth - text_width(text, scale_percent)) / 2, y, text, scale_percent, color);
 }
 
@@ -369,7 +381,7 @@ FILE *open_sd_test_background(char *path, size_t path_size) {
     if (!g_logged_bg_bad_size) {
       ESP_LOGW(
           kTag,
-          "Ignoring P4 SD test background %s: expected %u bytes for %dx%d RGB565, got %ld",
+          "Ignoring P4 SD test background %s: expected %u bytes for %dx%d RGB888, got %ld",
           path,
           static_cast<unsigned>(kSdTestBackgroundBytes),
           kWidth,
@@ -391,17 +403,18 @@ bool read_sd_background_strip(FILE *file, const char *path) {
   if (file == nullptr || g_flush_buffer == nullptr) {
     return false;
   }
-  const size_t pixel_count = static_cast<size_t>(kWidth) * static_cast<size_t>(g_strip_rows);
-  const size_t read_pixels = std::fread(g_flush_buffer, sizeof(uint16_t), pixel_count, file);
-  if (read_pixels != pixel_count) {
+  const size_t expected_bytes =
+      static_cast<size_t>(kWidth) * static_cast<size_t>(g_strip_rows) * kBytesPerPixel;
+  const size_t read_bytes = std::fread(g_flush_buffer, 1, expected_bytes, file);
+  if (read_bytes != expected_bytes) {
     if (!g_logged_bg_read_error) {
       ESP_LOGW(
           kTag,
-          "Could not read P4 SD test background strip from %s at y=%d: expected %u pixels, got %u",
+          "Could not read P4 SD test background strip from %s at y=%d: expected %u bytes, got %u",
           path == nullptr ? kSdTestBackgroundName : path,
           g_strip_y,
-          static_cast<unsigned>(pixel_count),
-          static_cast<unsigned>(read_pixels));
+          static_cast<unsigned>(expected_bytes),
+          static_cast<unsigned>(read_bytes));
       g_logged_bg_read_error = true;
     }
     return false;
@@ -413,16 +426,16 @@ void clear_strip() {
   for (int row = 0; row < g_strip_rows; ++row) {
     const int y = g_strip_y + row;
     const bool alt_band = ((y / 36) % 2) == 0;
-    const uint16_t base = alt_band ? kCanvas : kCanvasAlt;
+    const uint32_t base = alt_band ? kCanvas : kCanvasAlt;
     for (int x = 0; x < kWidth; ++x) {
-      g_flush_buffer[row * kWidth + x] = base;
+      set_pixel(x, y, base);
     }
   }
 }
 
 bool draw_status_frame(int frame, const char *build_id, FILE *background_file, const char *background_path) {
   const auto &state = hexe::state();
-  const uint16_t accent = phase_color(state.phase);
+  const uint32_t accent = phase_color(state.phase);
   const bool drew_background = read_sd_background_strip(background_file, background_path);
   if (!drew_background) {
     clear_strip();
@@ -433,18 +446,18 @@ bool draw_status_frame(int frame, const char *build_id, FILE *background_file, c
   }
 
   for (int x = 64; x < kWidth; x += 64) {
-    draw_vline(x, 0, kHeight, 0x1168);
+    draw_vline(x, 0, kHeight, rgb565_to_rgb888(0x1168));
   }
   for (int y = 48; y < kHeight; y += 48) {
-    draw_hline(0, y, kWidth, 0x1168);
+    draw_hline(0, y, kWidth, rgb565_to_rgb888(0x1168));
   }
 
   fill_rect(0, 0, kWidth, 12, accent);
   fill_rect(0, kHeight - 12, kWidth, 12, accent);
-  draw_rect_outline(32, 32, kWidth - 64, kHeight - 64, 0x3A49);
-  draw_rect_outline(44, 44, kWidth - 88, kHeight - 88, 0x19CC);
+  draw_rect_outline(32, 32, kWidth - 64, kHeight - 64, rgb565_to_rgb888(0x3A49));
+  draw_rect_outline(44, 44, kWidth - 88, kHeight - 88, rgb565_to_rgb888(0x19CC));
 
-  draw_ring(kWidth / 2, 284, 154, 8, 0x29CF);
+  draw_ring(kWidth / 2, 284, 154, 8, rgb565_to_rgb888(0x29CF));
   draw_ring(kWidth / 2, 284, 126 + (frame % 5), 8, accent);
   draw_disc(kWidth / 2, 284, 34, accent);
   draw_disc(kWidth / 2, 284, 18, kCanvas);
@@ -458,19 +471,19 @@ bool draw_status_frame(int frame, const char *build_id, FILE *background_file, c
       detail,
       sizeof(detail),
       "display 1024x600  touch pending  audio pending  hosted wifi pending");
-  draw_centered_text(466, detail, 210, 0xBDF7);
+  draw_centered_text(466, detail, 210, rgb565_to_rgb888(0xBDF7));
 
   char version[96] = {};
   std::snprintf(version, sizeof(version), "build %s", build_id == nullptr ? "unknown" : build_id);
-  draw_text(60, 548, version, 190, 0xBDF7);
+  draw_text(60, 548, version, 190, rgb565_to_rgb888(0xBDF7));
 
   if (state.ota_active || state.phase == hexe::AppPhase::kUpdating) {
     const int progress = std::clamp(state.ota_progress_percent, 0, 100);
-    fill_rect(704, 548, 260, 16, 0x2965);
+    fill_rect(704, 548, 260, 16, rgb565_to_rgb888(0x2965));
     fill_rect(704, 548, (260 * progress) / 100, 16, accent);
     draw_rect_outline(704, 548, 260, 16, kInk);
   } else {
-    draw_text(720, 548, "single app", 190, 0xBDF7);
+    draw_text(720, 548, "single app", 190, rgb565_to_rgb888(0xBDF7));
   }
   return false;
 }
@@ -549,10 +562,11 @@ void init_display() {
   }
 
   g_refresh_done = xSemaphoreCreateBinary();
-  g_flush_buffer = static_cast<uint16_t *>(heap_caps_malloc(kWidth * kFlushRows * sizeof(uint16_t), MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+  const size_t flush_buffer_bytes = static_cast<size_t>(kWidth) * kFlushRows * kBytesPerPixel;
+  g_flush_buffer = static_cast<uint8_t *>(heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
   if (g_flush_buffer == nullptr) {
-    g_flush_buffer = static_cast<uint16_t *>(
-        heap_caps_malloc(kWidth * kFlushRows * sizeof(uint16_t), MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+    g_flush_buffer = static_cast<uint8_t *>(
+        heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
   }
   if (g_flush_buffer == nullptr || g_refresh_done == nullptr) {
     ESP_LOGE(kTag, "Failed to allocate P4 LCD strip buffer");
@@ -584,7 +598,7 @@ void init_display() {
     return;
   }
   g_display_ready = true;
-  ESP_LOGI(kTag, "Waveshare P4 7B display initialized at %dx%d RGB565", kWidth, kHeight);
+  ESP_LOGI(kTag, "Waveshare P4 7B display initialized at %dx%d RGB888", kWidth, kHeight);
 }
 
 void show_black_frame() {
@@ -645,7 +659,7 @@ int display_height() {
 }
 
 const char *display_pixel_format() {
-  return "rgb565";
+  return "rgb888";
 }
 
 int display_last_asset_read_ms() {

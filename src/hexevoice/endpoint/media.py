@@ -39,8 +39,8 @@ DESTINATION_PATHS: dict[EndpointMediaType, str] = {
 }
 
 ALLOWED_EXTENSIONS: dict[EndpointMediaType, set[str]] = {
-    "picture": {".rgb565", ".png", ".jpg", ".jpeg"},
-    "sprite": {".rgb565", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
+    "picture": {".rgb565", ".rgb888", ".png", ".jpg", ".jpeg"},
+    "sprite": {".rgb565", ".rgb888", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
     "sound": {".wav"},
 }
 
@@ -359,6 +359,20 @@ class EndpointMediaService:
                     "width": width,
                     "height": height,
                 }
+            if suffix == ".rgb888":
+                expected_bytes = width * height * 3
+                if len(source_bytes) != expected_bytes:
+                    raise EndpointMediaValidationError(
+                        "invalid_picture_size",
+                        f"Picture RGB888 payload must be exactly {expected_bytes} bytes for {width}x{height}.",
+                    )
+                return source_bytes, source_filename, content_type or "application/octet-stream", {
+                    **metadata,
+                    "pixel_format": "rgb888",
+                    "channel_order": "rgb",
+                    "width": width,
+                    "height": height,
+                }
             converted = self._convert_image_to_rgb565(source_bytes, width=width, height=height)
             return converted, f"{Path(source_filename).stem}.rgb565", "application/octet-stream", {
                 **metadata,
@@ -392,6 +406,22 @@ class EndpointMediaService:
                 return source_bytes, source_filename, content_type or "application/octet-stream", {
                     **metadata,
                     "pixel_format": "rgb565",
+                    "width": width,
+                    "height": height,
+                }
+            if suffix == ".rgb888":
+                width = int(metadata.get("width") or 0)
+                height = int(metadata.get("height") or 0)
+                if width <= 0 or height <= 0:
+                    raise EndpointMediaValidationError("missing_sprite_dimensions", "Sprite RGB888 uploads require width and height metadata.")
+                if len(source_bytes) != width * height * 3:
+                    raise EndpointMediaValidationError("invalid_sprite_size", "Sprite RGB888 size does not match width and height.")
+                if len(source_bytes) > SPRITE_MAX_BYTES:
+                    raise EndpointMediaValidationError("sprite_too_large", "Sprite payload is too large.")
+                return source_bytes, source_filename, content_type or "application/octet-stream", {
+                    **metadata,
+                    "pixel_format": "rgb888",
+                    "channel_order": "rgb",
                     "width": width,
                     "height": height,
                 }

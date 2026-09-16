@@ -1,22 +1,21 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.11",
-  "updated_at": "2026-09-16T20:19:08.148867+00:00",
+  "asset_library_version": "2026.09.16.12",
+  "updated_at": "2026-09-16T20:27:57.507866+00:00",
   "assets": [
     {
       "asset_id": "bg",
       "media_type": "picture",
-      "filename": "bg.rgb565",
-      "source_filename": "bg.rgb565",
-      "role": "sd_background_smoke_test",
+      "filename": "bg.rgb888",
+      "source_filename": "bg.rgb888",
       "metadata": {
-        "pixel_format": "rgb565",
-        "byte_order": "little_endian",
         "width": 1024,
         "height": 600,
-        "size_bytes": 1228800,
-        "sha256": "b453532b5a2fca6d84f5972e76380009560c03dbb4d6a8f6b02edd50649643f0"
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 1843200,
+        "sha256": "fd8a7b44c704c3c6de366760c84e7dd64e2cd7c9a01d2edf2f706c5faa4d160b"
       }
     }
   ]

@@ -19,8 +19,8 @@ DEFAULT_ASSET_ROOT = ROOT / "firmware" / "assets"
 
 MEDIA_TYPES = ("picture", "sprite", "sound")
 ALLOWED_EXTENSIONS: dict[str, set[str]] = {
-    "picture": {".rgb565", ".png", ".jpg", ".jpeg"},
-    "sprite": {".rgb565", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
+    "picture": {".rgb565", ".rgb888", ".png", ".jpg", ".jpeg"},
+    "sprite": {".rgb565", ".rgb888", ".alpha8", ".alpha1", ".png", ".jpg", ".jpeg", ".json"},
     "sound": {".wav"},
 }
 
@@ -125,7 +125,7 @@ def _png_dimensions(path: Path) -> tuple[int, int] | None:
     return int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
 
 
-def _matching_source_dimensions(board_dir: Path, media_type: str, path: Path) -> dict[str, int]:
+def _matching_source_dimensions(board_dir: Path, media_type: str, path: Path, bytes_per_pixel: int) -> dict[str, int]:
     if media_type == "picture":
         source_dir = board_dir
     elif media_type == "sprite":
@@ -138,9 +138,30 @@ def _matching_source_dimensions(board_dir: Path, media_type: str, path: Path) ->
         if dimensions is None:
             continue
         width, height = dimensions
-        if path.stat().st_size == width * height * 2:
+        if path.stat().st_size == width * height * bytes_per_pixel:
             return {"width": width, "height": height}
     return {}
+
+
+def _infer_rgb888_dimensions(size_bytes: int, existing: dict[str, Any]) -> dict[str, Any]:
+    metadata: dict[str, Any] = {"pixel_format": "rgb888", "channel_order": "rgb"}
+    if isinstance(existing.get("width"), int) and isinstance(existing.get("height"), int):
+        metadata["width"] = existing["width"]
+        metadata["height"] = existing["height"]
+        return metadata
+
+    pixels = size_bytes // 3
+    for width, height in ((320, 240), (240, 320), (1024, 600), (600, 1024)):
+        if size_bytes == width * height * 3:
+            metadata["width"] = width
+            metadata["height"] = height
+            return metadata
+
+    side = int(math.isqrt(pixels))
+    if side * side == pixels:
+        metadata["width"] = side
+        metadata["height"] = side
+    return metadata
 
 
 def _wav_metadata(path: Path) -> dict[str, Any]:
@@ -170,8 +191,11 @@ def _infer_metadata(path: Path, media_type: str, existing: dict[str, Any], board
     size_bytes = path.stat().st_size
 
     if suffix == ".rgb565":
-        metadata.update({key: value for key, value in _matching_source_dimensions(board_dir, media_type, path).items() if key not in metadata})
+        metadata.update({key: value for key, value in _matching_source_dimensions(board_dir, media_type, path, 2).items() if key not in metadata})
         metadata.update(_infer_rgb565_dimensions(size_bytes, metadata))
+    elif suffix == ".rgb888":
+        metadata.update({key: value for key, value in _matching_source_dimensions(board_dir, media_type, path, 3).items() if key not in metadata})
+        metadata.update(_infer_rgb888_dimensions(size_bytes, metadata))
     elif suffix in {".alpha8", ".alpha1"}:
         metadata["alpha_format"] = suffix.lstrip(".")
     elif suffix == ".wav":

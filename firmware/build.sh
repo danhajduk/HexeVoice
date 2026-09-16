@@ -241,6 +241,8 @@ CONFIG_CACHE_L2_CACHE_LINE_128B=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 CONFIG_FREERTOS_HZ=1000
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
+# CONFIG_BSP_LCD_COLOR_FORMAT_RGB565 is not set
+CONFIG_BSP_LCD_COLOR_FORMAT_RGB888=y
 CONFIG_ESP_WIFI_REMOTE_ENABLED=y
 CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
 CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
@@ -319,6 +321,13 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
   if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
     grep -Eq "^CONFIG_LV_BUILD_(EXAMPLES|DEMOS)=y$" "${sdkconfig_path}"; then
     echo "Refreshing generated sdkconfig for ${profile}; P4 display build disables LVGL examples and demos"
+    rm -f "${sdkconfig_path}"
+    return
+  fi
+  if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
+    { ! grep -q "^CONFIG_BSP_LCD_COLOR_FORMAT_RGB888=y$" "${sdkconfig_path}" ||
+      grep -q "^CONFIG_BSP_LCD_COLOR_FORMAT_RGB565=y$" "${sdkconfig_path}"; }; then
+    echo "Refreshing generated sdkconfig for ${profile}; P4 display uses RGB888"
     rm -f "${sdkconfig_path}"
     return
   fi
