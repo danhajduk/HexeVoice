@@ -275,6 +275,7 @@ CONFIG_BT_NIMBLE_MSYS_1_BLOCK_SIZE=1024
 CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=24
 CONFIG_BT_NIMBLE_MSYS_2_BLOCK_SIZE=1024
 CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=24
+CONFIG_MBEDTLS_HKDF_C=y
 EOF
     if [[ "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]]; then
       cat >> "${output}" <<'EOF'
@@ -365,10 +366,11 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
       ! grep -q "^CONFIG_BT_NIMBLE_ROLE_CENTRAL=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_BT_NIMBLE_GATT_CLIENT=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_MBEDTLS_HKDF_C=y$" "${sdkconfig_path}" ||
       { [[ "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
         { grep -q "^CONFIG_BT_NIMBLE_TRANSPORT_UART=y$" "${sdkconfig_path}" ||
           ! grep -q "^CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y$" "${sdkconfig_path}"; }; }; }; then
-    echo "Refreshing generated sdkconfig for ${profile}; recovery BLE onboarding requires roles and host stack sizing"
+    echo "Refreshing generated sdkconfig for ${profile}; recovery BLE onboarding requires roles, HKDF, and host stack sizing"
     rm -f "${sdkconfig_path}"
   fi
 }
