@@ -420,30 +420,6 @@ void clear_strip() {
   }
 }
 
-void draw_sd_background_overlay(int frame, const char *build_id) {
-  const auto &state = hexe::state();
-  const uint16_t accent = phase_color(state.phase);
-
-  fill_rect(0, 0, kWidth, 74, kBlack);
-  fill_rect(0, kHeight - 68, kWidth, 68, kBlack);
-  fill_rect(0, 74, kWidth, 4, accent);
-  fill_rect(0, kHeight - 72, kWidth, 4, accent);
-
-  draw_text(48, 24, "HEXE", 480, kInk);
-  draw_text(216, 36, "P4 SD background test", 210, accent);
-  draw_text(48, 552, kSdTestBackgroundName, 180, kInk);
-
-  char status[96] = {};
-  std::snprintf(status, sizeof(status), "%s  %dx%d RGB565", phase_text(state), kWidth, kHeight);
-  draw_text(452, 30, status, 190, kInk);
-
-  char version[96] = {};
-  std::snprintf(version, sizeof(version), "build %s", build_id == nullptr ? "unknown" : build_id);
-  draw_text(706, 552, version, 155, 0xBDF7);
-
-  draw_ring(kWidth - 74, kHeight - 34, 18 + (frame % 4), 4, accent);
-}
-
 bool draw_status_frame(int frame, const char *build_id, FILE *background_file, const char *background_path) {
   const auto &state = hexe::state();
   const uint16_t accent = phase_color(state.phase);
@@ -451,7 +427,8 @@ bool draw_status_frame(int frame, const char *build_id, FILE *background_file, c
   if (!drew_background) {
     clear_strip();
   } else {
-    draw_sd_background_overlay(frame, build_id);
+    (void)frame;
+    (void)build_id;
     return true;
   }
 
