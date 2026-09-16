@@ -52,6 +52,7 @@ static int client_connected;
 static int client_offer_received;
 static int client_identity_sent;
 static int client_credentials_received;
+static int host_synced;
 static uint16_t client_conn_handle;
 static uint16_t client_service_start_handle;
 static uint16_t client_service_end_handle;
@@ -264,6 +265,10 @@ static void format_addr(const ble_addr_t *addr, char out[18]) {
 
 const char *hexe_ble_provisioning_local_address(void) {
   static char address[18] = "";
+  if (!host_synced) {
+    address[0] = '\0';
+    return address;
+  }
   uint8_t own_addr[6] = {0};
   if (ble_hs_id_copy_addr(own_addr_type, own_addr, NULL) != 0) {
     address[0] = '\0';
@@ -858,6 +863,7 @@ static void on_sync(void) {
     ESP_LOGW(TAG, "BLE onboarding address selection failed: %d", rc);
     return;
   }
+  host_synced = 1;
   ESP_LOGI(TAG, "BLE onboarding host_sync own_addr_type=%u", own_addr_type);
   start_pairing_scan();
   advertise();

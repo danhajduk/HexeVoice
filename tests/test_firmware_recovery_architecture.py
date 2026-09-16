@@ -263,7 +263,10 @@ def test_p4_recovery_display_shows_onboarding_identity_and_sd_background():
         "BLE MAC %s",
     ):
         assert identity_text in display_source
-    assert "const char *hexe_ble_provisioning_local_address(void)" in BLE_GATT.read_text()
+    gatt_source = BLE_GATT.read_text()
+    assert "const char *hexe_ble_provisioning_local_address(void)" in gatt_source
+    assert "if (!host_synced)" in gatt_source
+    assert "host_synced = 1;" in gatt_source
 
     assert "bsp_sdcard_mount()" in display_source
     assert "recovery_bg.rgb565" in display_source
