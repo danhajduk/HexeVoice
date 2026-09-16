@@ -150,6 +150,16 @@ function blePairingStateLabel(value) {
       return "Device found";
     case "waiting_for_endpoint_online":
       return "Waiting for endpoint";
+    case "pairing_offer_received":
+      return "Pairing offer received";
+    case "pairing_identity_sent":
+      return "Identity sent";
+    case "credentials_pending":
+      return "Credentials pending";
+    case "validating":
+      return "Validating";
+    case "applying":
+      return "Applying";
     case "firmware_update_needed":
       return "Recovery online";
     case "firmware_update_starting":
@@ -185,6 +195,11 @@ function blePairingStatePill(value) {
   if (
     value === "waiting_for_endpoint_online" ||
     value === "identity_only" ||
+    value === "pairing_offer_received" ||
+    value === "pairing_identity_sent" ||
+    value === "credentials_pending" ||
+    value === "validating" ||
+    value === "applying" ||
     value === "firmware_update_needed" ||
     value === "firmware_update_starting" ||
     value === "firmware_update_running" ||

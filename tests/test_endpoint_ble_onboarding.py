@@ -586,6 +586,38 @@ def test_ble_pairing_session_lifecycle_uses_node_trust_and_redacts_identity(tmp_
     assert canceled.status == "canceled"
 
 
+def test_ble_pairing_status_surfaces_recovery_provisioning_state_before_handoff(tmp_path):
+    core = FakeCoreClient(
+        pairing_session={
+            "session_id": "blepair-test",
+            "status": "approved",
+            "approved_device_id": "esp-box-1",
+            "endpoint_identity": {
+                "device_id": "esp-box-1",
+                "target_node_id": "esp-box-1",
+                "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
+                "firmware_version": "min-z20260916180944-6b2facd",
+                "application_type": "recovery",
+                "provisioning_mode": "core_governed_pairing",
+                "provisioning_state": "pairing_offer_received",
+                "endpoint_ephemeral_public_key": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
+                "pairing_nonce": "nonce-123456",
+            },
+        }
+    )
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=FakeSupervisorClient(),
+    )
+
+    response = service.get_pairing_session("blepair-test")
+
+    assert response.status == "approved"
+    assert response.ui_state == "pairing_offer_received"
+    assert response.identity["provisioning_state"] == "pairing_offer_received"
+
+
 def test_ble_pairing_approval_status_requires_matching_session_identity(tmp_path):
     core = FakeCoreClient(
         pairing_session={

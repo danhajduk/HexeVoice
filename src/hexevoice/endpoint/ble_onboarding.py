@@ -1010,7 +1010,7 @@ class EndpointBleOnboardingService:
         elif status == "found":
             ui_state = "ready_to_provision"
         elif status == "approved":
-            ui_state = str(handoff.get("ui_state") or "waiting_for_endpoint_online")
+            ui_state = str(handoff.get("ui_state") or self._recovery_identity_ui_state(identity) or "waiting_for_endpoint_online")
         elif status in {"consumed", "completed"}:
             status = "completed"
             ui_state = "completed"
@@ -1034,6 +1034,22 @@ class EndpointBleOnboardingService:
             next_poll_seconds=20,
             error=error,
         )
+
+    def _recovery_identity_ui_state(self, identity: dict[str, Any]) -> str | None:
+        application_type = str(identity.get("application_type") or "").strip()
+        firmware_version = str(identity.get("firmware_version") or "").strip()
+        if application_type != "recovery" and not firmware_version.startswith(("min-", "minimal-")):
+            return None
+        provisioning_state = str(identity.get("provisioning_state") or "").strip()
+        if provisioning_state in {
+            "pairing_offer_received",
+            "pairing_identity_sent",
+            "credentials_pending",
+            "validating",
+            "applying",
+        }:
+            return provisioning_state
+        return None
 
     def _pairing_handoff(self, *, session: dict[str, Any], identity: dict[str, Any]) -> dict[str, Any]:
         if self._endpoint_registry_store is None:
