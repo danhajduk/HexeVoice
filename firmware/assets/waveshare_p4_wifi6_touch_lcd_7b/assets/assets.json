@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.12",
-  "updated_at": "2026-09-16T20:27:57.507866+00:00",
+  "asset_library_version": "2026.09.16.13",
+  "updated_at": "2026-09-16T20:59:25.218816+00:00",
   "assets": [
     {
       "asset_id": "bg",
@@ -16,6 +16,106 @@
         "channel_order": "rgb",
         "size_bytes": 1843200,
         "sha256": "fd8a7b44c704c3c6de366760c84e7dd64e2cd7c9a01d2edf2f706c5faa4d160b"
+      }
+    },
+    {
+      "asset_id": "asset_downloading",
+      "media_type": "sprite",
+      "filename": "asset_downloading.alpha8",
+      "source_filename": "asset_downloading.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 4096,
+        "sha256": "7a830e72870bd691b59bbfc55108c1bb7a2e9369807349b3b47bc6a3731b10d4"
+      }
+    },
+    {
+      "asset_id": "node_connected",
+      "media_type": "sprite",
+      "filename": "node_connected.alpha8",
+      "source_filename": "node_connected.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 4096,
+        "sha256": "a561b9cfb36ae7e7c637b3669bc1e77faaaf5303b5fb3c26052ad684b232ca73"
+      }
+    },
+    {
+      "asset_id": "sprite_asset_downloading",
+      "media_type": "sprite",
+      "filename": "asset_downloading.rgb888",
+      "source_filename": "asset_downloading.rgb888",
+      "metadata": {
+        "width": 64,
+        "height": 64,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 12288,
+        "sha256": "63cc9b7e8762563ad34a85c76e8807acb318999d6572f0547adc09c0916bb87d"
+      }
+    },
+    {
+      "asset_id": "sprite_node_connected",
+      "media_type": "sprite",
+      "filename": "node_connected.rgb888",
+      "source_filename": "node_connected.rgb888",
+      "metadata": {
+        "width": 64,
+        "height": 64,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 12288,
+        "sha256": "e2f892b58fe459666fee5945602f2218ff1386b53c2fe5230d690df68fc6decd"
+      }
+    },
+    {
+      "asset_id": "sprite_wifi_off",
+      "media_type": "sprite",
+      "filename": "wifi_off.rgb888",
+      "source_filename": "wifi_off.rgb888",
+      "metadata": {
+        "width": 64,
+        "height": 64,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 12288,
+        "sha256": "551d3688680f3aabe08d4565546e2b346fd0aa27d4b53ecf8b4b6890447eaea2"
+      }
+    },
+    {
+      "asset_id": "sprite_wifi_on",
+      "media_type": "sprite",
+      "filename": "wifi_on.rgb888",
+      "source_filename": "wifi_on.rgb888",
+      "metadata": {
+        "width": 64,
+        "height": 64,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 12288,
+        "sha256": "318fea86d6d0f3a6d5d98dea16799801076ae4b6681eb9d37fe1f54a84d25815"
+      }
+    },
+    {
+      "asset_id": "wifi_off",
+      "media_type": "sprite",
+      "filename": "wifi_off.alpha8",
+      "source_filename": "wifi_off.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 4096,
+        "sha256": "4475adbb214141670f6a193439adf54ffd852fee765c823578160d020ffc2c65"
+      }
+    },
+    {
+      "asset_id": "wifi_on",
+      "media_type": "sprite",
+      "filename": "wifi_on.alpha8",
+      "source_filename": "wifi_on.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 4096,
+        "sha256": "3810a7cd055e00686af8682dc0f9a976760c8167112f15939c7d450c41e2814a"
       }
     }
   ]

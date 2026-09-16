@@ -209,6 +209,7 @@ def main() -> int:
     for source in sprite_sources:
         sprite_width, sprite_height = args.sprite_size or _image_size(source)
         output = sprite_dir / f"{source.stem}{output_suffix}"
+        alpha_output = sprite_dir / f"{source.stem}.alpha8"
         command = [
             converter_python,
             str(converter),
@@ -222,6 +223,12 @@ def main() -> int:
             str(sprite_height),
             "--fit",
             args.sprite_fit,
+            "--alpha-mode",
+            "discard",
+            "--alpha-output",
+            str(alpha_output),
+            "--alpha-mask-format",
+            "alpha8",
         ]
         if pixel_format == "rgb565":
             command.extend(["--byte-order", args.byte_order])
