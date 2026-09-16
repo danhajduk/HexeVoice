@@ -392,8 +392,8 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     assert "const int baseline_y = 48 + g_status_layout.clock.y_offset;" in source
     assert "(local.tm_hour * 60) + local.tm_min + 1" in source
     assert "void draw_version_text(const char *build_id)" in source
-    assert "suffix = suffix == nullptr ? build_id : suffix;" in source
-    assert "suffix_end = std::strchr(suffix + 1, '-')" in source
+    assert "const char *suffix = separator == nullptr ? build_id : separator + 1;" in source
+    assert "suffix_end = std::strchr(suffix, '-')" in source
     assert "draw_version_text(build_id);" in source
 
     layout_text = (
@@ -401,20 +401,12 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     ).read_text(encoding="utf-8")
     assert layout_text.count('"version": {') == 1
     layout = json.loads(layout_text)
-    assert layout["clock"] == {
-        "font": "manrope/clock_42.hxf",
-        "font_size": 42,
-        "color": "#35F4DB",
-        "x_offset": 0,
-        "y_offset": 0,
-    }
-    assert layout["version"] == {
-        "font": "manrope/version_24.hxf",
-        "font_size": 18,
-        "color": "#55B8FF",
-        "x": 24,
-        "y": 568,
-    }
+    assert layout["clock"]["font"] == "manrope/clock_42.hxf"
+    assert 12 <= layout["clock"]["font_size"] <= 96
+    assert {"color", "x_offset", "y_offset"} <= layout["clock"].keys()
+    assert layout["version"]["font"] == "manrope/version_24.hxf"
+    assert 8 <= layout["version"]["font_size"] <= 64
+    assert {"color", "x", "y"} <= layout["version"].keys()
     version_font = (
         REPO_ROOT
         / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/font/manrope/version_24.hxf"

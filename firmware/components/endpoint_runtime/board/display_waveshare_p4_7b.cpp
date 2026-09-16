@@ -1222,9 +1222,9 @@ void draw_version_text(const char *build_id) {
     return;
   }
   load_status_layout();
-  const char *suffix = std::strchr(build_id, '-');
-  suffix = suffix == nullptr ? build_id : suffix;
-  const char *suffix_end = std::strchr(suffix + 1, '-');
+  const char *separator = std::strchr(build_id, '-');
+  const char *suffix = separator == nullptr ? build_id : separator + 1;
+  const char *suffix_end = std::strchr(suffix, '-');
   const size_t length = suffix_end == nullptr ? std::strlen(suffix) : static_cast<size_t>(suffix_end - suffix);
   char version[32] = {};
   std::snprintf(version, sizeof(version), "%.*s", static_cast<int>(length), suffix);
