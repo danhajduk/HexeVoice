@@ -448,12 +448,15 @@ void draw_status_sprite(StatusSprite *sprite, int x, int y) {
 
 void draw_header_status_icons() {
   const auto &state = hexe::state();
-  draw_status_sprite(state.wifi_connected ? &g_wifi_on_sprite : &g_wifi_off_sprite, 800, 4);
+  int x = 896;
+  draw_status_sprite(state.wifi_connected ? &g_wifi_on_sprite : &g_wifi_off_sprite, x, 4);
   if (state.backend_connected) {
-    draw_status_sprite(&g_node_connected_sprite, 864, 4);
+    x -= kStatusSpriteSize;
+    draw_status_sprite(&g_node_connected_sprite, x, 4);
   }
   if (hexe::system::asset_sync_active()) {
-    draw_status_sprite(&g_asset_downloading_sprite, 928, 4);
+    x -= kStatusSpriteSize;
+    draw_status_sprite(&g_asset_downloading_sprite, x, 4);
   }
 }
 

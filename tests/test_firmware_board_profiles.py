@@ -329,6 +329,8 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "hexe::system::asset_sync_active()" in source
     assert "state.backend_connected" in source
     assert "sprite->alpha[source_pixel]" in source
+    assert "int x = 896;" in source
+    assert source.count("x -= kStatusSpriteSize;") == 2
     assert "release_status_sprite(&g_wifi_on_sprite)" in source
 
 
