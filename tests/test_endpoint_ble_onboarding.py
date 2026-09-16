@@ -618,6 +618,71 @@ def test_ble_pairing_status_surfaces_recovery_provisioning_state_before_handoff(
     assert response.identity["provisioning_state"] == "pairing_offer_received"
 
 
+def test_ble_pairing_status_prefers_supervisor_identity_path_over_stale_core_identity(tmp_path):
+    stale_key = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    stale_nonce = "stale-nonce-1234"
+    latest_key = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+    latest_nonce = "latest-nonce-1234"
+    identity_path = tmp_path / "blepair.identity.json"
+    identity_path.write_text(
+        json.dumps(
+            {
+                "identity": {
+                    "device_id": "esp-box-1",
+                    "target_node_id": "esp-box-1",
+                    "onboarding_session_id": "blepair-test",
+                    "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
+                    "firmware_version": "min-fw-test",
+                    "application_type": "recovery",
+                    "provisioning_state": "pairing_offer_received",
+                    "endpoint_ephemeral_public_key": latest_key,
+                    "pairing_nonce": latest_nonce,
+                    "adapter": "hci1",
+                    "supervisor_id": "sup-nearby",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    core = FakeCoreClient(
+        pairing_session={
+            "session_id": "blepair-test",
+            "status": "approved",
+            "approved_device_id": "esp-box-1",
+            "endpoint_identity": {
+                "device_id": "esp-box-1",
+                "target_node_id": "esp-box-1",
+                "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
+                "firmware_version": "min-fw-test",
+                "application_type": "recovery",
+                "provisioning_state": "pairing_offer_received",
+                "endpoint_ephemeral_public_key": stale_key,
+                "pairing_nonce": stale_nonce,
+            },
+            "supervisor_results": [
+                {
+                    "supervisor_id": "sup-nearby",
+                    "backend_result": {"identity_path": str(identity_path)},
+                }
+            ],
+        }
+    )
+    service = EndpointBleOnboardingService(
+        onboarding_state_store=trusted_store(tmp_path),
+        core_client=core,
+        supervisor_client=FakeSupervisorClient(),
+    )
+
+    response = service.get_pairing_session("blepair-test")
+
+    assert response.status == "approved"
+    assert response.ui_state == "pairing_offer_received"
+    assert response.identity["endpoint_ephemeral_public_key"] == latest_key
+    assert response.identity["pairing_nonce"] == latest_nonce
+    assert response.identity["adapter"] == "hci1"
+    assert response.pairing_session["endpoint_identity"]["pairing_nonce"] == latest_nonce
+
+
 def test_ble_pairing_approval_status_requires_matching_session_identity(tmp_path):
     core = FakeCoreClient(
         pairing_session={

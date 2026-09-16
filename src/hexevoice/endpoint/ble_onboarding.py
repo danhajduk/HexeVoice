@@ -1002,6 +1002,11 @@ class EndpointBleOnboardingService:
         session = core_response.get("pairing_session") if isinstance(core_response, dict) else {}
         session = deepcopy(session) if isinstance(session, dict) else {}
         identity = session.get("endpoint_identity") if isinstance(session.get("endpoint_identity"), dict) else {}
+        session_id = str(session.get("session_id") or "").strip()
+        freshest_identity = self._freshest_pairing_identity(session=session, session_id=session_id) if session_id else None
+        if isinstance(freshest_identity, dict) and freshest_identity:
+            identity = freshest_identity
+            session["endpoint_identity"] = deepcopy(freshest_identity)
         status = str(session.get("status") or "failed").strip().lower()
         error = str(session.get("error") or "") or None
         handoff = self._pairing_handoff(session=session, identity=identity)
