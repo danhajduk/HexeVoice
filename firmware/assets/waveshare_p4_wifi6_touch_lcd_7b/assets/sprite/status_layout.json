@@ -7,6 +7,13 @@
     "x_offset": 0,
     "y_offset": 0
   },
+  "version": {
+    "font": "manrope/version_24.hxf",
+    "font_size": 18,
+    "color": "#55B8FF",
+    "x": 24,
+    "y": 568
+  },
   "y": 10,
   "floating": {
     "x": 30,

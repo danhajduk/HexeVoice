@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.37",
-  "updated_at": "2026-09-16T23:23:16.746233+00:00",
+  "asset_library_version": "2026.09.16.38",
+  "updated_at": "2026-09-16T23:31:16.337275+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -57,6 +57,17 @@
         "content_format": "md",
         "size_bytes": 747,
         "sha256": "b7d3a2d33dc7d9a370c4c64ef9bd129fce24c939ebcbbc5eebf04af4ab61848e"
+      }
+    },
+    {
+      "asset_id": "manrope_version_24",
+      "media_type": "font",
+      "filename": "manrope/version_24.hxf",
+      "source_filename": "manrope/version_24.hxf",
+      "metadata": {
+        "font_format": "hexe_bitmap_v1",
+        "size_bytes": 4091,
+        "sha256": "a582f3f82a51c4495307ef92131c1af72554ef658696dab913bc65344553896e"
       }
     },
     {
@@ -158,8 +169,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 1547,
-        "sha256": "af62b3437069df9e794b49cc47236cb4f664e197f08ba92ad1397a3e09b88497"
+        "size_bytes": 1676,
+        "sha256": "aab5ee14df6a5dac325424e725dafeeecb8a53be0a9d5fd6dfde0b19c5c09dea"
       }
     },
     {

@@ -8,7 +8,7 @@ import struct
 from PIL import Image, ImageDraw, ImageFont
 
 
-GLYPHS = "0123456789:"
+DEFAULT_GLYPHS = "0123456789:"
 HEADER = struct.Struct("<4sHhH")
 RECORD = struct.Struct("<BhhhHHI")
 
@@ -18,14 +18,15 @@ def main() -> int:
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--pixel-size", type=int, default=42)
+    parser.add_argument("--glyphs", default=DEFAULT_GLYPHS)
     args = parser.parse_args()
 
     font = ImageFont.truetype(args.source, args.pixel_size)
     ascent, _ = font.getmetrics()
     records: list[tuple[int, int, int, int, int, int, int]] = []
     bitmaps: list[bytes] = []
-    offset = HEADER.size + (len(GLYPHS) * RECORD.size)
-    for character in GLYPHS:
+    offset = HEADER.size + (len(args.glyphs) * RECORD.size)
+    for character in args.glyphs:
         left, top, right, bottom = font.getbbox(character, anchor="ls")
         width = max(0, right - left)
         height = max(0, bottom - top)

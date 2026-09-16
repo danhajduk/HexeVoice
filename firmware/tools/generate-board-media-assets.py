@@ -268,6 +268,18 @@ def main() -> int:
             ],
             args.dry_run,
         )
+        _run(
+            [
+                converter_python,
+                str(Path(__file__).with_name("generate-clock-font.py")),
+                str(clock_font_source),
+                str(font_dir / "manrope" / "version_24.hxf"),
+                "--pixel-size",
+                "24",
+                "--glyphs=-0123456789abcdef",
+            ],
+            args.dry_run,
+        )
 
     manifest_args = [
         sys.executable,

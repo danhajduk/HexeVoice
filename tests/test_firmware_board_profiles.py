@@ -385,17 +385,22 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     assert "local.tm_hour % 12" in source
     assert 'std::memcmp(data, "HXF1", 4)' in source
     assert 'json_integer(clock, "font_size", g_status_layout.clock.font_size, 12, 96)' in source
-    assert "const int colon_center = scale_metric(glyphs[0]->advance + glyphs[1]->advance)" in source
-    assert "(row * glyph.height) / scaled_height" in source
+    assert "const int colon_center =" in source
+    assert "scale_font_metric(" in source
+    assert "(row * glyph->height) / scaled_height" in source
     assert "g_status_layout.clock.x_offset - colon_center" in source
     assert "const int baseline_y = 48 + g_status_layout.clock.y_offset;" in source
     assert "(local.tm_hour * 60) + local.tm_min + 1" in source
+    assert "void draw_version_text(const char *build_id)" in source
+    assert "suffix = suffix == nullptr ? build_id : suffix;" in source
+    assert "suffix_end = std::strchr(suffix + 1, '-')" in source
+    assert "draw_version_text(build_id);" in source
 
-    layout = json.loads(
-        (REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    layout_text = (
+        REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json"
+    ).read_text(encoding="utf-8")
+    assert layout_text.count('"version": {') == 1
+    layout = json.loads(layout_text)
     assert layout["clock"] == {
         "font": "manrope/clock_42.hxf",
         "font_size": 42,
@@ -403,6 +408,18 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
         "x_offset": 0,
         "y_offset": 0,
     }
+    assert layout["version"] == {
+        "font": "manrope/version_24.hxf",
+        "font_size": 18,
+        "color": "#55B8FF",
+        "x": 24,
+        "y": 568,
+    }
+    version_font = (
+        REPO_ROOT
+        / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/font/manrope/version_24.hxf"
+    )
+    assert version_font.read_bytes().startswith(b"HXF1")
 
 
 def test_p4_profile_uses_bsp_gt911_touch_adapter():

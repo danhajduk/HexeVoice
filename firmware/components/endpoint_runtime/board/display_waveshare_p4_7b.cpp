@@ -57,6 +57,7 @@ constexpr char kProceduralAssetName[] = "procedural-p4-7b-status";
 constexpr char kSdTestBackgroundName[] = "bg.rgb888";
 constexpr char kStatusLayoutFilename[] = "status_layout.json";
 constexpr char kDefaultClockFont[] = "manrope/clock_42.hxf";
+constexpr char kDefaultVersionFont[] = "manrope/version_24.hxf";
 constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
 constexpr int kWifiSpriteSize = 40;
@@ -64,7 +65,7 @@ constexpr int kStatusSpriteSize = 40;
 constexpr size_t kStatusLayoutMaxBytes = 2048;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
-constexpr size_t kClockGlyphCount = 11;
+constexpr size_t kFontGlyphCount = 64;
 
 enum class StatusIconId : uint8_t {
   kWifi = 0,
@@ -132,6 +133,13 @@ struct StatusLayout {
     uint32_t color = kCyan;
     char font[96] = {};
   } clock;
+  struct Version {
+    int font_size = 18;
+    int x = 24;
+    int y = 568;
+    uint32_t color = kBlue;
+    char font[96] = {};
+  } version;
   int y = 12;
   int floating_x = 20;
   int floating_gap = 0;
@@ -160,7 +168,8 @@ struct ClockFont {
   uint8_t *data = nullptr;
   size_t size = 0;
   int pixel_size = 0;
-  ClockGlyph glyphs[kClockGlyphCount] = {};
+  int ascent = 0;
+  ClockGlyph glyphs[kFontGlyphCount] = {};
   size_t glyph_count = 0;
   bool load_attempted = false;
 };
@@ -201,6 +210,7 @@ StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, 
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
 ClockFont g_clock_font;
+ClockFont g_version_font;
 
 bool status_animations_active(const hexe::AppState &state);
 
@@ -719,27 +729,30 @@ uint32_t read_u32_le(const uint8_t *data) {
       (static_cast<uint32_t>(data[2]) << 16) | (static_cast<uint32_t>(data[3]) << 24);
 }
 
-bool load_clock_font() {
-  if (g_clock_font.data != nullptr) {
-    return true;
-  }
-  if (g_clock_font.load_attempted || !hexe::board::sd_card_mounted()) {
+bool load_bitmap_font(ClockFont *font, const char *filename, const char *label) {
+  if (font == nullptr || filename == nullptr) {
     return false;
   }
-  g_clock_font.load_attempted = true;
+  if (font->data != nullptr) {
+    return true;
+  }
+  if (font->load_attempted || !hexe::board::sd_card_mounted()) {
+    return false;
+  }
+  font->load_attempted = true;
   char path[192] = {};
   const int written = std::snprintf(
       path,
       sizeof(path),
       "%s/%s",
       hexe::board::sd_card_fonts_path(),
-      g_status_layout.clock.font[0] != '\0' ? g_status_layout.clock.font : kDefaultClockFont);
+      filename);
   if (written <= 0 || written >= static_cast<int>(sizeof(path))) {
     return false;
   }
   struct stat info = {};
   if (stat(path, &info) != 0 || info.st_size < 10 || info.st_size > static_cast<off_t>(kMaxClockFontBytes)) {
-    ESP_LOGW(kTag, "Clock font unavailable; using built-in fallback");
+    ESP_LOGW(kTag, "%s font unavailable; using built-in fallback", label);
     return false;
   }
   auto *data = static_cast<uint8_t *>(heap_caps_malloc(info.st_size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -749,17 +762,19 @@ bool load_clock_font() {
   }
   const size_t glyph_count = read_u16_le(data + 8);
   const int pixel_size = read_u16_le(data + 4);
+  const int ascent = read_i16_le(data + 6);
   constexpr size_t kHeaderBytes = 10;
   constexpr size_t kRecordBytes = 15;
-  if (std::memcmp(data, "HXF1", 4) != 0 || pixel_size <= 0 || glyph_count == 0 || glyph_count > kClockGlyphCount ||
+  if (std::memcmp(data, "HXF1", 4) != 0 || pixel_size <= 0 || ascent <= 0 ||
+      glyph_count == 0 || glyph_count > kFontGlyphCount ||
       kHeaderBytes + (glyph_count * kRecordBytes) > static_cast<size_t>(info.st_size)) {
     heap_caps_free(data);
-    ESP_LOGW(kTag, "Clock font is invalid; using built-in fallback");
+    ESP_LOGW(kTag, "%s font is invalid; using built-in fallback", label);
     return false;
   }
   for (size_t index = 0; index < glyph_count; ++index) {
     const uint8_t *record = data + kHeaderBytes + (index * kRecordBytes);
-    auto &glyph = g_clock_font.glyphs[index];
+    auto &glyph = font->glyphs[index];
     glyph.code = static_cast<char>(record[0]);
     glyph.left = read_i16_le(record + 1);
     glyph.top = read_i16_le(record + 3);
@@ -774,21 +789,61 @@ bool load_clock_font() {
       return false;
     }
   }
-  g_clock_font.data = data;
-  g_clock_font.size = info.st_size;
-  g_clock_font.pixel_size = pixel_size;
-  g_clock_font.glyph_count = glyph_count;
-  ESP_LOGI(kTag, "Loaded clock font %s", path);
+  font->data = data;
+  font->size = info.st_size;
+  font->pixel_size = pixel_size;
+  font->ascent = ascent;
+  font->glyph_count = glyph_count;
+  ESP_LOGI(kTag, "Loaded %s font %s", label, path);
   return true;
 }
 
-const ClockGlyph *clock_glyph(char code) {
-  for (size_t index = 0; index < g_clock_font.glyph_count; ++index) {
-    if (g_clock_font.glyphs[index].code == code) {
-      return &g_clock_font.glyphs[index];
+const ClockGlyph *font_glyph(const ClockFont &font, char code) {
+  for (size_t index = 0; index < font.glyph_count; ++index) {
+    if (font.glyphs[index].code == code) {
+      return &font.glyphs[index];
     }
   }
   return nullptr;
+}
+
+int scale_font_metric(const ClockFont &font, int font_size, int value) {
+  const int numerator = value * font_size;
+  const int adjustment = numerator < 0 ? -(font.pixel_size / 2) : (font.pixel_size / 2);
+  return (numerator + adjustment) / font.pixel_size;
+}
+
+bool draw_bitmap_text(
+    const ClockFont &font, const char *text, int x, int y, int font_size, uint32_t color) {
+  if (font.data == nullptr || text == nullptr) {
+    return false;
+  }
+  int cursor_x = x;
+  const int baseline_y = y + scale_font_metric(font, font_size, font.ascent);
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    const ClockGlyph *glyph = font_glyph(font, *cursor);
+    if (glyph == nullptr) {
+      return false;
+    }
+    const int glyph_x = cursor_x + scale_font_metric(font, font_size, glyph->left);
+    const int glyph_y = baseline_y - scale_font_metric(font, font_size, glyph->top);
+    const int scaled_width = std::max(1, scale_font_metric(font, font_size, glyph->width));
+    const int scaled_height = std::max(1, scale_font_metric(font, font_size, glyph->height));
+    const uint8_t *bitmap = font.data + glyph->bitmap_offset;
+    for (int row = 0; row < scaled_height; ++row) {
+      const int source_row = std::min(glyph->height - 1, (row * glyph->height) / scaled_height);
+      for (int column = 0; column < scaled_width; ++column) {
+        const int source_column = std::min(glyph->width - 1, (column * glyph->width) / scaled_width);
+        blend_pixel(
+            glyph_x + column,
+            glyph_y + row,
+            color,
+            bitmap[(source_row * glyph->width) + source_column]);
+      }
+    }
+    cursor_x += scale_font_metric(font, font_size, glyph->advance);
+  }
+  return true;
 }
 
 void load_status_layout() {
@@ -826,6 +881,7 @@ void load_status_layout() {
   }
   cJSON *floating = cJSON_GetObjectItem(root, "floating");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
+  cJSON *version = cJSON_GetObjectItem(root, "version");
   g_status_layout.clock.font_size =
       json_integer(clock, "font_size", g_status_layout.clock.font_size, 12, 96);
   g_status_layout.clock.x_offset =
@@ -836,6 +892,18 @@ void load_status_layout() {
   cJSON *clock_font = cJSON_IsObject(clock) ? cJSON_GetObjectItem(clock, "font") : nullptr;
   const char *font_name = cJSON_IsString(clock_font) ? clock_font->valuestring : kDefaultClockFont;
   std::snprintf(g_status_layout.clock.font, sizeof(g_status_layout.clock.font), "%s", font_name);
+  g_status_layout.version.font_size =
+      json_integer(version, "font_size", g_status_layout.version.font_size, 8, 64);
+  g_status_layout.version.x =
+      json_layout_coordinate(version, "x", g_status_layout.version.x, kWidth - 1);
+  g_status_layout.version.y =
+      json_layout_coordinate(version, "y", g_status_layout.version.y, kHeight - 1);
+  g_status_layout.version.color = json_color(version, "color", g_status_layout.version.color);
+  cJSON *version_font = cJSON_IsObject(version) ? cJSON_GetObjectItem(version, "font") : nullptr;
+  const char *version_font_name =
+      cJSON_IsString(version_font) ? version_font->valuestring : kDefaultVersionFont;
+  std::snprintf(
+      g_status_layout.version.font, sizeof(g_status_layout.version.font), "%s", version_font_name);
   g_status_layout.y = json_layout_coordinate(root, "y", g_status_layout.y, kHeight - 1);
   g_status_layout.floating_x = json_layout_coordinate(floating, "x", g_status_layout.floating_x, kWidth - 1);
   g_status_layout.floating_gap = json_layout_coordinate(floating, "gap", g_status_layout.floating_gap, kWidth);
@@ -1111,7 +1179,10 @@ void draw_header_clock() {
   std::snprintf(clock_text, sizeof(clock_text), "%02d:%02d", hour, local.tm_min);
   load_status_layout();
 
-  if (!load_clock_font()) {
+  if (!load_bitmap_font(
+          &g_clock_font,
+          g_status_layout.clock.font[0] != '\0' ? g_status_layout.clock.font : kDefaultClockFont,
+          "clock")) {
     draw_centered_text(
         10 + g_status_layout.clock.y_offset,
         clock_text,
@@ -1122,39 +1193,59 @@ void draw_header_clock() {
 
   const ClockGlyph *glyphs[5] = {};
   for (size_t index = 0; index < 5; ++index) {
-    glyphs[index] = clock_glyph(clock_text[index]);
+    glyphs[index] = font_glyph(g_clock_font, clock_text[index]);
     if (glyphs[index] == nullptr) {
       return;
     }
   }
-  const auto scale_metric = [](int value) {
-    const int numerator = value * g_status_layout.clock.font_size;
-    const int adjustment = numerator < 0 ? -(g_clock_font.pixel_size / 2) : (g_clock_font.pixel_size / 2);
-    return (numerator + adjustment) / g_clock_font.pixel_size;
-  };
-  const int colon_center = scale_metric(glyphs[0]->advance + glyphs[1]->advance) +
-      (scale_metric(glyphs[2]->advance) / 2);
+  const int colon_center =
+      scale_font_metric(
+          g_clock_font,
+          g_status_layout.clock.font_size,
+          glyphs[0]->advance + glyphs[1]->advance) +
+      (scale_font_metric(g_clock_font, g_status_layout.clock.font_size, glyphs[2]->advance) / 2);
   int cursor_x = (kWidth / 2) + g_status_layout.clock.x_offset - colon_center;
   const int baseline_y = 48 + g_status_layout.clock.y_offset;
-  for (size_t index = 0; index < 5; ++index) {
-    const ClockGlyph &glyph = *glyphs[index];
-    const int glyph_x = cursor_x + scale_metric(glyph.left);
-    const int glyph_y = baseline_y - scale_metric(glyph.top);
-    const int scaled_width = std::max(1, scale_metric(glyph.width));
-    const int scaled_height = std::max(1, scale_metric(glyph.height));
-    const uint8_t *bitmap = g_clock_font.data + glyph.bitmap_offset;
-    for (int row = 0; row < scaled_height; ++row) {
-      const int source_row = std::min(glyph.height - 1, (row * glyph.height) / scaled_height);
-      for (int column = 0; column < scaled_width; ++column) {
-        const int source_column = std::min(glyph.width - 1, (column * glyph.width) / scaled_width);
-        blend_pixel(
-            glyph_x + column,
-            glyph_y + row,
-            g_status_layout.clock.color,
-            bitmap[(source_row * glyph.width) + source_column]);
-      }
-    }
-    cursor_x += scale_metric(glyph.advance);
+  const int top_y = baseline_y -
+      scale_font_metric(g_clock_font, g_status_layout.clock.font_size, g_clock_font.ascent);
+  draw_bitmap_text(
+      g_clock_font,
+      clock_text,
+      cursor_x,
+      top_y,
+      g_status_layout.clock.font_size,
+      g_status_layout.clock.color);
+}
+
+void draw_version_text(const char *build_id) {
+  if (build_id == nullptr || build_id[0] == '\0') {
+    return;
+  }
+  load_status_layout();
+  const char *suffix = std::strchr(build_id, '-');
+  suffix = suffix == nullptr ? build_id : suffix;
+  const char *suffix_end = std::strchr(suffix + 1, '-');
+  const size_t length = suffix_end == nullptr ? std::strlen(suffix) : static_cast<size_t>(suffix_end - suffix);
+  char version[32] = {};
+  std::snprintf(version, sizeof(version), "%.*s", static_cast<int>(length), suffix);
+
+  if (!load_bitmap_font(
+          &g_version_font,
+          g_status_layout.version.font[0] != '\0' ? g_status_layout.version.font : kDefaultVersionFont,
+          "version") ||
+      !draw_bitmap_text(
+          g_version_font,
+          version,
+          g_status_layout.version.x,
+          g_status_layout.version.y,
+          g_status_layout.version.font_size,
+          g_status_layout.version.color)) {
+    draw_text(
+        g_status_layout.version.x,
+        g_status_layout.version.y,
+        version,
+        (g_status_layout.version.font_size * 100) / 7,
+        g_status_layout.version.color);
   }
 }
 
@@ -1169,9 +1260,12 @@ void release_status_sprite(StatusSprite *sprite) {
   sprite->load_attempted = false;
 }
 
-void release_clock_font() {
-  heap_caps_free(g_clock_font.data);
-  g_clock_font = ClockFont{};
+void release_bitmap_font(ClockFont *font) {
+  if (font == nullptr) {
+    return;
+  }
+  heap_caps_free(font->data);
+  *font = ClockFont{};
 }
 
 bool build_sd_test_background_path(char *path, size_t path_size) {
@@ -1286,8 +1380,8 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
   } else {
     draw_header_clock();
     draw_header_status_icons();
+    draw_version_text(build_id);
     (void)frame;
-    (void)build_id;
     return true;
   }
 
@@ -1478,7 +1572,8 @@ void request_display_assets_reload() {
   g_logged_bg_missing = false;
   g_logged_bg_bad_size = false;
   g_status_layout_loaded = false;
-  release_clock_font();
+  release_bitmap_font(&g_clock_font);
+  release_bitmap_font(&g_version_font);
   release_status_sprite(&g_wifi_on_sprite);
   release_status_sprite(&g_wifi_off_sprite);
   release_status_sprite(&g_node_connected_sprite);
