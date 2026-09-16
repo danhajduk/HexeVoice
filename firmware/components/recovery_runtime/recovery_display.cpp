@@ -28,6 +28,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
+
+extern "C" const char *hexe_ble_provisioning_local_address();
 #endif
 
 #if HEXE_BOARD_PROFILE_WAVESHARE_S3_TOUCH_LCD_1_85C_BOX_V2
@@ -436,12 +438,12 @@ void sanitize_reason(char *target, size_t size, const char *reason) {
   target[out] = '\0';
 }
 
-void format_mac(char *target, size_t size, esp_mac_type_t type) {
+void format_base_mac(char *target, size_t size) {
   if (target == nullptr || size == 0) {
     return;
   }
   uint8_t mac[6] = {};
-  if (esp_read_mac(mac, type) != ESP_OK) {
+  if (esp_efuse_mac_get_default(mac) != ESP_OK) {
     std::snprintf(target, size, "unknown");
     return;
   }
@@ -550,15 +552,16 @@ void draw_p4_frame(P4Screen screen, uint32_t frame) {
                 hexe::recovery::recovery_http_api_active() ? hexe::recovery::recovery_http_mode() : "off");
   char name_line[96] = {};
   char id_line[96] = {};
-  char wifi_mac[24] = {};
+  char base_mac[24] = {};
   char ble_mac[24] = {};
-  format_mac(wifi_mac, sizeof(wifi_mac), ESP_MAC_WIFI_STA);
-  format_mac(ble_mac, sizeof(ble_mac), ESP_MAC_BT);
+  format_base_mac(base_mac, sizeof(base_mac));
+  const char *local_ble_address = hexe_ble_provisioning_local_address();
+  std::snprintf(ble_mac, sizeof(ble_mac), "%s", local_ble_address == nullptr || local_ble_address[0] == '\0' ? "starting" : local_ble_address);
   std::snprintf(name_line, sizeof(name_line), "Name %.28s", hexe::config::kEndpointId);
   std::snprintf(id_line, sizeof(id_line), "Device id %.24s", hexe::config::kEndpointId);
-  char wifi_line[48] = {};
+  char base_line[48] = {};
   char ble_line[48] = {};
-  std::snprintf(wifi_line, sizeof(wifi_line), "WiFi MAC %s", wifi_mac);
+  std::snprintf(base_line, sizeof(base_line), "Base MAC %s", base_mac);
   std::snprintf(ble_line, sizeof(ble_line), "BLE MAC %s", ble_mac);
   const esp_app_desc_t *app = esp_app_get_description();
   char version[96] = {};
@@ -583,7 +586,7 @@ void draw_p4_frame(P4Screen screen, uint32_t frame) {
     draw_centered_text(322, reason, 180, kMuted);
     draw_text(76, 372, name_line, 170, kInk);
     draw_text(76, 402, id_line, 160, kMuted);
-    draw_text(76, 432, wifi_line, 160, kMuted);
+    draw_text(76, 432, base_line, 160, kMuted);
     draw_text(548, 432, ble_line, 160, kMuted);
 
     if (ota) {

@@ -262,6 +262,21 @@ static void format_addr(const ble_addr_t *addr, char out[18]) {
       addr->val[0]);
 }
 
+const char *hexe_ble_provisioning_local_address(void) {
+  static char address[18] = "";
+  uint8_t own_addr[6] = {0};
+  if (ble_hs_id_copy_addr(own_addr_type, own_addr, NULL) != 0) {
+    address[0] = '\0';
+    return address;
+  }
+  ble_addr_t formatted = {
+      .type = own_addr_type,
+  };
+  memcpy(formatted.val, own_addr, sizeof(formatted.val));
+  format_addr(&formatted, address);
+  return address;
+}
+
 static int uuid128_matches_service(const ble_uuid128_t *uuid) {
   return uuid != NULL && ble_uuid_cmp(&uuid->u, &service_uuid.u) == 0;
 }

@@ -257,12 +257,13 @@ def test_p4_recovery_display_shows_onboarding_identity_and_sd_background():
         "recovery_ble_state()",
         "recovery_ble_reason()",
         "hexe::config::kEndpointId",
-        "ESP_MAC_WIFI_STA",
-        "ESP_MAC_BT",
-        "WiFi MAC %s",
+        "esp_efuse_mac_get_default",
+        "hexe_ble_provisioning_local_address()",
+        "Base MAC %s",
         "BLE MAC %s",
     ):
         assert identity_text in display_source
+    assert "const char *hexe_ble_provisioning_local_address(void)" in BLE_GATT.read_text()
 
     assert "bsp_sdcard_mount()" in display_source
     assert "recovery_bg.rgb565" in display_source
