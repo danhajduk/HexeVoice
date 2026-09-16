@@ -19,11 +19,24 @@ The canonical LCD source images are the 320x240 PNG files in this directory:
 
 These PNG files are source/reference assets only. The firmware does not compile UI pictures into the binary; endpoint UI pictures should be converted to RGB565 and loaded from the SD card.
 
-To convert an image for the SD card:
+To convert one image for the SD card:
 
 ```bash
 python3 firmware/tools/convert_image.py input.png output.rgb565 --format raw-rgb565 --width 320 --height 240 --fit cover
 ```
+
+To convert all source images for a board and regenerate its endpoint asset
+manifest, place full-screen picture PNGs directly in
+`firmware/assets/<board_profile>/` and sprite PNGs in
+`firmware/assets/<board_profile>/sprites/`, then run:
+
+```bash
+python3 firmware/tools/generate-board-media-assets.py <board_profile>
+```
+
+The board media generator keeps each PNG's native dimensions unless `--width`
+and `--height` are provided, writes RGB565 files under the board's
+`assets/picture/` and `assets/sprite/` folders, then regenerates `assets.json`.
 
 For the Waveshare P4 7-inch SD-card display smoke test, place a 1024x600
 little-endian RGB565 file at `/sdcard/hexe/pictures/bg.rgb565`. A dependency-free

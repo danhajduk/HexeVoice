@@ -114,6 +114,35 @@ def _infer_rgb565_dimensions(size_bytes: int, existing: dict[str, Any]) -> dict[
     return metadata
 
 
+def _png_dimensions(path: Path) -> tuple[int, int] | None:
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(24)
+    except OSError:
+        return None
+    if len(header) < 24 or header[:8] != b"\x89PNG\r\n\x1a\n" or header[12:16] != b"IHDR":
+        return None
+    return int.from_bytes(header[16:20], "big"), int.from_bytes(header[20:24], "big")
+
+
+def _matching_source_dimensions(board_dir: Path, media_type: str, path: Path) -> dict[str, int]:
+    if media_type == "picture":
+        source_dir = board_dir
+    elif media_type == "sprite":
+        source_dir = board_dir / "sprites"
+    else:
+        return {}
+
+    for suffix in (".png", ".PNG"):
+        dimensions = _png_dimensions(source_dir / f"{path.stem}{suffix}")
+        if dimensions is None:
+            continue
+        width, height = dimensions
+        if path.stat().st_size == width * height * 2:
+            return {"width": width, "height": height}
+    return {}
+
+
 def _wav_metadata(path: Path) -> dict[str, Any]:
     try:
         with path.open("rb") as handle:
@@ -135,12 +164,13 @@ def _wav_metadata(path: Path) -> dict[str, Any]:
     }
 
 
-def _infer_metadata(path: Path, media_type: str, existing: dict[str, Any]) -> dict[str, Any]:
+def _infer_metadata(path: Path, media_type: str, existing: dict[str, Any], board_dir: Path) -> dict[str, Any]:
     metadata = dict(existing)
     suffix = path.suffix.lower()
     size_bytes = path.stat().st_size
 
     if suffix == ".rgb565":
+        metadata.update({key: value for key, value in _matching_source_dimensions(board_dir, media_type, path).items() if key not in metadata})
         metadata.update(_infer_rgb565_dimensions(size_bytes, metadata))
     elif suffix in {".alpha8", ".alpha1"}:
         metadata["alpha_format"] = suffix.lstrip(".")
@@ -201,7 +231,7 @@ def build_asset_library(
         if prior.get("version"):
             item["version"] = prior["version"]
         prior_metadata = prior.get("metadata") if isinstance(prior.get("metadata"), dict) else {}
-        item["metadata"] = _infer_metadata(path, media_type, prior_metadata)
+        item["metadata"] = _infer_metadata(path, media_type, prior_metadata, board_dir)
         assets.append(item)
 
     assets.sort(key=lambda item: (str(item["media_type"]), str(item["asset_id"])))
