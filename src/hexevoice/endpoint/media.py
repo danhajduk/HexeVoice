@@ -20,7 +20,9 @@ EndpointMediaType = Literal["picture", "sprite", "sound"]
 BOARD_ASSET_LIBRARY_DIRNAME = "assets"
 BOARD_ASSET_LIBRARY_FILENAME = "assets.json"
 
-PICTURE_BYTES = 320 * 240 * 2
+PICTURE_DEFAULT_WIDTH = 320
+PICTURE_DEFAULT_HEIGHT = 240
+PICTURE_MAX_BYTES = 2 * 1024 * 1024
 SPRITE_MAX_BYTES = 512 * 1024
 SOUND_MAX_BYTES = 5 * 1024 * 1024
 
@@ -343,21 +345,26 @@ class EndpointMediaService:
     ) -> tuple[bytes, str, str, dict[str, Any]]:
         suffix = Path(source_filename).suffix.lower()
         if media_type == "picture":
+            width, height = _picture_dimensions(metadata)
             if suffix == ".rgb565":
-                if len(source_bytes) != PICTURE_BYTES:
-                    raise EndpointMediaValidationError("invalid_picture_size", "Picture RGB565 payload must be exactly 153600 bytes.")
+                expected_bytes = width * height * 2
+                if len(source_bytes) != expected_bytes:
+                    raise EndpointMediaValidationError(
+                        "invalid_picture_size",
+                        f"Picture RGB565 payload must be exactly {expected_bytes} bytes for {width}x{height}.",
+                    )
                 return source_bytes, source_filename, content_type or "application/octet-stream", {
                     **metadata,
                     "pixel_format": "rgb565",
-                    "width": 320,
-                    "height": 240,
+                    "width": width,
+                    "height": height,
                 }
-            converted = self._convert_image_to_rgb565(source_bytes, width=320, height=240)
+            converted = self._convert_image_to_rgb565(source_bytes, width=width, height=height)
             return converted, f"{Path(source_filename).stem}.rgb565", "application/octet-stream", {
                 **metadata,
                 "pixel_format": "rgb565",
-                "width": 320,
-                "height": 240,
+                "width": width,
+                "height": height,
                 "converted_from": suffix.lstrip("."),
             }
 
@@ -546,3 +553,16 @@ def _content_type_for_filename(filename: str, media_type: EndpointMediaType) -> 
     if suffix in {".jpg", ".jpeg"}:
         return "image/jpeg"
     return "application/octet-stream"
+
+
+def _picture_dimensions(metadata: dict[str, Any]) -> tuple[int, int]:
+    try:
+        width = int(metadata.get("width") or PICTURE_DEFAULT_WIDTH)
+        height = int(metadata.get("height") or PICTURE_DEFAULT_HEIGHT)
+    except (TypeError, ValueError) as exc:
+        raise EndpointMediaValidationError("invalid_picture_dimensions", "Picture width and height must be integers.") from exc
+    if width <= 0 or height <= 0:
+        raise EndpointMediaValidationError("invalid_picture_dimensions", "Picture width and height must be positive.")
+    if width * height * 2 > PICTURE_MAX_BYTES:
+        raise EndpointMediaValidationError("picture_too_large", "Picture payload is too large.")
+    return width, height

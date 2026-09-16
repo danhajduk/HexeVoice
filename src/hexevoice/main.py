@@ -909,14 +909,12 @@ def create_app(
             endpoint = None
         return audio_quality_profile_for_endpoint(endpoint, audio_quality_profiles)
 
-    def endpoint_board_profile(endpoint_id: str) -> str | None:
+    def endpoint_board_profile_for_id(endpoint_id: str) -> str | None:
         try:
             endpoint = endpoint_service.status(endpoint_id)
         except HTTPException:
             return None
-        capabilities = endpoint.capabilities if isinstance(endpoint.capabilities, dict) else {}
-        board_profile = capabilities.get("board_profile")
-        return str(board_profile) if board_profile else None
+        return endpoint_board_profile(endpoint)
 
     voice_turn_pipeline = build_voice_turn_pipeline(
         settings=app_settings,
@@ -958,7 +956,7 @@ def create_app(
         privacy_mode_enabled=app_settings.voice_privacy_mode_enabled,
         wake_election_window_ms=app_settings.voice_wake_election_window_ms,
         endpoint_runtime_config=load_endpoint_runtime_config(app_settings.resolved_endpoint_display_tuning_path()),
-        endpoint_board_profile_provider=endpoint_board_profile,
+        endpoint_board_profile_provider=endpoint_board_profile_for_id,
     )
     assistant_service.set_endpoint_command_dispatcher(QueuedEndpointCommandDispatcher(voice_session_manager))
     timer_announcement_service = TimerSucceededAnnouncementService(

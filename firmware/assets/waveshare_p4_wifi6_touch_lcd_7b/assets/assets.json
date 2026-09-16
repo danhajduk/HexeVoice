@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
+  "asset_library_version": "2026.09.16.1",
+  "updated_at": "2026-09-16T00:00:00+00:00",
+  "assets": [
+    {
+      "asset_id": "bg",
+      "media_type": "picture",
+      "filename": "bg.rgb565",
+      "source_filename": "bg.rgb565",
+      "role": "sd_background_smoke_test",
+      "metadata": {
+        "pixel_format": "rgb565",
+        "byte_order": "little_endian",
+        "width": 1024,
+        "height": 600,
+        "size_bytes": 1228800,
+        "sha256": "cf16f6a7b2acead0a7cc7c6675f56960bdd302757e2e4aaf30ba7f7d07af2215"
+      }
+    }
+  ]
+}

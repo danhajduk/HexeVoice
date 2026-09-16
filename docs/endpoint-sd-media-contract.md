@@ -74,9 +74,15 @@ Transfer requests provide a filename only. Absolute paths, `..`, path separators
 
 - Full-screen UI/background image.
 - Runtime destination: `/sdcard/hexe/pictures`.
-- Preferred endpoint format: raw RGB565, `320x240`, exactly `153600` bytes.
+- Preferred endpoint format: raw RGB565 with explicit `width` and `height`
+  metadata. When dimensions are omitted, the node keeps the legacy default of
+  `320x240`, exactly `153600` bytes.
+- The Waveshare P4 7-inch background is `1024x600`, exactly `1228800` bytes,
+  and should be uploaded with `metadata.width=1024` and
+  `metadata.height=600`.
 - Accepted upload extensions: `.rgb565`, `.png`, `.jpg`, `.jpeg`.
-- PNG/JPEG uploads must be converted by the node before endpoint transfer.
+- PNG/JPEG uploads are resized to the requested dimensions and converted by the
+  node before endpoint transfer.
 
 `sprite`
 
@@ -119,15 +125,15 @@ Backend-to-endpoint media transfer commands use the existing versioned voice eve
     "destination": "picture",
     "download_url": "/api/endpoint/media/files/media-...",
     "content_type": "application/octet-stream",
-    "size_bytes": 153600,
+    "size_bytes": 1228800,
     "sha256": "hex-encoded-sha256",
     "overwrite": true,
     "rewrite": true,
     "activate": true,
     "metadata": {
       "pixel_format": "rgb565",
-      "width": 320,
-      "height": 240
+      "width": 1024,
+      "height": 600
     }
   }
 }
@@ -154,7 +160,8 @@ The node validates before queueing a transfer:
 - filename is safe and matches the media type
 - file size is within type-specific limits
 - checksum is computed from the exact endpoint payload bytes
-- converted RGB565 pictures are exactly `320 * 240 * 2` bytes
+- picture RGB565 payload size matches `width * height * 2`; when omitted,
+  dimensions default to `320x240`
 - sound files are WAV PCM and within cue size limits
 - rewrite policy is explicit; `rewrite` is the preferred flag and `overwrite` remains accepted for compatibility
 
@@ -178,11 +185,12 @@ The node persists the latest heartbeat inventory with the endpoint registry and 
 
 ## Current Size Limits
 
-- picture: `153600` bytes after conversion
+- picture: up to `2097152` bytes after conversion
 - sprite: up to `524288` bytes
 - sound: up to `5242880` bytes
 
-These limits are intentionally conservative for the first endpoint media-transfer implementation.
+These limits are intentionally conservative while still allowing the current
+7-inch P4 `1024x600` background.
 
 ## Node API Surface
 

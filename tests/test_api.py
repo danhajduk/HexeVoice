@@ -1511,6 +1511,62 @@ def test_endpoint_media_upload_validates_and_serves_picture_rgb565(tmp_path):
     assert served.content == payload
 
 
+def test_endpoint_media_upload_accepts_p4_background_rgb565(tmp_path):
+    payload = bytes(1024 * 600 * 2)
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_media_dir=tmp_path / "media",
+                public_api_base_url="http://voice-node.local:9004",
+            )
+        )
+    )
+
+    upload = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "p4_bg",
+            "media_type": "picture",
+            "filename": "bg.rgb565",
+            "content_base64": base64.b64encode(payload).decode("ascii"),
+            "metadata": {"width": 1024, "height": 600},
+            "overwrite": True,
+        },
+    )
+    served = client.get("/api/endpoint/media/files/p4_bg")
+
+    assert upload.status_code == 200
+    asset = upload.json()
+    assert asset["asset_id"] == "p4_bg"
+    assert asset["endpoint_path"] == "/sdcard/hexe/pictures/bg.rgb565"
+    assert asset["size_bytes"] == 1228800
+    assert asset["metadata"]["pixel_format"] == "rgb565"
+    assert asset["metadata"]["width"] == 1024
+    assert asset["metadata"]["height"] == 600
+    assert asset["download_url"] == "http://voice-node.local:9004/api/endpoint/media/files/p4_bg"
+    assert served.status_code == 200
+    assert served.content == payload
+
+
+def test_endpoint_media_upload_rejects_picture_size_mismatch(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json", endpoint_media_dir=tmp_path / "media")))
+
+    response = client.post(
+        "/api/endpoint/media",
+        json={
+            "asset_id": "p4_bg",
+            "media_type": "picture",
+            "filename": "bg.rgb565",
+            "content_base64": base64.b64encode(bytes(320 * 240 * 2)).decode("ascii"),
+            "metadata": {"width": 1024, "height": 600},
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["code"] == "invalid_picture_size"
+
+
 def test_endpoint_board_media_library_serves_board_assets(tmp_path):
     payload = bytes(320 * 240 * 2)
     board_dir = tmp_path / "assets" / "ha_voice_pe" / "assets"

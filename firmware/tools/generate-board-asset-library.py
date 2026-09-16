@@ -101,10 +101,11 @@ def _infer_rgb565_dimensions(size_bytes: int, existing: dict[str, Any]) -> dict[
         return metadata
 
     pixels = size_bytes // 2
-    if size_bytes == 320 * 240 * 2:
-        metadata["width"] = 320
-        metadata["height"] = 240
-        return metadata
+    for width, height in ((320, 240), (240, 320), (1024, 600), (600, 1024)):
+        if size_bytes == width * height * 2:
+            metadata["width"] = width
+            metadata["height"] = height
+            return metadata
 
     side = int(math.isqrt(pixels))
     if side * side == pixels:
