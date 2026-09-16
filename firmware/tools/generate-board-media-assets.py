@@ -187,7 +187,6 @@ def main() -> int:
     manifest_generator = Path(__file__).with_name("generate-board-asset-library.py")
     picture_dir = board_dir / "assets" / "picture"
     sprite_dir = board_dir / "assets" / "sprite"
-    font_dir = board_dir / "assets" / "font"
 
     pixel_format = args.pixel_format or ("rgb888" if args.board_profile in RGB888_BOARD_PROFILES else "rgb565")
     output_suffix = f".{pixel_format}"
@@ -254,20 +253,6 @@ def main() -> int:
         if not args.dry_run:
             output.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, output)
-
-    clock_font_source = font_dir / "manrope" / "Manrope-VariableFont_wght.ttf"
-    if clock_font_source.exists():
-        _run(
-            [
-                converter_python,
-                str(Path(__file__).with_name("generate-clock-font.py")),
-                str(clock_font_source),
-                str(font_dir / "manrope" / "clock_42.hxf"),
-                "--pixel-size",
-                "42",
-            ],
-            args.dry_run,
-        )
 
     manifest_args = [
         sys.executable,
