@@ -53,10 +53,6 @@ endif()
 if(NOT HEXE_BOARD_RECOVERY_APP)
   message(FATAL_ERROR "Board profile ${HEXE_BOARD_PROFILE} does not support a recovery app")
 endif()
-if(NOT HEXE_BOARD_IDF_TARGET STREQUAL "esp32s3")
-  message(FATAL_ERROR "Recovery skeleton currently supports only S3 targets, got ${HEXE_BOARD_IDF_TARGET}")
-endif()
-
 message(STATUS "Hexe recovery board profile: ${HEXE_BOARD_PROFILE}")
 message(STATUS "Hexe recovery partition schema: ${HEXE_BOARD_PARTITION_SCHEMA}")
 

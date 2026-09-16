@@ -111,7 +111,7 @@ def test_recovery_skeleton_has_bootable_app_and_runtime_component():
     assert "board_profile_pins.h" in runtime_cmake
     assert "endpoint_config.h" in runtime_cmake
     assert "HEXE_BOARD_RECOVERY_APP" in runtime_cmake
-    assert 'HEXE_BOARD_IDF_TARGET STREQUAL "esp32s3"' in runtime_cmake
+    assert 'HEXE_BOARD_IDF_TARGET STREQUAL "esp32s3"' not in runtime_cmake
     assert "HEXE_FIRMWARE_RUNTIME_COMPONENT endpoint_runtime" not in runtime_cmake
     assert "esp-tflite-micro" not in runtime_cmake
     assert "render_status_json()" in status_header

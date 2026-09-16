@@ -357,11 +357,6 @@ def create_bundle(args: argparse.Namespace) -> None:
 
     if profile["build"]["recovery_app"] is not True:
         raise BundleError(f"{args.board_profile}: board profile does not declare recovery app support")
-    if profile["build"]["idf_target"] != "esp32s3":
-        raise BundleError(
-            f"{args.board_profile}: full-device bundle is not buildable until recovery app supports "
-            f"{profile['build']['idf_target']}"
-        )
     if profile["adapters"]["buildable"] is not True:
         raise BundleError(f"{args.board_profile}: endpoint adapters are not buildable")
 

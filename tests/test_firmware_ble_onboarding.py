@@ -76,9 +76,12 @@ def test_ble_onboarding_is_gated_by_board_profile_and_nimble_config():
     assert "CONFIG_BT_NIMBLE_GATT_SERVER" in source
     assert "CONFIG_BT_NIMBLE_GATT_CLIENT" in source
     assert "ble_transport == \"native\"" in generator
+    assert 'ble_transport == "sdio"' in generator
+    assert 'wireless.get("coprocessor") == "esp32c6"' in generator
     assert "kBleOnboardingSupported" in generator
     assert "CONFIG_BT_NIMBLE_ENABLED=y" not in defaults
-    assert '[[ "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]]' in build_script
+    assert '"${FIRMWARE_APP}" == "recovery"' in build_script
+    assert 'CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y' in build_script
     assert "CONFIG_BT_NIMBLE_ENABLED=y" in build_script
     assert "# CONFIG_BT_ENABLED is not set" in build_script
 
@@ -164,7 +167,7 @@ def test_ble_onboarding_scans_for_core_published_pairing_adverts():
     assert "CONFIG_BT_NIMBLE_BLE_GATT_BLOB_TRANSFER=y" in build_script
     assert "CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512" in build_script
     assert "CONFIG_BT_NIMBLE_MSYS_1_BLOCK_SIZE=1024" in build_script
-    assert "BLE onboarding requires native roles and host stack sizing" in build_script
+    assert "recovery BLE onboarding requires roles and host stack sizing" in build_script
 
 
 def test_ble_onboarding_rejects_unusable_envelopes_before_writing_settings():

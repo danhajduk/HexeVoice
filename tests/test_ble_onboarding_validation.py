@@ -225,7 +225,7 @@ def test_board_profile_ble_validation_covers_supported_and_future_unsupported_pa
     assert profile_status["waveshare_s3_touch_lcd_1_85c_box_v2"]["transport"] == "native"
     assert profile_status["waveshare_p4_wifi6_touch_lcd_7b"]["target"] == "esp32p4"
     assert profile_status["waveshare_p4_wifi6_touch_lcd_7b"]["transport"] == "sdio"
-    assert profile_status["waveshare_p4_wifi6_touch_lcd_7b"]["buildable"] is False
+    assert profile_status["waveshare_p4_wifi6_touch_lcd_7b"]["buildable"] is True
 
 
 def test_validation_docs_define_ci_harnesses_and_physical_checklist():
@@ -249,7 +249,7 @@ def test_validation_docs_define_ci_harnesses_and_physical_checklist():
         "HA Voice PE",
         "ESP32-S3-BOX-3",
         "Waveshare S3 1.85C BOX V2",
-        "future P4/C6",
+        "P4/C6 recovery",
         "absent Bluetooth adapter",
         "policy disabled",
         "policy ask pending",

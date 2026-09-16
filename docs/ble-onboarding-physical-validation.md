@@ -30,7 +30,7 @@ keys, derived keys, or decrypted payloads into validation notes.
 | HA Voice PE | Native ESP32-S3 BLE, endpoint and recovery | Advertises `HexeVoice` in endpoint provisioning mode, advertises `HexeRecovery` in recovery, accepts Core-governed endpoint provisioning, accepts local recovery provisioning, stops advertising after success, reconnects to Wi-Fi/backend, and reports BLE heartbeat/status without secrets |
 | ESP32-S3-BOX-3 | Native ESP32-S3 BLE, endpoint and recovery | Same endpoint and recovery flow as HA Voice PE, plus visible display/touch status must distinguish local recovery from Core-governed endpoint provisioning |
 | Waveshare S3 1.85C BOX V2 | Native ESP32-S3 BLE, buildable scaffold | Verify advertising, GATT reads/writes, recovery fallback, display/touch indications, and post-Wi-Fi heartbeat after USB flashing on the real board |
-| future P4/C6 | ESP32-P4 with ESP32-C6 radio path | Until the C6 transport is implemented, firmware must explicitly report BLE unavailable or coprocessor pending; later validation must repeat the same endpoint/recovery checklist through the C6 BLE bridge |
+| P4/C6 recovery | ESP32-P4 with ESP32-C6 radio path | Recovery firmware must advertise through the hosted ESP32-C6 BLE path on un-onboarded/factory devices; endpoint firmware may continue reporting BLE unavailable until an explicit endpoint pairing window is implemented |
 
 ## Happy Path
 

@@ -392,7 +392,8 @@ def test_firmware_build_uses_pe_memory_defaults_and_keeps_endpoint_ble_off():
     assert "CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y" in sdkconfig_defaults
     assert "CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC=y" in sdkconfig_defaults
     assert "CONFIG_BT_ENABLED=y" not in sdkconfig_defaults
-    assert '[[ "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]]' in build_script
+    assert '"${FIRMWARE_APP}" == "recovery"' in build_script
+    assert 'CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y' in build_script
     assert "# Full voice firmware keeps BLE off unless a future explicit pairing-window task re-enables it." in build_script
     assert "# CONFIG_BT_ENABLED is not set" in build_script
     assert "full endpoint runtime disables idle BLE" in build_script

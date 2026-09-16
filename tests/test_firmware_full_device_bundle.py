@@ -101,11 +101,13 @@ def test_full_device_bundle_writes_recovery_to_factory_and_endpoint_to_ota0(tmp_
     assert '"${FACTORY_RECOVERY_OFFSET}" "${ENDPOINT_IMAGE}"' not in flash_script
 
 
-def test_full_device_bundle_rejects_p4_until_recovery_app_is_buildable(tmp_path):
-    _, result = run_bundle(tmp_path, board_profile="waveshare_p4_wifi6_touch_lcd_7b")
+def test_full_device_bundle_accepts_p4_recovery_app(tmp_path):
+    output_dir, result = run_bundle(tmp_path, board_profile="waveshare_p4_wifi6_touch_lcd_7b")
 
-    assert result.returncode == 1
-    assert "full-device bundle is not buildable until recovery app supports esp32p4" in result.stderr
+    assert result.returncode == 0
+    manifest = json.loads((output_dir / "full-device-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["board_profile"] == "waveshare_p4_wifi6_touch_lcd_7b"
+    assert manifest["partition_schema"] == "p4-32m-v1"
 
 
 def test_build_script_exposes_full_device_bundle_command():

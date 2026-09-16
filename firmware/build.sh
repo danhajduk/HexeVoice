@@ -256,7 +256,9 @@ EOF
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 EOF
   fi
-  if [[ "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]]; then
+  if [[ "${FIRMWARE_APP}" == "recovery" ]] &&
+    { [[ "${bluetooth_transport}" == "native" ]] ||
+      [[ "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]]; }; then
     cat >> "${output}" <<'EOF'
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
@@ -274,6 +276,13 @@ CONFIG_BT_NIMBLE_MSYS_1_BLOCK_COUNT=24
 CONFIG_BT_NIMBLE_MSYS_2_BLOCK_SIZE=1024
 CONFIG_BT_NIMBLE_MSYS_2_BLOCK_COUNT=24
 EOF
+    if [[ "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]]; then
+      cat >> "${output}" <<'EOF'
+# CONFIG_BT_NIMBLE_TRANSPORT_UART is not set
+CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y
+CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y
+EOF
+    fi
   elif [[ "${FIRMWARE_APP}" == "endpoint" ]]; then
     cat >> "${output}" <<'EOF'
 # Full voice firmware keeps BLE off unless a future explicit pairing-window task re-enables it.
@@ -349,12 +358,17 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
     rm -f "${sdkconfig_path}"
     return
   fi
-  if [[ -f "${sdkconfig_path}" && "${bluetooth_transport}" == "native" && "${FIRMWARE_APP}" == "recovery" ]] &&
+  if [[ -f "${sdkconfig_path}" && "${FIRMWARE_APP}" == "recovery" ]] &&
+    { [[ "${bluetooth_transport}" == "native" ]] ||
+      [[ "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]]; } &&
     { ! grep -q "^CONFIG_BT_NIMBLE_ENABLED=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_BT_NIMBLE_ROLE_CENTRAL=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_BT_NIMBLE_GATT_CLIENT=y$" "${sdkconfig_path}" ||
-      ! grep -q "^CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192$" "${sdkconfig_path}"; }; then
-    echo "Refreshing generated sdkconfig for ${profile}; BLE onboarding requires native roles and host stack sizing"
+      ! grep -q "^CONFIG_BT_NIMBLE_HOST_TASK_STACK_SIZE=8192$" "${sdkconfig_path}" ||
+      { [[ "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
+        { grep -q "^CONFIG_BT_NIMBLE_TRANSPORT_UART=y$" "${sdkconfig_path}" ||
+          ! grep -q "^CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y$" "${sdkconfig_path}"; }; }; }; then
+    echo "Refreshing generated sdkconfig for ${profile}; recovery BLE onboarding requires roles and host stack sizing"
     rm -f "${sdkconfig_path}"
   fi
 }
@@ -527,10 +541,6 @@ validate_profile() {
   if [[ "${FIRMWARE_APP}" == "recovery" ]]; then
     if [[ "$(board_profile_value "${profile}" build.recovery_app)" != "true" ]]; then
       echo "Board profile ${profile} does not declare recovery app support." >&2
-      exit 1
-    fi
-    if [[ "$(board_profile_value "${profile}" build.idf_target)" != "esp32s3" ]]; then
-      echo "Recovery skeleton currently supports only esp32s3 profiles." >&2
       exit 1
     fi
   fi

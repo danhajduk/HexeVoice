@@ -113,7 +113,11 @@ def render_pin_header(profile: dict[str, object], profile_path: Path) -> str:
     if not isinstance(wireless, dict):
         raise ValidationError("validated profile lost wireless section")
     ble_transport = str(wireless.get("transport") or "unknown")
-    ble_supported = bool(wireless.get("bluetooth")) and ble_transport == "native" and build.get("idf_target") == "esp32s3"
+    idf_target = str(build.get("idf_target"))
+    ble_supported = bool(wireless.get("bluetooth")) and (
+        (ble_transport == "native" and idf_target == "esp32s3")
+        or (ble_transport == "sdio" and idf_target == "esp32p4" and wireless.get("coprocessor") == "esp32c6")
+    )
     ble_status = "active" if ble_supported and profile.get("support_status") == "active" else "planned"
     if not ble_supported:
         ble_status = "coprocessor_pending" if wireless.get("coprocessor") else "unsupported"

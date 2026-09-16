@@ -42,6 +42,11 @@ uses the same recovery runtime but writes a complete flash export to
 controls, BLE local provisioning, and signed endpoint-image install path without
 linking the normal endpoint runtime.
 
+P4 recovery profiles use the same factory/recovery lane. On
+`waveshare_p4_wifi6_touch_lcd_7b`, BLE provisioning is enabled through the
+ESP32-C6 hosted transport so an un-onboarded device can advertise recovery BLE
+before endpoint credentials exist.
+
 ## Shared Code Boundary
 
 Recovery must not link `endpoint_runtime`.
