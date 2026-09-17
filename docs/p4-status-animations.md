@@ -1,15 +1,20 @@
 # P4 Status Animations
 
 The Waveshare P4 7B header supports reusable procedural animations configured
-under `firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/`. The small
-`status_layout.json` index lists four independently editable sections:
+under `firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/`. The repository
+keeps the editable layout configuration as YAML. Running
+`firmware/tools/generate-board-media-assets.py waveshare_p4_wifi6_touch_lcd_7b`
+converts it to the JSON files consumed from the SD card. `status_layout.yaml`
+lists the independently editable sections by their generated JSON names:
 
-- `chrome_layout.json`: header clock, firmware version, sidebars, and buttons
-- `status_icons.json`: static and floating status icons
-- `activity_layout.json`: listening, thinking, reply, and timer sprites
-- `idle_layout.json`: large idle clock and timer countdown screen
+- `chrome_layout.yaml`: header clock, firmware version, sidebars, and buttons
+- `status_icons.yaml`: static and floating status icons
+- `activity_layout.yaml`: listening, thinking, reply, and timer sprites
+- `idle_layout.yaml`: large idle clock and timer countdown screen
+- `screens_layout.yaml`: status conditions and ordered screen elements
 
-The media generator copies all five JSON files into the board asset library.
+The media generator converts the YAML index and its five sections into JSON in
+the board asset library.
 Firmware merges the listed sections in order and reloads them after asset
 synchronization. A legacy monolithic `status_layout.json` remains supported.
 
@@ -57,19 +62,23 @@ signed distances from `-1.0` to `1.0`, relative to the sprite dimensions.
 `period_ms` controls the transition duration. For example, an icon entering
 from one sprite-width to the left uses:
 
-```json
-{
-  "type": "slide_in",
-  "when": {"flag": "asset_sync_active", "equals": true},
-  "offset": {"x": -1.0, "y": 0.0},
-  "period_ms": 350
-}
+```yaml
+type: slide_in
+when:
+  flag: asset_sync_active
+  equals: true
+offset:
+  x: -1.0
+  y: 0.0
+period_ms: 350
 ```
 
 Every animation requires a `when` object:
 
-```json
-"when": {"flag": "asset_sync_active", "equals": true}
+```yaml
+when:
+  flag: asset_sync_active
+  equals: true
 ```
 
 ## Device Flags
@@ -89,7 +98,7 @@ left and right sidebar sprites use this flag to slide into view.
 `idle_ready` additionally requires synchronized time and the application idle
 phase. It controls the large idle clock composition. While active, the large
 clock replaces the small header clock. Its frame, hours, separator, minutes,
-and date each have independent animation lists in `idle_layout.json`.
+and date each have independent animation lists in `idle_layout.yaml`.
 
 The optional `timer_screen` object keeps that idle clock visible while timers
 are active. `primary_countdown` and `primary_label` configure the earliest

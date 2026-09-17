@@ -3,9 +3,18 @@
   "screens": [
     {
       "id": "updating",
-      "conditions": { "match": "all", "items": [{ "flag": "ota_active" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "ota_active"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" },
+        {
+          "type": "clock"
+        },
         {
           "type": "progress_bar",
           "x": 312,
@@ -19,9 +28,18 @@
     },
     {
       "id": "updating_phase",
-      "conditions": { "match": "all", "items": [{ "flag": "updating" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "updating"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" },
+        {
+          "type": "clock"
+        },
         {
           "type": "progress_bar",
           "x": 312,
@@ -35,42 +53,102 @@
     },
     {
       "id": "listening",
-      "conditions": { "match": "all", "items": [{ "flag": "listening" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "listening"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" },
-        { "type": "activity", "sprite": "listening" }
+        {
+          "type": "clock"
+        },
+        {
+          "type": "activity",
+          "sprite": "listening"
+        }
       ]
     },
     {
       "id": "thinking",
-      "conditions": { "match": "all", "items": [{ "flag": "thinking" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "thinking"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" },
-        { "type": "activity", "sprite": "thinking" }
+        {
+          "type": "clock"
+        },
+        {
+          "type": "activity",
+          "sprite": "thinking"
+        }
       ]
     },
     {
       "id": "playback",
-      "conditions": { "match": "all", "items": [{ "flag": "playback_active" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "playback_active"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" },
-        { "type": "activity", "sprite": "replay" }
+        {
+          "type": "clock"
+        },
+        {
+          "type": "activity",
+          "sprite": "replay"
+        }
       ]
     },
     {
       "id": "replying",
-      "conditions": { "match": "all", "items": [{ "flag": "replying" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "replying"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" },
-        { "type": "activity", "sprite": "replay" }
+        {
+          "type": "clock"
+        },
+        {
+          "type": "activity",
+          "sprite": "replay"
+        }
       ]
     },
     {
       "id": "timer_finished",
-      "conditions": { "match": "all", "items": [{ "flag": "timer_finished" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "timer_finished"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" },
-        { "type": "activity", "sprite": "timer" }
+        {
+          "type": "clock"
+        },
+        {
+          "type": "activity",
+          "sprite": "timer"
+        }
       ]
     },
     {
@@ -78,62 +156,129 @@
       "conditions": {
         "match": "all",
         "items": [
-          { "flag": "timer_active" },
-          { "flag": "idle_ready" }
+          {
+            "flag": "timer_active"
+          },
+          {
+            "flag": "idle_ready"
+          }
         ]
       },
       "elements": [
-        { "type": "idle_clock" },
-        { "type": "activity", "sprite": "timer" },
-        { "type": "timer" }
+        {
+          "type": "idle_clock"
+        },
+        {
+          "type": "activity",
+          "sprite": "timer"
+        },
+        {
+          "type": "timer"
+        }
       ]
     },
     {
       "id": "idle",
-      "conditions": { "match": "all", "items": [{ "flag": "idle_ready" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "idle_ready"
+          }
+        ]
+      },
       "elements": [
-        { "type": "idle_clock" }
+        {
+          "type": "idle_clock"
+        }
       ]
     },
     {
       "id": "muted",
-      "conditions": { "match": "all", "items": [{ "flag": "muted" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "muted"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" }
+        {
+          "type": "clock"
+        }
       ]
     },
     {
       "id": "error",
-      "conditions": { "match": "all", "items": [{ "flag": "error" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "error"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" }
+        {
+          "type": "clock"
+        }
       ]
     },
     {
       "id": "backend_connecting",
-      "conditions": { "match": "all", "items": [{ "flag": "backend_connecting" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "backend_connecting"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" }
+        {
+          "type": "clock"
+        }
       ]
     },
     {
       "id": "wifi_connecting",
-      "conditions": { "match": "all", "items": [{ "flag": "wifi_connecting" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "wifi_connecting"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" }
+        {
+          "type": "clock"
+        }
       ]
     },
     {
       "id": "booting",
-      "conditions": { "match": "all", "items": [{ "flag": "booting" }] },
+      "conditions": {
+        "match": "all",
+        "items": [
+          {
+            "flag": "booting"
+          }
+        ]
+      },
       "elements": [
-        { "type": "clock" }
+        {
+          "type": "clock"
+        }
       ]
     },
     {
       "id": "default",
       "elements": [
-        { "type": "clock" }
+        {
+          "type": "clock"
+        }
       ]
     }
   ]

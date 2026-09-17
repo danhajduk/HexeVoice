@@ -378,7 +378,8 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         REPO_ROOT
         / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites"
     )
-    index = json.loads((directory / "status_layout.json").read_text(encoding="utf-8"))
+    validator = load_validator_module()
+    index = validator.load_profile(directory / "status_layout.yaml")
     assert index == {
         "schema_version": 2,
         "files": [
@@ -391,7 +392,24 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     }
     layout = {}
     for filename in index["files"]:
-        layout.update(json.loads((directory / filename).read_text(encoding="utf-8")))
+        source_payload = validator.load_profile(directory / Path(filename).with_suffix(".yaml"))
+        generated_payload = json.loads(
+            (
+                REPO_ROOT
+                / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/sprite"
+                / filename
+            ).read_text(encoding="utf-8")
+        )
+        assert generated_payload == source_payload
+        layout.update(source_payload)
+
+    generated_index = json.loads(
+        (
+            REPO_ROOT
+            / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/sprite/status_layout.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert generated_index == index
 
     icon_layout = layout["icons"]
     assert isinstance(icon_layout["y"], int)
@@ -493,15 +511,11 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     assert "suffix_end = std::strchr(suffix, '-')" in source
     assert "draw_version_text(build_id);" in source
 
-    layout = json.loads(
-        (
-        REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json"
-        ).read_text(encoding="utf-8")
+    layout = load_validator_module().load_profile(
+        REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.yaml"
     )
-    chrome = json.loads(
-        (
-            REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/chrome_layout.json"
-        ).read_text(encoding="utf-8")
+    chrome = load_validator_module().load_profile(
+        REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/chrome_layout.yaml"
     )
     assert "version" not in layout
     layout.update(chrome)

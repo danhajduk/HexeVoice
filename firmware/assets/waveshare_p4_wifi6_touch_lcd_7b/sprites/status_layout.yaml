@@ -1,0 +1,7 @@
+schema_version: 2
+files:
+- chrome_layout.json
+- status_icons.json
+- activity_layout.json
+- idle_layout.json
+- screens_layout.json

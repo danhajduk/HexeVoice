@@ -16,7 +16,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ASSET_ROOT = ROOT / "firmware" / "assets"
 IMAGE_SUFFIXES = {".png"}
-SPRITE_METADATA_SUFFIXES = {".json"}
+SPRITE_METADATA_SUFFIXES = {".json", ".yaml", ".yml"}
 RGB888_BOARD_PROFILES = {"waveshare_p4_wifi6_touch_lcd_7b"}
 
 
@@ -63,6 +63,38 @@ def _source_sprite_metadata(directory: Path) -> list[Path]:
         for path in directory.iterdir()
         if path.is_file() and not path.name.startswith(".") and path.suffix.lower() in SPRITE_METADATA_SUFFIXES
     )
+
+
+def _write_sprite_metadata(source: Path, output: Path, dry_run: bool, yaml_python: str | None) -> None:
+    if source.suffix.lower() == ".json":
+        print(f"+ copy {source} {output}")
+        if not dry_run:
+            output.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, output)
+        return
+
+    output = output.with_suffix(".json")
+    print(f"+ yaml-to-json {source} {output}")
+    if dry_run:
+        return
+    if yaml_python is None:
+        raise SystemExit("PyYAML is required to convert sprite layout YAML files")
+    result = subprocess.run(
+        [
+            yaml_python,
+            "-c",
+            "import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1], encoding='utf-8'))))",
+            str(source),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(result.stdout)
+    if not isinstance(payload, dict):
+        raise SystemExit(f"YAML metadata root must be an object: {source}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _next_library_version(library_path: Path, now: datetime) -> str:
@@ -112,6 +144,30 @@ def _find_converter_python() -> str:
         "Pillow is required by convert_image.py. Set PYTHON to an environment "
         "with Pillow installed, for example PYTHON=$IDF_PYTHON_ENV_PATH/bin/python."
     )
+
+
+def _find_yaml_python() -> str | None:
+    candidates = [
+        os.environ.get("PYTHON", ""),
+        str(Path(os.environ["IDF_PYTHON_ENV_PATH"]) / "bin" / "python")
+        if os.environ.get("IDF_PYTHON_ENV_PATH") else "",
+        *sorted(glob.glob(str(Path.home() / ".espressif" / "python_env" / "idf*_py*_env" / "bin" / "python"))),
+        sys.executable or "python3",
+        "python3",
+    ]
+    for candidate in dict.fromkeys(item for item in candidates if item):
+        try:
+            result = subprocess.run(
+                [candidate, "-c", "import yaml"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except OSError:
+            continue
+        if result.returncode == 0:
+            return candidate
+    return None
 
 
 def _run(command: list[str], dry_run: bool) -> None:
@@ -196,6 +252,9 @@ def main() -> int:
     picture_sources = _source_images(board_dir)
     sprite_sources = _source_images(board_dir / "sprites")
     sprite_metadata_sources = _source_sprite_metadata(board_dir / "sprites")
+    yaml_python = _find_yaml_python() if any(
+        path.suffix.lower() in {".yaml", ".yml"} for path in sprite_metadata_sources
+    ) else None
     if not picture_sources and not sprite_sources and not sprite_metadata_sources:
         print(f"No source images found in {board_dir} or {board_dir / 'sprites'}")
 
@@ -250,10 +309,7 @@ def main() -> int:
 
     for source in sprite_metadata_sources:
         output = sprite_dir / source.name
-        print(f"+ copy {source} {output}")
-        if not args.dry_run:
-            output.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, output)
+        _write_sprite_metadata(source, output, args.dry_run, yaml_python)
 
     clock_font_source = font_dir / "manrope" / "Manrope-VariableFont_wght.ttf"
     if clock_font_source.exists():

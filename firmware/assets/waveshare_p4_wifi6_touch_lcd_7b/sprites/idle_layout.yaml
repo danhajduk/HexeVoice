@@ -1,0 +1,96 @@
+schema_version: 1
+idle_clock:
+  enabled: true
+  date_format: '%A, %B %d %Y.'
+  sprite:
+    x: 262
+    y: 205
+    animations:
+    - type: slide_in
+      when:
+        flag: idle_ready
+        equals: true
+      offset:
+        x: 0
+        y: 0.15
+      period_ms: 500
+  hours:
+    font: manrope/clock_42.hxf
+    font_size: 118
+    x: 415
+    y: 225
+    color: '#D8FFFA'
+    animations:
+    - type: slide_in
+      when:
+        flag: idle_ready
+        equals: true
+      offset:
+        x: -0.2
+        y: 0
+      period_ms: 550
+  separator:
+    font: manrope/clock_42.hxf
+    font_size: 98
+    x: 512
+    y: 232
+    color: '#35F4DB'
+    animations:
+    - type: pulse
+      when:
+        flag: idle_ready
+        equals: true
+      period_ms: 2000
+      min_opacity: 90
+      max_opacity: 255
+  minutes:
+    font: manrope/clock_42.hxf
+    font_size: 118
+    x: 609
+    y: 225
+    color: '#D8FFFA'
+    animations:
+    - type: slide_in
+      when:
+        flag: idle_ready
+        equals: true
+      offset:
+        x: 0.2
+        y: 0
+      period_ms: 550
+  date:
+    font: manrope/date_32.hxf
+    font_size: 40
+    y: 15
+    color: '#55B8FF'
+    animations:
+    - type: slide_in
+      when:
+        flag: idle_ready
+        equals: true
+      offset:
+        x: 0
+        y: 0.4
+      period_ms: 650
+timer_screen:
+  enabled: true
+  primary_countdown:
+    font: manrope/clock_42.hxf
+    font_size: 64
+    x: 250
+    y: 430
+    color: '#D8FFFA'
+  primary_label:
+    font: manrope/date_32.hxf
+    font_size: 24
+    x: 250
+    y: 500
+    color: '#35F4DB'
+  upcoming:
+    font: manrope/date_32.hxf
+    font_size: 25
+    x: 760
+    y: 430
+    gap: 38
+    count: 3
+    color: '#55B8FF'
