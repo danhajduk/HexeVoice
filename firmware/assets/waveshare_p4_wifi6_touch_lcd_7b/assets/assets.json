@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.28",
-  "updated_at": "2026-09-17T03:31:04.350597+00:00",
+  "asset_library_version": "2026.09.17.29",
+  "updated_at": "2026-09-17T03:40:53.713586+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -679,6 +679,20 @@
       }
     },
     {
+      "asset_id": "sprite_timer_frame",
+      "media_type": "sprite",
+      "filename": "timer_frame.rgb888",
+      "source_filename": "timer_frame.rgb888",
+      "metadata": {
+        "width": 744,
+        "height": 150,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 334800,
+        "sha256": "032246503d0b3043621cf6206529c1c83310f91584fcd7716d96155f004fa070"
+      }
+    },
+    {
       "asset_id": "sprite_update_available",
       "media_type": "sprite",
       "filename": "update_available.rgb888",
@@ -765,6 +779,17 @@
         "alpha_format": "alpha8",
         "size_bytes": 1600,
         "sha256": "b547793d1281f81f3a4d28916726bf47a66be8031060b8f514766eacda194413"
+      }
+    },
+    {
+      "asset_id": "timer_frame",
+      "media_type": "sprite",
+      "filename": "timer_frame.alpha8",
+      "source_filename": "timer_frame.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 111600,
+        "sha256": "d2c23b4e62d8b107f3ebaf807bf7673b24608eee31768ecf6b85a3067c775ddb"
       }
     },
     {

@@ -97,6 +97,47 @@ def button_config(draw):
     draw.ellipse((42, 16, 50, 24), fill=CYAN)
 
 
+def timer_frame(draw):
+    # Angular two-bay frame: primary timer on the left, upcoming timers on the right.
+    draw.polygon(
+        ((18, 3), (710, 3), (740, 33), (740, 117), (710, 147), (18, 147), (3, 132), (3, 18)),
+        fill=(5, 22, 45, 105),
+        outline=BLUE,
+        width=2,
+    )
+    draw.line((30, 3, 238, 3), fill=CYAN, width=3)
+    draw.line((506, 3, 698, 3), fill=CYAN, width=3)
+    draw.line((30, 147, 238, 147), fill=CYAN, width=3)
+    draw.line((506, 147, 698, 147), fill=CYAN, width=3)
+    draw.line((3, 30, 3, 62), fill=CYAN, width=3)
+    draw.line((3, 88, 3, 120), fill=CYAN, width=3)
+    draw.line((740, 33, 740, 61), fill=CYAN, width=3)
+    draw.line((740, 89, 740, 117), fill=CYAN, width=3)
+
+    # The divider leaves a deliberate opening around the center for visual breathing room.
+    draw.line((478, 16, 478, 58), fill=BLUE, width=2)
+    draw.line((478, 92, 478, 134), fill=BLUE, width=2)
+    draw.line((469, 67, 478, 58, 487, 67), fill=CYAN, width=2)
+    draw.line((469, 83, 478, 92, 487, 83), fill=CYAN, width=2)
+
+    for points in (
+        ((3, 18), (18, 3), (32, 3)),
+        ((710, 3), (740, 33), (740, 47)),
+        ((740, 103), (740, 117), (710, 147)),
+        ((32, 147), (18, 147), (3, 132)),
+    ):
+        draw.line(points, fill=CYAN, width=3)
+    draw.line((11, 27, 24, 14), fill=MAGENTA, width=4)
+    draw.line((719, 14, 732, 27), fill=MAGENTA, width=4)
+    draw.line((719, 136, 732, 123), fill=MAGENTA, width=4)
+    draw.line((11, 123, 24, 136), fill=MAGENTA, width=4)
+
+    for x in (48, 58, 68):
+        draw.line((x, 12, x + 6, 12), fill=BLUE, width=2)
+    for x in (658, 668, 678):
+        draw.line((x, 138, x + 6, 138), fill=BLUE, width=2)
+
+
 def mic(draw, color=CYAN, slash=False, active=False):
     draw.rounded_rectangle((14, 5, 26, 25), radius=6, outline=color, width=3)
     draw.arc((9, 13, 31, 31), 0, 180, fill=color, width=3)
@@ -129,6 +170,7 @@ def main():
     save("button_timer", button_timer, (72, 56))
     save("button_weather", button_weather, (72, 56))
     save("button_config", button_config, (72, 56))
+    save("timer_frame", timer_frame, (744, 150))
 
 
 if __name__ == "__main__":
