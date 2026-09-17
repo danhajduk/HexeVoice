@@ -491,6 +491,7 @@ int frame_signature(int frame) {
   signature = (signature * 131) + (hexe::system::asset_sync_active() ? 1 : 0);
   signature = (signature * 131) + static_cast<int>(state.display_timer_count);
   signature = (signature * 131) + static_cast<int>(hexe::ui_flags_signature());
+  signature = (signature * 131) + static_cast<int>(hexe::ui_screen_signature());
   if (state.timer_active) {
     signature = (signature * 131) + static_cast<int>((esp_timer_get_time() / 1000000) % 100000);
   }
@@ -2164,6 +2165,14 @@ void draw_header_clock(bool show_with_idle_clock = false) {
 }
 
 const ScreenLayout *active_screen_layout(const hexe::AppState &state) {
+  char forced_screen_id[hexe::kMaxUiScreenIdBytes] = {};
+  if (hexe::active_ui_screen(forced_screen_id, sizeof(forced_screen_id))) {
+    for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
+      if (std::strcmp(g_status_layout.screens[index].id, forced_screen_id) == 0) {
+        return &g_status_layout.screens[index];
+      }
+    }
+  }
   for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
     const auto &screen = g_status_layout.screens[index];
     bool matches = screen.condition_count == 0;

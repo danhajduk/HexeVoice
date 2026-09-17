@@ -38,6 +38,7 @@ enum class TimerLifecycleState {
 constexpr size_t kMaxDisplayTimers = 4;
 constexpr size_t kMaxUiFlags = 16;
 constexpr size_t kMaxUiFlagNameBytes = 32;
+constexpr size_t kMaxUiScreenIdBytes = 24;
 
 struct UiFlag {
   char name[kMaxUiFlagNameBytes]{};
@@ -97,6 +98,9 @@ void clear_ui_flags();
 bool set_ui_flag(const char *name, bool value);
 bool ui_flag_value(const char *name);
 uint32_t ui_flags_signature();
+bool trigger_ui_screen(const char *screen_id, int duration_ms);
+bool active_ui_screen(char *screen_id, size_t screen_id_size);
+uint32_t ui_screen_signature();
 void advance_loading_frame();
 bool endpoint_ready();
 AppPhase idle_or_connecting_phase();

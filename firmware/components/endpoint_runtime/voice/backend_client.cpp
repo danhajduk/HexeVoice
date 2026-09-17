@@ -1456,6 +1456,7 @@ bool process_pending_audio_finalize();
 bool queue_media_transfer(cJSON *payload);
 void handle_endpoint_timer(cJSON *payload);
 void handle_endpoint_ui_flags(cJSON *payload);
+void handle_endpoint_ui_screen(cJSON *payload);
 void handle_endpoint_provisioning_apply(cJSON *payload);
 void handle_endpoint_provisioning_reset(cJSON *payload);
 
@@ -1827,6 +1828,8 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else if (std::strcmp(type, "endpoint.ui.flags") == 0) {
     handle_endpoint_ui_flags(payload);
+  } else if (std::strcmp(type, "endpoint.ui.screen") == 0) {
+    handle_endpoint_ui_screen(payload);
   } else if (std::strcmp(type, "endpoint.timer") == 0) {
     handle_endpoint_timer(payload);
   } else if (std::strcmp(type, "endpoint.provisioning.apply") == 0) {
@@ -3400,6 +3403,19 @@ void handle_endpoint_ui_flags(cJSON *payload) {
     return;
   }
   send_command_ack(request_id, "endpoint.ui.flags", "succeeded", "UI flags updated");
+}
+
+void handle_endpoint_ui_screen(cJSON *payload) {
+  const char *request_id = payload_request_id(payload);
+  cJSON *screen_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "screen_id") : nullptr;
+  cJSON *duration = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "duration_seconds") : nullptr;
+  const int duration_seconds = cJSON_IsNumber(duration) ? duration->valueint : 30;
+  if (!cJSON_IsString(screen_id) ||
+      !hexe::trigger_ui_screen(screen_id->valuestring, std::clamp(duration_seconds, 1, 30) * 1000)) {
+    send_command_error(request_id, "endpoint.ui.screen", "invalid_payload", "Valid screen_id is required");
+    return;
+  }
+  send_command_ack(request_id, "endpoint.ui.screen", "succeeded", "Temporary screen override applied");
 }
 
 const char *timer_state_from_payload(cJSON *payload) {

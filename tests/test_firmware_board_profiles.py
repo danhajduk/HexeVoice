@@ -541,6 +541,16 @@ def test_endpoint_accepts_backend_ui_flags_for_screen_conditions():
     assert 'std::strcmp(type, "endpoint.ui.flags") == 0' in backend
     assert 'cJSON_GetObjectItem(payload, "flags")' in backend
     assert "hexe::set_ui_flag(flag->string, cJSON_IsTrue(flag))" in backend
+    assert 'std::strcmp(type, "endpoint.ui.screen") == 0' in backend
+    assert 'cJSON_GetObjectItem(payload, "screen_id")' in backend
+    assert "std::clamp(duration_seconds, 1, 30) * 1000" in backend
+    assert "hexe::trigger_ui_screen" in backend
+
+    display = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+    assert "hexe::active_ui_screen(forced_screen_id" in display
+    assert "std::strcmp(g_status_layout.screens[index].id, forced_screen_id)" in display
 
 
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
