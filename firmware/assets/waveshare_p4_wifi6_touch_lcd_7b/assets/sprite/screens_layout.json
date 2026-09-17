@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "screens": [
+    {
+      "id": "updating",
+      "when": { "flag": "ota_active" },
+      "elements": [
+        { "type": "clock" },
+        {
+          "type": "progress_bar",
+          "x": 312,
+          "y": 520,
+          "width": 400,
+          "height": 18,
+          "color": "#35F4DB",
+          "track_color": "#102E4A"
+        }
+      ]
+    },
+    {
+      "id": "updating_phase",
+      "when": { "flag": "updating" },
+      "elements": [
+        { "type": "clock" },
+        {
+          "type": "progress_bar",
+          "x": 312,
+          "y": 520,
+          "width": 400,
+          "height": 18,
+          "color": "#35F4DB",
+          "track_color": "#102E4A"
+        }
+      ]
+    },
+    {
+      "id": "listening",
+      "when": { "flag": "listening" },
+      "elements": [
+        { "type": "clock" },
+        { "type": "activity", "sprite": "listening" }
+      ]
+    },
+    {
+      "id": "thinking",
+      "when": { "flag": "thinking" },
+      "elements": [
+        { "type": "clock" },
+        { "type": "activity", "sprite": "thinking" }
+      ]
+    },
+    {
+      "id": "playback",
+      "when": { "flag": "playback_active" },
+      "elements": [
+        { "type": "clock" },
+        { "type": "activity", "sprite": "replay" }
+      ]
+    },
+    {
+      "id": "replying",
+      "when": { "flag": "replying" },
+      "elements": [
+        { "type": "clock" },
+        { "type": "activity", "sprite": "replay" }
+      ]
+    },
+    {
+      "id": "timer_finished",
+      "when": { "flag": "timer_finished" },
+      "elements": [
+        { "type": "clock" },
+        { "type": "activity", "sprite": "timer" }
+      ]
+    },
+    {
+      "id": "timer",
+      "when": { "flag": "timer_active" },
+      "elements": [
+        { "type": "idle_clock" },
+        { "type": "activity", "sprite": "timer" },
+        { "type": "timer" }
+      ]
+    },
+    {
+      "id": "idle",
+      "when": { "flag": "idle_ready" },
+      "elements": [
+        { "type": "idle_clock" }
+      ]
+    },
+    {
+      "id": "muted",
+      "when": { "flag": "muted" },
+      "elements": [
+        { "type": "clock" }
+      ]
+    },
+    {
+      "id": "error",
+      "when": { "flag": "error" },
+      "elements": [
+        { "type": "clock" }
+      ]
+    },
+    {
+      "id": "backend_connecting",
+      "when": { "flag": "backend_connecting" },
+      "elements": [
+        { "type": "clock" }
+      ]
+    },
+    {
+      "id": "wifi_connecting",
+      "when": { "flag": "wifi_connecting" },
+      "elements": [
+        { "type": "clock" }
+      ]
+    },
+    {
+      "id": "booting",
+      "when": { "flag": "booting" },
+      "elements": [
+        { "type": "clock" }
+      ]
+    },
+    {
+      "id": "default",
+      "elements": [
+        { "type": "clock" }
+      ]
+    }
+  ]
+}

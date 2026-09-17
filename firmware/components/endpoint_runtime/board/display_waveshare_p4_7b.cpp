@@ -76,6 +76,8 @@ constexpr int kSidebarButtonWidth = 72;
 constexpr int kSidebarButtonHeight = 56;
 constexpr size_t kActivitySpriteCount = 4;
 constexpr size_t kSidebarButtonCount = 3;
+constexpr size_t kMaxScreens = 16;
+constexpr size_t kMaxScreenElements = 8;
 constexpr size_t kStatusLayoutMaxBytes = 8192;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
@@ -112,6 +114,8 @@ enum class StatusAnimationType : uint8_t {
 enum class StatusFlag : uint8_t {
   kHeartbeat,
   kLoading,
+  kBooting,
+  kUpdating,
   kWifiConnected,
   kWifiConnecting,
   kBackendConnected,
@@ -176,6 +180,34 @@ struct AnimatedSpriteLayout {
   int y;
   StatusAnimation animations[kMaxStatusAnimations] = {};
   size_t animation_count = 0;
+};
+
+enum class ScreenElementType : uint8_t {
+  kHeaderClock,
+  kIdleClock,
+  kActivity,
+  kTimer,
+  kProgressBar,
+  kInvalid,
+};
+
+struct ScreenElement {
+  ScreenElementType type = ScreenElementType::kInvalid;
+  int activity_index = -1;
+  int x = 312;
+  int y = 520;
+  int width = 400;
+  int height = 18;
+  uint32_t color = kCyan;
+  uint32_t track_color = kCanvasAlt;
+};
+
+struct ScreenLayout {
+  char id[24] = {};
+  StatusFlag flag = StatusFlag::kInvalid;
+  bool expected = true;
+  ScreenElement elements[kMaxScreenElements] = {};
+  size_t element_count = 0;
 };
 
 struct AnimatedTextLayout {
@@ -259,6 +291,8 @@ struct StatusLayout {
       StatusIconId::kAssetDownloading,
   };
   size_t floating_count = 1;
+  ScreenLayout screens[kMaxScreens] = {};
+  size_t screen_count = 0;
 };
 
 struct ClockGlyph {
@@ -800,6 +834,8 @@ StatusFlag status_flag(const char *name) {
   static constexpr FlagName kFlags[] = {
       {"heartbeat", StatusFlag::kHeartbeat},
       {"loading", StatusFlag::kLoading},
+      {"booting", StatusFlag::kBooting},
+      {"updating", StatusFlag::kUpdating},
       {"wifi_connected", StatusFlag::kWifiConnected},
       {"wifi_connecting", StatusFlag::kWifiConnecting},
       {"backend_connected", StatusFlag::kBackendConnected},
@@ -932,6 +968,57 @@ int activity_sprite_index(const char *name) {
     }
   }
   return -1;
+}
+
+ScreenElementType screen_element_type(const char *name) {
+  if (name == nullptr) return ScreenElementType::kInvalid;
+  if (std::strcmp(name, "clock") == 0) return ScreenElementType::kHeaderClock;
+  if (std::strcmp(name, "idle_clock") == 0) return ScreenElementType::kIdleClock;
+  if (std::strcmp(name, "activity") == 0) return ScreenElementType::kActivity;
+  if (std::strcmp(name, "timer") == 0) return ScreenElementType::kTimer;
+  if (std::strcmp(name, "progress_bar") == 0) return ScreenElementType::kProgressBar;
+  return ScreenElementType::kInvalid;
+}
+
+void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
+  layout->screen_count = 0;
+  cJSON *screen_item = nullptr;
+  cJSON_ArrayForEach(screen_item, screens) {
+    if (!cJSON_IsObject(screen_item) || layout->screen_count >= kMaxScreens) continue;
+    ScreenLayout screen;
+    cJSON *id = cJSON_GetObjectItem(screen_item, "id");
+    if (!cJSON_IsString(id) || id->valuestring == nullptr) continue;
+    std::snprintf(screen.id, sizeof(screen.id), "%s", id->valuestring);
+    cJSON *when = cJSON_GetObjectItem(screen_item, "when");
+    cJSON *flag = cJSON_IsObject(when) ? cJSON_GetObjectItem(when, "flag") : nullptr;
+    screen.flag = cJSON_IsString(flag) ? status_flag(flag->valuestring) : StatusFlag::kInvalid;
+    cJSON *equals = cJSON_IsObject(when) ? cJSON_GetObjectItem(when, "equals") : nullptr;
+    screen.expected = cJSON_IsBool(equals) ? cJSON_IsTrue(equals) : true;
+
+    cJSON *elements = cJSON_GetObjectItem(screen_item, "elements");
+    cJSON *element_item = nullptr;
+    cJSON_ArrayForEach(element_item, elements) {
+      if (!cJSON_IsObject(element_item) || screen.element_count >= kMaxScreenElements) continue;
+      cJSON *type = cJSON_GetObjectItem(element_item, "type");
+      ScreenElement element;
+      element.type = cJSON_IsString(type) ? screen_element_type(type->valuestring) : ScreenElementType::kInvalid;
+      if (element.type == ScreenElementType::kInvalid) continue;
+      if (element.type == ScreenElementType::kActivity) {
+        cJSON *sprite = cJSON_GetObjectItem(element_item, "sprite");
+        element.activity_index = cJSON_IsString(sprite) ? activity_sprite_index(sprite->valuestring) : -1;
+        if (element.activity_index < 0) continue;
+      } else if (element.type == ScreenElementType::kProgressBar) {
+        element.x = json_layout_coordinate(element_item, "x", element.x, kWidth - 1);
+        element.y = json_layout_coordinate(element_item, "y", element.y, kHeight - 1);
+        element.width = json_integer(element_item, "width", element.width, 1, kWidth - element.x);
+        element.height = json_integer(element_item, "height", element.height, 1, kHeight - element.y);
+        element.color = json_color(element_item, "color", element.color);
+        element.track_color = json_color(element_item, "track_color", element.track_color);
+      }
+      screen.elements[screen.element_count++] = element;
+    }
+    if (screen.element_count > 0) layout->screens[layout->screen_count++] = screen;
+  }
 }
 
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum) {
@@ -1190,6 +1277,7 @@ void load_status_layout() {
   cJSON *idle_clock = cJSON_GetObjectItem(root, "idle_clock");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
   cJSON *version = cJSON_GetObjectItem(root, "version");
+  parse_screen_layouts(cJSON_GetObjectItem(root, "screens"), &g_status_layout);
   cJSON *idle_enabled = cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "enabled") : nullptr;
   if (cJSON_IsBool(idle_enabled)) {
     g_status_layout.idle_clock.enabled = cJSON_IsTrue(idle_enabled);
@@ -1422,6 +1510,10 @@ bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
     case StatusFlag::kLoading:
       return state.phase == hexe::AppPhase::kBooting || state.phase == hexe::AppPhase::kWiFiConnecting ||
           state.phase == hexe::AppPhase::kBackendConnecting || state.ota_active || hexe::system::asset_sync_active();
+    case StatusFlag::kBooting:
+      return state.phase == hexe::AppPhase::kBooting;
+    case StatusFlag::kUpdating:
+      return state.phase == hexe::AppPhase::kUpdating;
     case StatusFlag::kWifiConnected:
       return state.wifi_connected;
     case StatusFlag::kWifiConnecting:
@@ -1656,8 +1748,8 @@ int active_activity_sprite(const hexe::AppState &state) {
   return -1;
 }
 
-void draw_activity_sprite(const hexe::AppState &state, int64_t now_ms) {
-  const int active_index = active_activity_sprite(state);
+void draw_activity_sprite(const hexe::AppState &state, int64_t now_ms, int selected_index = -2) {
+  const int active_index = selected_index == -2 ? active_activity_sprite(state) : selected_index;
   StatusSprite *sprites[kActivitySpriteCount] = {
       &g_activity_listening_sprite,
       &g_activity_thinking_sprite,
@@ -1984,8 +2076,9 @@ void draw_header_status_icons() {
   }
 }
 
-void draw_header_clock() {
-  if (g_status_layout.idle_clock.enabled && status_flag_value(StatusFlag::kIdleReady, hexe::state())) {
+void draw_header_clock(bool show_with_idle_clock = false) {
+  if (!show_with_idle_clock && g_status_layout.idle_clock.enabled &&
+      status_flag_value(StatusFlag::kIdleReady, hexe::state())) {
     return;
   }
   if (!hexe::system::clock_synced()) {
@@ -2039,6 +2132,57 @@ void draw_header_clock() {
       top_y,
       g_status_layout.clock.font_size,
       g_status_layout.clock.color);
+}
+
+const ScreenLayout *active_screen_layout(const hexe::AppState &state) {
+  for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
+    const auto &screen = g_status_layout.screens[index];
+    if (screen.flag == StatusFlag::kInvalid || status_flag_value(screen.flag, state) == screen.expected) {
+      return &screen;
+    }
+  }
+  return nullptr;
+}
+
+void draw_screen_layout(const hexe::AppState &state, int64_t now_ms) {
+  const ScreenLayout *screen = active_screen_layout(state);
+  if (screen == nullptr) {
+    draw_idle_clock(state, now_ms);
+    draw_activity_sprite(state, now_ms);
+    draw_timer_screen(state);
+    draw_header_clock();
+    return;
+  }
+
+  bool activity_drawn = false;
+  for (size_t index = 0; index < screen->element_count; ++index) {
+    const auto &element = screen->elements[index];
+    switch (element.type) {
+      case ScreenElementType::kHeaderClock:
+        draw_header_clock(true);
+        break;
+      case ScreenElementType::kIdleClock:
+        draw_idle_clock(state, now_ms);
+        break;
+      case ScreenElementType::kActivity:
+        draw_activity_sprite(state, now_ms, element.activity_index);
+        activity_drawn = true;
+        break;
+      case ScreenElementType::kTimer:
+        draw_timer_screen(state);
+        break;
+      case ScreenElementType::kProgressBar: {
+        const int progress = std::clamp(state.ota_progress_percent, 0, 100);
+        fill_rect(element.x, element.y, element.width, element.height, element.track_color);
+        fill_rect(element.x, element.y, element.width * progress / 100, element.height, element.color);
+        draw_rect_outline(element.x, element.y, element.width, element.height, kInk);
+        break;
+      }
+      case ScreenElementType::kInvalid:
+        break;
+    }
+  }
+  if (!activity_drawn) draw_activity_sprite(state, now_ms, -1);
 }
 
 void draw_version_text(const char *build_id) {
@@ -2249,10 +2393,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
   } else {
     load_status_layout();
     draw_sidebars(state, g_frame_time_ms);
-    draw_idle_clock(state, g_frame_time_ms);
-    draw_activity_sprite(state, g_frame_time_ms);
-    draw_timer_screen(state);
-    draw_header_clock();
+    draw_screen_layout(state, g_frame_time_ms);
     draw_header_status_icons();
     draw_version_text(build_id);
     (void)frame;

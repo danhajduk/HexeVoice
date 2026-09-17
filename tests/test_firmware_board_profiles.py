@@ -338,8 +338,9 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "StatusFlag::kUiReady" in source
     assert "StatusFlag::kIdleReady" in source
     assert "state.wifi_connected && state.backend_connected && !state.ota_active" in source
-    assert "draw_idle_clock(state, g_frame_time_ms);" in source
-    assert "draw_activity_sprite(state, g_frame_time_ms);" in source
+    assert "draw_screen_layout(state, g_frame_time_ms);" in source
+    assert "draw_idle_clock(state, now_ms);" in source
+    assert "draw_activity_sprite(state, now_ms" in source
     for sprite in (
         "activity_listening",
         "activity_thinking",
@@ -350,7 +351,7 @@ def test_p4_display_blends_header_status_sprites_from_sd():
         "button_config",
     ):
         assert f'"{sprite}"' in source
-    assert "g_status_layout.idle_clock.enabled && status_flag_value(StatusFlag::kIdleReady" in source
+    assert "status_flag_value(StatusFlag::kIdleReady, hexe::state())" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
     assert 'cJSON_IsObject(icons_config) ? icons_config : root, "y", g_status_layout.y' in source
@@ -382,6 +383,7 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
             "status_icons.json",
             "activity_layout.json",
             "idle_layout.json",
+            "screens_layout.json",
         ],
     }
     layout = {}
@@ -401,6 +403,14 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert "x" not in layout["idle_clock"]["date"]
     assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
     assert layout["sidebar_buttons"] == {"enabled": True, "x": 8, "y": 116, "gap": 20}
+    screens = layout["screens"]
+    assert screens[-1]["id"] == "default"
+    assert [screen["id"] for screen in screens[:6]] == [
+        "updating", "updating_phase", "listening", "thinking", "playback", "replying"
+    ]
+    assert {item["type"] for screen in screens for item in screen["elements"]} == {
+        "clock", "idle_clock", "activity", "timer", "progress_bar"
+    }
     activity_items = layout["activity_sprites"]["items"]
     assert [item["id"] for item in activity_items] == ["listening", "thinking", "replay", "timer"]
     assert all(item["animations"] for item in activity_items)
