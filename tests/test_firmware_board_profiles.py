@@ -371,6 +371,9 @@ def test_p4_display_blends_header_status_sprites_from_sd():
 
 
 def test_p4_status_layout_uses_shared_y_and_scaled_animations():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
     directory = (
         REPO_ROOT
         / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites"
@@ -411,6 +414,15 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert {item["type"] for screen in screens for item in screen["elements"]} == {
         "clock", "idle_clock", "activity", "timer", "progress_bar"
     }
+    conditional_screens = [screen for screen in screens if screen["id"] != "default"]
+    assert all(screen["conditions"]["match"] in {"all", "any"} for screen in conditional_screens)
+    assert all(screen["conditions"]["items"] for screen in conditional_screens)
+    timer_screen = next(screen for screen in screens if screen["id"] == "timer")
+    assert [item["flag"] for item in timer_screen["conditions"]["items"]] == [
+        "timer_active", "idle_ready"
+    ]
+    assert 'cJSON_GetObjectItem(screen_item, "conditions")' in source
+    assert "hexe::ui_flag_value(condition.custom_flag)" in source
     activity_items = layout["activity_sprites"]["items"]
     assert [item["id"] for item in activity_items] == ["listening", "thinking", "replay", "timer"]
     assert all(item["animations"] for item in activity_items)
@@ -517,6 +529,18 @@ def test_p4_profile_uses_bsp_gt911_touch_adapter():
     assert "hexe::voice::tts_playback_active()" in source
     assert "display_activity_zone_contains(g_touch_start_x, g_touch_start_y)" in source
     assert 'hexe::voice::stop_playback("touch_activity")' in source
+
+
+def test_endpoint_accepts_backend_ui_flags_for_screen_conditions():
+    state_header = (REPO_ROOT / "firmware/components/endpoint_runtime/app_state.h").read_text(encoding="utf-8")
+    backend = (REPO_ROOT / "firmware/components/endpoint_runtime/voice/backend_client.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "constexpr size_t kMaxUiFlags = 16;" in state_header
+    assert 'std::strcmp(type, "endpoint.ui.flags") == 0' in backend
+    assert 'cJSON_GetObjectItem(payload, "flags")' in backend
+    assert "hexe::set_ui_flag(flag->string, cJSON_IsTrue(flag))" in backend
 
 
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):

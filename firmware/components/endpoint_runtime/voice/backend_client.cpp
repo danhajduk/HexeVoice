@@ -1455,6 +1455,7 @@ void request_audio_finalize(const char *request_id, const char *reason);
 bool process_pending_audio_finalize();
 bool queue_media_transfer(cJSON *payload);
 void handle_endpoint_timer(cJSON *payload);
+void handle_endpoint_ui_flags(cJSON *payload);
 void handle_endpoint_provisioning_apply(cJSON *payload);
 void handle_endpoint_provisioning_reset(cJSON *payload);
 
@@ -1824,6 +1825,8 @@ void handle_backend_event_json(const std::string &message) {
     } else {
       send_command_error(request_id, "endpoint.model_bundle.rollback", rollback_error, "Model bundle rollback unavailable");
     }
+  } else if (std::strcmp(type, "endpoint.ui.flags") == 0) {
+    handle_endpoint_ui_flags(payload);
   } else if (std::strcmp(type, "endpoint.timer") == 0) {
     handle_endpoint_timer(payload);
   } else if (std::strcmp(type, "endpoint.provisioning.apply") == 0) {
@@ -3373,6 +3376,30 @@ void stand_down_wake_candidate(const char *reason) {
 
 bool timer_state_matches(const char *value, const char *expected) {
   return value != nullptr && expected != nullptr && std::strcmp(value, expected) == 0;
+}
+
+void handle_endpoint_ui_flags(cJSON *payload) {
+  const char *request_id = payload_request_id(payload);
+  cJSON *flags = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "flags") : nullptr;
+  if (!cJSON_IsObject(flags)) {
+    send_command_error(request_id, "endpoint.ui.flags", "invalid_payload", "flags must be an object");
+    return;
+  }
+  cJSON *replace = cJSON_GetObjectItem(payload, "replace");
+  if (cJSON_IsTrue(replace)) hexe::clear_ui_flags();
+
+  size_t applied = 0;
+  cJSON *flag = nullptr;
+  cJSON_ArrayForEach(flag, flags) {
+    if (flag->string != nullptr && cJSON_IsBool(flag) && hexe::set_ui_flag(flag->string, cJSON_IsTrue(flag))) {
+      ++applied;
+    }
+  }
+  if (applied == 0 && cJSON_GetArraySize(flags) > 0) {
+    send_command_error(request_id, "endpoint.ui.flags", "invalid_payload", "No valid boolean UI flags supplied");
+    return;
+  }
+  send_command_ack(request_id, "endpoint.ui.flags", "succeeded", "UI flags updated");
 }
 
 const char *timer_state_from_payload(cJSON *payload) {

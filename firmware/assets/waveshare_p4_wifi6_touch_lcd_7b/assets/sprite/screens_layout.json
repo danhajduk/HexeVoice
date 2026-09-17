@@ -3,7 +3,7 @@
   "screens": [
     {
       "id": "updating",
-      "when": { "flag": "ota_active" },
+      "conditions": { "match": "all", "items": [{ "flag": "ota_active" }] },
       "elements": [
         { "type": "clock" },
         {
@@ -19,7 +19,7 @@
     },
     {
       "id": "updating_phase",
-      "when": { "flag": "updating" },
+      "conditions": { "match": "all", "items": [{ "flag": "updating" }] },
       "elements": [
         { "type": "clock" },
         {
@@ -35,7 +35,7 @@
     },
     {
       "id": "listening",
-      "when": { "flag": "listening" },
+      "conditions": { "match": "all", "items": [{ "flag": "listening" }] },
       "elements": [
         { "type": "clock" },
         { "type": "activity", "sprite": "listening" }
@@ -43,7 +43,7 @@
     },
     {
       "id": "thinking",
-      "when": { "flag": "thinking" },
+      "conditions": { "match": "all", "items": [{ "flag": "thinking" }] },
       "elements": [
         { "type": "clock" },
         { "type": "activity", "sprite": "thinking" }
@@ -51,7 +51,7 @@
     },
     {
       "id": "playback",
-      "when": { "flag": "playback_active" },
+      "conditions": { "match": "all", "items": [{ "flag": "playback_active" }] },
       "elements": [
         { "type": "clock" },
         { "type": "activity", "sprite": "replay" }
@@ -59,7 +59,7 @@
     },
     {
       "id": "replying",
-      "when": { "flag": "replying" },
+      "conditions": { "match": "all", "items": [{ "flag": "replying" }] },
       "elements": [
         { "type": "clock" },
         { "type": "activity", "sprite": "replay" }
@@ -67,7 +67,7 @@
     },
     {
       "id": "timer_finished",
-      "when": { "flag": "timer_finished" },
+      "conditions": { "match": "all", "items": [{ "flag": "timer_finished" }] },
       "elements": [
         { "type": "clock" },
         { "type": "activity", "sprite": "timer" }
@@ -75,7 +75,13 @@
     },
     {
       "id": "timer",
-      "when": { "flag": "timer_active" },
+      "conditions": {
+        "match": "all",
+        "items": [
+          { "flag": "timer_active" },
+          { "flag": "idle_ready" }
+        ]
+      },
       "elements": [
         { "type": "idle_clock" },
         { "type": "activity", "sprite": "timer" },
@@ -84,42 +90,42 @@
     },
     {
       "id": "idle",
-      "when": { "flag": "idle_ready" },
+      "conditions": { "match": "all", "items": [{ "flag": "idle_ready" }] },
       "elements": [
         { "type": "idle_clock" }
       ]
     },
     {
       "id": "muted",
-      "when": { "flag": "muted" },
+      "conditions": { "match": "all", "items": [{ "flag": "muted" }] },
       "elements": [
         { "type": "clock" }
       ]
     },
     {
       "id": "error",
-      "when": { "flag": "error" },
+      "conditions": { "match": "all", "items": [{ "flag": "error" }] },
       "elements": [
         { "type": "clock" }
       ]
     },
     {
       "id": "backend_connecting",
-      "when": { "flag": "backend_connecting" },
+      "conditions": { "match": "all", "items": [{ "flag": "backend_connecting" }] },
       "elements": [
         { "type": "clock" }
       ]
     },
     {
       "id": "wifi_connecting",
-      "when": { "flag": "wifi_connecting" },
+      "conditions": { "match": "all", "items": [{ "flag": "wifi_connecting" }] },
       "elements": [
         { "type": "clock" }
       ]
     },
     {
       "id": "booting",
-      "when": { "flag": "booting" },
+      "conditions": { "match": "all", "items": [{ "flag": "booting" }] },
       "elements": [
         { "type": "clock" }
       ]

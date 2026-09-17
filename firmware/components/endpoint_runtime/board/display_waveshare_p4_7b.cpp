@@ -78,6 +78,7 @@ constexpr size_t kActivitySpriteCount = 4;
 constexpr size_t kSidebarButtonCount = 3;
 constexpr size_t kMaxScreens = 16;
 constexpr size_t kMaxScreenElements = 8;
+constexpr size_t kMaxScreenConditions = 4;
 constexpr size_t kStatusLayoutMaxBytes = 8192;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
@@ -202,10 +203,17 @@ struct ScreenElement {
   uint32_t track_color = kCanvasAlt;
 };
 
+struct ScreenCondition {
+  StatusFlag flag = StatusFlag::kInvalid;
+  char custom_flag[hexe::kMaxUiFlagNameBytes] = {};
+  bool expected = true;
+};
+
 struct ScreenLayout {
   char id[24] = {};
-  StatusFlag flag = StatusFlag::kInvalid;
-  bool expected = true;
+  bool match_any = false;
+  ScreenCondition conditions[kMaxScreenConditions] = {};
+  size_t condition_count = 0;
   ScreenElement elements[kMaxScreenElements] = {};
   size_t element_count = 0;
 };
@@ -482,6 +490,7 @@ int frame_signature(int frame) {
   signature = (signature * 131) + std::clamp(state.ota_progress_percent, 0, 100);
   signature = (signature * 131) + (hexe::system::asset_sync_active() ? 1 : 0);
   signature = (signature * 131) + static_cast<int>(state.display_timer_count);
+  signature = (signature * 131) + static_cast<int>(hexe::ui_flags_signature());
   if (state.timer_active) {
     signature = (signature * 131) + static_cast<int>((esp_timer_get_time() / 1000000) % 100000);
   }
@@ -990,11 +999,27 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
     cJSON *id = cJSON_GetObjectItem(screen_item, "id");
     if (!cJSON_IsString(id) || id->valuestring == nullptr) continue;
     std::snprintf(screen.id, sizeof(screen.id), "%s", id->valuestring);
-    cJSON *when = cJSON_GetObjectItem(screen_item, "when");
-    cJSON *flag = cJSON_IsObject(when) ? cJSON_GetObjectItem(when, "flag") : nullptr;
-    screen.flag = cJSON_IsString(flag) ? status_flag(flag->valuestring) : StatusFlag::kInvalid;
-    cJSON *equals = cJSON_IsObject(when) ? cJSON_GetObjectItem(when, "equals") : nullptr;
-    screen.expected = cJSON_IsBool(equals) ? cJSON_IsTrue(equals) : true;
+    cJSON *conditions = cJSON_GetObjectItem(screen_item, "conditions");
+    cJSON *match = cJSON_IsObject(conditions) ? cJSON_GetObjectItem(conditions, "match") : nullptr;
+    if (cJSON_IsString(match) && std::strcmp(match->valuestring, "all") != 0 &&
+        std::strcmp(match->valuestring, "any") != 0) continue;
+    screen.match_any = cJSON_IsString(match) && std::strcmp(match->valuestring, "any") == 0;
+    cJSON *condition_items = cJSON_IsObject(conditions) ? cJSON_GetObjectItem(conditions, "items") : nullptr;
+    cJSON *condition_item = nullptr;
+    if (cJSON_IsArray(condition_items)) {
+      cJSON_ArrayForEach(condition_item, condition_items) {
+        if (!cJSON_IsObject(condition_item) || screen.condition_count >= kMaxScreenConditions) continue;
+        cJSON *flag = cJSON_GetObjectItem(condition_item, "flag");
+        if (!cJSON_IsString(flag) || flag->valuestring == nullptr) continue;
+        auto &condition = screen.conditions[screen.condition_count++];
+        condition.flag = status_flag(flag->valuestring);
+        if (condition.flag == StatusFlag::kInvalid) {
+          std::snprintf(condition.custom_flag, sizeof(condition.custom_flag), "%s", flag->valuestring);
+        }
+        cJSON *equals = cJSON_GetObjectItem(condition_item, "equals");
+        condition.expected = cJSON_IsBool(equals) ? cJSON_IsTrue(equals) : true;
+      }
+    }
 
     cJSON *elements = cJSON_GetObjectItem(screen_item, "elements");
     cJSON *element_item = nullptr;
@@ -1018,7 +1043,10 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
       }
       screen.elements[screen.element_count++] = element;
     }
-    if (screen.element_count > 0) layout->screens[layout->screen_count++] = screen;
+    const bool is_default = std::strcmp(screen.id, "default") == 0;
+    if (screen.element_count > 0 && (screen.condition_count > 0 || is_default)) {
+      layout->screens[layout->screen_count++] = screen;
+    }
   }
 }
 
@@ -2138,7 +2166,17 @@ void draw_header_clock(bool show_with_idle_clock = false) {
 const ScreenLayout *active_screen_layout(const hexe::AppState &state) {
   for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
     const auto &screen = g_status_layout.screens[index];
-    if (screen.flag == StatusFlag::kInvalid || status_flag_value(screen.flag, state) == screen.expected) {
+    bool matches = screen.condition_count == 0;
+    for (size_t condition_index = 0; condition_index < screen.condition_count; ++condition_index) {
+      const auto &condition = screen.conditions[condition_index];
+      const bool value = condition.flag == StatusFlag::kInvalid
+          ? hexe::ui_flag_value(condition.custom_flag)
+          : status_flag_value(condition.flag, state);
+      const bool condition_matches = value == condition.expected;
+      matches = condition_index == 0 ? condition_matches
+                                     : (screen.match_any ? matches || condition_matches : matches && condition_matches);
+    }
+    if (matches) {
       return &screen;
     }
   }

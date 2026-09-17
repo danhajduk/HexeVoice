@@ -36,6 +36,13 @@ enum class TimerLifecycleState {
 };
 
 constexpr size_t kMaxDisplayTimers = 4;
+constexpr size_t kMaxUiFlags = 16;
+constexpr size_t kMaxUiFlagNameBytes = 32;
+
+struct UiFlag {
+  char name[kMaxUiFlagNameBytes]{};
+  bool value{false};
+};
 
 struct DisplayTimer {
   TimerLifecycleState state{TimerLifecycleState::kInactive};
@@ -65,6 +72,7 @@ struct AppState {
   char timer_label[48]{};
   DisplayTimer display_timers[kMaxDisplayTimers]{};
   size_t display_timer_count{0};
+  UiFlag ui_flags[kMaxUiFlags]{};
   bool vad_enabled{false};
   bool vad_speaking{false};
   bool audio_streaming{false};
@@ -85,6 +93,10 @@ struct AppState {
 };
 
 AppState &state();
+void clear_ui_flags();
+bool set_ui_flag(const char *name, bool value);
+bool ui_flag_value(const char *name);
+uint32_t ui_flags_signature();
 void advance_loading_frame();
 bool endpoint_ready();
 AppPhase idle_or_connecting_phase();
