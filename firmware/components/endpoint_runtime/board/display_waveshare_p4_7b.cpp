@@ -1036,16 +1036,24 @@ void load_status_layout() {
     ESP_LOGW(kTag, "Status layout not found; using defaults");
     return;
   }
-  char payload[kStatusLayoutMaxBytes + 1] = {};
+  auto *payload = static_cast<char *>(
+      heap_caps_calloc(kStatusLayoutMaxBytes + 1, 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (payload == nullptr) {
+    std::fclose(file);
+    ESP_LOGW(kTag, "Could not allocate status layout buffer; using defaults");
+    return;
+  }
   const size_t payload_size = std::fread(payload, 1, kStatusLayoutMaxBytes, file);
   const bool too_large = std::fgetc(file) != EOF;
   std::fclose(file);
   if (payload_size == 0 || too_large) {
+    heap_caps_free(payload);
     ESP_LOGW(kTag, "Status layout is empty or too large; using defaults");
     return;
   }
 
   cJSON *root = cJSON_ParseWithLength(payload, payload_size);
+  heap_caps_free(payload);
   if (!cJSON_IsObject(root)) {
     cJSON_Delete(root);
     ESP_LOGW(kTag, "Status layout is invalid; using defaults");
