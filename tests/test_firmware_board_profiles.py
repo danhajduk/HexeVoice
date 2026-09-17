@@ -337,6 +337,13 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     for sprite in ("wifi_on", "wifi_off", "node_connected", "asset_downloading"):
         assert f'"{sprite}"' in source
     assert "hexe::system::asset_sync_active()" in source
+    psram_flush = source.index(
+        "MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT"
+    )
+    internal_flush = source.index(
+        "MALLOC_CAP_DMA | MALLOC_CAP_8BIT", psram_flush + 1
+    )
+    assert psram_flush < internal_flush
     assert "state.backend_connected" in source
     assert "sprite->alpha[source_pixel]" in source
     assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};' in source

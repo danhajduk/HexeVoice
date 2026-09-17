@@ -2881,10 +2881,12 @@ void init_display() {
 
   g_refresh_done = xSemaphoreCreateBinary();
   const size_t flush_buffer_bytes = static_cast<size_t>(kWidth) * kFlushRows * kBytesPerPixel;
-  g_flush_buffer = static_cast<uint8_t *>(heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+  // P4 PSRAM is DMA-capable. Keep scarce internal DMA memory available for
+  // SDMMC bounce buffers and TLS/AES descriptors during asset synchronization.
+  g_flush_buffer = static_cast<uint8_t *>(
+      heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
   if (g_flush_buffer == nullptr) {
-    g_flush_buffer = static_cast<uint8_t *>(
-        heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+    g_flush_buffer = static_cast<uint8_t *>(heap_caps_malloc(flush_buffer_bytes, MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
   }
   if (g_flush_buffer == nullptr || g_refresh_done == nullptr) {
     ESP_LOGE(kTag, "Failed to allocate P4 LCD strip buffer");
