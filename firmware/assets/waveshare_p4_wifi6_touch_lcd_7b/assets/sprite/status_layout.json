@@ -19,7 +19,7 @@
       "font": "manrope/clock_42.hxf",
       "font_size": 118,
       "x": 415,
-      "y": 210,
+      "y": 225,
       "color": "#D8FFFA",
       "animations": [
         {
@@ -104,12 +104,13 @@
     "x": 480,
     "y": 550
   },
-  "y": 10,
-  "floating": {
-    "x": 30,
-    "gap": 0
-  },
-  "icons": [
+  "icons": {
+    "y": 10,
+    "floating": {
+      "x": 30,
+      "gap": 0
+    },
+    "items": [
     {
       "id": "wifi",
       "placement": "static",
@@ -175,5 +176,6 @@
     {"id": "warning", "placement": "floating"},
     {"id": "privacy", "placement": "floating"},
     {"id": "cloud_offline", "placement": "floating"}
-  ]
+    ]
+  }
 }

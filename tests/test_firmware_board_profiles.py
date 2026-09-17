@@ -363,9 +363,10 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     )
     layout = json.loads(path.read_text(encoding="utf-8"))
 
-    assert isinstance(layout["y"], int)
-    assert "y" not in layout["floating"]
-    assert all("y" not in icon for icon in layout["icons"])
+    icon_layout = layout["icons"]
+    assert isinstance(icon_layout["y"], int)
+    assert "y" not in icon_layout["floating"]
+    assert all("y" not in icon for icon in icon_layout["items"])
     assert layout["sidebars"]["left"]["when"]["flag"] == "ui_ready"
     assert layout["sidebars"]["right"]["when"]["flag"] == "ui_ready"
     assert layout["sidebars"]["left"]["offset"]["x"] < 0
@@ -376,7 +377,7 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
     for element in ("sprite", "hours", "separator", "minutes", "date"):
         assert layout["idle_clock"][element]["animations"]
-    animations = [animation for icon in layout["icons"] for animation in icon.get("animations", [])]
+    animations = [animation for icon in icon_layout["items"] for animation in icon.get("animations", [])]
     animations.extend(
         animation
         for element in ("sprite", "hours", "separator", "minutes", "date")

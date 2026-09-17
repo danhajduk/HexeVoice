@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.11",
-  "updated_at": "2026-09-17T00:54:47.240551+00:00",
+  "asset_library_version": "2026.09.17.13",
+  "updated_at": "2026-09-17T01:00:12.793534+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -522,8 +522,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 4352,
-        "sha256": "d1efcf57480c1d11230f6aa2d3bcfc5dba259cfe2418948abbd16b57499ea135"
+        "size_bytes": 4383,
+        "sha256": "92426409c048e272aeca438bd3ce75679dfe6e821f3d88c6a3e81ea01aeb70ab"
       }
     },
     {

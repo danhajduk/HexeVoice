@@ -1059,7 +1059,9 @@ void load_status_layout() {
     ESP_LOGW(kTag, "Status layout is invalid; using defaults");
     return;
   }
-  cJSON *floating = cJSON_GetObjectItem(root, "floating");
+  cJSON *icons_config = cJSON_GetObjectItem(root, "icons");
+  cJSON *floating = cJSON_IsObject(icons_config) ? cJSON_GetObjectItem(icons_config, "floating")
+                                                  : cJSON_GetObjectItem(root, "floating");
   cJSON *sidebars = cJSON_GetObjectItem(root, "sidebars");
   cJSON *idle_clock = cJSON_GetObjectItem(root, "idle_clock");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
@@ -1137,11 +1139,12 @@ void load_status_layout() {
       cJSON_IsString(version_font) ? version_font->valuestring : kDefaultVersionFont;
   std::snprintf(
       g_status_layout.version.font, sizeof(g_status_layout.version.font), "%s", version_font_name);
-  g_status_layout.y = json_layout_coordinate(root, "y", g_status_layout.y, kHeight - 1);
+  g_status_layout.y = json_layout_coordinate(
+      cJSON_IsObject(icons_config) ? icons_config : root, "y", g_status_layout.y, kHeight - 1);
   g_status_layout.floating_x = json_layout_coordinate(floating, "x", g_status_layout.floating_x, kWidth - 1);
   g_status_layout.floating_gap = json_layout_coordinate(floating, "gap", g_status_layout.floating_gap, kWidth);
 
-  cJSON *icons = cJSON_GetObjectItem(root, "icons");
+  cJSON *icons = cJSON_IsObject(icons_config) ? cJSON_GetObjectItem(icons_config, "items") : icons_config;
   if (cJSON_IsArray(icons)) {
     g_status_layout.floating_count = 0;
     cJSON *icon = nullptr;
