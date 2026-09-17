@@ -91,6 +91,7 @@ void apply_touch_action(TouchAction action) {
 }
 
 void handle_touch_release(int x, int y) {
+  auto &app_state = hexe::state();
   const int delta_x = x - g_touch_start_x;
   const int delta_y = y - g_touch_start_y;
   const int abs_x = std::abs(delta_x);
@@ -106,8 +107,14 @@ void handle_touch_release(int x, int y) {
   const int64_t now_us = esp_timer_get_time();
   if (abs_x <= kMaxTapMovementPx && abs_y <= kMaxTapMovementPx && now_us - g_last_tap_us >= kTapDebounceUs) {
     g_last_tap_us = now_us;
-    if (hexe::voice::tts_playback_active() &&
-        hexe::board::display_activity_zone_contains(g_touch_start_x, g_touch_start_y)) {
+    const bool activity_zone = hexe::board::display_activity_zone_contains(g_touch_start_x, g_touch_start_y);
+    if (app_state.phase == hexe::AppPhase::kListening && activity_zone) {
+      const bool sent = hexe::voice::cancel_active_session("touch_activity");
+      app_state.phase = hexe::idle_or_connecting_phase();
+      ESP_LOGI(kTag, "Touch stopped listening from activity zone sent=%s", sent ? "true" : "false");
+      return;
+    }
+    if (hexe::voice::tts_playback_active() && activity_zone) {
       hexe::voice::stop_playback("touch_activity");
       ESP_LOGI(kTag, "Touch stopped playback from activity zone");
       return;

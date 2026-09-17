@@ -740,6 +740,9 @@ def test_p4_profile_uses_bsp_gt911_touch_adapter():
     assert "esp_lcd_touch_get_data(g_touch, &point, &point_count, 1)" in source
     assert "hexe::voice::tts_playback_active()" in source
     assert "display_activity_zone_contains(g_touch_start_x, g_touch_start_y)" in source
+    assert "app_state.phase == hexe::AppPhase::kListening && activity_zone" in source
+    assert 'hexe::voice::cancel_active_session("touch_activity")' in source
+    assert 'app_state.phase = hexe::idle_or_connecting_phase();' in source
     assert 'hexe::voice::stop_playback("touch_activity")' in source
     assert "display_button_hit_test(g_touch_start_x, g_touch_start_y, &button_hit)" in source
     assert "send_ui_button_pressed_event(" in source
