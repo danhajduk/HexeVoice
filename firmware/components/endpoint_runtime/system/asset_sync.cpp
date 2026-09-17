@@ -1,9 +1,9 @@
 #include "system/asset_sync.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
-#include <string>
 #include <sys/stat.h>
 
 #include "app_state.h"
@@ -13,6 +13,7 @@
 #include "endpoint_config.h"
 #include "esp_err.h"
 #include "esp_http_client.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -40,6 +41,15 @@ char g_manifest_version[64] = "";
 int g_checked_count = 0;
 int g_downloaded_count = 0;
 int g_failed_count = 0;
+
+struct ManifestBody {
+  char *data = nullptr;
+  size_t size = 0;
+
+  ~ManifestBody() {
+    heap_caps_free(data);
+  }
+};
 
 void set_status(const char *status) {
   std::snprintf(g_status, sizeof(g_status), "%s", status == nullptr ? "unknown" : status);
@@ -147,11 +157,18 @@ bool ensure_asset_parent_directories(const char *directory, const char *filename
   return true;
 }
 
-bool read_http_to_string(const char *url, std::string *body) {
+bool read_http_manifest(const char *url, ManifestBody *body) {
   if (body == nullptr) {
     return false;
   }
-  body->clear();
+  heap_caps_free(body->data);
+  body->data = static_cast<char *>(
+      heap_caps_malloc(kMaxManifestBytes + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  body->size = 0;
+  if (body->data == nullptr) {
+    ESP_LOGW(kTag, "Could not allocate manifest buffer in PSRAM");
+    return false;
+  }
   esp_http_client_config_t config = {};
   config.url = url;
   config.timeout_ms = kHttpTimeoutMs;
@@ -175,10 +192,11 @@ bool read_http_to_string(const char *url, std::string *body) {
     }
   }
 
-  char buffer[512] = {};
   int idle_retries = 0;
   while (err == ESP_OK) {
-    const int read = esp_http_client_read(client, buffer, sizeof(buffer));
+    const size_t remaining = kMaxManifestBytes - body->size;
+    const int read = esp_http_client_read(
+        client, body->data + body->size, std::min<size_t>(remaining, 512));
     if (read == -ESP_ERR_HTTP_EAGAIN) {
       if (idle_retries++ < kReadMaxIdleRetries) {
         vTaskDelay(pdMS_TO_TICKS(kReadIdleRetryDelayMs));
@@ -195,11 +213,11 @@ bool read_http_to_string(const char *url, std::string *body) {
     if (read == 0) {
       break;
     }
-    if (body->size() + static_cast<size_t>(read) > kMaxManifestBytes) {
+    if (body->size + static_cast<size_t>(read) > kMaxManifestBytes) {
       err = ESP_ERR_INVALID_SIZE;
       break;
     }
-    body->append(buffer, read);
+    body->size += static_cast<size_t>(read);
   }
 
   esp_http_client_close(client);
@@ -207,7 +225,8 @@ bool read_http_to_string(const char *url, std::string *body) {
   if (err != ESP_OK) {
     ESP_LOGW(kTag, "Manifest fetch failed: %s", esp_err_to_name(err));
   }
-  return err == ESP_OK && !body->empty();
+  body->data[body->size] = '\0';
+  return err == ESP_OK && body->size > 0;
 }
 
 bool calculate_file_sha256(const char *path, int *size_bytes, char *sha256, size_t sha256_size) {
@@ -366,12 +385,13 @@ bool download_asset_file(const char *url, const char *final_path, const char *te
   return true;
 }
 
-bool write_manifest(const std::string &manifest) {
+bool write_manifest(const char *manifest, size_t manifest_size) {
   FILE *file = std::fopen(kManifestTempPath, "wb");
   if (file == nullptr) {
     return false;
   }
-  const bool ok = std::fwrite(manifest.data(), 1, manifest.size(), file) == manifest.size();
+  const bool ok = manifest != nullptr &&
+      std::fwrite(manifest, 1, manifest_size, file) == manifest_size;
   std::fclose(file);
   if (!ok) {
     std::remove(kManifestTempPath);
@@ -441,14 +461,14 @@ void sync_assets_once() {
   }
 
   set_status("fetching_manifest");
-  std::string manifest_body;
+  ManifestBody manifest_body;
   ESP_LOGI(kTag, "Fetching asset manifest %s", manifest_url);
-  if (!read_http_to_string(manifest_url, &manifest_body)) {
+  if (!read_http_manifest(manifest_url, &manifest_body)) {
     set_status("manifest_fetch_failed");
     return;
   }
 
-  cJSON *root = cJSON_ParseWithLength(manifest_body.data(), manifest_body.size());
+  cJSON *root = cJSON_ParseWithLength(manifest_body.data, manifest_body.size);
   if (!cJSON_IsObject(root)) {
     cJSON_Delete(root);
     set_status("invalid_manifest");
@@ -524,7 +544,7 @@ void sync_assets_once() {
   }
 
   cJSON_Delete(root);
-  if (g_failed_count == 0 && write_manifest(manifest_body)) {
+  if (g_failed_count == 0 && write_manifest(manifest_body.data, manifest_body.size)) {
     set_status(g_downloaded_count > 0 ? "updated" : "current");
   } else if (g_failed_count == 0) {
     set_status("manifest_store_failed");

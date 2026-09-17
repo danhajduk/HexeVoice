@@ -429,6 +429,8 @@ def test_firmware_asset_manifest_limit_covers_p4_sprite_library():
     )
 
     assert "constexpr size_t kMaxManifestBytes = 64 * 1024;" in source
+    assert "MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT" in source
+    assert "read_http_manifest" in source
     assert manifest.stat().st_size < 64 * 1024
 
 
