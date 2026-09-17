@@ -3074,7 +3074,7 @@ struct DirtyRegion {
 };
 
 void append_dirty_region(DirtyRegion *regions, size_t *count, int x, int y, int width, int height) {
-  if (regions == nullptr || count == nullptr || *count >= 16 || width <= 0 || height <= 0) return;
+  if (regions == nullptr || count == nullptr || *count >= 32 || width <= 0 || height <= 0) return;
   const int x0 = std::clamp(x, 0, kWidth);
   const int y0 = std::clamp(y, 0, kHeight);
   const int x1 = std::clamp(x + width, 0, kWidth);
@@ -3119,14 +3119,26 @@ void append_element_dirty_region(DirtyRegion *regions, size_t *count, const Scre
 bool render_dynamic_regions(
     int frame,
     const char *build_id,
+    const ScreenLayout *previous_screen,
     const ScreenLayout *screen,
+    bool state_changed,
     bool clock_changed,
     bool timer_changed,
     bool animation_changed) {
-  DirtyRegion regions[16] = {};
+  DirtyRegion regions[32] = {};
   size_t count = 0;
-  if (clock_changed) append_dirty_region(regions, &count, 0, 0, kWidth, 78);
-  if (animation_changed) append_dirty_region(regions, &count, 0, 0, kWidth, 78);
+  if (state_changed || clock_changed || animation_changed) {
+    append_dirty_region(regions, &count, 0, 0, kWidth, 78);
+  }
+  if (state_changed) {
+    append_dirty_region(regions, &count, kSidebarWidth + 16, kSidebarTop,
+                        kWidth - (2 * kSidebarWidth) - 32, 48);
+    if (previous_screen != nullptr) {
+      for (size_t index = 0; index < previous_screen->element_count; ++index) {
+        append_element_dirty_region(regions, &count, previous_screen->elements[index]);
+      }
+    }
+  }
   if (screen != nullptr) {
     for (size_t index = 0; index < screen->element_count; ++index) {
       const auto &element = screen->elements[index];
@@ -3134,12 +3146,12 @@ bool render_dynamic_regions(
           element.type == ScreenElementType::kBigClock || element.type == ScreenElementType::kBigDate;
       const bool timer_element = element.type == ScreenElementType::kTimerPrimary ||
           element.type == ScreenElementType::kTimerUpcoming;
-      if ((clock_changed && clock_element) || (timer_changed && timer_element) ||
+      if (state_changed || (clock_changed && clock_element) || (timer_changed && timer_element) ||
           (animation_changed && element.animation_count > 0)) {
         append_element_dirty_region(regions, &count, element);
       }
     }
-    if (animation_changed && screen->sidebars_enabled) {
+    if ((state_changed || animation_changed) && screen->sidebars_enabled) {
       append_dirty_region(regions, &count, 0, kSidebarTop, kSidebarWidth + 24, kSidebarHeight);
       append_dirty_region(regions, &count, kWidth - kSidebarWidth - 24, kSidebarTop,
                           kSidebarWidth + 24, kSidebarHeight);
@@ -3150,6 +3162,14 @@ bool render_dynamic_regions(
     if (!render_region(frame, build_id, false, region.x, region.y, region.width, region.height)) return false;
   }
   return count > 0;
+}
+
+const ScreenLayout *screen_layout_by_id(const char *id) {
+  if (id == nullptr || id[0] == '\0') return nullptr;
+  for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
+    if (std::strcmp(g_status_layout.screens[index].id, id) == 0) return &g_status_layout.screens[index];
+  }
+  return nullptr;
 }
 }  // namespace
 
@@ -3236,14 +3256,24 @@ void render_boot_frame(int frame, const char *build_id) {
   if (!g_force_redraw && signature == g_last_signature) {
     return;
   }
-  const bool full_redraw = g_force_redraw || static_signature != g_last_static_signature ||
+  const bool state_changed = static_signature != g_last_static_signature ||
       std::strcmp(screen_id, g_last_screen_id) != 0;
+  const bool full_redraw = g_force_redraw || g_last_screen_id[0] == '\0';
   const bool clock_changed = minute_signature != g_last_minute_signature;
   const bool timer_changed = timer_signature != g_last_timer_signature;
   const bool animation_changed = animation_signature != g_last_animation_signature;
+  const ScreenLayout *previous_screen = screen_layout_by_id(g_last_screen_id);
   const bool rendered = full_redraw
       ? render_frame(frame, build_id, false)
-      : render_dynamic_regions(frame, build_id, screen, clock_changed, timer_changed, animation_changed);
+      : render_dynamic_regions(
+            frame,
+            build_id,
+            previous_screen,
+            screen,
+            state_changed,
+            clock_changed,
+            timer_changed,
+            animation_changed);
   if (rendered) {
     g_last_signature = signature;
     g_last_static_signature = static_signature;

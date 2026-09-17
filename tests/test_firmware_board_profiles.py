@@ -655,6 +655,10 @@ def test_p4_uses_dirty_regions_for_dynamic_ui_updates():
     assert "static_signature != g_last_static_signature" in source
     assert "std::strcmp(screen_id, g_last_screen_id)" in source
     assert "display_redraw_suspended_for_voice" not in source
+    assert "const ScreenLayout *previous_screen" in source
+    assert "if (state_changed)" in source
+    assert "append_element_dirty_region(regions, &count, previous_screen->elements[index])" in source
+    assert "const bool full_redraw = g_force_redraw || g_last_screen_id[0] == '\\0';" in source
 
 
 def test_p4_build_patches_esp_hosted_dma_oom_assertions():
