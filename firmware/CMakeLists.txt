@@ -61,3 +61,17 @@ if(DEFINED HEXE_REQUIRED_IDF_VERSION AND NOT "${HEXE_REQUIRED_IDF_VERSION}" STRE
   idf_build_set_property(DEPENDENCIES_LOCK "${HEXE_DEPENDENCY_LOCK}")
 endif()
 project(hexe_firmware)
+
+if(HEXE_BOARD_PROFILE STREQUAL "waveshare_p4_wifi6_touch_lcd_7b" AND HEXE_FIRMWARE_APP STREQUAL "endpoint")
+  execute_process(
+    COMMAND
+      "${PYTHON}"
+      "${CMAKE_CURRENT_LIST_DIR}/tools/patch-esp-hosted-oom.py"
+      "${CMAKE_CURRENT_LIST_DIR}/managed_components/espressif__esp_hosted"
+    RESULT_VARIABLE HEXE_ESP_HOSTED_PATCH_RESULT
+    ERROR_VARIABLE HEXE_ESP_HOSTED_PATCH_ERROR
+  )
+  if(NOT HEXE_ESP_HOSTED_PATCH_RESULT EQUAL 0)
+    message(FATAL_ERROR "Failed to patch ESP-Hosted DMA OOM handling: ${HEXE_ESP_HOSTED_PATCH_ERROR}")
+  endif()
+endif()

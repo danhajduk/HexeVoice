@@ -615,6 +615,16 @@ def test_p4_screen_element_animations_drive_continuous_redraw():
     assert "esp_timer_get_time() / kAnimationFrameIntervalUs" in source
 
 
+def test_p4_build_patches_esp_hosted_dma_oom_assertions():
+    cmake = (REPO_ROOT / "firmware/CMakeLists.txt").read_text(encoding="utf-8")
+    patcher = (REPO_ROOT / "firmware/tools/patch-esp-hosted-oom.py").read_text(encoding="utf-8")
+
+    assert "patch-esp-hosted-oom.py" in cmake
+    assert 'HEXE_BOARD_PROFILE STREQUAL "waveshare_p4_wifi6_touch_lcd_7b"' in cmake
+    assert "Dropping SDIO RX stream: no DMA buffer" in patcher
+    assert "ESP_ERR_ESP_NETIF_TX_FAILED" in patcher
+
+
 def test_yaml_layout_includes_are_relative_and_reject_cycles_and_escape(tmp_path):
     yaml_to_json = load_yaml_to_json_module()
     screens = tmp_path / "screens"
