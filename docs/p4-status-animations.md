@@ -1,9 +1,17 @@
 # P4 Status Animations
 
-The Waveshare P4 7B header supports reusable procedural animations configured by
-`firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json`.
-The media generator copies this file into the board asset library, and firmware
-reloads it after asset synchronization.
+The Waveshare P4 7B header supports reusable procedural animations configured
+under `firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/`. The small
+`status_layout.json` index lists four independently editable sections:
+
+- `chrome_layout.json`: header clock, firmware version, sidebars, and buttons
+- `status_icons.json`: static and floating status icons
+- `activity_layout.json`: listening, thinking, reply, and timer sprites
+- `idle_layout.json`: large idle clock and timer countdown screen
+
+The media generator copies all five JSON files into the board asset library.
+Firmware merges the listed sections in order and reloads them after asset
+synchronization. A legacy monolithic `status_layout.json` remains supported.
 
 ## Coordinate Model
 
@@ -81,7 +89,7 @@ left and right sidebar sprites use this flag to slide into view.
 `idle_ready` additionally requires synchronized time and the application idle
 phase. It controls the large idle clock composition. While active, the large
 clock replaces the small header clock. Its frame, hours, separator, minutes,
-and date each have independent animation lists in `status_layout.json`.
+and date each have independent animation lists in `idle_layout.json`.
 
 The optional `timer_screen` object keeps that idle clock visible while timers
 are active. `primary_countdown` and `primary_label` configure the earliest

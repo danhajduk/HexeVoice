@@ -1,0 +1,129 @@
+{
+  "schema_version": 1,
+  "activity_sprites": {
+    "items": [
+      {
+        "id": "listening",
+        "x": 422,
+        "y": 205,
+        "animations": [
+          {
+            "type": "slide_in",
+            "when": {
+              "flag": "listening"
+            },
+            "offset": {
+              "x": 0,
+              "y": 0.2
+            },
+            "period_ms": 350
+          },
+          {
+            "type": "pulse_ring",
+            "when": {
+              "flag": "listening"
+            },
+            "color": "#35F4DB",
+            "position": {
+              "x": 0.5,
+              "y": 0.5
+            },
+            "radius": 0.35,
+            "period_ms": 1100
+          }
+        ]
+      },
+      {
+        "id": "thinking",
+        "x": 422,
+        "y": 205,
+        "animations": [
+          {
+            "type": "slide_in",
+            "when": {
+              "flag": "thinking"
+            },
+            "offset": {
+              "x": 0,
+              "y": 0.2
+            },
+            "period_ms": 350
+          },
+          {
+            "type": "running_dots",
+            "when": {
+              "flag": "thinking"
+            },
+            "color": "#55B8FF",
+            "position": {
+              "x": 0.5,
+              "y": 0.82
+            },
+            "count": 3,
+            "radius": 0.025,
+            "spacing": 0.1,
+            "period_ms": 750
+          }
+        ]
+      },
+      {
+        "id": "replay",
+        "x": 422,
+        "y": 205,
+        "animations": [
+          {
+            "type": "slide_in",
+            "when": {
+              "flag": "replying"
+            },
+            "offset": {
+              "x": 0.15,
+              "y": 0
+            },
+            "period_ms": 350
+          },
+          {
+            "type": "pulse",
+            "when": {
+              "flag": "replying"
+            },
+            "period_ms": 1400,
+            "min_opacity": 165,
+            "max_opacity": 255
+          }
+        ]
+      },
+      {
+        "id": "timer",
+        "x": 90,
+        "y": 105,
+        "animations": [
+          {
+            "type": "slide_in",
+            "when": {
+              "flag": "timer_active"
+            },
+            "offset": {
+              "x": 0,
+              "y": 0.2
+            },
+            "period_ms": 350
+          },
+          {
+            "type": "blink_dot",
+            "when": {
+              "flag": "timer_active"
+            },
+            "color": "#FF4AAD",
+            "position": {
+              "x": 0.76,
+              "y": 0.27
+            },
+            "radius": 0.025,
+            "period_ms": 1000
+          }
+        ]
+      }
+    ]
+  }
+}

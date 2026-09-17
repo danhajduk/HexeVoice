@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.18",
-  "updated_at": "2026-09-17T01:48:08.058043+00:00",
+  "asset_library_version": "2026.09.17.19",
+  "updated_at": "2026-09-17T02:00:41.117246+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -93,6 +93,17 @@
         "channel_order": "rgb",
         "size_bytes": 1843200,
         "sha256": "fd8a7b44c704c3c6de366760c84e7dd64e2cd7c9a01d2edf2f706c5faa4d160b"
+      }
+    },
+    {
+      "asset_id": "activity_layout",
+      "media_type": "sprite",
+      "filename": "activity_layout.json",
+      "source_filename": "activity_layout.json",
+      "metadata": {
+        "content_format": "json",
+        "size_bytes": 2685,
+        "sha256": "1d3b18af4755300ffd37609452efa096d1c433a9d21ce0ee1c801cc72262ec5f"
       }
     },
     {
@@ -195,6 +206,17 @@
       }
     },
     {
+      "asset_id": "chrome_layout",
+      "media_type": "sprite",
+      "filename": "chrome_layout.json",
+      "source_filename": "chrome_layout.json",
+      "metadata": {
+        "content_format": "json",
+        "size_bytes": 815,
+        "sha256": "69e518769cacc31198e62f752d96c9fa21cac9637caa708b60abd9a9126e6f0e"
+      }
+    },
+    {
       "asset_id": "cloud_offline",
       "media_type": "sprite",
       "filename": "cloud_offline.alpha8",
@@ -225,6 +247,17 @@
         "alpha_format": "alpha8",
         "size_bytes": 105000,
         "sha256": "f8ba15804ee2eb948348371a7810d3be567e6d5b9c2037a45005fb01585ac66a"
+      }
+    },
+    {
+      "asset_id": "idle_layout",
+      "media_type": "sprite",
+      "filename": "idle_layout.json",
+      "source_filename": "idle_layout.json",
+      "metadata": {
+        "content_format": "json",
+        "size_bytes": 2602,
+        "sha256": "90f6b7cb79d059632fab1230409c3b05490b4997a353163f427b59b338e18629"
       }
     },
     {
@@ -691,14 +724,25 @@
       }
     },
     {
+      "asset_id": "status_icons",
+      "media_type": "sprite",
+      "filename": "status_icons.json",
+      "source_filename": "status_icons.json",
+      "metadata": {
+        "content_format": "json",
+        "size_bytes": 2745,
+        "sha256": "6310becf1a842ef3d4e2135d74fecb3b17e90d2a59f7558a8ee38e965bf02f80"
+      }
+    },
+    {
       "asset_id": "status_layout",
       "media_type": "sprite",
       "filename": "status_layout.json",
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 6555,
-        "sha256": "e01d63559b11a812b32b7a995c2e47408a26e9a1e0f8289b0d2b02b3f06138a8"
+        "size_bytes": 146,
+        "sha256": "626b7ba12148a6f965d8f580c9e110c4881b2d34a4397d091c2d7cd53d7eeae2"
       }
     },
     {

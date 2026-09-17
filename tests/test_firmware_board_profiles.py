@@ -368,11 +368,23 @@ def test_p4_display_blends_header_status_sprites_from_sd():
 
 
 def test_p4_status_layout_uses_shared_y_and_scaled_animations():
-    path = (
+    directory = (
         REPO_ROOT
-        / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json"
+        / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites"
     )
-    layout = json.loads(path.read_text(encoding="utf-8"))
+    index = json.loads((directory / "status_layout.json").read_text(encoding="utf-8"))
+    assert index == {
+        "schema_version": 2,
+        "files": [
+            "chrome_layout.json",
+            "status_icons.json",
+            "activity_layout.json",
+            "idle_layout.json",
+        ],
+    }
+    layout = {}
+    for filename in index["files"]:
+        layout.update(json.loads((directory / filename).read_text(encoding="utf-8")))
 
     icon_layout = layout["icons"]
     assert isinstance(icon_layout["y"], int)
@@ -457,11 +469,18 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     assert "suffix_end = std::strchr(suffix, '-')" in source
     assert "draw_version_text(build_id);" in source
 
-    layout_text = (
+    layout = json.loads(
+        (
         REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/status_layout.json"
-    ).read_text(encoding="utf-8")
-    assert layout_text.count('"version": {') == 1
-    layout = json.loads(layout_text)
+        ).read_text(encoding="utf-8")
+    )
+    chrome = json.loads(
+        (
+            REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/chrome_layout.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert "version" not in layout
+    layout.update(chrome)
     assert layout["clock"]["font"] == "manrope/clock_42.hxf"
     assert 12 <= layout["clock"]["font_size"] <= 96
     assert {"color", "x_offset", "y_offset"} <= layout["clock"].keys()

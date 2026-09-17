@@ -1085,6 +1085,81 @@ bool draw_bitmap_text(
   return true;
 }
 
+bool valid_layout_filename(const char *filename) {
+  if (filename == nullptr || filename[0] == '\0' || std::strstr(filename, "..") != nullptr ||
+      std::strchr(filename, '/') != nullptr || std::strchr(filename, '\\') != nullptr) {
+    return false;
+  }
+  const size_t length = std::strlen(filename);
+  return length > 5 && std::strcmp(filename + length - 5, ".json") == 0;
+}
+
+cJSON *read_status_layout_file(const char *filename) {
+  if (!valid_layout_filename(filename)) {
+    ESP_LOGW(kTag, "Rejected invalid layout filename");
+    return nullptr;
+  }
+  char path[192] = {};
+  const int written = std::snprintf(
+      path, sizeof(path), "%s/%s", hexe::board::sd_card_sprites_path(), filename);
+  if (written <= 0 || written >= static_cast<int>(sizeof(path))) {
+    return nullptr;
+  }
+  FILE *file = std::fopen(path, "rb");
+  if (file == nullptr) {
+    ESP_LOGW(kTag, "Layout file not found: %s", filename);
+    return nullptr;
+  }
+  auto *payload = static_cast<char *>(
+      heap_caps_calloc(kStatusLayoutMaxBytes + 1, 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (payload == nullptr) {
+    std::fclose(file);
+    ESP_LOGW(kTag, "Could not allocate layout buffer for %s", filename);
+    return nullptr;
+  }
+  const size_t payload_size = std::fread(payload, 1, kStatusLayoutMaxBytes, file);
+  const bool too_large = std::fgetc(file) != EOF;
+  std::fclose(file);
+  if (payload_size == 0 || too_large) {
+    heap_caps_free(payload);
+    ESP_LOGW(kTag, "Layout file is empty or too large: %s", filename);
+    return nullptr;
+  }
+
+  cJSON *root = cJSON_ParseWithLength(payload, payload_size);
+  heap_caps_free(payload);
+  if (!cJSON_IsObject(root)) {
+    cJSON_Delete(root);
+    ESP_LOGW(kTag, "Layout file is invalid: %s", filename);
+    return nullptr;
+  }
+  return root;
+}
+
+void merge_status_layout_file(cJSON *root, const char *filename) {
+  cJSON *section_root = read_status_layout_file(filename);
+  if (section_root == nullptr) {
+    return;
+  }
+  cJSON *section = nullptr;
+  cJSON_ArrayForEach(section, section_root) {
+    if (section->string == nullptr || std::strcmp(section->string, "schema_version") == 0) {
+      continue;
+    }
+    cJSON *copy = cJSON_Duplicate(section, true);
+    if (copy == nullptr) {
+      continue;
+    }
+    if (cJSON_HasObjectItem(root, section->string)) {
+      cJSON_ReplaceItemInObjectCaseSensitive(root, section->string, copy);
+    } else {
+      cJSON_AddItemToObject(root, section->string, copy);
+    }
+  }
+  cJSON_Delete(section_root);
+  ESP_LOGI(kTag, "Loaded layout section %s", filename);
+}
+
 void load_status_layout() {
   if (g_status_layout_loaded) {
     return;
@@ -1092,39 +1167,17 @@ void load_status_layout() {
   g_status_layout_loaded = true;
   g_status_layout = StatusLayout{};
 
-  char path[192] = {};
-  const int written = std::snprintf(
-      path, sizeof(path), "%s/%s", hexe::board::sd_card_sprites_path(), kStatusLayoutFilename);
-  if (written <= 0 || written >= static_cast<int>(sizeof(path))) {
-    return;
-  }
-  FILE *file = std::fopen(path, "rb");
-  if (file == nullptr) {
+  cJSON *root = read_status_layout_file(kStatusLayoutFilename);
+  if (root == nullptr) {
     ESP_LOGW(kTag, "Status layout not found; using defaults");
     return;
   }
-  auto *payload = static_cast<char *>(
-      heap_caps_calloc(kStatusLayoutMaxBytes + 1, 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-  if (payload == nullptr) {
-    std::fclose(file);
-    ESP_LOGW(kTag, "Could not allocate status layout buffer; using defaults");
-    return;
-  }
-  const size_t payload_size = std::fread(payload, 1, kStatusLayoutMaxBytes, file);
-  const bool too_large = std::fgetc(file) != EOF;
-  std::fclose(file);
-  if (payload_size == 0 || too_large) {
-    heap_caps_free(payload);
-    ESP_LOGW(kTag, "Status layout is empty or too large; using defaults");
-    return;
-  }
-
-  cJSON *root = cJSON_ParseWithLength(payload, payload_size);
-  heap_caps_free(payload);
-  if (!cJSON_IsObject(root)) {
-    cJSON_Delete(root);
-    ESP_LOGW(kTag, "Status layout is invalid; using defaults");
-    return;
+  cJSON *files = cJSON_GetObjectItem(root, "files");
+  cJSON *filename = nullptr;
+  cJSON_ArrayForEach(filename, files) {
+    if (cJSON_IsString(filename)) {
+      merge_status_layout_file(root, filename->valuestring);
+    }
   }
   cJSON *icons_config = cJSON_GetObjectItem(root, "icons");
   cJSON *floating = cJSON_IsObject(icons_config) ? cJSON_GetObjectItem(icons_config, "floating")
@@ -1306,7 +1359,7 @@ void load_status_layout() {
     }
   }
   cJSON_Delete(root);
-  ESP_LOGI(kTag, "Loaded status layout %s", path);
+  ESP_LOGI(kTag, "Loaded status layout");
 }
 
 bool status_icon_active(StatusIconId id, const hexe::AppState &state) {
