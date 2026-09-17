@@ -7,6 +7,7 @@ sidebars: false
 buttons: {preset: none}
 items:
   - item: header_clock
+  - item: header_date
   - item: ota_progress
     x: 312
     y: 520

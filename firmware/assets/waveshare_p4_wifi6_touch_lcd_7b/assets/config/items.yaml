@@ -16,6 +16,16 @@ items:
     color: '#55B8FF'
     x: 480
     y: 550
+  - id: header_date
+    type: text
+    data: date_short
+    format: '%a, %b %d'
+    font: manrope/date_32.hxf
+    font_size: 24
+    color: '#55B8FF'
+    align: center
+    x: 512
+    y: 20
   - id: sidebar_left
     type: sidebar
     side: left

@@ -358,6 +358,8 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "draw_screen_layout(state, g_frame_time_ms, screen);" in source
     assert "draw_big_clock(state, now_ms, &element);" in source
     assert "draw_big_date(state, now_ms, &element);" in source
+    assert 'std::strcmp(name, "text") == 0' in source
+    assert "case ScreenElementType::kText:" in source
     assert "draw_activity_sprite(state, now_ms" in source
     for sprite in (
         "activity_listening",
@@ -468,9 +470,15 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     assert items_by_id["header_clock"]["data"] == "time"
     assert items_by_id["big_clock"]["data"] == "time"
     assert items_by_id["big_date"]["data"] == "date_long"
+    assert items_by_id["header_date"]["data"] == "date_short"
     assert items_by_id["timer_primary"]["data"] == "timer1"
     assert items_by_id["timer_upcoming"]["data"] == "timers_next"
     assert items_by_id["ota_progress"]["data"] == "ota_progress"
+    compiler_source = (REPO_ROOT / "firmware/tools/compile_p4_ui_config.py").read_text(
+        encoding="utf-8"
+    )
+    assert '"text": "text"' in compiler_source
+    assert "text item {item_id!r} requires exactly one of text or data" in compiler_source
 
     icon_layout = layout["icons"]
     assert isinstance(icon_layout["y"], int)
@@ -491,7 +499,28 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
         "updating", "updating_phase", "listening", "thinking", "playback", "replying"
     ]
     assert {item["type"] for screen in screens for item in screen["elements"]} == {
-        "clock", "big_clock", "big_date", "activity", "timer_primary", "timer_upcoming", "progress_bar"
+        "clock",
+        "big_clock",
+        "big_date",
+        "activity",
+        "timer_primary",
+        "timer_upcoming",
+        "progress_bar",
+        "text",
+    }
+    updating_screen = next(screen for screen in screens if screen["id"] == "updating")
+    header_date = next(item for item in updating_screen["elements"] if item["type"] == "text")
+    assert header_date == {
+        "type": "text",
+        "item": "header_date",
+        "x": 512,
+        "y": 20,
+        "color": "#55B8FF",
+        "data": "date_short",
+        "format": "%a, %b %d",
+        "font": "manrope/date_32.hxf",
+        "font_size": 24,
+        "align": "center",
     }
     assert all(isinstance(screen["sidebars"], bool) for screen in screens)
     assert all(isinstance(screen["buttons"], list) for screen in screens)

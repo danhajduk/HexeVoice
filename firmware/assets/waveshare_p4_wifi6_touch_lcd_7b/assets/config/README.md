@@ -104,9 +104,33 @@ Supported types and data bindings:
 - `sidebar`: left or right sidebar sprite and entrance animation.
 - `button_stack`: button origin and vertical gap.
 - `button`: a selectable sidebar button sprite.
+- `text`: reusable literal or time/date text with configurable style and animation.
 
 Colors use quoted `'#RRGGBB'` values. Coordinates are screen pixels. Font paths
 are relative to `assets/font/`.
+
+Generic text items use `x` as their alignment anchor and support `left`,
+`center`, or `right` alignment. The default alignment is `center`:
+
+```yaml
+- id: welcome_label
+  type: text
+  text: Welcome home
+  font: manrope/date_32.hxf
+  font_size: 32
+  color: '#D8FFFA'
+  align: center
+  x: 512
+  y: 420
+  animations:
+    - preset: text_slide_up
+      when: {flag: idle_ready, equals: true}
+```
+
+Add the item to any screen with `- item: welcome_label`. A screen placement can
+override `x`, `y`, and `animations`. Use exactly one of `text` or `data`.
+Supported dynamic bindings are `time`, `date_short`, and `date_long`; their
+default `strftime` formats can be overridden with `format`.
 
 The large clock and large date are separate items, so a screen can show either
 one or both:

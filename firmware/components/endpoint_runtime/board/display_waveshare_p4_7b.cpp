@@ -219,7 +219,14 @@ enum class ScreenElementType : uint8_t {
   kTimerPrimary,
   kTimerUpcoming,
   kProgressBar,
+  kText,
   kInvalid,
+};
+
+enum class TextAlignment : uint8_t {
+  kLeft,
+  kCenter,
+  kRight,
 };
 
 struct ScreenElement {
@@ -233,6 +240,12 @@ struct ScreenElement {
   int height = 18;
   uint32_t color = kCyan;
   uint32_t track_color = kCanvasAlt;
+  char text[96] = {};
+  char data[16] = {};
+  char format[48] = {};
+  char font[96] = {};
+  int font_size = 32;
+  TextAlignment text_alignment = TextAlignment::kCenter;
   StatusAnimation animations[kMaxStatusAnimations] = {};
   size_t animation_count = 0;
 };
@@ -425,7 +438,7 @@ std::atomic<int> g_sidebar_left_draw_y{0};
 std::atomic<bool> g_big_clock_visible{false};
 std::atomic<int> g_big_clock_draw_x{0};
 std::atomic<int> g_big_clock_draw_y{0};
-SlideAnimationState g_idle_clock_animation_states[5][kMaxStatusAnimations] = {};
+SlideAnimationState g_idle_clock_animation_states[kMaxScreenElements][kMaxStatusAnimations] = {};
 SlideAnimationState g_activity_animation_states[kActivitySpriteCount][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
@@ -438,11 +451,14 @@ ClockFont g_idle_date_font;
 ClockFont g_timer_countdown_font;
 ClockFont g_timer_label_font;
 ClockFont g_timer_upcoming_font;
+ClockFont g_screen_text_fonts[kMaxScreenElements];
+char g_screen_text_font_names[kMaxScreenElements][96] = {};
 const StatusLayout g_default_status_layout{};
 
 bool status_animations_active(const hexe::AppState &state);
 const ScreenLayout *active_screen_layout(const hexe::AppState &state);
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum);
+void release_bitmap_font(ClockFont *font);
 void draw_status_animation(
     const StatusAnimation &animation,
     const StatusSprite &sprite,
@@ -1103,6 +1119,7 @@ ScreenElementType screen_element_type(const char *name) {
   if (std::strcmp(name, "timer_primary") == 0) return ScreenElementType::kTimerPrimary;
   if (std::strcmp(name, "timer_upcoming") == 0) return ScreenElementType::kTimerUpcoming;
   if (std::strcmp(name, "progress_bar") == 0) return ScreenElementType::kProgressBar;
+  if (std::strcmp(name, "text") == 0) return ScreenElementType::kText;
   return ScreenElementType::kInvalid;
 }
 
@@ -1169,6 +1186,34 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
         element.height = json_integer(element_item, "height", element.height, 1, kHeight - element.y);
         element.color = json_color(element_item, "color", element.color);
         element.track_color = json_color(element_item, "track_color", element.track_color);
+      } else if (element.type == ScreenElementType::kText) {
+        cJSON *text = cJSON_GetObjectItem(element_item, "text");
+        cJSON *data = cJSON_GetObjectItem(element_item, "data");
+        cJSON *format = cJSON_GetObjectItem(element_item, "format");
+        cJSON *font = cJSON_GetObjectItem(element_item, "font");
+        cJSON *align = cJSON_GetObjectItem(element_item, "align");
+        const bool has_text =
+            cJSON_IsString(text) && text->valuestring != nullptr && text->valuestring[0] != '\0';
+        const bool has_data =
+            cJSON_IsString(data) && data->valuestring != nullptr && data->valuestring[0] != '\0';
+        if (has_text == has_data) continue;
+        if (has_text) std::snprintf(element.text, sizeof(element.text), "%s", text->valuestring);
+        if (has_data) std::snprintf(element.data, sizeof(element.data), "%s", data->valuestring);
+        if (cJSON_IsString(format) && format->valuestring != nullptr) {
+          std::snprintf(element.format, sizeof(element.format), "%s", format->valuestring);
+        }
+        std::snprintf(
+            element.font,
+            sizeof(element.font),
+            "%s",
+            cJSON_IsString(font) && font->valuestring != nullptr ? font->valuestring : kDefaultIdleDateFont);
+        element.font_size = json_integer(element_item, "font_size", element.font_size, 8, 180);
+        element.color = json_color(element_item, "color", element.color);
+        if (cJSON_IsString(align) && std::strcmp(align->valuestring, "left") == 0) {
+          element.text_alignment = TextAlignment::kLeft;
+        } else if (cJSON_IsString(align) && std::strcmp(align->valuestring, "right") == 0) {
+          element.text_alignment = TextAlignment::kRight;
+        }
       }
       screen.elements[screen.element_count++] = element;
     }
@@ -2546,6 +2591,67 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
         draw_rect_outline(element.x, element.y, element.width, element.height, kInk);
         break;
       }
+      case ScreenElementType::kText: {
+        char dynamic_text[96] = {};
+        const char *display_text = element.text;
+        if (element.data[0] != '\0') {
+          std::tm local = {};
+          if (!hexe::system::current_local_time(&local)) break;
+          const char *format = element.format;
+          if (format[0] == '\0') {
+            format = std::strcmp(element.data, "time") == 0
+                ? "%I:%M %p"
+                : (std::strcmp(element.data, "date_short") == 0 ? "%a, %b %d" : "%A, %B %d %Y.");
+          }
+          if (std::strftime(dynamic_text, sizeof(dynamic_text), format, &local) == 0) break;
+          display_text = dynamic_text;
+        }
+        ClockFont &font = g_screen_text_fonts[index];
+        if (std::strcmp(g_screen_text_font_names[index], element.font) != 0) {
+          release_bitmap_font(&font);
+          std::snprintf(
+              g_screen_text_font_names[index],
+              sizeof(g_screen_text_font_names[index]),
+              "%s",
+              element.font);
+        }
+        const bool bitmap_font_loaded = load_bitmap_font(&font, element.font, "screen text");
+        const int fallback_scale = (element.font_size * 100) / 7;
+        const int width = bitmap_font_loaded
+            ? bitmap_text_width(font, display_text, element.font_size)
+            : text_width(display_text, fallback_scale);
+        int x = element.x;
+        if (element.text_alignment == TextAlignment::kCenter) {
+          x -= width / 2;
+        } else if (element.text_alignment == TextAlignment::kRight) {
+          x -= width;
+        }
+        int offset_x = 0;
+        int offset_y = 0;
+        const uint8_t opacity = animated_element_transform(
+            element.animations,
+            element.animation_count,
+            state,
+            width,
+            element.font_size,
+            now_ms,
+            index,
+            &offset_x,
+            &offset_y);
+        const uint32_t color = scale_color(element.color, opacity * 1000 / 255);
+        if (bitmap_font_loaded) {
+          draw_bitmap_text(
+              font,
+              display_text,
+              x + offset_x,
+              element.y + offset_y,
+              element.font_size,
+              color);
+        } else {
+          draw_text(x + offset_x, element.y + offset_y, display_text, fallback_scale, color);
+        }
+        break;
+      }
       case ScreenElementType::kInvalid:
         break;
     }
@@ -2638,6 +2744,10 @@ void reload_display_assets() {
   release_bitmap_font(&g_idle_separator_font);
   release_bitmap_font(&g_idle_minutes_font);
   release_bitmap_font(&g_idle_date_font);
+  for (size_t index = 0; index < kMaxScreenElements; ++index) {
+    release_bitmap_font(&g_screen_text_fonts[index]);
+    g_screen_text_font_names[index][0] = '\0';
+  }
   ESP_LOGI(kTag, "Reloading display assets on render task");
 }
 

@@ -153,6 +153,27 @@ def compile_items(items: dict[str, dict[str, Any]], presets: dict[str, Any]) -> 
             )
         elif item_type == "timer_upcoming":
             idle["timer_screen"]["upcoming"] = config
+        elif item_type == "text":
+            text = item.get("text")
+            data = item.get("data")
+            has_text = isinstance(text, str) and bool(text)
+            has_data = isinstance(data, str) and bool(data)
+            if has_text == has_data:
+                raise ValueError(f"text item {item_id!r} requires exactly one of text or data")
+            if has_text and len(text.encode("utf-8")) > 95:
+                raise ValueError(f"text item {item_id!r} text exceeds 95 bytes")
+            if has_data and data not in {"time", "date_short", "date_long"}:
+                raise ValueError(
+                    f"text item {item_id!r} has unsupported data binding {data!r}"
+                )
+            font = item.get("font")
+            if font is not None and (not isinstance(font, str) or len(font.encode("utf-8")) > 95):
+                raise ValueError(f"text item {item_id!r} font must be a string of at most 95 bytes")
+            alignment = item.get("align", "center")
+            if alignment not in {"left", "center", "right"}:
+                raise ValueError(
+                    f"text item {item_id!r} align must be left, center, or right"
+                )
         elif item_type in {"progress_bar", "button"}:
             continue
         else:
@@ -181,6 +202,7 @@ def screen_element(
         "timer_primary": "timer_primary",
         "timer_upcoming": "timer_upcoming",
         "progress_bar": "progress_bar",
+        "text": "text",
     }
     element_type = type_map.get(str(item_type))
     if element_type is None:
@@ -188,12 +210,15 @@ def screen_element(
     element: dict[str, Any] = {"type": element_type, "item": item_id}
     if item_type == "activity_sprite":
         element["sprite"] = item.get("data", item_id)
-    for key in ("x", "y", "width", "height", "color", "track_color"):
+    keys = ["x", "y", "width", "height", "color", "track_color"]
+    if item_type == "text":
+        keys.extend(("text", "data", "format", "font", "font_size", "align"))
+    for key in keys:
         if key in placement:
             element[key] = placement[key]
         elif key in item:
             element[key] = item[key]
-    animations = placement.get("animations")
+    animations = placement.get("animations", item.get("animations"))
     if animations is not None:
         element["animations"] = expand_animations(
             animations, presets, f"screen item {item_id!r} animations"
