@@ -38,6 +38,7 @@ extern "C" void app_main(void) {
   ESP_LOGI(kTag, "Firmware project=%s version=%s", app->project_name, app->version);
 
   hexe::board::init_storage();
+  hexe::system::reserve_asset_sync_dma_memory();
   hexe::board::init_display();
   vTaskDelay(pdMS_TO_TICKS(kPostDisplayInitDelayMs));
   hexe::ui::init_animator();

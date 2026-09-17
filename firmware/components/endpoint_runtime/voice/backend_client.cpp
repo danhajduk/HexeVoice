@@ -4361,6 +4361,10 @@ void websocket_task(void *arg) {
     }
 
     if (!g_ws_started) {
+      if (hexe::system::asset_sync_active()) {
+        vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
+        continue;
+      }
       if (g_ws_client == nullptr) {
         const std::string uri = websocket_url();
         esp_websocket_client_config_t config = {};

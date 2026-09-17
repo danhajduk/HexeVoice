@@ -1317,6 +1317,8 @@ def test_waveshare_p4_build_stack_is_pinned():
     build_script = (REPO_ROOT / "firmware/build.sh").read_text(encoding="utf-8")
     p4_defaults = build_script[build_script.index("if [[ \"${idf_target}\" == \"esp32p4\" ]]") :]
     assert "# CONFIG_FATFS_ALLOC_PREFER_EXTRAM is not set" in p4_defaults
+    assert "CONFIG_FATFS_SECTOR_512=y" in p4_defaults
+    assert "# CONFIG_FATFS_SECTOR_4096 is not set" in p4_defaults
 
 
 def test_waveshare_p4_build_rejects_wrong_idf_before_build(tmp_path):

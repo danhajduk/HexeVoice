@@ -30,6 +30,7 @@ constexpr int kHttpTimeoutMs = 30000;
 constexpr int kReadIdleRetryDelayMs = 100;
 constexpr int kReadMaxIdleRetries = 3;
 constexpr size_t kMaxManifestBytes = 64 * 1024;
+constexpr size_t kDmaReserveBytes = 32 * 1024;
 constexpr char kAssetsPath[] = "/sdcard/hexe/assets";
 constexpr char kManifestPath[] = "/sdcard/hexe/assets/assets.json";
 constexpr char kManifestTempPath[] = "/sdcard/hexe/assets/.assets.json.tmp";
@@ -41,6 +42,7 @@ char g_manifest_version[64] = "";
 int g_checked_count = 0;
 int g_downloaded_count = 0;
 int g_failed_count = 0;
+void *g_dma_reserve = nullptr;
 
 struct ManifestBody {
   char *data = nullptr;
@@ -53,6 +55,19 @@ struct ManifestBody {
 
 void set_status(const char *status) {
   std::snprintf(g_status, sizeof(g_status), "%s", status == nullptr ? "unknown" : status);
+}
+
+void release_dma_reserve() {
+  heap_caps_free(g_dma_reserve);
+  g_dma_reserve = nullptr;
+}
+
+void *psram_json_malloc(size_t size) {
+  return heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+}
+
+void psram_json_free(void *pointer) {
+  heap_caps_free(pointer);
 }
 
 const char *scheme_http() {
@@ -179,9 +194,11 @@ bool read_http_manifest(const char *url, ManifestBody *body) {
     return false;
   }
 
+  int expected_content_length = -1;
   esp_err_t err = esp_http_client_open(client, 0);
   if (err == ESP_OK) {
     const int content_length = esp_http_client_fetch_headers(client);
+    expected_content_length = content_length;
     const int status_code = esp_http_client_get_status_code(client);
     if (status_code < 200 || status_code >= 300) {
       ESP_LOGW(kTag, "Manifest HTTP %d for %s", status_code, url);
@@ -218,6 +235,9 @@ bool read_http_manifest(const char *url, ManifestBody *body) {
       break;
     }
     body->size += static_cast<size_t>(read);
+    if (expected_content_length >= 0 && body->size >= static_cast<size_t>(expected_content_length)) {
+      break;
+    }
   }
 
   esp_http_client_close(client);
@@ -241,15 +261,23 @@ bool calculate_file_sha256(const char *path, int *size_bytes, char *sha256, size
     hash_status = psa_hash_setup(&hash_op, PSA_ALG_SHA_256);
   }
 
+  constexpr size_t kHashBufferSize = 1024;
+  auto *buffer = static_cast<unsigned char *>(
+      heap_caps_malloc(kHashBufferSize, MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT));
+  if (buffer == nullptr) {
+    psa_hash_abort(&hash_op);
+    std::fclose(file);
+    return false;
+  }
+
   int total_read = 0;
-  unsigned char buffer[1024] = {};
   while (hash_status == PSA_SUCCESS) {
-    const size_t read = std::fread(buffer, 1, sizeof(buffer), file);
+    const size_t read = std::fread(buffer, 1, kHashBufferSize, file);
     if (read > 0) {
       hash_status = psa_hash_update(&hash_op, buffer, read);
       total_read += static_cast<int>(read);
     }
-    if (read < sizeof(buffer)) {
+    if (read < kHashBufferSize) {
       if (std::ferror(file)) {
         hash_status = PSA_ERROR_GENERIC_ERROR;
       }
@@ -257,6 +285,7 @@ bool calculate_file_sha256(const char *path, int *size_bytes, char *sha256, size
     }
   }
   std::fclose(file);
+  heap_caps_free(buffer);
 
   unsigned char digest[32] = {};
   size_t digest_length = 0;
@@ -351,6 +380,9 @@ bool download_asset_file(const char *url, const char *final_path, const char *te
       hash_status = psa_hash_update(&hash_op, reinterpret_cast<const uint8_t *>(buffer), read);
     }
     total_read += read;
+    if (total_read >= expected_size) {
+      break;
+    }
   }
 
   std::fclose(file);
@@ -566,7 +598,6 @@ void sync_assets_once() {
 
 void asset_sync_task(void *arg) {
   (void)arg;
-  g_active = true;
   set_status("waiting_for_wifi");
   int attempts = 0;
   while (!hexe::state().wifi_connected && attempts++ < kWifiWaitMaxAttempts) {
@@ -574,13 +605,16 @@ void asset_sync_task(void *arg) {
   }
   if (!hexe::state().wifi_connected) {
     set_status("wifi_unavailable");
+    release_dma_reserve();
     g_active = false;
     g_asset_sync_task = nullptr;
     vTaskDelete(nullptr);
     return;
   }
 
+  release_dma_reserve();
   sync_assets_once();
+  release_dma_reserve();
   g_active = false;
   g_asset_sync_task = nullptr;
   vTaskDelete(nullptr);
@@ -589,11 +623,36 @@ void asset_sync_task(void *arg) {
 
 namespace hexe::system {
 
+void reserve_asset_sync_dma_memory() {
+  if (std::strcmp(hexe::config::kEndpointBoardProfile, "waveshare_p4_wifi6_touch_lcd_7b") != 0) {
+    return;
+  }
+  cJSON_Hooks json_hooks = {
+      .malloc_fn = psram_json_malloc,
+      .free_fn = psram_json_free,
+  };
+  cJSON_InitHooks(&json_hooks);
+  if (g_dma_reserve == nullptr) {
+    g_dma_reserve = heap_caps_malloc(
+        kDmaReserveBytes,
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_DMA | MALLOC_CAP_8BIT);
+  }
+  if (g_dma_reserve == nullptr) {
+    ESP_LOGW(kTag, "Could not reserve DMA memory for asset sync");
+  }
+}
+
 void init_asset_sync() {
   if (g_asset_sync_task != nullptr) {
     return;
   }
-  xTaskCreate(asset_sync_task, "hexe_asset_sync", kTaskStackBytes, nullptr, kTaskPriority, &g_asset_sync_task);
+  g_active = true;
+  if (xTaskCreate(asset_sync_task, "hexe_asset_sync", kTaskStackBytes, nullptr, kTaskPriority, &g_asset_sync_task) != pdPASS) {
+    g_active = false;
+    g_asset_sync_task = nullptr;
+    set_status("task_create_failed");
+    release_dma_reserve();
+  }
 }
 
 bool asset_sync_active() {

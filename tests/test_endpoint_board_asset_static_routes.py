@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -25,6 +26,8 @@ def test_firmware_board_asset_route_serves_manifest_and_payload(tmp_path: Path) 
                         "asset_id": "idle_face",
                         "media_type": "picture",
                         "filename": "idle.rgb565",
+                        "size_bytes": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
                     }
                 ],
             }
@@ -49,6 +52,7 @@ def test_firmware_board_asset_route_serves_manifest_and_payload(tmp_path: Path) 
     assert manifest.json()["asset_library_version"] == "2026.09.06.1"
     assert manifest.json()["assets"][0]["size_bytes"] == len(payload)
     assert len(manifest.json()["assets"][0]["sha256"]) == 64
+    assert "download_url" not in manifest.json()["assets"][0]
     assert asset.status_code == 200
     assert asset.content == payload
     assert traversal.status_code == 400

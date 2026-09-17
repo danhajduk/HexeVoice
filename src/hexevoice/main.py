@@ -2242,11 +2242,12 @@ def create_app(
     async def firmware_board_asset_file(board_profile: str, asset_path: str):
         try:
             if asset_path == "assets.json":
-                library = await asyncio.to_thread(endpoint_media_service.board_asset_library, board_profile)
-                return JSONResponse(
-                    content=endpoint_board_media_library_response(library).model_dump(mode="json"),
-                    media_type="application/json",
+                path, content_type = await asyncio.to_thread(
+                    endpoint_media_service.board_asset_raw_path,
+                    board_profile,
+                    asset_path,
                 )
+                return FileResponse(path, media_type=content_type)
             path, content_type = await asyncio.to_thread(
                 endpoint_media_service.board_asset_raw_path,
                 board_profile,

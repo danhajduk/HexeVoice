@@ -2,6 +2,7 @@
 
 namespace hexe::system {
 
+void reserve_asset_sync_dma_memory();
 void init_asset_sync();
 bool asset_sync_active();
 const char *asset_sync_status();

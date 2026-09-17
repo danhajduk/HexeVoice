@@ -1224,7 +1224,9 @@ def test_firmware_boot_syncs_board_assets_to_sd_card():
     assert 'asset_json_number(asset, "size_bytes")' in source
     assert "psa_hash_setup(&hash_op, PSA_ALG_SHA_256)" in source
     assert "std::rename(temp_path, final_path)" in source
-    assert "write_manifest(manifest_body)" in source
+    assert "write_manifest(manifest_body.data, manifest_body.size)" in source
+    assert "reserve_asset_sync_dma_memory()" in source
+    assert "hexe::system::reserve_asset_sync_dma_memory();" in app_main_source
     assert "request_display_assets_reload()" in source
     assert 'xTaskCreate(asset_sync_task, "hexe_asset_sync"' in source
     assert 'cJSON_AddStringToObject(assets, "sync_status", hexe::system::asset_sync_status())' in backend_source
