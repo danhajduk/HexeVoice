@@ -419,6 +419,19 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
             assert -1 <= animation["offset"]["y"] <= 1
 
 
+def test_firmware_asset_manifest_limit_covers_p4_sprite_library():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/system/asset_sync.cpp"
+    ).read_text(encoding="utf-8")
+    manifest = (
+        REPO_ROOT
+        / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/assets.json"
+    )
+
+    assert "constexpr size_t kMaxManifestBytes = 64 * 1024;" in source
+    assert manifest.stat().st_size < 64 * 1024
+
+
 def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     source = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
