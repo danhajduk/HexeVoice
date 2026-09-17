@@ -334,7 +334,10 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert 'StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};' in source
     assert "draw_sidebars(state, g_frame_time_ms);" in source
     assert "StatusFlag::kUiReady" in source
+    assert "StatusFlag::kIdleReady" in source
     assert "state.wifi_connected && state.backend_connected && !state.ota_active" in source
+    assert "draw_idle_clock(state, g_frame_time_ms);" in source
+    assert "g_status_layout.idle_clock.enabled && status_flag_value(StatusFlag::kIdleReady" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
     assert 'json_layout_coordinate(root, "y", g_status_layout.y' in source
@@ -367,7 +370,17 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert layout["sidebars"]["right"]["when"]["flag"] == "ui_ready"
     assert layout["sidebars"]["left"]["offset"]["x"] < 0
     assert layout["sidebars"]["right"]["offset"]["x"] > 0
+    assert layout["idle_clock"]["enabled"] is True
+    assert layout["idle_clock"]["date_format"] == "%a, %b %d"
+    assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
+    for element in ("sprite", "hours", "separator", "minutes", "date"):
+        assert layout["idle_clock"][element]["animations"]
     animations = [animation for icon in layout["icons"] for animation in icon.get("animations", [])]
+    animations.extend(
+        animation
+        for element in ("sprite", "hours", "separator", "minutes", "date")
+        for animation in layout["idle_clock"][element].get("animations", [])
+    )
     assert {animation["type"] for animation in animations} == {
         "blink_dot",
         "running_dots",

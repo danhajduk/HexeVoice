@@ -28,8 +28,8 @@ def main() -> int:
     offset = HEADER.size + (len(args.glyphs) * RECORD.size)
     for character in args.glyphs:
         left, top, right, bottom = font.getbbox(character, anchor="ls")
-        width = max(0, right - left)
-        height = max(0, bottom - top)
+        width = max(1, right - left)
+        height = max(1, bottom - top)
         image = Image.new("L", (width, height))
         ImageDraw.Draw(image).text((-left, -top), character, font=font, fill=255, anchor="ls")
         bitmap = image.tobytes()

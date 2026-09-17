@@ -273,6 +273,18 @@ def main() -> int:
                 converter_python,
                 str(Path(__file__).with_name("generate-clock-font.py")),
                 str(clock_font_source),
+                str(font_dir / "manrope" / "date_32.hxf"),
+                "--pixel-size",
+                "32",
+                "--glyphs= 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ,",
+            ],
+            args.dry_run,
+        )
+        _run(
+            [
+                converter_python,
+                str(Path(__file__).with_name("generate-clock-font.py")),
+                str(clock_font_source),
                 str(font_dir / "manrope" / "version_24.hxf"),
                 "--pixel-size",
                 "24",

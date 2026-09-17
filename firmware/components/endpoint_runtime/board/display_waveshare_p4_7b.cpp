@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -58,6 +59,8 @@ constexpr char kSdTestBackgroundName[] = "bg.rgb888";
 constexpr char kStatusLayoutFilename[] = "status_layout.json";
 constexpr char kDefaultClockFont[] = "manrope/clock_42.hxf";
 constexpr char kDefaultVersionFont[] = "manrope/version_24.hxf";
+constexpr char kDefaultIdleClockFont[] = "manrope/clock_42.hxf";
+constexpr char kDefaultIdleDateFont[] = "manrope/date_32.hxf";
 constexpr size_t kSdTestBackgroundBytes =
     static_cast<size_t>(kWidth) * static_cast<size_t>(kHeight) * kBytesPerPixel;
 constexpr int kWifiSpriteSize = 40;
@@ -65,7 +68,9 @@ constexpr int kStatusSpriteSize = 40;
 constexpr int kSidebarWidth = 88;
 constexpr int kSidebarTop = 78;
 constexpr int kSidebarHeight = 477;
-constexpr size_t kStatusLayoutMaxBytes = 3072;
+constexpr int kIdleClockFrameWidth = 500;
+constexpr int kIdleClockFrameHeight = 210;
+constexpr size_t kStatusLayoutMaxBytes = 4096;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
 constexpr size_t kFontGlyphCount = 64;
@@ -105,6 +110,7 @@ enum class StatusFlag : uint8_t {
   kTimerFinished,
   kError,
   kUiReady,
+  kIdleReady,
   kInvalid,
 };
 
@@ -137,7 +143,31 @@ struct StatusIconLayout {
   size_t animation_count = 0;
 };
 
+struct AnimatedTextLayout {
+  int x = kWidth / 2;
+  int y = 250;
+  int font_size = 96;
+  uint32_t color = kInk;
+  char font[96] = {};
+  StatusAnimation animations[kMaxStatusAnimations] = {};
+  size_t animation_count = 0;
+};
+
 struct StatusLayout {
+  struct IdleClock {
+    bool enabled = true;
+    char date_format[32] = "%a, %b %d";
+    struct Frame {
+      int x = (kWidth - kIdleClockFrameWidth) / 2;
+      int y = 205;
+      StatusAnimation animations[kMaxStatusAnimations] = {};
+      size_t animation_count = 0;
+    } frame;
+    AnimatedTextLayout hours = {415, 240, 118, 0xD8FFFA};
+    AnimatedTextLayout separator = {512, 247, 98, 0x35F4DB};
+    AnimatedTextLayout minutes = {609, 240, 118, 0xD8FFFA};
+    AnimatedTextLayout date = {512, 370, 30, 0x55B8FF};
+  } idle_clock;
   struct Sidebars {
     StatusAnimation left = {
         StatusAnimationType::kSlideIn, StatusFlag::kUiReady, true, kCyan, 500, 500, 80, 180, -1000, 0, 450};
@@ -227,15 +257,22 @@ StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatu
 StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};
 StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};
+StatusSprite g_idle_clock_frame_sprite{"idle_clock_frame", kIdleClockFrameWidth, kIdleClockFrameHeight};
 SlideAnimationState g_slide_animation_states[static_cast<size_t>(StatusIconId::kCount)][kMaxStatusAnimations] = {};
 SlideAnimationState g_sidebar_left_animation_state;
 SlideAnimationState g_sidebar_right_animation_state;
+SlideAnimationState g_idle_clock_animation_states[5][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
 ClockFont g_clock_font;
 ClockFont g_version_font;
+ClockFont g_idle_hours_font;
+ClockFont g_idle_separator_font;
+ClockFont g_idle_minutes_font;
+ClockFont g_idle_date_font;
 
 bool status_animations_active(const hexe::AppState &state);
+int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum);
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -675,6 +712,7 @@ StatusFlag status_flag(const char *name) {
       {"timer_finished", StatusFlag::kTimerFinished},
       {"error", StatusFlag::kError},
       {"ui_ready", StatusFlag::kUiReady},
+      {"idle_ready", StatusFlag::kIdleReady},
   };
   for (const auto &entry : kFlags) {
     if (std::strcmp(name, entry.name) == 0) {
@@ -743,6 +781,32 @@ StatusAnimation parse_status_animation(cJSON *item) {
     std::swap(animation.min_opacity, animation.max_opacity);
   }
   return animation;
+}
+
+void parse_animation_list(cJSON *owner, StatusAnimation *animations, size_t *animation_count) {
+  *animation_count = 0;
+  cJSON *items = cJSON_IsObject(owner) ? cJSON_GetObjectItem(owner, "animations") : nullptr;
+  cJSON *item = nullptr;
+  cJSON_ArrayForEach(item, items) {
+    if (*animation_count >= kMaxStatusAnimations) {
+      break;
+    }
+    StatusAnimation animation = parse_status_animation(item);
+    if (animation.type != StatusAnimationType::kInvalid && animation.flag != StatusFlag::kInvalid) {
+      animations[(*animation_count)++] = animation;
+    }
+  }
+}
+
+void parse_animated_text(cJSON *item, AnimatedTextLayout *layout, const char *default_font) {
+  layout->x = json_layout_coordinate(item, "x", layout->x, kWidth - 1);
+  layout->y = json_layout_coordinate(item, "y", layout->y, kHeight - 1);
+  layout->font_size = json_integer(item, "font_size", layout->font_size, 8, 180);
+  layout->color = json_color(item, "color", layout->color);
+  cJSON *font = cJSON_IsObject(item) ? cJSON_GetObjectItem(item, "font") : nullptr;
+  const char *font_name = cJSON_IsString(font) ? font->valuestring : default_font;
+  std::snprintf(layout->font, sizeof(layout->font), "%s", font_name);
+  parse_animation_list(item, layout->animations, &layout->animation_count);
 }
 
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum) {
@@ -852,6 +916,18 @@ int scale_font_metric(const ClockFont &font, int font_size, int value) {
   return (numerator + adjustment) / font.pixel_size;
 }
 
+int bitmap_text_width(const ClockFont &font, const char *text, int font_size) {
+  int width = 0;
+  for (const char *cursor = text; cursor != nullptr && *cursor != '\0'; ++cursor) {
+    const ClockGlyph *glyph = font_glyph(font, *cursor);
+    if (glyph == nullptr) {
+      return 0;
+    }
+    width += scale_font_metric(font, font_size, glyph->advance);
+  }
+  return width;
+}
+
 bool draw_bitmap_text(
     const ClockFont &font, const char *text, int x, int y, int font_size, uint32_t color) {
   if (font.data == nullptr || text == nullptr) {
@@ -920,8 +996,46 @@ void load_status_layout() {
   }
   cJSON *floating = cJSON_GetObjectItem(root, "floating");
   cJSON *sidebars = cJSON_GetObjectItem(root, "sidebars");
+  cJSON *idle_clock = cJSON_GetObjectItem(root, "idle_clock");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
   cJSON *version = cJSON_GetObjectItem(root, "version");
+  cJSON *idle_enabled = cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "enabled") : nullptr;
+  if (cJSON_IsBool(idle_enabled)) {
+    g_status_layout.idle_clock.enabled = cJSON_IsTrue(idle_enabled);
+  }
+  cJSON *date_format = cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "date_format") : nullptr;
+  if (cJSON_IsString(date_format) && date_format->valuestring != nullptr) {
+    std::snprintf(
+        g_status_layout.idle_clock.date_format,
+        sizeof(g_status_layout.idle_clock.date_format),
+        "%s",
+        date_format->valuestring);
+  }
+  cJSON *idle_frame = cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "sprite") : nullptr;
+  g_status_layout.idle_clock.frame.x =
+      json_layout_coordinate(idle_frame, "x", g_status_layout.idle_clock.frame.x, kWidth - kIdleClockFrameWidth);
+  g_status_layout.idle_clock.frame.y =
+      json_layout_coordinate(idle_frame, "y", g_status_layout.idle_clock.frame.y, kHeight - kIdleClockFrameHeight);
+  parse_animation_list(
+      idle_frame,
+      g_status_layout.idle_clock.frame.animations,
+      &g_status_layout.idle_clock.frame.animation_count);
+  parse_animated_text(
+      cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "hours") : nullptr,
+      &g_status_layout.idle_clock.hours,
+      kDefaultIdleClockFont);
+  parse_animated_text(
+      cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "separator") : nullptr,
+      &g_status_layout.idle_clock.separator,
+      kDefaultIdleClockFont);
+  parse_animated_text(
+      cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "minutes") : nullptr,
+      &g_status_layout.idle_clock.minutes,
+      kDefaultIdleClockFont);
+  parse_animated_text(
+      cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "date") : nullptr,
+      &g_status_layout.idle_clock.date,
+      kDefaultIdleDateFont);
   cJSON *left_sidebar = cJSON_IsObject(sidebars) ? cJSON_GetObjectItem(sidebars, "left") : nullptr;
   cJSON *right_sidebar = cJSON_IsObject(sidebars) ? cJSON_GetObjectItem(sidebars, "right") : nullptr;
   if (cJSON_IsObject(left_sidebar)) {
@@ -1071,6 +1185,9 @@ bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
     case StatusFlag::kUiReady:
       return state.wifi_connected && state.backend_connected && !state.ota_active &&
           state.phase != hexe::AppPhase::kUpdating && state.phase != hexe::AppPhase::kError;
+    case StatusFlag::kIdleReady:
+      return state.wifi_connected && state.backend_connected && !state.ota_active &&
+          state.phase == hexe::AppPhase::kIdle && hexe::system::clock_synced();
     case StatusFlag::kInvalid:
       return false;
   }
@@ -1200,6 +1317,133 @@ void draw_sidebars(const hexe::AppState &state, int64_t now_ms) {
   draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth + right_x, kSidebarTop + right_y);
 }
 
+uint8_t animated_element_transform(
+    const StatusAnimation *animations,
+    size_t animation_count,
+    const hexe::AppState &state,
+    int width,
+    int height,
+    int64_t now_ms,
+    size_t element_index,
+    int *offset_x,
+    int *offset_y) {
+  *offset_x = 0;
+  *offset_y = 0;
+  int opacity = 255;
+  for (size_t index = 0; index < animation_count; ++index) {
+    const auto &animation = animations[index];
+    if (animation.type == StatusAnimationType::kSlideIn) {
+      slide_animation_offset(
+          animation,
+          state,
+          width,
+          height,
+          now_ms,
+          &g_idle_clock_animation_states[element_index][index],
+          offset_x,
+          offset_y);
+    } else if (animation.type == StatusAnimationType::kPulse && status_animation_active(animation, state)) {
+      const int phase = animation_triangle_per_mille(animation, now_ms);
+      const int animated =
+          animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
+      opacity = std::min(opacity, animated);
+    }
+  }
+  return static_cast<uint8_t>(opacity);
+}
+
+void draw_idle_clock_text(
+    const AnimatedTextLayout &layout,
+    ClockFont *font,
+    const char *text,
+    const char *label,
+    const hexe::AppState &state,
+    int64_t now_ms,
+    size_t element_index) {
+  if (!load_bitmap_font(font, layout.font, label)) {
+    const int fallback_scale = (layout.font_size * 100) / 7;
+    draw_text(layout.x - (text_width(text, fallback_scale) / 2), layout.y, text, fallback_scale, layout.color);
+    return;
+  }
+  const int width = bitmap_text_width(*font, text, layout.font_size);
+  if (width <= 0) {
+    return;
+  }
+  int offset_x = 0;
+  int offset_y = 0;
+  const uint8_t opacity = animated_element_transform(
+      layout.animations,
+      layout.animation_count,
+      state,
+      width,
+      layout.font_size,
+      now_ms,
+      element_index,
+      &offset_x,
+      &offset_y);
+  draw_bitmap_text(
+      *font,
+      text,
+      layout.x - (width / 2) + offset_x,
+      layout.y + offset_y,
+      layout.font_size,
+      scale_color(layout.color, opacity * 1000 / 255));
+}
+
+void draw_idle_clock(const hexe::AppState &state, int64_t now_ms) {
+  if (!g_status_layout.idle_clock.enabled || !status_flag_value(StatusFlag::kIdleReady, state)) {
+    for (auto &element : g_idle_clock_animation_states) {
+      for (auto &animation_state : element) {
+        animation_state = {};
+      }
+    }
+    return;
+  }
+
+  const auto &clock = g_status_layout.idle_clock;
+  int frame_offset_x = 0;
+  int frame_offset_y = 0;
+  const uint8_t frame_opacity = animated_element_transform(
+      clock.frame.animations,
+      clock.frame.animation_count,
+      state,
+      kIdleClockFrameWidth,
+      kIdleClockFrameHeight,
+      now_ms,
+      0,
+      &frame_offset_x,
+      &frame_offset_y);
+  draw_status_sprite(
+      &g_idle_clock_frame_sprite,
+      clock.frame.x + frame_offset_x,
+      clock.frame.y + frame_offset_y,
+      frame_opacity);
+
+  std::tm local = {};
+  if (!hexe::system::current_local_time(&local)) {
+    return;
+  }
+  int hour = local.tm_hour % 12;
+  if (hour == 0) {
+    hour = 12;
+  }
+  char hours[4] = {};
+  char minutes[4] = {};
+  char date[40] = {};
+  std::snprintf(hours, sizeof(hours), "%02d", hour);
+  std::snprintf(minutes, sizeof(minutes), "%02d", local.tm_min);
+  if (std::strftime(date, sizeof(date), clock.date_format, &local) == 0) {
+    date[0] = '\0';
+  }
+  for (char *cursor = date; *cursor != '\0'; ++cursor) {
+    *cursor = static_cast<char>(std::toupper(static_cast<unsigned char>(*cursor)));
+  }
+  draw_idle_clock_text(clock.hours, &g_idle_hours_font, hours, "idle hours", state, now_ms, 1);
+  draw_idle_clock_text(clock.separator, &g_idle_separator_font, ":", "idle separator", state, now_ms, 2);
+  draw_idle_clock_text(clock.minutes, &g_idle_minutes_font, minutes, "idle minutes", state, now_ms, 3);
+  draw_idle_clock_text(clock.date, &g_idle_date_font, date, "idle date", state, now_ms, 4);
+}
+
 uint8_t status_sprite_opacity(const StatusIconLayout &layout, const hexe::AppState &state, int64_t now_ms) {
   int opacity = 255;
   for (size_t index = 0; index < layout.animation_count; ++index) {
@@ -1313,6 +1557,9 @@ void draw_header_status_icons() {
 }
 
 void draw_header_clock() {
+  if (g_status_layout.idle_clock.enabled && status_flag_value(StatusFlag::kIdleReady, hexe::state())) {
+    return;
+  }
   if (!hexe::system::clock_synced()) {
     return;
   }
@@ -1529,6 +1776,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
   } else {
     load_status_layout();
     draw_sidebars(state, g_frame_time_ms);
+    draw_idle_clock(state, g_frame_time_ms);
     draw_header_clock();
     draw_header_status_icons();
     draw_version_text(build_id);
@@ -1731,6 +1979,11 @@ void request_display_assets_reload() {
   release_status_sprite(&g_asset_downloading_sprite);
   release_status_sprite(&g_sidebar_sprite);
   release_status_sprite(&g_sidebar_right_sprite);
+  release_status_sprite(&g_idle_clock_frame_sprite);
+  release_bitmap_font(&g_idle_hours_font);
+  release_bitmap_font(&g_idle_separator_font);
+  release_bitmap_font(&g_idle_minutes_font);
+  release_bitmap_font(&g_idle_date_font);
 }
 
 bool show_next_ui_page() {

@@ -78,6 +78,11 @@ boot, Wi-Fi connection, backend connection, asset synchronization, and OTA.
 OTA is inactive and the application is not updating or in an error state. The
 left and right sidebar sprites use this flag to slide into view.
 
+`idle_ready` additionally requires synchronized time and the application idle
+phase. It controls the large idle clock composition. While active, the large
+clock replaces the small header clock. Its frame, hours, separator, minutes,
+and date each have independent animation lists in `status_layout.json`.
+
 ## Deferred Animations
 
 Candidates for later implementation:

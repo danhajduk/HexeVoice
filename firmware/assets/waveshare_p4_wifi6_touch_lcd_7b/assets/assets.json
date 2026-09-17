@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.2",
-  "updated_at": "2026-09-17T00:11:20.701542+00:00",
+  "asset_library_version": "2026.09.17.3",
+  "updated_at": "2026-09-17T00:29:19.421799+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -13,6 +13,17 @@
         "font_format": "hexe_bitmap_v1",
         "size_bytes": 7461,
         "sha256": "b77eaf1ab6ff81332c4ca43b7040d3a930d7184678f0d819261b7059758d5ee6"
+      }
+    },
+    {
+      "asset_id": "manrope_date_32",
+      "media_type": "font",
+      "filename": "manrope/date_32.hxf",
+      "source_filename": "manrope/date_32.hxf",
+      "metadata": {
+        "font_format": "hexe_bitmap_v1",
+        "size_bytes": 16420,
+        "sha256": "4a1563b8a3dbcc9a2bf93811a7354c5d7d9e3e1604736f4e26624b05631b77e7"
       }
     },
     {
@@ -96,6 +107,17 @@
       }
     },
     {
+      "asset_id": "idle_clock_frame",
+      "media_type": "sprite",
+      "filename": "idle_clock_frame.alpha8",
+      "source_filename": "idle_clock_frame.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 105000,
+        "sha256": "f8ba15804ee2eb948348371a7810d3be567e6d5b9c2037a45005fb01585ac66a"
+      }
+    },
+    {
       "asset_id": "node_connected",
       "media_type": "sprite",
       "filename": "node_connected.alpha8",
@@ -140,6 +162,20 @@
         "channel_order": "rgb",
         "size_bytes": 4800,
         "sha256": "8217653ed56e9a9680ff7006360540d40852899523050454fc23d0392d699803"
+      }
+    },
+    {
+      "asset_id": "sprite_idle_clock_frame",
+      "media_type": "sprite",
+      "filename": "idle_clock_frame.rgb888",
+      "source_filename": "idle_clock_frame.rgb888",
+      "metadata": {
+        "width": 500,
+        "height": 210,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 315000,
+        "sha256": "95c5d459a2d146699156d538c7379858ac102abd38e2e1ec5a7882499345ebc3"
       }
     },
     {
@@ -219,8 +255,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 2206,
-        "sha256": "0c9d3516e11aaf437b7f7fe22790da8a4958f9764f86f59625c8756afb8c81ed"
+        "size_bytes": 3772,
+        "sha256": "4f06feac6798af2a0e749ec0ef62af0be0d40851f3b0519459254c16d06388c7"
       }
     },
     {

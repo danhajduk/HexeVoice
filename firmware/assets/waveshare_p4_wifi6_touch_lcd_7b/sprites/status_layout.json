@@ -1,17 +1,94 @@
 {
   "schema_version": 1,
+  "idle_clock": {
+    "enabled": true,
+    "date_format": "%a, %b %d",
+    "sprite": {
+      "x": 262,
+      "y": 205,
+      "animations": [
+        {
+          "type": "slide_in",
+          "when": {"flag": "idle_ready", "equals": true},
+          "offset": {"x": 0.0, "y": 0.15},
+          "period_ms": 500
+        }
+      ]
+    },
+    "hours": {
+      "font": "manrope/clock_42.hxf",
+      "font_size": 118,
+      "x": 415,
+      "y": 240,
+      "color": "#D8FFFA",
+      "animations": [
+        {
+          "type": "slide_in",
+          "when": {"flag": "idle_ready", "equals": true},
+          "offset": {"x": -0.2, "y": 0.0},
+          "period_ms": 550
+        }
+      ]
+    },
+    "separator": {
+      "font": "manrope/clock_42.hxf",
+      "font_size": 98,
+      "x": 512,
+      "y": 247,
+      "color": "#35F4DB",
+      "animations": [
+        {
+          "type": "pulse",
+          "when": {"flag": "idle_ready", "equals": true},
+          "period_ms": 1000,
+          "min_opacity": 90,
+          "max_opacity": 255
+        }
+      ]
+    },
+    "minutes": {
+      "font": "manrope/clock_42.hxf",
+      "font_size": 118,
+      "x": 609,
+      "y": 240,
+      "color": "#D8FFFA",
+      "animations": [
+        {
+          "type": "slide_in",
+          "when": {"flag": "idle_ready", "equals": true},
+          "offset": {"x": 0.2, "y": 0.0},
+          "period_ms": 550
+        }
+      ]
+    },
+    "date": {
+      "font": "manrope/date_32.hxf",
+      "font_size": 30,
+      "x": 512,
+      "y": 370,
+      "color": "#55B8FF",
+      "animations": [
+        {
+          "type": "slide_in",
+          "when": {"flag": "idle_ready", "equals": true},
+          "offset": {"x": 0.0, "y": 0.4},
+          "period_ms": 650
+        }
+      ]
+    }
+  },
   "sidebars": {
     "left": {
       "type": "slide_in",
       "when": {"flag": "ui_ready", "equals": true},
       "offset": {"x": -1.0, "y": 0.0},
-      "period_ms": 450
+      "period_ms": 1500
     },
     "right": {
       "type": "slide_in",
       "when": {"flag": "ui_ready", "equals": true},
       "offset": {"x": 1.0, "y": 0.0},
-      "period_ms": 450
+      "period_ms": 1500
     }
   },
   "clock": {
@@ -43,7 +120,7 @@
           "type": "blink_dot",
           "when": {"flag": "wifi_connecting", "equals": true},
           "color": "#35F4DB",
-          "position": {"x": 0.82, "y": 0.18},
+          "position": {"x": 0.5, "y": 0.8},
           "radius": 0.08,
           "period_ms": 800
         }
@@ -75,12 +152,6 @@
       "id": "asset_downloading",
       "placement": "floating",
       "animations": [
-        {
-          "type": "slide_in",
-          "when": {"flag": "asset_sync_active", "equals": true},
-          "offset": {"x": -1.0, "y": 0.0},
-          "period_ms": 350
-        },
         {
           "type": "running_dots",
           "when": {"flag": "asset_sync_active", "equals": true},
