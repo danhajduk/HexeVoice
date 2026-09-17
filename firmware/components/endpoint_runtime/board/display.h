@@ -20,6 +20,7 @@ void request_display_assets_reload();
 bool show_next_ui_page();
 bool show_previous_ui_page();
 bool display_activity_zone_contains(int x, int y);
+bool display_big_clock_zone_contains(int x, int y);
 bool display_button_hit_test(int x, int y, DisplayButtonHit *hit);
 bool display_ready();
 int display_width();

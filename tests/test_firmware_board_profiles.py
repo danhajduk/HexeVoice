@@ -657,6 +657,9 @@ def test_p4_profile_uses_bsp_gt911_touch_adapter():
     assert 'hexe::voice::stop_playback("touch_activity")' in source
     assert "display_button_hit_test(g_touch_start_x, g_touch_start_y, &button_hit)" in source
     assert "send_ui_button_pressed_event(" in source
+    assert "display_big_clock_zone_contains(g_touch_start_x, g_touch_start_y)" in source
+    assert 'hexe::voice::start_voice_session("touch")' in source
+    assert "hexe::voice::post_tts_input_cooldown_active()" in source
 
     display = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
@@ -665,6 +668,8 @@ def test_p4_profile_uses_bsp_gt911_touch_adapter():
         REPO_ROOT / "firmware/components/endpoint_runtime/voice/backend_client.cpp"
     ).read_text(encoding="utf-8")
     assert "bool display_button_hit_test(int x, int y, DisplayButtonHit *hit)" in display
+    assert "bool display_big_clock_zone_contains(int x, int y)" in display
+    assert "g_big_clock_visible.store(true" in display
     assert "screen->buttons[index]" in display
     assert 'append_event_header(envelope, "endpoint.ui.button_pressed"' in backend
     assert r'\"button_index\":%d' in backend

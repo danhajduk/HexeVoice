@@ -133,6 +133,21 @@ void handle_touch_release(int x, int y) {
           sent ? "true" : "false");
       return;
     }
+    if (hexe::board::display_big_clock_zone_contains(g_touch_start_x, g_touch_start_y)) {
+      if (hexe::voice::post_tts_input_cooldown_active()) {
+        ESP_LOGI(kTag, "Big clock wake ignored during input cooldown");
+        return;
+      }
+      if (!hexe::voice::start_voice_session("touch")) {
+        ESP_LOGW(
+            kTag,
+            "Big clock wake failed to start voice session reason=%s",
+            hexe::voice::voice_session_start_unavailable_reason());
+        return;
+      }
+      ESP_LOGI(kTag, "Big clock wake started voice session");
+      return;
+    }
     apply_touch_action(action_for_point(g_touch_start_x, g_touch_start_y));
   }
 }

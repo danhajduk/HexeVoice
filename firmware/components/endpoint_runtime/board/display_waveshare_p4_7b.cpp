@@ -401,6 +401,9 @@ SlideAnimationState g_sidebar_right_animation_state;
 std::atomic<bool> g_sidebar_buttons_visible{false};
 std::atomic<int> g_sidebar_left_draw_x{0};
 std::atomic<int> g_sidebar_left_draw_y{0};
+std::atomic<bool> g_big_clock_visible{false};
+std::atomic<int> g_big_clock_draw_x{0};
+std::atomic<int> g_big_clock_draw_y{0};
 SlideAnimationState g_idle_clock_animation_states[5][kMaxStatusAnimations] = {};
 SlideAnimationState g_activity_animation_states[kActivitySpriteCount][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
@@ -1984,6 +1987,9 @@ void draw_big_clock(const hexe::AppState &state, int64_t now_ms, const ScreenEle
       frame_x + frame_offset_x,
       frame_y + frame_offset_y,
       frame_opacity);
+  g_big_clock_draw_x.store(frame_x + frame_offset_x, std::memory_order_relaxed);
+  g_big_clock_draw_y.store(frame_y + frame_offset_y, std::memory_order_relaxed);
+  g_big_clock_visible.store(true, std::memory_order_release);
 
   std::tm local = {};
   if (!hexe::system::current_local_time(&local)) {
@@ -2320,6 +2326,7 @@ const ScreenLayout *active_screen_layout(const hexe::AppState &state) {
 }
 
 void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const ScreenLayout *screen) {
+  g_big_clock_visible.store(false, std::memory_order_release);
   if (screen == nullptr) {
     draw_header_clock();
     return;
@@ -2779,6 +2786,16 @@ bool display_activity_zone_contains(int x, int y) {
   const auto &layout = g_status_layout.activity_sprites.items[kReplayActivityIndex];
   return x >= layout.x && x < layout.x + kActivitySpriteSize &&
          y >= layout.y && y < layout.y + kActivitySpriteSize;
+}
+
+bool display_big_clock_zone_contains(int x, int y) {
+  if (!g_big_clock_visible.load(std::memory_order_acquire)) {
+    return false;
+  }
+  const int clock_x = g_big_clock_draw_x.load(std::memory_order_relaxed);
+  const int clock_y = g_big_clock_draw_y.load(std::memory_order_relaxed);
+  return x >= clock_x && x < clock_x + kIdleClockFrameWidth &&
+         y >= clock_y && y < clock_y + kIdleClockFrameHeight;
 }
 
 bool display_button_hit_test(int x, int y, DisplayButtonHit *hit) {
