@@ -1785,6 +1785,13 @@ bool status_animations_active(const hexe::AppState &state) {
   if (!g_status_layout_loaded) {
     return false;
   }
+  // A P4 frame redraw transfers the full RGB888 screen. Keep the display
+  // static while voice capture, backend processing, or playback owns the
+  // latency-sensitive audio/network path; phase changes still draw once.
+  if (state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
+      state.phase == hexe::AppPhase::kReplying || state.audio_streaming || state.tts_playback_active) {
+    return false;
+  }
   const ScreenLayout *screen = active_screen_layout(state);
   if (screen != nullptr) {
     for (size_t element_index = 0; element_index < screen->element_count; ++element_index) {
