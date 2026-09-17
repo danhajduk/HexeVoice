@@ -1143,7 +1143,7 @@ _NUMBER_PATTERN = (
     r"|sixty"
 )
 _DURATION_PART_RE = re.compile(
-    rf"\b(?P<number>{_NUMBER_PATTERN})\s*(?P<unit>hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)\b"
+    rf"\b(?P<number>{_NUMBER_PATTERN})\s*(?P<unit>hours?|hrs?|hr|h|minutes?|mins?|min|man's|mans|m|seconds?|secs?|sec|s)\b"
 )
 _UNIT_SECONDS = {
     "h": 3600,
@@ -1156,6 +1156,8 @@ _UNIT_SECONDS = {
     "mins": 60,
     "minute": 60,
     "minutes": 60,
+    "man's": 60,
+    "mans": 60,
     "s": 1,
     "sec": 1,
     "secs": 1,

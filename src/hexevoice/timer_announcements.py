@@ -289,12 +289,14 @@ class TimerSucceededAnnouncementService:
         settings: Settings,
         announce: Callable[[TimerAnnouncement], Awaitable[dict[str, Any]] | dict[str, Any]],
         play_alarm: Callable[[TimerCompletedAlarm], Awaitable[dict[str, Any]] | dict[str, Any]] | None = None,
+        update_endpoint_timer: Callable[[TimerOwnerRecord], Awaitable[dict[str, Any]] | dict[str, Any]] | None = None,
         onboarding_state_store: OnboardingStateStore | None = None,
         ownership_cache: TimerOwnershipCache | None = None,
     ) -> None:
         self._settings = settings
         self._announce = announce
         self._play_alarm = play_alarm
+        self._update_endpoint_timer = update_endpoint_timer
         self._store = onboarding_state_store or OnboardingStateStore(path=settings.resolved_onboarding_state_path())
         self._client: Any = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -423,7 +425,10 @@ class TimerSucceededAnnouncementService:
         if loop is None:
             self._last_reason = "event_loop_unavailable"
             return
-        self._ownership_cache.update_from_event(str(msg.topic), payload)
+        timer_records = self._ownership_cache.update_from_event(str(msg.topic), payload)
+        if self._update_endpoint_timer is not None:
+            for record in timer_records:
+                asyncio.run_coroutine_threadsafe(self._update_endpoint_timer_async(record), loop)
         alarm = timer_completed_alarm(
             str(msg.topic),
             payload,
@@ -465,6 +470,17 @@ class TimerSucceededAnnouncementService:
             "topic": announcement.topic,
         }
         asyncio.run_coroutine_threadsafe(self._announce_async(announcement), loop)
+
+    async def _update_endpoint_timer_async(self, record: TimerOwnerRecord) -> None:
+        try:
+            result = self._update_endpoint_timer(record) if self._update_endpoint_timer is not None else None
+            if asyncio.iscoroutine(result):
+                result = await result
+            if isinstance(result, dict) and not result.get("accepted", False):
+                self._last_reason = str(result.get("reason") or "endpoint_timer_update_rejected")
+        except Exception as exc:
+            self._last_reason = "endpoint_timer_update_failed"
+            log.warning("Endpoint timer update failed: error=%s", exc)
 
     async def _announce_async(self, announcement: TimerAnnouncement) -> None:
         try:

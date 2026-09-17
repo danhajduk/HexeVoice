@@ -239,6 +239,7 @@ def test_event_vocabularies_cover_endpoint_and_backend_message_families():
         "endpoint.micro_vad",
         "endpoint.audio.finalize",
         "endpoint.listen",
+        "endpoint.timer",
     }.issubset(BACKEND_TO_ENDPOINT_EVENTS)
 
 

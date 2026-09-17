@@ -277,6 +277,44 @@ def test_timer_service_queues_timer_success_announcement_once():
     asyncio.run(run())
 
 
+def test_timer_service_pushes_timer_state_to_endpoint():
+    async def run() -> None:
+        updates = []
+
+        async def update_endpoint_timer(record):
+            updates.append(record)
+            return {"accepted": True, "status": "sent"}
+
+        service = TimerSucceededAnnouncementService(
+            settings=Settings(),
+            announce=lambda announcement: None,
+            update_endpoint_timer=update_endpoint_timer,
+        )
+        service._loop = asyncio.get_running_loop()
+        payload = {
+            "event_id": "timer-create-succeeded-2",
+            "event_type": "timer.create_succeeded",
+            "subject": {"family": "timer", "record_id": "timer-2"},
+            "data": {
+                "endpoint_id": "esp-box-1",
+                "timer_id": "timer-2",
+                "title": "5 minutes",
+                "state": "active",
+                "remaining_seconds": 300,
+            },
+        }
+        msg = SimpleNamespace(topic="hexe/events/timer/create_succeeded", payload=json.dumps(payload).encode("utf-8"))
+
+        service._on_message(None, None, msg)
+        await asyncio.sleep(0.01)
+
+        assert len(updates) == 1
+        assert updates[0].timer_id == "timer-2"
+        assert updates[0].remaining_seconds == 300
+
+    asyncio.run(run())
+
+
 def test_timer_service_queues_timer_completed_alarm_once():
     async def run() -> None:
         calls = []

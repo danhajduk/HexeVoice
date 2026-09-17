@@ -1248,6 +1248,49 @@ class VoiceSessionManager:
             },
         )
 
+    async def push_timer_state(
+        self,
+        *,
+        endpoint_id: str,
+        timer_id: str,
+        state: str,
+        label: str | None = None,
+        due_at: str | None = None,
+        remaining_seconds: int | None = None,
+        source_event_id: str | None = None,
+    ) -> dict:
+        normalized_state = str(state or "").strip().lower()
+        endpoint_state = {
+            "completed": "finished",
+            "done": "finished",
+            "expired": "finished",
+            "cancelled": "cleared",
+            "canceled": "cleared",
+            "stopped": "cleared",
+            "inactive": "cleared",
+        }.get(normalized_state, normalized_state)
+        payload: dict[str, Any] = {
+            "timer_id": timer_id,
+            "state": endpoint_state,
+            "label": label or "Timer",
+            "source_event_id": source_event_id,
+        }
+        if remaining_seconds is not None:
+            payload["remaining_seconds"] = remaining_seconds
+        if due_at:
+            try:
+                due = datetime.fromisoformat(due_at.replace("Z", "+00:00"))
+                payload["due_unix_ms"] = int(due.timestamp() * 1000)
+            except ValueError:
+                pass
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.timer",
+            command_type="endpoint.timer",
+            request_id=f"endpoint_timer_{uuid4().hex}",
+            payload=payload,
+        )
+
     async def push_media_transfer(
         self,
         *,

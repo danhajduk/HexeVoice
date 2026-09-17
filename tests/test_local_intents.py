@@ -28,6 +28,16 @@ def test_local_intent_finder_detects_timer_create_with_words_and_compound_durati
     assert match.slots["duration_text"] == "1 hour and 30 minutes"
 
 
+def test_local_intent_finder_tolerates_whisper_mans_for_minutes():
+    finder = LocalIntentFinder()
+
+    match = finder.find("set five man's timer")
+
+    assert match is not None
+    assert match.command == "timer.create"
+    assert match.slots["duration_seconds"] == 300
+
+
 def test_local_intent_finder_detects_timer_status_query():
     finder = LocalIntentFinder()
 

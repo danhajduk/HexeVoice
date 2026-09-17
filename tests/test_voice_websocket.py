@@ -2282,6 +2282,40 @@ def test_voice_session_manager_pushes_timer_announcement_to_endpoint():
     assert websocket.sent[0]["payload"]["source_event_id"] == "interaction-timer-create-succeeded-session-1"
 
 
+def test_voice_session_manager_pushes_timer_state_to_endpoint():
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    websocket = FakeWebSocket()
+    manager = VoiceSessionManager()
+    manager._connection_active = True
+    manager._websocket = websocket
+    manager._connected_endpoint_id = "esp-box-1"
+
+    result = asyncio.run(
+        manager.push_timer_state(
+            endpoint_id="esp-box-1",
+            timer_id="timer-1",
+            state="active",
+            label="Kitchen",
+            due_at="2026-09-17T02:00:00Z",
+            remaining_seconds=300,
+            source_event_id="timer-event-1",
+        )
+    )
+
+    assert result["accepted"] is True
+    assert websocket.sent[0]["event_type"] == "endpoint.timer"
+    assert websocket.sent[0]["payload"]["state"] == "active"
+    assert websocket.sent[0]["payload"]["label"] == "Kitchen"
+    assert websocket.sent[0]["payload"]["due_unix_ms"] == 1789610400000
+    assert websocket.sent[0]["payload"]["remaining_seconds"] == 300
+
+
 def test_voice_session_manager_pushes_speak_command_to_endpoint():
     class SpeakPipeline:
         def __init__(self):
