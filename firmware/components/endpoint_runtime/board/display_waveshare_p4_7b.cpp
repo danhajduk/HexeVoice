@@ -451,7 +451,7 @@ ClockFont g_idle_date_font;
 ClockFont g_timer_countdown_font;
 ClockFont g_timer_label_font;
 ClockFont g_timer_upcoming_font;
-ClockFont g_screen_text_fonts[kMaxScreenElements];
+ClockFont *g_screen_text_fonts[kMaxScreenElements] = {};
 char g_screen_text_font_names[kMaxScreenElements][96] = {};
 const StatusLayout g_default_status_layout{};
 
@@ -2606,19 +2606,24 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
           if (std::strftime(dynamic_text, sizeof(dynamic_text), format, &local) == 0) break;
           display_text = dynamic_text;
         }
-        ClockFont &font = g_screen_text_fonts[index];
+        if (g_screen_text_fonts[index] == nullptr) {
+          g_screen_text_fonts[index] = static_cast<ClockFont *>(
+              heap_caps_calloc(1, sizeof(ClockFont), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        }
+        ClockFont *font = g_screen_text_fonts[index];
+        if (font == nullptr) break;
         if (std::strcmp(g_screen_text_font_names[index], element.font) != 0) {
-          release_bitmap_font(&font);
+          release_bitmap_font(font);
           std::snprintf(
               g_screen_text_font_names[index],
               sizeof(g_screen_text_font_names[index]),
               "%s",
               element.font);
         }
-        const bool bitmap_font_loaded = load_bitmap_font(&font, element.font, "screen text");
+        const bool bitmap_font_loaded = load_bitmap_font(font, element.font, "screen text");
         const int fallback_scale = (element.font_size * 100) / 7;
         const int width = bitmap_font_loaded
-            ? bitmap_text_width(font, display_text, element.font_size)
+            ? bitmap_text_width(*font, display_text, element.font_size)
             : text_width(display_text, fallback_scale);
         int x = element.x;
         if (element.text_alignment == TextAlignment::kCenter) {
@@ -2641,7 +2646,7 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
         const uint32_t color = scale_color(element.color, opacity * 1000 / 255);
         if (bitmap_font_loaded) {
           draw_bitmap_text(
-              font,
+              *font,
               display_text,
               x + offset_x,
               element.y + offset_y,
@@ -2745,7 +2750,9 @@ void reload_display_assets() {
   release_bitmap_font(&g_idle_minutes_font);
   release_bitmap_font(&g_idle_date_font);
   for (size_t index = 0; index < kMaxScreenElements; ++index) {
-    release_bitmap_font(&g_screen_text_fonts[index]);
+    release_bitmap_font(g_screen_text_fonts[index]);
+    heap_caps_free(g_screen_text_fonts[index]);
+    g_screen_text_fonts[index] = nullptr;
     g_screen_text_font_names[index][0] = '\0';
   }
   ESP_LOGI(kTag, "Reloading display assets on render task");
