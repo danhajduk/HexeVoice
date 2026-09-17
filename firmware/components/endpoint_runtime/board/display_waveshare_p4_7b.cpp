@@ -1829,13 +1829,6 @@ bool status_animations_active(const hexe::AppState &state) {
   if (!g_status_layout_loaded) {
     return false;
   }
-  // A P4 frame redraw transfers the full RGB888 screen. Keep the display
-  // static while voice capture, backend processing, or playback owns the
-  // latency-sensitive audio/network path; phase changes still draw once.
-  if (state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
-      state.phase == hexe::AppPhase::kReplying || state.audio_streaming || state.tts_playback_active) {
-    return false;
-  }
   const ScreenLayout *screen = active_screen_layout(state);
   if (screen != nullptr) {
     for (size_t element_index = 0; element_index < screen->element_count; ++element_index) {
@@ -1862,12 +1855,6 @@ bool status_animations_active(const hexe::AppState &state) {
     }
   }
   return false;
-}
-
-bool display_redraw_suspended_for_voice(const hexe::AppState &state) {
-  return state.backend_connected &&
-      (state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
-       state.phase == hexe::AppPhase::kReplying || state.audio_streaming || state.tts_playback_active);
 }
 
 uint32_t scale_color(uint32_t color, int intensity_per_mille) {
@@ -3236,9 +3223,6 @@ void render_boot_frame(int frame, const char *build_id) {
   if (g_display_assets_reload_requested.exchange(false, std::memory_order_acquire)) {
     reload_display_assets();
     g_force_redraw = true;
-  }
-  if (display_redraw_suspended_for_voice(hexe::state())) {
-    return;
   }
   load_status_layout();
   const auto &state = hexe::state();

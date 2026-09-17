@@ -619,21 +619,6 @@ def test_p4_screen_element_animations_drive_continuous_redraw():
     assert "frame % 64" not in source
 
 
-def test_p4_voice_phases_suppress_continuous_display_redraw():
-    source = (
-        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
-    ).read_text(encoding="utf-8")
-
-    animation_guard = source[source.index("bool status_animations_active"):]
-    animation_guard = animation_guard[: animation_guard.index("const ScreenLayout *screen")]
-    assert "hexe::AppPhase::kListening" in animation_guard
-    assert "hexe::AppPhase::kThinking" in animation_guard
-    assert "hexe::AppPhase::kReplying" in animation_guard
-    assert "state.audio_streaming" in animation_guard
-    assert "state.tts_playback_active" in animation_guard
-    assert "return false;" in animation_guard
-
-
 def test_p4_draws_selected_screen_debug_label():
     source = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
@@ -642,18 +627,6 @@ def test_p4_draws_selected_screen_debug_label():
     assert '"screen: %s"' in source
     assert 'screen == nullptr ? "none" : screen->id' in source
     assert "draw_screen_debug_label(screen);" in source
-
-
-def test_p4_suspends_all_lcd_transfers_during_voice_activity():
-    source = (
-        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
-    ).read_text(encoding="utf-8")
-
-    assert "bool display_redraw_suspended_for_voice" in source
-    render = source[source.index("void render_boot_frame"):]
-    render = render[: render.index("void request_display_assets_reload")]
-    assert "display_redraw_suspended_for_voice(hexe::state())" in render
-    assert render.index("display_redraw_suspended_for_voice") < render.index("frame_signature(frame)")
 
 
 def test_p4_uses_dirty_regions_for_dynamic_ui_updates():
@@ -668,6 +641,7 @@ def test_p4_uses_dirty_regions_for_dynamic_ui_updates():
     assert "esp_lcd_panel_draw_bitmap(g_panel, x, y, x + width, y + rows" in source
     assert "static_signature != g_last_static_signature" in source
     assert "std::strcmp(screen_id, g_last_screen_id)" in source
+    assert "display_redraw_suspended_for_voice" not in source
 
 
 def test_p4_build_patches_esp_hosted_dma_oom_assertions():
