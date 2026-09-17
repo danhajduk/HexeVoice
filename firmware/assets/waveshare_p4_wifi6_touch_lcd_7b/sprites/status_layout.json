@@ -1,5 +1,19 @@
 {
   "schema_version": 1,
+  "sidebars": {
+    "left": {
+      "type": "slide_in",
+      "when": {"flag": "ui_ready", "equals": true},
+      "offset": {"x": -1.0, "y": 0.0},
+      "period_ms": 450
+    },
+    "right": {
+      "type": "slide_in",
+      "when": {"flag": "ui_ready", "equals": true},
+      "offset": {"x": 1.0, "y": 0.0},
+      "period_ms": 450
+    }
+  },
   "clock": {
     "font": "manrope/clock_42.hxf",
     "font_size": 55,

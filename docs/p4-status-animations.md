@@ -70,10 +70,13 @@ Supported flags are `heartbeat`, `loading`, `wifi_connected`,
 `wifi_connecting`, `backend_connected`, `backend_connecting`,
 `voice_ws_connected`, `asset_sync_active`, `media_transfer_active`,
 `ota_active`, `listening`, `thinking`, `replying`, `muted`, `timer_active`,
-`timer_finished`, and `error`.
+`timer_finished`, `error`, and `ui_ready`.
 
 `heartbeat` is always true while the display runtime is alive. `loading` combines
 boot, Wi-Fi connection, backend connection, asset synchronization, and OTA.
+`ui_ready` becomes true only after Wi-Fi and backend connection complete, while
+OTA is inactive and the application is not updating or in an error state. The
+left and right sidebar sprites use this flag to slide into view.
 
 ## Deferred Animations
 

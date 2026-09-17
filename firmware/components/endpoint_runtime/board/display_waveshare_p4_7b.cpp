@@ -65,7 +65,7 @@ constexpr int kStatusSpriteSize = 40;
 constexpr int kSidebarWidth = 88;
 constexpr int kSidebarTop = 78;
 constexpr int kSidebarHeight = 477;
-constexpr size_t kStatusLayoutMaxBytes = 2048;
+constexpr size_t kStatusLayoutMaxBytes = 3072;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
 constexpr size_t kFontGlyphCount = 64;
@@ -104,6 +104,7 @@ enum class StatusFlag : uint8_t {
   kTimerActive,
   kTimerFinished,
   kError,
+  kUiReady,
   kInvalid,
 };
 
@@ -137,6 +138,12 @@ struct StatusIconLayout {
 };
 
 struct StatusLayout {
+  struct Sidebars {
+    StatusAnimation left = {
+        StatusAnimationType::kSlideIn, StatusFlag::kUiReady, true, kCyan, 500, 500, 80, 180, -1000, 0, 450};
+    StatusAnimation right = {
+        StatusAnimationType::kSlideIn, StatusFlag::kUiReady, true, kCyan, 500, 500, 80, 180, 1000, 0, 450};
+  } sidebars;
   struct Clock {
     int font_size = 42;
     int x_offset = 0;
@@ -221,6 +228,8 @@ StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, 
 StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};
 StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};
 SlideAnimationState g_slide_animation_states[static_cast<size_t>(StatusIconId::kCount)][kMaxStatusAnimations] = {};
+SlideAnimationState g_sidebar_left_animation_state;
+SlideAnimationState g_sidebar_right_animation_state;
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
 ClockFont g_clock_font;
@@ -665,6 +674,7 @@ StatusFlag status_flag(const char *name) {
       {"timer_active", StatusFlag::kTimerActive},
       {"timer_finished", StatusFlag::kTimerFinished},
       {"error", StatusFlag::kError},
+      {"ui_ready", StatusFlag::kUiReady},
   };
   for (const auto &entry : kFlags) {
     if (std::strcmp(name, entry.name) == 0) {
@@ -909,8 +919,23 @@ void load_status_layout() {
     return;
   }
   cJSON *floating = cJSON_GetObjectItem(root, "floating");
+  cJSON *sidebars = cJSON_GetObjectItem(root, "sidebars");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
   cJSON *version = cJSON_GetObjectItem(root, "version");
+  cJSON *left_sidebar = cJSON_IsObject(sidebars) ? cJSON_GetObjectItem(sidebars, "left") : nullptr;
+  cJSON *right_sidebar = cJSON_IsObject(sidebars) ? cJSON_GetObjectItem(sidebars, "right") : nullptr;
+  if (cJSON_IsObject(left_sidebar)) {
+    StatusAnimation animation = parse_status_animation(left_sidebar);
+    if (animation.type == StatusAnimationType::kSlideIn && animation.flag != StatusFlag::kInvalid) {
+      g_status_layout.sidebars.left = animation;
+    }
+  }
+  if (cJSON_IsObject(right_sidebar)) {
+    StatusAnimation animation = parse_status_animation(right_sidebar);
+    if (animation.type == StatusAnimationType::kSlideIn && animation.flag != StatusFlag::kInvalid) {
+      g_status_layout.sidebars.right = animation;
+    }
+  }
   g_status_layout.clock.font_size =
       json_integer(clock, "font_size", g_status_layout.clock.font_size, 12, 96);
   g_status_layout.clock.x_offset =
@@ -1043,6 +1068,9 @@ bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
       return state.timer_state == hexe::TimerLifecycleState::kFinished;
     case StatusFlag::kError:
       return state.phase == hexe::AppPhase::kError;
+    case StatusFlag::kUiReady:
+      return state.wifi_connected && state.backend_connected && !state.ota_active &&
+          state.phase != hexe::AppPhase::kUpdating && state.phase != hexe::AppPhase::kError;
     case StatusFlag::kInvalid:
       return false;
   }
@@ -1093,6 +1121,31 @@ int signed_relative_pixels(int per_mille, int size) {
   return (scaled + (scaled < 0 ? -500 : 500)) / 1000;
 }
 
+void slide_animation_offset(
+    const StatusAnimation &animation,
+    const hexe::AppState &state,
+    int sprite_width,
+    int sprite_height,
+    int64_t now_ms,
+    SlideAnimationState *animation_state,
+    int *offset_x,
+    int *offset_y) {
+  if (!status_animation_active(animation, state)) {
+    *animation_state = {};
+    return;
+  }
+  if (!animation_state->active) {
+    animation_state->active = true;
+    animation_state->started_ms = now_ms;
+  }
+  const int64_t elapsed_ms = std::clamp<int64_t>(now_ms - animation_state->started_ms, 0, animation.period_ms);
+  const int progress = static_cast<int>(elapsed_ms * 1000 / animation.period_ms);
+  const int remaining = 1000 - progress;
+  const int eased_remaining = static_cast<int>(static_cast<int64_t>(remaining) * remaining * remaining / 1000000);
+  *offset_x += signed_relative_pixels(animation.offset_x_per_mille, sprite_width) * eased_remaining / 1000;
+  *offset_y += signed_relative_pixels(animation.offset_y_per_mille, sprite_height) * eased_remaining / 1000;
+}
+
 void status_sprite_slide_offset(
     StatusIconId id,
     const StatusIconLayout &layout,
@@ -1111,21 +1164,40 @@ void status_sprite_slide_offset(
       continue;
     }
     auto &animation_state = g_slide_animation_states[icon_index][index];
-    if (!status_animation_active(animation, state)) {
-      animation_state = {};
-      continue;
-    }
-    if (!animation_state.active) {
-      animation_state.active = true;
-      animation_state.started_ms = now_ms;
-    }
-    const int64_t elapsed_ms = std::clamp<int64_t>(now_ms - animation_state.started_ms, 0, animation.period_ms);
-    const int progress = static_cast<int>(elapsed_ms * 1000 / animation.period_ms);
-    const int remaining = 1000 - progress;
-    const int eased_remaining = static_cast<int>(static_cast<int64_t>(remaining) * remaining * remaining / 1000000);
-    *offset_x += signed_relative_pixels(animation.offset_x_per_mille, sprite_width) * eased_remaining / 1000;
-    *offset_y += signed_relative_pixels(animation.offset_y_per_mille, sprite_height) * eased_remaining / 1000;
+    slide_animation_offset(
+        animation, state, sprite_width, sprite_height, now_ms, &animation_state, offset_x, offset_y);
   }
+}
+
+void draw_sidebars(const hexe::AppState &state, int64_t now_ms) {
+  int left_x = 0;
+  int left_y = 0;
+  slide_animation_offset(
+      g_status_layout.sidebars.left,
+      state,
+      kSidebarWidth,
+      kSidebarHeight,
+      now_ms,
+      &g_sidebar_left_animation_state,
+      &left_x,
+      &left_y);
+  int right_x = 0;
+  int right_y = 0;
+  slide_animation_offset(
+      g_status_layout.sidebars.right,
+      state,
+      kSidebarWidth,
+      kSidebarHeight,
+      now_ms,
+      &g_sidebar_right_animation_state,
+      &right_x,
+      &right_y);
+  if (!status_animation_active(g_status_layout.sidebars.left, state) ||
+      !status_animation_active(g_status_layout.sidebars.right, state)) {
+    return;
+  }
+  draw_status_sprite(&g_sidebar_sprite, left_x, kSidebarTop + left_y);
+  draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth + right_x, kSidebarTop + right_y);
 }
 
 uint8_t status_sprite_opacity(const StatusIconLayout &layout, const hexe::AppState &state, int64_t now_ms) {
@@ -1455,8 +1527,8 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
   if (!drew_background) {
     clear_strip();
   } else {
-    draw_status_sprite(&g_sidebar_sprite, 0, kSidebarTop);
-    draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth, kSidebarTop);
+    load_status_layout();
+    draw_sidebars(state, g_frame_time_ms);
     draw_header_clock();
     draw_header_status_icons();
     draw_version_text(build_id);

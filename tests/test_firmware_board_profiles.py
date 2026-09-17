@@ -332,8 +332,9 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};' in source
     assert 'StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};' in source
     assert 'StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};' in source
-    assert "draw_status_sprite(&g_sidebar_sprite, 0, kSidebarTop);" in source
-    assert "draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth, kSidebarTop);" in source
+    assert "draw_sidebars(state, g_frame_time_ms);" in source
+    assert "StatusFlag::kUiReady" in source
+    assert "state.wifi_connected && state.backend_connected && !state.ota_active" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
     assert 'json_layout_coordinate(root, "y", g_status_layout.y' in source
@@ -362,6 +363,10 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert isinstance(layout["y"], int)
     assert "y" not in layout["floating"]
     assert all("y" not in icon for icon in layout["icons"])
+    assert layout["sidebars"]["left"]["when"]["flag"] == "ui_ready"
+    assert layout["sidebars"]["right"]["when"]["flag"] == "ui_ready"
+    assert layout["sidebars"]["left"]["offset"]["x"] < 0
+    assert layout["sidebars"]["right"]["offset"]["x"] > 0
     animations = [animation for icon in layout["icons"] for animation in icon.get("animations", [])]
     assert {animation["type"] for animation in animations} == {
         "blink_dot",
