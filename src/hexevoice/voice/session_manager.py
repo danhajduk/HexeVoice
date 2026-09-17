@@ -908,6 +908,14 @@ class VoiceSessionManager:
             payload={"reason": reason},
         )
 
+    async def push_ui_screen_command(self, *, endpoint_id: str, screen_id: str, duration_seconds: int = 30) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.ui.screen",
+            command_type="endpoint.ui.screen",
+            payload={"screen_id": screen_id, "duration_seconds": max(1, min(duration_seconds, 30))},
+        )
+
     async def push_endpoint_provisioning_apply_command(
         self,
         *,

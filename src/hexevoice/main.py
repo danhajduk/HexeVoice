@@ -80,6 +80,7 @@ from hexevoice.api.models import (
     EndpointBleWifiCredentialsResponse,
     EndpointCommandRequest,
     EndpointCommandResponse,
+    EndpointScreenCommandRequest,
     EndpointDiscoveryRequest,
     EndpointDiscoveryResponse,
     EndpointLedSimulateCommandRequest,
@@ -2007,6 +2008,22 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             command_type="endpoint.restart",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/ui/screen", response_model=EndpointCommandResponse)
+    async def endpoint_ui_screen(payload: EndpointScreenCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_ui_screen_command(
+            endpoint_id=payload.endpoint_id,
+            screen_id=payload.screen_id,
+            duration_seconds=payload.duration_seconds,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.ui.screen",
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),

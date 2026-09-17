@@ -504,6 +504,12 @@ class EndpointCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
 
 
+class EndpointScreenCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    screen_id: str = Field(min_length=1, max_length=23)
+    duration_seconds: int = Field(default=30, ge=1, le=30)
+
+
 class EndpointLedSimulateCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     pattern: str = Field(default="all", min_length=1, max_length=40)

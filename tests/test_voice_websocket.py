@@ -354,6 +354,24 @@ def test_endpoint_restart_command_routes_to_connected_endpoint(tmp_path):
     assert command["payload"]["request_id"].startswith("cmd_")
 
 
+def test_endpoint_screen_command_routes_temporary_override(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        response = client.post(
+            "/api/endpoint/ui/screen",
+            json={"endpoint_id": "esp-box-1", "screen_id": "timer", "duration_seconds": 30},
+        )
+        command = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["command_type"] == "endpoint.ui.screen"
+    assert command["event_type"] == "endpoint.ui.screen"
+    assert command["payload"]["screen_id"] == "timer"
+    assert command["payload"]["duration_seconds"] == 30
+
+
 def test_voice_websocket_replaces_duplicate_endpoint_control_socket(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
