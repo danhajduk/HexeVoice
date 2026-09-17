@@ -1820,6 +1820,11 @@ bool status_animations_active(const hexe::AppState &state) {
   return false;
 }
 
+bool display_redraw_suspended_for_voice(const hexe::AppState &state) {
+  return state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
+      state.phase == hexe::AppPhase::kReplying || state.audio_streaming || state.tts_playback_active;
+}
+
 uint32_t scale_color(uint32_t color, int intensity_per_mille) {
   const int intensity = std::clamp(intensity_per_mille, 0, 1000);
   const uint32_t red = ((color >> 16) & 0xFF) * intensity / 1000;
@@ -3083,6 +3088,9 @@ void render_boot_frame(int frame, const char *build_id) {
   if (g_display_assets_reload_requested.exchange(false, std::memory_order_acquire)) {
     reload_display_assets();
     g_force_redraw = true;
+  }
+  if (display_redraw_suspended_for_voice(hexe::state())) {
+    return;
   }
   const int signature = frame_signature(frame);
   if (!g_force_redraw && signature == g_last_signature) {

@@ -643,6 +643,18 @@ def test_p4_draws_selected_screen_debug_label():
     assert "draw_screen_debug_label(screen);" in source
 
 
+def test_p4_suspends_all_lcd_transfers_during_voice_activity():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "bool display_redraw_suspended_for_voice" in source
+    render = source[source.index("void render_boot_frame"):]
+    render = render[: render.index("void request_display_assets_reload")]
+    assert "display_redraw_suspended_for_voice(hexe::state())" in render
+    assert render.index("display_redraw_suspended_for_voice") < render.index("frame_signature(frame)")
+
+
 def test_p4_build_patches_esp_hosted_dma_oom_assertions():
     cmake = (REPO_ROOT / "firmware/CMakeLists.txt").read_text(encoding="utf-8")
     patcher = (REPO_ROOT / "firmware/tools/patch-esp-hosted-oom.py").read_text(encoding="utf-8")
