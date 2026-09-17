@@ -2455,6 +2455,13 @@ bool show_previous_ui_page() {
   return false;
 }
 
+bool display_activity_zone_contains(int x, int y) {
+  constexpr int kReplayActivityIndex = 2;
+  const auto &layout = g_status_layout.activity_sprites.items[kReplayActivityIndex];
+  return x >= layout.x && x < layout.x + kActivitySpriteSize &&
+         y >= layout.y && y < layout.y + kActivitySpriteSize;
+}
+
 bool display_ready() {
   return g_display_ready;
 }

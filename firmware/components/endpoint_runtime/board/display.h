@@ -9,6 +9,7 @@ void render_boot_frame(int frame, const char *build_id);
 void request_display_assets_reload();
 bool show_next_ui_page();
 bool show_previous_ui_page();
+bool display_activity_zone_contains(int x, int y);
 bool display_ready();
 int display_width();
 int display_height();

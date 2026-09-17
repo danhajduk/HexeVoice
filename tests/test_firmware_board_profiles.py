@@ -504,6 +504,9 @@ def test_p4_profile_uses_bsp_gt911_touch_adapter():
     assert "bsp_touch_new(nullptr, &g_touch)" in source
     assert "esp_lcd_touch_read_data(g_touch)" in source
     assert "esp_lcd_touch_get_data(g_touch, &point, &point_count, 1)" in source
+    assert "hexe::voice::tts_playback_active()" in source
+    assert "display_activity_zone_contains(g_touch_start_x, g_touch_start_y)" in source
+    assert 'hexe::voice::stop_playback("touch_activity")' in source
 
 
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):
