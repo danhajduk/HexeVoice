@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.16.53",
-  "updated_at": "2026-09-17T00:03:12.990048+00:00",
+  "asset_library_version": "2026.09.17.1",
+  "updated_at": "2026-09-17T00:06:17.746867+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -118,6 +118,17 @@
       }
     },
     {
+      "asset_id": "sidebar_right",
+      "media_type": "sprite",
+      "filename": "sidebar_right.alpha8",
+      "source_filename": "sidebar_right.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 41976,
+        "sha256": "5e2edfa85221c3b9c1d4e47bb74e3bd66d885e373191970a0e6fc441d980d5ef"
+      }
+    },
+    {
       "asset_id": "sprite_asset_downloading",
       "media_type": "sprite",
       "filename": "asset_downloading.rgb888",
@@ -160,6 +171,20 @@
       }
     },
     {
+      "asset_id": "sprite_sidebar_right",
+      "media_type": "sprite",
+      "filename": "sidebar_right.rgb888",
+      "source_filename": "sidebar_right.rgb888",
+      "metadata": {
+        "width": 88,
+        "height": 477,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 125928,
+        "sha256": "7cb2563ee373f4a3a2eba50edd05b78899753637edc1b9d98e863c1d76c5ede2"
+      }
+    },
+    {
       "asset_id": "sprite_wifi_off",
       "media_type": "sprite",
       "filename": "wifi_off.rgb888",
@@ -195,7 +220,7 @@
       "metadata": {
         "content_format": "json",
         "size_bytes": 1864,
-        "sha256": "10fda95520bccf43c32c28048fbb23eead76c31ffb994aab020f17c8ee55016f"
+        "sha256": "291ca45c7d16ab28dfb5f2fbc2bcbd9805ec83075579d709634b43a504ebe7e4"
       }
     },
     {

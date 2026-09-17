@@ -32,14 +32,6 @@
           "position": {"x": 0.82, "y": 0.18},
           "radius": 0.08,
           "period_ms": 800
-        },
-        {
-          "type": "pulse_ring",
-          "when": {"flag": "backend_connecting", "equals": true},
-          "color": "#55B8FF",
-          "position": {"x": 0.5, "y": 0.5},
-          "radius": 0.28,
-          "period_ms": 1200
         }
       ]
     },
@@ -54,6 +46,14 @@
           "period_ms": 1800,
           "min_opacity": 150,
           "max_opacity": 255
+        },
+        {
+          "type": "pulse_ring",
+          "when": {"flag": "backend_connecting", "equals": true},
+          "color": "#55B8FF",
+          "position": {"x": 0.5, "y": 0.5},
+          "radius": 0.28,
+          "period_ms": 1200
         }
       ]
     },

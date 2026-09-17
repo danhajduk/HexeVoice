@@ -331,7 +331,9 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "sprite->alpha[source_pixel]" in source
     assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};' in source
     assert 'StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};' in source
+    assert 'StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};' in source
     assert "draw_status_sprite(&g_sidebar_sprite, 0, kSidebarTop);" in source
+    assert "draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth, kSidebarTop);" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
     assert 'json_layout_coordinate(root, "y", g_status_layout.y' in source

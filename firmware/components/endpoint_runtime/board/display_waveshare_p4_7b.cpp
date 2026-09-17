@@ -219,6 +219,7 @@ StatusSprite g_wifi_off_sprite{"wifi_off", kStatusSpriteSize, kStatusSpriteSize}
 StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};
+StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};
 SlideAnimationState g_slide_animation_states[static_cast<size_t>(StatusIconId::kCount)][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
@@ -1455,6 +1456,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
     clear_strip();
   } else {
     draw_status_sprite(&g_sidebar_sprite, 0, kSidebarTop);
+    draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth, kSidebarTop);
     draw_header_clock();
     draw_header_status_icons();
     draw_version_text(build_id);
@@ -1656,6 +1658,7 @@ void request_display_assets_reload() {
   release_status_sprite(&g_node_connected_sprite);
   release_status_sprite(&g_asset_downloading_sprite);
   release_status_sprite(&g_sidebar_sprite);
+  release_status_sprite(&g_sidebar_right_sprite);
 }
 
 bool show_next_ui_page() {
