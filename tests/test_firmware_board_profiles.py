@@ -615,6 +615,7 @@ def test_p4_screen_element_animations_drive_continuous_redraw():
     assert "element.animations[animation_index]" in source
     assert "constexpr int kAnimationFrameIntervalUs = 125000;" in source
     assert "esp_timer_get_time() / kAnimationFrameIntervalUs" in source
+    assert "frame % 64" not in source
 
 
 def test_p4_build_patches_esp_hosted_dma_oom_assertions():

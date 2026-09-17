@@ -565,10 +565,7 @@ int frame_signature(int frame) {
     signature =
         (signature * 131) + static_cast<int>((esp_timer_get_time() / kAnimationFrameIntervalUs) % 100000);
   }
-  if (state.phase == hexe::AppPhase::kBooting || state.phase == hexe::AppPhase::kListening ||
-      state.phase == hexe::AppPhase::kThinking || state.phase == hexe::AppPhase::kReplying) {
-    signature = (signature * 131) + (frame % 64);
-  }
+  (void)frame;
   return signature;
 }
 
