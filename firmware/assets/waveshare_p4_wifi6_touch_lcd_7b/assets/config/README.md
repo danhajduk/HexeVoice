@@ -10,6 +10,30 @@ python3 firmware/tools/generate-board-media-assets.py waveshare_p4_wifi6_touch_l
 The generator resolves YAML includes and writes the device-facing JSON files to
 `assets/sprite/`. Do not edit those generated JSON files directly.
 
+## Preview A Screen
+
+Run the interactive preview menu:
+
+```bash
+scripts/ui-screen-menu.py
+```
+
+It discovers screen IDs from `screens_layout.yaml`, lets you select a registered
+endpoint, and offers 5, 10, 20, or 30 second overrides. The backend defaults to
+`http://hexe.local:9004` and can be changed with `API_BASE_URL` or
+`--api-base-url`.
+
+For repeatable tests, skip the menus:
+
+```bash
+scripts/ui-screen-menu.py \
+  --endpoint-id DEVICE_ID \
+  --screen idle \
+  --duration 10
+```
+
+Use `scripts/ui-screen-menu.py --list-screens` to print the available IDs.
+
 ## Files
 
 - `status_layout.yaml`: ordered list of generated layout sections.
