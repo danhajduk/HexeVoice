@@ -1,4 +1,6 @@
 import asyncio
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 import json
 from types import SimpleNamespace
 
@@ -294,6 +296,32 @@ def test_timer_ownership_cache_selects_nearest_due_timer_or_reports_ambiguity():
     )
 
     assert ambiguous.select_timer("esp-box-1")["status"] == "ambiguous"
+
+
+def test_timer_ownership_cache_excludes_expired_unrefreshed_active_record():
+    cache = TimerOwnershipCache()
+    now = datetime.now(UTC)
+    cache.update_from_event(
+        "hexe/events/timer/create_succeeded",
+        {
+            "event_id": "timer-create-stale",
+            "event_type": "timer.create_succeeded",
+            "subject": {"family": "timer", "record_id": "timer-stale"},
+            "data": {
+                "endpoint_id": "esp-box-1",
+                "timer_id": "timer-stale",
+                "state": "active",
+                "due_at": (now - timedelta(minutes=5)).isoformat(),
+                "remaining_seconds": 60,
+            },
+        },
+    )
+    cache._records["timer-stale"] = replace(
+        cache._records["timer-stale"],
+        last_seen_at=(now - timedelta(minutes=10)).isoformat(),
+    )
+
+    assert cache.active_for_endpoint("esp-box-1") == []
 
 
 def test_timer_service_queues_timer_success_announcement_once():

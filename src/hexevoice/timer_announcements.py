@@ -124,10 +124,13 @@ class TimerOwnershipCache:
 
     def active_for_endpoint(self, endpoint_id: str) -> list[TimerOwnerRecord]:
         normalized_endpoint = str(endpoint_id or "").strip()
+        now = datetime.now(UTC)
         records = [
             record
             for record in self._records.values()
-            if record.endpoint_id == normalized_endpoint and _is_active_timer_state(record.state)
+            if record.endpoint_id == normalized_endpoint
+            and _is_active_timer_state(record.state)
+            and not _active_timer_record_expired(record, now=now)
         ]
         return sorted(records, key=lambda record: (_parse_event_datetime(record.due_at) or datetime.max.replace(tzinfo=UTC), record.timer_id))
 
@@ -220,6 +223,15 @@ class TimerOwnershipCache:
             return
         records = sorted(self._records.values(), key=lambda record: record.last_seen_at, reverse=True)
         self._records = {record.timer_id: record for record in records[: self._max_records]}
+
+
+def _active_timer_record_expired(record: TimerOwnerRecord, *, now: datetime) -> bool:
+    due_at = _parse_event_datetime(record.due_at)
+    last_seen_at = _parse_event_datetime(record.last_seen_at)
+    if due_at is None or due_at > now or last_seen_at is None:
+        return False
+    minimum_age_seconds = max(1, record.remaining_seconds or 0)
+    return (now - last_seen_at).total_seconds() >= minimum_age_seconds
 
 
 def _timer_duration_seconds(data: dict[str, Any]) -> int | None:
