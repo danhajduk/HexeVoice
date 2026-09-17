@@ -622,6 +622,7 @@ def test_p4_build_patches_esp_hosted_dma_oom_assertions():
     assert "patch-esp-hosted-oom.py" in cmake
     assert 'HEXE_BOARD_PROFILE STREQUAL "waveshare_p4_wifi6_touch_lcd_7b"' in cmake
     assert "Dropping SDIO RX stream: no DMA buffer" in patcher
+    assert "Deferring SDIO RX: no DMA stream buffer" in patcher
     assert "ESP_ERR_ESP_NETIF_TX_FAILED" in patcher
 
 

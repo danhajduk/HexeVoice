@@ -53,6 +53,41 @@ def main() -> int:
         "\t\tpkt_rxbuff = sdio_buffer_alloc(MEMSET_REQUIRED);\n\t\tassert(pkt_rxbuff);",
         "\t\tpkt_rxbuff = sdio_buffer_alloc(MEMSET_REQUIRED);\n\t\tif (!pkt_rxbuff) {\n\t\t\tESP_LOGE(TAG, \"Dropping SDIO RX stream: no DMA buffer\");\n\t\t\treturn ESP_ERR_NO_MEM;\n\t\t}",
     )
+    replace_once(
+        sdio,
+        """\
+\t\tif (*buf) {
+\t\t\t// free already allocated memory
+\t\t\tg_h.funcs->_h_free(*buf);
+\t\t}
+\t\t*buf = (uint8_t *)MEM_ALLOC(len);
+\t\tassert(*buf);
+\t\tdouble_buf.buffer[index].buf_size = len;""",
+        """\
+\t\tif (*buf) {
+\t\t\t// free already allocated memory
+\t\t\tg_h.funcs->_h_free(*buf);
+\t\t}
+\t\t*buf = NULL;
+\t\tdouble_buf.buffer[index].buf_size = 0;
+\t\t*buf = (uint8_t *)MEM_ALLOC(len);
+\t\tif (!*buf) {
+\t\t\treturn NULL;
+\t\t}
+\t\tdouble_buf.buffer[index].buf_size = len;""",
+    )
+    replace_once(
+        sdio,
+        "\t\trxbuff = sdio_rx_get_buffer(len_from_slave);\n\t\tassert(rxbuff);",
+        """\
+\t\trxbuff = sdio_rx_get_buffer(len_from_slave);
+\t\tif (!rxbuff) {
+\t\t\tESP_LOGE(TAG, "Deferring SDIO RX: no DMA stream buffer");
+\t\t\tSDIO_DRV_UNLOCK();
+\t\t\tg_h.funcs->_h_msleep(1);
+\t\t\tcontinue;
+\t\t}""",
+    )
     return 0
 
 
