@@ -611,6 +611,8 @@ def test_p4_screen_element_animations_drive_continuous_redraw():
 
     assert "const ScreenLayout *screen = active_screen_layout(state);" in source
     assert "element.animations[animation_index]" in source
+    assert "constexpr int kAnimationFrameIntervalUs = 125000;" in source
+    assert "esp_timer_get_time() / kAnimationFrameIntervalUs" in source
 
 
 def test_yaml_layout_includes_are_relative_and_reject_cycles_and_escape(tmp_path):

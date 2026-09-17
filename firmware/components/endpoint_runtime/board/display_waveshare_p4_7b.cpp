@@ -35,6 +35,7 @@ constexpr char kTag[] = "hexe_display_p4_7b";
 constexpr int kWidth = BSP_LCD_H_RES;
 constexpr int kHeight = BSP_LCD_V_RES;
 constexpr int kFlushRows = 120;
+constexpr int kAnimationFrameIntervalUs = 125000;
 constexpr int kBytesPerPixel = 3;
 
 constexpr uint32_t rgb565_to_rgb888(uint16_t color) {
@@ -561,7 +562,8 @@ int frame_signature(int frame) {
     signature = (signature * 131) + (local.tm_hour * 60) + local.tm_min + 1;
   }
   if (status_animations_active(state)) {
-    signature = (signature * 131) + static_cast<int>((esp_timer_get_time() / 50000) % 100000);
+    signature =
+        (signature * 131) + static_cast<int>((esp_timer_get_time() / kAnimationFrameIntervalUs) % 100000);
   }
   if (state.phase == hexe::AppPhase::kBooting || state.phase == hexe::AppPhase::kListening ||
       state.phase == hexe::AppPhase::kThinking || state.phase == hexe::AppPhase::kReplying) {
