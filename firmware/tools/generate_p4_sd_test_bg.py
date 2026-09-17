@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a 1024x600 Hexe visual-focus RGB565 background for P4 displays."""
+"""Generate a 1024x600 Hexe shell background for P4 displays."""
 
 from __future__ import annotations
 
@@ -18,34 +18,34 @@ def blend(base: tuple[float, float, float], overlay: tuple[int, int, int], alpha
     return tuple((channel * (1.0 - alpha)) + (accent * alpha) for channel, accent in zip(base, overlay))
 
 
-def ring_alpha(distance: float, radius: float, thickness: float, softness: float = 1.8) -> float:
-    edge_distance = abs(distance - radius)
-    if edge_distance >= thickness + softness:
+def smooth_rect_alpha(x: float, y: float, left: float, top: float, right: float, bottom: float, softness: float) -> float:
+    inside_x = min(x - left, right - x)
+    inside_y = min(y - top, bottom - y)
+    edge = min(inside_x, inside_y)
+    if edge >= softness:
+        return 1.0
+    if edge <= -softness:
         return 0.0
+    return (edge + softness) / (softness * 2.0)
+
+
+def line_alpha(distance: float, center: float, thickness: float, softness: float = 1.4) -> float:
+    edge_distance = abs(distance - center)
     if edge_distance <= thickness:
         return 1.0
-    return 1.0 - ((edge_distance - thickness) / softness)
-
-
-def arc_alpha(angle: float, start: float, sweep: float) -> float:
-    normalized = (angle - start) % (math.tau)
-    if normalized > sweep:
+    if edge_distance >= thickness + softness:
         return 0.0
-    edge = min(normalized, sweep - normalized)
-    return min(1.0, edge / 0.08)
+    return 1.0 - ((edge_distance - thickness) / softness)
 
 
 def color_at(x: int, y: int, width: int, height: int) -> int:
     horizontal = x / max(1, width - 1)
     vertical = y / max(1, height - 1)
-    cx = width * 0.52
-    cy = height * 0.49
-    dx = x - cx
-    dy = y - cy
-    distance = math.hypot(dx, dy)
-    angle = math.atan2(dy, dx)
-
-    vignette = min(1.0, distance / (width * 0.57))
+    rail_width = 104
+    header_height = 78
+    cx = rail_width + ((width - rail_width) * 0.52)
+    edge_distance = min(x, width - 1 - x, y, height - 1 - y)
+    vignette = 1.0 - min(1.0, edge_distance / 260.0)
     red = 2 + 8 * horizontal + 4 * vertical
     green = 6 + 13 * horizontal + 8 * vertical
     blue = 14 + 24 * horizontal + 8 * vertical
@@ -56,57 +56,48 @@ def color_at(x: int, y: int, width: int, height: int) -> int:
     purple = (118, 84, 255)
     lavender = (182, 167, 255)
     ice = (215, 255, 255)
+    rail = (4, 10, 20)
+    panel = (7, 16, 29)
 
-    halo = max(0.0, 1.0 - distance / 330.0)
-    color = blend(base, cyan, 0.11 * halo * halo)
-    color = blend(color, purple, 0.08 * max(0.0, 1.0 - distance / 430.0))
+    diagonal_cyan = max(0.0, 1.0 - abs((x - rail_width) - (y * 1.45)) / 520.0)
+    diagonal_purple = max(0.0, 1.0 - abs((width - x) - (y * 1.15)) / 560.0)
+    color = blend(base, cyan, 0.040 * diagonal_cyan)
+    color = blend(color, purple, 0.036 * diagonal_purple)
 
     grid = 0.0
     if x % 64 in (0, 1) or y % 64 in (0, 1):
-        grid = 0.035
+        grid = 0.020
     color = blend(color, deep_cyan, grid)
 
-    for radius, thickness, accent, alpha in (
-        (238, 2.2, cyan, 0.72),
-        (202, 1.1, purple, 0.44),
-        (156, 1.5, deep_cyan, 0.36),
-        (101, 1.2, cyan, 0.30),
-        (52, 1.0, purple, 0.32),
-    ):
-        color = blend(color, accent, alpha * ring_alpha(distance, radius, thickness))
+    if x < rail_width:
+        color = blend(color, rail, 0.88)
+        color = blend(color, cyan, 0.08 * max(0.0, 1.0 - x / rail_width))
+    if y < header_height:
+        color = blend(color, panel, 0.82)
+        color = blend(color, purple, 0.035 * max(0.0, 1.0 - y / header_height))
 
-    for radius, thickness, start, sweep, accent, alpha in (
-        (176, 3.5, -1.26, 1.22, cyan, 0.86),
-        (176, 3.5, 1.88, 1.08, cyan, 0.74),
-        (128, 4.0, 2.62, 0.84, lavender, 0.86),
-        (128, 4.0, -0.62, 0.78, lavender, 0.78),
-        (74, 2.5, 0.88, 1.35, cyan, 0.68),
-    ):
-        color = blend(color, accent, alpha * ring_alpha(distance, radius, thickness) * arc_alpha(angle, start, sweep))
+    color = blend(color, cyan, 0.62 * line_alpha(x, rail_width, 1.2))
+    color = blend(color, cyan, 0.40 * line_alpha(y, header_height, 1.2))
+    color = blend(color, purple, 0.20 * line_alpha(y, header_height + 4, 0.9))
 
-    for tx, ty, tw, th in (
-        (cx, cy - 238, 4, 18),
-        (cx, cy + 238, 4, 18),
-        (cx - 238, cy, 18, 4),
-        (cx + 238, cy, 18, 4),
-    ):
-        rect_alpha = max(0.0, 1.0 - max(abs(x - tx) / tw, abs(y - ty) / th))
-        color = blend(color, ice, 0.62 * rect_alpha)
+    for top in (108, 188, 268, 348, 428):
+        slot_alpha = smooth_rect_alpha(x, y, 18, top, rail_width - 18, top + 54, 5.0)
+        color = blend(color, (10, 25, 42), 0.52 * slot_alpha)
+        color = blend(color, cyan, 0.20 * slot_alpha * max(0.0, 1.0 - abs(x - 22) / 4.0))
+        color = blend(color, purple, 0.10 * slot_alpha * max(0.0, 1.0 - abs(y - (top + 27)) / 28.0))
 
-    for nx, ny, accent in (
-        (cx, cy - 255, cyan),
-        (cx + 255, cy, cyan),
-        (cx, cy + 255, cyan),
-        (cx - 255, cy, cyan),
-        (cx + 178, cy - 178, purple),
-        (cx - 178, cy + 178, purple),
-    ):
-        node_distance = math.hypot(x - nx, y - ny)
-        node_alpha = max(0.0, 1.0 - node_distance / 8.0)
-        color = blend(color, accent, 0.82 * node_alpha)
+    clock_zone = smooth_rect_alpha(x, y, rail_width + 28, 18, rail_width + 286, header_height - 18, 5.0)
+    status_zone = smooth_rect_alpha(x, y, width - 284, 18, width - 28, header_height - 18, 5.0)
+    color = blend(color, (9, 22, 38), 0.40 * clock_zone)
+    color = blend(color, (9, 22, 38), 0.40 * status_zone)
 
-    center_alpha = max(0.0, 1.0 - distance / 12.0)
-    color = blend(color, lavender, 0.92 * center_alpha)
+    for marker_x in (width - 252, width - 214, width - 176, width - 138, width - 100, width - 62):
+        marker = max(0.0, 1.0 - math.hypot(x - marker_x, y - 39) / 6.0)
+        color = blend(color, cyan if marker_x in (width - 252, width - 62) else deep_cyan, 0.38 * marker)
+
+    reserved = smooth_rect_alpha(x, y, rail_width + 64, header_height + 34, width - 42, height - 42, 7.0)
+    color = blend(color, (2, 5, 10), 0.08 * reserved)
+    color = blend(color, deep_cyan, 0.045 * reserved * max(0.0, 1.0 - abs(x - cx) / 460.0))
 
     red, green, blue = (int(max(0, min(255, channel))) for channel in color)
     return rgb565(red, green, blue)
