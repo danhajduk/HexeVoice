@@ -1,6 +1,7 @@
 #include "board/display.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cctype>
 #include <cstdint>
@@ -240,6 +241,7 @@ bool g_display_ready = false;
 bool g_backlight_on = false;
 bool g_wait_for_refresh = false;
 bool g_force_redraw = true;
+std::atomic<bool> g_display_assets_reload_requested{false};
 int g_strip_y = 0;
 int g_strip_rows = 0;
 int g_last_signature = -1;
@@ -1656,6 +1658,32 @@ void release_status_sprite(StatusSprite *sprite) {
   sprite->load_attempted = false;
 }
 
+void release_bitmap_font(ClockFont *font);
+
+void reload_display_assets() {
+  if (g_background_pixels != nullptr) {
+    heap_caps_free(g_background_pixels);
+    g_background_pixels = nullptr;
+  }
+  g_logged_bg_missing = false;
+  g_logged_bg_bad_size = false;
+  g_status_layout_loaded = false;
+  release_bitmap_font(&g_clock_font);
+  release_bitmap_font(&g_version_font);
+  release_status_sprite(&g_wifi_on_sprite);
+  release_status_sprite(&g_wifi_off_sprite);
+  release_status_sprite(&g_node_connected_sprite);
+  release_status_sprite(&g_asset_downloading_sprite);
+  release_status_sprite(&g_sidebar_sprite);
+  release_status_sprite(&g_sidebar_right_sprite);
+  release_status_sprite(&g_idle_clock_frame_sprite);
+  release_bitmap_font(&g_idle_hours_font);
+  release_bitmap_font(&g_idle_separator_font);
+  release_bitmap_font(&g_idle_minutes_font);
+  release_bitmap_font(&g_idle_date_font);
+  ESP_LOGI(kTag, "Reloading display assets on render task");
+}
+
 void release_bitmap_font(ClockFont *font) {
   if (font == nullptr) {
     return;
@@ -1952,6 +1980,10 @@ void turn_on_backlight() {
 }
 
 void render_boot_frame(int frame, const char *build_id) {
+  if (g_display_assets_reload_requested.exchange(false, std::memory_order_acquire)) {
+    reload_display_assets();
+    g_force_redraw = true;
+  }
   const int signature = frame_signature(frame);
   if (!g_force_redraw && signature == g_last_signature) {
     return;
@@ -1963,27 +1995,7 @@ void render_boot_frame(int frame, const char *build_id) {
 }
 
 void request_display_assets_reload() {
-  if (g_background_pixels != nullptr) {
-    heap_caps_free(g_background_pixels);
-    g_background_pixels = nullptr;
-  }
-  g_force_redraw = true;
-  g_logged_bg_missing = false;
-  g_logged_bg_bad_size = false;
-  g_status_layout_loaded = false;
-  release_bitmap_font(&g_clock_font);
-  release_bitmap_font(&g_version_font);
-  release_status_sprite(&g_wifi_on_sprite);
-  release_status_sprite(&g_wifi_off_sprite);
-  release_status_sprite(&g_node_connected_sprite);
-  release_status_sprite(&g_asset_downloading_sprite);
-  release_status_sprite(&g_sidebar_sprite);
-  release_status_sprite(&g_sidebar_right_sprite);
-  release_status_sprite(&g_idle_clock_frame_sprite);
-  release_bitmap_font(&g_idle_hours_font);
-  release_bitmap_font(&g_idle_separator_font);
-  release_bitmap_font(&g_idle_minutes_font);
-  release_bitmap_font(&g_idle_date_font);
+  g_display_assets_reload_requested.store(true, std::memory_order_release);
 }
 
 bool show_next_ui_page() {
