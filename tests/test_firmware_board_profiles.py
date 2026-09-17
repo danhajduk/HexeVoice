@@ -633,6 +633,16 @@ def test_p4_voice_phases_suppress_continuous_display_redraw():
     assert "return false;" in animation_guard
 
 
+def test_p4_draws_selected_screen_debug_label():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert '"screen: %s"' in source
+    assert 'screen == nullptr ? "none" : screen->id' in source
+    assert "draw_screen_debug_label(screen);" in source
+
+
 def test_p4_build_patches_esp_hosted_dma_oom_assertions():
     cmake = (REPO_ROOT / "firmware/CMakeLists.txt").read_text(encoding="utf-8")
     patcher = (REPO_ROOT / "firmware/tools/patch-esp-hosted-oom.py").read_text(encoding="utf-8")

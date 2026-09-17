@@ -2681,6 +2681,12 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
   if (!activity_drawn) draw_activity_sprite(state, now_ms, -1);
 }
 
+void draw_screen_debug_label(const ScreenLayout *screen) {
+  char label[40] = {};
+  std::snprintf(label, sizeof(label), "screen: %s", screen == nullptr ? "none" : screen->id);
+  draw_text(8, 72, label, 180, kMagenta);
+}
+
 void draw_version_text(const char *build_id) {
   if (build_id == nullptr || build_id[0] == '\0') {
     return;
@@ -2897,6 +2903,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
     const ScreenLayout *screen = active_screen_layout(state);
     draw_sidebars(state, g_frame_time_ms, screen);
     draw_screen_layout(state, g_frame_time_ms, screen);
+    draw_screen_debug_label(screen);
     draw_header_status_icons();
     draw_version_text(build_id);
     (void)frame;
