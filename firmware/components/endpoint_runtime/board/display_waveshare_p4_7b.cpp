@@ -71,15 +71,27 @@ constexpr int kSidebarTop = 78;
 constexpr int kSidebarHeight = 477;
 constexpr int kIdleClockFrameWidth = 500;
 constexpr int kIdleClockFrameHeight = 210;
-constexpr size_t kStatusLayoutMaxBytes = 4096;
+constexpr size_t kStatusLayoutMaxBytes = 8192;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
-constexpr size_t kFontGlyphCount = 64;
+constexpr size_t kFontGlyphCount = 96;
 
 enum class StatusIconId : uint8_t {
   kWifi = 0,
   kNodeConnected,
   kAssetDownloading,
+  kMicEnabled,
+  kMicDisabled,
+  kMicActive,
+  kMute,
+  kDnd,
+  kTimer,
+  kAlarm,
+  kPlayback,
+  kUpdateAvailable,
+  kWarning,
+  kPrivacy,
+  kCloudOffline,
   kCount,
 };
 
@@ -112,6 +124,16 @@ enum class StatusFlag : uint8_t {
   kError,
   kUiReady,
   kIdleReady,
+  kMicrophoneEnabled,
+  kMicrophoneDisabled,
+  kMicrophoneActive,
+  kDnd,
+  kAlarmActive,
+  kPlaybackActive,
+  kUpdateAvailable,
+  kWarningActive,
+  kPrivacyMode,
+  kCloudOffline,
   kInvalid,
 };
 
@@ -157,7 +179,7 @@ struct AnimatedTextLayout {
 struct StatusLayout {
   struct IdleClock {
     bool enabled = true;
-    char date_format[32] = "%a, %b %d";
+    char date_format[32] = "%A, %B %d %Y.";
     struct Frame {
       int x = (kWidth - kIdleClockFrameWidth) / 2;
       int y = 205;
@@ -257,6 +279,18 @@ StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_wifi_off_sprite{"wifi_off", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_asset_downloading_sprite{"asset_downloading", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_mic_enabled_sprite{"mic_enabled", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_mic_disabled_sprite{"mic_disabled", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_mic_active_sprite{"mic_active", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_mute_sprite{"mute", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_dnd_sprite{"dnd", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_timer_sprite{"timer", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_alarm_sprite{"alarm", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_playback_sprite{"playback", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_update_available_sprite{"update_available", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_warning_sprite{"warning", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_privacy_sprite{"privacy", kStatusSpriteSize, kStatusSpriteSize};
+StatusSprite g_cloud_offline_sprite{"cloud_offline", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};
 StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};
 StatusSprite g_idle_clock_frame_sprite{"idle_clock_frame", kIdleClockFrameWidth, kIdleClockFrameHeight};
@@ -665,6 +699,17 @@ StatusIconId status_icon_id(const char *name) {
   if (name != nullptr && std::strcmp(name, "asset_downloading") == 0) {
     return StatusIconId::kAssetDownloading;
   }
+  static constexpr struct { const char *name; StatusIconId id; } kIcons[] = {
+      {"mic_enabled", StatusIconId::kMicEnabled}, {"mic_disabled", StatusIconId::kMicDisabled},
+      {"mic_active", StatusIconId::kMicActive}, {"mute", StatusIconId::kMute},
+      {"dnd", StatusIconId::kDnd}, {"timer", StatusIconId::kTimer},
+      {"alarm", StatusIconId::kAlarm}, {"playback", StatusIconId::kPlayback},
+      {"update_available", StatusIconId::kUpdateAvailable}, {"warning", StatusIconId::kWarning},
+      {"privacy", StatusIconId::kPrivacy}, {"cloud_offline", StatusIconId::kCloudOffline},
+  };
+  for (const auto &icon : kIcons) {
+    if (name != nullptr && std::strcmp(name, icon.name) == 0) return icon.id;
+  }
   return StatusIconId::kCount;
 }
 
@@ -715,6 +760,16 @@ StatusFlag status_flag(const char *name) {
       {"error", StatusFlag::kError},
       {"ui_ready", StatusFlag::kUiReady},
       {"idle_ready", StatusFlag::kIdleReady},
+      {"microphone_enabled", StatusFlag::kMicrophoneEnabled},
+      {"microphone_disabled", StatusFlag::kMicrophoneDisabled},
+      {"microphone_active", StatusFlag::kMicrophoneActive},
+      {"dnd", StatusFlag::kDnd},
+      {"alarm_active", StatusFlag::kAlarmActive},
+      {"playback_active", StatusFlag::kPlaybackActive},
+      {"update_available", StatusFlag::kUpdateAvailable},
+      {"warning_active", StatusFlag::kWarningActive},
+      {"privacy_mode", StatusFlag::kPrivacyMode},
+      {"cloud_offline", StatusFlag::kCloudOffline},
   };
   for (const auto &entry : kFlags) {
     if (std::strcmp(name, entry.name) == 0) {
@@ -1127,6 +1182,18 @@ bool status_icon_active(StatusIconId id, const hexe::AppState &state) {
       return state.backend_connected;
     case StatusIconId::kAssetDownloading:
       return hexe::system::asset_sync_active();
+    case StatusIconId::kMicEnabled: return state.microphone_enabled && state.phase != hexe::AppPhase::kListening;
+    case StatusIconId::kMicDisabled: return !state.microphone_enabled;
+    case StatusIconId::kMicActive: return state.microphone_enabled && state.phase == hexe::AppPhase::kListening;
+    case StatusIconId::kMute: return state.muted;
+    case StatusIconId::kDnd: return state.dnd_enabled;
+    case StatusIconId::kTimer: return state.timer_active;
+    case StatusIconId::kAlarm: return state.alarm_active;
+    case StatusIconId::kPlayback: return state.tts_playback_active;
+    case StatusIconId::kUpdateAvailable: return state.update_available;
+    case StatusIconId::kWarning: return state.warning_active || state.phase == hexe::AppPhase::kError;
+    case StatusIconId::kPrivacy: return state.privacy_mode;
+    case StatusIconId::kCloudOffline: return state.cloud_offline;
     case StatusIconId::kCount:
       return false;
   }
@@ -1141,6 +1208,18 @@ StatusSprite *status_icon_sprite(StatusIconId id, const hexe::AppState &state) {
       return &g_node_connected_sprite;
     case StatusIconId::kAssetDownloading:
       return &g_asset_downloading_sprite;
+    case StatusIconId::kMicEnabled: return &g_mic_enabled_sprite;
+    case StatusIconId::kMicDisabled: return &g_mic_disabled_sprite;
+    case StatusIconId::kMicActive: return &g_mic_active_sprite;
+    case StatusIconId::kMute: return &g_mute_sprite;
+    case StatusIconId::kDnd: return &g_dnd_sprite;
+    case StatusIconId::kTimer: return &g_timer_sprite;
+    case StatusIconId::kAlarm: return &g_alarm_sprite;
+    case StatusIconId::kPlayback: return &g_playback_sprite;
+    case StatusIconId::kUpdateAvailable: return &g_update_available_sprite;
+    case StatusIconId::kWarning: return &g_warning_sprite;
+    case StatusIconId::kPrivacy: return &g_privacy_sprite;
+    case StatusIconId::kCloudOffline: return &g_cloud_offline_sprite;
     case StatusIconId::kCount:
       return nullptr;
   }
@@ -1190,6 +1269,16 @@ bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
     case StatusFlag::kIdleReady:
       return state.wifi_connected && state.backend_connected && !state.ota_active &&
           state.phase == hexe::AppPhase::kIdle && hexe::system::clock_synced();
+    case StatusFlag::kMicrophoneEnabled: return state.microphone_enabled;
+    case StatusFlag::kMicrophoneDisabled: return !state.microphone_enabled;
+    case StatusFlag::kMicrophoneActive: return state.microphone_enabled && state.phase == hexe::AppPhase::kListening;
+    case StatusFlag::kDnd: return state.dnd_enabled;
+    case StatusFlag::kAlarmActive: return state.alarm_active;
+    case StatusFlag::kPlaybackActive: return state.tts_playback_active;
+    case StatusFlag::kUpdateAvailable: return state.update_available;
+    case StatusFlag::kWarningActive: return state.warning_active;
+    case StatusFlag::kPrivacyMode: return state.privacy_mode;
+    case StatusFlag::kCloudOffline: return state.cloud_offline;
     case StatusFlag::kInvalid:
       return false;
   }
@@ -1437,13 +1526,12 @@ void draw_idle_clock(const hexe::AppState &state, int64_t now_ms) {
   if (std::strftime(date, sizeof(date), clock.date_format, &local) == 0) {
     date[0] = '\0';
   }
-  for (char *cursor = date; *cursor != '\0'; ++cursor) {
-    *cursor = static_cast<char>(std::toupper(static_cast<unsigned char>(*cursor)));
-  }
   draw_idle_clock_text(clock.hours, &g_idle_hours_font, hours, "idle hours", state, now_ms, 1);
   draw_idle_clock_text(clock.separator, &g_idle_separator_font, ":", "idle separator", state, now_ms, 2);
   draw_idle_clock_text(clock.minutes, &g_idle_minutes_font, minutes, "idle minutes", state, now_ms, 3);
-  draw_idle_clock_text(clock.date, &g_idle_date_font, date, "idle date", state, now_ms, 4);
+  AnimatedTextLayout centered_date = clock.date;
+  centered_date.x = kWidth / 2;
+  draw_idle_clock_text(centered_date, &g_idle_date_font, date, "idle date", state, now_ms, 4);
 }
 
 uint8_t status_sprite_opacity(const StatusIconLayout &layout, const hexe::AppState &state, int64_t now_ms) {
@@ -1674,6 +1762,18 @@ void reload_display_assets() {
   release_status_sprite(&g_wifi_off_sprite);
   release_status_sprite(&g_node_connected_sprite);
   release_status_sprite(&g_asset_downloading_sprite);
+  release_status_sprite(&g_mic_enabled_sprite);
+  release_status_sprite(&g_mic_disabled_sprite);
+  release_status_sprite(&g_mic_active_sprite);
+  release_status_sprite(&g_mute_sprite);
+  release_status_sprite(&g_dnd_sprite);
+  release_status_sprite(&g_timer_sprite);
+  release_status_sprite(&g_alarm_sprite);
+  release_status_sprite(&g_playback_sprite);
+  release_status_sprite(&g_update_available_sprite);
+  release_status_sprite(&g_warning_sprite);
+  release_status_sprite(&g_privacy_sprite);
+  release_status_sprite(&g_cloud_offline_sprite);
   release_status_sprite(&g_sidebar_sprite);
   release_status_sprite(&g_sidebar_right_sprite);
   release_status_sprite(&g_idle_clock_frame_sprite);

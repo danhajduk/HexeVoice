@@ -37,6 +37,13 @@ enum class TimerLifecycleState {
 struct AppState {
   AppPhase phase{AppPhase::kBooting};
   bool muted{false};
+  bool microphone_enabled{true};
+  bool dnd_enabled{false};
+  bool alarm_active{false};
+  bool update_available{false};
+  bool warning_active{false};
+  bool privacy_mode{false};
+  bool cloud_offline{false};
   bool wifi_connected{false};
   bool backend_connected{false};
   bool voice_ws_connected{false};

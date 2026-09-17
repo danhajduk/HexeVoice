@@ -276,7 +276,7 @@ def main() -> int:
                 str(font_dir / "manrope" / "date_32.hxf"),
                 "--pixel-size",
                 "32",
-                "--glyphs= 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ,",
+                "--glyphs= 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz,.",
             ],
             args.dry_run,
         )

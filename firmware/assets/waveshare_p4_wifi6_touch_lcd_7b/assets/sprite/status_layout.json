@@ -2,7 +2,7 @@
   "schema_version": 1,
   "idle_clock": {
     "enabled": true,
-    "date_format": "%a, %b %d",
+    "date_format": "%A, %B %d %Y.",
     "sprite": {
       "x": 262,
       "y": 205,
@@ -19,7 +19,7 @@
       "font": "manrope/clock_42.hxf",
       "font_size": 118,
       "x": 415,
-      "y": 240,
+      "y": 210,
       "color": "#D8FFFA",
       "animations": [
         {
@@ -34,7 +34,7 @@
       "font": "manrope/clock_42.hxf",
       "font_size": 98,
       "x": 512,
-      "y": 247,
+      "y": 217,
       "color": "#35F4DB",
       "animations": [
         {
@@ -50,7 +50,7 @@
       "font": "manrope/clock_42.hxf",
       "font_size": 118,
       "x": 609,
-      "y": 240,
+      "y": 210,
       "color": "#D8FFFA",
       "animations": [
         {
@@ -63,9 +63,8 @@
     },
     "date": {
       "font": "manrope/date_32.hxf",
-      "font_size": 30,
-      "x": 512,
-      "y": 370,
+      "font_size": 40,
+      "y": 15,
       "color": "#55B8FF",
       "animations": [
         {
@@ -82,13 +81,13 @@
       "type": "slide_in",
       "when": {"flag": "ui_ready", "equals": true},
       "offset": {"x": -1.0, "y": 0.0},
-      "period_ms": 1500
+      "period_ms": 1000
     },
     "right": {
       "type": "slide_in",
       "when": {"flag": "ui_ready", "equals": true},
       "offset": {"x": 1.0, "y": 0.0},
-      "period_ms": 1500
+      "period_ms": 1000
     }
   },
   "clock": {
@@ -163,6 +162,18 @@
           "period_ms": 900
         }
       ]
-    }
+    },
+    {"id": "mic_enabled", "placement": "floating"},
+    {"id": "mic_disabled", "placement": "floating"},
+    {"id": "mic_active", "placement": "floating"},
+    {"id": "dnd", "placement": "floating"},
+    {"id": "mute", "placement": "floating"},
+    {"id": "timer", "placement": "floating"},
+    {"id": "alarm", "placement": "floating"},
+    {"id": "playback", "placement": "floating"},
+    {"id": "update_available", "placement": "floating"},
+    {"id": "warning", "placement": "floating"},
+    {"id": "privacy", "placement": "floating"},
+    {"id": "cloud_offline", "placement": "floating"}
   ]
 }

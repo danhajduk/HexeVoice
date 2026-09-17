@@ -371,7 +371,8 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert layout["sidebars"]["left"]["offset"]["x"] < 0
     assert layout["sidebars"]["right"]["offset"]["x"] > 0
     assert layout["idle_clock"]["enabled"] is True
-    assert layout["idle_clock"]["date_format"] == "%a, %b %d"
+    assert layout["idle_clock"]["date_format"] == "%A, %B %d %Y."
+    assert "x" not in layout["idle_clock"]["date"]
     assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
     for element in ("sprite", "hours", "separator", "minutes", "date"):
         assert layout["idle_clock"][element]["animations"]

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.8",
-  "updated_at": "2026-09-17T00:44:26.690972+00:00",
+  "asset_library_version": "2026.09.17.11",
+  "updated_at": "2026-09-17T00:54:47.240551+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -11,8 +11,8 @@
       "source_filename": "manrope/clock_42.hxf",
       "metadata": {
         "font_format": "hexe_bitmap_v1",
-        "size_bytes": 10034,
-        "sha256": "deb1610d3c5874b1fa93da0cb9215f6f2ed83c26099fdab0b003c12401e43d30"
+        "size_bytes": 9909,
+        "sha256": "0eed4462405e0adc7bd447c6cba03c44bb58e82765a6a021a9eb656e20d0785f"
       }
     },
     {
@@ -22,8 +22,8 @@
       "source_filename": "manrope/date_32.hxf",
       "metadata": {
         "font_format": "hexe_bitmap_v1",
-        "size_bytes": 24199,
-        "sha256": "ef29c4e2596550a7833f287dbe77e14a0ba451e7caf20a70c0ec9474237e8927"
+        "size_bytes": 36560,
+        "sha256": "1209f65ee111e656a66d11ad50826131b6afa18c3baa896455893f60fe884f6a"
       }
     },
     {
@@ -77,8 +77,8 @@
       "source_filename": "manrope/version_24.hxf",
       "metadata": {
         "font_format": "hexe_bitmap_v1",
-        "size_bytes": 6419,
-        "sha256": "4307e224ad4c085c4b697e0cf21e28e536821ccb888d60421727805c8ed225f2"
+        "size_bytes": 5937,
+        "sha256": "392fe2ecc6a10d468ad7935cb67b37cdf0c6abbed4b36b058f445851f82213f6"
       }
     },
     {
@@ -96,6 +96,17 @@
       }
     },
     {
+      "asset_id": "alarm",
+      "media_type": "sprite",
+      "filename": "alarm.alpha8",
+      "source_filename": "alarm.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "0388aac43d6d9f8a4e68a6e7a73e011e1264d1f335ff0c53a3916f8e07515524"
+      }
+    },
+    {
       "asset_id": "asset_downloading",
       "media_type": "sprite",
       "filename": "asset_downloading.alpha8",
@@ -104,6 +115,28 @@
         "alpha_format": "alpha8",
         "size_bytes": 1600,
         "sha256": "c41cabf6f3860a519333e05bac3b643b0d57f5d0bdcfab12b97145a7fd04970e"
+      }
+    },
+    {
+      "asset_id": "cloud_offline",
+      "media_type": "sprite",
+      "filename": "cloud_offline.alpha8",
+      "source_filename": "cloud_offline.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "ffbafac61fb9f70d592361196820f8abb24639bfef019a62ba2b0d5d1eea4d03"
+      }
+    },
+    {
+      "asset_id": "dnd",
+      "media_type": "sprite",
+      "filename": "dnd.alpha8",
+      "source_filename": "dnd.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "92a14f4e6da629e71e20803a2907887ccf08652c720011d885d7c7b22fc7c402"
       }
     },
     {
@@ -118,6 +151,50 @@
       }
     },
     {
+      "asset_id": "mic_active",
+      "media_type": "sprite",
+      "filename": "mic_active.alpha8",
+      "source_filename": "mic_active.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "549f8e4293ae27c256a4af63a51a949bfca7b9967f0f51fe0e8bdb4e30b62ca4"
+      }
+    },
+    {
+      "asset_id": "mic_disabled",
+      "media_type": "sprite",
+      "filename": "mic_disabled.alpha8",
+      "source_filename": "mic_disabled.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "0fe0382f5b672a6044ff9d70763aac22f4c8e690104f1e5c45e5f77b56242a64"
+      }
+    },
+    {
+      "asset_id": "mic_enabled",
+      "media_type": "sprite",
+      "filename": "mic_enabled.alpha8",
+      "source_filename": "mic_enabled.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "10afd512459a4c0b40b6bce342913d1da9863a8298ed4a5574af95f5dd8d154a"
+      }
+    },
+    {
+      "asset_id": "mute",
+      "media_type": "sprite",
+      "filename": "mute.alpha8",
+      "source_filename": "mute.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "c6110429ff3efc157285988000f0414f6a264ce9b4ba403a98933624f0de3d24"
+      }
+    },
+    {
       "asset_id": "node_connected",
       "media_type": "sprite",
       "filename": "node_connected.alpha8",
@@ -126,6 +203,28 @@
         "alpha_format": "alpha8",
         "size_bytes": 1600,
         "sha256": "3efcc89bbebb5a001a586264334dd5d27be3c0f5b1c11f1dca2bf8caa8edf7b3"
+      }
+    },
+    {
+      "asset_id": "playback",
+      "media_type": "sprite",
+      "filename": "playback.alpha8",
+      "source_filename": "playback.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "5c4040d95a5ce77c0961cca73a0b338d8ce54d7e49847f19d7d2ad39dec96ab9"
+      }
+    },
+    {
+      "asset_id": "privacy",
+      "media_type": "sprite",
+      "filename": "privacy.alpha8",
+      "source_filename": "privacy.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "2f982b74001c237c92560b300a23a0d658606745402700d94045460aa3859482"
       }
     },
     {
@@ -151,6 +250,20 @@
       }
     },
     {
+      "asset_id": "sprite_alarm",
+      "media_type": "sprite",
+      "filename": "alarm.rgb888",
+      "source_filename": "alarm.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "7a094c53bcd8798766133cbdacef9a27dc35181ec0546ae6288843bb500bc121"
+      }
+    },
+    {
       "asset_id": "sprite_asset_downloading",
       "media_type": "sprite",
       "filename": "asset_downloading.rgb888",
@@ -162,6 +275,34 @@
         "channel_order": "rgb",
         "size_bytes": 4800,
         "sha256": "8217653ed56e9a9680ff7006360540d40852899523050454fc23d0392d699803"
+      }
+    },
+    {
+      "asset_id": "sprite_cloud_offline",
+      "media_type": "sprite",
+      "filename": "cloud_offline.rgb888",
+      "source_filename": "cloud_offline.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "94ec8372832340bd7d98c233988d53aa0f77bb86f83879feb7a105c69d4c5e8e"
+      }
+    },
+    {
+      "asset_id": "sprite_dnd",
+      "media_type": "sprite",
+      "filename": "dnd.rgb888",
+      "source_filename": "dnd.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "989e193e8914494201374ad14a0e7525d76d381c5a4de2ef7af9849952aaa176"
       }
     },
     {
@@ -179,6 +320,62 @@
       }
     },
     {
+      "asset_id": "sprite_mic_active",
+      "media_type": "sprite",
+      "filename": "mic_active.rgb888",
+      "source_filename": "mic_active.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "f3713ec28477fe8a19777a8bfa740e31e7a035c5d019371f311535e4fa155315"
+      }
+    },
+    {
+      "asset_id": "sprite_mic_disabled",
+      "media_type": "sprite",
+      "filename": "mic_disabled.rgb888",
+      "source_filename": "mic_disabled.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "26fc933076020bc6d574dabe315d2cb53d12f9e57b3ec879d0bae4ba5a77fbb0"
+      }
+    },
+    {
+      "asset_id": "sprite_mic_enabled",
+      "media_type": "sprite",
+      "filename": "mic_enabled.rgb888",
+      "source_filename": "mic_enabled.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "52212626c31c837f753f580d97f6a9553c82ec213251f0525cd4f0a05c03e1da"
+      }
+    },
+    {
+      "asset_id": "sprite_mute",
+      "media_type": "sprite",
+      "filename": "mute.rgb888",
+      "source_filename": "mute.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "01734a528a36f7f96e47ef1ba8726d57c2ac44cc51d64e9a52c0059892525efc"
+      }
+    },
+    {
       "asset_id": "sprite_node_connected",
       "media_type": "sprite",
       "filename": "node_connected.rgb888",
@@ -190,6 +387,34 @@
         "channel_order": "rgb",
         "size_bytes": 4800,
         "sha256": "4becda5fb31c7bb74adb7a4f348d26aae7343d9a2f5af46f8ab6a0a22bdeaa9a"
+      }
+    },
+    {
+      "asset_id": "sprite_playback",
+      "media_type": "sprite",
+      "filename": "playback.rgb888",
+      "source_filename": "playback.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "9359e08c15d085c5088a9ede8304b52ad87edeb2ed71bedc53c2de081574a3d3"
+      }
+    },
+    {
+      "asset_id": "sprite_privacy",
+      "media_type": "sprite",
+      "filename": "privacy.rgb888",
+      "source_filename": "privacy.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "9bf1508a2c1c12873f7a75bda1768abacb3709a62d4ff533568442bcc4c0cb5d"
       }
     },
     {
@@ -218,6 +443,48 @@
         "channel_order": "rgb",
         "size_bytes": 125928,
         "sha256": "7cb2563ee373f4a3a2eba50edd05b78899753637edc1b9d98e863c1d76c5ede2"
+      }
+    },
+    {
+      "asset_id": "sprite_timer",
+      "media_type": "sprite",
+      "filename": "timer.rgb888",
+      "source_filename": "timer.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "c4acfae952c9cba20c7f1642b217810ff552ee0139cf0029ccde483182967949"
+      }
+    },
+    {
+      "asset_id": "sprite_update_available",
+      "media_type": "sprite",
+      "filename": "update_available.rgb888",
+      "source_filename": "update_available.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "f9ad0eb7f8d08b3d20852648f5a6964f03ee7bb594379d5a602bb57b94f617a3"
+      }
+    },
+    {
+      "asset_id": "sprite_warning",
+      "media_type": "sprite",
+      "filename": "warning.rgb888",
+      "source_filename": "warning.rgb888",
+      "metadata": {
+        "width": 40,
+        "height": 40,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 4800,
+        "sha256": "b6492271d216d6f39685562224e2630cc368f5d62d451f9b31c84cdd337693c9"
       }
     },
     {
@@ -255,8 +522,41 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 3772,
-        "sha256": "bcdf7d6ca3a662648f3670a2a9deb498992dba66599d0b542f74b1f94936b8a3"
+        "size_bytes": 4352,
+        "sha256": "d1efcf57480c1d11230f6aa2d3bcfc5dba259cfe2418948abbd16b57499ea135"
+      }
+    },
+    {
+      "asset_id": "timer",
+      "media_type": "sprite",
+      "filename": "timer.alpha8",
+      "source_filename": "timer.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "b547793d1281f81f3a4d28916726bf47a66be8031060b8f514766eacda194413"
+      }
+    },
+    {
+      "asset_id": "update_available",
+      "media_type": "sprite",
+      "filename": "update_available.alpha8",
+      "source_filename": "update_available.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "af4272fe1b846d08dc1786c8431bdbfed6c6fe0521b64be633f81c1005988a40"
+      }
+    },
+    {
+      "asset_id": "warning",
+      "media_type": "sprite",
+      "filename": "warning.alpha8",
+      "source_filename": "warning.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 1600,
+        "sha256": "9098fa526d29d856e41aeecc91bb8aaa8942576e5166a13dd816ac88da73d136"
       }
     },
     {
