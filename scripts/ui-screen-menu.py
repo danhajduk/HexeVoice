@@ -78,13 +78,27 @@ def request_json(
     return parsed
 
 
-def choose(label: str, options: list[tuple[str, str]]) -> str:
+def choose(
+    label: str,
+    options: list[tuple[str, str]],
+    *,
+    columns: int = 1,
+    default: str | None = None,
+) -> str:
+    if columns < 1:
+        raise ValueError("columns must be at least 1")
+    default_description = next((description for value, description in options if value == default), None)
     while True:
         print(f"\n{label}")
-        for index, (_, description) in enumerate(options, start=1):
-            print(f"  {index:>2}. {description}")
+        entries = [f"{index:>2}. {description}" for index, (_, description) in enumerate(options, start=1)]
+        column_width = max((len(entry) for entry in entries), default=0) + 4
+        for start in range(0, len(entries), columns):
+            print("  " + "".join(entry.ljust(column_width) for entry in entries[start : start + columns]).rstrip())
         print("   q. Quit")
-        selection = input("Choose: ").strip().lower()
+        prompt = f"Choose [{default_description}]: " if default_description is not None else "Choose: "
+        selection = input(prompt).strip().lower()
+        if not selection and default is not None:
+            return default
         if selection in {"q", "quit", "exit"}:
             raise KeyboardInterrupt
         if selection.isdigit() and 1 <= int(selection) <= len(options):
@@ -159,16 +173,27 @@ def main() -> int:
             raise RuntimeError(f"unknown screen {args.screen!r}; choose from: {', '.join(screens)}")
 
         endpoint_id = args.endpoint_id or select_endpoint(args.api_base_url, args.timeout)
-        screen_id = args.screen or choose("Screen", [(item, item) for item in screens])
-        duration = args.duration or int(
-            choose("Duration", [(str(value), f"{value} seconds") for value in VALID_DURATIONS])
-        )
-        response = send_screen(args.api_base_url, endpoint_id, screen_id, duration, args.timeout)
-        if not response.get("accepted"):
-            reason = response.get("reason") or response.get("status") or "request rejected"
-            raise RuntimeError(str(reason))
-        print(f"Showing {screen_id!r} on {endpoint_id!r} for {duration} seconds.")
-        return 0
+        while True:
+            screen_id = args.screen or choose(
+                "Screen",
+                [(item, item) for item in screens],
+                columns=3,
+            )
+            duration = args.duration or int(
+                choose(
+                    "Duration",
+                    [(str(value), f"{value} seconds") for value in VALID_DURATIONS],
+                    columns=3,
+                    default="5",
+                )
+            )
+            response = send_screen(args.api_base_url, endpoint_id, screen_id, duration, args.timeout)
+            if not response.get("accepted"):
+                reason = response.get("reason") or response.get("status") or "request rejected"
+                raise RuntimeError(str(reason))
+            print(f"Showing {screen_id!r} on {endpoint_id!r} for {duration} seconds.")
+            if args.screen is not None:
+                return 0
     except KeyboardInterrupt:
         print("\nCancelled.")
         return 130

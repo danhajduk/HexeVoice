@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,3 +75,73 @@ def test_send_screen_posts_expected_api_payload(monkeypatch):
         },
         "timeout": 3.0,
     }
+
+
+def test_choose_accepts_empty_input_as_default(monkeypatch):
+    module = load_module()
+    monkeypatch.setattr("builtins.input", lambda _prompt: "")
+
+    assert module.choose(
+        "Duration",
+        [("5", "5 seconds"), ("10", "10 seconds")],
+        default="5",
+    ) == "5"
+
+
+def test_choose_renders_three_columns(monkeypatch, capsys):
+    module = load_module()
+    monkeypatch.setattr("builtins.input", lambda _prompt: "4")
+
+    selected = module.choose(
+        "Screen",
+        [(name, name) for name in ("idle", "timer", "listening", "thinking")],
+        columns=3,
+    )
+
+    output = capsys.readouterr().out.splitlines()
+    assert selected == "thinking"
+    assert any("1. idle" in line and "2. timer" in line and "3. listening" in line for line in output)
+    assert any("4. thinking" in line for line in output)
+
+
+def test_interactive_menu_returns_to_screen_selection_after_send(monkeypatch):
+    module = load_module()
+    args = SimpleNamespace(
+        api_base_url="http://node:9004",
+        endpoint_id="p4-7b",
+        screen=None,
+        duration=None,
+        config=Path("unused.yaml"),
+        timeout=3.0,
+        list_screens=False,
+    )
+    labels = []
+    sent = []
+
+    class Parser:
+        def parse_args(self):
+            return args
+
+    def fake_choose(label, _options, **_kwargs):
+        labels.append(label)
+        if labels == ["Screen"]:
+            return "idle"
+        if labels == ["Screen", "Duration"]:
+            return "5"
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(module, "build_parser", lambda: Parser())
+    monkeypatch.setattr(module, "load_screen_ids", lambda _path: ["idle", "timer"])
+    monkeypatch.setattr(module, "choose", fake_choose)
+    monkeypatch.setattr(
+        module,
+        "send_screen",
+        lambda base_url, endpoint_id, screen_id, duration, timeout: sent.append(
+            (base_url, endpoint_id, screen_id, duration, timeout)
+        )
+        or {"accepted": True},
+    )
+
+    assert module.main() == 130
+    assert labels == ["Screen", "Duration", "Screen"]
+    assert sent == [("http://node:9004", "p4-7b", "idle", 5, 3.0)]
