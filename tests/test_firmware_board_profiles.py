@@ -326,7 +326,8 @@ def test_p4_display_caches_rgb888_background_and_batches_flushes():
 
     assert "constexpr int kFlushRows = 120;" in source
     assert "heap_caps_malloc(kSdTestBackgroundBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)" in source
-    assert "std::memcpy(g_flush_buffer, g_background_pixels + offset, expected_bytes)" in source
+    assert "static_cast<size_t>(g_strip_width) * kBytesPerPixel" in source
+    assert "g_background_pixels + source_offset" in source
     assert "std::swap(g_background_pixels[offset], g_background_pixels[offset + 2])" in source
     assert "heap_caps_free(g_background_pixels);" in source
 
@@ -653,6 +654,20 @@ def test_p4_suspends_all_lcd_transfers_during_voice_activity():
     render = render[: render.index("void request_display_assets_reload")]
     assert "display_redraw_suspended_for_voice(hexe::state())" in render
     assert render.index("display_redraw_suspended_for_voice") < render.index("frame_signature(frame)")
+
+
+def test_p4_uses_dirty_regions_for_dynamic_ui_updates():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "struct DirtyRegion" in source
+    assert "render_dynamic_regions(" in source
+    assert "g_strip_width" in source
+    assert "g_strip_x" in source
+    assert "esp_lcd_panel_draw_bitmap(g_panel, x, y, x + width, y + rows" in source
+    assert "static_signature != g_last_static_signature" in source
+    assert "std::strcmp(screen_id, g_last_screen_id)" in source
 
 
 def test_p4_build_patches_esp_hosted_dma_oom_assertions():

@@ -395,7 +395,14 @@ bool g_force_redraw = true;
 std::atomic<bool> g_display_assets_reload_requested{false};
 int g_strip_y = 0;
 int g_strip_rows = 0;
+int g_strip_x = 0;
+int g_strip_width = kWidth;
 int g_last_signature = -1;
+int g_last_static_signature = -1;
+int g_last_minute_signature = -1;
+int g_last_timer_signature = -1;
+int g_last_animation_signature = -1;
+char g_last_screen_id[24] = {};
 int g_last_asset_read_ms = 0;
 int g_last_flush_ms = 0;
 int g_last_render_ms = 0;
@@ -569,22 +576,59 @@ int frame_signature(int frame) {
   return signature;
 }
 
+int static_frame_signature(const hexe::AppState &state) {
+  int signature = static_cast<int>(state.phase);
+  signature = (signature * 131) + (state.muted ? 1 : 0);
+  signature = (signature * 131) + (state.wifi_connected ? 1 : 0);
+  signature = (signature * 131) + (state.backend_connected ? 1 : 0);
+  signature = (signature * 131) + (state.voice_ws_connected ? 1 : 0);
+  signature = (signature * 131) + (state.audio_streaming ? 1 : 0);
+  signature = (signature * 131) + (state.tts_playback_active ? 1 : 0);
+  signature = (signature * 131) + (state.ota_active ? 1 : 0);
+  signature = (signature * 131) + std::clamp(state.ota_progress_percent, 0, 100);
+  signature = (signature * 131) + (hexe::system::asset_sync_active() ? 1 : 0);
+  signature = (signature * 131) + static_cast<int>(state.display_timer_count);
+  signature = (signature * 131) + static_cast<int>(hexe::ui_flags_signature());
+  signature = (signature * 131) + static_cast<int>(hexe::ui_screen_signature());
+  return signature;
+}
+
+int minute_frame_signature() {
+  std::tm local = {};
+  return hexe::system::clock_synced() && hexe::system::current_local_time(&local)
+      ? (local.tm_yday * 1440) + (local.tm_hour * 60) + local.tm_min + 1
+      : 0;
+}
+
+int timer_frame_signature(const hexe::AppState &state) {
+  return state.timer_active ? static_cast<int>((esp_timer_get_time() / 1000000) % 100000) : 0;
+}
+
+int animation_frame_signature(const hexe::AppState &state) {
+  return status_animations_active(state)
+      ? static_cast<int>((esp_timer_get_time() / kAnimationFrameIntervalUs) % 100000)
+      : 0;
+}
+
 void set_pixel(int x, int y, uint32_t color) {
-  if (g_flush_buffer == nullptr || x < 0 || y < g_strip_y || x >= kWidth || y >= g_strip_y + g_strip_rows) {
+  if (g_flush_buffer == nullptr || x < g_strip_x || y < g_strip_y || x >= g_strip_x + g_strip_width ||
+      y >= g_strip_y + g_strip_rows) {
     return;
   }
-  uint8_t *pixel = g_flush_buffer + (((y - g_strip_y) * kWidth + x) * kBytesPerPixel);
+  uint8_t *pixel = g_flush_buffer +
+      (((y - g_strip_y) * g_strip_width + (x - g_strip_x)) * kBytesPerPixel);
   pixel[0] = static_cast<uint8_t>(color & 0xFF);
   pixel[1] = static_cast<uint8_t>((color >> 8) & 0xFF);
   pixel[2] = static_cast<uint8_t>((color >> 16) & 0xFF);
 }
 
 void blend_pixel(int x, int y, uint32_t color, uint8_t alpha) {
-  if (alpha == 0 || g_flush_buffer == nullptr || x < 0 || y < g_strip_y || x >= kWidth ||
-      y >= g_strip_y + g_strip_rows) {
+  if (alpha == 0 || g_flush_buffer == nullptr || x < g_strip_x || y < g_strip_y ||
+      x >= g_strip_x + g_strip_width || y >= g_strip_y + g_strip_rows) {
     return;
   }
-  uint8_t *pixel = g_flush_buffer + (((y - g_strip_y) * kWidth + x) * kBytesPerPixel);
+  uint8_t *pixel = g_flush_buffer +
+      (((y - g_strip_y) * g_strip_width + (x - g_strip_x)) * kBytesPerPixel);
   const int inverse = 255 - alpha;
   pixel[0] = static_cast<uint8_t>((((color)&0xFF) * alpha + pixel[0] * inverse) / 255);
   pixel[1] = static_cast<uint8_t>((((color >> 8) & 0xFF) * alpha + pixel[1] * inverse) / 255);
@@ -857,7 +901,7 @@ void draw_status_sprite(StatusSprite *sprite, int x, int y, uint8_t opacity = 25
     }
     for (int source_x = 0; source_x < sprite->width; ++source_x) {
       const int target_x = x + source_x;
-      if (target_x < 0 || target_x >= kWidth) {
+      if (target_x < g_strip_x || target_x >= g_strip_x + g_strip_width) {
         continue;
       }
       const size_t source_pixel = static_cast<size_t>(source_y) * sprite->width + source_x;
@@ -866,7 +910,7 @@ void draw_status_sprite(StatusSprite *sprite, int x, int y, uint8_t opacity = 25
         continue;
       }
       uint8_t *target = g_flush_buffer +
-          ((static_cast<size_t>(target_y - g_strip_y) * kWidth + target_x) * kBytesPerPixel);
+          ((static_cast<size_t>(target_y - g_strip_y) * g_strip_width + (target_x - g_strip_x)) * kBytesPerPixel);
       const uint8_t *source = sprite->colors + (source_pixel * kBytesPerPixel);
       for (int channel = 0; channel < kBytesPerPixel; ++channel) {
         target[channel] = static_cast<uint8_t>(
@@ -1821,8 +1865,9 @@ bool status_animations_active(const hexe::AppState &state) {
 }
 
 bool display_redraw_suspended_for_voice(const hexe::AppState &state) {
-  return state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
-      state.phase == hexe::AppPhase::kReplying || state.audio_streaming || state.tts_playback_active;
+  return state.backend_connected &&
+      (state.phase == hexe::AppPhase::kListening || state.phase == hexe::AppPhase::kThinking ||
+       state.phase == hexe::AppPhase::kReplying || state.audio_streaming || state.tts_playback_active);
 }
 
 uint32_t scale_color(uint32_t color, int intensity_per_mille) {
@@ -2879,10 +2924,14 @@ bool copy_sd_background_strip() {
   if (g_background_pixels == nullptr || g_flush_buffer == nullptr) {
     return false;
   }
-  const size_t expected_bytes =
-      static_cast<size_t>(kWidth) * static_cast<size_t>(g_strip_rows) * kBytesPerPixel;
-  const size_t offset = static_cast<size_t>(g_strip_y) * kWidth * kBytesPerPixel;
-  std::memcpy(g_flush_buffer, g_background_pixels + offset, expected_bytes);
+  const size_t row_bytes = static_cast<size_t>(g_strip_width) * kBytesPerPixel;
+  for (int row = 0; row < g_strip_rows; ++row) {
+    const size_t source_offset =
+        (static_cast<size_t>(g_strip_y + row) * kWidth + g_strip_x) * kBytesPerPixel;
+    std::memcpy(g_flush_buffer + (static_cast<size_t>(row) * row_bytes),
+                g_background_pixels + source_offset,
+                row_bytes);
+  }
   return true;
 }
 
@@ -2891,7 +2940,7 @@ void clear_strip() {
     const int y = g_strip_y + row;
     const bool alt_band = ((y / 36) % 2) == 0;
     const uint32_t base = alt_band ? kCanvas : kCanvasAlt;
-    for (int x = 0; x < kWidth; ++x) {
+    for (int x = g_strip_x; x < g_strip_x + g_strip_width; ++x) {
       set_pixel(x, y, base);
     }
   }
@@ -2967,13 +3016,13 @@ void wait_for_flush_ready() {
   }
 }
 
-bool flush_strip(int y, int rows) {
+bool flush_strip(int x, int y, int width, int rows) {
   if (g_panel == nullptr || g_flush_buffer == nullptr) {
     return false;
   }
   while (g_refresh_done != nullptr && xSemaphoreTake(g_refresh_done, 0) == pdTRUE) {
   }
-  const esp_err_t result = esp_lcd_panel_draw_bitmap(g_panel, 0, y, kWidth, y + rows, g_flush_buffer);
+  const esp_err_t result = esp_lcd_panel_draw_bitmap(g_panel, x, y, x + width, y + rows, g_flush_buffer);
   if (result != ESP_OK) {
     ESP_LOGW(kTag, "P4 LCD draw failed at y=%d rows=%d: %s", y, rows, esp_err_to_name(result));
     return false;
@@ -2982,9 +3031,16 @@ bool flush_strip(int y, int rows) {
   return true;
 }
 
-bool render_frame(int frame, const char *build_id, bool black) {
+bool render_region(int frame, const char *build_id, bool black, int x, int y, int width, int height) {
   if (!g_display_ready || g_flush_buffer == nullptr) {
     return false;
+  }
+  x = std::clamp(x, 0, kWidth);
+  y = std::clamp(y, 0, kHeight);
+  width = std::clamp(width, 0, kWidth - x);
+  height = std::clamp(height, 0, kHeight - y);
+  if (width == 0 || height == 0) {
+    return true;
   }
   const int64_t started_us = esp_timer_get_time();
   g_frame_time_ms = started_us / 1000;
@@ -2993,15 +3049,17 @@ bool render_frame(int frame, const char *build_id, bool black) {
   const bool background_loaded = !black && load_sd_test_background(background_path, sizeof(background_path));
   const int asset_read_ms = black ? 0 : static_cast<int>((esp_timer_get_time() - asset_read_started_us) / 1000);
   bool used_background = false;
-  for (int y = 0; y < kHeight; y += kFlushRows) {
-    g_strip_y = y;
-    g_strip_rows = std::min(kFlushRows, kHeight - y);
+  g_strip_x = x;
+  g_strip_width = width;
+  for (int strip_y = y; strip_y < y + height; strip_y += kFlushRows) {
+    g_strip_y = strip_y;
+    g_strip_rows = std::min(kFlushRows, y + height - strip_y);
     if (black) {
-      fill_rect(0, y, kWidth, g_strip_rows, kBlack);
+      fill_rect(x, strip_y, width, g_strip_rows, kBlack);
     } else {
       used_background = draw_status_frame(frame, build_id, background_loaded) || used_background;
     }
-    if (!flush_strip(y, g_strip_rows)) {
+    if (!flush_strip(x, strip_y, width, g_strip_rows)) {
       return false;
     }
   }
@@ -3015,6 +3073,96 @@ bool render_frame(int frame, const char *build_id, bool black) {
     std::snprintf(g_last_asset_filename, sizeof(g_last_asset_filename), "%s", kProceduralAssetName);
   }
   return true;
+}
+
+bool render_frame(int frame, const char *build_id, bool black) {
+  return render_region(frame, build_id, black, 0, 0, kWidth, kHeight);
+}
+
+struct DirtyRegion {
+  int x;
+  int y;
+  int width;
+  int height;
+};
+
+void append_dirty_region(DirtyRegion *regions, size_t *count, int x, int y, int width, int height) {
+  if (regions == nullptr || count == nullptr || *count >= 16 || width <= 0 || height <= 0) return;
+  const int x0 = std::clamp(x, 0, kWidth);
+  const int y0 = std::clamp(y, 0, kHeight);
+  const int x1 = std::clamp(x + width, 0, kWidth);
+  const int y1 = std::clamp(y + height, 0, kHeight);
+  if (x1 <= x0 || y1 <= y0) return;
+  regions[(*count)++] = {x0, y0, x1 - x0, y1 - y0};
+}
+
+void append_element_dirty_region(DirtyRegion *regions, size_t *count, const ScreenElement &element) {
+  switch (element.type) {
+    case ScreenElementType::kHeaderClock:
+      append_dirty_region(regions, count, 0, 0, kWidth, 78);
+      break;
+    case ScreenElementType::kBigClock:
+      append_dirty_region(regions, count, element.x - 270, element.y - 30, 540, 190);
+      break;
+    case ScreenElementType::kBigDate:
+      append_dirty_region(regions, count, 100, element.y - 16, kWidth - 200, 88);
+      break;
+    case ScreenElementType::kActivity:
+      append_dirty_region(regions, count, element.x - 32, element.y - 32,
+                          kActivitySpriteSize + 64, kActivitySpriteSize + 64);
+      break;
+    case ScreenElementType::kTimerPrimary:
+      append_dirty_region(regions, count, element.x - 250, element.y - 24, 500, 150);
+      break;
+    case ScreenElementType::kTimerUpcoming:
+      append_dirty_region(regions, count, element.x - 260, element.y - 24, 520, 160);
+      break;
+    case ScreenElementType::kProgressBar:
+      append_dirty_region(regions, count, element.x - 2, element.y - 2, element.width + 4, element.height + 4);
+      break;
+    case ScreenElementType::kText:
+      append_dirty_region(regions, count, element.x - element.width, element.y - 8,
+                          element.width * 2, std::max(element.height, element.font_size + 16));
+      break;
+    case ScreenElementType::kInvalid:
+      break;
+  }
+}
+
+bool render_dynamic_regions(
+    int frame,
+    const char *build_id,
+    const ScreenLayout *screen,
+    bool clock_changed,
+    bool timer_changed,
+    bool animation_changed) {
+  DirtyRegion regions[16] = {};
+  size_t count = 0;
+  if (clock_changed) append_dirty_region(regions, &count, 0, 0, kWidth, 78);
+  if (animation_changed) append_dirty_region(regions, &count, 0, 0, kWidth, 78);
+  if (screen != nullptr) {
+    for (size_t index = 0; index < screen->element_count; ++index) {
+      const auto &element = screen->elements[index];
+      const bool clock_element = element.type == ScreenElementType::kHeaderClock ||
+          element.type == ScreenElementType::kBigClock || element.type == ScreenElementType::kBigDate;
+      const bool timer_element = element.type == ScreenElementType::kTimerPrimary ||
+          element.type == ScreenElementType::kTimerUpcoming;
+      if ((clock_changed && clock_element) || (timer_changed && timer_element) ||
+          (animation_changed && element.animation_count > 0)) {
+        append_element_dirty_region(regions, &count, element);
+      }
+    }
+    if (animation_changed && screen->sidebars_enabled) {
+      append_dirty_region(regions, &count, 0, kSidebarTop, kSidebarWidth + 24, kSidebarHeight);
+      append_dirty_region(regions, &count, kWidth - kSidebarWidth - 24, kSidebarTop,
+                          kSidebarWidth + 24, kSidebarHeight);
+    }
+  }
+  for (size_t index = 0; index < count; ++index) {
+    const auto &region = regions[index];
+    if (!render_region(frame, build_id, false, region.x, region.y, region.width, region.height)) return false;
+  }
+  return count > 0;
 }
 }  // namespace
 
@@ -3092,12 +3240,33 @@ void render_boot_frame(int frame, const char *build_id) {
   if (display_redraw_suspended_for_voice(hexe::state())) {
     return;
   }
+  load_status_layout();
+  const auto &state = hexe::state();
+  const ScreenLayout *screen = active_screen_layout(state);
+  const char *screen_id = screen == nullptr ? "none" : screen->id;
+  const int static_signature = static_frame_signature(state);
+  const int minute_signature = minute_frame_signature();
+  const int timer_signature = timer_frame_signature(state);
+  const int animation_signature = animation_frame_signature(state);
   const int signature = frame_signature(frame);
   if (!g_force_redraw && signature == g_last_signature) {
     return;
   }
-  if (render_frame(frame, build_id, false)) {
+  const bool full_redraw = g_force_redraw || static_signature != g_last_static_signature ||
+      std::strcmp(screen_id, g_last_screen_id) != 0;
+  const bool clock_changed = minute_signature != g_last_minute_signature;
+  const bool timer_changed = timer_signature != g_last_timer_signature;
+  const bool animation_changed = animation_signature != g_last_animation_signature;
+  const bool rendered = full_redraw
+      ? render_frame(frame, build_id, false)
+      : render_dynamic_regions(frame, build_id, screen, clock_changed, timer_changed, animation_changed);
+  if (rendered) {
     g_last_signature = signature;
+    g_last_static_signature = static_signature;
+    g_last_minute_signature = minute_signature;
+    g_last_timer_signature = timer_signature;
+    g_last_animation_signature = animation_signature;
+    std::snprintf(g_last_screen_id, sizeof(g_last_screen_id), "%s", screen_id);
     g_force_redraw = false;
   }
 }
