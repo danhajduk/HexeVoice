@@ -27,6 +27,8 @@ Open the interactive endpoint, screen, and duration menus:
 scripts/ui-screen-menu.py
 ```
 
+Selecting **Recreate media files** regenerates the P4 media library and requests a restart of the selected endpoint so it can synchronize the new assets.
+
 The available durations are 5, 10, 20, and 30 seconds. A non-interactive call
 is also supported:
 

@@ -150,6 +150,16 @@ def send_screen(
     )
 
 
+def restart_endpoint(base_url: str, endpoint_id: str, timeout: float) -> dict[str, Any]:
+    return request_json(
+        base_url,
+        "/api/endpoint/restart",
+        method="POST",
+        payload={"endpoint_id": endpoint_id},
+        timeout=timeout,
+    )
+
+
 def recreate_media_files() -> None:
     try:
         subprocess.run(
@@ -200,6 +210,13 @@ def main() -> int:
                 print("\nRecreating P4 media files...")
                 recreate_media_files()
                 print("Media files recreated.")
+                if endpoint_id is None:
+                    endpoint_id = select_endpoint(args.api_base_url, args.timeout)
+                response = restart_endpoint(args.api_base_url, endpoint_id, args.timeout)
+                if not response.get("accepted"):
+                    reason = response.get("reason") or response.get("status") or "restart rejected"
+                    raise RuntimeError(str(reason))
+                print(f"Restart requested for {endpoint_id!r}.")
                 continue
             if endpoint_id is None:
                 endpoint_id = select_endpoint(args.api_base_url, args.timeout)

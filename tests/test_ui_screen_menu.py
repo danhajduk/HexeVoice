@@ -77,6 +77,28 @@ def test_send_screen_posts_expected_api_payload(monkeypatch):
     }
 
 
+def test_restart_endpoint_posts_expected_api_payload(monkeypatch):
+    module = load_module()
+    captured = {}
+
+    def fake_request(base_url, path, **kwargs):
+        captured.update({"base_url": base_url, "path": path, **kwargs})
+        return {"accepted": True}
+
+    monkeypatch.setattr(module, "request_json", fake_request)
+
+    response = module.restart_endpoint("http://node:9004", "p4-7b", 3.0)
+
+    assert response == {"accepted": True}
+    assert captured == {
+        "base_url": "http://node:9004",
+        "path": "/api/endpoint/restart",
+        "method": "POST",
+        "payload": {"endpoint_id": "p4-7b"},
+        "timeout": 3.0,
+    }
+
+
 def test_recreate_media_files_runs_p4_generator(monkeypatch):
     module = load_module()
     captured = {}
@@ -169,7 +191,7 @@ def test_interactive_menu_returns_to_screen_selection_after_send(monkeypatch):
     assert sent == [("http://node:9004", "p4-7b", "idle", 5, 3.0)]
 
 
-def test_media_action_rebuilds_and_returns_to_screen_menu_without_endpoint(monkeypatch):
+def test_media_action_rebuilds_restarts_endpoint_and_returns_to_screen_menu(monkeypatch):
     module = load_module()
     args = SimpleNamespace(
         api_base_url="http://offline:9004",
@@ -182,6 +204,7 @@ def test_media_action_rebuilds_and_returns_to_screen_menu_without_endpoint(monke
     )
     labels = []
     rebuilt = []
+    restarted = []
 
     class Parser:
         def parse_args(self):
@@ -197,12 +220,15 @@ def test_media_action_rebuilds_and_returns_to_screen_menu_without_endpoint(monke
     monkeypatch.setattr(module, "load_screen_ids", lambda _path: ["idle"])
     monkeypatch.setattr(module, "choose", fake_choose)
     monkeypatch.setattr(module, "recreate_media_files", lambda: rebuilt.append(True))
+    monkeypatch.setattr(module, "select_endpoint", lambda *_args: "p4-7b")
     monkeypatch.setattr(
         module,
-        "select_endpoint",
-        lambda *_args: pytest.fail("media rebuild should not require an endpoint"),
+        "restart_endpoint",
+        lambda base_url, endpoint_id, timeout: restarted.append((base_url, endpoint_id, timeout))
+        or {"accepted": True},
     )
 
     assert module.main() == 130
     assert labels == ["Screen", "Screen"]
     assert rebuilt == [True]
+    assert restarted == [("http://offline:9004", "p4-7b", 3.0)]
