@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.3",
-  "updated_at": "2026-09-17T00:29:19.421799+00:00",
+  "asset_library_version": "2026.09.17.8",
+  "updated_at": "2026-09-17T00:44:26.690972+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -11,8 +11,8 @@
       "source_filename": "manrope/clock_42.hxf",
       "metadata": {
         "font_format": "hexe_bitmap_v1",
-        "size_bytes": 7461,
-        "sha256": "b77eaf1ab6ff81332c4ca43b7040d3a930d7184678f0d819261b7059758d5ee6"
+        "size_bytes": 10034,
+        "sha256": "deb1610d3c5874b1fa93da0cb9215f6f2ed83c26099fdab0b003c12401e43d30"
       }
     },
     {
@@ -22,8 +22,8 @@
       "source_filename": "manrope/date_32.hxf",
       "metadata": {
         "font_format": "hexe_bitmap_v1",
-        "size_bytes": 16420,
-        "sha256": "4a1563b8a3dbcc9a2bf93811a7354c5d7d9e3e1604736f4e26624b05631b77e7"
+        "size_bytes": 24199,
+        "sha256": "ef29c4e2596550a7833f287dbe77e14a0ba451e7caf20a70c0ec9474237e8927"
       }
     },
     {
@@ -77,8 +77,8 @@
       "source_filename": "manrope/version_24.hxf",
       "metadata": {
         "font_format": "hexe_bitmap_v1",
-        "size_bytes": 3721,
-        "sha256": "423d66deb855a2ebd145e946391c732c2af4fb13abe455473d210c4d100f98c0"
+        "size_bytes": 6419,
+        "sha256": "4307e224ad4c085c4b697e0cf21e28e536821ccb888d60421727805c8ed225f2"
       }
     },
     {
@@ -256,7 +256,7 @@
       "metadata": {
         "content_format": "json",
         "size_bytes": 3772,
-        "sha256": "4f06feac6798af2a0e749ec0ef62af0be0d40851f3b0519459254c16d06388c7"
+        "sha256": "bcdf7d6ca3a662648f3670a2a9deb498992dba66599d0b542f74b1f94936b8a3"
       }
     },
     {

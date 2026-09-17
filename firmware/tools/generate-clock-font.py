@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 DEFAULT_GLYPHS = "0123456789:"
 HEADER = struct.Struct("<4sHhH")
 RECORD = struct.Struct("<BhhhHHI")
+GLYPH_PADDING = 2
 
 
 def main() -> int:
@@ -28,13 +29,29 @@ def main() -> int:
     offset = HEADER.size + (len(args.glyphs) * RECORD.size)
     for character in args.glyphs:
         left, top, right, bottom = font.getbbox(character, anchor="ls")
-        width = max(1, right - left)
-        height = max(1, bottom - top)
+        content_width = max(1, right - left)
+        content_height = max(1, bottom - top)
+        width = content_width + (GLYPH_PADDING * 2)
+        height = content_height + (GLYPH_PADDING * 2)
         image = Image.new("L", (width, height))
-        ImageDraw.Draw(image).text((-left, -top), character, font=font, fill=255, anchor="ls")
+        ImageDraw.Draw(image).text(
+            (-left + GLYPH_PADDING, -top + GLYPH_PADDING),
+            character,
+            font=font,
+            fill=255,
+            anchor="ls",
+        )
         bitmap = image.tobytes()
         records.append(
-            (ord(character), left, -top, round(font.getlength(character)), width, height, offset)
+            (
+                ord(character),
+                left - GLYPH_PADDING,
+                -top + GLYPH_PADDING,
+                round(font.getlength(character)),
+                width,
+                height,
+                offset,
+            )
         )
         bitmaps.append(bitmap)
         offset += len(bitmap)
