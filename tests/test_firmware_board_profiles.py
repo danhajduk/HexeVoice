@@ -285,6 +285,8 @@ def test_p4_build_enables_esp32_c6_hosted_wifi():
     assert "CONFIG_SLAVE_IDF_TARGET_ESP32C6=y" in build_script
     assert "CONFIG_ESP_HOSTED_P4_DEV_BOARD_FUNC_BOARD=y" in build_script
     assert "CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y" in build_script
+    assert "CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y" in build_script
+    assert "P4 hosted Wi-Fi uses PSRAM-backed network buffers" in build_script
     assert "P4 hosted Wi-Fi requires ESP32-C6 remote transport" in build_script
     assert "rev1 P4 hosted Wi-Fi uses the Waveshare legacy stack" in build_script
 

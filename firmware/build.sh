@@ -282,6 +282,9 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_200M=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# Keep TCP/IP payload buffers out of scarce internal DMA memory used by the
+# ESP-Hosted SDIO transport during simultaneous voice upload and TTS traffic.
+CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 # Keep the FATFS sector cache DMA-aligned in internal RAM. An external cache
 # forces SDMMC to allocate a temporary internal bounce buffer for every read.
 # CONFIG_FATFS_ALLOC_PREFER_EXTRAM is not set
@@ -392,9 +395,10 @@ refresh_profile_sdkconfig_if_generated_defaults_changed() {
   fi
   if [[ -f "${sdkconfig_path}" && "$(board_profile_value "${profile}" build.idf_target)" == "esp32p4" ]] &&
     { ! grep -q "^CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y$" "${sdkconfig_path}" ||
+      ! grep -q "^CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_ESP_HOSTED_SDIO_TX_Q_SIZE=10$" "${sdkconfig_path}" ||
       ! grep -q "^CONFIG_ESP_HOSTED_SDIO_RX_Q_SIZE=10$" "${sdkconfig_path}"; }; then
-    echo "Refreshing generated sdkconfig for ${profile}; P4 hosted Wi-Fi uses PSRAM-backed SDIO buffers"
+    echo "Refreshing generated sdkconfig for ${profile}; P4 hosted Wi-Fi uses PSRAM-backed network buffers"
     rm -f "${sdkconfig_path}"
     return
   fi

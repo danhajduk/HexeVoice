@@ -174,7 +174,9 @@ describe Hexe firmware VAD running from PCM audio frames.
   `s3-8m-v1` and `s3-8m-recovery-v1` schemas remain available only as generic
   future layout classes.
 - `waveshare_p4_wifi6_touch_lcd_7b` is the only `esp32p4` profile and requires
-  `p4-32m-v1` plus `hardware.wireless.coprocessor: esp32c6`.
+  `p4-32m-v1` plus `hardware.wireless.coprocessor: esp32c6`. Its ESP-Hosted
+  and TCP/IP payload buffers prefer PSRAM so concurrent voice, TTS, and display
+  activity does not exhaust the P4's internal DMA heap.
 - `ha_voice_pe` is the only current profile with `features.led_ring`,
   `features.hardware_mute`, and `features.rotary_encoder`.
 - `audio.input.dsp.vad` is true for the HA Voice PE hardware audio frontend.
