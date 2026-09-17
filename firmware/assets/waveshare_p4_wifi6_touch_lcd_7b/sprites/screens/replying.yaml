@@ -1,0 +1,9 @@
+id: replying
+conditions:
+  match: all
+  items:
+    - flag: replying
+elements:
+  - type: clock
+  - type: activity
+    sprite: replay

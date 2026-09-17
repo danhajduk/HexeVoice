@@ -1,0 +1,9 @@
+id: timer_finished
+conditions:
+  match: all
+  items:
+    - flag: timer_finished
+elements:
+  - type: clock
+  - type: activity
+    sprite: timer

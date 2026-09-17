@@ -1,0 +1,7 @@
+id: muted
+conditions:
+  match: all
+  items:
+    - flag: muted
+elements:
+  - type: clock

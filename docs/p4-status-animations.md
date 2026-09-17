@@ -11,12 +11,30 @@ lists the independently editable sections by their generated JSON names:
 - `status_icons.yaml`: static and floating status icons
 - `activity_layout.yaml`: listening, thinking, reply, and timer sprites
 - `idle_layout.yaml`: large idle clock and timer countdown screen
-- `screens_layout.yaml`: status conditions and ordered screen elements
+- `screens_layout.yaml`: ordered screen index using `!include`
+- `screens/*.yaml`: one status condition and its ordered elements per screen
 
 The media generator converts the YAML index and its five sections into JSON in
 the board asset library.
 Firmware merges the listed sections in order and reloads them after asset
 synchronization. A legacy monolithic `status_layout.json` remains supported.
+
+Screen priority stays visible in the small index file while each screen can be
+tuned independently:
+
+```yaml
+schema_version: 1
+screens:
+  - !include screens/updating.yaml
+  - !include screens/timer.yaml
+  - !include screens/idle.yaml
+  - !include screens/default.yaml
+```
+
+An include path is resolved relative to the file containing it. Includes may
+be nested, but they cannot escape the top-level YAML file's directory and
+cycles are rejected. The media generator resolves all includes before writing
+the single `screens_layout.json` file consumed by the firmware.
 
 ## Coordinate Model
 

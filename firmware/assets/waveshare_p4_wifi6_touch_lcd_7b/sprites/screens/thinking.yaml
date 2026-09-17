@@ -1,0 +1,9 @@
+id: thinking
+conditions:
+  match: all
+  items:
+    - flag: thinking
+elements:
+  - type: clock
+  - type: activity
+    sprite: thinking

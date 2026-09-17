@@ -1,0 +1,7 @@
+id: wifi_connecting
+conditions:
+  match: all
+  items:
+    - flag: wifi_connecting
+elements:
+  - type: clock

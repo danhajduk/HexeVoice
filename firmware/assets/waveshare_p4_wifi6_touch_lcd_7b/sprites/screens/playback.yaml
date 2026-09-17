@@ -1,0 +1,9 @@
+id: playback
+conditions:
+  match: all
+  items:
+    - flag: playback_active
+elements:
+  - type: clock
+  - type: activity
+    sprite: replay

@@ -12,6 +12,7 @@ VALIDATOR = REPO_ROOT / "firmware/tools/validate_board_profiles.py"
 GENERATOR = REPO_ROOT / "firmware/tools/generate_board_profile_config.py"
 SCAFFOLD = REPO_ROOT / "firmware/tools/create_board_profile.py"
 PARTITION_VALIDATOR = REPO_ROOT / "firmware/tools/validate_partition_schema.py"
+YAML_TO_JSON = REPO_ROOT / "firmware/tools/yaml_to_json.py"
 PROFILE_ROOT = REPO_ROOT / "firmware/boards"
 FIRMWARE_ROOT_CMAKE = REPO_ROOT / "firmware/CMakeLists.txt"
 FIRMWARE_CMAKE = REPO_ROOT / "firmware/components/endpoint_runtime/CMakeLists.txt"
@@ -22,6 +23,15 @@ PARTITIONS_DIR = REPO_ROOT / "firmware/partitions"
 
 def load_validator_module():
     spec = importlib.util.spec_from_file_location("validate_board_profiles", VALIDATOR)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_yaml_to_json_module():
+    spec = importlib.util.spec_from_file_location("yaml_to_json", YAML_TO_JSON)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -379,6 +389,7 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites"
     )
     validator = load_validator_module()
+    yaml_to_json = load_yaml_to_json_module()
     index = validator.load_profile(directory / "status_layout.yaml")
     assert index == {
         "schema_version": 2,
@@ -392,7 +403,8 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     }
     layout = {}
     for filename in index["files"]:
-        source_payload = validator.load_profile(directory / Path(filename).with_suffix(".yaml"))
+        source_path = directory / Path(filename).with_suffix(".yaml")
+        source_payload = yaml_to_json.load_yaml_with_includes(source_path)
         generated_payload = json.loads(
             (
                 REPO_ROOT
@@ -410,6 +422,28 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         ).read_text(encoding="utf-8")
     )
     assert generated_index == index
+
+    screen_index = (directory / "screens_layout.yaml").read_text(encoding="utf-8")
+    screen_files = sorted((directory / "screens").glob("*.yaml"))
+    assert len(screen_files) == 15
+    assert screen_index.count("!include screens/") == len(screen_files)
+    assert [screen["id"] for screen in layout["screens"]] == [
+        "updating",
+        "updating_phase",
+        "listening",
+        "thinking",
+        "playback",
+        "replying",
+        "timer_finished",
+        "timer",
+        "idle",
+        "muted",
+        "error",
+        "backend_connecting",
+        "wifi_connecting",
+        "booting",
+        "default",
+    ]
 
     icon_layout = layout["icons"]
     assert isinstance(icon_layout["y"], int)
@@ -471,6 +505,45 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         if "offset" in animation:
             assert -1 <= animation["offset"]["x"] <= 1
             assert -1 <= animation["offset"]["y"] <= 1
+
+
+def test_yaml_layout_includes_are_relative_and_reject_cycles_and_escape(tmp_path):
+    yaml_to_json = load_yaml_to_json_module()
+    screens = tmp_path / "screens"
+    screens.mkdir()
+    (tmp_path / "layout.yaml").write_text(
+        "screens:\n  - !include screens/idle.yaml\n",
+        encoding="utf-8",
+    )
+    (screens / "idle.yaml").write_text("id: idle\n", encoding="utf-8")
+
+    assert yaml_to_json.load_yaml_with_includes(tmp_path / "layout.yaml") == {
+        "screens": [{"id": "idle"}]
+    }
+
+    (screens / "idle.yaml").write_text(
+        "!include ../layout.yaml\n",
+        encoding="utf-8",
+    )
+    try:
+        yaml_to_json.load_yaml_with_includes(tmp_path / "layout.yaml")
+    except yaml_to_json.yaml.YAMLError as exc:
+        assert "cyclic YAML include" in str(exc)
+    else:
+        raise AssertionError("cyclic YAML include was accepted")
+
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.yaml"
+    outside.write_text("id: outside\n", encoding="utf-8")
+    (tmp_path / "layout.yaml").write_text(
+        "screen: !include ../outside.yaml\n",
+        encoding="utf-8",
+    )
+    try:
+        yaml_to_json.load_yaml_with_includes(tmp_path / "layout.yaml")
+    except yaml_to_json.yaml.YAMLError as exc:
+        assert "include escapes source directory" in str(exc)
+    else:
+        raise AssertionError("escaping YAML include was accepted")
 
 
 def test_firmware_asset_manifest_limit_covers_p4_sprite_library():

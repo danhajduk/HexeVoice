@@ -1,0 +1,11 @@
+id: timer
+conditions:
+  match: all
+  items:
+    - flag: timer_active
+    - flag: idle_ready
+elements:
+  - type: idle_clock
+  - type: activity
+    sprite: timer
+  - type: timer

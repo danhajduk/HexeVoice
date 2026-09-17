@@ -1,0 +1,7 @@
+id: error
+conditions:
+  match: all
+  items:
+    - flag: error
+elements:
+  - type: clock

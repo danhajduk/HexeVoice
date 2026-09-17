@@ -1,0 +1,7 @@
+id: booting
+conditions:
+  match: all
+  items:
+    - flag: booting
+elements:
+  - type: clock

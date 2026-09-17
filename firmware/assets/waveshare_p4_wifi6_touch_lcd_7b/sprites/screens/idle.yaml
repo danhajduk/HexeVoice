@@ -1,0 +1,7 @@
+id: idle
+conditions:
+  match: all
+  items:
+    - flag: idle_ready
+elements:
+  - type: idle_clock

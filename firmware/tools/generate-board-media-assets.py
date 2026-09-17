@@ -79,22 +79,10 @@ def _write_sprite_metadata(source: Path, output: Path, dry_run: bool, yaml_pytho
         return
     if yaml_python is None:
         raise SystemExit("PyYAML is required to convert sprite layout YAML files")
-    result = subprocess.run(
-        [
-            yaml_python,
-            "-c",
-            "import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1], encoding='utf-8'))))",
-            str(source),
-        ],
+    subprocess.run(
+        [yaml_python, str(Path(__file__).with_name("yaml_to_json.py")), str(source), str(output)],
         check=True,
-        capture_output=True,
-        text=True,
     )
-    payload = json.loads(result.stdout)
-    if not isinstance(payload, dict):
-        raise SystemExit(f"YAML metadata root must be an object: {source}")
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def _next_library_version(library_path: Path, now: datetime) -> str:

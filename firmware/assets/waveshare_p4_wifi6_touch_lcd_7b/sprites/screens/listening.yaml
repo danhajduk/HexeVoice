@@ -1,0 +1,9 @@
+id: listening
+conditions:
+  match: all
+  items:
+    - flag: listening
+elements:
+  - type: clock
+  - type: activity
+    sprite: listening

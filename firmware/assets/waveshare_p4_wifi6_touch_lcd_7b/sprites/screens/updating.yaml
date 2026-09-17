@@ -1,0 +1,14 @@
+id: updating
+conditions:
+  match: all
+  items:
+    - flag: ota_active
+elements:
+  - type: clock
+  - type: progress_bar
+    x: 312
+    y: 520
+    width: 400
+    height: 18
+    color: '#35F4DB'
+    track_color: '#102E4A'
