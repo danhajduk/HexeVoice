@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.13",
-  "updated_at": "2026-09-17T01:00:12.793534+00:00",
+  "asset_library_version": "2026.09.17.16",
+  "updated_at": "2026-09-17T01:14:15.965195+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -96,6 +96,50 @@
       }
     },
     {
+      "asset_id": "activity_listening",
+      "media_type": "sprite",
+      "filename": "activity_listening.alpha8",
+      "source_filename": "activity_listening.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "33ab36b76fc0f6614b15c2ec7b40f28398fb140b937c013460d1d3850d7306a4"
+      }
+    },
+    {
+      "asset_id": "activity_replay",
+      "media_type": "sprite",
+      "filename": "activity_replay.alpha8",
+      "source_filename": "activity_replay.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "9eca5f6c91e6d02da53f861fd5120c1cf84d6a5473c92983cf3f9c236c94a550"
+      }
+    },
+    {
+      "asset_id": "activity_thinking",
+      "media_type": "sprite",
+      "filename": "activity_thinking.alpha8",
+      "source_filename": "activity_thinking.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "b0f33a3df400f6392955f1fb2289c8b0de2bc40cb72527f8247e4c6f44c40673"
+      }
+    },
+    {
+      "asset_id": "activity_timer",
+      "media_type": "sprite",
+      "filename": "activity_timer.alpha8",
+      "source_filename": "activity_timer.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "d6b285a399971208d6d95233178131c730adce29211292484cd334c2cfc8f66f"
+      }
+    },
+    {
       "asset_id": "alarm",
       "media_type": "sprite",
       "filename": "alarm.alpha8",
@@ -115,6 +159,39 @@
         "alpha_format": "alpha8",
         "size_bytes": 1600,
         "sha256": "c41cabf6f3860a519333e05bac3b643b0d57f5d0bdcfab12b97145a7fd04970e"
+      }
+    },
+    {
+      "asset_id": "button_config",
+      "media_type": "sprite",
+      "filename": "button_config.alpha8",
+      "source_filename": "button_config.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 3136,
+        "sha256": "16d4893e1cb6ebade6f4f18f32b698ca3b63f7c52c15e960fbfbd7d0d888b83d"
+      }
+    },
+    {
+      "asset_id": "button_timer",
+      "media_type": "sprite",
+      "filename": "button_timer.alpha8",
+      "source_filename": "button_timer.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 3136,
+        "sha256": "e8d3503740fba1850f319e43a58267913ce06c43aabf932ca1b0836969ed755d"
+      }
+    },
+    {
+      "asset_id": "button_weather",
+      "media_type": "sprite",
+      "filename": "button_weather.alpha8",
+      "source_filename": "button_weather.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 3136,
+        "sha256": "cf4448fe892ac35b3e7a12f49b9141b9339b449bdf143121ca10ad64f6cfe503"
       }
     },
     {
@@ -250,6 +327,62 @@
       }
     },
     {
+      "asset_id": "sprite_activity_listening",
+      "media_type": "sprite",
+      "filename": "activity_listening.rgb888",
+      "source_filename": "activity_listening.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "ea0866f448f91ba96eeee49a7fd46331859403529c04feaa7354ae5c454f1665"
+      }
+    },
+    {
+      "asset_id": "sprite_activity_replay",
+      "media_type": "sprite",
+      "filename": "activity_replay.rgb888",
+      "source_filename": "activity_replay.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "6bbdfa1e480f5893772bb7b24584522fe5fdd8c01990c8baf5cb360bcb916ee4"
+      }
+    },
+    {
+      "asset_id": "sprite_activity_thinking",
+      "media_type": "sprite",
+      "filename": "activity_thinking.rgb888",
+      "source_filename": "activity_thinking.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "a95e2495828a8a61eee8949e8d882b385283794b06607533e5e21915a17b865f"
+      }
+    },
+    {
+      "asset_id": "sprite_activity_timer",
+      "media_type": "sprite",
+      "filename": "activity_timer.rgb888",
+      "source_filename": "activity_timer.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "03b2bdb533639f42b82c41b0b40ce29d76afb9ad8a8caa5369dc53358c9460fb"
+      }
+    },
+    {
       "asset_id": "sprite_alarm",
       "media_type": "sprite",
       "filename": "alarm.rgb888",
@@ -275,6 +408,48 @@
         "channel_order": "rgb",
         "size_bytes": 4800,
         "sha256": "8217653ed56e9a9680ff7006360540d40852899523050454fc23d0392d699803"
+      }
+    },
+    {
+      "asset_id": "sprite_button_config",
+      "media_type": "sprite",
+      "filename": "button_config.rgb888",
+      "source_filename": "button_config.rgb888",
+      "metadata": {
+        "width": 56,
+        "height": 56,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 9408,
+        "sha256": "c845c7786de2af4c1c483239b8d723b509f8d14401fba50f6ab0d4a10d1965dd"
+      }
+    },
+    {
+      "asset_id": "sprite_button_timer",
+      "media_type": "sprite",
+      "filename": "button_timer.rgb888",
+      "source_filename": "button_timer.rgb888",
+      "metadata": {
+        "width": 56,
+        "height": 56,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 9408,
+        "sha256": "ee4f944a5051095345f6d2feeb378a355d59038ea446e9720e77fa5ed2b39745"
+      }
+    },
+    {
+      "asset_id": "sprite_button_weather",
+      "media_type": "sprite",
+      "filename": "button_weather.rgb888",
+      "source_filename": "button_weather.rgb888",
+      "metadata": {
+        "width": 56,
+        "height": 56,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 9408,
+        "sha256": "ef55b77fe60317d037a83801a8f9855ae53bf0a08bd54da302d2b08fc575db02"
       }
     },
     {
@@ -522,8 +697,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 4383,
-        "sha256": "92426409c048e272aeca438bd3ce75679dfe6e821f3d88c6a3e81ea01aeb70ab"
+        "size_bytes": 6035,
+        "sha256": "61a3a00e73e396f2dfd614fc3044ff5f3f27aff4fff87a6cfd83ca39a35d8a58"
       }
     },
     {

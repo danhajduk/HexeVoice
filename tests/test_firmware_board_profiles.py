@@ -337,6 +337,17 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "StatusFlag::kIdleReady" in source
     assert "state.wifi_connected && state.backend_connected && !state.ota_active" in source
     assert "draw_idle_clock(state, g_frame_time_ms);" in source
+    assert "draw_activity_sprite(state, g_frame_time_ms);" in source
+    for sprite in (
+        "activity_listening",
+        "activity_thinking",
+        "activity_replay",
+        "activity_timer",
+        "button_timer",
+        "button_weather",
+        "button_config",
+    ):
+        assert f'"{sprite}"' in source
     assert "g_status_layout.idle_clock.enabled && status_flag_value(StatusFlag::kIdleReady" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
@@ -375,6 +386,10 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert layout["idle_clock"]["date_format"] == "%A, %B %d %Y."
     assert "x" not in layout["idle_clock"]["date"]
     assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
+    assert layout["sidebar_buttons"] == {"enabled": True, "x": 16, "y": 116, "gap": 20}
+    activity_items = layout["activity_sprites"]["items"]
+    assert [item["id"] for item in activity_items] == ["listening", "thinking", "replay", "timer"]
+    assert all(item["animations"] for item in activity_items)
     for element in ("sprite", "hours", "separator", "minutes", "date"):
         assert layout["idle_clock"][element]["animations"]
     animations = [animation for icon in icon_layout["items"] for animation in icon.get("animations", [])]
@@ -383,6 +398,7 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         for element in ("sprite", "hours", "separator", "minutes", "date")
         for animation in layout["idle_clock"][element].get("animations", [])
     )
+    animations.extend(animation for item in activity_items for animation in item["animations"])
     assert {animation["type"] for animation in animations} == {
         "blink_dot",
         "running_dots",

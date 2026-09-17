@@ -71,6 +71,10 @@ constexpr int kSidebarTop = 78;
 constexpr int kSidebarHeight = 477;
 constexpr int kIdleClockFrameWidth = 500;
 constexpr int kIdleClockFrameHeight = 210;
+constexpr int kActivitySpriteSize = 180;
+constexpr int kSidebarButtonSize = 56;
+constexpr size_t kActivitySpriteCount = 4;
+constexpr size_t kSidebarButtonCount = 3;
 constexpr size_t kStatusLayoutMaxBytes = 8192;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
@@ -166,6 +170,13 @@ struct StatusIconLayout {
   size_t animation_count = 0;
 };
 
+struct AnimatedSpriteLayout {
+  int x;
+  int y;
+  StatusAnimation animations[kMaxStatusAnimations] = {};
+  size_t animation_count = 0;
+};
+
 struct AnimatedTextLayout {
   int x = kWidth / 2;
   int y = 250;
@@ -197,6 +208,16 @@ struct StatusLayout {
     StatusAnimation right = {
         StatusAnimationType::kSlideIn, StatusFlag::kUiReady, true, kCyan, 500, 500, 80, 180, 1000, 0, 450};
   } sidebars;
+  struct ActivitySprites {
+    AnimatedSpriteLayout items[kActivitySpriteCount] = {
+        {422, 205}, {422, 205}, {422, 205}, {422, 205}};
+  } activity_sprites;
+  struct SidebarButtons {
+    bool enabled = true;
+    int x = 16;
+    int y = 112;
+    int gap = 18;
+  } sidebar_buttons;
   struct Clock {
     int font_size = 42;
     int x_offset = 0;
@@ -294,10 +315,18 @@ StatusSprite g_cloud_offline_sprite{"cloud_offline", kStatusSpriteSize, kStatusS
 StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};
 StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};
 StatusSprite g_idle_clock_frame_sprite{"idle_clock_frame", kIdleClockFrameWidth, kIdleClockFrameHeight};
+StatusSprite g_activity_listening_sprite{"activity_listening", kActivitySpriteSize, kActivitySpriteSize};
+StatusSprite g_activity_thinking_sprite{"activity_thinking", kActivitySpriteSize, kActivitySpriteSize};
+StatusSprite g_activity_replay_sprite{"activity_replay", kActivitySpriteSize, kActivitySpriteSize};
+StatusSprite g_activity_timer_sprite{"activity_timer", kActivitySpriteSize, kActivitySpriteSize};
+StatusSprite g_button_timer_sprite{"button_timer", kSidebarButtonSize, kSidebarButtonSize};
+StatusSprite g_button_weather_sprite{"button_weather", kSidebarButtonSize, kSidebarButtonSize};
+StatusSprite g_button_config_sprite{"button_config", kSidebarButtonSize, kSidebarButtonSize};
 SlideAnimationState g_slide_animation_states[static_cast<size_t>(StatusIconId::kCount)][kMaxStatusAnimations] = {};
 SlideAnimationState g_sidebar_left_animation_state;
 SlideAnimationState g_sidebar_right_animation_state;
 SlideAnimationState g_idle_clock_animation_states[5][kMaxStatusAnimations] = {};
+SlideAnimationState g_activity_animation_states[kActivitySpriteCount][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
 ClockFont g_clock_font;
@@ -309,6 +338,12 @@ ClockFont g_idle_date_font;
 
 bool status_animations_active(const hexe::AppState &state);
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum);
+void draw_status_animation(
+    const StatusAnimation &animation,
+    const StatusSprite &sprite,
+    int sprite_x,
+    int sprite_y,
+    int64_t now_ms);
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -866,6 +901,17 @@ void parse_animated_text(cJSON *item, AnimatedTextLayout *layout, const char *de
   parse_animation_list(item, layout->animations, &layout->animation_count);
 }
 
+int activity_sprite_index(const char *name) {
+  static constexpr const char *kNames[kActivitySpriteCount] = {
+      "listening", "thinking", "replay", "timer"};
+  for (size_t index = 0; index < kActivitySpriteCount; ++index) {
+    if (name != nullptr && std::strcmp(name, kNames[index]) == 0) {
+      return static_cast<int>(index);
+    }
+  }
+  return -1;
+}
+
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum) {
   cJSON *value = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, key) : nullptr;
   return cJSON_IsNumber(value) ? std::clamp(value->valueint, 0, maximum) : fallback;
@@ -1063,6 +1109,8 @@ void load_status_layout() {
   cJSON *floating = cJSON_IsObject(icons_config) ? cJSON_GetObjectItem(icons_config, "floating")
                                                   : cJSON_GetObjectItem(root, "floating");
   cJSON *sidebars = cJSON_GetObjectItem(root, "sidebars");
+  cJSON *activity_sprites = cJSON_GetObjectItem(root, "activity_sprites");
+  cJSON *sidebar_buttons = cJSON_GetObjectItem(root, "sidebar_buttons");
   cJSON *idle_clock = cJSON_GetObjectItem(root, "idle_clock");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
   cJSON *version = cJSON_GetObjectItem(root, "version");
@@ -1117,6 +1165,29 @@ void load_status_layout() {
       g_status_layout.sidebars.right = animation;
     }
   }
+  cJSON *activity_items = cJSON_IsObject(activity_sprites) ? cJSON_GetObjectItem(activity_sprites, "items") : nullptr;
+  cJSON *activity_item = nullptr;
+  cJSON_ArrayForEach(activity_item, activity_items) {
+    cJSON *id = cJSON_GetObjectItem(activity_item, "id");
+    const int index = cJSON_IsString(id) ? activity_sprite_index(id->valuestring) : -1;
+    if (index < 0) {
+      continue;
+    }
+    auto &layout = g_status_layout.activity_sprites.items[index];
+    layout.x = json_layout_coordinate(activity_item, "x", layout.x, kWidth - kActivitySpriteSize);
+    layout.y = json_layout_coordinate(activity_item, "y", layout.y, kHeight - kActivitySpriteSize);
+    parse_animation_list(activity_item, layout.animations, &layout.animation_count);
+  }
+  cJSON *buttons_enabled = cJSON_IsObject(sidebar_buttons) ? cJSON_GetObjectItem(sidebar_buttons, "enabled") : nullptr;
+  if (cJSON_IsBool(buttons_enabled)) {
+    g_status_layout.sidebar_buttons.enabled = cJSON_IsTrue(buttons_enabled);
+  }
+  g_status_layout.sidebar_buttons.x = json_layout_coordinate(
+      sidebar_buttons, "x", g_status_layout.sidebar_buttons.x, kSidebarWidth - kSidebarButtonSize);
+  g_status_layout.sidebar_buttons.y = json_layout_coordinate(
+      sidebar_buttons, "y", g_status_layout.sidebar_buttons.y, kHeight - kSidebarButtonSize);
+  g_status_layout.sidebar_buttons.gap = json_layout_coordinate(
+      sidebar_buttons, "gap", g_status_layout.sidebar_buttons.gap, kSidebarHeight);
   g_status_layout.clock.font_size =
       json_integer(clock, "font_size", g_status_layout.clock.font_size, 12, 96);
   g_status_layout.clock.x_offset =
@@ -1279,7 +1350,7 @@ bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
           state.phase != hexe::AppPhase::kUpdating && state.phase != hexe::AppPhase::kError;
     case StatusFlag::kIdleReady:
       return state.wifi_connected && state.backend_connected && !state.ota_active &&
-          state.phase == hexe::AppPhase::kIdle && hexe::system::clock_synced();
+          state.phase == hexe::AppPhase::kIdle && !state.timer_active && hexe::system::clock_synced();
     case StatusFlag::kMicrophoneEnabled: return state.microphone_enabled;
     case StatusFlag::kMicrophoneDisabled: return !state.microphone_enabled;
     case StatusFlag::kMicrophoneActive: return state.microphone_enabled && state.phase == hexe::AppPhase::kListening;
@@ -1305,6 +1376,13 @@ bool status_animations_active(const hexe::AppState &state) {
     return false;
   }
   for (const auto &layout : g_status_layout.icons) {
+    for (size_t index = 0; index < layout.animation_count; ++index) {
+      if (status_animation_active(layout.animations[index], state)) {
+        return true;
+      }
+    }
+  }
+  for (const auto &layout : g_status_layout.activity_sprites.items) {
     for (size_t index = 0; index < layout.animation_count; ++index) {
       if (status_animation_active(layout.animations[index], state)) {
         return true;
@@ -1417,6 +1495,15 @@ void draw_sidebars(const hexe::AppState &state, int64_t now_ms) {
   }
   draw_status_sprite(&g_sidebar_sprite, left_x, kSidebarTop + left_y);
   draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth + right_x, kSidebarTop + right_y);
+  if (g_status_layout.sidebar_buttons.enabled) {
+    StatusSprite *buttons[kSidebarButtonCount] = {
+        &g_button_timer_sprite, &g_button_weather_sprite, &g_button_config_sprite};
+    int button_y = g_status_layout.sidebar_buttons.y + left_y;
+    for (StatusSprite *button : buttons) {
+      draw_status_sprite(button, g_status_layout.sidebar_buttons.x + left_x, button_y);
+      button_y += kSidebarButtonSize + g_status_layout.sidebar_buttons.gap;
+    }
+  }
 }
 
 uint8_t animated_element_transform(
@@ -1452,6 +1539,66 @@ uint8_t animated_element_transform(
     }
   }
   return static_cast<uint8_t>(opacity);
+}
+
+int active_activity_sprite(const hexe::AppState &state) {
+  if (state.phase == hexe::AppPhase::kListening) return 0;
+  if (state.phase == hexe::AppPhase::kThinking) return 1;
+  if (state.phase == hexe::AppPhase::kReplying || state.tts_playback_active) return 2;
+  if (state.timer_active) return 3;
+  return -1;
+}
+
+void draw_activity_sprite(const hexe::AppState &state, int64_t now_ms) {
+  const int active_index = active_activity_sprite(state);
+  StatusSprite *sprites[kActivitySpriteCount] = {
+      &g_activity_listening_sprite,
+      &g_activity_thinking_sprite,
+      &g_activity_replay_sprite,
+      &g_activity_timer_sprite,
+  };
+  for (size_t index = 0; index < kActivitySpriteCount; ++index) {
+    if (static_cast<int>(index) != active_index) {
+      for (auto &animation_state : g_activity_animation_states[index]) animation_state = {};
+    }
+  }
+  if (active_index < 0) {
+    return;
+  }
+  const auto &layout = g_status_layout.activity_sprites.items[active_index];
+  StatusSprite *sprite = sprites[active_index];
+  int offset_x = 0;
+  int offset_y = 0;
+  int opacity = 255;
+  for (size_t index = 0; index < layout.animation_count; ++index) {
+    const auto &animation = layout.animations[index];
+    if (animation.type == StatusAnimationType::kSlideIn) {
+      slide_animation_offset(
+          animation,
+          state,
+          sprite->width,
+          sprite->height,
+          now_ms,
+          &g_activity_animation_states[active_index][index],
+          &offset_x,
+          &offset_y);
+    } else if (animation.type == StatusAnimationType::kPulse && status_animation_active(animation, state)) {
+      const int phase = animation_triangle_per_mille(animation, now_ms);
+      const int animated =
+          animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
+      opacity = std::min(opacity, animated);
+    }
+  }
+  const int x = layout.x + offset_x;
+  const int y = layout.y + offset_y;
+  draw_status_sprite(sprite, x, y, static_cast<uint8_t>(opacity));
+  for (size_t index = 0; index < layout.animation_count; ++index) {
+    const auto &animation = layout.animations[index];
+    if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
+        status_animation_active(animation, state)) {
+      draw_status_animation(animation, *sprite, x, y, now_ms);
+    }
+  }
 }
 
 void draw_idle_clock_text(
@@ -1788,6 +1935,13 @@ void reload_display_assets() {
   release_status_sprite(&g_sidebar_sprite);
   release_status_sprite(&g_sidebar_right_sprite);
   release_status_sprite(&g_idle_clock_frame_sprite);
+  release_status_sprite(&g_activity_listening_sprite);
+  release_status_sprite(&g_activity_thinking_sprite);
+  release_status_sprite(&g_activity_replay_sprite);
+  release_status_sprite(&g_activity_timer_sprite);
+  release_status_sprite(&g_button_timer_sprite);
+  release_status_sprite(&g_button_weather_sprite);
+  release_status_sprite(&g_button_config_sprite);
   release_bitmap_font(&g_idle_hours_font);
   release_bitmap_font(&g_idle_separator_font);
   release_bitmap_font(&g_idle_minutes_font);
@@ -1916,6 +2070,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
     load_status_layout();
     draw_sidebars(state, g_frame_time_ms);
     draw_idle_clock(state, g_frame_time_ms);
+    draw_activity_sprite(state, g_frame_time_ms);
     draw_header_clock();
     draw_header_status_icons();
     draw_version_text(build_id);

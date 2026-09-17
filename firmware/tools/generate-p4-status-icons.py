@@ -11,15 +11,89 @@ MAGENTA = (255, 74, 173, 255)
 YELLOW = (255, 211, 79, 255)
 
 
-def canvas():
-    image = Image.new("RGBA", (40, 40), (0, 0, 0, 0))
+def canvas(size=40):
+    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     return image, ImageDraw.Draw(image)
 
 
-def save(name, painter):
-    image, draw = canvas()
+def save(name, painter, size=40):
+    image, draw = canvas(size)
     painter(draw)
     image.save(OUT / f"{name}.png")
+
+
+def activity_frame(draw):
+    draw.rounded_rectangle((18, 18, 161, 161), radius=24, outline=BLUE, width=3)
+    draw.line((40, 12, 140, 12), fill=CYAN, width=3)
+    draw.line((40, 167, 140, 167), fill=CYAN, width=3)
+    for x, y, sx, sy in ((18, 18, 1, 1), (161, 18, -1, 1), (18, 161, 1, -1), (161, 161, -1, -1)):
+        draw.line((x, y, x + sx * 16, y), fill=MAGENTA, width=4)
+        draw.line((x, y, x, y + sy * 16), fill=MAGENTA, width=4)
+
+
+def activity_listening(draw):
+    activity_frame(draw)
+    draw.rounded_rectangle((75, 47, 105, 101), radius=15, outline=CYAN, width=6)
+    draw.arc((59, 65, 121, 127), 0, 180, fill=BLUE, width=6)
+    draw.line((90, 127, 90, 139), fill=CYAN, width=5)
+    draw.line((72, 139, 108, 139), fill=CYAN, width=5)
+
+
+def activity_thinking(draw):
+    activity_frame(draw)
+    draw.ellipse((58, 58, 122, 122), outline=BLUE, width=4)
+    draw.ellipse((84, 84, 96, 96), fill=CYAN)
+    for box, color in (((84, 37, 96, 49), CYAN), ((131, 84, 143, 96), MAGENTA),
+                       ((84, 131, 96, 143), BLUE), ((37, 84, 49, 96), CYAN)):
+        draw.ellipse(box, fill=color)
+    draw.arc((47, 47, 133, 133), 210, 335, fill=CYAN, width=5)
+
+
+def activity_replay(draw):
+    activity_frame(draw)
+    draw.arc((48, 48, 132, 132), 35, 330, fill=CYAN, width=7)
+    draw.polygon((45, 52, 68, 48, 57, 70), fill=MAGENTA)
+    draw.polygon((79, 67, 79, 113, 116, 90), fill=(85, 184, 255, 220))
+
+
+def activity_timer(draw):
+    activity_frame(draw)
+    draw.ellipse((48, 50, 132, 134), outline=CYAN, width=6)
+    draw.line((90, 36, 90, 51), fill=BLUE, width=6)
+    draw.line((74, 36, 106, 36), fill=BLUE, width=5)
+    draw.line((90, 92, 90, 65), fill=CYAN, width=5)
+    draw.line((90, 92, 112, 105), fill=MAGENTA, width=5)
+
+
+def button_frame(draw):
+    draw.rounded_rectangle((3, 3, 52, 52), radius=8, outline=BLUE, width=2)
+    draw.line((11, 3, 45, 3), fill=CYAN, width=2)
+    draw.line((11, 52, 45, 52), fill=CYAN, width=2)
+
+
+def button_timer(draw):
+    button_frame(draw)
+    draw.ellipse((15, 16, 41, 42), outline=CYAN, width=3)
+    draw.line((28, 10, 28, 16), fill=CYAN, width=3)
+    draw.line((23, 10, 33, 10), fill=CYAN, width=3)
+    draw.line((28, 29, 35, 23), fill=BLUE, width=3)
+
+
+def button_weather(draw):
+    button_frame(draw)
+    draw.ellipse((15, 13, 29, 27), outline=YELLOW, width=3)
+    draw.arc((14, 23, 38, 43), 100, 285, fill=CYAN, width=3)
+    draw.arc((24, 20, 44, 42), 180, 355, fill=CYAN, width=3)
+    draw.line((16, 40, 39, 40), fill=CYAN, width=3)
+
+
+def button_config(draw):
+    button_frame(draw)
+    for x in (18, 28, 38):
+        draw.line((x, 14, x, 42), fill=BLUE, width=3)
+    draw.ellipse((14, 20, 22, 28), fill=CYAN)
+    draw.ellipse((24, 31, 32, 39), fill=MAGENTA)
+    draw.ellipse((34, 16, 42, 24), fill=CYAN)
 
 
 def mic(draw, color=CYAN, slash=False, active=False):
@@ -47,6 +121,13 @@ def main():
     save("warning", lambda d: (d.polygon((20, 4, 36, 34, 4, 34), outline=YELLOW), d.line((20, 13, 20, 24), fill=YELLOW, width=4), d.ellipse((18, 28, 22, 32), fill=YELLOW)))
     save("privacy", lambda d: (d.polygon((20, 4, 33, 9, 31, 26, 20, 35, 9, 26, 7, 9), outline=CYAN), d.rectangle((15, 18, 25, 28), outline=BLUE, width=2), d.arc((16, 11, 24, 22), 180, 360, fill=BLUE, width=2)))
     save("cloud_offline", lambda d: (d.arc((5, 13, 25, 33), 90, 270, fill=BLUE, width=3), d.arc((13, 7, 33, 29), 180, 355, fill=BLUE, width=3), d.line((7, 8, 33, 34), fill=MAGENTA, width=4)))
+    save("activity_listening", activity_listening, 180)
+    save("activity_thinking", activity_thinking, 180)
+    save("activity_replay", activity_replay, 180)
+    save("activity_timer", activity_timer, 180)
+    save("button_timer", button_timer, 56)
+    save("button_weather", button_weather, 56)
+    save("button_config", button_config, 56)
 
 
 if __name__ == "__main__":
