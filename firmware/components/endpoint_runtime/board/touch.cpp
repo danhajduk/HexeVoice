@@ -112,6 +112,27 @@ void handle_touch_release(int x, int y) {
       ESP_LOGI(kTag, "Touch stopped playback from activity zone");
       return;
     }
+    hexe::board::DisplayButtonHit button_hit;
+    if (hexe::board::display_button_hit_test(g_touch_start_x, g_touch_start_y, &button_hit)) {
+      const bool sent = hexe::voice::send_ui_button_pressed_event(
+          button_hit.screen_id,
+          button_hit.button_id,
+          button_hit.index,
+          button_hit.x,
+          button_hit.y,
+          button_hit.width,
+          button_hit.height,
+          g_touch_start_x,
+          g_touch_start_y);
+      ESP_LOGI(
+          kTag,
+          "Sidebar button pressed: screen=%s button=%s index=%d sent=%s",
+          button_hit.screen_id,
+          button_hit.button_id,
+          button_hit.index,
+          sent ? "true" : "false");
+      return;
+    }
     apply_touch_action(action_for_point(g_touch_start_x, g_touch_start_y));
   }
 }

@@ -4558,6 +4558,44 @@ bool send_tts_playback_event(
   return sent;
 }
 
+bool send_ui_button_pressed_event(
+    const char *screen_id,
+    const char *button_id,
+    int button_index,
+    int button_x,
+    int button_y,
+    int button_width,
+    int button_height,
+    int touch_x,
+    int touch_y) {
+  if (screen_id == nullptr || screen_id[0] == '\0' || button_id == nullptr || button_id[0] == '\0' ||
+      !g_ws_connected) {
+    return false;
+  }
+
+  std::string envelope;
+  envelope.reserve(512);
+  append_event_header(envelope, "endpoint.ui.button_pressed", nullptr, g_sequence++);
+  char body[384];
+  std::snprintf(
+      body,
+      sizeof(body),
+      "{\"screen_id\":\"%s\",\"button_id\":\"%s\",\"button_index\":%d,"
+      "\"button\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d},"
+      "\"touch\":{\"x\":%d,\"y\":%d},\"source\":\"touch\"}}}",
+      screen_id,
+      button_id,
+      button_index,
+      button_x,
+      button_y,
+      button_width,
+      button_height,
+      touch_x,
+      touch_y);
+  envelope.append(body);
+  return send_ws_text(envelope);
+}
+
 bool submit_audio_frame(
     const int16_t *samples,
     size_t sample_count,

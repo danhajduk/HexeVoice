@@ -398,6 +398,9 @@ StatusSprite g_button_config_sprite{"button_config", kSidebarButtonWidth, kSideb
 SlideAnimationState g_slide_animation_states[static_cast<size_t>(StatusIconId::kCount)][kMaxStatusAnimations] = {};
 SlideAnimationState g_sidebar_left_animation_state;
 SlideAnimationState g_sidebar_right_animation_state;
+std::atomic<bool> g_sidebar_buttons_visible{false};
+std::atomic<int> g_sidebar_left_draw_x{0};
+std::atomic<int> g_sidebar_left_draw_y{0};
 SlideAnimationState g_idle_clock_animation_states[5][kMaxStatusAnimations] = {};
 SlideAnimationState g_activity_animation_states[kActivitySpriteCount][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
@@ -1746,10 +1749,21 @@ StatusSprite *sidebar_button_sprite(SidebarButtonId id) {
   return nullptr;
 }
 
+const char *sidebar_button_name(SidebarButtonId id) {
+  switch (id) {
+    case SidebarButtonId::kTimer: return "button_timer";
+    case SidebarButtonId::kWeather: return "button_weather";
+    case SidebarButtonId::kConfig: return "button_config";
+    case SidebarButtonId::kInvalid: return nullptr;
+  }
+  return nullptr;
+}
+
 void draw_sidebars(
     const hexe::AppState &state,
     int64_t now_ms,
     const ScreenLayout *screen) {
+  g_sidebar_buttons_visible.store(false, std::memory_order_release);
   if (screen == nullptr || !screen->sidebars_enabled) {
     g_sidebar_left_animation_state = {};
     g_sidebar_right_animation_state = {};
@@ -1784,6 +1798,9 @@ void draw_sidebars(
   draw_status_sprite(&g_sidebar_sprite, left_x, kSidebarTop + left_y);
   draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth + right_x, kSidebarTop + right_y);
   if (g_status_layout.sidebar_buttons.enabled && screen->button_count > 0) {
+    g_sidebar_left_draw_x.store(left_x, std::memory_order_relaxed);
+    g_sidebar_left_draw_y.store(left_y, std::memory_order_relaxed);
+    g_sidebar_buttons_visible.store(true, std::memory_order_release);
     int button_y = g_status_layout.sidebar_buttons.y + left_y;
     for (size_t index = 0; index < screen->button_count; ++index) {
       StatusSprite *button = sidebar_button_sprite(screen->buttons[index]);
@@ -2762,6 +2779,35 @@ bool display_activity_zone_contains(int x, int y) {
   const auto &layout = g_status_layout.activity_sprites.items[kReplayActivityIndex];
   return x >= layout.x && x < layout.x + kActivitySpriteSize &&
          y >= layout.y && y < layout.y + kActivitySpriteSize;
+}
+
+bool display_button_hit_test(int x, int y, DisplayButtonHit *hit) {
+  if (hit == nullptr || !g_sidebar_buttons_visible.load(std::memory_order_acquire)) {
+    return false;
+  }
+  const ScreenLayout *screen = active_screen_layout(hexe::state());
+  if (screen == nullptr || !screen->sidebars_enabled || !g_status_layout.sidebar_buttons.enabled) {
+    return false;
+  }
+
+  const int button_x = g_status_layout.sidebar_buttons.x + g_sidebar_left_draw_x.load(std::memory_order_relaxed);
+  int button_y = g_status_layout.sidebar_buttons.y + g_sidebar_left_draw_y.load(std::memory_order_relaxed);
+  for (size_t index = 0; index < screen->button_count; ++index) {
+    const char *button_id = sidebar_button_name(screen->buttons[index]);
+    if (button_id != nullptr && x >= button_x && x < button_x + kSidebarButtonWidth &&
+        y >= button_y && y < button_y + kSidebarButtonHeight) {
+      std::snprintf(hit->screen_id, sizeof(hit->screen_id), "%s", screen->id);
+      std::snprintf(hit->button_id, sizeof(hit->button_id), "%s", button_id);
+      hit->index = static_cast<int>(index);
+      hit->x = button_x;
+      hit->y = button_y;
+      hit->width = kSidebarButtonWidth;
+      hit->height = kSidebarButtonHeight;
+      return true;
+    }
+    button_y += kSidebarButtonHeight + g_status_layout.sidebar_buttons.gap;
+  }
+  return false;
 }
 
 bool display_ready() {

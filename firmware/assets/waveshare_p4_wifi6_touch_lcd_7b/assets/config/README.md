@@ -78,6 +78,11 @@ buttons:
 Use `buttons: {preset: none}` for no buttons. Every referenced button must be a
 `type: button` item in `items.yaml`.
 
+Tapping a visible button sends an `endpoint.ui.button_pressed` WebSocket event.
+Its payload contains `screen_id`, `button_id`, `button_index`, rendered `button`
+bounds, the raw `touch` point, and `source: touch`. The list order determines
+`button_index` and the vertical position within the configured button stack.
+
 ## Items
 
 Each item has a unique `id`, a `type`, and optionally a `sprite`, `data`, text

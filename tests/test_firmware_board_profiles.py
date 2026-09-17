@@ -655,6 +655,19 @@ def test_p4_profile_uses_bsp_gt911_touch_adapter():
     assert "hexe::voice::tts_playback_active()" in source
     assert "display_activity_zone_contains(g_touch_start_x, g_touch_start_y)" in source
     assert 'hexe::voice::stop_playback("touch_activity")' in source
+    assert "display_button_hit_test(g_touch_start_x, g_touch_start_y, &button_hit)" in source
+    assert "send_ui_button_pressed_event(" in source
+
+    display = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+    backend = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/voice/backend_client.cpp"
+    ).read_text(encoding="utf-8")
+    assert "bool display_button_hit_test(int x, int y, DisplayButtonHit *hit)" in display
+    assert "screen->buttons[index]" in display
+    assert 'append_event_header(envelope, "endpoint.ui.button_pressed"' in backend
+    assert r'\"button_index\":%d' in backend
 
 
 def test_endpoint_accepts_backend_ui_flags_for_screen_conditions():

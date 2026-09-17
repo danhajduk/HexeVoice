@@ -34,6 +34,7 @@ from hexevoice.voice.contracts import (
     VoiceTranscriptPayload,
     VoiceTtsPlaybackPayload,
     VoiceTtsReadyPayload,
+    VoiceUiButtonPressedPayload,
     VoiceVadSpeechEndedPayload,
     VoiceVadSpeechStartedPayload,
     VoiceWakeCandidatePayload,
@@ -264,6 +265,8 @@ class VoiceSessionManager:
         self._max_active_session_s = max_active_session_s
         self._privacy_mode_enabled = privacy_mode_enabled
         self._event_diagnostics: list[dict[str, object]] = []
+        self._last_ui_button_pressed: dict[str, object] | None = None
+        self._ui_button_history: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
         self._wake_election = WakeCandidateElection(window_ms=wake_election_window_ms)
@@ -1617,6 +1620,7 @@ class VoiceSessionManager:
             "tts.playback.completed": self._handle_tts_playback_event,
             "tts.playback.failed": self._handle_tts_playback_event,
             "playback.stop": self._handle_tts_playback_event,
+            "endpoint.ui.button_pressed": self._handle_ui_button_pressed,
         }
         return handlers[event.event_type](event)
 
@@ -3056,6 +3060,8 @@ class VoiceSessionManager:
                 "last_command_error": self._last_command_error,
                 "commands": list(self._command_records.values()),
                 "event_diagnostics": list(self._event_diagnostics),
+                "last_ui_button_pressed": self._last_ui_button_pressed,
+                "ui_button_history": list(self._ui_button_history),
                 "wake_provider": self._wake_detector.status(),
                 "wake_election": self._wake_election.status(),
                 "wake_history": list(self._wake_history),
@@ -4248,6 +4254,47 @@ class VoiceSessionManager:
         if event.event_type == "tts.playback.failed" and self._pending_session_followup and self._active_session:
             return [self._cancel_active_followup_session(reason="tts_playback_failed")]
         return [self._state_event("session.state", self._active_session)] if self._active_session else []
+
+    def _handle_ui_button_pressed(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        try:
+            payload = VoiceUiButtonPressedPayload.model_validate(event.payload)
+        except ValidationError as exc:
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_ui_button_pressed",
+                    message=str(exc.errors()[0]["msg"]),
+                    recoverable=True,
+                )
+            ]
+
+        record = {
+            "event_id": event.event_id,
+            "event_type": event.event_type,
+            "endpoint_id": event.endpoint_id,
+            "session_id": event.session_id,
+            **payload.model_dump(mode="json"),
+            "received_at": datetime.now(UTC).isoformat(),
+        }
+        self._last_ui_button_pressed = record
+        self._ui_button_history.insert(0, record)
+        del self._ui_button_history[20:]
+        self._last_event_type = event.event_type
+        record_voice_event(
+            event.event_type,
+            **{key: value for key, value in record.items() if key != "event_type"},
+        )
+        log.info(
+            "Endpoint UI button pressed: endpoint_id=%s screen_id=%s button_id=%s index=%d touch=(%d,%d)",
+            event.endpoint_id,
+            payload.screen_id,
+            payload.button_id,
+            payload.button_index,
+            payload.touch.x,
+            payload.touch.y,
+        )
+        return []
 
     def _track_playback_lifecycle(self, event_type: str, record: dict[str, object]) -> None:
         stream_id = str(record.get("stream_id") or "").strip()

@@ -55,5 +55,15 @@ bool send_tts_playback_event(
     const char *audio_url,
     const char *reason,
     size_t byte_count);
+bool send_ui_button_pressed_event(
+    const char *screen_id,
+    const char *button_id,
+    int button_index,
+    int button_x,
+    int button_y,
+    int button_width,
+    int button_height,
+    int touch_x,
+    int touch_y);
 
 }  // namespace hexe::voice

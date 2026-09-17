@@ -2866,6 +2866,54 @@ def test_voice_websocket_cancel_returns_cancelled_event(tmp_path):
     assert response["payload"]["snapshot"]["cancel_reason"] == "button"
 
 
+def test_voice_websocket_records_ui_button_pressed_event(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+    payload = {
+        "screen_id": "idle",
+        "button_id": "button_timer",
+        "button_index": 0,
+        "button": {"x": 8, "y": 116, "width": 72, "height": 56},
+        "touch": {"x": 42, "y": 140},
+        "source": "touch",
+    }
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=p4-7b") as websocket:
+        websocket.send_json(
+            voice_event(
+                "endpoint.ui.button_pressed",
+                endpoint_id="p4-7b",
+                session_id=None,
+                payload=payload,
+            )
+        )
+        status = client.get("/api/voice/status").json()
+
+    assert status["last_event_type"] == "endpoint.ui.button_pressed"
+    assert status["last_ui_button_pressed"]["screen_id"] == "idle"
+    assert status["last_ui_button_pressed"]["button_id"] == "button_timer"
+    assert status["last_ui_button_pressed"]["button"] == payload["button"]
+    assert status["last_ui_button_pressed"]["touch"] == payload["touch"]
+    assert status["ui_button_history"][0] == status["last_ui_button_pressed"]
+
+
+def test_voice_websocket_rejects_invalid_ui_button_pressed_event(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=p4-7b") as websocket:
+        websocket.send_json(
+            voice_event(
+                "endpoint.ui.button_pressed",
+                endpoint_id="p4-7b",
+                session_id=None,
+                payload={"screen_id": "idle", "button_id": "button_timer"},
+            )
+        )
+        response = websocket.receive_json()
+
+    assert response["event_type"] == "session.error"
+    assert response["payload"]["code"] == "invalid_ui_button_pressed"
+
+
 def test_voice_status_projects_offline_state_after_reconnect_cycle(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 

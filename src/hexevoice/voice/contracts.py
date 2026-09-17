@@ -60,6 +60,7 @@ VoiceEventType = Literal[
     "tts.playback.failed",
     "playback.start",
     "playback.stop",
+    "endpoint.ui.button_pressed",
     "session.complete",
     "session.completed",
     "session.cancelled",
@@ -102,6 +103,7 @@ ENDPOINT_TO_BACKEND_EVENTS: frozenset[str] = frozenset(
         "tts.playback.completed",
         "tts.playback.failed",
         "playback.stop",
+        "endpoint.ui.button_pressed",
     }
 )
 
@@ -229,6 +231,25 @@ class VoiceTtsPlaybackPayload(BaseModel):
     byte_count: int | None = Field(default=None, ge=0)
     reason: str | None = None
     message: str | None = None
+
+
+class VoiceUiPoint(BaseModel):
+    x: int = Field(ge=0)
+    y: int = Field(ge=0)
+
+
+class VoiceUiBounds(VoiceUiPoint):
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+
+
+class VoiceUiButtonPressedPayload(BaseModel):
+    screen_id: str = Field(min_length=1, max_length=40)
+    button_id: str = Field(min_length=1, max_length=40)
+    button_index: int = Field(ge=0, le=15)
+    button: VoiceUiBounds
+    touch: VoiceUiPoint
+    source: Literal["touch"] = "touch"
 
 
 class VoiceVadSpeechStartedPayload(BaseModel):
