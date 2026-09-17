@@ -165,9 +165,16 @@ Available animation types:
 - `running_dots`: blink-dot fields plus `spacing` and `count` (1-8).
 - `pulse`: `min_opacity`, `max_opacity` (0-255), and `period_ms`.
 - `pulse_ring`: `color`, `position`, `radius`, and `period_ms`.
+- `spinner`: rotating arc using `color`, `position`, `radius`, `thickness`, `arc`, and `period_ms`.
+- `progress_ring`: progress arc using `color`, `position`, `radius`, and `thickness`. OTA progress is used with `ota_active` or `updating`; other flags use a repeating phase.
+- `sweep`: horizontal highlight using `color`, `thickness`, and `period_ms`.
+- `badge_ping`: badge dot with an expanding ring using `color`, `position`, `radius`, and `thickness`.
+- `shake`: moves the owning sprite or text horizontally using `distance` and `period_ms`.
+- `color_cycle`: interpolates a procedural ring through two to four `colors`; it also accepts `position`, `radius`, and `thickness`.
 
 Offsets range from `-1.0` to `1.0`. Position, radius, and spacing are normalized
-to the owning sprite. Periods range from 100 to 60000 milliseconds.
+to the owning sprite. `thickness`, `arc`, and `distance` are normalized too.
+Periods range from 100 to 60000 milliseconds.
 
 Any animation can use a live audio level instead of its time-based phase:
 

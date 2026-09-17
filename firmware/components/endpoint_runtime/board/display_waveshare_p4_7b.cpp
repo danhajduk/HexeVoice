@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cerrno>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -109,6 +110,12 @@ enum class StatusAnimationType : uint8_t {
   kPulse,
   kPulseRing,
   kSlideIn,
+  kSpinner,
+  kProgressRing,
+  kSweep,
+  kBadgePing,
+  kShake,
+  kColorCycle,
   kInvalid,
 };
 
@@ -175,6 +182,11 @@ struct StatusAnimation {
   int count = 3;
   int min_opacity = 128;
   int max_opacity = 255;
+  int thickness_per_mille = 60;
+  int arc_per_mille = 260;
+  int distance_per_mille = 80;
+  uint32_t colors[4] = {kCyan, kBlue, 0xFF4AAD, kCyan};
+  size_t color_count = 0;
   AudioAnimationSource audio_source = AudioAnimationSource::kNone;
   uint32_t audio_min_level = 200;
   uint32_t audio_max_level = 6000;
@@ -620,6 +632,33 @@ void draw_ring(int center_x, int center_y, int radius, int thickness, uint32_t c
   }
 }
 
+void draw_arc(int center_x, int center_y, int radius, int thickness, int start_per_mille, int arc_per_mille,
+              uint32_t color) {
+  constexpr double kTau = 6.283185307179586;
+  const int steps = std::max(8, radius * std::max(1, arc_per_mille) / 80);
+  const int dot_radius = std::max(1, thickness / 2);
+  for (int step = 0; step <= steps; ++step) {
+    const int phase = start_per_mille + (arc_per_mille * step / steps);
+    const double angle = (phase % 1000) * kTau / 1000.0 - (kTau / 4.0);
+    draw_disc(
+        center_x + static_cast<int>(std::cos(angle) * radius),
+        center_y + static_cast<int>(std::sin(angle) * radius),
+        dot_radius,
+        color);
+  }
+}
+
+uint32_t blend_color(uint32_t first, uint32_t second, int amount_per_mille) {
+  const int amount = std::clamp(amount_per_mille, 0, 1000);
+  uint32_t result = 0;
+  for (int shift : {0, 8, 16}) {
+    const int a = (first >> shift) & 0xFF;
+    const int b = (second >> shift) & 0xFF;
+    result |= static_cast<uint32_t>(a + ((b - a) * amount / 1000)) << shift;
+  }
+  return result;
+}
+
 const uint8_t *font5x7_glyph(char ch) {
   static constexpr uint8_t kDigits[][5] = {
       {0x3E, 0x51, 0x49, 0x45, 0x3E}, {0x00, 0x42, 0x7F, 0x40, 0x00},
@@ -864,6 +903,12 @@ StatusAnimationType status_animation_type(const char *name) {
   if (name != nullptr && std::strcmp(name, "slide_in") == 0) {
     return StatusAnimationType::kSlideIn;
   }
+  if (name != nullptr && std::strcmp(name, "spinner") == 0) return StatusAnimationType::kSpinner;
+  if (name != nullptr && std::strcmp(name, "progress_ring") == 0) return StatusAnimationType::kProgressRing;
+  if (name != nullptr && std::strcmp(name, "sweep") == 0) return StatusAnimationType::kSweep;
+  if (name != nullptr && std::strcmp(name, "badge_ping") == 0) return StatusAnimationType::kBadgePing;
+  if (name != nullptr && std::strcmp(name, "shake") == 0) return StatusAnimationType::kShake;
+  if (name != nullptr && std::strcmp(name, "color_cycle") == 0) return StatusAnimationType::kColorCycle;
   return StatusAnimationType::kInvalid;
 }
 
@@ -949,6 +994,16 @@ uint32_t json_color(cJSON *object, const char *key, uint32_t fallback) {
   return end != nullptr && *end == '\0' ? static_cast<uint32_t>(color) : fallback;
 }
 
+uint32_t json_color_value(cJSON *value, uint32_t fallback) {
+  if (!cJSON_IsString(value) || value->valuestring == nullptr || std::strlen(value->valuestring) != 7 ||
+      value->valuestring[0] != '#') {
+    return fallback;
+  }
+  char *end = nullptr;
+  const unsigned long color = std::strtoul(value->valuestring + 1, &end, 16);
+  return end != nullptr && *end == '\0' ? static_cast<uint32_t>(color) : fallback;
+}
+
 StatusAnimation parse_status_animation(cJSON *item) {
   StatusAnimation animation;
   cJSON *type = cJSON_IsObject(item) ? cJSON_GetObjectItem(item, "type") : nullptr;
@@ -971,6 +1026,15 @@ StatusAnimation parse_status_animation(cJSON *item) {
   animation.count = json_integer(item, "count", animation.count, 1, 8);
   animation.min_opacity = json_integer(item, "min_opacity", animation.min_opacity, 0, 255);
   animation.max_opacity = json_integer(item, "max_opacity", animation.max_opacity, 0, 255);
+  animation.thickness_per_mille = json_per_mille(item, "thickness", animation.thickness_per_mille);
+  animation.arc_per_mille = json_per_mille(item, "arc", animation.arc_per_mille);
+  animation.distance_per_mille = json_per_mille(item, "distance", animation.distance_per_mille);
+  cJSON *colors = cJSON_IsObject(item) ? cJSON_GetObjectItem(item, "colors") : nullptr;
+  cJSON *color_item = nullptr;
+  cJSON_ArrayForEach(color_item, colors) {
+    if (animation.color_count >= 4 || !cJSON_IsString(color_item)) break;
+    animation.colors[animation.color_count++] = json_color_value(color_item, animation.color);
+  }
   cJSON *audio = cJSON_IsObject(item) ? cJSON_GetObjectItem(item, "audio") : nullptr;
   cJSON *audio_source = cJSON_IsObject(audio) ? cJSON_GetObjectItem(audio, "source") : nullptr;
   if (cJSON_IsString(audio_source) && audio_source->valuestring != nullptr) {
@@ -1742,6 +1806,15 @@ int signed_relative_pixels(int per_mille, int size) {
   return (scaled + (scaled < 0 ? -500 : 500)) / 1000;
 }
 
+void shake_animation_offset(
+    const StatusAnimation &animation, int width, int64_t now_ms, int *offset_x) {
+  const int phase = animation_phase_per_mille(animation, now_ms);
+  const int amplitude = std::max(1, relative_pixels(animation.distance_per_mille, width));
+  const int segment = std::min(7, phase * 8 / 1000);
+  static constexpr int kWave[] = {0, 1, -1, 1, -1, 1, -1, 0};
+  *offset_x += amplitude * kWave[segment];
+}
+
 void slide_animation_offset(
     const StatusAnimation &animation,
     const hexe::AppState &state,
@@ -1892,6 +1965,8 @@ uint8_t animated_element_transform(
       const int animated =
           animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
       opacity = std::min(opacity, animated);
+    } else if (animation.type == StatusAnimationType::kShake && status_animation_active(animation, state)) {
+      shake_animation_offset(animation, width, now_ms, offset_x);
     }
   }
   return static_cast<uint8_t>(opacity);
@@ -1953,6 +2028,8 @@ void draw_activity_sprite(
       const int animated =
           animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
       opacity = std::min(opacity, animated);
+    } else if (animation.type == StatusAnimationType::kShake && status_animation_active(animation, state)) {
+      shake_animation_offset(animation, sprite->width, now_ms, &offset_x);
     }
   }
   const int x = (element != nullptr && element->has_x ? element->x : layout.x) + offset_x;
@@ -1961,6 +2038,7 @@ void draw_activity_sprite(
   for (size_t index = 0; index < animation_count; ++index) {
     const auto &animation = animations[index];
     if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
+        animation.type != StatusAnimationType::kShake &&
         status_animation_active(animation, state)) {
       draw_status_animation(animation, *sprite, x, y, now_ms, state);
     }
@@ -2233,6 +2311,54 @@ void draw_status_animation(
     }
     case StatusAnimationType::kSlideIn:
       break;
+    case StatusAnimationType::kSpinner: {
+      const int thickness = std::max(1, relative_pixels(animation.thickness_per_mille, size));
+      draw_arc(center_x, center_y, radius, thickness, phase, animation.arc_per_mille, animation.color);
+      break;
+    }
+    case StatusAnimationType::kProgressRing: {
+      int progress = phase;
+      if (animation.flag == StatusFlag::kOtaActive || animation.flag == StatusFlag::kUpdating) {
+        progress = std::clamp(state.ota_progress_percent, 0, 100) * 10;
+      }
+      const int thickness = std::max(1, relative_pixels(animation.thickness_per_mille, size));
+      draw_ring(center_x, center_y, radius, thickness, scale_color(animation.color, 180));
+      if (progress > 0) draw_arc(center_x, center_y, radius, thickness, 0, progress, animation.color);
+      break;
+    }
+    case StatusAnimationType::kSweep: {
+      const int sweep_x = sprite_x + (phase * std::max(1, sprite.width - 1) / 1000);
+      const int half_width = std::max(1, relative_pixels(animation.thickness_per_mille, size));
+      for (int dx = -half_width; dx <= half_width; ++dx) {
+        const int intensity = 1000 - (std::abs(dx) * 800 / (half_width + 1));
+        for (int row = 0; row < sprite.height; ++row) {
+          blend_pixel(sweep_x + dx, sprite_y + row, animation.color, static_cast<uint8_t>(intensity * 180 / 1000));
+        }
+      }
+      break;
+    }
+    case StatusAnimationType::kBadgePing: {
+      if (phase < 700) {
+        const int ping_phase = phase * 1000 / 700;
+        const int ping_radius = radius + (radius * ping_phase / 1000);
+        const int thickness = std::max(1, relative_pixels(animation.thickness_per_mille, size));
+        draw_ring(center_x, center_y, ping_radius, thickness, scale_color(animation.color, 1000 - ping_phase));
+      }
+      draw_disc(center_x, center_y, std::max(1, radius / 2), animation.color);
+      break;
+    }
+    case StatusAnimationType::kShake:
+      break;
+    case StatusAnimationType::kColorCycle: {
+      const size_t count = animation.color_count > 1 ? animation.color_count : 4;
+      const int scaled = phase * static_cast<int>(count);
+      const size_t first = static_cast<size_t>(scaled / 1000) % count;
+      const size_t second = (first + 1) % count;
+      const uint32_t color = blend_color(animation.colors[first], animation.colors[second], scaled % 1000);
+      const int thickness = std::max(1, relative_pixels(animation.thickness_per_mille, size));
+      draw_ring(center_x, center_y, radius, thickness, color);
+      break;
+    }
     case StatusAnimationType::kInvalid:
       break;
   }
@@ -2252,12 +2378,19 @@ void draw_status_icon(
   int slide_x = 0;
   int slide_y = 0;
   status_sprite_slide_offset(id, layout, state, sprite->width, sprite->height, now_ms, &slide_x, &slide_y);
+  for (size_t index = 0; index < layout.animation_count; ++index) {
+    const auto &animation = layout.animations[index];
+    if (animation.type == StatusAnimationType::kShake && status_animation_active(animation, state)) {
+      shake_animation_offset(animation, sprite->width, now_ms, &slide_x);
+    }
+  }
   x += slide_x;
   y += slide_y;
   draw_status_sprite(sprite, x, y, status_sprite_opacity(layout, state, now_ms));
   for (size_t index = 0; index < layout.animation_count; ++index) {
     const auto &animation = layout.animations[index];
     if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
+        animation.type != StatusAnimationType::kShake &&
         status_animation_active(animation, state)) {
       draw_status_animation(animation, *sprite, x, y, now_ms, state);
     }

@@ -128,16 +128,14 @@ timer at the lower left. `upcoming` configures the lower-right list and accepts
 `font_size`, and `color` text fields. Countdown values are derived locally from
 the timer deadline and redraw once per second.
 
-## Deferred Animations
-
-Candidates for later implementation:
+## Additional Animations
 
 - `spinner`: rotating arc for indeterminate work.
-- `progress_ring`: numeric progress from OTA or asset synchronization.
+- `progress_ring`: numeric OTA progress, or a repeating phase for flags without progress data.
 - `sweep`: directional highlight for scanning and discovery.
-- `badge_ping`: one-shot notification badge entrance.
-- `shake`: short error or rejected-action movement.
-- `color_cycle`: interpolation through a configured color list.
+- `badge_ping`: notification badge with an expanding ping.
+- `shake`: short error or rejected-action movement of the owning element.
+- `color_cycle`: procedural ring interpolated through two to four colors.
 
-Future animation types should retain the normalized coordinate model, use the
-same condition flags, and avoid introducing animation-specific device state.
+All geometry remains normalized to the owning element and all types use the
+same condition flags without introducing animation-specific device state.

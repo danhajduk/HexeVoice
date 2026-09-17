@@ -92,3 +92,41 @@ presets:
     position: {x: 0.5, y: 0.5}
     radius: 0.3
     audio: {source: speaker_output, min_level: 200, max_level: 9000}
+  loading_spinner:
+    type: spinner
+    color: '#35F4DB'
+    position: {x: 0.5, y: 0.5}
+    radius: 0.32
+    thickness: 0.06
+    arc: 0.28
+    period_ms: 900
+  ota_progress_ring:
+    type: progress_ring
+    color: '#55B8FF'
+    position: {x: 0.5, y: 0.5}
+    radius: 0.34
+    thickness: 0.055
+    period_ms: 1200
+  discovery_sweep:
+    type: sweep
+    color: '#35F4DB'
+    thickness: 0.08
+    period_ms: 1300
+  notification_ping:
+    type: badge_ping
+    color: '#FF4AAD'
+    position: {x: 0.78, y: 0.22}
+    radius: 0.08
+    thickness: 0.035
+    period_ms: 1100
+  error_shake:
+    type: shake
+    distance: 0.035
+    period_ms: 420
+  status_color_cycle:
+    type: color_cycle
+    colors: ['#35F4DB', '#55B8FF', '#FF4AAD']
+    position: {x: 0.5, y: 0.5}
+    radius: 0.34
+    thickness: 0.045
+    period_ms: 2400

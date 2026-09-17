@@ -542,6 +542,16 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     presets = yaml_to_json.load_yaml_with_includes(directory / "animation_presets.yaml")["presets"]
     assert presets["mic_input_pulse"]["audio"]["source"] == "mic_input"
     assert presets["speaker_output_ring"]["audio"]["source"] == "speaker_output"
+    assert {presets[name]["type"] for name in (
+        "loading_spinner",
+        "ota_progress_ring",
+        "discovery_sweep",
+        "notification_ping",
+        "error_shake",
+        "status_color_cycle",
+    )} == {"spinner", "progress_ring", "sweep", "badge_ping", "shake", "color_cycle"}
+    for animation_type in ("kSpinner", "kProgressRing", "kSweep", "kBadgePing", "kShake", "kColorCycle"):
+        assert f"StatusAnimationType::{animation_type}" in source
     assert "AudioAnimationSource::kMicInput" in source
     assert "AudioAnimationSource::kSpeakerOutput" in source
     assert "state.mic_input_level" in source
