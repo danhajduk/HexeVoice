@@ -387,6 +387,7 @@ ClockFont g_idle_date_font;
 ClockFont g_timer_countdown_font;
 ClockFont g_timer_label_font;
 ClockFont g_timer_upcoming_font;
+const StatusLayout g_default_status_layout{};
 
 bool status_animations_active(const hexe::AppState &state);
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum);
@@ -1253,7 +1254,7 @@ void load_status_layout() {
     return;
   }
   g_status_layout_loaded = true;
-  g_status_layout = StatusLayout{};
+  g_status_layout = g_default_status_layout;
 
   cJSON *root = read_status_layout_file(kStatusLayoutFilename);
   if (root == nullptr) {
