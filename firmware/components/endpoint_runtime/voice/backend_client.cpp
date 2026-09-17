@@ -3543,6 +3543,16 @@ void sync_display_timers(cJSON *payload) {
         "%s",
         cJSON_IsString(label) && label->valuestring != nullptr ? label->valuestring : "Timer");
   }
+  int64_t sort_now_unix_ms = 0;
+  hexe::system::current_utc_unix_ms(&sort_now_unix_ms);
+  std::sort(
+      app_state.display_timers,
+      app_state.display_timers + app_state.display_timer_count,
+      [sort_now_unix_ms](const hexe::DisplayTimer &left, const hexe::DisplayTimer &right) {
+        const int64_t left_due = left.due_unix_ms > 0 ? left.due_unix_ms : sort_now_unix_ms + left.remaining_ms;
+        const int64_t right_due = right.due_unix_ms > 0 ? right.due_unix_ms : sort_now_unix_ms + right.remaining_ms;
+        return left_due != right_due ? left_due < right_due : std::strcmp(left.label, right.label) < 0;
+      });
 }
 
 void handle_endpoint_timer(cJSON *payload) {

@@ -626,7 +626,20 @@ def test_p4_draws_selected_screen_debug_label():
 
     assert '"screen: %s"' in source
     assert 'screen == nullptr ? "none" : screen->id' in source
+    assert "kSidebarWidth + 24, kSidebarTop + 12" in source
     assert "draw_screen_debug_label(screen);" in source
+
+
+def test_p4_sorts_display_timers_by_soonest_expiration():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/voice/backend_client.cpp"
+    ).read_text(encoding="utf-8")
+
+    timer_sync = source[source.index("void sync_display_timers"):]
+    timer_sync = timer_sync[: timer_sync.index("void handle_endpoint_timer")]
+    assert "std::sort(" in timer_sync
+    assert "left.due_unix_ms" in timer_sync
+    assert "left_due < right_due" in timer_sync
 
 
 def test_p4_uses_dirty_regions_for_dynamic_ui_updates():

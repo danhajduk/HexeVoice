@@ -2721,7 +2721,7 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
 void draw_screen_debug_label(const ScreenLayout *screen) {
   char label[40] = {};
   std::snprintf(label, sizeof(label), "screen: %s", screen == nullptr ? "none" : screen->id);
-  draw_text(8, 72, label, 180, kMagenta);
+  draw_text(kSidebarWidth + 24, kSidebarTop + 12, label, 180, kMagenta);
 }
 
 void draw_version_text(const char *build_id) {
