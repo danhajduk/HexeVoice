@@ -2305,6 +2305,22 @@ def test_voice_session_manager_pushes_timer_state_to_endpoint():
             due_at="2026-09-17T02:00:00Z",
             remaining_seconds=300,
             source_event_id="timer-event-1",
+            timers=[
+                {
+                    "timer_id": "timer-1",
+                    "state": "active",
+                    "title": "Kitchen",
+                    "due_at": "2026-09-17T02:00:00Z",
+                    "remaining_seconds": 300,
+                },
+                {
+                    "timer_id": "timer-2",
+                    "state": "active",
+                    "title": "Laundry",
+                    "due_at": "2026-09-17T02:05:00Z",
+                    "remaining_seconds": 600,
+                },
+            ],
         )
     )
 
@@ -2314,6 +2330,8 @@ def test_voice_session_manager_pushes_timer_state_to_endpoint():
     assert websocket.sent[0]["payload"]["label"] == "Kitchen"
     assert websocket.sent[0]["payload"]["due_unix_ms"] == 1789610400000
     assert websocket.sent[0]["payload"]["remaining_seconds"] == 300
+    assert [timer["timer_id"] for timer in websocket.sent[0]["payload"]["timers"]] == ["timer-1", "timer-2"]
+    assert websocket.sent[0]["payload"]["timers"][1]["due_unix_ms"] == 1789610700000
 
 
 def test_voice_session_manager_pushes_speak_command_to_endpoint():

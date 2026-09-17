@@ -3439,8 +3439,66 @@ void clear_timer_state() {
   app_state.timer_remaining_ms = 0;
   app_state.timer_duration_seconds = 0;
   app_state.timer_label[0] = '\0';
+  app_state.display_timer_count = 0;
+  for (auto &timer : app_state.display_timers) {
+    timer = {};
+  }
   if (app_state.phase == hexe::AppPhase::kTimerFinished) {
     app_state.phase = hexe::idle_or_connecting_phase();
+  }
+}
+
+hexe::TimerLifecycleState timer_lifecycle_state(const char *state) {
+  if (is_timer_active_state(state)) return hexe::TimerLifecycleState::kActive;
+  if (is_timer_paused_state(state)) return hexe::TimerLifecycleState::kPaused;
+  if (is_timer_finished_state(state)) return hexe::TimerLifecycleState::kFinished;
+  return hexe::TimerLifecycleState::kInactive;
+}
+
+void sync_display_timers(cJSON *payload) {
+  auto &app_state = hexe::state();
+  cJSON *timers = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "timers") : nullptr;
+  if (!cJSON_IsArray(timers)) {
+    app_state.display_timer_count = app_state.timer_active ? 1 : 0;
+    if (app_state.display_timer_count == 1) {
+      auto &timer = app_state.display_timers[0];
+      timer.state = app_state.timer_state;
+      timer.due_unix_ms = app_state.timer_due_unix_ms;
+      timer.remaining_ms = app_state.timer_remaining_ms;
+      std::snprintf(timer.label, sizeof(timer.label), "%s", app_state.timer_label);
+    }
+    return;
+  }
+
+  app_state.display_timer_count = 0;
+  for (auto &timer : app_state.display_timers) {
+    timer = {};
+  }
+  cJSON *item = nullptr;
+  cJSON_ArrayForEach(item, timers) {
+    if (!cJSON_IsObject(item) || app_state.display_timer_count >= hexe::kMaxDisplayTimers) {
+      continue;
+    }
+    const char *item_state = timer_state_from_payload(item);
+    const auto lifecycle = timer_lifecycle_state(item_state);
+    if (lifecycle == hexe::TimerLifecycleState::kInactive || lifecycle == hexe::TimerLifecycleState::kFinished) {
+      continue;
+    }
+    auto &timer = app_state.display_timers[app_state.display_timer_count++];
+    timer.state = lifecycle;
+    timer.due_unix_ms = read_unix_ms_field(item, "due_unix_ms");
+    timer.remaining_ms = read_duration_ms(item, "remaining_ms", "remaining_seconds");
+    int64_t now_unix_ms = 0;
+    if (timer.due_unix_ms <= 0 && timer.remaining_ms > 0 && lifecycle == hexe::TimerLifecycleState::kActive &&
+        hexe::system::current_utc_unix_ms(&now_unix_ms)) {
+      timer.due_unix_ms = now_unix_ms + timer.remaining_ms;
+    }
+    cJSON *label = cJSON_GetObjectItem(item, "label");
+    std::snprintf(
+        timer.label,
+        sizeof(timer.label),
+        "%s",
+        cJSON_IsString(label) && label->valuestring != nullptr ? label->valuestring : "Timer");
   }
 }
 
@@ -3522,6 +3580,7 @@ void handle_endpoint_timer(cJSON *payload) {
   } else if (app_state.timer_label[0] == '\0') {
     std::snprintf(app_state.timer_label, sizeof(app_state.timer_label), "%s", "Timer");
   }
+  sync_display_timers(payload);
   send_command_ack(request_id, "endpoint.timer", "succeeded", "Timer state updated");
 }
 

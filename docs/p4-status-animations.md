@@ -83,6 +83,13 @@ phase. It controls the large idle clock composition. While active, the large
 clock replaces the small header clock. Its frame, hours, separator, minutes,
 and date each have independent animation lists in `status_layout.json`.
 
+The optional `timer_screen` object keeps that idle clock visible while timers
+are active. `primary_countdown` and `primary_label` configure the earliest
+timer at the lower left. `upcoming` configures the lower-right list and accepts
+`x`, `y`, `gap`, and `count` (up to three), plus the standard `font`,
+`font_size`, and `color` text fields. Countdown values are derived locally from
+the timer deadline and redraw once per second.
+
 ## Deferred Animations
 
 Candidates for later implementation:

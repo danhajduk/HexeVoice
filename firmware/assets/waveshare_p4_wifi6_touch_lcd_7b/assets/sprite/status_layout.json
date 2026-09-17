@@ -76,6 +76,32 @@
       ]
     }
   },
+  "timer_screen": {
+    "enabled": true,
+    "primary_countdown": {
+      "font": "manrope/clock_42.hxf",
+      "font_size": 64,
+      "x": 250,
+      "y": 430,
+      "color": "#D8FFFA"
+    },
+    "primary_label": {
+      "font": "manrope/date_32.hxf",
+      "font_size": 24,
+      "x": 250,
+      "y": 500,
+      "color": "#35F4DB"
+    },
+    "upcoming": {
+      "font": "manrope/date_32.hxf",
+      "font_size": 25,
+      "x": 760,
+      "y": 430,
+      "gap": 38,
+      "count": 3,
+      "color": "#55B8FF"
+    }
+  },
   "sidebars": {
     "left": {
       "type": "slide_in",
@@ -127,8 +153,8 @@
       },
       {
         "id": "timer",
-        "x": 422,
-        "y": 205,
+        "x": 90,
+        "y": 105,
         "animations": [
           {"type": "slide_in", "when": {"flag": "timer_active"}, "offset": {"x": 0.0, "y": 0.2}, "period_ms": 350},
           {"type": "blink_dot", "when": {"flag": "timer_active"}, "color": "#FF4AAD", "position": {"x": 0.76, "y": 0.27}, "radius": 0.025, "period_ms": 1000}

@@ -169,9 +169,12 @@ id, endpoint target, remaining time, state, due time, last event, and alarm
 status.
 
 Each timer lifecycle event with an endpoint owner is also forwarded to that
-connected endpoint as `endpoint.timer`. This keeps the endpoint countdown and
-timer activity UI synchronized for active, paused, completed, cancelled, and
-stopped timers.
+connected endpoint as `endpoint.timer`. The message includes the sorted active
+timer snapshot (up to four timers), allowing the endpoint to render the next
+timer and a short upcoming list. This keeps the endpoint countdown and timer
+activity UI synchronized for active, paused, completed, cancelled, and stopped
+timers. Request events are not added to the ownership cache; only timer-owner
+responses update endpoint state.
 
 The JSON Schema contracts for timer request and response events live in
 `docs/events-schemsa/`. `timer-request-event.schema.json` covers events

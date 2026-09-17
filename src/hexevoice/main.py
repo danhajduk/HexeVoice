@@ -1013,7 +1013,7 @@ def create_app(
             loop=bool(app_settings.voice_timer_completed_alarm_audio_url),
             mic_mode="interrupt_only" if app_settings.voice_timer_completed_alarm_audio_url else "pause_for_playback",
         ),
-        update_endpoint_timer=lambda timer: voice_session_manager.push_timer_state(
+        update_endpoint_timer=lambda timer, active_timers: voice_session_manager.push_timer_state(
             endpoint_id=timer.endpoint_id,
             timer_id=timer.timer_id,
             state=timer.state,
@@ -1021,6 +1021,7 @@ def create_app(
             due_at=timer.due_at,
             remaining_seconds=timer.remaining_seconds,
             source_event_id=timer.last_event_id,
+            timers=[active_timer.as_dict() for active_timer in active_timers],
         ),
         ownership_cache=timer_ownership_cache,
     )

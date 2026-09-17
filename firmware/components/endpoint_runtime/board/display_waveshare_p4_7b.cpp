@@ -212,6 +212,20 @@ struct StatusLayout {
     AnimatedSpriteLayout items[kActivitySpriteCount] = {
         {422, 205}, {422, 205}, {422, 205}, {422, 205}};
   } activity_sprites;
+  struct TimerScreen {
+    bool enabled = true;
+    AnimatedTextLayout primary_countdown = {270, 450, 64, 0xD8FFFA};
+    AnimatedTextLayout primary_label = {270, 525, 24, 0x35F4DB};
+    struct Upcoming {
+      int x = 760;
+      int y = 438;
+      int gap = 42;
+      int count = 3;
+      int font_size = 25;
+      uint32_t color = 0x55B8FF;
+      char font[96] = {};
+    } upcoming;
+  } timer_screen;
   struct SidebarButtons {
     bool enabled = true;
     int x = 16;
@@ -335,6 +349,9 @@ ClockFont g_idle_hours_font;
 ClockFont g_idle_separator_font;
 ClockFont g_idle_minutes_font;
 ClockFont g_idle_date_font;
+ClockFont g_timer_countdown_font;
+ClockFont g_timer_label_font;
+ClockFont g_timer_upcoming_font;
 
 bool status_animations_active(const hexe::AppState &state);
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum);
@@ -428,6 +445,10 @@ int frame_signature(int frame) {
   signature = (signature * 131) + (state.ota_active ? 1 : 0);
   signature = (signature * 131) + std::clamp(state.ota_progress_percent, 0, 100);
   signature = (signature * 131) + (hexe::system::asset_sync_active() ? 1 : 0);
+  signature = (signature * 131) + static_cast<int>(state.display_timer_count);
+  if (state.timer_active) {
+    signature = (signature * 131) + static_cast<int>((esp_timer_get_time() / 1000000) % 100000);
+  }
   std::tm local = {};
   if (hexe::system::clock_synced() && hexe::system::current_local_time(&local)) {
     signature = (signature * 131) + (local.tm_hour * 60) + local.tm_min + 1;
@@ -1110,6 +1131,7 @@ void load_status_layout() {
                                                   : cJSON_GetObjectItem(root, "floating");
   cJSON *sidebars = cJSON_GetObjectItem(root, "sidebars");
   cJSON *activity_sprites = cJSON_GetObjectItem(root, "activity_sprites");
+  cJSON *timer_screen = cJSON_GetObjectItem(root, "timer_screen");
   cJSON *sidebar_buttons = cJSON_GetObjectItem(root, "sidebar_buttons");
   cJSON *idle_clock = cJSON_GetObjectItem(root, "idle_clock");
   cJSON *clock = cJSON_GetObjectItem(root, "clock");
@@ -1151,6 +1173,37 @@ void load_status_layout() {
       cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "date") : nullptr,
       &g_status_layout.idle_clock.date,
       kDefaultIdleDateFont);
+  cJSON *timer_enabled = cJSON_IsObject(timer_screen) ? cJSON_GetObjectItem(timer_screen, "enabled") : nullptr;
+  if (cJSON_IsBool(timer_enabled)) {
+    g_status_layout.timer_screen.enabled = cJSON_IsTrue(timer_enabled);
+  }
+  parse_animated_text(
+      cJSON_IsObject(timer_screen) ? cJSON_GetObjectItem(timer_screen, "primary_countdown") : nullptr,
+      &g_status_layout.timer_screen.primary_countdown,
+      kDefaultIdleClockFont);
+  parse_animated_text(
+      cJSON_IsObject(timer_screen) ? cJSON_GetObjectItem(timer_screen, "primary_label") : nullptr,
+      &g_status_layout.timer_screen.primary_label,
+      kDefaultIdleDateFont);
+  cJSON *upcoming = cJSON_IsObject(timer_screen) ? cJSON_GetObjectItem(timer_screen, "upcoming") : nullptr;
+  g_status_layout.timer_screen.upcoming.x =
+      json_layout_coordinate(upcoming, "x", g_status_layout.timer_screen.upcoming.x, kWidth - 1);
+  g_status_layout.timer_screen.upcoming.y =
+      json_layout_coordinate(upcoming, "y", g_status_layout.timer_screen.upcoming.y, kHeight - 1);
+  g_status_layout.timer_screen.upcoming.gap =
+      json_integer(upcoming, "gap", g_status_layout.timer_screen.upcoming.gap, 20, 100);
+  g_status_layout.timer_screen.upcoming.count =
+      json_integer(upcoming, "count", g_status_layout.timer_screen.upcoming.count, 1, 3);
+  g_status_layout.timer_screen.upcoming.font_size =
+      json_integer(upcoming, "font_size", g_status_layout.timer_screen.upcoming.font_size, 12, 64);
+  g_status_layout.timer_screen.upcoming.color =
+      json_color(upcoming, "color", g_status_layout.timer_screen.upcoming.color);
+  cJSON *upcoming_font = cJSON_IsObject(upcoming) ? cJSON_GetObjectItem(upcoming, "font") : nullptr;
+  std::snprintf(
+      g_status_layout.timer_screen.upcoming.font,
+      sizeof(g_status_layout.timer_screen.upcoming.font),
+      "%s",
+      cJSON_IsString(upcoming_font) ? upcoming_font->valuestring : kDefaultIdleDateFont);
   cJSON *left_sidebar = cJSON_IsObject(sidebars) ? cJSON_GetObjectItem(sidebars, "left") : nullptr;
   cJSON *right_sidebar = cJSON_IsObject(sidebars) ? cJSON_GetObjectItem(sidebars, "right") : nullptr;
   if (cJSON_IsObject(left_sidebar)) {
@@ -1350,7 +1403,7 @@ bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
           state.phase != hexe::AppPhase::kUpdating && state.phase != hexe::AppPhase::kError;
     case StatusFlag::kIdleReady:
       return state.wifi_connected && state.backend_connected && !state.ota_active &&
-          state.phase == hexe::AppPhase::kIdle && !state.timer_active && hexe::system::clock_synced();
+          state.phase == hexe::AppPhase::kIdle && hexe::system::clock_synced();
     case StatusFlag::kMicrophoneEnabled: return state.microphone_enabled;
     case StatusFlag::kMicrophoneDisabled: return !state.microphone_enabled;
     case StatusFlag::kMicrophoneActive: return state.microphone_enabled && state.phase == hexe::AppPhase::kListening;
@@ -1690,6 +1743,79 @@ void draw_idle_clock(const hexe::AppState &state, int64_t now_ms) {
   AnimatedTextLayout centered_date = clock.date;
   centered_date.x = kWidth / 2;
   draw_idle_clock_text(centered_date, &g_idle_date_font, date, "idle date", state, now_ms, 4);
+}
+
+int64_t display_timer_remaining_ms(const hexe::DisplayTimer &timer) {
+  if (timer.state == hexe::TimerLifecycleState::kPaused) {
+    return std::max<int64_t>(0, timer.remaining_ms);
+  }
+  int64_t now_unix_ms = 0;
+  if (timer.due_unix_ms > 0 && hexe::system::current_utc_unix_ms(&now_unix_ms)) {
+    return std::max<int64_t>(0, timer.due_unix_ms - now_unix_ms);
+  }
+  return std::max<int64_t>(0, timer.remaining_ms);
+}
+
+void format_timer_countdown(int64_t remaining_ms, char *output, size_t output_size) {
+  const int total_seconds = static_cast<int>((remaining_ms + 999) / 1000);
+  const int hours = total_seconds / 3600;
+  const int minutes = (total_seconds % 3600) / 60;
+  const int seconds = total_seconds % 60;
+  if (hours > 0) {
+    std::snprintf(output, output_size, "%d:%02d:%02d", hours, minutes, seconds);
+  } else {
+    std::snprintf(output, output_size, "%02d:%02d", minutes, seconds);
+  }
+}
+
+void draw_timer_text(
+    const AnimatedTextLayout &layout,
+    ClockFont *font,
+    const char *text,
+    const char *label) {
+  if (!load_bitmap_font(font, layout.font, label)) {
+    const int fallback_scale = (layout.font_size * 100) / 7;
+    draw_text(layout.x - (text_width(text, fallback_scale) / 2), layout.y, text, fallback_scale, layout.color);
+    return;
+  }
+  const int width = bitmap_text_width(*font, text, layout.font_size);
+  if (width > 0) {
+    draw_bitmap_text(*font, text, layout.x - (width / 2), layout.y, layout.font_size, layout.color);
+  }
+}
+
+void draw_timer_screen(const hexe::AppState &state) {
+  if (!g_status_layout.timer_screen.enabled || !state.timer_active || state.display_timer_count == 0 ||
+      state.phase != hexe::AppPhase::kIdle) {
+    return;
+  }
+  const auto &screen = g_status_layout.timer_screen;
+  const auto &primary = state.display_timers[0];
+  char countdown[16] = {};
+  format_timer_countdown(display_timer_remaining_ms(primary), countdown, sizeof(countdown));
+  draw_timer_text(screen.primary_countdown, &g_timer_countdown_font, countdown, "timer countdown");
+
+  char primary_label[32] = {};
+  std::snprintf(primary_label, sizeof(primary_label), "%.24s", primary.label[0] != '\0' ? primary.label : "Timer");
+  draw_timer_text(screen.primary_label, &g_timer_label_font, primary_label, "timer label");
+
+  const size_t upcoming_count = std::min<size_t>(
+      state.display_timer_count > 0 ? state.display_timer_count - 1 : 0,
+      static_cast<size_t>(screen.upcoming.count));
+  for (size_t index = 0; index < upcoming_count; ++index) {
+    const auto &timer = state.display_timers[index + 1];
+    char remaining[16] = {};
+    char row[64] = {};
+    format_timer_countdown(display_timer_remaining_ms(timer), remaining, sizeof(remaining));
+    std::snprintf(row, sizeof(row), "%.15s  %s", timer.label[0] != '\0' ? timer.label : "Timer", remaining);
+    AnimatedTextLayout row_layout = {};
+    row_layout.x = screen.upcoming.x;
+    row_layout.y = screen.upcoming.y + static_cast<int>(index) * screen.upcoming.gap;
+    row_layout.font_size = screen.upcoming.font_size;
+    row_layout.color = screen.upcoming.color;
+    std::snprintf(row_layout.font, sizeof(row_layout.font), "%s", screen.upcoming.font);
+    draw_timer_text(row_layout, &g_timer_upcoming_font, row, "upcoming timers");
+  }
 }
 
 uint8_t status_sprite_opacity(const StatusIconLayout &layout, const hexe::AppState &state, int64_t now_ms) {
@@ -2071,6 +2197,7 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
     draw_sidebars(state, g_frame_time_ms);
     draw_idle_clock(state, g_frame_time_ms);
     draw_activity_sprite(state, g_frame_time_ms);
+    draw_timer_screen(state);
     draw_header_clock();
     draw_header_status_icons();
     draw_version_text(build_id);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 namespace hexe {
@@ -34,6 +35,15 @@ enum class TimerLifecycleState {
   kFinished,
 };
 
+constexpr size_t kMaxDisplayTimers = 4;
+
+struct DisplayTimer {
+  TimerLifecycleState state{TimerLifecycleState::kInactive};
+  int64_t due_unix_ms{0};
+  int64_t remaining_ms{0};
+  char label[48]{};
+};
+
 struct AppState {
   AppPhase phase{AppPhase::kBooting};
   bool muted{false};
@@ -53,6 +63,8 @@ struct AppState {
   int64_t timer_remaining_ms{0};
   int timer_duration_seconds{0};
   char timer_label[48]{};
+  DisplayTimer display_timers[kMaxDisplayTimers]{};
+  size_t display_timer_count{0};
   bool vad_enabled{false};
   bool vad_speaking{false};
   bool audio_streaming{false};

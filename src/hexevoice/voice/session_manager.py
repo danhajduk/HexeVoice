@@ -1258,7 +1258,17 @@ class VoiceSessionManager:
         due_at: str | None = None,
         remaining_seconds: int | None = None,
         source_event_id: str | None = None,
+        timers: list[dict[str, Any]] | None = None,
     ) -> dict:
+        if timers:
+            primary = timers[0]
+            timer_id = str(primary.get("timer_id") or timer_id)
+            state = str(primary.get("state") or state)
+            label = str(primary.get("title") or primary.get("label") or label or "Timer")
+            due_at = str(primary.get("due_at") or due_at or "") or None
+            primary_remaining = primary.get("remaining_seconds")
+            if isinstance(primary_remaining, int):
+                remaining_seconds = primary_remaining
         normalized_state = str(state or "").strip().lower()
         endpoint_state = {
             "completed": "finished",
@@ -1283,6 +1293,8 @@ class VoiceSessionManager:
                 payload["due_unix_ms"] = int(due.timestamp() * 1000)
             except ValueError:
                 pass
+        if timers is not None:
+            payload["timers"] = [self._endpoint_timer_payload(timer) for timer in timers[:4]]
         return await self._push_endpoint_command(
             endpoint_id=endpoint_id,
             event_type="endpoint.timer",
@@ -1290,6 +1302,25 @@ class VoiceSessionManager:
             request_id=f"endpoint_timer_{uuid4().hex}",
             payload=payload,
         )
+
+    @staticmethod
+    def _endpoint_timer_payload(timer: dict[str, Any]) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "timer_id": str(timer.get("timer_id") or ""),
+            "state": str(timer.get("state") or "active"),
+            "label": str(timer.get("title") or timer.get("label") or "Timer"),
+        }
+        remaining_seconds = timer.get("remaining_seconds")
+        if isinstance(remaining_seconds, int):
+            payload["remaining_seconds"] = remaining_seconds
+        due_at = str(timer.get("due_at") or "").strip()
+        if due_at:
+            try:
+                due = datetime.fromisoformat(due_at.replace("Z", "+00:00"))
+                payload["due_unix_ms"] = int(due.timestamp() * 1000)
+            except ValueError:
+                pass
+        return payload
 
     async def push_media_transfer(
         self,

@@ -76,7 +76,7 @@ class TimerOwnershipCache:
 
     def update_from_event(self, topic: str, payload: dict[str, Any]) -> list[TimerOwnerRecord]:
         event_type = str(payload.get("promoted_event_type") or payload.get("event_type") or "").strip()
-        if not event_type.startswith("timer."):
+        if not event_type.startswith("timer.") or event_type.endswith("_requested"):
             return []
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
         timer_items = data.get("timers") if isinstance(data.get("timers"), list) else None
@@ -289,7 +289,10 @@ class TimerSucceededAnnouncementService:
         settings: Settings,
         announce: Callable[[TimerAnnouncement], Awaitable[dict[str, Any]] | dict[str, Any]],
         play_alarm: Callable[[TimerCompletedAlarm], Awaitable[dict[str, Any]] | dict[str, Any]] | None = None,
-        update_endpoint_timer: Callable[[TimerOwnerRecord], Awaitable[dict[str, Any]] | dict[str, Any]] | None = None,
+        update_endpoint_timer: Callable[
+            [TimerOwnerRecord, list[TimerOwnerRecord]], Awaitable[dict[str, Any]] | dict[str, Any]
+        ]
+        | None = None,
         onboarding_state_store: OnboardingStateStore | None = None,
         ownership_cache: TimerOwnershipCache | None = None,
     ) -> None:
@@ -428,7 +431,8 @@ class TimerSucceededAnnouncementService:
         timer_records = self._ownership_cache.update_from_event(str(msg.topic), payload)
         if self._update_endpoint_timer is not None:
             for record in timer_records:
-                asyncio.run_coroutine_threadsafe(self._update_endpoint_timer_async(record), loop)
+                active_records = self._ownership_cache.active_for_endpoint(record.endpoint_id)
+                asyncio.run_coroutine_threadsafe(self._update_endpoint_timer_async(record, active_records), loop)
         alarm = timer_completed_alarm(
             str(msg.topic),
             payload,
@@ -471,9 +475,11 @@ class TimerSucceededAnnouncementService:
         }
         asyncio.run_coroutine_threadsafe(self._announce_async(announcement), loop)
 
-    async def _update_endpoint_timer_async(self, record: TimerOwnerRecord) -> None:
+    async def _update_endpoint_timer_async(
+        self, record: TimerOwnerRecord, active_records: list[TimerOwnerRecord]
+    ) -> None:
         try:
-            result = self._update_endpoint_timer(record) if self._update_endpoint_timer is not None else None
+            result = self._update_endpoint_timer(record, active_records) if self._update_endpoint_timer is not None else None
             if asyncio.iscoroutine(result):
                 result = await result
             if isinstance(result, dict) and not result.get("accepted", False):

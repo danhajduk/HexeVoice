@@ -168,6 +168,22 @@ def test_timer_ownership_cache_tracks_owner_and_selects_single_active_timer():
     assert cache.status()["active_count"] == 1
 
 
+def test_timer_ownership_cache_ignores_timer_request_events():
+    cache = TimerOwnershipCache()
+
+    updated = cache.update_from_event(
+        "hexe/events/timer/create_requested",
+        {
+            "event_type": "timer.create_requested",
+            "subject": {"family": "timer", "record_id": "session-1"},
+            "data": {"endpoint_id": "esp-box-1", "duration_seconds": 300},
+        },
+    )
+
+    assert updated == []
+    assert cache.status()["record_count"] == 0
+
+
 def test_timer_ownership_cache_marks_completed_timer_inactive():
     cache = TimerOwnershipCache()
     cache.update_from_event(
@@ -281,8 +297,8 @@ def test_timer_service_pushes_timer_state_to_endpoint():
     async def run() -> None:
         updates = []
 
-        async def update_endpoint_timer(record):
-            updates.append(record)
+        async def update_endpoint_timer(record, active_records):
+            updates.append((record, active_records))
             return {"accepted": True, "status": "sent"}
 
         service = TimerSucceededAnnouncementService(
@@ -309,8 +325,9 @@ def test_timer_service_pushes_timer_state_to_endpoint():
         await asyncio.sleep(0.01)
 
         assert len(updates) == 1
-        assert updates[0].timer_id == "timer-2"
-        assert updates[0].remaining_seconds == 300
+        assert updates[0][0].timer_id == "timer-2"
+        assert updates[0][0].remaining_seconds == 300
+        assert [record.timer_id for record in updates[0][1]] == ["timer-2"]
 
     asyncio.run(run())
 
