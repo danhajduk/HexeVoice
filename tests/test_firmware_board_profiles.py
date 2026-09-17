@@ -332,6 +332,8 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert 'StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};' in source
     assert 'StatusSprite g_sidebar_sprite{"sidebar", kSidebarWidth, kSidebarHeight};' in source
     assert 'StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};' in source
+    assert "constexpr int kSidebarButtonWidth = 72;" in source
+    assert "constexpr int kSidebarButtonHeight = 56;" in source
     assert "draw_sidebars(state, g_frame_time_ms);" in source
     assert "StatusFlag::kUiReady" in source
     assert "StatusFlag::kIdleReady" in source
@@ -398,7 +400,7 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert layout["idle_clock"]["date_format"] == "%A, %B %d %Y."
     assert "x" not in layout["idle_clock"]["date"]
     assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
-    assert layout["sidebar_buttons"] == {"enabled": True, "x": 16, "y": 116, "gap": 20}
+    assert layout["sidebar_buttons"] == {"enabled": True, "x": 8, "y": 116, "gap": 20}
     activity_items = layout["activity_sprites"]["items"]
     assert [item["id"] for item in activity_items] == ["listening", "thinking", "replay", "timer"]
     assert all(item["animations"] for item in activity_items)

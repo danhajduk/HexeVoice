@@ -12,7 +12,8 @@ YELLOW = (255, 211, 79, 255)
 
 
 def canvas(size=40):
-    image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    dimensions = (size, size) if isinstance(size, int) else size
+    image = Image.new("RGBA", dimensions, (0, 0, 0, 0))
     return image, ImageDraw.Draw(image)
 
 
@@ -66,34 +67,34 @@ def activity_timer(draw):
 
 
 def button_frame(draw):
-    draw.rounded_rectangle((3, 3, 52, 52), radius=8, outline=BLUE, width=2)
-    draw.line((11, 3, 45, 3), fill=CYAN, width=2)
-    draw.line((11, 52, 45, 52), fill=CYAN, width=2)
+    draw.rounded_rectangle((3, 3, 68, 52), radius=8, outline=BLUE, width=2)
+    draw.line((11, 3, 61, 3), fill=CYAN, width=2)
+    draw.line((11, 52, 61, 52), fill=CYAN, width=2)
 
 
 def button_timer(draw):
     button_frame(draw)
-    draw.ellipse((15, 16, 41, 42), outline=CYAN, width=3)
-    draw.line((28, 10, 28, 16), fill=CYAN, width=3)
-    draw.line((23, 10, 33, 10), fill=CYAN, width=3)
-    draw.line((28, 29, 35, 23), fill=BLUE, width=3)
+    draw.ellipse((23, 16, 49, 42), outline=CYAN, width=3)
+    draw.line((36, 10, 36, 16), fill=CYAN, width=3)
+    draw.line((31, 10, 41, 10), fill=CYAN, width=3)
+    draw.line((36, 29, 43, 23), fill=BLUE, width=3)
 
 
 def button_weather(draw):
     button_frame(draw)
-    draw.ellipse((15, 13, 29, 27), outline=YELLOW, width=3)
-    draw.arc((14, 23, 38, 43), 100, 285, fill=CYAN, width=3)
-    draw.arc((24, 20, 44, 42), 180, 355, fill=CYAN, width=3)
-    draw.line((16, 40, 39, 40), fill=CYAN, width=3)
+    draw.ellipse((23, 13, 37, 27), outline=YELLOW, width=3)
+    draw.arc((22, 23, 46, 43), 100, 285, fill=CYAN, width=3)
+    draw.arc((32, 20, 52, 42), 180, 355, fill=CYAN, width=3)
+    draw.line((24, 40, 47, 40), fill=CYAN, width=3)
 
 
 def button_config(draw):
     button_frame(draw)
-    for x in (18, 28, 38):
+    for x in (26, 36, 46):
         draw.line((x, 14, x, 42), fill=BLUE, width=3)
-    draw.ellipse((14, 20, 22, 28), fill=CYAN)
-    draw.ellipse((24, 31, 32, 39), fill=MAGENTA)
-    draw.ellipse((34, 16, 42, 24), fill=CYAN)
+    draw.ellipse((22, 20, 30, 28), fill=CYAN)
+    draw.ellipse((32, 31, 40, 39), fill=MAGENTA)
+    draw.ellipse((42, 16, 50, 24), fill=CYAN)
 
 
 def mic(draw, color=CYAN, slash=False, active=False):
@@ -125,9 +126,9 @@ def main():
     save("activity_thinking", activity_thinking, 180)
     save("activity_replay", activity_replay, 180)
     save("activity_timer", activity_timer, 180)
-    save("button_timer", button_timer, 56)
-    save("button_weather", button_weather, 56)
-    save("button_config", button_config, 56)
+    save("button_timer", button_timer, (72, 56))
+    save("button_weather", button_weather, (72, 56))
+    save("button_config", button_config, (72, 56))
 
 
 if __name__ == "__main__":

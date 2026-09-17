@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.19",
-  "updated_at": "2026-09-17T02:00:41.117246+00:00",
+  "asset_library_version": "2026.09.17.20",
+  "updated_at": "2026-09-17T02:08:01.486989+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -179,8 +179,8 @@
       "source_filename": "button_config.alpha8",
       "metadata": {
         "alpha_format": "alpha8",
-        "size_bytes": 3136,
-        "sha256": "16d4893e1cb6ebade6f4f18f32b698ca3b63f7c52c15e960fbfbd7d0d888b83d"
+        "size_bytes": 4032,
+        "sha256": "2ba8c11849da79ebc492f558c32cd86da191989547ebc47dfa659b28c105fb4d"
       }
     },
     {
@@ -190,8 +190,8 @@
       "source_filename": "button_timer.alpha8",
       "metadata": {
         "alpha_format": "alpha8",
-        "size_bytes": 3136,
-        "sha256": "e8d3503740fba1850f319e43a58267913ce06c43aabf932ca1b0836969ed755d"
+        "size_bytes": 4032,
+        "sha256": "194876a8af35ace0dba85758cfdf162e5c0b3bd677fed199d68ffc75cea5e9da"
       }
     },
     {
@@ -201,8 +201,8 @@
       "source_filename": "button_weather.alpha8",
       "metadata": {
         "alpha_format": "alpha8",
-        "size_bytes": 3136,
-        "sha256": "cf4448fe892ac35b3e7a12f49b9141b9339b449bdf143121ca10ad64f6cfe503"
+        "size_bytes": 4032,
+        "sha256": "bfd164ed2033f133b297a48e9d025de3c81df2282ee96332f79807d8b2aea8fe"
       }
     },
     {
@@ -212,8 +212,8 @@
       "source_filename": "chrome_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 815,
-        "sha256": "69e518769cacc31198e62f752d96c9fa21cac9637caa708b60abd9a9126e6f0e"
+        "size_bytes": 814,
+        "sha256": "fae46397b5cac7b57381d694814e5b062279a507147f281ff4c684c76779c6f3"
       }
     },
     {
@@ -449,12 +449,12 @@
       "filename": "button_config.rgb888",
       "source_filename": "button_config.rgb888",
       "metadata": {
-        "width": 56,
+        "width": 72,
         "height": 56,
         "pixel_format": "rgb888",
         "channel_order": "rgb",
-        "size_bytes": 9408,
-        "sha256": "c845c7786de2af4c1c483239b8d723b509f8d14401fba50f6ab0d4a10d1965dd"
+        "size_bytes": 12096,
+        "sha256": "9886e8f07cb1cae5f0ad73c038d81a203e7490aa6a260ae20a9cc7b73dd1431d"
       }
     },
     {
@@ -463,12 +463,12 @@
       "filename": "button_timer.rgb888",
       "source_filename": "button_timer.rgb888",
       "metadata": {
-        "width": 56,
+        "width": 72,
         "height": 56,
         "pixel_format": "rgb888",
         "channel_order": "rgb",
-        "size_bytes": 9408,
-        "sha256": "ee4f944a5051095345f6d2feeb378a355d59038ea446e9720e77fa5ed2b39745"
+        "size_bytes": 12096,
+        "sha256": "bb456a69e13531f19ad0309a7cd5053b3c4a3250a09aa505c3c20674154e0a25"
       }
     },
     {
@@ -477,12 +477,12 @@
       "filename": "button_weather.rgb888",
       "source_filename": "button_weather.rgb888",
       "metadata": {
-        "width": 56,
+        "width": 72,
         "height": 56,
         "pixel_format": "rgb888",
         "channel_order": "rgb",
-        "size_bytes": 9408,
-        "sha256": "ef55b77fe60317d037a83801a8f9855ae53bf0a08bd54da302d2b08fc575db02"
+        "size_bytes": 12096,
+        "sha256": "2c6aea0210cd264e0921e57f6966b9b54b4239553fac3086cde4e6c8d46db1ea"
       }
     },
     {

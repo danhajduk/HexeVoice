@@ -72,7 +72,8 @@ constexpr int kSidebarHeight = 477;
 constexpr int kIdleClockFrameWidth = 500;
 constexpr int kIdleClockFrameHeight = 210;
 constexpr int kActivitySpriteSize = 180;
-constexpr int kSidebarButtonSize = 56;
+constexpr int kSidebarButtonWidth = 72;
+constexpr int kSidebarButtonHeight = 56;
 constexpr size_t kActivitySpriteCount = 4;
 constexpr size_t kSidebarButtonCount = 3;
 constexpr size_t kStatusLayoutMaxBytes = 8192;
@@ -333,9 +334,9 @@ StatusSprite g_activity_listening_sprite{"activity_listening", kActivitySpriteSi
 StatusSprite g_activity_thinking_sprite{"activity_thinking", kActivitySpriteSize, kActivitySpriteSize};
 StatusSprite g_activity_replay_sprite{"activity_replay", kActivitySpriteSize, kActivitySpriteSize};
 StatusSprite g_activity_timer_sprite{"activity_timer", kActivitySpriteSize, kActivitySpriteSize};
-StatusSprite g_button_timer_sprite{"button_timer", kSidebarButtonSize, kSidebarButtonSize};
-StatusSprite g_button_weather_sprite{"button_weather", kSidebarButtonSize, kSidebarButtonSize};
-StatusSprite g_button_config_sprite{"button_config", kSidebarButtonSize, kSidebarButtonSize};
+StatusSprite g_button_timer_sprite{"button_timer", kSidebarButtonWidth, kSidebarButtonHeight};
+StatusSprite g_button_weather_sprite{"button_weather", kSidebarButtonWidth, kSidebarButtonHeight};
+StatusSprite g_button_config_sprite{"button_config", kSidebarButtonWidth, kSidebarButtonHeight};
 SlideAnimationState g_slide_animation_states[static_cast<size_t>(StatusIconId::kCount)][kMaxStatusAnimations] = {};
 SlideAnimationState g_sidebar_left_animation_state;
 SlideAnimationState g_sidebar_right_animation_state;
@@ -1289,9 +1290,9 @@ void load_status_layout() {
     g_status_layout.sidebar_buttons.enabled = cJSON_IsTrue(buttons_enabled);
   }
   g_status_layout.sidebar_buttons.x = json_layout_coordinate(
-      sidebar_buttons, "x", g_status_layout.sidebar_buttons.x, kSidebarWidth - kSidebarButtonSize);
+      sidebar_buttons, "x", g_status_layout.sidebar_buttons.x, kSidebarWidth - kSidebarButtonWidth);
   g_status_layout.sidebar_buttons.y = json_layout_coordinate(
-      sidebar_buttons, "y", g_status_layout.sidebar_buttons.y, kHeight - kSidebarButtonSize);
+      sidebar_buttons, "y", g_status_layout.sidebar_buttons.y, kHeight - kSidebarButtonHeight);
   g_status_layout.sidebar_buttons.gap = json_layout_coordinate(
       sidebar_buttons, "gap", g_status_layout.sidebar_buttons.gap, kSidebarHeight);
   g_status_layout.clock.font_size =
@@ -1607,7 +1608,7 @@ void draw_sidebars(const hexe::AppState &state, int64_t now_ms) {
     int button_y = g_status_layout.sidebar_buttons.y + left_y;
     for (StatusSprite *button : buttons) {
       draw_status_sprite(button, g_status_layout.sidebar_buttons.x + left_x, button_y);
-      button_y += kSidebarButtonSize + g_status_layout.sidebar_buttons.gap;
+      button_y += kSidebarButtonHeight + g_status_layout.sidebar_buttons.gap;
     }
   }
 }

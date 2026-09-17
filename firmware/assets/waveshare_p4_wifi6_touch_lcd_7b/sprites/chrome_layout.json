@@ -42,7 +42,7 @@
   },
   "sidebar_buttons": {
     "enabled": true,
-    "x": 16,
+    "x": 8,
     "y": 116,
     "gap": 20
   }
