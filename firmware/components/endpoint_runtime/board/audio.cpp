@@ -32,6 +32,7 @@ constexpr uint32_t kVadStartEnergyThreshold = 900;
 constexpr uint32_t kVadContinueEnergyThreshold = 500;
 constexpr uint32_t kVadSilenceHoldMs = 2500;
 constexpr uint32_t kVadSilenceHoldFrames = kVadSilenceHoldMs / kFrameDurationMs;
+constexpr uint32_t kVadTaskStackBytes = 8192;
 
 esp_codec_dev_handle_t g_mic_codec = nullptr;
 TaskHandle_t g_vad_task = nullptr;
@@ -295,7 +296,7 @@ void init_audio() {
     return;
   }
 
-  BaseType_t task_result = xTaskCreate(vad_task, "hexe_vad", 4096, nullptr, 5, &g_vad_task);
+  BaseType_t task_result = xTaskCreate(vad_task, "hexe_vad", kVadTaskStackBytes, nullptr, 5, &g_vad_task);
   if (task_result != pdPASS) {
     ESP_LOGE(kTag, "Failed to create VAD task");
     return;

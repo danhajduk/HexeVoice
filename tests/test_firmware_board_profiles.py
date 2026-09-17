@@ -340,7 +340,7 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "g_status_layout.idle_clock.enabled && status_flag_value(StatusFlag::kIdleReady" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
-    assert 'json_layout_coordinate(root, "y", g_status_layout.y' in source
+    assert 'cJSON_IsObject(icons_config) ? icons_config : root, "y", g_status_layout.y' in source
     assert "if (!layout.floating && status_icon_active(id, state))" in source
     assert "layout.x, g_status_layout.y" in source
     assert "int floating_x = g_status_layout.floating_x;" in source
@@ -352,7 +352,7 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "status_flag_value" in source
     assert "relative_pixels" in source
     assert "status_sprite_slide_offset" in source
-    assert "animation_state.started_ms" in source
+    assert "animation_state->started_ms" in source
     assert "esp_timer_get_time() / 50000" in source
 
 
