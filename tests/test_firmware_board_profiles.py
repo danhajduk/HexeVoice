@@ -604,6 +604,15 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     assert "hexe::state().speaker_output_level = 0;" in tts_source
 
 
+def test_p4_screen_element_animations_drive_continuous_redraw():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "const ScreenLayout *screen = active_screen_layout(state);" in source
+    assert "element.animations[animation_index]" in source
+
+
 def test_yaml_layout_includes_are_relative_and_reject_cycles_and_escape(tmp_path):
     yaml_to_json = load_yaml_to_json_module()
     screens = tmp_path / "screens"

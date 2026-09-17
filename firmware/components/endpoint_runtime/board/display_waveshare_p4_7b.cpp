@@ -1786,6 +1786,17 @@ bool status_animations_active(const hexe::AppState &state) {
   if (!g_status_layout_loaded) {
     return false;
   }
+  const ScreenLayout *screen = active_screen_layout(state);
+  if (screen != nullptr) {
+    for (size_t element_index = 0; element_index < screen->element_count; ++element_index) {
+      const auto &element = screen->elements[element_index];
+      for (size_t animation_index = 0; animation_index < element.animation_count; ++animation_index) {
+        if (status_animation_active(element.animations[animation_index], state)) {
+          return true;
+        }
+      }
+    }
+  }
   for (const auto &layout : g_status_layout.icons) {
     for (size_t index = 0; index < layout.animation_count; ++index) {
       if (status_animation_active(layout.animations[index], state)) {
