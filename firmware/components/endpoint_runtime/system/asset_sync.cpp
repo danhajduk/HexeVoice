@@ -514,7 +514,8 @@ void sync_assets_once() {
     ESP_LOGI(kTag, "Downloading asset media_type=%s filename=%s size=%d", media_type, filename, size->valueint);
     if (download_asset_file(url, final_path, temp_path, size->valueint, sha256)) {
       ++g_downloaded_count;
-      if (std::strcmp(media_type, "picture") == 0 || std::strcmp(media_type, "sprite") == 0) {
+      if (std::strcmp(media_type, "picture") == 0 || std::strcmp(media_type, "sprite") == 0 ||
+          std::strcmp(media_type, "font") == 0) {
         display_reload_needed = true;
       }
     } else {
