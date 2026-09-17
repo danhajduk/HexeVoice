@@ -138,6 +138,37 @@ def timer_frame(draw):
         draw.line((x, 138, x + 6, 138), fill=BLUE, width=2)
 
 
+def timer_list_frame(draw):
+    draw.polygon(
+        ((16, 3), (270, 3), (297, 30), (297, 120), (270, 147), (16, 147), (3, 134), (3, 16)),
+        fill=(5, 22, 45, 105),
+        outline=BLUE,
+        width=2,
+    )
+    draw.line((28, 3, 120, 3), fill=CYAN, width=3)
+    draw.line((180, 3, 258, 3), fill=CYAN, width=3)
+    draw.line((28, 147, 120, 147), fill=CYAN, width=3)
+    draw.line((180, 147, 258, 147), fill=CYAN, width=3)
+    draw.line((3, 28, 3, 62), fill=CYAN, width=3)
+    draw.line((3, 88, 3, 122), fill=CYAN, width=3)
+    draw.line((297, 30, 297, 60), fill=CYAN, width=3)
+    draw.line((297, 90, 297, 120), fill=CYAN, width=3)
+
+    # Three list rows, with gaps at each end so the separators stay decorative.
+    draw.line((24, 51, 276, 51), fill=(85, 184, 255, 135), width=1)
+    draw.line((24, 99, 276, 99), fill=(85, 184, 255, 135), width=1)
+    for y in (51, 99):
+        draw.line((24, y, 36, y), fill=CYAN, width=2)
+        draw.line((264, y, 276, y), fill=CYAN, width=2)
+
+    draw.line((11, 25, 23, 13), fill=MAGENTA, width=4)
+    draw.line((277, 13, 289, 25), fill=MAGENTA, width=4)
+    draw.line((277, 137, 289, 125), fill=MAGENTA, width=4)
+    draw.line((11, 125, 23, 137), fill=MAGENTA, width=4)
+    for x in (132, 142, 152):
+        draw.line((x, 12, x + 6, 12), fill=BLUE, width=2)
+
+
 def mic(draw, color=CYAN, slash=False, active=False):
     draw.rounded_rectangle((14, 5, 26, 25), radius=6, outline=color, width=3)
     draw.arc((9, 13, 31, 31), 0, 180, fill=color, width=3)
@@ -171,6 +202,7 @@ def main():
     save("button_weather", button_weather, (72, 56))
     save("button_config", button_config, (72, 56))
     save("timer_frame", timer_frame, (744, 150))
+    save("timer_list_frame", timer_list_frame, (300, 150))
 
 
 if __name__ == "__main__":
