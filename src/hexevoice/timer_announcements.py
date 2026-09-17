@@ -3,9 +3,10 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import json
 import logging
+import re
 from typing import Any
 
 from hexevoice.config.settings import Settings
@@ -166,6 +167,13 @@ class TimerOwnershipCache:
         remaining_seconds = _optional_int(data.get("remaining_seconds"))
         if remaining_seconds is None and existing is not None:
             remaining_seconds = existing.remaining_seconds
+        if event_type == "timer.create_succeeded" and remaining_seconds is None:
+            remaining_seconds = _timer_duration_seconds(data)
+            if remaining_seconds is not None and due_at is None:
+                occurred_at = _parse_event_datetime(str(payload.get("occurred_at") or "")) or datetime.now(UTC)
+                due_at = (occurred_at + timedelta(seconds=remaining_seconds)).isoformat()
+            if title is None:
+                title = str(data.get("duration_text") or data.get("duration_hhmmss") or "").strip() or None
         alarm_status = _alarm_status_from_event(event_type, data) or (existing.alarm_status if existing else None)
         record = TimerOwnerRecord(
             timer_id=timer_id,
@@ -181,15 +189,56 @@ class TimerOwnershipCache:
             last_event_id=str(payload.get("event_id") or "").strip() or None,
             last_seen_at=datetime.now(UTC).isoformat(),
         )
+        if event_type != "timer.create_succeeded":
+            self._remove_matching_provisional(record)
         self._records[timer_id] = record
         self._trim()
         return [record]
+
+    def _remove_matching_provisional(self, record: TimerOwnerRecord) -> None:
+        due_at = _parse_event_datetime(record.due_at)
+        if due_at is None:
+            return
+        candidates: list[tuple[float, str]] = []
+        for timer_id, candidate in self._records.items():
+            if (
+                timer_id == record.timer_id
+                or candidate.endpoint_id != record.endpoint_id
+                or candidate.last_event_type != "timer.create_succeeded"
+            ):
+                continue
+            candidate_due = _parse_event_datetime(candidate.due_at)
+            if candidate_due is not None:
+                candidates.append((abs((candidate_due - due_at).total_seconds()), timer_id))
+        if candidates:
+            difference, timer_id = min(candidates)
+            if difference <= 30:
+                self._records.pop(timer_id, None)
 
     def _trim(self) -> None:
         if len(self._records) <= self._max_records:
             return
         records = sorted(self._records.values(), key=lambda record: record.last_seen_at, reverse=True)
         self._records = {record.timer_id: record for record in records[: self._max_records]}
+
+
+def _timer_duration_seconds(data: dict[str, Any]) -> int | None:
+    duration_seconds = _optional_int(data.get("duration_seconds"))
+    if duration_seconds is not None and duration_seconds > 0:
+        return duration_seconds
+    hhmmss = str(data.get("duration_hhmmss") or "").strip()
+    match = re.fullmatch(r"(\d+):(\d{2}):(\d{2})", hhmmss)
+    if match:
+        hours, minutes, seconds = (int(part) for part in match.groups())
+        return (hours * 3600) + (minutes * 60) + seconds
+    duration_text = str(data.get("duration_text") or data.get("title") or "").lower()
+    total = 0
+    matched = False
+    for value, unit in re.findall(r"(\d+)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?)", duration_text):
+        matched = True
+        multiplier = 3600 if unit.startswith(("hour", "hr")) else 60 if unit.startswith(("minute", "min")) else 1
+        total += int(value) * multiplier
+    return total if matched and total > 0 else None
 
 
 def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnnouncement | None:

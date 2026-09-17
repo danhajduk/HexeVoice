@@ -184,6 +184,45 @@ def test_timer_ownership_cache_ignores_timer_request_events():
     assert cache.status()["record_count"] == 0
 
 
+def test_timer_ownership_cache_derives_deadline_from_minimal_create_success():
+    cache = TimerOwnershipCache()
+
+    updated = cache.update_from_event(
+        "hexe/events/timer/create_succeeded",
+        {
+            "event_id": "timer-create-minimal",
+            "event_type": "timer.create_succeeded",
+            "occurred_at": "2026-09-17T02:10:40+00:00",
+            "subject": {"family": "timer", "record_id": "esp-box-1-1"},
+            "data": {"endpoint_id": "esp-box-1", "duration_text": "2 minutes"},
+        },
+    )
+
+    assert len(updated) == 1
+    assert updated[0].title == "2 minutes"
+    assert updated[0].remaining_seconds == 120
+    assert updated[0].due_at == "2026-09-17T02:12:40+00:00"
+
+    cache.update_from_event(
+        "hexe/events/timer/status_succeeded",
+        {
+            "event_id": "timer-status-concrete",
+            "event_type": "timer.status_succeeded",
+            "subject": {"family": "timer", "record_id": "timer_esp_box_1_1"},
+            "data": {
+                "endpoint_id": "esp-box-1",
+                "timer_id": "timer_esp_box_1_1",
+                "state": "active",
+                "due_at": "2026-09-17T02:12:40+00:00",
+                "remaining_seconds": 110,
+            },
+        },
+    )
+
+    assert cache.status()["record_count"] == 1
+    assert cache.select_timer("esp-box-1")["timer"]["timer_id"] == "timer_esp_box_1_1"
+
+
 def test_timer_ownership_cache_marks_completed_timer_inactive():
     cache = TimerOwnershipCache()
     cache.update_from_event(
