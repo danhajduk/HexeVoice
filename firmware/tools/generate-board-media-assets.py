@@ -232,6 +232,7 @@ def main() -> int:
     picture_dir = board_dir / "assets" / "picture"
     sprite_dir = board_dir / "assets" / "sprite"
     font_dir = board_dir / "assets" / "font"
+    config_dir = board_dir / "assets" / "config"
 
     pixel_format = args.pixel_format or ("rgb888" if args.board_profile in RGB888_BOARD_PROFILES else "rgb565")
     output_suffix = f".{pixel_format}"
@@ -239,12 +240,15 @@ def main() -> int:
 
     picture_sources = _source_images(board_dir)
     sprite_sources = _source_images(board_dir / "sprites")
-    sprite_metadata_sources = _source_sprite_metadata(board_dir / "sprites")
+    sprite_metadata_sources = _source_sprite_metadata(config_dir)
     yaml_python = _find_yaml_python() if any(
         path.suffix.lower() in {".yaml", ".yml"} for path in sprite_metadata_sources
     ) else None
     if not picture_sources and not sprite_sources and not sprite_metadata_sources:
-        print(f"No source images found in {board_dir} or {board_dir / 'sprites'}")
+        print(
+            f"No source images or configuration found in {board_dir}, "
+            f"{board_dir / 'sprites'}, or {config_dir}"
+        )
 
     for source in picture_sources:
         picture_width, picture_height = (args.width, args.height) if args.width is not None else _image_size(source)

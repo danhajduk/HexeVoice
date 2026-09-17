@@ -1,8 +1,8 @@
 # P4 Status Animations
 
 The Waveshare P4 7B header supports reusable procedural animations configured
-under `firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/sprites/`. The repository
-keeps the editable layout configuration as YAML. Running
+under `firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/config/`. The
+repository keeps the editable layout configuration as YAML. Running
 `firmware/tools/generate-board-media-assets.py waveshare_p4_wifi6_touch_lcd_7b`
 converts it to the JSON files consumed from the SD card. `status_layout.yaml`
 lists the independently editable sections by their generated JSON names:
