@@ -77,6 +77,28 @@ def test_send_screen_posts_expected_api_payload(monkeypatch):
     }
 
 
+def test_recreate_media_files_runs_p4_generator(monkeypatch):
+    module = load_module()
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update({"command": command, **kwargs})
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    module.recreate_media_files()
+
+    assert captured == {
+        "command": [
+            module.sys.executable,
+            str(module.MEDIA_GENERATOR),
+            "waveshare_p4_wifi6_touch_lcd_7b",
+        ],
+        "cwd": module.ROOT,
+        "check": True,
+    }
+
+
 def test_choose_accepts_empty_input_as_default(monkeypatch):
     module = load_module()
     monkeypatch.setattr("builtins.input", lambda _prompt: "")
@@ -145,3 +167,42 @@ def test_interactive_menu_returns_to_screen_selection_after_send(monkeypatch):
     assert module.main() == 130
     assert labels == ["Screen", "Duration", "Screen"]
     assert sent == [("http://node:9004", "p4-7b", "idle", 5, 3.0)]
+
+
+def test_media_action_rebuilds_and_returns_to_screen_menu_without_endpoint(monkeypatch):
+    module = load_module()
+    args = SimpleNamespace(
+        api_base_url="http://offline:9004",
+        endpoint_id=None,
+        screen=None,
+        duration=None,
+        config=Path("unused.yaml"),
+        timeout=3.0,
+        list_screens=False,
+    )
+    labels = []
+    rebuilt = []
+
+    class Parser:
+        def parse_args(self):
+            return args
+
+    def fake_choose(label, _options, **_kwargs):
+        labels.append(label)
+        if len(labels) == 1:
+            return module.MEDIA_ACTION
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(module, "build_parser", lambda: Parser())
+    monkeypatch.setattr(module, "load_screen_ids", lambda _path: ["idle"])
+    monkeypatch.setattr(module, "choose", fake_choose)
+    monkeypatch.setattr(module, "recreate_media_files", lambda: rebuilt.append(True))
+    monkeypatch.setattr(
+        module,
+        "select_endpoint",
+        lambda *_args: pytest.fail("media rebuild should not require an endpoint"),
+    )
+
+    assert module.main() == 130
+    assert labels == ["Screen", "Screen"]
+    assert rebuilt == [True]

@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -18,6 +19,9 @@ DEFAULT_CONFIG = (
     / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/config/screens_layout.yaml"
 )
 VALID_DURATIONS = (5, 10, 20, 30)
+MEDIA_ACTION = "__recreate_media__"
+MEDIA_GENERATOR = ROOT / "firmware/tools/generate-board-media-assets.py"
+BOARD_PROFILE = "waveshare_p4_wifi6_touch_lcd_7b"
 
 
 def load_screen_ids(index_path: Path) -> list[str]:
@@ -146,6 +150,19 @@ def send_screen(
     )
 
 
+def recreate_media_files() -> None:
+    try:
+        subprocess.run(
+            [sys.executable, str(MEDIA_GENERATOR), BOARD_PROFILE],
+            cwd=ROOT,
+            check=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(f"could not start media generator: {exc}") from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"media generator failed with exit code {exc.returncode}") from exc
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Preview a configured UI screen on a HexeVoice endpoint.")
     parser.add_argument(
@@ -172,13 +189,20 @@ def main() -> int:
         if args.screen is not None and args.screen not in screens:
             raise RuntimeError(f"unknown screen {args.screen!r}; choose from: {', '.join(screens)}")
 
-        endpoint_id = args.endpoint_id or select_endpoint(args.api_base_url, args.timeout)
+        endpoint_id = args.endpoint_id
         while True:
             screen_id = args.screen or choose(
                 "Screen",
-                [(item, item) for item in screens],
+                [(item, item) for item in screens] + [(MEDIA_ACTION, "Recreate media files")],
                 columns=3,
             )
+            if screen_id == MEDIA_ACTION:
+                print("\nRecreating P4 media files...")
+                recreate_media_files()
+                print("Media files recreated.")
+                continue
+            if endpoint_id is None:
+                endpoint_id = select_endpoint(args.api_base_url, args.timeout)
             duration = args.duration or int(
                 choose(
                     "Duration",
