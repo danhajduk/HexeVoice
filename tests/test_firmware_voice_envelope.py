@@ -1444,6 +1444,22 @@ def test_firmware_handles_backend_session_state_events():
     assert "hexe::voice::stop_playback" in source
 
 
+def test_firmware_rejects_overlapping_external_voice_session_triggers():
+    source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    wake_guard = source.index('Wake candidate ignored reason=existing_session')
+    wake_start = source.index('if (!ensure_session_started("unknown"))')
+    manual_guard = source.index(
+        'Voice session start unavailable wake_source=%s reason=existing_session'
+    )
+    manual_start = source.index("const bool started = ensure_session_started(wake_source)")
+
+    assert wake_guard < wake_start
+    assert manual_guard < manual_start
+    assert 'if (g_session_started) {\n    return "existing_session";' in source
+    assert "void resume_audio_stream_for_followup()" in source
+
+
 def test_firmware_has_source_agnostic_playback_stop_events():
     source = FIRMWARE_TTS_PLAYER.read_text()
     pe_source = FIRMWARE_TTS_PLAYER_HA_VOICE_PE.read_text()

@@ -4693,6 +4693,10 @@ bool submit_wake_candidate(const WakeCandidateMetrics &candidate) {
         hexe::voice::wake_word_election_capable() ? 1 : 0);
     return false;
   }
+  if (g_session_started) {
+    ESP_LOGW(kTag, "Wake candidate ignored reason=existing_session");
+    return false;
+  }
   if (!voice_transport_ready() || hexe::voice::post_tts_input_cooldown_active()) {
     ESP_LOGW(kTag, "Wake candidate ignored reason=%s", voice_session_start_unavailable_reason());
     return false;
@@ -4802,6 +4806,13 @@ bool start_voice_session(const char *wake_source) {
     ESP_LOGW(kTag, "Voice session start unavailable wake_source=%s reason=%s", wake_source == nullptr ? "unknown" : wake_source, voice_session_start_unavailable_reason());
     return false;
   }
+  if (g_session_started) {
+    ESP_LOGW(
+        kTag,
+        "Voice session start unavailable wake_source=%s reason=existing_session",
+        wake_source == nullptr ? "unknown" : wake_source);
+    return false;
+  }
   if (hexe::voice::tts_playback_active()) {
     ESP_LOGW(kTag, "Voice session start unavailable wake_source=%s reason=%s", wake_source == nullptr ? "unknown" : wake_source, voice_session_start_unavailable_reason());
     return false;
@@ -4853,7 +4864,7 @@ const char *voice_session_start_unavailable_reason() {
   if (!voice_control_transport_ready()) {
     return "transport_not_ready";
   }
-  if (g_session_started && !g_audio_stream_finished) {
+  if (g_session_started) {
     return "existing_session";
   }
   return "backend_rejected";
