@@ -97,6 +97,45 @@ def button_config(draw):
     draw.ellipse((42, 16, 50, 24), fill=CYAN)
 
 
+def button_mute(draw):
+    button_frame(draw)
+    draw.polygon((20, 23, 27, 23, 36, 16, 36, 40, 27, 33, 20, 33), outline=CYAN)
+    draw.line((42, 20, 53, 36), fill=MAGENTA, width=4)
+    draw.line((53, 20, 42, 36), fill=MAGENTA, width=4)
+
+
+def button_dnd(draw):
+    button_frame(draw)
+    draw.ellipse((23, 15, 49, 41), outline=BLUE, width=3)
+    draw.line((27, 37, 45, 19), fill=MAGENTA, width=4)
+    draw.line((27, 19, 45, 37), fill=CYAN, width=2)
+
+
+def button_update(draw):
+    button_frame(draw)
+    draw.line((36, 13, 36, 34), fill=CYAN, width=4)
+    draw.polygon((28, 28, 36, 38, 44, 28), fill=CYAN)
+    draw.line((23, 42, 49, 42), fill=BLUE, width=3)
+    draw.line((23, 42, 18, 37), fill=MAGENTA, width=2)
+    draw.line((49, 42, 54, 37), fill=MAGENTA, width=2)
+
+
+def volume_bar(draw):
+    draw.rounded_rectangle((3, 3, 68, 136), radius=8, fill=(5, 22, 45, 105), outline=BLUE, width=2)
+    draw.line((12, 3, 60, 3), fill=CYAN, width=2)
+    draw.line((12, 136, 60, 136), fill=CYAN, width=2)
+
+    # Speaker glyph above an empty track; live volume can be drawn over the segments later.
+    draw.polygon((17, 20, 23, 20, 31, 14, 31, 34, 23, 28, 17, 28), outline=CYAN)
+    draw.arc((27, 16, 43, 32), 300, 60, fill=BLUE, width=2)
+    draw.arc((29, 12, 49, 36), 300, 60, fill=CYAN, width=2)
+    draw.rounded_rectangle((19, 48, 53, 122), radius=5, outline=BLUE, width=2)
+    for y in (57, 69, 81, 93, 105, 117):
+        draw.line((25, y, 47, y), fill=(85, 184, 255, 170), width=2)
+    draw.line((19, 48, 28, 48), fill=MAGENTA, width=3)
+    draw.line((44, 122, 53, 122), fill=CYAN, width=3)
+
+
 def timer_frame(draw):
     # Angular two-bay frame: primary timer on the left, upcoming timers on the right.
     draw.polygon(
@@ -201,6 +240,10 @@ def main():
     save("button_timer", button_timer, (72, 56))
     save("button_weather", button_weather, (72, 56))
     save("button_config", button_config, (72, 56))
+    save("button_mute", button_mute, (72, 56))
+    save("button_dnd", button_dnd, (72, 56))
+    save("button_update", button_update, (72, 56))
+    save("volume_bar", volume_bar, (72, 140))
     save("timer_frame", timer_frame, (744, 150))
     save("timer_list_frame", timer_list_frame, (300, 150))
 

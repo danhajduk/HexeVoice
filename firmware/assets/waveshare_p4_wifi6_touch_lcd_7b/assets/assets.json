@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.31",
-  "updated_at": "2026-09-17T03:42:09.892879+00:00",
+  "asset_library_version": "2026.09.17.33",
+  "updated_at": "2026-09-17T03:45:07.757869+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -184,6 +184,28 @@
       }
     },
     {
+      "asset_id": "button_dnd",
+      "media_type": "sprite",
+      "filename": "button_dnd.alpha8",
+      "source_filename": "button_dnd.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 4032,
+        "sha256": "d8ed76804723a1ac8222911d2b8d9d627b8b20906cd5d535eac4f8b9abc155f6"
+      }
+    },
+    {
+      "asset_id": "button_mute",
+      "media_type": "sprite",
+      "filename": "button_mute.alpha8",
+      "source_filename": "button_mute.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 4032,
+        "sha256": "9def5b7a1fa25bc9e32f04a239cbf0a3f25422ab99a0c76e3b52a14a9906b8af"
+      }
+    },
+    {
       "asset_id": "button_timer",
       "media_type": "sprite",
       "filename": "button_timer.alpha8",
@@ -192,6 +214,17 @@
         "alpha_format": "alpha8",
         "size_bytes": 4032,
         "sha256": "194876a8af35ace0dba85758cfdf162e5c0b3bd677fed199d68ffc75cea5e9da"
+      }
+    },
+    {
+      "asset_id": "button_update",
+      "media_type": "sprite",
+      "filename": "button_update.alpha8",
+      "source_filename": "button_update.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 4032,
+        "sha256": "cbc93371dd2fc47e4b11015763ccd1bc15a21aaf8a5bdd535aed6826aadffa5b"
       }
     },
     {
@@ -469,6 +502,34 @@
       }
     },
     {
+      "asset_id": "sprite_button_dnd",
+      "media_type": "sprite",
+      "filename": "button_dnd.rgb888",
+      "source_filename": "button_dnd.rgb888",
+      "metadata": {
+        "width": 72,
+        "height": 56,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 12096,
+        "sha256": "f35bcb61fdfe6af717803bd1ec7b1aab54b2f0a7f1dedbe7580fb9f4226aa744"
+      }
+    },
+    {
+      "asset_id": "sprite_button_mute",
+      "media_type": "sprite",
+      "filename": "button_mute.rgb888",
+      "source_filename": "button_mute.rgb888",
+      "metadata": {
+        "width": 72,
+        "height": 56,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 12096,
+        "sha256": "5d71d45ca40acb1cacae7dea70eeb3efee30da17e6c7fcdeeb349c688208888b"
+      }
+    },
+    {
       "asset_id": "sprite_button_timer",
       "media_type": "sprite",
       "filename": "button_timer.rgb888",
@@ -480,6 +541,20 @@
         "channel_order": "rgb",
         "size_bytes": 12096,
         "sha256": "bb456a69e13531f19ad0309a7cd5053b3c4a3250a09aa505c3c20674154e0a25"
+      }
+    },
+    {
+      "asset_id": "sprite_button_update",
+      "media_type": "sprite",
+      "filename": "button_update.rgb888",
+      "source_filename": "button_update.rgb888",
+      "metadata": {
+        "width": 72,
+        "height": 56,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 12096,
+        "sha256": "c651c2f5f7bdd31847078a1c050e04b21485f769eb4690c15b2e6c9e5b36cde2"
       }
     },
     {
@@ -721,6 +796,20 @@
       }
     },
     {
+      "asset_id": "sprite_volume_bar",
+      "media_type": "sprite",
+      "filename": "volume_bar.rgb888",
+      "source_filename": "volume_bar.rgb888",
+      "metadata": {
+        "width": 72,
+        "height": 140,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 30240,
+        "sha256": "0c8ed7906561b78647a51dd479d3d386cda491181e6fd461d7dd6a5b230f5ab7"
+      }
+    },
+    {
       "asset_id": "sprite_warning",
       "media_type": "sprite",
       "filename": "warning.rgb888",
@@ -826,6 +915,17 @@
         "alpha_format": "alpha8",
         "size_bytes": 1600,
         "sha256": "af4272fe1b846d08dc1786c8431bdbfed6c6fe0521b64be633f81c1005988a40"
+      }
+    },
+    {
+      "asset_id": "volume_bar",
+      "media_type": "sprite",
+      "filename": "volume_bar.alpha8",
+      "source_filename": "volume_bar.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 10080,
+        "sha256": "069959a93c292f8f96654727eae934d03ae975a83f53ca853c68caba35f77c7f"
       }
     },
     {
