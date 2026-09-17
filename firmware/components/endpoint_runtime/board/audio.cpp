@@ -146,6 +146,7 @@ void vad_task(void *arg) {
       app_state.vad_enabled = false;
       app_state.vad_speaking = false;
       app_state.vad_level = 0;
+      app_state.mic_input_level = 0;
       app_state.audio_streaming = false;
       g_vad_turn_active = false;
       silent_frames = kVadSilenceHoldFrames;
@@ -156,6 +157,7 @@ void vad_task(void *arg) {
     }
 
     if (g_mic_pause_requested) {
+      hexe::state().mic_input_level = 0;
       vTaskDelay(pdMS_TO_TICKS(20));
       continue;
     }
@@ -166,6 +168,7 @@ void vad_task(void *arg) {
     }
 
     if (g_mic_paused_for_playback) {
+      hexe::state().mic_input_level = 0;
       if (micro_vad_chunk_active) {
         ++micro_vad_chunk_index;
       }
@@ -179,12 +182,14 @@ void vad_task(void *arg) {
     int read_result = esp_codec_dev_read(g_mic_codec, samples, static_cast<int>(kFrameBytes));
     xSemaphoreGive(g_mic_mutex);
     if (read_result != 0) {
+      hexe::state().mic_input_level = 0;
       ESP_LOGW(kTag, "Microphone read failed: %d", read_result);
       vTaskDelay(pdMS_TO_TICKS(100));
       continue;
     }
 
     const uint32_t level = estimate_level(samples, kFrameSamples);
+    hexe::state().mic_input_level = level;
     const bool was_speaking = hexe::state().vad_speaking;
     const uint32_t start_threshold = micro_vad_start_threshold();
     const uint32_t threshold = was_speaking ? micro_vad_continue_threshold(start_threshold) : start_threshold;

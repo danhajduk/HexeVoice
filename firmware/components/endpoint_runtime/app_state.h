@@ -83,6 +83,8 @@ struct AppState {
   PlaybackLifecycleState tts_playback_state{PlaybackLifecycleState::kIdle};
   int wifi_rssi{-100};
   int vad_level{0};
+  uint32_t mic_input_level{0};
+  uint32_t speaker_output_level{0};
   int loading_frame{0};
   int output_volume_percent{70};
   int micro_vad_pause_ms{190};

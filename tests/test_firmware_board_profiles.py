@@ -539,6 +539,24 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
             assert -1 <= animation["offset"]["x"] <= 1
             assert -1 <= animation["offset"]["y"] <= 1
 
+    presets = yaml_to_json.load_yaml_with_includes(directory / "animation_presets.yaml")["presets"]
+    assert presets["mic_input_pulse"]["audio"]["source"] == "mic_input"
+    assert presets["speaker_output_ring"]["audio"]["source"] == "speaker_output"
+    assert "AudioAnimationSource::kMicInput" in source
+    assert "AudioAnimationSource::kSpeakerOutput" in source
+    assert "state.mic_input_level" in source
+    assert "state.speaker_output_level" in source
+
+    audio_source = (REPO_ROOT / "firmware/components/endpoint_runtime/board/audio.cpp").read_text(
+        encoding="utf-8"
+    )
+    tts_source = (REPO_ROOT / "firmware/components/endpoint_runtime/voice/tts_player.cpp").read_text(
+        encoding="utf-8"
+    )
+    assert "hexe::state().mic_input_level = level;" in audio_source
+    assert "hexe::state().speaker_output_level = raw_level * current_output_volume() / 100;" in tts_source
+    assert "hexe::state().speaker_output_level = 0;" in tts_source
+
 
 def test_yaml_layout_includes_are_relative_and_reject_cycles_and_escape(tmp_path):
     yaml_to_json = load_yaml_to_json_module()

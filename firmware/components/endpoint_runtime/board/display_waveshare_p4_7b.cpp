@@ -112,6 +112,12 @@ enum class StatusAnimationType : uint8_t {
   kInvalid,
 };
 
+enum class AudioAnimationSource : uint8_t {
+  kNone,
+  kMicInput,
+  kSpeakerOutput,
+};
+
 enum class SidebarButtonId : uint8_t {
   kTimer,
   kWeather,
@@ -169,6 +175,9 @@ struct StatusAnimation {
   int count = 3;
   int min_opacity = 128;
   int max_opacity = 255;
+  AudioAnimationSource audio_source = AudioAnimationSource::kNone;
+  uint32_t audio_min_level = 200;
+  uint32_t audio_max_level = 6000;
 };
 
 struct SlideAnimationState {
@@ -427,7 +436,8 @@ void draw_status_animation(
     const StatusSprite &sprite,
     int sprite_x,
     int sprite_y,
-    int64_t now_ms);
+    int64_t now_ms,
+    const hexe::AppState &state);
 
 bool on_color_done(esp_lcd_panel_handle_t panel, esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx) {
   (void)panel;
@@ -961,6 +971,22 @@ StatusAnimation parse_status_animation(cJSON *item) {
   animation.count = json_integer(item, "count", animation.count, 1, 8);
   animation.min_opacity = json_integer(item, "min_opacity", animation.min_opacity, 0, 255);
   animation.max_opacity = json_integer(item, "max_opacity", animation.max_opacity, 0, 255);
+  cJSON *audio = cJSON_IsObject(item) ? cJSON_GetObjectItem(item, "audio") : nullptr;
+  cJSON *audio_source = cJSON_IsObject(audio) ? cJSON_GetObjectItem(audio, "source") : nullptr;
+  if (cJSON_IsString(audio_source) && audio_source->valuestring != nullptr) {
+    if (std::strcmp(audio_source->valuestring, "mic_input") == 0) {
+      animation.audio_source = AudioAnimationSource::kMicInput;
+    } else if (std::strcmp(audio_source->valuestring, "speaker_output") == 0) {
+      animation.audio_source = AudioAnimationSource::kSpeakerOutput;
+    }
+  }
+  animation.audio_min_level = static_cast<uint32_t>(
+      json_integer(audio, "min_level", static_cast<int>(animation.audio_min_level), 0, 32767));
+  animation.audio_max_level = static_cast<uint32_t>(
+      json_integer(audio, "max_level", static_cast<int>(animation.audio_max_level), 1, 32768));
+  if (animation.audio_max_level <= animation.audio_min_level) {
+    animation.audio_source = AudioAnimationSource::kNone;
+  }
   if (animation.min_opacity > animation.max_opacity) {
     std::swap(animation.min_opacity, animation.max_opacity);
   }
@@ -1685,6 +1711,28 @@ int animation_triangle_per_mille(const StatusAnimation &animation, int64_t now_m
   return phase <= 1000 ? phase : 2000 - phase;
 }
 
+int animation_audio_per_mille(const StatusAnimation &animation, const hexe::AppState &state) {
+  if (animation.audio_source == AudioAnimationSource::kNone) {
+    return -1;
+  }
+  const uint32_t level = animation.audio_source == AudioAnimationSource::kMicInput
+      ? state.mic_input_level
+      : state.speaker_output_level;
+  if (level <= animation.audio_min_level) return 0;
+  if (level >= animation.audio_max_level) return 1000;
+  return static_cast<int>(
+      (level - animation.audio_min_level) * 1000 /
+      (animation.audio_max_level - animation.audio_min_level));
+}
+
+int animation_intensity_per_mille(
+    const StatusAnimation &animation,
+    const hexe::AppState &state,
+    int64_t now_ms) {
+  const int audio = animation_audio_per_mille(animation, state);
+  return audio >= 0 ? audio : animation_triangle_per_mille(animation, now_ms);
+}
+
 int relative_pixels(int per_mille, int size) {
   return (per_mille * size + 500) / 1000;
 }
@@ -1840,7 +1888,7 @@ uint8_t animated_element_transform(
           offset_x,
           offset_y);
     } else if (animation.type == StatusAnimationType::kPulse && status_animation_active(animation, state)) {
-      const int phase = animation_triangle_per_mille(animation, now_ms);
+      const int phase = animation_intensity_per_mille(animation, state, now_ms);
       const int animated =
           animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
       opacity = std::min(opacity, animated);
@@ -1901,7 +1949,7 @@ void draw_activity_sprite(
           &offset_x,
           &offset_y);
     } else if (animation.type == StatusAnimationType::kPulse && status_animation_active(animation, state)) {
-      const int phase = animation_triangle_per_mille(animation, now_ms);
+      const int phase = animation_intensity_per_mille(animation, state, now_ms);
       const int animated =
           animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
       opacity = std::min(opacity, animated);
@@ -1914,7 +1962,7 @@ void draw_activity_sprite(
     const auto &animation = animations[index];
     if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
         status_animation_active(animation, state)) {
-      draw_status_animation(animation, *sprite, x, y, now_ms);
+      draw_status_animation(animation, *sprite, x, y, now_ms, state);
     }
   }
 }
@@ -2134,7 +2182,7 @@ uint8_t status_sprite_opacity(const StatusIconLayout &layout, const hexe::AppSta
     if (animation.type != StatusAnimationType::kPulse || !status_animation_active(animation, state)) {
       continue;
     }
-    const int phase = animation_triangle_per_mille(animation, now_ms);
+    const int phase = animation_intensity_per_mille(animation, state, now_ms);
     const int animated = animation.min_opacity + ((animation.max_opacity - animation.min_opacity) * phase / 1000);
     opacity = std::min(opacity, animated);
   }
@@ -2146,17 +2194,19 @@ void draw_status_animation(
     const StatusSprite &sprite,
     int sprite_x,
     int sprite_y,
-    int64_t now_ms) {
+    int64_t now_ms,
+    const hexe::AppState &state) {
   const int size = std::min(sprite.width, sprite.height);
   const int center_x = sprite_x + relative_pixels(animation.x_per_mille, sprite.width);
   const int center_y = sprite_y + relative_pixels(animation.y_per_mille, sprite.height);
   const int radius = std::max(1, relative_pixels(animation.radius_per_mille, size));
-  const int phase = animation_phase_per_mille(animation, now_ms);
+  const int audio = animation_audio_per_mille(animation, state);
+  const int phase = audio >= 0 ? audio : animation_phase_per_mille(animation, now_ms);
 
   switch (animation.type) {
     case StatusAnimationType::kBlinkDot:
-      if (phase < 500) {
-        draw_disc(center_x, center_y, radius, animation.color);
+      if ((audio >= 0 && phase >= 100) || (audio < 0 && phase < 500)) {
+        draw_disc(center_x, center_y, radius, scale_color(animation.color, audio >= 0 ? 300 + phase * 7 / 10 : 1000));
       }
       break;
     case StatusAnimationType::kRunningDots: {
@@ -2177,7 +2227,8 @@ void draw_status_animation(
     case StatusAnimationType::kPulseRing: {
       const int animated_radius = radius + (radius * phase / 1000);
       const int thickness = std::max(1, radius / 3);
-      draw_ring(center_x, center_y, animated_radius, thickness, scale_color(animation.color, 1000 - (phase * 700 / 1000)));
+      const int intensity = audio >= 0 ? 300 + phase * 7 / 10 : 1000 - (phase * 700 / 1000);
+      draw_ring(center_x, center_y, animated_radius, thickness, scale_color(animation.color, intensity));
       break;
     }
     case StatusAnimationType::kSlideIn:
@@ -2208,7 +2259,7 @@ void draw_status_icon(
     const auto &animation = layout.animations[index];
     if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
         status_animation_active(animation, state)) {
-      draw_status_animation(animation, *sprite, x, y, now_ms);
+      draw_status_animation(animation, *sprite, x, y, now_ms, state);
     }
   }
 }

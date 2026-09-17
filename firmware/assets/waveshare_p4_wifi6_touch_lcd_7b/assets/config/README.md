@@ -169,6 +169,24 @@ Available animation types:
 Offsets range from `-1.0` to `1.0`. Position, radius, and spacing are normalized
 to the owning sprite. Periods range from 100 to 60000 milliseconds.
 
+Any animation can use a live audio level instead of its time-based phase:
+
+```yaml
+animations:
+  - preset: mic_input_pulse
+    when: {flag: listening}
+    audio:
+      source: mic_input # mic_input or speaker_output
+      min_level: 200
+      max_level: 6000
+```
+
+The level is normalized between `min_level` and `max_level`. A `pulse` maps it
+to opacity, `pulse_ring` maps it to radius and brightness, `blink_dot` uses it
+as an activity threshold and brightness, and `running_dots` maps it to the
+active dot. Omit `audio` to retain the normal period-based animation. Audio
+levels use the average absolute 16-bit PCM amplitude (0-32768).
+
 ## Conditions And Flags
 
 Built-in flags are:

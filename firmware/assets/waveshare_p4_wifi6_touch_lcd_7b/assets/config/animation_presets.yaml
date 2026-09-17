@@ -81,3 +81,14 @@ presets:
     radius: 0.055
     spacing: 0.2
     period_ms: 900
+  mic_input_pulse:
+    type: pulse
+    min_opacity: 90
+    max_opacity: 255
+    audio: {source: mic_input, min_level: 200, max_level: 6000}
+  speaker_output_ring:
+    type: pulse_ring
+    color: '#35F4DB'
+    position: {x: 0.5, y: 0.5}
+    radius: 0.3
+    audio: {source: speaker_output, min_level: 200, max_level: 9000}

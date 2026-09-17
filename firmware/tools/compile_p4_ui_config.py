@@ -53,6 +53,21 @@ def expand_animations(value: Any, presets: dict[str, Any], label: str) -> list[d
             raise ValueError(f"{label}[{index}] requires a preset")
         preset = require_mapping(presets.get(preset_name), f"animation preset {preset_name!r}")
         animation = {**preset, **without(overrides, "preset")}
+        audio = animation.get("audio")
+        if audio is not None:
+            audio = require_mapping(audio, f"{label}[{index}].audio")
+            if audio.get("source") not in {"mic_input", "speaker_output"}:
+                raise ValueError(
+                    f"{label}[{index}].audio.source must be mic_input or speaker_output"
+                )
+            min_level = audio.get("min_level", 200)
+            max_level = audio.get("max_level", 6000)
+            if not isinstance(min_level, int) or not isinstance(max_level, int):
+                raise ValueError(f"{label}[{index}] audio levels must be integers")
+            if min_level < 0 or max_level > 32768 or max_level <= min_level:
+                raise ValueError(
+                    f"{label}[{index}] audio levels require 0 <= min_level < max_level <= 32768"
+                )
         expanded.append(animation)
     return expanded
 

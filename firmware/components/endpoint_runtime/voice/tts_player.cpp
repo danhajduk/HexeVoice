@@ -284,6 +284,17 @@ bool play_wav(const uint8_t *audio, size_t audio_size, const PlaybackRequest &re
   while (offset < wav.pcm_size && !g_stop_requested) {
     const size_t remaining = wav.pcm_size - offset;
     const size_t write_size = std::min(remaining, kPlaybackWriteBytes);
+    uint64_t level_total = 0;
+    const size_t sample_count = write_size / sizeof(int16_t);
+    for (size_t sample = 0; sample < sample_count; ++sample) {
+      const size_t byte = offset + (sample * sizeof(int16_t));
+      const int16_t value = static_cast<int16_t>(
+          static_cast<uint16_t>(wav.pcm[byte]) |
+          (static_cast<uint16_t>(wav.pcm[byte + 1]) << 8));
+      level_total += static_cast<uint32_t>(value < 0 ? -static_cast<int32_t>(value) : value);
+    }
+    const uint32_t raw_level = sample_count == 0 ? 0 : static_cast<uint32_t>(level_total / sample_count);
+    hexe::state().speaker_output_level = raw_level * current_output_volume() / 100;
     result = esp_codec_dev_write(g_speaker_codec, const_cast<uint8_t *>(wav.pcm + offset), static_cast<int>(write_size));
     if (result != 0) {
       ESP_LOGW(kTag, "Speaker write failed: %d", result);
@@ -295,6 +306,7 @@ bool play_wav(const uint8_t *audio, size_t audio_size, const PlaybackRequest &re
       first_frame_reported = true;
     }
   }
+  hexe::state().speaker_output_level = 0;
   esp_codec_dev_close(g_speaker_codec);
   return result == 0 && !g_stop_requested;
 }
