@@ -1829,6 +1829,11 @@ bool status_animations_active(const hexe::AppState &state) {
   if (!g_status_layout_loaded) {
     return false;
   }
+  // Render the playback screen on entry, but keep it static while audio and
+  // ESP-Hosted network traffic are active.
+  if (state.tts_playback_active) {
+    return false;
+  }
   const ScreenLayout *screen = active_screen_layout(state);
   if (screen != nullptr) {
     for (size_t element_index = 0; element_index < screen->element_count; ++element_index) {
@@ -3089,7 +3094,8 @@ void append_element_dirty_region(DirtyRegion *regions, size_t *count, const Scre
       append_dirty_region(regions, count, 0, 0, kWidth, 78);
       break;
     case ScreenElementType::kBigClock:
-      append_dirty_region(regions, count, element.x - 270, element.y - 30, 540, 190);
+      append_dirty_region(regions, count, element.x - 48, element.y - 48,
+                          kIdleClockFrameWidth + 96, kIdleClockFrameHeight + 96);
       break;
     case ScreenElementType::kBigDate:
       append_dirty_region(regions, count, 100, element.y - 16, kWidth - 200, 88);

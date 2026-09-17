@@ -619,6 +619,17 @@ def test_p4_screen_element_animations_drive_continuous_redraw():
     assert "frame % 64" not in source
 
 
+def test_p4_playback_screen_is_static_while_audio_streams():
+    source = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    animation_check = source[source.index("bool status_animations_active"):]
+    animation_check = animation_check[: animation_check.index("const ScreenLayout *screen")]
+    assert "state.tts_playback_active" in animation_check
+    assert "return false;" in animation_check
+
+
 def test_p4_draws_selected_screen_debug_label():
     source = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
@@ -658,6 +669,7 @@ def test_p4_uses_dirty_regions_for_dynamic_ui_updates():
     assert "const ScreenLayout *previous_screen" in source
     assert "if (state_changed)" in source
     assert "append_element_dirty_region(regions, &count, previous_screen->elements[index])" in source
+    assert "kIdleClockFrameWidth + 96, kIdleClockFrameHeight + 96" in source
     assert "const bool full_redraw = g_force_redraw || g_last_screen_id[0] == '\\0';" in source
 
 
