@@ -282,6 +282,9 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_SPEED_200M=y
 CONFIG_SPIRAM_XIP_FROM_PSRAM=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
+# Keep the FATFS sector cache DMA-aligned in internal RAM. An external cache
+# forces SDMMC to allocate a temporary internal bounce buffer for every read.
+# CONFIG_FATFS_ALLOC_PREFER_EXTRAM is not set
 CONFIG_CACHE_L2_CACHE_256KB=y
 CONFIG_CACHE_L2_CACHE_LINE_128B=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
