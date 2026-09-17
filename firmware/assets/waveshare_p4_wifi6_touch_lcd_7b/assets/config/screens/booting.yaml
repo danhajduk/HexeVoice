@@ -3,5 +3,7 @@ conditions:
   match: all
   items:
     - flag: booting
-elements:
-  - type: clock
+sidebars: false
+buttons: {preset: none}
+items:
+  - item: header_clock

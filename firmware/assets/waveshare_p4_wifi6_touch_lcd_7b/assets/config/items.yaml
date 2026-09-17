@@ -1,0 +1,190 @@
+schema_version: 1
+items:
+  - id: header_clock
+    type: header_clock
+    data: time
+    font: manrope/clock_42.hxf
+    font_size: 55
+    color: '#35F4DB'
+    x_offset: 0
+    y_offset: 15
+  - id: firmware_version
+    type: firmware_version
+    data: firmware_version
+    font: manrope/version_24.hxf
+    font_size: 20
+    color: '#55B8FF'
+    x: 480
+    y: 550
+  - id: sidebar_left
+    type: sidebar
+    side: left
+    sprite: sidebar
+    animations:
+      - sidebar_from_left
+  - id: sidebar_right
+    type: sidebar
+    side: right
+    sprite: sidebar_right
+    animations:
+      - sidebar_from_right
+  - id: sidebar_button_stack
+    type: button_stack
+    x: 8
+    y: 116
+    gap: 20
+  - {id: button_timer, type: button, sprite: button_timer}
+  - {id: button_weather, type: button, sprite: button_weather}
+  - {id: button_config, type: button, sprite: button_config}
+  - id: status_icons
+    type: status_icon_group
+    y: 10
+    floating: {x: 30, gap: 0}
+  - id: wifi
+    type: status_icon
+    sprite: wifi
+    placement: static
+    x: 900
+    animations:
+      - preset: wifi_dot
+        when: {flag: wifi_connecting, equals: true}
+  - id: node_connected
+    type: status_icon
+    sprite: node_connected
+    placement: static
+    x: 960
+    animations:
+      - preset: heartbeat_pulse
+        when: {flag: heartbeat, equals: true}
+      - preset: blue_ring
+        when: {flag: backend_connecting, equals: true}
+  - id: asset_downloading
+    type: status_icon
+    sprite: asset_downloading
+    placement: floating
+    animations:
+      - preset: download_dots
+        when: {flag: asset_sync_active, equals: true}
+  - {id: mic_enabled, type: status_icon, sprite: mic_enabled, placement: floating}
+  - {id: mic_disabled, type: status_icon, sprite: mic_disabled, placement: floating}
+  - {id: mic_active, type: status_icon, sprite: mic_active, placement: floating}
+  - {id: dnd, type: status_icon, sprite: dnd, placement: floating}
+  - {id: mute, type: status_icon, sprite: mute, placement: floating}
+  - {id: timer, type: status_icon, sprite: timer, placement: floating}
+  - {id: alarm, type: status_icon, sprite: alarm, placement: floating}
+  - {id: playback, type: status_icon, sprite: playback, placement: floating}
+  - {id: update_available, type: status_icon, sprite: update_available, placement: floating}
+  - {id: warning, type: status_icon, sprite: warning, placement: floating}
+  - {id: privacy, type: status_icon, sprite: privacy, placement: floating}
+  - {id: cloud_offline, type: status_icon, sprite: cloud_offline, placement: floating}
+  - id: activity_listening
+    type: activity_sprite
+    sprite: activity_listening
+    data: listening
+    x: 422
+    y: 205
+  - id: activity_thinking
+    type: activity_sprite
+    sprite: activity_thinking
+    data: thinking
+    x: 422
+    y: 205
+  - id: activity_replay
+    type: activity_sprite
+    sprite: activity_replay
+    data: replay
+    x: 422
+    y: 205
+  - id: activity_timer
+    type: activity_sprite
+    sprite: activity_timer
+    data: timer
+    x: 90
+    y: 105
+  - id: big_clock
+    type: big_clock
+    sprite: idle_clock_frame
+    data: time
+    frame:
+      x: 262
+      y: 205
+      animations:
+        - preset: clock_slide_up
+          when: {flag: idle_ready, equals: true}
+    hours:
+      font: manrope/clock_42.hxf
+      font_size: 118
+      x: 415
+      y: 225
+      color: '#D8FFFA'
+      animations:
+        - preset: activity_slide_right
+          when: {flag: idle_ready, equals: true}
+          offset: {x: -0.2, y: 0}
+          period_ms: 550
+    separator:
+      font: manrope/clock_42.hxf
+      font_size: 98
+      x: 512
+      y: 232
+      color: '#35F4DB'
+      animations:
+        - preset: separator_pulse
+          when: {flag: idle_ready, equals: true}
+    minutes:
+      font: manrope/clock_42.hxf
+      font_size: 118
+      x: 609
+      y: 225
+      color: '#D8FFFA'
+      animations:
+        - preset: activity_slide_right
+          when: {flag: idle_ready, equals: true}
+          offset: {x: 0.2, y: 0}
+          period_ms: 550
+  - id: big_date
+    type: big_date
+    data: date_long
+    format: '%A, %B %d %Y.'
+    font: manrope/date_32.hxf
+    font_size: 40
+    x: 512
+    y: 15
+    color: '#55B8FF'
+    animations:
+      - preset: text_slide_up
+        when: {flag: idle_ready, equals: true}
+  - id: timer_primary
+    type: timer_primary
+    data: timer1
+    countdown:
+      font: manrope/clock_42.hxf
+      font_size: 64
+      x: 250
+      y: 430
+      color: '#D8FFFA'
+    label:
+      font: manrope/date_32.hxf
+      font_size: 24
+      x: 250
+      y: 500
+      color: '#35F4DB'
+  - id: timer_upcoming
+    type: timer_upcoming
+    data: timers_next
+    font: manrope/date_32.hxf
+    font_size: 25
+    x: 760
+    y: 430
+    gap: 38
+    count: 3
+    color: '#55B8FF'
+  - id: ota_progress
+    type: progress_bar
+    data: ota_progress
+    x: 312
+    y: 520
+    width: 400
+    height: 18
+    color: '#35F4DB'
+    track_color: '#102E4A'

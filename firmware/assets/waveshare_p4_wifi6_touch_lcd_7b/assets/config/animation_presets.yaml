@@ -1,0 +1,83 @@
+schema_version: 1
+presets:
+  sidebar_from_left:
+    type: slide_in
+    when: {flag: ui_ready, equals: true}
+    offset: {x: -1, y: 0}
+    period_ms: 1000
+  sidebar_from_right:
+    type: slide_in
+    when: {flag: ui_ready, equals: true}
+    offset: {x: 1, y: 0}
+    period_ms: 1000
+  clock_slide_up:
+    type: slide_in
+    offset: {x: 0, y: 0.15}
+    period_ms: 500
+  text_slide_up:
+    type: slide_in
+    offset: {x: 0, y: 0.4}
+    period_ms: 650
+  activity_slide_up:
+    type: slide_in
+    offset: {x: 0, y: 0.2}
+    period_ms: 350
+  activity_slide_right:
+    type: slide_in
+    offset: {x: 0.15, y: 0}
+    period_ms: 350
+  soft_pulse:
+    type: pulse
+    period_ms: 1400
+    min_opacity: 165
+    max_opacity: 255
+  separator_pulse:
+    type: pulse
+    period_ms: 2000
+    min_opacity: 90
+    max_opacity: 255
+  cyan_ring:
+    type: pulse_ring
+    color: '#35F4DB'
+    position: {x: 0.5, y: 0.5}
+    radius: 0.35
+    period_ms: 1100
+  blue_ring:
+    type: pulse_ring
+    color: '#55B8FF'
+    position: {x: 0.5, y: 0.5}
+    radius: 0.28
+    period_ms: 1200
+  thinking_dots:
+    type: running_dots
+    color: '#55B8FF'
+    position: {x: 0.5, y: 0.82}
+    count: 3
+    radius: 0.025
+    spacing: 0.1
+    period_ms: 750
+  timer_dot:
+    type: blink_dot
+    color: '#FF4AAD'
+    position: {x: 0.76, y: 0.27}
+    radius: 0.025
+    period_ms: 1000
+  wifi_dot:
+    type: blink_dot
+    color: '#35F4DB'
+    position: {x: 0.5, y: 0.8}
+    radius: 0.08
+    period_ms: 800
+  heartbeat_pulse:
+    type: pulse
+    period_ms: 1800
+    min_opacity: 150
+    max_opacity: 255
+  download_dots:
+    type: running_dots
+    color: '#35F4DB'
+    position: {x: 0.5, y: 0.1}
+    count: 3
+    radius: 0.055
+    spacing: 0.2
+    period_ms: 900

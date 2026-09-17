@@ -344,12 +344,13 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert 'StatusSprite g_sidebar_right_sprite{"sidebar_right", kSidebarWidth, kSidebarHeight};' in source
     assert "constexpr int kSidebarButtonWidth = 72;" in source
     assert "constexpr int kSidebarButtonHeight = 56;" in source
-    assert "draw_sidebars(state, g_frame_time_ms);" in source
+    assert "draw_sidebars(state, g_frame_time_ms, screen);" in source
     assert "StatusFlag::kUiReady" in source
     assert "StatusFlag::kIdleReady" in source
     assert "state.wifi_connected && state.backend_connected && !state.ota_active" in source
-    assert "draw_screen_layout(state, g_frame_time_ms);" in source
-    assert "draw_idle_clock(state, now_ms);" in source
+    assert "draw_screen_layout(state, g_frame_time_ms, screen);" in source
+    assert "draw_big_clock(state, now_ms, &element);" in source
+    assert "draw_big_date(state, now_ms, &element);" in source
     assert "draw_activity_sprite(state, now_ms" in source
     for sprite in (
         "activity_listening",
@@ -361,7 +362,8 @@ def test_p4_display_blends_header_status_sprites_from_sd():
         "button_config",
     ):
         assert f'"{sprite}"' in source
-    assert "status_flag_value(StatusFlag::kIdleReady, hexe::state())" in source
+    assert "screen->sidebars_enabled" in source
+    assert "screen->button_count" in source
     assert "constexpr int kStatusSpriteSize = 40;" in source
     assert 'constexpr char kStatusLayoutFilename[] = "status_layout.json";' in source
     assert 'cJSON_IsObject(icons_config) ? icons_config : root, "y", g_status_layout.y' in source
@@ -380,7 +382,7 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "esp_timer_get_time() / 50000" in source
 
 
-def test_p4_status_layout_uses_shared_y_and_scaled_animations():
+def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     source = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
     ).read_text(encoding="utf-8")
@@ -388,23 +390,39 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         REPO_ROOT
         / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/config"
     )
-    validator = load_validator_module()
     yaml_to_json = load_yaml_to_json_module()
-    index = validator.load_profile(directory / "status_layout.yaml")
+    index = yaml_to_json.load_yaml_with_includes(directory / "status_layout.yaml")
     assert index == {
-        "schema_version": 2,
-        "files": [
-            "chrome_layout.json",
-            "status_icons.json",
-            "activity_layout.json",
-            "idle_layout.json",
-            "screens_layout.json",
+        "schema_version": 3,
+        "compiler": "p4_ui",
+        "sources": [
+            "animation_presets.yaml",
+            "button_presets.yaml",
+            "items.yaml",
+            "screens_layout.yaml",
         ],
     }
+    subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "firmware/tools/compile_p4_ui_config.py"),
+            str(directory),
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     layout = {}
-    for filename in index["files"]:
-        source_path = directory / Path(filename).with_suffix(".yaml")
-        source_payload = yaml_to_json.load_yaml_with_includes(source_path)
+    for filename in (
+        "chrome_layout.json",
+        "status_icons.json",
+        "activity_layout.json",
+        "idle_layout.json",
+        "screens_layout.json",
+        "status_layout.json",
+    ):
+        compiled_payload = json.loads((tmp_path / filename).read_text(encoding="utf-8"))
         generated_payload = json.loads(
             (
                 REPO_ROOT
@@ -412,16 +430,9 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
                 / filename
             ).read_text(encoding="utf-8")
         )
-        assert generated_payload == source_payload
-        layout.update(source_payload)
-
-    generated_index = json.loads(
-        (
-            REPO_ROOT
-            / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/sprite/status_layout.json"
-        ).read_text(encoding="utf-8")
-    )
-    assert generated_index == index
+        assert generated_payload == compiled_payload
+        assert (tmp_path / filename).stat().st_size <= 8192
+        layout.update(compiled_payload)
 
     screen_index = (directory / "screens_layout.yaml").read_text(encoding="utf-8")
     screen_files = sorted((directory / "screens").glob("*.yaml"))
@@ -445,6 +456,15 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         "default",
     ]
 
+    authored_items = yaml_to_json.load_yaml_with_includes(directory / "items.yaml")["items"]
+    items_by_id = {item["id"]: item for item in authored_items}
+    assert items_by_id["header_clock"]["data"] == "time"
+    assert items_by_id["big_clock"]["data"] == "time"
+    assert items_by_id["big_date"]["data"] == "date_long"
+    assert items_by_id["timer_primary"]["data"] == "timer1"
+    assert items_by_id["timer_upcoming"]["data"] == "timers_next"
+    assert items_by_id["ota_progress"]["data"] == "ota_progress"
+
     icon_layout = layout["icons"]
     assert isinstance(icon_layout["y"], int)
     assert "y" not in icon_layout["floating"]
@@ -455,17 +475,23 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     assert layout["sidebars"]["right"]["offset"]["x"] > 0
     assert layout["idle_clock"]["enabled"] is True
     assert layout["idle_clock"]["date_format"] == "%A, %B %d %Y."
-    assert "x" not in layout["idle_clock"]["date"]
+    assert layout["idle_clock"]["date"]["x"] == 512
     assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
-    assert layout["sidebar_buttons"] == {"enabled": True, "x": 8, "y": 116, "gap": 20}
+    assert layout["sidebar_buttons"] == {"x": 8, "y": 116, "gap": 20}
     screens = layout["screens"]
     assert screens[-1]["id"] == "default"
     assert [screen["id"] for screen in screens[:6]] == [
         "updating", "updating_phase", "listening", "thinking", "playback", "replying"
     ]
     assert {item["type"] for screen in screens for item in screen["elements"]} == {
-        "clock", "idle_clock", "activity", "timer", "progress_bar"
+        "clock", "big_clock", "big_date", "activity", "timer_primary", "timer_upcoming", "progress_bar"
     }
+    assert all(isinstance(screen["sidebars"], bool) for screen in screens)
+    assert all(isinstance(screen["buttons"], list) for screen in screens)
+    assert next(screen for screen in screens if screen["id"] == "idle")["buttons"] == [
+        "button_timer", "button_weather", "button_config"
+    ]
+    assert next(screen for screen in screens if screen["id"] == "updating")["buttons"] == []
     conditional_screens = [screen for screen in screens if screen["id"] != "default"]
     assert all(screen["conditions"]["match"] in {"all", "any"} for screen in conditional_screens)
     assert all(screen["conditions"]["items"] for screen in conditional_screens)
@@ -475,9 +501,11 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
     ]
     assert 'cJSON_GetObjectItem(screen_item, "conditions")' in source
     assert "hexe::ui_flag_value(condition.custom_flag)" in source
+    assert 'cJSON_GetObjectItem(screen_item, "sidebars")' in source
+    assert 'cJSON_GetObjectItem(screen_item, "buttons")' in source
     activity_items = layout["activity_sprites"]["items"]
     assert [item["id"] for item in activity_items] == ["listening", "thinking", "replay", "timer"]
-    assert all(item["animations"] for item in activity_items)
+    assert all(not item.get("animations") for item in activity_items)
     for element in ("sprite", "hours", "separator", "minutes", "date"):
         assert layout["idle_clock"][element]["animations"]
     animations = [animation for icon in icon_layout["items"] for animation in icon.get("animations", [])]
@@ -486,7 +514,12 @@ def test_p4_status_layout_uses_shared_y_and_scaled_animations():
         for element in ("sprite", "hours", "separator", "minutes", "date")
         for animation in layout["idle_clock"][element].get("animations", [])
     )
-    animations.extend(animation for item in activity_items for animation in item["animations"])
+    animations.extend(
+        animation
+        for screen in screens
+        for element in screen["elements"]
+        for animation in element.get("animations", [])
+    )
     assert {animation["type"] for animation in animations} == {
         "blink_dot",
         "running_dots",
@@ -584,11 +617,17 @@ def test_p4_header_clock_waits_for_sync_and_uses_centered_12_hour_time():
     assert "suffix_end = std::strchr(suffix, '-')" in source
     assert "draw_version_text(build_id);" in source
 
-    layout = load_validator_module().load_profile(
-        REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/config/status_layout.yaml"
+    layout = json.loads(
+        (
+            REPO_ROOT
+            / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/sprite/status_layout.json"
+        ).read_text(encoding="utf-8")
     )
-    chrome = load_validator_module().load_profile(
-        REPO_ROOT / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/config/chrome_layout.yaml"
+    chrome = json.loads(
+        (
+            REPO_ROOT
+            / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/sprite/chrome_layout.json"
+        ).read_text(encoding="utf-8")
     )
     assert "version" not in layout
     layout.update(chrome)

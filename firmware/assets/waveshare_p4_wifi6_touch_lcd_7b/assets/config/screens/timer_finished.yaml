@@ -3,7 +3,15 @@ conditions:
   match: all
   items:
     - flag: timer_finished
-elements:
-  - type: clock
-  - type: activity
-    sprite: timer
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: header_clock
+  - item: activity_timer
+    x: 90
+    y: 105
+    animations:
+      - preset: activity_slide_up
+        when: {flag: timer_finished}
+      - preset: timer_dot
+        when: {flag: timer_finished}

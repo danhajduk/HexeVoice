@@ -1,52 +1,188 @@
 # P4 UI Configuration
 
-These YAML files define the 1024x600 Waveshare P4 7B interface. Run the media
-generator after editing them:
+This directory contains the editable layout for the 1024x600 Waveshare P4 7B
+display. Generate the device-facing JSON after every change:
 
 ```bash
 python3 firmware/tools/generate-board-media-assets.py waveshare_p4_wifi6_touch_lcd_7b
 ```
 
-The generator resolves YAML includes and writes the device-facing JSON files to
-`assets/sprite/`. Do not edit those generated JSON files directly.
+The compiler validates references, expands presets and YAML includes, and writes
+JSON to `assets/sprite/`. Do not edit the generated JSON directly.
 
-## Preview A Screen
+## Files
 
-Run the interactive preview menu:
+- `status_layout.yaml`: compiler input index.
+- `items.yaml`: reusable visual items and their data bindings.
+- `animation_presets.yaml`: reusable animations with concrete parameters.
+- `button_presets.yaml`: named ordered button collections.
+- `screens_layout.yaml`: screen priority list using `!include`.
+- `screens/*.yaml`: conditions and composition for one screen.
+
+## Screen Preview
+
+Open the interactive endpoint, screen, and duration menus:
 
 ```bash
 scripts/ui-screen-menu.py
 ```
 
-It discovers screen IDs from `screens_layout.yaml`, lets you select a registered
-endpoint, and offers 5, 10, 20, or 30 second overrides. The backend defaults to
-`http://hexe.local:9004` and can be changed with `API_BASE_URL` or
-`--api-base-url`.
-
-For repeatable tests, skip the menus:
+The available durations are 5, 10, 20, and 30 seconds. A non-interactive call
+is also supported:
 
 ```bash
-scripts/ui-screen-menu.py \
-  --endpoint-id DEVICE_ID \
-  --screen idle \
-  --duration 10
+scripts/ui-screen-menu.py --endpoint-id DEVICE_ID --screen idle --duration 10
 ```
 
-Use `scripts/ui-screen-menu.py --list-screens` to print the available IDs.
+The backend defaults to `http://hexe.local:9004`. Override it with
+`API_BASE_URL` or `--api-base-url`. Use `--list-screens` to list screen IDs.
 
-## Files
+## Screens
 
-- `status_layout.yaml`: ordered list of generated layout sections.
-- `chrome_layout.yaml`: header clock, firmware version, sidebars, and buttons.
-- `status_icons.yaml`: fixed and floating 40x40 status icons.
-- `activity_layout.yaml`: activity sprite positions and animations.
-- `idle_layout.yaml`: large idle clock, date, and timer countdown layout.
-- `screens_layout.yaml`: screen priority list.
-- `screens/*.yaml`: conditions and elements for one screen.
+Screens are checked from top to bottom; the first matching screen wins. Keep
+`default` last. Every screen explicitly configures its sidebars and buttons:
+
+```yaml
+id: listening
+conditions:
+  match: all # all or any
+  items:
+    - flag: listening
+      equals: true # optional; defaults to true
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: header_clock
+  - item: activity_listening
+    x: 422
+    y: 205
+```
+
+Set `sidebars` to `false` for boot, connection, OTA, and error screens. Buttons
+are rendered only when sidebars are enabled.
+
+Buttons may use a preset or an explicit ordered list:
+
+```yaml
+buttons: {preset: standard}
+```
+
+```yaml
+buttons:
+  items:
+    - button_timer
+    - button_weather
+    - button_config
+```
+
+Use `buttons: {preset: none}` for no buttons. Every referenced button must be a
+`type: button` item in `items.yaml`.
+
+## Items
+
+Each item has a unique `id`, a `type`, and optionally a `sprite`, `data`, text
+style, dimensions, and animations. Screens reference the item ID and may set
+its placement.
+
+Supported types and data bindings:
+
+- `header_clock`: `data: time`; centered 12-hour `HH:MM` header clock.
+- `firmware_version`: `data: firmware_version`; firmware suffix.
+- `big_clock`: `data: time`; clock frame, hours, separator, and minutes.
+- `big_date`: `data: date_long` or `date_short`; uses its `format` value.
+- `activity_sprite`: listening, thinking, replay, or timer artwork.
+- `timer_primary`: `data: timer1`; earliest countdown and label.
+- `timer_upcoming`: `data: timers_next`; subsequent timer rows.
+- `progress_bar`: `data: ota_progress`.
+- `status_icon_group`: shared status icon row coordinates.
+- `status_icon`: fixed or floating status sprite.
+- `sidebar`: left or right sidebar sprite and entrance animation.
+- `button_stack`: button origin and vertical gap.
+- `button`: a selectable sidebar button sprite.
+
+Colors use quoted `'#RRGGBB'` values. Coordinates are screen pixels. Font paths
+are relative to `assets/font/`.
+
+The large clock and large date are separate items, so a screen can show either
+one or both:
+
+```yaml
+items:
+  - item: big_clock
+    x: 262
+    y: 205
+  - item: big_date
+    x: 512
+    y: 15
+```
+
+`big_date.x` is its horizontal center. Moving `big_clock` moves its frame and
+all three time components together.
+
+## Status Icons
+
+The `status_icons` group defines one shared `y` coordinate. Static icons use an
+absolute `x`; floating icons begin at `floating.x`, use `floating.gap`, and
+collapse left to right without empty slots.
+
+```yaml
+- id: wifi
+  type: status_icon
+  sprite: wifi
+  placement: static # static or floating
+  x: 900
+```
+
+## Animation Presets
+
+Presets contain an animation type and exact parameters:
+
+```yaml
+presets:
+  activity_slide_up:
+    type: slide_in
+    offset: {x: 0, y: 0.2}
+    period_ms: 350
+```
+
+Reference a preset by name and add or override its activation condition:
+
+```yaml
+animations:
+  - preset: activity_slide_up
+    when: {flag: listening, equals: true}
+```
+
+Available animation types:
+
+- `slide_in`: `offset.x`, `offset.y`, and `period_ms`.
+- `blink_dot`: `color`, `position`, `radius`, and `period_ms`.
+- `running_dots`: blink-dot fields plus `spacing` and `count` (1-8).
+- `pulse`: `min_opacity`, `max_opacity` (0-255), and `period_ms`.
+- `pulse_ring`: `color`, `position`, `radius`, and `period_ms`.
+
+Offsets range from `-1.0` to `1.0`. Position, radius, and spacing are normalized
+to the owning sprite. Periods range from 100 to 60000 milliseconds.
+
+## Conditions And Flags
+
+Built-in flags are:
+
+`heartbeat`, `loading`, `booting`, `updating`, `wifi_connected`,
+`wifi_connecting`, `backend_connected`, `backend_connecting`,
+`voice_ws_connected`, `asset_sync_active`, `media_transfer_active`,
+`ota_active`, `listening`, `thinking`, `replying`, `muted`, `timer_active`,
+`timer_finished`, `error`, `ui_ready`, `idle_ready`, `microphone_enabled`,
+`microphone_disabled`, `microphone_active`, `dnd`, `alarm_active`,
+`playback_active`, `update_available`, `warning_active`, `privacy_mode`, and
+`cloud_offline`.
+
+Screen conditions may use backend-provided custom UI flags. Animation conditions
+must use a built-in flag.
 
 ## YAML Includes
 
-Use `!include` to split a YAML value into another file:
+`!include` paths are relative to the including file:
 
 ```yaml
 screens:
@@ -55,135 +191,5 @@ screens:
   - !include screens/default.yaml
 ```
 
-Paths are relative to the file containing the include. Nested includes are
-supported. Includes cannot leave this configuration directory, and include
-cycles are rejected.
-
-## Common Values
-
-- Coordinates are screen pixels unless an animation field says otherwise.
-- Colors use quoted `'#RRGGBB'` strings.
-- Fonts are paths relative to `assets/font/`.
-- `font_size` is the requested pixel height and is scaled from the HXF font.
-- `period_ms` accepts `100` through `60000` milliseconds.
-- Conditions use `flag` and optional `equals`; `equals` defaults to `true`.
-
-Supported built-in flags are:
-
-`heartbeat`, `loading`, `booting`, `wifi_connected`, `wifi_connecting`,
-`backend_connected`, `backend_connecting`, `voice_ws_connected`,
-`asset_sync_active`, `media_transfer_active`, `ota_active`, `updating`,
-`listening`, `thinking`, `replying`, `playback_active`, `muted`, `dnd`,
-`microphone_enabled`, `microphone_disabled`, `microphone_active`,
-`timer_active`, `timer_finished`, `alarm_active`, `update_available`,
-`warning_active`, `privacy_mode`, `cloud_offline`, `error`, `ui_ready`, and
-`idle_ready`.
-
-Screen conditions may also use backend-provided custom UI flags. Animation
-conditions must use one of the built-in flags above.
-
-## Screen Selection
-
-Screens are evaluated from top to bottom in `screens_layout.yaml`; the first
-matching screen wins. Keep `default` last.
-
-Each screen file supports:
-
-```yaml
-id: listening
-conditions:
-  match: all # all or any
-  items:
-    - flag: listening
-      equals: true
-elements:
-  - type: clock
-  - type: activity
-    sprite: listening
-```
-
-Available element types:
-
-- `clock`: small header clock.
-- `idle_clock`: large clock and date from `idle_layout.yaml`.
-- `activity`: activity sprite selected by `sprite`.
-- `timer`: primary countdown and upcoming timers.
-- `progress_bar`: rectangle configured with `x`, `y`, `width`, `height`,
-  `color`, and `track_color`.
-
-## Status Icons
-
-`icons.y` is shared by every status icon. Static icons use a fixed `x`.
-Floating icons start at `floating.x`, use `floating.gap`, and collapse left to
-right with no empty slots when an icon is hidden.
-
-```yaml
-icons:
-  y: 10
-  floating:
-    x: 30
-    gap: 0
-  items:
-    - id: wifi
-      placement: static # static or floating
-      x: 900
-      animations: []
-```
-
-Icon IDs correspond to the supported sprite assets and runtime states in
-`status_icons.yaml`. Static icons require `x`; floating icons ignore it.
-
-## Chrome
-
-`clock` supports `font`, `font_size` (12-96), `color`, `x_offset`, and
-`y_offset`. It is hidden while the large idle clock is visible.
-
-`version` supports `font`, `font_size` (8-64), `color`, `x`, and `y`.
-
-Each `sidebars.left` and `sidebars.right` entry is a `slide_in` animation.
-`sidebar_buttons` supports `enabled`, `x`, `y`, and vertical `gap`.
-
-## Idle Clock And Timers
-
-`idle_clock.enabled` controls the whole composition. `date_format` uses
-`strftime` formatting. The date is always centered horizontally; only its `y`
-position is configurable.
-
-The `sprite` block supports `x`, `y`, and `animations`. The `hours`,
-`separator`, `minutes`, and `date` blocks support `font`, `font_size` (8-180),
-`x`, `y`, `color`, and `animations`. The date ignores `x`.
-
-`timer_screen.enabled` controls countdown rendering. `primary_countdown` and
-`primary_label` accept text fields plus `x` and `y`. `upcoming` additionally
-accepts `gap` (20-100) and `count` (1-3).
-
-## Activity Sprites
-
-Each `activity_sprites.items` entry supports `id`, `x`, `y`, and
-`animations`. The ID selects the corresponding activity sprite loaded by the
-firmware.
-
-## Animations
-
-Every animation supports:
-
-```yaml
-type: slide_in
-when:
-  flag: ui_ready
-  equals: true
-period_ms: 500
-```
-
-Available types and additional fields:
-
-- `slide_in`: `offset.x`, `offset.y`; normalized signed sprite distances from
-  `-1.0` to `1.0`.
-- `blink_dot`: `color`, `position.x`, `position.y`, `radius`.
-- `running_dots`: `color`, `position.x`, `position.y`, `radius`, `spacing`,
-  and `count` (1-8).
-- `pulse`: `min_opacity` and `max_opacity` (0-255).
-- `pulse_ring`: `color`, `position.x`, `position.y`, and `radius`.
-
-`position`, `radius`, and `spacing` are normalized to the owning sprite, so the
-same animation can scale with different sprite sizes.
+Includes may be nested but cannot leave this configuration directory. Missing
+files and include cycles stop generation with an error.

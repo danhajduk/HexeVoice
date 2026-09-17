@@ -3,5 +3,12 @@ conditions:
   match: all
   items:
     - flag: idle_ready
-elements:
-  - type: idle_clock
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: big_clock
+    x: 262
+    y: 205
+  - item: big_date
+    x: 512
+    y: 15

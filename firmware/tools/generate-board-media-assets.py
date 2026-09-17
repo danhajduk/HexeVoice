@@ -85,6 +85,21 @@ def _write_sprite_metadata(source: Path, output: Path, dry_run: bool, yaml_pytho
     )
 
 
+def _write_p4_ui_config(config_dir: Path, output_dir: Path, dry_run: bool, yaml_python: str | None) -> None:
+    command = [
+        yaml_python or "python3",
+        str(Path(__file__).with_name("compile_p4_ui_config.py")),
+        str(config_dir),
+        str(output_dir),
+    ]
+    print("+ " + " ".join(command), flush=True)
+    if dry_run:
+        return
+    if yaml_python is None:
+        raise SystemExit("PyYAML is required to compile the P4 UI configuration")
+    subprocess.run(command, check=True)
+
+
 def _next_library_version(library_path: Path, now: datetime) -> str:
     date_prefix = f"{now:%Y.%m.%d}"
     fallback = f"{date_prefix}.1"
@@ -240,11 +255,12 @@ def main() -> int:
 
     picture_sources = _source_images(board_dir)
     sprite_sources = _source_images(board_dir / "sprites")
-    sprite_metadata_sources = _source_sprite_metadata(config_dir)
+    p4_ui_config = config_dir / "items.yaml"
+    sprite_metadata_sources = [] if p4_ui_config.exists() else _source_sprite_metadata(config_dir)
     yaml_python = _find_yaml_python() if any(
         path.suffix.lower() in {".yaml", ".yml"} for path in sprite_metadata_sources
-    ) else None
-    if not picture_sources and not sprite_sources and not sprite_metadata_sources:
+    ) or p4_ui_config.exists() else None
+    if not picture_sources and not sprite_sources and not sprite_metadata_sources and not p4_ui_config.exists():
         print(
             f"No source images or configuration found in {board_dir}, "
             f"{board_dir / 'sprites'}, or {config_dir}"
@@ -302,6 +318,8 @@ def main() -> int:
     for source in sprite_metadata_sources:
         output = sprite_dir / source.name
         _write_sprite_metadata(source, output, args.dry_run, yaml_python)
+    if p4_ui_config.exists():
+        _write_p4_ui_config(config_dir, sprite_dir, args.dry_run, yaml_python)
 
     clock_font_source = font_dir / "manrope" / "Manrope-VariableFont_wght.ttf"
     if clock_font_source.exists():

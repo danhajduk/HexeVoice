@@ -1,0 +1,7 @@
+schema_version: 1
+presets:
+  standard:
+    - button_timer
+    - button_weather
+    - button_config
+  none: []

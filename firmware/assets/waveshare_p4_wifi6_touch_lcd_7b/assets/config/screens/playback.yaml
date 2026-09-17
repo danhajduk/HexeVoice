@@ -3,7 +3,15 @@ conditions:
   match: all
   items:
     - flag: playback_active
-elements:
-  - type: clock
-  - type: activity
-    sprite: replay
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: header_clock
+  - item: activity_replay
+    x: 422
+    y: 205
+    animations:
+      - preset: activity_slide_right
+        when: {flag: playback_active}
+      - preset: soft_pulse
+        when: {flag: playback_active}

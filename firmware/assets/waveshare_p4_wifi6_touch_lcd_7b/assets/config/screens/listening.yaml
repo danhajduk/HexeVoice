@@ -3,7 +3,15 @@ conditions:
   match: all
   items:
     - flag: listening
-elements:
-  - type: clock
-  - type: activity
-    sprite: listening
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: header_clock
+  - item: activity_listening
+    x: 422
+    y: 205
+    animations:
+      - preset: activity_slide_up
+        when: {flag: listening}
+      - preset: cyan_ring
+        when: {flag: listening}

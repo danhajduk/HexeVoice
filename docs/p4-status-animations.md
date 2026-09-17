@@ -4,23 +4,22 @@ The Waveshare P4 7B header supports reusable procedural animations configured
 under `firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/config/`. The
 repository keeps the editable layout configuration as YAML. Running
 `firmware/tools/generate-board-media-assets.py waveshare_p4_wifi6_touch_lcd_7b`
-converts it to the JSON files consumed from the SD card. `status_layout.yaml`
-lists the independently editable sections by their generated JSON names:
+compiles it to the JSON files consumed from the SD card:
 
-- `chrome_layout.yaml`: header clock, firmware version, sidebars, and buttons
-- `status_icons.yaml`: static and floating status icons
-- `activity_layout.yaml`: listening, thinking, reply, and timer sprites
-- `idle_layout.yaml`: large idle clock and timer countdown screen
+- `items.yaml`: reusable sprites, text/data bindings, icons, sidebars, and buttons
+- `animation_presets.yaml`: named animations with concrete parameters
+- `button_presets.yaml`: named ordered button collections
 - `screens_layout.yaml`: ordered screen index using `!include`
-- `screens/*.yaml`: one status condition and its ordered elements per screen
+- `screens/*.yaml`: conditions, sidebar visibility, buttons, and placed items
 
-The media generator converts the YAML index and its five sections into JSON in
-the board asset library.
+The media generator validates references, expands presets, and creates the
+runtime layout sections in the board asset library.
 Firmware merges the listed sections in order and reloads them after asset
 synchronization. A legacy monolithic `status_layout.json` remains supported.
 
 Screen priority stays visible in the small index file while each screen can be
-tuned independently:
+tuned independently. Screen items reference reusable definitions and may
+override position or animations:
 
 ```yaml
 schema_version: 1
@@ -35,6 +34,10 @@ An include path is resolved relative to the file containing it. Includes may
 be nested, but they cannot escape the top-level YAML file's directory and
 cycles are rejected. The media generator resolves all includes before writing
 the single `screens_layout.json` file consumed by the firmware.
+
+Each screen explicitly sets `sidebars: true|false` and declares `buttons` with
+either a preset or an ordered item list. The large clock and large date are
+independent `big_clock` and `big_date` items.
 
 ## Coordinate Model
 
@@ -114,9 +117,9 @@ OTA is inactive and the application is not updating or in an error state. The
 left and right sidebar sprites use this flag to slide into view.
 
 `idle_ready` additionally requires synchronized time and the application idle
-phase. It controls the large idle clock composition. While active, the large
-clock replaces the small header clock. Its frame, hours, separator, minutes,
-and date each have independent animation lists in `idle_layout.yaml`.
+phase. It selects the idle screen, whose independently placed `big_clock` and
+`big_date` items replace the small header clock. Their component animations are
+defined through item configuration and animation presets.
 
 The optional `timer_screen` object keeps that idle clock visible while timers
 are active. `primary_countdown` and `primary_label` configure the earliest

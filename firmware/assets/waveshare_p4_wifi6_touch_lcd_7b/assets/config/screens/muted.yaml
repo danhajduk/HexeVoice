@@ -3,5 +3,7 @@ conditions:
   match: all
   items:
     - flag: muted
-elements:
-  - type: clock
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: header_clock

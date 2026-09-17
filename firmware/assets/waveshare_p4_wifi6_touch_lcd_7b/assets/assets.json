@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.25",
-  "updated_at": "2026-09-17T03:05:07.187429+00:00",
+  "asset_library_version": "2026.09.17.28",
+  "updated_at": "2026-09-17T03:31:04.350597+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -102,8 +102,8 @@
       "source_filename": "activity_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 2685,
-        "sha256": "1d3b18af4755300ffd37609452efa096d1c433a9d21ce0ee1c801cc72262ec5f"
+        "size_bytes": 183,
+        "sha256": "e50f5d2a36da07ccad4f65d320a6a6d218cf289d150010a01f9d74f6207194d2"
       }
     },
     {
@@ -212,8 +212,8 @@
       "source_filename": "chrome_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 814,
-        "sha256": "fae46397b5cac7b57381d694814e5b062279a507147f281ff4c684c76779c6f3"
+        "size_bytes": 488,
+        "sha256": "eb62bd097018f0d884a6e55e73de232dfce29093b826a898668d28d776add3f7"
       }
     },
     {
@@ -256,8 +256,8 @@
       "source_filename": "idle_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 2602,
-        "sha256": "90f6b7cb79d059632fab1230409c3b05490b4997a353163f427b59b338e18629"
+        "size_bytes": 1413,
+        "sha256": "8a8cc58899a7656c2bd6366eb8e66bf9f330df4f041b998c27ffbce0ab334057"
       }
     },
     {
@@ -344,8 +344,8 @@
       "source_filename": "screens_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 4717,
-        "sha256": "686635d0682d029c4c5013445cb3c93910b54c2fb0f1c5f2b36bf02c8e5c140e"
+        "size_bytes": 5523,
+        "sha256": "afa263b44192dd924160c16a73cf7380d702988fc5b91a7bce82e3d0a0cfd0e2"
       }
     },
     {
@@ -741,8 +741,8 @@
       "source_filename": "status_icons.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 2745,
-        "sha256": "6310becf1a842ef3d4e2135d74fecb3b17e90d2a59f7558a8ee38e965bf02f80"
+        "size_bytes": 1349,
+        "sha256": "f5a4c415b90cbc619874de6449fb5d6737539ef2b4bb625285b8d7151d734d12"
       }
     },
     {
@@ -752,8 +752,8 @@
       "source_filename": "status_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 173,
-        "sha256": "5634cc3c4b80f1f0c8f4701043fd3585018a6b4be071965ba146078c57f7bf5a"
+        "size_bytes": 136,
+        "sha256": "c74f90b0a257f1e4bc063dfd3be16fd4bcbd6e311de98a6b73a3ce95bc708074"
       }
     },
     {

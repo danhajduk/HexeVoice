@@ -1,7 +1,7 @@
-schema_version: 2
-files:
-- chrome_layout.json
-- status_icons.json
-- activity_layout.json
-- idle_layout.json
-- screens_layout.json
+schema_version: 3
+compiler: p4_ui
+sources:
+  - animation_presets.yaml
+  - button_presets.yaml
+  - items.yaml
+  - screens_layout.yaml

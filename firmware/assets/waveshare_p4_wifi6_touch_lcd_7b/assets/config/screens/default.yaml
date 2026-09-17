@@ -1,3 +1,9 @@
 id: default
-elements:
-  - type: clock
+sidebars: true
+buttons:
+  items:
+    - button_timer
+    - button_weather
+    - button_config
+items:
+  - item: header_clock

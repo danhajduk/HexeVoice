@@ -4,8 +4,26 @@ conditions:
   items:
     - flag: timer_active
     - flag: idle_ready
-elements:
-  - type: idle_clock
-  - type: activity
-    sprite: timer
-  - type: timer
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: big_clock
+    x: 262
+    y: 205
+  - item: big_date
+    x: 512
+    y: 15
+  - item: activity_timer
+    x: 90
+    y: 105
+    animations:
+      - preset: activity_slide_up
+        when: {flag: timer_active}
+      - preset: timer_dot
+        when: {flag: timer_active}
+  - item: timer_primary
+    x: 250
+    y: 430
+  - item: timer_upcoming
+    x: 760
+    y: 430

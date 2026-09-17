@@ -112,6 +112,13 @@ enum class StatusAnimationType : uint8_t {
   kInvalid,
 };
 
+enum class SidebarButtonId : uint8_t {
+  kTimer,
+  kWeather,
+  kConfig,
+  kInvalid,
+};
+
 enum class StatusFlag : uint8_t {
   kHeartbeat,
   kLoading,
@@ -185,9 +192,11 @@ struct AnimatedSpriteLayout {
 
 enum class ScreenElementType : uint8_t {
   kHeaderClock,
-  kIdleClock,
+  kBigClock,
+  kBigDate,
   kActivity,
-  kTimer,
+  kTimerPrimary,
+  kTimerUpcoming,
   kProgressBar,
   kInvalid,
 };
@@ -195,12 +204,16 @@ enum class ScreenElementType : uint8_t {
 struct ScreenElement {
   ScreenElementType type = ScreenElementType::kInvalid;
   int activity_index = -1;
+  bool has_x = false;
+  bool has_y = false;
   int x = 312;
   int y = 520;
   int width = 400;
   int height = 18;
   uint32_t color = kCyan;
   uint32_t track_color = kCanvasAlt;
+  StatusAnimation animations[kMaxStatusAnimations] = {};
+  size_t animation_count = 0;
 };
 
 struct ScreenCondition {
@@ -212,10 +225,13 @@ struct ScreenCondition {
 struct ScreenLayout {
   char id[24] = {};
   bool match_any = false;
+  bool sidebars_enabled = false;
   ScreenCondition conditions[kMaxScreenConditions] = {};
   size_t condition_count = 0;
   ScreenElement elements[kMaxScreenElements] = {};
   size_t element_count = 0;
+  SidebarButtonId buttons[kSidebarButtonCount] = {};
+  size_t button_count = 0;
 };
 
 struct AnimatedTextLayout {
@@ -398,6 +414,7 @@ ClockFont g_timer_upcoming_font;
 const StatusLayout g_default_status_layout{};
 
 bool status_animations_active(const hexe::AppState &state);
+const ScreenLayout *active_screen_layout(const hexe::AppState &state);
 int json_layout_coordinate(cJSON *object, const char *key, int fallback, int maximum);
 void draw_status_animation(
     const StatusAnimation &animation,
@@ -984,11 +1001,20 @@ int activity_sprite_index(const char *name) {
 ScreenElementType screen_element_type(const char *name) {
   if (name == nullptr) return ScreenElementType::kInvalid;
   if (std::strcmp(name, "clock") == 0) return ScreenElementType::kHeaderClock;
-  if (std::strcmp(name, "idle_clock") == 0) return ScreenElementType::kIdleClock;
+  if (std::strcmp(name, "big_clock") == 0) return ScreenElementType::kBigClock;
+  if (std::strcmp(name, "big_date") == 0) return ScreenElementType::kBigDate;
   if (std::strcmp(name, "activity") == 0) return ScreenElementType::kActivity;
-  if (std::strcmp(name, "timer") == 0) return ScreenElementType::kTimer;
+  if (std::strcmp(name, "timer_primary") == 0) return ScreenElementType::kTimerPrimary;
+  if (std::strcmp(name, "timer_upcoming") == 0) return ScreenElementType::kTimerUpcoming;
   if (std::strcmp(name, "progress_bar") == 0) return ScreenElementType::kProgressBar;
   return ScreenElementType::kInvalid;
+}
+
+SidebarButtonId sidebar_button_id(const char *name) {
+  if (name != nullptr && std::strcmp(name, "button_timer") == 0) return SidebarButtonId::kTimer;
+  if (name != nullptr && std::strcmp(name, "button_weather") == 0) return SidebarButtonId::kWeather;
+  if (name != nullptr && std::strcmp(name, "button_config") == 0) return SidebarButtonId::kConfig;
+  return SidebarButtonId::kInvalid;
 }
 
 void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
@@ -1000,6 +1026,7 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
     cJSON *id = cJSON_GetObjectItem(screen_item, "id");
     if (!cJSON_IsString(id) || id->valuestring == nullptr) continue;
     std::snprintf(screen.id, sizeof(screen.id), "%s", id->valuestring);
+    screen.sidebars_enabled = cJSON_IsTrue(cJSON_GetObjectItem(screen_item, "sidebars"));
     cJSON *conditions = cJSON_GetObjectItem(screen_item, "conditions");
     cJSON *match = cJSON_IsObject(conditions) ? cJSON_GetObjectItem(conditions, "match") : nullptr;
     if (cJSON_IsString(match) && std::strcmp(match->valuestring, "all") != 0 &&
@@ -1030,19 +1057,33 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
       ScreenElement element;
       element.type = cJSON_IsString(type) ? screen_element_type(type->valuestring) : ScreenElementType::kInvalid;
       if (element.type == ScreenElementType::kInvalid) continue;
+      cJSON *x = cJSON_GetObjectItem(element_item, "x");
+      cJSON *y = cJSON_GetObjectItem(element_item, "y");
+      element.has_x = cJSON_IsNumber(x);
+      element.has_y = cJSON_IsNumber(y);
+      element.x = json_layout_coordinate(element_item, "x", element.x, kWidth - 1);
+      element.y = json_layout_coordinate(element_item, "y", element.y, kHeight - 1);
+      parse_animation_list(element_item, element.animations, &element.animation_count);
       if (element.type == ScreenElementType::kActivity) {
         cJSON *sprite = cJSON_GetObjectItem(element_item, "sprite");
         element.activity_index = cJSON_IsString(sprite) ? activity_sprite_index(sprite->valuestring) : -1;
         if (element.activity_index < 0) continue;
       } else if (element.type == ScreenElementType::kProgressBar) {
-        element.x = json_layout_coordinate(element_item, "x", element.x, kWidth - 1);
-        element.y = json_layout_coordinate(element_item, "y", element.y, kHeight - 1);
         element.width = json_integer(element_item, "width", element.width, 1, kWidth - element.x);
         element.height = json_integer(element_item, "height", element.height, 1, kHeight - element.y);
         element.color = json_color(element_item, "color", element.color);
         element.track_color = json_color(element_item, "track_color", element.track_color);
       }
       screen.elements[screen.element_count++] = element;
+    }
+    cJSON *buttons = cJSON_GetObjectItem(screen_item, "buttons");
+    cJSON *button = nullptr;
+    cJSON_ArrayForEach(button, buttons) {
+      if (!cJSON_IsString(button) || screen.button_count >= kSidebarButtonCount) continue;
+      const SidebarButtonId button_id = sidebar_button_id(button->valuestring);
+      if (button_id != SidebarButtonId::kInvalid) {
+        screen.buttons[screen.button_count++] = button_id;
+      }
     }
     const bool is_default = std::strcmp(screen.id, "default") == 0;
     if (screen.element_count > 0 && (screen.condition_count > 0 || is_default)) {
@@ -1695,7 +1736,25 @@ void status_sprite_slide_offset(
   }
 }
 
-void draw_sidebars(const hexe::AppState &state, int64_t now_ms) {
+StatusSprite *sidebar_button_sprite(SidebarButtonId id) {
+  switch (id) {
+    case SidebarButtonId::kTimer: return &g_button_timer_sprite;
+    case SidebarButtonId::kWeather: return &g_button_weather_sprite;
+    case SidebarButtonId::kConfig: return &g_button_config_sprite;
+    case SidebarButtonId::kInvalid: return nullptr;
+  }
+  return nullptr;
+}
+
+void draw_sidebars(
+    const hexe::AppState &state,
+    int64_t now_ms,
+    const ScreenLayout *screen) {
+  if (screen == nullptr || !screen->sidebars_enabled) {
+    g_sidebar_left_animation_state = {};
+    g_sidebar_right_animation_state = {};
+    return;
+  }
   int left_x = 0;
   int left_y = 0;
   slide_animation_offset(
@@ -1724,11 +1783,11 @@ void draw_sidebars(const hexe::AppState &state, int64_t now_ms) {
   }
   draw_status_sprite(&g_sidebar_sprite, left_x, kSidebarTop + left_y);
   draw_status_sprite(&g_sidebar_right_sprite, kWidth - kSidebarWidth + right_x, kSidebarTop + right_y);
-  if (g_status_layout.sidebar_buttons.enabled) {
-    StatusSprite *buttons[kSidebarButtonCount] = {
-        &g_button_timer_sprite, &g_button_weather_sprite, &g_button_config_sprite};
+  if (g_status_layout.sidebar_buttons.enabled && screen->button_count > 0) {
     int button_y = g_status_layout.sidebar_buttons.y + left_y;
-    for (StatusSprite *button : buttons) {
+    for (size_t index = 0; index < screen->button_count; ++index) {
+      StatusSprite *button = sidebar_button_sprite(screen->buttons[index]);
+      if (button == nullptr) continue;
       draw_status_sprite(button, g_status_layout.sidebar_buttons.x + left_x, button_y);
       button_y += kSidebarButtonHeight + g_status_layout.sidebar_buttons.gap;
     }
@@ -1778,7 +1837,11 @@ int active_activity_sprite(const hexe::AppState &state) {
   return -1;
 }
 
-void draw_activity_sprite(const hexe::AppState &state, int64_t now_ms, int selected_index = -2) {
+void draw_activity_sprite(
+    const hexe::AppState &state,
+    int64_t now_ms,
+    int selected_index = -2,
+    const ScreenElement *element = nullptr) {
   const int active_index = selected_index == -2 ? active_activity_sprite(state) : selected_index;
   StatusSprite *sprites[kActivitySpriteCount] = {
       &g_activity_listening_sprite,
@@ -1795,12 +1858,18 @@ void draw_activity_sprite(const hexe::AppState &state, int64_t now_ms, int selec
     return;
   }
   const auto &layout = g_status_layout.activity_sprites.items[active_index];
+  const StatusAnimation *animations = element != nullptr && element->animation_count > 0
+      ? element->animations
+      : layout.animations;
+  const size_t animation_count = element != nullptr && element->animation_count > 0
+      ? element->animation_count
+      : layout.animation_count;
   StatusSprite *sprite = sprites[active_index];
   int offset_x = 0;
   int offset_y = 0;
   int opacity = 255;
-  for (size_t index = 0; index < layout.animation_count; ++index) {
-    const auto &animation = layout.animations[index];
+  for (size_t index = 0; index < animation_count; ++index) {
+    const auto &animation = animations[index];
     if (animation.type == StatusAnimationType::kSlideIn) {
       slide_animation_offset(
           animation,
@@ -1818,11 +1887,11 @@ void draw_activity_sprite(const hexe::AppState &state, int64_t now_ms, int selec
       opacity = std::min(opacity, animated);
     }
   }
-  const int x = layout.x + offset_x;
-  const int y = layout.y + offset_y;
+  const int x = (element != nullptr && element->has_x ? element->x : layout.x) + offset_x;
+  const int y = (element != nullptr && element->has_y ? element->y : layout.y) + offset_y;
   draw_status_sprite(sprite, x, y, static_cast<uint8_t>(opacity));
-  for (size_t index = 0; index < layout.animation_count; ++index) {
-    const auto &animation = layout.animations[index];
+  for (size_t index = 0; index < animation_count; ++index) {
+    const auto &animation = animations[index];
     if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
         status_animation_active(animation, state)) {
       draw_status_animation(animation, *sprite, x, y, now_ms);
@@ -1868,22 +1937,24 @@ void draw_idle_clock_text(
       scale_color(layout.color, opacity * 1000 / 255));
 }
 
-void draw_idle_clock(const hexe::AppState &state, int64_t now_ms) {
-  if (!g_status_layout.idle_clock.enabled || !status_flag_value(StatusFlag::kIdleReady, state)) {
-    for (auto &element : g_idle_clock_animation_states) {
-      for (auto &animation_state : element) {
-        animation_state = {};
-      }
-    }
-    return;
-  }
-
+void draw_big_clock(const hexe::AppState &state, int64_t now_ms, const ScreenElement *element) {
+  if (!g_status_layout.idle_clock.enabled) return;
   const auto &clock = g_status_layout.idle_clock;
+  const int frame_x = element != nullptr && element->has_x ? element->x : clock.frame.x;
+  const int frame_y = element != nullptr && element->has_y ? element->y : clock.frame.y;
+  const int delta_x = frame_x - clock.frame.x;
+  const int delta_y = frame_y - clock.frame.y;
   int frame_offset_x = 0;
   int frame_offset_y = 0;
+  const StatusAnimation *frame_animations = element != nullptr && element->animation_count > 0
+      ? element->animations
+      : clock.frame.animations;
+  const size_t frame_animation_count = element != nullptr && element->animation_count > 0
+      ? element->animation_count
+      : clock.frame.animation_count;
   const uint8_t frame_opacity = animated_element_transform(
-      clock.frame.animations,
-      clock.frame.animation_count,
+      frame_animations,
+      frame_animation_count,
       state,
       kIdleClockFrameWidth,
       kIdleClockFrameHeight,
@@ -1893,8 +1964,8 @@ void draw_idle_clock(const hexe::AppState &state, int64_t now_ms) {
       &frame_offset_y);
   draw_status_sprite(
       &g_idle_clock_frame_sprite,
-      clock.frame.x + frame_offset_x,
-      clock.frame.y + frame_offset_y,
+      frame_x + frame_offset_x,
+      frame_y + frame_offset_y,
       frame_opacity);
 
   std::tm local = {};
@@ -1907,17 +1978,36 @@ void draw_idle_clock(const hexe::AppState &state, int64_t now_ms) {
   }
   char hours[4] = {};
   char minutes[4] = {};
-  char date[40] = {};
   std::snprintf(hours, sizeof(hours), "%02d", hour);
   std::snprintf(minutes, sizeof(minutes), "%02d", local.tm_min);
-  if (std::strftime(date, sizeof(date), clock.date_format, &local) == 0) {
-    date[0] = '\0';
-  }
-  draw_idle_clock_text(clock.hours, &g_idle_hours_font, hours, "idle hours", state, now_ms, 1);
-  draw_idle_clock_text(clock.separator, &g_idle_separator_font, ":", "idle separator", state, now_ms, 2);
-  draw_idle_clock_text(clock.minutes, &g_idle_minutes_font, minutes, "idle minutes", state, now_ms, 3);
+  AnimatedTextLayout hours_layout = clock.hours;
+  AnimatedTextLayout separator_layout = clock.separator;
+  AnimatedTextLayout minutes_layout = clock.minutes;
+  hours_layout.x += delta_x;
+  hours_layout.y += delta_y;
+  separator_layout.x += delta_x;
+  separator_layout.y += delta_y;
+  minutes_layout.x += delta_x;
+  minutes_layout.y += delta_y;
+  draw_idle_clock_text(hours_layout, &g_idle_hours_font, hours, "idle hours", state, now_ms, 1);
+  draw_idle_clock_text(separator_layout, &g_idle_separator_font, ":", "idle separator", state, now_ms, 2);
+  draw_idle_clock_text(minutes_layout, &g_idle_minutes_font, minutes, "idle minutes", state, now_ms, 3);
+}
+
+void draw_big_date(const hexe::AppState &state, int64_t now_ms, const ScreenElement *element) {
+  if (!g_status_layout.idle_clock.enabled) return;
+  const auto &clock = g_status_layout.idle_clock;
+  std::tm local = {};
+  if (!hexe::system::current_local_time(&local)) return;
+  char date[40] = {};
+  if (std::strftime(date, sizeof(date), clock.date_format, &local) == 0) return;
   AnimatedTextLayout centered_date = clock.date;
-  centered_date.x = kWidth / 2;
+  centered_date.x = element != nullptr && element->has_x ? element->x : kWidth / 2;
+  centered_date.y = element != nullptr && element->has_y ? element->y : centered_date.y;
+  if (element != nullptr && element->animation_count > 0) {
+    centered_date.animation_count = element->animation_count;
+    std::copy_n(element->animations, element->animation_count, centered_date.animations);
+  }
   draw_idle_clock_text(centered_date, &g_idle_date_font, date, "idle date", state, now_ms, 4);
 }
 
@@ -1960,20 +2050,39 @@ void draw_timer_text(
   }
 }
 
-void draw_timer_screen(const hexe::AppState &state) {
-  if (!g_status_layout.timer_screen.enabled || !state.timer_active || state.display_timer_count == 0 ||
-      state.phase != hexe::AppPhase::kIdle) {
+void draw_timer_screen(
+    const hexe::AppState &state,
+    bool draw_primary,
+    bool draw_upcoming,
+    const ScreenElement *element) {
+  if (!g_status_layout.timer_screen.enabled || !state.timer_active || state.display_timer_count == 0) {
     return;
   }
   const auto &screen = g_status_layout.timer_screen;
-  const auto &primary = state.display_timers[0];
-  char countdown[16] = {};
-  format_timer_countdown(display_timer_remaining_ms(primary), countdown, sizeof(countdown));
-  draw_timer_text(screen.primary_countdown, &g_timer_countdown_font, countdown, "timer countdown");
+  if (draw_primary) {
+    const auto &primary = state.display_timers[0];
+    char countdown[16] = {};
+    format_timer_countdown(display_timer_remaining_ms(primary), countdown, sizeof(countdown));
+    AnimatedTextLayout countdown_layout = screen.primary_countdown;
+    AnimatedTextLayout label_layout = screen.primary_label;
+    if (element != nullptr && element->has_x) {
+      const int delta_x = element->x - countdown_layout.x;
+      countdown_layout.x += delta_x;
+      label_layout.x += delta_x;
+    }
+    if (element != nullptr && element->has_y) {
+      const int delta_y = element->y - countdown_layout.y;
+      countdown_layout.y += delta_y;
+      label_layout.y += delta_y;
+    }
+    draw_timer_text(countdown_layout, &g_timer_countdown_font, countdown, "timer countdown");
 
-  char primary_label[32] = {};
-  std::snprintf(primary_label, sizeof(primary_label), "%.24s", primary.label[0] != '\0' ? primary.label : "Timer");
-  draw_timer_text(screen.primary_label, &g_timer_label_font, primary_label, "timer label");
+    char primary_label[32] = {};
+    std::snprintf(primary_label, sizeof(primary_label), "%.24s", primary.label[0] != '\0' ? primary.label : "Timer");
+    draw_timer_text(label_layout, &g_timer_label_font, primary_label, "timer label");
+  }
+
+  if (!draw_upcoming) return;
 
   const size_t upcoming_count = std::min<size_t>(
       state.display_timer_count > 0 ? state.display_timer_count - 1 : 0,
@@ -1985,8 +2094,9 @@ void draw_timer_screen(const hexe::AppState &state) {
     format_timer_countdown(display_timer_remaining_ms(timer), remaining, sizeof(remaining));
     std::snprintf(row, sizeof(row), "%.15s  %s", timer.label[0] != '\0' ? timer.label : "Timer", remaining);
     AnimatedTextLayout row_layout = {};
-    row_layout.x = screen.upcoming.x;
-    row_layout.y = screen.upcoming.y + static_cast<int>(index) * screen.upcoming.gap;
+    row_layout.x = element != nullptr && element->has_x ? element->x : screen.upcoming.x;
+    const int first_y = element != nullptr && element->has_y ? element->y : screen.upcoming.y;
+    row_layout.y = first_y + static_cast<int>(index) * screen.upcoming.gap;
     row_layout.font_size = screen.upcoming.font_size;
     row_layout.color = screen.upcoming.color;
     std::snprintf(row_layout.font, sizeof(row_layout.font), "%s", screen.upcoming.font);
@@ -2192,12 +2302,8 @@ const ScreenLayout *active_screen_layout(const hexe::AppState &state) {
   return nullptr;
 }
 
-void draw_screen_layout(const hexe::AppState &state, int64_t now_ms) {
-  const ScreenLayout *screen = active_screen_layout(state);
+void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const ScreenLayout *screen) {
   if (screen == nullptr) {
-    draw_idle_clock(state, now_ms);
-    draw_activity_sprite(state, now_ms);
-    draw_timer_screen(state);
     draw_header_clock();
     return;
   }
@@ -2209,15 +2315,21 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms) {
       case ScreenElementType::kHeaderClock:
         draw_header_clock(true);
         break;
-      case ScreenElementType::kIdleClock:
-        draw_idle_clock(state, now_ms);
+      case ScreenElementType::kBigClock:
+        draw_big_clock(state, now_ms, &element);
+        break;
+      case ScreenElementType::kBigDate:
+        draw_big_date(state, now_ms, &element);
         break;
       case ScreenElementType::kActivity:
-        draw_activity_sprite(state, now_ms, element.activity_index);
+        draw_activity_sprite(state, now_ms, element.activity_index, &element);
         activity_drawn = true;
         break;
-      case ScreenElementType::kTimer:
-        draw_timer_screen(state);
+      case ScreenElementType::kTimerPrimary:
+        draw_timer_screen(state, true, false, &element);
+        break;
+      case ScreenElementType::kTimerUpcoming:
+        draw_timer_screen(state, false, true, &element);
         break;
       case ScreenElementType::kProgressBar: {
         const int progress = std::clamp(state.ota_progress_percent, 0, 100);
@@ -2440,8 +2552,9 @@ bool draw_status_frame(int frame, const char *build_id, bool background_loaded) 
     clear_strip();
   } else {
     load_status_layout();
-    draw_sidebars(state, g_frame_time_ms);
-    draw_screen_layout(state, g_frame_time_ms);
+    const ScreenLayout *screen = active_screen_layout(state);
+    draw_sidebars(state, g_frame_time_ms, screen);
+    draw_screen_layout(state, g_frame_time_ms, screen);
     draw_header_status_icons();
     draw_version_text(build_id);
     (void)frame;
