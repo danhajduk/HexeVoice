@@ -181,6 +181,7 @@ from hexevoice.setup_reauth import SetupReauthService
 from hexevoice.setup_trust import SetupTrustRecoveryService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerOwnershipCache, TimerSucceededAnnouncementService
+from hexevoice.weather_snapshots import WeatherSnapshotService
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.tts import TtsAudioService
 from hexevoice.tts.runtime_settings import TtsRuntimeSettingsService
@@ -1027,6 +1028,7 @@ def create_app(
         ),
         ownership_cache=timer_ownership_cache,
     )
+    weather_snapshot_service = WeatherSnapshotService(settings=app_settings)
     log = logging.getLogger("hexevoice")
 
     async def cancel_background_task(task: asyncio.Task) -> None:
@@ -1083,6 +1085,7 @@ def create_app(
             track_background_task(asyncio.create_task(asyncio.to_thread(voice_session_manager.preload_turn_pipeline)))
         track_background_task(asyncio.create_task(reconcile_external_stt_provider_config()))
         timer_announcement_service.start(asyncio.get_running_loop())
+        weather_snapshot_service.start()
 
         async def loop():
             while True:
@@ -1199,6 +1202,7 @@ def create_app(
             await endpoint_beacon_service.stop()
             await asyncio.to_thread(endpoint_mdns_advertiser.stop)
             timer_announcement_service.stop()
+            weather_snapshot_service.stop()
             tasks = list(getattr(app.state, "voice_background_tasks", []))
             for task in tasks:
                 await cancel_background_task(task)
@@ -1210,6 +1214,7 @@ def create_app(
     )
     app.state.node_ui_page_cache = node_ui_page_cache
     app.state.timer_announcement_service = timer_announcement_service
+    app.state.weather_snapshot_service = weather_snapshot_service
     app.state.voice_artifact_cleanup_status = {
         "name": "every_5_minutes",
         "interval_seconds": 300,
@@ -2878,10 +2883,18 @@ def create_app(
             "blocked_features": _voice_privacy_blocked_features(app_settings.voice_privacy_mode_enabled),
         }
         status["timer_announcements"] = timer_announcement_service.status()
+        status["weather_snapshots"] = weather_snapshot_service.status()
         status["voice_artifact_cleanup"] = app.state.voice_artifact_cleanup_status
         status["voice_orphan_cleanup"] = app.state.voice_orphan_cleanup_status
         status["voice_tts_warmup"] = app.state.voice_tts_warmup_status
         return status
+
+    @app.get("/api/voice/weather/current")
+    async def voice_weather_current() -> dict:
+        snapshot = weather_snapshot_service.prepared_snapshot()
+        if snapshot is None:
+            raise HTTPException(status_code=404, detail="prepared_weather_unavailable")
+        return {"snapshot": snapshot, "synchronization": weather_snapshot_service.status()}
 
     @app.get("/api/voice/sessions", response_model=VoiceSessionHistoryListResponse)
     async def voice_sessions(limit: int = 20, endpoint_id: str | None = None) -> VoiceSessionHistoryListResponse:
