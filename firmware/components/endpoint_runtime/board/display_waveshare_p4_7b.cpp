@@ -1972,6 +1972,10 @@ bool status_animations_active(const hexe::AppState &state) {
   if (state.tts_playback_active) {
     return false;
   }
+  if (status_animation_active(g_status_layout.sidebars.left, state) ||
+      status_animation_active(g_status_layout.sidebars.right, state)) {
+    return true;
+  }
   const ScreenLayout *screen = active_screen_layout(state);
   if (screen != nullptr) {
     for (size_t element_index = 0; element_index < screen->element_count; ++element_index) {
@@ -3543,9 +3547,9 @@ void render_boot_frame(int frame, const char *build_id) {
   if (!g_force_redraw && signature == g_last_signature) {
     return;
   }
-  const bool state_changed = static_signature != g_last_static_signature ||
-      std::strcmp(screen_id, g_last_screen_id) != 0;
-  const bool full_redraw = g_force_redraw || g_last_screen_id[0] == '\0';
+  const bool screen_changed = std::strcmp(screen_id, g_last_screen_id) != 0;
+  const bool state_changed = static_signature != g_last_static_signature || screen_changed;
+  const bool full_redraw = g_force_redraw || g_last_screen_id[0] == '\0' || screen_changed;
   const bool clock_changed = minute_signature != g_last_minute_signature;
   const bool timer_changed = timer_signature != g_last_timer_signature;
   const bool animation_changed = animation_signature != g_last_animation_signature;

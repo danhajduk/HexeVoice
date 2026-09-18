@@ -843,6 +843,9 @@ def test_p4_preloads_and_retries_critical_chrome_sprites():
     assert "sprite->retry_after_ms = now_ms + 1000;" in display
     assert "g_sprite_retry_due_ms" in display
     assert "preload_chrome_sprites();" in display
+    assert "status_animation_active(g_status_layout.sidebars.left, state)" in display
+    assert "status_animation_active(g_status_layout.sidebars.right, state)" in display
+    assert "g_last_screen_id[0] == '\\0' || screen_changed" in display
 
 
 def test_endpoint_accepts_backend_ui_flags_for_screen_conditions():
