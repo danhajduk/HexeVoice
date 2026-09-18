@@ -23,9 +23,9 @@ def png_bytes() -> bytes:
 def test_center_zoom_crops_source_without_changing_output_scale():
     source = Image.new("RGB", (1672, 941))
 
-    zoomed = _center_zoom(source, 1.15)
+    zoomed = _center_zoom(source, 1.30)
 
-    assert zoomed.size == (1454, 818)
+    assert zoomed.size == (1286, 724)
 
 
 def test_prepares_center_cropped_rgb888_asset_and_reuses_cache(tmp_path, monkeypatch):
