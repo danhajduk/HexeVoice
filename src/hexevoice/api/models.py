@@ -544,6 +544,11 @@ class EndpointScreenCommandRequest(BaseModel):
     duration_seconds: int = Field(default=30, ge=1, le=30)
 
 
+class EndpointDebugLabelCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    visible: bool
+
+
 class EndpointTimerCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     timer_id: str = Field(min_length=1, max_length=96)

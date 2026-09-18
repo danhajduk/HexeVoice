@@ -1018,6 +1018,14 @@ class VoiceSessionManager:
             },
         )
 
+    async def push_ui_debug_label_command(self, *, endpoint_id: str, visible: bool) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.ui.flags",
+            command_type="endpoint.ui.flags",
+            payload={"flags": {"screen_debug_label": bool(visible)}},
+        )
+
     async def push_ui_screen_set_command(self, *, endpoint_id: str, screen_id: str) -> dict:
         layout = _p4_backend_screen_layout(screen_id)
         return await self._push_endpoint_command(

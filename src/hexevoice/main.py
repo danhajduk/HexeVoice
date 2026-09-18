@@ -80,6 +80,7 @@ from hexevoice.api.models import (
     EndpointBleWifiCredentialsResponse,
     EndpointCommandRequest,
     EndpointCommandResponse,
+    EndpointDebugLabelCommandRequest,
     EndpointScreenCommandRequest,
     EndpointTimerCommandRequest,
     EndpointDiscoveryRequest,
@@ -2080,6 +2081,21 @@ def create_app(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
             command_type="endpoint.ui.screen.render",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/ui/debug-label", response_model=EndpointCommandResponse)
+    async def endpoint_ui_debug_label(payload: EndpointDebugLabelCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_ui_debug_label_command(
+            endpoint_id=payload.endpoint_id,
+            visible=payload.visible,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.ui.flags",
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),

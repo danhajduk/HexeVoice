@@ -242,6 +242,12 @@ Validation gate:
 
 ## Phase 4: Large-Screen Hexe UX
 
+The small active-screen debug label can be toggled at runtime without changing
+the selected screen. Send `POST /api/endpoint/ui/debug-label` with
+`{"endpoint_id":"esp-box-1","visible":false}` to hide it and set `visible` to
+`true` to show it. The setting is runtime-only and resets to visible after a
+firmware reboot.
+
 Outcome: the 7-inch display is a dedicated Hexe endpoint surface without
 importing Brookesia as the main runtime.
 

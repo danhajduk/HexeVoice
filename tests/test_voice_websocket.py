@@ -424,6 +424,23 @@ def test_endpoint_screen_command_routes_temporary_override(tmp_path):
     assert "conditions" not in command["payload"]["layout"]
 
 
+def test_endpoint_debug_label_command_routes_ui_flag(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        response = client.post(
+            "/api/endpoint/ui/debug-label",
+            json={"endpoint_id": "esp-box-1", "visible": False},
+        )
+        command = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["command_type"] == "endpoint.ui.flags"
+    assert command["event_type"] == "endpoint.ui.flags"
+    assert command["payload"]["flags"] == {"screen_debug_label": False}
+
+
 def test_endpoint_screen_set_and_clear_route_persistent_selection(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 

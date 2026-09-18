@@ -2907,6 +2907,7 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
 }
 
 void draw_screen_debug_label(const ScreenLayout *screen) {
+  if (!hexe::ui_flag_value("screen_debug_label")) return;
   char label[40] = {};
   std::snprintf(label, sizeof(label), "screen: %s", screen == nullptr ? "none" : screen->id);
   draw_text(kSidebarWidth + 24, kSidebarTop + 12, label, 180, kMagenta);
@@ -3405,6 +3406,8 @@ void init_display() {
   if (g_display_ready) {
     return;
   }
+
+  hexe::set_ui_flag("screen_debug_label", true);
 
   g_refresh_done = xSemaphoreCreateBinary();
   const size_t flush_buffer_bytes = static_cast<size_t>(kWidth) * kFlushRows * kBytesPerPixel;

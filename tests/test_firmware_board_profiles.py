@@ -841,6 +841,7 @@ def test_endpoint_accepts_backend_ui_flags_for_screen_conditions():
     display = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
     ).read_text(encoding="utf-8")
+    assert 'hexe::ui_flag_value("screen_debug_label")' in display
     assert "g_backend_temporary_screen_valid" in display
     assert "g_backend_persistent_screen_valid" in display
 
