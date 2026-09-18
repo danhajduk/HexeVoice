@@ -87,7 +87,12 @@ def snapshot(*, radar=True):
         "current_conditions": {"temperature": 56, "condition": "Clear"},
         "forecast_summary": {"summary": "Clear"},
         "transcript": "It is 56 degrees and clear.",
-        "tts": {"status": "ready", "audio_url": "http://voice/weather.wav", "revision": "tts-1"},
+        "tts": {
+            "status": "ready",
+            "audio_url": "http://voice/weather-high.wav",
+            "revision": "tts-1",
+            "variants": {"compact": {"audio_url": "http://voice/weather-compact.wav"}},
+        },
         "radar": {
             "status": "ready" if radar else "absent",
             "image_url": "http://interaction/radar.png" if radar else None,
@@ -109,7 +114,7 @@ def test_weather_button_renders_snapshot_and_plays_prepared_tts():
     assert manager.calls[0][1]["layout"]["id"] == "weather"
     assert any(element.get("text") == "56 degrees" for element in manager.calls[0][1]["layout"]["elements"])
     assert manager.calls[1][0] == "sound"
-    assert manager.calls[1][1]["audio_url"] == "http://voice/weather.wav"
+    assert manager.calls[1][1]["audio_url"] == "http://voice/weather-compact.wav"
 
 
 def test_weather_button_on_weather_screen_opens_current_static_radar():

@@ -204,10 +204,13 @@ class P4QuickActionService:
         )
         await self._manager.push_ui_layout_command(endpoint_id=endpoint_id, layout=layout, duration_seconds=60)
         tts = snapshot.get("tts") if isinstance(snapshot.get("tts"), dict) else {}
-        if tts.get("status") == "ready" and tts.get("audio_url"):
+        variants = tts.get("variants") if isinstance(tts.get("variants"), dict) else {}
+        compact = variants.get("compact") if isinstance(variants.get("compact"), dict) else {}
+        audio_url = compact.get("audio_url") or tts.get("audio_url")
+        if tts.get("status") == "ready" and audio_url:
             await self._manager.push_play_sound_command(
                 endpoint_id=endpoint_id,
-                audio_url=str(tts["audio_url"]),
+                audio_url=str(audio_url),
                 stream_id=str(tts.get("revision") or snapshot.get("snapshot_id") or "weather"),
                 content_type="audio/wav",
                 text=str(snapshot.get("transcript") or "") or None,
