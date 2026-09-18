@@ -144,6 +144,7 @@ def test_accepts_core_promoted_weather_result(tmp_path):
     snapshots = service(tmp_path)
     result = weather_result()
     result["promoted_event_type"] = result["event_type"]
+    result["received_at"] = result.pop("occurred_at")
     result["routing"] = {"domain_topic": PROMOTED_RESULT_TOPIC}
     result["policy"] = {"schema_valid": True, "privacy_valid": True}
 

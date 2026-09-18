@@ -328,7 +328,10 @@ def validate_weather_result(topic: str, event: dict[str, Any]) -> dict[str, Any]
     if event.get("schema_version") != 1 or source.get("component") != "hexe.weather":
         raise WeatherSnapshotError("unsupported_weather_result_schema")
     event_id = required_string(event, "event_id", max_length=200)
-    parse_timestamp(event.get("occurred_at"), "occurred_at")
+    event_timestamp = event.get("occurred_at")
+    if promoted_match is not None:
+        event_timestamp = event.get("received_at") or event.get("promoted_at")
+    parse_timestamp(event_timestamp, "occurred_at")
     subject = event.get("subject")
     if not isinstance(subject, dict) or subject.get("family") != "weather":
         raise WeatherSnapshotError("invalid_weather_result_subject")
