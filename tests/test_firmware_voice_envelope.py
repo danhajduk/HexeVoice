@@ -201,6 +201,24 @@ def test_p4_firmware_streams_remote_wav_without_whole_file_buffering():
     assert "constexpr size_t kMaxTtsBytes = 1024 * 1024;" in source
 
 
+def test_p4_firmware_mutes_and_primes_codec_around_playback():
+    source = Path("firmware/components/endpoint_runtime/voice/tts_player.cpp").read_text()
+    open_stream = source.split("bool open_speaker_stream(", 1)[1].split("void close_speaker_stream()", 1)[0]
+    close_stream = source.split("void close_speaker_stream()", 1)[1].split("bool write_pcm_frames(", 1)[0]
+
+    assert "esp_codec_set_disable_when_closed(g_speaker_codec, false);" in open_stream
+    assert open_stream.index("esp_codec_dev_set_out_mute(g_speaker_codec, true);") < open_stream.index(
+        "esp_codec_dev_open(g_speaker_codec, &sample_info)"
+    )
+    assert "std::array<uint8_t, 512> silence{};" in open_stream
+    assert open_stream.index("silence.data()") < open_stream.index(
+        "esp_codec_dev_set_out_mute(g_speaker_codec, false);"
+    )
+    assert close_stream.index("esp_codec_dev_set_out_mute(g_speaker_codec, true);") < close_stream.index(
+        "esp_codec_dev_close(g_speaker_codec);"
+    )
+
+
 def test_firmware_reports_stable_hardware_id_from_efuse_mac():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
 

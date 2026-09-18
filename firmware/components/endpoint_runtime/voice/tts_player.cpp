@@ -40,6 +40,10 @@ constexpr size_t kHttpReadBufferBytes = 4096;
 constexpr size_t kMaxWavHeaderBytes = 4096;
 constexpr int kHttpReadIdleRetryDelayMs = 20;
 constexpr int kHttpReadMaxIdleRetries = 50;
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+constexpr int kSpeakerPrimeMs = 30;
+constexpr int kSpeakerMuteSettleMs = 10;
+#endif
 
 struct PlaybackRequest {
   char stream_id[64];
@@ -282,12 +286,45 @@ bool open_speaker_stream(const WavStreamInfo &info) {
   sample_info.channel = info.channels;
   sample_info.sample_rate = info.sample_rate;
   esp_codec_dev_set_out_vol(g_speaker_codec, current_output_volume());
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  // Keep the ES8311 DAC muted while its I2S clocks and external PA settle.
+  // Leaving the codec enabled between clips also avoids toggling the PA for
+  // every short UI sound or spoken response.
+  esp_codec_set_disable_when_closed(g_speaker_codec, false);
+  esp_codec_dev_set_out_mute(g_speaker_codec, true);
+#endif
   const int result = esp_codec_dev_open(g_speaker_codec, &sample_info);
   if (result != 0) {
     ESP_LOGW(kTag, "Failed to open speaker stream: %d", result);
     return false;
   }
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  std::array<uint8_t, 512> silence{};
+  size_t bytes_remaining = static_cast<size_t>(info.sample_rate) *
+                           static_cast<size_t>(info.channels) * sizeof(int16_t) * kSpeakerPrimeMs / 1000;
+  while (bytes_remaining > 0) {
+    const size_t write_size = std::min(bytes_remaining, silence.size());
+    if (esp_codec_dev_write(g_speaker_codec, silence.data(), static_cast<int>(write_size)) != 0) {
+      esp_codec_dev_close(g_speaker_codec);
+      return false;
+    }
+    bytes_remaining -= write_size;
+  }
+  vTaskDelay(pdMS_TO_TICKS(kSpeakerMuteSettleMs));
+  esp_codec_dev_set_out_mute(g_speaker_codec, false);
+#endif
   return true;
+}
+
+void close_speaker_stream() {
+  if (g_speaker_codec == nullptr) {
+    return;
+  }
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  esp_codec_dev_set_out_mute(g_speaker_codec, true);
+  vTaskDelay(pdMS_TO_TICKS(kSpeakerMuteSettleMs));
+#endif
+  esp_codec_dev_close(g_speaker_codec);
 }
 
 bool write_pcm_frames(
@@ -443,7 +480,7 @@ bool stream_http_wav(
   *played_bytes = writer.source_bytes_written;
   hexe::state().speaker_output_level = 0;
   if (speaker_opened) {
-    esp_codec_dev_close(g_speaker_codec);
+    close_speaker_stream();
   }
   esp_http_client_close(client);
   esp_http_client_cleanup(client);
@@ -466,25 +503,15 @@ bool play_wav(const uint8_t *audio, size_t audio_size, const PlaybackRequest &re
     ESP_LOGW(kTag, "TTS audio is not supported WAV PCM");
     return false;
   }
-  if (g_speaker_codec == nullptr) {
-    g_speaker_codec = bsp_audio_codec_speaker_init();
-  }
-  if (g_speaker_codec == nullptr) {
-    ESP_LOGW(kTag, "Speaker codec is not available");
+  WavStreamInfo stream_info = {};
+  stream_info.bits_per_sample = wav.bits_per_sample;
+  stream_info.channels = wav.channels;
+  stream_info.sample_rate = wav.sample_rate;
+  if (!open_speaker_stream(stream_info)) {
     return false;
   }
 
-  esp_codec_dev_sample_info_t sample_info = {};
-  sample_info.bits_per_sample = wav.bits_per_sample;
-  sample_info.channel = wav.channels;
-  sample_info.sample_rate = wav.sample_rate;
-  esp_codec_dev_set_out_vol(g_speaker_codec, current_output_volume());
-  int result = esp_codec_dev_open(g_speaker_codec, &sample_info);
-  if (result != 0) {
-    ESP_LOGW(kTag, "Failed to open speaker stream: %d", result);
-    return false;
-  }
-
+  int result = 0;
   size_t offset = 0;
   bool first_frame_reported = false;
   while (offset < wav.pcm_size && !g_stop_requested) {
@@ -513,7 +540,7 @@ bool play_wav(const uint8_t *audio, size_t audio_size, const PlaybackRequest &re
     }
   }
   hexe::state().speaker_output_level = 0;
-  esp_codec_dev_close(g_speaker_codec);
+  close_speaker_stream();
   return result == 0 && !g_stop_requested;
 }
 
