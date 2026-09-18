@@ -9,5 +9,5 @@ description = "Starter modular HexeVoice node"
 requires-python = ">=3.11"
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 testpaths = ["tests"]

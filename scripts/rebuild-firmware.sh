@@ -13,6 +13,7 @@ INCLUDE_MINIMAL=0
 MINIMAL_ONLY=0
 LIST_ONLY=0
 VERBOSE=0
+CLEAN_ONLY=0
 PROJECT_VERSION="${FIRMWARE_PROJECT_VERSION:-}"
 REQUESTED_PROFILES=()
 
@@ -24,6 +25,7 @@ Rebuild firmware for all available Hexe board profiles.
 
 Options:
   --clean             Use fresh temporary build directories under /tmp.
+  --clean-only        Remove generated build directories for selected profiles and exit.
   --include-recovery  Also build recovery firmware for supported S3 profiles.
   --include-minimal   Also build minimal factory/onboarding firmware for supported S3 profiles.
   --minimal-only      Build only minimal factory/onboarding firmware.
@@ -45,6 +47,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --clean)
       CLEAN_BUILD=1
+      ;;
+    --clean-only)
+      CLEAN_ONLY=1
       ;;
     --include-recovery)
       INCLUDE_RECOVERY=1
@@ -415,6 +420,37 @@ run_build() {
   echo "  Complete in $((SECONDS - started_at))s (${warning_count} compiler warnings)."
 }
 
+clean_profile_builds() {
+  local profile="$1"
+  "${PYTHON_BIN}" - "${FIRMWARE_DIR}" "${profile}" "${DRY_RUN}" <<'PY'
+import shutil
+import sys
+from pathlib import Path
+
+firmware_dir = Path(sys.argv[1]).resolve()
+profile = sys.argv[2]
+dry_run = sys.argv[3] == "1"
+names = {
+    f"build-{profile}",
+    f"build-min-{profile}",
+    f"build-recovery-{profile}",
+    f"build-audio-probe-{profile}",
+}
+if profile == "ha_voice_pe":
+    names.add("build-ha-voice-pe")
+if profile == "esp_box_3":
+    names.add("build")
+for name in sorted(names):
+    path = (firmware_dir / name).resolve()
+    if path.parent != firmware_dir or not path.name.startswith("build"):
+        raise SystemExit(f"Refusing unsafe build path: {path}")
+    if path.exists():
+        print(f"{'Would remove' if dry_run else 'Removing'} {path}")
+        if not dry_run:
+            shutil.rmtree(path)
+PY
+}
+
 mapfile -t ENDPOINT_PROFILES < <(discover_profiles endpoint "${REQUESTED_PROFILES[@]}")
 mapfile -t RECOVERY_PROFILES < <(discover_profiles recovery "${REQUESTED_PROFILES[@]}")
 mapfile -t MINIMAL_PROFILES < <(discover_profiles recovery "${REQUESTED_PROFILES[@]}")
@@ -453,6 +489,18 @@ if [[ "${CLEAN_BUILD}" == "1" ]]; then
 fi
 
 if [[ "${LIST_ONLY}" == "1" ]]; then
+  exit 0
+fi
+
+if [[ "${CLEAN_ONLY}" == "1" ]]; then
+  for profile in "${ENDPOINT_PROFILES[@]}"; do
+    clean_profile_builds "${profile}"
+  done
+  if [[ "${DRY_RUN}" == "1" ]]; then
+    echo "Firmware clean dry run complete."
+  else
+    echo "Firmware build directories cleaned."
+  fi
   exit 0
 fi
 

@@ -1,0 +1,125 @@
+Screen {
+    background: #07101d;
+    color: #e7edf6;
+}
+
+Header, Footer {
+    background: #0b1728;
+    color: #dfe9f7;
+}
+
+#app-body {
+    padding: 1;
+    height: 1fr;
+}
+
+#status-cards {
+    height: 7;
+    layout: grid;
+    grid-size: 4;
+    grid-gutter: 1;
+}
+
+.status-card {
+    border: round #38516f;
+    background: #0b1728;
+    padding: 0 1;
+    height: 7;
+}
+
+.card-title, .section-title, #dialog-title {
+    color: #7896bc;
+    text-style: bold;
+}
+
+.card-value {
+    color: #ffffff;
+    margin-top: 1;
+}
+
+.card-value.success { color: #63d58b; }
+.card-value.warning { color: #f3c969; }
+.card-value.error { color: #ff6b75; }
+
+#command-panel {
+    border: round #38516f;
+    background: #091525;
+    padding: 0 1;
+    height: 11;
+    margin-top: 1;
+}
+
+#phase-row { height: 2; }
+#phase-label { width: 18; color: #63a8ff; text-style: bold; padding-top: 1; }
+#build-progress { width: 1fr; margin-left: 1; }
+#command-preview { color: #9eb5cf; height: 2; overflow: hidden; }
+#arguments-input { margin-bottom: 1; }
+#action-buttons { height: 3; }
+#action-buttons Button { margin-right: 1; min-width: 12; }
+
+#workspace {
+    height: 15;
+    margin-top: 1;
+}
+
+#navigator-pane, #details-pane {
+    border: round #38516f;
+    background: #091525;
+    padding: 0 1;
+}
+
+#navigator-pane { width: 58%; margin-right: 1; }
+#details-pane { width: 42%; }
+#navigator, #details { height: 1fr; }
+
+DataTable > .datatable--cursor {
+    background: #174f89;
+    color: #ffffff;
+}
+
+#output-section, #diagnostics-section {
+    border: round #38516f;
+    background: #050b13;
+    padding: 0 1;
+    margin-top: 1;
+}
+
+#output-section { height: 1fr; min-height: 10; }
+#diagnostics-section { height: 10; }
+#build-output, #diagnostics { height: 1fr; }
+
+Input, TextArea, Select {
+    border: tall #38516f;
+    background: #07101d;
+}
+
+Input:focus, TextArea:focus, Select:focus, DataTable:focus {
+    border: tall #4a9eff;
+}
+
+ProfileScreen {
+    align: center middle;
+    background: #02060acc;
+}
+
+#profile-dialog {
+    width: 76;
+    max-width: 95%;
+    height: 38;
+    border: round #4a9eff;
+    background: #0b1728;
+    padding: 1 2;
+}
+
+.field-label { color: #91a9c4; margin-top: 1; }
+.dialog-row { height: 6; }
+.dialog-row Vertical { width: 1fr; margin-right: 1; }
+#environment-editor { height: 7; }
+#profile-error { color: #ff6b75; height: 2; }
+#dialog-actions { height: 3; align-horizontal: right; }
+#dialog-actions Button { margin-left: 1; }
+
+.narrow #status-cards { grid-size: 2; height: 14; }
+.narrow #workspace { layout: vertical; height: 24; }
+.narrow #navigator-pane, .narrow #details-pane { width: 100%; height: 12; margin-right: 0; }
+.narrow #details-pane { margin-top: 1; }

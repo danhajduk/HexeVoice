@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "name": "Waveshare P4 7-inch",
+      "project_dir": "/path/to/HexeVoice",
+      "compiler": "/path/to/HexeVoice/scripts/rebuild-firmware.sh",
+      "target": "waveshare_p4_wifi6_touch_lcd_7b",
+      "configuration": "Release",
+      "arguments": [],
+      "environment": {},
+      "run_command": []
+    }
+  ]
+}

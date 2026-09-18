@@ -118,6 +118,16 @@ shared firmware version:
 ./scripts/rebuild-firmware.sh
 ```
 
+For an interactive compiler, target, output, and diagnostics interface, run the
+Textual application:
+
+```bash
+./tools/firmware_tui/run.sh
+```
+
+Its usage and profile format are documented in
+[`tools/firmware_tui/README.md`](../tools/firmware_tui/README.md).
+
 Use `--clean` when you want fresh temporary build directories, and
 `--include-recovery` when the recovery firmware images should be rebuilt too.
 The helper selects a profile's pinned ESP-IDF installation automatically from

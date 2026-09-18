@@ -11,6 +11,7 @@ zeroconf>=0.132.0,<1
 numpy<2
 soxr>=0.5.0,<1
 Pillow>=10.0.0,<12
+textual==8.2.8
 openwakeword==0.6.0
 faster-whisper>=1.1.0,<2
 --extra-index-url https://download.pytorch.org/whl/cpu
