@@ -4915,7 +4915,7 @@ bool send_ui_button_pressed_event(
       sizeof(body),
       "{\"screen_id\":\"%s\",\"button_id\":\"%s\",\"button_index\":%d,"
       "\"button\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d},"
-      "\"touch\":{\"x\":%d,\"y\":%d},\"source\":\"touch\"}}}",
+      "\"touch\":{\"x\":%d,\"y\":%d},\"source\":\"touch\"}}",
       screen_id,
       button_id,
       button_index,

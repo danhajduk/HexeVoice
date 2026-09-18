@@ -178,6 +178,15 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
     assert "if (process_pending_audio_finalize())" in source
 
 
+def test_firmware_ui_button_event_closes_payload_and_envelope_once():
+    source = FIRMWARE_BACKEND_CLIENT.read_text()
+    function = source.split("bool send_ui_button_pressed_event(", 1)[1]
+    function = function.split("bool send_ui_screen_changed_event(", 1)[0]
+
+    assert r'\"source\":\"touch\"}}",' in function
+    assert r'\"source\":\"touch\"}}}",' not in function
+
+
 def test_firmware_reports_stable_hardware_id_from_efuse_mac():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
 
