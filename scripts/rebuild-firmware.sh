@@ -157,6 +157,31 @@ print(payload["build"].get("required_idf_version", ""))
 PY
 }
 
+profile_build_metadata() {
+  local profile="$1"
+  "${PYTHON_BIN}" - "${BOARD_PROFILE_ROOT}" "${profile}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+profile = sys.argv[2]
+sys.path.insert(0, str(root.parent / "tools"))
+from validate_board_profiles import load_profile, validate_profile  # noqa: E402
+
+path = root / profile / "board.yaml"
+payload = load_profile(path)
+validate_profile(payload, path)
+build = payload["build"]
+hardware = payload["hardware"]
+print("\t".join((
+    str(build["idf_target"]),
+    str(build["partition_schema"]),
+    str(build["app_slot_size"]),
+    str(hardware["flash_size"]),
+)))
+PY
+}
+
 profile_idf_export() {
   local profile="$1"
   local required_version
@@ -196,12 +221,19 @@ run_build() {
   local app="$1"
   local profile="$2"
   local idf_export
+  local interactive_progress
   local log_path
+  local idf_target
+  local partition_schema
+  local app_slot_size
+  local flash_size
   local started_at
   local terminal_columns
   local warning_count
   shift 2
   idf_export="$(profile_idf_export "${profile}")"
+  IFS=$'\t' read -r idf_target partition_schema app_slot_size flash_size \
+    < <(profile_build_metadata "${profile}")
   log_path="${BUILD_BASE}/logs/${app}-${profile}.log"
   if [[ ! -f "${idf_export}" ]]; then
     echo "ESP-IDF environment for ${profile} was not found: ${idf_export}" >&2
@@ -248,6 +280,10 @@ run_build() {
   fi
 
   mkdir -p "$(dirname "${log_path}")"
+  interactive_progress=0
+  if [[ -t 1 ]]; then
+    interactive_progress=1
+  fi
   terminal_columns="${COLUMNS:-120}"
   if [[ -t 1 && -r /dev/tty ]]; then
     terminal_columns="$(stty size </dev/tty 2>/dev/null | awk '{print $2}' || true)"
@@ -263,21 +299,69 @@ run_build() {
       return 1
     fi
     env "${env_args[@]}" "${FIRMWARE_DIR}/build.sh" build
-  ) 2>&1 | tee "${log_path}" | awk -v terminal_columns="${terminal_columns}" '
+  ) 2>&1 | tee "${log_path}" | awk \
+    -v app="${app}" \
+    -v app_slot_size="${app_slot_size}" \
+    -v flash_size="${flash_size}" \
+    -v idf_target="${idf_target}" \
+    -v interactive="${interactive_progress}" \
+    -v partition_schema="${partition_schema}" \
+    -v profile="${profile}" \
+    -v started_at="$(date +%s)" \
+    -v terminal_columns="${terminal_columns}" '
     function stage_for(action) {
       if (action ~ /^Building (C|CXX|ASM) object/) return "Compiling"
       if (action ~ /^Linking/) return "Linking"
       if (action ~ /^Generating/) return "Generating"
       if (action ~ /^(Creating|Packaging|Built target)/) return "Packaging"
-      return "Building"
+      return "Other"
     }
-    /^Executing action:/ || /^Running ninja/ || /^Project build complete/ || /^-- (Configuring|Generating) done/ {
-      if (progress_active) {
-        printf "\n"
-        progress_active = 0
+    BEGIN {
+      image_status = "pending"
+      last_bucket = -1
+    }
+    function clip(text, max_width) {
+      max_width = terminal_columns - 1
+      if (length(text) > max_width) return substr(text, 1, max_width - 3) "..."
+      return text
+    }
+    function dashboard(percent, completed, total, stage, action,    bar, bar_width, filled, i, summary) {
+      bar_width = terminal_columns >= 100 ? 30 : 16
+      filled = int((percent * bar_width) / 100)
+      bar = ""
+      for (i = 1; i <= bar_width; i++) bar = bar (i <= filled ? "#" : "-")
+      if (dashboard_drawn) printf "\033[9A"
+      printf "\r\033[2K%s\n", clip(sprintf("  Firmware: %s / %s", profile, app))
+      printf "\r\033[2K%s\n", clip(sprintf("  Target  : %s | flash %s | app slot %s", idf_target, flash_size, app_slot_size))
+      printf "\r\033[2K%s\n", clip("  Layout  : " partition_schema)
+      printf "\r\033[2K%s\n", clip(sprintf("  Overall : [%s] %3d%% (%d/%d)", bar, percent, completed, total))
+      summary = sprintf("  Tasks   : compile %d | link %d | generate %d | package %d | other %d",
+        counts["Compiling"], counts["Linking"], counts["Generating"], counts["Packaging"], counts["Other"])
+      printf "\r\033[2K%s\n", clip(summary)
+      printf "\r\033[2K%s\n", clip("  Activity: " stage)
+      printf "\r\033[2K%s\n", clip("  Current : " action)
+      printf "\r\033[2K%s\n", clip("  Image   : " image_status)
+      printf "\r\033[2K%s\n", clip(sprintf("  Elapsed : %ds", systime() - started_at))
+      fflush()
+      dashboard_drawn = 1
+    }
+    /^Executing action:/ || /^Running ninja/ || /^-- (Configuring|Generating) done/ {
+      if (!dashboard_drawn) {
+        print "  " $0
+        fflush()
       }
+      next
+    }
+    /^Project build complete/ {
+      if (interactive && dashboard_drawn) dashboard(100, total_steps, total_steps, "Complete", "Firmware image ready")
       print "  " $0
       fflush()
+      next
+    }
+    /hexe_firmware\.bin binary size/ {
+      image_status = $0
+      sub(/^.*hexe_firmware\.bin /, "", image_status)
+      if (interactive && dashboard_drawn) dashboard(last_percent, last_completed, total_steps, last_stage, last_action)
       next
     }
     /^\[[0-9]+\/[0-9]+\]/ {
@@ -288,23 +372,21 @@ run_build() {
       percent = int((step[1] * 100) / step[2])
       action = substr($0, index($0, "]") + 2)
       stage = stage_for(action)
-      if (stage != current_stage) {
-        if (progress_active) printf "\n"
-        print "  Stage: " stage
-        current_stage = stage
-      }
-      status = sprintf("  Progress: %3d%% (%d/%d) %s", percent, step[1], step[2], action)
-      max_width = terminal_columns - 1
-      if (length(status) > max_width) {
-        status = substr(status, 1, max_width - 3) "..."
-      }
-      printf "\r\033[2K%s", status
-      fflush()
-      progress_active = 1
-    }
-    END {
-      if (progress_active) {
-        printf "\n"
+      counts[stage]++
+      total_steps = step[2]
+      last_action = action
+      last_completed = step[1]
+      last_percent = percent
+      last_stage = stage
+      if (interactive) {
+        dashboard(percent, step[1], step[2], stage, action)
+      } else {
+        bucket = int(percent / 5)
+        if (bucket > last_bucket || step[1] == step[2]) {
+          printf "  Progress: %3d%% (%d/%d) %s\n", percent, step[1], step[2], action
+          fflush()
+          last_bucket = bucket
+        }
       }
     }
   '; then

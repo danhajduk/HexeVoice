@@ -122,12 +122,13 @@ Use `--clean` when you want fresh temporary build directories, and
 `--include-recovery` when the recovery firmware images should be rebuilt too.
 The helper selects a profile's pinned ESP-IDF installation automatically from
 `~/esp-idf-v<version>` and writes routine build output to per-profile logs under
-`/tmp`. Its default output marks stage transitions such as compiling, linking,
-generating, and packaging, then reports elapsed time and the compiler warning
-count. Within each stage, the percentage, step count, and current Ninja action
-update in place on one progress line. Long actions are truncated to the current
-terminal width to prevent wrapping; the complete action remains in the log.
-Pass `--verbose` to stream the complete ESP-IDF output.
+`/tmp`. In a terminal, its default output is a fixed dashboard with target,
+flash size, partition schema, app-slot capacity, firmware image usage, an
+overall progress bar, compile/link/generate/package task counters, current
+activity, current Ninja action, and elapsed time. Long actions are truncated to
+the current terminal width; the complete action remains in the log. Redirected
+output falls back to a progress line every five percent. Pass `--verbose` to
+stream the complete ESP-IDF output.
 Recovery builds are exported to their profile folders, while their runtime
 metadata is staged under `/tmp` so endpoint OTA manifests stay endpoint-only.
 Use `--include-minimal` to also build the USB-flashed factory/onboarding image,

@@ -71,13 +71,21 @@ def test_multi_profile_rebuild_selects_profile_sdk_and_quiet_logs(tmp_path):
     assert '${BUILD_BASE}/logs/${app}-${profile}.log' in rebuild_script
     assert '--verbose' in rebuild_script
     assert 'tail -n 80 "${log_path}"' in rebuild_script
-    assert 'Progress: %3d%% (%d/%d) %s' in rebuild_script
+    assert 'function dashboard(' in rebuild_script
+    assert 'profile_build_metadata()' in rebuild_script
+    assert 'Target  : %s | flash %s | app slot %s' in rebuild_script
+    assert 'Layout  : " partition_schema' in rebuild_script
+    assert 'Image   : " image_status' in rebuild_script
+    assert '/hexe_firmware\\.bin binary size/' in rebuild_script
+    assert 'Overall : [%s] %3d%% (%d/%d)' in rebuild_script
+    assert 'Tasks   : compile %d | link %d | generate %d | package %d | other %d' in rebuild_script
+    assert 'Activity: " stage' in rebuild_script
+    assert 'Current : " action' in rebuild_script
+    assert 'Elapsed : %ds' in rebuild_script
     assert 'action = substr($0, index($0, "]") + 2)' in rebuild_script
     assert 'terminal_columns="$(stty size </dev/tty' in rebuild_script
-    assert 'max_width = terminal_columns - 1' in rebuild_script
-    assert 'status = substr(status, 1, max_width - 3) "..."' in rebuild_script
-    assert 'printf "\\r\\033[2K%s", status' in rebuild_script
-    assert 'Stage: " stage' in rebuild_script
+    assert 'return substr(text, 1, max_width - 3) "..."' in rebuild_script
+    assert 'if (dashboard_drawn) printf "\\033[9A"' in rebuild_script
     assert 'return "Compiling"' in rebuild_script
     assert 'return "Linking"' in rebuild_script
     assert 'compiler warnings' in rebuild_script
