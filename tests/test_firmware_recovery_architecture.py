@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 
@@ -59,6 +60,40 @@ def test_each_endpoint_profile_uses_a_profile_specific_dependency_lock():
         "waveshare_p4_wifi6_touch_lcd_7b-endpoint-idf-5.5.4.lock",
     }
     assert expected_locks <= {path.name for path in DEPENDENCY_LOCKS.glob("*.lock")}
+
+
+def test_multi_profile_rebuild_selects_profile_sdk_and_quiet_logs(tmp_path):
+    rebuild_script = REBUILD_SCRIPT.read_text()
+
+    assert 'profile_required_idf_version()' in rebuild_script
+    assert 'esp-idf-v%s/export.sh' in rebuild_script
+    assert 'source "${idf_export}" >/dev/null 2>&1' in rebuild_script
+    assert '${BUILD_BASE}/logs/${app}-${profile}.log' in rebuild_script
+    assert '--verbose' in rebuild_script
+    assert 'tail -n 80 "${log_path}"' in rebuild_script
+
+    default_idf = tmp_path / "esp-idf"
+    pinned_idf = tmp_path / "esp-idf-v5.5.4"
+    for idf_root in (default_idf, pinned_idf):
+        idf_root.mkdir()
+        (idf_root / "export.sh").touch()
+
+    result = subprocess.run(
+        [str(REBUILD_SCRIPT), "--dry-run", "--project-version", "test-sdk-selection"],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={
+            "HOME": str(tmp_path),
+            "IDF_PATH": str(default_idf),
+            "PATH": "/usr/bin:/bin",
+        },
+    )
+    commands = [line for line in result.stdout.splitlines() if line.startswith("cd ")]
+    assert len(commands) == 3
+    assert str(default_idf / "export.sh") in commands[0]
+    assert str(pinned_idf / "export.sh") in commands[1]
+    assert str(default_idf / "export.sh") in commands[2]
 
 
 def test_recovery_architecture_defines_entry_conditions_and_interfaces():

@@ -12,6 +12,7 @@ INCLUDE_RECOVERY=0
 INCLUDE_MINIMAL=0
 MINIMAL_ONLY=0
 LIST_ONLY=0
+VERBOSE=0
 PROJECT_VERSION="${FIRMWARE_PROJECT_VERSION:-}"
 REQUESTED_PROFILES=()
 
@@ -30,11 +31,13 @@ Options:
   --project-version V Use an explicit shared firmware version.
   --list              List selected profiles without building.
   --dry-run           Print build commands without running them.
+  --verbose           Stream complete ESP-IDF build output instead of writing logs quietly.
   -h, --help          Show this help.
 
 Environment:
   FIRMWARE_PROJECT_VERSION  Shared project version. Generated once by default.
   PYTHON_BIN                Python interpreter. Default: python3.
+  HEXE_IDF_INSTALL_ROOT     Parent of versioned ESP-IDF installs. Default: $HOME.
 EOF
 }
 
@@ -74,6 +77,9 @@ while [[ $# -gt 0 ]]; do
       ;;
     --dry-run)
       DRY_RUN=1
+      ;;
+    --verbose)
+      VERBOSE=1
       ;;
     -h|--help)
       usage
@@ -133,6 +139,39 @@ if selected:
 PY
 }
 
+profile_required_idf_version() {
+  local profile="$1"
+  "${PYTHON_BIN}" - "${BOARD_PROFILE_ROOT}" "${profile}" <<'PY'
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+profile = sys.argv[2]
+sys.path.insert(0, str(root.parent / "tools"))
+from validate_board_profiles import load_profile, validate_profile  # noqa: E402
+
+path = root / profile / "board.yaml"
+payload = load_profile(path)
+validate_profile(payload, path)
+print(payload["build"].get("required_idf_version", ""))
+PY
+}
+
+profile_idf_export() {
+  local profile="$1"
+  local required_version
+  required_version="$(profile_required_idf_version "${profile}")"
+  if [[ -n "${required_version}" ]]; then
+    printf '%s/esp-idf-v%s/export.sh\n' "${HEXE_IDF_INSTALL_ROOT:-${HOME}}" "${required_version}"
+    return
+  fi
+  if [[ -n "${IDF_PATH:-}" ]]; then
+    printf '%s/export.sh\n' "${IDF_PATH}"
+    return
+  fi
+  printf '%s/esp-idf/export.sh\n' "${HOME}"
+}
+
 generated_project_version() {
   local git_sha
   git_sha="$(git -C "${ROOT_DIR}" rev-parse --short HEAD 2>/dev/null || echo nogit)"
@@ -156,7 +195,15 @@ print_profiles() {
 run_build() {
   local app="$1"
   local profile="$2"
+  local idf_export
+  local log_path
   shift 2
+  idf_export="$(profile_idf_export "${profile}")"
+  log_path="${BUILD_BASE}/logs/${app}-${profile}.log"
+  if [[ ! -f "${idf_export}" ]]; then
+    echo "ESP-IDF environment for ${profile} was not found: ${idf_export}" >&2
+    return 1
+  fi
   local -a env_args=(
     "FIRMWARE_PROJECT_VERSION=${PROJECT_VERSION}"
     "HEXE_FIRMWARE_APP=${app}"
@@ -171,7 +218,8 @@ run_build() {
   env_args+=("$@")
 
   if [[ "${DRY_RUN}" == "1" ]]; then
-    printf 'cd %q && env' "${ROOT_DIR}"
+    printf 'cd %q && source %q' "${ROOT_DIR}" "${idf_export}"
+    printf ' >/dev/null 2>&1 && env'
     printf ' %q' "${env_args[@]}" "${FIRMWARE_DIR}/build.sh" build
     echo
     return
@@ -179,10 +227,37 @@ run_build() {
 
   echo
   echo "Building ${app} firmware for ${profile}"
-  (
+  echo "  SDK: ${idf_export%/export.sh}"
+  if [[ "${VERBOSE}" == "1" ]]; then
+    (
+      cd "${ROOT_DIR}"
+      # ESP-IDF's activation banner is redundant with the SDK line above.
+      # shellcheck disable=SC1090
+      if ! source "${idf_export}" >/dev/null 2>&1; then
+        echo "Failed to activate ESP-IDF from ${idf_export}." >&2
+        return 1
+      fi
+      env "${env_args[@]}" "${FIRMWARE_DIR}/build.sh" build
+    )
+    return
+  fi
+
+  mkdir -p "$(dirname "${log_path}")"
+  if ! (
     cd "${ROOT_DIR}"
+    # shellcheck disable=SC1090
+    if ! source "${idf_export}" >/dev/null 2>&1; then
+      echo "Failed to activate ESP-IDF from ${idf_export}." >&2
+      return 1
+    fi
     env "${env_args[@]}" "${FIRMWARE_DIR}/build.sh" build
-  )
+  ) >"${log_path}" 2>&1; then
+    echo "Build failed. Last 80 log lines:" >&2
+    tail -n 80 "${log_path}" >&2
+    echo "Full log: ${log_path}" >&2
+    return 1
+  fi
+  echo "  Complete. Log: ${log_path}"
 }
 
 mapfile -t ENDPOINT_PROFILES < <(discover_profiles endpoint "${REQUESTED_PROFILES[@]}")
