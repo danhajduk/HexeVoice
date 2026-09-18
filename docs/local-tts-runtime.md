@@ -79,7 +79,7 @@ PUT /api/tts/settings
 
 Python-SoXR/libsoxr is documented in `docs/third-party-licenses.md`.
 
-Use one default Piper voice with an empty `endpoint_voices` map when every endpoint should share the same speaker identity. Endpoint-specific overrides remain available for installations that explicitly need them:
+HexeVoice owns one global speaker identity. Caller-supplied `voice` values and legacy endpoint-specific voice mappings cannot override the configured default voice. Keep `endpoint_voices` empty; the field remains readable only for configuration compatibility:
 
 ```json
 {
@@ -91,7 +91,7 @@ Use one default Piper voice with an empty `endpoint_voices` map when every endpo
 }
 ```
 
-`VOICE_TTS_ENDPOINT_VOICES` remains supported as an environment fallback. The value accepts comma-separated `endpoint_id=voice_id` entries or a JSON object. Values from `runtime/voice_tts_settings.json` override matching environment entries.
+`VOICE_TTS_ENDPOINT_VOICES` is retained for configuration compatibility but does not override the voice enforced by the TTS adapter. Sample-rate overrides remain endpoint-specific and independent of speaker identity.
 
 ## Supervisor Shape
 

@@ -2365,7 +2365,7 @@ def test_openai_tts_adapter_posts_speech_request_and_stores_audio(tmp_path):
     assert b"hello" in captured["json"]
 
 
-def test_openai_tts_adapter_can_override_voice_and_format_per_request(tmp_path):
+def test_openai_tts_adapter_enforces_global_voice_but_allows_format_per_request(tmp_path):
     captured = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -2392,7 +2392,8 @@ def test_openai_tts_adapter_can_override_voice_and_format_per_request(tmp_path):
 
     assert synthesis.content_type == "audio/mpeg"
     assert (tmp_path / f"{synthesis.stream_id}.mp3").read_bytes() == b"mp3-bytes"
-    assert b"nova" in captured["json"]
+    assert b"alloy" in captured["json"]
+    assert b"nova" not in captured["json"]
     assert b"mp3" in captured["json"]
 
 
@@ -2659,6 +2660,39 @@ def test_piper_tts_adapter_routes_p4_to_40k_and_other_endpoints_to_22050(tmp_pat
     assert other.audio_variant == "22050"
     assert other.output_sample_rate_hz == 22050
     assert other.endpoint_audio_url == f"/api/voice/tts/{other.stream_id}/22050"
+
+
+def test_piper_tts_adapter_ignores_caller_voice_override(tmp_path):
+    source = io.BytesIO()
+    with wave.open(source, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(22050)
+        wav_file.writeframes(b"\x00\x00" * 2205)
+
+    requested_voices: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_voices.append(json.loads(request.content)["voice"])
+        return httpx.Response(200, content=source.getvalue(), headers={"content-type": "audio/wav"})
+
+    adapter = PiperTextToSpeechAdapter(
+        base_url="http://piper.test:10200",
+        output_dir=tmp_path,
+        voice="en_US-hfc_female-medium",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    synthesis = adapter.synthesize(
+        endpoint_id="esp-box-1",
+        session_id="voice-policy",
+        text="hello",
+        voice="en_US-lessac-medium",
+    )
+
+    assert requested_voices == ["en_US-hfc_female-medium"]
+    assert synthesis.voice_id == "en_US-hfc_female-medium"
+    assert synthesis.model_id == "en_US-hfc_female-medium"
 
 
 def test_piper_tts_adapter_uses_endpoint_specific_sample_rate(tmp_path):

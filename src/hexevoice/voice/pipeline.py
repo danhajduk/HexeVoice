@@ -916,7 +916,9 @@ class PiperTextToSpeechAdapter:
 
         stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
         client = self._http_client or client_for_engine(timeout=self._timeout_s, socket_path=self._socket_path)
-        selected_voice = voice or self._voice or "piper-default"
+        # Voice identity is node-owned policy. Callers may carry the legacy
+        # field for compatibility, but cannot select a different speaker.
+        selected_voice = self._voice or "piper-default"
         timing_breakdown_ms: dict[str, float] = {}
         try:
             piper_started_at = time.perf_counter()
@@ -1174,7 +1176,8 @@ class OpenAiTextToSpeechAdapter:
         stream_id = stream_id or f"tts-{uuid4().hex[:12]}"
         response_format = audio_format or self._response_format
         content_type = self._content_type(response_format)
-        selected_voice = voice or self._voice
+        # Keep speaker identity consistent across endpoints and callers.
+        selected_voice = self._voice
         if not self._api_key:
             self._last_error = "missing_api_key"
             record_voice_event(
