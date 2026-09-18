@@ -1281,6 +1281,12 @@ def test_firmware_boot_syncs_board_assets_to_sd_card():
     assert "local_manifest_matches(" in source
     assert "local_manifest, media_type, filename, size->valueint, sha256, final_path" in source
     assert "reserve_asset_sync_dma_memory()" in source
+    assert '#include "system/clock.h"' in source
+    assert 'set_status("waiting_for_backend")' in source
+    assert "hexe::state().backend_connected" in source
+    assert "hexe::state().voice_ws_connected" in source
+    assert "hexe::system::clock_synced()" in source
+    assert 'set_status("backend_unavailable")' in source
     trigger_body = source.split("bool trigger_asset_sync()", 1)[1].split("void init_asset_sync()", 1)[0]
     assert "reserve_asset_sync_dma_memory();" in trigger_body
     assert "hexe::system::reserve_asset_sync_dma_memory();" not in app_main_source

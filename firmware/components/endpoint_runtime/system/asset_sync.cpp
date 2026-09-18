@@ -18,6 +18,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "psa/crypto.h"
+#include "system/clock.h"
 #include "system/settings.h"
 
 namespace {
@@ -26,6 +27,7 @@ constexpr int kTaskStackBytes = 8192;
 constexpr int kTaskPriority = 3;
 constexpr int kWifiWaitDelayMs = 500;
 constexpr int kWifiWaitMaxAttempts = 120;
+constexpr int kP4StartupWaitMaxAttempts = 60;
 constexpr int kHttpTimeoutMs = 30000;
 constexpr int kReadIdleRetryDelayMs = 100;
 constexpr int kReadMaxIdleRetries = 3;
@@ -672,6 +674,25 @@ void asset_sync_task(void *arg) {
     g_asset_sync_task = nullptr;
     vTaskDelete(nullptr);
     return;
+  }
+
+  if (std::strcmp(hexe::config::kEndpointBoardProfile, "waveshare_p4_wifi6_touch_lcd_7b") == 0) {
+    set_status("waiting_for_backend");
+    int startup_attempts = 0;
+    while ((!hexe::state().backend_connected || !hexe::state().voice_ws_connected ||
+            !hexe::system::clock_synced()) &&
+           startup_attempts++ < kP4StartupWaitMaxAttempts) {
+      vTaskDelay(pdMS_TO_TICKS(kWifiWaitDelayMs));
+    }
+    if (!hexe::state().backend_connected || !hexe::state().voice_ws_connected ||
+        !hexe::system::clock_synced()) {
+      set_status("backend_unavailable");
+      release_dma_reserve();
+      g_active = false;
+      g_asset_sync_task = nullptr;
+      vTaskDelete(nullptr);
+      return;
+    }
   }
 
   release_dma_reserve();
