@@ -165,6 +165,11 @@ class QueuedEndpointCommandDispatcher:
                     pattern="identify",
                     duration_ms=3000,
                 )
+            elif command == "endpoint.settings.open":
+                result = await self._manager.push_ui_screen_set_command(
+                    endpoint_id=endpoint_id,
+                    screen_id="settings",
+                )
             else:
                 result = {"accepted": False, "reason": "unsupported_endpoint_intent", "status": "failed"}
             log.info(
@@ -1106,17 +1111,26 @@ class AssistantTurnService:
         text: str,
         session_id: str | None = None,
         reply_audio_factory: Callable[..., dict[str, Any] | None] | None = None,
+        declared_intent_id: str | None = None,
+        declared_slots: dict[str, Any] | None = None,
     ) -> IntentInvocationResult:
         heard_text = self._strip_wake_words(text)
         resolved_session_id = session_id or self._next_session_id(endpoint_id)
         requested_at = utc_event_timestamp()
         intent_started_at = time.perf_counter()
         pending_followup = self._pending_followup(endpoint_id=endpoint_id, session_id=resolved_session_id, now=requested_at)
-        intent = self._intent_finder.find(
-            heard_text,
-            requested_at=requested_at,
-            pending_followup=pending_followup.as_dict() if pending_followup else None,
-        )
+        if declared_intent_id:
+            intent = self._intent_finder.match_declared_intent(
+                declared_intent_id,
+                requested_at=requested_at,
+                slots=declared_slots,
+            )
+        else:
+            intent = self._intent_finder.find(
+                heard_text,
+                requested_at=requested_at,
+                pending_followup=pending_followup.as_dict() if pending_followup else None,
+            )
         if intent is None:
             intent_latency_ms = self._elapsed_ms(intent_started_at)
             self._record_intent_latency(
@@ -1607,6 +1621,7 @@ class AssistantTurnService:
             "endpoint.mute",
             "endpoint.unmute",
             "endpoint.identify",
+            "endpoint.settings.open",
         }:
             if self._endpoint_command_dispatcher is None:
                 return DomainEventPublishDecision(status="skipped", reason="endpoint_dispatcher_unavailable", event_type=intent.command)

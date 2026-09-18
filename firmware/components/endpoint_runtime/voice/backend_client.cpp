@@ -4894,6 +4894,7 @@ bool send_tts_playback_event(
 bool send_ui_button_pressed_event(
     const char *screen_id,
     const char *button_id,
+    const char *intent_id,
     int button_index,
     int button_x,
     int button_y,
@@ -4902,6 +4903,7 @@ bool send_ui_button_pressed_event(
     int touch_x,
     int touch_y) {
   if (screen_id == nullptr || screen_id[0] == '\0' || button_id == nullptr || button_id[0] == '\0' ||
+      intent_id == nullptr || intent_id[0] == '\0' ||
       !g_ws_connected) {
     return false;
   }
@@ -4913,11 +4915,12 @@ bool send_ui_button_pressed_event(
   std::snprintf(
       body,
       sizeof(body),
-      "{\"screen_id\":\"%s\",\"button_id\":\"%s\",\"button_index\":%d,"
+      "{\"screen_id\":\"%s\",\"button_id\":\"%s\",\"intent_id\":\"%s\",\"button_index\":%d,"
       "\"button\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d},"
       "\"touch\":{\"x\":%d,\"y\":%d},\"source\":\"touch\"}}",
       screen_id,
       button_id,
+      intent_id,
       button_index,
       button_x,
       button_y,

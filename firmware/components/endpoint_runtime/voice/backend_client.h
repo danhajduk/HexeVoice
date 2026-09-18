@@ -58,6 +58,7 @@ bool send_tts_playback_event(
 bool send_ui_button_pressed_event(
     const char *screen_id,
     const char *button_id,
+    const char *intent_id,
     int button_index,
     int button_x,
     int button_y,

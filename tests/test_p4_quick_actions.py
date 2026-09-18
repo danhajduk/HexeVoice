@@ -77,13 +77,22 @@ class FakeRadarAssets:
 
 
 def quick_actions(manager, weather):
-    return P4QuickActionService(
+    invocations = []
+
+    async def invoke(**kwargs):
+        invocations.append(kwargs)
+        return {"matched": True, "intent_id": kwargs["intent_id"]}
+
+    service = P4QuickActionService(
         manager=manager,
         weather=weather,
         radar_assets=FakeRadarAssets(),
         radar_asset_url=lambda asset_id: f"http://voice/radar/{asset_id}",
         interaction_api_base_url="http://interaction",
+        intent_invoker=invoke,
     )
+    service.test_intent_invocations = invocations
+    return service
 
 
 def snapshot(*, radar=True):
@@ -116,17 +125,16 @@ def snapshot(*, radar=True):
     }
 
 
-def test_weather_button_renders_snapshot_and_plays_prepared_tts():
+def test_weather_button_invokes_declared_intent_and_waits_for_owner_result():
     manager = FakeManager()
     service = quick_actions(manager, FakeWeather(snapshot()))
 
-    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "idle", "button_id": "button_weather"}))
+    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "idle", "button_id": "button_weather", "intent_id": "weather.current"}))
 
-    assert manager.calls[0][0] == "layout"
-    assert manager.calls[0][1]["layout"]["id"] == "weather"
-    assert any(element.get("text") == "56 degrees" for element in manager.calls[0][1]["layout"]["elements"])
-    assert manager.calls[1][0] == "sound"
-    assert manager.calls[1][1]["audio_url"] == "http://voice/weather-high.wav"
+    assert service.test_intent_invocations == [
+        {"endpoint_id": "p4", "intent_id": "weather.current", "text": "what is the current weather"}
+    ]
+    assert manager.calls == []
 
 
 def test_weather_success_result_renders_matching_snapshot():
@@ -188,25 +196,14 @@ def test_weather_failed_result_displays_safe_message():
     assert "Weather is temporarily unavailable." in texts
 
 
-def test_weather_button_on_weather_screen_opens_current_static_radar():
+def test_weather_button_on_weather_screen_still_refreshes_weather_through_intent():
     manager = FakeManager()
     service = quick_actions(manager, FakeWeather(snapshot()))
 
-    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "weather", "button_id": "button_weather"}))
+    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "weather", "button_id": "button_weather", "intent_id": "weather.current"}))
 
-    assert manager.calls[0][0] == "asset_prepare"
-    layout = manager.calls[1][1]["layout"]
-    assert layout["id"] == "radar"
-    image = next(element for element in layout["elements"] if element["type"] == "image")
-    assert image == {
-        "type": "image",
-        "item": "weather_radar",
-        "asset_id": "weather-radar-" + "a" * 24,
-        "x": 112,
-        "y": 96,
-        "width": 800,
-        "height": 420,
-    }
+    assert service.test_intent_invocations[0]["intent_id"] == "weather.current"
+    assert manager.calls == []
 
 
 def test_new_weather_snapshot_prepares_radar_for_connected_p4_endpoint():
@@ -246,8 +243,9 @@ def test_timer_button_begins_interaction_owned_custom_capture(monkeypatch):
     original = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=transport, **kwargs))
 
-    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "idle", "button_id": "button_timer"}))
+    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "idle", "button_id": "button_timer", "intent_id": "timer.create"}))
 
+    assert service.test_intent_invocations[0]["intent_id"] == "timer.create"
     assert [call[0] for call in manager.calls] == ["layout", "sound"]
     assert manager.calls[0][1]["layout"]["id"] == "timer_quick"
     assert manager.calls[1][1]["session_id"] == "timer-session-1"
@@ -260,13 +258,16 @@ def test_timer_button_begins_interaction_owned_custom_capture(monkeypatch):
     assert manager.calls[2][1]["reason"] == "timer_quick_action_capture"
 
 
-def test_config_button_closes_quick_action_screen():
+def test_config_button_invokes_declared_settings_intent():
     manager = FakeManager()
     service = quick_actions(manager, FakeWeather(snapshot()))
 
-    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "weather", "button_id": "button_config"}))
+    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "weather", "button_id": "button_config", "intent_id": "endpoint.settings.open"}))
 
-    assert manager.calls == [("clear", {"endpoint_id": "p4"})]
+    assert service.test_intent_invocations == [
+        {"endpoint_id": "p4", "intent_id": "endpoint.settings.open", "text": "open settings"}
+    ]
+    assert manager.calls == []
 
 
 def test_custom_timer_capture_submits_duration_then_confirms(monkeypatch):

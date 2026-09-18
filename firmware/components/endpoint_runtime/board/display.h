@@ -10,6 +10,7 @@ namespace hexe::board {
 struct DisplayButtonHit {
   char screen_id[24] = {};
   char button_id[24] = {};
+  char intent_id[64] = {};
   int index = 0;
   int x = 0;
   int y = 0;

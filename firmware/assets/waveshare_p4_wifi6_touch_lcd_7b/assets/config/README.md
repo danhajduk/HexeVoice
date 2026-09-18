@@ -94,6 +94,8 @@ buttons:
   items:
     - button_timer
     - button_weather
+
+Button items declare the exact intent they invoke with `intent_id`. The compiler embeds both `id` and `intent_id` in every screen button declaration; firmware returns both values in `endpoint.ui.button_pressed`, and the backend rejects mismatched declarations before dispatching the registered intent.
     - button_config
 ```
 

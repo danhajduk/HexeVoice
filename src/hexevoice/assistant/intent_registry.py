@@ -24,6 +24,7 @@ BUILT_IN_ENDPOINT_CONTROL_INTENT_IDS = (
     "endpoint.mute",
     "endpoint.unmute",
     "endpoint.identify",
+    "endpoint.settings.open",
 )
 PERSONAL_INTENT_PRIVACY_CLASSES = {"personal", "private", "sensitive", "biometric"}
 PERSONAL_INTENT_ACCESS_SCOPES = {"personal", "profile", "user"}
@@ -736,6 +737,13 @@ def endpoint_control_intent_definition(*, intent_id: str) -> dict[str, Any]:
             "command": "endpoint.identify",
             "reply": "Identifying this endpoint.",
         },
+        "endpoint.settings.open": {
+            "name": "Open endpoint settings",
+            "examples": ["open settings", "show device settings", "open configuration"],
+            "patterns": [r"^(?:please\s+)?(?:open|show)\s+(?:(?:device|endpoint)\s+)?(?:settings|configuration)$"],
+            "command": "endpoint.settings.open",
+            "reply": "Opening settings.",
+        },
     }
     config = definitions[intent_id]
     slots = {
@@ -796,6 +804,7 @@ def built_in_endpoint_control_intent(*, intent_id: str) -> dict[str, Any]:
             "endpoint.mute": "Mute endpoint",
             "endpoint.unmute": "Unmute endpoint",
             "endpoint.identify": "Identify endpoint",
+            "endpoint.settings.open": "Open endpoint settings",
         }[intent_id],
         "service_id": "voice.local_intents",
         "owner_service": "hexevoice",

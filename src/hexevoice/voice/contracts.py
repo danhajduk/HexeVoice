@@ -258,6 +258,7 @@ class VoiceUiBounds(VoiceUiPoint):
 class VoiceUiButtonPressedPayload(BaseModel):
     screen_id: str = Field(min_length=1, max_length=40)
     button_id: str = Field(min_length=1, max_length=40)
+    intent_id: str = Field(min_length=1, max_length=120)
     button_index: int = Field(ge=0, le=15)
     button: VoiceUiBounds
     touch: VoiceUiPoint

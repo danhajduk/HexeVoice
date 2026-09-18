@@ -443,7 +443,7 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
             ).read_text(encoding="utf-8")
         )
         assert generated_payload == compiled_payload
-        assert (tmp_path / filename).stat().st_size <= 8192
+        assert (tmp_path / filename).stat().st_size <= 12288
         layout.update(compiled_payload)
 
     screen_index = (directory / "screens_layout.yaml").read_text(encoding="utf-8")
@@ -529,7 +529,9 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     assert all(isinstance(screen["sidebars"], bool) for screen in screens)
     assert all(isinstance(screen["buttons"], list) for screen in screens)
     assert next(screen for screen in screens if screen["id"] == "idle")["buttons"] == [
-        "button_timer", "button_weather", "button_config"
+        {"id": "button_timer", "intent_id": "timer.create"},
+        {"id": "button_weather", "intent_id": "weather.current"},
+        {"id": "button_config", "intent_id": "endpoint.settings.open"},
     ]
     assert next(screen for screen in screens if screen["id"] == "updating")["buttons"] == []
     conditional_screens = [screen for screen in screens if screen["id"] != "default"]

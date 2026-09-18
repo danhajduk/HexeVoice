@@ -86,7 +86,7 @@ constexpr int kTimerPrimaryHeight = 150;
 constexpr int kTimerUpcomingWidth = 520;
 constexpr int kTimerUpcomingHeight = 160;
 constexpr size_t kMaxScreenConditions = 4;
-constexpr size_t kStatusLayoutMaxBytes = 8192;
+constexpr size_t kStatusLayoutMaxBytes = 12288;
 constexpr size_t kMaxStatusAnimations = 4;
 constexpr size_t kMaxClockFontBytes = 64 * 1024;
 constexpr size_t kFontGlyphCount = 96;
@@ -273,7 +273,10 @@ struct ScreenLayout {
   size_t condition_count = 0;
   ScreenElement elements[kMaxScreenElements] = {};
   size_t element_count = 0;
-  SidebarButtonId buttons[kSidebarButtonCount] = {};
+  struct Button {
+    SidebarButtonId id = SidebarButtonId::kInvalid;
+    char intent_id[64] = {};
+  } buttons[kSidebarButtonCount] = {};
   size_t button_count = 0;
 };
 
@@ -1316,10 +1319,15 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
     cJSON *buttons = cJSON_GetObjectItem(screen_item, "buttons");
     cJSON *button = nullptr;
     cJSON_ArrayForEach(button, buttons) {
-      if (!cJSON_IsString(button) || screen.button_count >= kSidebarButtonCount) continue;
-      const SidebarButtonId button_id = sidebar_button_id(button->valuestring);
+      if (!cJSON_IsObject(button) || screen.button_count >= kSidebarButtonCount) continue;
+      cJSON *id = cJSON_GetObjectItem(button, "id");
+      cJSON *intent_id = cJSON_GetObjectItem(button, "intent_id");
+      if (!cJSON_IsString(id) || !cJSON_IsString(intent_id) || intent_id->valuestring == nullptr) continue;
+      const SidebarButtonId button_id = sidebar_button_id(id->valuestring);
       if (button_id != SidebarButtonId::kInvalid) {
-        screen.buttons[screen.button_count++] = button_id;
+        auto &declaration = screen.buttons[screen.button_count++];
+        declaration.id = button_id;
+        std::snprintf(declaration.intent_id, sizeof(declaration.intent_id), "%s", intent_id->valuestring);
       }
     }
     const bool is_default = std::strcmp(screen.id, "default") == 0;
@@ -2128,7 +2136,7 @@ void draw_sidebars(
     g_sidebar_buttons_visible.store(true, std::memory_order_release);
     int button_y = g_status_layout.sidebar_buttons.y + left_y;
     for (size_t index = 0; index < screen->button_count; ++index) {
-      StatusSprite *button = sidebar_button_sprite(screen->buttons[index]);
+      StatusSprite *button = sidebar_button_sprite(screen->buttons[index].id);
       if (button == nullptr) continue;
       draw_status_sprite(
           button,
@@ -3666,11 +3674,12 @@ bool display_button_hit_test(int x, int y, DisplayButtonHit *hit) {
   int button_y = g_status_layout.sidebar_buttons.y - (kSidebarButtonHeight / 2) +
       g_sidebar_left_draw_y.load(std::memory_order_relaxed);
   for (size_t index = 0; index < screen->button_count; ++index) {
-    const char *button_id = sidebar_button_name(screen->buttons[index]);
+    const char *button_id = sidebar_button_name(screen->buttons[index].id);
     if (button_id != nullptr && x >= button_x && x < button_x + kSidebarButtonWidth &&
         y >= button_y && y < button_y + kSidebarButtonHeight) {
       std::snprintf(hit->screen_id, sizeof(hit->screen_id), "%s", screen->id);
       std::snprintf(hit->button_id, sizeof(hit->button_id), "%s", button_id);
+      std::snprintf(hit->intent_id, sizeof(hit->intent_id), "%s", screen->buttons[index].intent_id);
       hit->index = static_cast<int>(index);
       hit->x = button_x;
       hit->y = button_y;

@@ -43,9 +43,9 @@ items:
     x: 44
     y: 144
     gap: 20
-  - {id: button_timer, type: button, sprite: button_timer}
-  - {id: button_weather, type: button, sprite: button_weather}
-  - {id: button_config, type: button, sprite: button_config}
+  - {id: button_timer, type: button, sprite: button_timer, intent_id: timer.create}
+  - {id: button_weather, type: button, sprite: button_weather, intent_id: weather.current}
+  - {id: button_config, type: button, sprite: button_config, intent_id: endpoint.settings.open}
   - id: status_icons
     type: status_icon_group
     y: 30

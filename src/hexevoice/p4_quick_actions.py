@@ -4,7 +4,7 @@ import asyncio
 from copy import deepcopy
 from datetime import UTC, datetime
 import logging
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 import httpx
 
@@ -13,6 +13,12 @@ from hexevoice.radar_assets import RadarAssetService
 
 
 log = logging.getLogger(__name__)
+
+BUTTON_INTENTS = {
+    "button_timer": {"intent_id": "timer.create", "text": "set a timer"},
+    "button_weather": {"intent_id": "weather.current", "text": "what is the current weather"},
+    "button_config": {"intent_id": "endpoint.settings.open", "text": "open settings"},
+}
 
 
 class P4QuickActionService:
@@ -24,12 +30,14 @@ class P4QuickActionService:
         radar_assets: RadarAssetService,
         radar_asset_url: Any,
         interaction_api_base_url: str,
+        intent_invoker: Callable[..., Awaitable[dict[str, Any]]],
     ) -> None:
         self._manager = manager
         self._weather = weather
         self._radar_assets = radar_assets
         self._radar_asset_url = radar_asset_url
         self._interaction_api_base_url = interaction_api_base_url.rstrip("/")
+        self._intent_invoker = intent_invoker
         self._timer_sessions: dict[str, str] = {}
         self._timer_prompt_playback: dict[str, tuple[str, bool]] = {}
         self._pending_weather_results: dict[str, dict[str, Any]] = {}
@@ -117,19 +125,30 @@ class P4QuickActionService:
         if not endpoint_id:
             return
         try:
+            declaration = BUTTON_INTENTS.get(button_id)
+            if declaration is None:
+                return
+            declared_intent_id = str(event.get("intent_id") or "").strip()
+            if declared_intent_id != declaration["intent_id"]:
+                raise RuntimeError("button_intent_declaration_mismatch")
+            invocation = await self._intent_invoker(
+                endpoint_id=endpoint_id,
+                intent_id=declaration["intent_id"],
+                text=declaration["text"],
+            )
+            if not invocation.get("matched") or invocation.get("intent_id") != declaration["intent_id"]:
+                raise RuntimeError(str(invocation.get("reason") or "declared_button_intent_not_available"))
             if button_id == "button_weather":
-                if screen_id == "weather" and self._radar_ready():
-                    await self._show_radar(endpoint_id)
-                else:
-                    await self._show_weather(endpoint_id)
+                self._pending_weather_results.setdefault(endpoint_id, {})
             elif button_id == "button_timer":
                 await self._begin_timer(endpoint_id)
-            elif button_id == "button_config" and screen_id in {"weather", "radar", "timer_quick"}:
-                await self._manager.push_ui_screen_clear_command(endpoint_id=endpoint_id)
-            else:
-                return
             self._status = {
-                "last_action": {"endpoint_id": endpoint_id, "screen_id": screen_id, "button_id": button_id},
+                "last_action": {
+                    "endpoint_id": endpoint_id,
+                    "screen_id": screen_id,
+                    "button_id": button_id,
+                    "intent_id": declaration["intent_id"],
+                },
                 "last_error": None,
             }
         except Exception as exc:
@@ -357,7 +376,10 @@ class P4QuickActionService:
             "id": screen_id,
             "owner": "backend",
             "sidebars": True,
-            "buttons": ["button_timer", "button_weather", "button_config"],
+            "buttons": [
+                {"id": button_id, "intent_id": declaration["intent_id"]}
+                for button_id, declaration in BUTTON_INTENTS.items()
+            ],
             "elements": [
                 {"type": "clock", "item": "header_clock", "color": "#35F4DB"},
                 *[

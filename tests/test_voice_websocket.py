@@ -2988,6 +2988,7 @@ def test_voice_websocket_records_ui_button_pressed_event(tmp_path):
     payload = {
         "screen_id": "idle",
         "button_id": "button_timer",
+        "intent_id": "timer.create",
         "button_index": 0,
         "button": {"x": 8, "y": 116, "width": 72, "height": 56},
         "touch": {"x": 42, "y": 140},
@@ -3008,6 +3009,7 @@ def test_voice_websocket_records_ui_button_pressed_event(tmp_path):
     assert status["last_event_type"] == "endpoint.ui.button_pressed"
     assert status["last_ui_button_pressed"]["screen_id"] == "idle"
     assert status["last_ui_button_pressed"]["button_id"] == "button_timer"
+    assert status["last_ui_button_pressed"]["intent_id"] == "timer.create"
     assert status["last_ui_button_pressed"]["button"] == payload["button"]
     assert status["last_ui_button_pressed"]["touch"] == payload["touch"]
     assert status["ui_button_history"][0] == status["last_ui_button_pressed"]

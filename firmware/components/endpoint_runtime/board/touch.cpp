@@ -124,6 +124,7 @@ void handle_touch_release(int x, int y) {
       const bool sent = hexe::voice::send_ui_button_pressed_event(
           button_hit.screen_id,
           button_hit.button_id,
+          button_hit.intent_id,
           button_hit.index,
           button_hit.x,
           button_hit.y,

@@ -176,6 +176,36 @@ class LocalIntentFinder:
         }
         return replace(match, provider_id=provider_id, metadata=metadata)
 
+    def match_declared_intent(
+        self,
+        intent_id: str,
+        *,
+        requested_at: datetime,
+        slots: dict[str, Any] | None = None,
+    ) -> LocalIntentMatch | None:
+        intent = self._find_ai_catalog_intent(intent_id)
+        if intent is None:
+            return None
+        definition = intent.get("definition") if isinstance(intent.get("definition"), dict) else {}
+        dispatch = definition.get("dispatch") if isinstance(definition.get("dispatch"), dict) else {}
+        command = str(dispatch.get("command") or intent.get("intent_id") or "").strip()
+        if not command:
+            return None
+        resolved_slots = self._slots_for_ai_match(
+            command=command,
+            slots=dict(slots or {}),
+            requested_at=requested_at,
+        )
+        match = self._build_registered_match(
+            intent=intent,
+            command=command,
+            slots=resolved_slots,
+            requested_at=requested_at,
+        )
+        if match is None:
+            return None
+        return replace(match, provider_id="declared_ui_intent")
+
     def _find_ai_catalog_intent(self, value: object) -> dict[str, Any] | None:
         wanted = str(value or "").strip().lower()
         if not wanted:

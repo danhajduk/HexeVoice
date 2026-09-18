@@ -1039,12 +1039,30 @@ def create_app(
         base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
         return f"{base_url.rstrip('/')}/api/voice/weather/radar/assets/{asset_id}"
 
+    async def invoke_declared_button_intent(*, endpoint_id: str, intent_id: str, text: str) -> dict:
+        result = await asyncio.to_thread(
+            assistant_service.invoke_intent,
+            endpoint_id=endpoint_id,
+            text=text,
+            declared_intent_id=intent_id,
+        )
+        return {
+            "matched": result.matched,
+            "intent_id": result.intent_id,
+            "session_id": result.session_id,
+            "recognized_event_id": result.recognized_event_id,
+            "recognition_event": result.recognition_event,
+            "dispatch_event": result.dispatch_event,
+            "reason": None if result.matched else "declared_intent_not_registered",
+        }
+
     p4_quick_action_service = P4QuickActionService(
         manager=voice_session_manager,
         weather=weather_snapshot_service,
         radar_assets=radar_asset_service,
         radar_asset_url=radar_asset_public_url,
         interaction_api_base_url=app_settings.interaction_api_base_url,
+        intent_invoker=invoke_declared_button_intent,
     )
     voice_session_manager.set_ui_button_handler(p4_quick_action_service.handle_button)
     voice_session_manager.set_endpoint_event_handler(p4_quick_action_service.handle_endpoint_event)

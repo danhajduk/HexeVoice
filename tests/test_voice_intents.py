@@ -19,8 +19,9 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
 
     snapshot = registry.snapshot()
 
-    assert snapshot["registered_count"] == 30
-    assert snapshot["active_count"] == 17
+    assert snapshot["registered_count"] == 32
+    assert any(intent["intent_id"] == "endpoint.settings.open" for intent in snapshot["intents"])
+    assert snapshot["active_count"] == 19
     intents = {intent["intent_id"]: intent for intent in snapshot["intents"]}
     assert intents["timer.create"]["constraints"]["dispatch_side_effect"] == "timer.create_requested"
     assert intents["timer.status"]["constraints"]["dispatch_side_effect"] == "timer.status_requested"
@@ -43,7 +44,7 @@ def test_voice_intent_registry_seeds_voice_node_builtins_and_persists_lifecycle(
     reloaded = VoiceIntentRegistry(store=VoiceIntentStateStore(path=tmp_path / "voice_intents.json"))
 
     assert reloaded.get_intent(intent_id="timer.create")["status"] == "disabled"
-    assert reloaded.snapshot()["active_count"] == 16
+    assert reloaded.snapshot()["active_count"] == 18
 
 
 def test_registered_intent_speaker_identity_policy_defaults_and_personal_routes(tmp_path):
@@ -303,7 +304,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
     )
 
     assert registered.status_code == 200
-    assert registered.json()["registered_count"] == 31
+    assert registered.json()["registered_count"] == 33
 
     dispatch = client.post(
         "/api/voice/intents/dispatch",
@@ -325,7 +326,7 @@ def test_voice_intent_api_registers_custom_intent_and_dispatches(tmp_path):
         json={"status": "disabled", "reason": "unit_test"},
     )
     assert disabled.status_code == 200
-    assert disabled.json()["active_count"] == 17
+    assert disabled.json()["active_count"] == 19
 
     dispatch_after_disable = client.post(
         "/api/voice/intents/dispatch",

@@ -274,10 +274,15 @@ def compile_screens(
             button_ids = require_list(button_presets[preset_name], f"button preset {preset_name!r}")
         else:
             button_ids = require_list(buttons.get("items"), f"screen {screen_id!r}.buttons.items")
+        compiled_buttons = []
         for button_id in button_ids:
             if not isinstance(button_id, str) or items.get(button_id, {}).get("type") != "button":
                 raise ValueError(f"screen {screen_id!r} references unknown button {button_id!r}")
-        output["buttons"] = button_ids
+            intent_id = items[button_id].get("intent_id")
+            if not isinstance(intent_id, str) or not intent_id.strip():
+                raise ValueError(f"button {button_id!r} requires an intent_id")
+            compiled_buttons.append({"id": button_id, "intent_id": intent_id.strip()})
+        output["buttons"] = compiled_buttons
         compiled.append(output)
     return {"schema_version": 2, "screens": compiled}
 
