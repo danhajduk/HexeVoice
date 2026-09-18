@@ -23,6 +23,7 @@ S3_8M_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_8m_recovery_v1.csv")
 S3_16M_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_16m_recovery_v1.csv")
 S3_16M_SINGLE_MODEL_RECOVERY_PARTITIONS = Path("firmware/partitions/s3_16m_recovery_single_model_v1.csv")
 P4_32M_PARTITIONS = Path("firmware/partitions/p4_32m_v1.csv")
+DEPENDENCY_LOCKS = Path("firmware/dependency-locks")
 
 
 def test_recovery_architecture_defines_app_boundary_and_build_lane():
@@ -43,6 +44,21 @@ def test_recovery_architecture_defines_app_boundary_and_build_lane():
     assert '$ENV{IDF_PATH}/components' in root_cmake
     assert "HEXE_FIRMWARE_ADDITIONAL_COMPONENT_DIRS" in root_cmake
     assert "set(COMPONENTS main ${HEXE_FIRMWARE_RUNTIME_COMPONENT} ${HEXE_FIRMWARE_ADDITIONAL_COMPONENTS})" in root_cmake
+
+
+def test_each_endpoint_profile_uses_a_profile_specific_dependency_lock():
+    root_cmake = ROOT_CMAKE.read_text()
+
+    assert "${HEXE_BOARD_PROFILE}-${HEXE_FIRMWARE_APP}-idf-${HEXE_DEPENDENCY_LOCK_IDF_VERSION}.lock" in root_cmake
+    assert 'idf_build_set_property(DEPENDENCIES_LOCK "${HEXE_DEPENDENCY_LOCK}")' in root_cmake
+    assert not Path("firmware/dependencies.lock").exists()
+
+    expected_locks = {
+        "ha_voice_pe-endpoint-idf-6.1.0.lock",
+        "waveshare_s3_touch_lcd_1_85c_box_v2-endpoint-idf-6.1.0.lock",
+        "waveshare_p4_wifi6_touch_lcd_7b-endpoint-idf-5.5.4.lock",
+    }
+    assert expected_locks <= {path.name for path in DEPENDENCY_LOCKS.glob("*.lock")}
 
 
 def test_recovery_architecture_defines_entry_conditions_and_interfaces():
