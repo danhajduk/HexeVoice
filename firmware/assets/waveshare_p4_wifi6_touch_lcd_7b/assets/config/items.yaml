@@ -221,4 +221,33 @@ items:
     align: center
     x: 512
     y: 400
+  - &weather_test_marker
+    id: weather_test_top_left
+    type: text
+    text: TOP LEFT
+    font: manrope/message_20.hxf
+    font_size: 20
+    color: '#D8FFFA'
+    align: center
+    x: 175
+    y: 130
+  - <<: *weather_test_marker
+    id: weather_test_top_right
+    text: TOP RIGHT
+    x: 849
+  - <<: *weather_test_marker
+    id: weather_test_bottom_left
+    text: BOTTOM LEFT
+    y: 470
+  - <<: *weather_test_marker
+    id: weather_test_bottom_right
+    text: BOTTOM RIGHT
+    x: 849
+    y: 470
+  - <<: *weather_test_marker
+    id: weather_test_center
+    text: CENTER
+    color: '#35F4DB'
+    x: 512
+    y: 300
   - !include text.yaml

@@ -448,7 +448,7 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
 
     screen_index = (directory / "screens_layout.yaml").read_text(encoding="utf-8")
     screen_files = sorted((directory / "screens").glob("*.yaml"))
-    assert len(screen_files) == 14
+    assert len(screen_files) == 15
     assert screen_index.count("!include screens/") == len(screen_files)
     assert [screen["id"] for screen in layout["screens"]] == [
         "updating",
@@ -458,6 +458,7 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
         "replying",
         "timer_finished",
         "timer",
+        "weather_test",
         "idle",
         "muted",
         "error",
@@ -534,7 +535,21 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
         {"id": "button_config", "intent_id": "endpoint.settings.open"},
     ]
     assert next(screen for screen in screens if screen["id"] == "updating")["buttons"] == []
-    conditional_screens = [screen for screen in screens if screen["id"] != "default"]
+    weather_test_screen = next(screen for screen in screens if screen["id"] == "weather_test")
+    assert [
+        (item["item"], item["x"], item["y"])
+        for item in weather_test_screen["elements"]
+        if item["type"] == "text"
+    ] == [
+        ("weather_test_top_left", 175, 130),
+        ("weather_test_top_right", 849, 130),
+        ("weather_test_bottom_left", 175, 470),
+        ("weather_test_bottom_right", 849, 470),
+        ("weather_test_center", 512, 300),
+    ]
+    conditional_screens = [
+        screen for screen in screens if screen["id"] not in {"weather_test", "default"}
+    ]
     assert all(screen["conditions"]["match"] in {"all", "any"} for screen in conditional_screens)
     assert all(screen["conditions"]["items"] for screen in conditional_screens)
     timer_screen = next(screen for screen in screens if screen["id"] == "timer")

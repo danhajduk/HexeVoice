@@ -7,6 +7,7 @@ screens:
   - !include screens/replying.yaml
   - !include screens/timer_finished.yaml
   - !include screens/timer.yaml
+  - !include screens/weather_test.yaml
   - !include screens/idle.yaml
   - !include screens/muted.yaml
   - !include screens/error.yaml

@@ -30,6 +30,11 @@ scripts/ui-screen-menu.py
 Use `m` to regenerate all P4 media or `n` to regenerate only configuration and
 the manifest. Both actions request an asset sync from the selected endpoint.
 
+Use the backend-owned `weather_test` screen as a placement sandbox. Its four
+corner labels and center label are reusable items in `items.yaml`; edit their
+center-based `x` and `y` coordinates, press `n`, and preview `weather_test`
+again to find the desired weather-overlay positions.
+
 The available durations are 5, 10, 20, and 30 seconds. A non-interactive call
 is also supported:
 

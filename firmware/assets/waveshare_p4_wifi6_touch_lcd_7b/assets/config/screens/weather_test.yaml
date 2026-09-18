@@ -1,0 +1,11 @@
+id: weather_test
+owner: backend
+sidebars: true
+buttons: {preset: standard}
+items:
+  - item: header_clock
+  - item: weather_test_top_left
+  - item: weather_test_top_right
+  - item: weather_test_bottom_left
+  - item: weather_test_bottom_right
+  - item: weather_test_center
