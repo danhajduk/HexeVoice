@@ -19,7 +19,6 @@ BUTTON_INTENTS = {
     "button_weather": {"intent_id": "weather.current", "text": "what is the current weather"},
     "button_config": {"intent_id": "endpoint.settings.open", "text": "open settings"},
 }
-WEATHER_SCREEN_LEAD_SECONDS = 0.25
 
 
 class P4QuickActionService:
@@ -271,7 +270,6 @@ class P4QuickActionService:
             },
         )
         await self._manager.push_ui_layout_command(endpoint_id=endpoint_id, layout=layout, duration_seconds=60)
-        await asyncio.sleep(WEATHER_SCREEN_LEAD_SECONDS)
         tts = snapshot.get("tts") if isinstance(snapshot.get("tts"), dict) else {}
         variants = tts.get("variants") if isinstance(tts.get("variants"), dict) else {}
         high = variants.get("high") if isinstance(variants.get("high"), dict) else {}

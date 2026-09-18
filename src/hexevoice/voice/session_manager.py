@@ -85,6 +85,7 @@ from hexevoice.voice.wake_recordings import WakeRecordingService
 log = logging.getLogger(__name__)
 FOLLOWUP_LISTEN_TIMEOUT_S = 10.0
 PRE_AUDIO_SESSION_REPLACEMENT_GRACE_MS = 750
+UI_AUDIO_LEAD_SECONDS = 0.25
 HTTP_AUDIO_EVENTS = frozenset({"audio.chunk"})
 
 LATENCY_POINT_ORDER = {
@@ -292,6 +293,7 @@ class VoiceSessionManager:
         self._event_diagnostics: list[dict[str, object]] = []
         self._last_ui_button_pressed: dict[str, object] | None = None
         self._last_ui_screen: dict[str, object] | None = None
+        self._last_ui_render_sent_at: dict[str, float] = {}
         self._ui_button_history: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
@@ -1637,6 +1639,12 @@ class VoiceSessionManager:
             return {"accepted": False, "reason": "endpoint_not_connected", "status": "failed"}
         token = self._runtime_context.set(runtime)
         try:
+            if command_type in {"endpoint.play_sound", "endpoint.speak"}:
+                rendered_at = self._last_ui_render_sent_at.get(endpoint_id)
+                if rendered_at is not None:
+                    remaining = UI_AUDIO_LEAD_SECONDS - (asyncio.get_running_loop().time() - rendered_at)
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
             request_id = request_id or f"cmd_{uuid4().hex}"
             event = VoiceEventEnvelope(
                 event_type=event_type,
@@ -1647,6 +1655,8 @@ class VoiceSessionManager:
                 payload={"request_id": request_id, **payload},
             )
             await runtime.websocket.send_json(event.model_dump(mode="json"))
+            if command_type == "endpoint.ui.screen.render":
+                self._last_ui_render_sent_at[endpoint_id] = asyncio.get_running_loop().time()
             self._last_event_type = event_type
             record = self._record_command(
                 request_id=request_id,

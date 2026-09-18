@@ -2555,6 +2555,39 @@ def test_voice_session_manager_pushes_play_sound_audio_url_to_endpoint():
     assert websocket.sent[0]["payload"]["interaction_id"] == "kiosk-1"
 
 
+def test_voice_session_manager_gives_screen_render_a_lead_before_audio():
+    class FakeWebSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append((asyncio.get_running_loop().time(), payload))
+
+    async def run():
+        websocket = FakeWebSocket()
+        manager = VoiceSessionManager()
+        manager._connection_active = True
+        manager._websocket = websocket
+        manager._connected_endpoint_id = "esp-box-1"
+
+        await manager.push_ui_layout_command(
+            endpoint_id="esp-box-1",
+            layout={"id": "weather", "elements": []},
+        )
+        await manager.push_play_sound_command(
+            endpoint_id="esp-box-1",
+            stream_id="weather-tts",
+            audio_url="/api/voice/tts/weather/high",
+        )
+        return websocket.sent
+
+    sent = asyncio.run(run())
+
+    assert sent[0][1]["event_type"] == "endpoint.ui.screen.render"
+    assert sent[1][1]["event_type"] == "endpoint.replay"
+    assert sent[1][0] - sent[0][0] >= 0.24
+
+
 def test_voice_session_manager_can_mark_play_sound_audio_url_as_looping():
     class FakeWebSocket:
         def __init__(self):
