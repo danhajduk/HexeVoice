@@ -489,7 +489,8 @@ def test_voice_intent_recognized_event_excludes_private_voice_content(tmp_path, 
     assert decision.status == "published"
     payload = captured["payload"]
     assert payload["event_type"] == "voice.intent.recognized"
-    assert "recognized_text" not in payload["data"]
+    assert payload["data"]["recognized_text"] == "timer.create"
+    assert payload["data"]["recognized_text"] != "set a timer for five minutes"
     assert "reply_text" not in payload["data"]
     assert "reply_audio" not in payload["data"]
     assert "dispatch" not in payload["data"]

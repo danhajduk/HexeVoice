@@ -26,8 +26,7 @@ DOMAIN_EVENT_PRIVATE_FIELDS = {
     "access_token", "api_key", "apikey", "attachment", "attachments", "authorization",
     "body_html", "client_secret", "cookie", "credentials", "email_body", "full_address",
     "heard_text", "html", "oauth_token", "password", "raw_body", "raw_email_body",
-    "recognized_text", "refresh_token", "reply_audio", "reply_text", "secret",
-    "session_cookie", "token",
+    "refresh_token", "reply_audio", "reply_text", "secret", "session_cookie", "token",
 }
 
 
@@ -1122,6 +1121,7 @@ class HexeMqttTimerCreateEventPublisher:
                 "version": version,
                 "command": command,
                 "provider_id": provider_id,
+                "recognized_text": command,
                 "slots": slots,
                 "parameters": slots,
                 "recognized_at": requested_at_text,

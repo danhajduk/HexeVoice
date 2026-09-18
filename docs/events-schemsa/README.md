@@ -15,5 +15,5 @@ Notes:
 - HexeVoice consumes canonical timer responses from `hexe/events/timer/+`, including `hexe/events/timer/completed`.
 - Every topic path after `hexe/events/` must equal `event_type` with dots replaced by slashes. The canonical envelope uses `event_id` for deduplication and preserves the trusted node identity in `source.node_id`.
 - Domain events are limited to 65,536 bytes and must not contain secrets, credentials, tokens, attachments, raw message bodies, or private raw content.
-- Raw utterances and generated reply text/audio stay on the private voice path and are not copied into domain events.
+- Raw utterances and generated reply text/audio stay on the private voice path. The compatibility `recognized_text` field contains only the normalized command identifier, never the utterance transcript.
 - Timer-owning nodes should include `endpoint_id`, `timer_id`, `state`, owner/source metadata, and timing fields whenever available so HexeVoice can route commands and alarms across nodes.
