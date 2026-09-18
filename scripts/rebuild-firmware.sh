@@ -256,8 +256,18 @@ run_build() {
     fi
     env "${env_args[@]}" "${FIRMWARE_DIR}/build.sh" build
   ) 2>&1 | tee "${log_path}" | awk '
-    BEGIN { last_bucket = -1 }
-    /^Executing action:/ || /^Running ninja/ || /^Project build complete/ {
+    function stage_for(action) {
+      if (action ~ /^Building (C|CXX|ASM) object/) return "Compiling"
+      if (action ~ /^Linking/) return "Linking"
+      if (action ~ /^Generating/) return "Generating"
+      if (action ~ /^(Creating|Packaging|Built target)/) return "Packaging"
+      return "Building"
+    }
+    /^Executing action:/ || /^Running ninja/ || /^Project build complete/ || /^-- (Configuring|Generating) done/ {
+      if (progress_active) {
+        printf "\n"
+        progress_active = 0
+      }
       print "  " $0
       fflush()
       next
@@ -268,11 +278,20 @@ run_build() {
       split(line, fields, "]")
       split(fields[1], step, "/")
       percent = int((step[1] * 100) / step[2])
-      bucket = int(percent / 5)
-      if (bucket > last_bucket || step[1] == step[2]) {
-        printf "  Progress: %3d%% (%d/%d)\n", percent, step[1], step[2]
-        fflush()
-        last_bucket = bucket
+      action = substr($0, index($0, "]") + 2)
+      stage = stage_for(action)
+      if (stage != current_stage) {
+        if (progress_active) printf "\n"
+        print "  Stage: " stage
+        current_stage = stage
+      }
+      printf "\r\033[2K  Progress: %3d%% (%d/%d) %s", percent, step[1], step[2], action
+      fflush()
+      progress_active = 1
+    }
+    END {
+      if (progress_active) {
+        printf "\n"
       }
     }
   '; then

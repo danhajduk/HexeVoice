@@ -71,8 +71,12 @@ def test_multi_profile_rebuild_selects_profile_sdk_and_quiet_logs(tmp_path):
     assert '${BUILD_BASE}/logs/${app}-${profile}.log' in rebuild_script
     assert '--verbose' in rebuild_script
     assert 'tail -n 80 "${log_path}"' in rebuild_script
-    assert 'Progress: %3d%% (%d/%d)' in rebuild_script
-    assert 'bucket = int(percent / 5)' in rebuild_script
+    assert 'Progress: %3d%% (%d/%d) %s' in rebuild_script
+    assert 'action = substr($0, index($0, "]") + 2)' in rebuild_script
+    assert 'printf "\\r\\033[2K' in rebuild_script
+    assert 'Stage: " stage' in rebuild_script
+    assert 'return "Compiling"' in rebuild_script
+    assert 'return "Linking"' in rebuild_script
     assert 'compiler warnings' in rebuild_script
 
     default_idf = tmp_path / "esp-idf"
