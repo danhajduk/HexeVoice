@@ -51,6 +51,8 @@ Named-asset lifecycle operations use `GET /api/tts/assets`, `GET /api/tts/assets
 
 Speaker-capable firmware reports TTS playback progress back over the voice WebSocket with `tts.playback.download_started`, `tts.playback.first_audio_frame`, `tts.playback.completed`, and `tts.playback.failed`. These acknowledgements let the backend distinguish synthesis readiness from endpoint download and actual speaker output.
 
+Weather intents do not synthesize an interim acknowledgement such as `Checking the current weather.` The originating voice turn completes with `result_media_pending`; the Interaction result renders the weather screen and plays its cached weather asset directly.
+
 HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output for endpoints without an override. Endpoint-specific rates can be set with `VOICE_TTS_ENDPOINT_SAMPLE_RATES`; these values take precedence over the default output rate:
 
 ```env

@@ -2998,16 +2998,17 @@ class VoiceSessionManager:
                 self._set_session_state("local_command")
             else:
                 self._set_session_state("routing")
-            events.append(
-                self._state_event(
-                    "response.text",
-                    session,
-                    extra_payload=VoiceResponseTextPayload(text=turn.assistant_response.spoken_text).model_dump(
-                        mode="json"
-                    ),
+            if turn.assistant_response.spoken_text:
+                events.append(
+                    self._state_event(
+                        "response.text",
+                        session,
+                        extra_payload=VoiceResponseTextPayload(text=turn.assistant_response.spoken_text).model_dump(
+                            mode="json"
+                        ),
+                    )
                 )
-            )
-            self._last_response = turn.assistant_response.spoken_text
+            self._last_response = turn.assistant_response.spoken_text or None
             self._last_assistant = {
                 "provider_id": turn.assistant_response.provider_id,
                 "model": turn.assistant_response.model,
@@ -3027,6 +3028,28 @@ class VoiceSessionManager:
                 self._last_assistant["speaker_identity"] = turn.speaker_identity.as_context()
             self._update_active_session_history(assistant=self._last_assistant)
             self._set_session_state("responding")
+            if not turn.tts.stream_id and not turn.tts.error:
+                self._last_tts = None
+                self._set_session_state("completed")
+                events.append(
+                    self._state_event(
+                        "session.completed",
+                        session,
+                        extra_payload={
+                            "completion_reason": "result_media_pending",
+                            "chunk_count": self._chunk_count,
+                            **({"wake_recording": wake_recording} if wake_recording else {}),
+                        },
+                    )
+                )
+                self._persist_active_session_history(
+                    session,
+                    completion_reason="result_media_pending",
+                    wake_recording=wake_recording,
+                )
+                self._release_active_session_wake_stream()
+                self._clear_active_session_runtime()
+                return events
             self._last_tts = tts_synthesis_metadata(turn.tts)
             self._last_tts["spoken_text"] = turn.assistant_response.spoken_text
             self._last_tts["transcript"] = self._attach_tts_sidecar_turn_text(

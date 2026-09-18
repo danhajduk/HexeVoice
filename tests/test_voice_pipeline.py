@@ -339,6 +339,34 @@ class CaptureTextToSpeechAdapter:
         return {"provider": "capture", "healthy": True, "configured": True}
 
 
+def test_voice_turn_pipeline_skips_interim_tts_for_weather_result_media():
+    assistant = CommandAssistantService(command="weather.current", spoken_text="Checking the current weather.")
+    tts_adapter = CaptureTextToSpeechAdapter()
+    pipeline = VoiceTurnPipeline(
+        assistant_service=assistant,
+        stt_adapter=DeterministicSpeechToTextAdapter(transcript="what is the weather"),
+        tts_adapter=tts_adapter,
+    )
+
+    result = pipeline.complete_turn(
+        VoiceTurnAudioSummary(
+            endpoint_id="esp-box-1",
+            session_id="weather-voice-1",
+            chunk_count=1,
+            sample_rate_hz=16000,
+            encoding="pcm_s16le",
+            audio_bytes=(4000).to_bytes(2, byteorder="little", signed=True) * 16000,
+        )
+    )
+
+    assert result.assistant_response.command == "weather.current"
+    assert result.assistant_response.spoken_text == ""
+    assert result.tts.provider_id == "result_media"
+    assert result.tts.stream_id is None
+    assert result.timings.tts_ms == 0
+    assert tts_adapter.calls == []
+
+
 def test_voice_turn_pipeline_runs_stt_assistant_and_tts(tmp_path):
     runtime = NodeRuntimeService(settings=Settings(onboarding_state_path=tmp_path / "state.json", node_name="lab-voice"))
     assistant = AssistantTurnService(settings=Settings(node_name="lab-voice"), runtime_service=runtime)

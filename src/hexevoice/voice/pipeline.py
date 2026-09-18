@@ -78,6 +78,7 @@ PROFILE_LEARNING_AUDIO_DISQUALIFYING_WARNINGS = {
 }
 DEFAULT_AUDIO_QUALITY_NO_SPEECH_STATUSES = ("missing_audio", "unsupported_audio", "short_audio", "silent")
 AUDIO_QUALITY_THRESHOLD_FIELDS = frozenset(AudioQualityThresholds.__dataclass_fields__)
+RESULT_MEDIA_COMMANDS = frozenset({"weather.current", "weather.forecast", "weather.hourly"})
 
 
 @dataclass(frozen=True)
@@ -2074,14 +2075,19 @@ class VoiceTurnPipeline:
             audio_quality=audio_quality,
         )
         assistant_ms = round((time.perf_counter() - assistant_started_at) * 1000, 2)
-        tts_started_at = time.perf_counter()
-        tts = self._tts_adapter.synthesize(
-            endpoint_id=audio.endpoint_id,
-            session_id=audio.session_id,
-            text=assistant_response.spoken_text,
-            voice=self._voice_for_endpoint(audio.endpoint_id),
-        )
-        tts_ms = round((time.perf_counter() - tts_started_at) * 1000, 2)
+        if assistant_response.handled_locally and assistant_response.command in RESULT_MEDIA_COMMANDS:
+            assistant_response = assistant_response.model_copy(update={"spoken_text": ""})
+            tts = TtsSynthesis(provider_id="result_media")
+            tts_ms = 0.0
+        else:
+            tts_started_at = time.perf_counter()
+            tts = self._tts_adapter.synthesize(
+                endpoint_id=audio.endpoint_id,
+                session_id=audio.session_id,
+                text=assistant_response.spoken_text,
+                voice=self._voice_for_endpoint(audio.endpoint_id),
+            )
+            tts_ms = round((time.perf_counter() - tts_started_at) * 1000, 2)
         timings = VoiceTurnTimings(
             stt_ms=stt_ms,
             assistant_ms=assistant_ms,
