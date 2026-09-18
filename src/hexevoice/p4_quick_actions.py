@@ -104,7 +104,7 @@ class P4QuickActionService:
 
     async def _prepare_radar_for_connected_endpoints(self, snapshot: dict[str, Any]) -> None:
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
-        background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
+        background = _weather_background(snapshot)
         try:
             asset = await self._radar_assets.prepare(snapshot)
             prepared = asset.as_dict(download_url=self._radar_asset_url(asset.asset_id))
@@ -251,7 +251,7 @@ class P4QuickActionService:
             await self._show_message(endpoint_id, "Weather unavailable", "No prepared forecast is available.", "weather")
             return
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
-        background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
+        background = _weather_background(snapshot)
         asset = await self._radar_assets.prepare(snapshot)
         prepared = asset.as_dict(download_url=self._radar_asset_url(asset.asset_id))
         prepared["expires_at"] = radar.get("expires_at") or background.get("expires_at")
@@ -413,3 +413,11 @@ def _age_text(timestamp: str) -> str:
     if seconds < 60:
         return "just now"
     return f"{seconds // 60} min ago"
+
+
+def _weather_background(snapshot: dict[str, Any]) -> dict[str, Any]:
+    weather_image = snapshot.get("weather_image")
+    if isinstance(weather_image, dict):
+        return weather_image
+    background = snapshot.get("bg")
+    return background if isinstance(background, dict) else {}

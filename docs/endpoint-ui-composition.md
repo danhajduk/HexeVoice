@@ -290,9 +290,9 @@ Sprites and avatars support:
 
 ## P4 Weather Overview
 
-The Voice backend composes the Waveshare P4 weather overview as one 800x420 RGB888 prepared asset. The latest radar frame remains visible through the center, while location and temperature occupy the upper-left edge, the condition icon occupies the upper-right edge, and the daily high/low stays at the lower-left edge. Image selection follows `radar`, then the optional weather snapshot `bg` component, then a blank dark background. Radar and `bg` sources are checksum-verified and center-cropped to the content bounds.
+The Voice backend composes the Waveshare P4 weather overview as one 800x420 RGB888 prepared asset. The latest radar frame remains visible through the center, while location and temperature occupy the upper-left edge, the condition icon occupies the upper-right edge, and the daily high/low stays at the lower-left edge. Image selection follows `radar`, then the optional weather snapshot `weather_image` component, then a blank dark background. Radar and weather-image sources are checksum-verified and center-cropped to the content bounds.
 
-The optional `bg` component uses the same status vocabulary as other weather components. A ready or stale background must provide `image_url`, `revision`, `sha256`, `content_type`, `width`, and `height`; image bytes remain outside the shared MQTT event.
+The optional `weather_image` component uses the same status vocabulary as other weather components. A ready or stale background must provide `image_url`, `revision`, `sha256`, `content_type`, `width`, and `height`; image bytes remain outside the shared MQTT event. `bg` remains accepted as a compatibility alias.
 
 Condition icons are derived from Meteocons and are bundled with their MIT license in `src/hexevoice/assets/weather_icons`. The composed image uses the existing `weather.radar` asset download contract, so changing this layout does not require a firmware rebuild.
 

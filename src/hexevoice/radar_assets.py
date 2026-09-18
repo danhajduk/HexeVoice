@@ -75,7 +75,7 @@ class RadarAssetService:
 
     async def prepare(self, snapshot: dict[str, Any]) -> PreparedRadarAsset:
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
-        background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
+        background = _weather_background(snapshot)
         snapshot_id = _safe_id(snapshot.get("snapshot_id"), "snapshot_id")
         visual_state = _weather_visual_state(snapshot)
         revision = sha256(json.dumps(visual_state, sort_keys=True).encode()).hexdigest()[:24]
@@ -87,7 +87,7 @@ class RadarAssetService:
 
         source = await self._download_visual_source(radar, "radar")
         if source is None:
-            source = await self._download_visual_source(background, "bg")
+            source = await self._download_visual_source(background, "weather_image")
         pixels = await asyncio.to_thread(_compose_weather_rgb888, source, snapshot)
         digest = sha256(pixels).hexdigest()
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -171,7 +171,7 @@ def _safe_id(value: object, label: str) -> str:
 
 def _weather_visual_state(snapshot: dict[str, Any]) -> dict[str, Any]:
     radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
-    background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
+    background = _weather_background(snapshot)
     current = snapshot.get("current_conditions") if isinstance(snapshot.get("current_conditions"), dict) else {}
     forecast = snapshot.get("forecast_summary") if isinstance(snapshot.get("forecast_summary"), dict) else {}
     location = snapshot.get("location") if isinstance(snapshot.get("location"), dict) else {}
@@ -187,6 +187,14 @@ def _weather_visual_state(snapshot: dict[str, Any]) -> dict[str, Any]:
         "today_high": forecast.get("today_high"),
         "today_low": forecast.get("today_low"),
     }
+
+
+def _weather_background(snapshot: dict[str, Any]) -> dict[str, Any]:
+    weather_image = snapshot.get("weather_image")
+    if isinstance(weather_image, dict):
+        return weather_image
+    background = snapshot.get("bg")
+    return background if isinstance(background, dict) else {}
 
 
 def _compose_weather_rgb888(source: bytes | None, snapshot: dict[str, Any]) -> bytes:

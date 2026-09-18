@@ -112,7 +112,7 @@ def test_uses_center_cropped_weather_background_when_radar_is_absent(tmp_path, m
         "current_conditions": {"temperature": 56, "condition": "Clear", "condition_key": "clear"},
         "forecast_summary": {"today_high": 63, "today_low": 48},
         "radar": {"status": "absent"},
-        "bg": {
+        "weather_image": {
             "status": "ready",
             "revision": "clear-day-1",
             "image_url": "https://interaction.local/weather-bg.webp",
