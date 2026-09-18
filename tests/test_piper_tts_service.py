@@ -1,4 +1,6 @@
 from pathlib import Path
+import io
+import wave
 
 from fastapi.testclient import TestClient
 
@@ -19,6 +21,7 @@ def test_piper_tts_health_reports_configured_model(tmp_path, monkeypatch):
     assert response.json()["model_exists"] is True
     assert response.json()["prosody"] == {
         "profile": "natural_assistant",
+        "leading_silence_ms": 80,
         "length_scale": 1.08,
         "sentence_silence_ms": 260,
     }
@@ -34,6 +37,22 @@ def test_piper_command_uses_natural_assistant_prosody_defaults(tmp_path, monkeyp
 
     assert command[command.index("--length-scale") + 1] == "1.08"
     assert command[command.index("--sentence-silence") + 1] == "0.26"
+
+
+def test_piper_output_starts_with_default_leading_silence():
+    source = io.BytesIO()
+    with wave.open(source, "wb") as wav_file:
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(1000)
+        wav_file.writeframes(b"\x01\x00" * 20)
+
+    audio = piper_app._prepend_wav_silence(source.getvalue(), silence_s=0.08)
+
+    with wave.open(io.BytesIO(audio), "rb") as wav_file:
+        frames = wav_file.readframes(wav_file.getnframes())
+    assert frames[:160] == bytes(160)
+    assert frames[160:] == b"\x01\x00" * 20
 
 
 def test_piper_tts_route_returns_wav(monkeypatch):

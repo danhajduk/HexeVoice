@@ -138,6 +138,26 @@ def _wav_from_raw_pcm(raw_audio: bytes, *, sample_rate: int) -> bytes:
     return out.getvalue()
 
 
+def _prepend_wav_silence(audio: bytes, *, silence_s: float) -> bytes:
+    if silence_s <= 0:
+        return audio
+    source = io.BytesIO(audio)
+    output = io.BytesIO()
+    with wave.open(source, "rb") as input_wav:
+        channels = input_wav.getnchannels()
+        sample_width = input_wav.getsampwidth()
+        sample_rate = input_wav.getframerate()
+        frames = input_wav.readframes(input_wav.getnframes())
+    silent_frames = round(sample_rate * silence_s)
+    with wave.open(output, "wb") as output_wav:
+        output_wav.setnchannels(channels)
+        output_wav.setsampwidth(sample_width)
+        output_wav.setframerate(sample_rate)
+        output_wav.writeframes(bytes(silent_frames * channels * sample_width))
+        output_wav.writeframes(frames)
+    return output.getvalue()
+
+
 class WarmPiperWorker:
     def __init__(self, model_path: Path) -> None:
         self.model_path = model_path
@@ -283,7 +303,10 @@ def _synthesize_wav_once(*, text: str, model_path: Path) -> bytes:
             text=True,
             timeout=_env_float("PIPER_TTS_TIMEOUT_S", 30.0),
         )
-        return output_path.read_bytes()
+        return _prepend_wav_silence(
+            output_path.read_bytes(),
+            silence_s=_bounded_env_float("PIPER_TTS_LEADING_SILENCE_S", 0.08, minimum=0.0, maximum=1.0),
+        )
     finally:
         output_path.unlink(missing_ok=True)
 
@@ -299,6 +322,9 @@ def health() -> dict[str, object]:
         "model_exists": model_path.exists(),
         "prosody": {
             "profile": "natural_assistant",
+            "leading_silence_ms": round(
+                _bounded_env_float("PIPER_TTS_LEADING_SILENCE_S", 0.08, minimum=0.0, maximum=1.0) * 1000
+            ),
             "length_scale": _bounded_env_float("PIPER_TTS_LENGTH_SCALE", 1.08, minimum=0.5, maximum=2.0),
             "sentence_silence_ms": round(
                 _bounded_env_float("PIPER_TTS_SENTENCE_SILENCE_S", 0.26, minimum=0.0, maximum=2.0) * 1000
