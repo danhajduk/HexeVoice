@@ -3046,6 +3046,22 @@ def create_app(
             headers={"X-Hexe-TTS-Fetch-Latency-Ms": str(fetch_latency_ms)},
         )
 
+    @app.get("/api/tts/assets/{asset_key:path}/audio/{quality}")
+    async def tts_named_asset_audio(asset_key: str, quality: str) -> FileResponse:
+        resolved = tts_audio_service.named_asset_audio_path(asset_key, quality)
+        if resolved is None:
+            raise HTTPException(status_code=404, detail="tts_asset_variant_not_found")
+        audio_path, variant = resolved
+        return FileResponse(
+            audio_path,
+            media_type="audio/wav",
+            headers={
+                "ETag": f'"{variant["sha256"]}"',
+                "X-Hexe-TTS-Revision-SHA256": str(variant["sha256"]),
+                "Cache-Control": "no-cache",
+            },
+        )
+
     @app.get("/api/tts/audio/{stream_id}/{variant}")
     async def tts_audio_variant(stream_id: str, variant: str) -> FileResponse:
         return tts_file_response(

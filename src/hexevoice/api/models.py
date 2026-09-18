@@ -142,6 +142,27 @@ class TtsSynthesizeTarget(BaseModel):
 TTS_TEXT_MAX_LENGTH = 12000
 
 
+class TtsDeliveryOptions(BaseModel):
+    mode: Literal["ephemeral", "cached", "named_asset", "persistent"] = "ephemeral"
+    asset_key: str | None = Field(default=None, min_length=1, max_length=180)
+    update_policy: Literal["if_changed", "always", "if_missing"] = "if_changed"
+    retention: Literal["ttl", "until_replaced", "persistent"] | None = None
+    quality_profiles: list[Literal["compact", "standard", "high", "source"]] = Field(
+        default_factory=lambda: ["standard"]
+    )
+    source_version: str | None = Field(default=None, max_length=120)
+
+
+class TtsAudioVariantResponse(BaseModel):
+    quality: Literal["compact", "standard", "high", "source"]
+    audio_url: str
+    codec: str
+    sample_rate_hz: int | None = None
+    channels: int | None = None
+    size_bytes: int
+    sha256: str
+
+
 class TtsSynthesizeRequest(BaseModel):
     intent: Literal["tts.speak"] = "tts.speak"
     target: TtsSynthesizeTarget = Field(default_factory=TtsSynthesizeTarget)
@@ -150,9 +171,12 @@ class TtsSynthesizeRequest(BaseModel):
     format: Literal["wav", "mp3"] = "wav"
     ttl_seconds: int = Field(default=3600, ge=5, le=3600)
     cache_key: str | None = Field(default=None, min_length=1, max_length=120)
+    delivery: TtsDeliveryOptions | None = None
 
 
 class TtsSynthesizeResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     status: Literal["ready", "failed"]
     audio_url: str | None = None
     endpoint_audio_url: str | None = None
@@ -166,6 +190,14 @@ class TtsSynthesizeResponse(BaseModel):
     provider_id: str | None = None
     cache_key: str | None = None
     cache_hit: bool = False
+    delivery_mode: Literal["ephemeral", "cached", "named_asset", "persistent"] = "ephemeral"
+    asset_key: str | None = None
+    revision: str | None = None
+    changed: bool = True
+    transcript: str | None = None
+    voice_id: str | None = None
+    model_id: str | None = None
+    variants: dict[str, TtsAudioVariantResponse] = Field(default_factory=dict)
     error: str | None = None
 
 

@@ -28,6 +28,25 @@ Piper voice models commonly emit 22.05 kHz audio. HexeVoice keeps that provider 
 
 `GET /api/tts/voices` lists installed Piper voices and groups them by language. `POST /api/tts/common-clips` accepts the same payload as `/api/tts/synthesize` plus an optional `cache_key`; repeated calls with the same key reuse the existing `common-...` artifact until it expires. `/api/tts/stream/{stream_id}` and `/api/tts/stream/{stream_id}/{variant}` are streaming aliases for the existing audio routes and return the same WAV files.
 
+`POST /api/tts/synthesize` also accepts an optional `delivery` object. Omitting it preserves the existing ephemeral response and `ttl_seconds` behavior. Supported modes are `ephemeral`, `cached`, `named_asset`, and `persistent`. Named and persistent requests require a caller-owned slash-delimited `asset_key`, for example `interaction/weather/home/current`. Callers may request `compact` (16 kHz), `standard` (22.05 kHz), `high` (48 kHz), and `source` quality profiles. Responses identify the immutable audio revision and report each variant's stable alias URL, codec, sample rate, channels, size, and SHA-256.
+
+```json
+{
+  "text": "Rain is expected this afternoon.",
+  "voice": "en_US-lessac-medium",
+  "delivery": {
+    "mode": "named_asset",
+    "asset_key": "interaction/weather/home/current",
+    "update_policy": "if_changed",
+    "retention": "until_replaced",
+    "quality_profiles": ["compact", "standard", "high"],
+    "source_version": "forecast-17"
+  }
+}
+```
+
+An unchanged request reuses the current revision. A changed request prepares and verifies every requested variant before atomically replacing the alias metadata, so URLs under `/api/tts/assets/{asset_key}/audio/{quality}` remain stable. Other nodes should request this through the governed `voice.tts.synthesize` capability rather than calling Piper directly.
+
 Speaker-capable firmware reports TTS playback progress back over the voice WebSocket with `tts.playback.download_started`, `tts.playback.first_audio_frame`, `tts.playback.completed`, and `tts.playback.failed`. These acknowledgements let the backend distinguish synthesis readiness from endpoint download and actual speaker output.
 
 HexeVoice normalizes Piper WAV artifacts to `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ`, default `16000`, before serving them to firmware. Set `VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=0` to keep native Piper output for endpoints without an override. Endpoint-specific rates can be set with `VOICE_TTS_ENDPOINT_SAMPLE_RATES`; these values take precedence over the default output rate:

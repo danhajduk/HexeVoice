@@ -10,12 +10,13 @@ import wave
 from hexevoice.api.models import TtsSynthesizeRequest, TtsSynthesizeResponse
 from hexevoice.config.settings import Settings
 from hexevoice.voice.records import record_voice_event
-from hexevoice.voice.pipeline import DEFAULT_TTS_AUDIO_TTL_SECONDS, VoiceTurnPipeline
+from hexevoice.voice.pipeline import DEFAULT_TTS_AUDIO_TTL_SECONDS, VoiceTurnPipeline, normalize_wav_sample_rate
 from hexevoice.voice.pipeline import tts_audio_url_metadata
 
 
 GENERATED_AUDIO_SUFFIXES = (".wav", ".mp3", ".ogg")
 GENERATED_WAV_VARIANTS = ("48k", "22050", "16k", "raw")
+QUALITY_VARIANTS = {"compact": ("16k", 16000), "standard": ("22050", 22050), "high": ("48k", 48000), "source": ("raw", None)}
 
 
 class TtsAudioService:
@@ -26,6 +27,8 @@ class TtsAudioService:
 
     def synthesize(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         self.cleanup_expired()
+        if request.delivery is not None and request.delivery.mode != "ephemeral":
+            return self._synthesize_managed(request)
         cache_key = normalized_common_clip_cache_key(request.cache_key)
         if cache_key:
             cached = self.cached_common_clip_response(cache_key=cache_key)
@@ -62,6 +65,12 @@ class TtsAudioService:
         if not audio_urls:
             audio_urls = {"raw": self._public_tts_audio_url(stream_id)}
         audio_url_metadata = tts_audio_url_metadata(audio_urls, endpoint_audio_url=endpoint_audio_url)
+        response_variants = self._semantic_variant_metadata(
+            synthesis.audio_variants,
+            audio_urls,
+            fallback_path=audio_path,
+            fallback_url=endpoint_audio_url,
+        )
         created_at = datetime.now(UTC)
         expires_at = created_at + timedelta(seconds=request.ttl_seconds)
         metadata = {
@@ -94,6 +103,9 @@ class TtsAudioService:
             "cache_scope": "common_clip" if cache_key else None,
             "stream_url": endpoint_audio_url or audio_url_metadata.get("audio_url"),
             "stream_urls": dict(audio_urls),
+            "delivery_mode": "cached" if cache_key else "ephemeral",
+            "transcript": request.text,
+            "variants": response_variants,
         }
         metadata = self._merge_existing_generated_metadata(stream_id, metadata)
         self._metadata_path(stream_id).write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
@@ -111,7 +123,217 @@ class TtsAudioService:
             provider_id=synthesis.provider_id,
             cache_key=cache_key,
             cache_hit=False,
+            delivery_mode="cached" if cache_key else "ephemeral",
+            transcript=request.text,
+            voice_id=synthesis.voice_id or request.voice,
+            model_id=synthesis.model_id or "deterministic",
+            variants=response_variants,
         )
+
+    def _synthesize_managed(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
+        delivery = request.delivery
+        assert delivery is not None
+        qualities = list(dict.fromkeys(delivery.quality_profiles or ["standard"]))
+        asset_key = safe_tts_asset_key(delivery.asset_key)
+        if delivery.mode in {"named_asset", "persistent"} and asset_key is None:
+            return TtsSynthesizeResponse(status="failed", delivery_mode=delivery.mode, error="asset_key_required")
+        fingerprint = managed_tts_fingerprint(request, qualities)
+        if asset_key is None:
+            asset_key = f"cache/{fingerprint[:32]}"
+        alias = self._load_asset_alias(asset_key)
+        if alias and delivery.update_policy == "if_missing":
+            return self._managed_response(alias, cache_hit=True, changed=False)
+        if alias and alias.get("fingerprint") == fingerprint and delivery.update_policy != "always":
+            return self._managed_response(alias, cache_hit=True, changed=False)
+
+        revision = str(alias.get("revision")) if alias and alias.get("fingerprint") == fingerprint else ""
+        revision_metadata = self._load_revision(revision) if revision else None
+        revision_cache_hit = revision_metadata is not None
+        if revision_metadata is None or delivery.update_policy == "always":
+            staging_id = f"ttsstage-{fingerprint[:24]}"
+            if delivery.update_policy == "always":
+                staging_id = f"{staging_id}-{datetime.now(UTC).strftime('%H%M%S%f')}"
+            endpoint_id = request.target.device_id or request.target.location or "tts-client"
+            synthesis = self._pipeline.synthesize_reply(
+                endpoint_id=endpoint_id,
+                session_id=staging_id,
+                text=request.text,
+                voice=self._resolve_voice_model(request.voice),
+                audio_format=request.format,
+                stream_id=staging_id,
+            )
+            if synthesis.error:
+                return TtsSynthesizeResponse(
+                    status="failed", delivery_mode=delivery.mode, asset_key=asset_key,
+                    provider_id=synthesis.provider_id, error=synthesis.error,
+                )
+            source_path = self.audio_path(staging_id, variant="raw") or self.audio_path(staging_id)
+            if source_path is None:
+                source_path = self._write_deterministic_wav(staging_id)
+            try:
+                variants = self._prepare_managed_variants(staging_id, asset_key, qualities, source_path)
+            except (OSError, ValueError, wave.Error) as exc:
+                return TtsSynthesizeResponse(
+                    status="failed", delivery_mode=delivery.mode, asset_key=asset_key,
+                    provider_id=synthesis.provider_id, error=f"variant_generation_failed:{exc}",
+                )
+            revision = managed_tts_revision(variants)
+            now = datetime.now(UTC)
+            generated_revision_metadata = {
+                "revision": revision,
+                "variants": variants,
+                "voice_id": synthesis.voice_id or request.voice,
+                "model_id": synthesis.model_id or "deterministic",
+                "provider_id": synthesis.provider_id,
+                "created_at": now.isoformat(),
+            }
+            revision_metadata = self._load_revision(revision) or generated_revision_metadata
+            if not self._revision_path(revision).exists():
+                self._atomic_json_write(self._revision_path(revision), revision_metadata)
+
+        persistent = delivery.mode == "persistent" or delivery.retention == "persistent"
+        alias_expires_at = (
+            None
+            if persistent or delivery.retention == "until_replaced"
+            else datetime.now(UTC) + timedelta(seconds=request.ttl_seconds)
+        )
+        alias_metadata = {
+            **revision_metadata,
+            "fingerprint": fingerprint,
+            "asset_key": asset_key,
+            "delivery_mode": delivery.mode,
+            "transcript": request.text,
+            "voice_id": request.voice or revision_metadata.get("voice_id"),
+            "model_id": revision_metadata.get("model_id") or request.voice or "deterministic",
+            "provider_id": revision_metadata.get("provider_id"),
+            "retention": delivery.retention or ("persistent" if delivery.mode == "persistent" else "ttl"),
+            "source_version": delivery.source_version,
+            "expires_at": alias_expires_at.isoformat() if alias_expires_at else None,
+            "updated_at": datetime.now(UTC).isoformat(),
+        }
+        self._atomic_json_write(self._alias_path(asset_key), alias_metadata)
+        return self._managed_response(
+            alias_metadata,
+            cache_hit=revision_cache_hit and delivery.update_policy != "always",
+            changed=True,
+        )
+
+    def named_asset_audio_path(self, asset_key: str, quality: str) -> tuple[Path, dict[str, Any]] | None:
+        safe_key = safe_tts_asset_key(asset_key)
+        if safe_key is None or quality not in QUALITY_VARIANTS:
+            return None
+        alias = self._load_asset_alias(safe_key)
+        variant = alias.get("variants", {}).get(quality) if alias else None
+        if not isinstance(variant, dict):
+            return None
+        path = Path(str(variant.get("path") or ""))
+        try:
+            path.resolve().relative_to(self._audio_dir.resolve())
+        except (OSError, ValueError):
+            return None
+        return (path, variant) if path.is_file() else None
+
+    def _prepare_managed_variants(self, revision: str, asset_key: str, qualities: list[str], source_path: Path) -> dict[str, dict[str, Any]]:
+        source_audio = source_path.read_bytes()
+        variants: dict[str, dict[str, Any]] = {}
+        for quality in qualities:
+            variant_name, sample_rate = QUALITY_VARIANTS[quality]
+            if quality == "source":
+                path = source_path
+            else:
+                path = self._audio_variant_path(revision, variant_name)
+                path.write_bytes(normalize_wav_sample_rate(source_audio, sample_rate))
+            sample_rate_hz, channels = wav_properties(path)
+            payload = path.read_bytes()
+            variants[quality] = {
+                "quality": quality,
+                "audio_url": self._public_named_asset_url(asset_key, quality),
+                "path": str(path),
+                "codec": "wav_pcm",
+                "sample_rate_hz": sample_rate_hz,
+                "channels": channels,
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        return variants
+
+    def _semantic_variant_metadata(
+        self,
+        audio_variants: dict[str, str],
+        audio_urls: dict[str, str],
+        *,
+        fallback_path: Path,
+        fallback_url: str,
+    ) -> dict[str, dict[str, Any]]:
+        quality_for_variant = {variant: quality for quality, (variant, _) in QUALITY_VARIANTS.items()}
+        candidates = dict(audio_variants) or {"raw": str(fallback_path)}
+        variants: dict[str, dict[str, Any]] = {}
+        for variant_name, path_value in candidates.items():
+            quality = quality_for_variant.get(variant_name)
+            path = Path(path_value)
+            if quality is None or not path.is_file():
+                continue
+            payload = path.read_bytes()
+            sample_rate_hz, channels = wav_properties(path)
+            variants[quality] = {
+                "quality": quality,
+                "audio_url": audio_urls.get(variant_name) or fallback_url,
+                "codec": "wav_pcm",
+                "sample_rate_hz": sample_rate_hz,
+                "channels": channels,
+                "size_bytes": len(payload),
+                "sha256": hashlib.sha256(payload).hexdigest(),
+            }
+        return variants
+
+    def _managed_response(self, metadata: dict[str, Any], *, cache_hit: bool, changed: bool) -> TtsSynthesizeResponse:
+        variants = metadata.get("variants") if isinstance(metadata.get("variants"), dict) else {}
+        preferred = next((variants[key] for key in ("standard", "high", "compact", "source") if key in variants), None)
+        return TtsSynthesizeResponse(
+            status="ready", audio_url=preferred.get("audio_url") if preferred else None,
+            endpoint_audio_url=preferred.get("audio_url") if preferred else None,
+            stream_url=preferred.get("audio_url") if preferred else None,
+            audio_urls={key: value["audio_url"] for key, value in variants.items()},
+            stream_urls={key: value["audio_url"] for key, value in variants.items()},
+            content_type="audio/wav", expires_at=metadata.get("expires_at"), stream_id=metadata.get("revision"),
+            provider_id=metadata.get("provider_id"), cache_hit=cache_hit,
+            delivery_mode=metadata.get("delivery_mode", "cached"), asset_key=metadata.get("asset_key"),
+            revision=metadata.get("revision"), changed=changed, transcript=metadata.get("transcript"),
+            voice_id=metadata.get("voice_id"), model_id=metadata.get("model_id"), variants=variants,
+        )
+
+    def _public_named_asset_url(self, asset_key: str, quality: str) -> str:
+        return f"{self.public_api_base_url()}/api/tts/assets/{asset_key}/audio/{quality}"
+
+    def _asset_store_dir(self) -> Path:
+        return self._settings.runtime_dir / "voice_tts_assets"
+
+    def _alias_path(self, asset_key: str) -> Path:
+        return self._asset_store_dir() / "aliases" / f"{asset_key}.json"
+
+    def _revision_path(self, revision: str) -> Path:
+        return self._asset_store_dir() / "revisions" / f"{revision}.json"
+
+    def _load_asset_alias(self, asset_key: str) -> dict[str, Any] | None:
+        return self._load_json(self._alias_path(asset_key))
+
+    def _load_revision(self, revision: str) -> dict[str, Any] | None:
+        return self._load_json(self._revision_path(revision))
+
+    @staticmethod
+    def _load_json(path: Path) -> dict[str, Any] | None:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    @staticmethod
+    def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_suffix(path.suffix + ".tmp")
+        temp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        temp.replace(path)
 
     def synthesize_common_clip(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         cache_key = normalized_common_clip_cache_key(request.cache_key) or common_clip_cache_key(
@@ -147,6 +369,12 @@ class TtsAudioService:
             provider_id=metadata.get("provider_id"),
             cache_key=cache_key,
             cache_hit=True,
+            delivery_mode=metadata.get("delivery_mode", "cached"),
+            changed=False,
+            transcript=metadata.get("transcript"),
+            voice_id=metadata.get("voice_id"),
+            model_id=metadata.get("model_id"),
+            variants=metadata.get("variants") if isinstance(metadata.get("variants"), dict) else {},
         )
 
     def _metadata_is_available(self, metadata: dict[str, Any]) -> bool:
@@ -681,6 +909,52 @@ def safe_tts_stream_id(stream_id: str) -> str | None:
     if not cleaned or not cleaned.replace("-", "").replace("_", "").isalnum():
         return None
     return cleaned
+
+
+def safe_tts_asset_key(asset_key: str | None) -> str | None:
+    cleaned = str(asset_key or "").strip().strip("/")
+    parts = cleaned.split("/")
+    if not cleaned or len(cleaned) > 180 or any(
+        not part
+        or part in {".", ".."}
+        or part.startswith(".")
+        or len(part) > 64
+        or not all(char.isalnum() or char in {"-", "_", "."} for char in part)
+        for part in parts
+    ):
+        return None
+    return "/".join(parts)
+
+
+def managed_tts_fingerprint(request: TtsSynthesizeRequest, qualities: list[str]) -> str:
+    delivery = request.delivery
+    identity = {
+        "text": request.text,
+        "voice": request.voice,
+        "format": request.format,
+        "qualities": sorted(qualities),
+        "source_version": delivery.source_version if delivery else None,
+    }
+    return hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def managed_tts_revision(variants: dict[str, dict[str, Any]]) -> str:
+    content_identity = {
+        quality: {"sha256": variant.get("sha256"), "size_bytes": variant.get("size_bytes")}
+        for quality, variant in sorted(variants.items())
+    }
+    digest = hashlib.sha256(
+        json.dumps(content_identity, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    return f"ttsrev-{digest[:32]}"
+
+
+def wav_properties(path: Path) -> tuple[int | None, int | None]:
+    try:
+        with wave.open(str(path), "rb") as wav_file:
+            return wav_file.getframerate(), wav_file.getnchannels()
+    except (OSError, wave.Error):
+        return None, None
 
 
 def normalized_common_clip_cache_key(cache_key: str | None) -> str | None:
