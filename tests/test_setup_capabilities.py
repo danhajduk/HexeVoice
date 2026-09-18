@@ -104,7 +104,11 @@ def test_setup_capabilities_status_includes_manifest_preview(tmp_path):
 
     assert preview["node_identity"]["node_id"] == "node-voice-123"
     assert preview["runtime"]["api_base_url"] == "http://voice.local:8084"
-    assert preview["declaration_payload"]["manifest"]["capability_endpoints"]["voice.tts.synthesize"]["url"] == "http://voice.local:8084/api/tts/synthesize"
+    tts_endpoint = preview["declaration_payload"]["manifest"]["capability_endpoints"]["voice.tts.synthesize"]
+    assert tts_endpoint["url"] == "http://voice.local:8084/api/tts/synthesize"
+    assert tts_endpoint["delivery_modes"] == ["ephemeral", "cached", "named_asset", "persistent"]
+    assert tts_endpoint["quality_profiles"]["high"]["sample_rate_hz"] == 48000
+    assert tts_endpoint["named_asset_lifecycle"]["requester_identity_header"] == "X-Hexe-Requester-Node-Id"
     assert preview["providers"]["enabled"] == ["external_faster_whisper", "piper", "voice"]
     models = {item["provider_id"]: item for item in preview["providers"]["models"]}
     assert models["external_faster_whisper"]["model"] == "small.en"

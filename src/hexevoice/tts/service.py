@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+import os
 from pathlib import Path
+import threading
 from typing import Any
 import wave
 
@@ -24,11 +26,12 @@ class TtsAudioService:
         self._settings = settings
         self._pipeline = voice_turn_pipeline
         self._audio_dir = settings.runtime_dir / "voice_tts"
+        self._asset_lock = threading.RLock()
 
-    def synthesize(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
+    def synthesize(self, request: TtsSynthesizeRequest, *, requester_node_id: str | None = None) -> TtsSynthesizeResponse:
         self.cleanup_expired()
         if request.delivery is not None and request.delivery.mode != "ephemeral":
-            return self._synthesize_managed(request)
+            return self._synthesize_managed(request, requester_node_id=requester_node_id)
         cache_key = normalized_common_clip_cache_key(request.cache_key)
         if cache_key:
             cached = self.cached_common_clip_response(cache_key=cache_key)
@@ -130,17 +133,36 @@ class TtsAudioService:
             variants=response_variants,
         )
 
-    def _synthesize_managed(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
+    def _synthesize_managed(
+        self,
+        request: TtsSynthesizeRequest,
+        *,
+        requester_node_id: str | None,
+    ) -> TtsSynthesizeResponse:
         delivery = request.delivery
         assert delivery is not None
         qualities = list(dict.fromkeys(delivery.quality_profiles or ["standard"]))
         asset_key = safe_tts_asset_key(delivery.asset_key)
         if delivery.mode in {"named_asset", "persistent"} and asset_key is None:
             return TtsSynthesizeResponse(status="failed", delivery_mode=delivery.mode, error="asset_key_required")
+        if delivery.mode in {"named_asset", "persistent"} and not asset_key_owned_by(asset_key, requester_node_id):
+            return TtsSynthesizeResponse(
+                status="failed",
+                delivery_mode=delivery.mode,
+                asset_key=asset_key,
+                error="asset_namespace_forbidden",
+            )
         fingerprint = managed_tts_fingerprint(request, qualities)
         if asset_key is None:
             asset_key = f"cache/{fingerprint[:32]}"
         alias = self._load_asset_alias(asset_key)
+        if alias and delivery.mode in {"named_asset", "persistent"} and not owner_matches(alias, requester_node_id):
+            return TtsSynthesizeResponse(
+                status="failed",
+                delivery_mode=delivery.mode,
+                asset_key=asset_key,
+                error="asset_owner_forbidden",
+            )
         if alias and delivery.update_policy == "if_missing":
             return self._managed_response(alias, cache_hit=True, changed=False)
         if alias and alias.get("fingerprint") == fingerprint and delivery.update_policy != "always":
@@ -208,10 +230,30 @@ class TtsAudioService:
             "provider_id": revision_metadata.get("provider_id"),
             "retention": delivery.retention or ("persistent" if delivery.mode == "persistent" else "ttl"),
             "source_version": delivery.source_version,
+            "owner_node_id": normalized_owner_node_id(requester_node_id) if delivery.mode in {"named_asset", "persistent"} else None,
             "expires_at": alias_expires_at.isoformat() if alias_expires_at else None,
             "updated_at": datetime.now(UTC).isoformat(),
         }
-        self._atomic_json_write(self._alias_path(asset_key), alias_metadata)
+        with self._asset_lock:
+            current = self._load_asset_alias(asset_key)
+            if current and not owner_matches(current, requester_node_id) and delivery.mode in {"named_asset", "persistent"}:
+                return TtsSynthesizeResponse(
+                    status="failed",
+                    delivery_mode=delivery.mode,
+                    asset_key=asset_key,
+                    error="asset_owner_forbidden",
+                )
+            self._atomic_json_write(self._alias_path(asset_key), alias_metadata)
+        cleaned_revisions = self.cleanup_unreferenced_revisions(limit=10)
+        record_voice_event(
+            "tts.asset.updated",
+            asset_key=asset_key,
+            owner_node_id=alias_metadata.get("owner_node_id"),
+            revision=revision,
+            delivery_mode=delivery.mode,
+            changed=True,
+            cleaned_revision_count=cleaned_revisions,
+        )
         return self._managed_response(
             alias_metadata,
             cache_hit=revision_cache_hit and delivery.update_policy != "always",
@@ -232,6 +274,87 @@ class TtsAudioService:
         except (OSError, ValueError):
             return None
         return (path, variant) if path.is_file() else None
+
+    def get_named_asset(self, asset_key: str) -> dict[str, Any] | None:
+        safe_key = safe_tts_asset_key(asset_key)
+        if safe_key is None:
+            return None
+        alias = self._load_asset_alias(safe_key)
+        return public_asset_metadata(alias) if alias else None
+
+    def list_named_assets(self, *, requester_node_id: str | None = None) -> list[dict[str, Any]]:
+        aliases_dir = self._asset_store_dir() / "aliases"
+        if not aliases_dir.exists():
+            return []
+        owner = normalized_owner_node_id(requester_node_id)
+        assets: list[dict[str, Any]] = []
+        for path in sorted(aliases_dir.rglob("*.json")):
+            alias = self._load_json(path)
+            if not alias or (owner and alias.get("owner_node_id") != owner):
+                continue
+            summary = public_asset_metadata(alias)
+            summary.pop("transcript", None)
+            assets.append(summary)
+        return assets
+
+    def delete_named_asset(self, asset_key: str, *, requester_node_id: str | None) -> dict[str, Any]:
+        safe_key = safe_tts_asset_key(asset_key)
+        if safe_key is None:
+            return {"deleted": False, "reason": "invalid_asset_key"}
+        with self._asset_lock:
+            alias = self._load_asset_alias(safe_key)
+            if alias is None:
+                return {"deleted": False, "reason": "asset_not_found"}
+            if not owner_matches(alias, requester_node_id):
+                return {"deleted": False, "reason": "asset_owner_forbidden"}
+            try:
+                self._alias_path(safe_key).unlink()
+            except OSError:
+                return {"deleted": False, "reason": "asset_delete_failed"}
+        cleaned = self.cleanup_unreferenced_revisions(limit=10)
+        record_voice_event(
+            "tts.asset.deleted",
+            asset_key=safe_key,
+            owner_node_id=alias.get("owner_node_id"),
+            revision=alias.get("revision"),
+            cleaned_revision_count=cleaned,
+        )
+        return {"deleted": True, "asset_key": safe_key, "revision": alias.get("revision"), "cleaned_revision_count": cleaned}
+
+    def cleanup_unreferenced_revisions(self, *, limit: int = 10) -> int:
+        referenced = {
+            str(asset.get("revision"))
+            for asset in self.list_named_assets()
+            if asset.get("revision")
+        }
+        revisions_dir = self._asset_store_dir() / "revisions"
+        if not revisions_dir.exists():
+            return 0
+        cutoff = datetime.now(UTC) - timedelta(minutes=10)
+        deleted = 0
+        for path in sorted(revisions_dir.glob("ttsrev-*.json")):
+            if deleted >= max(0, limit) or path.stem in referenced:
+                continue
+            try:
+                modified_at = datetime.fromtimestamp(path.stat().st_mtime, UTC)
+            except OSError:
+                continue
+            if modified_at > cutoff:
+                continue
+            metadata = self._load_json(path) or {}
+            for variant in (metadata.get("variants") or {}).values():
+                audio_path = Path(str(variant.get("path") or "")) if isinstance(variant, dict) else None
+                if audio_path is not None and audio_path.is_file():
+                    try:
+                        audio_path.unlink()
+                    except OSError:
+                        pass
+            try:
+                path.unlink()
+                deleted += 1
+            except OSError:
+                pass
+        return deleted
 
     def _prepare_managed_variants(self, revision: str, asset_key: str, qualities: list[str], source_path: Path) -> dict[str, dict[str, Any]]:
         source_audio = source_path.read_bytes()
@@ -332,8 +455,17 @@ class TtsAudioService:
     def _atomic_json_write(path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_suffix(path.suffix + ".tmp")
-        temp.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        with temp.open("w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, indent=2, sort_keys=True))
+            handle.flush()
+            os.fsync(handle.fileno())
         temp.replace(path)
+        if hasattr(os, "O_DIRECTORY"):
+            directory_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
 
     def synthesize_common_clip(self, request: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
         cache_key = normalized_common_clip_cache_key(request.cache_key) or common_clip_cache_key(
@@ -924,6 +1056,37 @@ def safe_tts_asset_key(asset_key: str | None) -> str | None:
     ):
         return None
     return "/".join(parts)
+
+
+def normalized_owner_node_id(node_id: str | None) -> str | None:
+    cleaned = str(node_id or "").strip().casefold()
+    if cleaned.startswith("node-service:"):
+        cleaned = cleaned.removeprefix("node-service:")
+    if not cleaned or len(cleaned) > 64 or not all(char.isalnum() or char in {"-", "_", "."} for char in cleaned):
+        return None
+    return cleaned
+
+
+def asset_key_owned_by(asset_key: str | None, requester_node_id: str | None) -> bool:
+    safe_key = safe_tts_asset_key(asset_key)
+    owner = normalized_owner_node_id(requester_node_id)
+    return bool(safe_key and owner and safe_key.split("/", 1)[0].casefold() == owner)
+
+
+def owner_matches(alias: dict[str, Any], requester_node_id: str | None) -> bool:
+    owner = normalized_owner_node_id(requester_node_id)
+    return bool(owner and alias.get("owner_node_id") == owner)
+
+
+def public_asset_metadata(alias: dict[str, Any]) -> dict[str, Any]:
+    public = {key: value for key, value in alias.items() if key not in {"fingerprint"}}
+    variants = public.get("variants") if isinstance(public.get("variants"), dict) else {}
+    public["variants"] = {
+        quality: {key: value for key, value in variant.items() if key != "path"}
+        for quality, variant in variants.items()
+        if isinstance(variant, dict)
+    }
+    return public
 
 
 def managed_tts_fingerprint(request: TtsSynthesizeRequest, qualities: list[str]) -> str:

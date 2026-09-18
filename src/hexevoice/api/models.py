@@ -143,12 +143,14 @@ TTS_TEXT_MAX_LENGTH = 12000
 
 
 class TtsDeliveryOptions(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     mode: Literal["ephemeral", "cached", "named_asset", "persistent"] = "ephemeral"
     asset_key: str | None = Field(default=None, min_length=1, max_length=180)
     update_policy: Literal["if_changed", "always", "if_missing"] = "if_changed"
     retention: Literal["ttl", "until_replaced", "persistent"] | None = None
     quality_profiles: list[Literal["compact", "standard", "high", "source"]] = Field(
-        default_factory=lambda: ["standard"]
+        default_factory=lambda: ["standard"], min_length=1, max_length=4
     )
     source_version: str | None = Field(default=None, max_length=120)
 

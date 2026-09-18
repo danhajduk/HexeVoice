@@ -16,7 +16,7 @@ from urllib.parse import urlencode
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 import httpx
 from starlette.requests import ClientDisconnect
 import uvicorn
@@ -127,6 +127,7 @@ from hexevoice.api.models import (
     ServiceStatusResponse,
     TrustActivationFinalizeResponse,
     TrustStatusRefreshResponse,
+    TtsDeliveryOptions,
     TtsSynthesizeRequest,
     TtsSynthesizeTarget,
     TtsSynthesizeResponse,
@@ -2930,8 +2931,64 @@ def create_app(
         return result
 
     @app.post("/api/tts/synthesize", response_model=TtsSynthesizeResponse)
-    async def tts_synthesize(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
-        return await asyncio.to_thread(tts_audio_service.synthesize, payload)
+    async def tts_synthesize(payload: TtsSynthesizeRequest, request: Request) -> TtsSynthesizeResponse:
+        requester_node_id = request.headers.get("X-Hexe-Requester-Node-Id")
+        return await asyncio.to_thread(
+            tts_audio_service.synthesize,
+            payload,
+            requester_node_id=requester_node_id,
+        )
+
+    @app.get("/api/tts/assets")
+    async def tts_named_assets(request: Request) -> dict:
+        requester_node_id = request.headers.get("X-Hexe-Requester-Node-Id")
+        return {
+            "assets": await asyncio.to_thread(
+                tts_audio_service.list_named_assets,
+                requester_node_id=requester_node_id,
+            )
+        }
+
+    @app.get("/api/tts/assets/resolve/{asset_key:path}")
+    async def tts_named_asset_resolve(asset_key: str) -> dict:
+        asset = await asyncio.to_thread(tts_audio_service.get_named_asset, asset_key)
+        if asset is None:
+            raise HTTPException(status_code=404, detail="tts_asset_not_found")
+        return asset
+
+    @app.put("/api/tts/assets/{asset_key:path}", response_model=TtsSynthesizeResponse)
+    async def tts_named_asset_upsert(asset_key: str, payload: TtsSynthesizeRequest, request: Request) -> TtsSynthesizeResponse:
+        requester_node_id = request.headers.get("X-Hexe-Requester-Node-Id")
+        if not requester_node_id:
+            raise HTTPException(status_code=403, detail="tts_asset_requester_required")
+        delivery = payload.delivery or TtsDeliveryOptions(mode="named_asset")
+        delivery = delivery.model_copy(update={"mode": delivery.mode if delivery.mode == "persistent" else "named_asset", "asset_key": asset_key})
+        response = await asyncio.to_thread(
+            tts_audio_service.synthesize,
+            payload.model_copy(update={"delivery": delivery}),
+            requester_node_id=requester_node_id,
+        )
+        if response.error in {"asset_namespace_forbidden", "asset_owner_forbidden"}:
+            raise HTTPException(status_code=403, detail=response.error)
+        return response
+
+    @app.delete("/api/tts/assets/{asset_key:path}")
+    async def tts_named_asset_delete(asset_key: str, request: Request) -> dict:
+        requester_node_id = request.headers.get("X-Hexe-Requester-Node-Id")
+        if not requester_node_id:
+            raise HTTPException(status_code=403, detail="tts_asset_requester_required")
+        result = await asyncio.to_thread(
+            tts_audio_service.delete_named_asset,
+            asset_key,
+            requester_node_id=requester_node_id,
+        )
+        if result.get("reason") == "asset_owner_forbidden":
+            raise HTTPException(status_code=403, detail="asset_owner_forbidden")
+        if result.get("reason") in {"asset_not_found", "invalid_asset_key"}:
+            raise HTTPException(status_code=404, detail="tts_asset_not_found")
+        if not result.get("deleted"):
+            raise HTTPException(status_code=500, detail="tts_asset_delete_failed")
+        return result
 
     @app.post("/api/tts/common-clips", response_model=TtsSynthesizeResponse)
     async def tts_common_clip(payload: TtsSynthesizeRequest) -> TtsSynthesizeResponse:
@@ -3047,16 +3104,22 @@ def create_app(
         )
 
     @app.get("/api/tts/assets/{asset_key:path}/audio/{quality}")
-    async def tts_named_asset_audio(asset_key: str, quality: str) -> FileResponse:
+    async def tts_named_asset_audio(asset_key: str, quality: str, request: Request) -> Response:
         resolved = tts_audio_service.named_asset_audio_path(asset_key, quality)
         if resolved is None:
             raise HTTPException(status_code=404, detail="tts_asset_variant_not_found")
         audio_path, variant = resolved
+        etag = f'"{variant["sha256"]}"'
+        if request.headers.get("If-None-Match") == etag:
+            return Response(
+                status_code=304,
+                headers={"ETag": etag, "Cache-Control": "no-cache"},
+            )
         return FileResponse(
             audio_path,
             media_type="audio/wav",
             headers={
-                "ETag": f'"{variant["sha256"]}"',
+                "ETag": etag,
                 "X-Hexe-TTS-Revision-SHA256": str(variant["sha256"]),
                 "Cache-Control": "no-cache",
             },

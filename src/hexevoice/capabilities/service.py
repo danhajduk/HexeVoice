@@ -674,6 +674,21 @@ class CapabilityDeclarationService:
                     "minimum": 5,
                     "maximum": 3600,
                 },
+                "delivery_modes": ["ephemeral", "cached", "named_asset", "persistent"],
+                "quality_profiles": {
+                    "compact": {"codec": "wav_pcm", "sample_rate_hz": 16000},
+                    "standard": {"codec": "wav_pcm", "sample_rate_hz": 22050},
+                    "high": {"codec": "wav_pcm", "sample_rate_hz": 48000},
+                    "source": {"codec": "wav_pcm", "sample_rate_hz": "provider_native"},
+                },
+                "named_asset_lifecycle": {
+                    "inventory_path": "/api/tts/assets",
+                    "resolve_path_template": "/api/tts/assets/resolve/{asset_key}",
+                    "upsert_path_template": "/api/tts/assets/{asset_key}",
+                    "delete_path_template": "/api/tts/assets/{asset_key}",
+                    "audio_path_template": "/api/tts/assets/{asset_key}/audio/{quality}",
+                    "requester_identity_header": "X-Hexe-Requester-Node-Id",
+                },
             },
             "voice.tts.audio_url": {
                 "transport": "http",
