@@ -187,9 +187,16 @@ def test_firmware_ui_button_event_closes_payload_and_envelope_once():
     assert r'\"source\":\"touch\"}}}",' not in function
 
 
-def test_firmware_tts_buffer_accepts_one_megabyte_assets():
+def test_p4_firmware_streams_remote_wav_without_whole_file_buffering():
     source = Path("firmware/components/endpoint_runtime/voice/tts_player.cpp").read_text()
 
+    assert "bool stream_http_wav(" in source
+    assert "esp_http_client_read" in source
+    assert "Streaming WAV while downloading" in source
+    assert "std::array<uint8_t, kHttpReadBufferBytes> read_buffer" in source
+    assert "played = stream_http_wav(url, request, &audio_size, report_first_frame);" in source
+    assert "fetch_audio(" not in source
+    # The limit remains only for optional SD-card sounds, not HTTP playback.
     assert "constexpr size_t kMaxTtsBytes = 1024 * 1024;" in source
 
 

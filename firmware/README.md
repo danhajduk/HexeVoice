@@ -261,7 +261,9 @@ Implemented today:
 - endpoint heartbeat sender
 - voice WebSocket client with bounded audio frame queue
 - backend event handling for wake/session/transcript/response/TTS/error envelopes
-- scaffolded TTS playback state handling
+- TTS and remote sound playback with incremental PCM WAV streaming on the P4;
+  HTTP input is held in a bounded 4 KiB buffer instead of loading the complete
+  audio asset into memory
 - silent wake-to-listening transition so cue audio does not feed back into VAD/STT
 
 Scaffold-only today:
@@ -270,9 +272,5 @@ Scaffold-only today:
 - wake-word module
 - STT stream module
 - OTA, telemetry, power, and settings runtime behavior
-
-Missing today:
-
-- real TTS audio download/stream playback
 
 See [`docs/firmware-baseline.md`](/home/dan/Projects/HexeVoice/docs/firmware-baseline.md) for the detailed current-state record.
