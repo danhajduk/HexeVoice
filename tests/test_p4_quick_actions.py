@@ -168,6 +168,15 @@ def test_weather_success_result_renders_matching_snapshot():
     assert elements[0]["item"] == "weather_overview"
 
 
+def test_weather_screen_is_sent_before_tts_playback():
+    manager = FakeManager()
+    service = quick_actions(manager, FakeWeather(snapshot()))
+
+    asyncio.run(service._show_weather("p4"))
+
+    assert [call[0] for call in manager.calls] == ["asset_prepare", "layout", "sound"]
+
+
 def test_weather_success_waits_for_matching_snapshot():
     manager = FakeManager()
     weather = FakeWeather(snapshot())

@@ -197,11 +197,6 @@ def _compose_weather_rgb888(source: bytes | None, snapshot: dict[str, Any]) -> b
                 ).convert("RGBA")
         else:
             canvas = Image.new("RGBA", (RADAR_WIDTH, RADAR_HEIGHT), "#07131d")
-            draw = ImageDraw.Draw(canvas)
-            for x in range(0, RADAR_WIDTH, 40):
-                draw.line((x, 0, x, RADAR_HEIGHT), fill=(32, 59, 72, 70), width=1)
-            for y in range(0, RADAR_HEIGHT, 40):
-                draw.line((0, y, RADAR_WIDTH, y), fill=(32, 59, 72, 70), width=1)
 
         _draw_weather_overlay(canvas, snapshot)
         return canvas.convert("RGB").tobytes("raw", "RGB")
