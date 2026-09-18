@@ -71,6 +71,9 @@ def test_multi_profile_rebuild_selects_profile_sdk_and_quiet_logs(tmp_path):
     assert '${BUILD_BASE}/logs/${app}-${profile}.log' in rebuild_script
     assert '--verbose' in rebuild_script
     assert 'tail -n 80 "${log_path}"' in rebuild_script
+    assert 'Progress: %3d%% (%d/%d)' in rebuild_script
+    assert 'bucket = int(percent / 5)' in rebuild_script
+    assert 'compiler warnings' in rebuild_script
 
     default_idf = tmp_path / "esp-idf"
     pinned_idf = tmp_path / "esp-idf-v5.5.4"

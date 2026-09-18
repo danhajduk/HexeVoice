@@ -197,6 +197,8 @@ run_build() {
   local profile="$2"
   local idf_export
   local log_path
+  local started_at
+  local warning_count
   shift 2
   idf_export="$(profile_idf_export "${profile}")"
   log_path="${BUILD_BASE}/logs/${app}-${profile}.log"
@@ -228,6 +230,8 @@ run_build() {
   echo
   echo "Building ${app} firmware for ${profile}"
   echo "  SDK: ${idf_export%/export.sh}"
+  echo "  Log: ${log_path}"
+  started_at="${SECONDS}"
   if [[ "${VERBOSE}" == "1" ]]; then
     (
       cd "${ROOT_DIR}"
@@ -251,13 +255,34 @@ run_build() {
       return 1
     fi
     env "${env_args[@]}" "${FIRMWARE_DIR}/build.sh" build
-  ) >"${log_path}" 2>&1; then
+  ) 2>&1 | tee "${log_path}" | awk '
+    BEGIN { last_bucket = -1 }
+    /^Executing action:/ || /^Running ninja/ || /^Project build complete/ {
+      print "  " $0
+      fflush()
+      next
+    }
+    /^\[[0-9]+\/[0-9]+\]/ {
+      line = $0
+      sub(/^\[/, "", line)
+      split(line, fields, "]")
+      split(fields[1], step, "/")
+      percent = int((step[1] * 100) / step[2])
+      bucket = int(percent / 5)
+      if (bucket > last_bucket || step[1] == step[2]) {
+        printf "  Progress: %3d%% (%d/%d)\n", percent, step[1], step[2]
+        fflush()
+        last_bucket = bucket
+      }
+    }
+  '; then
     echo "Build failed. Last 80 log lines:" >&2
     tail -n 80 "${log_path}" >&2
     echo "Full log: ${log_path}" >&2
     return 1
   fi
-  echo "  Complete. Log: ${log_path}"
+  warning_count="$(grep -c 'warning:' "${log_path}" || true)"
+  echo "  Complete in $((SECONDS - started_at))s (${warning_count} compiler warnings)."
 }
 
 mapfile -t ENDPOINT_PROFILES < <(discover_profiles endpoint "${REQUESTED_PROFILES[@]}")
