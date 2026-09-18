@@ -320,28 +320,44 @@ run_build() {
       image_status = "pending"
       last_bucket = -1
     }
-    function clip(text, max_width) {
-      max_width = terminal_columns - 1
-      if (length(text) > max_width) return substr(text, 1, max_width - 3) "..."
-      return text
+    function repeat_char(char, count,    result) {
+      result = ""
+      while (length(result) < count) result = result char
+      return result
     }
-    function dashboard(percent, completed, total, stage, action,    bar, bar_width, filled, i, summary) {
+    function fit(text, width) {
+      if (length(text) > width) return substr(text, 1, width - 3) "..."
+      return sprintf("%-*s", width, text)
+    }
+    function panel_border(inner_width) {
+      printf "\r\033[2K  +%s+\n", repeat_char("-", inner_width)
+    }
+    function panel_row(text, inner_width) {
+      printf "\r\033[2K  |%s|\n", fit(" " text, inner_width)
+    }
+    function dashboard(percent, completed, total, stage, action,    bar, bar_width, filled, i, inner_width, summary) {
+      inner_width = terminal_columns - 5
       bar_width = terminal_columns >= 100 ? 30 : 16
       filled = int((percent * bar_width) / 100)
       bar = ""
       for (i = 1; i <= bar_width; i++) bar = bar (i <= filled ? "#" : "-")
-      if (dashboard_drawn) printf "\033[9A"
-      printf "\r\033[2K%s\n", clip(sprintf("  Firmware: %s / %s", profile, app))
-      printf "\r\033[2K%s\n", clip(sprintf("  Target  : %s | flash %s | app slot %s", idf_target, flash_size, app_slot_size))
-      printf "\r\033[2K%s\n", clip("  Layout  : " partition_schema)
-      printf "\r\033[2K%s\n", clip(sprintf("  Overall : [%s] %3d%% (%d/%d)", bar, percent, completed, total))
-      summary = sprintf("  Tasks   : compile %d | link %d | generate %d | package %d | other %d",
+      if (dashboard_drawn) printf "\033[14A"
+      panel_border(inner_width)
+      panel_row("HEXE FIRMWARE BUILD", inner_width)
+      panel_border(inner_width)
+      panel_row(sprintf("BOARD      %s    APP  %s", profile, app), inner_width)
+      panel_row(sprintf("TARGET     %s    FLASH  %s    APP SLOT  %s", idf_target, flash_size, app_slot_size), inner_width)
+      panel_row("PARTITION  " partition_schema, inner_width)
+      panel_border(inner_width)
+      panel_row(sprintf("OVERALL    [%s]  %3d%%  %d/%d", bar, percent, completed, total), inner_width)
+      summary = sprintf("TASKS      compile %d | link %d | generate %d | package %d | other %d",
         counts["Compiling"], counts["Linking"], counts["Generating"], counts["Packaging"], counts["Other"])
-      printf "\r\033[2K%s\n", clip(summary)
-      printf "\r\033[2K%s\n", clip("  Activity: " stage)
-      printf "\r\033[2K%s\n", clip("  Current : " action)
-      printf "\r\033[2K%s\n", clip("  Image   : " image_status)
-      printf "\r\033[2K%s\n", clip(sprintf("  Elapsed : %ds", systime() - started_at))
+      panel_row(summary, inner_width)
+      panel_row("ACTIVITY   " stage, inner_width)
+      panel_row("CURRENT    " action, inner_width)
+      panel_row("IMAGE      " image_status, inner_width)
+      panel_row(sprintf("ELAPSED    %ds", systime() - started_at), inner_width)
+      panel_border(inner_width)
       fflush()
       dashboard_drawn = 1
     }
@@ -417,6 +433,10 @@ if [[ -z "${PROJECT_VERSION}" ]]; then
 fi
 
 BUILD_BASE="/tmp/hexevoice-fw-build-${PROJECT_VERSION}"
+
+if [[ "${DRY_RUN}" != "1" && "${LIST_ONLY}" != "1" && "${VERBOSE}" != "1" && -t 1 ]]; then
+  printf '\033[2J\033[H'
+fi
 
 if [[ "${MINIMAL_ONLY}" != "1" ]]; then
   print_profiles "Endpoint firmware profiles:" "${ENDPOINT_PROFILES[@]}"

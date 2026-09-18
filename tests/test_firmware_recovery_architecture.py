@@ -72,20 +72,23 @@ def test_multi_profile_rebuild_selects_profile_sdk_and_quiet_logs(tmp_path):
     assert '--verbose' in rebuild_script
     assert 'tail -n 80 "${log_path}"' in rebuild_script
     assert 'function dashboard(' in rebuild_script
+    assert "printf '\\033[2J\\033[H'" in rebuild_script
+    assert 'panel_row("HEXE FIRMWARE BUILD"' in rebuild_script
+    assert 'panel_border(inner_width)' in rebuild_script
     assert 'profile_build_metadata()' in rebuild_script
-    assert 'Target  : %s | flash %s | app slot %s' in rebuild_script
-    assert 'Layout  : " partition_schema' in rebuild_script
-    assert 'Image   : " image_status' in rebuild_script
+    assert 'TARGET     %s    FLASH  %s    APP SLOT  %s' in rebuild_script
+    assert 'PARTITION  " partition_schema' in rebuild_script
+    assert 'IMAGE      " image_status' in rebuild_script
     assert '/hexe_firmware\\.bin binary size/' in rebuild_script
-    assert 'Overall : [%s] %3d%% (%d/%d)' in rebuild_script
-    assert 'Tasks   : compile %d | link %d | generate %d | package %d | other %d' in rebuild_script
-    assert 'Activity: " stage' in rebuild_script
-    assert 'Current : " action' in rebuild_script
-    assert 'Elapsed : %ds' in rebuild_script
+    assert 'OVERALL    [%s]  %3d%%  %d/%d' in rebuild_script
+    assert 'TASKS      compile %d | link %d | generate %d | package %d | other %d' in rebuild_script
+    assert 'ACTIVITY   " stage' in rebuild_script
+    assert 'CURRENT    " action' in rebuild_script
+    assert 'ELAPSED    %ds' in rebuild_script
     assert 'action = substr($0, index($0, "]") + 2)' in rebuild_script
     assert 'terminal_columns="$(stty size </dev/tty' in rebuild_script
-    assert 'return substr(text, 1, max_width - 3) "..."' in rebuild_script
-    assert 'if (dashboard_drawn) printf "\\033[9A"' in rebuild_script
+    assert 'return substr(text, 1, width - 3) "..."' in rebuild_script
+    assert 'if (dashboard_drawn) printf "\\033[14A"' in rebuild_script
     assert 'return "Compiling"' in rebuild_script
     assert 'return "Linking"' in rebuild_script
     assert 'compiler warnings' in rebuild_script
