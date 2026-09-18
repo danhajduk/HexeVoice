@@ -394,6 +394,7 @@ struct StatusSprite {
   uint8_t *colors = nullptr;
   uint8_t *alpha = nullptr;
   bool load_attempted = false;
+  int64_t retry_after_ms = 0;
 };
 
 esp_lcd_panel_handle_t g_panel = nullptr;
@@ -424,6 +425,8 @@ char g_last_asset_filename[128] = "procedural-p4-7b-status";
 bool g_logged_sd_unavailable = false;
 bool g_logged_bg_missing = false;
 bool g_logged_bg_bad_size = false;
+bool g_chrome_sprites_preloaded = false;
+int64_t g_sprite_retry_due_ms = 0;
 StatusSprite g_wifi_on_sprite{"wifi_on", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_wifi_off_sprite{"wifi_off", kStatusSpriteSize, kStatusSpriteSize};
 StatusSprite g_node_connected_sprite{"node_connected", kStatusSpriteSize, kStatusSpriteSize};
@@ -899,10 +902,12 @@ bool load_status_sprite(StatusSprite *sprite) {
   if (sprite->colors != nullptr && sprite->alpha != nullptr) {
     return true;
   }
-  if (sprite->load_attempted || !hexe::board::sd_card_mounted()) {
+  const int64_t now_ms = esp_timer_get_time() / 1000;
+  if ((sprite->load_attempted && now_ms < sprite->retry_after_ms) || !hexe::board::sd_card_mounted()) {
     return false;
   }
   sprite->load_attempted = true;
+  sprite->retry_after_ms = 0;
 
   char color_path[160] = {};
   char alpha_path[160] = {};
@@ -927,12 +932,40 @@ bool load_status_sprite(StatusSprite *sprite) {
     heap_caps_free(sprite->alpha);
     sprite->colors = nullptr;
     sprite->alpha = nullptr;
+    sprite->retry_after_ms = now_ms + 1000;
+    if (g_sprite_retry_due_ms == 0 || sprite->retry_after_ms < g_sprite_retry_due_ms) {
+      g_sprite_retry_due_ms = sprite->retry_after_ms;
+    }
     return false;
   }
   for (size_t offset = 0; offset < color_bytes; offset += kBytesPerPixel) {
     std::swap(sprite->colors[offset], sprite->colors[offset + 2]);
   }
   return true;
+}
+
+void preload_chrome_sprites() {
+  if (g_chrome_sprites_preloaded) {
+    return;
+  }
+  StatusSprite *sprites[] = {
+      &g_wifi_on_sprite,
+      &g_wifi_off_sprite,
+      &g_node_connected_sprite,
+      &g_sidebar_sprite,
+      &g_sidebar_right_sprite,
+      &g_button_timer_sprite,
+      &g_button_weather_sprite,
+      &g_button_config_sprite,
+  };
+  bool loaded = true;
+  for (StatusSprite *sprite : sprites) {
+    loaded = load_status_sprite(sprite) && loaded;
+  }
+  g_chrome_sprites_preloaded = loaded;
+  if (loaded) {
+    ESP_LOGI(kTag, "Preloaded P4 status and sidebar sprites");
+  }
 }
 
 void draw_status_sprite(StatusSprite *sprite, int x, int y, uint8_t opacity = 255) {
@@ -2985,6 +3018,7 @@ void release_status_sprite(StatusSprite *sprite) {
   sprite->colors = nullptr;
   sprite->alpha = nullptr;
   sprite->load_attempted = false;
+  sprite->retry_after_ms = 0;
 }
 
 void release_bitmap_font(ClockFont *font);
@@ -2997,6 +3031,8 @@ void reload_display_assets() {
   g_logged_bg_missing = false;
   g_logged_bg_bad_size = false;
   g_status_layout_loaded = false;
+  g_chrome_sprites_preloaded = false;
+  g_sprite_retry_due_ms = 0;
   release_bitmap_font(&g_clock_font);
   release_bitmap_font(&g_version_font);
   release_status_sprite(&g_wifi_on_sprite);
@@ -3490,6 +3526,12 @@ void render_boot_frame(int frame, const char *build_id) {
     g_force_redraw = true;
   }
   load_status_layout();
+  preload_chrome_sprites();
+  const int64_t now_ms = esp_timer_get_time() / 1000;
+  if (g_sprite_retry_due_ms > 0 && now_ms >= g_sprite_retry_due_ms) {
+    g_sprite_retry_due_ms = 0;
+    g_force_redraw = true;
+  }
   const auto &state = hexe::state();
   const ScreenLayout *screen = active_screen_layout(state);
   const char *screen_id = screen == nullptr ? "none" : screen->id;

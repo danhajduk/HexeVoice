@@ -825,6 +825,26 @@ def test_p4_profile_uses_bsp_gt911_touch_adapter():
     assert r'\"button_index\":%d' in backend
 
 
+def test_p4_preloads_and_retries_critical_chrome_sprites():
+    display = (
+        REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
+    ).read_text(encoding="utf-8")
+
+    assert "void preload_chrome_sprites()" in display
+    for sprite in (
+        "g_node_connected_sprite",
+        "g_sidebar_sprite",
+        "g_sidebar_right_sprite",
+        "g_button_timer_sprite",
+        "g_button_weather_sprite",
+        "g_button_config_sprite",
+    ):
+        assert f"&{sprite}" in display
+    assert "sprite->retry_after_ms = now_ms + 1000;" in display
+    assert "g_sprite_retry_due_ms" in display
+    assert "preload_chrome_sprites();" in display
+
+
 def test_endpoint_accepts_backend_ui_flags_for_screen_conditions():
     state_header = (REPO_ROOT / "firmware/components/endpoint_runtime/app_state.h").read_text(encoding="utf-8")
     backend = (REPO_ROOT / "firmware/components/endpoint_runtime/voice/backend_client.cpp").read_text(

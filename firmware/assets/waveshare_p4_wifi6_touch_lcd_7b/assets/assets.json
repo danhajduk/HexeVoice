@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.18.2",
-  "updated_at": "2026-09-18T22:08:57.582160+00:00",
+  "asset_library_version": "2026.09.18.4",
+  "updated_at": "2026-09-18T22:17:33.552869+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
