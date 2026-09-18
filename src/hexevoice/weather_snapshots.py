@@ -243,6 +243,7 @@ class WeatherSnapshotService:
         data = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else None
         tts = data.get("tts") if isinstance(data, dict) and isinstance(data.get("tts"), dict) else {}
         radar = data.get("radar") if isinstance(data, dict) and isinstance(data.get("radar"), dict) else {}
+        background = data.get("bg") if isinstance(data, dict) and isinstance(data.get("bg"), dict) else {}
         source = event.get("source") if isinstance(event, dict) and isinstance(event.get("source"), dict) else {}
         return {
             "provider": "hexe_mqtt",
@@ -260,6 +261,7 @@ class WeatherSnapshotService:
             "selected_tts_quality": tts.get("quality"),
             "tts_revision": tts.get("revision"),
             "radar_status": radar.get("status"),
+            "bg_status": background.get("status"),
             "fallback_available": data is not None,
             "download_failures": [],
             "last_rejected": deepcopy(self._last_rejected),
@@ -376,10 +378,15 @@ def validate_weather_snapshot(topic: str, event: dict[str, Any], *, now: datetim
         raise WeatherSnapshotError("invalid_freshness")
     tts = validate_component(data.get("tts"), "tts")
     radar = validate_component(data.get("radar"), "radar")
+    background = validate_component(data.get("bg"), "bg") if "bg" in data else None
     if freshness.get("tts") != tts["status"] or freshness.get("radar") != radar["status"]:
+        raise WeatherSnapshotError("component_freshness_mismatch")
+    if background is not None and freshness.get("bg", background["status"]) != background["status"]:
         raise WeatherSnapshotError("component_freshness_mismatch")
     validate_tts(tts, transcript)
     validate_radar(radar)
+    if background is not None:
+        validate_background(background)
     if not isinstance(data.get("attribution"), dict):
         raise WeatherSnapshotError("invalid_attribution")
     return deepcopy(event)
@@ -423,6 +430,21 @@ def validate_radar(radar: dict[str, Any]) -> None:
         parse_timestamp(radar.get(key), f"radar_{key}")
     if not radar.get("attribution"):
         raise WeatherSnapshotError("missing_radar_attribution")
+
+
+def validate_background(background: dict[str, Any]) -> None:
+    if background["status"] not in {"ready", "stale"}:
+        return
+    validate_public_url(background.get("image_url"), "bg")
+    required_string(background, "revision", max_length=160)
+    if SHA256_RE.fullmatch(str(background.get("sha256") or "")) is None:
+        raise WeatherSnapshotError("invalid_bg_sha256")
+    if background.get("content_type") not in {"image/png", "image/jpeg", "image/webp"}:
+        raise WeatherSnapshotError("invalid_bg_content_type")
+    for key in ("width", "height"):
+        value = background.get(key)
+        if not isinstance(value, int) or value <= 0 or value > 8192:
+            raise WeatherSnapshotError(f"invalid_bg_{key}")
 
 
 def validate_public_url(value: Any, component: str) -> None:

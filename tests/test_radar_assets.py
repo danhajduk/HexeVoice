@@ -91,6 +91,41 @@ def test_prepares_weather_canvas_without_radar(tmp_path):
     assert pixels[panel_offset : panel_offset + 3] != bytes((7, 19, 29))
 
 
+def test_uses_center_cropped_weather_background_when_radar_is_absent(tmp_path, monkeypatch):
+    image = Image.new("RGB", (1672, 941), (25, 60, 110))
+    for x in range(500, 1172):
+        for y in range(200, 741):
+            image.putpixel((x, y), (30, 170, 95))
+    output = BytesIO()
+    image.save(output, format="WEBP", lossless=True)
+    source = output.getvalue()
+
+    async def handler(request):
+        assert str(request.url) == "https://interaction.local/weather-bg.webp"
+        return httpx.Response(200, content=source, headers={"content-type": "image/webp"})
+
+    transport = httpx.MockTransport(handler)
+    original = httpx.AsyncClient
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=transport, **kwargs))
+    snapshot = {
+        "snapshot_id": "weather-home-bg",
+        "current_conditions": {"temperature": 56, "condition": "Clear", "condition_key": "clear"},
+        "forecast_summary": {"today_high": 63, "today_low": 48},
+        "radar": {"status": "absent"},
+        "bg": {
+            "status": "ready",
+            "revision": "clear-day-1",
+            "image_url": "https://interaction.local/weather-bg.webp",
+            "sha256": sha256(source).hexdigest(),
+        },
+    }
+
+    prepared = asyncio.run(RadarAssetService(tmp_path).prepare(snapshot))
+    center_offset = ((RADAR_HEIGHT // 2) * RADAR_WIDTH + (RADAR_WIDTH // 2)) * 3
+
+    assert prepared.path.read_bytes()[center_offset : center_offset + 3] == bytes((30, 170, 95))
+
+
 def test_rejects_source_checksum_mismatch(tmp_path, monkeypatch):
     source = png_bytes()
 

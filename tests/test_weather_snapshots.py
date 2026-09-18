@@ -185,3 +185,40 @@ def test_accepts_current_attributed_static_radar(tmp_path):
 
     assert snapshots.accept(TOPIC, event, received_at=NOW) is True
     assert snapshots.prepared_snapshot()["radar"]["status"] == "ready"
+
+
+def test_accepts_safe_weather_background_reference(tmp_path):
+    snapshots = service(tmp_path)
+    event = deepcopy(weather_event())
+    event["data"]["bg"] = {
+        "status": "ready",
+        "revision": "clear-day-1",
+        "image_url": "https://interaction.local/assets/weather/conditions/clear/day_0.webp",
+        "sha256": "c" * 64,
+        "content_type": "image/webp",
+        "width": 1672,
+        "height": 941,
+        "attribution": [],
+    }
+    event["data"]["freshness"]["bg"] = "ready"
+
+    assert snapshots.accept(TOPIC, event, received_at=NOW) is True
+    assert snapshots.prepared_snapshot()["bg"]["width"] == 1672
+    assert snapshots.status()["bg_status"] == "ready"
+
+
+def test_rejects_unsafe_weather_background_reference(tmp_path):
+    snapshots = service(tmp_path)
+    event = deepcopy(weather_event())
+    event["data"]["bg"] = {
+        "status": "ready",
+        "revision": "clear-day-1",
+        "image_url": "https://interaction.local/weather.webp?token=secret",
+        "sha256": "c" * 64,
+        "content_type": "image/webp",
+        "width": 1672,
+        "height": 941,
+    }
+
+    assert snapshots.accept(TOPIC, event, received_at=NOW) is False
+    assert snapshots.status()["reason"] == "credential_bearing_bg_url"

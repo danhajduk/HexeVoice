@@ -17,6 +17,12 @@ must match `event_type`, and component URLs must not contain credentials.
 HexeVoice receives the shared topic through its normal governed event ACL and uses
 only its own operational MQTT credentials.
 
+## Optional background component
+
+Interaction may include a `data.bg` component for its prepared weather background. The event carries only the reference metadata: `status`, `revision`, `image_url`, `sha256`, `content_type`, `width`, and `height`. URLs must be public HTTP(S) references without embedded credentials or sensitive query parameters.
+
+HexeVoice selects a visual source in this order: ready or stale `radar`, ready or stale `bg`, then a locally generated blank background. It verifies the selected source checksum and center-crops it to the endpoint's 800x420 RGB888 content asset. The current Interaction weather backgrounds are 1672x941 and require no source-side resizing.
+
 ## Live verification
 
 On 2026-09-18, the first live events were rejected because Interaction used its domain

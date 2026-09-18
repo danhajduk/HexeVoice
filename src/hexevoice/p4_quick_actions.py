@@ -104,10 +104,11 @@ class P4QuickActionService:
 
     async def _prepare_radar_for_connected_endpoints(self, snapshot: dict[str, Any]) -> None:
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
+        background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
         try:
             asset = await self._radar_assets.prepare(snapshot)
             prepared = asset.as_dict(download_url=self._radar_asset_url(asset.asset_id))
-            prepared["expires_at"] = radar.get("expires_at")
+            prepared["expires_at"] = radar.get("expires_at") or background.get("expires_at")
             for endpoint_id in self._manager.connected_endpoint_ids(
                 board_profile="waveshare_p4_wifi6_touch_lcd_7b"
             ):
@@ -250,9 +251,10 @@ class P4QuickActionService:
             await self._show_message(endpoint_id, "Weather unavailable", "No prepared forecast is available.", "weather")
             return
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
+        background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
         asset = await self._radar_assets.prepare(snapshot)
         prepared = asset.as_dict(download_url=self._radar_asset_url(asset.asset_id))
-        prepared["expires_at"] = radar.get("expires_at")
+        prepared["expires_at"] = radar.get("expires_at") or background.get("expires_at")
         result = await self._manager.push_asset_prepare_command(endpoint_id=endpoint_id, asset=prepared)
         if not result.get("accepted"):
             raise RuntimeError(str(result.get("reason") or "weather_asset_prepare_rejected"))

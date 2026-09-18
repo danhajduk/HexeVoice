@@ -75,6 +75,7 @@ class RadarAssetService:
 
     async def prepare(self, snapshot: dict[str, Any]) -> PreparedRadarAsset:
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
+        background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
         snapshot_id = _safe_id(snapshot.get("snapshot_id"), "snapshot_id")
         visual_state = _weather_visual_state(snapshot)
         revision = sha256(json.dumps(visual_state, sort_keys=True).encode()).hexdigest()[:24]
@@ -84,7 +85,9 @@ class RadarAssetService:
             self._records[asset_id] = existing
             return existing
 
-        source = await self._download_radar_source(radar)
+        source = await self._download_visual_source(radar, "radar")
+        if source is None:
+            source = await self._download_visual_source(background, "bg")
         pixels = await asyncio.to_thread(_compose_weather_rgb888, source, snapshot)
         digest = sha256(pixels).hexdigest()
         self._cache_dir.mkdir(parents=True, exist_ok=True)
@@ -105,21 +108,21 @@ class RadarAssetService:
         return asset
 
     @staticmethod
-    async def _download_radar_source(radar: dict[str, Any]) -> bytes | None:
-        if radar.get("status") != "ready":
+    async def _download_visual_source(component: dict[str, Any], name: str) -> bytes | None:
+        if component.get("status") not in {"ready", "stale"}:
             return None
-        image_url = str(radar.get("image_url") or "").strip()
-        source_sha256 = str(radar.get("sha256") or "").lower()
+        image_url = str(component.get("image_url") or "").strip()
+        source_sha256 = str(component.get("sha256") or "").lower()
         if not image_url or SHA256_RE.fullmatch(source_sha256) is None:
-            raise RadarAssetError("invalid_radar_reference")
+            raise RadarAssetError(f"invalid_{name}_reference")
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             response = await client.get(image_url)
             response.raise_for_status()
             source = response.content
         if not source or len(source) > MAX_RADAR_SOURCE_BYTES:
-            raise RadarAssetError("radar_source_size_invalid")
+            raise RadarAssetError(f"{name}_source_size_invalid")
         if sha256(source).hexdigest() != source_sha256:
-            raise RadarAssetError("radar_source_checksum_mismatch")
+            raise RadarAssetError(f"{name}_source_checksum_mismatch")
         return source
 
     def path(self, asset_id: str) -> Path | None:
@@ -168,11 +171,13 @@ def _safe_id(value: object, label: str) -> str:
 
 def _weather_visual_state(snapshot: dict[str, Any]) -> dict[str, Any]:
     radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}
+    background = snapshot.get("bg") if isinstance(snapshot.get("bg"), dict) else {}
     current = snapshot.get("current_conditions") if isinstance(snapshot.get("current_conditions"), dict) else {}
     forecast = snapshot.get("forecast_summary") if isinstance(snapshot.get("forecast_summary"), dict) else {}
     location = snapshot.get("location") if isinstance(snapshot.get("location"), dict) else {}
     return {
         "radar_revision": radar.get("frame_id") or radar.get("sha256") or radar.get("status"),
+        "bg_revision": background.get("revision") or background.get("sha256") or background.get("status"),
         "location": location.get("label"),
         "temperature": current.get("temperature"),
         "unit": current.get("unit"),
