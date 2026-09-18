@@ -76,7 +76,7 @@ class TimerOwnershipCache:
         self._records: dict[str, TimerOwnerRecord] = {}
 
     def update_from_event(self, topic: str, payload: dict[str, Any]) -> list[TimerOwnerRecord]:
-        event_type = str(payload.get("promoted_event_type") or payload.get("event_type") or "").strip()
+        event_type = str(payload.get("event_type") or "").strip()
         if not event_type.startswith("timer.") or event_type.endswith("_requested"):
             return []
         data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
@@ -277,10 +277,8 @@ def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnno
     else:
         label = str(data.get("title") or data.get("duration_text") or data.get("duration_hhmmss") or "").strip()
         text = f"Timer is on for {label}." if label else "Timer is on."
-    routing = payload.get("routing") if isinstance(payload.get("routing"), dict) else {}
     dedupe_key = str(
-        routing.get("dedupe_key")
-        or event_id
+        event_id
         or f"{event_type}:{endpoint_id}:{session_id}:{text}"
     ).strip()
     return TimerAnnouncement(
@@ -294,7 +292,7 @@ def timer_success_announcement(topic: str, payload: dict[str, Any]) -> TimerAnno
 
 
 def timer_completed_alarm(topic: str, payload: dict[str, Any], *, default_text: str = "Timer done.") -> TimerCompletedAlarm | None:
-    event_type = str(payload.get("promoted_event_type") or payload.get("event_type") or "").strip()
+    event_type = str(payload.get("event_type") or "").strip()
     if event_type != "timer.completed":
         return None
     subject = payload.get("subject") if isinstance(payload.get("subject"), dict) else {}
@@ -308,8 +306,7 @@ def timer_completed_alarm(topic: str, payload: dict[str, Any], *, default_text: 
     event_id = str(payload.get("event_id") or "").strip()
     if not timer_id and not event_id:
         return None
-    routing = payload.get("routing") if isinstance(payload.get("routing"), dict) else {}
-    dedupe_key = str(routing.get("dedupe_key") or event_id or f"{endpoint_id}:{timer_id}").strip()
+    dedupe_key = str(event_id or f"{endpoint_id}:{timer_id}").strip()
     if not dedupe_key:
         return None
     title = str(data.get("title") or data.get("label") or "").strip()
@@ -323,8 +320,6 @@ def timer_completed_alarm(topic: str, payload: dict[str, Any], *, default_text: 
         "title": title or None,
         "source_node_id": source.get("node_id") or data.get("requester_node_id"),
         "source_component": source.get("component"),
-        "source_topic": source.get("topic"),
-        "domain_topic": routing.get("domain_topic"),
         "dedupe_key": dedupe_key,
         "completed_at": data.get("completed_at"),
         "due_at": data.get("due_at"),

@@ -28,50 +28,17 @@
         "timer.completed"
       ]
     },
-    "promoted_event_type": {
-      "type": "string",
-      "enum": [
-        "timer.create_succeeded",
-        "timer.status_succeeded",
-        "timer.stop_succeeded",
-        "timer.cancel_succeeded",
-        "timer.adjust_time_succeeded",
-        "timer.create_failed",
-        "timer.status_failed",
-        "timer.stop_failed",
-        "timer.cancel_failed",
-        "timer.adjust_time_failed",
-        "timer.completed"
-      ]
-    },
     "occurred_at": {
-      "$ref": "timer-common.schema.json#/$defs/timestamp"
-    },
-    "received_at": {
-      "$ref": "timer-common.schema.json#/$defs/timestamp"
-    },
-    "promoted_at": {
       "$ref": "timer-common.schema.json#/$defs/timestamp"
     },
     "source": {
       "$ref": "timer-common.schema.json#/$defs/source"
     },
-    "core": {
-      "type": "object",
-      "additionalProperties": true
-    },
     "subject": {
       "$ref": "timer-common.schema.json#/$defs/subject"
     },
-    "routing": {
-      "$ref": "timer-common.schema.json#/$defs/routing"
-    },
     "data": {
       "$ref": "#/$defs/response_data"
-    },
-    "policy": {
-      "type": "object",
-      "additionalProperties": true
     }
   },
   "additionalProperties": true,

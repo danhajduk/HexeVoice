@@ -90,25 +90,19 @@ def test_timer_success_announcement_ignores_non_success_events():
     assert timer_success_announcement("hexe/events/timer/create_requested", {"event_type": "timer.create_requested"}) is None
 
 
-def test_timer_completed_alarm_uses_promoted_event_endpoint_and_dedupe_key():
+def test_timer_completed_alarm_uses_canonical_event_endpoint_and_event_id_dedupe():
     alarm = timer_completed_alarm(
         "hexe/events/timer/completed",
         {
             "event_id": "interaction-timer-completed-timer-1",
             "event_type": "timer.completed",
-            "promoted_event_type": "timer.completed",
             "source": {
                 "node_id": "node-timer",
                 "component": "hexe.timer",
-                "topic": "hexe/nodes/node-timer/events/timer/completed",
             },
             "subject": {
                 "family": "timer",
                 "record_id": "timer-1",
-            },
-            "routing": {
-                "domain_topic": "hexe/events/timer/completed",
-                "dedupe_key": "node-timer|timer-1",
             },
             "data": {
                 "endpoint_id": "esp-pe-1",
@@ -129,7 +123,7 @@ def test_timer_completed_alarm_uses_promoted_event_endpoint_and_dedupe_key():
     assert alarm.timer_id == "timer-1"
     assert alarm.text == "20 seconds timer is done."
     assert alarm.event_id == "interaction-timer-completed-timer-1"
-    assert alarm.dedupe_key == "node-timer|timer-1"
+    assert alarm.dedupe_key == "interaction-timer-completed-timer-1"
     assert alarm.metadata["source"] == "timer.completed"
     assert alarm.metadata["source_node_id"] == "node-timer"
     assert alarm.metadata["duration_seconds"] == 20
@@ -417,7 +411,6 @@ def test_timer_service_queues_timer_completed_alarm_once():
             "event_id": "timer-completed-1",
             "event_type": "timer.completed",
             "subject": {"family": "timer", "record_id": "timer-1"},
-            "routing": {"dedupe_key": "timer-completed-once"},
             "data": {"endpoint_id": "esp-box-1", "timer_id": "timer-1"},
         }
         msg = SimpleNamespace(topic="hexe/events/timer/completed", payload=json.dumps(payload).encode("utf-8"))

@@ -125,8 +125,8 @@ queues the existing MQTT `timer.create_requested` request, including request and
 sent timestamps, but MQTT publication runs off the voice response path so it
 does not block STT, intent handling, or TTS. The timer status intent recognizes
 phrases such as `how much time is left on the timer`, replies immediately with
-`Checking the timer.`, and publishes `timer.status_requested` to the node-scoped
-timer topic. The timer-owning node should respond on
+`Checking the timer.`, and publishes `timer.status_requested` directly to
+`hexe/events/timer/status_requested`. The timer-owning node should respond on
 `hexe/events/timer/status_succeeded` with `endpoint_id`, `session_id`,
 `remaining_text` or `remaining_hhmmss`, and a timer `state`; HexeVoice announces
 the remaining time back to the endpoint.
@@ -134,24 +134,25 @@ the remaining time back to the endpoint.
 Timer stop and cancel intents follow the same MQTT request pattern. `timer.stop`
 recognizes phrases such as `stop the timer`, `dismiss the timer`, and the short
 global utterance `stop`; it publishes `timer.stop_requested` to
-`hexe/nodes/<voice-node-id>/events/timer/stop_requested`. `timer.cancel`
+`hexe/events/timer/stop_requested`. `timer.cancel`
 recognizes phrases such as `cancel the timer`, `delete the timer`, and
 `clear the timer`; it publishes `timer.cancel_requested` to
-`hexe/nodes/<voice-node-id>/events/timer/cancel_requested`. Both events include
-`endpoint_id`, `session_id`, `scope`, `heard_text`, `requested_at`, and a
+`hexe/events/timer/cancel_requested`. Both events include
+`endpoint_id`, `session_id`, `scope`, `requested_at`, and a
 correlation id. The timer-owning node remains responsible for selecting,
 stopping, cancelling, or rejecting ambiguous timers.
 
 `timer.adjust_time` recognizes phrases such as `add five minutes to the timer`,
 `extend the timer by ten minutes`, `remove two minutes from the timer`, and
 `take two minutes off the timer`. It publishes `timer.adjust_time_requested` to
-`hexe/nodes/<voice-node-id>/events/timer/adjust_time_requested` with
+`hexe/events/timer/adjust_time_requested` with
 `delta_seconds` signed positive for add and negative for remove, plus
 `delta_hhmmss`, `delta_text`, `direction`, `endpoint_id`, `session_id`, `scope`,
-`heard_text`, `requested_at`, and a correlation id. The timer-owning node applies
-the delta to the active timer for that endpoint or rejects ambiguous requests.
+`requested_at`, and a correlation id. Raw recognized speech is not published to
+the shared event bus. The timer-owning node applies the delta to the active timer
+for that endpoint or rejects ambiguous requests.
 
-HexeVoice keeps a small in-memory ownership cache from promoted timer events so
+HexeVoice keeps a small in-memory ownership cache from shared timer events so
 commands can include a concrete `timer_id` when a timer is already known. Timer
 nodes should include `endpoint_id`, `timer_id`, `state`, optional `title`,
 `due_at`, `remaining_seconds`, and `remaining_text` on `timer.create_succeeded`,
@@ -181,12 +182,12 @@ The JSON Schema contracts for timer request and response events live in
 published by HexeVoice, and `timer-response-event.schema.json` covers the
 responses timer-owning nodes should publish back.
 
-Timer expiry is event-driven. HexeVoice subscribes to the promoted
+Timer expiry is event-driven. HexeVoice subscribes to the shared
 `hexe/events/timer/completed` event stream and resolves the target endpoint from
 `data.endpoint_id`, falling back to `data.device_id` only when present. A valid
 timer completion event queues endpoint audio playback with timer metadata,
-including `timer_id`, source node, due/completed timestamps, and Core dedupe
-key. Duplicate promoted events are ignored so a single timer completion does not
+including `timer_id`, source node, due/completed timestamps, and the event ID.
+Duplicate events are ignored so a single timer completion does not
 ring twice.
 
 Voice Node owned local responses, such as `voice.time.query`, answer directly

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import json
 import logging
 import queue
+import re
 import threading
 import uuid
 from typing import Any, Callable, Protocol
@@ -16,16 +17,69 @@ from hexevoice.persistence import OnboardingStateStore
 log = logging.getLogger(__name__)
 
 
-def domain_event_topic(node_id: str, event_type: str) -> str:
-    node_key = str(node_id or "").strip()
-    parts = str(event_type or "").strip().lower().split(".")
-    if len(parts) < 2:
-        raise ValueError("event_type must use <domain>.<event_name>")
-    domain = parts[0]
-    event_name = "/".join(parts[1:])
-    if not node_key or not domain or not event_name:
-        raise ValueError("node_id and event_type are required")
-    return f"hexe/nodes/{node_key}/events/{domain}/{event_name}"
+DOMAIN_EVENT_MAX_PAYLOAD_BYTES = 65_536
+DOMAIN_EVENT_TYPE_RE = re.compile(r"^[a-z0-9_]+(?:\.[a-z0-9_]+)+$")
+DOMAIN_EVENT_LEGACY_FIELDS = {
+    "promotion_id", "promoted_event_type", "received_at", "promoted_at", "core", "routing", "policy"
+}
+DOMAIN_EVENT_PRIVATE_FIELDS = {
+    "access_token", "api_key", "apikey", "attachment", "attachments", "authorization",
+    "body_html", "client_secret", "cookie", "credentials", "email_body", "full_address",
+    "heard_text", "html", "oauth_token", "password", "raw_body", "raw_email_body",
+    "recognized_text", "refresh_token", "reply_audio", "reply_text", "secret",
+    "session_cookie", "token",
+}
+
+
+def domain_event_topic(event_type: str) -> str:
+    normalized = str(event_type or "").strip().lower()
+    if not DOMAIN_EVENT_TYPE_RE.fullmatch(normalized):
+        raise ValueError("event_type must use dotted lower-case domain event form")
+    return f"hexe/events/{normalized.replace('.', '/')}"
+
+
+def validate_domain_event_publish(topic: str, payload: dict[str, Any], *, trusted_node_id: str) -> bytes:
+    if not isinstance(payload, dict):
+        raise ValueError("domain_event_payload_must_be_object")
+    legacy_fields = DOMAIN_EVENT_LEGACY_FIELDS.intersection(payload)
+    if legacy_fields:
+        raise ValueError(f"legacy_domain_event_fields:{','.join(sorted(legacy_fields))}")
+    event_id = str(payload.get("event_id") or "").strip()
+    event_type = str(payload.get("event_type") or "").strip()
+    source = payload.get("source")
+    if not event_id or not DOMAIN_EVENT_TYPE_RE.fullmatch(event_type):
+        raise ValueError("invalid_domain_event_identity")
+    schema_version = payload.get("schema_version", 1)
+    if not isinstance(schema_version, int) or isinstance(schema_version, bool) or schema_version < 1:
+        raise ValueError("invalid_domain_event_schema_version")
+    if topic != domain_event_topic(event_type):
+        raise ValueError("domain_event_topic_type_mismatch")
+    if not isinstance(source, dict) or str(source.get("node_id") or "").strip() != str(trusted_node_id or "").strip():
+        raise ValueError("domain_event_source_identity_mismatch")
+    data = payload.get("data", {})
+    if not isinstance(data, dict):
+        raise ValueError("domain_event_data_must_be_object")
+    subject = payload.get("subject", {})
+    if not isinstance(subject, dict):
+        raise ValueError("domain_event_subject_must_be_object")
+    _reject_private_domain_event_content(data)
+    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    if len(encoded) > DOMAIN_EVENT_MAX_PAYLOAD_BYTES:
+        raise ValueError("domain_event_payload_too_large")
+    return encoded
+
+
+def _reject_private_domain_event_content(value: Any, path: str = "data") -> None:
+    if isinstance(value, dict):
+        for raw_key, child in value.items():
+            key = str(raw_key).strip().lower()
+            child_path = f"{path}.{raw_key}"
+            if key in DOMAIN_EVENT_PRIVATE_FIELDS:
+                raise ValueError(f"private_domain_event_field:{child_path}")
+            _reject_private_domain_event_content(child, child_path)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _reject_private_domain_event_content(child, f"{path}[{index}]")
 
 
 def format_duration_hhmmss(duration_seconds: int) -> str:
@@ -560,7 +614,7 @@ class HexeMqttTimerCreateEventPublisher:
         state = self._store.load()
         trust = state.trust_activation
         node_id = str(trust.node_id or "").strip()
-        topic = domain_event_topic(node_id, event_type) if node_id else None
+        topic = domain_event_topic(event_type) if node_id else None
 
         if not self._settings.voice_domain_events_enabled:
             return self._record(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
@@ -596,7 +650,6 @@ class HexeMqttTimerCreateEventPublisher:
                 "duration_seconds": duration_seconds,
                 "duration_hhmmss": format_duration_hhmmss(duration_seconds),
                 "duration_text": duration_text,
-                "heard_text": heard_text,
                 "requested_at": requested_at_text,
             },
             "severity": "info",
@@ -609,6 +662,7 @@ class HexeMqttTimerCreateEventPublisher:
                 port=int(trust.operational_mqtt_port),
                 identity=trust.operational_mqtt_identity,
                 token=trust.operational_mqtt_token,
+                trusted_node_id=node_id,
                 topic=topic or "",
                 payload=payload,
                 request_timestamp=request_timestamp,
@@ -645,7 +699,7 @@ class HexeMqttTimerCreateEventPublisher:
         state = self._store.load()
         trust = state.trust_activation
         node_id = str(trust.node_id or "").strip()
-        topic = domain_event_topic(node_id, event_type) if node_id else None
+        topic = domain_event_topic(event_type) if node_id else None
 
         if not self._settings.voice_domain_events_enabled:
             return self._record(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
@@ -682,7 +736,6 @@ class HexeMqttTimerCreateEventPublisher:
                 "timer_id": timer_id,
                 "scope": scope,
                 "correlation_id": correlation_id,
-                "heard_text": heard_text,
                 "requested_at": requested_at_text,
             },
             "severity": "info",
@@ -695,6 +748,7 @@ class HexeMqttTimerCreateEventPublisher:
                 port=int(trust.operational_mqtt_port),
                 identity=trust.operational_mqtt_identity,
                 token=trust.operational_mqtt_token,
+                trusted_node_id=node_id,
                 topic=topic or "",
                 payload=payload,
                 request_timestamp=request_timestamp,
@@ -735,7 +789,7 @@ class HexeMqttTimerCreateEventPublisher:
         state = self._store.load()
         trust = state.trust_activation
         node_id = str(trust.node_id or "").strip()
-        topic = domain_event_topic(node_id, event_type) if node_id else None
+        topic = domain_event_topic(event_type) if node_id else None
 
         if not self._settings.voice_domain_events_enabled:
             return self._record(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
@@ -773,7 +827,6 @@ class HexeMqttTimerCreateEventPublisher:
                 "timer_id": timer_id,
                 "scope": scope,
                 "correlation_id": correlation_id,
-                "heard_text": heard_text,
                 "requested_at": requested_at_text,
             },
             "severity": "info",
@@ -786,6 +839,7 @@ class HexeMqttTimerCreateEventPublisher:
                 port=int(trust.operational_mqtt_port),
                 identity=trust.operational_mqtt_identity,
                 token=trust.operational_mqtt_token,
+                trusted_node_id=node_id,
                 topic=topic or "",
                 payload=payload,
                 request_timestamp=request_timestamp,
@@ -824,7 +878,7 @@ class HexeMqttTimerCreateEventPublisher:
         state = self._store.load()
         trust = state.trust_activation
         node_id = str(trust.node_id or "").strip()
-        topic = domain_event_topic(node_id, event_type) if node_id else None
+        topic = domain_event_topic(event_type) if node_id else None
 
         if not self._settings.voice_domain_events_enabled:
             return self._record(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
@@ -865,7 +919,6 @@ class HexeMqttTimerCreateEventPublisher:
                 "delta_text": delta_text,
                 "direction": "add" if int(delta_seconds) >= 0 else "remove",
                 "correlation_id": correlation_id,
-                "heard_text": heard_text,
                 "requested_at": requested_at_text,
             },
             "severity": "info",
@@ -878,6 +931,7 @@ class HexeMqttTimerCreateEventPublisher:
                 port=int(trust.operational_mqtt_port),
                 identity=trust.operational_mqtt_identity,
                 token=trust.operational_mqtt_token,
+                trusted_node_id=node_id,
                 topic=topic or "",
                 payload=payload,
                 request_timestamp=request_timestamp,
@@ -916,7 +970,7 @@ class HexeMqttTimerCreateEventPublisher:
         state = self._store.load()
         trust = state.trust_activation
         node_id = str(trust.node_id or "").strip()
-        topic = domain_event_topic(node_id, event_type) if node_id else None
+        topic = domain_event_topic(event_type) if node_id else None
 
         if not self._settings.voice_domain_events_enabled:
             return self._record(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
@@ -956,7 +1010,6 @@ class HexeMqttTimerCreateEventPublisher:
                 "duration_hhmmss": format_duration_hhmmss(abs(int(duration_seconds))),
                 "duration_text": duration_text,
                 "correlation_id": correlation_id,
-                "heard_text": heard_text,
                 "requested_at": requested_at_text,
             },
             "severity": "info",
@@ -969,6 +1022,7 @@ class HexeMqttTimerCreateEventPublisher:
                 port=int(trust.operational_mqtt_port),
                 identity=trust.operational_mqtt_identity,
                 token=trust.operational_mqtt_token,
+                trusted_node_id=node_id,
                 topic=topic or "",
                 payload=payload,
                 request_timestamp=request_timestamp,
@@ -1031,7 +1085,7 @@ class HexeMqttTimerCreateEventPublisher:
         state = self._store.load()
         trust = state.trust_activation
         node_id = str(trust.node_id or "").strip()
-        topic = domain_event_topic(node_id, event_type) if node_id else None
+        topic = domain_event_topic(event_type) if node_id else None
 
         if not self._settings.voice_domain_events_enabled:
             return self._record_recognition(DomainEventPublishDecision("skipped", "domain_events_disabled", event_id, event_type, topic))
@@ -1068,12 +1122,8 @@ class HexeMqttTimerCreateEventPublisher:
                 "version": version,
                 "command": command,
                 "provider_id": provider_id,
-                "recognized_text": recognized_text,
                 "slots": slots,
                 "parameters": slots,
-                "reply_text": reply_text,
-                "dispatch": dispatch or {},
-                "reply_audio": reply_audio,
                 "recognized_at": requested_at_text,
                 "intent_latency_ms": intent_latency_ms,
             },
@@ -1087,6 +1137,7 @@ class HexeMqttTimerCreateEventPublisher:
                 port=int(trust.operational_mqtt_port),
                 identity=trust.operational_mqtt_identity,
                 token=trust.operational_mqtt_token,
+                trusted_node_id=node_id,
                 topic=topic or "",
                 payload=payload,
                 request_timestamp=requested_at,
@@ -1137,6 +1188,7 @@ class HexeMqttTimerCreateEventPublisher:
         port: int,
         identity: str,
         token: str,
+        trusted_node_id: str,
         topic: str,
         payload: dict[str, Any],
         request_timestamp: datetime,
@@ -1153,7 +1205,8 @@ class HexeMqttTimerCreateEventPublisher:
         client.loop_start()
         try:
             self._stamp_mqtt_sent(payload, request_timestamp)
-            info = client.publish(topic, json.dumps(payload, separators=(",", ":")), qos=1, retain=False)
+            encoded = validate_domain_event_publish(topic, payload, trusted_node_id=trusted_node_id)
+            info = client.publish(topic, encoded, qos=1, retain=False)
             info.wait_for_publish(timeout=self._settings.voice_domain_events_mqtt_timeout_s)
             if hasattr(info, "is_published") and not info.is_published():
                 raise RuntimeError("publish_not_confirmed")

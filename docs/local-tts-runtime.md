@@ -215,7 +215,7 @@ The synthesized replay uses the active TTS provider, so with Piper enabled it cr
 Timer completion alarms use the same endpoint playback path. By default,
 HexeVoice listens on `VOICE_TIMER_COMPLETED_MQTT_TOPIC`
 (`hexe/events/timer/completed`) and plays a generated `Timer done.` clip on the
-`data.endpoint_id` from the promoted timer event. Set
+`data.endpoint_id` from the canonical timer event. Set
 `VOICE_TIMER_COMPLETED_ALARM_AUDIO_URL` to use a dedicated WAV alarm URL instead
 of generated speech; timer id, source node, title, due/completed timestamps, and
 dedupe metadata are attached to the playback command. The local stack example

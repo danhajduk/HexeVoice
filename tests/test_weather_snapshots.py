@@ -9,9 +9,8 @@ from hexevoice.weather_snapshots import WeatherSnapshotService, WeatherSnapshotS
 
 NOW = datetime(2026, 9, 18, 16, 0, tzinfo=UTC)
 SOURCE = "node-interaction-1"
-TOPIC = f"hexe/nodes/{SOURCE}/events/weather/snapshot/updated"
-RESULT_TOPIC = f"hexe/nodes/{SOURCE}/events/weather/current_succeeded"
-PROMOTED_RESULT_TOPIC = "hexe/events/weather/current_succeeded"
+TOPIC = "hexe/events/weather/snapshot/updated"
+RESULT_TOPIC = "hexe/events/weather/current_succeeded"
 
 
 def weather_event() -> dict:
@@ -107,18 +106,6 @@ def test_accepts_and_persists_coherent_weather_snapshot(tmp_path):
     assert reloaded.prepared_snapshot()["cache_revision"] == "weather-revision-1"
 
 
-def test_accepts_core_promoted_weather_topic(tmp_path):
-    snapshots = service(tmp_path)
-    event = weather_event()
-    event["promoted_event_type"] = "weather.snapshot.updated"
-    event["received_at"] = event.pop("occurred_at")
-    event["routing"] = {"domain_topic": "hexe/events/weather/snapshot/updated"}
-    event["policy"] = {"schema_valid": True, "privacy_valid": True}
-
-    assert snapshots.accept("hexe/events/weather/snapshot/updated", event, received_at=NOW) is True
-    assert snapshots.status()["source_node_id"] == SOURCE
-
-
 def test_accepts_weather_result_and_notifies_listener(tmp_path):
     snapshots = service(tmp_path)
     received = []
@@ -131,36 +118,25 @@ def test_accepts_weather_result_and_notifies_listener(tmp_path):
     assert snapshots.status()["reason"] == "duplicate_weather_result_ignored"
 
 
-def test_rejects_weather_result_source_topic_mismatch(tmp_path):
+def test_rejects_weather_result_without_source_identity(tmp_path):
     snapshots = service(tmp_path)
     result = weather_result()
-    result["source"]["node_id"] = "node-attacker"
+    result["source"].pop("node_id")
 
     assert snapshots.accept_result(RESULT_TOPIC, result, received_at=NOW) is False
-    assert snapshots.status()["reason"] == "source_topic_mismatch"
+    assert snapshots.status()["reason"] == "invalid_node_id"
 
 
-def test_accepts_core_promoted_weather_result(tmp_path):
-    snapshots = service(tmp_path)
-    result = weather_result()
-    result["promoted_event_type"] = result["event_type"]
-    result["received_at"] = result.pop("occurred_at")
-    result["routing"] = {"domain_topic": PROMOTED_RESULT_TOPIC}
-    result["policy"] = {"schema_valid": True, "privacy_valid": True}
-
-    assert snapshots.accept_result(PROMOTED_RESULT_TOPIC, result, received_at=NOW) is True
-    assert snapshots.status()["last_result"]["event"]["data"]["endpoint_id"] == "p4"
-
-
-def test_rejects_wrong_source_and_keeps_last_known_good(tmp_path):
+def test_accepts_newer_snapshot_from_another_trusted_source(tmp_path):
     snapshots = service(tmp_path)
     assert snapshots.accept(TOPIC, weather_event(), received_at=NOW) is True
     rejected = weather_event()
     rejected["event_id"] = "weather-snapshot-2"
     rejected["source"]["node_id"] = "node-attacker"
+    rejected["data"]["fetched_at"] = (NOW + timedelta(minutes=1)).isoformat()
+    rejected["data"]["expires_at"] = (NOW + timedelta(minutes=6)).isoformat()
 
-    assert snapshots.accept(TOPIC, rejected, received_at=NOW) is False
-    assert snapshots.status()["reason"] == "source_topic_mismatch"
+    assert snapshots.accept(TOPIC, rejected, received_at=NOW) is True
     assert snapshots.prepared_snapshot()["snapshot_id"] == "weather-home-1"
 
 

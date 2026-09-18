@@ -18,11 +18,9 @@ log = logging.getLogger(__name__)
 
 WEATHER_EVENT_TYPE = "weather.snapshot.updated"
 WEATHER_SCHEMA_VERSION = "weather.snapshot.v1"
-WEATHER_TOPIC_RE = re.compile(r"^hexe/nodes/([^/]+)/events/weather/snapshot/updated$")
-WEATHER_PROMOTED_TOPIC = "hexe/events/weather/snapshot/updated"
+WEATHER_TOPIC = "hexe/events/weather/snapshot/updated"
 WEATHER_RESULT_TYPES = {"weather.current_succeeded", "weather.current_failed"}
-WEATHER_RESULT_TOPIC_RE = re.compile(r"^hexe/nodes/([^/]+)/events/weather/current_(succeeded|failed)$")
-WEATHER_PROMOTED_RESULT_TOPIC_RE = re.compile(r"^hexe/events/weather/current_(succeeded|failed)$")
+WEATHER_RESULT_TOPIC_RE = re.compile(r"^hexe/events/weather/current_(succeeded|failed)$")
 WEATHER_RESULT_TOPICS = (
     "hexe/events/weather/current_succeeded",
     "hexe/events/weather/current_failed",
@@ -245,14 +243,15 @@ class WeatherSnapshotService:
         data = event.get("data") if isinstance(event, dict) and isinstance(event.get("data"), dict) else None
         tts = data.get("tts") if isinstance(data, dict) and isinstance(data.get("tts"), dict) else {}
         radar = data.get("radar") if isinstance(data, dict) and isinstance(data.get("radar"), dict) else {}
+        source = event.get("source") if isinstance(event, dict) and isinstance(event.get("source"), dict) else {}
         return {
             "provider": "hexe_mqtt",
-            "topics": ["hexe/nodes/+/events/weather/snapshot/updated", WEATHER_PROMOTED_TOPIC, *WEATHER_RESULT_TOPICS],
+            "topics": [WEATHER_TOPIC, *WEATHER_RESULT_TOPICS],
             "status": self._status,
             "reason": self._reason,
             "last_accepted_event_id": event.get("event_id") if isinstance(event, dict) else None,
             "last_accepted_at": self._accepted.get("accepted_at") if isinstance(self._accepted, dict) else None,
-            "source_node_id": event.get("source_node_id") if isinstance(event, dict) else None,
+            "source_node_id": source.get("node_id"),
             "snapshot_id": data.get("snapshot_id") if isinstance(data, dict) else None,
             "location_id": data.get("location_id") if isinstance(data, dict) else None,
             "cache_revision": data.get("cache_revision") if isinstance(data, dict) else None,
@@ -277,8 +276,7 @@ class WeatherSnapshotService:
             self._status = "failed"
             self._reason = f"connect_rc:{rc_int}"
             return
-        client.subscribe("hexe/nodes/+/events/weather/snapshot/updated", qos=1)
-        client.subscribe(WEATHER_PROMOTED_TOPIC, qos=1)
+        client.subscribe(WEATHER_TOPIC, qos=1)
         for topic in WEATHER_RESULT_TOPICS:
             client.subscribe(topic, qos=1)
         self._status = "connected"
@@ -297,7 +295,7 @@ class WeatherSnapshotService:
             self._reason = "invalid_payload"
             return
         topic = str(msg.topic)
-        if WEATHER_RESULT_TOPIC_RE.fullmatch(topic) or WEATHER_PROMOTED_RESULT_TOPIC_RE.fullmatch(topic):
+        if WEATHER_RESULT_TOPIC_RE.fullmatch(topic):
             self.accept_result(topic, payload)
         else:
             self.accept(topic, payload)
@@ -305,33 +303,21 @@ class WeatherSnapshotService:
 
 def validate_weather_result(topic: str, event: dict[str, Any]) -> dict[str, Any]:
     normalized_topic = str(topic or "").strip()
-    node_match = WEATHER_RESULT_TOPIC_RE.fullmatch(normalized_topic)
-    promoted_match = WEATHER_PROMOTED_RESULT_TOPIC_RE.fullmatch(normalized_topic)
-    if node_match is None and promoted_match is None:
+    match = WEATHER_RESULT_TOPIC_RE.fullmatch(normalized_topic)
+    if match is None:
         raise WeatherSnapshotError("unauthorized_weather_result_topic")
     source = event.get("source")
     if not isinstance(source, dict):
         raise WeatherSnapshotError("invalid_weather_result_source")
-    if node_match is not None and source.get("node_id") != node_match.group(1):
-        raise WeatherSnapshotError("source_topic_mismatch")
-    event_type = str(event.get("promoted_event_type") or event.get("event_type") or "")
-    topic_suffix = node_match.group(2) if node_match is not None else promoted_match.group(1)
+    required_string(source, "node_id", max_length=128)
+    event_type = str(event.get("event_type") or "")
+    topic_suffix = match.group(1)
     if event_type not in WEATHER_RESULT_TYPES or event_type.rsplit("_", 1)[-1] != topic_suffix:
         raise WeatherSnapshotError("unsupported_weather_result")
-    if promoted_match is not None:
-        routing = event.get("routing")
-        policy = event.get("policy")
-        if not isinstance(routing, dict) or routing.get("domain_topic") != normalized_topic:
-            raise WeatherSnapshotError("invalid_core_routing")
-        if not isinstance(policy, dict) or policy.get("schema_valid") is not True or policy.get("privacy_valid") is not True:
-            raise WeatherSnapshotError("invalid_core_policy")
     if event.get("schema_version") != 1 or source.get("component") != "hexe.weather":
         raise WeatherSnapshotError("unsupported_weather_result_schema")
     event_id = required_string(event, "event_id", max_length=200)
-    event_timestamp = event.get("occurred_at")
-    if promoted_match is not None:
-        event_timestamp = event.get("received_at") or event.get("promoted_at")
-    parse_timestamp(event_timestamp, "occurred_at")
+    parse_timestamp(event.get("occurred_at"), "occurred_at")
     subject = event.get("subject")
     if not isinstance(subject, dict) or subject.get("family") != "weather":
         raise WeatherSnapshotError("invalid_weather_result_subject")
@@ -356,30 +342,17 @@ def validate_weather_result(topic: str, event: dict[str, Any]) -> dict[str, Any]
 
 def validate_weather_snapshot(topic: str, event: dict[str, Any], *, now: datetime) -> dict[str, Any]:
     normalized_topic = str(topic or "").strip()
-    match = WEATHER_TOPIC_RE.fullmatch(normalized_topic)
-    if match is None and normalized_topic != WEATHER_PROMOTED_TOPIC:
+    if normalized_topic != WEATHER_TOPIC:
         raise WeatherSnapshotError("unauthorized_topic")
     source = event.get("source")
     if not isinstance(source, dict):
         raise WeatherSnapshotError("invalid_event_source")
-    source_node_id = required_string(source, "node_id", max_length=128)
-    if match is not None and source_node_id != match.group(1):
-        raise WeatherSnapshotError("source_topic_mismatch")
-    event_type = str(event.get("promoted_event_type") or event.get("event_type") or "")
+    required_string(source, "node_id", max_length=128)
+    event_type = str(event.get("event_type") or "")
     if event_type != WEATHER_EVENT_TYPE or event.get("schema_version") != 1:
         raise WeatherSnapshotError("unsupported_weather_schema")
-    if normalized_topic == WEATHER_PROMOTED_TOPIC:
-        routing = event.get("routing")
-        policy = event.get("policy")
-        if not isinstance(routing, dict) or routing.get("domain_topic") != WEATHER_PROMOTED_TOPIC:
-            raise WeatherSnapshotError("invalid_core_routing")
-        if not isinstance(policy, dict) or policy.get("schema_valid") is not True or policy.get("privacy_valid") is not True:
-            raise WeatherSnapshotError("invalid_core_policy")
     required_string(event, "event_id", max_length=160)
-    event_timestamp = event.get("occurred_at")
-    if normalized_topic == WEATHER_PROMOTED_TOPIC:
-        event_timestamp = event.get("received_at") or event.get("promoted_at")
-    parse_timestamp(event_timestamp, "occurred_at")
+    parse_timestamp(event.get("occurred_at"), "occurred_at")
     data = event.get("data")
     if not isinstance(data, dict) or data.get("schema_version") != WEATHER_SCHEMA_VERSION:
         raise WeatherSnapshotError("invalid_weather_data")
@@ -409,9 +382,7 @@ def validate_weather_snapshot(topic: str, event: dict[str, Any], *, now: datetim
     validate_radar(radar)
     if not isinstance(data.get("attribution"), dict):
         raise WeatherSnapshotError("invalid_attribution")
-    normalized = deepcopy(event)
-    normalized["source_node_id"] = source_node_id
-    return normalized
+    return deepcopy(event)
 
 
 def validate_component(value: Any, name: str) -> dict[str, Any]:

@@ -2,8 +2,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 import json
+import sys
 import threading
 import time
+from types import ModuleType, SimpleNamespace
+
+import pytest
 
 from hexevoice.config.settings import Settings
 from hexevoice.domain_events import (
@@ -12,14 +16,12 @@ from hexevoice.domain_events import (
     HexeMqttTimerCreateEventPublisher,
     domain_event_topic,
     format_duration_hhmmss,
+    validate_domain_event_publish,
 )
 
 
-def test_domain_event_topic_maps_voice_timer_event_to_node_scope():
-    assert (
-        domain_event_topic("node-voice-1", "timer.create_requested")
-        == "hexe/nodes/node-voice-1/events/timer/create_requested"
-    )
+def test_domain_event_topic_maps_event_type_to_shared_scope():
+    assert domain_event_topic("timer.create_requested") == "hexe/events/timer/create_requested"
 
 
 def test_format_duration_hhmmss():
@@ -27,6 +29,111 @@ def test_format_duration_hhmmss():
     assert format_duration_hhmmss(300) == "00:05:00"
     assert format_duration_hhmmss(5400) == "01:30:00"
     assert format_duration_hhmmss(90061) == "25:01:01"
+
+
+def test_domain_event_validation_rejects_mismatch_legacy_private_and_oversize_content():
+    payload = {
+        "schema_version": 1,
+        "event_id": "evt-1",
+        "event_type": "timer.create_requested",
+        "source": {"node_id": "node-voice-1"},
+        "data": {"endpoint_id": "esp-box-1"},
+    }
+
+    encoded = validate_domain_event_publish(
+        "hexe/events/timer/create_requested", payload, trusted_node_id="node-voice-1"
+    )
+    assert json.loads(encoded)["event_id"] == "evt-1"
+
+    with pytest.raises(ValueError, match="topic_type_mismatch"):
+        validate_domain_event_publish("hexe/events/timer/status_requested", payload, trusted_node_id="node-voice-1")
+    with pytest.raises(ValueError, match="legacy_domain_event_fields"):
+        validate_domain_event_publish(
+            "hexe/events/timer/create_requested", {**payload, "promotion_id": "legacy"}, trusted_node_id="node-voice-1"
+        )
+    with pytest.raises(ValueError, match="private_domain_event_field"):
+        validate_domain_event_publish(
+            "hexe/events/timer/create_requested",
+            {**payload, "data": {"nested": {"access_token": "secret"}}},
+            trusted_node_id="node-voice-1",
+        )
+    with pytest.raises(ValueError, match="payload_too_large"):
+        validate_domain_event_publish(
+            "hexe/events/timer/create_requested",
+            {**payload, "data": {"value": "x" * 65_536}},
+            trusted_node_id="node-voice-1",
+        )
+
+
+def test_mqtt_publish_uses_qos_one_non_retained_and_canonical_bytes(tmp_path, monkeypatch):
+    published = {}
+
+    class PublishInfo:
+        def wait_for_publish(self, timeout):
+            published["timeout"] = timeout
+
+        def is_published(self):
+            return True
+
+    class Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def username_pw_set(self, identity, token):
+            pass
+
+        def connect(self, host, port, keepalive):
+            pass
+
+        def loop_start(self):
+            pass
+
+        def loop_stop(self):
+            pass
+
+        def disconnect(self):
+            pass
+
+        def publish(self, topic, payload, qos, retain):
+            published.update(topic=topic, payload=payload, qos=qos, retain=retain)
+            return PublishInfo()
+
+    paho = ModuleType("paho")
+    mqtt_package = ModuleType("paho.mqtt")
+    mqtt_client = ModuleType("paho.mqtt.client")
+    mqtt_client.Client = Client
+    mqtt_client.CallbackAPIVersion = SimpleNamespace(VERSION2=2)
+    paho.mqtt = mqtt_package
+    mqtt_package.client = mqtt_client
+    monkeypatch.setitem(sys.modules, "paho", paho)
+    monkeypatch.setitem(sys.modules, "paho.mqtt", mqtt_package)
+    monkeypatch.setitem(sys.modules, "paho.mqtt.client", mqtt_client)
+
+    publisher = HexeMqttTimerCreateEventPublisher(settings=Settings(runtime_dir=tmp_path))
+    requested_at = datetime(2026, 9, 18, 12, 0, tzinfo=UTC)
+    payload = {
+        "schema_version": 1,
+        "event_id": "evt-1",
+        "event_type": "timer.create_requested",
+        "source": {"node_id": "node-voice-1", "component": "test"},
+        "data": {},
+    }
+    publisher._publish(
+        host="mqtt.local",
+        port=1883,
+        identity="node-user",
+        token="secret",
+        trusted_node_id="node-voice-1",
+        topic="hexe/events/timer/create_requested",
+        payload=payload,
+        request_timestamp=requested_at,
+    )
+
+    assert published["topic"] == "hexe/events/timer/create_requested"
+    assert published["qos"] == 1
+    assert published["retain"] is False
+    assert isinstance(published["payload"], bytes)
+    assert json.loads(published["payload"])["event_type"] == "timer.create_requested"
 
 
 def test_timer_event_publisher_uses_hexecore_node_event_contract(tmp_path, monkeypatch):
@@ -74,7 +181,8 @@ def test_timer_event_publisher_uses_hexecore_node_event_contract(tmp_path, monke
     assert captured["port"] == 1883
     assert captured["identity"] == "hn_node-voice-1"
     assert captured["token"] == "mqtt-token"
-    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/create_requested"
+    assert captured["topic"] == "hexe/events/timer/create_requested"
+    assert captured["trusted_node_id"] == "node-voice-1"
     payload = captured["payload"]
     assert payload["schema_version"] == 1
     assert payload["event_type"] == "timer.create_requested"
@@ -85,7 +193,7 @@ def test_timer_event_publisher_uses_hexecore_node_event_contract(tmp_path, monke
     assert payload["data"]["duration_seconds"] == 300
     assert payload["data"]["duration_hhmmss"] == "00:05:00"
     assert payload["data"]["duration_text"] == "5 minutes"
-    assert payload["data"]["heard_text"] == "set a timer for 5 minutes"
+    assert "heard_text" not in payload["data"]
     assert payload["data"]["requested_at"] == "2026-05-04T01:58:00+00:00"
     assert datetime.fromisoformat(payload["data"]["mqtt_sent_at"]) >= requested_at
     assert payload["data"]["request_to_mqtt_latency_ms"] >= 0
@@ -130,7 +238,7 @@ def test_timer_status_publisher_uses_hexecore_node_event_contract(tmp_path, monk
     )
 
     assert decision.status == "published"
-    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/status_requested"
+    assert captured["topic"] == "hexe/events/timer/status_requested"
     payload = captured["payload"]
     assert payload["schema_version"] == 1
     assert payload["event_type"] == "timer.status_requested"
@@ -142,7 +250,7 @@ def test_timer_status_publisher_uses_hexecore_node_event_contract(tmp_path, monk
     assert payload["data"]["session_id"] == "session-2"
     assert payload["data"]["scope"] == "active_for_endpoint"
     assert payload["data"]["correlation_id"].startswith("timer-status-")
-    assert payload["data"]["heard_text"] == "how much time is left on the timer"
+    assert "heard_text" not in payload["data"]
     assert payload["data"]["requested_at"] == "2026-05-04T01:59:00+00:00"
 
 
@@ -186,7 +294,7 @@ def test_timer_control_publisher_uses_hexecore_node_event_contract(tmp_path, mon
     )
 
     assert decision.status == "published"
-    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/stop_requested"
+    assert captured["topic"] == "hexe/events/timer/stop_requested"
     payload = captured["payload"]
     assert payload["schema_version"] == 1
     assert payload["event_type"] == "timer.stop_requested"
@@ -198,7 +306,7 @@ def test_timer_control_publisher_uses_hexecore_node_event_contract(tmp_path, mon
     assert payload["data"]["session_id"] == "session-stop-1"
     assert payload["data"]["scope"] == "active_for_endpoint"
     assert payload["data"]["correlation_id"].startswith("timer-stop-")
-    assert payload["data"]["heard_text"] == "stop the timer"
+    assert "heard_text" not in payload["data"]
 
 
 def test_timer_adjust_publisher_uses_hexecore_node_event_contract(tmp_path, monkeypatch):
@@ -242,7 +350,7 @@ def test_timer_adjust_publisher_uses_hexecore_node_event_contract(tmp_path, monk
     )
 
     assert decision.status == "published"
-    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/adjust_time_requested"
+    assert captured["topic"] == "hexe/events/timer/adjust_time_requested"
     payload = captured["payload"]
     assert payload["schema_version"] == 1
     assert payload["event_type"] == "timer.adjust_time_requested"
@@ -257,7 +365,7 @@ def test_timer_adjust_publisher_uses_hexecore_node_event_contract(tmp_path, monk
     assert payload["data"]["delta_text"] == "2 minutes"
     assert payload["data"]["direction"] == "remove"
     assert payload["data"]["correlation_id"].startswith("timer-adjust-")
-    assert payload["data"]["heard_text"] == "remove two minutes from the timer"
+    assert "heard_text" not in payload["data"]
 
 
 def test_timer_snooze_publisher_uses_hexecore_node_event_contract(tmp_path, monkeypatch):
@@ -302,7 +410,7 @@ def test_timer_snooze_publisher_uses_hexecore_node_event_contract(tmp_path, monk
     )
 
     assert decision.status == "published"
-    assert captured["topic"] == "hexe/nodes/node-voice-1/events/timer/snooze_requested"
+    assert captured["topic"] == "hexe/events/timer/snooze_requested"
     payload = captured["payload"]
     assert payload["schema_version"] == 1
     assert payload["event_type"] == "timer.snooze_requested"
@@ -317,10 +425,10 @@ def test_timer_snooze_publisher_uses_hexecore_node_event_contract(tmp_path, monk
     assert payload["data"]["duration_hhmmss"] == "00:05:00"
     assert payload["data"]["duration_text"] == "5 minutes"
     assert payload["data"]["correlation_id"].startswith("timer-snooze-")
-    assert payload["data"]["heard_text"] == "snooze the timer for five minutes"
+    assert "heard_text" not in payload["data"]
 
 
-def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, monkeypatch):
+def test_voice_intent_recognized_event_excludes_private_voice_content(tmp_path, monkeypatch):
     state_path = tmp_path / "state.json"
     state_path.write_text(
         json.dumps(
@@ -381,8 +489,10 @@ def test_voice_intent_recognized_event_includes_reply_audio_metadata(tmp_path, m
     assert decision.status == "published"
     payload = captured["payload"]
     assert payload["event_type"] == "voice.intent.recognized"
-    assert payload["data"]["reply_audio"] == reply_audio
-    assert payload["data"]["reply_audio"]["audio_url"].endswith("/voice-intent-audio-1")
+    assert "recognized_text" not in payload["data"]
+    assert "reply_text" not in payload["data"]
+    assert "reply_audio" not in payload["data"]
+    assert "dispatch" not in payload["data"]
     assert payload["data"]["intent_latency_ms"] == 12.5
     assert datetime.fromisoformat(payload["data"]["mqtt_sent_at"]) >= requested_at
 

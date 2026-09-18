@@ -51,18 +51,18 @@ class FakeTimerEventPublisher:
 
     def publish_timer_create(self, **payload):
         self.calls.append(payload)
-        return DomainEventPublishDecision(status="published", reason="published", topic="hexe/nodes/node-1/events/timer/create_requested")
+        return DomainEventPublishDecision(status="published", reason="published", topic="hexe/events/timer/create_requested")
 
     def publish_timer_status_request(self, **payload):
         self.calls.append(payload)
-        return DomainEventPublishDecision(status="published", reason="published", topic="hexe/nodes/node-1/events/timer/status_requested")
+        return DomainEventPublishDecision(status="published", reason="published", topic="hexe/events/timer/status_requested")
 
     def publish_timer_control_request(self, **payload):
         self.calls.append(payload)
         return DomainEventPublishDecision(
             status="published",
             reason="published",
-            topic=f"hexe/nodes/node-1/events/timer/{payload['action']}_requested",
+            topic=f"hexe/events/timer/{payload['action']}_requested",
         )
 
     def publish_timer_adjust_request(self, **payload):
@@ -70,7 +70,7 @@ class FakeTimerEventPublisher:
         return DomainEventPublishDecision(
             status="published",
             reason="published",
-            topic="hexe/nodes/node-1/events/timer/adjust_time_requested",
+            topic="hexe/events/timer/adjust_time_requested",
         )
 
     def publish_timer_snooze_request(self, **payload):
@@ -78,7 +78,7 @@ class FakeTimerEventPublisher:
         return DomainEventPublishDecision(
             status="published",
             reason="published",
-            topic="hexe/nodes/node-1/events/timer/snooze_requested",
+            topic="hexe/events/timer/snooze_requested",
         )
 
     def status(self):

@@ -90,9 +90,6 @@
         },
         "node_type": {
           "type": ["string", "null"]
-        },
-        "topic": {
-          "type": "string"
         }
       },
       "additionalProperties": true
@@ -107,21 +104,6 @@
         "record_id": {
           "type": "string",
           "minLength": 1
-        }
-      },
-      "additionalProperties": true
-    },
-    "routing": {
-      "type": "object",
-      "properties": {
-        "domain_topic": {
-          "type": "string"
-        },
-        "source_topic": {
-          "type": "string"
-        },
-        "dedupe_key": {
-          "type": "string"
         }
       },
       "additionalProperties": true

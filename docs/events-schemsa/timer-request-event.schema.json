@@ -67,7 +67,7 @@
   "$defs": {
     "base_request_data": {
       "type": "object",
-      "required": ["intent", "endpoint_id", "session_id", "heard_text", "requested_at"],
+      "required": ["intent", "endpoint_id", "session_id", "requested_at"],
       "properties": {
         "intent": {
           "type": "string"
@@ -87,9 +87,6 @@
         "correlation_id": {
           "type": "string",
           "minLength": 1
-        },
-        "heard_text": {
-          "type": "string"
         },
         "requested_at": {
           "$ref": "timer-common.schema.json#/$defs/timestamp"

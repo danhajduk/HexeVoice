@@ -1859,16 +1859,13 @@ Original task details:
 
 ## Task 224
 Original task details:
-- Title: Consume promoted timer.completed events and sound the target endpoint alarm
+- Title: Consume shared timer.completed events and sound the target endpoint alarm
 - Source finding:
   - Timer completion should be event-based.
-  - When Core promotes a `timer.completed` event, HexeVoice should sound the timer completed sound on the endpoint that started or owns the timer interaction.
+  - When a timer owner publishes a canonical `timer.completed` event, HexeVoice should sound the timer completed sound on the endpoint that started or owns the timer interaction.
 - Event contract:
-  - Listen for promoted timer completion events with:
+  - Listen for canonical timer completion events on `hexe/events/timer/completed` with:
     - `event_type`: `timer.completed`
-    - `promoted_event_type`: `timer.completed`
-    - `routing.domain_topic`: `hexe/events/timer/completed`
-    - `source.topic`: `hexe/nodes/<timer-node-id>/events/timer/completed`
     - `subject.family`: `timer`
     - `subject.record_id`: timer id
     - `data.timer_id`: timer id
@@ -1879,29 +1876,26 @@ Original task details:
     - `source.node_id` or `data.requester_node_id`: timer-owning/requesting node
 - Sample event:
   - `schema_version`: `1`
-  - `promotion_id`: `30833afd-aa6a-4208-ad51-97bf5e0ad55e`
   - `event_id`: `interaction-timer-completed-timer_codex_20_sec_timer_1787524538`
   - `event_type`: `timer.completed`
-  - `promoted_event_type`: `timer.completed`
   - `source.node_id`: `node-6812313e6d1efad6`
   - `source.component`: `hexe.timer`
-  - `routing.domain_topic`: `hexe/events/timer/completed`
   - `data.endpoint_id`: `esp-pe-1`
   - `data.device_id`: `esp-pe-1`
   - `data.timer_id`: `timer_codex_20_sec_timer_1787524538`
   - `data.title`: `20 seconds`
   - `data.duration_seconds`: `20`
 - Scope:
-  - Subscribe to the Core-promoted `hexe/events/timer/completed` topic or equivalent backend event stream.
-  - Validate the promoted event shape and ignore non-timer or malformed events with operator-visible diagnostics.
+  - Subscribe to the shared `hexe/events/timer/completed` topic or equivalent backend event stream.
+  - Validate the canonical event shape and ignore non-timer or malformed events with operator-visible diagnostics.
   - Resolve the target endpoint from `data.endpoint_id`, falling back to `data.device_id` only when safe.
   - Push a timer alarm playback command to the target endpoint.
   - Include timer id, title, source node id, due/completed timestamps, and correlation ids in playback state and acknowledgement events.
-  - Deduplicate repeated promoted events using `routing.dedupe_key`, `event_id`, or a stable timer completion key.
+  - Deduplicate repeated events using `event_id` or a stable timer completion key.
   - Publish/report failures when the target endpoint is offline, unknown, muted, busy, or rejects playback.
 - Acceptance criteria:
-  - A promoted `timer.completed` event for `esp-pe-1` causes only `esp-pe-1` to play the timer completed sound.
-  - Duplicate promoted timer completion events do not cause duplicate alarm playback.
+  - A `timer.completed` event for `esp-pe-1` causes only `esp-pe-1` to play the timer completed sound.
+  - Duplicate timer completion events do not cause duplicate alarm playback.
   - Unknown or offline endpoints produce a clear diagnostic and do not crash the timer subscriber.
   - The timer alarm lifecycle can later be stopped by the generic playback stop path from Task 220.
 
