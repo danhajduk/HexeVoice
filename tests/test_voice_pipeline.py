@@ -2631,7 +2631,7 @@ def test_piper_tts_adapter_can_generate_configured_22050_variant(tmp_path):
     assert synthesis.variant_sample_rates_hz == {"raw": 16000, "16k": 16000, "22050": 22050, "48k": 48000}
 
 
-def test_piper_tts_adapter_routes_p4_to_40k_and_other_endpoints_to_22050(tmp_path):
+def test_piper_tts_adapter_routes_p4_to_48k_and_other_endpoints_to_22050(tmp_path):
     source = io.BytesIO()
     with wave.open(source, "wb") as wav_file:
         wav_file.setnchannels(1)
@@ -2646,17 +2646,17 @@ def test_piper_tts_adapter_routes_p4_to_40k_and_other_endpoints_to_22050(tmp_pat
         base_url="http://piper.test:10200",
         output_dir=tmp_path,
         output_sample_rate_hz=22050,
-        endpoint_sample_rates={"esp-box-1": 40000},
-        conversion_sample_rates={"40k": 40000, "22050": 22050},
+        endpoint_sample_rates={"esp-box-1": 48000},
+        conversion_sample_rates={"48k": 48000, "22050": 22050},
         http_client=httpx.Client(transport=httpx.MockTransport(handler)),
     )
 
     p4 = adapter.synthesize(endpoint_id="esp-box-1", session_id="p4", text="hello")
     other = adapter.synthesize(endpoint_id="esp-pe-1", session_id="other", text="hello")
 
-    assert p4.audio_variant == "40k"
-    assert p4.output_sample_rate_hz == 40000
-    assert p4.endpoint_audio_url == f"/api/voice/tts/{p4.stream_id}/40k"
+    assert p4.audio_variant == "48k"
+    assert p4.output_sample_rate_hz == 48000
+    assert p4.endpoint_audio_url == f"/api/voice/tts/{p4.stream_id}/48k"
     assert other.audio_variant == "22050"
     assert other.output_sample_rate_hz == 22050
     assert other.endpoint_audio_url == f"/api/voice/tts/{other.stream_id}/22050"

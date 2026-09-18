@@ -60,13 +60,13 @@ VOICE_TTS_OUTPUT_SAMPLE_RATE_HZ=48000
 VOICE_TTS_ENDPOINT_SAMPLE_RATES=esp-pe-1=48000,esp-box-1=16000
 ```
 
-The conversion variant set supports 48 kHz, 40 kHz, 22.05 kHz, and 16 kHz:
+The conversion variant set supports the codec-safe rates 48 kHz, 22.05 kHz, and 16 kHz:
 
 ```env
-VOICE_TTS_CONVERSION_SAMPLE_RATES=48000,40000,22050,16000
+VOICE_TTS_CONVERSION_SAMPLE_RATES=48000,22050,16000
 ```
 
-The current endpoint policy keeps one speaker identity while allowing device-specific delivery rates: `esp-box-1` uses 40 kHz and endpoints without an override use 22.05 kHz.
+The current endpoint policy keeps one speaker identity while allowing device-specific delivery rates: `esp-box-1` uses 48 kHz and endpoints without an override use 22.05 kHz. The P4 ES8311 clock table does not support 40 kHz; using it can produce white noise even when transport succeeds.
 
 At runtime, the Providers dashboard exposes the installed Piper models, each model's display name derived from the `.onnx.json` `dataset` field, each model's raw sample rate, the models kept warm, and the enabled conversion sample rates. The Runtime status page reports Piper using Piper-specific voice/model sources rather than the generic OpenAI TTS model default. The same data is available through:
 

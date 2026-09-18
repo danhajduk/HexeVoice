@@ -17,7 +17,7 @@ from hexevoice.voice.pipeline import tts_audio_url_metadata
 
 
 GENERATED_AUDIO_SUFFIXES = (".wav", ".mp3", ".ogg")
-GENERATED_WAV_VARIANTS = ("48k", "40k", "22050", "16k", "raw")
+GENERATED_WAV_VARIANTS = ("48k", "22050", "16k", "raw")
 QUALITY_VARIANTS = {"compact": ("16k", 16000), "standard": ("22050", 22050), "high": ("48k", 48000), "source": ("raw", None)}
 
 
