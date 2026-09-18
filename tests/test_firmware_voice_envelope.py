@@ -190,6 +190,7 @@ def test_firmware_ui_button_event_closes_payload_and_envelope_once():
 def test_p4_firmware_streams_remote_wav_without_whole_file_buffering():
     source = Path("firmware/components/endpoint_runtime/voice/tts_player.cpp").read_text()
 
+    assert "constexpr int kTaskStackBytes = 10240;" in source
     assert "bool stream_http_wav(" in source
     assert "esp_http_client_read" in source
     assert "Streaming WAV while downloading" in source

@@ -30,7 +30,9 @@
 namespace {
 constexpr char kTag[] = "hexe_tts";
 constexpr int kPlaybackQueueDepth = 2;
-constexpr int kTaskStackBytes = 6144;
+// ESP-IDF's streaming HTTP path uses newlib formatting internally. Keep enough
+// task-local headroom for that call chain while PCM data remains heap-buffered.
+constexpr int kTaskStackBytes = 10240;
 constexpr int kTaskPriority = 4;
 constexpr size_t kMaxTtsBytes = 1024 * 1024;
 constexpr size_t kPlaybackWriteBytes = 4096;
