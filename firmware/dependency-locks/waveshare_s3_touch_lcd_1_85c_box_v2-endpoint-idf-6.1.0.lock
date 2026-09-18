@@ -9,6 +9,16 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.7.19~2
+  espressif/cmake_utilities:
+    component_hash: 351350613ceafba240b761b4ea991e0f231ac7a9f59a9ee901f751bddc0bb18f
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.1'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 0.5.3
   espressif/esp-nn:
     component_hash: d655eee0d597b1bfc12ff81efc49b835c1832a5521e1ff69691e50674399dbdc
     dependencies:
@@ -43,6 +53,30 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.5.11
+  espressif/esp_lcd_st77916:
+    component_hash: c0a565af3ea85a9d9f1e79b0e4d0829378db319bc4dab4939eca44361b3c5a1b
+    dependencies:
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: 0.*
+    - name: idf
+      require: private
+      version: '>=5.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 2.0.2
+  espressif/esp_lcd_touch:
+    component_hash: 3f85a7d95af876f1a6ecca8eb90a81614890d0f03a038390804e5a77e2caf862
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.4.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.2.1
   espressif/esp_websocket_client:
     component_hash: dc00233af846f3a744ada283a300e0d586040aadc3ee67361645ecdce4523672
     dependencies:
@@ -61,6 +95,8 @@ direct_dependencies:
 - espressif/cjson
 - espressif/esp-tflite-micro
 - espressif/esp_codec_dev
+- espressif/esp_lcd_st77916
+- espressif/esp_lcd_touch
 - espressif/esp_websocket_client
 - idf
 manifest_hash: e7d913efbedb9fbf6d8ccabd2c9f96dcd6f6571429a8586cffad4957c0a0395a
