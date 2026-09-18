@@ -22,9 +22,10 @@ WEATHER_TOPIC_RE = re.compile(r"^hexe/nodes/([^/]+)/events/weather/snapshot/upda
 WEATHER_PROMOTED_TOPIC = "hexe/events/weather/snapshot/updated"
 WEATHER_RESULT_TYPES = {"weather.current_succeeded", "weather.current_failed"}
 WEATHER_RESULT_TOPIC_RE = re.compile(r"^hexe/nodes/([^/]+)/events/weather/current_(succeeded|failed)$")
+WEATHER_PROMOTED_RESULT_TOPIC_RE = re.compile(r"^hexe/events/weather/current_(succeeded|failed)$")
 WEATHER_RESULT_TOPICS = (
-    "hexe/nodes/+/events/weather/current_succeeded",
-    "hexe/nodes/+/events/weather/current_failed",
+    "hexe/events/weather/current_succeeded",
+    "hexe/events/weather/current_failed",
 )
 COMPONENT_STATES = {"pending", "ready", "stale", "expired", "absent", "failed", "queued"}
 FRESH_WEATHER_STATES = {"fresh", "stale"}
@@ -296,22 +297,34 @@ class WeatherSnapshotService:
             self._reason = "invalid_payload"
             return
         topic = str(msg.topic)
-        if WEATHER_RESULT_TOPIC_RE.fullmatch(topic):
+        if WEATHER_RESULT_TOPIC_RE.fullmatch(topic) or WEATHER_PROMOTED_RESULT_TOPIC_RE.fullmatch(topic):
             self.accept_result(topic, payload)
         else:
             self.accept(topic, payload)
 
 
 def validate_weather_result(topic: str, event: dict[str, Any]) -> dict[str, Any]:
-    match = WEATHER_RESULT_TOPIC_RE.fullmatch(str(topic or "").strip())
-    if match is None:
+    normalized_topic = str(topic or "").strip()
+    node_match = WEATHER_RESULT_TOPIC_RE.fullmatch(normalized_topic)
+    promoted_match = WEATHER_PROMOTED_RESULT_TOPIC_RE.fullmatch(normalized_topic)
+    if node_match is None and promoted_match is None:
         raise WeatherSnapshotError("unauthorized_weather_result_topic")
     source = event.get("source")
-    if not isinstance(source, dict) or source.get("node_id") != match.group(1):
+    if not isinstance(source, dict):
+        raise WeatherSnapshotError("invalid_weather_result_source")
+    if node_match is not None and source.get("node_id") != node_match.group(1):
         raise WeatherSnapshotError("source_topic_mismatch")
-    event_type = str(event.get("event_type") or "")
-    if event_type not in WEATHER_RESULT_TYPES or event_type.rsplit("_", 1)[-1] != match.group(2):
+    event_type = str(event.get("promoted_event_type") or event.get("event_type") or "")
+    topic_suffix = node_match.group(2) if node_match is not None else promoted_match.group(1)
+    if event_type not in WEATHER_RESULT_TYPES or event_type.rsplit("_", 1)[-1] != topic_suffix:
         raise WeatherSnapshotError("unsupported_weather_result")
+    if promoted_match is not None:
+        routing = event.get("routing")
+        policy = event.get("policy")
+        if not isinstance(routing, dict) or routing.get("domain_topic") != normalized_topic:
+            raise WeatherSnapshotError("invalid_core_routing")
+        if not isinstance(policy, dict) or policy.get("schema_valid") is not True or policy.get("privacy_valid") is not True:
+            raise WeatherSnapshotError("invalid_core_policy")
     if event.get("schema_version") != 1 or source.get("component") != "hexe.weather":
         raise WeatherSnapshotError("unsupported_weather_result_schema")
     event_id = required_string(event, "event_id", max_length=200)

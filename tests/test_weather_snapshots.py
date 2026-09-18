@@ -11,6 +11,7 @@ NOW = datetime(2026, 9, 18, 16, 0, tzinfo=UTC)
 SOURCE = "node-interaction-1"
 TOPIC = f"hexe/nodes/{SOURCE}/events/weather/snapshot/updated"
 RESULT_TOPIC = f"hexe/nodes/{SOURCE}/events/weather/current_succeeded"
+PROMOTED_RESULT_TOPIC = "hexe/events/weather/current_succeeded"
 
 
 def weather_event() -> dict:
@@ -137,6 +138,17 @@ def test_rejects_weather_result_source_topic_mismatch(tmp_path):
 
     assert snapshots.accept_result(RESULT_TOPIC, result, received_at=NOW) is False
     assert snapshots.status()["reason"] == "source_topic_mismatch"
+
+
+def test_accepts_core_promoted_weather_result(tmp_path):
+    snapshots = service(tmp_path)
+    result = weather_result()
+    result["promoted_event_type"] = result["event_type"]
+    result["routing"] = {"domain_topic": PROMOTED_RESULT_TOPIC}
+    result["policy"] = {"schema_valid": True, "privacy_valid": True}
+
+    assert snapshots.accept_result(PROMOTED_RESULT_TOPIC, result, received_at=NOW) is True
+    assert snapshots.status()["last_result"]["event"]["data"]["endpoint_id"] == "p4"
 
 
 def test_rejects_wrong_source_and_keeps_last_known_good(tmp_path):
