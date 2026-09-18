@@ -32,15 +32,18 @@ class P4QuickActionService:
         self._interaction_api_base_url = interaction_api_base_url.rstrip("/")
         self._timer_sessions: dict[str, str] = {}
         self._timer_prompt_playback: dict[str, tuple[str, bool]] = {}
+        self._pending_weather_results: dict[str, dict[str, Any]] = {}
         self._status: dict[str, Any] = {"last_action": None, "last_error": None}
         self._loop: asyncio.AbstractEventLoop | None = None
 
     def start(self, loop: asyncio.AbstractEventLoop) -> None:
         self._loop = loop
         self._weather.add_listener(self._on_weather_snapshot)
+        self._weather.add_result_listener(self._on_weather_result)
 
     def stop(self) -> None:
         self._weather.remove_listener(self._on_weather_snapshot)
+        self._weather.remove_result_listener(self._on_weather_result)
         self._loop = None
 
     def _on_weather_snapshot(self, snapshot: dict[str, Any]) -> None:
@@ -48,6 +51,48 @@ class P4QuickActionService:
         if loop is None or not loop.is_running():
             return
         asyncio.run_coroutine_threadsafe(self._prepare_radar_for_connected_endpoints(snapshot), loop)
+        for endpoint_id, result in tuple(self._pending_weather_results.items()):
+            if self._snapshot_matches_result(snapshot, result):
+                self._pending_weather_results.pop(endpoint_id, None)
+                asyncio.run_coroutine_threadsafe(self._show_weather(endpoint_id), loop)
+
+    def _on_weather_result(self, event: dict[str, Any]) -> None:
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            return
+        asyncio.run_coroutine_threadsafe(self._handle_weather_result(event), loop)
+
+    async def _handle_weather_result(self, event: dict[str, Any]) -> None:
+        data = event.get("data") if isinstance(event.get("data"), dict) else {}
+        endpoint_id = str(data.get("endpoint_id") or "").strip()
+        if not endpoint_id:
+            return
+        if endpoint_id not in self._manager.connected_endpoint_ids(
+            board_profile="waveshare_p4_wifi6_touch_lcd_7b"
+        ):
+            return
+        if event.get("event_type") == "weather.current_failed":
+            self._pending_weather_results.pop(endpoint_id, None)
+            await self._show_message(
+                endpoint_id,
+                "Weather unavailable",
+                str(data.get("message") or "Current weather is unavailable."),
+                "weather",
+            )
+            return
+        snapshot = self._weather.prepared_snapshot()
+        if snapshot is not None and self._snapshot_matches_result(snapshot, data):
+            self._pending_weather_results.pop(endpoint_id, None)
+            await self._show_weather(endpoint_id)
+            return
+        self._pending_weather_results[endpoint_id] = deepcopy(data)
+
+    @staticmethod
+    def _snapshot_matches_result(snapshot: dict[str, Any], result: dict[str, Any]) -> bool:
+        return (
+            str(snapshot.get("snapshot_id") or "") == str(result.get("snapshot_id") or "")
+            and str(snapshot.get("cache_revision") or "") == str(result.get("snapshot_revision") or "")
+        )
 
     async def _prepare_radar_for_connected_endpoints(self, snapshot: dict[str, Any]) -> None:
         radar = snapshot.get("radar") if isinstance(snapshot.get("radar"), dict) else {}

@@ -20,6 +20,12 @@ WEATHER_EVENT_TYPE = "weather.snapshot.updated"
 WEATHER_SCHEMA_VERSION = "weather.snapshot.v1"
 WEATHER_TOPIC_RE = re.compile(r"^hexe/nodes/([^/]+)/events/weather/snapshot/updated$")
 WEATHER_PROMOTED_TOPIC = "hexe/events/weather/snapshot/updated"
+WEATHER_RESULT_TYPES = {"weather.current_succeeded", "weather.current_failed"}
+WEATHER_RESULT_TOPIC_RE = re.compile(r"^hexe/nodes/([^/]+)/events/weather/current_(succeeded|failed)$")
+WEATHER_RESULT_TOPICS = (
+    "hexe/nodes/+/events/weather/current_succeeded",
+    "hexe/nodes/+/events/weather/current_failed",
+)
 COMPONENT_STATES = {"pending", "ready", "stale", "expired", "absent", "failed", "queued"}
 FRESH_WEATHER_STATES = {"fresh", "stale"}
 SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -73,6 +79,9 @@ class WeatherSnapshotService:
         self._last_rejected: dict[str, Any] | None = None
         self._accepted = self._store.load()
         self._listeners: list[Any] = []
+        self._result_listeners: list[Any] = []
+        self._last_result: dict[str, Any] | None = None
+        self._seen_result_ids: list[str] = []
 
     def add_listener(self, listener: Any) -> None:
         if listener not in self._listeners:
@@ -81,6 +90,14 @@ class WeatherSnapshotService:
     def remove_listener(self, listener: Any) -> None:
         if listener in self._listeners:
             self._listeners.remove(listener)
+
+    def add_result_listener(self, listener: Any) -> None:
+        if listener not in self._result_listeners:
+            self._result_listeners.append(listener)
+
+    def remove_result_listener(self, listener: Any) -> None:
+        if listener in self._result_listeners:
+            self._result_listeners.remove(listener)
 
     def start(self) -> dict[str, Any]:
         if self._running:
@@ -184,6 +201,38 @@ class WeatherSnapshotService:
             }
             return False
 
+    def accept_result(self, topic: str, event: dict[str, Any], *, received_at: datetime | None = None) -> bool:
+        now = received_at or datetime.now(UTC)
+        try:
+            normalized = validate_weather_result(topic, event)
+            event_id = normalized["event_id"]
+            if event_id in self._seen_result_ids:
+                self._reason = "duplicate_weather_result_ignored"
+                return False
+            self._seen_result_ids.insert(0, event_id)
+            del self._seen_result_ids[100:]
+            self._last_result = {
+                "received_at": now.isoformat(),
+                "topic": str(topic),
+                "event": deepcopy(normalized),
+            }
+            self._reason = None
+            for listener in tuple(self._result_listeners):
+                try:
+                    listener(deepcopy(normalized))
+                except Exception as exc:
+                    log.warning("Weather result listener failed: error=%s", exc)
+            return True
+        except WeatherSnapshotError as exc:
+            self._reason = str(exc)
+            self._last_rejected = {
+                "received_at": now.isoformat(),
+                "topic": str(topic),
+                "event_id": str(event.get("event_id") or "")[:128],
+                "reason": str(exc),
+            }
+            return False
+
     def prepared_snapshot(self) -> dict[str, Any] | None:
         if self._accepted is None:
             return None
@@ -197,7 +246,7 @@ class WeatherSnapshotService:
         radar = data.get("radar") if isinstance(data, dict) and isinstance(data.get("radar"), dict) else {}
         return {
             "provider": "hexe_mqtt",
-            "topics": ["hexe/nodes/+/events/weather/snapshot/updated", WEATHER_PROMOTED_TOPIC],
+            "topics": ["hexe/nodes/+/events/weather/snapshot/updated", WEATHER_PROMOTED_TOPIC, *WEATHER_RESULT_TOPICS],
             "status": self._status,
             "reason": self._reason,
             "last_accepted_event_id": event.get("event_id") if isinstance(event, dict) else None,
@@ -214,6 +263,7 @@ class WeatherSnapshotService:
             "fallback_available": data is not None,
             "download_failures": [],
             "last_rejected": deepcopy(self._last_rejected),
+            "last_result": deepcopy(self._last_result),
         }
 
     def _on_connect(self, client: Any, userdata: Any, flags: Any, reason_code: Any, properties: Any = None) -> None:
@@ -228,6 +278,8 @@ class WeatherSnapshotService:
             return
         client.subscribe("hexe/nodes/+/events/weather/snapshot/updated", qos=1)
         client.subscribe(WEATHER_PROMOTED_TOPIC, qos=1)
+        for topic in WEATHER_RESULT_TOPICS:
+            client.subscribe(topic, qos=1)
         self._status = "connected"
         self._reason = None
 
@@ -243,7 +295,47 @@ class WeatherSnapshotService:
         if not isinstance(payload, dict):
             self._reason = "invalid_payload"
             return
-        self.accept(str(msg.topic), payload)
+        topic = str(msg.topic)
+        if WEATHER_RESULT_TOPIC_RE.fullmatch(topic):
+            self.accept_result(topic, payload)
+        else:
+            self.accept(topic, payload)
+
+
+def validate_weather_result(topic: str, event: dict[str, Any]) -> dict[str, Any]:
+    match = WEATHER_RESULT_TOPIC_RE.fullmatch(str(topic or "").strip())
+    if match is None:
+        raise WeatherSnapshotError("unauthorized_weather_result_topic")
+    source = event.get("source")
+    if not isinstance(source, dict) or source.get("node_id") != match.group(1):
+        raise WeatherSnapshotError("source_topic_mismatch")
+    event_type = str(event.get("event_type") or "")
+    if event_type not in WEATHER_RESULT_TYPES or event_type.rsplit("_", 1)[-1] != match.group(2):
+        raise WeatherSnapshotError("unsupported_weather_result")
+    if event.get("schema_version") != 1 or source.get("component") != "hexe.weather":
+        raise WeatherSnapshotError("unsupported_weather_result_schema")
+    event_id = required_string(event, "event_id", max_length=200)
+    parse_timestamp(event.get("occurred_at"), "occurred_at")
+    subject = event.get("subject")
+    if not isinstance(subject, dict) or subject.get("family") != "weather":
+        raise WeatherSnapshotError("invalid_weather_result_subject")
+    required_string(subject, "record_id", max_length=200)
+    data = event.get("data")
+    if not isinstance(data, dict):
+        raise WeatherSnapshotError("invalid_weather_result_data")
+    for key in ("correlation_id", "endpoint_id", "session_id"):
+        required_string(data, key, max_length=200)
+    if data.get("intent_id") != "weather.current":
+        raise WeatherSnapshotError("invalid_weather_result_intent")
+    if event_type == "weather.current_succeeded":
+        required_string(data, "snapshot_id", max_length=200)
+        required_string(data, "snapshot_revision", max_length=200)
+    else:
+        required_string(data, "error_code", max_length=120)
+        required_string(data, "message", max_length=500)
+        if not isinstance(data.get("recoverable"), bool):
+            raise WeatherSnapshotError("invalid_weather_result_recoverable")
+    return deepcopy(event)
 
 
 def validate_weather_snapshot(topic: str, event: dict[str, Any], *, now: datetime) -> dict[str, Any]:

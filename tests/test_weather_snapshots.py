@@ -10,6 +10,7 @@ from hexevoice.weather_snapshots import WeatherSnapshotService, WeatherSnapshotS
 NOW = datetime(2026, 9, 18, 16, 0, tzinfo=UTC)
 SOURCE = "node-interaction-1"
 TOPIC = f"hexe/nodes/{SOURCE}/events/weather/snapshot/updated"
+RESULT_TOPIC = f"hexe/nodes/{SOURCE}/events/weather/current_succeeded"
 
 
 def weather_event() -> dict:
@@ -67,6 +68,31 @@ def service(tmp_path) -> WeatherSnapshotService:
     )
 
 
+def weather_result(*, event_type="weather.current_succeeded") -> dict:
+    data = {
+        "correlation_id": "voice-intent-1",
+        "endpoint_id": "p4",
+        "session_id": "session-1",
+        "intent_id": "weather.current",
+    }
+    if event_type == "weather.current_succeeded":
+        data.update(snapshot_id="weather-home-1", snapshot_revision="weather-revision-1")
+    else:
+        data.update(error_code="weather_unavailable", message="Weather is unavailable.", recoverable=True)
+    return {
+        "schema_version": 1,
+        "event_id": f"interaction-{event_type}",
+        "event_type": event_type,
+        "occurred_at": NOW.isoformat(),
+        "source": {"node_id": SOURCE, "component": "hexe.weather"},
+        "subject": {"family": "weather", "record_id": "weather-home-1"},
+        "data": data,
+        "severity": "info" if event_type.endswith("_succeeded") else "warning",
+        "priority": "normal",
+        "safety_critical": False,
+    }
+
+
 def test_accepts_and_persists_coherent_weather_snapshot(tmp_path):
     snapshots = service(tmp_path)
 
@@ -90,6 +116,27 @@ def test_accepts_core_promoted_weather_topic(tmp_path):
 
     assert snapshots.accept("hexe/events/weather/snapshot/updated", event, received_at=NOW) is True
     assert snapshots.status()["source_node_id"] == SOURCE
+
+
+def test_accepts_weather_result_and_notifies_listener(tmp_path):
+    snapshots = service(tmp_path)
+    received = []
+    snapshots.add_result_listener(received.append)
+
+    assert snapshots.accept_result(RESULT_TOPIC, weather_result(), received_at=NOW) is True
+    assert received[0]["data"]["endpoint_id"] == "p4"
+    assert snapshots.status()["last_result"]["event"]["data"]["snapshot_revision"] == "weather-revision-1"
+    assert snapshots.accept_result(RESULT_TOPIC, weather_result(), received_at=NOW) is False
+    assert snapshots.status()["reason"] == "duplicate_weather_result_ignored"
+
+
+def test_rejects_weather_result_source_topic_mismatch(tmp_path):
+    snapshots = service(tmp_path)
+    result = weather_result()
+    result["source"]["node_id"] = "node-attacker"
+
+    assert snapshots.accept_result(RESULT_TOPIC, result, received_at=NOW) is False
+    assert snapshots.status()["reason"] == "source_topic_mismatch"
 
 
 def test_rejects_wrong_source_and_keeps_last_known_good(tmp_path):

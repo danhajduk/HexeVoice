@@ -13,6 +13,7 @@ class FakeWeather:
     def __init__(self, snapshot):
         self.snapshot = snapshot
         self.listeners = []
+        self.result_listeners = []
 
     def prepared_snapshot(self):
         return self.snapshot
@@ -22,6 +23,12 @@ class FakeWeather:
 
     def remove_listener(self, listener):
         self.listeners.remove(listener)
+
+    def add_result_listener(self, listener):
+        self.result_listeners.append(listener)
+
+    def remove_result_listener(self, listener):
+        self.result_listeners.remove(listener)
 
 
 class FakeManager:
@@ -83,6 +90,7 @@ def snapshot(*, radar=True):
     now = datetime.now(UTC)
     return {
         "snapshot_id": "weather-home-1",
+        "cache_revision": "weather-revision-1",
         "location": {"label": "Home"},
         "current_conditions": {"temperature": 56, "condition": "Clear"},
         "forecast_summary": {"summary": "Clear"},
@@ -119,6 +127,65 @@ def test_weather_button_renders_snapshot_and_plays_prepared_tts():
     assert any(element.get("text") == "56 degrees" for element in manager.calls[0][1]["layout"]["elements"])
     assert manager.calls[1][0] == "sound"
     assert manager.calls[1][1]["audio_url"] == "http://voice/weather-high.wav"
+
+
+def test_weather_success_result_renders_matching_snapshot():
+    manager = FakeManager()
+    weather = FakeWeather(snapshot())
+    service = quick_actions(manager, weather)
+
+    asyncio.run(
+        service._handle_weather_result(
+            {
+                "event_type": "weather.current_succeeded",
+                "data": {
+                    "endpoint_id": "p4",
+                    "snapshot_id": "weather-home-1",
+                    "snapshot_revision": "weather-revision-1",
+                },
+            }
+        )
+    )
+
+    assert manager.calls[0][0] == "layout"
+    assert manager.calls[1][0] == "sound"
+
+
+def test_weather_success_waits_for_matching_snapshot():
+    manager = FakeManager()
+    weather = FakeWeather(snapshot())
+    service = quick_actions(manager, weather)
+    result = {
+        "event_type": "weather.current_succeeded",
+        "data": {
+            "endpoint_id": "p4",
+            "snapshot_id": "weather-home-2",
+            "snapshot_revision": "weather-revision-2",
+        },
+    }
+
+    asyncio.run(service._handle_weather_result(result))
+
+    assert manager.calls == []
+    assert service._pending_weather_results["p4"]["snapshot_id"] == "weather-home-2"
+
+
+def test_weather_failed_result_displays_safe_message():
+    manager = FakeManager()
+    service = quick_actions(manager, FakeWeather(snapshot()))
+
+    asyncio.run(
+        service._handle_weather_result(
+            {
+                "event_type": "weather.current_failed",
+                "data": {"endpoint_id": "p4", "message": "Weather is temporarily unavailable."},
+            }
+        )
+    )
+
+    assert manager.calls[0][0] == "layout"
+    texts = [item.get("text") for item in manager.calls[0][1]["layout"]["elements"]]
+    assert "Weather is temporarily unavailable." in texts
 
 
 def test_weather_button_on_weather_screen_opens_current_static_radar():

@@ -272,6 +272,10 @@ Implemented endpoint experience:
 - Prepared weather speech plays from the Interaction-owned snapshot, while the
   timer custom flow prompts, captures a spoken duration, confirms it, and hands
   lifecycle authority back to Interaction.
+- Voice-triggered current weather consumes Interaction's governed
+  `weather.current_succeeded` and `weather.current_failed` result events. A
+  successful result opens and speaks only the locally cached snapshot matching
+  its `snapshot_id` and `snapshot_revision`; failures render the safe message.
 - Static radar snapshots are checksum-verified, center-cropped to RGB888 at
   800 x 420, cached by HexeVoice, and delivered with `endpoint.asset.prepare`.
   The P4 holds the active bitmap in PSRAM and renders it at `(112, 96)`, between
