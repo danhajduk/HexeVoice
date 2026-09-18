@@ -139,6 +139,56 @@ def built_in_timer_intent() -> dict[str, Any]:
     }
 
 
+def built_in_timer_new_intent() -> dict[str, Any]:
+    now = utc_now_iso()
+    return {
+        "intent_id": "timer.new",
+        "intent_name": "Start new timer interaction",
+        "service_id": "voice.local_intents",
+        "owner_service": "hexevoice",
+        "owner_client_id": None,
+        "version": "v1",
+        "status": "active",
+        "privacy_class": "internal",
+        "access_scope": "service",
+        "definition": {
+            "utterance_examples": ["new timer", "set a new timer"],
+            "patterns": [r"^(?:please\s+)?(?:new\s+timer|set\s+(?:a\s+)?new\s+timer)$"],
+            "slots": {},
+            "dispatch": {
+                "type": "local_response",
+                "command": "timer.new",
+            },
+            "response": {
+                "reply_template": "How long should the timer be?",
+            },
+            "reply": {
+                "text_template": "How long should the timer be?",
+                "audio": {
+                    "mode": "none",
+                    "ttl_seconds": 3600,
+                },
+            },
+            "matcher": {
+                "type": "exact_example",
+            },
+        },
+        "constraints": {
+            "requires_operational_mqtt": False,
+            "dispatch_side_effect": "none",
+        },
+        "metadata": {
+            "builtin": True,
+            "family": "timer",
+            "owned_by": "voice_node",
+        },
+        "reviews": [],
+        "usage": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
 def timer_status_intent_definition() -> dict[str, Any]:
     return {
         "utterance_examples": [
@@ -1161,6 +1211,7 @@ class VoiceIntentStateStore:
             state = VoiceIntentState(
                 intents=[
                     VoiceIntentRecord.model_validate(built_in_timer_intent()),
+                    VoiceIntentRecord.model_validate(built_in_timer_new_intent()),
                     VoiceIntentRecord.model_validate(built_in_timer_status_intent()),
                     VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="stop")),
                     VoiceIntentRecord.model_validate(built_in_timer_control_intent(action="cancel")),
@@ -1205,6 +1256,9 @@ class VoiceIntentStateStore:
         seeded = False
         if "timer.create" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_intent()))
+            seeded = True
+        if "timer.new" not in existing_ids:
+            state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_new_intent()))
             seeded = True
         if "timer.status" not in existing_ids:
             state.intents.append(VoiceIntentRecord.model_validate(built_in_timer_status_intent()))

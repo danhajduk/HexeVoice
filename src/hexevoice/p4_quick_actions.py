@@ -15,7 +15,7 @@ from hexevoice.radar_assets import RadarAssetService
 log = logging.getLogger(__name__)
 
 BUTTON_INTENTS = {
-    "button_timer": {"intent_id": "timer.create", "text": "set a timer"},
+    "button_timer": {"intent_id": "timer.new", "text": "new timer"},
     "button_weather": {"intent_id": "weather.current", "text": "what is the current weather"},
     "button_config": {"intent_id": "endpoint.settings.open", "text": "open settings"},
 }

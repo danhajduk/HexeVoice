@@ -529,7 +529,7 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     assert all(isinstance(screen["sidebars"], bool) for screen in screens)
     assert all(isinstance(screen["buttons"], list) for screen in screens)
     assert next(screen for screen in screens if screen["id"] == "idle")["buttons"] == [
-        {"id": "button_timer", "intent_id": "timer.create"},
+        {"id": "button_timer", "intent_id": "timer.new"},
         {"id": "button_weather", "intent_id": "weather.current"},
         {"id": "button_config", "intent_id": "endpoint.settings.open"},
     ]

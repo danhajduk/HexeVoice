@@ -243,9 +243,13 @@ def test_timer_button_begins_interaction_owned_custom_capture(monkeypatch):
     original = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=transport, **kwargs))
 
-    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "idle", "button_id": "button_timer", "intent_id": "timer.create"}))
+    asyncio.run(service.handle_button({"endpoint_id": "p4", "screen_id": "idle", "button_id": "button_timer", "intent_id": "timer.new"}))
 
-    assert service.test_intent_invocations[0]["intent_id"] == "timer.create"
+    assert service.test_intent_invocations[0] == {
+        "endpoint_id": "p4",
+        "intent_id": "timer.new",
+        "text": "new timer",
+    }
     assert [call[0] for call in manager.calls] == ["layout", "sound"]
     assert manager.calls[0][1]["layout"]["id"] == "timer_quick"
     assert manager.calls[1][1]["session_id"] == "timer-session-1"
