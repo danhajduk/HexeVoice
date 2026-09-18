@@ -306,8 +306,9 @@ def test_tts_output_sample_rate_can_be_disabled_for_native_voices():
 
 
 def test_tts_conversion_sample_rates_are_limited_to_supported_values():
-    assert parse_tts_conversion_sample_rates("48000,22050,16000,44100,bad") == {
+    assert parse_tts_conversion_sample_rates("48000,40000,22050,16000,44100,bad") == {
         "48k": 48000,
+        "40k": 40000,
         "22050": 22050,
         "16k": 16000,
     }

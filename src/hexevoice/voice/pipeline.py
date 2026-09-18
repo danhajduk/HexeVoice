@@ -1407,7 +1407,7 @@ def trim_stt_silence(
 
 def normalize_tts_conversion_sample_rates(sample_rates: dict[str, int] | None) -> dict[str, int]:
     normalized: dict[str, int] = {}
-    allowed = {16000: "16k", 22050: "22050", 48000: "48k"}
+    allowed = {16000: "16k", 22050: "22050", 40000: "40k", 48000: "48k"}
     for _variant, sample_rate in (sample_rates or DEFAULT_PIPER_TTS_AUDIO_VARIANT_SAMPLE_RATES).items():
         try:
             parsed_sample_rate = int(sample_rate)

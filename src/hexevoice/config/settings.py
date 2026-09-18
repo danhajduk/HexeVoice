@@ -632,7 +632,7 @@ class Settings(BaseSettings):
 
 
 def parse_tts_conversion_sample_rates(raw: object) -> dict[str, int]:
-    allowed = {16000: "16k", 22050: "22050", 48000: "48k"}
+    allowed = {16000: "16k", 22050: "22050", 40000: "40k", 48000: "48k"}
     if raw is None:
         values: list[object] = []
     elif isinstance(raw, str):

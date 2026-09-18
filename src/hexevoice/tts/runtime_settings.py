@@ -12,7 +12,7 @@ from hexevoice.config.settings import parse_tts_conversion_sample_rates
 from hexevoice.piper_models import piper_model_display_name, read_piper_model_config
 
 
-ALLOWED_TTS_CONVERSION_SAMPLE_RATES = (48000, 22050, 16000)
+ALLOWED_TTS_CONVERSION_SAMPLE_RATES = (48000, 40000, 22050, 16000)
 ALLOWED_TTS_CONVERSION_POLICIES = ("blocking_all", "endpoint_required_sync")
 
 
