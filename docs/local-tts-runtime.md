@@ -163,6 +163,12 @@ PIPER_TTS_MODEL_PATH=/models/en_US-kathleen-low.onnx
 PIPER_TTS_WARM_VOICES=en_US-kathleen-low,en_US-hfc_female-medium,en_GB-jenny_dioco-medium
 ```
 
+Piper uses the `natural_assistant` prosody defaults for all generated speech:
+`PIPER_TTS_LENGTH_SCALE=1.08` slightly relaxes phoneme timing, including the
+voice model's native comma pauses, and `PIPER_TTS_SENTENCE_SILENCE_S=0.26`
+adds a consistent pause after sentence boundaries. Both settings are reported
+by `/health` and can be tuned in `scripts/piper-tts.env` without changing code.
+
 Warm voices keep Piper models resident for health and warmup, but request audio is synthesized through isolated Piper `--output_file` calls so each `/api/tts` response has a reliable audio boundary.
 
 When `VOICE_TTS_PROVIDER=piper`, the backend also runs an `every_10_minutes` warmup task that synthesizes `hello` against the configured warm voices and endpoint-specific override voices. The generated artifacts are short-lived and are removed by the normal generated-voice cleanup loop. The latest warmup status is visible in `/api/voice/status` as `voice_tts_warmup`.

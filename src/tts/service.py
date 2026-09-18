@@ -49,6 +49,10 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _bounded_env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    return min(max(_env_float(name, default), minimum), maximum)
+
+
 def _env_list(name: str) -> list[str]:
     raw = os.getenv(name, "")
     return [item.strip() for item in raw.split(",") if item.strip()]
@@ -111,6 +115,14 @@ def _piper_command_for_model(model_path: Path, *, output_raw: bool = False) -> l
     config_path = _config_path_for_model(model_path)
     if config_path is not None:
         command.extend(["--config", str(config_path)])
+    command.extend(
+        [
+            "--length-scale",
+            str(_bounded_env_float("PIPER_TTS_LENGTH_SCALE", 1.08, minimum=0.5, maximum=2.0)),
+            "--sentence-silence",
+            str(_bounded_env_float("PIPER_TTS_SENTENCE_SILENCE_S", 0.26, minimum=0.0, maximum=2.0)),
+        ]
+    )
     if output_raw:
         command.append("--output-raw")
     return command
@@ -285,6 +297,13 @@ def health() -> dict[str, object]:
         "provider": "piper",
         "model_path": str(model_path),
         "model_exists": model_path.exists(),
+        "prosody": {
+            "profile": "natural_assistant",
+            "length_scale": _bounded_env_float("PIPER_TTS_LENGTH_SCALE", 1.08, minimum=0.5, maximum=2.0),
+            "sentence_silence_ms": round(
+                _bounded_env_float("PIPER_TTS_SENTENCE_SILENCE_S", 0.26, minimum=0.0, maximum=2.0) * 1000
+            ),
+        },
         "warm_voices": [worker.model_path.stem for worker in workers.values()],
         "warm_workers": {
             worker.model_path.stem: {

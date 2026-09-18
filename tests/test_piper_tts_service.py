@@ -17,6 +17,23 @@ def test_piper_tts_health_reports_configured_model(tmp_path, monkeypatch):
     assert response.json()["provider"] == "piper"
     assert response.json()["model_path"] == str(model_path)
     assert response.json()["model_exists"] is True
+    assert response.json()["prosody"] == {
+        "profile": "natural_assistant",
+        "length_scale": 1.08,
+        "sentence_silence_ms": 260,
+    }
+
+
+def test_piper_command_uses_natural_assistant_prosody_defaults(tmp_path, monkeypatch):
+    model_path = tmp_path / "voice.onnx"
+    model_path.write_bytes(b"model")
+    monkeypatch.delenv("PIPER_TTS_LENGTH_SCALE", raising=False)
+    monkeypatch.delenv("PIPER_TTS_SENTENCE_SILENCE_S", raising=False)
+
+    command = piper_app._piper_command_for_model(model_path)
+
+    assert command[command.index("--length-scale") + 1] == "1.08"
+    assert command[command.index("--sentence-silence") + 1] == "0.26"
 
 
 def test_piper_tts_route_returns_wav(monkeypatch):
