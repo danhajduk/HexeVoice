@@ -7,7 +7,7 @@ from io import BytesIO
 import httpx
 from PIL import Image
 
-from hexevoice.radar_assets import RADAR_HEIGHT, RADAR_WIDTH, RadarAssetService
+from hexevoice.radar_assets import RADAR_HEIGHT, RADAR_WIDTH, RadarAssetService, _center_zoom
 
 
 def png_bytes() -> bytes:
@@ -18,6 +18,14 @@ def png_bytes() -> bytes:
     output = BytesIO()
     image.save(output, format="PNG")
     return output.getvalue()
+
+
+def test_center_zoom_crops_source_without_changing_output_scale():
+    source = Image.new("RGB", (1672, 941))
+
+    zoomed = _center_zoom(source, 1.15)
+
+    assert zoomed.size == (1454, 818)
 
 
 def test_prepares_center_cropped_rgb888_asset_and_reuses_cache(tmp_path, monkeypatch):

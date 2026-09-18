@@ -18,6 +18,7 @@ RADAR_HEIGHT = 420
 RADAR_X = 112
 RADAR_Y = 96
 MAX_RADAR_SOURCE_BYTES = 12 * 1024 * 1024
+WEATHER_BACKGROUND_ZOOM = 1.15
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 WEATHER_ASSETS_DIR = Path(__file__).resolve().parent / "assets" / "weather_icons"
 WEATHER_ICON_FILES = {
@@ -85,10 +86,14 @@ class RadarAssetService:
             self._records[asset_id] = existing
             return existing
 
-        source = await self._download_visual_source(radar, "radar")
+        source_kind = "radar"
+        source = await self._download_visual_source(radar, source_kind)
         if source is None:
-            source = await self._download_visual_source(background, "weather_image")
-        pixels = await asyncio.to_thread(_compose_weather_rgb888, source, snapshot)
+            source_kind = "weather_image"
+            source = await self._download_visual_source(background, source_kind)
+        if source is None:
+            source_kind = "blank"
+        pixels = await asyncio.to_thread(_compose_weather_rgb888, source, snapshot, source_kind=source_kind)
         digest = sha256(pixels).hexdigest()
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         path = self._cache_dir / f"{asset_id}.rgb888"
@@ -176,6 +181,7 @@ def _weather_visual_state(snapshot: dict[str, Any]) -> dict[str, Any]:
     forecast = snapshot.get("forecast_summary") if isinstance(snapshot.get("forecast_summary"), dict) else {}
     location = snapshot.get("location") if isinstance(snapshot.get("location"), dict) else {}
     return {
+        "renderer": f"weather-overview-bg-zoom-{WEATHER_BACKGROUND_ZOOM}",
         "radar_revision": radar.get("frame_id") or radar.get("sha256") or radar.get("status"),
         "bg_revision": background.get("revision") or background.get("sha256") or background.get("status"),
         "location": location.get("label"),
@@ -197,13 +203,21 @@ def _weather_background(snapshot: dict[str, Any]) -> dict[str, Any]:
     return background if isinstance(background, dict) else {}
 
 
-def _compose_weather_rgb888(source: bytes | None, snapshot: dict[str, Any]) -> bytes:
+def _compose_weather_rgb888(
+    source: bytes | None,
+    snapshot: dict[str, Any],
+    *,
+    source_kind: str = "radar",
+) -> bytes:
     try:
         if source is not None:
             with Image.open(BytesIO(source)) as image:
                 image.load()
+                source_image = image.convert("RGB")
+                if source_kind == "weather_image":
+                    source_image = _center_zoom(source_image, WEATHER_BACKGROUND_ZOOM)
                 canvas = ImageOps.fit(
-                    image.convert("RGB"),
+                    source_image,
                     (RADAR_WIDTH, RADAR_HEIGHT),
                     method=Image.Resampling.LANCZOS,
                     centering=(0.5, 0.5),
@@ -215,6 +229,16 @@ def _compose_weather_rgb888(source: bytes | None, snapshot: dict[str, Any]) -> b
         return canvas.convert("RGB").tobytes("raw", "RGB")
     except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise RadarAssetError("radar_image_invalid") from exc
+
+
+def _center_zoom(image: Image.Image, zoom: float) -> Image.Image:
+    if zoom <= 1:
+        return image
+    crop_width = max(1, round(image.width / zoom))
+    crop_height = max(1, round(image.height / zoom))
+    left = (image.width - crop_width) // 2
+    top = (image.height - crop_height) // 2
+    return image.crop((left, top, left + crop_width, top + crop_height))
 
 
 def _draw_weather_overlay(canvas: Image.Image, snapshot: dict[str, Any]) -> None:
