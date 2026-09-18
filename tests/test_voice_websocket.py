@@ -354,6 +354,56 @@ def test_endpoint_restart_command_routes_to_connected_endpoint(tmp_path):
     assert command["payload"]["request_id"].startswith("cmd_")
 
 
+def test_endpoint_asset_sync_command_routes_to_connected_endpoint(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        response = client.post(
+            "/api/endpoint/media/sync",
+            json={"endpoint_id": "esp-box-1"},
+        )
+        command = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert response.json()["accepted"] is True
+    assert response.json()["command_type"] == "endpoint.assets.sync"
+    assert command["endpoint_id"] == "esp-box-1"
+    assert command["event_type"] == "endpoint.assets.sync"
+    assert command["payload"]["request_id"].startswith("cmd_")
+
+
+def test_endpoint_asset_sync_includes_board_manifest_version(tmp_path):
+    assets_dir = tmp_path / "assets" / "waveshare_p4_wifi6_touch_lcd_7b" / "assets"
+    assets_dir.mkdir(parents=True)
+    (assets_dir / "assets.json").write_text(
+        '{"schema_version":1,"board_profile":"waveshare_p4_wifi6_touch_lcd_7b",'
+        '"asset_library_version":"2026.09.17.72","assets":[]}',
+        encoding="utf-8",
+    )
+    client = TestClient(
+        create_app(
+            Settings(
+                onboarding_state_path=tmp_path / "state.json",
+                endpoint_asset_library_dir=tmp_path / "assets",
+            )
+        )
+    )
+    client.post(
+        "/api/endpoint/heartbeat",
+        json={
+            "endpoint_id": "esp-box-1",
+            "capabilities": {"board_profile": "waveshare_p4_wifi6_touch_lcd_7b"},
+        },
+    )
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        response = client.post("/api/endpoint/media/sync", json={"endpoint_id": "esp-box-1"})
+        command = websocket.receive_json()
+
+    assert response.status_code == 200
+    assert command["payload"]["manifest_version"] == "2026.09.17.72"
+
+
 def test_endpoint_screen_command_routes_temporary_override(tmp_path):
     client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
 
@@ -366,10 +416,60 @@ def test_endpoint_screen_command_routes_temporary_override(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["accepted"] is True
-    assert response.json()["command_type"] == "endpoint.ui.screen"
-    assert command["event_type"] == "endpoint.ui.screen"
-    assert command["payload"]["screen_id"] == "timer"
-    assert command["payload"]["duration_seconds"] == 30
+    assert response.json()["command_type"] == "endpoint.ui.screen.render"
+    assert command["event_type"] == "endpoint.ui.screen.render"
+    assert command["payload"]["mode"] == "temporary"
+    assert command["payload"]["timeout_ms"] == 30000
+    assert command["payload"]["layout"]["id"] == "timer"
+    assert "conditions" not in command["payload"]["layout"]
+
+
+def test_endpoint_screen_set_and_clear_route_persistent_selection(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        set_response = client.post(
+            "/api/endpoint/ui/screen/set",
+            json={"endpoint_id": "esp-box-1", "screen_id": "timer"},
+        )
+        set_command = websocket.receive_json()
+        clear_response = client.post(
+            "/api/endpoint/ui/screen/clear",
+            json={"endpoint_id": "esp-box-1"},
+        )
+        clear_command = websocket.receive_json()
+
+    assert set_response.status_code == 200
+    assert set_response.json()["command_type"] == "endpoint.ui.screen.render"
+    assert set_command["event_type"] == "endpoint.ui.screen.render"
+    assert set_command["payload"]["mode"] == "persistent"
+    assert set_command["payload"]["layout"]["id"] == "timer"
+    assert clear_response.status_code == 200
+    assert clear_response.json()["command_type"] == "endpoint.ui.screen.clear"
+    assert clear_command["event_type"] == "endpoint.ui.screen.clear"
+
+
+def test_endpoint_reports_current_rendered_screen(tmp_path):
+    client = TestClient(create_app(Settings(onboarding_state_path=tmp_path / "state.json")))
+
+    with client.websocket_connect("/api/voice/ws?endpoint_id=esp-box-1") as websocket:
+        websocket.send_json(
+            voice_event(
+                "endpoint.ui.screen.changed",
+                endpoint_id="esp-box-1",
+                payload={
+                    "screen_id": "timer",
+                    "owner": "backend",
+                    "mode": "persistent",
+                    "reason": "screen_changed",
+                    "previous_screen_id": "thinking",
+                },
+            )
+        )
+        status = client.get("/api/voice/status").json()
+
+    assert status["current_ui_screen"]["screen_id"] == "timer"
+    assert status["current_ui_screen"]["owner"] == "backend"
 
 
 def test_voice_websocket_replaces_duplicate_endpoint_control_socket(tmp_path):

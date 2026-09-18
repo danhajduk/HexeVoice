@@ -29,6 +29,7 @@
 #include "freertos/task.h"
 #include "system/asset_sync.h"
 #include "system/clock.h"
+#include "voice/backend_client.h"
 
 namespace {
 constexpr char kTag[] = "hexe_display_p4_7b";
@@ -80,6 +81,10 @@ constexpr size_t kActivitySpriteCount = 4;
 constexpr size_t kSidebarButtonCount = 3;
 constexpr size_t kMaxScreens = 16;
 constexpr size_t kMaxScreenElements = 8;
+constexpr int kTimerPrimaryWidth = 500;
+constexpr int kTimerPrimaryHeight = 150;
+constexpr int kTimerUpcomingWidth = 520;
+constexpr int kTimerUpcomingHeight = 160;
 constexpr size_t kMaxScreenConditions = 4;
 constexpr size_t kStatusLayoutMaxBytes = 8192;
 constexpr size_t kMaxStatusAnimations = 4;
@@ -221,6 +226,7 @@ enum class ScreenElementType : uint8_t {
   kTimerUpcoming,
   kProgressBar,
   kText,
+  kImage,
   kInvalid,
 };
 
@@ -245,6 +251,7 @@ struct ScreenElement {
   char data[16] = {};
   char format[48] = {};
   char font[96] = {};
+  char asset_id[96] = {};
   int font_size = 32;
   TextAlignment text_alignment = TextAlignment::kCenter;
   StatusAnimation animations[kMaxStatusAnimations] = {};
@@ -259,6 +266,7 @@ struct ScreenCondition {
 
 struct ScreenLayout {
   char id[24] = {};
+  bool backend_owned = false;
   bool match_any = false;
   bool sidebars_enabled = false;
   ScreenCondition conditions[kMaxScreenConditions] = {};
@@ -284,14 +292,14 @@ struct StatusLayout {
     bool enabled = true;
     char date_format[32] = "%A, %B %d %Y.";
     struct Frame {
-      int x = (kWidth - kIdleClockFrameWidth) / 2;
-      int y = 205;
+      int x = kWidth / 2;
+      int y = 310;
       StatusAnimation animations[kMaxStatusAnimations] = {};
       size_t animation_count = 0;
     } frame;
-    AnimatedTextLayout hours = {415, 240, 118, 0xD8FFFA};
-    AnimatedTextLayout separator = {512, 247, 98, 0x35F4DB};
-    AnimatedTextLayout minutes = {609, 240, 118, 0xD8FFFA};
+    AnimatedTextLayout hours = {415, 299, 118, 0xD8FFFA};
+    AnimatedTextLayout separator = {512, 296, 98, 0x35F4DB};
+    AnimatedTextLayout minutes = {609, 299, 118, 0xD8FFFA};
     AnimatedTextLayout date = {512, 370, 30, 0x55B8FF};
   } idle_clock;
   struct Sidebars {
@@ -306,8 +314,10 @@ struct StatusLayout {
   } activity_sprites;
   struct TimerScreen {
     bool enabled = true;
-    AnimatedTextLayout primary_countdown = {270, 450, 64, 0xD8FFFA};
-    AnimatedTextLayout primary_label = {270, 525, 24, 0x35F4DB};
+    int primary_x = 250;
+    int primary_y = 505;
+    AnimatedTextLayout primary_countdown = {250, 462, 64, 0xD8FFFA};
+    AnimatedTextLayout primary_label = {250, 512, 24, 0x35F4DB};
     struct Upcoming {
       int x = 760;
       int y = 438;
@@ -320,8 +330,8 @@ struct StatusLayout {
   } timer_screen;
   struct SidebarButtons {
     bool enabled = true;
-    int x = 16;
-    int y = 112;
+    int x = 44;
+    int y = 140;
     int gap = 18;
   } sidebar_buttons;
   struct Clock {
@@ -333,17 +343,17 @@ struct StatusLayout {
   } clock;
   struct Version {
     int font_size = 18;
-    int x = 24;
+    int x = kWidth / 2;
     int y = 568;
     uint32_t color = kBlue;
     char font[96] = {};
   } version;
-  int y = 12;
-  int floating_x = 20;
+  int y = 32;
+  int floating_x = 40;
   int floating_gap = 0;
   StatusIconLayout icons[static_cast<size_t>(StatusIconId::kCount)] = {
-      {false, 920},
-      {false, 880},
+      {false, 940},
+      {false, 900},
       {true, 0},
   };
   StatusIconId floating_order[static_cast<size_t>(StatusIconId::kCount)] = {
@@ -446,10 +456,28 @@ std::atomic<int> g_sidebar_left_draw_y{0};
 std::atomic<bool> g_big_clock_visible{false};
 std::atomic<int> g_big_clock_draw_x{0};
 std::atomic<int> g_big_clock_draw_y{0};
+std::atomic<bool> g_activity_visible{false};
+std::atomic<int> g_activity_draw_x{0};
+std::atomic<int> g_activity_draw_y{0};
 SlideAnimationState g_idle_clock_animation_states[kMaxScreenElements][kMaxStatusAnimations] = {};
 SlideAnimationState g_activity_animation_states[kActivitySpriteCount][kMaxStatusAnimations] = {};
 StatusLayout g_status_layout;
 bool g_status_layout_loaded = false;
+StatusLayout *g_backend_parse_layout = nullptr;
+ScreenLayout *g_backend_persistent_screen = nullptr;
+ScreenLayout *g_backend_temporary_screen = nullptr;
+bool g_backend_persistent_screen_valid = false;
+bool g_backend_temporary_screen_valid = false;
+int64_t g_backend_temporary_screen_expires_us = 0;
+struct PreparedImage {
+  char asset_id[96] = {};
+  uint8_t *pixels = nullptr;
+  size_t size_bytes = 0;
+  int width = 0;
+  int height = 0;
+};
+std::atomic<PreparedImage *> g_pending_prepared_image{nullptr};
+PreparedImage *g_prepared_image = nullptr;
 ClockFont g_clock_font;
 ClockFont g_version_font;
 ClockFont g_idle_hours_font;
@@ -522,11 +550,11 @@ const char *phase_text(const hexe::AppState &state) {
   }
   switch (state.phase) {
     case hexe::AppPhase::kBooting:
-      return "Booting";
+      return "Starting device";
     case hexe::AppPhase::kWiFiConnecting:
-      return "WiFi setup pending";
+      return "Connecting to Wi-Fi";
     case hexe::AppPhase::kBackendConnecting:
-      return "Core connecting";
+      return "Connecting to backend";
     case hexe::AppPhase::kIdle:
       return "Ready";
     case hexe::AppPhase::kListening:
@@ -546,6 +574,16 @@ const char *phase_text(const hexe::AppState &state) {
   return "Hexe endpoint";
 }
 
+int message_signature(const char *value) {
+  int signature = 0;
+  for (const unsigned char *cursor = reinterpret_cast<const unsigned char *>(value);
+       cursor != nullptr && *cursor != '\0';
+       ++cursor) {
+    signature = (signature * 131) + *cursor;
+  }
+  return signature;
+}
+
 int frame_signature(int frame) {
   const auto &state = hexe::state();
   int signature = static_cast<int>(state.phase);
@@ -561,6 +599,8 @@ int frame_signature(int frame) {
   signature = (signature * 131) + static_cast<int>(state.display_timer_count);
   signature = (signature * 131) + static_cast<int>(hexe::ui_flags_signature());
   signature = (signature * 131) + static_cast<int>(hexe::ui_screen_signature());
+  signature = (signature * 131) + message_signature(state.system_message);
+  signature = (signature * 131) + message_signature(state.error_message);
   if (state.timer_active) {
     signature = (signature * 131) + static_cast<int>((esp_timer_get_time() / 1000000) % 100000);
   }
@@ -590,6 +630,8 @@ int static_frame_signature(const hexe::AppState &state) {
   signature = (signature * 131) + static_cast<int>(state.display_timer_count);
   signature = (signature * 131) + static_cast<int>(hexe::ui_flags_signature());
   signature = (signature * 131) + static_cast<int>(hexe::ui_screen_signature());
+  signature = (signature * 131) + message_signature(state.system_message);
+  signature = (signature * 131) + message_signature(state.error_message);
   return signature;
 }
 
@@ -1163,6 +1205,7 @@ ScreenElementType screen_element_type(const char *name) {
   if (std::strcmp(name, "timer_upcoming") == 0) return ScreenElementType::kTimerUpcoming;
   if (std::strcmp(name, "progress_bar") == 0) return ScreenElementType::kProgressBar;
   if (std::strcmp(name, "text") == 0) return ScreenElementType::kText;
+  if (std::strcmp(name, "image") == 0) return ScreenElementType::kImage;
   return ScreenElementType::kInvalid;
 }
 
@@ -1182,6 +1225,8 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
     cJSON *id = cJSON_GetObjectItem(screen_item, "id");
     if (!cJSON_IsString(id) || id->valuestring == nullptr) continue;
     std::snprintf(screen.id, sizeof(screen.id), "%s", id->valuestring);
+    cJSON *owner = cJSON_GetObjectItem(screen_item, "owner");
+    screen.backend_owned = cJSON_IsString(owner) && std::strcmp(owner->valuestring, "backend") == 0;
     screen.sidebars_enabled = cJSON_IsTrue(cJSON_GetObjectItem(screen_item, "sidebars"));
     cJSON *conditions = cJSON_GetObjectItem(screen_item, "conditions");
     cJSON *match = cJSON_IsObject(conditions) ? cJSON_GetObjectItem(conditions, "match") : nullptr;
@@ -1225,8 +1270,8 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
         element.activity_index = cJSON_IsString(sprite) ? activity_sprite_index(sprite->valuestring) : -1;
         if (element.activity_index < 0) continue;
       } else if (element.type == ScreenElementType::kProgressBar) {
-        element.width = json_integer(element_item, "width", element.width, 1, kWidth - element.x);
-        element.height = json_integer(element_item, "height", element.height, 1, kHeight - element.y);
+        element.width = json_integer(element_item, "width", element.width, 1, kWidth);
+        element.height = json_integer(element_item, "height", element.height, 1, kHeight);
         element.color = json_color(element_item, "color", element.color);
         element.track_color = json_color(element_item, "track_color", element.track_color);
       } else if (element.type == ScreenElementType::kText) {
@@ -1257,6 +1302,14 @@ void parse_screen_layouts(cJSON *screens, StatusLayout *layout) {
         } else if (cJSON_IsString(align) && std::strcmp(align->valuestring, "right") == 0) {
           element.text_alignment = TextAlignment::kRight;
         }
+      } else if (element.type == ScreenElementType::kImage) {
+        cJSON *asset_id = cJSON_GetObjectItem(element_item, "asset_id");
+        if (!cJSON_IsString(asset_id) || asset_id->valuestring == nullptr || asset_id->valuestring[0] == '\0') {
+          continue;
+        }
+        std::snprintf(element.asset_id, sizeof(element.asset_id), "%s", asset_id->valuestring);
+        element.width = json_integer(element_item, "width", element.width, 1, kWidth);
+        element.height = json_integer(element_item, "height", element.height, 1, kHeight);
       }
       screen.elements[screen.element_count++] = element;
     }
@@ -1393,6 +1446,46 @@ int bitmap_text_width(const ClockFont &font, const char *text, int font_size) {
     width += scale_font_metric(font, font_size, glyph->advance);
   }
   return width;
+}
+
+bool bitmap_text_bounds(
+    const ClockFont &font,
+    const char *text,
+    int font_size,
+    int *left,
+    int *top,
+    int *right,
+    int *bottom) {
+  if (text == nullptr || left == nullptr || top == nullptr || right == nullptr || bottom == nullptr) {
+    return false;
+  }
+  int cursor_x = 0;
+  bool has_pixels = false;
+  const int baseline_y = scale_font_metric(font, font_size, font.ascent);
+  for (const char *cursor = text; *cursor != '\0'; ++cursor) {
+    const ClockGlyph *glyph = font_glyph(font, *cursor);
+    if (glyph == nullptr) return false;
+    if (glyph->width > 0 && glyph->height > 0) {
+      const int glyph_left = cursor_x + scale_font_metric(font, font_size, glyph->left);
+      const int glyph_top = baseline_y - scale_font_metric(font, font_size, glyph->top);
+      const int glyph_right = glyph_left + std::max(1, scale_font_metric(font, font_size, glyph->width));
+      const int glyph_bottom = glyph_top + std::max(1, scale_font_metric(font, font_size, glyph->height));
+      if (!has_pixels) {
+        *left = glyph_left;
+        *top = glyph_top;
+        *right = glyph_right;
+        *bottom = glyph_bottom;
+        has_pixels = true;
+      } else {
+        *left = std::min(*left, glyph_left);
+        *top = std::min(*top, glyph_top);
+        *right = std::max(*right, glyph_right);
+        *bottom = std::max(*bottom, glyph_bottom);
+      }
+    }
+    cursor_x += scale_font_metric(font, font_size, glyph->advance);
+  }
+  return has_pixels;
 }
 
 bool draw_bitmap_text(
@@ -1547,9 +1640,9 @@ void load_status_layout() {
   }
   cJSON *idle_frame = cJSON_IsObject(idle_clock) ? cJSON_GetObjectItem(idle_clock, "sprite") : nullptr;
   g_status_layout.idle_clock.frame.x =
-      json_layout_coordinate(idle_frame, "x", g_status_layout.idle_clock.frame.x, kWidth - kIdleClockFrameWidth);
+      json_layout_coordinate(idle_frame, "x", g_status_layout.idle_clock.frame.x, kWidth - 1);
   g_status_layout.idle_clock.frame.y =
-      json_layout_coordinate(idle_frame, "y", g_status_layout.idle_clock.frame.y, kHeight - kIdleClockFrameHeight);
+      json_layout_coordinate(idle_frame, "y", g_status_layout.idle_clock.frame.y, kHeight - 1);
   parse_animation_list(
       idle_frame,
       g_status_layout.idle_clock.frame.animations,
@@ -1574,6 +1667,10 @@ void load_status_layout() {
   if (cJSON_IsBool(timer_enabled)) {
     g_status_layout.timer_screen.enabled = cJSON_IsTrue(timer_enabled);
   }
+  g_status_layout.timer_screen.primary_x =
+      json_layout_coordinate(timer_screen, "primary_x", g_status_layout.timer_screen.primary_x, kWidth - 1);
+  g_status_layout.timer_screen.primary_y =
+      json_layout_coordinate(timer_screen, "primary_y", g_status_layout.timer_screen.primary_y, kHeight - 1);
   parse_animated_text(
       cJSON_IsObject(timer_screen) ? cJSON_GetObjectItem(timer_screen, "primary_countdown") : nullptr,
       &g_status_layout.timer_screen.primary_countdown,
@@ -1624,8 +1721,8 @@ void load_status_layout() {
       continue;
     }
     auto &layout = g_status_layout.activity_sprites.items[index];
-    layout.x = json_layout_coordinate(activity_item, "x", layout.x, kWidth - kActivitySpriteSize);
-    layout.y = json_layout_coordinate(activity_item, "y", layout.y, kHeight - kActivitySpriteSize);
+    layout.x = json_layout_coordinate(activity_item, "x", layout.x, kWidth - 1);
+    layout.y = json_layout_coordinate(activity_item, "y", layout.y, kHeight - 1);
     parse_animation_list(activity_item, layout.animations, &layout.animation_count);
   }
   cJSON *buttons_enabled = cJSON_IsObject(sidebar_buttons) ? cJSON_GetObjectItem(sidebar_buttons, "enabled") : nullptr;
@@ -1633,9 +1730,9 @@ void load_status_layout() {
     g_status_layout.sidebar_buttons.enabled = cJSON_IsTrue(buttons_enabled);
   }
   g_status_layout.sidebar_buttons.x = json_layout_coordinate(
-      sidebar_buttons, "x", g_status_layout.sidebar_buttons.x, kSidebarWidth - kSidebarButtonWidth);
+      sidebar_buttons, "x", g_status_layout.sidebar_buttons.x, kWidth - 1);
   g_status_layout.sidebar_buttons.y = json_layout_coordinate(
-      sidebar_buttons, "y", g_status_layout.sidebar_buttons.y, kHeight - kSidebarButtonHeight);
+      sidebar_buttons, "y", g_status_layout.sidebar_buttons.y, kHeight - 1);
   g_status_layout.sidebar_buttons.gap = json_layout_coordinate(
       sidebar_buttons, "gap", g_status_layout.sidebar_buttons.gap, kSidebarHeight);
   g_status_layout.clock.font_size =
@@ -1796,7 +1893,7 @@ bool status_flag_value(StatusFlag flag, const hexe::AppState &state) {
     case StatusFlag::kTimerActive:
       return state.timer_active;
     case StatusFlag::kTimerFinished:
-      return state.timer_state == hexe::TimerLifecycleState::kFinished;
+      return state.phase == hexe::AppPhase::kTimerFinished;
     case StatusFlag::kError:
       return state.phase == hexe::AppPhase::kError;
     case StatusFlag::kUiReady:
@@ -2033,7 +2130,10 @@ void draw_sidebars(
     for (size_t index = 0; index < screen->button_count; ++index) {
       StatusSprite *button = sidebar_button_sprite(screen->buttons[index]);
       if (button == nullptr) continue;
-      draw_status_sprite(button, g_status_layout.sidebar_buttons.x + left_x, button_y);
+      draw_status_sprite(
+          button,
+          g_status_layout.sidebar_buttons.x - (button->width / 2) + left_x,
+          button_y - (button->height / 2));
       button_y += kSidebarButtonHeight + g_status_layout.sidebar_buttons.gap;
     }
   }
@@ -2102,6 +2202,7 @@ void draw_activity_sprite(
     }
   }
   if (active_index < 0) {
+    g_activity_visible.store(false, std::memory_order_release);
     return;
   }
   const auto &layout = g_status_layout.activity_sprites.items[active_index];
@@ -2136,9 +2237,14 @@ void draw_activity_sprite(
       shake_animation_offset(animation, sprite->width, now_ms, &offset_x);
     }
   }
-  const int x = (element != nullptr && element->has_x ? element->x : layout.x) + offset_x;
-  const int y = (element != nullptr && element->has_y ? element->y : layout.y) + offset_y;
+  const int center_x = element != nullptr && element->has_x ? element->x : layout.x;
+  const int center_y = element != nullptr && element->has_y ? element->y : layout.y;
+  const int x = center_x - (sprite->width / 2) + offset_x;
+  const int y = center_y - (sprite->height / 2) + offset_y;
   draw_status_sprite(sprite, x, y, static_cast<uint8_t>(opacity));
+  g_activity_draw_x.store(x, std::memory_order_relaxed);
+  g_activity_draw_y.store(y, std::memory_order_relaxed);
+  g_activity_visible.store(true, std::memory_order_release);
   for (size_t index = 0; index < animation_count; ++index) {
     const auto &animation = animations[index];
     if (animation.type != StatusAnimationType::kPulse && animation.type != StatusAnimationType::kSlideIn &&
@@ -2159,7 +2265,12 @@ void draw_idle_clock_text(
     size_t element_index) {
   if (!load_bitmap_font(font, layout.font, label)) {
     const int fallback_scale = (layout.font_size * 100) / 7;
-    draw_text(layout.x - (text_width(text, fallback_scale) / 2), layout.y, text, fallback_scale, layout.color);
+    draw_text(
+        layout.x - (text_width(text, fallback_scale) / 2),
+        layout.y - (layout.font_size / 2),
+        text,
+        fallback_scale,
+        layout.color);
     return;
   }
   const int width = bitmap_text_width(*font, text, layout.font_size);
@@ -2182,7 +2293,7 @@ void draw_idle_clock_text(
       *font,
       text,
       layout.x - (width / 2) + offset_x,
-      layout.y + offset_y,
+      layout.y - (layout.font_size / 2) + offset_y,
       layout.font_size,
       scale_color(layout.color, opacity * 1000 / 255));
 }
@@ -2190,10 +2301,14 @@ void draw_idle_clock_text(
 void draw_big_clock(const hexe::AppState &state, int64_t now_ms, const ScreenElement *element) {
   if (!g_status_layout.idle_clock.enabled) return;
   const auto &clock = g_status_layout.idle_clock;
-  const int frame_x = element != nullptr && element->has_x ? element->x : clock.frame.x;
-  const int frame_y = element != nullptr && element->has_y ? element->y : clock.frame.y;
-  const int delta_x = frame_x - clock.frame.x;
-  const int delta_y = frame_y - clock.frame.y;
+  const int frame_x = element != nullptr && element->has_x
+      ? element->x - (kIdleClockFrameWidth / 2)
+      : clock.frame.x - (kIdleClockFrameWidth / 2);
+  const int frame_y = element != nullptr && element->has_y
+      ? element->y - (kIdleClockFrameHeight / 2)
+      : clock.frame.y - (kIdleClockFrameHeight / 2);
+  const int delta_x = (frame_x + (kIdleClockFrameWidth / 2)) - clock.frame.x;
+  const int delta_y = (frame_y + (kIdleClockFrameHeight / 2)) - clock.frame.y;
   int frame_offset_x = 0;
   int frame_offset_y = 0;
   const StatusAnimation *frame_animations = element != nullptr && element->animation_count > 0
@@ -2294,13 +2409,32 @@ void draw_timer_text(
     const char *label) {
   if (!load_bitmap_font(font, layout.font, label)) {
     const int fallback_scale = (layout.font_size * 100) / 7;
-    draw_text(layout.x - (text_width(text, fallback_scale) / 2), layout.y, text, fallback_scale, layout.color);
+    draw_text(
+        layout.x - (text_width(text, fallback_scale) / 2),
+        layout.y - (layout.font_size / 2),
+        text,
+        fallback_scale,
+        layout.color);
     return;
   }
   const int width = bitmap_text_width(*font, text, layout.font_size);
-  if (width > 0) {
-    draw_bitmap_text(*font, text, layout.x - (width / 2), layout.y, layout.font_size, layout.color);
+  if (width <= 0) {
+    const int fallback_scale = (layout.font_size * 100) / 7;
+    draw_text(
+        layout.x - (text_width(text, fallback_scale) / 2),
+        layout.y - (layout.font_size / 2),
+        text,
+        fallback_scale,
+        layout.color);
+    return;
   }
+  draw_bitmap_text(
+      *font,
+      text,
+      layout.x - (width / 2),
+      layout.y - (layout.font_size / 2),
+      layout.font_size,
+      layout.color);
 }
 
 void draw_timer_screen(
@@ -2319,12 +2453,12 @@ void draw_timer_screen(
     AnimatedTextLayout countdown_layout = screen.primary_countdown;
     AnimatedTextLayout label_layout = screen.primary_label;
     if (element != nullptr && element->has_x) {
-      const int delta_x = element->x - countdown_layout.x;
+      const int delta_x = element->x - screen.primary_x;
       countdown_layout.x += delta_x;
       label_layout.x += delta_x;
     }
     if (element != nullptr && element->has_y) {
-      const int delta_y = element->y - countdown_layout.y;
+      const int delta_y = element->y - screen.primary_y;
       countdown_layout.y += delta_y;
       label_layout.y += delta_y;
     }
@@ -2348,7 +2482,8 @@ void draw_timer_screen(
     std::snprintf(row, sizeof(row), "%.15s  %s", timer.label[0] != '\0' ? timer.label : "Timer", remaining);
     AnimatedTextLayout row_layout = {};
     row_layout.x = element != nullptr && element->has_x ? element->x : screen.upcoming.x;
-    const int first_y = element != nullptr && element->has_y ? element->y : screen.upcoming.y;
+    const int center_y = element != nullptr && element->has_y ? element->y : screen.upcoming.y;
+    const int first_y = center_y - (static_cast<int>(upcoming_count) - 1) * screen.upcoming.gap / 2;
     row_layout.y = first_y + static_cast<int>(index) * screen.upcoming.gap;
     row_layout.font_size = screen.upcoming.font_size;
     row_layout.color = screen.upcoming.color;
@@ -2488,8 +2623,8 @@ void draw_status_icon(
       shake_animation_offset(animation, sprite->width, now_ms, &slide_x);
     }
   }
-  x += slide_x;
-  y += slide_y;
+  x += slide_x - (sprite->width / 2);
+  y += slide_y - (sprite->height / 2);
   draw_status_sprite(sprite, x, y, status_sprite_opacity(layout, state, now_ms));
   for (size_t index = 0; index < layout.animation_count; ++index) {
     const auto &animation = layout.animations[index];
@@ -2586,16 +2721,9 @@ void draw_header_clock(bool show_with_idle_clock = false) {
 }
 
 const ScreenLayout *active_screen_layout(const hexe::AppState &state) {
-  char forced_screen_id[hexe::kMaxUiScreenIdBytes] = {};
-  if (hexe::active_ui_screen(forced_screen_id, sizeof(forced_screen_id))) {
-    for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
-      if (std::strcmp(g_status_layout.screens[index].id, forced_screen_id) == 0) {
-        return &g_status_layout.screens[index];
-      }
-    }
-  }
   for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
     const auto &screen = g_status_layout.screens[index];
+    if (screen.backend_owned || std::strcmp(screen.id, "idle") == 0 || std::strcmp(screen.id, "default") == 0) continue;
     bool matches = screen.condition_count == 0;
     for (size_t condition_index = 0; condition_index < screen.condition_count; ++condition_index) {
       const auto &condition = screen.conditions[condition_index];
@@ -2609,6 +2737,29 @@ const ScreenLayout *active_screen_layout(const hexe::AppState &state) {
     if (matches) {
       return &screen;
     }
+  }
+  if (g_backend_temporary_screen_valid && esp_timer_get_time() >= g_backend_temporary_screen_expires_us) {
+    g_backend_temporary_screen_valid = false;
+    g_backend_temporary_screen_expires_us = 0;
+    g_force_redraw = true;
+  }
+  if (g_backend_temporary_screen_valid && g_backend_temporary_screen != nullptr) return g_backend_temporary_screen;
+  if (g_backend_persistent_screen_valid && g_backend_persistent_screen != nullptr) return g_backend_persistent_screen;
+  for (size_t index = 0; index < g_status_layout.screen_count; ++index) {
+    const auto &screen = g_status_layout.screens[index];
+    if (screen.backend_owned) continue;
+    if (std::strcmp(screen.id, "idle") != 0 && std::strcmp(screen.id, "default") != 0) continue;
+    bool matches = screen.condition_count == 0;
+    for (size_t condition_index = 0; condition_index < screen.condition_count; ++condition_index) {
+      const auto &condition = screen.conditions[condition_index];
+      const bool value = condition.flag == StatusFlag::kInvalid
+          ? hexe::ui_flag_value(condition.custom_flag)
+          : status_flag_value(condition.flag, state);
+      const bool condition_matches = value == condition.expected;
+      matches = condition_index == 0 ? condition_matches
+                                     : (screen.match_any ? matches || condition_matches : matches && condition_matches);
+    }
+    if (matches) return &screen;
   }
   return nullptr;
 }
@@ -2645,26 +2796,37 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
         break;
       case ScreenElementType::kProgressBar: {
         const int progress = std::clamp(state.ota_progress_percent, 0, 100);
-        fill_rect(element.x, element.y, element.width, element.height, element.track_color);
-        fill_rect(element.x, element.y, element.width * progress / 100, element.height, element.color);
-        draw_rect_outline(element.x, element.y, element.width, element.height, kInk);
+        const int x = element.x - (element.width / 2);
+        const int y = element.y - (element.height / 2);
+        fill_rect(x, y, element.width, element.height, element.track_color);
+        fill_rect(x, y, element.width * progress / 100, element.height, element.color);
+        draw_rect_outline(x, y, element.width, element.height, kInk);
         break;
       }
       case ScreenElementType::kText: {
         char dynamic_text[96] = {};
         const char *display_text = element.text;
         if (element.data[0] != '\0') {
-          std::tm local = {};
-          if (!hexe::system::current_local_time(&local)) break;
-          const char *format = element.format;
-          if (format[0] == '\0') {
-            format = std::strcmp(element.data, "time") == 0
-                ? "%I:%M %p"
-                : (std::strcmp(element.data, "date_short") == 0 ? "%a, %b %d" : "%A, %B %d %Y.");
+          if (std::strcmp(element.data, "system_message") == 0) {
+            display_text = state.system_message[0] != '\0' ? state.system_message : phase_text(state);
+          } else if (std::strcmp(element.data, "error_message") == 0) {
+            display_text = state.error_message[0] != '\0'
+                ? state.error_message
+                : (state.phase == hexe::AppPhase::kError ? "Device error" : "");
+          } else {
+            std::tm local = {};
+            if (!hexe::system::current_local_time(&local)) break;
+            const char *format = element.format;
+            if (format[0] == '\0') {
+              format = std::strcmp(element.data, "time") == 0
+                  ? "%I:%M %p"
+                  : (std::strcmp(element.data, "date_short") == 0 ? "%a, %b %d" : "%A, %B %d %Y.");
+            }
+            if (std::strftime(dynamic_text, sizeof(dynamic_text), format, &local) == 0) break;
+            display_text = dynamic_text;
           }
-          if (std::strftime(dynamic_text, sizeof(dynamic_text), format, &local) == 0) break;
-          display_text = dynamic_text;
         }
+        if (display_text == nullptr || display_text[0] == '\0') break;
         if (g_screen_text_fonts[index] == nullptr) {
           g_screen_text_fonts[index] = static_cast<ClockFont *>(
               heap_caps_calloc(1, sizeof(ClockFont), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
@@ -2684,12 +2846,8 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
         const int width = bitmap_font_loaded
             ? bitmap_text_width(*font, display_text, element.font_size)
             : text_width(display_text, fallback_scale);
-        int x = element.x;
-        if (element.text_alignment == TextAlignment::kCenter) {
-          x -= width / 2;
-        } else if (element.text_alignment == TextAlignment::kRight) {
-          x -= width;
-        }
+        const int x = element.x - (width / 2);
+        const int y = element.y - (element.font_size / 2);
         int offset_x = 0;
         int offset_y = 0;
         const uint8_t opacity = animated_element_transform(
@@ -2708,11 +2866,36 @@ void draw_screen_layout(const hexe::AppState &state, int64_t now_ms, const Scree
               *font,
               display_text,
               x + offset_x,
-              element.y + offset_y,
+              y + offset_y,
               element.font_size,
               color);
         } else {
-          draw_text(x + offset_x, element.y + offset_y, display_text, fallback_scale, color);
+          draw_text(x + offset_x, y + offset_y, display_text, fallback_scale, color);
+        }
+        break;
+      }
+      case ScreenElementType::kImage: {
+        if (g_prepared_image == nullptr || g_prepared_image->pixels == nullptr ||
+            std::strcmp(g_prepared_image->asset_id, element.asset_id) != 0 ||
+            g_prepared_image->width != element.width || g_prepared_image->height != element.height) {
+          break;
+        }
+        const int draw_left = std::max(element.x, g_strip_x);
+        const int draw_top = std::max(element.y, g_strip_y);
+        const int draw_right = std::min(element.x + element.width, g_strip_x + g_strip_width);
+        const int draw_bottom = std::min(element.y + element.height, g_strip_y + g_strip_rows);
+        for (int y = draw_top; y < draw_bottom; ++y) {
+          for (int x = draw_left; x < draw_right; ++x) {
+            const size_t offset =
+                (static_cast<size_t>(y - element.y) * element.width + (x - element.x)) * kBytesPerPixel;
+            const uint8_t *pixel = g_prepared_image->pixels + offset;
+            set_pixel(
+                x,
+                y,
+                (static_cast<uint32_t>(pixel[0]) << 16) |
+                    (static_cast<uint32_t>(pixel[1]) << 8) |
+                    static_cast<uint32_t>(pixel[2]));
+          }
         }
         break;
       }
@@ -2741,22 +2924,45 @@ void draw_version_text(const char *build_id) {
   char version[32] = {};
   std::snprintf(version, sizeof(version), "%.*s", static_cast<int>(length), suffix);
 
-  if (!load_bitmap_font(
-          &g_version_font,
-          g_status_layout.version.font[0] != '\0' ? g_status_layout.version.font : kDefaultVersionFont,
-          "version") ||
+  const bool font_loaded = load_bitmap_font(
+      &g_version_font,
+      g_status_layout.version.font[0] != '\0' ? g_status_layout.version.font : kDefaultVersionFont,
+      "version");
+  const int scale = (g_status_layout.version.font_size * 100) / 7;
+  int bounds_left = 0;
+  int bounds_top = 0;
+  int bounds_right = 0;
+  int bounds_bottom = 0;
+  const bool has_bounds = font_loaded && bitmap_text_bounds(
+      g_version_font,
+      version,
+      g_status_layout.version.font_size,
+      &bounds_left,
+      &bounds_top,
+      &bounds_right,
+      &bounds_bottom);
+  const int width = font_loaded
+      ? bitmap_text_width(g_version_font, version, g_status_layout.version.font_size)
+      : text_width(version, scale);
+  const int x = has_bounds
+      ? g_status_layout.version.x - ((bounds_left + bounds_right) / 2)
+      : g_status_layout.version.x - (width / 2);
+  const int y = has_bounds
+      ? g_status_layout.version.y - ((bounds_top + bounds_bottom) / 2)
+      : g_status_layout.version.y - (g_status_layout.version.font_size / 2);
+  if (!font_loaded ||
       !draw_bitmap_text(
           g_version_font,
           version,
-          g_status_layout.version.x,
-          g_status_layout.version.y,
+          x,
+          y,
           g_status_layout.version.font_size,
           g_status_layout.version.color)) {
     draw_text(
-        g_status_layout.version.x,
-        g_status_layout.version.y,
+        x,
+        y,
         version,
-        (g_status_layout.version.font_size * 100) / 7,
+        scale,
         g_status_layout.version.color);
   }
 }
@@ -3094,28 +3300,42 @@ void append_element_dirty_region(DirtyRegion *regions, size_t *count, const Scre
       append_dirty_region(regions, count, 0, 0, kWidth, 78);
       break;
     case ScreenElementType::kBigClock:
-      append_dirty_region(regions, count, element.x - 48, element.y - 48,
+      append_dirty_region(regions, count,
+                          element.x - (kIdleClockFrameWidth / 2) - 48,
+                          element.y - (kIdleClockFrameHeight / 2) - 48,
                           kIdleClockFrameWidth + 96, kIdleClockFrameHeight + 96);
       break;
     case ScreenElementType::kBigDate:
-      append_dirty_region(regions, count, 100, element.y - 16, kWidth - 200, 88);
+      append_dirty_region(regions, count, 100, element.y - (element.font_size / 2) - 16, kWidth - 200, 88);
       break;
     case ScreenElementType::kActivity:
-      append_dirty_region(regions, count, element.x - 32, element.y - 32,
+      append_dirty_region(regions, count,
+                          element.x - (kActivitySpriteSize / 2) - 32,
+                          element.y - (kActivitySpriteSize / 2) - 32,
                           kActivitySpriteSize + 64, kActivitySpriteSize + 64);
       break;
     case ScreenElementType::kTimerPrimary:
-      append_dirty_region(regions, count, element.x - 250, element.y - 24, 500, 150);
+      append_dirty_region(regions, count, element.x - (kTimerPrimaryWidth / 2),
+                          element.y - (kTimerPrimaryHeight / 2) - 24,
+                          kTimerPrimaryWidth, kTimerPrimaryHeight + 48);
       break;
     case ScreenElementType::kTimerUpcoming:
-      append_dirty_region(regions, count, element.x - 260, element.y - 24, 520, 160);
+      append_dirty_region(regions, count, element.x - (kTimerUpcomingWidth / 2),
+                          element.y - (kTimerUpcomingHeight / 2) - 24,
+                          kTimerUpcomingWidth, kTimerUpcomingHeight + 48);
       break;
     case ScreenElementType::kProgressBar:
-      append_dirty_region(regions, count, element.x - 2, element.y - 2, element.width + 4, element.height + 4);
+      append_dirty_region(regions, count, element.x - (element.width / 2) - 2,
+                          element.y - (element.height / 2) - 2,
+                          element.width + 4, element.height + 4);
       break;
     case ScreenElementType::kText:
-      append_dirty_region(regions, count, element.x - element.width, element.y - 8,
+      append_dirty_region(regions, count, element.x - element.width,
+                          element.y - (element.font_size / 2) - 8,
                           element.width * 2, std::max(element.height, element.font_size + 16));
+      break;
+    case ScreenElementType::kImage:
+      append_dirty_region(regions, count, element.x, element.y, element.width, element.height);
       break;
     case ScreenElementType::kInvalid:
       break;
@@ -3246,6 +3466,14 @@ void turn_on_backlight() {
 }
 
 void render_boot_frame(int frame, const char *build_id) {
+  if (PreparedImage *pending = g_pending_prepared_image.exchange(nullptr, std::memory_order_acq_rel)) {
+    if (g_prepared_image != nullptr) {
+      heap_caps_free(g_prepared_image->pixels);
+      heap_caps_free(g_prepared_image);
+    }
+    g_prepared_image = pending;
+    g_force_redraw = true;
+  }
   if (g_display_assets_reload_requested.exchange(false, std::memory_order_acquire)) {
     reload_display_assets();
     g_force_redraw = true;
@@ -3286,9 +3514,107 @@ void render_boot_frame(int frame, const char *build_id) {
     g_last_minute_signature = minute_signature;
     g_last_timer_signature = timer_signature;
     g_last_animation_signature = animation_signature;
-    std::snprintf(g_last_screen_id, sizeof(g_last_screen_id), "%s", screen_id);
+    if (std::strcmp(screen_id, g_last_screen_id) != 0) {
+      const bool backend_screen = screen == g_backend_temporary_screen || screen == g_backend_persistent_screen;
+      const char *mode = screen == g_backend_temporary_screen ? "temporary"
+          : (screen == g_backend_persistent_screen ? "persistent" : "local");
+      hexe::voice::send_ui_screen_changed_event(
+          screen_id,
+          backend_screen ? "backend" : "device",
+          mode,
+          "screen_changed",
+          g_last_screen_id[0] == '\0' ? nullptr : g_last_screen_id);
+      std::snprintf(g_last_screen_id, sizeof(g_last_screen_id), "%s", screen_id);
+    }
     g_force_redraw = false;
   }
+}
+
+bool set_backend_screen_layout(const cJSON *layout, bool temporary, int timeout_ms) {
+  if (!cJSON_IsObject(layout) || (temporary && (timeout_ms <= 0 || timeout_ms > 300000))) return false;
+  cJSON *copy = cJSON_Duplicate(layout, true);
+  if (copy == nullptr) return false;
+  cJSON *screen_id = cJSON_GetObjectItem(copy, "id");
+  if (!cJSON_IsString(screen_id) || screen_id->valuestring == nullptr || screen_id->valuestring[0] == '\0') {
+    cJSON_Delete(copy);
+    return false;
+  }
+  char requested_id[24] = {};
+  std::snprintf(requested_id, sizeof(requested_id), "%s", screen_id->valuestring);
+  cJSON_ReplaceItemInObject(copy, "id", cJSON_CreateString("default"));
+  cJSON_DeleteItemFromObject(copy, "conditions");
+  cJSON *screens = cJSON_CreateArray();
+  if (screens == nullptr) {
+    cJSON_Delete(copy);
+    return false;
+  }
+  cJSON_AddItemToArray(screens, copy);
+  if (g_backend_parse_layout == nullptr) {
+    g_backend_parse_layout = static_cast<StatusLayout *>(
+        heap_caps_calloc(1, sizeof(StatusLayout), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  ScreenLayout **target = temporary ? &g_backend_temporary_screen : &g_backend_persistent_screen;
+  if (*target == nullptr) {
+    *target = static_cast<ScreenLayout *>(
+        heap_caps_calloc(1, sizeof(ScreenLayout), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  }
+  if (g_backend_parse_layout == nullptr || *target == nullptr) {
+    cJSON_Delete(screens);
+    return false;
+  }
+  parse_screen_layouts(screens, g_backend_parse_layout);
+  cJSON_Delete(screens);
+  if (g_backend_parse_layout->screen_count != 1) return false;
+  std::memcpy(*target, &g_backend_parse_layout->screens[0], sizeof(ScreenLayout));
+  std::snprintf((*target)->id, sizeof((*target)->id), "%s", requested_id);
+  (*target)->backend_owned = true;
+  if (temporary) {
+    g_backend_temporary_screen_valid = true;
+    g_backend_temporary_screen_expires_us = esp_timer_get_time() + static_cast<int64_t>(timeout_ms) * 1000;
+  } else {
+    g_backend_persistent_screen_valid = true;
+  }
+  g_force_redraw = true;
+  return true;
+}
+
+void clear_backend_screen_layouts(const char *mode) {
+  if (mode == nullptr || std::strcmp(mode, "persistent") == 0) {
+    g_backend_persistent_screen_valid = false;
+  }
+  if (mode == nullptr || std::strcmp(mode, "temporary") == 0) {
+    g_backend_temporary_screen_valid = false;
+    g_backend_temporary_screen_expires_us = 0;
+  }
+  g_force_redraw = true;
+}
+
+bool set_prepared_image(
+    const char *asset_id,
+    uint8_t *rgb888_pixels,
+    size_t size_bytes,
+    int width,
+    int height) {
+  if (asset_id == nullptr || asset_id[0] == '\0' || rgb888_pixels == nullptr ||
+      width <= 0 || height <= 0 || width > kWidth || height > kHeight ||
+      size_bytes != static_cast<size_t>(width) * height * kBytesPerPixel) {
+    return false;
+  }
+  auto *image = static_cast<PreparedImage *>(
+      heap_caps_calloc(1, sizeof(PreparedImage), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (image == nullptr) {
+    return false;
+  }
+  std::snprintf(image->asset_id, sizeof(image->asset_id), "%s", asset_id);
+  image->pixels = rgb888_pixels;
+  image->size_bytes = size_bytes;
+  image->width = width;
+  image->height = height;
+  if (PreparedImage *superseded = g_pending_prepared_image.exchange(image, std::memory_order_acq_rel)) {
+    heap_caps_free(superseded->pixels);
+    heap_caps_free(superseded);
+  }
+  return true;
 }
 
 void request_display_assets_reload() {
@@ -3306,10 +3632,11 @@ bool show_previous_ui_page() {
 }
 
 bool display_activity_zone_contains(int x, int y) {
-  constexpr int kReplayActivityIndex = 2;
-  const auto &layout = g_status_layout.activity_sprites.items[kReplayActivityIndex];
-  return x >= layout.x && x < layout.x + kActivitySpriteSize &&
-         y >= layout.y && y < layout.y + kActivitySpriteSize;
+  if (!g_activity_visible.load(std::memory_order_acquire)) return false;
+  const int activity_x = g_activity_draw_x.load(std::memory_order_relaxed);
+  const int activity_y = g_activity_draw_y.load(std::memory_order_relaxed);
+  return x >= activity_x && x < activity_x + kActivitySpriteSize &&
+         y >= activity_y && y < activity_y + kActivitySpriteSize;
 }
 
 bool display_big_clock_zone_contains(int x, int y) {
@@ -3331,8 +3658,10 @@ bool display_button_hit_test(int x, int y, DisplayButtonHit *hit) {
     return false;
   }
 
-  const int button_x = g_status_layout.sidebar_buttons.x + g_sidebar_left_draw_x.load(std::memory_order_relaxed);
-  int button_y = g_status_layout.sidebar_buttons.y + g_sidebar_left_draw_y.load(std::memory_order_relaxed);
+  const int button_x = g_status_layout.sidebar_buttons.x - (kSidebarButtonWidth / 2) +
+      g_sidebar_left_draw_x.load(std::memory_order_relaxed);
+  int button_y = g_status_layout.sidebar_buttons.y - (kSidebarButtonHeight / 2) +
+      g_sidebar_left_draw_y.load(std::memory_order_relaxed);
   for (size_t index = 0; index < screen->button_count; ++index) {
     const char *button_id = sidebar_button_name(screen->buttons[index]);
     if (button_id != nullptr && x >= button_x && x < button_x + kSidebarButtonWidth &&

@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "board_profile": "waveshare_p4_wifi6_touch_lcd_7b",
-  "asset_library_version": "2026.09.17.39",
-  "updated_at": "2026-09-17T16:54:23.970549+00:00",
+  "asset_library_version": "2026.09.17.93",
+  "updated_at": "2026-09-17T23:25:39.189762+00:00",
   "assets": [
     {
       "asset_id": "manrope_clock_42",
@@ -46,6 +46,17 @@
         "font_format": "ttf",
         "size_bytes": 164700,
         "sha256": "3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6"
+      }
+    },
+    {
+      "asset_id": "manrope_message_20",
+      "media_type": "font",
+      "filename": "manrope/message_20.hxf",
+      "source_filename": "manrope/message_20.hxf",
+      "metadata": {
+        "font_format": "hexe_bitmap_v1",
+        "size_bytes": 18870,
+        "sha256": "390e67213bb49accea5b775a565f381ec7b42ec8d3a7b4effa6e8f15dea0eff3"
       }
     },
     {
@@ -96,14 +107,36 @@
       }
     },
     {
+      "asset_id": "activity_backend_connecting",
+      "media_type": "sprite",
+      "filename": "activity_backend_connecting.alpha8",
+      "source_filename": "activity_backend_connecting.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "fb5b27e5c6beaf3bdaf1b646837d87cd1bc9dd190af469186a9dfb8a5b73965a"
+      }
+    },
+    {
+      "asset_id": "activity_booting",
+      "media_type": "sprite",
+      "filename": "activity_booting.alpha8",
+      "source_filename": "activity_booting.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "d232de7bd7c10177a1f8c5de8d3c2565874cab299df77fcdc481dd0b39753225"
+      }
+    },
+    {
       "asset_id": "activity_layout",
       "media_type": "sprite",
       "filename": "activity_layout.json",
       "source_filename": "activity_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 183,
-        "sha256": "e50f5d2a36da07ccad4f65d320a6a6d218cf289d150010a01f9d74f6207194d2"
+        "size_bytes": 184,
+        "sha256": "8a37bf1ccd456d46f914a78c350cc64b9eeef25a27373436e5969ae344faac67"
       }
     },
     {
@@ -148,6 +181,17 @@
         "alpha_format": "alpha8",
         "size_bytes": 32400,
         "sha256": "d6b285a399971208d6d95233178131c730adce29211292484cd334c2cfc8f66f"
+      }
+    },
+    {
+      "asset_id": "activity_wifi_connecting",
+      "media_type": "sprite",
+      "filename": "activity_wifi_connecting.alpha8",
+      "source_filename": "activity_wifi_connecting.alpha8",
+      "metadata": {
+        "alpha_format": "alpha8",
+        "size_bytes": 32400,
+        "sha256": "2ab3f90deaa32f6b86c5fd279f3be42da2219e356e4d398459078b992bce3e65"
       }
     },
     {
@@ -245,8 +289,8 @@
       "source_filename": "chrome_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 488,
-        "sha256": "eb62bd097018f0d884a6e55e73de232dfce29093b826a898668d28d776add3f7"
+        "size_bytes": 489,
+        "sha256": "a5b0188e1c799da1d005e1978e04e1adb95f55086856f93c87ad2065d86820ba"
       }
     },
     {
@@ -289,8 +333,8 @@
       "source_filename": "idle_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 1413,
-        "sha256": "8a8cc58899a7656c2bd6366eb8e66bf9f330df4f041b998c27ffbce0ab334057"
+        "size_bytes": 1445,
+        "sha256": "4ffcc134b4cefc79b111bdb0aaf506ae55f5a58c3dd2b9d1bc49adaf89cf27ef"
       }
     },
     {
@@ -377,8 +421,8 @@
       "source_filename": "screens_layout.json",
       "metadata": {
         "content_format": "json",
-        "size_bytes": 5933,
-        "sha256": "fd92e6c38d5ee0d6c792e9aa228f72d5667d1a073939eca95b847471073585f7"
+        "size_bytes": 7192,
+        "sha256": "bd39da83f00b4c151c0a93624636cef71e41e0831a00e3e5c3d50121137238a8"
       }
     },
     {
@@ -401,6 +445,34 @@
         "alpha_format": "alpha8",
         "size_bytes": 41976,
         "sha256": "5e2edfa85221c3b9c1d4e47bb74e3bd66d885e373191970a0e6fc441d980d5ef"
+      }
+    },
+    {
+      "asset_id": "sprite_activity_backend_connecting",
+      "media_type": "sprite",
+      "filename": "activity_backend_connecting.rgb888",
+      "source_filename": "activity_backend_connecting.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "9ad79c568e12528265036237d10daf1ba20e6649114617dd2de7899e559ff5cf"
+      }
+    },
+    {
+      "asset_id": "sprite_activity_booting",
+      "media_type": "sprite",
+      "filename": "activity_booting.rgb888",
+      "source_filename": "activity_booting.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "7fb6d4c7a0513536ae7d39e9c88882263efc03b5a380ea62e981090970a8154a"
       }
     },
     {
@@ -457,6 +529,20 @@
         "channel_order": "rgb",
         "size_bytes": 97200,
         "sha256": "03b2bdb533639f42b82c41b0b40ce29d76afb9ad8a8caa5369dc53358c9460fb"
+      }
+    },
+    {
+      "asset_id": "sprite_activity_wifi_connecting",
+      "media_type": "sprite",
+      "filename": "activity_wifi_connecting.rgb888",
+      "source_filename": "activity_wifi_connecting.rgb888",
+      "metadata": {
+        "width": 180,
+        "height": 180,
+        "pixel_format": "rgb888",
+        "channel_order": "rgb",
+        "size_bytes": 97200,
+        "sha256": "15a676e94443edc77b2e7dc382526a9032f75148e7be8011f1a04a0eb9296884"
       }
     },
     {
@@ -859,7 +945,7 @@
       "metadata": {
         "content_format": "json",
         "size_bytes": 1349,
-        "sha256": "f5a4c415b90cbc619874de6449fb5d6737539ef2b4bb625285b8d7151d734d12"
+        "sha256": "48474261e6ac94b565c4dc2615d071468118f0f6476d7f677b1f655c24c43741"
       }
     },
     {

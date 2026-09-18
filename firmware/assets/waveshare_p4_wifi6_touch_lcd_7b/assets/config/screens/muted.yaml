@@ -1,4 +1,5 @@
 id: muted
+owner: device
 conditions:
   match: all
   items:

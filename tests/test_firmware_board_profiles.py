@@ -391,7 +391,7 @@ def test_p4_display_blends_header_status_sprites_from_sd():
     assert "relative_pixels" in source
     assert "status_sprite_slide_offset" in source
     assert "animation_state->started_ms" in source
-    assert "esp_timer_get_time() / 50000" in source
+    assert "esp_timer_get_time() / kAnimationFrameIntervalUs" in source
 
 
 def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
@@ -448,11 +448,10 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
 
     screen_index = (directory / "screens_layout.yaml").read_text(encoding="utf-8")
     screen_files = sorted((directory / "screens").glob("*.yaml"))
-    assert len(screen_files) == 15
+    assert len(screen_files) == 14
     assert screen_index.count("!include screens/") == len(screen_files)
     assert [screen["id"] for screen in layout["screens"]] == [
         "updating",
-        "updating_phase",
         "listening",
         "thinking",
         "playback",
@@ -467,6 +466,9 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
         "booting",
         "default",
     ]
+    assert {screen["owner"] for screen in layout["screens"]} == {"device", "backend"}
+    assert next(screen for screen in layout["screens"] if screen["id"] == "listening")["owner"] == "device"
+    assert next(screen for screen in layout["screens"] if screen["id"] == "timer")["owner"] == "backend"
 
     authored_items = yaml_to_json.load_yaml_with_includes(directory / "items.yaml")["items"]
     items_by_id = {item["id"]: item for item in authored_items}
@@ -495,11 +497,11 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
     assert layout["idle_clock"]["date_format"] == "%A, %B %d %Y."
     assert layout["idle_clock"]["date"]["x"] == 512
     assert set(("sprite", "hours", "separator", "minutes", "date")) <= layout["idle_clock"].keys()
-    assert layout["sidebar_buttons"] == {"x": 8, "y": 116, "gap": 20}
+    assert layout["sidebar_buttons"] == {"x": 44, "y": 144, "gap": 20}
     screens = layout["screens"]
     assert screens[-1]["id"] == "default"
     assert [screen["id"] for screen in screens[:6]] == [
-        "updating", "updating_phase", "listening", "thinking", "playback", "replying"
+        "updating", "listening", "thinking", "playback", "replying", "timer_finished"
     ]
     assert {item["type"] for screen in screens for item in screen["elements"]} == {
         "clock",
@@ -512,17 +514,16 @@ def test_p4_ui_config_compiles_items_presets_and_screens(tmp_path):
         "text",
     }
     updating_screen = next(screen for screen in screens if screen["id"] == "updating")
-    header_date = next(item for item in updating_screen["elements"] if item["type"] == "text")
-    assert header_date == {
+    updating_text = next(item for item in updating_screen["elements"] if item["type"] == "text")
+    assert updating_text == {
         "type": "text",
-        "item": "header_date",
+        "item": "updating_text",
         "x": 512,
-        "y": 20,
-        "color": "#55B8FF",
-        "data": "date_short",
-        "format": "%a, %b %d",
+        "y": 436,
+        "color": "#D8FFFA",
+        "text": "Updating...",
         "font": "manrope/date_32.hxf",
-        "font_size": 24,
+        "font_size": 32,
         "align": "center",
     }
     assert all(isinstance(screen["sidebars"], bool) for screen in screens)
@@ -832,16 +833,26 @@ def test_endpoint_accepts_backend_ui_flags_for_screen_conditions():
     assert 'std::strcmp(type, "endpoint.ui.flags") == 0' in backend
     assert 'cJSON_GetObjectItem(payload, "flags")' in backend
     assert "hexe::set_ui_flag(flag->string, cJSON_IsTrue(flag))" in backend
-    assert 'std::strcmp(type, "endpoint.ui.screen") == 0' in backend
-    assert 'cJSON_GetObjectItem(payload, "screen_id")' in backend
-    assert "std::clamp(duration_seconds, 1, 30) * 1000" in backend
-    assert "hexe::trigger_ui_screen" in backend
+    assert 'std::strcmp(type, "endpoint.ui.screen.render") == 0' in backend
+    assert 'std::strcmp(type, "endpoint.ui.screen.clear") == 0' in backend
+    assert 'cJSON_GetObjectItem(payload, "layout")' in backend
+    assert "hexe::board::set_backend_screen_layout" in backend
 
     display = (
         REPO_ROOT / "firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp"
     ).read_text(encoding="utf-8")
-    assert "hexe::active_ui_screen(forced_screen_id" in display
-    assert "std::strcmp(g_status_layout.screens[index].id, forced_screen_id)" in display
+    assert "g_backend_temporary_screen_valid" in display
+    assert "g_backend_persistent_screen_valid" in display
+
+
+def test_zero_output_volume_is_persisted_as_muted():
+    settings = (REPO_ROOT / "firmware/components/endpoint_runtime/system/settings.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    assert "app_state.muted = clamped == 0;" in settings
+    assert "save_u8(kMutedKey, app_state.muted ? 1 : 0);" in settings
+    assert "persisted_muted != 0 || app_state.output_volume_percent == 0" in settings
 
 
 def test_board_profile_generator_renders_cmake_adapter_fragment(tmp_path):

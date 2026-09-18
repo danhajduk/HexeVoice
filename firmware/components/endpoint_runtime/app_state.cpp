@@ -12,6 +12,7 @@ namespace {
 portMUX_TYPE g_ui_flags_lock = portMUX_INITIALIZER_UNLOCKED;
 char g_ui_screen_id[kMaxUiScreenIdBytes] = {};
 int64_t g_ui_screen_expires_us = 0;
+char g_backend_ui_screen_id[kMaxUiScreenIdBytes] = {};
 }
 
 AppState &state() {
@@ -95,9 +96,33 @@ bool active_ui_screen(char *screen_id, size_t screen_id_size) {
   return active;
 }
 
+bool set_backend_ui_screen(const char *screen_id) {
+  if (screen_id == nullptr || screen_id[0] == '\0' || std::strlen(screen_id) >= kMaxUiScreenIdBytes) return false;
+  portENTER_CRITICAL(&g_ui_flags_lock);
+  std::snprintf(g_backend_ui_screen_id, sizeof(g_backend_ui_screen_id), "%s", screen_id);
+  portEXIT_CRITICAL(&g_ui_flags_lock);
+  return true;
+}
+
+void clear_backend_ui_screen() {
+  portENTER_CRITICAL(&g_ui_flags_lock);
+  g_backend_ui_screen_id[0] = '\0';
+  portEXIT_CRITICAL(&g_ui_flags_lock);
+}
+
+bool active_backend_ui_screen(char *screen_id, size_t screen_id_size) {
+  if (screen_id == nullptr || screen_id_size == 0) return false;
+  portENTER_CRITICAL(&g_ui_flags_lock);
+  const bool active = g_backend_ui_screen_id[0] != '\0';
+  if (active) std::snprintf(screen_id, screen_id_size, "%s", g_backend_ui_screen_id);
+  portEXIT_CRITICAL(&g_ui_flags_lock);
+  return active;
+}
+
 uint32_t ui_screen_signature() {
   char screen_id[kMaxUiScreenIdBytes] = {};
-  if (!active_ui_screen(screen_id, sizeof(screen_id))) return 0;
+  if (!active_ui_screen(screen_id, sizeof(screen_id)) &&
+      !active_backend_ui_screen(screen_id, sizeof(screen_id))) return 0;
   uint32_t signature = 5381;
   for (const char *cursor = screen_id; *cursor != '\0'; ++cursor) signature = signature * 33U + *cursor;
   return signature;

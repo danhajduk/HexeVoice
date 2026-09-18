@@ -327,3 +327,4 @@ Task 312: Add SD model-set loading and internal single-model cache policy for S3
 Task 318: Add generalized ephemeral, cached, named-asset, and persistent TTS delivery modes with stable aliases and multi-quality audio variants - Completed on 09/17/2026 17:36
 Task 319: Add secure named TTS asset lifecycle APIs, ownership enforcement, atomic replacement, diagnostics, tests, and provider documentation - Completed on 09/17/2026 17:48
 Task 320: Consume versioned Interaction weather snapshot events and synchronize current weather transcript, TTS, radar, and metadata for endpoints - Completed on 09/18/2026 08:44
+Task 321: Add Waveshare P4 Hexe weather, static radar, and timer quick-action screens using the Interaction-owned contracts - Completed on 09/18/2026 09:26

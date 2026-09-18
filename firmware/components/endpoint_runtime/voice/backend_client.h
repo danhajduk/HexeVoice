@@ -65,5 +65,11 @@ bool send_ui_button_pressed_event(
     int button_height,
     int touch_x,
     int touch_y);
+bool send_ui_screen_changed_event(
+    const char *screen_id,
+    const char *owner,
+    const char *mode,
+    const char *reason,
+    const char *previous_screen_id);
 
 }  // namespace hexe::voice

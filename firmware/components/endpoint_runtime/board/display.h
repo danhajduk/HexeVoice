@@ -1,5 +1,10 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
+
+struct cJSON;
+
 namespace hexe::board {
 
 struct DisplayButtonHit {
@@ -30,5 +35,13 @@ int display_last_asset_read_ms();
 int display_last_flush_ms();
 int display_last_render_ms();
 const char *display_last_asset_filename();
+bool set_backend_screen_layout(const cJSON *layout, bool temporary, int timeout_ms);
+void clear_backend_screen_layouts(const char *mode = nullptr);
+bool set_prepared_image(
+    const char *asset_id,
+    uint8_t *rgb888_pixels,
+    size_t size_bytes,
+    int width,
+    int height);
 
 }  // namespace hexe::board

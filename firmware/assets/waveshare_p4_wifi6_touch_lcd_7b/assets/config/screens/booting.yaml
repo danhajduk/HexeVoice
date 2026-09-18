@@ -1,4 +1,5 @@
 id: booting
+owner: device
 conditions:
   match: all
   items:
@@ -7,3 +8,4 @@ sidebars: false
 buttons: {preset: none}
 items:
   - item: header_clock
+  - item: system_message

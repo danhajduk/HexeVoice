@@ -145,6 +145,8 @@ def compile_items(items: dict[str, dict[str, Any]], presets: dict[str, Any]) -> 
             idle["idle_clock"]["date_format"] = item.get("format", "%A, %B %d %Y.")
             idle["idle_clock"]["date"] = without(config, "format")
         elif item_type == "timer_primary":
+            idle["timer_screen"]["primary_x"] = config.get("x", 250)
+            idle["timer_screen"]["primary_y"] = config.get("y", 505)
             idle["timer_screen"]["primary_countdown"] = require_mapping(
                 config.get("countdown"), f"item {item_id!r}.countdown"
             )
@@ -162,7 +164,9 @@ def compile_items(items: dict[str, dict[str, Any]], presets: dict[str, Any]) -> 
                 raise ValueError(f"text item {item_id!r} requires exactly one of text or data")
             if has_text and len(text.encode("utf-8")) > 95:
                 raise ValueError(f"text item {item_id!r} text exceeds 95 bytes")
-            if has_data and data not in {"time", "date_short", "date_long"}:
+            if has_data and data not in {
+                "time", "date_short", "date_long", "system_message", "error_message"
+            }:
                 raise ValueError(
                     f"text item {item_id!r} has unsupported data binding {data!r}"
                 )
@@ -243,6 +247,10 @@ def compile_screens(
             "sidebars": bool(screen.get("sidebars", False)),
             "elements": [],
         }
+        owner = screen.get("owner")
+        if owner not in {"device", "backend"}:
+            raise ValueError(f"screen {screen_id!r}.owner must be device or backend")
+        output["owner"] = owner
         if "conditions" in screen:
             output["conditions"] = screen["conditions"]
         for placement_index, placement_value in enumerate(

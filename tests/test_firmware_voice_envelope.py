@@ -93,7 +93,7 @@ def test_firmware_voice_events_emit_full_v1_envelope():
     assert "kVoiceWsSendTimeoutMs = 1200" in source
     assert "kVoiceWsSendAttempts = 2" in source
     assert "kVoiceWsNetworkTimeoutMs = 1000" in source
-    assert "kVoiceControlWsClientTaskStackBytes = 6144" in source
+    assert "kVoiceControlWsClientTaskStackBytes = 10240" in source
     assert "kVoiceAudioWsClientTaskStackBytes = 3072" in source
     assert "kVoiceAudioWsClientBufferBytes = 512" in source
     assert "kVoiceWsReadyWarmupUs = 300000" in source
@@ -160,6 +160,17 @@ def test_firmware_backend_commands_acknowledge_receipt_with_ok():
     assert 'return "endpoint.micro_vad.set";' in source
     assert 'std::strcmp(type, "endpoint.restart") == 0' in source
     assert 'send_command_ack(request_id, "endpoint.restart", "succeeded", "Endpoint restart scheduled");' in source
+    assert 'std::strcmp(type, "endpoint.assets.sync") == 0' in source
+    assert "hexe::system::trigger_asset_sync()" in source
+    assert 'cJSON_GetObjectItem(payload, "manifest_version")' in source
+    assert 'std::strcmp(requested_version->valuestring, installed_version) == 0' in source
+    assert '"Assets already current"' in source
+    assert 'send_command_ack(request_id, "endpoint.assets.sync", "succeeded", "Asset sync started");' in source
+    assert 'std::strcmp(type, "endpoint.ui.message") == 0' in source
+    assert 'send_command_ack(request_id, "endpoint.ui.message", "succeeded", "UI messages updated");' in source
+    assert 'std::strcmp(type, "endpoint.asset.prepare") == 0' in source
+    assert 'send_command_ack(request.request_id, "endpoint.asset.prepare", "accepted", "Asset preparation queued");' in source
+    assert 'send_command_ack(request.request_id, "endpoint.asset.prepare", "succeeded", "Prepared asset is ready");' in source
     assert "request_audio_finalize(request_id, finalize_reason);" in finalize_handler_block
     assert "finish_audio_stream" not in finalize_handler_block
     assert 'send_command_ack(request_id, "endpoint.audio.finalize", "succeeded", "Audio stream finalized");' in pending_finalize_block
@@ -410,9 +421,9 @@ def test_endpoint_renders_initial_frame_before_settings_and_peripherals():
         "hexe::board::turn_on_backlight();",
         "hexe::board::init_led_ring();",
         "hexe::system::init_settings();",
+        "hexe::board::init_wifi();",
         "hexe::board::init_touch();",
         "hexe::board::init_audio();",
-        "hexe::board::init_wifi();",
     ]
     positions = [app_main.index(call) for call in calls]
 
@@ -1225,8 +1236,13 @@ def test_firmware_boot_syncs_board_assets_to_sd_card():
     assert "psa_hash_setup(&hash_op, PSA_ALG_SHA_256)" in source
     assert "std::rename(temp_path, final_path)" in source
     assert "write_manifest(manifest_body.data, manifest_body.size)" in source
+    assert "load_local_manifest()" in source
+    assert "local_manifest_matches(" in source
+    assert "local_manifest, media_type, filename, size->valueint, sha256, final_path" in source
     assert "reserve_asset_sync_dma_memory()" in source
-    assert "hexe::system::reserve_asset_sync_dma_memory();" in app_main_source
+    trigger_body = source.split("bool trigger_asset_sync()", 1)[1].split("void init_asset_sync()", 1)[0]
+    assert "reserve_asset_sync_dma_memory();" in trigger_body
+    assert "hexe::system::reserve_asset_sync_dma_memory();" not in app_main_source
     assert "request_display_assets_reload()" in source
     assert 'xTaskCreate(asset_sync_task, "hexe_asset_sync"' in source
     assert 'cJSON_AddStringToObject(assets, "sync_status", hexe::system::asset_sync_status())' in backend_source
@@ -1622,6 +1638,57 @@ def test_firmware_wifi_disconnect_does_not_abort_during_ota_shutdown():
     assert "Wi-Fi disconnected during OTA/update shutdown; reconnect skipped" in disconnect_handler
     assert "const esp_err_t reconnect_result = esp_wifi_connect();" in disconnect_handler
     assert "ESP_ERROR_CHECK(esp_wifi_connect());" not in disconnect_handler
+
+
+def test_firmware_wifi_updates_display_system_and_error_messages():
+    source = FIRMWARE_WIFI.read_text()
+
+    assert '"Starting Wi-Fi driver"' in source
+    assert '"Wi-Fi ready. Associating with network"' in source
+    assert '"Wi-Fi associated. Requesting IP address"' in source
+    assert '"Retrying Wi-Fi connection (%u)"' in source
+    assert '"Wi-Fi disconnected (reason %u)"' in source
+    assert '"Wi-Fi credentials not configured"' in source
+    assert '"Wi-Fi connected. Connecting to backend"' in source
+    assert "state.error_message[0] = '\\0';" in source
+
+
+def test_firmware_backend_updates_display_system_and_error_messages():
+    source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    assert '"Connecting to backend"' in source
+    assert '"Backend connected. Opening voice connection"' in source
+    assert '"Backend connected"' in source
+    assert '"Retrying backend connection"' in source
+    assert '"Backend voice connection lost"' in source
+    assert '"Backend connection failed: %s"' in source
+    assert '"Backend connection failed: HTTP %d"' in source
+
+
+def test_p4_display_only_falls_back_to_device_error_on_error_phase():
+    source = Path("firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp").read_text()
+
+    assert 'state.phase == hexe::AppPhase::kError ? "Device error" : ""' in source
+    assert "if (display_text == nullptr || display_text[0] == '\\0') break;" in source
+
+
+def test_p4_timer_finished_screen_tracks_the_transient_app_phase():
+    source = Path("firmware/components/endpoint_runtime/board/display_waveshare_p4_7b.cpp").read_text()
+
+    timer_finished_case = source[source.index("case StatusFlag::kTimerFinished:") :]
+    timer_finished_case = timer_finished_case[: timer_finished_case.index("case StatusFlag::kError:")]
+    assert "state.phase == hexe::AppPhase::kTimerFinished" in timer_finished_case
+    assert "state.timer_state == hexe::TimerLifecycleState::kFinished" not in timer_finished_case
+
+
+def test_final_timer_completion_clears_timer_active_after_display_list_sync():
+    source = FIRMWARE_BACKEND_CLIENT.read_text()
+
+    timer_handler = source[source.index("void handle_endpoint_timer(cJSON *payload)") :]
+    timer_handler = timer_handler[: timer_handler.index("void resume_audio_stream_for_followup()")]
+    assert "sync_display_timers(payload);" in timer_handler
+    assert "is_timer_finished_state(state_value) && app_state.display_timer_count == 0" in timer_handler
+    assert "app_state.timer_active = false;" in timer_handler
 
 
 def test_firmware_supports_home_assistant_voice_pe_profile():

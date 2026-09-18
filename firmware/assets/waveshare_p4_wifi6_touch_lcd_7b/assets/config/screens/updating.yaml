@@ -1,13 +1,15 @@
 id: updating
+owner: device
 conditions:
-  match: all
+  match: any
   items:
     - flag: ota_active
+    - flag: updating
 sidebars: false
 buttons: {preset: none}
 items:
   - item: header_clock
-  - item: header_date
   - item: ota_progress
-    x: 312
-    y: 520
+    x: 512
+    y: 529
+  - item: updating_text

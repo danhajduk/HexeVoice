@@ -1,4 +1,5 @@
 id: playback
+owner: backend
 conditions:
   match: all
   items:
@@ -8,8 +9,8 @@ buttons: {preset: standard}
 items:
   - item: header_clock
   - item: activity_replay
-    x: 422
-    y: 205
+    x: 512
+    y: 295
     animations:
       - preset: activity_slide_right
         when: {flag: playback_active}

@@ -1,6 +1,7 @@
 #include "voice/backend_client.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cerrno>
 #include <cinttypes>
@@ -61,7 +62,7 @@ constexpr int kAudioQueueOfferTimeoutMs = 20;
 constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
 constexpr int kVoiceWsTaskPriority = 6;
-constexpr int kVoiceControlWsClientTaskStackBytes = 6144;
+constexpr int kVoiceControlWsClientTaskStackBytes = 10240;
 constexpr int kVoiceAudioWsClientTaskStackBytes = 3072;
 constexpr int kVoiceControlWsClientBufferBytes = 1024;
 constexpr int kVoiceAudioWsClientBufferBytes = 512;
@@ -77,6 +78,9 @@ constexpr int kWakePredictionChunkSamples = 1280;
 constexpr size_t kMaxBackendEventBytes = 8192;
 constexpr uint32_t kBackendReadinessPollMs = 500;
 constexpr int kHeartbeatHttpTimeoutMs = 3000;
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+constexpr int64_t kP4BackendStallRestartUs = 30000000;
+#endif
 constexpr int kVoiceAudioHttpTimeoutMs = 30000;
 constexpr int kVoiceAudioHttpUploadTimeoutMs = 120000;
 constexpr size_t kVoiceAudioHttpUploadChunkBytes = 2048;
@@ -152,6 +156,10 @@ QueueHandle_t g_audio_queue = nullptr;
 esp_websocket_client_handle_t g_ws_client = nullptr;
 esp_websocket_client_handle_t g_audio_ws_client = nullptr;
 TaskHandle_t g_heartbeat_task = nullptr;
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+TaskHandle_t g_backend_watchdog_task = nullptr;
+std::atomic<int64_t> g_last_heartbeat_success_us{0};
+#endif
 TaskHandle_t g_ws_task = nullptr;
 TaskHandle_t g_media_task = nullptr;
 QueueHandle_t g_media_queue = nullptr;
@@ -253,6 +261,10 @@ struct MediaTransferRequest {
   int size_bytes;
   bool overwrite;
   bool activate;
+  bool asset_prepare;
+  char asset_id[96];
+  int width;
+  int height;
 };
 
 struct MediaTransferActivityGuard {
@@ -441,7 +453,14 @@ void mark_voice_socket_disconnected() {
   g_audio_ws_connected_at_us = 0;
   g_audio_ws_disconnected_at_us = esp_timer_get_time();
   refresh_voice_transport_connected_state();
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  hexe::board::clear_backend_screen_layouts();
+#endif
   auto &state = hexe::state();
+  if (state.wifi_connected && !state.ota_active) {
+    std::snprintf(state.system_message, sizeof(state.system_message), "%s", "Reconnecting to backend");
+    std::snprintf(state.error_message, sizeof(state.error_message), "%s", "Backend voice connection lost");
+  }
   reset_voice_session_state(true);
   reset_audio_transport_queue("voice_websocket_disconnected");
   if (!state.muted && !state.ota_active) {
@@ -1454,9 +1473,12 @@ void acknowledge_command_received(const char *event_type, cJSON *payload);
 void request_audio_finalize(const char *request_id, const char *reason);
 bool process_pending_audio_finalize();
 bool queue_media_transfer(cJSON *payload);
+bool queue_asset_prepare(cJSON *payload);
 void handle_endpoint_timer(cJSON *payload);
 void handle_endpoint_ui_flags(cJSON *payload);
-void handle_endpoint_ui_screen(cJSON *payload);
+void handle_endpoint_ui_message(cJSON *payload);
+void handle_endpoint_ui_screen_render(cJSON *payload);
+void handle_endpoint_ui_screen_clear(cJSON *payload);
 void handle_endpoint_provisioning_apply(cJSON *payload);
 void handle_endpoint_provisioning_reset(cJSON *payload);
 
@@ -1762,6 +1784,23 @@ void handle_backend_event_json(const std::string &message) {
         cJSON_IsString(reason) && reason->valuestring[0] != '\0' ? reason->valuestring : "backend_command");
     send_command_ack(request_id, "endpoint.restart", "succeeded", "Endpoint restart scheduled");
     xTaskCreate(restart_task, "hexe_restart", 3072, nullptr, kTaskPriority, nullptr);
+  } else if (std::strcmp(type, "endpoint.assets.sync") == 0) {
+    const char *request_id = payload_request_id(payload);
+    cJSON *requested_version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "manifest_version") : nullptr;
+    const char *installed_version = hexe::system::asset_sync_manifest_version();
+    const char *sync_status = hexe::system::asset_sync_status();
+    const bool already_current =
+        cJSON_IsString(requested_version) && requested_version->valuestring[0] != '\0' &&
+        installed_version[0] != '\0' && std::strcmp(requested_version->valuestring, installed_version) == 0 &&
+        (std::strcmp(sync_status, "current") == 0 || std::strcmp(sync_status, "updated") == 0);
+    if (already_current) {
+      ESP_LOGI(kTag, "Skipping asset sync; manifest version %s is already installed", installed_version);
+      send_command_ack(request_id, "endpoint.assets.sync", "succeeded", "Assets already current");
+    } else if (hexe::system::trigger_asset_sync()) {
+      send_command_ack(request_id, "endpoint.assets.sync", "succeeded", "Asset sync started");
+    } else {
+      send_command_error(request_id, "endpoint.assets.sync", "asset_sync_busy", "Asset sync is already running");
+    }
   } else if (std::strcmp(type, "playback.stop") == 0) {
     const char *request_id = payload_request_id(payload);
     cJSON *reason = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "reason") : nullptr;
@@ -1793,6 +1832,8 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else if (std::strcmp(type, "endpoint.media.transfer") == 0) {
     queue_media_transfer(payload);
+  } else if (std::strcmp(type, "endpoint.asset.prepare") == 0) {
+    queue_asset_prepare(payload);
   } else if (std::strcmp(type, "endpoint.model_bundle.activate") == 0) {
     const char *request_id = payload_request_id(payload);
     cJSON *bundle_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "bundle_id") : nullptr;
@@ -1828,8 +1869,12 @@ void handle_backend_event_json(const std::string &message) {
     }
   } else if (std::strcmp(type, "endpoint.ui.flags") == 0) {
     handle_endpoint_ui_flags(payload);
-  } else if (std::strcmp(type, "endpoint.ui.screen") == 0) {
-    handle_endpoint_ui_screen(payload);
+  } else if (std::strcmp(type, "endpoint.ui.message") == 0) {
+    handle_endpoint_ui_message(payload);
+  } else if (std::strcmp(type, "endpoint.ui.screen.render") == 0) {
+    handle_endpoint_ui_screen_render(payload);
+  } else if (std::strcmp(type, "endpoint.ui.screen.clear") == 0) {
+    handle_endpoint_ui_screen_clear(payload);
   } else if (std::strcmp(type, "endpoint.timer") == 0) {
     handle_endpoint_timer(payload);
   } else if (std::strcmp(type, "endpoint.provisioning.apply") == 0) {
@@ -1931,6 +1976,8 @@ void websocket_event_handler(void *handler_args, esp_event_base_t base, int32_t 
     g_ws_disconnected_at_us = 0;
     reset_voice_session_state(false);
     g_ws_rx_buffer.clear();
+    std::snprintf(state.system_message, sizeof(state.system_message), "%s", "Backend connected");
+    state.error_message[0] = '\0';
     if (!state.muted && !state.ota_active) {
       state.phase = hexe::idle_or_connecting_phase();
     }
@@ -3082,7 +3129,147 @@ bool queue_media_transfer(cJSON *payload) {
   return true;
 }
 
+bool queue_asset_prepare(cJSON *payload) {
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  MediaTransferRequest request = {};
+  request.asset_prepare = true;
+  if (!copy_json_string(payload, "request_id", request.request_id, sizeof(request.request_id)) ||
+      !copy_json_string(payload, "asset_id", request.asset_id, sizeof(request.asset_id)) ||
+      !copy_json_string(payload, "download_url", request.download_url, sizeof(request.download_url)) ||
+      !copy_json_string(payload, "sha256", request.sha256, sizeof(request.sha256))) {
+    send_command_error(payload_request_id(payload), "endpoint.asset.prepare", "invalid_payload", "Asset prepare is missing required fields");
+    return false;
+  }
+  cJSON *asset_type = cJSON_GetObjectItem(payload, "asset_type");
+  cJSON *pixel_format = cJSON_GetObjectItem(payload, "pixel_format");
+  cJSON *width = cJSON_GetObjectItem(payload, "width");
+  cJSON *height = cJSON_GetObjectItem(payload, "height");
+  cJSON *size_bytes = cJSON_GetObjectItem(payload, "size_bytes");
+  if (!cJSON_IsString(asset_type) || std::strcmp(asset_type->valuestring, "weather.radar") != 0 ||
+      !cJSON_IsString(pixel_format) || std::strcmp(pixel_format->valuestring, "rgb888") != 0 ||
+      !cJSON_IsNumber(width) || !cJSON_IsNumber(height) || !cJSON_IsNumber(size_bytes)) {
+    send_command_error(request.request_id, "endpoint.asset.prepare", "invalid_payload", "Unsupported dynamic asset contract");
+    return false;
+  }
+  request.width = width->valueint;
+  request.height = height->valueint;
+  request.size_bytes = size_bytes->valueint;
+  if (request.width <= 0 || request.height <= 0 || request.width > 1024 || request.height > 600 ||
+      request.size_bytes != request.width * request.height * 3 || request.size_bytes > 2 * 1024 * 1024 ||
+      std::strlen(request.sha256) != 64) {
+    send_command_error(request.request_id, "endpoint.asset.prepare", "invalid_payload", "Dynamic asset dimensions or size are invalid");
+    return false;
+  }
+  if (g_media_queue == nullptr || xQueueSend(g_media_queue, &request, 0) != pdTRUE) {
+    send_command_error(request.request_id, "endpoint.asset.prepare", "asset_prepare_busy", "Asset prepare queue is full");
+    return false;
+  }
+  send_command_ack(request.request_id, "endpoint.asset.prepare", "accepted", "Asset preparation queued");
+  return true;
+#else
+  send_command_error(payload_request_id(payload), "endpoint.asset.prepare", "unsupported", "Dynamic assets are not supported by this board");
+  return false;
+#endif
+}
+
+bool prepare_dynamic_asset(const MediaTransferRequest &request) {
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  MediaTransferActivityGuard media_activity;
+  auto *pixels = static_cast<uint8_t *>(
+      heap_caps_malloc(request.size_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (pixels == nullptr) {
+    send_command_error(request.request_id, "endpoint.asset.prepare", "asset_capacity_unavailable", "PSRAM could not hold the prepared asset");
+    return false;
+  }
+  esp_http_client_config_t config = {};
+  config.url = request.download_url;
+  config.timeout_ms = kMediaHttpTimeoutMs;
+  config.keep_alive_enable = true;
+  esp_http_client_handle_t client = esp_http_client_init(&config);
+  if (client == nullptr) {
+    heap_caps_free(pixels);
+    send_command_error(request.request_id, "endpoint.asset.prepare", "http_client_failed", "Could not initialize asset download");
+    return false;
+  }
+  psa_hash_operation_t hash_op = PSA_HASH_OPERATION_INIT;
+  psa_status_t hash_status = psa_crypto_init();
+  if (hash_status == PSA_SUCCESS) hash_status = psa_hash_setup(&hash_op, PSA_ALG_SHA_256);
+  esp_err_t err = esp_http_client_open(client, 0);
+  int total_read = 0;
+  if (err == ESP_OK) {
+    const int content_length = esp_http_client_fetch_headers(client);
+    const int status_code = esp_http_client_get_status_code(client);
+    if (status_code < 200 || status_code >= 300 ||
+        (content_length >= 0 && content_length != request.size_bytes)) {
+      err = ESP_ERR_INVALID_SIZE;
+    }
+  }
+  int idle_retries = 0;
+  while (err == ESP_OK && total_read < request.size_bytes) {
+    const int read = esp_http_client_read(
+        client,
+        reinterpret_cast<char *>(pixels + total_read),
+        std::min(4096, request.size_bytes - total_read));
+    if (read == -ESP_ERR_HTTP_EAGAIN) {
+      if (idle_retries++ < kMediaReadMaxIdleRetries) {
+        vTaskDelay(pdMS_TO_TICKS(kMediaReadIdleRetryDelayMs));
+        continue;
+      }
+      err = ESP_ERR_HTTP_EAGAIN;
+      break;
+    }
+    if (read <= 0) {
+      if (read < 0) err = ESP_FAIL;
+      break;
+    }
+    idle_retries = 0;
+    if (hash_status == PSA_SUCCESS) hash_status = psa_hash_update(&hash_op, pixels + total_read, read);
+    total_read += read;
+  }
+  esp_http_client_close(client);
+  esp_http_client_cleanup(client);
+  unsigned char digest[32] = {};
+  size_t digest_length = 0;
+  if (hash_status == PSA_SUCCESS) {
+    hash_status = psa_hash_finish(&hash_op, digest, sizeof(digest), &digest_length);
+  } else {
+    psa_hash_abort(&hash_op);
+  }
+  char sha_hex[65] = {};
+  if (hash_status == PSA_SUCCESS && digest_length == sizeof(digest)) {
+    bytes_to_hex(digest, sizeof(digest), sha_hex, sizeof(sha_hex));
+  }
+  if (err != ESP_OK || total_read != request.size_bytes || std::strcmp(sha_hex, request.sha256) != 0) {
+    heap_caps_free(pixels);
+    send_command_error(
+        request.request_id,
+        "endpoint.asset.prepare",
+        err == ESP_OK ? "checksum_mismatch" : "download_failed",
+        "Prepared asset download or validation failed");
+    return false;
+  }
+  if (!hexe::board::set_prepared_image(
+          request.asset_id,
+          pixels,
+          request.size_bytes,
+          request.width,
+          request.height)) {
+    heap_caps_free(pixels);
+    send_command_error(request.request_id, "endpoint.asset.prepare", "asset_activation_failed", "Prepared asset could not be activated");
+    return false;
+  }
+  send_command_ack(request.request_id, "endpoint.asset.prepare", "succeeded", "Prepared asset is ready");
+  return true;
+#else
+  (void)request;
+  return false;
+#endif
+}
+
 bool write_media_transfer(const MediaTransferRequest &request) {
+  if (request.asset_prepare) {
+    return prepare_dynamic_asset(request);
+  }
   MediaTransferActivityGuard media_activity;
   const char *directory = media_destination_dir(request.destination);
   if (directory == nullptr || !is_safe_media_filename(request.filename)) {
@@ -3405,17 +3592,63 @@ void handle_endpoint_ui_flags(cJSON *payload) {
   send_command_ack(request_id, "endpoint.ui.flags", "succeeded", "UI flags updated");
 }
 
-void handle_endpoint_ui_screen(cJSON *payload) {
+void handle_endpoint_ui_message(cJSON *payload) {
   const char *request_id = payload_request_id(payload);
-  cJSON *screen_id = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "screen_id") : nullptr;
-  cJSON *duration = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "duration_seconds") : nullptr;
-  const int duration_seconds = cJSON_IsNumber(duration) ? duration->valueint : 30;
-  if (!cJSON_IsString(screen_id) ||
-      !hexe::trigger_ui_screen(screen_id->valuestring, std::clamp(duration_seconds, 1, 30) * 1000)) {
-    send_command_error(request_id, "endpoint.ui.screen", "invalid_payload", "Valid screen_id is required");
+  cJSON *system_message = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "system_message") : nullptr;
+  cJSON *error_message = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "error_message") : nullptr;
+  if (!cJSON_IsString(system_message) && !cJSON_IsString(error_message)) {
+    send_command_error(
+        request_id,
+        "endpoint.ui.message",
+        "invalid_payload",
+        "system_message or error_message must be a string");
     return;
   }
-  send_command_ack(request_id, "endpoint.ui.screen", "succeeded", "Temporary screen override applied");
+  auto &app_state = hexe::state();
+  if (cJSON_IsString(system_message)) {
+    std::snprintf(
+        app_state.system_message,
+        sizeof(app_state.system_message),
+        "%s",
+        system_message->valuestring);
+  }
+  if (cJSON_IsString(error_message)) {
+    std::snprintf(
+        app_state.error_message,
+        sizeof(app_state.error_message),
+        "%s",
+        error_message->valuestring);
+  }
+  send_command_ack(request_id, "endpoint.ui.message", "succeeded", "UI messages updated");
+}
+
+void handle_endpoint_ui_screen_render(cJSON *payload) {
+  const char *request_id = payload_request_id(payload);
+  cJSON *mode = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "mode") : nullptr;
+  cJSON *layout = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "layout") : nullptr;
+  cJSON *timeout = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "timeout_ms") : nullptr;
+  const bool temporary = cJSON_IsString(mode) && std::strcmp(mode->valuestring, "temporary") == 0;
+  const bool persistent = cJSON_IsString(mode) && std::strcmp(mode->valuestring, "persistent") == 0;
+  const int timeout_ms = cJSON_IsNumber(timeout) ? timeout->valueint : 30000;
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  if ((!temporary && !persistent) || timeout_ms > 300000 ||
+      !hexe::board::set_backend_screen_layout(layout, temporary, timeout_ms)) {
+    send_command_error(request_id, "endpoint.ui.screen.render", "invalid_payload", "Valid mode and compiled layout are required");
+    return;
+  }
+  send_command_ack(request_id, "endpoint.ui.screen.render", "succeeded", "Backend screen rendered");
+#else
+  send_command_error(request_id, "endpoint.ui.screen.render", "unsupported", "Backend screens are not supported by this display");
+#endif
+}
+
+void handle_endpoint_ui_screen_clear(cJSON *payload) {
+  const char *request_id = payload_request_id(payload);
+  cJSON *mode = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "mode") : nullptr;
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  hexe::board::clear_backend_screen_layouts(cJSON_IsString(mode) ? mode->valuestring : nullptr);
+#endif
+  send_command_ack(request_id, "endpoint.ui.screen.clear", "succeeded", "Backend screen cleared");
 }
 
 const char *timer_state_from_payload(cJSON *payload) {
@@ -3553,6 +3786,11 @@ void sync_display_timers(cJSON *payload) {
         const int64_t right_due = right.due_unix_ms > 0 ? right.due_unix_ms : sort_now_unix_ms + right.remaining_ms;
         return left_due != right_due ? left_due < right_due : std::strcmp(left.label, right.label) < 0;
       });
+  ESP_LOGI(
+      kTag,
+      "Timer display state: received=%d retained=%u",
+      cJSON_GetArraySize(timers),
+      static_cast<unsigned>(app_state.display_timer_count));
 }
 
 void handle_endpoint_timer(cJSON *payload) {
@@ -3634,7 +3872,16 @@ void handle_endpoint_timer(cJSON *payload) {
     std::snprintf(app_state.timer_label, sizeof(app_state.timer_label), "%s", "Timer");
   }
   sync_display_timers(payload);
-  send_command_ack(request_id, "endpoint.timer", "succeeded", "Timer state updated");
+  if (is_timer_finished_state(state_value) && app_state.display_timer_count == 0) {
+    app_state.timer_active = false;
+  }
+  char ack_message[64] = {};
+  std::snprintf(
+      ack_message,
+      sizeof(ack_message),
+      "Timer state updated; display_count=%u",
+      static_cast<unsigned>(app_state.display_timer_count));
+  send_command_ack(request_id, "endpoint.timer", "succeeded", ack_message);
 }
 
 void resume_audio_stream_for_followup() {
@@ -4120,6 +4367,9 @@ void heartbeat_task(void *arg) {
 
   while (true) {
     if (!hexe::state().wifi_connected) {
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+      g_last_heartbeat_success_us.store(esp_timer_get_time(), std::memory_order_relaxed);
+#endif
       auto &state = hexe::state();
       state.backend_connected = false;
       state.voice_ws_connected = false;
@@ -4128,6 +4378,14 @@ void heartbeat_task(void *arg) {
       }
       vTaskDelay(pdMS_TO_TICKS(kBackendReadinessPollMs));
       continue;
+    }
+    auto &connection_state = hexe::state();
+    if (!connection_state.backend_connected && !connection_state.voice_ws_connected) {
+      std::snprintf(
+          connection_state.system_message,
+          sizeof(connection_state.system_message),
+          "%s",
+          "Connecting to backend");
     }
     try_endpoint_discovery();
     if (hexe::state().media_transfer_active) {
@@ -4173,6 +4431,16 @@ void heartbeat_task(void *arg) {
     config.keep_alive_enable = false;
     esp_http_client_handle_t client = esp_http_client_init(&config);
     if (client == nullptr) {
+      std::snprintf(
+          hexe::state().system_message,
+          sizeof(hexe::state().system_message),
+          "%s",
+          "Retrying backend connection");
+      std::snprintf(
+          hexe::state().error_message,
+          sizeof(hexe::state().error_message),
+          "%s",
+          "Backend connection could not start");
       ESP_LOGW(kTag, "Failed to initialize heartbeat HTTP client");
       vTaskDelay(pdMS_TO_TICKS(hexe::config::kEndpointHeartbeatIntervalMs));
       continue;
@@ -4204,8 +4472,19 @@ void heartbeat_task(void *arg) {
     bool clock_sync_due = false;
     auto &state = hexe::state();
     if (heartbeat_sent) {
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+      g_last_heartbeat_success_us.store(esp_timer_get_time(), std::memory_order_relaxed);
+#endif
       const bool was_backend_connected = state.backend_connected;
       state.backend_connected = true;
+      if (!state.voice_ws_connected) {
+        std::snprintf(
+            state.system_message,
+            sizeof(state.system_message),
+            "%s",
+            "Backend connected. Opening voice connection");
+      }
+      state.error_message[0] = '\0';
       if (!state.muted && !state.ota_active && !state.voice_ws_connected) {
         state.phase = hexe::AppPhase::kBackendConnecting;
       }
@@ -4232,6 +4511,7 @@ void heartbeat_task(void *arg) {
       }
     } else {
       state.backend_connected = false;
+      std::snprintf(state.system_message, sizeof(state.system_message), "%s", "Retrying backend connection");
       if (!g_ws_connected) {
         state.voice_ws_connected = false;
       }
@@ -4239,6 +4519,11 @@ void heartbeat_task(void *arg) {
         state.phase = hexe::idle_or_connecting_phase();
       }
       if (err != ESP_OK) {
+        std::snprintf(
+            state.error_message,
+            sizeof(state.error_message),
+            "Backend connection failed: %s",
+            esp_err_to_name(err));
         ESP_LOGW(
             kTag,
             "Endpoint heartbeat failed: err=%s status=%d duration_ms=%lld url=%s ip=%s rssi=%d heap=%u body_bytes=%u written_bytes=%d",
@@ -4252,6 +4537,11 @@ void heartbeat_task(void *arg) {
             static_cast<unsigned>(body.size()),
             written_bytes);
       } else {
+        std::snprintf(
+            state.error_message,
+            sizeof(state.error_message),
+            "Backend connection failed: HTTP %d",
+            status_code);
         ESP_LOGW(
             kTag,
             "Endpoint heartbeat failed: HTTP %d duration_ms=%lld url=%s ip=%s rssi=%d heap=%u body_bytes=%u written_bytes=%d",
@@ -4277,6 +4567,26 @@ void heartbeat_task(void *arg) {
     vTaskDelay(pdMS_TO_TICKS(hexe::config::kEndpointHeartbeatIntervalMs));
   }
 }
+
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+void backend_connectivity_watchdog_task(void *arg) {
+  (void)arg;
+  g_last_heartbeat_success_us.store(esp_timer_get_time(), std::memory_order_relaxed);
+  while (true) {
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    const auto &state = hexe::state();
+    if (!state.wifi_connected || state.ota_active || state.media_transfer_active) {
+      g_last_heartbeat_success_us.store(esp_timer_get_time(), std::memory_order_relaxed);
+      continue;
+    }
+    const int64_t last_success_us = g_last_heartbeat_success_us.load(std::memory_order_relaxed);
+    if (last_success_us > 0 && esp_timer_get_time() - last_success_us >= kP4BackendStallRestartUs) {
+      ESP_LOGE(kTag, "P4 backend transport stalled for 30 seconds; restarting endpoint");
+      esp_restart();
+    }
+  }
+}
+#endif
 
 void websocket_task(void *arg) {
   (void)arg;
@@ -4513,6 +4823,15 @@ void init_backend_client() {
 
   xTaskCreate(media_transfer_task, "hexe_media_xfer", kMediaTaskStackBytes, nullptr, kMediaTaskPriority, &g_media_task);
   xTaskCreate(heartbeat_task, "hexe_backend_hb", kTaskStackBytes, nullptr, kTaskPriority, &g_heartbeat_task);
+#if defined(HEXE_BOARD_PROFILE_WAVESHARE_P4_WIFI6_TOUCH_LCD_7B)
+  xTaskCreate(
+      backend_connectivity_watchdog_task,
+      "hexe_backend_wd",
+      3072,
+      nullptr,
+      kTaskPriority,
+      &g_backend_watchdog_task);
+#endif
   xTaskCreate(websocket_task, "hexe_voice_ws", kTaskStackBytes, nullptr, kVoiceWsTaskPriority, &g_ws_task);
   ESP_LOGI(
       kTag,
@@ -4606,6 +4925,32 @@ bool send_ui_button_pressed_event(
       button_height,
       touch_x,
       touch_y);
+  envelope.append(body);
+  return send_ws_text(envelope);
+}
+
+bool send_ui_screen_changed_event(
+    const char *screen_id,
+    const char *owner,
+    const char *mode,
+    const char *reason,
+    const char *previous_screen_id) {
+  if (screen_id == nullptr || screen_id[0] == '\0' || !g_ws_connected) return false;
+  std::string envelope;
+  envelope.reserve(384);
+  append_event_header(envelope, "endpoint.ui.screen.changed", nullptr, g_sequence++);
+  char body[320];
+  std::snprintf(
+      body,
+      sizeof(body),
+      "{\"screen_id\":\"%s\",\"owner\":\"%s\",\"mode\":\"%s\",\"reason\":\"%s\",\"previous_screen_id\":%s%s%s}}",
+      screen_id,
+      owner == nullptr ? "device" : owner,
+      mode == nullptr ? "local" : mode,
+      reason == nullptr ? "screen_changed" : reason,
+      previous_screen_id == nullptr ? "null" : "\"",
+      previous_screen_id == nullptr ? "" : previous_screen_id,
+      previous_screen_id == nullptr ? "" : "\"");
   envelope.append(body);
   return send_ws_text(envelope);
 }

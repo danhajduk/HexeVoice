@@ -39,6 +39,7 @@ constexpr size_t kMaxDisplayTimers = 4;
 constexpr size_t kMaxUiFlags = 16;
 constexpr size_t kMaxUiFlagNameBytes = 32;
 constexpr size_t kMaxUiScreenIdBytes = 24;
+constexpr size_t kMaxUiMessageBytes = 96;
 
 struct UiFlag {
   char name[kMaxUiFlagNameBytes]{};
@@ -74,6 +75,8 @@ struct AppState {
   DisplayTimer display_timers[kMaxDisplayTimers]{};
   size_t display_timer_count{0};
   UiFlag ui_flags[kMaxUiFlags]{};
+  char system_message[kMaxUiMessageBytes]{};
+  char error_message[kMaxUiMessageBytes]{};
   bool vad_enabled{false};
   bool vad_speaking{false};
   bool audio_streaming{false};
@@ -102,6 +105,9 @@ bool ui_flag_value(const char *name);
 uint32_t ui_flags_signature();
 bool trigger_ui_screen(const char *screen_id, int duration_ms);
 bool active_ui_screen(char *screen_id, size_t screen_id_size);
+bool set_backend_ui_screen(const char *screen_id);
+void clear_backend_ui_screen();
+bool active_backend_ui_screen(char *screen_id, size_t screen_id_size);
 uint32_t ui_screen_signature();
 void advance_loading_frame();
 bool endpoint_ready();

@@ -77,7 +77,7 @@ def test_send_screen_posts_expected_api_payload(monkeypatch):
     }
 
 
-def test_restart_endpoint_posts_expected_api_payload(monkeypatch):
+def test_sync_endpoint_media_posts_expected_api_payload(monkeypatch):
     module = load_module()
     captured = {}
 
@@ -87,12 +87,12 @@ def test_restart_endpoint_posts_expected_api_payload(monkeypatch):
 
     monkeypatch.setattr(module, "request_json", fake_request)
 
-    response = module.restart_endpoint("http://node:9004", "p4-7b", 3.0)
+    response = module.sync_endpoint_media("http://node:9004", "p4-7b", 3.0)
 
     assert response == {"accepted": True}
     assert captured == {
         "base_url": "http://node:9004",
-        "path": "/api/endpoint/restart",
+        "path": "/api/endpoint/media/sync",
         "method": "POST",
         "payload": {"endpoint_id": "p4-7b"},
         "timeout": 3.0,
@@ -115,6 +115,29 @@ def test_recreate_media_files_runs_p4_generator(monkeypatch):
             module.sys.executable,
             str(module.MEDIA_GENERATOR),
             "waveshare_p4_wifi6_touch_lcd_7b",
+        ],
+        "cwd": module.ROOT,
+        "check": True,
+    }
+
+
+def test_recreate_config_files_runs_config_only_generator(monkeypatch):
+    module = load_module()
+    captured = {}
+
+    def fake_run(command, **kwargs):
+        captured.update({"command": command, **kwargs})
+
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    module.recreate_config_files()
+
+    assert captured == {
+        "command": [
+            module.sys.executable,
+            str(module.MEDIA_GENERATOR),
+            "waveshare_p4_wifi6_touch_lcd_7b",
+            "--config-only",
         ],
         "cwd": module.ROOT,
         "check": True,
@@ -146,6 +169,27 @@ def test_choose_renders_three_columns(monkeypatch, capsys):
     assert selected == "thinking"
     assert any("1. idle" in line and "2. timer" in line and "3. listening" in line for line in output)
     assert any("4. thinking" in line for line in output)
+
+
+@pytest.mark.parametrize(
+    ("selection", "expected"),
+    [("m", "MEDIA_ACTION"), ("M", "MEDIA_ACTION"), ("n", "CONFIG_ACTION"), ("N", "CONFIG_ACTION")],
+)
+def test_choose_accepts_case_insensitive_shortcut(monkeypatch, capsys, selection, expected):
+    module = load_module()
+    monkeypatch.setattr("builtins.input", lambda _prompt: selection)
+
+    selected = module.choose(
+        "Screen",
+        [("idle", "idle")],
+        shortcuts=[
+            ("m", module.MEDIA_ACTION, "Recreate media files"),
+            ("n", module.CONFIG_ACTION, "Recreate config and manifest"),
+        ],
+    )
+
+    assert selected == getattr(module, expected)
+    assert "m. Recreate media files" in capsys.readouterr().out
 
 
 def test_interactive_menu_returns_to_screen_selection_after_send(monkeypatch):
@@ -191,7 +235,7 @@ def test_interactive_menu_returns_to_screen_selection_after_send(monkeypatch):
     assert sent == [("http://node:9004", "p4-7b", "idle", 5, 3.0)]
 
 
-def test_media_action_rebuilds_restarts_endpoint_and_returns_to_screen_menu(monkeypatch):
+def test_media_action_rebuilds_syncs_endpoint_and_returns_to_screen_menu(monkeypatch):
     module = load_module()
     args = SimpleNamespace(
         api_base_url="http://offline:9004",
@@ -204,7 +248,7 @@ def test_media_action_rebuilds_restarts_endpoint_and_returns_to_screen_menu(monk
     )
     labels = []
     rebuilt = []
-    restarted = []
+    synced = []
 
     class Parser:
         def parse_args(self):
@@ -223,12 +267,12 @@ def test_media_action_rebuilds_restarts_endpoint_and_returns_to_screen_menu(monk
     monkeypatch.setattr(module, "select_endpoint", lambda *_args: "p4-7b")
     monkeypatch.setattr(
         module,
-        "restart_endpoint",
-        lambda base_url, endpoint_id, timeout: restarted.append((base_url, endpoint_id, timeout))
+        "sync_endpoint_media",
+        lambda base_url, endpoint_id, timeout: synced.append((base_url, endpoint_id, timeout))
         or {"accepted": True},
     )
 
     assert module.main() == 130
     assert labels == ["Screen", "Screen"]
     assert rebuilt == [True]
-    assert restarted == [("http://offline:9004", "p4-7b", 3.0)]
+    assert synced == [("http://offline:9004", "p4-7b", 3.0)]

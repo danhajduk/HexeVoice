@@ -229,6 +229,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Keep the manifest's existing asset_library_version instead of bumping it.",
     )
+    parser.add_argument(
+        "--config-only",
+        action="store_true",
+        help="Compile UI configuration and regenerate assets.json without converting images or fonts.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Print conversion and manifest commands without writing files.")
     return parser
 
@@ -242,7 +247,7 @@ def main() -> int:
         raise SystemExit("--width and --height must be provided together")
 
     converter = Path(__file__).with_name("convert_image.py")
-    converter_python = _find_converter_python()
+    converter_python = None if args.config_only else _find_converter_python()
     manifest_generator = Path(__file__).with_name("generate-board-asset-library.py")
     picture_dir = board_dir / "assets" / "picture"
     sprite_dir = board_dir / "assets" / "sprite"
@@ -253,8 +258,8 @@ def main() -> int:
     output_suffix = f".{pixel_format}"
     converter_format = f"raw-{pixel_format}"
 
-    picture_sources = _source_images(board_dir)
-    sprite_sources = _source_images(board_dir / "sprites")
+    picture_sources = [] if args.config_only else _source_images(board_dir)
+    sprite_sources = [] if args.config_only else _source_images(board_dir / "sprites")
     p4_ui_config = config_dir / "items.yaml"
     sprite_metadata_sources = [] if p4_ui_config.exists() else _source_sprite_metadata(config_dir)
     yaml_python = _find_yaml_python() if any(
@@ -267,6 +272,7 @@ def main() -> int:
         )
 
     for source in picture_sources:
+        assert converter_python is not None
         picture_width, picture_height = (args.width, args.height) if args.width is not None else _image_size(source)
         output = picture_dir / f"{source.stem}{output_suffix}"
         command = [
@@ -288,6 +294,7 @@ def main() -> int:
         _run(command, args.dry_run)
 
     for source in sprite_sources:
+        assert converter_python is not None
         sprite_width, sprite_height = args.sprite_size or _image_size(source)
         output = sprite_dir / f"{source.stem}{output_suffix}"
         alpha_output = sprite_dir / f"{source.stem}.alpha8"
@@ -322,7 +329,8 @@ def main() -> int:
         _write_p4_ui_config(config_dir, sprite_dir, args.dry_run, yaml_python)
 
     clock_font_source = font_dir / "manrope" / "Manrope-VariableFont_wght.ttf"
-    if clock_font_source.exists():
+    if clock_font_source.exists() and not args.config_only:
+        assert converter_python is not None
         _run(
             [
                 converter_python,
@@ -343,6 +351,18 @@ def main() -> int:
                 "--pixel-size",
                 "32",
                 "--glyphs= 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz,.",
+            ],
+            args.dry_run,
+        )
+        _run(
+            [
+                converter_python,
+                str(Path(__file__).with_name("generate-clock-font.py")),
+                str(clock_font_source),
+                str(font_dir / "manrope" / "message_20.hxf"),
+                "--pixel-size",
+                "20",
+                "--glyphs= 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_:()./",
             ],
             args.dry_run,
         )

@@ -317,6 +317,64 @@ bool file_current(const char *path, int expected_size, const char *expected_sha2
          std::strcmp(sha256, expected_sha256) == 0;
 }
 
+bool copy_json_string(cJSON *object, const char *key, char *target, size_t target_size);
+bool copy_asset_json_string(cJSON *asset, const char *key, char *target, size_t target_size);
+cJSON *asset_json_number(cJSON *asset, const char *key);
+
+cJSON *load_local_manifest() {
+  FILE *file = std::fopen(kManifestPath, "rb");
+  if (file == nullptr) return nullptr;
+  auto *payload = static_cast<char *>(
+      heap_caps_malloc(kMaxManifestBytes + 1, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+  if (payload == nullptr) {
+    std::fclose(file);
+    return nullptr;
+  }
+  const size_t size = std::fread(payload, 1, kMaxManifestBytes, file);
+  const bool too_large = std::fgetc(file) != EOF;
+  std::fclose(file);
+  payload[size] = '\0';
+  cJSON *manifest = size > 0 && !too_large ? cJSON_ParseWithLength(payload, size) : nullptr;
+  heap_caps_free(payload);
+  if (!cJSON_IsObject(manifest)) {
+    cJSON_Delete(manifest);
+    return nullptr;
+  }
+  return manifest;
+}
+
+bool local_manifest_matches(
+    cJSON *manifest,
+    const char *media_type,
+    const char *filename,
+    int expected_size,
+    const char *expected_sha256,
+    const char *final_path) {
+  if (!cJSON_IsObject(manifest)) return false;
+  cJSON *assets = cJSON_GetObjectItem(manifest, "assets");
+  cJSON *asset = nullptr;
+  cJSON_ArrayForEach(asset, assets) {
+    char local_type[16] = {};
+    char local_filename[128] = {};
+    char local_sha256[65] = {};
+    if (!copy_json_string(asset, "media_type", local_type, sizeof(local_type)) ||
+        (!copy_json_string(asset, "filename", local_filename, sizeof(local_filename)) &&
+         !copy_json_string(asset, "source_filename", local_filename, sizeof(local_filename))) ||
+        !copy_asset_json_string(asset, "sha256", local_sha256, sizeof(local_sha256))) {
+      continue;
+    }
+    cJSON *local_size = asset_json_number(asset, "size_bytes");
+    if (std::strcmp(local_type, media_type) != 0 || std::strcmp(local_filename, filename) != 0 ||
+        !cJSON_IsNumber(local_size) || local_size->valueint != expected_size ||
+        std::strcmp(local_sha256, expected_sha256) != 0) {
+      continue;
+    }
+    struct stat info = {};
+    return stat(final_path, &info) == 0 && S_ISREG(info.st_mode) && info.st_size == expected_size;
+  }
+  return false;
+}
+
 bool download_asset_file(const char *url, const char *final_path, const char *temp_path, int expected_size, const char *expected_sha256) {
   esp_http_client_config_t config = {};
   config.url = url;
@@ -523,6 +581,7 @@ void sync_assets_once() {
   }
 
   set_status("syncing");
+  cJSON *local_manifest = load_local_manifest();
   bool display_reload_needed = false;
   cJSON *asset = nullptr;
   cJSON_ArrayForEach(asset, assets) {
@@ -560,7 +619,9 @@ void sync_assets_once() {
       continue;
     }
 
-    if (file_current(final_path, size->valueint, sha256)) {
+    if (local_manifest_matches(
+            local_manifest, media_type, filename, size->valueint, sha256, final_path) ||
+        file_current(final_path, size->valueint, sha256)) {
       continue;
     }
     ESP_LOGI(kTag, "Downloading asset media_type=%s filename=%s size=%d", media_type, filename, size->valueint);
@@ -575,6 +636,7 @@ void sync_assets_once() {
     }
   }
 
+  cJSON_Delete(local_manifest);
   cJSON_Delete(root);
   if (g_failed_count == 0 && write_manifest(manifest_body.data, manifest_body.size)) {
     set_status(g_downloaded_count > 0 ? "updated" : "current");
@@ -642,9 +704,15 @@ void reserve_asset_sync_dma_memory() {
   }
 }
 
-void init_asset_sync() {
+bool trigger_asset_sync() {
   if (g_asset_sync_task != nullptr) {
-    return;
+    return false;
+  }
+  // ESP-Hosted needs internal DMA memory to complete the initial Wi-Fi
+  // association. Only protect DMA capacity for an on-demand sync after the
+  // network is already up; the boot sync waits for Wi-Fi without holding it.
+  if (hexe::state().wifi_connected) {
+    reserve_asset_sync_dma_memory();
   }
   g_active = true;
   if (xTaskCreate(asset_sync_task, "hexe_asset_sync", kTaskStackBytes, nullptr, kTaskPriority, &g_asset_sync_task) != pdPASS) {
@@ -652,7 +720,13 @@ void init_asset_sync() {
     g_asset_sync_task = nullptr;
     set_status("task_create_failed");
     release_dma_reserve();
+    return false;
   }
+  return true;
+}
+
+void init_asset_sync() {
+  trigger_asset_sync();
 }
 
 bool asset_sync_active() {

@@ -20,6 +20,7 @@ DEFAULT_CONFIG = (
 )
 VALID_DURATIONS = (5, 10, 20, 30)
 MEDIA_ACTION = "__recreate_media__"
+CONFIG_ACTION = "__recreate_config__"
 MEDIA_GENERATOR = ROOT / "firmware/tools/generate-board-media-assets.py"
 BOARD_PROFILE = "waveshare_p4_wifi6_touch_lcd_7b"
 
@@ -88,6 +89,7 @@ def choose(
     *,
     columns: int = 1,
     default: str | None = None,
+    shortcuts: list[tuple[str, str, str]] | None = None,
 ) -> str:
     if columns < 1:
         raise ValueError("columns must be at least 1")
@@ -98,6 +100,8 @@ def choose(
         column_width = max((len(entry) for entry in entries), default=0) + 4
         for start in range(0, len(entries), columns):
             print("  " + "".join(entry.ljust(column_width) for entry in entries[start : start + columns]).rstrip())
+        for key, _, description in shortcuts or []:
+            print(f"   {key}. {description}")
         print("   q. Quit")
         prompt = f"Choose [{default_description}]: " if default_description is not None else "Choose: "
         selection = input(prompt).strip().lower()
@@ -105,6 +109,9 @@ def choose(
             return default
         if selection in {"q", "quit", "exit"}:
             raise KeyboardInterrupt
+        for key, value, _ in shortcuts or []:
+            if selection == key.lower():
+                return value
         if selection.isdigit() and 1 <= int(selection) <= len(options):
             return options[int(selection) - 1][0]
         print("Invalid choice.")
@@ -150,10 +157,10 @@ def send_screen(
     )
 
 
-def restart_endpoint(base_url: str, endpoint_id: str, timeout: float) -> dict[str, Any]:
+def sync_endpoint_media(base_url: str, endpoint_id: str, timeout: float) -> dict[str, Any]:
     return request_json(
         base_url,
-        "/api/endpoint/restart",
+        "/api/endpoint/media/sync",
         method="POST",
         payload={"endpoint_id": endpoint_id},
         timeout=timeout,
@@ -171,6 +178,19 @@ def recreate_media_files() -> None:
         raise RuntimeError(f"could not start media generator: {exc}") from exc
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"media generator failed with exit code {exc.returncode}") from exc
+
+
+def recreate_config_files() -> None:
+    try:
+        subprocess.run(
+            [sys.executable, str(MEDIA_GENERATOR), BOARD_PROFILE, "--config-only"],
+            cwd=ROOT,
+            check=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(f"could not start config generator: {exc}") from exc
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"config generator failed with exit code {exc.returncode}") from exc
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -203,20 +223,29 @@ def main() -> int:
         while True:
             screen_id = args.screen or choose(
                 "Screen",
-                [(item, item) for item in screens] + [(MEDIA_ACTION, "Recreate media files")],
+                [(item, item) for item in screens],
                 columns=3,
+                shortcuts=[
+                    ("m", MEDIA_ACTION, "Recreate media files"),
+                    ("n", CONFIG_ACTION, "Recreate config and manifest"),
+                ],
             )
-            if screen_id == MEDIA_ACTION:
-                print("\nRecreating P4 media files...")
-                recreate_media_files()
-                print("Media files recreated.")
+            if screen_id in {MEDIA_ACTION, CONFIG_ACTION}:
+                if screen_id == MEDIA_ACTION:
+                    print("\nRecreating P4 media files...")
+                    recreate_media_files()
+                    print("Media files recreated.")
+                else:
+                    print("\nRecreating P4 config and manifest...")
+                    recreate_config_files()
+                    print("Config and manifest recreated.")
                 if endpoint_id is None:
                     endpoint_id = select_endpoint(args.api_base_url, args.timeout)
-                response = restart_endpoint(args.api_base_url, endpoint_id, args.timeout)
+                response = sync_endpoint_media(args.api_base_url, endpoint_id, args.timeout)
                 if not response.get("accepted"):
-                    reason = response.get("reason") or response.get("status") or "restart rejected"
+                    reason = response.get("reason") or response.get("status") or "asset sync rejected"
                     raise RuntimeError(str(reason))
-                print(f"Restart requested for {endpoint_id!r}.")
+                print(f"Media sync requested for {endpoint_id!r}.")
                 continue
             if endpoint_id is None:
                 endpoint_id = select_endpoint(args.api_base_url, args.timeout)

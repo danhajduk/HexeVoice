@@ -1,4 +1,5 @@
 id: timer_finished
+owner: backend
 conditions:
   match: all
   items:
@@ -8,8 +9,8 @@ buttons: {preset: standard}
 items:
   - item: header_clock
   - item: activity_timer
-    x: 90
-    y: 105
+    x: 180
+    y: 195
     animations:
       - preset: activity_slide_up
         when: {flag: timer_finished}

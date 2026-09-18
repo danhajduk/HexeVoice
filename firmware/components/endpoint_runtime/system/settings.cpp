@@ -300,7 +300,7 @@ void init_settings() {
   uint8_t persisted_muted = 0;
   err = nvs_get_u8(handle, kMutedKey, &persisted_muted);
   if (err == ESP_OK) {
-    app_state.muted = persisted_muted != 0;
+    app_state.muted = persisted_muted != 0 || app_state.output_volume_percent == 0;
     app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : app_state.phase;
   } else if (err != ESP_ERR_NVS_NOT_FOUND) {
     ESP_LOGW(kTag, "Failed to read persisted mute state: %s", esp_err_to_name(err));
@@ -350,8 +350,12 @@ void set_muted(bool muted) {
 
 void set_output_volume_percent(int volume_percent) {
   const int clamped = normalize_volume(volume_percent);
-  hexe::state().output_volume_percent = clamped;
+  auto &app_state = hexe::state();
+  app_state.output_volume_percent = clamped;
+  app_state.muted = clamped == 0;
+  app_state.phase = app_state.muted ? hexe::AppPhase::kMuted : hexe::idle_or_connecting_phase();
   save_i32(kVolumeKey, clamped);
+  save_u8(kMutedKey, app_state.muted ? 1 : 0);
 }
 
 int micro_vad_pause_ms() {

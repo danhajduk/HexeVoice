@@ -544,6 +544,16 @@ class EndpointScreenCommandRequest(BaseModel):
     duration_seconds: int = Field(default=30, ge=1, le=30)
 
 
+class EndpointTimerCommandRequest(BaseModel):
+    endpoint_id: str = Field(min_length=1)
+    timer_id: str = Field(min_length=1, max_length=96)
+    state: Literal["active", "paused", "finished", "cleared"] = "active"
+    label: str = Field(default="Timer", min_length=1, max_length=31)
+    remaining_seconds: int | None = Field(default=None, ge=0, le=604800)
+    due_at: str | None = None
+    timers: list[dict[str, Any]] | None = Field(default=None, max_length=4)
+
+
 class EndpointLedSimulateCommandRequest(BaseModel):
     endpoint_id: str = Field(min_length=1)
     pattern: str = Field(default="all", min_length=1, max_length=40)

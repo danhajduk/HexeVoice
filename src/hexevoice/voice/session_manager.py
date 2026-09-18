@@ -9,7 +9,7 @@ import json
 import logging
 from pathlib import Path
 import re
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 from uuid import uuid4
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -43,6 +43,27 @@ from hexevoice.voice.contracts import (
     project_voice_state,
 )
 from hexevoice.voice.pipeline import TtsSynthesis, VoiceTurnAudioSummary, VoiceTurnPipeline
+
+
+P4_SCREEN_LAYOUT_PATH = (
+    Path(__file__).resolve().parents[3]
+    / "firmware/assets/waveshare_p4_wifi6_touch_lcd_7b/assets/sprite/screens_layout.json"
+)
+
+
+def _p4_backend_screen_layout(screen_id: str) -> dict[str, Any]:
+    payload = json.loads(P4_SCREEN_LAYOUT_PATH.read_text(encoding="utf-8"))
+    screens = payload.get("screens") if isinstance(payload, dict) else None
+    if not isinstance(screens, list):
+        raise ValueError("P4 screen layout does not contain screens")
+    for screen in screens:
+        if isinstance(screen, dict) and screen.get("id") == screen_id:
+            return {
+                key: value
+                for key, value in screen.items()
+                if key not in {"owner", "conditions"}
+            }
+    raise ValueError(f"unknown P4 screen: {screen_id}")
 from hexevoice.voice.audio_quality import analyze_pcm_s16le_audio
 from hexevoice.voice.placement import (
     PlacementReportInput,
@@ -244,6 +265,10 @@ class VoiceSessionManager:
         wake_election_window_ms: int = DEFAULT_WAKE_ELECTION_WINDOW_MS,
         endpoint_runtime_config: EndpointRuntimeConfig | None = None,
         endpoint_board_profile_provider: Callable[[str], str | None] | None = None,
+        ui_button_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        endpoint_event_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
+        custom_capture_active: Callable[[str], bool] | None = None,
+        custom_capture_handler: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         self._default_runtime = EndpointSessionRuntime()
         self._runtime_context: contextvars.ContextVar[EndpointSessionRuntime | None] = contextvars.ContextVar(
@@ -266,6 +291,7 @@ class VoiceSessionManager:
         self._privacy_mode_enabled = privacy_mode_enabled
         self._event_diagnostics: list[dict[str, object]] = []
         self._last_ui_button_pressed: dict[str, object] | None = None
+        self._last_ui_screen: dict[str, object] | None = None
         self._ui_button_history: list[dict[str, object]] = []
         self._wake_history: list[dict[str, object]] = []
         self._wake_confidence_history: list[dict[str, object]] = []
@@ -274,6 +300,43 @@ class VoiceSessionManager:
         self._active_placement_test_windows: dict[str, dict[str, object]] = {}
         self._endpoint_runtime_config = endpoint_runtime_config or EndpointRuntimeConfig()
         self._endpoint_board_profile_provider = endpoint_board_profile_provider
+        self._ui_button_handler = ui_button_handler
+        self._endpoint_event_handler = endpoint_event_handler
+        self._custom_capture_active = custom_capture_active
+        self._custom_capture_handler = custom_capture_handler
+        self._ui_action_tasks: set[asyncio.Task[None]] = set()
+
+    def set_ui_button_handler(
+        self,
+        handler: Callable[[dict[str, Any]], Awaitable[None]] | None,
+    ) -> None:
+        self._ui_button_handler = handler
+
+    def set_endpoint_event_handler(
+        self,
+        handler: Callable[[dict[str, Any]], Awaitable[None]] | None,
+    ) -> None:
+        self._endpoint_event_handler = handler
+
+    def set_custom_capture_handler(
+        self,
+        *,
+        active: Callable[[str], bool] | None,
+        handler: Callable[[dict[str, Any]], Awaitable[None]] | None,
+    ) -> None:
+        self._custom_capture_active = active
+        self._custom_capture_handler = handler
+
+    def _schedule_endpoint_callback(
+        self,
+        handler: Callable[[dict[str, Any]], Awaitable[None]] | None,
+        record: dict[str, Any],
+    ) -> None:
+        if handler is None:
+            return
+        task = asyncio.create_task(handler(record))
+        self._ui_action_tasks.add(task)
+        task.add_done_callback(self._ui_action_tasks.discard)
 
     def _current_runtime(self) -> EndpointSessionRuntime:
         runtime_context = getattr(self, "_runtime_context", None)
@@ -308,6 +371,17 @@ class VoiceSessionManager:
         ):
             return self._default_runtime
         return None
+
+    def connected_endpoint_ids(self, *, board_profile: str | None = None) -> list[str]:
+        endpoint_ids = []
+        for endpoint_id, state in self._endpoint_runtimes.items():
+            if not state.connection_active or state.websocket is None:
+                continue
+            if board_profile is not None and self._endpoint_board_profile_provider is not None:
+                if self._endpoint_board_profile_provider(endpoint_id) != board_profile:
+                    continue
+            endpoint_ids.append(endpoint_id)
+        return sorted(set(endpoint_ids))
 
     def _runtime_switch_for_endpoint(self, endpoint_id: str) -> EndpointSessionRuntime | None:
         runtime = self._runtime_for_endpoint(endpoint_id)
@@ -839,6 +913,8 @@ class VoiceSessionManager:
         )
         if result.get("accepted"):
             self._last_volume_percent_by_endpoint[endpoint_id] = volume_percent
+            if volume_percent == 0:
+                log.info("Volume zero requested; endpoint will enter muted state: endpoint_id=%s", endpoint_id)
             log.info("Volume command sent to endpoint: endpoint_id=%s volume_percent=%s", endpoint_id, volume_percent)
         return result
 
@@ -911,12 +987,127 @@ class VoiceSessionManager:
             payload={"reason": reason},
         )
 
-    async def push_ui_screen_command(self, *, endpoint_id: str, screen_id: str, duration_seconds: int = 30) -> dict:
+    async def push_asset_sync_command(self, *, endpoint_id: str, manifest_version: str | None = None) -> dict:
         return await self._push_endpoint_command(
             endpoint_id=endpoint_id,
-            event_type="endpoint.ui.screen",
-            command_type="endpoint.ui.screen",
-            payload={"screen_id": screen_id, "duration_seconds": max(1, min(duration_seconds, 30))},
+            event_type="endpoint.assets.sync",
+            command_type="endpoint.assets.sync",
+            payload={"manifest_version": manifest_version} if manifest_version else {},
+        )
+
+    async def push_asset_prepare_command(self, *, endpoint_id: str, asset: dict[str, Any]) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.asset.prepare",
+            command_type="endpoint.asset.prepare",
+            request_id=f"asset_prepare_{uuid4().hex}",
+            payload=asset,
+        )
+
+    async def push_ui_screen_command(self, *, endpoint_id: str, screen_id: str, duration_seconds: int = 30) -> dict:
+        layout = _p4_backend_screen_layout(screen_id)
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.ui.screen.render",
+            command_type="endpoint.ui.screen.render",
+            payload={
+                "mode": "temporary",
+                "timeout_ms": max(1, min(duration_seconds, 30)) * 1000,
+                "revision": uuid4().hex,
+                "layout": layout,
+            },
+        )
+
+    async def push_ui_screen_set_command(self, *, endpoint_id: str, screen_id: str) -> dict:
+        layout = _p4_backend_screen_layout(screen_id)
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.ui.screen.render",
+            command_type="endpoint.ui.screen.render",
+            payload={
+                "mode": "persistent",
+                "revision": uuid4().hex,
+                "layout": layout,
+            },
+        )
+
+    async def push_ui_layout_command(
+        self,
+        *,
+        endpoint_id: str,
+        layout: dict[str, Any],
+        mode: str = "temporary",
+        duration_seconds: int = 30,
+    ) -> dict:
+        payload: dict[str, Any] = {
+            "mode": mode,
+            "revision": uuid4().hex,
+            "layout": layout,
+        }
+        if mode == "temporary":
+            payload["timeout_ms"] = max(1, min(duration_seconds, 300)) * 1000
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.ui.screen.render",
+            command_type="endpoint.ui.screen.render",
+            payload=payload,
+        )
+
+    async def push_ui_screen_clear_command(self, *, endpoint_id: str, mode: str | None = None) -> dict:
+        return await self._push_endpoint_command(
+            endpoint_id=endpoint_id,
+            event_type="endpoint.ui.screen.clear",
+            command_type="endpoint.ui.screen.clear",
+            payload={"mode": mode} if mode else {},
+        )
+
+    def _ui_screen_render_event(
+        self,
+        *,
+        endpoint_id: str,
+        screen_id: str,
+        mode: str,
+        timeout_ms: int | None = None,
+    ) -> VoiceEventEnvelope:
+        request_id = f"ui_screen_{uuid4().hex}"
+        payload: dict[str, Any] = {
+            "request_id": request_id,
+            "mode": mode,
+            "revision": uuid4().hex,
+            "layout": _p4_backend_screen_layout(screen_id),
+        }
+        if timeout_ms is not None:
+            payload["timeout_ms"] = timeout_ms
+        self._record_command(
+            request_id=request_id,
+            endpoint_id=endpoint_id,
+            command_type="endpoint.ui.screen.render",
+            event_type="endpoint.ui.screen.render",
+        )
+        return VoiceEventEnvelope(
+            event_type="endpoint.ui.screen.render",
+            endpoint_id=endpoint_id,
+            direction="backend_to_endpoint",
+            session_id=self._active_session.session_id if self._active_session else None,
+            sequence=self._next_sequence(),
+            payload=payload,
+        )
+
+    def _ui_screen_clear_event(self, *, endpoint_id: str, mode: str | None = None) -> VoiceEventEnvelope:
+        request_id = f"ui_screen_clear_{uuid4().hex}"
+        self._record_command(
+            request_id=request_id,
+            endpoint_id=endpoint_id,
+            command_type="endpoint.ui.screen.clear",
+            event_type="endpoint.ui.screen.clear",
+        )
+        return VoiceEventEnvelope(
+            event_type="endpoint.ui.screen.clear",
+            endpoint_id=endpoint_id,
+            direction="backend_to_endpoint",
+            session_id=self._active_session.session_id if self._active_session else None,
+            sequence=self._next_sequence(),
+            payload={"request_id": request_id, **({"mode": mode} if mode else {})},
         )
 
     async def push_endpoint_provisioning_apply_command(
@@ -1218,6 +1409,19 @@ class VoiceSessionManager:
         announcement_text = str(text or "").strip()
         if not announcement_text:
             return {"accepted": False, "reason": "announcement_text_required", "status": "failed"}
+        active_session = self._active_session
+        originating_voice_session = active_session is not None and active_session.session_id == session_id
+        if not originating_voice_session and self._session_history_store is not None:
+            session_history = self._session_history_store.get_session(session_id)
+            originating_voice_session = isinstance(session_history, dict) and isinstance(
+                session_history.get("tts"), dict
+            )
+        if originating_voice_session:
+            return {
+                "accepted": True,
+                "reason": "originating_voice_session_already_replies",
+                "status": "skipped",
+            }
         tts = self._turn_pipeline.synthesize_reply(
             endpoint_id=endpoint_id,
             session_id=session_id,
@@ -1306,13 +1510,27 @@ class VoiceSessionManager:
                 pass
         if timers is not None:
             payload["timers"] = [self._endpoint_timer_payload(timer) for timer in timers[:4]]
-        return await self._push_endpoint_command(
+        result = await self._push_endpoint_command(
             endpoint_id=endpoint_id,
             event_type="endpoint.timer",
             command_type="endpoint.timer",
             request_id=f"endpoint_timer_{uuid4().hex}",
             payload=payload,
         )
+        if not result.get("accepted"):
+            return result
+        active_timers = payload.get("timers") if isinstance(payload.get("timers"), list) else []
+        if endpoint_state == "finished":
+            if active_timers:
+                await self.push_ui_screen_set_command(endpoint_id=endpoint_id, screen_id="timer")
+            else:
+                await self.push_ui_screen_clear_command(endpoint_id=endpoint_id)
+            await self.push_ui_screen_command(endpoint_id=endpoint_id, screen_id="timer_finished", duration_seconds=30)
+        elif endpoint_state in {"active", "paused"} or active_timers:
+            await self.push_ui_screen_set_command(endpoint_id=endpoint_id, screen_id="timer")
+        else:
+            await self.push_ui_screen_clear_command(endpoint_id=endpoint_id)
+        return result
 
     @staticmethod
     def _endpoint_timer_payload(timer: dict[str, Any]) -> dict[str, Any]:
@@ -1621,6 +1839,7 @@ class VoiceSessionManager:
             "tts.playback.failed": self._handle_tts_playback_event,
             "playback.stop": self._handle_tts_playback_event,
             "endpoint.ui.button_pressed": self._handle_ui_button_pressed,
+            "endpoint.ui.screen.changed": self._handle_ui_screen_changed,
         }
         return handlers[event.event_type](event)
 
@@ -2372,6 +2591,74 @@ class VoiceSessionManager:
         )
         return events
 
+    def _complete_custom_capture(self, session: VoiceSessionSnapshot) -> list[VoiceEventEnvelope]:
+        if self._turn_pipeline is None:
+            return []
+        transcript = self._turn_pipeline.transcribe_audio(
+            VoiceTurnAudioSummary(
+                endpoint_id=session.endpoint_id,
+                session_id=session.session_id,
+                chunk_count=self._chunk_count,
+                sample_rate_hz=self._audio_format.sample_rate_hz if self._audio_format else None,
+                encoding=self._audio_format.encoding if self._audio_format else None,
+                channels=self._audio_format.channels if self._audio_format else 1,
+                audio_bytes=b"".join(self._audio_chunks),
+                ambient_audio_bytes=b"".join(self._ambient_audio_chunks) or None,
+                endpoint_audio_metrics=self._endpoint_audio_metrics(),
+            )
+        )
+        self._last_transcript = transcript.text
+        self._last_transcript_metadata = {
+            "provider_id": transcript.provider_id,
+            "model": transcript.model,
+            "confidence": transcript.confidence,
+            "duration_ms": transcript.duration_ms,
+            "text_chars": len(transcript.text or ""),
+            "error": transcript.error,
+            "custom_capture": True,
+        }
+        events = [
+            self._state_event(
+                "transcript.final",
+                session,
+                extra_payload=VoiceTranscriptPayload(
+                    text=transcript.text,
+                    confidence=transcript.confidence,
+                ).model_dump(mode="json"),
+            )
+        ]
+        if transcript.error:
+            self._set_session_state("failed")
+            events.append(
+                self._error_event(
+                    endpoint_id=session.endpoint_id,
+                    session_id=session.session_id,
+                    code="stt_failed",
+                    message=transcript.error,
+                    recoverable=True,
+                )
+            )
+            completion_reason = "stt_failed"
+        else:
+            self._set_session_state("local_command")
+            self._set_session_state("responding")
+            self._set_session_state("completed")
+            events.append(self._state_event("session.completed", session))
+            completion_reason = "custom_capture_completed"
+        self._persist_active_session_history(session, completion_reason=completion_reason)
+        self._schedule_endpoint_callback(
+            self._custom_capture_handler,
+            {
+                "endpoint_id": session.endpoint_id,
+                "session_id": session.session_id,
+                "text": transcript.text,
+                "error": transcript.error,
+            },
+        )
+        self._release_active_session_wake_stream()
+        self._clear_active_session_runtime()
+        return events
+
     def _handle_audio_end(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         session = self._require_active_session(event)
         if isinstance(session, VoiceEventEnvelope):
@@ -2444,6 +2731,12 @@ class VoiceSessionManager:
         self._update_vad_latency("audio_end", event.timestamp)
         self._set_session_state("transcribing")
         events: list[VoiceEventEnvelope] = []
+        if (
+            self._turn_pipeline is not None
+            and self._custom_capture_active is not None
+            and self._custom_capture_active(session.endpoint_id)
+        ):
+            return self._complete_custom_capture(session)
         placement_test_window = self._active_placement_test_window(session.endpoint_id)
         if self._active_session_is_placement_test() and self._turn_pipeline is not None:
             return self._complete_active_placement_test(session=session, event=event, placement_window=placement_test_window)
@@ -2779,6 +3072,14 @@ class VoiceSessionManager:
                 self._clear_active_session_runtime()
                 return events
             events.append(
+                self._ui_screen_render_event(
+                    endpoint_id=session.endpoint_id,
+                    screen_id="playback",
+                    mode="temporary",
+                    timeout_ms=300000,
+                )
+            )
+            events.append(
                 self._state_event(
                     "tts.ready",
                     session,
@@ -3061,6 +3362,7 @@ class VoiceSessionManager:
                 "commands": list(self._command_records.values()),
                 "event_diagnostics": list(self._event_diagnostics),
                 "last_ui_button_pressed": self._last_ui_button_pressed,
+                "current_ui_screen": self._last_ui_screen,
                 "ui_button_history": list(self._ui_button_history),
                 "wake_provider": self._wake_detector.status(),
                 "wake_election": self._wake_election.status(),
@@ -4202,6 +4504,7 @@ class VoiceSessionManager:
         self._tts_playback_history.insert(0, record)
         del self._tts_playback_history[20:]
         self._track_playback_lifecycle(event.event_type, record)
+        self._schedule_endpoint_callback(self._endpoint_event_handler, record)
         self._last_event_type = event.event_type
         self._update_active_session_history(tts_playback=record)
         if event.session_id:
@@ -4250,10 +4553,19 @@ class VoiceSessionManager:
                 event.event_type,
             )
         if event.event_type == "tts.playback.completed" and self._should_open_followup_window(event):
-            return [self._open_followup_window(event.timestamp)]
+            return [
+                self._open_followup_window(event.timestamp),
+                self._ui_screen_clear_event(endpoint_id=event.endpoint_id, mode="temporary"),
+            ]
         if event.event_type == "tts.playback.failed" and self._pending_session_followup and self._active_session:
-            return [self._cancel_active_followup_session(reason="tts_playback_failed")]
-        return [self._state_event("session.state", self._active_session)] if self._active_session else []
+            return [
+                self._cancel_active_followup_session(reason="tts_playback_failed"),
+                self._ui_screen_clear_event(endpoint_id=event.endpoint_id, mode="temporary"),
+            ]
+        events = [self._state_event("session.state", self._active_session)] if self._active_session else []
+        if event.event_type in {"tts.playback.completed", "tts.playback.failed", "playback.stop"}:
+            events.append(self._ui_screen_clear_event(endpoint_id=event.endpoint_id, mode="temporary"))
+        return events
 
     def _handle_ui_button_pressed(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
         try:
@@ -4293,6 +4605,36 @@ class VoiceSessionManager:
             payload.button_index,
             payload.touch.x,
             payload.touch.y,
+        )
+        self._schedule_endpoint_callback(self._ui_button_handler, record)
+        return []
+
+    def _handle_ui_screen_changed(self, event: VoiceEventEnvelope) -> list[VoiceEventEnvelope]:
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        screen_id = str(payload.get("screen_id") or "").strip()
+        if not screen_id:
+            return [
+                self._error_event(
+                    endpoint_id=event.endpoint_id,
+                    session_id=event.session_id,
+                    code="invalid_ui_screen_changed",
+                    message="screen_id is required",
+                    recoverable=True,
+                )
+            ]
+        self._last_ui_screen = {
+            "event_id": event.event_id,
+            "endpoint_id": event.endpoint_id,
+            **payload,
+            "received_at": datetime.now(UTC).isoformat(),
+        }
+        self._last_event_type = event.event_type
+        log.info(
+            "Endpoint UI screen changed: endpoint_id=%s screen_id=%s owner=%s mode=%s",
+            event.endpoint_id,
+            screen_id,
+            payload.get("owner"),
+            payload.get("mode"),
         )
         return []
 

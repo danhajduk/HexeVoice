@@ -265,6 +265,21 @@ Validation gate:
 - All voice lifecycle states are visible from across a room.
 - Touch controls do not block listening/playback lifecycle.
 
+Implemented endpoint experience:
+
+- Backend-owned weather and timer quick-action screens keep the device in the
+  single Hexe app and use the existing sidebars for navigation.
+- Prepared weather speech plays from the Interaction-owned snapshot, while the
+  timer custom flow prompts, captures a spoken duration, confirms it, and hands
+  lifecycle authority back to Interaction.
+- Static radar snapshots are checksum-verified, center-cropped to RGB888 at
+  800 x 420, cached by HexeVoice, and delivered with `endpoint.asset.prepare`.
+  The P4 holds the active bitmap in PSRAM and renders it at `(112, 96)`, between
+  the sidebars and header/footer bands.
+- New weather snapshots proactively prepare radar for connected P4 endpoints;
+  missing or stale radar leaves the normal weather view available.
+- Physical display, touch, and SD/no-SD validation remains in Task 322.
+
 ## Phase 5: Optional Device Capabilities
 
 Only after the voice-node path is stable:

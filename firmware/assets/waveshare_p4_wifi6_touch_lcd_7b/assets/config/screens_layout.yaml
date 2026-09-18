@@ -1,7 +1,6 @@
 schema_version: 1
 screens:
   - !include screens/updating.yaml
-  - !include screens/updating_phase.yaml
   - !include screens/listening.yaml
   - !include screens/thinking.yaml
   - !include screens/playback.yaml

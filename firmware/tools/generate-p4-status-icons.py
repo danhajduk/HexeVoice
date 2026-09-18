@@ -66,6 +66,32 @@ def activity_timer(draw):
     draw.line((90, 92, 112, 105), fill=MAGENTA, width=5)
 
 
+def activity_booting(draw):
+    activity_frame(draw)
+    draw.arc((55, 49, 125, 119), 315, 225, fill=CYAN, width=7)
+    draw.line((90, 42, 90, 84), fill=BLUE, width=7)
+    draw.arc((68, 62, 112, 106), 315, 225, fill=BLUE, width=4)
+    draw.ellipse((84, 126, 96, 138), fill=MAGENTA)
+
+
+def activity_wifi_connecting(draw):
+    activity_frame(draw)
+    draw.arc((42, 46, 138, 142), 215, 325, fill=CYAN, width=7)
+    draw.arc((58, 64, 122, 128), 215, 325, fill=BLUE, width=7)
+    draw.arc((74, 82, 106, 114), 215, 325, fill=CYAN, width=7)
+    draw.ellipse((84, 119, 96, 131), fill=MAGENTA)
+
+
+def activity_backend_connecting(draw):
+    activity_frame(draw)
+    draw.rounded_rectangle((49, 49, 84, 78), radius=5, outline=BLUE, width=5)
+    draw.rounded_rectangle((96, 102, 131, 131), radius=5, outline=CYAN, width=5)
+    draw.line((82, 70, 104, 108), fill=CYAN, width=5)
+    draw.polygon((96, 98, 111, 108, 97, 116), fill=MAGENTA)
+    draw.ellipse((43, 58, 53, 68), fill=CYAN)
+    draw.ellipse((127, 111, 137, 121), fill=BLUE)
+
+
 def button_frame(draw):
     draw.rounded_rectangle((3, 3, 68, 52), radius=8, outline=BLUE, width=2)
     draw.line((11, 3, 61, 3), fill=CYAN, width=2)
@@ -237,6 +263,9 @@ def main():
     save("activity_thinking", activity_thinking, 180)
     save("activity_replay", activity_replay, 180)
     save("activity_timer", activity_timer, 180)
+    save("activity_booting", activity_booting, 180)
+    save("activity_wifi_connecting", activity_wifi_connecting, 180)
+    save("activity_backend_connecting", activity_backend_connecting, 180)
     save("button_timer", button_timer, (72, 56))
     save("button_weather", button_weather, (72, 56))
     save("button_config", button_config, (72, 56))

@@ -81,6 +81,7 @@ from hexevoice.api.models import (
     EndpointCommandRequest,
     EndpointCommandResponse,
     EndpointScreenCommandRequest,
+    EndpointTimerCommandRequest,
     EndpointDiscoveryRequest,
     EndpointDiscoveryResponse,
     EndpointLedSimulateCommandRequest,
@@ -182,6 +183,8 @@ from hexevoice.setup_trust import SetupTrustRecoveryService
 from hexevoice.supervisor.client import SupervisorApiClient
 from hexevoice.timer_announcements import TimerOwnershipCache, TimerSucceededAnnouncementService
 from hexevoice.weather_snapshots import WeatherSnapshotService
+from hexevoice.p4_quick_actions import P4QuickActionService
+from hexevoice.radar_assets import RadarAssetService
 from hexevoice.trust.status import TrustStatusService
 from hexevoice.tts import TtsAudioService
 from hexevoice.tts.runtime_settings import TtsRuntimeSettingsService
@@ -1029,6 +1032,25 @@ def create_app(
         ownership_cache=timer_ownership_cache,
     )
     weather_snapshot_service = WeatherSnapshotService(settings=app_settings)
+    radar_asset_service = RadarAssetService(app_settings.runtime_dir / "weather_radar_assets")
+
+    def radar_asset_public_url(asset_id: str) -> str:
+        base_url = app_settings.public_api_base_url or f"http://127.0.0.1:{app_settings.api_port}"
+        return f"{base_url.rstrip('/')}/api/voice/weather/radar/assets/{asset_id}"
+
+    p4_quick_action_service = P4QuickActionService(
+        manager=voice_session_manager,
+        weather=weather_snapshot_service,
+        radar_assets=radar_asset_service,
+        radar_asset_url=radar_asset_public_url,
+        interaction_api_base_url=app_settings.interaction_api_base_url,
+    )
+    voice_session_manager.set_ui_button_handler(p4_quick_action_service.handle_button)
+    voice_session_manager.set_endpoint_event_handler(p4_quick_action_service.handle_endpoint_event)
+    voice_session_manager.set_custom_capture_handler(
+        active=p4_quick_action_service.custom_capture_active,
+        handler=p4_quick_action_service.handle_custom_capture,
+    )
     log = logging.getLogger("hexevoice")
 
     async def cancel_background_task(task: asyncio.Task) -> None:
@@ -1085,6 +1107,7 @@ def create_app(
             track_background_task(asyncio.create_task(asyncio.to_thread(voice_session_manager.preload_turn_pipeline)))
         track_background_task(asyncio.create_task(reconcile_external_stt_provider_config()))
         timer_announcement_service.start(asyncio.get_running_loop())
+        p4_quick_action_service.start(asyncio.get_running_loop())
         weather_snapshot_service.start()
 
         async def loop():
@@ -1202,6 +1225,7 @@ def create_app(
             await endpoint_beacon_service.stop()
             await asyncio.to_thread(endpoint_mdns_advertiser.stop)
             timer_announcement_service.stop()
+            p4_quick_action_service.stop()
             weather_snapshot_service.stop()
             tasks = list(getattr(app.state, "voice_background_tasks", []))
             for task in tasks:
@@ -1215,6 +1239,8 @@ def create_app(
     app.state.node_ui_page_cache = node_ui_page_cache
     app.state.timer_announcement_service = timer_announcement_service
     app.state.weather_snapshot_service = weather_snapshot_service
+    app.state.radar_asset_service = radar_asset_service
+    app.state.p4_quick_action_service = p4_quick_action_service
     app.state.voice_artifact_cleanup_status = {
         "name": "every_5_minutes",
         "interval_seconds": 300,
@@ -2019,6 +2045,30 @@ def create_app(
             reason=result.get("reason"),
         )
 
+    @app.post("/api/endpoint/media/sync", response_model=EndpointCommandResponse)
+    async def endpoint_media_sync(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        manifest_version = None
+        try:
+            endpoint = endpoint_service.status(payload.endpoint_id)
+            capabilities = endpoint.capabilities if isinstance(endpoint.capabilities, dict) else {}
+            board_profile = str(capabilities.get("board_profile") or "").strip()
+            if board_profile:
+                manifest_version = endpoint_media_service.board_asset_library(board_profile).asset_library_version
+        except (HTTPException, EndpointMediaValidationError):
+            pass
+        result = await voice_session_manager.push_asset_sync_command(
+            endpoint_id=payload.endpoint_id,
+            manifest_version=manifest_version,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.assets.sync",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
     @app.post("/api/endpoint/ui/screen", response_model=EndpointCommandResponse)
     async def endpoint_ui_screen(payload: EndpointScreenCommandRequest) -> EndpointCommandResponse:
         result = await voice_session_manager.push_ui_screen_command(
@@ -2029,12 +2079,58 @@ def create_app(
         return EndpointCommandResponse(
             accepted=bool(result.get("accepted")),
             endpoint_id=payload.endpoint_id,
-            command_type="endpoint.ui.screen",
+            command_type="endpoint.ui.screen.render",
             request_id=result.get("request_id"),
             status=result.get("status"),
             reason=result.get("reason"),
         )
 
+    @app.post("/api/endpoint/ui/screen/set", response_model=EndpointCommandResponse)
+    async def endpoint_ui_screen_set(payload: EndpointScreenCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_ui_screen_set_command(
+            endpoint_id=payload.endpoint_id,
+            screen_id=payload.screen_id,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.ui.screen.render",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/ui/screen/clear", response_model=EndpointCommandResponse)
+    async def endpoint_ui_screen_clear(payload: EndpointCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_ui_screen_clear_command(endpoint_id=payload.endpoint_id)
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.ui.screen.clear",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
+
+    @app.post("/api/endpoint/timer", response_model=EndpointCommandResponse)
+    async def endpoint_timer(payload: EndpointTimerCommandRequest) -> EndpointCommandResponse:
+        result = await voice_session_manager.push_timer_state(
+            endpoint_id=payload.endpoint_id,
+            timer_id=payload.timer_id,
+            state=payload.state,
+            label=payload.label,
+            due_at=payload.due_at,
+            remaining_seconds=payload.remaining_seconds,
+            timers=payload.timers,
+        )
+        return EndpointCommandResponse(
+            accepted=bool(result.get("accepted")),
+            endpoint_id=payload.endpoint_id,
+            command_type="endpoint.timer",
+            request_id=result.get("request_id"),
+            status=result.get("status"),
+            reason=result.get("reason"),
+        )
     @app.post("/api/endpoint/playback/stop", response_model=EndpointCommandResponse)
     async def endpoint_playback_stop(payload: EndpointCommandRequest) -> EndpointCommandResponse:
         result = await voice_session_manager.push_playback_stop_command(endpoint_id=payload.endpoint_id)
@@ -2884,6 +2980,7 @@ def create_app(
         }
         status["timer_announcements"] = timer_announcement_service.status()
         status["weather_snapshots"] = weather_snapshot_service.status()
+        status["p4_quick_actions"] = p4_quick_action_service.status()
         status["voice_artifact_cleanup"] = app.state.voice_artifact_cleanup_status
         status["voice_orphan_cleanup"] = app.state.voice_orphan_cleanup_status
         status["voice_tts_warmup"] = app.state.voice_tts_warmup_status
@@ -2895,6 +2992,13 @@ def create_app(
         if snapshot is None:
             raise HTTPException(status_code=404, detail="prepared_weather_unavailable")
         return {"snapshot": snapshot, "synchronization": weather_snapshot_service.status()}
+
+    @app.get("/api/voice/weather/radar/assets/{asset_id}")
+    async def voice_weather_radar_asset(asset_id: str) -> FileResponse:
+        path = radar_asset_service.path(asset_id)
+        if path is None:
+            raise HTTPException(status_code=404, detail="radar_asset_not_found")
+        return FileResponse(path, media_type="application/x-hexe-rgb888")
 
     @app.get("/api/voice/sessions", response_model=VoiceSessionHistoryListResponse)
     async def voice_sessions(limit: int = 20, endpoint_id: str | None = None) -> VoiceSessionHistoryListResponse:

@@ -27,7 +27,8 @@ Open the interactive endpoint, screen, and duration menus:
 scripts/ui-screen-menu.py
 ```
 
-Selecting **Recreate media files** regenerates the P4 media library and requests a restart of the selected endpoint so it can synchronize the new assets.
+Use `m` to regenerate all P4 media or `n` to regenerate only configuration and
+the manifest. Both actions request an asset sync from the selected endpoint.
 
 The available durations are 5, 10, 20, and 30 seconds. A non-interactive call
 is also supported:
@@ -41,11 +42,30 @@ The backend defaults to `http://hexe.local:9004`. Override it with
 
 ## Screens
 
-Screens are checked from top to bottom; the first matching screen wins. Keep
-`default` last. Every screen explicitly configures its sidebars and buttons:
+Every screen declares who selects it with `owner: device` or `owner: backend`.
+Device-owned screens are selected automatically from local conditions. A
+backend-owned screen is eligible only after the backend selects it, and its
+YAML conditions must also match. Screens are then checked from top to bottom;
+the first matching screen wins. Keep `default` last.
+
+The preview API is a temporary override and can show either ownership type:
+
+```text
+POST /api/endpoint/ui/screen        endpoint.ui.screen.render (temporary)
+POST /api/endpoint/ui/screen/set    endpoint.ui.screen.render (persistent)
+POST /api/endpoint/ui/screen/clear  endpoint.ui.screen.clear
+```
+
+The backend resolves the selected YAML into a compiled `layout` object and sends
+the complete composition to one of two in-memory endpoint slots. The temporary
+slot expires after `timeout_ms`; the persistent slot remains until replaced,
+cleared, or the backend connection drops. The endpoint reports actual changes
+with `endpoint.ui.screen.changed`. Every screen explicitly configures its
+sidebars and buttons:
 
 ```yaml
 id: listening
+owner: device
 conditions:
   match: all # all or any
   items:
@@ -56,8 +76,8 @@ buttons: {preset: standard}
 items:
   - item: header_clock
   - item: activity_listening
-    x: 422
-    y: 205
+    x: 512
+    y: 295
 ```
 
 Set `sidebars` to `false` for boot, connection, OTA, and error screens. Buttons
@@ -108,11 +128,30 @@ Supported types and data bindings:
 - `button`: a selectable sidebar button sprite.
 - `text`: reusable literal or time/date text with configurable style and animation.
 
+Text data bindings also include `system_message` for operational state such as
+starting or connecting, and `error_message` for failure details. The endpoint
+uses phase-based defaults when no custom message has been received. A backend
+can set or clear either value with `endpoint.ui.message`:
+
+```json
+{
+  "event_type": "endpoint.ui.message",
+  "payload": {
+    "system_message": "Connecting to Wi-Fi",
+    "error_message": ""
+  }
+}
+```
+
 Colors use quoted `'#RRGGBB'` values. Coordinates are screen pixels. Font paths
 are relative to `assets/font/`.
 
-Generic text items use `x` as their alignment anchor and support `left`,
-`center`, or `right` alignment. The default alignment is `center`:
+Every configurable `x` and `y` coordinate identifies the visual center of the
+item. This applies to sprites, clock/date items and their text parts, timer
+groups and rows, progress bars, status icons, firmware text, and sidebar
+buttons. The renderer converts these centers to drawing origins. Generic text
+supports `left`, `center`, or `right` alignment for compatibility, but its
+placement remains center anchored:
 
 ```yaml
 - id: welcome_label
@@ -123,7 +162,7 @@ Generic text items use `x` as their alignment anchor and support `left`,
   color: '#D8FFFA'
   align: center
   x: 512
-  y: 420
+  y: 436
   animations:
     - preset: text_slide_up
       when: {flag: idle_ready, equals: true}
@@ -140,15 +179,14 @@ one or both:
 ```yaml
 items:
   - item: big_clock
-    x: 262
-    y: 205
+    x: 512
+    y: 310
   - item: big_date
     x: 512
-    y: 15
+    y: 35
 ```
 
-`big_date.x` is its horizontal center. Moving `big_clock` moves its frame and
-all three time components together.
+Moving `big_clock` moves its frame and all three time components together.
 
 ## Status Icons
 

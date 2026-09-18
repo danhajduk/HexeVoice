@@ -40,6 +40,10 @@ class Settings(BaseSettings):
     api_port: int = Field(default=9004, alias="API_PORT")
     public_api_base_url: str | None = Field(default=None, alias="PUBLIC_API_BASE_URL")
     public_ui_base_url: str | None = Field(default=None, alias="PUBLIC_UI_BASE_URL")
+    interaction_api_base_url: str = Field(
+        default="http://127.0.0.1:9005",
+        alias="INTERACTION_API_BASE_URL",
+    )
     core_admin_token: str | None = Field(
         default=None,
         validation_alias=AliasChoices("CORE_ADMIN_TOKEN", "SYNTHIA_ADMIN_TOKEN"),

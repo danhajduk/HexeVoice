@@ -14,8 +14,8 @@ items:
     font: manrope/version_24.hxf
     font_size: 20
     color: '#55B8FF'
-    x: 480
-    y: 550
+    x: 512
+    y: 565
   - id: header_date
     type: text
     data: date_short
@@ -40,21 +40,21 @@ items:
       - sidebar_from_right
   - id: sidebar_button_stack
     type: button_stack
-    x: 8
-    y: 116
+    x: 44
+    y: 144
     gap: 20
   - {id: button_timer, type: button, sprite: button_timer}
   - {id: button_weather, type: button, sprite: button_weather}
   - {id: button_config, type: button, sprite: button_config}
   - id: status_icons
     type: status_icon_group
-    y: 10
-    floating: {x: 30, gap: 0}
+    y: 30
+    floating: {x: 50, gap: 0}
   - id: wifi
     type: status_icon
     sprite: wifi
     placement: static
-    x: 900
+    x: 920
     animations:
       - preset: wifi_dot
         when: {flag: wifi_connecting, equals: true}
@@ -62,7 +62,7 @@ items:
     type: status_icon
     sprite: node_connected
     placement: static
-    x: 960
+    x: 980
     animations:
       - preset: heartbeat_pulse
         when: {flag: heartbeat, equals: true}
@@ -91,33 +91,33 @@ items:
     type: activity_sprite
     sprite: activity_listening
     data: listening
-    x: 422
-    y: 205
+    x: 512
+    y: 295
   - id: activity_thinking
     type: activity_sprite
     sprite: activity_thinking
     data: thinking
-    x: 422
-    y: 205
+    x: 512
+    y: 295
   - id: activity_replay
     type: activity_sprite
     sprite: activity_replay
     data: replay
-    x: 422
-    y: 205
+    x: 512
+    y: 295
   - id: activity_timer
     type: activity_sprite
     sprite: activity_timer
     data: timer
-    x: 90
-    y: 105
+    x: 180
+    y: 195
   - id: big_clock
     type: big_clock
     sprite: idle_clock_frame
     data: time
     frame:
-      x: 262
-      y: 205
+      x: 512
+      y: 310
       animations:
         - preset: clock_slide_up
           when: {flag: idle_ready, equals: true}
@@ -125,7 +125,7 @@ items:
       font: manrope/clock_42.hxf
       font_size: 118
       x: 415
-      y: 225
+      y: 284
       color: '#D8FFFA'
       animations:
         - preset: activity_slide_right
@@ -136,7 +136,7 @@ items:
       font: manrope/clock_42.hxf
       font_size: 98
       x: 512
-      y: 232
+      y: 281
       color: '#35F4DB'
       animations:
         - preset: separator_pulse
@@ -145,7 +145,7 @@ items:
       font: manrope/clock_42.hxf
       font_size: 118
       x: 609
-      y: 225
+      y: 284
       color: '#D8FFFA'
       animations:
         - preset: activity_slide_right
@@ -159,7 +159,7 @@ items:
     font: manrope/date_32.hxf
     font_size: 40
     x: 512
-    y: 15
+    y: 35
     color: '#55B8FF'
     animations:
       - preset: text_slide_up
@@ -167,17 +167,19 @@ items:
   - id: timer_primary
     type: timer_primary
     data: timer1
+    x: 250
+    y: 505
     countdown:
       font: manrope/clock_42.hxf
       font_size: 64
       x: 250
-      y: 430
+      y: 462
       color: '#D8FFFA'
     label:
       font: manrope/date_32.hxf
       font_size: 24
       x: 250
-      y: 500
+      y: 512
       color: '#35F4DB'
   - id: timer_upcoming
     type: timer_upcoming
@@ -185,16 +187,38 @@ items:
     font: manrope/date_32.hxf
     font_size: 25
     x: 760
-    y: 430
+    y: 510
     gap: 38
     count: 3
     color: '#55B8FF'
   - id: ota_progress
     type: progress_bar
     data: ota_progress
-    x: 312
-    y: 520
+    x: 512
+    y: 529
     width: 400
     height: 18
     color: '#35F4DB'
     track_color: '#102E4A'
+  - id: system_message
+    type: text
+    data: system_message
+    font: manrope/message_20.hxf
+    font_size: 20
+    color: '#D8FFFA'
+    align: center
+    x: 512
+    y: 430
+    animations:
+      - preset: text_slide_up
+        when: {flag: booting}
+  - id: error_message
+    type: text
+    data: error_message
+    font: manrope/message_20.hxf
+    font_size: 20
+    color: '#FF4AAD'
+    align: center
+    x: 512
+    y: 400
+  - !include text.yaml

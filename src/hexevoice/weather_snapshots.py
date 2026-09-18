@@ -72,6 +72,15 @@ class WeatherSnapshotService:
         self._reason: str | None = None
         self._last_rejected: dict[str, Any] | None = None
         self._accepted = self._store.load()
+        self._listeners: list[Any] = []
+
+    def add_listener(self, listener: Any) -> None:
+        if listener not in self._listeners:
+            self._listeners.append(listener)
+
+    def remove_listener(self, listener: Any) -> None:
+        if listener in self._listeners:
+            self._listeners.remove(listener)
 
     def start(self) -> dict[str, Any]:
         if self._running:
@@ -159,6 +168,11 @@ class WeatherSnapshotService:
             self._store.save(record)
             self._accepted = record
             self._reason = None
+            for listener in tuple(self._listeners):
+                try:
+                    listener(deepcopy(normalized["data"]))
+                except Exception as exc:
+                    log.warning("Weather snapshot listener failed: error=%s", exc)
             return True
         except WeatherSnapshotError as exc:
             self._reason = str(exc)

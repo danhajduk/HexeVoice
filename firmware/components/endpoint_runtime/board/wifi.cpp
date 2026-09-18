@@ -14,6 +14,11 @@ namespace {
 constexpr char kTag[] = "hexe_wifi";
 bool g_wifi_initialized = false;
 char g_ip_address[16] = "0.0.0.0";
+unsigned int g_wifi_retry_count = 0;
+
+void set_ui_message(char *target, size_t target_size, const char *message) {
+  std::snprintf(target, target_size, "%s", message == nullptr ? "" : message);
+}
 
 bool has_wifi_credentials() {
   return hexe::system::wifi_ssid()[0] != '\0';
@@ -32,9 +37,17 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
   auto &state = hexe::state();
 
   if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START) {
-    ESP_LOGI(kTag, "Wi-Fi started, connecting to configured network");
     state.phase = hexe::AppPhase::kWiFiConnecting;
+    ESP_LOGI(kTag, "Wi-Fi started, connecting to configured network");
+    set_ui_message(state.system_message, sizeof(state.system_message), "Wi-Fi ready. Associating with network");
+    state.error_message[0] = '\0';
     ESP_ERROR_CHECK(esp_wifi_connect());
+    return;
+  }
+
+  if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
+    set_ui_message(state.system_message, sizeof(state.system_message), "Wi-Fi associated. Requesting IP address");
+    state.error_message[0] = '\0';
     return;
   }
 
@@ -50,10 +63,27 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
       return;
     }
     state.phase = hexe::AppPhase::kWiFiConnecting;
+    ++g_wifi_retry_count;
     const esp_err_t reconnect_result = esp_wifi_connect();
     if (reconnect_result == ESP_OK) {
+      std::snprintf(
+          state.system_message,
+          sizeof(state.system_message),
+          "Retrying Wi-Fi connection (%u)",
+          g_wifi_retry_count);
+      std::snprintf(
+          state.error_message,
+          sizeof(state.error_message),
+          "Wi-Fi disconnected (reason %u)",
+          static_cast<unsigned>(event->reason));
       ESP_LOGW(kTag, "Wi-Fi disconnected reason=%u, retrying", static_cast<unsigned>(event->reason));
     } else {
+      set_ui_message(state.system_message, sizeof(state.system_message), "Wi-Fi reconnect stopped");
+      std::snprintf(
+          state.error_message,
+          sizeof(state.error_message),
+          "Wi-Fi reconnect failed: %s",
+          esp_err_to_name(reconnect_result));
       ESP_LOGW(kTag, "Wi-Fi disconnected; reconnect skipped: %s", esp_err_to_name(reconnect_result));
     }
     return;
@@ -63,6 +93,9 @@ void wifi_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id
     const auto *event = static_cast<const ip_event_got_ip_t *>(event_data);
     state.wifi_connected = true;
     state.phase = hexe::AppPhase::kBackendConnecting;
+    g_wifi_retry_count = 0;
+    set_ui_message(state.system_message, sizeof(state.system_message), "Wi-Fi connected. Connecting to backend");
+    state.error_message[0] = '\0';
     update_rssi_from_ap_info();
     std::snprintf(g_ip_address, sizeof(g_ip_address), IPSTR, IP2STR(&event->ip_info.ip));
     ESP_LOGI(
@@ -77,8 +110,13 @@ void init_wifi() {
   auto &state = hexe::state();
   state.wifi_connected = false;
   state.phase = hexe::AppPhase::kWiFiConnecting;
+  g_wifi_retry_count = 0;
+  set_ui_message(state.system_message, sizeof(state.system_message), "Starting Wi-Fi driver");
+  state.error_message[0] = '\0';
 
   if (!has_wifi_credentials()) {
+    set_ui_message(state.system_message, sizeof(state.system_message), "Wi-Fi setup required");
+    set_ui_message(state.error_message, sizeof(state.error_message), "Wi-Fi credentials not configured");
     ESP_LOGW(kTag, "Wi-Fi credentials are not configured");
     return;
   }

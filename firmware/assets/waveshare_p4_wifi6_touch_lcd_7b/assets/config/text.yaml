@@ -1,0 +1,9 @@
+id: updating_text
+type: text
+text: Updating...
+font: manrope/date_32.hxf
+font_size: 32
+color: '#D8FFFA'
+align: center
+x: 512
+y: 436

@@ -52,8 +52,8 @@ Do not edit above this line:
 * TODO listing
 **********************************************************************************************
 
-[TODO] Task 321: Add Waveshare P4 Hexe weather, static radar, and timer quick-action screens using the Interaction-owned contracts
 [TODO] Task 322: Validate the complete Interaction-to-Voice-to-P4 weather, radar, static TTS, and timer workflow on hardware
+[TODO] Task 323: Cache Interaction-owned frequent-timer preset snapshots per endpoint or room, render them on backend-owned P4 screens, and route preset button presses through authoritative timer creation
 
 **********************************************************************************************
 * Future TODO listing
