@@ -125,8 +125,9 @@ The helper selects a profile's pinned ESP-IDF installation automatically from
 `/tmp`. Its default output marks stage transitions such as compiling, linking,
 generating, and packaging, then reports elapsed time and the compiler warning
 count. Within each stage, the percentage, step count, and current Ninja action
-update in place on one progress line. Pass `--verbose` to stream the complete
-ESP-IDF output.
+update in place on one progress line. Long actions are truncated to the current
+terminal width to prevent wrapping; the complete action remains in the log.
+Pass `--verbose` to stream the complete ESP-IDF output.
 Recovery builds are exported to their profile folders, while their runtime
 metadata is staged under `/tmp` so endpoint OTA manifests stay endpoint-only.
 Use `--include-minimal` to also build the USB-flashed factory/onboarding image,

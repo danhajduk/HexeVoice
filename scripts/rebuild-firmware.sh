@@ -198,6 +198,7 @@ run_build() {
   local idf_export
   local log_path
   local started_at
+  local terminal_columns
   local warning_count
   shift 2
   idf_export="$(profile_idf_export "${profile}")"
@@ -247,6 +248,13 @@ run_build() {
   fi
 
   mkdir -p "$(dirname "${log_path}")"
+  terminal_columns="${COLUMNS:-120}"
+  if [[ -t 1 && -r /dev/tty ]]; then
+    terminal_columns="$(stty size </dev/tty 2>/dev/null | awk '{print $2}' || true)"
+  fi
+  if [[ ! "${terminal_columns}" =~ ^[0-9]+$ || "${terminal_columns}" -lt 40 ]]; then
+    terminal_columns=120
+  fi
   if ! (
     cd "${ROOT_DIR}"
     # shellcheck disable=SC1090
@@ -255,7 +263,7 @@ run_build() {
       return 1
     fi
     env "${env_args[@]}" "${FIRMWARE_DIR}/build.sh" build
-  ) 2>&1 | tee "${log_path}" | awk '
+  ) 2>&1 | tee "${log_path}" | awk -v terminal_columns="${terminal_columns}" '
     function stage_for(action) {
       if (action ~ /^Building (C|CXX|ASM) object/) return "Compiling"
       if (action ~ /^Linking/) return "Linking"
@@ -285,7 +293,12 @@ run_build() {
         print "  Stage: " stage
         current_stage = stage
       }
-      printf "\r\033[2K  Progress: %3d%% (%d/%d) %s", percent, step[1], step[2], action
+      status = sprintf("  Progress: %3d%% (%d/%d) %s", percent, step[1], step[2], action)
+      max_width = terminal_columns - 1
+      if (length(status) > max_width) {
+        status = substr(status, 1, max_width - 3) "..."
+      }
+      printf "\r\033[2K%s", status
       fflush()
       progress_active = 1
     }

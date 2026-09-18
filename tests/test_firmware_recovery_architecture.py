@@ -73,7 +73,10 @@ def test_multi_profile_rebuild_selects_profile_sdk_and_quiet_logs(tmp_path):
     assert 'tail -n 80 "${log_path}"' in rebuild_script
     assert 'Progress: %3d%% (%d/%d) %s' in rebuild_script
     assert 'action = substr($0, index($0, "]") + 2)' in rebuild_script
-    assert 'printf "\\r\\033[2K' in rebuild_script
+    assert 'terminal_columns="$(stty size </dev/tty' in rebuild_script
+    assert 'max_width = terminal_columns - 1' in rebuild_script
+    assert 'status = substr(status, 1, max_width - 3) "..."' in rebuild_script
+    assert 'printf "\\r\\033[2K%s", status' in rebuild_script
     assert 'Stage: " stage' in rebuild_script
     assert 'return "Compiling"' in rebuild_script
     assert 'return "Linking"' in rebuild_script
