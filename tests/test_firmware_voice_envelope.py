@@ -187,6 +187,12 @@ def test_firmware_ui_button_event_closes_payload_and_envelope_once():
     assert r'\"source\":\"touch\"}}}",' not in function
 
 
+def test_firmware_tts_buffer_accepts_one_megabyte_assets():
+    source = Path("firmware/components/endpoint_runtime/voice/tts_player.cpp").read_text()
+
+    assert "constexpr size_t kMaxTtsBytes = 1024 * 1024;" in source
+
+
 def test_firmware_reports_stable_hardware_id_from_efuse_mac():
     source = FIRMWARE_BACKEND_CLIENT.read_text()
 

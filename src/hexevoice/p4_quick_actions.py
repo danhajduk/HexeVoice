@@ -205,9 +205,10 @@ class P4QuickActionService:
         await self._manager.push_ui_layout_command(endpoint_id=endpoint_id, layout=layout, duration_seconds=60)
         tts = snapshot.get("tts") if isinstance(snapshot.get("tts"), dict) else {}
         variants = tts.get("variants") if isinstance(tts.get("variants"), dict) else {}
+        high = variants.get("high") if isinstance(variants.get("high"), dict) else {}
         standard = variants.get("standard") if isinstance(variants.get("standard"), dict) else {}
         compact = variants.get("compact") if isinstance(variants.get("compact"), dict) else {}
-        audio_url = standard.get("audio_url") or compact.get("audio_url") or tts.get("audio_url")
+        audio_url = high.get("audio_url") or standard.get("audio_url") or compact.get("audio_url") or tts.get("audio_url")
         if tts.get("status") == "ready" and audio_url:
             await self._manager.push_play_sound_command(
                 endpoint_id=endpoint_id,

@@ -30,7 +30,7 @@ constexpr char kTag[] = "hexe_tts";
 constexpr int kPlaybackQueueDepth = 2;
 constexpr int kTaskStackBytes = 6144;
 constexpr int kTaskPriority = 4;
-constexpr size_t kMaxTtsBytes = 512 * 1024;
+constexpr size_t kMaxTtsBytes = 1024 * 1024;
 constexpr size_t kPlaybackWriteBytes = 4096;
 
 struct PlaybackRequest {
